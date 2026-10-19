@@ -19,7 +19,7 @@
   - 后端：账号字段的三种情形；接口的存和取；总开关关着时返回 409；关了以后不来、打开以后会来（接缝同 08）。
   - 前端：`settingsCategory.test.ts`，覆盖这一类的位置、摘要，以及字段为空时没有这一类。
 - [x] **验收**：在本地构建版上用 Playwright 看一级列表和二级页的开关，拨了以后刷新，状态还在；后台关掉总开关后，这一类不见了。
-- [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+- [x] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
 
 ## Comments
 
