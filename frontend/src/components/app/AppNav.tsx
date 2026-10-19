@@ -7,6 +7,7 @@ import { useEffect, useState, type MouseEvent } from "react";
 import { opensNewTab, useDirectory } from "@/components/conversations/ConversationDirectory";
 import { Button } from "@/components/ui/button";
 import { copy } from "@/i18n";
+import { hasUnseen } from "@/lib/conversationList";
 import { currentNavItem, FIRST_LEVEL, isTyping, NAV_ITEMS, navDestination, type NavItem } from "@/lib/navShell";
 import { REPOSITORY_URL } from "@/lib/repository";
 import { cn } from "@/lib/utils";
@@ -68,11 +69,13 @@ export function NavDock({ isInert }: { isInert: boolean }) {
  * 导航的每一项：图标在上、字在下；当前项（按网址，外壳的去处规则）图标铺中性的 bg-muted 圆角底、字 foreground 加 medium，
  * 标 `aria-current="page"`。点别的项去那一项的第一级；在二级页面上（她的对话页）再点当前项回到第一级，已在第一级时不动。
  * 通话层展开着（只有电脑上点得到，手机上它盖住 dock）时先收起，结束卡就放下，通话照常，去处顶上是通话条。
+ * 对话列表里有一行有没看过的搭话（正开着的那段对话除外）时，「对话」图标右上角一个前景色的小点，和公告铃铛上的一样。
  */
 function NavLinks({ className }: { className: string }) {
   const pathname = usePathname();
-  const { guard, held } = useDirectory();
+  const { guard, held, characters, latest, preferences, onScreen } = useDirectory();
   const current = currentNavItem(pathname);
+  const unseen = characters !== null && hasUnseen(characters, latest, { preferences, onScreen });
   return NAV_ITEMS.map((item) => {
     const Icon = ICONS[item];
     const isCurrent = item === current;
@@ -91,6 +94,7 @@ function NavLinks({ className }: { className: string }) {
         href={FIRST_LEVEL[item]}
         onClick={onClick}
         aria-current={isCurrent ? "page" : undefined}
+        aria-label={item === "conversations" && unseen ? copy.nav.conversationsUnseen : undefined}
         className={cn(
           "group flex flex-col items-center justify-center text-meta outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
           className,
@@ -98,11 +102,14 @@ function NavLinks({ className }: { className: string }) {
       >
         <span
           className={cn(
-            "flex h-8 w-12 items-center justify-center rounded-full transition-colors",
+            "relative flex h-8 w-12 items-center justify-center rounded-full transition-colors",
             isCurrent ? "bg-muted text-foreground" : "text-muted-foreground group-hover:bg-muted/60",
           )}
         >
           <Icon aria-hidden className="size-5" />
+          {item === "conversations" && unseen && (
+            <span aria-hidden className="absolute top-1 right-2.5 size-1.5 rounded-full bg-foreground" />
+          )}
         </span>
         <span className={isCurrent ? "font-medium text-foreground" : "text-muted-foreground"}>{copy.nav[item]}</span>
       </NextLink>

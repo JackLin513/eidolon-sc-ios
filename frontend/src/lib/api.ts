@@ -105,13 +105,14 @@ export type LastMessage =
   | Pick<ConversationEvent, "type" | "kind" | "created_at" | "gift_name">
   | null;
 
-/** A character's newest conversation with the user and the last thing in it, for the
- * conversation list. */
+/** A character's newest conversation with the user, the last thing in it, and whether it has a
+ * reach-out the user has not seen (GLOSSARY.md「没看过的搭话」), for the conversation list. */
 export type LatestConversation = {
   character_id: string;
   conversation_id: string;
   created_at: string;
   last_message: LastMessage;
+  unseen_reach_out: boolean;
 };
 
 /** One of her conversations as the past conversations panel lists it; `title` is its conversation

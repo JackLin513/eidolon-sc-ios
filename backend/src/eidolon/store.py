@@ -955,10 +955,13 @@ class Store:
             ).fetchall()
         return {r["character_id"]: _at(r["first"]) for r in rows}
 
-    def latest_conversations(self, user_id: str) -> list[tuple[Conversation, Recorded | None]]:
-        """Each character's newest conversation with the user, and the last thing in its
-        record, a message, an event or a reach-out, as `record` orders them (None while it
-        has none); for the conversation list."""
+    def latest_conversations(
+        self, user_id: str
+    ) -> list[tuple[Conversation, Recorded | None, bool]]:
+        """Each character's newest conversation with the user, the last thing in its record,
+        a message, an event or a reach-out, as `record` orders them (None while it has none),
+        and whether it has a reach-out the user has not seen (GLOSSARY.md「没看过的搭话」); for
+        the conversation list."""
         with self._lock:
             rows = self._db.execute(
                 "SELECT * FROM conversations WHERE user_id = ?"
@@ -968,8 +971,14 @@ class Store:
             newest: dict[str, Conversation] = {}
             for row in rows:
                 newest.setdefault(row["character_id"], Conversation(**row))
-            last = {c.id: self._last(c.id) for c in newest.values()}
-        return [(c, last[c.id]) for c in newest.values()]
+            return [(c, self._last(c.id), self._unseen(c.id)) for c in newest.values()]
+
+    def _unseen(self, conversation_id: str) -> bool:
+        """Whether the conversation has a reach-out the user has not seen."""
+        return self._db.execute(
+            "SELECT EXISTS (SELECT 1 FROM reach_outs WHERE conversation_id = ? AND seen = 0)",
+            (conversation_id,),
+        ).fetchone()[0] == 1
 
     def _last(self, conversation_id: str) -> Recorded | None:
         """The last thing in the record, but her ending it, as `record` orders them: the
@@ -1185,6 +1194,20 @@ class Store:
                     merged.append(pending.pop(0))
             merged.append(message)
         return merged + pending
+
+    def read_by_user(self, conversation_id: str) -> list[Recorded]:
+        """The conversation's record as `record` gives it, read by the user: every reach-out
+        in it is seen from now on (GLOSSARY.md「没看过的搭话」); one made after it was read, not."""
+        entries = self.record(conversation_id)
+        given = [entry.id for entry in entries if isinstance(entry, ReachOut)]
+        if given:
+            with self._lock, self._db:
+                self._db.execute(
+                    "UPDATE reach_outs SET seen = 1 WHERE conversation_id = ? AND id <= ?"
+                    " AND seen = 0",
+                    (conversation_id, max(given)),
+                )
+        return entries
 
     def current_conversations(self) -> list[CurrentConversation]:
         """Every user's current conversation with each character they have one with, as

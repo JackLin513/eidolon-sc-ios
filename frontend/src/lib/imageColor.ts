@@ -20,7 +20,8 @@ export type ModePair = { light: string; dark: string };
 export type ImageColorScale = {
   /** 官方原色。 */
   raw: string;
-  /** 属于她的小记号（头像描边等）：和纸面对比度 ≥ 3，太浅就压暗、太暗就提亮。 */
+  /** 属于她的小记号（头像描边、对话列表上没看过的搭话的圆点等）：和纸面、`--muted` 底（列表的选中行、悬停行）
+   *  对比度都 ≥ 3，太浅就压暗、太暗就提亮。按 `--muted` 校验就够了：两种模式下它都比纸面更接近记号的明暗。 */
   mark: ModePair;
   /** 统计里属于她的排行条：和条的底（`--muted`）对比度 ≥ 3，原色够就用原色。 */
   bar: ModePair;
@@ -66,13 +67,11 @@ function deriveScale(raw: string): ImageColorScale {
   const wall = { light: at(0.955, 0.018), dark: at(0.2, 0.016) };
   const callDeep = at(0.26, base.c * 0.45);
   const mark = {
-    light: contrast(raw, body.light) >= GRAPHIC ? raw : readableOn(base, body.light, GRAPHIC, 0.16),
-    dark: contrast(raw, body.dark) >= GRAPHIC ? raw : readableOn(base, body.dark, GRAPHIC, 0.14),
-  };
-  const bar = {
     light: contrast(raw, mutedColors.light) >= GRAPHIC ? raw : readableOn(base, mutedColors.light, GRAPHIC, 0.16),
     dark: contrast(raw, mutedColors.dark) >= GRAPHIC ? raw : readableOn(base, mutedColors.dark, GRAPHIC, 0.14),
   };
+  // 排行条的底也是 --muted，校验和记号一样。
+  const bar = mark;
   const buttonBg = { light: raw, dark: mark.dark };
   const accent = { light: readableOn(base, body.light, AA, 0.16), dark: readableOn(base, body.dark, AA, 0.14) };
   const buttonFg = { light: readableOn(base, buttonBg.light, AA, 0.14), dark: readableOn(base, buttonBg.dark, AA, 0.14) };

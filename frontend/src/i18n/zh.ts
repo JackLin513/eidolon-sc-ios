@@ -30,6 +30,8 @@ export const zh = {
   nav: {
     label: "导航",
     conversations: "对话",
+    /** 「对话」图标上有点时读屏读的名字：列表里有一行有没看过的搭话。 */
+    conversationsUnseen: "对话，有没看过的搭话",
     gifts: "礼物",
     settings: "设置",
   },
@@ -98,6 +100,8 @@ export const zh = {
     show: "在列表中显示",
     /** 置顶那一行时间旁边的图钉，给读屏读的。 */
     pinned: "已置顶",
+    /** 时间前面她颜色的小圆点（GLOSSARY.md「没看过的搭话」），给读屏读的。 */
+    unseen: "有没看过的搭话",
     /** 搜索框右边的筛选按钮；有人被隐藏时读出人数。 */
     filter: "筛选列表",
     filterHidden: (count: string) => `筛选列表，已隐藏 ${count} 位`,

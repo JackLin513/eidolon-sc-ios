@@ -5,8 +5,10 @@ import {
   type CallEvent,
   type Conversation,
   type ConversationEvent,
+  type LatestConversation,
   type Message,
   type PhotoStatus,
+  type ReachOut,
   type Recorded,
   type TurnEvent,
 } from "@/lib/api";
@@ -2404,5 +2406,173 @@ describe("LiveConversation: the stand", () => {
 
     await connected(live, attempts);
     expect(live.snapshot().stand).toEqual(CALM);
+  });
+});
+
+describe("LiveConversation: what the list shows newer", () => {
+  const reachOut: ReachOut = {
+    type: "reach_out",
+    id: 7,
+    ja: "レッスン終わったよ",
+    zh: "练习结束了哦",
+    segments: [{ ja: "レッスン終わったよ", zh: "练习结束了哦" }],
+    created_at: "2026-09-27T05:00:00Z",
+  };
+
+  /** The list's line for her: her conversation `id`, its last line said at `at`, a reach-out. */
+  function listedAs(at: string, id = "c1"): LatestConversation {
+    const last = { role: "character" as const, text: null, ja: "", zh: "", created_at: at, reach_out: true as const };
+    return { character_id: "hikari", conversation_id: id, created_at: "2026-09-27T00:00:00Z", last_message: last, unseen_reach_out: true };
+  }
+
+  /** Her conversation, its record in the backend `now()` as it is then, each reading counted. */
+  async function reading(options: Options = {}) {
+    let record: Recorded[] = history;
+    const reads: string[] = [];
+    const opened = await conversation({
+      ...options,
+      ports: {
+        listMessages: async (id) => {
+          reads.push(id);
+          return record;
+        },
+        ...options.ports,
+      },
+    });
+    return { ...opened, reads, recordNow: (now: Recorded[]) => (record = now) };
+  }
+
+  const keys = (live: LiveConversation) => live.snapshot().entries.map((e) => e.key);
+
+  it("reads her conversation again when the list shows something newer in it, a reach-out she just made", async () => {
+    const { live, reads, recordNow } = await reading();
+    recordNow([...history, reachOut]);
+
+    live.listed(listedAs(reachOut.created_at));
+    await settled();
+
+    expect(reads).toEqual(["c1", "c1"]);
+    expect(keys(live)).toEqual(["m1", "m2", "r7"]);
+  });
+
+  it("does not read it again when the list shows nothing newer, or another conversation of hers", async () => {
+    const { live, reads } = await reading();
+
+    live.listed(listedAs(history[1].created_at));
+    live.listed(listedAs("2026-09-27T05:00:00Z", "c0"));
+    await settled();
+
+    expect(reads).toEqual(["c1"]);
+  });
+
+  it("puts it off while a text turn is under way, reading once the turn is over", async () => {
+    const { gate: answered, open: answer } = gate();
+    const reply = message(9, "character", "こんにちは", "2026-09-27T06:00:00Z");
+    const { live, reads, recordNow } = await reading({
+      turns: async function* () {
+        yield { type: "user", text: "你好" };
+        await answered;
+        yield { type: "done", message: reply, affinity: null };
+      },
+    });
+    recordNow([...history, reachOut]);
+    live.setDraft("你好");
+    const sending = live.submit();
+    await settled();
+
+    live.listed(listedAs(reachOut.created_at));
+    await settled();
+    expect(reads).toEqual(["c1"]);
+
+    recordNow([...history, reachOut, message(8, "user", "你好", "2026-09-27T06:00:00Z"), reply]);
+    answer();
+    await sending;
+    await settled();
+
+    expect(reads).toEqual(["c1", "c1"]);
+    expect(keys(live)).toEqual(["m1", "m2", "r7", "m8", "m9"]);
+  });
+
+  it("puts it off through a call, reading once it is over", async () => {
+    const { live, attempts, reads, recordNow } = await reading();
+    await connected(live, attempts);
+    recordNow([...history, reachOut]);
+
+    live.listed(listedAs(reachOut.created_at));
+    await settled();
+    expect(reads).toEqual(["c1"]);
+
+    await live.hangUp();
+    await settled();
+
+    expect(reads).toEqual(["c1", "c1"]);
+    expect(keys(live)).toEqual(["m1", "m2", "r7"]);
+  });
+
+  it("does not show a reading that comes back once a text turn has begun, reading again once it is over", async () => {
+    const { gate: answered, open: answer } = gate();
+    const { gate: read, open: comeBack } = gate();
+    let record: Recorded[] = history;
+    const reads: string[] = [];
+    const { live } = await conversation({
+      ports: {
+        listMessages: async () => {
+          reads.push("c1");
+          const now = record;
+          if (reads.length === 2) await read;
+          return now;
+        },
+      },
+      turns: async function* () {
+        yield { type: "user", text: "你好" };
+        await answered;
+        yield { type: "error", message: "角色暂时无法回复" };
+      },
+    });
+    record = [...history, reachOut];
+    live.listed(listedAs(reachOut.created_at));
+    live.setDraft("你好");
+    const sending = live.submit();
+    await settled();
+
+    comeBack();
+    await settled();
+    expect(keys(live)).toEqual(["m1", "m2", "new-2", "new-3"]);
+
+    answer();
+    await sending;
+    await settled();
+
+    expect(reads).toEqual(["c1", "c1", "c1"]);
+    expect(keys(live)).toEqual(["m1", "m2", "r7"]);
+  });
+
+  it("does not read it once the page is left, nor one put off through a call", async () => {
+    const left = await reading();
+    left.live.dispose();
+    left.live.listed(listedAs(reachOut.created_at));
+    await settled();
+    expect(left.reads).toEqual(["c1"]);
+
+    const calling = await reading();
+    await connected(calling.live, calling.attempts);
+    calling.live.listed(listedAs(reachOut.created_at));
+    calling.live.dispose();
+    await settled();
+    expect(calling.reads).toEqual(["c1"]);
+  });
+
+  it("does not read one put off through a call once the page is left, the call going on in the shell", async () => {
+    const { live, attempts, reads } = await reading();
+    await connected(live, attempts);
+    live.listed(listedAs(reachOut.created_at));
+
+    live.offScreen();
+    attempts[0].handlers.onEvent({ type: "ended", reason: "duration_limit", message: "满 30 分钟了", counts: true });
+    attempts[0].handlers.onDropped();
+    await settled();
+
+    expect(live.snapshot().call.phase).toBe("ended");
+    expect(reads).toEqual(["c1"]);
   });
 });

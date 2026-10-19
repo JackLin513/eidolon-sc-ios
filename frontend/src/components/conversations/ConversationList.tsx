@@ -14,6 +14,7 @@ import { showTime } from "@/lib/callTime";
 import { arrange, dayOf, previewOf, type ListRow, type Preview } from "@/lib/conversationList";
 import { pin, setShown, unpin } from "@/lib/listPreferences";
 import { cn } from "@/lib/utils";
+import { herVars } from "@/theme/herVars";
 import { HideIcon, PinIcon, SearchIcon, ShowIcon, UnpinIcon } from "@/theme/icons";
 
 import { Announcements } from "./Announcements";
@@ -28,17 +29,17 @@ const t = copy.conversationList;
 /**
  * 对话列表（DESIGN.md「Conversation list」）：顶上「对话」大标题、服务状态和公告铃铛，下面一个按名字
  * 或组合找人的搜索框，右边是筛选按钮（`ListFilter`）；每位角色一行（56px 头像、名字和时间一行，最后一句一行），
- * 选中行铺中性的 bg-muted；有人被隐藏时最后一行是「已隐藏 n 位」。显示谁、按什么顺序由 `arrange` 决定：置顶的在前，最近有过往来的在上面；隐藏的不显示，
+ * 选中行铺中性的 bg-muted；有人被隐藏时最后一行是「已隐藏 n 位」。她有没看过的搭话时，时间前面一个她颜色的小圆点，当前对话正显示着的那位不标。显示谁、按什么顺序由 `arrange` 决定：置顶的在前，最近有过往来的在上面；隐藏的不显示，
  * 但搜索时照样能搜到，当前打开的和正在通话的始终留下。一整列不按组合分段，换位置时直接跳过去、不做动画。
  * 列表栏是实底，不在她的子树里。宽屏时在左栏，窄屏时占满一页。
  */
 export function ConversationList({ selectedId }: { selectedId: string | null }) {
-  const { account, characters, latest, preferences, tidy, failure, reload, call, go } = useDirectory();
+  const { account, characters, latest, preferences, tidy, failure, reload, call, go, onScreen } = useDirectory();
   const now = useMinute();
   const [query, setQuery] = useState("");
   const [isFilterOpen, setFilterOpen] = useState(false);
   const keep = [selectedId, call?.characterId].filter((id): id is string => !!id);
-  const shown = characters && arrange(characters, latest, { preferences, query, keep });
+  const shown = characters && arrange(characters, latest, { preferences, query, keep, onScreen });
   const hiddenCount = shown?.hiddenCount ?? 0;
   // 搜索时隐藏的人照样出现，「已隐藏 n 位」和全部隐藏的空状态只在没有搜索时出现。
   const showsHidden = query.trim() === "" && hiddenCount > 0;
@@ -140,10 +141,12 @@ export function ConversationList({ selectedId }: { selectedId: string | null }) 
 
 /**
  * 列表里的一行：一整个按钮，选中时 `aria-current`，铺中性的 bg-muted（不用她的颜色）；置顶的时间旁边有个小图钉。
+ * 有没看过的搭话时时间前面一个她颜色（`her-mark`）的小圆点：列表栏不在她的子树里，只在圆点上套她的颜色变量；
+ * 名字和最后一句不加深。
  * 右键、触屏长按、菜单键或 Shift+F10 打开行菜单（中性色）：置顶或取消置顶，在列表中隐藏或显示。
  */
 function Row({
-  row: { character, isPinned, isHidden },
+  row: { character, isPinned, isHidden, isUnseen },
   preview,
   call,
   isSelected,
@@ -200,6 +203,12 @@ function Row({
             <span className="min-w-0 flex-1 truncate text-row-name">{character.name}</span>
             {((preview && !call) || isPinned) && (
               <span className="flex shrink-0 items-center gap-1 text-meta text-muted-foreground tabular-nums">
+                {isUnseen && preview && !call && (
+                  <>
+                    <span aria-hidden style={herVars(character.color)} className="size-2 shrink-0 rounded-full bg-her-mark" />
+                    <span className="sr-only">{t.unseen}</span>
+                  </>
+                )}
                 {preview && !call && listTime(new Date(preview.at), now)}
                 {isPinned && (
                   <>

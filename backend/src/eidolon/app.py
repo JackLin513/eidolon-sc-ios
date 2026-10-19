@@ -524,17 +524,18 @@ def create_app(backend: Backend) -> FastAPI:
 
     @app.get("/api/conversations/latest")
     def latest_conversations(user_id: UserId) -> list[dict]:
-        """For the conversation list: each character's newest conversation with the user and
-        the last thing in it, a message or a conversation event (null while it has none), in
-        one request."""
+        """For the conversation list: each character's newest conversation with the user, the
+        last thing in it, a message, a conversation event or a reach-out (null while it has
+        none), and whether it has a reach-out the user has not seen, in one request."""
         return [
             {
                 "character_id": c.character_id,
                 "conversation_id": c.id,
                 "created_at": c.created_at,
                 "last_message": last_shown(last),
+                "unseen_reach_out": unseen,
             }
-            for c, last in store.latest_conversations(user_id)
+            for c, last, unseen in store.latest_conversations(user_id)
         ]
 
     @app.delete("/api/conversations/{conversation_id}", status_code=204)
@@ -549,9 +550,9 @@ def create_app(backend: Backend) -> FastAPI:
     @app.get("/api/conversations/{conversation_id}/messages")
     def list_messages(conversation_id: str, user_id: UserId) -> list[dict]:
         """The conversation's record: its messages, conversation events and reach-outs, in
-        order."""
+        order. The user reads it: its reach-outs are seen from now on."""
         conversation = conversation_or_404(conversation_id, user_id)
-        return [recorded(entry) for entry in store.record(conversation.id)]
+        return [recorded(entry) for entry in store.read_by_user(conversation.id)]
 
     @app.post("/api/conversations/{conversation_id}/turns")
     def text_turn(
