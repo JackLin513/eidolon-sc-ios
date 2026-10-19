@@ -20,9 +20,11 @@ or any were recorded in the range. Nothing anyone said is in it, nor whose any o
 
 How many calls are in progress now is not in the records but the calls themselves:
 `/api/admin/calls/live`, which the page asks every minute.
+
+The records are summed up in the database (`ActivityLog.tally`), not read one by one: a range
+may hold millions.
 """
 
-import math
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
@@ -37,12 +39,15 @@ from eidolon.activity import (
     LLM_SERVICES,
     RESULTS,
     SERVICES,
-    CallRow,
-    RecordRow,
+    CallGroup,
+    RecordGroup,
+    Spread,
+    Tally,
 )
 from eidolon.affinity import LEVEL_STEPS, Judged
 from eidolon.admin_api import Admin
 from eidolon.assembly import Backend
+from eidolon.config import ServiceName
 from eidolon.photo_prompt import CROSSINGS
 from eidolon.prices import cost
 
@@ -77,13 +82,13 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
         """The activity of the last `range`, summed up."""
         span = SPANS[range]
         now = backend.clock()
-        recorded, service_calls = backend.activity.since(now - span.length)
-        # Reach-outs are no turns nor calls, and taken by no user; their service calls count.
-        records = [r for r in recorded if r.kind != "reach_out"]
-        reach_out_records = [r for r in recorded if r.kind == "reach_out"]
-        names = {id: c.name for id, c in backend.characters.items()}
         starts = stretches(now, span, _zone(timezone))
-        spent = cost(service_calls, backend.prices.pricing(), starts)
+        tally = backend.activity.tally(now - span.length, starts, DURATIONS)
+        # Reach-outs are no turns nor calls, and taken by no user; their service calls count.
+        records = [r for r in tally.records if r.kind != "reach_out"]
+        reach_out_records = [r for r in tally.records if r.kind == "reach_out"]
+        names = {id: c.name for id, c in backend.characters.items()}
+        spent = cost(tally.calls, backend.prices.pricing(), starts)
         backend.prices.catalog.refresh_soon(
             missing=any(r["unit"] == "tokens" and r["price"] is None for r in spent["rows"])
         )
@@ -92,13 +97,16 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
             "from": (now - span.length).isoformat(),
             "to": now.isoformat(),
             "bucket": span.bucket,
-            "health": health(service_calls),
-            "active_users": len({r.who for r in records if r.who is not None}),
-            "turns": turns([r for r in records if r.kind == "turn"]),
-            "calls": calls([r for r in records if r.kind == "call"]),
-            "trend": trend(records, starts),
+            "health": health(tally),
+            "active_users": tally.users,
+            "turns": turns([r for r in records if r.kind == "turn"], tally.time_to_speak),
+            "calls": calls([r for r in records if r.kind == "call"], tally),
+            "trend": trend(tally.stretches, starts),
             "characters": characters(records, names),
-            "affinity": affinity(records, names) if backend.config.affinity_on else None,
+            "affinity": (
+                affinity(records, names, tally.cooled_users)
+                if backend.config.affinity_on else None
+            ),
             "reach_outs": (
                 reach_outs(reach_out_records)
                 if backend.config.reach_outs.enabled or reach_out_records else None
@@ -119,76 +127,82 @@ def _zone(name: str | None) -> ZoneInfo:
         return ZoneInfo("UTC")
 
 
-def percentile(values: Sequence[float], p: float) -> float | None:
-    """The nearest-rank `p`th percentile of `values`, None of none."""
-    if not values:
-        return None
-    ordered = sorted(values)
-    return round(ordered[max(0, math.ceil(p / 100 * len(ordered)) - 1)], 1)
+def _percentiles(spread: Spread | None, *ps: int) -> dict:
+    """The `ps`th percentiles of `spread`, to a tenth; None of none."""
+    at = spread.at if spread is not None else {}
+    return {f"p{p}": round(at[p], 1) if p in at else None for p in ps}
 
 
-def health(calls: Iterable[CallRow]) -> list[dict]:
+def _count(groups: Iterable[RecordGroup]) -> int:
+    return sum(g.count for g in groups)
+
+
+def _calls(groups: Iterable[CallGroup]) -> int:
+    return sum(g.calls for g in groups)
+
+
+def health(tally: Tally) -> list[dict]:
     """Each service's calls, on the deployer's keys and on users' own apart, in the order
     of `SERVICES`; an LLM's at every reasoning effort together, with its cache hit rate."""
-    groups: dict[tuple[str, bool], list[CallRow]] = defaultdict(list)
-    for call in calls:
+    groups: dict[tuple[ServiceName, bool], list[CallGroup]] = defaultdict(list)
+    for call in tally.calls:
         groups[(call.service, call.own_key)].append(call)
     rows = []
     for (service, own_key), group in sorted(groups.items(), key=lambda g: (_order(g[0][0]), g[0][1])):
-        failed = [c for c in group if c.error is not None]
+        # In the order the calls are in, each kind of failure as first seen.
+        errors: Counter[str] = Counter()
+        for call in group:
+            if call.error is not None:
+                errors[call.error] += call.calls
+        total, failed = _calls(group), sum(errors.values())
         row = {
             "service": service,
             "own_key": own_key,
-            "calls": len(group),
-            "errors": len(failed),
-            "error_rate": len(failed) / len(group),
-            "errors_by_kind": dict(Counter(c.error for c in failed if c.error)),
-            "latency_ms": _percentiles(c.latency_ms for c in group),
+            "calls": total,
+            "errors": failed,
+            "error_rate": failed / total,
+            "errors_by_kind": dict(errors),
+            "latency_ms": _percentiles(tally.latency.get((service, own_key)), 50, 95),
             "usage": _usage(group, llm=service in LLM_SERVICES),
-            "usage_unknown": sum(c.usage_unit is None for c in group),
+            "usage_unknown": _calls(c for c in group if c.usage_unit is None),
         }
         if service == "image":
-            row["stripped_photos"] = sum(c.stripped is not None for c in group)
+            row["stripped_photos"] = _calls(c for c in group if c.stripped is not None)
             row["stripped"] = _stripped(group)
         if service in LLM_SERVICES:
-            row["first_token_ms"] = _percentiles(c.first_token_ms for c in group)
+            row["first_token_ms"] = _percentiles(tally.first_token.get((service, own_key)), 50, 95)
             row["cache_hit_rate"] = cache_hit_rate(group)
         rows.append(row)
     return rows
 
 
-def _stripped(calls: Sequence[CallRow]) -> dict[str, int]:
+def _stripped(calls: Sequence[CallGroup]) -> dict[str, int]:
     """How many tags were stripped from her photo tags, by which part of the line each
     crossed, in the order of `CROSSINGS`; only those any crossed."""
     stripped: Counter[str] = Counter()
     for call in calls:
-        stripped.update(call.stripped or {})
+        for crossing, count in (call.stripped or {}).items():
+            stripped[crossing] += count * call.calls
     return {c: stripped[c] for c in CROSSINGS if stripped[c]}
 
 
-def cache_hit_rate(calls: Sequence[CallRow]) -> float | None:
+def cache_hit_rate(calls: Sequence[CallGroup]) -> float | None:
     """Of all the input tokens an LLM's calls said they were billed for, the share the
     provider read from its prompt cache; a call that did not say how much hit none. None
     where no call said what its input was."""
-    told = [c for c in calls if c.usage_unit == "tokens" and c.usage_input is not None]
+    told = [c for c in calls if c.usage_unit == "tokens" and c.input_told]
     input = sum(c.usage_input or 0 for c in told)
     return sum(c.usage_cached or 0 for c in told) / input if input else None
-
-
-def _percentiles(values: Iterable[float | None]) -> dict:
-    """The p50 and p95 of the values known."""
-    known = [v for v in values if v is not None]
-    return {"p50": percentile(known, 50), "p95": percentile(known, 95)}
 
 
 def _order(service: str) -> int:
     return SERVICES.index(service) if service in SERVICES else len(SERVICES)  # pyright: ignore[reportArgumentType]
 
 
-def _usage(calls: Sequence[CallRow], llm: bool) -> list[dict]:
+def _usage(calls: Sequence[CallGroup], llm: bool) -> list[dict]:
     """What the calls were billed for, in each unit they were billed in; an `llm`'s, of the
     input, how much hit the prompt cache, where any call said."""
-    units: dict[str, list[CallRow]] = defaultdict(list)
+    units: dict[str, list[CallGroup]] = defaultdict(list)
     for call in calls:
         if call.usage_unit is not None:
             units[call.usage_unit].append(call)
@@ -208,14 +222,18 @@ def _sum(values: Iterable[float | None]) -> float | None:
     return sum(told) if told else None
 
 
-def turns(records: Sequence[RecordRow]) -> dict:
-    by_result = Counter(r.result for r in records)
+def turns(records: Sequence[RecordGroup], speaking: Spread) -> dict:
+    """The turns: how they turned out, how many on users' own LLMs and in calls, and how
+    soon the character began to speak (`speaking`), in the turns where she did."""
+    by_result: Counter[str] = Counter()
+    for r in records:
+        by_result[r.result] += r.count
     return {
-        "total": len(records),
+        "total": _count(records),
         "by_result": {result: by_result[result] for result in RESULTS if result != "not_connected"},
-        "own_keys": sum(bool(r.own_llm) for r in records),
-        "in_calls": sum(r.in_call for r in records),
-        "time_to_speak_ms": _speaking(records),
+        "own_keys": _count(r for r in records if r.own_keys),
+        "in_calls": _count(r for r in records if r.in_call),
+        "time_to_speak_ms": {"count": speaking.known, **_percentiles(speaking, 50, 90)},
     }
 
 
@@ -228,33 +246,26 @@ DURATIONS: tuple[tuple[int, int | None], ...] = (
 """The stretches, in seconds, calls' durations are counted in."""
 
 
-def calls(records: Sequence[RecordRow]) -> dict:
+def calls(records: Sequence[RecordGroup], tally: Tally) -> dict:
     """The calls: how they turned out, on whose keys, how long those that connected
     lasted, and why each ended (a call refused over the limit never began, so did not)."""
-    by_result = Counter(r.result for r in records)
-    lasted = [r.duration_s for r in records if r.duration_s is not None]
-    reasons = Counter(r.end_reason for r in records if r.end_reason is not None)
+    by_result: Counter[str] = Counter()
+    reasons: Counter[str] = Counter()
+    for r in records:
+        by_result[r.result] += r.count
+        if r.end_reason is not None:
+            reasons[r.end_reason] += r.count
     return {
-        "total": len(records),
+        "total": _count(records),
         "by_result": {result: by_result[result] for result in CALL_RESULTS},
-        "own_keys": sum(r.own_keys for r in records),
-        "duration_s": {"p50": percentile(lasted, 50), "p90": percentile(lasted, 90)},
+        "own_keys": _count(r for r in records if r.own_keys),
+        "duration_s": _percentiles(tally.lasted, 50, 90),
         "durations": [
-            {
-                "from_s": low,
-                "to_s": high,
-                "calls": sum(low <= d and (high is None or d < high) for d in lasted),
-            }
-            for low, high in DURATIONS
+            {"from_s": low, "to_s": high, "calls": count}
+            for (low, high), count in zip(DURATIONS, tally.durations, strict=True)
         ],
         "end_reasons": {reason: reasons[reason] for reason in CALL_END_REASONS},
     }
-
-
-def _speaking(records: Sequence[RecordRow]) -> dict:
-    """How soon the character began to speak, in the turns where she did."""
-    times = [r.time_to_speak_ms for r in records if r.time_to_speak_ms is not None]
-    return {"count": len(times), "p50": percentile(times, 50), "p90": percentile(times, 90)}
 
 
 def stretches(now: datetime, span: Span, zone: ZoneInfo) -> list[datetime]:
@@ -273,34 +284,21 @@ def stretches(now: datetime, span: Span, zone: ZoneInfo) -> list[datetime]:
     return [last - span.stretch * (count - 1 - i) for i in range(count)]
 
 
-def trend(records: Sequence[RecordRow], starts: Sequence[datetime]) -> list[dict]:
-    """How many turns and calls, and by how many users, in each stretch beginning at
-    `starts`; the first takes in whatever of the range comes before it."""
-    stretch = starts[1] - starts[0] if len(starts) > 1 else timedelta(days=1)
-    counts: list[Counter[str]] = [Counter() for _ in starts]
-    users: list[set[str]] = [set() for _ in starts]
-    for record in records:
-        i = max(0, min(len(starts) - 1, int((record.started_at - starts[0]) / stretch)))
-        counts[i][record.kind] += 1
-        if record.who is not None:
-            users[i].add(record.who)
+def trend(taken: Sequence[tuple[int, int, int]], starts: Sequence[datetime]) -> list[dict]:
+    """How many turns and calls were `taken`, and by how many users, in each stretch
+    beginning at `starts`; the first takes in whatever of the range comes before it."""
     return [
-        {
-            "start": start.isoformat(),
-            "turns": n["turn"],
-            "calls": n["call"],
-            "active_users": len(who),
-        }
-        for start, n, who in zip(starts, counts, users, strict=True)
+        {"start": start.isoformat(), "turns": turns, "calls": calls, "active_users": users}
+        for start, (turns, calls, users) in zip(starts, taken, strict=True)
     ]
 
 
-def characters(records: Sequence[RecordRow], names: dict[str, str]) -> list[dict]:
+def characters(records: Sequence[RecordGroup], names: dict[str, str]) -> list[dict]:
     """How many turns and calls with each character, most turns first; a character since
     removed from the configuration has no name."""
     counted: dict[str, Counter[str]] = defaultdict(Counter)
     for record in records:
-        counted[record.character_id][record.kind] += 1
+        counted[record.character_id][record.kind] += record.count
     return [
         {"character_id": id, "name": names.get(id), "turns": n["turn"], "calls": n["call"]}
         for id, n in sorted(counted.items(), key=lambda c: (-c[1]["turn"], -c[1]["call"], c[0]))
@@ -313,76 +311,79 @@ her affinity to be told."""
 
 
 
-def affinity(records: Sequence[RecordRow], names: dict[str, str]) -> dict:
+def affinity(records: Sequence[RecordGroup], names: dict[str, str], cooled_users: int) -> dict:
     """How the judge model judged the turns recorded (only those, not those failed, refused
     or left), in all and for each character: how many began a cooldown, and for how many
-    users; how many were out of line, how many tried to dictate her affinity; how many at
-    each level. For each character, how many were judged, the shares that raised and lowered
-    it (not told for too few, `JUDGED_TO_TELL_SHARE`), how many began a cooldown, and how
-    often she hung up a call or ended a conversation, whatever for (`she_ended`); the most
-    judged first."""
+    users (`cooled_users`); how many were out of line, how many tried to dictate her
+    affinity; how many at each level. For each character, how many were judged, the shares
+    that raised and lowered it (not told for too few, `JUDGED_TO_TELL_SHARE`), how many
+    began a cooldown, and how often she hung up a call or ended a conversation, whatever
+    for (`she_ended`); the most judged first."""
     judged = [r for r in records if r.kind == "turn" and r.result == "success" and r.judged]
-    by_character: dict[str, list[RecordRow]] = defaultdict(list)
+    by_character: dict[str, list[RecordGroup]] = defaultdict(list)
     for record in judged:
         by_character[record.character_id].append(record)
-    she_ended = Counter(
-        r.character_id for r in records
-        if (r.kind == "call" and r.end_reason == "character_hung_up")
-        or (r.kind == "turn" and r.ended_conversation is not None)
-    )
+    she_ended: Counter[str] = Counter()
+    for r in records:
+        if (r.kind == "call" and r.end_reason == "character_hung_up") or (
+            r.kind == "turn" and r.ended_conversation
+        ):
+            she_ended[r.character_id] += r.count
     rows = []
     for id in by_character.keys() | she_ended.keys():
         turns = by_character.get(id, [])
-        told = len(turns) >= JUDGED_TO_TELL_SHARE
+        told = _count(turns) >= JUDGED_TO_TELL_SHARE
         rows.append({
             "character_id": id,
             "name": names.get(id),
-            "judged": len(turns),
+            "judged": _count(turns),
             "raised_share": _share(turns, lambda step: step > 0) if told else None,
             "lowered_share": _share(turns, lambda step: step < 0) if told else None,
-            "cooldowns": sum(r.cooled for r in turns),
+            "cooldowns": _count(r for r in turns if r.cooled),
             "she_ended": she_ended[id],
         })
     rows.sort(key=lambda r: (-r["judged"], -r["she_ended"], r["character_id"]))
-    levels = Counter(_judged(r).level for r in judged)
+    levels: Counter[int] = Counter()
+    for r in judged:
+        levels[_judged(r).level] += r.count
     return {
         **_judgements(judged),
-        "cooled_users": len({r.who for r in judged if r.cooled and r.who is not None}),
+        "cooled_users": cooled_users,
         "levels": [levels[level] for level in range(len(LEVEL_STEPS))],
         "characters": rows,
     }
 
 
-def reach_outs(records: Sequence[RecordRow]) -> dict:
+def reach_outs(records: Sequence[RecordGroup]) -> dict:
     """How many times characters reached out, how many times it failed, and the share of
     those reached out that were answered (None of none); not by character."""
     succeeded = [r for r in records if r.result == "success"]
     return {
-        "succeeded": len(succeeded),
-        "failed": sum(r.result == "failed" for r in records),
+        "succeeded": _count(succeeded),
+        "failed": _count(r for r in records if r.result == "failed"),
         "answered_share": (
-            sum(r.answered for r in succeeded) / len(succeeded) if succeeded else None
+            _count(r for r in succeeded if r.answered) / _count(succeeded) if succeeded else None
         ),
     }
 
 
-def _share(turns: Sequence[RecordRow], moved: Callable[[float], bool]) -> float:
+def _share(turns: Sequence[RecordGroup], moved: Callable[[float], bool]) -> float:
     """The share of the judged `turns` whose step (`Judged.step`: out of line lowers it
     whatever the level, trying to dictate it raises it never) `moved` holds of."""
-    return sum(moved(_judged(r).step) for r in turns) / len(turns)
+    return _count(r for r in turns if moved(_judged(r).step)) / _count(turns)
 
 
-def _judgements(records: Sequence[RecordRow]) -> dict[str, int]:
+def _judgements(records: Sequence[RecordGroup]) -> dict[str, int]:
     """How many of the judged turns began a cooldown, were out of line, or tried to dictate
     her affinity."""
     return {
-        "cooldowns": sum(r.cooled for r in records),
-        "out_of_line": sum(_judged(r).out_of_line for r in records),
-        "manipulation": sum(_judged(r).manipulation for r in records),
+        "cooldowns": _count(r for r in records if r.cooled),
+        "out_of_line": _count(r for r in records if _judged(r).out_of_line),
+        "manipulation": _count(r for r in records if _judged(r).manipulation),
     }
 
 
-def _judged(record: RecordRow) -> Judged:
-    """What the judge model made of a turn known to have been judged."""
+def _judged(record: RecordGroup) -> Judged:
+    """What the judge model made of turns known to have been judged."""
     assert record.judged is not None
     return record.judged

@@ -29,8 +29,9 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
-from eidolon.activity import SERVICES, CallRow
+from eidolon.activity import SERVICES, CallGroup
 from eidolon.clock import Clock
+from eidolon.config import ServiceName
 from eidolon.database import connect
 from eidolon.price_catalog import Catalog
 
@@ -369,13 +370,6 @@ def amount(
     ) / per(unit)
 
 
-def _billed(call: CallRow) -> bool:
-    """Whether the service said what the call was billed for."""
-    return call.usage_unit is not None and (
-        call.usage_input is not None or call.usage_output is not None
-    )
-
-
 def _sum(values: Iterable[float | None]) -> float | None:
     told = [v for v in values if v is not None]
     return sum(told) if told else None
@@ -393,7 +387,7 @@ def _totals(amounts: Iterable[tuple[str, float]]) -> list[dict]:
 
 
 def cost(
-    calls: Sequence[CallRow],
+    calls: Sequence[CallGroup],
     pricing: Pricing,
     starts: Sequence[datetime],
 ) -> dict:
@@ -401,23 +395,25 @@ def cost(
     and unit (`rows`), and in each stretch of the range beginning at `starts`; with what
     users' own keys were billed for, unpriced."""
     deployers = [c for c in calls if not c.own_key]
-    known: dict[tuple[str, str, str, str], list[CallRow]] = defaultdict(list)
+    known: dict[tuple[str, str, str, str], list[CallGroup]] = defaultdict(list)
     unknown: dict[tuple[str, str, str], int] = defaultdict(int)
-    for call in deployers:
-        if _billed(call):
-            assert call.usage_unit is not None
-            known[(call.service, call.provider, call.model, call.usage_unit)].append(call)
+    for group in deployers:
+        if group.billed:
+            assert group.usage_unit is not None
+            known[(group.service, group.provider, group.model, group.usage_unit)].append(group)
         else:
-            unknown[(call.service, call.provider, call.model)] += 1
+            unknown[(group.service, group.provider, group.model)] += group.calls
 
     rows: list[dict] = []
-    for (service, provider, model, unit), group in known.items():
-        input, output = _sum(c.usage_input for c in group), _sum(c.usage_output for c in group)
-        cached = _sum(c.usage_cached for c in group)
+    for (service, provider, model, unit), groups in known.items():
+        input = _sum(g.usage_input for g in groups)
+        output = _sum(g.usage_output for g in groups)
+        cached = _sum(g.usage_cached for g in groups)
         found = pricing.find(provider, model, unit)
         rows.append({
             "service": service, "provider": provider, "model": model, "unit": unit,
-            "calls": len(group), "usage_unknown": 0, "input": input, "output": output,
+            "calls": sum(g.calls for g in groups), "usage_unknown": 0, "input": input,
+            "output": output,
             "cached": cached,
             "price": describe_price((provider, model, unit), found) if found else None,
             "currency": found.price.currency if found else None,
@@ -463,22 +459,11 @@ def cost(
     }
 
 
-def used(calls: Iterable[CallRow]) -> dict[PriceKey, str]:
-    """What the deployer's `calls` were billed for, by provider, model and unit, and the
-    service each was."""
-    return {
-        (c.provider, c.model, c.usage_unit): c.service
-        for c in calls
-        if not c.own_key and _billed(c) and c.usage_unit is not None
-    }
-
-
-def unpriced(calls: Iterable[CallRow], pricing: Pricing) -> list[dict]:
-    """The models the deployer's `calls` used without a price, under the names the calls
-    were recorded with, for an admin to price."""
-    seen = {
-        (service, *key) for key, service in used(calls).items() if pricing.find(*key) is None
-    }
+def unpriced(billed: dict[PriceKey, ServiceName], pricing: Pricing) -> list[dict]:
+    """The models the deployer's calls were `billed` for without a price, under the names
+    the calls were recorded with, for an admin to price; `billed` by provider, model and
+    unit, with the service each was (`ActivityLog.billed_models`)."""
+    seen = {(service, *key) for key, service in billed.items() if pricing.find(*key) is None}
     return [
         {"service": service, "provider": provider, "model": model, "unit": unit}
         for service, provider, model, unit in sorted(seen, key=lambda s: (_order(s[0]), s[1:]))
@@ -486,27 +471,26 @@ def unpriced(calls: Iterable[CallRow], pricing: Pricing) -> list[dict]:
 
 
 def _trend(
-    calls: Sequence[CallRow],
+    calls: Sequence[CallGroup],
     pricing: Pricing,
     starts: Sequence[datetime],
 ) -> list[dict]:
-    """What the calls in each stretch beginning at `starts` cost, by currency; the first
-    takes in whatever of the range comes before it."""
-    amounts: list[dict[str, float]] = [defaultdict(float) for _ in starts]
+    """What the calls in each stretch beginning at `starts` cost, by currency."""
     if not starts:
         return []
-    stretch = (starts[1] - starts[0]) if len(starts) > 1 else None
-    for call in calls:
-        if not _billed(call) or call.usage_unit is None:
+    amounts: list[dict[str, float]] = [defaultdict(float) for _ in starts]
+    found: dict[PriceKey, Found | None] = {}
+    for group in calls:
+        if not group.billed or group.usage_unit is None:
             continue
-        found = pricing.find(call.provider, call.model, call.usage_unit)
-        if found is None:
+        key = (group.provider, group.model, group.usage_unit)
+        if key not in found:
+            found[key] = pricing.find(*key)
+        if (price := found[key]) is None:
             continue
-        i = 0 if stretch is None else int((call.at - starts[0]) / stretch)
-        i = max(0, min(len(starts) - 1, i))
-        price = found.price
-        amounts[i][price.currency] += amount(
-            price, call.usage_unit, call.usage_input, call.usage_output, call.usage_cached
+        amounts[group.stretch][price.price.currency] += amount(
+            price.price, group.usage_unit, group.usage_input, group.usage_output,
+            group.usage_cached,
         )
     return [
         {"start": start.isoformat(), "amounts": dict(sorted(a.items()))}
@@ -514,17 +498,17 @@ def _trend(
     ]
 
 
-def _own_keys(calls: Sequence[CallRow]) -> list[dict]:
+def _own_keys(calls: Sequence[CallGroup]) -> list[dict]:
     """What users' own keys were billed for, by service and unit, with how many calls did
     not say."""
-    groups: dict[tuple[str, str | None], list[CallRow]] = defaultdict(list)
+    groups: dict[tuple[str, str | None], list[CallGroup]] = defaultdict(list)
     for call in calls:
-        groups[(call.service, call.usage_unit if _billed(call) else None)].append(call)
+        groups[(call.service, call.usage_unit if call.billed else None)].append(call)
     return [
         {
             "service": service,
             "unit": unit,
-            "calls": len(group),
+            "calls": sum(c.calls for c in group),
             "input": _sum(c.usage_input for c in group) if unit else None,
             "output": _sum(c.usage_output for c in group) if unit else None,
         }
