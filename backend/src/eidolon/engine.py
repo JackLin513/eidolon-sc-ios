@@ -85,12 +85,16 @@ judge model not asked.
 
 She learns of the conversation's events (GLOSSARY.md「对话事件」) from a line of narration
 before the user's words that came next, or before what the user is saying now; it leaves
-her prompt with those words. Until she has replied after a gift, she is also told to respond
-to it, once, however many came. Retrieval, memory and the judge model read only the messages.
+her prompt with those words. Until she has replied or reached out after a gift, she is also
+told to respond to it, once, however many came. Retrieval, memory and the judge model read
+only the messages.
 
 She can also say something first, the user not talking to her (`reach_out`, GLOSSARY.md
 「搭话」): not a turn (ADR-0026), but asked for as one is, on whichever model it is given, her
-prompt laid out the same. Her reach-outs are not in her prompt yet.
+prompt laid out the same. From then on her prompt tells of it as of an event, by the time it
+was where the producer is, followed by her words as her replies are written: so it goes with
+the turn after it, and the roles keep the order every protocol takes. Retrieval, memory and
+the judge model read those the user answers, after the last turn, as her latest words.
 """
 
 import asyncio
@@ -99,6 +103,7 @@ from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, 
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Literal, ParamSpec, TypeVar
 
 from eidolon.affinity import (
@@ -398,19 +403,39 @@ def _narration(event: ConversationEvent, gift_catalog: Mapping[str, Gift]) -> st
     return f"（制作人送给你一份{gift_catalog[event.gift_id].name}。{liked}）"
 
 
+def _reached_out(reach_out: ReachOut, timezone: str) -> str:
+    """What she is told of her `reach_out`, the producer in `timezone`: when, then her words
+    as her replies are written in her prompt."""
+    at = datetime.fromisoformat(reach_out.created_at).astimezone(ZoneInfo(timezone))
+    said = format_reply(reach_out.segments)
+    return f"（{at.month}月{at.day}日 {at:%H:%M}，你先给制作人发了：）{said}"
+
+
+def _told(
+    entry: ConversationEvent | ReachOut, gift_catalog: Mapping[str, Gift], timezone: str
+) -> str:
+    """The line of narration telling her of `entry`, the producer in `timezone`."""
+    if isinstance(entry, ReachOut):
+        return f"{_reached_out(entry, timezone)}\n"
+    return f"{_narration(entry, gift_catalog)}\n"
+
+
 def narrations(
-    record: Sequence[Message | ConversationEvent], gift_catalog: Mapping[str, Gift]
+    record: Sequence[Recorded], gift_catalog: Mapping[str, Gift], timezone: str
 ) -> dict[int | None, str]:
-    """The narration of the events in `record`, by the id of the user message each comes
-    before, None for those after them all: one line for each event, then, if she has not
-    replied since a gift, `RESPOND_TO_GIFTS`."""
+    """The narration of the events and reach-outs in `record`, by the id of the user message
+    each comes before, None for those after them all: one line for each, then, if she has
+    neither replied nor reached out since a gift, `RESPOND_TO_GIFTS`. The producer is in
+    `timezone`."""
     lines: list[str] = []
     told: dict[int | None, str] = {}
     unanswered = False
     for entry in record:
-        if isinstance(entry, ConversationEvent):
-            lines.append(f"{_narration(entry, gift_catalog)}\n")
-            unanswered = unanswered or entry.kind == "gift"
+        if not isinstance(entry, Message):
+            lines.append(_told(entry, gift_catalog, timezone))
+            unanswered = isinstance(entry, ConversationEvent) and (
+                unanswered or entry.kind == "gift"
+            )
         elif entry.role == "character":
             unanswered = False
         elif lines:
@@ -439,22 +464,33 @@ WANTS_TO_REACH_OUT = "（制作人这会儿没在和你说话。你想先给他�
 so every protocol takes the prompt, ending with the user, as narration does."""
 
 
-def _without_reach_outs(record: list[Recorded]) -> list[Message | ConversationEvent]:
-    """The record but her reach-outs, which are not in her prompt."""
-    return [entry for entry in record if not isinstance(entry, ReachOut)]
-
-
-def _events_since_last_turn(
-    record: Sequence[Message | ConversationEvent], gift_catalog: Mapping[str, Gift]
+def _since_last_turn(
+    record: Sequence[Recorded], gift_catalog: Mapping[str, Gift], timezone: str
 ) -> str:
-    """The narration of the events after the last turn, one line each."""
+    """The narration of the events and reach-outs after the last turn, one line each, the
+    producer in `timezone`."""
     lines: list[str] = []
     for entry in record:
         if isinstance(entry, Message):
             lines = []
         else:
-            lines.append(f"{_narration(entry, gift_catalog)}\n")
+            lines.append(_told(entry, gift_catalog, timezone))
     return "".join(lines)
+
+
+def _answering(record: Sequence[Recorded]) -> list[Message]:
+    """Her reach-outs after the last turn, which the user now answers, as those reading only
+    the messages read them: as her replies, the latest last."""
+    said: list[Message] = []
+    for entry in record:
+        if isinstance(entry, Message):
+            said = []
+        elif isinstance(entry, ReachOut):
+            said.append(Message(
+                entry.id, "character", None, entry.ja, entry.zh, entry.created_at,
+                entry.segments,
+            ))
+    return said
 
 
 class ConversationEngine:
@@ -558,7 +594,7 @@ class ConversationEngine:
             yield TurnRejected(ENDED)
             return
         character = self._characters[conversation.character_id]
-        record = _without_reach_outs(self._store.record(conversation.id))
+        record = self._store.record(conversation.id)
         # Said after reading the record, so an event this turn's prompt does not tell of
         # comes before the turn, and is told of with its words from the next turn on.
         said_at = timestamp()
@@ -568,7 +604,8 @@ class ConversationEngine:
         )
         messages = [entry for entry in record if isinstance(entry, Message)]
         turns = self._history_turns()
-        history = latest_turns(messages, turns)  # what all but the chat model read
+        # What all but the chat model read: her reach-outs the user answers her latest words.
+        history = [*latest_turns(messages, turns), *_answering(record)]
         affinity = self._affinity(conversation)
         judging = affinity is not None and not affinity.cooling
         eligibility = self._photo_eligibility(conversation, character, photo.own)
@@ -630,7 +667,7 @@ class ConversationEngine:
         about_photo = CANNOT_SEND if eligibility is None else photo_asked and photo_asked.prompt
         prompt = self._prompt(
             character, world_prompt, producer_prompt(profile),
-            chat_history(messages, turns), narrations(record, self._gift_catalog),
+            chat_history(messages, turns), narrations(record, self._gift_catalog, timezone),
             [
                 now_prompt(
                     profile, now, timezone, "in_call" if in_call is not None else "typing",
@@ -744,11 +781,12 @@ class ConversationEngine:
         for what changes from turn to turn: she is told what time it is and that they are not
         talking and when they last were, how she speaks in her tier, the memories she reaches
         out with (`Memories.for_reaching_out`), and how to reach out; then, where the user's
-        words would be, the events since the last turn and that she wants to say something
-        first. Nothing else is retrieved, no tool offered, nothing judged. Raises EmptyReply if the model
-        says nothing she could say, and whatever the model raises."""
+        words would be, the events and her reach-outs since the last turn and that she wants
+        to say something first. Nothing else is retrieved, no tool offered, nothing judged.
+        Raises EmptyReply if the model says nothing she could say, and whatever the model
+        raises."""
         character = self._characters[conversation.character_id]
-        record = _without_reach_outs(self._store.record(conversation.id))
+        record = self._store.record(conversation.id)
         messages = [entry for entry in record if isinstance(entry, Message)]
         profile = self._store.get_profile(conversation.user_id)
         timezone = effective_timezone(profile, None)
@@ -757,8 +795,8 @@ class ConversationEngine:
         world_prompt = (
             self._world.prompt(character.name, local_date(now, timezone)) if self._world else None
         )
-        told = narrations(record, self._gift_catalog)
-        told[None] = _events_since_last_turn(record, self._gift_catalog)
+        told = narrations(record, self._gift_catalog, timezone)
+        told[None] = _since_last_turn(record, self._gift_catalog, timezone)
         memories = await self._memory.for_reaching_out(
             conversation, timezone, last_turn_query(messages)
         )
