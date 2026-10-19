@@ -1,7 +1,8 @@
 // Announcements (GLOSSARY.md「公告」): what admins write in the admin console for every user
 // to see. Only a body, in Markdown, with no title and no author; written as a draft, then
 // published, withdrawn or deleted. Editing a published one keeps when it was published;
-// withdrawing it and publishing it again makes it new.
+// withdrawing it and publishing it again makes it new. One published may be pinned: users see it
+// first, however old; pinning another unpins it, withdrawing it unpins it.
 
 import { api, expectNoContent, json } from "@/lib/api";
 
@@ -19,10 +20,12 @@ export type AdminAnnouncement = {
   created_at: string;
   /** When its body was last written. */
   updated_at: string;
+  /** Whether it is the one users see first. */
+  pinned: boolean;
 };
 
 /** An announcement as users see it: published, and nothing of who wrote it. */
-export type Announcement = { id: string; body: string; published_at: string };
+export type Announcement = { id: string; body: string; published_at: string; pinned: boolean };
 
 /** The admin console's list of announcements. */
 export const ANNOUNCEMENTS_HREF = "/admin/announcements";
@@ -36,7 +39,8 @@ export function announcementHref(id: string): string {
   return `${ANNOUNCEMENTS_HREF}/${encodeURIComponent(id)}`;
 }
 
-/** Every announcement, drafts first (last written first), then the latest published. */
+/** Every announcement, drafts first (last written first), then those published (the one pinned
+ * first, then the latest). */
 export async function listAdminAnnouncements(): Promise<AdminAnnouncement[]> {
   return json(await api("/api/admin/announcements"));
 }
@@ -77,11 +81,20 @@ export async function withdrawAnnouncement(id: string): Promise<AdminAnnouncemen
   return json(await api(`/api/admin/announcements/${encodeURIComponent(id)}/publish`, { method: "DELETE" }));
 }
 
+/** Make it the one users see first, unpinning the one that was; refused for a draft. */
+export async function pinAnnouncement(id: string): Promise<AdminAnnouncement> {
+  return json(await api(`/api/admin/announcements/${encodeURIComponent(id)}/pin`, { method: "POST" }));
+}
+
+export async function unpinAnnouncement(id: string): Promise<AdminAnnouncement> {
+  return json(await api(`/api/admin/announcements/${encodeURIComponent(id)}/pin`, { method: "DELETE" }));
+}
+
 export async function deleteAnnouncement(id: string): Promise<void> {
   await expectNoContent(await api(`/api/admin/announcements/${encodeURIComponent(id)}`, { method: "DELETE" }));
 }
 
-/** The latest announcements published, newest first. */
+/** The one pinned, if any, then the latest announcements published, newest first. */
 export async function listAnnouncements(): Promise<Announcement[]> {
   return json(await api("/api/announcements"));
 }

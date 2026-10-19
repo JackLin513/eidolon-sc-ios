@@ -11,6 +11,7 @@ import { FailureNotice } from "@/components/app/FailureNotice";
 import { ModelChoiceField } from "@/components/app/ModelChoiceField";
 import { EffortField, ExtraBodyField, useEffortHint } from "@/components/app/ReasoningEffortFields";
 import { OpenFormProvider, useOpenForm } from "@/components/admin/OpenForm";
+import { AdminSponsor } from "@/components/admin/AdminSponsor";
 import { ResetCardGrants } from "@/components/admin/ResetCardGrants";
 import { useSubmitCheck } from "@/components/admin/useSubmitCheck";
 import { AdminPrices } from "@/components/AdminPrices";
@@ -73,7 +74,7 @@ import { FailureIcon } from "@/theme/icons";
 const t = copy.admin.config;
 
 /**
- * 后台的「配置」页：页首下面一排分类标签（模型 / 语音 / 限额与玩法 / 单价 / 只读），一次只看一类；
+ * 后台的「配置」页：页首下面一排分类标签（模型 / 语音 / 生图 / 网络 / 服务状态 / 限额与玩法 / 赞赏 / 单价 / 只读），一次只看一类；
  * 内容列窄的时候标签换成下拉（`TabSelect`）。
  * 每一项一张卡，标题旁用 Badge 标出覆盖的状态，列出当前生效的值（有后台覆盖时对照 .env 的值），
  * 可以在卡里展开表单修改、恢复成 .env 的值（DESIGN.md「Layout · 后台 · 配置」）。
@@ -124,6 +125,7 @@ export function AdminConfig({ initialTab }: { initialTab: ConfigTab }) {
                     {item === "affinity" && <ResetCardGrants isOn={isOn(config.affinity)} />}
                   </ItemCard>
                 ))}
+                {name === "sponsor" && <AdminSponsor />}
                 {name === "prices" && <AdminPrices />}
                 {name === "read_only" && <ReadOnlyCard items={config.read_only} />}
               </TabsContent>
@@ -136,7 +138,7 @@ export function AdminConfig({ initialTab }: { initialTab: ConfigTab }) {
 }
 
 /**
- * 内容列窄（< 32rem，手机上）时代替那排标签的下拉：一排放不下八个标签，滚动又会把琥珀色点藏到屏外。
+ * 内容列窄（< 32rem，手机上）时代替那排标签的下拉：一排放不下九个标签，滚动又会把琥珀色点藏到屏外。
  * 选项后面照样跟琥珀色点；收起时只要有一类有覆盖没生效，框里也跟一个点，提醒点开看。
  */
 function TabSelect({ tab, config, onChoose }: { tab: ConfigTab; config: Config; onChoose: (value: string) => void }) {

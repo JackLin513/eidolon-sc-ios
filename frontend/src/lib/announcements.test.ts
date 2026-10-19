@@ -63,7 +63,7 @@ function storage(initial: Record<string, string> = {}) {
 
 afterEach(() => vi.unstubAllGlobals());
 
-const published = (id: string, at: string): Announcement => ({ id, body: id, published_at: at });
+const published = (id: string, at: string): Announcement => ({ id, body: id, published_at: at, pinned: false });
 
 describe("what has been read on this device", () => {
   it("is kept for each user apart, and read back as kept", () => {

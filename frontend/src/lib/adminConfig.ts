@@ -72,13 +72,13 @@ export function isAvailable(item: ConfigItem | UnavailableItem): item is ConfigI
 }
 
 /** The page's tabs, in order. */
-export const CONFIG_TABS = ["models", "voice", "image", "network", "status", "limits", "prices", "read_only"] as const;
+export const CONFIG_TABS = ["models", "voice", "image", "network", "status", "limits", "sponsor", "prices", "read_only"] as const;
 
 export type ConfigTab = (typeof CONFIG_TABS)[number];
 
 /** The items under each tab, in the order it shows them. Every item is under exactly one tab;
- * the prices and the read-only items are not items, so their tabs list none and the page puts
- * their cards in itself. */
+ * sponsoring, the prices and the read-only items are not items, so their tabs list none and the
+ * page puts their cards in itself. */
 export const TAB_ITEMS: Record<ConfigTab, ItemName[]> = {
   models: ["chat_llm", "memory_llm", "judge", "judge_thresholds", "rerank"],
   voice: ["tts", "stt"],
@@ -86,6 +86,7 @@ export const TAB_ITEMS: Record<ConfigTab, ItemName[]> = {
   network: ["proxy"],
   status: ["service_status"],
   limits: ["limits", "affinity", "reach_outs"],
+  sponsor: [],
   prices: [],
   read_only: [],
 };

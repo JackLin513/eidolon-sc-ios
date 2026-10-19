@@ -27,7 +27,7 @@ import { toFailure, type Failure } from "@/lib/failure";
 const t = copy.admin.announcements;
 
 /**
- * 后台的「公告」页：草稿在前（后写的在上），然后是已发布的（后发布的在上）；右上角「写公告」。
+ * 后台的「公告」页：草稿在前（后写的在上），然后是已发布的（置顶的在最上，其余后发布的在上）；右上角「写公告」。
  * 公告没有标题，每行用正文开头的一段认出来，点了进编辑页。宽屏（≥ 1024px）是装在 Card 里的表格：
  * 正文、状态、发布时间、最后修改；更窄时换成 divide-y 的行，正文在上，状态、发布时间和最后修改在副行
  * （DESIGN.md「Layout · 后台 · 公告」）。
@@ -90,7 +90,10 @@ export function AdminAnnouncementList() {
                       </AppLink>
                     </TableCell>
                     <TableCell>
-                      <StatusBadge status={a.status} />
+                      <span className="flex items-center gap-2">
+                        <StatusBadge status={a.status} />
+                        {a.pinned && <PinnedBadge />}
+                      </span>
                     </TableCell>
                     <TableCell>
                       <PublishedAt announcement={a} />
@@ -113,6 +116,7 @@ export function AdminAnnouncementList() {
                     <span className="font-medium break-words group-hover:underline">{excerpt(a.body)}</span>
                     <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <StatusBadge status={a.status} />
+                      {a.pinned && <PinnedBadge />}
                       {a.published_at && (
                         <span>
                           {t.editor.publishedAt} <Timestamp value={a.published_at} />
@@ -136,6 +140,11 @@ export function AdminAnnouncementList() {
 /** 「已发布」secondary Badge，「草稿」outline Badge（DESIGN.md「Admin status & charts」）。 */
 export function StatusBadge({ status }: { status: AnnouncementStatus }) {
   return <Badge variant={status === "published" ? "secondary" : "outline"}>{t.status[status]}</Badge>;
+}
+
+/** 置顶的那条在状态后面再跟一个 outline Badge「置顶」。 */
+export function PinnedBadge() {
+  return <Badge variant="outline">{t.pinned}</Badge>;
 }
 
 function PublishedAt({ announcement }: { announcement: AdminAnnouncement }) {

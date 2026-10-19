@@ -123,6 +123,8 @@ export const zh = {
     announcementsLoadFailed: "公告没能载入，稍后再试",
     /** 没读过的那条公告，日期后面的标记。 */
     unreadAnnouncement: "新",
+    /** 置顶的那条公告，日期后面的标记。 */
+    pinnedAnnouncement: "置顶",
     markAnnouncementsRead: "已读",
     /** 铃铛旁边的服务状态和它打开的小窗口（GLOSSARY.md「服务状态」）；有服务不正常时按钮念后一句。 */
     serviceStatus: "服务状态",
@@ -600,6 +602,11 @@ export const zh = {
         producer: "制作人",
         turnsUnit: "回合",
       },
+    },
+    /** 一级里「关于」上面的「赞赏」（GLOSSARY.md「赞赏」）：名字，点开放大的收款码给读屏的标题和替代文字。 */
+    sponsor: {
+      label: "赞赏",
+      code: "赞赏收款码",
     },
     /** 「关于」的四行和最下面的免责声明（应用里只留这一处）。 */
     about: {
@@ -1253,6 +1260,7 @@ export const zh = {
         network: "网络",
         status: "服务状态",
         limits: "限额与玩法",
+        sponsor: "赞赏",
         prices: "单价",
         read_only: "只读",
       },
@@ -1517,6 +1525,27 @@ export const zh = {
         /** 发完的提示下面一句，「去写一条公告」链到公告页。 */
         announce: { before: "需要的话，", link: "去写一条公告", after: "告诉大家。" },
       },
+      /** 「赞赏」标签里的那张卡（GLOSSARY.md「赞赏」）。不是 .env 里的配置，没有「恢复成 .env 的值」，只有「清除」。 */
+      sponsor: {
+        title: "赞赏",
+        hint: "用户在设置里「关于」上面看到「赞赏」，点开是这张收款码。",
+        loading: "正在读取…",
+        switch: "在设置里显示",
+        noImage: "还没上传收款码，用户暂时看不到「赞赏」。",
+        preview: "收款码",
+        upload: "上传收款码",
+        replace: "换一张",
+        uploading: "正在上传…",
+        formats: (mb: number) => `PNG、JPEG 或 WebP，不超过 ${mb} MB。`,
+        notAPicture: "只能上传 PNG、JPEG 或 WebP 图片。",
+        tooLarge: (mb: number) => `图片不能超过 ${mb} MB。`,
+        clear: "清除",
+        dialog: {
+          title: "清除赞赏？",
+          description: "开关会关掉，收款码会删除，用户不再看到「赞赏」。",
+          confirm: "清除",
+        },
+      },
     },
     prices: {
       title: "单价",
@@ -1616,6 +1645,7 @@ export const zh = {
       columns: { body: "正文", status: "状态", publishedAt: "发布时间", updatedAt: "最后修改" },
       status: { draft: "草稿", published: "已发布" },
       notPublished: "未发布",
+      pinned: "置顶",
       empty: "还没有公告",
       emptyHint: "点「写公告」写第一条。",
       loading: "正在读取…",
@@ -1641,11 +1671,15 @@ export const zh = {
         publish: "发布",
         save: "保存",
         withdraw: "撤回",
+        pin: "置顶",
+        unpin: "取消置顶",
       },
       notices: {
         saved: "已保存。",
         published: "已发布，用户现在能看到它。",
         withdrawn: "已撤回成草稿，用户看不到它了。",
+        pinned: "已置顶。",
+        unpinned: "已取消置顶。",
       },
       deleteSection: {
         title: "删除这条公告",
