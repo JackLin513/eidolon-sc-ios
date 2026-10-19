@@ -34,3 +34,13 @@
   - 有进行中的回合或通话时不生成。
   - 生成途中用户开口（让假 LLM 挂起，这时插入一个回合），这次搭话不记下，运行记录记成被拒绝。
 - [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+
+## Comments
+
+### 票 08 交接
+
+- 到点在 `ReachOuts._due`，日程读写在 `_schedule`（返回位置和改定的到点 `due_at`，往来变了整行重抽、`due_at` 清空）。`morning_place` 列已建，还没写。
+- 08 的失败临时做法：`_give_up` 把这一轮的 `due_at` 改定到「最后一次往来 + `WINDOW` + `TICK`」，同一次往来不再试。这张票的「失败往后推一个同档间隔」要替换它（`test_one_she_could_say_nothing_in_fails_is_not_recorded_nor_tried_again` 要跟着改）。
+- `_reach_out` 现在先 `recording.finish("success")` 再 `store.add_reach_out`；`add_reach_out` 碰上已结束只抛 `ConversationEnded`，被吞掉。作废要改成同一事务里再查一遍，不记下时运行记录记「被拒绝」。
+- `run_due` 已经逐段对话兜住异常（一段出错不影响别的段），`_due` 在线程里跑。
+- 每天上限的值在 `LiveConfig.reach_outs.per_day`，08 只存不用。

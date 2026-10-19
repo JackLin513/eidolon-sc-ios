@@ -1,9 +1,9 @@
-"""Activity records (GLOSSARY.md「运行记录」): one for each turn and each call, saying how
-it turned out, and one for each call to an outside service, saying which service, whose
-key, whether it failed and how, how long it took and what it was billed for; an LLM's,
-also how much of its input hit the provider's prompt cache, how soon its first word came
-and the reasoning effort it was asked for. They hold nothing anyone said. Only the admin
-console reads them: its dashboard (`dashboard`), and its users page, for each user's
+"""Activity records (GLOSSARY.md「运行记录」): one for each turn, each call and each
+reach-out (GLOSSARY.md「搭话」), saying how it turned out, and one for each call to an
+outside service, saying which service, whose key, whether it failed and how, how long it
+took and what it was billed for; an LLM's, also how much of its input hit the provider's
+prompt cache, how soon its first word came and the reasoning effort it was asked for. They
+hold nothing anyone said. Only the admin console reads them: its dashboard (`dashboard`), and its users page, for each user's
 recent usage (`admin_users_api`).
 
 A turn's record is open while the turn runs (`ActivityLog.begin`, then `current`), and the
@@ -91,11 +91,13 @@ LLM_SERVICES: tuple[ServiceName, ...] = ("chat_llm", "memory_llm")
 """The LLMs among them (`llm_origin`): a user's own is recorded as `OWN`, and each call
 says how soon its first word came and at which reasoning effort."""
 
-RecordKind = Literal["turn", "call"]
+RecordKind = Literal["turn", "call", "reach_out"]
+"""A reach-out is neither a turn nor a call, nor counted as one anywhere; it is always on the
+deployer's keys."""
 Result = Literal["success", "failed", "rejected", "left", "not_connected"]
 """How a turn or call turned out (GLOSSARY.md「回合」「接通」): a turn succeeded, failed on
 a service, was rejected (over the limit, or its input), or the user left before it was
-done; a call also may never have connected."""
+done; a call also may never have connected. A reach-out succeeds or fails."""
 RESULTS: tuple[Result, ...] = ("success", "failed", "rejected", "left", "not_connected")
 
 ErrorKind = Literal[
@@ -109,6 +111,10 @@ TAKEN = "result != 'rejected'"
 """Which records, in SQL over `activity_records`, are of a turn or call the user took: all
 but those rejected, which were refused rather than taken. The admin's users page counts
 these, and sorts the users by them (`Store.find_users`)."""
+
+TURNS_AND_CALLS = "kind IN ('turn', 'call')"
+"""Which records, in SQL over `activity_records`, are of turns and calls: not of reach-outs,
+which the user did not take."""
 
 JUDGEMENT_COLUMNS = ("affinity_level", "out_of_line", "manipulation", "cooled")
 """What a turn's record keeps of how the judge model judged it, as its columns are named."""
@@ -530,13 +536,15 @@ class ActivityLog:
         return {service: (calls, failed) for service, calls, failed in rows}
 
     def of_user(self, user_id: str, moment: datetime) -> list[RecordRow]:
-        """The user's records of turns and calls after `moment`, oldest first; only how
-        each turned out and on whose keys are of use to the admin's users page."""
+        """The user's records of turns and calls after `moment`, oldest first, not of
+        reach-outs; only how each turned out and on whose keys are of use to the admin's users
+        page."""
         with self._lock:
             rows = self._db.execute(
                 "SELECT kind, character_id, started_at, result, own_keys,"
                 " call_id IS NOT NULL FROM activity_records"
-                " WHERE user_id = ? AND started_at > ? ORDER BY started_at",
+                f" WHERE user_id = ? AND started_at > ? AND {TURNS_AND_CALLS}"
+                " ORDER BY started_at",
                 (user_id, moment.timestamp()),
             ).fetchall()
         return [
@@ -555,7 +563,7 @@ class ActivityLog:
             rows = self._db.execute(
                 "SELECT user_id, kind, COUNT(*) FROM activity_records"
                 f" WHERE user_id IN ({','.join('?' * len(user_ids))}) AND started_at > ?"
-                f" AND {TAKEN} GROUP BY user_id, kind",
+                f" AND {TAKEN} AND {TURNS_AND_CALLS} GROUP BY user_id, kind",
                 [*user_ids, moment.timestamp()],
             ).fetchall()
         taken: dict[str, dict[str, int]] = {}

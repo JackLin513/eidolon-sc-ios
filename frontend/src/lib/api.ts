@@ -98,9 +98,10 @@ export type Conversation = {
 
 /** The last thing in a conversation as a list shows it, a message (without delivery cues),
  * marked `photo` when it is her reply with a photo she sent (not one being generated or not sent
- * after all), or a conversation event other than her ending it; null while it has none. */
+ * after all), or her reach-out, shown as her reply is, marked `reach_out`; or a conversation event
+ * other than her ending it; null while it has none. */
 export type LastMessage =
-  | (Pick<Message, "role" | "text" | "ja" | "zh" | "created_at"> & { photo?: true })
+  | (Pick<Message, "role" | "text" | "ja" | "zh" | "created_at"> & { photo?: true; reach_out?: true })
   | Pick<ConversationEvent, "type" | "kind" | "created_at" | "gift_name">
   | null;
 
@@ -169,8 +170,19 @@ export type ConversationEvent = {
   gift_name?: string;
 };
 
+/** What she said first in a conversation, the user not talking to her (GLOSSARY.md「搭话」): neither a
+ * turn nor an event, said as she replies, without delivery cues. */
+export type ReachOut = {
+  type: "reach_out";
+  id: number;
+  ja: string;
+  zh: string;
+  segments: Segment[];
+  created_at: string;
+};
+
 /** What a conversation's record holds, in order. */
-export type Recorded = Message | ConversationEvent;
+export type Recorded = Message | ConversationEvent | ReachOut;
 
 /** A turn's events: `user`, then `photo` if she sends one (its id, before her first words), any
  * `delta`s, then `photos-used-up` if the user asked for a photo with this hour's used up (when they

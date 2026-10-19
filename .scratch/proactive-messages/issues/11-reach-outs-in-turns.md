@@ -23,3 +23,11 @@
   - 判断和记忆：判断模型和记忆提炼收到的内容里有这次搭话；记忆查询用的是搭话的字幕。先例：`test_affinity_turns.py`、`test_memories.py`。
   - 缓存：加了旁白以后，下一回合请求的开头仍和上一回合一致，前缀缓存不被破坏。先例：`test_dynamic_context.py`。
 - [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+
+## Comments
+
+### 票 08 交接
+
+- 文字回合现在读记录时用 `engine._without_reach_outs` 把搭话滤掉（`_reply` 和 `reach_out` 都是），`narrations` 的参数类型也只收消息和对话事件；这张票把搭话接进历史时从这里改。
+- `titles` 起标题前也滤掉了搭话（规格说起标题不带搭话），这一条保持。
+- 搭话旁白的「最后一个回合之后的对话事件」在 `engine._events_since_last_turn`。

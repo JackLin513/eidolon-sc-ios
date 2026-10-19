@@ -87,11 +87,15 @@ She learns of the conversation's events (GLOSSARY.md「对话事件」) from a l
 before the user's words that came next, or before what the user is saying now; it leaves
 her prompt with those words. Until she has replied after a gift, she is also told to respond
 to it, once, however many came. Retrieval, memory and the judge model read only the messages.
+
+She can also say something first, the user not talking to her (`reach_out`, GLOSSARY.md
+「搭话」): not a turn (ADR-0026), but asked for as one is, on whichever model it is given, her
+prompt laid out the same. Her reach-outs are not in her prompt yet.
 """
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from typing import Literal, ParamSpec, TypeVar
@@ -115,7 +119,7 @@ from eidolon.clock import Clock
 from eidolon.config import FishAudioModel, ImageSettings
 from eidolon.gift_catalog import Gift
 from eidolon.judge import JudgeError
-from eidolon.llm import ChatMessage, Reasoning, Tool, ToolCall, TurnLLMs
+from eidolon.llm import ChatLLM, ChatMessage, Reasoning, Tool, ToolCall, TurnLLMs
 from eidolon.memory import Memories
 from eidolon.own_keys import OwnKeyFailed
 from eidolon.photos import CANNOT_SEND, NOT_RECEIVED, Eligibility, Photos, photo_turn
@@ -138,6 +142,7 @@ from eidolon.store import (
     Message,
     NewPhoto,
     Photo,
+    ReachOut,
     Recorded,
     Store,
     Typed,
@@ -393,7 +398,7 @@ def _narration(event: ConversationEvent, gift_catalog: Mapping[str, Gift]) -> st
 
 
 def narrations(
-    record: list[Recorded], gift_catalog: Mapping[str, Gift]
+    record: Sequence[Message | ConversationEvent], gift_catalog: Mapping[str, Gift]
 ) -> dict[int | None, str]:
     """The narration of the events in `record`, by the id of the user message each comes
     before, None for those after them all: one line for each event, then, if she has not
@@ -414,6 +419,41 @@ def narrations(
     if lines:
         told[None] = "".join(lines)
     return told
+
+
+REACH_OUT_RULES = """# 先开口
+制作人这会儿没在和你说话，你想先给他发几句。
+- 由头你自己挑：先接着你们最近聊过的事，或者他最近的近况；其次才是现在的时间、他的生日。
+- 不要只发一句空的问候，比如「早安」「在吗」「想你了」，要有具体想说的事。
+- 写一到两段。
+- 别和你前几次先开口时用一样的开头、一样的由头。
+- 说到你自己那边，只说练习、拍摄、在事务所这类平常的事，或者世界设定里有日期的 live 和新歌；不要编具体的剧情，也不要说别的偶像做了什么。
+- 不发照片，也不说要给他发照片、要给他打电话。
+- 让他好接话，但不必用问句结尾。"""
+"""How she is to reach out (GLOSSARY.md「搭话」), told her last in what changes from turn to turn,
+where what retrieval finds would be."""
+
+WANTS_TO_REACH_OUT = "（制作人这会儿没在和你说话。你想先给他发几句。）"
+"""Where the user's words would be as she reaches out, after the events since the last turn:
+so every protocol takes the prompt, ending with the user, as narration does."""
+
+
+def _without_reach_outs(record: list[Recorded]) -> list[Message | ConversationEvent]:
+    """The record but her reach-outs, which are not in her prompt."""
+    return [entry for entry in record if not isinstance(entry, ReachOut)]
+
+
+def _events_since_last_turn(
+    record: Sequence[Message | ConversationEvent], gift_catalog: Mapping[str, Gift]
+) -> str:
+    """The narration of the events after the last turn, one line each."""
+    lines: list[str] = []
+    for entry in record:
+        if isinstance(entry, Message):
+            lines = []
+        else:
+            lines.append(f"{_narration(entry, gift_catalog)}\n")
+    return "".join(lines)
 
 
 class ConversationEngine:
@@ -513,7 +553,7 @@ class ConversationEngine:
             yield TurnRejected(ENDED)
             return
         character = self._characters[conversation.character_id]
-        record = self._store.record(conversation.id)
+        record = _without_reach_outs(self._store.record(conversation.id))
         # Said after reading the record, so an event this turn's prompt does not tell of
         # comes before the turn, and is told of with its words from the next turn on.
         said_at = timestamp()
@@ -578,14 +618,19 @@ class ConversationEngine:
             photo_turn(asked_photo, affinity and affinity.tier, eligibility)
             if eligibility is not None else None
         )
+        about_photo = CANNOT_SEND if eligibility is None else photo_asked and photo_asked.prompt
         prompt = self._prompt(
             character, world_prompt, producer_prompt(profile),
             chat_history(messages, turns), narrations(record, self._gift_catalog),
-            now_prompt(
-                profile, now, timezone, in_call=in_call is not None, affinity_lines=affinity_lines
-            ),
-            retrieved, text, voiced_by,
-            CANNOT_SEND if eligibility is None else photo_asked and photo_asked.prompt,
+            [
+                now_prompt(
+                    profile, now, timezone, "in_call" if in_call is not None else "typing",
+                    affinity_lines,
+                ),
+                *([about_photo] if about_photo else []),
+            ],
+            [p for p in (retrieved.memories_prompt, retrieved.prompt) if p],
+            text, voiced_by,
         )
 
         # Offered on every turn, so that what goes before the history (the tools, with
@@ -683,6 +728,53 @@ class ConversationEngine:
             yield PhotosUsedUp(photo_asked.used_up_until.isoformat())
         yield TurnDone(reply.without_cues(), affinity and affinity.shown(), ended and ended.shown())
 
+    async def reach_out(self, conversation: Conversation, llm: ChatLLM) -> list[Segment]:
+        """What she says first in `conversation`, the user not talking to her (GLOSSARY.md
+        「搭话」), on `llm`: its segments, as the model wrote them, delivery cues and all. Her
+        prompt is laid out as a text turn's (ADR-0020), and opens as the next one's will, but
+        for what changes from turn to turn: she is told what time it is and that they are not
+        talking, how she speaks in her tier, and how to reach out; then, where the user's words
+        would be, the events since the last turn and that she wants to say something first.
+        Nothing is retrieved, no tool offered, nothing judged. Raises EmptyReply if the model
+        says nothing she could say, and whatever the model raises."""
+        character = self._characters[conversation.character_id]
+        record = _without_reach_outs(self._store.record(conversation.id))
+        messages = [entry for entry in record if isinstance(entry, Message)]
+        profile = self._store.get_profile(conversation.user_id)
+        timezone = effective_timezone(profile, None)
+        now = self._clock()
+        affinity = self._affinity(conversation)
+        world_prompt = (
+            self._world.prompt(character.name, local_date(now, timezone)) if self._world else None
+        )
+        told = narrations(record, self._gift_catalog)
+        told[None] = _events_since_last_turn(record, self._gift_catalog)
+        prompt = self._prompt(
+            character, world_prompt, producer_prompt(profile),
+            chat_history(messages, self._history_turns()), told,
+            [
+                now_prompt(
+                    profile, now, timezone, "apart",
+                    affinity_prompt(affinity.tier, None) if affinity is not None else [],
+                ),
+            ],
+            [REACH_OUT_RULES],
+            WANTS_TO_REACH_OUT, None,
+        )
+        parser = ReplyParser()
+        stream = llm.stream(prompt)
+        try:
+            async for item in stream:
+                if isinstance(item, str):
+                    parser.feed(item)  # a photo tag is dropped: she sends none
+        finally:
+            if (close := getattr(stream, "aclose", None)) is not None:
+                await close()
+        parser.finish()
+        if not parser.complete:
+            raise EmptyReply("对话模型没有返回任何内容")
+        return parser.complete
+
     def _photo_eligibility(
         self,
         conversation: Conversation,
@@ -768,12 +860,14 @@ class ConversationEngine:
         about_producer: str,
         history: list[Message],
         narration: dict[int | None, str],
-        about_now: str,
-        retrieved: Retrieved,
+        about_turn: list[str],
+        closing: list[str],
         text: str,
         voiced_by: FishAudioModel | None,
-        about_photo: str | None,
     ) -> list[ChatMessage]:
+        """The prompt (ADR-0020): what changes from turn to turn tells first `about_turn`, then,
+        should any photo of the history not have been sent, what that means, then `closing`:
+        what retrieval found, or how she is to reach out."""
         # What every user's turns with her that day open with, apart, for a service to cache.
         shared = [character.sheet]
         if world_prompt:
@@ -795,15 +889,10 @@ class ConversationEngine:
                 )))
         if history:  # what the next turn opens with too, for a service to cache
             prompt[-1] = replace(prompt[-1], cache_breakpoint=True)
-        context = [about_now]
-        if about_photo:
-            context.append(about_photo)
+        context = [*about_turn]
         if any(m.photo_failed for m in history):
             context.append(NOT_RECEIVED)
-        if retrieved.memories_prompt:
-            context.append(retrieved.memories_prompt)
-        if retrieved.prompt:
-            context.append(retrieved.prompt)
+        context += closing
         prompt.append(ChatMessage("system", "\n\n".join(context)))
         prompt.append(ChatMessage("user", f"{narration.get(None, '')}{text}"))
         return prompt

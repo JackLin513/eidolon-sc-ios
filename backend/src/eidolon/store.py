@@ -1,5 +1,6 @@
 """Relational storage (SQLite) for users, their sessions, producer profiles, conversations,
-their messages and events, the photos she sent with her replies, and the calls in them;
+their messages and events, her reach-outs, the photos she sent with her replies, and the
+calls in them;
 memories are kept by `memory`, recent usage by `usage`."""
 
 import hashlib
@@ -130,6 +131,21 @@ CREATE TABLE IF NOT EXISTS calls (
     duration_s REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS calls_by_conversation ON calls(conversation_id);
+-- What she said first in a conversation (GLOSSARY.md「搭话」), as the model wrote it, delivery
+-- cues and all, as her replies are kept; whether the user has seen it (GLOSSARY.md「没看过的
+-- 搭话」); and the id of its activity record, which outlives neither the user's name on it nor
+-- 90 days, so no reference.
+CREATE TABLE IF NOT EXISTS reach_outs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id TEXT NOT NULL REFERENCES conversations(id),
+    ja TEXT NOT NULL,
+    zh TEXT NOT NULL,
+    segments TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    seen INTEGER NOT NULL DEFAULT 0,
+    record_id INTEGER
+);
+CREATE INDEX IF NOT EXISTS reach_outs_by_conversation ON reach_outs(conversation_id, created_at);
 -- The identities banned users signed in with, kept when those users were deleted so that
 -- deleting is not unbanning; only a keyed hash of each (`accounts.identity_hash`), no one's.
 CREATE TABLE IF NOT EXISTS banned_identities (
@@ -320,8 +336,48 @@ class ConversationEvent:
         return {k: v for k, v in asdict(self).items() if k not in hidden}
 
 
-Recorded = Message | ConversationEvent
+@dataclass(frozen=True)
+class ReachOut:
+    """What she said first in a conversation, the user not talking to her (GLOSSARY.md
+    「搭话」): neither a turn nor an event (ADR-0026), but said as she replies, in segments,
+    each Japanese with its subtitle, kept as the model wrote them, delivery cues and all."""
+
+    id: int
+    ja: str
+    zh: str
+    segments: list[Segment]
+    created_at: str
+    type: Literal["reach_out"] = field(default="reach_out", init=False)
+
+    def without_cues(self) -> "ReachOut":
+        """As people see it."""
+        return ReachOut(
+            self.id, without_cues(self.ja), without_cues(self.zh),
+            [Segment(without_cues(s.ja), without_cues(s.zh)) for s in self.segments],
+            self.created_at,
+        )
+
+    def shown(self) -> dict:
+        """As the browser is told it: as people see it."""
+        return asdict(self.without_cues())
+
+
+Recorded = Message | ConversationEvent | ReachOut
 """What a conversation's record holds."""
+
+
+@dataclass(frozen=True)
+class CurrentConversation:
+    """Her current conversation with a user (GLOSSARY.md「当前对话」) as reach-outs go by it:
+    whether it has a turn yet; when the user and she were last in touch in it (the last turn
+    recorded, or a call that connected ending; None before either), when she last reached out
+    in it (None if never), and whether she has ended it."""
+
+    conversation: Conversation
+    has_turns: bool
+    last_contact: datetime | None
+    reached_out_at: datetime | None
+    ended: bool
 
 
 @dataclass(frozen=True)
@@ -886,8 +942,8 @@ class Store:
 
     def latest_conversations(self, user_id: str) -> list[tuple[Conversation, Recorded | None]]:
         """Each character's newest conversation with the user, and the last thing in its
-        record, a message or an event, as `record` orders them (None while it has none);
-        for the conversation list."""
+        record, a message, an event or a reach-out, as `record` orders them (None while it
+        has none); for the conversation list."""
         with self._lock:
             rows = self._db.execute(
                 "SELECT * FROM conversations WHERE user_id = ?"
@@ -901,28 +957,40 @@ class Store:
         return [(c, last[c.id]) for c in newest.values()]
 
     def _last(self, conversation_id: str) -> Recorded | None:
-        """The last thing in the record, but her ending it: the list shows her last line, and
-        whether she sent a photo with it."""
-        message = self._db.execute(
+        """The last thing in the record, but her ending it, as `record` orders them: the
+        list shows her last line, and whether she sent a photo with it."""
+        row = self._db.execute(
             f"SELECT {_MESSAGE_WITH_PHOTO} WHERE m.conversation_id = ?"
             " ORDER BY m.id DESC LIMIT 1",
             (conversation_id,),
         ).fetchone()
+        message = _message_with_photo(row) if row else None
         event = self._db.execute(
             f"SELECT {_EVENT_COLUMNS} FROM conversation_events WHERE conversation_id = ?"
             " AND kind != 'ended' ORDER BY created_at DESC, id DESC LIMIT 1",
             (conversation_id,),
         ).fetchone()
-        if event is None or message is None:
-            return _event(event) if event else _message_with_photo(message) if message else None
+        reach_out = self._db.execute(
+            f"SELECT {_REACH_OUT_COLUMNS} FROM reach_outs WHERE conversation_id = ?"
+            " ORDER BY created_at DESC, id DESC LIMIT 1",
+            (conversation_id,),
+        ).fetchone()
+        between: list[ConversationEvent | ReachOut] = []
+        if event is not None:
+            between.append(_event(event))
+        if reach_out is not None:
+            between.append(_reach_out(reach_out))
+        latest = max(between, key=_placed, default=None)
+        if latest is None or message is None:
+            return latest or message
         said = self._db.execute(
             "SELECT created_at FROM messages WHERE conversation_id = ? AND role = 'user'"
             " ORDER BY id DESC LIMIT 1",
             (conversation_id,),
         ).fetchone()
-        last_turn_said = said["created_at"] if said else message["created_at"]
-        after = _at(event["created_at"]) >= _at(last_turn_said)  # as `record` places it
-        return _event(event) if after else _message_with_photo(message)
+        last_turn_said = said["created_at"] if said else message.created_at
+        after = _at(latest.created_at) >= _at(last_turn_said)  # as `record` places it
+        return latest if after else message
 
     def add_turn(
         self,
@@ -1078,16 +1146,23 @@ class Store:
         return [_message_with_photo(row) for row in rows]
 
     def record(self, conversation_id: str) -> list[Recorded]:
-        """The conversation's messages and events in the order things happened: a turn
-        where the user's words were said, its two messages together, an event where it
-        happened; so an event written while a turn was under way comes after the turn."""
+        """The conversation's messages, events and reach-outs in the order things happened: a
+        turn where the user's words were said, its two messages together, an event or a
+        reach-out where it happened; so one written while a turn was under way comes after
+        the turn."""
         messages = self.list_messages(conversation_id)
         with self._lock:
             events = self._db.execute(
                 f"SELECT {_EVENT_COLUMNS} FROM conversation_events WHERE conversation_id = ?",
                 (conversation_id,),
             ).fetchall()
-        pending = sorted(map(_event, events), key=lambda e: (_at(e.created_at), e.id))
+            reach_outs = self._db.execute(
+                f"SELECT {_REACH_OUT_COLUMNS} FROM reach_outs WHERE conversation_id = ?",
+                (conversation_id,),
+            ).fetchall()
+        pending: list[ConversationEvent | ReachOut] = sorted(
+            [*map(_event, events), *map(_reach_out, reach_outs)], key=_placed
+        )
         merged: list[Recorded] = []
         for message in messages:
             if message.role == "user":
@@ -1095,6 +1170,67 @@ class Store:
                     merged.append(pending.pop(0))
             merged.append(message)
         return merged + pending
+
+    def current_conversations(self) -> list[CurrentConversation]:
+        """Every user's current conversation with each character they have one with, as
+        reach-outs go by it; in no order."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT c.*,"
+                " (SELECT MAX(m.created_at) FROM messages m WHERE m.conversation_id = c.id)"
+                "  AS last_turn,"
+                " (SELECT MAX(r.created_at) FROM reach_outs r WHERE r.conversation_id = c.id)"
+                "  AS reached_out_at,"
+                " EXISTS (SELECT 1 FROM conversation_events e WHERE e.conversation_id = c.id"
+                "  AND e.kind = 'ended') AS ended"
+                " FROM conversations c WHERE c.rowid = (SELECT n.rowid FROM conversations n"
+                "  WHERE n.user_id = c.user_id AND n.character_id = c.character_id"
+                "  ORDER BY n.created_at DESC, n.rowid DESC LIMIT 1)"
+            ).fetchall()
+            ended_calls: dict[str, list[datetime]] = {}
+            for call in self._db.execute(
+                "SELECT conversation_id, connected_at, duration_s FROM calls"
+                f" WHERE conversation_id IN ({','.join('?' * len(rows))})",
+                [row["id"] for row in rows],
+            ):
+                ended_calls.setdefault(call["conversation_id"], []).append(
+                    _at(call["connected_at"]) + timedelta(seconds=call["duration_s"])
+                )
+        current = []
+        for row in rows:
+            contacts = ended_calls.get(row["id"], [])
+            if row["last_turn"] is not None:
+                contacts.append(_at(row["last_turn"]))
+            current.append(CurrentConversation(
+                Conversation(
+                    row["id"], row["user_id"], row["character_id"], row["created_at"],
+                    row["title"],
+                ),
+                row["last_turn"] is not None,
+                max(contacts, default=None),
+                _at(row["reached_out_at"]) if row["reached_out_at"] else None,
+                bool(row["ended"]),
+            ))
+        return current
+
+    def add_reach_out(
+        self, conversation_id: str, said: list[Segment], record_id: int | None
+    ) -> ReachOut:
+        """Record what she said first in the conversation, now, with the id of its activity
+        record; not seen yet. Into a conversation she has ended, nothing is recorded:
+        `ConversationEnded`."""
+        created_at = _now()
+        ja, zh = "".join(s.ja for s in said), "".join(s.zh for s in said)
+        with self._lock, self._db:
+            if self._ended(conversation_id) is not None:
+                raise ConversationEnded()
+            cursor = self._db.execute(
+                "INSERT INTO reach_outs (conversation_id, ja, zh, segments, created_at,"
+                " record_id) VALUES (?, ?, ?, ?, ?, ?)",
+                (conversation_id, ja, zh, _stored_segments(said), created_at, record_id),
+            )
+        assert cursor.lastrowid is not None
+        return ReachOut(cursor.lastrowid, ja, zh, list(said), created_at)
 
     def close(self) -> None:
         self._db.close()
@@ -1185,6 +1321,7 @@ _MESSAGE_WITH_PHOTO = (
 )
 """A message with its photo, if any, but not its picture (`_message_with_photo`)."""
 _EVENT_COLUMNS = "id, kind, created_at, affinity, gift_id, liked"
+_REACH_OUT_COLUMNS = "id, ja, zh, segments, created_at"
 
 def write_profile(db: sqlite3.Connection, user_id: str, profile: ProducerProfile) -> None:
     """Save the user's whole producer profile through `db`, in the caller's transaction: what
@@ -1311,6 +1448,19 @@ def _event(row: sqlite3.Row) -> ConversationEvent:
         row["id"], row["kind"], row["created_at"], _change(row["affinity"]),
         row["gift_id"], bool(row["liked"]),
     )
+
+
+def _reach_out(row: sqlite3.Row) -> ReachOut:
+    return ReachOut(
+        row["id"], row["ja"], row["zh"],
+        [Segment(**s) for s in json.loads(row["segments"])], row["created_at"],
+    )
+
+
+def _placed(entry: ConversationEvent | ReachOut) -> tuple[datetime, bool, int]:
+    """Where an event or a reach-out comes among the others: by when it happened, events
+    first at the same time."""
+    return _at(entry.created_at), isinstance(entry, ReachOut), entry.id
 
 
 def _at(timestamp: str) -> datetime:

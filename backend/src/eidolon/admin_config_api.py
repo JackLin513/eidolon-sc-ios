@@ -29,6 +29,7 @@ from eidolon.live_config import (
     LIMITS,
     MEMORY_LLM,
     PROXY,
+    REACH_OUTS,
     READ_ONLY,
     RERANK,
     SERVICE_STATUS,
@@ -150,6 +151,14 @@ class AffinityInput(BaseModel):
     enabled: Any
 
 
+class ReachOutsInput(BaseModel):
+    """Whether characters reach out to users, true or false, and how many times a day each
+    user at most, a whole number from 1 up; checked by the live configuration."""
+
+    enabled: Any
+    per_day: Any
+
+
 class ProxyInput(BaseModel):
     """The proxy as the admin saves it: the switch, the address (a password typed into it
     is kept apart, as a key is; empty for none), and a switch for each of the deployer's
@@ -199,6 +208,7 @@ INPUTS: dict[str, type[BaseModel]] = {
     RERANK: RerankInput,
     LIMITS: LimitsInput,
     AFFINITY: AffinityInput,
+    REACH_OUTS: ReachOutsInput,
     PROXY: ProxyInput,
     SERVICE_STATUS: ServiceStatusInput,
 }

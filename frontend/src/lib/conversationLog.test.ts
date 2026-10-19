@@ -55,6 +55,38 @@ describe("conversationLog", () => {
     ]);
   });
 
+  it("shows her reach-out in the record as one of her replies, marked as one, keyed apart from the messages", () => {
+    const log = play([
+      {
+        type: "loaded",
+        messages: [
+          message(1, "user", "早上好"),
+          message(2, "character", "おはよう"),
+          {
+            type: "reach_out",
+            id: 2,
+            ja: "ねえ",
+            zh: "呐",
+            segments: [{ ja: "ねえ", zh: "呐" }],
+            created_at: "2026-09-26T09:00:00Z",
+          },
+        ],
+      },
+    ]);
+
+    expect(log.entries[2]).toEqual({
+      kind: "character",
+      key: "r2",
+      segments: [{ ja: "ねえ", zh: "呐" }],
+      pending: false,
+      at: "2026-09-26T09:00:00Z",
+      affinity: null,
+      photo: null,
+      reachOut: true,
+    });
+    expect(log.entries[1]).not.toHaveProperty("reachOut");
+  });
+
   it("replaces everything, including a turn in progress, when loaded again", () => {
     const log = play(
       [

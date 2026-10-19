@@ -20,3 +20,9 @@
   - 前端：`settingsCategory.test.ts`，覆盖这一类的位置、摘要，以及字段为空时没有这一类。
 - [ ] **验收**：在本地构建版上用 Playwright 看一级列表和二级页的开关，拨了以后刷新，状态还在；后台关掉总开关后，这一类不见了。
 - [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+
+## Comments
+
+### 票 08 交接
+
+- `ReachOuts.run_due` 现在只看 `LiveConfig.reach_outs.enabled`；用户的开关在 `_due` 里接（跳过、日程不动）。

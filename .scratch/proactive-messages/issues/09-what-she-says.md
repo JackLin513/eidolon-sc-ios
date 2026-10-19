@@ -26,3 +26,10 @@
   - 生日当天搭话的请求里有祝福那句；照片标签被丢掉，没有生图调用。
 - [ ] **人工**：用部署者的对话模型，挑几位性格不同的角色（嘴硬的、直白的），在亲近、亲密下各造几次搭话，把原文贴进这张票的 Comments，给用户看语气。
 - [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+
+## Comments
+
+### 票 08 交接
+
+- 搭话的请求在 `ConversationEngine.reach_out`：「此刻」一节是 `now_prompt(..., "apart", affinity_prompt(tier, None))`，规矩是 `engine.REACH_OUT_RULES`，放在 `_prompt` 的 `closing` 里（检索结果在文字回合里也放这儿），记忆那一节照这个位置加进 `closing`。
+- 照片标签已经丢掉了：`reach_out` 只把文字喂给 `ReplyParser`，`PhotoTagged` 不处理，也没有生图调用；只写了照片标签、没有话的算失败（`test_one_she_could_say_nothing_in_fails_is_not_recorded_nor_tried_again`）。还差一个「写了标签又有话」时记下的测试。

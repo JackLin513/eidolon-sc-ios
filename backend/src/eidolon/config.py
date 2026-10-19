@@ -89,6 +89,21 @@ class ServiceStatusSettings:
     window_minutes: int = DEFAULT_STATUS_WINDOW
 
 
+DEFAULT_REACH_OUTS_PER_DAY = 3
+"""How many reach-outs each user may have a day, of all characters together, unless the admin
+console says otherwise."""
+
+
+@dataclass(frozen=True)
+class ReachOutSettings:
+    """Whether characters reach out to users (GLOSSARY.md「搭话」), off unless `.env` turns it
+    on, and how many reach-outs each user may have a day; the admin console may override
+    both."""
+
+    enabled: bool
+    per_day: int
+
+
 @dataclass(frozen=True)
 class ProxySettings:
     """The proxy what is in `services` reaches its providers through, if it is
@@ -402,6 +417,9 @@ class Settings:
     affinity_and_gifts: bool = True
     """Whether affinity and gifts are on (GLOSSARY.md「好感度」), as they are only with the
     judge model; on unless `.env` turns them off, and the admin console may override it."""
+    reach_outs: bool = False
+    """Whether characters reach out to users (GLOSSARY.md「搭话」), on the deployer's chat
+    model; off unless `.env` turns it on, and the admin console may override it."""
     proxy: ProxySettings = field(default_factory=ProxySettings)
     """Which of the deployer's services go through which proxy; none unless `.env` sets
     one, and the admin console may override it."""
@@ -494,6 +512,7 @@ class Settings:
             history_turns=history_turns_from_env(),
             exempting_keys=exempting_keys_from_env(),
             affinity_and_gifts=_switch("EIDOLON_AFFINITY_AND_GIFTS", default=True),
+            reach_outs=_switch("EIDOLON_REACH_OUTS"),
             proxy=proxy_from_env(),
             service_status=service_status_from_env(),
             domain=os.environ.get("EIDOLON_DOMAIN", "").strip() or None,

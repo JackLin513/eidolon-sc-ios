@@ -20,3 +20,10 @@
   - 删历史对话、删账号后没有残留。
   - 先例：`test_data_package_conversations.py`、`test_data_package.py`、`test_delete_past_conversations.py`。
 - [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+
+## Comments
+
+### 票 08 交接
+
+- 两张表已登记进 `database.USER_DATA` 和 `CONVERSATION_DATA`（顺序在 `conversations` 前面），删号时一起删已有测试（`test_deleting_the_user_deletes_them_and_when_she_was_to_come`）；删历史对话还没测。
+- `Store.whole_conversations` 和 `add_carried_conversation` 还不带搭话。

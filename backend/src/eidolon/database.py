@@ -26,6 +26,9 @@ USER_DATA = [
     ("messages", "conversation_id IN (SELECT id FROM conversations WHERE user_id = ?)"),
     ("conversation_events",
      "conversation_id IN (SELECT id FROM conversations WHERE user_id = ?)"),
+    ("reach_outs", "conversation_id IN (SELECT id FROM conversations WHERE user_id = ?)"),
+    ("reach_out_schedules",
+     "conversation_id IN (SELECT id FROM conversations WHERE user_id = ?)"),
     ("calls", "conversation_id IN (SELECT id FROM conversations WHERE user_id = ?)"),
     ("conversations", "user_id = ?"),
     ("producer_profiles", "user_id = ?"),
@@ -46,10 +49,12 @@ CONVERSATION_DATA = [
     ("photos", "conversation_id = ?"),
     ("messages", "conversation_id = ?"),
     ("conversation_events", "conversation_id = ?"),
+    ("reach_outs", "conversation_id = ?"),
+    ("reach_out_schedules", "conversation_id = ?"),
     ("calls", "conversation_id = ?"),
 ]
-"""Every table holding a conversation's record, or kept under it as the calls in it are, which
-is deleted with it, and which rows are its."""
+"""Every table holding a conversation's record, or kept under it as the calls in it are and
+when she is to reach out in it next, which is deleted with it, and which rows are its."""
 
 FROM_CONVERSATION = [
     ("memories", "conversation_id = NULL", "conversation_id = ?"),

@@ -4,7 +4,8 @@
 import type { AffinityChange } from "@/lib/affinity";
 import type { ConversationEvent, EventKind, Photo, PhotoStatus, Recorded, Segment, TurnEvent } from "@/lib/api";
 
-/** One message or conversation event shown. `at` (ISO) is when it was recorded; for the turn
+/** One message or conversation event shown, or her reach-out, shown as her reply is but marked
+ * `reachOut` (GLOSSARY.md「搭话」). `at` (ISO) is when it was recorded; for the turn
  * under way, when the user sent or said the words, which the reply shares until it is recorded.
  * Her reply keeps how the turn changed her affinity, once recorded, and a gift record how the
  * gift did; null where it did not. A gift record keeps the gift's name too. Her reply keeps the
@@ -29,6 +30,7 @@ export type Entry =
       affinity: AffinityChange | null;
       photo: Photo | null;
       photosUsedUp?: string;
+      reachOut?: true;
     };
 
 /** The exchange under way: the user's words and the reply, both the last entries shown.
@@ -179,6 +181,18 @@ function withDelta(entry: Entry, event: TurnEvent & { type: "delta" }): Entry {
 }
 
 function toEntry(message: Recorded): Entry {
+  if ("type" in message && message.type === "reach_out") {
+    return {
+      kind: "character",
+      key: `r${message.id}`,
+      segments: message.segments,
+      pending: false,
+      at: message.created_at,
+      affinity: null,
+      photo: null,
+      reachOut: true,
+    };
+  }
   if ("type" in message) {
     return {
       kind: "event",

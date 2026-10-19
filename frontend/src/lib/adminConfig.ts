@@ -29,6 +29,7 @@ export type ItemName =
   | "rerank"
   | "limits"
   | "affinity"
+  | "reach_outs"
   | "proxy"
   | "service_status";
 
@@ -84,7 +85,7 @@ export const TAB_ITEMS: Record<ConfigTab, ItemName[]> = {
   image: ["image"],
   network: ["proxy"],
   status: ["service_status"],
-  limits: ["limits", "affinity"],
+  limits: ["limits", "affinity", "reach_outs"],
   prices: [],
   read_only: [],
 };
@@ -159,7 +160,7 @@ export type ProxiedService = (typeof PROXIED_SERVICES)[number];
  * model's protocol can write, or unset), an extra request body (a JSON object, or empty for
  * none), a probability or score from 0 to 1, a number of seconds, a limit (a whole number
  * from 1 up, or none: sent as 0), how many at a time (a whole number from 1 to `MAX_COUNT`),
- * a switch (on or off, in the form as "true" or "false"), or minutes chosen from a list (sent as a number). */
+ * how many (a whole number from 1 up), a switch (on or off, in the form as "true" or "false"), or minutes chosen from a list (sent as a number). */
 export type FieldKind =
   | "select"
   | "text"
@@ -174,6 +175,7 @@ export type FieldKind =
   | "seconds"
   | "limit"
   | "count"
+  | "positive"
   | "switch"
   | "minutes";
 
@@ -319,6 +321,16 @@ export const ITEM_SPECS: Record<ItemName, ItemSpec> = {
     form: [{ name: "enabled", kind: "switch" }],
     tried: false,
   },
+  // 搭话（GLOSSARY.md「搭话」）：总开关，每位用户每天最多几次。不试调。
+  reach_outs: {
+    rows: ["enabled", "per_day"],
+    secrets: [],
+    form: [
+      { name: "enabled", kind: "switch" },
+      { name: "per_day", kind: "positive" },
+    ],
+    tried: false,
+  },
   // 网络代理（GLOSSARY.md「网络代理」）：总开关、地址、密码，每项服务一个开关。保存前把换了路线的服务连一遍。
   proxy: {
     rows: ["enabled", "url", "password", ...PROXIED_SERVICES],
@@ -400,7 +412,17 @@ export function lockedOn(form: Form, field: string): boolean {
 
 export type Problem = {
   field: string;
-  reason: "required" | "maxTokens" | "effort" | "json" | "jsonObject" | "probability" | "seconds" | "limit" | "count";
+  reason:
+    | "required"
+    | "maxTokens"
+    | "effort"
+    | "json"
+    | "jsonObject"
+    | "probability"
+    | "seconds"
+    | "limit"
+    | "count"
+    | "positive";
 };
 
 export type Change = Record<string, string | number | boolean | null | JsonObject>;
@@ -463,6 +485,10 @@ export function changeOf(spec: ItemSpec, form: Form, keysEditable: boolean): { c
         break;
       case "count":
         if (!/^[1-9]\d*$/.test(typed) || Number(typed) > MAX_COUNT) refuse(name, "count");
+        else change[name] = Number(typed);
+        break;
+      case "positive":
+        if (!/^[1-9]\d*$/.test(typed)) refuse(name, "positive");
         else change[name] = Number(typed);
         break;
       case "switch":

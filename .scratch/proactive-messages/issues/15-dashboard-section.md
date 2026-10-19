@@ -24,3 +24,10 @@
   - 前端：看板如果已有纯逻辑测试，补上「为空时不显示」。
 - [ ] **验收**：在本地构建版上造几次搭话，回了的、没回的、失败的都要有，用 Playwright 看这一节的数对不对。
 - [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+
+## Comments
+
+### 票 08 交接
+
+- 「搭话」表的 `record_id` 是那次搭话的运行记录 id（成功的才有搭话行）。
+- 看板 `dashboard()` 里 `recorded` 是全部记录，`records` 是滤掉搭话以后的；这一节从 `recorded` 里取 `kind == "reach_out"` 的。

@@ -42,3 +42,10 @@
   - 开着她的对话页时，搭话出现在底部，列表和导航都不标。
   - 打开对话后，点消失。
 - [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+
+## Comments
+
+### 票 08 交接
+
+- `reach_outs.seen` 列已建，08 一律写 0；打开即看过、列表行的字段从这里接。
+- 前端：对话记录里的搭话是 `kind: "character"`、`reachOut: true`、key `r<id>` 的条目（`conversationLog.toEntry`）；分组在 `messageLines.linesOf` 里另起一组。列表最后一句带 `reach_out: true`（`api.LastMessage`）。

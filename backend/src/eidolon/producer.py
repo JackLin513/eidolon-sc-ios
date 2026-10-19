@@ -1,5 +1,6 @@
 """The producer profile and what it tells the character about the user, and the prompt
-section about now: the time where the user is, and whether they are typing or in a call.
+section about now: the time where the user is, and whether they are typing, in a call, or
+not talking to her at all, as when she reaches out (GLOSSARY.md「搭话」).
 
 A profile field left unset keeps its default: the character sheet decides how
 the character addresses the producer, the producer is the man of the original
@@ -20,6 +21,8 @@ from typing import Literal
 from zoneinfo import ZoneInfo, available_timezones
 
 Gender = Literal["male", "female"]
+Talking = Literal["typing", "in_call", "apart"]
+"""How the user and she are talking now: typing, in a call, or not at all."""
 
 DEFAULT_TIMEZONE = "Asia/Shanghai"
 MAX_FORM_OF_ADDRESS_LENGTH = 20
@@ -117,24 +120,26 @@ def producer_prompt(profile: ProducerProfile) -> str:
 
 _TYPING = "制作人正在用文字和你聊天，你们没有在打电话；不想聊的时候就说不想聊，不要说挂电话或挂断。"
 _IN_A_CALL = "制作人正在和你打电话。"
+_APART = "你们这会儿没在说话。"
+_TALKING: dict[Talking, str] = {"typing": _TYPING, "in_call": _IN_A_CALL, "apart": _APART}
 
 
 def now_prompt(
     profile: ProducerProfile,
     now: datetime,
     timezone: str,
-    in_call: bool,
+    talking: Talking,
     affinity_lines: Sequence[str] = (),
 ) -> str:
-    """The prompt section about now: the time where the user is, whether they are typing or
-    `in_call` with the character, and whether it is their birthday; then `affinity_lines`,
+    """The prompt section about now: the time where the user is, how they are `talking` with
+    the character, and whether it is their birthday; then `affinity_lines`,
     how the character feels toward them now (`affinity.affinity_prompt`)."""
     local = now.astimezone(ZoneInfo(timezone))
     lines = [
         "# 此刻",
         f"现在是 {local.year}年{local.month}月{local.day}日"
         f"（星期{_WEEKDAYS[local.weekday()]}）{local:%H:%M}（制作人所在时区 {timezone}）。",
-        _IN_A_CALL if in_call else _TYPING,
+        _TALKING[talking],
     ]
     if profile.birthday and is_birthday(profile.birthday, local.date()):
         lines.append(

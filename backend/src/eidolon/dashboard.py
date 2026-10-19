@@ -75,7 +75,9 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
         """The activity of the last `range`, summed up."""
         span = SPANS[range]
         now = backend.clock()
-        records, service_calls = backend.activity.since(now - span.length)
+        recorded, service_calls = backend.activity.since(now - span.length)
+        # Reach-outs are no turns nor calls, and taken by no user; their service calls count.
+        records = [r for r in recorded if r.kind != "reach_out"]
         names = {id: c.name for id, c in backend.characters.items()}
         starts = stretches(now, span, _zone(timezone))
         spent = cost(service_calls, backend.prices.pricing(), starts)
