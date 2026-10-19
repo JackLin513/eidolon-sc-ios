@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Draft } from "@/lib/producerProfile";
 import {
   settingsCategory,
+  settingsGroups,
   settingsHref,
   settingsRedirect,
   settingsSummaries,
@@ -23,6 +24,22 @@ describe("路径和类别互转", () => {
   it("只打开 /settings 时右栏显示档案，二级页面显示它自己那一类", () => {
     expect(shownCategory("/settings")).toBe("profile");
     expect(shownCategory("/settings/call")).toBe("call");
+  });
+});
+
+describe("一级列表有哪几类", () => {
+  it("搭话放在通话和外观之间", () => {
+    expect(settingsGroups(true)[1]).toEqual(["call", "reach-outs", "appearance", "own-keys"]);
+    expect(settingsGroups(false)[1]).toEqual(["call", "reach-outs", "appearance", "own-keys"]);
+  });
+
+  it("账号里没有搭话（部署者没开）时没有这一类，别的照旧", () => {
+    expect(settingsGroups(null)).toEqual([
+      ["profile", "memories", "stats"],
+      ["call", "appearance", "own-keys"],
+      ["sign-in", "data-package"],
+      ["about"],
+    ]);
   });
 });
 
@@ -56,6 +73,7 @@ describe("一级列表上的摘要", () => {
     daysKnown: null,
     call: null,
     appearance: null,
+    reachOuts: null,
     ownServices: null,
     signInMethods: null,
   };
@@ -97,6 +115,11 @@ describe("一级列表上的摘要", () => {
   it("外观是 SCSP 头像开／关", () => {
     expect(settingsSummaries({ ...loading, appearance: { scspAvatars: true } }).appearance).toBe("SCSP 头像开");
     expect(settingsSummaries({ ...loading, appearance: { scspAvatars: false } }).appearance).toBe("SCSP 头像关");
+  });
+
+  it("搭话是开／关", () => {
+    expect(settingsSummaries({ ...loading, reachOuts: true })["reach-outs"]).toBe("开");
+    expect(settingsSummaries({ ...loading, reachOuts: false })["reach-outs"]).toBe("关");
   });
 
   it("自带密钥按 LLM、语音合成、语音识别的顺序列出填了的，一项都没填时「全部用部署者的服务」", () => {

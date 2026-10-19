@@ -517,12 +517,13 @@ export const zh = {
   settings: {
     title: "设置",
     loading: "正在读取…",
-    /** 设置一级的九类，也是各自二级页首的名字。「登录与数据」不叫「账号」：GLOSSARY 把它列为避免的说法。 */
+    /** 设置一级的十类，也是各自二级页首的名字。「登录与数据」不叫「账号」：GLOSSARY 把它列为避免的说法。 */
     categories: {
       profile: "档案",
       memories: "记忆",
       stats: "统计",
       call: "通话",
+      "reach-outs": "搭话",
       appearance: "外观",
       "own-keys": "自带密钥",
       "sign-in": "登录与数据",
@@ -540,6 +541,8 @@ export const zh = {
       phoneTextureOff: "电话质感关",
       scspAvatarsOn: "SCSP 头像开",
       scspAvatarsOff: "SCSP 头像关",
+      on: "开",
+      off: "关",
       ownKeysNone: "全部用部署者的服务",
       ownKeys: (services: string) => `已填 ${services}`,
     },
@@ -632,6 +635,9 @@ export const zh = {
       saving: "正在保存…",
       unsaved: "尚未保存",
       saved: "已保存，所有设备共用这份档案",
+    },
+    reachOuts: {
+      on: "她们会主动搭话",
     },
     appearance: {
       scspAvatars: "SCSP 头像",

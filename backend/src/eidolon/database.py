@@ -37,6 +37,7 @@ USER_DATA = [
     ("gift_backpacks", "user_id = ?"),
     ("usage", "user_id = ?"),
     ("user_limits", "user_id = ?"),
+    ("reach_outs_off", "user_id = ?"),
     ("data_package_imports", "user_id = ?"),
     ("sessions", "user_id = ?"),
     ("sign_in_methods", "user_id = ?"),

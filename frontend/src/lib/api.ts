@@ -424,18 +424,33 @@ export type SignInMethod = { provider: Provider; display_name: string; email: st
 /** `id`: who the user is, which this browser keeps their own keys apart by (see `localOwnKeys`).
  * `is_admin`: the user may enter the admin console (`/admin`).
  * `exempting_keys`: the services a call must bring the user's own keys for, all of them, to count
- * towards no limit (GLOSSARY.md「免限额密钥」), in the order of `OWN_SERVICES`; at least one. */
+ * towards no limit (GLOSSARY.md「免限额密钥」), in the order of `OWN_SERVICES`; at least one.
+ * `reach_outs`: the user's own switch for reach-outs (GLOSSARY.md「搭话」); null where the deployer
+ * has them off. */
 export type Account = {
   id: string;
   name: string;
   sign_in_methods: SignInMethod[];
   is_admin: boolean;
   exempting_keys: OwnService[];
+  reach_outs: boolean | null;
 };
 
 /** The signed-in user; sends the browser to sign in, or to agree to the terms, first. */
 export async function getAccount(): Promise<Account> {
   return json(await api("/api/account"));
+}
+
+/** Turn the user's own switch for reach-outs on or off, for all the characters; refused where the
+ * deployer has them off. */
+export async function switchReachOuts(on: boolean): Promise<void> {
+  await expectNoContent(
+    await api("/api/account/reach-outs", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ on }),
+    }),
+  );
 }
 
 /** Stop signing in with the identity at `provider`; refused for the last one. */

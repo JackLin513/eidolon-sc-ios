@@ -9,6 +9,7 @@ import { DeleteAccount } from "@/components/DeleteAccount";
 import { MemoriesSettings } from "@/components/MemoriesSettings";
 import { OwnKeysSettings } from "@/components/OwnKeysSettings";
 import { ProducerProfileSettings } from "@/components/ProducerProfileSettings";
+import { ReachOutsSettings } from "@/components/ReachOutsSettings";
 import { SettingsPane } from "@/components/settings/SettingsPane";
 import { SignInSettings } from "@/components/SignInSettings";
 import { SignOutSettings } from "@/components/SignOutSettings";
@@ -19,6 +20,7 @@ import type { SettingsCategory } from "@/lib/settingsCategory";
 const PANELS: Record<Exclude<SettingsCategory, "memories" | "stats">, ReactNode> = {
   profile: <ProducerProfileSettings />,
   call: <CallSettings />,
+  "reach-outs": <ReachOutsSettings />,
   appearance: <AppearanceSettings />,
   "own-keys": <OwnKeysSettings />,
   "sign-in": (
