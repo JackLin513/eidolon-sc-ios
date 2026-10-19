@@ -25,7 +25,7 @@
   - 亲近、亲密时撒娇的那几句在搭话和回复里都有，信任时没有。先例：`test_affinity_prompt.py`。
   - 生日当天搭话的请求里有祝福那句；照片标签被丢掉，没有生图调用。
 - [x] **人工**：用部署者的对话模型，挑几位性格不同的角色（嘴硬的、直白的），在亲近、亲密下各造几次搭话，把原文贴进这张票的 Comments，给用户看语气。
-- [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+- [x] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
 
 ## Comments
 
