@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { AnnouncementBody } from "@/components/app/AnnouncementBody";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +35,7 @@ export function Announcements({ userId }: { userId: string | null }) {
   const [isOpen, setOpen] = useState(false);
   // 打开那一刻的列表；打开时还没拉到的话，等第一次拉到的。
   const [opened, setOpened] = useState<Announcement[] | null>(null);
+  const popup = useRef<HTMLDivElement>(null);
   const shown = isOpen ? (opened ?? announcements) : announcements;
   // 每次渲染现读：点「已读」记下之后收起弹窗，这次渲染就读到新的。
   const readAt = userId ? readUpTo(userId) : null;
@@ -90,8 +91,14 @@ export function Announcements({ userId }: { userId: string | null }) {
         <AnnouncementsBellIcon />
         {hasUnread && <span aria-hidden className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-foreground" />}
       </DialogTrigger>
-      {/* 矮屏上整个弹窗不超出视口，挤的是列表，底栏的两个键始终看得见。 */}
-      <DialogContent showCloseButton={false} className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-md">
+      {/* 矮屏上整个弹窗不超出视口，挤的是列表，底栏的两个键始终看得见。
+          打开时聚焦弹窗本身：默认聚焦第一个可聚焦的元素，正文里有链接时列表会滚到链接那里，不停在最新一条上（#141）。 */}
+      <DialogContent
+        ref={popup}
+        initialFocus={popup}
+        showCloseButton={false}
+        className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-md"
+      >
         <DialogHeader>
           <DialogTitle>{t.announcements}</DialogTitle>
         </DialogHeader>
