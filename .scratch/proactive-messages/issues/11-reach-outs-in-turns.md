@@ -22,7 +22,7 @@
   - 礼物：送礼后她搭话，再来一个回合，请求里不再有「回应礼物」那句。先例：`test_gift_responses.py`。
   - 判断和记忆：判断模型和记忆提炼收到的内容里有这次搭话；记忆查询用的是搭话的字幕。先例：`test_affinity_turns.py`、`test_memories.py`。
   - 缓存：加了旁白以后，下一回合请求的开头仍和上一回合一致，前缀缓存不被破坏。先例：`test_dynamic_context.py`。
-- [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+- [x] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
 
 ## Comments
 
