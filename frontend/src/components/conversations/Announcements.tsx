@@ -23,7 +23,7 @@ const t = copy.conversationList;
 
 /**
  * 对话列表页首的铃铛和它打开的公告弹窗（GLOSSARY.md「公告」「未读公告」，DESIGN.md「Conversation list」）。
- * 有未读时铃铛右上角一个小圆点。弹窗列出最近的公告，最新的在上面；「关闭」、Esc、点外面只收起，「已读」把列表里的
+ * 有未读时铃铛右上角一个小圆点。弹窗列出最近的公告，置顶的那条在最上面，其余最新的在上面；「关闭」、Esc、点外面只收起，「已读」把列表里的
  * 都记成读过（只记在这台设备上，按用户分开）再收起。列表载入时拉一次，切回这个标签页时再拉一次；拉不到就保持上一次的。
  * 弹窗开着时列表定在打开那一刻（期间拉到的新公告等收起之后才算），「已读」也就不会记上打开之后才发布的。
  * `userId` 还在载入时为 null，这时不知道读过什么，不显示点。
@@ -109,6 +109,7 @@ export function Announcements({ userId }: { userId: string | null }) {
                 {i > 0 && <Separator className="my-4" />}
                 <p className="mb-2 flex items-center gap-2 text-meta text-muted-foreground tabular-nums">
                   {publishedOn(a.published_at)}
+                  {a.pinned && <Badge variant="outline">{t.pinnedAnnouncement}</Badge>}
                   {unreadShown.has(a.id) && <Badge variant="secondary">{t.unreadAnnouncement}</Badge>}
                 </p>
                 <AnnouncementBody body={a.body} />

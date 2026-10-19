@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 
-import { StatusBadge } from "@/components/AdminAnnouncementList";
+import { PinnedBadge, StatusBadge } from "@/components/AdminAnnouncementList";
 import { AnnouncementBody } from "@/components/app/AnnouncementBody";
 import { AppLink } from "@/components/app/AppLink";
 import { FailureNotice } from "@/components/app/FailureNotice";
@@ -37,7 +37,9 @@ import {
   editAnnouncement,
   excerpt,
   getAdminAnnouncement,
+  pinAnnouncement,
   publishAnnouncement,
+  unpinAnnouncement,
   withdrawAnnouncement,
   writeAnnouncement,
   type AdminAnnouncement,
@@ -47,12 +49,13 @@ import { BackIcon } from "@/theme/icons";
 
 const t = copy.admin.announcements;
 
-type Busy = "save" | "publish" | "withdraw" | "delete";
+type Busy = "save" | "publish" | "withdraw" | "pin" | "delete";
 
 /**
  * 一条公告的编辑页，新写的也是这一页（地址 `/admin/announcements/new`，第一次保存后换成它自己的地址）。
  * 只有正文：Card 里一个 Textarea，用 Tabs 切换「编辑 / 预览」，预览和用户看到的一模一样（AnnouncementBody）。
- * 草稿的按钮是「发布」（default）和「保存草稿」，已发布的是「保存」（default）和「撤回」。发布时先存下没存的修改。
+ * 草稿的按钮是「发布」（default）和「保存草稿」，已发布的是「保存」（default）、「撤回」和「置顶 / 取消置顶」。
+ * 发布时先存下没存的修改；置顶不存，没存的修改留在框里。
  * 删除单独一张 Card，按钮在 CardAction，确认框里执行的那一下用 destructive，删完回到列表
  * （DESIGN.md「Layout · 后台 · 公告」）。
  */
@@ -116,6 +119,11 @@ export function AdminAnnouncementEditor({ id }: { id: string }) {
   const publish = () =>
     run("publish", async () => setSaved(await publishAnnouncement((await keep()).id)), t.notices.published);
   const withdraw = () => saved && run("withdraw", async () => setSaved(await withdrawAnnouncement(saved.id)), t.notices.withdrawn);
+  const togglePin = () =>
+    saved &&
+    (saved.pinned
+      ? run("pin", async () => setSaved(await unpinAnnouncement(saved.id)), t.notices.unpinned)
+      : run("pin", async () => setSaved(await pinAnnouncement(saved.id)), t.notices.pinned));
   const remove = () =>
     saved &&
     run("delete", async () => {
@@ -214,6 +222,10 @@ export function AdminAnnouncementEditor({ id }: { id: string }) {
                 {spinner("withdraw")}
                 {t.actions.withdraw}
               </Button>
+              <Button variant="outline" onClick={togglePin} disabled={busy !== null}>
+                {spinner("pin")}
+                {saved?.pinned ? t.actions.unpin : t.actions.pin}
+              </Button>
             </>
           ) : (
             <>
@@ -266,11 +278,12 @@ export function AdminAnnouncementEditor({ id }: { id: string }) {
   );
 }
 
-/** 标题下面一行：状态 Badge，和创建、发布、最后修改的时间。 */
+/** 标题下面一行：状态 Badge（置顶的再跟一个），和创建、发布、最后修改的时间。 */
 function Meta({ announcement }: { announcement: AdminAnnouncement }) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
       <StatusBadge status={announcement.status} />
+      {announcement.pinned && <PinnedBadge />}
       <span>
         {t.editor.createdAt} <Timestamp value={announcement.created_at} />
       </span>

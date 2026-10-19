@@ -119,6 +119,8 @@ export const zh = {
     announcementsLoadFailed: "公告没能载入，稍后再试",
     /** 没读过的那条公告，日期后面的标记。 */
     unreadAnnouncement: "新",
+    /** 置顶的那条公告，日期后面的标记。 */
+    pinnedAnnouncement: "置顶",
     markAnnouncementsRead: "已读",
     /** 铃铛旁边的服务状态和它打开的小窗口（GLOSSARY.md「服务状态」）；有服务不正常时按钮念后一句。 */
     serviceStatus: "服务状态",
@@ -1595,6 +1597,7 @@ export const zh = {
       columns: { body: "正文", status: "状态", publishedAt: "发布时间", updatedAt: "最后修改" },
       status: { draft: "草稿", published: "已发布" },
       notPublished: "未发布",
+      pinned: "置顶",
       empty: "还没有公告",
       emptyHint: "点「写公告」写第一条。",
       loading: "正在读取…",
@@ -1620,11 +1623,15 @@ export const zh = {
         publish: "发布",
         save: "保存",
         withdraw: "撤回",
+        pin: "置顶",
+        unpin: "取消置顶",
       },
       notices: {
         saved: "已保存。",
         published: "已发布，用户现在能看到它。",
         withdrawn: "已撤回成草稿，用户看不到它了。",
+        pinned: "已置顶。",
+        unpinned: "已取消置顶。",
       },
       deleteSection: {
         title: "删除这条公告",
