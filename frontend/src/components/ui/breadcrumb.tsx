@@ -21,7 +21,8 @@ function BreadcrumbList({ className, ...props }: React.ComponentProps<"ol">) {
       data-slot="breadcrumb-list"
       className={cn(
         // eidolon: text-sm 改成 text-xs，面包屑是 Caption 字号（DESIGN.md「Typography · 后台」）。
-        "flex flex-wrap items-center gap-1.5 text-xs wrap-break-word text-muted-foreground",
+        // eidolon: 不折行（页首只有一行高），放不下时最后一级截断，见 BreadcrumbItem、BreadcrumbPage。
+        "flex min-w-0 flex-nowrap items-center gap-1.5 text-xs text-muted-foreground",
         className
       )}
       {...props}
@@ -33,7 +34,8 @@ function BreadcrumbItem({ className, ...props }: React.ComponentProps<"li">) {
   return (
     <li
       data-slot="breadcrumb-item"
-      className={cn("inline-flex items-center gap-1", className)}
+      // eidolon: min-w-0、last:shrink 之外不缩，让最后一级（当前页）放不下时截断。
+      className={cn("inline-flex min-w-0 shrink-0 items-center gap-1 last:shrink", className)}
       {...props}
     />
   )
@@ -66,7 +68,8 @@ function BreadcrumbPage({ className, ...props }: React.ComponentProps<"span">) {
       role="link"
       aria-disabled="true"
       aria-current="page"
-      className={cn("font-normal text-foreground", className)}
+      // eidolon: truncate，长的当前页（如公告标题）截成一行。
+      className={cn("truncate font-normal text-foreground", className)}
       {...props}
     />
   )
