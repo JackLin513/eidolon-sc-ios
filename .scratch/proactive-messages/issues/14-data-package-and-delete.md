@@ -19,7 +19,7 @@
   - 旧版本的数据包照常能导入。
   - 删历史对话、删账号后没有残留。
   - 先例：`test_data_package_conversations.py`、`test_data_package.py`、`test_delete_past_conversations.py`。
-- [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+- [x] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
 
 ## Comments
 
