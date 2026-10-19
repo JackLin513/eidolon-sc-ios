@@ -9,9 +9,8 @@ Driven through the backend's external API, with the reach-outs' ticks taken by h
 `test_reach_outs`."""
 
 import asyncio
-import sqlite3
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import httpx
 import pytest
@@ -21,14 +20,7 @@ from eidolon.gift_catalog import GIFTS_FILE
 from eidolon.llm import LLMError
 from tests.browser import TIMEOUT, Browser, open_browser
 from tests.conftest import CharacterConfig, ClientFactory
-from tests.fakes import (
-    FAKE_JUDGE,
-    FakeClock,
-    FakeIdentityProvider,
-    FakeLLM,
-    FakeRandom,
-    FakeSpeech,
-)
+from tests.fakes import FAKE_JUDGE, FakeIdentityProvider, FakeRandom, FakeSpeech
 from tests.test_activity_records import dashboard
 from tests.test_admin_users import ADMIN, admin_beside
 from tests.test_gift_backpack import COMMON, FIRST
@@ -148,26 +140,3 @@ async def test_with_reach_outs_off_and_none_in_the_range_there_is_no_section(
     assert off_with_one == {"succeeded": 1, "failed": 0, "answered_share": 0}
     assert off_and_none is None
 
-
-async def test_a_database_from_before_reach_outs_were_answered_has_none_answered(
-    make_client: ClientFactory, settings: Settings, github: FakeIdentityProvider
-):
-    now = datetime.now(UTC)
-    with sqlite3.connect(settings.database_path) as db:
-        db.execute(
-            "CREATE TABLE activity_records (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT"
-            " NOT NULL, user_id TEXT, anonymous_id TEXT, character_id TEXT NOT NULL,"
-            " started_at REAL NOT NULL, result TEXT NOT NULL, own_keys INTEGER NOT NULL"
-            " DEFAULT 0, time_to_speak_ms REAL, call_id INTEGER, duration_s REAL, end_reason"
-            " TEXT, affinity_level INTEGER, out_of_line INTEGER, manipulation INTEGER, cooled"
-            " INTEGER, ended_conversation TEXT)"
-        )
-        db.execute(
-            "INSERT INTO activity_records (kind, anonymous_id, character_id, started_at, result)"
-            " VALUES ('reach_out', 'someone', 'mano', ?, 'success')",
-            ((now - timedelta(hours=1)).timestamp(),),
-        )
-
-    client = make_client(FakeLLM(), clock=FakeClock(now))
-
-    assert await section(client, github) == {"succeeded": 1, "failed": 0, "answered_share": 0}

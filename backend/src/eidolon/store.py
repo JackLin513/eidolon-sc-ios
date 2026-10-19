@@ -1368,22 +1368,28 @@ class Store:
             if row is None:  # deleted meanwhile
                 return
             contact = self._last_contact_in(row["conversation_id"])
-            if contact is not None and contact > _at(row["created_at"]):
-                self._answer_reach_out(row["conversation_id"])
+            if record_id is not None and contact is not None and contact > _at(row["created_at"]):
+                self._mark_answered(record_id)
 
     def _answer_reach_out(self, conversation_id: str) -> None:
-        """Mark the activity record of her latest reach-out in the conversation answered, the
-        user and she being in touch in it now: a turn recorded, or a call connected, after it
-        and before the next. Its record is the activity log's; none in a database without
-        one."""
-        if "activity_records" not in tables(self._db):
-            return
-        self._db.execute(
-            "UPDATE activity_records SET answered = 1 WHERE id = (SELECT record_id"
-            " FROM reach_outs WHERE conversation_id = ? ORDER BY created_at DESC, id DESC"
-            " LIMIT 1)",
+        """Mark her latest reach-out in the conversation answered, the user and she being in
+        touch in it now: a turn recorded, or a call connected, after it and before the next.
+        One whose record is not kept yet is marked as it is (`reach_out_recorded_as`)."""
+        latest = self._db.execute(
+            "SELECT record_id FROM reach_outs WHERE conversation_id = ?"
+            " ORDER BY created_at DESC, id DESC LIMIT 1",
             (conversation_id,),
-        )
+        ).fetchone()
+        if latest is not None and latest["record_id"] is not None:
+            self._mark_answered(latest["record_id"])
+
+    def _mark_answered(self, record_id: int) -> None:
+        """Mark a reach-out's activity record answered. The record is the activity log's;
+        none in a database without one."""
+        if "activity_records" in tables(self._db):
+            self._db.execute(
+                "UPDATE activity_records SET answered = 1 WHERE id = ?", (record_id,)
+            )
 
     def _last_contact_in(self, conversation_id: str) -> datetime | None:
         """When the user and she were last in touch in the conversation, as

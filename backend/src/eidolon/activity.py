@@ -20,7 +20,8 @@ synthesis and emotion judging are recorded under the call (`Recording.add`), not
 
 A reach-out's record says whether the user answered it: had a turn, or a call that connected,
 in its conversation after it and before the next. The store marks it so as it records the
-turn or keeps the call, by the record its reach-out names (`Store.reach_out_recorded_as`).
+turn or keeps the call (`Store.add_turn`, `Store.keep_call`), by the record its reach-out
+names; or as that is kept, should they have been in touch since (`Store.reach_out_recorded_as`).
 
 A photo she sends (`photos`) is generated in the context of the turn it was begun in, and
 often comes out after the turn is over: its request to the image service is recorded under
@@ -139,7 +140,8 @@ _SCHEMA = """
 -- she ended the conversation after a typed turn (`affinity.EndsFor`), NULL if she did not.
 -- `answered` is whether a reach-out was answered (GLOSSARY.md「搭话」): the user had a turn,
 -- or a call connected, in its conversation after it and before the next; the store marks it
--- so, by the record its reach-out keeps (`Store.add_turn`, `Store.keep_call`). 0 for others.
+-- so, by the record its reach-out keeps (`Store.add_turn`, `Store.keep_call`,
+-- `Store.reach_out_recorded_as`). 0 for others.
 CREATE TABLE IF NOT EXISTS activity_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     kind TEXT NOT NULL,

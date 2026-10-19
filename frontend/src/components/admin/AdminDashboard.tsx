@@ -431,7 +431,7 @@ function DashboardBody({
           <DashboardCard title={t.characters.title}>
             <CharactersTable board={board} />
           </DashboardCard>
-          <ReachOutsTiles board={board} />
+          <ReachOutTiles board={board} />
         </DashboardGroup>
       </TabsContent>
 
@@ -745,7 +745,7 @@ function CharactersTable({ board }: { board: Dashboard }) {
 }
 
 /** 「用量」里的「搭话」一小节：成功、失败、被回了三张数字卡；为空时（总开关关着、范围内也没有搭话）不显示。 */
-function ReachOutsTiles({ board }: { board: Dashboard }) {
+function ReachOutTiles({ board }: { board: Dashboard }) {
   const tiles = reachOutTiles(board.reach_outs);
   if (tiles.length === 0) return null;
   return (
