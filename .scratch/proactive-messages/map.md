@@ -44,7 +44,7 @@ Label: wayfinder:map
 
 ## Not yet specified
 
-- **实现顺序和分块**：后端的生成和存储、前端的显示和轮询、后台设置怎么分票、谁先谁后。交接时用 `/to-spec` 写规格时定，不另开票。普通文字回合也要改：每回合说明里加「上次往来是什么时候」一行（见「拍板：她说什么」第 7 条）。
+- 无。规格已写成 [`spec.md`](spec.md)（实现顺序在它的 Further Notes 里），下一步 `/to-tickets`。
 
 ## Out of scope
 
