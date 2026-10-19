@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from eidolon.affinity import Change
-from eidolon.database import connect, delete_conversation_data, delete_user_data
+from eidolon.database import connect, delete_conversation_data, delete_user_data, tables
 from eidolon.delivery_cues import without_cues
 from eidolon.producer import Birthday, ProducerProfile
 from eidolon.reply_format import Segment
@@ -944,14 +944,16 @@ class Store:
 
     def keep_call(self, conversation_id: str, connected_at: datetime, duration_s: float) -> None:
         """Keep a call in the conversation that connected at `connected_at` and lasted
-        `duration_s` seconds once it had, for stats; not into its record. Nothing is kept if
-        the conversation is gone meanwhile, deleted with the user, say."""
+        `duration_s` seconds once it had, for stats; not into its record. It answers her
+        latest reach-out in it (`_answer_reach_out`). Nothing is kept if the conversation is
+        gone meanwhile, deleted with the user, say."""
         with self._lock, self._db:
             self._db.execute(
                 "INSERT INTO calls (conversation_id, connected_at, duration_s)"
                 " SELECT id, ?, ? FROM conversations WHERE id = ?",
                 (connected_at.astimezone(UTC).isoformat(), duration_s, conversation_id),
             )
+            self._answer_reach_out(conversation_id)
 
     def kept_calls(self, user_id: str) -> list[KeptCall]:
         """Every call kept in what is left of the user's conversations; in no order."""
@@ -1055,8 +1057,8 @@ class Store:
         affinity, if it did, and for a typed turn what it came to (`typed`); returns the
         reply. The photo she sends with it, if any, is recorded being generated. Should she
         end the conversation after it (`ends`), that is recorded with it, after it
-        (`ended`). Into a conversation she has ended already, nothing is recorded:
-        `ConversationEnded`."""
+        (`ended`). It answers her latest reach-out in it (`_answer_reach_out`). Into a
+        conversation she has ended already, nothing is recorded: `ConversationEnded`."""
         with self._lock, self._db:
             if self._ended(conversation_id) is not None:
                 raise ConversationEnded()
@@ -1076,6 +1078,7 @@ class Store:
                 replied = replace(replied, photo=Photo(photo.id, "pending", None, photo.tag))
             if ends:
                 self._insert_event(conversation_id, "ended", _now())
+            self._answer_reach_out(conversation_id)
             return replied
 
     def finish_photo(
@@ -1352,11 +1355,35 @@ class Store:
         return ReachOut(cursor.lastrowid, ja, zh, list(said), created_at)
 
     def reach_out_recorded_as(self, reach_out_id: int, record_id: int | None) -> None:
-        """Keep the id of the activity record of the reach-out, once it is written."""
+        """Keep the id of the activity record of the reach-out, once it is written; answered
+        already, should the user and she have been in touch since it was recorded."""
         with self._lock, self._db:
             self._db.execute(
                 "UPDATE reach_outs SET record_id = ? WHERE id = ?", (record_id, reach_out_id)
             )
+            row = self._db.execute(
+                "SELECT conversation_id, created_at FROM reach_outs WHERE id = ?",
+                (reach_out_id,),
+            ).fetchone()
+            if row is None:  # deleted meanwhile
+                return
+            contact = self._last_contact_in(row["conversation_id"])
+            if contact is not None and contact > _at(row["created_at"]):
+                self._answer_reach_out(row["conversation_id"])
+
+    def _answer_reach_out(self, conversation_id: str) -> None:
+        """Mark the activity record of her latest reach-out in the conversation answered, the
+        user and she being in touch in it now: a turn recorded, or a call connected, after it
+        and before the next. Its record is the activity log's; none in a database without
+        one."""
+        if "activity_records" not in tables(self._db):
+            return
+        self._db.execute(
+            "UPDATE activity_records SET answered = 1 WHERE id = (SELECT record_id"
+            " FROM reach_outs WHERE conversation_id = ? ORDER BY created_at DESC, id DESC"
+            " LIMIT 1)",
+            (conversation_id,),
+        )
 
     def _last_contact_in(self, conversation_id: str) -> datetime | None:
         """When the user and she were last in touch in the conversation, as

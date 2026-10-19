@@ -233,9 +233,30 @@ export type Dashboard = {
   characters: { character_id: string; name: string | null; turns: number; calls: number }[];
   /** How the judge model judged the turns, where affinity is on (GLOSSARY「好感度」); null off. */
   affinity: AffinitySection | null;
+  /** Her reach-outs (GLOSSARY「搭话」); null where they are off and none were made in the range. */
+  reach_outs: ReachOutsSection | null;
   /** What the deployer's keys cost, estimated at the prices (`lib/adminPrices`). */
   cost: Cost;
 };
+
+/** The dashboard's「搭话」section: how many times characters reached out, how many times that
+ * failed, and the share of those reached out the user answered (null of none). */
+export type ReachOutsSection = { succeeded: number; failed: number; answered_share: number | null };
+
+/** The section's tiles, as the page shows them; none where it is empty. */
+export function reachOutTiles(section: ReachOutsSection | null): { id: string; label: string; value: string }[] {
+  if (section === null) return [];
+  const words = copy.admin.dashboard.reachOuts.tiles;
+  return [
+    { id: "succeeded", label: words.succeeded, value: formatCount(section.succeeded) },
+    { id: "failed", label: words.failed, value: formatCount(section.failed) },
+    {
+      id: "answered",
+      label: words.answered,
+      value: section.answered_share === null ? NONE : formatPercent(section.answered_share),
+    },
+  ];
+}
 
 /** The levels the judge model judges a turn at, from hurting her (0) to making her very happy (4). */
 export const AFFINITY_LEVELS = [0, 1, 2, 3, 4] as const;

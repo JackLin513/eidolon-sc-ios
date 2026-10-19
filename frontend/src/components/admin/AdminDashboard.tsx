@@ -65,6 +65,7 @@ import {
   healthSummary,
   isDashboardRange,
   isDashboardTab,
+  reachOutTiles,
   serviceName,
   splitZeroRows,
   strippedText,
@@ -92,7 +93,7 @@ const STALE = "opacity-45";
 
 /**
  * 看板（后台默认页）：时间范围切换；页首下面一排分组标签，一次只看一组——「概览」（回合和通话的几个数字、
- * 进行中的通话数、服务健康、备份）、「用量」（趋势、各种结果、通话时长、按角色）、「好感度」（好感度生效时才有）、
+ * 进行中的通话数、服务健康、备份）、「用量」（趋势、各种结果、通话时长、按角色、搭话）、「好感度」（好感度生效时才有）、
  * 「花费」。数字全由后端汇总，这里只负责排版和格式化。
  *
  * 数字要看得出新旧：页首下面写「数据截至 16:25」，旁边可以手动刷新；页面看得见时每分钟自动重新取一次
@@ -298,7 +299,7 @@ function HealthSummary({ board, onShow }: { board: Dashboard; onShow: () => void
 /**
  * 分组标签（下划线样式，和页首胶囊样式的时间范围分开）和各组的内容：
  * - 「概览」：两组数字卡（「此刻」一张，「{范围}内」五张，手机上只留回合、通话、活跃用户三张）、服务健康、备份。
- * - 「用量」：趋势、结果、通话时长、结束原因各一张卡，宽屏两张一排；下面是按角色。
+ * - 「用量」：趋势、结果、通话时长、结束原因各一张卡，宽屏两张一排；下面是按角色，再下面「搭话」三张数字卡（为空时没有）。
  * - 「好感度」：好感度生效时才有这个标签；地址里要了它而好感度没开时，显示「概览」。
  * - 「花费」。
  */
@@ -430,6 +431,7 @@ function DashboardBody({
           <DashboardCard title={t.characters.title}>
             <CharactersTable board={board} />
           </DashboardCard>
+          <ReachOutsTiles board={board} />
         </DashboardGroup>
       </TabsContent>
 
@@ -739,6 +741,19 @@ function CharactersTable({ board }: { board: Dashboard }) {
         />
       )}
     </Folded>
+  );
+}
+
+/** 「用量」里的「搭话」一小节：成功、失败、被回了三张数字卡；为空时（总开关关着、范围内也没有搭话）不显示。 */
+function ReachOutsTiles({ board }: { board: Dashboard }) {
+  const tiles = reachOutTiles(board.reach_outs);
+  if (tiles.length === 0) return null;
+  return (
+    <TileGroup caption={t.reachOuts.title} grid="grid-cols-2 md:grid-cols-3">
+      {tiles.map((tile) => (
+        <StatTile key={tile.id} label={tile.label} value={tile.value} />
+      ))}
+    </TileGroup>
   );
 }
 

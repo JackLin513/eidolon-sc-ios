@@ -1041,6 +1041,11 @@ export const zh = {
           abandoned: "没有完成（进程中途退出，或服务重启）",
         },
       },
+      /** 「用量」里的「搭话」一小节：范围内搭了几次、失败几次、被回的占比（被回的 ÷ 成功的）。 */
+      reachOuts: {
+        title: "搭话",
+        tiles: { succeeded: "成功", failed: "失败", answered: "被回了" },
+      },
       affinity: {
         title: "好感度",
         tiles: {
