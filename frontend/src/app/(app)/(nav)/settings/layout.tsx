@@ -3,8 +3,10 @@
 import { usePathname } from "next/navigation";
 import { Fragment, type ReactNode } from "react";
 
+import { useDirectory } from "@/components/conversations/ConversationDirectory";
 import { SettingsRow } from "@/components/settings/SettingsRow";
 import { SettingsValuesProvider, useSettingsValues } from "@/components/settings/SettingsValues";
+import { SponsorRow } from "@/components/settings/SponsorRow";
 import { Separator } from "@/components/ui/separator";
 import { copy } from "@/i18n";
 import { SETTINGS_GROUPS, settingsCategory, settingsHref, shownCategory } from "@/lib/settingsCategory";
@@ -37,6 +39,7 @@ const ICONS = {
 
 /**
  * 设置（DESIGN.md「设置页」）：一级是九类的列表，分四组、组间一条分隔线；二级是一类的页面（`/settings/<类别>`），没有三级。
+ * 部署者开着赞赏（GLOSSARY.md「赞赏」）时，最后一组「关于」上面多一行「赞赏」，不是一类、没有二级，点了放大收款码。
  * - 电脑：导航栏右边第二栏 320px 的一级列表，顶上「设置」大标题，当前那一类铺中性底色、不带 ›（网址就是这一类时才标 `aria-current`）；右栏是这一类的二级页面。
  *   只打开 `/settings` 时右栏是档案，档案是当前项。
  * - 手机：`/settings` 只露一级列表，每行末尾一个 ›；`/settings/<类别>` 只露二级页面，页首返回键回到一级。
@@ -53,6 +56,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
 
 function SettingsLevels({ children }: { children: ReactNode }) {
   const { summaries } = useSettingsValues();
+  const sponsor = useDirectory().account?.sponsor_version ?? null;
   const pathname = usePathname();
   const named = settingsCategory(pathname);
   const isFirstLevel = named === null;
@@ -76,16 +80,23 @@ function SettingsLevels({ children }: { children: ReactNode }) {
               {i > 0 && <Separator className="my-1" />}
               <ul>
                 {group.map((category) => (
-                  <li key={category}>
-                    <SettingsRow
-                      href={settingsHref(category)}
-                      label={t.categories[category]}
-                      summary={summaries[category]}
-                      Icon={ICONS[category]}
-                      isCurrent={category === current}
-                      isCurrentPage={category === named}
-                    />
-                  </li>
+                  <Fragment key={category}>
+                    {category === "about" && sponsor !== null && (
+                      <li>
+                        <SponsorRow version={sponsor} />
+                      </li>
+                    )}
+                    <li>
+                      <SettingsRow
+                        href={settingsHref(category)}
+                        label={t.categories[category]}
+                        summary={summaries[category]}
+                        Icon={ICONS[category]}
+                        isCurrent={category === current}
+                        isCurrentPage={category === named}
+                      />
+                    </li>
+                  </Fragment>
                 ))}
               </ul>
             </Fragment>
