@@ -85,15 +85,25 @@ judge model not asked.
 
 She learns of the conversation's events (GLOSSARY.md「对话事件」) from a line of narration
 before the user's words that came next, or before what the user is saying now; it leaves
-her prompt with those words. Until she has replied after a gift, she is also told to respond
-to it, once, however many came. Retrieval, memory and the judge model read only the messages.
+her prompt with those words. Until she has replied or reached out after a gift, she is also
+told to respond to it, once, however many came. Retrieval, memory and the judge model never
+read the events.
+
+She can also say something first, the user not talking to her (`reach_out`, GLOSSARY.md
+「搭话」): not a turn (ADR-0026), but asked for as one is, on whichever model it is given, her
+prompt laid out the same. From then on her prompt tells of it as of an event, by the time it
+was where the producer is, followed by her words as her replies are written: so it goes with
+the turn after it, and the roles keep the order every protocol takes. Retrieval, memory and
+the judge model read those the user answers, after the last turn, as her latest words.
 """
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Literal, ParamSpec, TypeVar
 
 from eidolon.affinity import (
@@ -115,8 +125,8 @@ from eidolon.clock import Clock
 from eidolon.config import FishAudioModel, ImageSettings
 from eidolon.gift_catalog import Gift
 from eidolon.judge import JudgeError
-from eidolon.llm import ChatMessage, Reasoning, Tool, ToolCall, TurnLLMs
-from eidolon.memory import Memories
+from eidolon.llm import ChatLLM, ChatMessage, Reasoning, Tool, ToolCall, TurnLLMs
+from eidolon.memory import Memories, last_turn_query
 from eidolon.own_keys import OwnKeyFailed
 from eidolon.photos import CANNOT_SEND, NOT_RECEIVED, Eligibility, Photos, photo_turn
 from eidolon.producer import effective_timezone, local_date, now_prompt, producer_prompt
@@ -138,6 +148,7 @@ from eidolon.store import (
     Message,
     NewPhoto,
     Photo,
+    ReachOut,
     Recorded,
     Store,
     Typed,
@@ -392,19 +403,40 @@ def _narration(event: ConversationEvent, gift_catalog: Mapping[str, Gift]) -> st
     return f"（制作人送给你一份{gift_catalog[event.gift_id].name}。{liked}）"
 
 
+def _reached_out(reach_out: ReachOut, timezone: str) -> str:
+    """What she is told of her `reach_out`, the producer in `timezone`: when, then her words
+    as her replies are written in her prompt."""
+    at = datetime.fromisoformat(reach_out.created_at).astimezone(ZoneInfo(timezone))
+    said = format_reply(reach_out.segments)
+    return f"（{at.month}月{at.day}日 {at:%H:%M}，你先给制作人发了：）{said}"
+
+
+def _narration_line(
+    entry: ConversationEvent | ReachOut, gift_catalog: Mapping[str, Gift], timezone: str
+) -> str:
+    """The line of narration telling her of `entry`, the producer in `timezone`."""
+    if isinstance(entry, ReachOut):
+        return f"{_reached_out(entry, timezone)}\n"
+    return f"{_narration(entry, gift_catalog)}\n"
+
+
 def narrations(
-    record: list[Recorded], gift_catalog: Mapping[str, Gift]
+    record: Sequence[Recorded], gift_catalog: Mapping[str, Gift], timezone: str
 ) -> dict[int | None, str]:
-    """The narration of the events in `record`, by the id of the user message each comes
-    before, None for those after them all: one line for each event, then, if she has not
-    replied since a gift, `RESPOND_TO_GIFTS`."""
+    """The narration of the events and reach-outs in `record`, by the id of the user message
+    each comes before, None for those after them all: one line for each, then, if she has
+    neither replied nor reached out since a gift, `RESPOND_TO_GIFTS`. The producer is in
+    `timezone`."""
     lines: list[str] = []
     told: dict[int | None, str] = {}
     unanswered = False
     for entry in record:
-        if isinstance(entry, ConversationEvent):
-            lines.append(f"{_narration(entry, gift_catalog)}\n")
-            unanswered = unanswered or entry.kind == "gift"
+        if not isinstance(entry, Message):
+            lines.append(_narration_line(entry, gift_catalog, timezone))
+            if isinstance(entry, ReachOut):
+                unanswered = False  # reaching out, she has responded to the gifts before
+            else:
+                unanswered = unanswered or entry.kind == "gift"
         elif entry.role == "character":
             unanswered = False
         elif lines:
@@ -414,6 +446,49 @@ def narrations(
     if lines:
         told[None] = "".join(lines)
     return told
+
+
+REACH_OUT_RULES = """# 先开口
+制作人这会儿没在和你说话，你想先给他发几句。
+- 由头你自己挑：先接着你们最近聊过的事，或者他最近的近况；其次才是现在的时间、他的生日。
+- 不要只发一句空的问候，比如「早安」「在吗」「想你了」，要有具体想说的事。
+- 写一到两段。
+- 别和你前几次先开口时用一样的开头、一样的由头。
+- 说到你自己那边，只说练习、拍摄、在事务所这类平常的事，或者世界设定里有日期的 live 和新歌；不要编具体的剧情，也不要说别的偶像做了什么。
+- 不发照片，也不说要给他发照片、要给他打电话。
+- 让他好接话，但不必用问句结尾。"""
+"""How she is to reach out (GLOSSARY.md「搭话」), told her last in what changes from turn to turn,
+where what retrieval finds would be."""
+
+WANTS_TO_REACH_OUT = "（制作人这会儿没在和你说话。你想先给他发几句。）"
+"""Where the user's words would be as she reaches out, after the events since the last turn:
+so every protocol takes the prompt, ending with the user, as narration does."""
+
+
+def _since_last_turn(
+    record: Sequence[Recorded], gift_catalog: Mapping[str, Gift], timezone: str
+) -> str:
+    """The narration of the events and reach-outs after the last turn, one line each, the
+    producer in `timezone`."""
+    lines: list[str] = []
+    for entry in record:
+        if isinstance(entry, Message):
+            lines = []
+        else:
+            lines.append(_narration_line(entry, gift_catalog, timezone))
+    return "".join(lines)
+
+
+def _answering(record: Sequence[Recorded]) -> list[Message]:
+    """Her reach-outs after the last turn, which the user now answers, as those reading only
+    the messages read them: as her replies, the latest last."""
+    said: list[Message] = []
+    for entry in record:
+        if isinstance(entry, Message):
+            said = []
+        elif isinstance(entry, ReachOut):
+            said.append(entry.as_reply())
+    return said
 
 
 class ConversationEngine:
@@ -469,7 +544,7 @@ class ConversationEngine:
         in_call: InCall | None = None,
         voiced_by: FishAudioModel | None = None,
         own_image: ImageSettings | None = None,
-    ) -> AsyncIterator[TurnEvent]:
+    ) -> AsyncGenerator[TurnEvent, None]:
         """Take one turn on `llms`, `in_call` if it is taken in one, its reply voiced with
         `voiced_by` (None for a text turn's), which has her write delivery cues as it reads
         them, her photo on the user's `own_image` generation if it brings it. `device_timezone`
@@ -482,11 +557,15 @@ class ConversationEngine:
             yield TurnRejected(TOO_LONG if text else BLANK)
             return
         photo = _Photo(own_image)
+        # A text turn is under way, so that she does not reach out meanwhile; a call is, as
+        # long as it lasts.
+        taking = self._store.taking_turn(conversation.id) if in_call is None else nullcontext()
         try:
-            async for event in self._reply(
-                conversation, text, llms, device_timezone, stop, in_call, voiced_by, photo
-            ):
-                yield event
+            with taking:
+                async for event in self._reply(
+                    conversation, text, llms, device_timezone, stop, in_call, voiced_by, photo
+                ):
+                    yield event
         except OwnKeyFailed as e:  # theirs to fix, so they are told what went wrong
             log.warning("turn failed on the user's own key in conversation %s: %s",
                         conversation.id, e.service)
@@ -517,9 +596,14 @@ class ConversationEngine:
         # Said after reading the record, so an event this turn's prompt does not tell of
         # comes before the turn, and is told of with its words from the next turn on.
         said_at = timestamp()
+        last_contact = (
+            self._store.last_contact(conversation.user_id, conversation.character_id)
+            if in_call is None else None  # in a call, she knows they are talking
+        )
         messages = [entry for entry in record if isinstance(entry, Message)]
         turns = self._history_turns()
-        history = latest_turns(messages, turns)  # what all but the chat model read
+        # What all but the chat model read: her reach-outs the user answers her latest words.
+        history = [*latest_turns(messages, turns), *_answering(record)]
         affinity = self._affinity(conversation)
         judging = affinity is not None and not affinity.cooling
         eligibility = self._photo_eligibility(conversation, character, photo.own)
@@ -578,14 +662,19 @@ class ConversationEngine:
             photo_turn(asked_photo, affinity and affinity.tier, eligibility)
             if eligibility is not None else None
         )
+        about_photo = CANNOT_SEND if eligibility is None else photo_asked and photo_asked.prompt
         prompt = self._prompt(
             character, world_prompt, producer_prompt(profile),
-            chat_history(messages, turns), narrations(record, self._gift_catalog),
-            now_prompt(
-                profile, now, timezone, in_call=in_call is not None, affinity_lines=affinity_lines
-            ),
-            retrieved, text, voiced_by,
-            CANNOT_SEND if eligibility is None else photo_asked and photo_asked.prompt,
+            chat_history(messages, turns), narrations(record, self._gift_catalog, timezone),
+            [
+                now_prompt(
+                    profile, now, timezone, "in_call" if in_call is not None else "typing",
+                    affinity_lines, last_contact,
+                ),
+                *([about_photo] if about_photo else []),
+            ],
+            [p for p in (retrieved.memories_prompt, retrieved.prompt) if p],
+            text, voiced_by,
         )
 
         # Offered on every turn, so that what goes before the history (the tools, with
@@ -683,6 +772,59 @@ class ConversationEngine:
             yield PhotosUsedUp(photo_asked.used_up_until.isoformat())
         yield TurnDone(reply.without_cues(), affinity and affinity.shown(), ended and ended.shown())
 
+    async def reach_out(self, conversation: Conversation, llm: ChatLLM) -> list[Segment]:
+        """What she says first in `conversation`, the user not talking to her (GLOSSARY.md
+        「搭话」), on `llm`: its segments, as the model wrote them, delivery cues and all. Her
+        prompt is laid out as a text turn's (ADR-0020), and opens as the next one's will, but
+        for what changes from turn to turn: she is told what time it is and that they are not
+        talking and when they last were, how she speaks in her tier, the memories she reaches
+        out with (`Memories.for_reaching_out`), and how to reach out; then, where the user's
+        words would be, the events and her reach-outs since the last turn and that she wants
+        to say something first. Nothing else is retrieved, no tool offered, nothing judged.
+        Raises EmptyReply if the model says nothing she could say, and whatever the model
+        raises."""
+        character = self._characters[conversation.character_id]
+        record = self._store.record(conversation.id)
+        messages = [entry for entry in record if isinstance(entry, Message)]
+        profile = self._store.get_profile(conversation.user_id)
+        timezone = effective_timezone(profile, None)
+        now = self._clock()
+        affinity = self._affinity(conversation)
+        world_prompt = (
+            self._world.prompt(character.name, local_date(now, timezone)) if self._world else None
+        )
+        told = narrations(record, self._gift_catalog, timezone)
+        told[None] = _since_last_turn(record, self._gift_catalog, timezone)
+        memories = await self._memory.for_reaching_out(
+            conversation, timezone, last_turn_query(messages)
+        )
+        prompt = self._prompt(
+            character, world_prompt, producer_prompt(profile),
+            chat_history(messages, self._history_turns()), told,
+            [
+                now_prompt(
+                    profile, now, timezone, "apart",
+                    affinity_prompt(affinity.tier, None) if affinity is not None else [],
+                    self._store.last_contact(conversation.user_id, conversation.character_id),
+                ),
+            ],
+            [*([memories] if memories else []), REACH_OUT_RULES],
+            WANTS_TO_REACH_OUT, None,
+        )
+        parser = ReplyParser()
+        stream = llm.stream(prompt)
+        try:
+            async for item in stream:
+                if isinstance(item, str):
+                    parser.feed(item)  # a photo tag is dropped: she sends none
+        finally:
+            if (close := getattr(stream, "aclose", None)) is not None:
+                await close()
+        parser.finish()
+        if not parser.complete:
+            raise EmptyReply("对话模型没有返回任何内容")
+        return parser.complete
+
     def _photo_eligibility(
         self,
         conversation: Conversation,
@@ -768,12 +910,14 @@ class ConversationEngine:
         about_producer: str,
         history: list[Message],
         narration: dict[int | None, str],
-        about_now: str,
-        retrieved: Retrieved,
+        about_turn: list[str],
+        closing: list[str],
         text: str,
         voiced_by: FishAudioModel | None,
-        about_photo: str | None,
     ) -> list[ChatMessage]:
+        """The prompt (ADR-0020): what changes from turn to turn tells first `about_turn`, then,
+        should any photo of the history not have been sent, what that means, then `closing`:
+        what retrieval found, or how she is to reach out."""
         # What every user's turns with her that day open with, apart, for a service to cache.
         shared = [character.sheet]
         if world_prompt:
@@ -795,15 +939,10 @@ class ConversationEngine:
                 )))
         if history:  # what the next turn opens with too, for a service to cache
             prompt[-1] = replace(prompt[-1], cache_breakpoint=True)
-        context = [about_now]
-        if about_photo:
-            context.append(about_photo)
+        context = [*about_turn]
         if any(m.photo_failed for m in history):
             context.append(NOT_RECEIVED)
-        if retrieved.memories_prompt:
-            context.append(retrieved.memories_prompt)
-        if retrieved.prompt:
-            context.append(retrieved.prompt)
+        context += closing
         prompt.append(ChatMessage("system", "\n\n".join(context)))
         prompt.append(ChatMessage("user", f"{narration.get(None, '')}{text}"))
         return prompt

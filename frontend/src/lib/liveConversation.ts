@@ -9,6 +9,7 @@ import {
   ApiError,
   type CallEvent,
   type Conversation,
+  type LatestConversation,
   type Photo,
   type PhotoStatus,
   type Recorded,
@@ -254,6 +255,7 @@ export type Ports = {
   /** Her conversations, newest first. */
   listConversations: (characterId: string) => Promise<Conversation[]>;
   createConversation: (characterId: string) => Promise<Conversation>;
+  /** A conversation's record; reading it has the user see her reach-outs in it. */
   listMessages: (conversationId: string) => Promise<Recorded[]>;
   /** The conversation list's line for her has changed: a turn was recorded, or a
    * conversation was started. Told even after the page is left. */
@@ -300,6 +302,11 @@ export class LiveConversation {
   /** Asks after the photos in the log still being generated when next due to; null while it
    * is not due to, none being generated or the asking under way. */
   private polling: ReturnType<typeof setTimeout> | null = null;
+  /** The list has shown something newer in the conversation open than the page has, which is
+   * read again once nothing is under way (see `listed`). */
+  private stale = false;
+  /** The conversation open is being read again. */
+  private rereading = false;
 
   /** Opens her newest conversation, or starts one if she has none. `characterId` says whose
    * conversation it is, for the page and the conversation list beside it. */
@@ -361,6 +368,28 @@ export class LiveConversation {
     } catch (e) {
       this.update({ conversation: { status: "open", id: current }, failure: toFailure(e) });
     }
+  }
+
+  /**
+   * The conversation list was fetched again, her line in it `line`: if it shows the conversation
+   * open ending in something newer than the page has (her reach-out, most likely), its record is
+   * read again, and so seen. Not over a text turn or a call: once they are over, so as not to
+   * sweep away the one under way. Not once the page is left.
+   */
+  listed(line: LatestConversation): void {
+    const last = line.last_message;
+    if (last === null || line.conversation_id !== this.openConversationId()) return;
+    const shown = this.state.log.entries.at(-1);
+    if (shown && Date.parse(last.created_at) <= Date.parse(shown.at)) return;
+    this.stale = true;
+    this.rereadIfFree();
+  }
+
+  /** Her current conversation is off the screen: her page is left, the call going on in the shell,
+   * or shows one of her past conversations instead. What the list showed newer is not read once
+   * nothing is under way, as the user would not see it. */
+  offScreen(): void {
+    this.stale = false;
   }
 
   setDraft(draft: string): void {
@@ -774,6 +803,25 @@ export class LiveConversation {
     );
   }
 
+  /** Reads the conversation open again, if the list showed something newer in it and nothing is
+   * under way. A reading that comes back once a turn or a call has begun is not shown: it is read
+   * again once they are over. One that fails is left to the list's next fetch. */
+  private rereadIfFree(): void {
+    const id = this.openConversationId();
+    if (!this.stale || this.rereading || this.disposed || id === null || !isFree(this.state)) return;
+    this.stale = false;
+    this.rereading = true;
+    this.ports.listMessages(id).then(
+      (messages) => {
+        this.rereading = false;
+        if (this.openConversationId() !== id) return;
+        if (isFree(this.state)) this.apply({ type: "loaded", messages });
+        else this.stale = true;
+      },
+      () => (this.rereading = false),
+    );
+  }
+
   /** The conversation to send to and call in, or null if none is open. */
   private openConversationId(): string | null {
     return openIdOf(this.state.conversation);
@@ -825,6 +873,7 @@ export class LiveConversation {
     this.published = toSnapshot(this.state);
     for (const listener of this.listeners) listener();
     if (change.log) this.watchPhotos();
+    this.rereadIfFree();
   }
 
   /** Has the photos in the log still being generated asked after every `PHOTO_POLL_MS`, until

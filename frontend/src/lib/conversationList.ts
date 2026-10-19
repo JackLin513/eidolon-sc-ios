@@ -27,8 +27,9 @@ export function previewOfOne(conversation: Pick<LatestConversation, "created_at"
   return { from: "her", text: last.zh || last.ja || "", at: last.created_at, photo: last.photo === true };
 }
 
-/** 列表里的一行：哪位角色，她是不是置顶的、是不是隐藏的（行菜单和图钉据此显示）。 */
-export type ListRow<C> = { character: C; isPinned: boolean; isHidden: boolean };
+/** 列表里的一行：哪位角色，她是不是置顶的、是不是隐藏的（行菜单和图钉据此显示），有没有没看过的搭话
+ * （GLOSSARY.md「没看过的搭话」，时间前面的圆点据此显示）。 */
+export type ListRow<C> = { character: C; isPinned: boolean; isHidden: boolean; isUnseen: boolean };
 
 export type ArrangeOptions = {
   /** 这台设备上的隐藏和置顶。 */
@@ -37,6 +38,8 @@ export type ArrangeOptions = {
   query?: string;
   /** 始终留下的角色：当前打开的那位、正在通话的那位，隐藏了也不去掉。 */
   keep?: readonly string[];
+  /** 她的当前对话正显示在对话页上的那位：搭话在那一页上直接出现、算看过，她那一行不标。 */
+  onScreen?: string | null;
 };
 
 /**
@@ -44,12 +47,13 @@ export type ArrangeOptions = {
  * - 没有搜索时去掉隐藏的人，`keep` 里的不去掉；有搜索时在所有人里搜（`matchesSearch`），隐藏的照样出现。
  * - 置顶的排在前面；置顶的之间、其余的之间都按最近往来排，往来的时间就是这一行显示的时间（`previewOf`）；
  *   时间相同的、从没聊过的（排在最后）都保持 `characters` 原来的顺序，即原作的偶像顺序。
+ * - 她最新的对话里有没看过的搭话的那一行标出来（`isUnseen`），当前对话正显示着的那位（`onScreen`）除外。
  * `hiddenCount` 是这台设备上隐藏的人数，只数 `characters` 里还有的。
  */
 export function arrange<C extends Searchable & { id: string }>(
   characters: C[],
   latest: Record<string, LatestConversation>,
-  { preferences = NO_PREFERENCES, query = "", keep = [] }: ArrangeOptions = {},
+  { preferences = NO_PREFERENCES, query = "", keep = [], onScreen = null }: ArrangeOptions = {},
 ): { rows: ListRow<C>[]; hiddenCount: number } {
   const hidden = new Set(preferences.hidden);
   const pinned = new Set(preferences.pinned);
@@ -61,10 +65,27 @@ export function arrange<C extends Searchable & { id: string }>(
   // sort 是稳定的：时间相同的保持原来的先后。
   const rows = characters
     .filter((c) => (isSearching ? matchesSearch(c, query) : !hidden.has(c.id) || keep.includes(c.id)))
-    .map((c) => ({ row: { character: c, isPinned: pinned.has(c.id), isHidden: hidden.has(c.id) }, at: lastTalked(c) }))
+    .map((c) => ({
+      row: {
+        character: c,
+        isPinned: pinned.has(c.id),
+        isHidden: hidden.has(c.id),
+        isUnseen: c.id !== onScreen && latest[c.id]?.unseen_reach_out === true,
+      },
+      at: lastTalked(c),
+    }))
     .sort((a, b) => Number(b.row.isPinned) - Number(a.row.isPinned) || (a.at === b.at ? 0 : b.at > a.at ? 1 : -1))
     .map(({ row }) => row);
   return { rows, hiddenCount: characters.filter((c) => hidden.has(c.id)).length };
+}
+
+/** 导航「对话」上的点：没有搜索时的列表里，有一行有没看过的搭话（`arrange` 的 `isUnseen`）。隐藏了的不在列表里，不算。 */
+export function hasUnseen<C extends Searchable & { id: string }>(
+  characters: C[],
+  latest: Record<string, LatestConversation>,
+  { preferences, onScreen }: Pick<ArrangeOptions, "preferences" | "onScreen"> = {},
+): boolean {
+  return arrange(characters, latest, { preferences, onScreen }).rows.some((row) => row.isUnseen);
 }
 
 /** 筛选面板的一组：组合名（null 是最后的「其他」），和组里的人。 */

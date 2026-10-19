@@ -1,5 +1,6 @@
 """The producer profile and what it tells the character about the user, and the prompt
-section about now: the time where the user is, and whether they are typing or in a call.
+section about now: the time where the user is, and whether they are typing, in a call, or
+not talking to her at all, as when she reaches out (GLOSSARY.md「搭话」).
 
 A profile field left unset keeps its default: the character sheet decides how
 the character addresses the producer, the producer is the man of the original
@@ -14,12 +15,14 @@ recalls stay as they happened.
 import calendar
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from functools import cache
 from typing import Literal
 from zoneinfo import ZoneInfo, available_timezones
 
 Gender = Literal["male", "female"]
+Talking = Literal["typing", "in_call", "apart"]
+"""How the user and she are talking now: typing, in a call, or not at all."""
 
 DEFAULT_TIMEZONE = "Asia/Shanghai"
 MAX_FORM_OF_ADDRESS_LENGTH = 20
@@ -117,29 +120,54 @@ def producer_prompt(profile: ProducerProfile) -> str:
 
 _TYPING = "制作人正在用文字和你聊天，你们没有在打电话；不想聊的时候就说不想聊，不要说挂电话或挂断。"
 _IN_A_CALL = "制作人正在和你打电话。"
+_APART = "你们这会儿没在说话。"
+_TALKING: dict[Talking, str] = {"typing": _TYPING, "in_call": _IN_A_CALL, "apart": _APART}
+_BIRTHDAY = (
+    "今天是制作人的生日。请在合适的时候用你自己的方式祝福一次：先回应制作人说的话，不要每句都提。"
+)
+_BIRTHDAY_APART = "今天是制作人的生日。今天还没祝福过的话，用你自己的方式祝福一次。"
+
+
+def _how_long(gap: timedelta) -> str:
+    """`gap` as she is told it: in minutes under an hour, in hours under two days, else days."""
+    minutes = int(gap.total_seconds() // 60)
+    if minutes < 1:
+        return "不到 1 分钟"
+    if minutes < 60:
+        return f"{minutes} 分钟"
+    if minutes < 48 * 60:
+        return f"{minutes // 60} 小时"
+    return f"{gap.days} 天"
 
 
 def now_prompt(
     profile: ProducerProfile,
     now: datetime,
     timezone: str,
-    in_call: bool,
+    talking: Talking,
     affinity_lines: Sequence[str] = (),
+    last_contact: datetime | None = None,
 ) -> str:
-    """The prompt section about now: the time where the user is, whether they are typing or
-    `in_call` with the character, and whether it is their birthday; then `affinity_lines`,
-    how the character feels toward them now (`affinity.affinity_prompt`)."""
-    local = now.astimezone(ZoneInfo(timezone))
+    """The prompt section about now: the time where the user is, how they are `talking` with
+    the character, when they were `last_contact` in touch, if ever, and how long ago, and
+    whether it is their birthday; then `affinity_lines`, how the character feels toward them
+    now (`affinity.affinity_prompt`)."""
+    zone = ZoneInfo(timezone)
+    local = now.astimezone(zone)
     lines = [
         "# 此刻",
         f"现在是 {local.year}年{local.month}月{local.day}日"
         f"（星期{_WEEKDAYS[local.weekday()]}）{local:%H:%M}（制作人所在时区 {timezone}）。",
-        _IN_A_CALL if in_call else _TYPING,
+        _TALKING[talking],
     ]
-    if profile.birthday and is_birthday(profile.birthday, local.date()):
+    if last_contact is not None:
+        then = last_contact.astimezone(zone)
+        year = f"{then.year}年" if then.year != local.year else ""
         lines.append(
-            "今天是制作人的生日。请在合适的时候用你自己的方式祝福一次："
-            "先回应制作人说的话，不要每句都提。"
+            f"上次和制作人说话是 {year}{then.month}月{then.day}日 {then:%H:%M}，"
+            f"隔了 {_how_long(now - last_contact)}。"
         )
+    if profile.birthday and is_birthday(profile.birthday, local.date()):
+        lines.append(_BIRTHDAY_APART if talking == "apart" else _BIRTHDAY)
     lines += affinity_lines
     return "\n".join(lines)

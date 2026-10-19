@@ -110,7 +110,7 @@ export function ConversationView({
   character: Character;
   onBack?: () => void;
 }) {
-  const { open, close, go, guard, account } = useDirectory();
+  const { open, close, go, guard, account, showPast } = useDirectory();
   const isFullScreen = !useWide();
   const isReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)", false);
   const [live, setLive] = useState<LiveConversation | null>(null);
@@ -133,6 +133,12 @@ export function ConversationView({
     setLive(conversation);
     return () => close(conversation);
   }, [character.id, userId, open, close]);
+
+  // 看历史对话时她的当前对话不在屏幕上：外壳照常标她没看过的搭话，也不替这一页重读。
+  const isPastShown = viewing !== null;
+  useEffect(() => {
+    showPast(isPastShown);
+  }, [isPastShown, showPast]);
 
   // 收起时到的照片就在这页的对话记录里：外壳顶上通话条的「新照片」到这里就算看过了。
   useEffect(() => {

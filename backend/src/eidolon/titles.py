@@ -5,9 +5,9 @@ conversations.
 Once a conversation's `TITLED_AT`th turn is recorded, typed or in a call, the background
 model that turn began with (`TurnLLMs.background`: the deployer's, or the user's own)
 names it, in the background like writing down memories, so it never holds up the reply;
-but apart from memory, which may be off. It reads the record up to then, events and all, her
-name, and nothing else: no memories, nor who she is. What it answers is cut down to a
-title (`title_from`). It is named once: a conversation the model failed to name, or named
+but apart from memory, which may be off. It reads the record up to then, events and all but
+her reach-outs, her name, and nothing else: no memories, nor who she is. What it answers is
+cut down to a title (`title_from`). It is named once: a conversation the model failed to name, or named
 with nothing, is never named again, and the user is not told. The log says what kind of
 failure it was, or how long the answer was, never what was asked or answered, as that is
 about the user; nor the title.
@@ -25,7 +25,7 @@ from eidolon.activity import detached
 from eidolon.characters import Character
 from eidolon.gift_catalog import Gift
 from eidolon.llm import ChatLLM, ChatMessage
-from eidolon.store import Conversation, ConversationEvent, Message, Recorded, Store
+from eidolon.store import Conversation, ConversationEvent, Message, ReachOut, Store
 
 log = logging.getLogger(__name__)
 
@@ -112,7 +112,11 @@ class Titles:
             current = await asyncio.to_thread(self._store.get_conversation, conversation.id)
             if current is None or current.title is not None:
                 return
-            record = await asyncio.to_thread(self._store.record, conversation.id)
+            # Her reach-outs are no part of what the conversation is about.
+            record = [
+                entry for entry in await asyncio.to_thread(self._store.record, conversation.id)
+                if not isinstance(entry, ReachOut)
+            ]
             character = self._characters[conversation.character_id]
             prompt = _naming_prompt(character, _first_turns(record), self._gift_catalog)
             answer = "".join([chunk async for chunk in llm.stream(prompt) if isinstance(chunk, str)])
@@ -139,7 +143,9 @@ def title_from(answer: str) -> str | None:
     return title or None
 
 
-def _first_turns(record: Sequence[Recorded]) -> list[Recorded]:
+def _first_turns(
+    record: Sequence[Message | ConversationEvent],
+) -> list[Message | ConversationEvent]:
     """The record up to its `TITLED_AT`th turn, with what came after it before the next."""
     turns = 0
     for i, entry in enumerate(record):
@@ -151,7 +157,9 @@ def _first_turns(record: Sequence[Recorded]) -> list[Recorded]:
 
 
 def _naming_prompt(
-    character: Character, record: Sequence[Recorded], gift_catalog: Mapping[str, Gift]
+    character: Character,
+    record: Sequence[Message | ConversationEvent],
+    gift_catalog: Mapping[str, Gift],
 ) -> list[ChatMessage]:
     lines = [f"# 制作人和{character.name}的对话"]
     for entry in record:

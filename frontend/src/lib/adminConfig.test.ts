@@ -439,6 +439,23 @@ describe("image", () => {
   });
 });
 
+describe("reach-outs", () => {
+  const spec = ITEM_SPECS.reach_outs;
+
+  it("send the switch and how many a day, a whole number from 1 up", () => {
+    const form = formOf(spec, { enabled: false, per_day: 3 });
+    expect(form).toEqual({ enabled: "false", per_day: "3" });
+    expect(changeOf(spec, { enabled: "true", per_day: " 12 " }, true)).toEqual({
+      change: { enabled: true, per_day: 12 },
+    });
+    for (const bad of ["0", "", "1.5", "-2"]) {
+      expect(changeOf(spec, { ...form, per_day: bad }, true), bad).toEqual({
+        problems: [{ field: "per_day", reason: "positive" }],
+      });
+    }
+  });
+});
+
 describe("tabs", () => {
   it("put every item under exactly one tab", () => {
     const placed = CONFIG_TABS.flatMap((tab) => TAB_ITEMS[tab]);

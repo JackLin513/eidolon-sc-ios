@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { LatestConversation } from "@/lib/api";
-import { arrange, dayOf, previewOf, unitsOf } from "@/lib/conversationList";
+import { arrange, dayOf, hasUnseen, previewOf, unitsOf } from "@/lib/conversationList";
 
 function latest(last: LatestConversation["last_message"]): LatestConversation {
   return {
@@ -9,6 +9,7 @@ function latest(last: LatestConversation["last_message"]): LatestConversation {
     conversation_id: "c1",
     created_at: "2026-09-28T01:00:00Z",
     last_message: last,
+    unseen_reach_out: false,
   };
 }
 
@@ -99,6 +100,7 @@ describe("arrange", () => {
       conversation_id: `c-${id}`,
       created_at: opened,
       last_message: lastAt === null ? null : { role: "user", text: "早", ja: null, zh: null, created_at: lastAt },
+      unseen_reach_out: false,
     };
   }
 
@@ -164,7 +166,10 @@ describe("arrange 加上隐藏、置顶和搜索", () => {
       ["meguru", "2026-10-03T00:00:00Z"],
       ["kogane", "2026-10-02T00:00:00Z"],
       ["mano", "2026-10-01T00:00:00Z"],
-    ].map(([id, at]) => [id, { character_id: id, conversation_id: `c-${id}`, created_at: at, last_message: null }]),
+    ].map(([id, at]) => [
+      id,
+      { character_id: id, conversation_id: `c-${id}`, created_at: at, last_message: null, unseen_reach_out: false },
+    ]),
   );
 
   function arranged(options: Parameters<typeof arrange>[2]) {
@@ -230,6 +235,50 @@ describe("arrange 加上隐藏、置顶和搜索", () => {
     const everyone = characters.map((c) => c.id);
 
     expect(arranged({ preferences: { hidden: everyone, pinned: [] } })).toEqual({ rows: [], hiddenCount: 5 });
+  });
+});
+
+describe("没看过的搭话", () => {
+  const characters = ["mano", "hiori", "meguru", "kogane"].map((id) => idol(id));
+
+  /** 每位最新的对话；`unseen` 里的那几位有没看过的搭话（她刚搭的话就是最后一句）。 */
+  function withUnseen(...unseen: string[]): Record<string, LatestConversation> {
+    return Object.fromEntries(
+      ["mano", "hiori", "meguru", "gone"].map((id) => [
+        id,
+        {
+          character_id: id,
+          conversation_id: `c-${id}`,
+          created_at: "2026-10-01T00:00:00Z",
+          last_message: {
+            role: "character" as const, text: null, ja: "ねえ", zh: "呐", created_at: "2026-10-02T00:00:00Z",
+            ...(unseen.includes(id) && { reach_out: true as const }),
+          },
+          unseen_reach_out: unseen.includes(id),
+        },
+      ]),
+    );
+  }
+
+  const marked = (latest: Record<string, LatestConversation>, options: Parameters<typeof arrange>[2] = {}) =>
+    arrange(characters, latest, options).rows.filter((row) => row.isUnseen).map((row) => row.character.id);
+
+  it("有没看过的搭话的那几行标出来，别的行不标", () => {
+    expect(marked(withUnseen("hiori", "meguru"))).toEqual(["hiori", "meguru"]);
+    expect(marked(withUnseen())).toEqual([]);
+  });
+
+  it("当前对话正显示着的那位不标", () => {
+    expect(marked(withUnseen("hiori", "meguru"), { onScreen: "hiori" })).toEqual(["meguru"]);
+  });
+
+  it("导航上的点：只要列表里有一行有没看过的搭话；当前对话正显示着的、在这台设备上隐藏了的、配置里已经没有的不算", () => {
+    const hidden = { preferences: { hidden: ["hiori"], pinned: [] } };
+
+    expect(hasUnseen(characters, withUnseen("meguru")), "有一行").toBe(true);
+    expect(hasUnseen(characters, withUnseen()), "一行都没有").toBe(false);
+    expect(hasUnseen(characters, withUnseen("meguru"), { onScreen: "meguru" }), "只有正显示着的那位").toBe(false);
+    expect(hasUnseen(characters, withUnseen("hiori", "gone"), hidden), "只有隐藏的和配置里没有的").toBe(false);
   });
 });
 

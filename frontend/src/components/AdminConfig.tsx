@@ -546,7 +546,7 @@ function AvailableItem({
                     />
                   );
                 }
-                if (field.kind === "count") {
+                if (field.kind === "count" || field.kind === "positive") {
                   const hint = fieldHint(name, field, keysEditable);
                   return (
                     <Field key={field.name} data-invalid={problem ? true : undefined}>
@@ -557,7 +557,7 @@ function AvailableItem({
                         value={form[field.name] === "" ? null : Number(form[field.name])}
                         onChange={(count) => set(field.name)(count === null ? "" : String(count))}
                         min={1}
-                        max={MAX_COUNT}
+                        max={field.kind === "count" ? MAX_COUNT : undefined}
                         isIntegerOnly
                         isInvalid={problem !== null}
                       />

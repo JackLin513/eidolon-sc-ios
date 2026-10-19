@@ -98,19 +98,21 @@ export type Conversation = {
 
 /** The last thing in a conversation as a list shows it, a message (without delivery cues),
  * marked `photo` when it is her reply with a photo she sent (not one being generated or not sent
- * after all), or a conversation event other than her ending it; null while it has none. */
+ * after all), or her reach-out, shown as her reply is, marked `reach_out`; or a conversation event
+ * other than her ending it; null while it has none. */
 export type LastMessage =
-  | (Pick<Message, "role" | "text" | "ja" | "zh" | "created_at"> & { photo?: true })
+  | (Pick<Message, "role" | "text" | "ja" | "zh" | "created_at"> & { photo?: true; reach_out?: true })
   | Pick<ConversationEvent, "type" | "kind" | "created_at" | "gift_name">
   | null;
 
-/** A character's newest conversation with the user and the last thing in it, for the
- * conversation list. */
+/** A character's newest conversation with the user, the last thing in it, and whether it has a
+ * reach-out the user has not seen (GLOSSARY.md「没看过的搭话」), for the conversation list. */
 export type LatestConversation = {
   character_id: string;
   conversation_id: string;
   created_at: string;
   last_message: LastMessage;
+  unseen_reach_out: boolean;
 };
 
 /** One of her conversations as the past conversations panel lists it; `title` is its conversation
@@ -169,8 +171,19 @@ export type ConversationEvent = {
   gift_name?: string;
 };
 
+/** What she said first in a conversation, the user not talking to her (GLOSSARY.md「搭话」): neither a
+ * turn nor an event, said as she replies, without delivery cues. */
+export type ReachOut = {
+  type: "reach_out";
+  id: number;
+  ja: string;
+  zh: string;
+  segments: Segment[];
+  created_at: string;
+};
+
 /** What a conversation's record holds, in order. */
-export type Recorded = Message | ConversationEvent;
+export type Recorded = Message | ConversationEvent | ReachOut;
 
 /** A turn's events: `user`, then `photo` if she sends one (its id, before her first words), any
  * `delta`s, then `photos-used-up` if the user asked for a photo with this hour's used up (when they
@@ -412,6 +425,8 @@ export type SignInMethod = { provider: Provider; display_name: string; email: st
  * `is_admin`: the user may enter the admin console (`/admin`).
  * `exempting_keys`: the services a call must bring the user's own keys for, all of them, to count
  * towards no limit (GLOSSARY.md「免限额密钥」), in the order of `OWN_SERVICES`; at least one.
+ * `reach_outs`: the user's own switch for reach-outs (GLOSSARY.md「搭话」); null where the deployer
+ * has them off.
  * `sponsor_version`: the version of the deployer's sponsor code (GLOSSARY.md「赞赏」), when it was
  * uploaded, for `sponsorImageUrl`; null when users are not shown it (switched off, or no code). */
 export type Account = {
@@ -420,6 +435,7 @@ export type Account = {
   sign_in_methods: SignInMethod[];
   is_admin: boolean;
   exempting_keys: OwnService[];
+  reach_outs: boolean | null;
   sponsor_version: string | null;
 };
 
@@ -432,6 +448,18 @@ export function sponsorImageUrl(version: string): string {
 /** The signed-in user; sends the browser to sign in, or to agree to the terms, first. */
 export async function getAccount(): Promise<Account> {
   return json(await api("/api/account"));
+}
+
+/** Turn the user's own switch for reach-outs on or off, for all the characters; refused where the
+ * deployer has them off. */
+export async function switchReachOuts(on: boolean): Promise<void> {
+  await expectNoContent(
+    await api("/api/account/reach-outs", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ on }),
+    }),
+  );
 }
 
 /** Stop signing in with the identity at `provider`; refused for the last one. */

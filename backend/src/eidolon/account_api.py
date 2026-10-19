@@ -22,7 +22,9 @@ from typing import Annotated, Any
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
-from pydantic import BaseModel, Field, Secret, StringConstraints, field_validator, model_validator
+from pydantic import (
+    BaseModel, Field, Secret, StrictBool, StringConstraints, field_validator, model_validator,
+)
 
 from eidolon.accounts import SignInRefused, is_admin
 from eidolon.activity import host
@@ -46,6 +48,7 @@ from eidolon.config import (
 from eidolon.identity import PROVIDER_NAMES, IdentityError
 from eidolon.own_keys import NO_PHOTOS, BroughtKeys, OwnKeyRejected, named_services
 from eidolon.price_catalog import describe_thinking
+from eidolon.reach_outs import ReachOutsOff
 from eidolon.store import LastSignInMethod
 from eidolon.sessions import (
     SESSION_COOKIE,
@@ -206,6 +209,12 @@ class OwnKeysInput(BaseModel):
         )
 
 
+class ReachOutSwitch(BaseModel):
+    """The user's own switch for reach-outs (GLOSSARY.md「搭话」)."""
+
+    on: StrictBool
+
+
 class Consent(BaseModel):
     """Agreeing to the privacy policy and terms of use, and saying they are 13 or older."""
 
@@ -332,8 +341,9 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
         """The signed-in user, by the id their browser keeps their own keys apart by, the
         identities they sign in with, whether they are an admin, who may enter the admin
         console, the exempting keys now (GLOSSARY.md「免限额密钥」), in a fixed order, and
-        the version of the sponsor code (GLOSSARY.md「赞赏」) while users are shown it, else
-        None."""
+        whether they have their own switch for reach-outs on (GLOSSARY.md「搭话」), None where
+        the deployer has reach-outs off, and the version of the sponsor code (GLOSSARY.md
+        「赞赏」) while users are shown it, else None."""
         return {
             "id": user_id,
             "name": store.get_user(user_id).name,
@@ -343,8 +353,18 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
             ],
             "is_admin": is_admin(store, settings, user_id),
             "exempting_keys": [s for s in SERVICES if s in backend.config.exempting_keys],
+            "reach_outs": backend.reach_outs.switch_of(user_id),
             "sponsor_version": backend.sponsor.state().version,
         }
+
+    @app.put("/api/account/reach-outs", status_code=204)
+    def switch_reach_outs(body: ReachOutSwitch, user_id: UserId) -> None:
+        """Turn the user's own switch for reach-outs on or off, for all the characters; 409
+        where the deployer has reach-outs off."""
+        try:
+            backend.reach_outs.switch(user_id, body.on)
+        except ReachOutsOff:
+            raise HTTPException(409, "搭话没有开放") from None
 
     @app.delete("/api/account/sign-in-methods/{provider}", status_code=204)
     def unlink(provider: str, user_id: UserId) -> None:

@@ -6,7 +6,8 @@ The configuration is in items, each a few fields saved and restored together: th
 and memory models, speech synthesis and recognition, image generation (`_Image`), the
 judge model and its thresholds,
 the reranker's thresholds, and the limits (per hour, per call, and the turns each prompt
-carries, with the exempting keys), whether affinity and gifts are on, and which of the
+carries, with the exempting keys), whether affinity and gifts are on, whether characters
+reach out to users and how often at most (GLOSSARY.md「搭话」), and which of the
 deployer's services and of users' own keys go through which proxy (GLOSSARY.md「网络代理」), and
 which services users are shown the status of, over how long (GLOSSARY.md「服务状态」). Overrides are
 kept in the database, one row per field, a key encrypted with a key derived from
@@ -62,6 +63,7 @@ from eidolon.characters import Character
 from eidolon.clock import Clock
 from eidolon.config import (
     CLOUDFLARE_JUDGE_MODELS,
+    DEFAULT_REACH_OUTS_PER_DAY,
     DEFAULT_BAILIAN_JUDGE_REGION,
     ChatModelSettings,
     DEFAULT_JEV_BASE_URL,
@@ -79,6 +81,7 @@ from eidolon.config import (
     STATUS_WINDOWS,
     ProxiedService,
     ProxySettings,
+    ReachOutSettings,
     Service,
     ServiceName,
     ServiceStatusSettings,
@@ -136,6 +139,7 @@ JUDGE_THRESHOLDS = "judge_thresholds"
 RERANK = "rerank"
 LIMITS = "limits"
 AFFINITY = "affinity"
+REACH_OUTS = "reach_outs"
 PROXY = "proxy"
 SERVICE_STATUS = "service_status"
 
@@ -713,6 +717,26 @@ class _Affinity(_Item):
         return current | change
 
 
+class _ReachOuts(_Item):
+    """Whether characters reach out to users (GLOSSARY.md「搭话」), as `.env` has it (off by
+    default), and how many reach-outs each user may have a day, a whole number from 1 up; not
+    tried."""
+
+    name = REACH_OUTS
+    fields = ("enabled", "per_day")
+
+    def env(self) -> Values:
+        return {"enabled": self.c.settings.reach_outs, "per_day": DEFAULT_REACH_OUTS_PER_DAY}
+
+    def candidate(self, current: Values, change: Values) -> Values:
+        if "enabled" in change and not isinstance(change["enabled"], bool):
+            raise ConfigInvalid(f"搭话需要是 true 或 false，而不是 {change['enabled']!r}")
+        per_day = change.get("per_day", current["per_day"])
+        if isinstance(per_day, bool) or not isinstance(per_day, int) or per_day < 1:
+            raise ConfigInvalid(f"每位用户每天最多几次搭话需要是正整数，而不是 {per_day!r}")
+        return current | change
+
+
 PROXY_LABELS: dict[ProxiedService, str] = {
     "chat_llm": "扮演角色的 LLM",
     "memory_llm": "后台模型",
@@ -886,7 +910,7 @@ class LiveConfig:
                 # The proxy first: as the server starts, the services are tried through it.
                 _Proxy(self), _ChatLLM(self), _MemoryLLM(self), _TTS(self), _STT(self),
                 _Image(self), _Judge(self), _JudgeThresholds(self), _Rerank(self),
-                _Limits(self), _Affinity(self), _ServiceStatus(self),
+                _Limits(self), _Affinity(self), _ReachOuts(self), _ServiceStatus(self),
             )
         }
         self._failures: dict[str, str] = {}
@@ -979,6 +1003,13 @@ class LiveConfig:
         is on."""
         item = self._items[AFFINITY]
         return item.available() and self.effective(AFFINITY)["enabled"]
+
+    @property
+    def reach_outs(self) -> ReachOutSettings:
+        """Whether characters reach out to users now, and how many times a day each user at
+        most."""
+        values = self.effective(REACH_OUTS)
+        return ReachOutSettings(values["enabled"], values["per_day"])
 
     @property
     def proxy_settings(self) -> ProxySettings:

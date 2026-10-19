@@ -22,6 +22,7 @@ import {
   dashboardHref,
   labelledStretches,
   rangeFromQuery,
+  reachOutTiles,
   splitZeroRows,
   stretchLabel,
   stretchSpan,
@@ -270,6 +271,21 @@ describe("affinityRows", () => {
     expect(many.end).toBe("加分 40% · 减分 12.5%");
     expect(few.end).toBe("加分 — · 减分 —");
     expect(many.details).toBe("判断过 1,200 个回合 · 冷却 2 · 挂断或结束对话 3");
+  });
+});
+
+describe("reachOutTiles", () => {
+  it("are none where the section is empty", () => {
+    expect(reachOutTiles(null)).toEqual([]);
+  });
+
+  it("count those reached out and failed, and tell the share answered, a dash of none reached out", () => {
+    expect(reachOutTiles({ succeeded: 1200, failed: 3, answered_share: 0.25 }).map((tile) => [tile.label, tile.value])).toEqual([
+      ["成功", "1,200"],
+      ["失败", "3"],
+      ["被回了", "25%"],
+    ]);
+    expect(reachOutTiles({ succeeded: 0, failed: 2, answered_share: null })[2].value).toBe("—");
   });
 });
 

@@ -47,6 +47,27 @@ describe("linesOf", () => {
     expect(lines.find((line) => line.kind === "cue")).toEqual({ kind: "cue", key: "cue-m4", change: UP });
   });
 
+  it("她的搭话总是另起一组：前一条她的话留着自己的时间，搭话重新带头像和名字", () => {
+    const reachOut: Entry = {
+      kind: "character",
+      key: "r1",
+      segments: [{ ja: "ねえ", zh: "呐" }],
+      pending: false,
+      at: "2026-09-28T09:00:00Z",
+      affinity: null,
+      photo: null,
+      reachOut: true,
+    };
+
+    const lines = linesOf([user("m1"), her("m2"), reachOut], NOW, true);
+
+    expect(lines.flatMap((line) => (line.kind === "entry" ? [[line.entry.key, line.first, line.last]] : []))).toEqual([
+      ["m1", true, true],
+      ["m2", true, true],
+      ["r1", true, true],
+    ]);
+  });
+
   it("改变了好感度的送礼记录后面也挂胶囊", () => {
     const gift: Entry = { kind: "event", key: "e1", event: "gift", at: "2026-09-28T01:00:02Z", gift: "蛋糕", affinity: UP };
 

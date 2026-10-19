@@ -115,7 +115,7 @@ async def test_the_producer_profile_moves_to_another_deployment(
     entries, manifest, data = unzipped(package)
     assert [e.filename for e in entries] == ["manifest.json", "data.json"]
     assert entries[0].compress_type == zipfile.ZIP_STORED
-    assert manifest["format"] == 1
+    assert manifest["format"] == 2
     assert manifest["categories"] == ["profile"]
     assert manifest["counts"] == {"profile": 1}
     assert data == {"profile": {
@@ -191,9 +191,9 @@ async def test_a_package_from_a_newer_version_is_refused_whatever_its_entries(
     make_client: ClientFactory,
 ):
     client = make_client(FakeLLM())
-    newer = json.dumps({**MANIFEST, "format": 2, "categories": ["albums"]})
+    newer = json.dumps({**MANIFEST, "format": 3, "categories": ["albums"]})
     packages = {
-        "entries as now": package_of({**MANIFEST, "format": 2, "categories": ["albums"]}, {}),
+        "entries as now": package_of({**MANIFEST, "format": 3, "categories": ["albums"]}, {}),
         "no data.json, entries of its own": _zip(
             {"manifest.json": newer, "albums.json": "{}", "albums/1.json": "{}"}
         ),

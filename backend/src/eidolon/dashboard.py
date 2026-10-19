@@ -14,7 +14,9 @@ calls with each character, and in each stretch of the range (`trend`), in stretc
 beginning where the admin's clock (`X-Timezone`) has a round hour or day. Where affinity is
 on (GLOSSARY.md「好感度」), how the judge model judged the turns recorded, and the cooldowns
 they began, in all and for each character, with how often she hung up a call or ended a
-conversation (`affinity`). Nothing anyone said is in it, nor whose any of it was.
+conversation (`affinity`). How many times characters reached out (GLOSSARY.md「搭话」), how
+many times that failed, and the share answered (`reach_outs`), where the deployer has them on
+or any were recorded in the range. Nothing anyone said is in it, nor whose any of it was.
 
 How many calls are in progress now is not in the records but the calls themselves:
 `/api/admin/calls/live`, which the page asks every minute.
@@ -75,7 +77,10 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
         """The activity of the last `range`, summed up."""
         span = SPANS[range]
         now = backend.clock()
-        records, service_calls = backend.activity.since(now - span.length)
+        recorded, service_calls = backend.activity.since(now - span.length)
+        # Reach-outs are no turns nor calls, and taken by no user; their service calls count.
+        records = [r for r in recorded if r.kind != "reach_out"]
+        reach_out_records = [r for r in recorded if r.kind == "reach_out"]
         names = {id: c.name for id, c in backend.characters.items()}
         starts = stretches(now, span, _zone(timezone))
         spent = cost(service_calls, backend.prices.pricing(), starts)
@@ -94,6 +99,10 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
             "trend": trend(records, starts),
             "characters": characters(records, names),
             "affinity": affinity(records, names) if backend.config.affinity_on else None,
+            "reach_outs": (
+                reach_outs(reach_out_records)
+                if backend.config.reach_outs.enabled or reach_out_records else None
+            ),
             "cost": spent,
         }
 
@@ -341,6 +350,19 @@ def affinity(records: Sequence[RecordRow], names: dict[str, str]) -> dict:
         "cooled_users": len({r.who for r in judged if r.cooled and r.who is not None}),
         "levels": [levels[level] for level in range(len(LEVEL_STEPS))],
         "characters": rows,
+    }
+
+
+def reach_outs(records: Sequence[RecordRow]) -> dict:
+    """How many times characters reached out, how many times it failed, and the share of
+    those reached out that were answered (None of none); not by character."""
+    succeeded = [r for r in records if r.result == "success"]
+    return {
+        "succeeded": len(succeeded),
+        "failed": sum(r.result == "failed" for r in records),
+        "answered_share": (
+            sum(r.answered for r in succeeded) / len(succeeded) if succeeded else None
+        ),
     }
 
 

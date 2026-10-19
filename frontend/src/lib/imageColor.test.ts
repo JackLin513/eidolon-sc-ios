@@ -19,7 +19,10 @@ function pairs(hex: string) {
       { what: `${mode} 壁纸上的正文`, fg: foreground[mode], bg: s.wall[mode], min: 4.5 },
       { what: `${mode} 壁纸上的次要文字`, fg: mutedForeground[mode], bg: s.wall[mode], min: 4.5 },
       { what: `${mode} 头像描边`, fg: s.mark[mode], bg: body[mode], min: 3 },
-      { what: `${mode} 统计排行条和它的底`, fg: s.bar[mode], bg: muted[mode], min: 3 },
+      // 对话列表上没看过的搭话的圆点（DESIGN.md「Conversation list」）：选中行铺 bg-muted，悬停行铺 bg-muted/60。
+      // 选中行这一对和统计排行条那一对是同一对（bar 就是 mark），合成一行。
+      { what: `${mode} 列表圆点和选中行的底、统计排行条和它的底`, fg: s.mark[mode], bg: muted[mode], min: 3 },
+      { what: `${mode} 列表圆点和悬停行的底`, fg: s.mark[mode], bg: mix(muted[mode], body[mode], 0.6), min: 3 },
       { what: `${mode} 按钮图标`, fg: s.button.fg[mode], bg: s.button.bg[mode], min: 4.5 },
       { what: `${mode} 她颜色的字`, fg: s.accent[mode], bg: body[mode], min: 4.5 },
       { what: `${mode} 强调色填底上的字`, fg: s.onAccent[mode], bg: s.accent[mode], min: 4.5 },

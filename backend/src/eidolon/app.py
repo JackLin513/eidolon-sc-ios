@@ -4,7 +4,7 @@ import asyncio
 import json
 import math
 from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from contextlib import aclosing, asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated
@@ -59,7 +59,7 @@ from eidolon.sponsor_api import add_sponsor_routes
 from eidolon.stats import add_stats_routes
 from eidolon.service_status import add_service_status_routes
 from eidolon.stand_outfits import list_path, outfit_path
-from eidolon.store import Conversation, ConversationEvent, IsCurrent, Recorded
+from eidolon.store import Conversation, ConversationEvent, IsCurrent, ReachOut, Recorded
 from eidolon.turn_outcome import TurnOutcome
 from eidolon.usage import OverLimit
 from eidolon.world import World
@@ -243,13 +243,24 @@ def create_app(backend: Backend) -> FastAPI:
     def last_shown(last: Recorded | None) -> dict | None:
         """The last thing in a conversation as a list shows it: a message without its
         delivery cues, marked `photo` if it is her reply with a photo she sent (not one being
-        generated or not sent after all), or a conversation event; None while it has none."""
+        generated or not sent after all), or a conversation event, or her reach-out, shown as
+        her message is, marked `reach_out`; None while it has none."""
         if last is None:
             return None
         if isinstance(last, ConversationEvent):
             return {"type": "event", "kind": last.kind, "created_at": last.created_at} | gift_of(
                 last
             )
+        if isinstance(last, ReachOut):
+            said = last.without_cues()
+            return {
+                "role": "character",
+                "text": None,
+                "ja": said.ja,
+                "zh": said.zh,
+                "created_at": said.created_at,
+                "reach_out": True,
+            }
         shown = last.without_cues()
         return {
             "role": shown.role,
@@ -260,7 +271,7 @@ def create_app(backend: Backend) -> FastAPI:
         } | ({"photo": True} if shown.photo_sent else {})
 
     def recorded(entry: Recorded) -> dict:
-        """A message or conversation event as the browser reads it."""
+        """A message, conversation event or reach-out as the browser reads it."""
         if isinstance(entry, ConversationEvent):
             return entry.shown() | gift_of(entry)
         return entry.shown()
@@ -515,17 +526,18 @@ def create_app(backend: Backend) -> FastAPI:
 
     @app.get("/api/conversations/latest")
     def latest_conversations(user_id: UserId) -> list[dict]:
-        """For the conversation list: each character's newest conversation with the user and
-        the last thing in it, a message or a conversation event (null while it has none), in
-        one request."""
+        """For the conversation list: each character's newest conversation with the user, the
+        last thing in it, a message, a conversation event or a reach-out (null while it has
+        none), and whether it has a reach-out the user has not seen, in one request."""
         return [
             {
                 "character_id": c.character_id,
                 "conversation_id": c.id,
                 "created_at": c.created_at,
                 "last_message": last_shown(last),
+                "unseen_reach_out": unseen,
             }
-            for c, last in store.latest_conversations(user_id)
+            for c, last, unseen in store.latest_conversations(user_id)
         ]
 
     @app.delete("/api/conversations/{conversation_id}", status_code=204)
@@ -539,9 +551,10 @@ def create_app(backend: Backend) -> FastAPI:
 
     @app.get("/api/conversations/{conversation_id}/messages")
     def list_messages(conversation_id: str, user_id: UserId) -> list[dict]:
-        """The conversation's record: its messages and conversation events, in order."""
+        """The conversation's record: its messages, conversation events and reach-outs, in
+        order. The user reads it: its reach-outs are seen from now on."""
         conversation = conversation_or_404(conversation_id, user_id)
-        return [recorded(entry) for entry in store.record(conversation.id)]
+        return [recorded(entry) for entry in store.read_by_user(conversation.id)]
 
     @app.post("/api/conversations/{conversation_id}/turns")
     def text_turn(
@@ -558,18 +571,20 @@ def create_app(backend: Backend) -> FastAPI:
         outcome = TurnOutcome(admission.recording, admission.settle)
 
         async def events() -> AsyncIterator[str]:
+            # Closed as the response is, so that the turn is no longer under way once the user
+            # has gone (`Store.taking_turn`).
             with outcome.running():
-                turn = engine.turn(
+                async with aclosing(engine.turn(
                     conversation, body.text, admission.llms, device_timezone,
                     own_image=brought.image,
-                )
-                async for event in turn:
-                    outcome.see(event)
-                    if isinstance(event, SegmentDelta):
-                        outcome.began_speaking()  # the reply's first words have appeared
-                    if isinstance(event, SegmentComplete | SpeechDelta | TurnJudged):
-                        continue
-                    yield _sse(shown(event))
+                )) as turn:
+                    async for event in turn:
+                        outcome.see(event)
+                        if isinstance(event, SegmentDelta):
+                            outcome.began_speaking()  # the reply's first words have appeared
+                        if isinstance(event, SegmentComplete | SpeechDelta | TurnJudged):
+                            continue
+                        yield _sse(shown(event))
 
         return _TurnResponse(events(), lambda: outcome.over(cut_short_by_failure=False))
 

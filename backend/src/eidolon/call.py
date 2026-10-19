@@ -1094,6 +1094,10 @@ class Calls:
         """How many calls there are now, connected or still connecting."""
         return len(self._live)
 
+    def in_call(self, conversation_id: str) -> bool:
+        """Whether there is a call in the conversation now, connected or still connecting."""
+        return any(live.conversation_id == conversation_id for live in list(self._live))
+
     async def hang_up(self, user_id: str, reason: CallEndReason = "deleted") -> None:
         """Hang up the user's calls, for `reason`, and wait for them to end; a reply in
         progress is dropped. Unless banned, a user's calls are hung up as they are deleted."""

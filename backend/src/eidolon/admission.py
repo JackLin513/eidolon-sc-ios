@@ -18,21 +18,24 @@ The `Admission` it hands out settles it, once: given back unless its result coun
 
 from collections.abc import Callable
 from datetime import datetime
-from typing import Generic, TypeVar
+from typing import Generic, Literal, TypeVar
 
-from eidolon.activity import ActivityLog, CallEndReason, Recording, RecordKind, Result
+from eidolon.activity import ActivityLog, CallEndReason, Recording, Result
 from eidolon.llm import TurnLLMs
 from eidolon.own_keys import BroughtKeys, CallKeys, OwnKeys, TurnKeys
 from eidolon.usage import OverLimit, UsageLimiter, Use
 
-_COUNTED: dict[RecordKind, frozenset[Result]] = {
+Admitted = Literal["turn", "call"]
+"""What is let begin: a turn or a call, which the user takes; never a reach-out."""
+
+_COUNTED: dict[Admitted, frozenset[Result]] = {
     "turn": frozenset({"success", "left"}),
     "call": frozenset({"success", "failed"}),
 }
 """The results that count towards the user's limit, by kind; any other is given back. A
 turn counts once it was taken, done or left; a call once it connected."""
 
-_FAILED: dict[RecordKind, Result] = {"turn": "failed", "call": "not_connected"}
+_FAILED: dict[Admitted, Result] = {"turn": "failed", "call": "not_connected"}
 """How a turn or call is recorded that failed before it began: a call never connected."""
 
 K = TypeVar("K", TurnKeys, CallKeys)
@@ -50,7 +53,7 @@ class CoolingDown(Exception):
 class Admission(Generic[K]):
     """One turn or call let begin, held until it is settled."""
 
-    def __init__(self, kind: RecordKind, keys: K, recording: Recording, use: Use) -> None:
+    def __init__(self, kind: Admitted, keys: K, recording: Recording, use: Use) -> None:
         self._counted = _COUNTED[kind]
         self.keys = keys
         """Whose keys it runs on."""
@@ -145,7 +148,7 @@ class Admissions:
         self.refuse_while_cooling(user_id, character_id)
         return self._admit("call", user_id, character_id, self._own_keys.for_call(brought))
 
-    def _admit(self, kind: RecordKind, user_id: str, character_id: str, keys: K) -> Admission[K]:
+    def _admit(self, kind: Admitted, user_id: str, character_id: str, keys: K) -> Admission[K]:
         try:
             recording = self._activity.begin(
                 kind, user_id, character_id, own_llm=keys.own_llm, exempt=keys.exempt

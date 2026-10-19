@@ -64,6 +64,7 @@ from eidolon.store import (
     KeptEvent,
     KeptMessage,
     KeptPhoto,
+    KeptReachOut,
     PhotoFailure,
     Role,
     Store,
@@ -72,9 +73,12 @@ from eidolon.store import (
     write_profile,
 )
 
-FORMAT = 1
+FORMAT = 2
 """The newest format this version reads, and the one it exports. Changing the format adds
-one to it, and keeps reading the older ones."""
+one to it, and keeps reading the older ones: 2 added her reach-outs (`reach_outs`)."""
+
+REACH_OUTS_SINCE = 2
+"""The format whose conversations first held her reach-outs: before it, none may."""
 
 Category = Literal["conversations", "photos", "memories", "profile"]
 CATEGORIES: tuple[Category, ...] = get_args(Category)
@@ -219,6 +223,13 @@ class PackagedSegment(_Strict):
     ja: str
     zh: str
 
+    @classmethod
+    def all_of(cls, segments: list[Segment]) -> "list[PackagedSegment]":
+        return [cls(ja=s.ja, zh=s.zh) for s in segments]
+
+    def kept(self) -> Segment:
+        return Segment(self.ja, self.zh)
+
 
 PhotoId = Annotated[str, Field(pattern=r"^[0-9A-Za-z_-]{1,100}$")]
 """What a package calls one of its photos, the name of its picture in it."""
@@ -299,7 +310,7 @@ class PackagedMessage(_Strict):
         """The message, with its photo, if any, if `with_photos`."""
         packaged = cls(
             role=message.role, text=message.text, ja=message.ja, zh=message.zh,
-            segments=[PackagedSegment(ja=s.ja, zh=s.zh) for s in message.segments],
+            segments=PackagedSegment.all_of(message.segments),
             created_at=message.created_at, affinity=PackagedChange.of(message.affinity),
             hurt=message.hurt, out_of_line=message.out_of_line,
         )
@@ -311,7 +322,7 @@ class PackagedMessage(_Strict):
         """The message to add, with its photo, if any, if `with_photos`."""
         return KeptMessage(
             self.role, self.text, self.ja, self.zh,
-            [Segment(s.ja, s.zh) for s in self.segments], self.created_at,
+            [s.kept() for s in self.segments], self.created_at,
             self.affinity and self.affinity.change(), self.hurt, self.out_of_line,
             self.photo.kept() if with_photos and self.photo is not None else None,
         )
@@ -350,6 +361,25 @@ class PackagedCall(_Strict):
     duration_s: Annotated[float, Field(ge=0)]
 
 
+class PackagedReachOut(_Strict):
+    """What she said first in the conversation, as the model wrote it, delivery cues and all."""
+
+    ja: str
+    zh: str
+    segments: list[PackagedSegment]
+    created_at: Time
+
+    @classmethod
+    def of(cls, reach_out: KeptReachOut) -> "PackagedReachOut":
+        return cls(
+            ja=reach_out.ja, zh=reach_out.zh, segments=PackagedSegment.all_of(reach_out.segments),
+            created_at=reach_out.created_at,
+        )
+
+    def kept(self) -> KeptReachOut:
+        return KeptReachOut(self.ja, self.zh, [s.kept() for s in self.segments], self.created_at)
+
+
 class PackagedConversation(_Strict):
     id: PackageId
     character_id: Annotated[str, Field(min_length=1, max_length=100)]
@@ -362,6 +392,9 @@ class PackagedConversation(_Strict):
     """In the order they were recorded."""
     events: list[PackagedEvent]
     calls: list[PackagedCall]
+    reach_outs: list[PackagedReachOut] = []
+    """In the order they were recorded; none without the key, as in a package of a format
+    before them."""
 
     @classmethod
     def of(
@@ -380,6 +413,7 @@ class PackagedConversation(_Strict):
                 PackagedCall(connected_at=k.connected_at, duration_s=k.duration_s)
                 for k in conversation.calls
             ],
+            reach_outs=[PackagedReachOut.of(r) for r in conversation.reach_outs],
         )
 
     def photos(self) -> list[PackagedPhoto]:
@@ -395,6 +429,7 @@ class PackagedConversation(_Strict):
             [m.kept(with_photos) for m in self.messages],
             [e.kept() for e in self.events if e.gift_id is None or e.gift_id in gifts],
             [ConnectedCall(k.connected_at, k.duration_s) for k in self.calls],
+            [r.kept() for r in self.reach_outs],
         )
 
 
@@ -769,6 +804,10 @@ def _read(zipped: zipfile.ZipFile) -> tuple[Manifest, PackageData]:
             raise BrokenPackage("its manifest not first, stored")
         manifest = Manifest.model_validate(raw_manifest)
         data = PackageData.model_validate_json(_unzipped(zipped, DATA, MAX_DATA_BYTES))
+        if manifest.format < REACH_OUTS_SINCE and any(
+            c.reach_outs for c in data.conversations or []
+        ):
+            raise BrokenPackage("reach-outs in a format before them")
         listed = set(manifest.categories)
         held = {c for c in CATEGORIES if c != "photos" and getattr(data, c) is not None}
         photos = data.photos()

@@ -265,7 +265,7 @@ async def test_memories_found_but_not_told_apart_stop_the_run(
     """Rather than every recall case failing as having found nothing."""
     monkeypatch.setattr(
         "eidolon.memory._memories_prompt",
-        lambda memories, character, timezone: "\n".join(f"* {m.text}" for m in memories),
+        lambda memories, character, timezone, opening: "\n".join(f"* {m.text}" for m in memories),
     )
     recall_only = EVAL[EVAL.index("[[recall]]"):]
     memory_eval = load_memory_eval(write(tmp_path, recall_only), config)

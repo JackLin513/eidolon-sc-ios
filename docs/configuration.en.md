@@ -15,6 +15,7 @@ This guide explains how to turn on and tune each feature, and how the characters
 > | Retrieval and memory | An embedding key, `SILICONFLOW_API_KEY` (reranking), plus a judge: `JEV_API_KEY` (default), or `JUDGE_PROVIDER=cloudflare` plus `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, or `JUDGE_PROVIDER=bailian` plus `BAILIAN_JUDGE_API_KEY` and `BAILIAN_JUDGE_WORKSPACE_ID` |
 > | Affinity and gifts | A judge (the switch is on by default) |
 > | Photos | A judge, plus an image generation key: `NOVELAI_API_KEY` |
+> | Reach-outs | `EIDOLON_REACH_OUTS=1` (off by default) |
 > | Stands and the landing page's greetings | `EIDOLON_STAND_ASSETS_URL`, and a bucket holding the assets |
 > | Google / GitHub sign-in | `GOOGLE_CLIENT_*`, `GITHUB_CLIENT_*` |
 
@@ -32,6 +33,7 @@ This guide explains how to turn on and tune each feature, and how the characters
 - [Memory](#memory)
 - [Affinity and gifts](#affinity-and-gifts)
 - [Photos](#photos)
+- [Reach-outs](#reach-outs)
 - [Sign-in, users and usage limits](#sign-in-users-and-usage-limits)
 - [Bring your own keys](#bring-your-own-keys)
 - [Proxy](#proxy)
@@ -391,6 +393,14 @@ Switching the format doesn't change the address; when you switch, fix the addres
 > - **Relays can be banned or go down at any time.** When one does, photos aren't sent; turns go on as usual.
 > - A token or relay a user brings is theirs to use under that service's terms (age, use and so on); see "Own keys" in the terms of use.
 
+## Reach-outs
+
+When a user has been away a while, the character says a few words first in the current conversation, picking up on what they last talked about or recent news of the user she remembers. The closer she is to them, the sooner she comes; she doesn't reach out while cold, distant or in cooldown, nor at night ([ADR-0026](adr/0026-reach-outs-are-not-turns.md)). Users can turn it off on the settings page's 「搭话」 (Reach-outs) tab.
+
+- **Switch**: Off by default. Set `EIDOLON_REACH_OUTS=1` in `.env` to turn it on, or switch it in the 「搭话」 (Reach-outs) card on the admin console's config page, which takes precedence over `.env`.
+- **Daily limit**: By default each user is reached out to at most 3 times a day (the day going by the time zone in their producer profile, or Beijing time if none is set); change it in the same card.
+- **Cost**: Generated with the deployer's chat model, at the deployer's expense, even for users who bring their own LLM. It doesn't count towards users' usage limits.
+
 ## Sign-in, users and usage limits
 
 Anyone can sign in with Google or GitHub, with no invitation or approval ([ADR-0006](adr/0006-open-to-the-public-with-oauth.md)). The sign-in panel offers whichever OAuth apps are set in `.env`. The steps for creating the apps are in "配置 OAuth 应用" in [`deploy.md`](deploy.md) (Chinese); alternatively, run `scripts/setup-oauth.sh` and follow its prompts step by step.
@@ -500,8 +510,8 @@ List the admins' sign-in method identifiers in `EIDOLON_ADMINS` in `.env` (like 
 
 | Page | What it does |
 |---|---|
-| Dashboard (`/admin`) | Calls, error rate and latency per service; active users, the number and trend of turns and calls, usage per character, calls in progress; with affinity on, totals of judgements and cooldowns, plus per character the shares raised and lowered, cooldowns, and the calls she hung up or conversations she ended; the deployer's cost estimated from unit prices |
-| Config (`/admin/config`) | Change the LLMs for playing the character and extracting memories, speech synthesis, speech recognition, image generation, the judge, rerank thresholds, usage limits, exempting keys, per-call caps, history turns, the affinity and gifts switch (and granting every user a reset card), the proxy, the service status and unit prices |
+| Dashboard (`/admin`) | Calls, error rate and latency per service; active users, the number and trend of turns and calls, usage per character, calls in progress; with affinity on, totals of judgements and cooldowns, plus per character the shares raised and lowered, cooldowns, and the calls she hung up or conversations she ended; with reach-outs on, how many there were, how many failed and the share answered; the deployer's cost estimated from unit prices |
+| Config (`/admin/config`) | Change the LLMs for playing the character and extracting memories, speech synthesis, speech recognition, image generation, the judge, rerank thresholds, usage limits, exempting keys, per-call caps, history turns, the affinity and gifts switch (and granting every user a reset card), the reach-outs switch and daily limit, the proxy, the service status and unit prices |
 | Users (`/admin/users`) | Search users, see their sign-in methods and recent usage; ban, unban, set an individual usage limit, delete |
 
 - **Overrides `.env`**: Items changed in the admin console are stored in the database and take precedence over `.env`, with no restart needed. Each change is tried before saving and not saved if the try fails. A call in progress finishes on the configuration it connected with.
