@@ -467,10 +467,21 @@ class ConnectedCall:
 
 
 @dataclass(frozen=True)
+class KeptReachOut:
+    """A reach-out as kept, as a data package carries it: as the model wrote it, delivery cues
+    and all; not whether the user has seen it."""
+
+    ja: str
+    zh: str
+    segments: list[Segment]
+    created_at: str
+
+
+@dataclass(frozen=True)
 class WholeConversation:
     """A conversation and everything kept under it, as a data package carries it: its
-    messages in their order, its events and the calls kept in it. `id` is its id where it was
-    exported, a key in the package only."""
+    messages in their order, its events, the calls kept in it and her reach-outs. `id` is its
+    id where it was exported, a key in the package only."""
 
     id: int | str
     character_id: str
@@ -479,6 +490,7 @@ class WholeConversation:
     messages: list[KeptMessage]
     events: list[KeptEvent]
     calls: list[ConnectedCall]
+    reach_outs: list[KeptReachOut]
 
 
 class Store:
@@ -895,6 +907,14 @@ class Store:
                             " WHERE conversation_id = ? ORDER BY id",
                             (c["id"],),
                         )
+                    ],
+                    [
+                        KeptReachOut(r.ja, r.zh, r.segments, r.created_at)
+                        for r in map(_reach_out, self._db.execute(
+                            f"SELECT {_REACH_OUT_COLUMNS} FROM reach_outs"
+                            " WHERE conversation_id = ? ORDER BY id",
+                            (c["id"],),
+                        ))
                     ],
                 )
                 for c in conversations
@@ -1470,8 +1490,9 @@ def add_carried_conversation(
 ) -> tuple[str, bool]:
     """Add the conversation a data package carries to the user's through `db`, in the
     caller's transaction, under an id of its own, its messages in their order and its events
-    and calls as they were, each photo under an id of its own with its picture, if sent, as
-    `picture_of` its id in the package reads it; its id here, and whether it is new. One the
+    and calls as they were, her reach-outs as seen, each photo under an id of its own with its
+    picture, if sent, as `picture_of` its id in the package reads it; its id here, and whether
+    it is new. One the
     user already has with her, begun at the same time, is taken for it and left as it is,
     nothing of it merged. Which is her current one is as ever: the newest begun."""
     begun = _at(conversation.created_at)
@@ -1523,6 +1544,14 @@ def add_carried_conversation(
     db.executemany(
         "INSERT INTO calls (conversation_id, connected_at, duration_s) VALUES (?, ?, ?)",
         [(conversation_id, k.connected_at, k.duration_s) for k in conversation.calls],
+    )
+    db.executemany(
+        "INSERT INTO reach_outs (conversation_id, ja, zh, segments, created_at, seen)"
+        " VALUES (?, ?, ?, ?, ?, 1)",
+        [
+            (conversation_id, r.ja, r.zh, _stored_segments(r.segments), r.created_at)
+            for r in conversation.reach_outs
+        ],
     )
     return conversation_id, True
 
