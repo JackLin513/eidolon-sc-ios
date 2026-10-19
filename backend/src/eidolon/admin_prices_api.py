@@ -15,7 +15,7 @@ from eidolon.activity import KEPT
 from eidolon.admin_api import Admin
 from eidolon.assembly import Backend
 from eidolon.price_catalog import describe_state
-from eidolon.prices import preset_as_of, unpriced, used
+from eidolon.prices import preset_as_of, unpriced
 
 Unit = Literal["tokens", "bytes", "characters", "seconds", "images"]
 """The units service calls are billed in (`prices.PER`)."""
@@ -45,13 +45,13 @@ def add_admin_price_routes(app: FastAPI, backend: Backend) -> None:
     prices = backend.prices
 
     def described() -> dict:
-        calls = backend.activity.since(backend.clock() - KEPT)[1]
-        without = unpriced(calls, prices.pricing())
+        billed = backend.activity.billed_models(backend.clock() - KEPT)
+        without = unpriced(billed, prices.pricing())
         prices.catalog.refresh_soon(missing=any(u["unit"] == "tokens" for u in without))
         return {
             "preset_as_of": (d.isoformat() if (d := preset_as_of()) else None),
             "catalog": describe_state(prices.catalog.state()),
-            "prices": prices.describe(used(calls)),
+            "prices": prices.describe(billed),
             "unpriced": without,
         }
 
