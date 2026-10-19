@@ -41,7 +41,7 @@
   - 切到别的标签页再切回来，马上拉一次。
   - 开着她的对话页时，搭话出现在底部，列表和导航都不标。
   - 打开对话后，点消失。
-- [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+- [x] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
 
 ## Comments
 
