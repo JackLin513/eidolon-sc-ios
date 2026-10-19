@@ -67,6 +67,7 @@ from eidolon.rerank import (
 from eidolon.retrieval import Retrieval, open_reference_sources
 from eidolon.service_clients import ProviderClients, ServiceClients
 from eidolon.service_status import ServiceStatus, probes
+from eidolon.sponsor import Sponsor
 from eidolon.store import Store
 from eidolon.titles import Titles
 from eidolon.usage import UsageLimiter
@@ -107,6 +108,8 @@ class Backend:
     """The prices the dashboard estimates the deployer's costs at."""
     announcements: Announcements
     """What admins write for every user to see."""
+    sponsor: Sponsor
+    """The code users may scan to sponsor the deployment, where it is on."""
     affinities: Affinities
     """Every user's affinity with every character, where it is on."""
     gifts: Gifts
@@ -207,6 +210,8 @@ def build(
     closers.append(prices.close)
     announcements = Announcements(settings.database_path, clock)
     closers.append(announcements.close)
+    sponsor = Sponsor(settings.database_path, clock)
+    closers.append(sponsor.close)
     backups = Backups(settings.database_path, clock, transport=backup_transport)
     closers.append(backups.aclose)
     image_client = None
@@ -358,6 +363,7 @@ def build(
         config=config,
         prices=prices,
         announcements=announcements,
+        sponsor=sponsor,
         affinities=affinities,
         gifts=gifts,
         backups=backups,

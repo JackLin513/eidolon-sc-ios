@@ -331,7 +331,10 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
     def account(user_id: UserId) -> dict:
         """The signed-in user, by the id their browser keeps their own keys apart by, the
         identities they sign in with, whether they are an admin, who may enter the admin
-        console, and the exempting keys now (GLOSSARY.md「免限额密钥」), in a fixed order."""
+        console, the exempting keys now (GLOSSARY.md「免限额密钥」), in a fixed order, and
+        when the sponsor code (GLOSSARY.md「赞赏」) was uploaded, while users are shown it,
+        else None."""
+        sponsor = backend.sponsor.state()
         return {
             "id": user_id,
             "name": store.get_user(user_id).name,
@@ -341,6 +344,7 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
             ],
             "is_admin": is_admin(store, settings, user_id),
             "exempting_keys": [s for s in SERVICES if s in backend.config.exempting_keys],
+            "sponsor": sponsor.image_at if sponsor.shown else None,
         }
 
     @app.delete("/api/account/sign-in-methods/{provider}", status_code=204)
