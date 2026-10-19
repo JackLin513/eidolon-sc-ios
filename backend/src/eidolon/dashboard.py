@@ -42,6 +42,7 @@ from eidolon.activity import (
     CallGroup,
     RecordGroup,
     Spread,
+    Taken,
     Tally,
 )
 from eidolon.affinity import LEVEL_STEPS, Judged
@@ -129,7 +130,7 @@ def _zone(name: str | None) -> ZoneInfo:
 
 def _percentiles(spread: Spread | None, *ps: int) -> dict:
     """The `ps`th percentiles of `spread`, to a tenth; None of none."""
-    at = spread.at if spread is not None else {}
+    at = spread.percentiles if spread is not None else {}
     return {f"p{p}": round(at[p], 1) if p in at else None for p in ps}
 
 
@@ -262,7 +263,7 @@ def calls(records: Sequence[RecordGroup], tally: Tally) -> dict:
         "duration_s": _percentiles(tally.lasted, 50, 90),
         "durations": [
             {"from_s": low, "to_s": high, "calls": count}
-            for (low, high), count in zip(DURATIONS, tally.durations, strict=True)
+            for (low, high), count in zip(DURATIONS, tally.lasted_within, strict=True)
         ],
         "end_reasons": {reason: reasons[reason] for reason in CALL_END_REASONS},
     }
@@ -284,12 +285,12 @@ def stretches(now: datetime, span: Span, zone: ZoneInfo) -> list[datetime]:
     return [last - span.stretch * (count - 1 - i) for i in range(count)]
 
 
-def trend(taken: Sequence[tuple[int, int, int]], starts: Sequence[datetime]) -> list[dict]:
+def trend(taken: Sequence[Taken], starts: Sequence[datetime]) -> list[dict]:
     """How many turns and calls were `taken`, and by how many users, in each stretch
     beginning at `starts`; the first takes in whatever of the range comes before it."""
     return [
-        {"start": start.isoformat(), "turns": turns, "calls": calls, "active_users": users}
-        for start, (turns, calls, users) in zip(starts, taken, strict=True)
+        {"start": start.isoformat(), "turns": t.turns, "calls": t.calls, "active_users": t.users}
+        for start, t in zip(starts, taken, strict=True)
     ]
 
 

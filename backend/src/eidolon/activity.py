@@ -336,7 +336,7 @@ class Spread:
     none."""
 
     known: int
-    at: dict[int, float]
+    percentiles: dict[int, float]
 
 
 @dataclass(frozen=True)
@@ -392,6 +392,16 @@ class CallGroup:
 
 
 @dataclass(frozen=True)
+class Taken:
+    """How many turns and calls were taken in a stretch of the dashboard's range, and by
+    how many users."""
+
+    turns: int
+    calls: int
+    users: int
+
+
+@dataclass(frozen=True)
 class Tally:
     """The activity records and service calls after a moment, summed up for the dashboard
     (`ActivityLog.tally`)."""
@@ -403,9 +413,8 @@ class Tally:
     """How many users took any turn or call."""
     cooled_users: int
     """How many of them a judged turn began a cooldown for."""
-    stretches: list[tuple[int, int, int]]
-    """How many turns and calls were taken in each stretch of the range, and by how many
-    users."""
+    stretches: list[Taken]
+    """What was taken in each stretch of the range."""
     latency: dict[tuple[ServiceName, bool], Spread]
     """How long each service took, on the deployer's keys and on users' own apart."""
     first_token: dict[tuple[ServiceName, bool], Spread]
@@ -414,7 +423,7 @@ class Tally:
     """How soon the character began to speak, in the turns where she did."""
     lasted: Spread
     """How long the calls that connected lasted, in seconds."""
-    durations: list[int]
+    lasted_within: list[int]
     """How many of them lasted within each of the bounds asked for."""
 
 
@@ -548,6 +557,7 @@ class ActivityLog:
         # Summing up a long range takes a while: on a connection of its own, records are
         # written meanwhile, not kept waiting.
         self._reader = connect(path)
+        self._reader.execute("PRAGMA query_only = ON")
         self._reading = threading.Lock()
         self._clock = clock
 
@@ -804,29 +814,31 @@ def _tally(
     durations: Sequence[tuple[int, int | None]],
 ) -> Tally:
     who = "COALESCE(user_id, anonymous_id)"
-    records = [
-        RecordGroup(
-            kind, character, result, bool(own), bool(in_call), reason,
-            *_reading_judgement(level, out_of_line, manipulation, cooled), bool(ended),
-            bool(answered), count,
-        )
-        for (
-            kind, character, result, own, in_call, reason, level, out_of_line,
-            manipulation, cooled, ended, answered, count,
-        ) in db.execute(
-            "SELECT kind, character_id, result, own_keys != 0, call_id IS NOT NULL,"
-            f" end_reason, {', '.join(JUDGEMENT_COLUMNS)}, ended_conversation IS NOT NULL,"
-            " answered != 0, COUNT(*) FROM activity_records WHERE started_at > ?"
-            " GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12",
-            (at,),
-        )
-    ]
+    records = []
+    for (
+        kind, character, result, own, in_call, reason, level, out_of_line, manipulation,
+        cooled, ended, answered, count,
+    ) in db.execute(
+        "SELECT kind, character_id, result, own_keys != 0, call_id IS NOT NULL, end_reason,"
+        f" {', '.join(JUDGEMENT_COLUMNS)}, ended_conversation IS NOT NULL, answered != 0,"
+        " COUNT(*) FROM activity_records WHERE started_at > ?"
+        " GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12",
+        (at,),
+    ):
+        judged, was_cooled = _reading_judgement(level, out_of_line, manipulation, cooled)
+        records.append(RecordGroup(
+            kind=kind, character_id=character, result=result, own_keys=bool(own),
+            in_call=bool(in_call), end_reason=reason, judged=judged, cooled=was_cooled,
+            ended_conversation=bool(ended), answered=bool(answered), count=count,
+        ))
     stretch, stretch_params = _stretch("at", starts)
     calls = [
         CallGroup(
-            index, service, provider, model, bool(own), error, unit, bool(input_told),
-            bool(output_told), json.loads(stripped) if stripped is not None else None,
-            count, used_in, used_out, cached,
+            stretch=index, service=service, provider=provider, model=model,
+            own_key=bool(own), error=error, usage_unit=unit, input_told=bool(input_told),
+            output_told=bool(output_told),
+            stripped=json.loads(stripped) if stripped is not None else None, calls=count,
+            usage_input=used_in, usage_output=used_out, usage_cached=cached,
         )
         for (
             index, service, provider, model, own, error, unit, input_told, output_told,
@@ -847,7 +859,7 @@ def _tally(
     ).fetchone()
     stretch, stretch_params = _stretch("started_at", starts)
     taken = {
-        index: (turns, calls_taken, takers)
+        index: Taken(turns, calls_taken, takers)
         for index, turns, calls_taken, takers in db.execute(
             f"SELECT {stretch}, SUM(kind = 'turn'), SUM(kind = 'call'), COUNT(DISTINCT {who})"
             f" FROM activity_records WHERE started_at > ? AND {TURNS_AND_CALLS} GROUP BY 1",
@@ -858,7 +870,7 @@ def _tally(
         "SUM(duration_s >= ?" + (" AND duration_s < ?)" if high is not None else ")")
         for _, high in durations
     ]
-    lasted_within = db.execute(
+    within = db.execute(
         f"SELECT {', '.join(bounds) or 'NULL'} FROM activity_records"
         " WHERE started_at > ? AND kind = 'call' AND duration_s IS NOT NULL",
         (*(b for low, high in durations for b in (low, high) if b is not None), at),
@@ -883,12 +895,12 @@ def _tally(
         calls=calls,
         users=users,
         cooled_users=cooled_users,
-        stretches=[taken.get(i, (0, 0, 0)) for i in range(len(starts))],
+        stretches=[taken.get(i, Taken(0, 0, 0)) for i in range(len(starts))],
         latency=latency,
         first_token=first_token,
         time_to_speak=speaking,
         lasted=lasted,
-        durations=[n or 0 for n in lasted_within] if durations else [],
+        lasted_within=[n or 0 for n in within] if durations else [],
     )
 
 
@@ -931,7 +943,7 @@ def _spreads(
         spread = spreads.setdefault(tuple(key), Spread(known, {}))
         for p in PERCENTILES:
             if rank == max(1, (p * known + 99) // 100):
-                spread.at[p] = value
+                spread.percentiles[p] = value
     return spreads
 
 
