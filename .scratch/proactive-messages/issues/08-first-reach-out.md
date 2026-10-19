@@ -44,7 +44,7 @@
   - 前端：`conversationLog.test.ts`；`messageLines.test.ts`（另起一组）；`conversationList.test.ts`（最后一句是搭话）。
 - [x] **验收**：按 `docs/agents/local-acceptance.md`，在本地构建版上打开后台的搭话，改库里的时间，调一次「跑一遍」造出一次搭话。用 Playwright 看对话页里另起一组、列表的最后一句，宽屏和手机各看一次。
 - [ ] 表结构有改动，部署前手动备份数据库。
-- [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+- [x] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
 
 ## Comments
 
