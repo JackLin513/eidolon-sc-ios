@@ -69,8 +69,19 @@ describe("formatFetchedAt", () => {
 });
 
 describe("number formats", () => {
-  it("counts are comma'd, and in 万 from ten thousand on", () => {
-    const cases: [number, string][] = [[0, "0"], [1284, "1,284"], [12_900, "1.3万"], [40_000, "4万"]];
+  it("counts are comma'd, in 万 from ten thousand on, and in 亿 from a hundred million on", () => {
+    const cases: [number, string][] = [
+      [0, "0"],
+      [1284, "1,284"],
+      [12_900, "1.3万"],
+      [40_000, "4万"],
+      [99_940_000, "9994万"],
+      [99_999_600, "1亿"],
+      [122_380_000, "1.22亿"],
+      [149_063_000, "1.49亿"],
+      [210_000_000, "2.1亿"],
+      [300_000_000, "3亿"],
+    ];
     for (const [n, shown] of cases) expect(formatCount(n), String(n)).toBe(shown);
   });
 

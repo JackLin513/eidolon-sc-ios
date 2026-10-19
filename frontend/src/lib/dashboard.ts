@@ -357,8 +357,11 @@ export async function getCallsInProgress(): Promise<number> {
 
 const NONE = "—";
 
-/** A count, comma'd; from ten thousand on, in 万 to one decimal. */
+/** A count, comma'd; from ten thousand on, in 万 to one decimal; from a hundred million on
+ * (or what would round up to it), in 亿 to two. */
 export function formatCount(n: number): string {
+  const wan = Number((n / 10_000).toFixed(1));
+  if (Math.abs(wan) >= 10_000) return `${(n / 100_000_000).toFixed(2).replace(/\.?0+$/, "")}亿`;
   if (Math.abs(n) >= 10_000) return `${trim(n / 10_000)}万`;
   return Math.round(n).toLocaleString("en-US");
 }
