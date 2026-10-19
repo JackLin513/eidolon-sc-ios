@@ -469,7 +469,7 @@ class ConnectedCall:
 @dataclass(frozen=True)
 class KeptReachOut:
     """A reach-out as kept, as a data package carries it: as the model wrote it, delivery cues
-    and all; not whether the user has seen it."""
+    and all (ADR-0007); not whether the user has seen it."""
 
     ja: str
     zh: str
@@ -909,12 +909,15 @@ class Store:
                         )
                     ],
                     [
-                        KeptReachOut(r.ja, r.zh, r.segments, r.created_at)
-                        for r in map(_reach_out, self._db.execute(
-                            f"SELECT {_REACH_OUT_COLUMNS} FROM reach_outs"
+                        KeptReachOut(
+                            r["ja"], r["zh"], [Segment(**s) for s in json.loads(r["segments"])],
+                            r["created_at"],
+                        )
+                        for r in self._db.execute(
+                            "SELECT ja, zh, segments, created_at FROM reach_outs"
                             " WHERE conversation_id = ? ORDER BY id",
                             (c["id"],),
-                        ))
+                        )
                     ],
                 )
                 for c in conversations
@@ -1492,9 +1495,9 @@ def add_carried_conversation(
     caller's transaction, under an id of its own, its messages in their order and its events
     and calls as they were, her reach-outs as seen, each photo under an id of its own with its
     picture, if sent, as `picture_of` its id in the package reads it; its id here, and whether
-    it is new. One the
-    user already has with her, begun at the same time, is taken for it and left as it is,
-    nothing of it merged. Which is her current one is as ever: the newest begun."""
+    it is new. One the user already has with her, begun at the same time, is taken for it and
+    left as it is, nothing of it merged. Which is her current one is as ever: the newest
+    begun."""
     begun = _at(conversation.created_at)
     for row in db.execute(
         "SELECT id, created_at FROM conversations WHERE user_id = ? AND character_id = ?",

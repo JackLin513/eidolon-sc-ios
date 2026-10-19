@@ -401,6 +401,10 @@ async def test_conversations_not_in_the_format_are_refused(
         "a call lasting less than nothing": [good | {"calls": [
             {"connected_at": good["created_at"], "duration_s": -1},
         ]}],
+        "reach-outs in the format before them": [good | {"reach_outs": [
+            {"ja": "はい", "zh": "好的", "segments": [{"ja": "はい", "zh": "好的"}],
+             "created_at": good["created_at"]},
+        ]}],
     }
 
     for case, conversations in broken.items():

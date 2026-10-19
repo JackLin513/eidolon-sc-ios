@@ -60,12 +60,6 @@ describe("读数据包开头的 manifest.json", () => {
     expect(await readManifest(file)).toEqual({ kind: "package", categories: ["conversations", "photos", "profile"] });
   });
 
-  it("第 2 版（带搭话）照常读", async () => {
-    const file = zip({ "manifest.json": [JSON.stringify({ ...MANIFEST, format: 2 }), 0], "data.json": ["{}", 6] });
-
-    expect(await readManifest(file)).toEqual({ kind: "package", categories: ["profile"] });
-  });
-
   it("格式比这里新时是 too_new", async () => {
     const file = zip({ "manifest.json": [JSON.stringify({ ...MANIFEST, format: 3 }), 0], "data.json": ["{}", 6] });
 

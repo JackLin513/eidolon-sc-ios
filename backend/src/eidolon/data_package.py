@@ -223,6 +223,13 @@ class PackagedSegment(_Strict):
     ja: str
     zh: str
 
+    @classmethod
+    def all_of(cls, segments: list[Segment]) -> "list[PackagedSegment]":
+        return [cls(ja=s.ja, zh=s.zh) for s in segments]
+
+    def kept(self) -> Segment:
+        return Segment(self.ja, self.zh)
+
 
 PhotoId = Annotated[str, Field(pattern=r"^[0-9A-Za-z_-]{1,100}$")]
 """What a package calls one of its photos, the name of its picture in it."""
@@ -303,7 +310,7 @@ class PackagedMessage(_Strict):
         """The message, with its photo, if any, if `with_photos`."""
         packaged = cls(
             role=message.role, text=message.text, ja=message.ja, zh=message.zh,
-            segments=[PackagedSegment(ja=s.ja, zh=s.zh) for s in message.segments],
+            segments=PackagedSegment.all_of(message.segments),
             created_at=message.created_at, affinity=PackagedChange.of(message.affinity),
             hurt=message.hurt, out_of_line=message.out_of_line,
         )
@@ -315,7 +322,7 @@ class PackagedMessage(_Strict):
         """The message to add, with its photo, if any, if `with_photos`."""
         return KeptMessage(
             self.role, self.text, self.ja, self.zh,
-            [Segment(s.ja, s.zh) for s in self.segments], self.created_at,
+            [s.kept() for s in self.segments], self.created_at,
             self.affinity and self.affinity.change(), self.hurt, self.out_of_line,
             self.photo.kept() if with_photos and self.photo is not None else None,
         )
@@ -365,15 +372,12 @@ class PackagedReachOut(_Strict):
     @classmethod
     def of(cls, reach_out: KeptReachOut) -> "PackagedReachOut":
         return cls(
-            ja=reach_out.ja, zh=reach_out.zh,
-            segments=[PackagedSegment(ja=s.ja, zh=s.zh) for s in reach_out.segments],
+            ja=reach_out.ja, zh=reach_out.zh, segments=PackagedSegment.all_of(reach_out.segments),
             created_at=reach_out.created_at,
         )
 
     def kept(self) -> KeptReachOut:
-        return KeptReachOut(
-            self.ja, self.zh, [Segment(s.ja, s.zh) for s in self.segments], self.created_at
-        )
+        return KeptReachOut(self.ja, self.zh, [s.kept() for s in self.segments], self.created_at)
 
 
 class PackagedConversation(_Strict):
@@ -389,7 +393,8 @@ class PackagedConversation(_Strict):
     events: list[PackagedEvent]
     calls: list[PackagedCall]
     reach_outs: list[PackagedReachOut] = []
-    """In the order they were recorded; no key in a package of a format before them."""
+    """In the order they were recorded; none without the key, as in a package of a format
+    before them."""
 
     @classmethod
     def of(
