@@ -119,7 +119,7 @@ export function AdminAnnouncementEditor({ id }: { id: string }) {
   const publish = () =>
     run("publish", async () => setSaved(await publishAnnouncement((await keep()).id)), t.notices.published);
   const withdraw = () => saved && run("withdraw", async () => setSaved(await withdrawAnnouncement(saved.id)), t.notices.withdrawn);
-  const pin = () =>
+  const togglePin = () =>
     saved &&
     (saved.pinned
       ? run("pin", async () => setSaved(await unpinAnnouncement(saved.id)), t.notices.unpinned)
@@ -222,7 +222,7 @@ export function AdminAnnouncementEditor({ id }: { id: string }) {
                 {spinner("withdraw")}
                 {t.actions.withdraw}
               </Button>
-              <Button variant="outline" onClick={pin} disabled={busy !== null}>
+              <Button variant="outline" onClick={togglePin} disabled={busy !== null}>
                 {spinner("pin")}
                 {saved?.pinned ? t.actions.unpin : t.actions.pin}
               </Button>

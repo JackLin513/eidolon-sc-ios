@@ -1592,7 +1592,7 @@ export const zh = {
       },
     },
     announcements: {
-      intro: "写给所有用户的公告，发布后出现在对话列表的铃铛里。修改已发布的公告不会再提醒用户一次；撤回后再发布，算一条新公告。置顶只有一条，置顶新的会顶掉原来的。",
+      intro: "写给所有用户的公告，发布后出现在对话列表的铃铛里。修改已发布的公告不会再提醒用户一次；撤回后再发布，算一条新公告。",
       write: "写公告",
       columns: { body: "正文", status: "状态", publishedAt: "发布时间", updatedAt: "最后修改" },
       status: { draft: "草稿", published: "已发布" },

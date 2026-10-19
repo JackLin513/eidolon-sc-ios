@@ -8,9 +8,9 @@ a published one keeps it, so that fixing a typo does not show it to everyone aga
 withdrawing it clears it, and publishing it again sets it anew. `updated_at` is when its
 body was last written.
 
-One published announcement may be pinned (`pinned`): users see it first, however old it is,
-besides the latest. Pinning another unpins it; withdrawing it unpins it for good. Pinning
-leaves when it was published, so it does not make it new.
+One published announcement may be pinned (`pinned`, GLOSSARY.md「置顶公告」): users see it
+first, however old it is, besides the latest. Pinning another unpins it; withdrawing it
+unpins it for good. Pinning leaves when it was published, so it does not make it new.
 
 Whether a user has read them is kept in their browser, not here.
 """
