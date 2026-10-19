@@ -102,7 +102,7 @@ export function AdminShell({ name, trail: fixedTrail, children }: Props) {
       <SidebarInset>
         <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger aria-label={t.toggleNav} className="-ml-1" />
-          <Breadcrumb aria-label={t.breadcrumb}>
+          <Breadcrumb aria-label={t.breadcrumb} className="min-w-0">
             <BreadcrumbList>
               <BreadcrumbItem>{t.title}</BreadcrumbItem>
               <BreadcrumbSeparator />
