@@ -56,7 +56,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
 
 function SettingsLevels({ children }: { children: ReactNode }) {
   const { summaries } = useSettingsValues();
-  const sponsor = useDirectory().account?.sponsor ?? null;
+  const sponsor = useDirectory().account?.sponsor_version ?? null;
   const pathname = usePathname();
   const named = settingsCategory(pathname);
   const isFirstLevel = named === null;

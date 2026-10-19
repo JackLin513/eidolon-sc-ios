@@ -1,6 +1,7 @@
 """Sponsoring (GLOSSARY.md「赞赏」): admins upload a code and switch it on in the admin console;
-users see it, from their account and at its own address, only while it is both. The code is
-kept as a lossless PNG of its pixels alone, no larger than 1024 pixels a side."""
+users see it, its version from their account and the code at an address of that version, only
+while it is both. The code is kept as a lossless PNG of its pixels alone, upright and opaque,
+no larger than 1024 pixels a side."""
 
 import io
 from dataclasses import replace
@@ -47,7 +48,7 @@ async def switch(admin: httpx.AsyncClient, enabled: bool) -> dict:
 async def shown(user: httpx.AsyncClient) -> str | None:
     res = await user.get("/api/account")
     assert res.status_code == 200, res.text
-    return res.json()["sponsor"]
+    return res.json()["sponsor_version"]
 
 
 async def test_users_see_the_code_once_it_is_uploaded_and_switched_on(
@@ -73,6 +74,24 @@ async def test_users_see_the_code_once_it_is_uploaded_and_switched_on(
     assert res.headers["content-type"] == "image/png"
     assert res.headers["cache-control"] == "private, max-age=31536000, immutable"
     assert Image.open(io.BytesIO(res.content)).size == (300, 300)
+
+
+async def test_a_version_since_replaced_is_given_the_new_code_not_to_keep(
+    make_client: ClientFactory, github: FakeIdentityProvider
+):
+    clock = FakeClock()
+    admin = await admin_client(make_client, github, clock=clock)
+    user = make_client(FakeLLM(), clock=clock)
+    await upload(admin, picture((100, 100)))
+    await switch(admin, True)
+    old = await shown(user)
+    clock.advance(minutes=5)
+    await upload(admin, picture((200, 200)))
+
+    res = await user.get("/api/sponsor/image", params={"v": old})
+
+    assert res.headers["cache-control"] == "no-store"
+    assert Image.open(io.BytesIO(res.content)).size == (200, 200)
 
 
 async def test_switched_on_without_a_code_users_see_nothing(
@@ -159,17 +178,40 @@ async def test_the_code_is_kept_lossless_scaled_down_and_without_its_metadata(
     assert kept.size == (1024, 512)
 
 
-async def test_what_is_not_a_picture_or_too_large_is_refused_keeping_the_code(
+async def test_the_code_is_kept_upright_and_on_white(
+    make_client: ClientFactory, github: FakeIdentityProvider
+):
+    """A photo of a code is turned as the camera said; a transparent code is put on white,
+    or it would vanish on the dark viewer."""
+    admin = await admin_client(make_client, github)
+    sideways = Image.Exif()
+    sideways[0x0112] = 6  # Orientation: turned 90° clockwise to view
+    await upload(admin, picture((200, 100), "JPEG", exif=sideways.tobytes()))
+
+    kept = Image.open(io.BytesIO((await admin.get("/api/admin/sponsor/image")).content))
+
+    assert kept.size == (100, 200)
+
+    transparent = Image.new("RGBA", (10, 10), (0, 0, 0, 0))
+    transparent.putpixel((0, 0), (0, 0, 0, 255))
+    out = io.BytesIO()
+    transparent.save(out, "PNG")
+    await upload(admin, out.getvalue())
+    kept = Image.open(io.BytesIO((await admin.get("/api/admin/sponsor/image")).content))
+    assert kept.mode == "RGB"
+    assert kept.getpixel((5, 5)) == (255, 255, 255)
+    assert kept.getpixel((0, 0)) == (0, 0, 0)
+
+
+async def test_what_is_not_a_png_jpeg_or_webp_or_too_large_is_refused_keeping_the_code(
     make_client: ClientFactory, github: FakeIdentityProvider
 ):
     admin = await admin_client(make_client, github)
     first = (await upload(admin, picture((100, 100)))).json()
 
-    not_a_picture = await upload(admin, b"not a picture at all")
     gif = await upload(admin, picture((100, 100), "GIF"))
     too_large = await upload(admin, b"\0" * (2 * 1024 * 1024 + 1))
 
-    assert not_a_picture.status_code == 422
     assert gif.status_code == 422
     assert too_large.status_code == 413
     assert (await admin.get("/api/admin/sponsor")).json() == first

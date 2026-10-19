@@ -8,7 +8,8 @@ export type AdminSponsor = { enabled: boolean; image_at: string | null };
 
 /** 后端收的图片格式和大小。 */
 export const SPONSOR_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
-export const MAX_SPONSOR_IMAGE_BYTES = 2 * 1024 * 1024;
+export const MAX_SPONSOR_IMAGE_MB = 2;
+export const MAX_SPONSOR_IMAGE_BYTES = MAX_SPONSOR_IMAGE_MB * 1024 * 1024;
 
 export async function getAdminSponsor(): Promise<AdminSponsor> {
   return json(await api("/api/admin/sponsor"));

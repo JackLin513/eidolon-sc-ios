@@ -24,6 +24,7 @@ import {
   clearSponsor,
   getAdminSponsor,
   MAX_SPONSOR_IMAGE_BYTES,
+  MAX_SPONSOR_IMAGE_MB,
   SPONSOR_IMAGE_TYPES,
   switchSponsor,
   uploadSponsorImage,
@@ -32,6 +33,8 @@ import {
 import { toFailure, type Failure } from "@/lib/failure";
 
 const t = copy.admin.config.sponsor;
+
+type Action = "switch" | "upload" | "clear";
 
 /**
  * 配置页「赞赏」标签里的那张卡（GLOSSARY.md「赞赏」，DESIGN.md「Layout · 后台 · 配置」）：开关一拨就存；
@@ -42,7 +45,7 @@ const t = copy.admin.config.sponsor;
 export function AdminSponsor() {
   const [sponsor, setSponsor] = useState<Sponsor | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
-  const [busy, setBusy] = useState<"switch" | "upload" | "clear" | null>(null);
+  const [busy, setBusy] = useState<Action | null>(null);
   const [isConfirming, setConfirming] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const switchId = useId();
@@ -51,7 +54,7 @@ export function AdminSponsor() {
     getAdminSponsor().then(setSponsor, (e) => setFailure(toFailure(e)));
   }, []);
 
-  async function run(action: "switch" | "upload" | "clear", request: () => Promise<Sponsor>) {
+  async function run(action: Action, request: () => Promise<Sponsor>) {
     setBusy(action);
     setFailure(null);
     try {
@@ -73,7 +76,7 @@ export function AdminSponsor() {
       return;
     }
     if (file.size > MAX_SPONSOR_IMAGE_BYTES) {
-      setFailure({ message: t.tooLarge, signedOut: false });
+      setFailure({ message: t.tooLarge(MAX_SPONSOR_IMAGE_MB), signedOut: false });
       return;
     }
     void run("upload", () => uploadSponsorImage(file));
@@ -131,7 +134,7 @@ export function AdminSponsor() {
                   {busy === "upload" ? t.uploading : sponsor.image_at === null ? t.upload : t.replace}
                 </Button>
               </div>
-              <p className="text-muted-foreground">{t.formats}</p>
+              <p className="text-muted-foreground">{t.formats(MAX_SPONSOR_IMAGE_MB)}</p>
             </div>
           </>
         )}

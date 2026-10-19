@@ -12,7 +12,7 @@ const t = copy.settings.sponsor;
 
 /**
  * 设置一级里「关于」上面的「赞赏」（GLOSSARY.md「赞赏」，DESIGN.md「设置页」）：样子同一级的行，没有摘要，
- * 点了不跳页，整屏放大部署者的收款码（`version` 是 `Account.sponsor`）。
+ * 点了不跳页，整屏放大部署者的收款码（`version` 是 `Account.sponsor_version`）。
  */
 export function SponsorRow({ version }: { version: string }) {
   const [open, setOpen] = useState(false);

@@ -412,18 +412,18 @@ export type SignInMethod = { provider: Provider; display_name: string; email: st
  * `is_admin`: the user may enter the admin console (`/admin`).
  * `exempting_keys`: the services a call must bring the user's own keys for, all of them, to count
  * towards no limit (GLOSSARY.md「免限额密钥」), in the order of `OWN_SERVICES`; at least one.
- * `sponsor`: when the deployer's sponsor code (GLOSSARY.md「赞赏」) was uploaded, its version for
- * `sponsorImageUrl`; null when users are not shown it (switched off, or no code). */
+ * `sponsor_version`: the version of the deployer's sponsor code (GLOSSARY.md「赞赏」), when it was
+ * uploaded, for `sponsorImageUrl`; null when users are not shown it (switched off, or no code). */
 export type Account = {
   id: string;
   name: string;
   sign_in_methods: SignInMethod[];
   is_admin: boolean;
   exempting_keys: OwnService[];
-  sponsor: string | null;
+  sponsor_version: string | null;
 };
 
-/** Where the deployer's sponsor code of `version` (`Account.sponsor`) is read: a new address for
+/** Where the deployer's sponsor code of `version` (`Account.sponsor_version`) is read: a new address for
  * each code uploaded, so a browser keeps each for good. */
 export function sponsorImageUrl(version: string): string {
   return `/api/sponsor/image?${new URLSearchParams({ v: version })}`;

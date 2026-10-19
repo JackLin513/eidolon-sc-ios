@@ -1507,7 +1507,7 @@ export const zh = {
       /** 「赞赏」标签里的那张卡（GLOSSARY.md「赞赏」）。不是 .env 里的配置，没有「恢复成 .env 的值」，只有「清除」。 */
       sponsor: {
         title: "赞赏",
-        hint: "打开并上传收款码后，用户在设置里「关于」上面看到「赞赏」，点开就是这张图。",
+        hint: "用户在设置里「关于」上面看到「赞赏」，点开是这张收款码。",
         loading: "正在读取…",
         switch: "在设置里显示",
         noImage: "还没上传收款码，用户暂时看不到「赞赏」。",
@@ -1515,9 +1515,9 @@ export const zh = {
         upload: "上传收款码",
         replace: "换一张",
         uploading: "正在上传…",
-        formats: "PNG、JPEG 或 WebP，不超过 2 MB；会转成无损 PNG，长边超过 1024 像素的等比缩小。",
+        formats: (mb: number) => `PNG、JPEG 或 WebP，不超过 ${mb} MB。`,
         notAPicture: "只能上传 PNG、JPEG 或 WebP 图片。",
-        tooLarge: "图片不能超过 2 MB。",
+        tooLarge: (mb: number) => `图片不能超过 ${mb} MB。`,
         clear: "清除",
         dialog: {
           title: "清除赞赏？",

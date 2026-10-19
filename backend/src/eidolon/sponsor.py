@@ -2,15 +2,17 @@
 to scan and sponsor the deployment with, kept in the database (`sponsor`) as photos are
 (ADR-0024). Users are shown it only while it is switched on and a code is uploaded.
 
-Its picture is kept as a PNG made anew from the upload's pixels, nothing else of it kept,
-and no larger than `MAX_SIDE` on its longer side: lossless, so the code still scans."""
+Its picture is kept as a PNG made anew from the upload's pixels, turned upright as the
+camera said and on white where it is transparent, nothing else of it kept, and no larger
+than `MAX_SIDE` on its longer side: lossless and opaque, so the code still scans on the dark
+viewer."""
 
 import io
 import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from eidolon.clock import Clock
 from eidolon.database import connect
@@ -48,26 +50,28 @@ class SponsorState:
     """When the code was uploaded, ISO 8601; None without one."""
 
     @property
-    def shown(self) -> bool:
-        """Whether users see it: switched on, with a code."""
-        return self.enabled and self.image_at is not None
+    def version(self) -> str | None:
+        """The version of the code users see, when it was uploaded; None while they see
+        none (switched off, or no code)."""
+        return self.image_at if self.enabled else None
 
 
 def kept_as_png(upload: bytes) -> bytes:
-    """`upload` as the code is kept: a PNG of its pixels alone, scaled down to `MAX_SIDE`.
-    Raises NotAPicture unless it is a PNG, JPEG or WebP of at most `MAX_PIXELS`."""
+    """`upload` as the code is kept: a PNG of its pixels alone, upright, on white, scaled
+    down to `MAX_SIDE`. Raises NotAPicture unless it is a PNG, JPEG or WebP of at most
+    `MAX_PIXELS`."""
     try:
         with Image.open(io.BytesIO(upload), formats=("PNG", "JPEG", "WEBP")) as opened:
             width, height = opened.size
             if width * height > MAX_PIXELS:
                 raise NotAPicture(f"{width}×{height} 太大")
-            opened.load()
-            mode = "RGBA" if "A" in opened.getbands() or "transparency" in opened.info else "RGB"
-            pixels = opened.convert(mode)
+            upright = ImageOps.exif_transpose(opened).convert("RGBA")
     except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as e:
         raise NotAPicture(str(e)) from None
+    pixels = Image.new("RGBA", upright.size, "white")
+    pixels.alpha_composite(upright)
     # Made anew from its pixels alone, so nothing of what came with it is written.
-    bare = Image.frombytes(mode, pixels.size, pixels.tobytes())
+    bare = Image.frombytes("RGB", pixels.size, pixels.convert("RGB").tobytes())
     bare.thumbnail((MAX_SIDE, MAX_SIDE), Image.Resampling.LANCZOS)
     out = io.BytesIO()
     bare.save(out, "PNG", optimize=True)
@@ -110,11 +114,13 @@ class Sponsor:
             )
         return self.state()
 
-    def image(self) -> bytes | None:
-        """The code, a PNG; None without one."""
+    def image(self) -> tuple[bytes, str] | None:
+        """The code, a PNG, and its version, when it was uploaded; None without one."""
         with self._lock:
-            row = self._db.execute("SELECT image FROM sponsor WHERE id = 1").fetchone()
-        return None if row is None else row[0]
+            row = self._db.execute(
+                "SELECT image, image_at FROM sponsor WHERE id = 1 AND image IS NOT NULL"
+            ).fetchone()
+        return None if row is None else (row[0], row[1])
 
     def clear(self) -> SponsorState:
         """Switch it off and delete the code."""

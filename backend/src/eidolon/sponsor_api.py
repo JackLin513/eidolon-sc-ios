@@ -1,8 +1,9 @@
 """Sponsoring over HTTP (GLOSSARY.md「赞赏」): admins switch it, upload the code and clear both
 under `/api/admin/sponsor`, which answers 404 to anyone else as the rest of the admin
 console does; users read the code at `/api/sponsor/image` while they are shown it, and
-whether they are from `/api/account`. The code's address carries when it was uploaded
-(`?v=`), so a browser keeps each for good and reads a new one anew."""
+its version from `/api/account`. The code's address carries its version, when it was
+uploaded (`?v=`), so a browser keeps each for good and reads a new one anew; asked for a
+version since replaced, it is given the new one, not to keep."""
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, StrictBool
@@ -14,6 +15,11 @@ from eidolon.sessions import UserId
 from eidolon.sponsor import MAX_UPLOAD_BYTES, NotAPicture, SponsorState
 
 _CODE_CACHE = {"Cache-Control": "private, max-age=31536000, immutable"}
+"""A code's picture never changes for its version."""
+
+_NOT_KEPT = {"Cache-Control": "no-store"}
+
+NOT_FOUND = "没有收款码"
 
 _TOO_LARGE = f"图片不能超过 {MAX_UPLOAD_BYTES // (1024 * 1024)} MB"
 
@@ -29,11 +35,14 @@ def _described(state: SponsorState) -> dict:
 def add_sponsor_routes(app: FastAPI, backend: Backend) -> None:
     sponsor = backend.sponsor
 
-    def code() -> Response:
-        image = sponsor.image()
-        if image is None:
-            raise HTTPException(404, "没有收款码")
-        return Response(image, media_type="image/png", headers=_CODE_CACHE)
+    def code_response(asked: str | None) -> Response:
+        """The code there is; kept for good only if it is the version `asked` for."""
+        found = sponsor.image()
+        if found is None:
+            raise HTTPException(404, NOT_FOUND)
+        image, version = found
+        headers = _CODE_CACHE if asked == version else _NOT_KEPT
+        return Response(image, media_type="image/png", headers=headers)
 
     @app.get("/api/admin/sponsor")
     def state(_: Admin) -> dict:
@@ -64,13 +73,13 @@ def add_sponsor_routes(app: FastAPI, backend: Backend) -> None:
         return _described(sponsor.clear())
 
     @app.get("/api/admin/sponsor/image")
-    def admin_code(_: Admin) -> Response:
+    def admin_code(_: Admin, v: str | None = None) -> Response:
         """The code, switched on or not."""
-        return code()
+        return code_response(v)
 
     @app.get("/api/sponsor/image")
-    def user_code(_: UserId) -> Response:
+    def user_code(_: UserId, v: str | None = None) -> Response:
         """The code, only while users are shown it."""
-        if not sponsor.state().shown:
-            raise HTTPException(404, "没有收款码")
-        return code()
+        if sponsor.state().version is None:
+            raise HTTPException(404, NOT_FOUND)
+        return code_response(v)
