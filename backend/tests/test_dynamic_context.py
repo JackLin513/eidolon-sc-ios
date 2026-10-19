@@ -2,7 +2,9 @@
 reads is cut back in steps, so each turn's prompt opens as the one before it did and the
 service can cache all of it but the end (ADR-0020)."""
 
+import sqlite3
 from dataclasses import replace
+from datetime import UTC, datetime
 
 import pytest
 
@@ -20,7 +22,9 @@ from tests.fakes import (
     FakeServiceClients,
     context_of,
 )
+from tests.test_affinity_prompt import LAST_TALKED
 from tests.test_call_turns import MANO_REPLY, CallUnderTest, spoken
+from tests.test_reach_outs import connected_call, last_contact
 from tests.test_text_turn import send_turn, start_conversation
 
 PROFILE = {
@@ -155,5 +159,41 @@ async def test_she_is_told_whether_the_turn_is_typed_or_in_a_call_after_what_is_
     [typed], [in_call] = typed_llm.prompts, call_llm.prompts
     assert TYPING in context_of(typed) and IN_A_CALL not in context_of(typed)
     assert IN_A_CALL in context_of(in_call) and TYPING not in context_of(in_call)
+    assert LAST_TALKED not in context_of(in_call)  # a call's turns are not told when
     assert in_call[:2] == typed[:2]
     assert not any(TYPING in m.content or IN_A_CALL in m.content for m in typed[:2])
+
+
+
+async def test_each_typed_turn_is_told_when_they_last_talked_and_how_long_ago(
+    make_client: ClientFactory, settings: Settings
+):
+    """By her last turn or call that connected with the producer before it, in whichever
+    conversation; not before there was one."""
+    llm = FakeLLM(reply(1), reply(2), reply(3), reply(4))
+    client = make_client(llm, clock=FakeClock(datetime(2026, 10, 19, 12, tzinfo=UTC)))
+    await client.put("/api/profile", json=PROFILE)  # Asia/Tokyo
+    first = await start_conversation(client)
+    database = settings.database_path
+
+    await send_turn(client, first, "第1句")
+    last_contact(database, first, datetime(2026, 10, 17, 1, tzinfo=UTC))
+    await send_turn(client, first, "第2句")
+    last_contact(database, first, datetime(2026, 10, 17, 1, tzinfo=UTC))
+    connected_call(database, first, datetime(2026, 10, 19, 10, tzinfo=UTC), 1800)
+    await send_turn(client, first, "第3句")
+    last_contact(database, first, datetime(2025, 12, 31, 11, 55, 30, tzinfo=UTC))
+    with sqlite3.connect(database) as db:
+        db.execute("DELETE FROM calls")
+    await send_turn(client, await start_conversation(client), "第4句")
+
+    told = [
+        [line for line in context_of(p).splitlines() if line.startswith(LAST_TALKED)]
+        for p in llm.prompts
+    ]
+    assert told == [
+        [],
+        ["上次和制作人说话是 10月17日 10:00，隔了 2 天。"],
+        ["上次和制作人说话是 10月19日 19:30，隔了 1 小时。"],
+        ["上次和制作人说话是 2025年12月31日 20:55，隔了 292 天。"],
+    ]

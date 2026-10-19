@@ -42,6 +42,11 @@ TIER_MARKS = {
     "close": "更放松",
     "intimate": "非常信赖",
 }
+FONDNESS = {"close": "偶尔可以轻轻带一句", "intimate": "可以明着撒娇"}
+"""How sweet on the producer she may be, close or intimate, in her replies and reach-outs."""
+SWEET_WITHIN_BOUNDS = "不要拿什么要挟"
+LAST_TALKED = "上次和制作人说话是"
+"""How the line telling her when she and the producer last talked opens."""
 FEELINGS = {
     0: "制作人刚才说的话伤到了你。",
     1: "制作人刚才说的话让你有点不舒服。",
@@ -98,19 +103,31 @@ async def test_in_trust_and_wherever_affinity_is_off_the_prompt_is_as_it_was(
     )
     no_judge, _ = await prompted(make_client, [level(0)], settings=replace(settings, judge=None))
 
-    assert system_of(on.prompts[0]) == system_of(off.prompts[0])
-    assert system_of(no_judge.prompts[0]) == system_of(off.prompts[0])
+    # Each takes its turn in the same database, after the one before: but for when that was.
+    told_on, told_off, told_no_judge = (
+        [line for line in system_of(llm.prompts[0]).splitlines()
+         if not line.startswith(LAST_TALKED)]
+        for llm in (on, off, no_judge)
+    )
+    assert told_on == told_off
+    assert told_no_judge == told_off
     assert IN_HER_OWN_WAY not in about_now(on)
+    assert SWEET_WITHIN_BOUNDS not in about_now(on)
 
 
 async def test_each_tier_but_trust_has_her_speak_as_its_own_in_her_own_way(
     make_client: ClientFactory, settings: Settings
 ):
+    """Close, she may now and then be a little sweet on the producer; intimate, openly."""
     for kept, tier in [(10, "cold"), (39.9, "distant"), (65, "close"), (100, "intimate")]:
         llm, _ = await prompted(make_client, [level(2)], kept=kept, settings=settings)
 
         section = about_now(llm)
         assert [t for t, m in TIER_MARKS.items() if m in section] == [tier]
+        assert [t for t, m in FONDNESS.items() if m in section] == (
+            [tier] if tier in FONDNESS else []
+        )
+        assert (SWEET_WITHIN_BOUNDS in section) == (tier in FONDNESS), tier
         assert IN_HER_OWN_WAY in section, tier
         assert UNCHANGED in section, tier
         assert NOTHING_MADE_UP in section, tier

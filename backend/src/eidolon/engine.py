@@ -120,7 +120,7 @@ from eidolon.config import FishAudioModel, ImageSettings
 from eidolon.gift_catalog import Gift
 from eidolon.judge import JudgeError
 from eidolon.llm import ChatLLM, ChatMessage, Reasoning, Tool, ToolCall, TurnLLMs
-from eidolon.memory import Memories
+from eidolon.memory import Memories, last_turn_query
 from eidolon.own_keys import OwnKeyFailed
 from eidolon.photos import CANNOT_SEND, NOT_RECEIVED, Eligibility, Photos, photo_turn
 from eidolon.producer import effective_timezone, local_date, now_prompt, producer_prompt
@@ -557,6 +557,10 @@ class ConversationEngine:
         # Said after reading the record, so an event this turn's prompt does not tell of
         # comes before the turn, and is told of with its words from the next turn on.
         said_at = timestamp()
+        last_contact = (
+            self._store.last_contact(conversation.user_id, conversation.character_id)
+            if in_call is None else None  # in a call, she knows they are talking
+        )
         messages = [entry for entry in record if isinstance(entry, Message)]
         turns = self._history_turns()
         history = latest_turns(messages, turns)  # what all but the chat model read
@@ -625,7 +629,7 @@ class ConversationEngine:
             [
                 now_prompt(
                     profile, now, timezone, "in_call" if in_call is not None else "typing",
-                    affinity_lines,
+                    affinity_lines, last_contact,
                 ),
                 *([about_photo] if about_photo else []),
             ],
@@ -733,9 +737,10 @@ class ConversationEngine:
         「搭话」), on `llm`: its segments, as the model wrote them, delivery cues and all. Her
         prompt is laid out as a text turn's (ADR-0020), and opens as the next one's will, but
         for what changes from turn to turn: she is told what time it is and that they are not
-        talking, how she speaks in her tier, and how to reach out; then, where the user's words
-        would be, the events since the last turn and that she wants to say something first.
-        Nothing is retrieved, no tool offered, nothing judged. Raises EmptyReply if the model
+        talking and when they last were, how she speaks in her tier, the memories she reaches
+        out with (`Memories.for_reaching_out`), and how to reach out; then, where the user's
+        words would be, the events since the last turn and that she wants to say something
+        first. Nothing else is retrieved, no tool offered, nothing judged. Raises EmptyReply if the model
         says nothing she could say, and whatever the model raises."""
         character = self._characters[conversation.character_id]
         record = _without_reach_outs(self._store.record(conversation.id))
@@ -749,6 +754,9 @@ class ConversationEngine:
         )
         told = narrations(record, self._gift_catalog)
         told[None] = _events_since_last_turn(record, self._gift_catalog)
+        memories = await self._memory.for_reaching_out(
+            conversation, timezone, last_turn_query(messages)
+        )
         prompt = self._prompt(
             character, world_prompt, producer_prompt(profile),
             chat_history(messages, self._history_turns()), told,
@@ -756,9 +764,10 @@ class ConversationEngine:
                 now_prompt(
                     profile, now, timezone, "apart",
                     affinity_prompt(affinity.tier, None) if affinity is not None else [],
+                    self._store.last_contact(conversation.user_id, conversation.character_id),
                 ),
             ],
-            [REACH_OUT_RULES],
+            [*([memories] if memories else []), REACH_OUT_RULES],
             WANTS_TO_REACH_OUT, None,
         )
         parser = ReplyParser()

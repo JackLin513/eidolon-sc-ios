@@ -31,10 +31,14 @@ from tests.fakes import (
     FAKE_JUDGE,
     FakeBackgroundLLM,
     FakeClock,
+    FakeEmbedder,
+    FakeJudge,
     FakeIdentityProvider,
+    FakeImageService,
     FakeLLM,
     FakeLLMService,
     FakeRandom,
+    FakeReranker,
     FakeServiceClients,
     context_of,
     system_of,
@@ -42,9 +46,11 @@ from tests.fakes import (
 from tests.test_activity_records import dashboard, health
 from tests.test_admin_users import ADMIN, admin_beside, details, find
 from tests.test_affinity import keep
+from tests.test_affinity_prompt import FONDNESS
 from tests.test_conversation_titles import TITLE, listed_titles, naming
 from tests.test_delete_account import DELETE
 from tests.test_own_llm import LLM as OWN_LLM
+from tests.test_photos import IMAGE, SELFIE, WORDS
 from tests.test_stats import stats
 from tests.test_text_turn import send_turn, start_conversation
 
@@ -301,9 +307,97 @@ async def test_she_is_asked_as_in_a_text_turn_but_told_they_are_not_talking(
     ]
     told = context_of(reaching_out)
     assert "你们这会儿没在说话" in told and "正在用文字和你聊天" not in told
-    assert "现在是" in told and "非常信赖" in told
+    assert "现在是" in told and "非常信赖" in told and FONDNESS["intimate"] in told
     assert REACH_OUT_RULES in told
     assert (llm.tools[-1], llm.forbidden[-1]) == ([], False)
+
+
+async def test_she_knows_when_they_last_talked_and_how_long_ago(
+    make_client: ClientFactory, settings: Settings
+):
+    llm = FakeLLM(REPLY, REACH_OUT)
+    client = make_client(
+        llm, clock=FakeClock(datetime(2026, 10, 19, 12, tzinfo=UTC)), random=FakeRandom(0)
+    )
+    conversation = await start_conversation(client)
+    await send_turn(client, conversation, "我去练习了")
+    last_contact(settings.database_path, conversation, datetime(2026, 10, 18, 13, tzinfo=UTC))
+
+    await backend_of(client).reach_outs.run_due()
+
+    assert len(reach_outs(await record(client, conversation))) == 1
+    assert "上次和制作人说话是 10月18日 21:00，隔了 23 小时。" in context_of(llm.prompts[-1])
+
+
+async def test_on_his_birthday_she_wishes_him_happy_birthday_once(
+    make_client: ClientFactory, settings: Settings
+):
+    llm = FakeLLM(REPLY, REACH_OUT)
+    client = make_client(
+        llm, clock=FakeClock(datetime(2026, 10, 19, 12, tzinfo=UTC)), random=FakeRandom(0)
+    )
+    await client.put("/api/profile", json={"birthday": {"month": 10, "day": 19}})
+    conversation = await start_conversation(client)
+    await send_turn(client, conversation, "我去练习了")
+    last_contact(settings.database_path, conversation, datetime(2026, 10, 18, 13, tzinfo=UTC))
+
+    await backend_of(client).reach_outs.run_due()
+
+    [birthday] = [
+        line for line in context_of(llm.prompts[-1]).splitlines() if "今天是制作人的生日" in line
+    ]
+    assert "祝福一次" in birthday and "回应制作人说的话" not in birthday
+
+
+def remember(
+    database: Path, text: str, at: datetime, told: str = "mano", superseded_by: int | None = None
+) -> int:
+    """Have the producer have told `told` `text` at `at`, as a turn writes it down: its id."""
+    with sqlite3.connect(database) as db:
+        cursor = db.execute(
+            "INSERT INTO memories (user_id, source_character_id, text, created_at, superseded_by)"
+            " VALUES ((SELECT id FROM users WHERE name = 'producer'), ?, ?, ?, ?)",
+            (told, text, at.isoformat(), superseded_by),
+        )
+    assert cursor.lastrowid is not None
+    return cursor.lastrowid
+
+
+async def test_she_finds_what_he_told_her_of_their_last_turn_and_his_last_two_weeks(
+    make_client: ClientFactory, settings: Settings
+):
+    """Only what he told her herself, and still holds: what is relevant to their last turn,
+    as a turn finds it, and what he told her lately, each once."""
+    embedder, reranker = FakeEmbedder(), FakeReranker("猫", others=0.0)
+    client, llm, clock, conversation = await talked(
+        make_client, ["<ja>猫ちゃん？</ja><zh>小猫怎么了？</zh>"], REACH_OUT,
+        retrieval_judge=FakeJudge(answer="nothing"), embedder=embedder, reranker=reranker,
+        random=FakeRandom(0),
+    )
+    await send_turn(client, conversation, "我家的猫又捣乱了")
+    database, now = settings.database_path, clock.now
+    remember(database, "制作人家里养了一只叫小白的猫", now - timedelta(days=40))
+    remember(database, "制作人家的猫怕打雷", now - timedelta(days=40), told="kogane")
+    remember(database, "制作人10月3日去北海道出差", now - timedelta(days=15))
+    exam = remember(database, "制作人10月25日要考资格证", now - timedelta(days=3))
+    remember(database, "制作人10月20日要考资格证", now - timedelta(days=5), superseded_by=exam)
+    remember(database, "制作人最近在学吉他", now - timedelta(days=1), told="kogane")
+    remember(database, "制作人的猫这两天感冒了", now - timedelta(days=2))
+    last_contact(database, conversation, now - timedelta(hours=20))
+
+    await backend_of(client).reach_outs.run_due()
+
+    assert len(reach_outs(await record(client, conversation))) == 1
+    told = context_of(llm.prompts[-1])
+    found = [line for line in told.splitlines() if line.startswith("- 制作人")]
+    assert sorted(line.split("（")[0] for line in found) == sorted([
+        "- 制作人家里养了一只叫小白的猫",
+        "- 制作人的猫这两天感冒了",
+        "- 制作人10月25日要考资格证",
+    ])
+    assert all(line.endswith("制作人对你说的）") for line in found)
+    assert told.index("# 关于制作人的记忆") < told.index(REACH_OUT_RULES)
+    assert reranker.calls[-1][0] == "我家的猫又捣乱了\n小猫怎么了？"
 
 
 async def test_she_reaches_out_on_the_deployers_chat_model_whatever_the_user_brings(
@@ -396,6 +490,25 @@ async def test_one_she_could_say_nothing_in_fails_is_not_recorded_nor_tried_agai
 
     assert reach_outs(await record(client, conversation)) == []
     assert records(settings.database_path)[1:] == [("reach_out", "mano", "failed", 0)]
+
+
+async def test_she_sends_no_photo_her_tag_dropped_and_her_words_recorded(
+    make_client: ClientFactory, settings: Settings
+):
+    image = FakeImageService()
+    client, _, clock, conversation = await talked(
+        make_client, [f"<photo>{SELFIE}</photo>", WORDS],
+        settings=replace(settings, image=IMAGE, judge=FAKE_JUDGE, affinity_and_gifts=False),
+        image_transport=image.transport(), random=FakeRandom(0),
+    )
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=20))
+
+    await backend_of(client).reach_outs.run_due()
+
+    [said] = reach_outs(await record(client, conversation))
+    assert (said["ja"], said["zh"]) == ("はい、どうぞ", "给，你看")
+    assert "photo" not in said
+    assert image.requests == []
 
 
 async def test_titles_and_stats_take_no_account_of_her_reach_outs(

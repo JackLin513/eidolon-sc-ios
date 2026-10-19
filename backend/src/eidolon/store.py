@@ -1194,7 +1194,7 @@ class Store:
                 [row["id"] for row in rows],
             ):
                 ended_calls.setdefault(call["conversation_id"], []).append(
-                    _at(call["connected_at"]) + timedelta(seconds=call["duration_s"])
+                    _call_ended(call["connected_at"], call["duration_s"])
                 )
         current = []
         for row in rows:
@@ -1212,6 +1212,28 @@ class Store:
                 bool(row["ended"]),
             ))
         return current
+
+    def last_contact(self, user_id: str, character_id: str) -> datetime | None:
+        """When the user and the character were last in touch, in any of their conversations:
+        her last turn recorded, or a call that connected ending, whichever was later; None
+        before either."""
+        with self._lock:
+            [last_turn] = self._db.execute(
+                "SELECT MAX(m.created_at) FROM messages m"
+                " JOIN conversations c ON c.id = m.conversation_id"
+                " WHERE c.user_id = ? AND c.character_id = ?",
+                (user_id, character_id),
+            ).fetchone()
+            calls = self._db.execute(
+                "SELECT k.connected_at, k.duration_s FROM calls k"
+                " JOIN conversations c ON c.id = k.conversation_id"
+                " WHERE c.user_id = ? AND c.character_id = ?",
+                (user_id, character_id),
+            ).fetchall()
+        contacts = [_call_ended(at, seconds) for at, seconds in calls]
+        if last_turn is not None:
+            contacts.append(_at(last_turn))
+        return max(contacts, default=None)
 
     def add_reach_out(
         self, conversation_id: str, said: list[Segment], record_id: int | None
@@ -1465,6 +1487,11 @@ def _placed(entry: ConversationEvent | ReachOut) -> tuple[datetime, bool, int]:
 
 def _at(timestamp: str) -> datetime:
     return datetime.fromisoformat(timestamp)
+
+
+def _call_ended(connected_at: str, duration_s: float) -> datetime:
+    """When a call that connected at `connected_at` and lasted `duration_s` ended."""
+    return _at(connected_at) + timedelta(seconds=duration_s)
 
 
 def _hash(secret: str) -> str:

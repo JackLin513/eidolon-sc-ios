@@ -247,6 +247,18 @@ _TIER_PROMPTS: dict[Tier, str] = {
 shows it in her own way. No number, no tier's name, no word for affinity: she is to sound
 like someone, not a system. Neither cold nor distant is hating the producer."""
 
+_FONDNESS: dict[Tier, str] = {
+    "close": "偶尔可以轻轻带一句想念，隔得久了也可以嗔怪制作人好久没来找你。",
+    "intimate": "可以明着撒娇：说想制作人、一直在等，隔得久了也可以嗔怪对方好久没来。",
+}
+"""How sweet on the producer she may be in the tiers above trust, in her replies and
+reach-outs alike."""
+
+_SWEET_WITHIN_BOUNDS = (
+    "撒娇也要照你的人设，不要变得不像你；上一次主动找制作人或回复时已经抱怨过，这次就别再抱怨。"
+    "不要说难过得哭了，不要让制作人保证常来，也不要拿什么要挟。"
+)
+
 _WHATEVER_THE_TIER = (
     "无论现在关系怎样，人设里的硬性规则照旧；一起经历过的事和你们偶像与制作人的关系都不会改变。"
     "如果想不起具体是因为什么，就不要编造原因。"
@@ -325,12 +337,15 @@ def affinity_prompt(
 ) -> list[str]:
     """What the prompt's section about the producer says of her affinity, as the turn begins
     in `tier` and is `judged` (None if it was not): how she speaks to the producer in her
-    tier, nothing in trust; how what the producer just said makes her feel; and, if she is
+    tier, and how sweet on them she may be above trust, nothing in trust; how what the producer just said makes her feel; and, if she is
     `parting` with the producer after replying, that she does, or else if she is `warning`
     the producer she will part that way should it go on (`warns`), that she does."""
     lines = []
     if tier != "trust":
-        lines += [_TIER_PROMPTS[tier] + _IN_HER_OWN_WAY, _WHATEVER_THE_TIER]
+        lines.append(_TIER_PROMPTS[tier] + _IN_HER_OWN_WAY)
+        if tier in _FONDNESS:
+            lines.append(_FONDNESS[tier] + _SWEET_WITHIN_BOUNDS)
+        lines.append(_WHATEVER_THE_TIER)
     if judged is not None and (feeling := judged.feeling):
         lines.append(feeling)
     if parting is not None:

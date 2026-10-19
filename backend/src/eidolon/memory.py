@@ -42,7 +42,7 @@ import sqlite3
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -74,6 +74,10 @@ CANDIDATES = 12
 """How many of the user's memories nearest the turn the reranker is offered."""
 MAX_FOUND = 3
 """The most memories one turn's prompt carries, after reranking."""
+LATELY = timedelta(days=14)
+"""How long ago what she reaches out with as his news may have been written down."""
+MAX_LATEST = 5
+"""The most of his news she reaches out with, besides what is found."""
 ANOTHER_IDOL = "事务所的另一位偶像"
 """Who a memory was told to, when that character has been removed from the configuration."""
 
@@ -366,28 +370,75 @@ class Memories:
         query_text: str,
         candidates: Sequence[Memory],
     ) -> str | None:
+        found = await self._relevant(query_text, candidates)
+        character = self._characters[conversation.character_id]
+        return _memories_prompt(found, character, timezone, _FOUND) if found else None
+
+    async def _relevant(self, query_text: str, candidates: Sequence[Memory]) -> list[Memory]:
+        """As many as `MAX_FOUND` of the `candidates` relevant to `query_text`, most relevant
+        first; none if memory is off or reranking failed."""
         if (services := self._services) is None or not candidates:
-            return None
+            return []
         try:
             best = await services.reranker.rerank(
                 query_text, [m.text for m in candidates], len(candidates)
             )
         except RerankError:
-            log.warning("finding memories failed; replying without them", exc_info=True)
-            return None
+            log.warning("finding memories failed; going on without them", exc_info=True)
+            return []
         min_relevance = services.min_relevance()
-        found = [candidates[i] for i, score in best if score >= min_relevance]
-        character = self._characters[conversation.character_id]
-        return _memories_prompt(found[:MAX_FOUND], character, timezone) if found else None
+        return [candidates[i] for i, score in best if score >= min_relevance][:MAX_FOUND]
+
+    async def for_reaching_out(
+        self, conversation: Conversation, timezone: str, last_turn: str | None
+    ) -> str | None:
+        """The prompt section carrying the memories she reaches out with in `conversation`,
+        whose user is in `timezone` (GLOSSARY.md「搭话」): of those the user told her herself
+        that still hold, those relevant to `last_turn`, as a turn finds them (`last_turn_query`),
+        then as many as `MAX_LATEST` of the latest written down within `LATELY`, each once;
+        None if there are none, or memory is off."""
+        if (services := self._services) is None:
+            return None
+        user_id, character_id = conversation.user_id, conversation.character_id
+        await self._settle(user_id)
+        found: list[Memory] = []
+        if last_turn is not None:
+            try:
+                query_vector = await services.embedder.embed_query(last_turn)
+                candidates = await self._nearest(
+                    services.embedder, user_id, query_vector, CANDIDATES, character_id
+                )
+            except EmbeddingError:
+                log.warning("embedding memories failed; reaching out with the latest only",
+                            exc_info=True)
+                candidates = []
+            found = await self._relevant(last_turn, candidates)
+        since = (self._clock() - LATELY).astimezone(UTC)
+        latest = [
+            m for m in _holding(await asyncio.to_thread(self.kept, user_id), character_id)
+            if datetime.fromisoformat(m.created_at) >= since
+        ][-MAX_LATEST:]
+        ids = {m.id for m in found}
+        recalled = [*found, *(m for m in reversed(latest) if m.id not in ids)]
+        character = self._characters[character_id]
+        return (
+            _memories_prompt(recalled, character, timezone, _REACHING_OUT) if recalled else None
+        )
 
     async def _nearest(
-        self, embedder: Embedder, user_id: str, query_vector: Sequence[float], limit: int
+        self,
+        embedder: Embedder,
+        user_id: str,
+        query_vector: Sequence[float],
+        limit: int,
+        character_id: str | None = None,
     ) -> list[Memory]:
         """As many as `limit` of the user's holding memories nearest a query embedded with
-        `embedder`, nearest first. Raises EmbeddingError, embedding those not embedded yet."""
+        `embedder`, nearest first, only those told to the character `character_id` if given.
+        Raises EmbeddingError, embedding those not embedded yet."""
         memories = await asyncio.to_thread(self.kept, user_id)
         vectors = await self._vectors(embedder, user_id, memories)
-        holding = [m for m in memories if m.superseded_by is None]
+        holding = _holding(memories, character_id)
         return [
             holding[i] for i, _ in nearest([vectors[m.id] for m in holding], query_vector, limit)
         ]
@@ -410,7 +461,7 @@ class Memories:
             log.warning("embedding the turn failed; the background model is shown the latest"
                         " memories", exc_info=True)
             memories = await asyncio.to_thread(self.kept, user_id)
-            return [m for m in memories if m.superseded_by is None][-SHOWN_MEMORIES:]
+            return _holding(memories)[-SHOWN_MEMORIES:]
 
     def _write_down(
         self,
@@ -734,6 +785,17 @@ def memory_query(history: Sequence[Message], text: str) -> str:
     return joined_query(_said(previous) if previous else None, text)
 
 
+def last_turn_query(messages: Sequence[Message]) -> str | None:
+    """What the memories she reaches out with are found with (`Memories.for_reaching_out`):
+    the last turn of `messages`, what the user said, then her reply as people see it; None
+    before the first."""
+    said = next((i for i in reversed(range(len(messages))) if messages[i].role == "user"), None)
+    if said is None:
+        return None
+    replies = [_said(m) for m in messages[said + 1 :] if m.role == "character"]
+    return "\n".join([messages[said].text or "", *replies])
+
+
 def joined_query(previous_reply: str | None, text: str) -> str:
     """`memory_query` of `text` said after `previous_reply`, as people see it, if any."""
     return f"{previous_reply}\n{text}" if previous_reply else text
@@ -780,12 +842,30 @@ def parse_memories(answer: str) -> list[NewMemory] | None:
     return list(written.values())[:MAX_NEW_MEMORIES]
 
 
-def _memories_prompt(memories: Sequence[Memory], character: Character, timezone: str) -> str:
-    lines = [
-        "# 关于制作人的记忆",
-        "下面是制作人以前说过的、和这句话可能有关的事，按相关程度排列，和话题无关的可以忽略。"
-        "像平时记得这些事一样自然地提起，不要逐条复述。",
+_FOUND = (
+    "下面是制作人以前说过的、和这句话可能有关的事，按相关程度排列，和话题无关的可以忽略。"
+    "像平时记得这些事一样自然地提起，不要逐条复述。"
+)
+_REACHING_OUT = (
+    "下面是制作人以前对你说过的事：先是和你们上次聊的可能有关的，再是制作人这两周的近况。"
+    "挑一两件自然地提起，不要逐条复述。"
+)
+
+
+def _holding(memories: Sequence[Memory], character_id: str | None = None) -> list[Memory]:
+    """Those of `memories` that still hold, only those told to `character_id` if given."""
+    return [
+        m for m in memories
+        if m.superseded_by is None and character_id in (None, m.source_character_id)
     ]
+
+
+def _memories_prompt(
+    memories: Sequence[Memory], character: Character, timezone: str, opening: str
+) -> str:
+    """The prompt section carrying `memories`, after its heading and `opening`, which says
+    what they are."""
+    lines = ["# 关于制作人的记忆", opening]
     for memory in memories:
         when = _date(datetime.fromisoformat(memory.created_at).astimezone(ZoneInfo(timezone)))
         if memory.source_character_id == character.id:
