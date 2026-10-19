@@ -553,6 +553,17 @@ class ActivityLog:
             for kind, character, started, result, own, in_call in rows
         ]
 
+    def reached_out_since(self, user_id: str, moment: datetime) -> int:
+        """How many times characters reached out to the user since `moment`, as of when each
+        began; only those recorded count, not those that failed or were refused."""
+        with self._lock:
+            [count] = self._db.execute(
+                "SELECT COUNT(*) FROM activity_records WHERE user_id = ? AND started_at >= ?"
+                " AND kind = 'reach_out' AND result = 'success'",
+                (user_id, moment.timestamp()),
+            ).fetchone()
+        return count
+
     def taken_since(self, user_ids: Sequence[str], moment: datetime) -> dict[str, dict[str, int]]:
         """How many turns and calls (by `RecordKind`) each of the users took after
         `moment`, not counting those rejected (`TAKEN`); a user who took none is not in

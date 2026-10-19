@@ -343,8 +343,8 @@ def build(
     )
     closers.append(gifts.close)
     reach_outs = ReachOuts(
-        settings.database_path, store, engine, characters, config, affinities, activity, clock,
-        random or secure_random,
+        settings.database_path, store, engine, characters, config, affinities, activity, usage,
+        calls.in_call, clock, random or secure_random,
     )
     closers.append(reach_outs.close)
     config.on_change(gifts.notice)

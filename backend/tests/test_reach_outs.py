@@ -9,11 +9,23 @@ turns use it, whoever's LLM the user brings, laid out as a text turn's prompt is
 the conversation as she would reply, in a group of its own, and the conversation list's last
 line; with an activity record of its own, which no count of turns or calls takes in.
 
+Her time goes by the producer's day, in the profile's time zone: from the night (22:00–08:00)
+to the morning after, 08:00–10:00; no more than the deployer's number a day for each user,
+the earliest first, the rest to the next morning; never past a week after the last contact.
+What was missed as the backend was down, or failed, is not made up for, but put off by a
+time from her tier's range. None for a user banned, or let take no turns on the deployer's
+keys; none while a text turn is under way or a call; and none recorded that the user spoke
+as she was thinking it, its record refused.
+
 Driven through the backend's external API, with the reach-outs' ticks taken by hand
 (`ReachOuts.run_due`), the clock moved, chance fixed (`FakeRandom`), and when the last
-contact was set in the database directly, as the store writes the time as it is."""
+contact was set in the database directly, as the store writes the time as it is. On the
+clock as it is, the producer is in a time zone where it is the afternoon (`afternoon`), so
+that what goes by her day comes alike whenever the tests run."""
 
+import asyncio
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -25,6 +37,7 @@ from eidolon.assembly import Backend
 from eidolon.config import Settings
 from eidolon.engine import REACH_OUT_RULES, WANTS_TO_REACH_OUT
 from eidolon.llm import LLMError
+from tests.browser import Browser
 from tests.conftest import ClientFactory
 from tests.fakes import (
     DEPLOYER_KEY,
@@ -53,6 +66,7 @@ from tests.test_own_llm import LLM as OWN_LLM
 from tests.test_photos import IMAGE, SELFIE, WORDS
 from tests.test_stats import stats
 from tests.test_text_turn import send_turn, start_conversation
+from tests.test_user_limits import set_limits
 
 REPLY = ["<ja>はい</ja><zh>好的</zh>"]
 REACH_OUT = ["<ja>[happily] プロデューサーさん！</ja><zh>制作人！</zh><ja>レッスン終わったよ</ja><zh>练习结束了哦</zh>"]
@@ -90,15 +104,31 @@ def reach_outs(entries: list[dict]) -> list[dict]:
     return [e for e in entries if e.get("type") == "reach_out"]
 
 
-async def talked(make_client: ClientFactory, *replies: list[str], **services) -> tuple[
-    httpx.AsyncClient, FakeLLM, FakeClock, str
-]:
+def afternoon(now: datetime) -> str:
+    """A time zone it is one in the afternoon in at `now`, give or take an hour, so that her
+    time, within hours of it, falls in the producer's day."""
+    offset = (13 - now.hour + 12) % 24 - 12
+    return f"Etc/GMT{-offset:+d}" if offset else "Etc/GMT"
+
+
+async def live_in(client: httpx.AsyncClient, timezone: str) -> None:
+    res = await client.put("/api/profile", json={"timezone": timezone})
+    assert res.status_code == 200, res.text
+
+
+async def talked(
+    make_client: ClientFactory, *replies: Sequence[str | asyncio.Event] | LLMError,
+    at: datetime | None = None, **services,
+) -> tuple[httpx.AsyncClient, FakeLLM, FakeClock, str]:
     """A client whose user has had a turn with Mano, her chat model replying with `REPLY`
-    and then `replies`, on a clock of its own, set to the time it is as the store writes it, so
-    that what the store writes and what is set as the last contact come in their order."""
+    and then `replies`, on a clock of its own, set to `at`; else to the time it is as the
+    store writes it, so that what the store writes and what is set as the last contact come
+    in their order, the producer living where it is the afternoon."""
     llm = FakeLLM(REPLY, *replies)
-    clock = FakeClock(datetime.now(UTC))
+    clock = FakeClock(at or datetime.now(UTC))
     client = make_client(llm, clock=clock, **services)
+    if at is None:
+        await live_in(client, afternoon(clock.now))
     conversation = await start_conversation(client)
     await send_turn(client, conversation, "我去练习了")
     return client, llm, clock, conversation
@@ -110,7 +140,7 @@ async def test_once_her_time_comes_she_says_something_first_the_lists_last_line_
     client, _, clock, conversation = await talked(
         make_client, REACH_OUT, REPLY, random=FakeRandom(MIDDLE)
     )
-    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=29))
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=28))
 
     await backend_of(client).reach_outs.run_due()
 
@@ -316,12 +346,12 @@ async def test_she_knows_when_they_last_talked_and_how_long_ago(
     make_client: ClientFactory, settings: Settings
 ):
     llm = FakeLLM(REPLY, REACH_OUT)
-    client = make_client(
-        llm, clock=FakeClock(datetime(2026, 10, 19, 12, tzinfo=UTC)), random=FakeRandom(0)
-    )
+    clock = FakeClock(datetime(2026, 10, 19, 9, tzinfo=UTC))  # 17:00 in Shanghai
+    client = make_client(llm, clock=clock, random=FakeRandom(0))
     conversation = await start_conversation(client)
     await send_turn(client, conversation, "我去练习了")
     last_contact(settings.database_path, conversation, datetime(2026, 10, 18, 13, tzinfo=UTC))
+    clock.advance(hours=3)
 
     await backend_of(client).reach_outs.run_due()
 
@@ -333,13 +363,13 @@ async def test_on_his_birthday_she_wishes_him_happy_birthday_once(
     make_client: ClientFactory, settings: Settings
 ):
     llm = FakeLLM(REPLY, REACH_OUT)
-    client = make_client(
-        llm, clock=FakeClock(datetime(2026, 10, 19, 12, tzinfo=UTC)), random=FakeRandom(0)
-    )
+    clock = FakeClock(datetime(2026, 10, 19, 9, tzinfo=UTC))  # 17:00 in Shanghai
+    client = make_client(llm, clock=clock, random=FakeRandom(0))
     await client.put("/api/profile", json={"birthday": {"month": 10, "day": 19}})
     conversation = await start_conversation(client)
     await send_turn(client, conversation, "我去练习了")
     last_contact(settings.database_path, conversation, datetime(2026, 10, 18, 13, tzinfo=UTC))
+    clock.advance(hours=3)
 
     await backend_of(client).reach_outs.run_due()
 
@@ -408,6 +438,7 @@ async def test_she_reaches_out_on_the_deployers_chat_model_whatever_the_user_bri
     clients = FakeServiceClients(llm)
     client = make_client(llm, clock=(clock := FakeClock(datetime.now(UTC))),
                          clients=clients, random=FakeRandom(0))
+    await live_in(client, afternoon(clock.now))
     conversation = await start_conversation(client)
     await send_turn(client, conversation, "在吗", own_llm=OWN_LLM)
     last_contact(settings.database_path, conversation, clock.now - timedelta(hours=20))
@@ -438,6 +469,7 @@ async def test_each_has_an_activity_record_of_its_own_which_no_turn_or_call_coun
         random=FakeRandom(0, 0),
     )
     database = settings.database_path
+    await live_in(client, afternoon(clock.now + timedelta(hours=25)))
     mano, kogane = await start_conversation(client), await start_conversation(client, "kogane")
     for conversation in (mano, kogane):
         await send_turn(client, conversation, "在吗")
@@ -475,21 +507,35 @@ async def test_each_has_an_activity_record_of_its_own_which_no_turn_or_call_coun
     assert sum(sum(counted.values()) for counted in shown["usage"]["7d"].values()) == 2
 
 
-async def test_one_she_could_say_nothing_in_fails_is_not_recorded_nor_tried_again(
-    make_client: ClientFactory, settings: Settings
+async def test_one_that_fails_is_put_off_by_a_time_from_her_range_and_counts_for_no_day(
+    make_client: ClientFactory, settings: Settings, github: FakeIdentityProvider
 ):
-    client, _, clock, conversation = await talked(
-        make_client, ["<photo>selfie</photo>"], random=FakeRandom(0)
+    """She could say nothing; not tried again until a time drawn anew from her tier's range
+    has passed, the day's one reach-out still hers."""
+    on = replace(settings, judge=FAKE_JUDGE, admins=frozenset({ADMIN}))
+    client, llm, clock, conversation = await talked(
+        make_client, ["<photo>selfie</photo>"], REACH_OUT, settings=on,
+        at=datetime(2026, 10, 19, 2, tzinfo=UTC),  # 10:00 in Shanghai
+        random=FakeRandom(0, 0),
     )
-    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=20))
-
+    database = settings.database_path
+    await allow_a_day(client, github, 1)
+    keep(database, "producer", 90, clock.now)  # intimate: 3–6 hours
+    last_contact(database, conversation, clock.now - timedelta(hours=3))
     reach_out = backend_of(client).reach_outs
-    await reach_out.run_due()
-    clock.advance(hours=1)
-    await reach_out.run_due()  # not tried again
 
-    assert reach_outs(await record(client, conversation)) == []
-    assert records(settings.database_path)[1:] == [("reach_out", "mano", "failed", 0)]
+    await reach_out.run_due()  # fails
+    clock.advance(hours=2, minutes=59)
+    await reach_out.run_due()
+    asked = len(llm.prompts)
+    clock.advance(minutes=1)
+    await reach_out.run_due()
+
+    assert asked == 2
+    assert len(reach_outs(await record(client, conversation))) == 1
+    assert records(database)[1:] == [
+        ("reach_out", "mano", "failed", 0), ("reach_out", "mano", "success", 0),
+    ]
 
 
 async def test_she_sends_no_photo_her_tag_dropped_and_her_words_recorded(
@@ -581,3 +627,198 @@ async def test_deleting_the_user_deletes_them_and_when_she_was_to_come(
         left = [db.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
                 for t in ("reach_outs", "reach_out_schedules")]
     assert left == [0, 0]
+
+
+async def allow_a_day(client: httpx.AsyncClient, github: FakeIdentityProvider, per_day: int) -> None:
+    """Have the admin let each user be reached out to `per_day` times a day."""
+    async with admin_beside(client, github) as admin:
+        res = await admin.put(REACH_OUTS, json={"enabled": True, "per_day": per_day})
+    assert res.status_code == 200, res.text
+
+
+def reached_out(database: Path) -> int:
+    """How many reach-outs are recorded, in every conversation."""
+    with sqlite3.connect(database) as db:
+        return db.execute("SELECT COUNT(*) FROM reach_outs").fetchone()[0]
+
+
+async def until(done) -> None:
+    async with asyncio.timeout(5):
+        while not done():
+            await asyncio.sleep(0.01)
+
+
+async def test_at_night_she_does_not_come_but_in_the_morning_after_between_8_and_10(
+    make_client: ClientFactory, settings: Settings
+):
+    client, _, clock, conversation = await talked(
+        make_client, REACH_OUT,
+        at=datetime(2026, 10, 19, 12, tzinfo=UTC),  # 20:00 in Shanghai
+        random=FakeRandom(0, MIDDLE),
+    )
+    # 22:00 in Shanghai, 20 hours on; to 9:00, halfway through the morning
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=18))
+    reach_out = backend_of(client).reach_outs
+    came = []
+    for to in (timedelta(hours=2), timedelta(hours=10, minutes=59), timedelta(minutes=1)):
+        clock.advance(seconds=to.total_seconds())
+        await reach_out.run_due()
+        came.append(len(reach_outs(await record(client, conversation))))
+
+    assert came == [0, 0, 1]
+
+
+async def test_a_day_the_earliest_come_first_the_rest_the_next_morning_by_his_time_zone(
+    make_client: ClientFactory, settings: Settings, github: FakeIdentityProvider
+):
+    """The day goes by the producer's time zone, New York's: Mano, put off from 21:00 there,
+    comes at 9:00 the next morning, though it is the same day still in UTC."""
+    client, _, clock, mano = await talked(
+        make_client, REPLY, REACH_OUT, REACH_OUT,
+        settings=replace(settings, admins=frozenset({ADMIN})),
+        at=datetime(2026, 10, 20, 0, tzinfo=UTC),  # 20:00 in New York
+        random=FakeRandom(0, 0, MIDDLE),
+    )
+    await live_in(client, "America/New_York")
+    await allow_a_day(client, github, 1)
+    kogane = await start_conversation(client, "kogane")
+    await send_turn(client, kogane, "在吗")
+    database = settings.database_path
+    at = clock.now + timedelta(hours=1)  # 21:00 in New York
+    last_contact(database, mano, at - timedelta(hours=20))
+    last_contact(database, kogane, at - timedelta(hours=20, minutes=1))  # a minute before
+    reach_out = backend_of(client).reach_outs
+
+    came = []
+    for to in (timedelta(hours=1), timedelta(hours=11, minutes=59), timedelta(minutes=1)):
+        clock.advance(seconds=to.total_seconds())
+        await reach_out.run_due()
+        came.append((
+            len(reach_outs(await record(client, kogane))),
+            len(reach_outs(await record(client, mano))),
+        ))
+
+    assert came == [(1, 0), (1, 0), (1, 1)]
+
+
+async def test_one_over_the_day_put_off_past_the_week_does_not_come(
+    make_client: ClientFactory, settings: Settings, github: FakeIdentityProvider
+):
+    """Mano, missed as the backend was down six days on, put off to the next morning in the
+    week; over the day by then, and put off past it."""
+    client, _, clock, mano = await talked(
+        make_client, REPLY, REACH_OUT, REACH_OUT,
+        settings=replace(settings, admins=frozenset({ADMIN})),
+        at=datetime(2026, 10, 19, 6, tzinfo=UTC),  # 14:00 in Shanghai
+        random=FakeRandom(0, 0, 0, 0),
+    )
+    await allow_a_day(client, github, 1)
+    kogane = await start_conversation(client, "kogane")
+    await send_turn(client, kogane, "在吗")
+    database = settings.database_path
+    last_contact(database, mano, clock.now - timedelta(days=6))  # put off to 20 hours on
+    last_contact(database, kogane, clock.now - timedelta(minutes=1))  # due a minute before
+    reach_out = backend_of(client).reach_outs
+
+    await reach_out.run_due()
+    clock.advance(hours=20)
+    await reach_out.run_due()
+    clock.advance(days=1)
+    await reach_out.run_due()
+
+    assert len(reach_outs(await record(client, kogane))) == 1
+    assert reach_outs(await record(client, mano)) == []
+
+
+async def test_what_came_as_the_backend_was_down_is_not_made_up_for_but_put_off(
+    make_client: ClientFactory, settings: Settings
+):
+    """Put off by a time from her range, from as it starts: 28 hours, halfway."""
+    client, llm, clock, conversation = await talked(
+        make_client, REACH_OUT,
+        at=datetime(2026, 10, 19, 4, tzinfo=UTC),  # 12:00 in Shanghai
+        random=FakeRandom(0, MIDDLE),
+    )
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=22))  # 10:00
+    reach_out = backend_of(client).reach_outs
+
+    came = []
+    for to in (timedelta(0), timedelta(hours=27, minutes=59), timedelta(minutes=1)):
+        clock.advance(seconds=to.total_seconds())
+        await reach_out.run_due()
+        came.append(len(reach_outs(await record(client, conversation))))
+
+    assert came == [0, 0, 1]
+    assert len(llm.prompts) == 2  # the turn's, and hers
+
+
+@pytest.mark.parametrize("why", ["no turns on the deployer's keys", "banned"])
+async def test_she_does_not_reach_out_to_a_user_the_admin(
+    make_client: ClientFactory, settings: Settings, github: FakeIdentityProvider, why: str
+):
+    client, _, clock, conversation = await talked(
+        make_client, settings=replace(settings, admins=frozenset({ADMIN})), random=FakeRandom()
+    )
+    last_contact(settings.database_path, conversation, clock.now - timedelta(days=2))
+    async with admin_beside(client, github) as admin:
+        producer = (await find(admin, "producer"))["id"]
+        if why == "banned":
+            assert (await admin.post(f"/api/admin/users/{producer}/ban", json={})).status_code == 200
+        else:
+            await set_limits(admin, producer, turns_per_hour=0)
+
+    await backend_of(client).reach_outs.run_due()
+
+    assert reached_out(settings.database_path) == 0
+
+
+@pytest.mark.parametrize("taking", ["a text turn", "a call"])
+async def test_she_does_not_reach_out_while_they_are_talking(
+    make_client: ClientFactory, settings: Settings, browser: Browser, taking: str
+):
+    thinking = asyncio.Event()
+    replies = [[thinking, *REPLY], REACH_OUT] if taking == "a text turn" else [REACH_OUT]
+    client, llm, clock, conversation = await talked(make_client, *replies, random=FakeRandom(0))
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=20))
+    turn = None
+    if taking == "a text turn":
+        turn = asyncio.create_task(send_turn(client, conversation, "在吗"))
+        await until(lambda: len(llm.prompts) == 2)
+    else:
+        assert (await browser.call(client, conversation_id=conversation)).status_code == 200
+
+    try:
+        await backend_of(client).reach_outs.run_due()
+        asked = len(llm.prompts)
+    finally:
+        thinking.set()
+        if turn is not None:
+            await turn
+
+    assert asked == (2 if taking == "a text turn" else 1)  # not asked to reach out
+    assert reached_out(settings.database_path) == 0
+
+
+async def test_what_she_thought_as_the_user_spoke_is_not_recorded_its_record_refused(
+    make_client: ClientFactory, settings: Settings
+):
+    thinking = asyncio.Event()
+    client, llm, clock, conversation = await talked(
+        make_client, [thinking, *REACH_OUT], REPLY, random=FakeRandom(0)
+    )
+    database = settings.database_path
+    last_contact(database, conversation, clock.now - timedelta(hours=20))
+    reaching_out = asyncio.create_task(backend_of(client).reach_outs.run_due())
+    await until(lambda: len(llm.prompts) == 2)
+
+    try:
+        await send_turn(client, conversation, "在吗")
+    finally:
+        thinking.set()
+        await reaching_out
+
+    assert reach_outs(await record(client, conversation)) == []
+    assert records(database) == [
+        ("turn", "mano", "success", 0), ("turn", "mano", "success", 0),
+        ("reach_out", "mano", "rejected", 0),
+    ]

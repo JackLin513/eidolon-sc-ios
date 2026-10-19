@@ -9,7 +9,9 @@ import secrets
 import sqlite3
 import threading
 import uuid
-from collections.abc import Callable
+from collections import Counter
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -205,6 +207,11 @@ class LastSignInMethod(Exception):
 class ConversationEnded(Exception):
     """She has ended the conversation (GLOSSARY.md「已结束的对话」): nothing more is recorded
     in it."""
+
+
+class ReachOutRefused(Exception):
+    """What she said first is not recorded (GLOSSARY.md「搭话」): the user and she were in touch
+    as she was thinking it, or it is no longer the conversation she was to say it in."""
 
 
 class IsCurrent(Exception):
@@ -472,6 +479,7 @@ class Store:
         self._db = connect(path)
         self._db.row_factory = sqlite3.Row
         self._lock = threading.Lock()
+        self._taking_turns: Counter[str] = Counter()
         with self._lock, self._db:
             self._db.executescript(_SCHEMA)
             self._migrate()
@@ -1173,7 +1181,7 @@ class Store:
 
     def current_conversations(self) -> list[CurrentConversation]:
         """Every user's current conversation with each character they have one with, as
-        reach-outs go by it; in no order."""
+        reach-outs go by it, but for banned users'; in no order."""
         with self._lock:
             rows = self._db.execute(
                 "SELECT c.*,"
@@ -1183,31 +1191,29 @@ class Store:
                 "  AS reached_out_at,"
                 " EXISTS (SELECT 1 FROM conversation_events e WHERE e.conversation_id = c.id"
                 "  AND e.kind = 'ended') AS ended"
-                " FROM conversations c WHERE c.rowid = (SELECT n.rowid FROM conversations n"
+                " FROM conversations c JOIN users u ON u.id = c.user_id AND u.banned_at IS NULL"
+                " WHERE c.rowid = (SELECT n.rowid FROM conversations n"
                 "  WHERE n.user_id = c.user_id AND n.character_id = c.character_id"
                 "  ORDER BY n.created_at DESC, n.rowid DESC LIMIT 1)"
             ).fetchall()
-            ended_calls: dict[str, list[datetime]] = {}
+            calls: dict[str, list[tuple[str, float]]] = {}
             for call in self._db.execute(
                 "SELECT conversation_id, connected_at, duration_s FROM calls"
                 f" WHERE conversation_id IN ({','.join('?' * len(rows))})",
                 [row["id"] for row in rows],
             ):
-                ended_calls.setdefault(call["conversation_id"], []).append(
-                    _call_ended(call["connected_at"], call["duration_s"])
+                calls.setdefault(call["conversation_id"], []).append(
+                    (call["connected_at"], call["duration_s"])
                 )
         current = []
         for row in rows:
-            contacts = ended_calls.get(row["id"], [])
-            if row["last_turn"] is not None:
-                contacts.append(_at(row["last_turn"]))
             current.append(CurrentConversation(
                 Conversation(
                     row["id"], row["user_id"], row["character_id"], row["created_at"],
                     row["title"],
                 ),
                 row["last_turn"] is not None,
-                max(contacts, default=None),
+                _last_contact(row["last_turn"], calls.get(row["id"], [])),
                 _at(row["reached_out_at"]) if row["reached_out_at"] else None,
                 bool(row["ended"]),
             ))
@@ -1230,29 +1236,86 @@ class Store:
                 " WHERE c.user_id = ? AND c.character_id = ?",
                 (user_id, character_id),
             ).fetchall()
-        contacts = [_call_ended(at, seconds) for at, seconds in calls]
-        if last_turn is not None:
-            contacts.append(_at(last_turn))
-        return max(contacts, default=None)
+        return _last_contact(last_turn, calls)
+
+    @contextmanager
+    def taking_turn(self, conversation_id: str) -> Iterator[None]:
+        """A text turn is under way in the conversation, from when it reads the record till
+        it is recorded or fails; meanwhile she reaches out in it not (`add_reach_out`)."""
+        with self._lock:
+            self._taking_turns[conversation_id] += 1
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._taking_turns[conversation_id] -= 1
+                if not self._taking_turns[conversation_id]:
+                    del self._taking_turns[conversation_id]
+
+    def is_taking_turn(self, conversation_id: str) -> bool:
+        """Whether a text turn is under way in the conversation (`taking_turn`)."""
+        with self._lock:
+            return conversation_id in self._taking_turns
 
     def add_reach_out(
-        self, conversation_id: str, said: list[Segment], record_id: int | None
+        self,
+        conversation_id: str,
+        said: list[Segment],
+        contact: datetime,
+        in_call: Callable[[str], bool],
     ) -> ReachOut:
-        """Record what she said first in the conversation, now, with the id of its activity
-        record; not seen yet. Into a conversation she has ended, nothing is recorded:
-        `ConversationEnded`."""
+        """Record what she said first in the conversation, now, as she thought it after the
+        user and she were last in touch at `contact`; not seen yet. Looked at again as it is
+        recorded, it is not, `ReachOutRefused`, unless the conversation is still her current
+        one, not ended, last in touch at `contact`, without a reach-out since, and without a
+        text turn under way or a call, as `in_call` says."""
         created_at = _now()
         ja, zh = "".join(s.ja for s in said), "".join(s.zh for s in said)
         with self._lock, self._db:
-            if self._ended(conversation_id) is not None:
-                raise ConversationEnded()
+            current = self._db.execute(
+                "SELECT n.id FROM conversations c JOIN conversations n"
+                " ON n.user_id = c.user_id AND n.character_id = c.character_id"
+                " WHERE c.id = ? ORDER BY n.created_at DESC, n.rowid DESC LIMIT 1",
+                (conversation_id,),
+            ).fetchone()
+            [reached_out_at] = self._db.execute(
+                "SELECT MAX(created_at) FROM reach_outs WHERE conversation_id = ?",
+                (conversation_id,),
+            ).fetchone()
+            if (
+                current is None or current["id"] != conversation_id
+                or self._ended(conversation_id) is not None
+                or self._last_contact_in(conversation_id) != contact
+                or (reached_out_at is not None and _at(reached_out_at) >= contact)
+                or conversation_id in self._taking_turns or in_call(conversation_id)
+            ):
+                raise ReachOutRefused()
             cursor = self._db.execute(
-                "INSERT INTO reach_outs (conversation_id, ja, zh, segments, created_at,"
-                " record_id) VALUES (?, ?, ?, ?, ?, ?)",
-                (conversation_id, ja, zh, _stored_segments(said), created_at, record_id),
+                "INSERT INTO reach_outs (conversation_id, ja, zh, segments, created_at)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (conversation_id, ja, zh, _stored_segments(said), created_at),
             )
         assert cursor.lastrowid is not None
         return ReachOut(cursor.lastrowid, ja, zh, list(said), created_at)
+
+    def reach_out_recorded_as(self, reach_out_id: int, record_id: int | None) -> None:
+        """Keep the id of the activity record of the reach-out, once it is written."""
+        with self._lock, self._db:
+            self._db.execute(
+                "UPDATE reach_outs SET record_id = ? WHERE id = ?", (record_id, reach_out_id)
+            )
+
+    def _last_contact_in(self, conversation_id: str) -> datetime | None:
+        """When the user and she were last in touch in the conversation, as
+        `current_conversations` has it."""
+        [last_turn] = self._db.execute(
+            "SELECT MAX(created_at) FROM messages WHERE conversation_id = ?", (conversation_id,)
+        ).fetchone()
+        calls = self._db.execute(
+            "SELECT connected_at, duration_s FROM calls WHERE conversation_id = ?",
+            (conversation_id,),
+        ).fetchall()
+        return _last_contact(last_turn, calls)
 
     def close(self) -> None:
         self._db.close()
@@ -1492,6 +1555,18 @@ def _at(timestamp: str) -> datetime:
 def _call_ended(connected_at: str, duration_s: float) -> datetime:
     """When a call that connected at `connected_at` and lasted `duration_s` ended."""
     return _at(connected_at) + timedelta(seconds=duration_s)
+
+
+def _last_contact(
+    last_turn: str | None, calls: Iterable[tuple[str, float] | sqlite3.Row]
+) -> datetime | None:
+    """When a user and a character were last in touch: their last turn recorded, at
+    `last_turn`, or the end of one of their `calls` that connected (when, and how long it
+    lasted), whichever was later; None before either."""
+    contacts = [_call_ended(at, seconds) for at, seconds in calls]
+    if last_turn is not None:
+        contacts.append(_at(last_turn))
+    return max(contacts, default=None)
 
 
 def _hash(secret: str) -> str:

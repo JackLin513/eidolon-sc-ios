@@ -11,22 +11,35 @@ drawn once for each contact (`PLACES`), drawn anew as the contact changes; trust
 affinity is off. A conversation she is not to reach out in is passed over, its time left as
 it is, to be looked at again at the next tick: one she has ended; one without a turn yet;
 one she has reached out in since the last contact, so that she waits for the user to answer
-first; one she is in a cooldown in, or cold or distant.
+first; one she is in a cooldown in, or cold or distant; one with a text turn under way or a
+call; one of a user banned, or one an admin lets take no turns on the deployer's keys.
+
+Her time goes by the producer's day, in the profile's time zone (or `Asia/Shanghai`): one
+that falls in the `NIGHT`, or comes while it is night, is put off to the `MORNING` after,
+at a place in it drawn once for each contact. One past `WINDOW` after the last contact is
+given up till they are in touch again. Those whose time has come at a tick come in the order
+of their times, each user reached out to at most as many times a day as the deployer sets;
+one over it is put off to a time drawn in the next day's `MORNING`. One whose time came
+before the backend started is not made up for, nor one that fails, the model failing or
+saying nothing she could say: each is put off from now by a time drawn anew from her tier's
+range.
 
 She reaches out on the deployer's chat model as text turns use it, whoever's LLM the user
 brings, held only while she does (`ConversationEngine.reach_out`): nothing counts towards the
 user's limits. Each reach-out has an activity record of its own (`reach_out`), on the
 deployer's keys, its service calls under it, so that the dashboard's usage and costs count
-them; one that fails, the model failing or saying nothing she could say, is recorded failed,
-and not tried again until the user and she are in touch again.
+them; one that fails is recorded failed; one the user and she were in touch meanwhile,
+looked at again as it is recorded (`Store.add_reach_out`), is not recorded, refused.
 """
 
 import asyncio
 import logging
 import threading
-from collections.abc import Mapping
-from datetime import datetime, timedelta
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from datetime import datetime, time, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from eidolon.activity import ActivityLog
 from eidolon.affinity import Affinities, Tier
@@ -35,8 +48,10 @@ from eidolon.clock import Clock
 from eidolon.database import connect
 from eidolon.engine import ConversationEngine
 from eidolon.live_config import LiveConfig
+from eidolon.producer import effective_timezone
 from eidolon.randomness import Random
-from eidolon.store import Conversation, ConversationEnded, CurrentConversation, Store
+from eidolon.store import Conversation, CurrentConversation, ReachOutRefused, Store
+from eidolon.usage import UsageLimiter
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +70,14 @@ INTERVALS: dict[Tier, tuple[timedelta, timedelta]] = {
 in the tiers not here."""
 
 PLACES = 1000
-"""How many places in a tier's range her time may be drawn at, evenly apart."""
+"""How many places in a tier's range her time may be drawn at, evenly apart; and in the
+`MORNING`."""
+
+NIGHT = (time(22), time(8))
+"""When in the producer's day she does not reach out: from the first to the second."""
+
+MORNING = timedelta(hours=2)
+"""How long after the night ends her time put off to the morning may be."""
 
 _SCHEMA = """
 -- When she is to reach out in a conversation (GLOSSARY.md「搭话」): the last contact it was
@@ -71,9 +93,23 @@ CREATE TABLE IF NOT EXISTS reach_out_schedules (
 """
 
 
+@dataclass(frozen=True)
+class _Due:
+    """A conversation whose time has come, for the last contact in it: her tier, her time,
+    and the producer's time zone."""
+
+    conversation: Conversation
+    contact: datetime
+    tier: Tier
+    at: datetime
+    zone: ZoneInfo
+
+
 class ReachOuts:
     """Her reach-outs, on the database at `path` beside the conversations of `store`, on the
-    deployer's models of `config`, each recorded in `activity`; `random` draws when."""
+    deployer's models of `config`, each recorded in `activity`; `usage` has the users' own
+    limits, `in_call` says whether there is a call in a conversation, and `random` draws
+    when. A time that came before `clock` says it is as they begin is missed."""
 
     def __init__(
         self,
@@ -84,6 +120,8 @@ class ReachOuts:
         config: LiveConfig,
         affinities: Affinities,
         activity: ActivityLog,
+        usage: UsageLimiter,
+        in_call: Callable[[str], bool],
         clock: Clock,
         random: Random,
     ) -> None:
@@ -93,8 +131,11 @@ class ReachOuts:
         self._config = config
         self._affinities = affinities
         self._activity = activity
+        self._usage = usage
+        self._in_call = in_call
         self._clock = clock
         self._random = random
+        self._started = clock()
         self._db = connect(path)
         self._lock = threading.Lock()
         with self._lock, self._db:
@@ -110,41 +151,86 @@ class ReachOuts:
                 log.exception("reaching out failed")
 
     async def run_due(self) -> None:
-        """Reach out in every conversation whose time has come, one after another; one going
-        wrong keeps none of the others from it."""
+        """Reach out in every conversation whose time has come, one after another in the order
+        of their times; one going wrong keeps none of the others from it."""
         if not self._config.reach_outs.enabled:
             return
         now = self._clock()
+        due: list[_Due] = []
         for current in await asyncio.to_thread(self._store.current_conversations):
             try:
-                if await asyncio.to_thread(self._due, current, now):
-                    await self._reach_out(current)
+                if (found := await asyncio.to_thread(self._due, current, now)) is not None:
+                    due.append(found)
             except Exception:
                 log.exception("reaching out in conversation %s failed", current.conversation.id)
+        for found in sorted(due, key=lambda d: d.at):
+            try:
+                if await asyncio.to_thread(self._within_the_day, found, now):
+                    await self._reach_out(found, now)
+            except Exception:
+                log.exception("reaching out in conversation %s failed", found.conversation.id)
 
     def close(self) -> None:
         with self._lock:
             self._db.close()
 
-    def _due(self, current: CurrentConversation, now: datetime) -> bool:
-        """Whether her time to reach out in the conversation has come, and she is to."""
+    def _due(self, current: CurrentConversation, now: datetime) -> _Due | None:
+        """Her time to reach out in the conversation, if it has come and she is to; one that
+        came before the backend started is put off instead."""
         conversation, contact = current.conversation, current.last_contact
         if conversation.character_id not in self._characters or current.ended:
-            return False
+            return None
         if not current.has_turns or contact is None:
-            return False
+            return None
         if now - contact > WINDOW:
-            return False
+            return None
         if current.reached_out_at is not None and current.reached_out_at >= contact:
-            return False
+            return None
+        limits = self._usage.user_limits(conversation.user_id)
+        if limits is not None and limits.turns_per_hour == 0:
+            return None
         tier = self._tier(conversation)
         if tier is None:
-            return False
-        place, due = self._schedule(conversation.id, contact)
+            return None
+        place, morning, due = self._schedule(conversation.id, contact)
         if due is None:
-            low, high = INTERVALS[tier]
-            due = contact + low + (high - low) * place
-        return now >= due
+            due = contact + self._interval(tier, place)
+        zone = ZoneInfo(effective_timezone(self._store.get_profile(conversation.user_id), None))
+        if _at_night(due, zone):
+            night = due
+        elif due <= now and _at_night(now, zone):
+            night = now
+        else:
+            night = None
+        if night is not None:
+            if morning is None:
+                morning = self._draw_morning(conversation.id, contact)
+            due = _morning_after(night, zone) + MORNING * morning
+        if now < due:  # one past `WINDOW` never comes, as none is looked at then
+            return None
+        if self._talking(conversation.id):
+            return None
+        if due < self._started:  # missed, the backend not running
+            self._put_off(conversation.id, contact, now + self._interval(tier))
+            return None
+        return _Due(conversation, contact, tier, due, zone)
+
+    def _within_the_day(self, due: _Due, now: datetime) -> bool:
+        """Whether the user may be reached out to once more today; if not, her time is put
+        off to the next day's morning."""
+        today = now.astimezone(due.zone).date()
+        began = datetime.combine(today, time(), due.zone)
+        if self._activity.reached_out_since(due.conversation.user_id, began) < (
+            self._config.reach_outs.per_day
+        ):
+            return True
+        tomorrow = datetime.combine(today + timedelta(days=1), NIGHT[1], due.zone)
+        self._put_off(due.conversation.id, due.contact, tomorrow + MORNING * self._draw())
+        return False
+
+    def _talking(self, conversation_id: str) -> bool:
+        """Whether a text turn is under way in the conversation, or a call."""
+        return self._store.is_taking_turn(conversation_id) or self._in_call(conversation_id)
 
     def _tier(self, conversation: Conversation) -> Tier | None:
         """The tier she reaches out by, trust where affinity is off; None if she is not to,
@@ -156,38 +242,63 @@ class ReachOuts:
             return None
         return status.tier
 
-    def _schedule(self, conversation_id: str, contact: datetime) -> tuple[float, datetime | None]:
-        """Where in her tier's range her time is, drawn for the last `contact`, and the time set
-        instead, if one is."""
+    def _interval(self, tier: Tier, place: float | None = None) -> timedelta:
+        """How long after a contact she reaches out in `tier`, at `place` in its range, or at
+        one drawn."""
+        low, high = INTERVALS[tier]
+        return low + (high - low) * (self._draw() if place is None else place)
+
+    def _draw(self) -> float:
+        return self._random(PLACES) / PLACES
+
+    def _schedule(
+        self, conversation_id: str, contact: datetime
+    ) -> tuple[float, float | None, datetime | None]:
+        """Where in her tier's range her time is, drawn for the last `contact`; where in the
+        morning, if drawn yet; and the time set instead, if one is."""
         at = contact.isoformat()
         with self._lock, self._db:
             row = self._db.execute(
-                "SELECT contact_at, place, due_at FROM reach_out_schedules"
+                "SELECT contact_at, place, morning_place, due_at FROM reach_out_schedules"
                 " WHERE conversation_id = ?",
                 (conversation_id,),
             ).fetchone()
             if row is not None and row[0] == at:
-                return row[1], datetime.fromisoformat(row[2]) if row[2] else None
-            place = self._random(PLACES) / PLACES
+                return row[1], row[2], datetime.fromisoformat(row[3]) if row[3] else None
+            place = self._draw()
             self._db.execute(
                 "INSERT OR REPLACE INTO reach_out_schedules (conversation_id, contact_at, place)"
                 " VALUES (?, ?, ?)",
                 (conversation_id, at, place),
             )
-        return place, None
+        return place, None, None
 
-    def _give_up(self, conversation_id: str, contact: datetime) -> None:
-        """Not try again until the user and she are in touch again: her time for `contact` is
-        put past `WINDOW`."""
+    def _draw_morning(self, conversation_id: str, contact: datetime) -> float:
+        """Draw where in the morning her time for `contact` is, put off from the night."""
+        morning = self._draw()
+        with self._lock, self._db:
+            self._db.execute(
+                "UPDATE reach_out_schedules SET morning_place = ?"
+                " WHERE conversation_id = ? AND contact_at = ?",
+                (morning, conversation_id, contact.isoformat()),
+            )
+        return morning
+
+    def _put_off(self, conversation_id: str, contact: datetime, due: datetime) -> None:
+        """Set her time for `contact` to `due` instead."""
         with self._lock, self._db:
             self._db.execute(
                 "UPDATE reach_out_schedules SET due_at = ?"
                 " WHERE conversation_id = ? AND contact_at = ?",
-                ((contact + WINDOW + TICK).isoformat(), conversation_id, contact.isoformat()),
+                (due.isoformat(), conversation_id, contact.isoformat()),
             )
 
-    async def _reach_out(self, current: CurrentConversation) -> None:
-        conversation = current.conversation
+    async def _reach_out(self, due: _Due, now: datetime) -> None:
+        """Reach out, unless the user and she have begun talking since her time was looked
+        at, as those before took their time."""
+        conversation, contact = due.conversation, due.contact
+        if self._talking(conversation.id):
+            return
         recording = self._activity.begin(
             "reach_out", conversation.user_id, conversation.character_id,
             own_llm=False, exempt=False,
@@ -201,15 +312,30 @@ class ReachOuts:
             log.warning("reaching out in conversation %s failed: %s", conversation.id,
                         type(e).__name__)
             recording.finish("failed")
-            assert current.last_contact is not None  # it was due
-            await asyncio.to_thread(self._give_up, conversation.id, current.last_contact)
+            await asyncio.to_thread(
+                self._put_off, conversation.id, contact, now + self._interval(due.tier)
+            )
             return
         finally:
             lease.release()
-        recording.finish("success")
         try:
-            await asyncio.to_thread(
-                self._store.add_reach_out, conversation.id, said, recording.row_id
+            reach_out = await asyncio.to_thread(
+                self._store.add_reach_out, conversation.id, said, contact, self._in_call
             )
-        except ConversationEnded:  # meanwhile
-            pass
+        except ReachOutRefused:  # they were in touch meanwhile
+            recording.finish("rejected")
+            return
+        recording.finish("success")
+        await asyncio.to_thread(self._store.reach_out_recorded_as, reach_out.id, recording.row_id)
+
+
+def _at_night(at: datetime, zone: ZoneInfo) -> bool:
+    local = at.astimezone(zone).time()
+    return local >= NIGHT[0] or local < NIGHT[1]
+
+
+def _morning_after(at: datetime, zone: ZoneInfo) -> datetime:
+    """When the night `at` is in ends."""
+    local = at.astimezone(zone)
+    day = local.date() if local.time() < NIGHT[1] else local.date() + timedelta(days=1)
+    return datetime.combine(day, NIGHT[1], zone)

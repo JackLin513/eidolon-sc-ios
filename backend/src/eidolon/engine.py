@@ -95,7 +95,8 @@ prompt laid out the same. Her reach-outs are not in her prompt yet.
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from typing import Literal, ParamSpec, TypeVar
@@ -509,7 +510,7 @@ class ConversationEngine:
         in_call: InCall | None = None,
         voiced_by: FishAudioModel | None = None,
         own_image: ImageSettings | None = None,
-    ) -> AsyncIterator[TurnEvent]:
+    ) -> AsyncGenerator[TurnEvent, None]:
         """Take one turn on `llms`, `in_call` if it is taken in one, its reply voiced with
         `voiced_by` (None for a text turn's), which has her write delivery cues as it reads
         them, her photo on the user's `own_image` generation if it brings it. `device_timezone`
@@ -522,11 +523,15 @@ class ConversationEngine:
             yield TurnRejected(TOO_LONG if text else BLANK)
             return
         photo = _Photo(own_image)
+        # A text turn is under way, so that she does not reach out meanwhile; a call is, as
+        # long as it lasts.
+        taking = self._store.taking_turn(conversation.id) if in_call is None else nullcontext()
         try:
-            async for event in self._reply(
-                conversation, text, llms, device_timezone, stop, in_call, voiced_by, photo
-            ):
-                yield event
+            with taking:
+                async for event in self._reply(
+                    conversation, text, llms, device_timezone, stop, in_call, voiced_by, photo
+                ):
+                    yield event
         except OwnKeyFailed as e:  # theirs to fix, so they are told what went wrong
             log.warning("turn failed on the user's own key in conversation %s: %s",
                         conversation.id, e.service)

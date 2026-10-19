@@ -4,7 +4,7 @@ import asyncio
 import json
 import math
 from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from contextlib import aclosing, asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated
@@ -568,18 +568,20 @@ def create_app(backend: Backend) -> FastAPI:
         outcome = TurnOutcome(admission.recording, admission.settle)
 
         async def events() -> AsyncIterator[str]:
+            # Closed as the response is, so that the turn is no longer under way once the user
+            # has gone (`Store.taking_turn`).
             with outcome.running():
-                turn = engine.turn(
+                async with aclosing(engine.turn(
                     conversation, body.text, admission.llms, device_timezone,
                     own_image=brought.image,
-                )
-                async for event in turn:
-                    outcome.see(event)
-                    if isinstance(event, SegmentDelta):
-                        outcome.began_speaking()  # the reply's first words have appeared
-                    if isinstance(event, SegmentComplete | SpeechDelta | TurnJudged):
-                        continue
-                    yield _sse(shown(event))
+                )) as turn:
+                    async for event in turn:
+                        outcome.see(event)
+                        if isinstance(event, SegmentDelta):
+                            outcome.began_speaking()  # the reply's first words have appeared
+                        if isinstance(event, SegmentComplete | SpeechDelta | TurnJudged):
+                            continue
+                        yield _sse(shown(event))
 
         return _TurnResponse(events(), lambda: outcome.over(cut_short_by_failure=False))
 

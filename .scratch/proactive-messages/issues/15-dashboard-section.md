@@ -31,3 +31,8 @@
 
 - 「搭话」表的 `record_id` 是那次搭话的运行记录 id（成功的才有搭话行）。
 - 看板 `dashboard()` 里 `recorded` 是全部记录，`records` 是滤掉搭话以后的；这一节从 `recorded` 里取 `kind == "reach_out"` 的。
+
+### 票 10 交接
+
+- 「搭话」行先写下（`Store.add_reach_out`，同一事务里再查一遍），运行记录 `finish("success")` 之后才用 `Store.reach_out_recorded_as` 补上 `record_id`，两步不在一个事务里。中间这一瞬用户有了回合，按 `record_id` 找运行记录标「被回了」时会漏。要紧的话，标的时候按搭话行找、或在这里把两步合起来。
+- 被作废的搭话运行记录 `result = "rejected"`，没有搭话行；「失败几次」只数 `failed`。
