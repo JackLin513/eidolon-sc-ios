@@ -127,7 +127,6 @@ async def test_the_one_he_answers_is_told_before_his_words_and_stays_there_after
     ]
 
 
-
 async def test_cut_back_by_turns_it_goes_with_the_turn_after_it(
     make_client: ClientFactory, settings: Settings
 ):

@@ -356,6 +356,13 @@ class ReachOut:
     created_at: str
     type: Literal["reach_out"] = field(default="reach_out", init=False)
 
+    def as_reply(self) -> Message:
+        """As those reading only the messages read it: as her reply. Its id is the
+        reach-out's, no message's."""
+        return Message(
+            self.id, "character", None, self.ja, self.zh, self.created_at, self.segments
+        )
+
     def without_cues(self) -> "ReachOut":
         """As people see it."""
         return ReachOut(

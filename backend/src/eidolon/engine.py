@@ -86,8 +86,8 @@ judge model not asked.
 She learns of the conversation's events (GLOSSARY.md「对话事件」) from a line of narration
 before the user's words that came next, or before what the user is saying now; it leaves
 her prompt with those words. Until she has replied or reached out after a gift, she is also
-told to respond to it, once, however many came. Retrieval, memory and the judge model read
-only the messages.
+told to respond to it, once, however many came. Retrieval, memory and the judge model never
+read the events.
 
 She can also say something first, the user not talking to her (`reach_out`, GLOSSARY.md
 「搭话」): not a turn (ADR-0026), but asked for as one is, on whichever model it is given, her
@@ -411,7 +411,7 @@ def _reached_out(reach_out: ReachOut, timezone: str) -> str:
     return f"（{at.month}月{at.day}日 {at:%H:%M}，你先给制作人发了：）{said}"
 
 
-def _told(
+def _narration_line(
     entry: ConversationEvent | ReachOut, gift_catalog: Mapping[str, Gift], timezone: str
 ) -> str:
     """The line of narration telling her of `entry`, the producer in `timezone`."""
@@ -432,10 +432,11 @@ def narrations(
     unanswered = False
     for entry in record:
         if not isinstance(entry, Message):
-            lines.append(_told(entry, gift_catalog, timezone))
-            unanswered = isinstance(entry, ConversationEvent) and (
-                unanswered or entry.kind == "gift"
-            )
+            lines.append(_narration_line(entry, gift_catalog, timezone))
+            if isinstance(entry, ReachOut):
+                unanswered = False  # reaching out, she has responded to the gifts before
+            else:
+                unanswered = unanswered or entry.kind == "gift"
         elif entry.role == "character":
             unanswered = False
         elif lines:
@@ -474,7 +475,7 @@ def _since_last_turn(
         if isinstance(entry, Message):
             lines = []
         else:
-            lines.append(_told(entry, gift_catalog, timezone))
+            lines.append(_narration_line(entry, gift_catalog, timezone))
     return "".join(lines)
 
 
@@ -486,10 +487,7 @@ def _answering(record: Sequence[Recorded]) -> list[Message]:
         if isinstance(entry, Message):
             said = []
         elif isinstance(entry, ReachOut):
-            said.append(Message(
-                entry.id, "character", None, entry.ja, entry.zh, entry.created_at,
-                entry.segments,
-            ))
+            said.append(entry.as_reply())
     return said
 
 
