@@ -13,7 +13,7 @@ it is, to be looked at again at the next tick: one she has ended; one without a 
 one she has reached out in since the last contact, so that she waits for the user to answer
 first; one she is in a cooldown in, or cold or distant; one with a text turn under way or a
 call; one of a user banned, or one an admin lets take no turns on the deployer's keys; one of
-a user who has turned their own switch off (`turn`), on by default.
+a user who has switched their own switch off (`switch`), on by default.
 
 Her time goes by the producer's day, in the profile's time zone (or `Asia/Shanghai`): one
 that falls in the `NIGHT`, or comes while it is night, is put off to the `MORNING` after,
@@ -99,6 +99,10 @@ CREATE TABLE IF NOT EXISTS reach_outs_off (
 """
 
 
+class ReachOutsOff(Exception):
+    """The deployer has reach-outs off: no user's own switch may be set."""
+
+
 @dataclass(frozen=True)
 class _Due:
     """A conversation whose time has come, for the last contact in it: her tier, her time,
@@ -176,16 +180,18 @@ class ReachOuts:
             except Exception:
                 log.exception("reaching out in conversation %s failed", found.conversation.id)
 
-    def is_on_for(self, user_id: str) -> bool:
-        """Whether the user has their own switch on, as it is by default."""
-        with self._lock:
-            row = self._db.execute(
-                "SELECT 1 FROM reach_outs_off WHERE user_id = ?", (user_id,)
-            ).fetchone()
-        return row is None
+    def switch_of(self, user_id: str) -> bool | None:
+        """Whether the user has their own switch on, as it is by default; None where the
+        deployer has reach-outs off."""
+        if not self._config.reach_outs.enabled:
+            return None
+        return self._switched_on(user_id)
 
-    def turn(self, user_id: str, on: bool) -> None:
-        """Turn the user's own switch on or off, for all the characters, from the next tick."""
+    def switch(self, user_id: str, on: bool) -> None:
+        """Switch the user's own switch on or off, for all the characters, from the next tick;
+        raise `ReachOutsOff` where the deployer has reach-outs off."""
+        if not self._config.reach_outs.enabled:
+            raise ReachOutsOff
         with self._lock, self._db:
             if on:
                 self._db.execute("DELETE FROM reach_outs_off WHERE user_id = ?", (user_id,))
@@ -193,6 +199,13 @@ class ReachOuts:
                 self._db.execute(
                     "INSERT OR IGNORE INTO reach_outs_off (user_id) VALUES (?)", (user_id,)
                 )
+
+    def _switched_on(self, user_id: str) -> bool:
+        with self._lock:
+            row = self._db.execute(
+                "SELECT 1 FROM reach_outs_off WHERE user_id = ?", (user_id,)
+            ).fetchone()
+        return row is None
 
     def close(self) -> None:
         with self._lock:
@@ -213,7 +226,7 @@ class ReachOuts:
         limits = self._usage.user_limits(conversation.user_id)
         if limits is not None and limits.turns_per_hour == 0:
             return None
-        if not self.is_on_for(conversation.user_id):
+        if not self._switched_on(conversation.user_id):
             return None
         tier = self._tier(conversation)
         if tier is None:

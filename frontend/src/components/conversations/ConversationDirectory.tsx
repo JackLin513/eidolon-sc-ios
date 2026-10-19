@@ -64,8 +64,8 @@ export type Directory = {
   /** 登录的用户（浏览器里的自带密钥按他的 ID 分开存）；和角色一起载入，还在载入时为 null。
    * 由导航外壳持有，在对话和设置之间换页时不重新载入。 */
   account: Account | null;
-  /** 别处重新取到了登录的用户（例如设置里解绑了一种登录方式之后），换上它。 */
-  accountChanged: (account: Account) => void;
+  /** 别处重新取到了登录的用户（例如设置里解绑了一种登录方式之后），换上它；或者按换上那一刻的值改一处（例如搭话的开关）。 */
+  accountChanged: (change: Account | ((account: Account) => Account)) => void;
   /** 还在载入时为 null。头像已经按外观换好（打开 SCSP 头像时是她的 SCSP 头像）。 */
   characters: Character[] | null;
   /** 和每位最新一次对话的摘要；标签页在前台时每分钟重新拉一次。她的对话一读到，她那一行就先在本地记成搭话都看过了。 */
@@ -280,6 +280,10 @@ export function DirectoryProvider({ children }: { children: ReactNode }) {
     [userId],
   );
 
+  const accountChanged = useCallback((change: Account | ((account: Account) => Account)) => {
+    setAccount((current) => (typeof change === "function" ? current && change(current) : change));
+  }, []);
+
   const changeAppearance = useCallback(
     (next: Appearance) => {
       setAppearance(next);
@@ -398,7 +402,7 @@ export function DirectoryProvider({ children }: { children: ReactNode }) {
     <DirectoryContext.Provider
       value={{
         account,
-        accountChanged: setAccount,
+        accountChanged,
         characters,
         latest,
         preferences,

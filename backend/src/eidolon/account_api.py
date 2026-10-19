@@ -48,6 +48,7 @@ from eidolon.config import (
 from eidolon.identity import PROVIDER_NAMES, IdentityError
 from eidolon.own_keys import NO_PHOTOS, BroughtKeys, OwnKeyRejected, named_services
 from eidolon.price_catalog import describe_thinking
+from eidolon.reach_outs import ReachOutsOff
 from eidolon.store import LastSignInMethod
 from eidolon.sessions import (
     SESSION_COOKIE,
@@ -351,19 +352,17 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
             ],
             "is_admin": is_admin(store, settings, user_id),
             "exempting_keys": [s for s in SERVICES if s in backend.config.exempting_keys],
-            "reach_outs": (
-                backend.reach_outs.is_on_for(user_id)
-                if backend.config.reach_outs.enabled else None
-            ),
+            "reach_outs": backend.reach_outs.switch_of(user_id),
         }
 
     @app.put("/api/account/reach-outs", status_code=204)
     def switch_reach_outs(body: ReachOutSwitch, user_id: UserId) -> None:
         """Turn the user's own switch for reach-outs on or off, for all the characters; 409
         where the deployer has reach-outs off."""
-        if not backend.config.reach_outs.enabled:
-            raise HTTPException(409, "搭话没有开放")
-        backend.reach_outs.turn(user_id, body.on)
+        try:
+            backend.reach_outs.switch(user_id, body.on)
+        except ReachOutsOff:
+            raise HTTPException(409, "搭话没有开放") from None
 
     @app.delete("/api/account/sign-in-methods/{provider}", status_code=204)
     def unlink(provider: str, user_id: UserId) -> None:

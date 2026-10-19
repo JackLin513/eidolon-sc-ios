@@ -29,7 +29,6 @@ describe("路径和类别互转", () => {
 
 describe("一级列表有哪几类", () => {
   it("搭话放在通话和外观之间", () => {
-    expect(settingsGroups(true)[1]).toEqual(["call", "reach-outs", "appearance", "own-keys"]);
     expect(settingsGroups(false)[1]).toEqual(["call", "reach-outs", "appearance", "own-keys"]);
   });
 

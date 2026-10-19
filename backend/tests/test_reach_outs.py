@@ -614,19 +614,21 @@ async def test_off_by_default_the_admin_turns_them_on_with_how_many_a_day(
     assert len(reach_outs(await record(client, conversation))) == 1
 
 
-async def test_deleting_the_user_deletes_them_and_when_she_was_to_come(
+async def test_deleting_the_user_deletes_them_when_she_was_to_come_and_their_switch(
     make_client: ClientFactory, settings: Settings
 ):
     client, _, clock, conversation = await talked(make_client, REACH_OUT, random=FakeRandom(0))
     last_contact(settings.database_path, conversation, clock.now - timedelta(hours=20))
     await backend_of(client).reach_outs.run_due()
+    switched_off = await client.put("/api/account/reach-outs", json={"on": False})
 
+    assert switched_off.status_code == 204
     assert (await client.post("/api/account/delete", json=DELETE)).status_code == 204
 
     with sqlite3.connect(settings.database_path) as db:
         left = [db.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
-                for t in ("reach_outs", "reach_out_schedules")]
-    assert left == [0, 0]
+                for t in ("reach_outs", "reach_out_schedules", "reach_outs_off")]
+    assert left == [0, 0, 0]
 
 
 async def allow_a_day(client: httpx.AsyncClient, github: FakeIdentityProvider, per_day: int) -> None:

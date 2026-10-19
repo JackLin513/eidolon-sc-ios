@@ -36,11 +36,11 @@ export function ReachOutsSettings() {
   const change = (next: boolean) => {
     setFailure(null);
     setSaving(true);
-    accountChanged({ ...account, reach_outs: next });
+    accountChanged((current) => ({ ...current, reach_outs: next }));
     switchReachOuts(next).then(
       () => setSaving(false),
       (e) => {
-        accountChanged({ ...account, reach_outs: on });
+        accountChanged((current) => ({ ...current, reach_outs: on }));
         setFailure(toFailure(e));
         setSaving(false);
       },

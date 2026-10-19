@@ -27,3 +27,7 @@
 
 - 两张表已登记进 `database.USER_DATA` 和 `CONVERSATION_DATA`（顺序在 `conversations` 前面），删号时一起删已有测试（`test_deleting_the_user_deletes_them_and_when_she_was_to_come`）；删历史对话还没测。
 - `Store.whole_conversations` 和 `add_carried_conversation` 还不带搭话。
+
+### 票 13 交接
+
+- 用户的开关（表 `reach_outs_off`）已经登记进 `USER_DATA`，删号时一起删，测试在 `test_reach_outs.py` 的删号测试里。数据包不导出它，导入也不碰它。
