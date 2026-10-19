@@ -20,7 +20,7 @@ import logging
 import secrets
 from typing import Annotated, Any
 
-from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi import FastAPI, HTTPException, Path, Query, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import (
     BaseModel, Field, Secret, StrictBool, StringConstraints, field_validator, model_validator,
@@ -47,7 +47,7 @@ from eidolon.config import (
 )
 from eidolon.identity import PROVIDER_NAMES, IdentityError
 from eidolon.own_keys import NO_PHOTOS, BroughtKeys, OwnKeyRejected, named_services
-from eidolon.price_catalog import describe_thinking
+from eidolon.price_catalog import describe_offer, describe_provider, describe_thinking
 from eidolon.reach_outs import ReachOutsOff
 from eidolon.store import LastSignInMethod
 from eidolon.sessions import (
@@ -448,6 +448,29 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
             catalog.refresh_soon(missing=True)
             return None
         return describe_thinking(thinking, protocol)
+
+    @app.get("/api/account/keys/llm/providers")
+    def llm_providers(user_id: UserId) -> dict:
+        """The providers an LLM may be picked from, as models.dev lists them
+        (`price_catalog.parse_offers`): where each serves its models and over which
+        protocol, for the settings page and the admin console to fill in. None before the
+        catalogs are first fetched, which has them fetched if they were last tried a while
+        ago. No key needed, nothing kept."""
+        catalog = backend.prices.catalog
+        providers = catalog.providers()
+        if not providers:
+            catalog.refresh_soon(missing=True)
+        return {"providers": [describe_provider(p) for p in providers]}
+
+    @app.get("/api/account/keys/llm/providers/{provider}/models")
+    def llm_provider_models(
+        user_id: UserId, provider: Annotated[str, Path(max_length=200)]
+    ) -> dict:
+        """The models `provider` serves that an LLM may be picked from, each with where and
+        over which protocol (a provider may serve some over another); none for a provider
+        not listed."""
+        offers = backend.prices.catalog.offers(provider)
+        return {"models": [describe_offer(o) for o in offers]}
 
     @app.post("/api/account/keys/tts/check")
     async def check_own_tts(body: OwnTTSInput, user_id: UserId) -> dict:

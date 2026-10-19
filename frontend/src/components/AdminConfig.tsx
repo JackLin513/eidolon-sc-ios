@@ -8,6 +8,7 @@ import { Notice } from "@/components/app/admin/Notice";
 import { NumberInput } from "@/components/app/admin/NumberInput";
 import { StatusDot } from "@/components/app/StatusDot";
 import { FailureNotice } from "@/components/app/FailureNotice";
+import { LLMProviderPicker } from "@/components/app/LLMProviderPicker";
 import { ModelChoiceField } from "@/components/app/ModelChoiceField";
 import { EffortField, ExtraBodyField, useEffortHint } from "@/components/app/ReasoningEffortFields";
 import { OpenFormProvider, useOpenForm } from "@/components/admin/OpenForm";
@@ -566,7 +567,8 @@ function AvailableItem({
                     </Field>
                   );
                 }
-                if (field.kind === "select" || field.kind === "minutes") {
+                /** 一项下拉选择。 */
+                const selectField = () => {
                   const options = (field.options ?? []).map((o) => ({ value: o, label: optionLabel(name, field.name, o) }));
                   const hint = fieldHint(name, field, keysEditable);
                   return (
@@ -591,7 +593,22 @@ function AvailableItem({
                       {hint && <FieldDescription>{hint}</FieldDescription>}
                     </Field>
                   );
+                };
+                // 模型的几项上面先放服务商和模型的下拉，选了填进协议、地址和模型名（ADR-0027）。
+                if (field.name === "protocol" && "base_url" in form && "model" in form) {
+                  return (
+                    <Fragment key={field.name}>
+                      <LLMProviderPicker
+                        id={fieldId}
+                        baseUrl={form.base_url}
+                        model={form.model}
+                        onPick={(pick) => setForm((f) => ({ ...f, ...pick }))}
+                      />
+                      {selectField()}
+                    </Fragment>
+                  );
                 }
+                if (field.kind === "select" || field.kind === "minutes") return selectField();
                 const secret = field.kind === "secret";
                 const hint = fieldHint(name, field, keysEditable);
                 return (

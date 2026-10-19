@@ -16,7 +16,11 @@ proxy (`known_provider`, ADR-0022).
 
 models.dev's says how each model thinks, too (`Thinking`), found the same way (`thinking`):
 for the efforts beside a model's to note which it is listed taking, a hint only, never
-what is sent (ADR-0019). OpenRouter's says so in words of its own, not used."""
+what is sent (ADR-0019). OpenRouter's says so in words of its own, not used.
+
+models.dev's says, too, where each provider serves each model and over which protocol
+(`Offer`): the providers and models a user's own LLM, or the deployer's, may be picked
+from instead of written in by hand (`providers`, `offers`, ADR-0027)."""
 
 import asyncio
 import ipaddress
@@ -63,6 +67,28 @@ HOSTS = {
 """The hosts of the models.dev providers that do not say where they are served (`api`),
 known providers whether or not the catalogs have been fetched (`Catalog.known_provider`)."""
 
+BASE_URLS: dict[str, tuple[LLMProtocol, str]] = {
+    "openai": ("responses", "https://api.openai.com/v1"),
+    "anthropic": ("anthropic", "https://api.anthropic.com/v1"),
+    "google": ("chat-completions", "https://generativelanguage.googleapis.com/v1beta/openai"),
+    "xai": ("chat-completions", "https://api.x.ai/v1"),
+    "mistral": ("chat-completions", "https://api.mistral.ai/v1"),
+    "groq": ("chat-completions", "https://api.groq.com/openai/v1"),
+    "cerebras": ("chat-completions", "https://api.cerebras.ai/v1"),
+    "deepinfra": ("chat-completions", "https://api.deepinfra.com/v1/openai"),
+    "togetherai": ("chat-completions", "https://api.together.xyz/v1"),
+}
+"""Where the models.dev providers that do not say (`HOSTS`) are reached, and over which
+protocol, by those of them that speak one of ours: Google's own protocol is not, but its
+OpenAI-compatible endpoint is."""
+
+ANTHROPIC_SDKS = {"@ai-sdk/anthropic", "@ai-sdk/google-vertex/anthropic"}
+RESPONSES_SDKS = {"@ai-sdk/openai", "@ai-sdk/azure"}
+OTHER_SDKS = ("@ai-sdk/google", "@ai-sdk/amazon-bedrock", "@ai-sdk/mistral", "@ai-sdk/cohere")
+"""The SDKs models.dev names a provider's or a model's protocol by (`npm`): Anthropic's
+Messages, OpenAI's Responses, and protocols of their own we do not speak (prefixes). Any
+other is taken for OpenAI's Chat Completions, as most are (`@ai-sdk/openai-compatible`)."""
+
 _DOMAIN = re.compile(r"[a-z0-9-]+(\.[a-z0-9-]+)+")
 """A name with a dot in it: not `localhost`, nor a placeholder (`${DATABRICKS_HOST}`)."""
 
@@ -80,6 +106,36 @@ MAKERS = [
 ]
 """The models.dev providers that make the models they serve, in the order a model at a
 host no catalog knows (a relay's) is looked for among them."""
+
+def _protocol(npm: object) -> LLMProtocol | None:
+    """The protocol a provider or model is spoken to over, by the SDK models.dev names
+    (`ANTHROPIC_SDKS`), or None for one of their own."""
+    if not isinstance(npm, str):
+        return "chat-completions"
+    if npm in ANTHROPIC_SDKS:
+        return "anthropic"
+    if npm in RESPONSES_SDKS:
+        return "responses"
+    if npm.startswith(OTHER_SDKS):
+        return None
+    return "chat-completions"
+
+
+def _usable(base_url: object) -> bool:
+    """Whether `base_url` is one a provider serves its models at over HTTPS: a name on the
+    internet, not an address, nor a placeholder (`https://${AZURE_RESOURCE_NAME}…`)."""
+    if not isinstance(base_url, str):
+        return False
+    try:
+        parts = urlsplit(base_url)
+        host = parts.hostname
+    except ValueError:
+        return False
+    return (
+        parts.scheme == "https" and host is not None and _DOMAIN.fullmatch(host) is not None
+        and not _is_address(host) and "$" not in base_url and "{" not in base_url
+    )
+
 
 STALE_AFTER = timedelta(hours=24)
 """How old the catalogs may be before they are fetched again."""
@@ -121,6 +177,31 @@ class Thinking:
 
 
 @dataclass(frozen=True)
+class Provider:
+    """A provider models.dev lists serving models we can speak to (`Offer`), by its id and
+    name, and where and over which protocol it serves them unless a model says otherwise
+    (None where it does not say, or not over one of ours)."""
+
+    id: str
+    name: str
+    protocol: LLMProtocol | None
+    base_url: str | None
+
+
+@dataclass(frozen=True)
+class Offer:
+    """A model a provider serves, by its id (what a call names) and its name, and where
+    and over which protocol: one that calls tools and answers in text, as far as
+    models.dev says, and is not deprecated."""
+
+    provider: str
+    model: str
+    name: str
+    protocol: LLMProtocol
+    base_url: str
+
+
+@dataclass(frozen=True)
 class State:
     """When the catalogs were last fetched, when and why a fetch last failed since, and
     whether they are being fetched now."""
@@ -134,7 +215,8 @@ class State:
 _SCHEMA = """
 -- The price catalogs online as last fetched: each model they price, by provider, in
 -- dollars per million tokens; how each model models.dev lists thinks; the host each
--- provider is at; when they were fetched.
+-- provider is at; the providers and models a user's LLM may be picked from; when they
+-- were fetched.
 CREATE TABLE IF NOT EXISTS price_catalog (
     provider TEXT NOT NULL,
     model TEXT NOT NULL,
@@ -155,6 +237,20 @@ CREATE TABLE IF NOT EXISTS price_catalog_hosts (
     host TEXT NOT NULL,
     provider TEXT NOT NULL,
     PRIMARY KEY (host, provider)
+);
+CREATE TABLE IF NOT EXISTS price_catalog_providers (
+    provider TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    protocol TEXT,
+    base_url TEXT
+);
+CREATE TABLE IF NOT EXISTS price_catalog_offers (
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    name TEXT NOT NULL,
+    protocol TEXT NOT NULL,
+    base_url TEXT NOT NULL,
+    PRIMARY KEY (provider, model)
 );
 CREATE TABLE IF NOT EXISTS price_catalog_state (
     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -223,6 +319,58 @@ def parse_models_dev(
                 _number(cost.get("cache_read")),
             ))
     return listed, thinking, hosts
+
+
+def _serves(m: dict) -> bool:
+    """Whether a model models.dev lists calls tools and answers in text, as far as it
+    says, and is not deprecated."""
+    modalities = m.get("modalities")
+    output = modalities.get("output") if isinstance(modalities, dict) else None
+    return (
+        m.get("tool_call") is not False and m.get("status") != "deprecated"
+        and not (isinstance(output, list) and "text" not in output)
+    )
+
+
+def parse_offers(data: object) -> tuple[list[Provider], list[Offer]]:
+    """The providers models.dev lists, OpenRouter's among them, and the models each serves
+    that a user's own LLM may be picked from (`Offer`): where a model says nothing of its
+    own, where and over which protocol its provider serves models; a provider without a
+    model like that is left out."""
+    if not isinstance(data, dict):
+        raise ValueError("models.dev: not an object")
+    providers: list[Provider] = []
+    offers: list[Offer] = []
+    for id, entry in data.items():
+        if not isinstance(id, str) or not isinstance(entry, dict):
+            continue
+        named = entry.get("name")
+        name = named if isinstance(named, str) and named else id
+        protocol: LLMProtocol | None
+        api: object
+        if "api" not in entry and id in BASE_URLS:
+            protocol, api = BASE_URLS[id]
+        else:  # where it does not say, its models may
+            protocol, api = _protocol(entry.get("npm")), entry.get("api")
+        base_url = api if isinstance(api, str) and _usable(api) else None
+        served: list[Offer] = []
+        models = entry.get("models")
+        for model, m in (models.items() if isinstance(models, dict) else []):
+            if not isinstance(m, dict) or not isinstance(model, str) or not _serves(m):
+                continue
+            own = m.get("provider")
+            own = own if isinstance(own, dict) else {}
+            speaks = _protocol(own["npm"]) if "npm" in own else protocol
+            at = own["api"] if "api" in own else base_url
+            if speaks is None or not isinstance(at, str) or not _usable(at):
+                continue
+            label = m.get("name")
+            label = label if isinstance(label, str) and label else model
+            served.append(Offer(id, model, label, speaks, at))
+        if served:
+            providers.append(Provider(id, name, protocol if base_url else None, base_url))
+            offers += served
+    return providers, offers
 
 
 def parse_openrouter(data: object) -> list[Listed]:
@@ -335,6 +483,12 @@ class Catalog:
                 "SELECT provider, model, thinks, efforts, switch FROM price_catalog_thinking"
             ).fetchall()
             hosts = self._db.execute("SELECT host, provider FROM price_catalog_hosts").fetchall()
+            providers = self._db.execute(
+                "SELECT provider, name, protocol, base_url FROM price_catalog_providers"
+            ).fetchall()
+            offers = self._db.execute(
+                "SELECT provider, model, name, protocol, base_url FROM price_catalog_offers"
+            ).fetchall()
             state = self._db.execute(
                 "SELECT fetched_at, failed_at, error FROM price_catalog_state"
             ).fetchone()
@@ -355,7 +509,16 @@ class Catalog:
             at.setdefault(host, []).append(provider)
         self._models = models
         self._thinking = thinks
-        self._hosts = {host: sorted(set(providers)) for host, providers in at.items()}
+        self._hosts = {host: sorted(set(listed)) for host, listed in at.items()}
+        self._providers = sorted(
+            (Provider(*row) for row in providers), key=lambda p: (p.name.casefold(), p.id)
+        )
+        served: dict[str, list[Offer]] = {}
+        for row in offers:
+            served.setdefault(row[0], []).append(Offer(*row))
+        self._offers = {
+            p: sorted(o, key=lambda o: (o.name.casefold(), o.model)) for p, o in served.items()
+        }
         when = lambda s: datetime.fromisoformat(s) if s else None  # noqa: E731
         self._state = (
             State(when(state[0]), when(state[1]), state[2]) if state else State(None, None, None)
@@ -406,6 +569,15 @@ class Catalog:
         named = _DOMAIN.fullmatch(host) is not None and not host.endswith(".localhost")
         return listed and named and not _is_address(host)
 
+    def providers(self) -> list[Provider]:
+        """The providers a user's own LLM may be picked from, by name (`parse_offers`)."""
+        return self._providers
+
+    def offers(self, provider: str) -> list[Offer]:
+        """The models `provider` serves that a user's own LLM may be picked from, by name;
+        none for a provider not listed."""
+        return self._offers.get(provider, [])
+
     def find(self, host: str, model: str) -> tuple[Listed, bool] | None:
         """The catalogs' price of `model` at `host`, if they have one, and whether it is
         its maker's, for a host no catalog knows (a relay, a proxy): what it is likely
@@ -440,13 +612,15 @@ class Catalog:
         try:
             now = self._clock()
             try:
-                listed, thinking, hosts = parse_models_dev(self._get(MODELS_DEV_URL))
+                models_dev = self._get(MODELS_DEV_URL)
+                listed, thinking, hosts = parse_models_dev(models_dev)
+                providers, offers = parse_offers(models_dev)
                 listed += parse_openrouter(self._get(OPENROUTER_URL))
             except (httpx.HTTPError, ValueError) as e:
                 log.warning("could not fetch the price catalogs: %s", e)
                 self._save_failure(now, f"{type(e).__name__}: {e}"[:500])
             else:
-                self._save(now, listed, thinking, hosts)
+                self._save(now, listed, thinking, hosts, providers, offers)
             self._load()
         finally:
             self._fetching.release()
@@ -462,6 +636,8 @@ class Catalog:
         listed: Iterable[Listed],
         thinking: Iterable[Thinking],
         hosts: Iterable[tuple[str, str]],
+        providers: Iterable[Provider],
+        offers: Iterable[Offer],
     ) -> None:
         with self._lock, self._db:
             self._db.execute("DELETE FROM price_catalog")
@@ -482,6 +658,18 @@ class Catalog:
             self._db.execute("DELETE FROM price_catalog_hosts")
             self._db.executemany(
                 "INSERT OR IGNORE INTO price_catalog_hosts (host, provider) VALUES (?, ?)", hosts
+            )
+            self._db.execute("DELETE FROM price_catalog_providers")
+            self._db.executemany(
+                "INSERT OR REPLACE INTO price_catalog_providers (provider, name, protocol, base_url)"
+                " VALUES (?, ?, ?, ?)",
+                ((p.id, p.name, p.protocol, p.base_url) for p in providers),
+            )
+            self._db.execute("DELETE FROM price_catalog_offers")
+            self._db.executemany(
+                "INSERT OR REPLACE INTO price_catalog_offers"
+                " (provider, model, name, protocol, base_url) VALUES (?, ?, ?, ?, ?)",
+                ((o.provider, o.model, o.name, o.protocol, o.base_url) for o in offers),
             )
             self._db.execute(
                 "INSERT OR REPLACE INTO price_catalog_state (id, fetched_at, failed_at, error)"
@@ -527,6 +715,20 @@ def describe_thinking(thinking: Thinking, protocol: LLMProtocol) -> dict:
         "thinks": thinking.thinks,
         "efforts": [e for e in thinking.efforts if e != "none"],
         "turns_off": turns_off,
+    }
+
+
+def describe_provider(provider: Provider) -> dict:
+    return {
+        "id": provider.id, "name": provider.name,
+        "protocol": provider.protocol, "base_url": provider.base_url,
+    }
+
+
+def describe_offer(offer: Offer) -> dict:
+    return {
+        "model": offer.model, "name": offer.name,
+        "protocol": offer.protocol, "base_url": offer.base_url,
     }
 
 
