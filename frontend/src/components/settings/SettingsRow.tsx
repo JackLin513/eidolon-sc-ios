@@ -7,8 +7,17 @@ import { useDirectory } from "@/components/conversations/ConversationDirectory";
 import { cn } from "@/lib/utils";
 import { ExternalLinkIcon, ForwardIcon } from "@/theme/icons";
 
-type Props = {
-  href: string;
+/** 去哪：站内或别的网站的链接（`href`），或者不离开本页、点了做一件事（`onSelect`，如打开弹窗）。 */
+type Target =
+  | {
+      href: string;
+      /** 别的网站，在新标签页打开，行尾换成外链图标；通话照常。 */
+      isExternal?: boolean;
+      onSelect?: never;
+    }
+  | { onSelect: () => void; href?: never; isExternal?: never };
+
+type Props = Target & {
   label: string;
   /** 一级列表上名字下面一行当前值的摘要；没有（还没读到、「关于」）时只显示名字。 */
   summary?: string;
@@ -19,16 +28,15 @@ type Props = {
   isCurrentPage?: boolean;
   /** 行尾的 ›：`narrow` 只在手机上（电脑上靠选中底色），`always` 两种屏宽都有。 */
   chevron?: "narrow" | "always";
-  /** 别的网站，在新标签页打开，行尾换成外链图标；通话照常。 */
-  isExternal?: boolean;
 };
 
 /**
- * 设置里的一行链接（DESIGN.md「设置页」）：图标、名字（一级列表上名字下面一行摘要），行尾 › 或外链图标，整行可点，至少 48px 高。
- * 一级列表的每一类和「关于」的几行都用它。站内的按外壳的去处规则走，通话中离开外壳先问。
+ * 设置里的一行（DESIGN.md「设置页」）：图标、名字（一级列表上名字下面一行摘要），行尾 › 或外链图标，整行可点，至少 48px 高。
+ * 一级列表的每一类、「赞赏」和「关于」的几行都用它。站内的按外壳的去处规则走，通话中离开外壳先问；`onSelect` 的是按钮，不离开本页。
  */
 export function SettingsRow({
   href,
+  onSelect,
   label,
   summary,
   Icon,
@@ -59,6 +67,13 @@ export function SettingsRow({
       )}
     </>
   );
+  if (href === undefined) {
+    return (
+      <button type="button" onClick={onSelect} className={cn(className, "text-left")}>
+        {inner}
+      </button>
+    );
+  }
   if (isExternal) {
     return (
       <a href={href} target="_blank" rel="noopener noreferrer" className={className}>

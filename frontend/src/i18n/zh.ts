@@ -596,6 +596,11 @@ export const zh = {
         turnsUnit: "回合",
       },
     },
+    /** 一级里「关于」上面的「赞赏」（GLOSSARY.md「赞赏」）：名字，点开放大的收款码给读屏的标题和替代文字。 */
+    sponsor: {
+      label: "赞赏",
+      code: "赞赏收款码",
+    },
     /** 「关于」的四行和最下面的免责声明（应用里只留这一处）。 */
     about: {
       site: "关于 Eidolon-SC",
@@ -1240,6 +1245,7 @@ export const zh = {
         network: "网络",
         status: "服务状态",
         limits: "限额与玩法",
+        sponsor: "赞赏",
         prices: "单价",
         read_only: "只读",
       },
@@ -1497,6 +1503,27 @@ export const zh = {
         granted: (n: number) => `已发出 ${n} 张重置卡。`,
         /** 发完的提示下面一句，「去写一条公告」链到公告页。 */
         announce: { before: "需要的话，", link: "去写一条公告", after: "告诉大家。" },
+      },
+      /** 「赞赏」标签里的那张卡（GLOSSARY.md「赞赏」）。不是 .env 里的配置，没有「恢复成 .env 的值」，只有「清除」。 */
+      sponsor: {
+        title: "赞赏",
+        hint: "打开并上传收款码后，用户在设置里「关于」上面看到「赞赏」，点开就是这张图。",
+        loading: "正在读取…",
+        switch: "在设置里显示",
+        noImage: "还没上传收款码，用户暂时看不到「赞赏」。",
+        preview: "收款码",
+        upload: "上传收款码",
+        replace: "换一张",
+        uploading: "正在上传…",
+        formats: "PNG、JPEG 或 WebP，不超过 2 MB；会转成无损 PNG，长边超过 1024 像素的等比缩小。",
+        notAPicture: "只能上传 PNG、JPEG 或 WebP 图片。",
+        tooLarge: "图片不能超过 2 MB。",
+        clear: "清除",
+        dialog: {
+          title: "清除赞赏？",
+          description: "开关会关掉，收款码会删除，用户不再看到「赞赏」。",
+          confirm: "清除",
+        },
       },
     },
     prices: {
