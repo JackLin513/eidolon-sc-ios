@@ -8,6 +8,10 @@ a published one keeps it, so that fixing a typo does not show it to everyone aga
 withdrawing it clears it, and publishing it again sets it anew. `updated_at` is when its
 body was last written.
 
+One published announcement may be pinned (`pinned`): users see it first, however old it is,
+besides the latest. Pinning another unpins it; withdrawing it unpins it for good. Pinning
+leaves when it was published, so it does not make it new.
+
 Whether a user has read them is kept in their browser, not here.
 """
 
@@ -24,26 +28,33 @@ MAX_BODY = 5000
 """The most characters an announcement's body may have."""
 
 SHOWN = 20
-"""How many of the announcements published users see at most, the latest."""
+"""How many of the announcements published users see at most, the latest, besides the one
+pinned."""
 
 Status = Literal["draft", "published"]
 
 _SCHEMA = """
--- The announcements admins write; `published_at` NULL while a draft.
+-- The announcements admins write; `published_at` NULL while a draft; `pinned` 1 for the
+-- one published that users see first, if any.
 CREATE TABLE IF NOT EXISTS announcements (
     id TEXT PRIMARY KEY,
     body TEXT NOT NULL,
     published_at TEXT,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    pinned INTEGER NOT NULL DEFAULT 0
 );
 """
 
-_COLUMNS = "id, body, published_at, created_at, updated_at"
+_COLUMNS = "id, body, published_at, created_at, updated_at, pinned"
 
 
 class NoSuchAnnouncement(Exception):
     """There is no announcement with that id."""
+
+
+class NotPublished(Exception):
+    """A draft cannot be pinned."""
 
 
 @dataclass(frozen=True)
@@ -54,6 +65,8 @@ class Announcement:
     """When it was published, ISO 8601; None while a draft."""
     created_at: str
     updated_at: str
+    pinned: bool
+    """Whether it is the one users see first."""
 
     @property
     def status(self) -> Status:
@@ -65,7 +78,12 @@ class Announcement:
 
     def shown(self) -> dict:
         """What users see of it."""
-        return {"id": self.id, "body": self.body, "published_at": self.published_at}
+        return {
+            "id": self.id,
+            "body": self.body,
+            "published_at": self.published_at,
+            "pinned": self.pinned,
+        }
 
 
 class Announcements:
@@ -74,20 +92,30 @@ class Announcements:
         self._lock = threading.Lock()
         with self._lock, self._db:
             self._db.executescript(_SCHEMA)
+            columns = {
+                row[1] for row in self._db.execute("PRAGMA table_info(announcements)")
+            }
+            if "pinned" not in columns:  # kept from before pinning: none pinned
+                self._db.execute(
+                    "ALTER TABLE announcements ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"
+                )
         self._clock = clock
 
     def all(self) -> list[Announcement]:
-        """Every announcement: the drafts, last written first, then those published, last
-        published first."""
+        """Every announcement: the drafts, last written first, then those published, the
+        one pinned first, then last published first."""
         return self._select(
-            " ORDER BY published_at IS NOT NULL, published_at DESC, created_at DESC,"
-            " rowid DESC"
+            " ORDER BY published_at IS NOT NULL, pinned DESC, published_at DESC,"
+            " created_at DESC, rowid DESC"
         )
 
     def published(self) -> list[Announcement]:
-        """The `SHOWN` announcements published last, last first."""
+        """The one pinned, if any, then the `SHOWN` others published last, last first."""
         return self._select(
-            " WHERE published_at IS NOT NULL ORDER BY published_at DESC, rowid DESC LIMIT ?",
+            " WHERE pinned OR id IN (SELECT id FROM announcements"
+            " WHERE published_at IS NOT NULL AND NOT pinned"
+            " ORDER BY published_at DESC, rowid DESC LIMIT ?)"
+            " ORDER BY pinned DESC, published_at DESC, rowid DESC",
             (SHOWN,),
         )
 
@@ -103,7 +131,7 @@ class Announcements:
         id = uuid.uuid4().hex
         with self._lock, self._db:
             self._db.execute(
-                f"INSERT INTO announcements ({_COLUMNS}) VALUES (?, ?, NULL, ?, ?)",
+                f"INSERT INTO announcements ({_COLUMNS}) VALUES (?, ?, NULL, ?, ?, 0)",
                 (id, body, now, now),
             )
         return self.get(id)
@@ -121,8 +149,26 @@ class Announcements:
         )
 
     def withdraw(self, id: str) -> Announcement:
-        """Make it a draft again."""
-        return self._update(id, "published_at = NULL", ())
+        """Make it a draft again, not pinned."""
+        return self._update(id, "published_at = NULL, pinned = 0", ())
+
+    def pin(self, id: str) -> Announcement:
+        """Make it the one users see first, unpinning the one that was; `NotPublished` for
+        a draft."""
+        with self._lock, self._db:
+            found = self._db.execute(
+                "SELECT published_at FROM announcements WHERE id = ?", (id,)
+            ).fetchone()
+            if found is None:
+                raise NoSuchAnnouncement(id)
+            if found[0] is None:
+                raise NotPublished(id)
+            self._db.execute("UPDATE announcements SET pinned = (id = ?)", (id,))
+        return self.get(id)
+
+    def unpin(self, id: str) -> Announcement:
+        """Make it no longer the one users see first; nothing for one not pinned."""
+        return self._update(id, "pinned = 0", ())
 
     def delete(self, id: str) -> None:
         with self._lock, self._db:
@@ -147,4 +193,4 @@ class Announcements:
             rows = self._db.execute(
                 f"SELECT {_COLUMNS} FROM announcements{rest}", values
             ).fetchall()
-        return [Announcement(*row) for row in rows]
+        return [Announcement(*row[:-1], pinned=bool(row[-1])) for row in rows]

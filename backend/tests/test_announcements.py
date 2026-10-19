@@ -1,8 +1,10 @@
 """Announcements (GLOSSARY.md「公告」): admins write them in the admin console, as drafts
 first, then publish, edit, withdraw or delete them; users see the latest ones published,
 newest first, and nothing of who wrote them. Editing a published one keeps when it was
-published; withdrawing it and publishing it again makes it new."""
+published; withdrawing it and publishing it again makes it new. One published may be pinned,
+which users see first however old it is."""
 
+import sqlite3
 from dataclasses import replace
 
 import httpx
@@ -40,6 +42,18 @@ async def withdraw(admin: httpx.AsyncClient, id: str) -> dict:
     return res.json()
 
 
+async def pin(admin: httpx.AsyncClient, id: str) -> dict:
+    res = await admin.post(f"/api/admin/announcements/{id}/pin")
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+async def unpin(admin: httpx.AsyncClient, id: str) -> dict:
+    res = await admin.delete(f"/api/admin/announcements/{id}/pin")
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
 async def edit(admin: httpx.AsyncClient, id: str, body: str) -> dict:
     res = await admin.put(f"/api/admin/announcements/{id}", json={"body": body})
     assert res.status_code == 200, res.text
@@ -72,6 +86,7 @@ async def test_an_announcement_is_written_as_a_draft_users_do_not_see(
         "body": "**新角色**上线了",
         "status": "draft",
         "published_at": None,
+        "pinned": False,
         "created_at": clock().isoformat(),
         "updated_at": clock().isoformat(),
     }
@@ -95,7 +110,12 @@ async def test_a_published_announcement_is_seen_without_who_wrote_it(
 
     assert published == draft | {"status": "published", "published_at": clock().isoformat()}
     assert await seen(user) == [
-        {"id": draft["id"], "body": "今晚 23 点维护", "published_at": clock().isoformat()}
+        {
+            "id": draft["id"],
+            "body": "今晚 23 点维护",
+            "published_at": clock().isoformat(),
+            "pinned": False,
+        }
     ]
 
 
@@ -113,7 +133,12 @@ async def test_editing_a_published_announcement_keeps_when_it_was_published(
 
     assert edited == published | {"body": "今晚 23 点维护", "updated_at": clock().isoformat()}
     assert await seen(user) == [
-        {"id": id, "body": "今晚 23 点维护", "published_at": published["published_at"]}
+        {
+            "id": id,
+            "body": "今晚 23 点维护",
+            "published_at": published["published_at"],
+            "pinned": False,
+        }
     ]
 
 
@@ -177,6 +202,8 @@ async def test_a_deleted_announcement_is_gone_for_admins_and_users(
         await admin.put(f"/api/admin/announcements/{id}", json={"body": "改"}),
         await admin.post(f"/api/admin/announcements/{id}/publish"),
         await admin.delete(f"/api/admin/announcements/{id}/publish"),
+        await admin.post(f"/api/admin/announcements/{id}/pin"),
+        await admin.delete(f"/api/admin/announcements/{id}/pin"),
         await admin.delete(f"/api/admin/announcements/{id}"),
     ]:
         assert res.status_code == 404, res.text
@@ -245,6 +272,123 @@ async def test_users_see_the_latest_published_newest_first(
     assert [a["id"] for a in await seen(user)] == ids[::-1][:SHOWN]
 
 
+async def test_a_pinned_announcement_is_seen_first_and_stays_as_new_as_it_was(
+    make_client: ClientFactory, github: FakeIdentityProvider
+):
+    clock = FakeClock()
+    admin = await admin_client(make_client, github, clock=clock)
+    user = make_client(FakeLLM(), clock=clock)
+    old = await publish(admin, (await write(admin, "旧的"))["id"])
+    clock.advance(hours=1)
+    new = await publish(admin, (await write(admin, "新的"))["id"])
+    clock.advance(hours=1)
+
+    pinned = await pin(admin, old["id"])
+
+    assert pinned == old | {"pinned": True}
+    assert [(a["id"], a["published_at"], a["pinned"]) for a in await seen(user)] == [
+        (old["id"], old["published_at"], True),
+        (new["id"], new["published_at"], False),
+    ]
+
+
+async def test_pinning_another_unpins_the_one_pinned(
+    make_client: ClientFactory, github: FakeIdentityProvider
+):
+    clock = FakeClock()
+    admin = await admin_client(make_client, github, clock=clock)
+    first = (await publish(admin, (await write(admin, "第一条"))["id"]))["id"]
+    clock.advance(minutes=1)
+    second = (await publish(admin, (await write(admin, "第二条"))["id"]))["id"]
+    clock.advance(minutes=1)
+    third = (await publish(admin, (await write(admin, "第三条"))["id"]))["id"]
+    await pin(admin, first)
+
+    await pin(admin, second)
+
+    assert [(a["id"], a["pinned"]) for a in await listed(admin)] == [
+        (second, True),
+        (third, False),
+        (first, False),
+    ]
+
+
+async def test_unpinning_puts_it_back_where_it_was_published(
+    make_client: ClientFactory, github: FakeIdentityProvider
+):
+    clock = FakeClock()
+    admin = await admin_client(make_client, github, clock=clock)
+    user = make_client(FakeLLM(), clock=clock)
+    old = (await publish(admin, (await write(admin, "旧的"))["id"]))["id"]
+    clock.advance(minutes=1)
+    new = (await publish(admin, (await write(admin, "新的"))["id"]))["id"]
+    await pin(admin, old)
+
+    unpinned = await unpin(admin, old)
+
+    assert unpinned["pinned"] is False
+    assert [a["id"] for a in await seen(user)] == [new, old]
+    assert await unpin(admin, old) == unpinned
+
+
+async def test_a_draft_cannot_be_pinned(
+    make_client: ClientFactory, github: FakeIdentityProvider
+):
+    admin = await admin_client(make_client, github)
+    id = (await write(admin, "草稿"))["id"]
+
+    res = await admin.post(f"/api/admin/announcements/{id}/pin")
+
+    assert res.status_code == 409, res.text
+    assert res.json() == {"detail": "草稿不能置顶，先发布"}
+    assert [a["pinned"] for a in await listed(admin)] == [False]
+
+
+async def test_withdrawing_unpins_it_for_good(
+    make_client: ClientFactory, github: FakeIdentityProvider
+):
+    clock = FakeClock()
+    admin = await admin_client(make_client, github, clock=clock)
+    id = (await publish(admin, (await write(admin, "置顶的"))["id"]))["id"]
+    await pin(admin, id)
+
+    assert (await withdraw(admin, id))["pinned"] is False
+
+    clock.advance(minutes=1)
+    assert (await publish(admin, id))["pinned"] is False
+
+
+async def test_editing_a_pinned_announcement_keeps_it_pinned(
+    make_client: ClientFactory, github: FakeIdentityProvider
+):
+    admin = await admin_client(make_client, github)
+    id = (await publish(admin, (await write(admin, "置顶的"))["id"]))["id"]
+    await pin(admin, id)
+
+    assert (await edit(admin, id, "改过的"))["pinned"] is True
+
+
+async def test_users_see_one_pinned_however_old_besides_the_latest(
+    make_client: ClientFactory, github: FakeIdentityProvider
+):
+    clock = FakeClock()
+    admin = await admin_client(make_client, github, clock=clock)
+    user = make_client(FakeLLM(), clock=clock)
+    ids = []
+    for n in range(SHOWN + 2):
+        ids.append((await write(admin, f"第 {n} 条"))["id"])
+        await publish(admin, ids[-1])
+        clock.advance(minutes=1)
+
+    await pin(admin, ids[0])
+
+    assert [a["id"] for a in await seen(user)] == [ids[0], *ids[::-1][:SHOWN]]
+
+    await pin(admin, ids[-1])
+
+    assert [a["id"] for a in await seen(user)] == ids[::-1][: SHOWN + 1]
+
+
 async def test_no_one_but_admins_reaches_the_announcements_in_the_admin_console(
     make_client: ClientFactory, github: FakeIdentityProvider
 ):
@@ -261,6 +405,8 @@ async def test_no_one_but_admins_reaches_the_announcements_in_the_admin_console(
             await client.put(f"/api/admin/announcements/{id}", json={"body": "改"}),
             await client.post(f"/api/admin/announcements/{id}/publish"),
             await client.delete(f"/api/admin/announcements/{id}/publish"),
+            await client.post(f"/api/admin/announcements/{id}/pin"),
+            await client.delete(f"/api/admin/announcements/{id}/pin"),
             await client.delete(f"/api/admin/announcements/{id}"),
         ]:
             assert res.status_code == 404, res.text
@@ -274,3 +420,17 @@ async def test_only_users_who_agreed_to_the_terms_see_announcements(
     await sign_in_with(newcomer, github, github_identity("1002", name="new"))
 
     assert (await newcomer.get("/api/announcements")).status_code == 428
+
+
+async def test_a_database_from_before_pinning_keeps_its_announcements_none_pinned(
+    make_client: ClientFactory, github: FakeIdentityProvider, settings: Settings
+):
+    admin = await admin_client(make_client, github)
+    id = (await publish(admin, (await write(admin, "升级前发的"))["id"]))["id"]
+    with sqlite3.connect(settings.database_path) as db:  # as the table was before pinning
+        db.execute("ALTER TABLE announcements DROP COLUMN pinned")
+
+    reopened = await admin_client(make_client, github)
+
+    assert [(a["id"], a["pinned"]) for a in await listed(reopened)] == [(id, False)]
+    assert (await pin(reopened, id))["pinned"] is True

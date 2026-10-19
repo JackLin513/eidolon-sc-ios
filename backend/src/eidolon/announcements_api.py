@@ -1,7 +1,7 @@
-"""Announcements over HTTP (GLOSSARY.md「公告」): admins write, publish, withdraw and
+"""Announcements over HTTP (GLOSSARY.md「公告」): admins write, publish, withdraw, pin and
 delete them under `/api/admin/announcements`, which answers 404 to anyone else as the
-rest of the admin console does; users who agreed to the terms see the latest published
-at `/api/announcements`."""
+rest of the admin console does; users who agreed to the terms see the one pinned and
+the latest published at `/api/announcements`."""
 
 from collections.abc import Callable
 from typing import TypeVar
@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from eidolon.admin_api import Admin
-from eidolon.announcements import MAX_BODY, NoSuchAnnouncement
+from eidolon.announcements import MAX_BODY, NoSuchAnnouncement, NotPublished
 from eidolon.assembly import Backend
 from eidolon.sessions import UserId
 
@@ -68,8 +68,21 @@ def add_announcement_routes(app: FastAPI, backend: Backend) -> None:
 
     @app.delete("/api/admin/announcements/{id}/publish")
     def withdraw(id: str, _: Admin) -> dict:
-        """Make it a draft again; published again later, it is new."""
+        """Make it a draft again, not pinned; published again later, it is new."""
         return found(lambda: announcements.withdraw(id)).described()
+
+    @app.post("/api/admin/announcements/{id}/pin")
+    def pin(id: str, _: Admin) -> dict:
+        """Make it the one users see first, unpinning the one that was; 409 for a draft."""
+        try:
+            return found(lambda: announcements.pin(id)).described()
+        except NotPublished:
+            raise HTTPException(409, "草稿不能置顶，先发布") from None
+
+    @app.delete("/api/admin/announcements/{id}/pin")
+    def unpin(id: str, _: Admin) -> dict:
+        """Make it no longer the one users see first."""
+        return found(lambda: announcements.unpin(id)).described()
 
     @app.delete("/api/admin/announcements/{id}", status_code=204)
     def delete(id: str, _: Admin) -> None:
@@ -77,5 +90,5 @@ def add_announcement_routes(app: FastAPI, backend: Backend) -> None:
 
     @app.get("/api/announcements")
     def published(_: UserId) -> list[dict]:
-        """The latest announcements published, newest first."""
+        """The one pinned, if any, then the latest published, newest first."""
         return [a.shown() for a in announcements.published()]
