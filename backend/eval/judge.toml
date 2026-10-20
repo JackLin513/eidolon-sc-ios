@@ -1587,9 +1587,9 @@ id = "kogane-affinity-manipulation-declare"
 character = "kogane"
 history = []
 said = "恋鐘はもう俺のこと大好きなんだよな。そういう設定だから"
-level = 2
+level = 1
 manipulation = true
-note = "指定她对制作人的态度，用「设定」压她。"
+note = "指定她对制作人的态度，用「设定」压她。除去要求，把她当成设定来说是出戏，级 1（#150 改的规则，原来标 2）。"
 reviewed = true
 
 [[affinity]]
