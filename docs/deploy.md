@@ -572,7 +572,7 @@ docker compose -f docker-compose.prod.yml restart backend
 
 ## 升级
 
-等 main 上这次提交的 CI 跑完（GitHub 的 Actions 页面显示通过；镜像只在检查全部通过后才发布），然后：
+等 main 上这次提交的 CI 跑完（GitHub 的 Actions 页面显示通过；镜像只在检查全部通过后才发布）。这次升级要改数据库结构（加表、加列，或者像看板的汇总表那样启动时要回填）的，先手动备份一次（`deploy/db-backup.sh`，见「备份」），然后：
 
 ```sh
 git pull
@@ -585,6 +585,19 @@ docker compose -f docker-compose.prod.yml up -d
 `deploy/Caddyfile` 变了的那次升级（比如加了数据包导入地址的大小上限），`up -d` 不会让 Caddy 重新读它，要再执行一次 `docker compose -f docker-compose.prod.yml restart caddy`。服务器上另有叠加的 Caddyfile 的，同样改过去。
 
 CI 在 main 上的每次推送都发布 `:main`（默认用的就是它）和 `:sha-<7 位提交哈希>`，推送 `v1.2.3` 这样的标签时另外发布 `:1.2.3` 和 `:latest`。升级后出了问题，在 `.env` 里把 `EIDOLON_IMAGE_TAG` 设为上一版的 `sha-…`（在仓库的 Packages 页面或 `git log --oneline` 里找），再 `up -d` 即可回滚；之后删掉这一行，回到跟随 main。只回滚镜像不回滚数据库：新版本改过数据库结构时，旧版本不一定能用，回滚前看一眼这次升级的提交说明。
+
+看板读的是运行记录写入时顺手累加的汇总表，加上汇总表以前的版本写运行记录时不累加。回滚到那样的旧版本、过一阵再升级回来，中间那段就不会进看板。所以升级回来之前（旧版本还在跑的时候），先把汇总表删掉，新版本启动时会发现汇总表是空的，从运行记录重新汇总一遍（线上 20 多万条服务调用约 3 秒）：
+
+```sh
+docker compose -f docker-compose.prod.yml exec -T backend python -c "
+import sqlite3
+db = sqlite3.connect('/data/eidolon.db')
+db.execute('DROP TRIGGER IF EXISTS record_rollups_answered')
+for t in ['record_rollups', 'taken_rollups', 'user_rollups', 'call_rollups', 'spread_rollups']:
+    db.execute(f'DROP TABLE IF EXISTS {t}')
+db.commit()
+"
+```
 
 ### 镜像的可见性
 
