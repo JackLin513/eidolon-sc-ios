@@ -17,3 +17,7 @@
 - [ ] 本地构建版上用 Playwright 验：礼物页那一小节宽屏和手机、带点和离开后消失、统计页那一节
 
 ## Comments
+
+### 票 01 交接
+
+- `GiftState.achievements`（`lib/gifts`）是合起来的四个，顺序 `characters`、`intimate_characters`、`days`、`draws`，开关关着为 null；每一行用 `lib/achievements` 的 `achievementRow`，文案已在 `copy.achievements`（「5 位 / 10 位」「12 天 / 30 天」「37 次 / 50 次」）。

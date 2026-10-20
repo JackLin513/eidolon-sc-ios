@@ -19,3 +19,8 @@
 - [ ] 本地构建版上用 Playwright 验（`docs/agents/local-acceptance.md`）：面板宽屏和手机的样子、回合里解锁时奖杯跳一下、菜单和面板上的点、打开后消失；状态能用接口或改库造就自己造
 
 ## Comments
+
+### 票 01 交接
+
+- `lib/achievements.ts` 已有 `achievementRow`、`completeRow` 和类型 `HerAchievements`（接口 `GET /api/characters/{id}/achievements` 的形状，开关关着为 null）、`UnlockedStage`（`Rewarded.achievements` 的一项，合起来的 `character_id` 为 null）。读接口的函数还没写。
+- `completeRow` 给 `isComplete`、`name`（「集齐」/「集齐了」）、`reward`（「重置卡 ×1」或 null）；行的 `stages` 是阶段点（解锁的为 true）。

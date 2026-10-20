@@ -8,6 +8,7 @@ backend's external API, with the clock moved."""
 import sqlite3
 from dataclasses import replace
 from datetime import datetime
+from unittest.mock import ANY
 
 import httpx
 import pytest
@@ -60,6 +61,7 @@ async def test_a_new_user_has_one_draw_the_day_they_come_and_nothing_else_yet(
             {"id": "kogane", "tier": "trust", "cooling": False, "cooldown_until": None},
         ],
         "daily_tasks": {"tasks": tasks(), "renews_at": "2026-09-25T16:00:00+00:00"},
+        "achievements": ANY,  # as test_achievements has them
         "rewarded_at": None,
     }
 
@@ -167,6 +169,7 @@ async def test_off_the_state_is_read_all_the_same_saying_so(
         "resettable": [],
         "characters": [],
         "daily_tasks": None,
+        "achievements": None,
         "rewarded_at": None,
     }
 

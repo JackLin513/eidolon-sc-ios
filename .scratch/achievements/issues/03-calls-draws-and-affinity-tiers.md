@@ -14,3 +14,9 @@
 - [ ] 后端测试：通话只有接通的算、累计、跨阶段（照 `test_call_stats.py` 的通话驱动）；抽奖次数累计、抽奖返回带着解锁（照 `test_gift_draws.py`）；档位到过亲近、直接到亲密两个都解锁、掉下来不收回（假判断的升降推档位，照 `test_affinity_turns.py`）；到过亲密的有几位；集齐需要四个成就都走完（这张票以后档位和通话才可能集齐）
 
 ## Comments
+
+### 票 01 交接
+
+- 进度入口是 `achievements.keep(db, user_id, character_id, now, today, *, turns, gifts)`，只在 `Gifts.reward` 的 `due` 回调里调（同锁同事务）；通话秒数、抽奖次数、档位要在这里加参数或另开同样形状的入口。它每次都把「回合、送礼」以外的「来过几天」也加一，通话结束和抽奖不该算来过（规格只认回合和送礼），加的时候注意分开。
+- 进度表 `achievement_progress`：通话时长记在 `call_time`（秒）；档位记在 `tier`，存 `TIERS_REACHED` 里的序号（1 亲近、2 亲密），写时取较大的（到过就算、不回落）；抽奖记在 `draws`、角色为空字符串。`intimate_characters` 由 `tier >= 2` 的角色数推出来，已经接好。
+- `Happenings` 的 `Rewarded` 已带 `achievements`、`completed`；抽奖返回要带「这次到账」时照送礼的写法拼。

@@ -2,6 +2,8 @@
 catalog at `/api/gifts/catalog`, what the user has at `/api/gifts`, and drawing at
 `/api/gifts/draws`, the latter two having given the draw chances due today; giving one to
 a character at `/api/characters/{id}/gifts`; using a reset card at `/api/gifts/resets`.
+Her own achievements (GLOSSARY.md「成就」) are at `/api/characters/{id}/achievements`, those
+of all the characters together with what the user has.
 None says which gifts a character likes: the gifts page gives none of that away. Admins give every user a reset card at
 `/api/admin/gifts/reset-card-grants`, which answers 404 to anyone else as the rest of the
 admin console does. Gifts not open, drawing, giving, using a reset card and granting them
@@ -58,10 +60,13 @@ def add_gift_routes(app: FastAPI, backend: Backend) -> None:
     def read_state(user_id: UserId) -> dict:
         """What the user has, having been given the draw chances due today; whether gifts
         are open, and if so when the next chance is given and each character's affinity,
-        for choosing whom to give to, and how far the user is with today's daily tasks."""
+        for choosing whom to give to, how far the user is with today's daily tasks and with
+        the achievements of all the characters together."""
         daily_tasks = happenings.daily_tasks(user_id)
+        of_all = happenings.of_all(user_id)
         return gifts.state(user_id).shown() | {
-            "daily_tasks": daily_tasks and daily_tasks.shown()
+            "daily_tasks": daily_tasks and daily_tasks.shown(),
+            "achievements": of_all and [p.shown() for p in of_all],
         }
 
     @app.post("/api/gifts/draws")
@@ -82,6 +87,15 @@ def add_gift_routes(app: FastAPI, backend: Backend) -> None:
             raise HTTPException(404, str(e)) from None
         rewarded = happenings.gift_given(user_id, character_id)
         return given.shown() | {"rewarded": rewarded and rewarded.shown()}
+
+    @app.get("/api/characters/{character_id}/achievements")
+    def read_hers(character_id: str, user_id: UserId) -> dict | None:
+        """How far the user has come with her own achievements, and whether she is complete;
+        None while affinity and gifts are closed."""
+        if character_id not in backend.characters:
+            raise HTTPException(404, "角色不存在")
+        achieved = happenings.hers(user_id, character_id)
+        return achieved and achieved.shown()
 
     @app.post("/api/gifts/resets")
     def use_reset_card(user_id: UserId) -> dict:

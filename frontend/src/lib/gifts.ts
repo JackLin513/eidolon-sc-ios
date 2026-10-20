@@ -6,6 +6,7 @@
 
 import { api, json } from "@/lib/api";
 import { cueText, untilText, type AffinityChange, type AffinityStatus, type Tier } from "@/lib/affinity";
+import type { Achievement } from "@/lib/achievements";
 import type { DailyTasks } from "@/lib/dailyTasks";
 import type { Rewarded } from "@/lib/rewards";
 import { copy } from "@/i18n";
@@ -43,6 +44,8 @@ export type GiftState = {
   characters: GiftCharacter[];
   /** 今天的每日任务；没开放时是 null。 */
   daily_tasks: DailyTasks | null;
+  /** 合起来的四个成就（lib/achievements）；没开放时是 null。 */
+  achievements: Achievement[] | null;
   /** 最近一次到账的时刻（ISO），导航「礼物」上的点靠它；从来没有过是 null。 */
   rewarded_at: string | null;
 };

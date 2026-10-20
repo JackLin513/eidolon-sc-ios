@@ -2179,7 +2179,14 @@ describe("LiveConversation: the list", () => {
 });
 
 describe("LiveConversation: rewards", () => {
-  const oneTurn: Rewarded = { draws: 1, reset_cards: 0, daily_tasks: ["one_turn"], rewarded_at: "2026-10-20T08:00:00+00:00" };
+  const oneTurn: Rewarded = {
+    draws: 1,
+    reset_cards: 0,
+    daily_tasks: ["one_turn"],
+    achievements: [],
+    completed: [],
+    rewarded_at: "2026-10-20T08:00:00+00:00",
+  };
 
   it("tells the shell what a text turn was rewarded with, and nothing for one rewarded with nothing", async () => {
     const turns = [

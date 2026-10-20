@@ -13,9 +13,10 @@ again, which gives one that day. So when it last opened is kept (`notice`), as t
 starts and as the switch changes. That is no one's; what each user has is theirs, deleted
 with them (`database.USER_DATA`).
 
-A user is rewarded for what they do (`reward`), as daily tasks are done (`happenings`): each
-reward given once by its key, its draw chances over and above the most kept of those given
-each day, never anything of her affinity.
+A user is rewarded for what they do (`reward`), as daily tasks are done and achievements'
+stages unlocked (`happenings`): each reward given once by its key, its draw chances over and
+above the most kept of those given each day, and its reset cards, never anything of her
+affinity.
 
 An admin may give every user there is a reset card at once (`grant_reset_cards`), banned
 ones and admins too, but no one user anything on their own. Each grant is kept, when and
@@ -447,14 +448,14 @@ class Gifts:
         return Reset(brought_back, taken[0])
 
     def reward(
-        self, user_id: str, due: Callable[[sqlite3.Connection, date], Iterable[Reward]]
+        self, user_id: str, due: Callable[[sqlite3.Connection, datetime], Iterable[Reward]]
     ) -> tuple[list[Reward], datetime]:
         """Give the user each reward `due` says is due that they have not been given yet by
         its key, having been given the draw chances due today; one with no draw chances yet
-        is given the new user's one first. `due` is called with the connection and today
-        (`affinity.day_of`) holding the lock, in the transaction the rewards are given in, so
-        what it keeps is kept with them or not at all, on the same day the draw chances are
-        given for, and two rewarded at once for the same are rewarded once. The rewards
+        is given the new user's one first. `due` is called with the connection and now
+        holding the lock, in the transaction the rewards are given in, so
+        what it keeps is kept with them or not at all, by the same now the draw chances are
+        given by, and two rewarded at once for the same are rewarded once. The rewards
         given now, and when. Raises GiftsClosed if gifts are not open."""
         self.notice()
         if not self._is_open():
@@ -462,9 +463,8 @@ class Gifts:
         given = []
         with self._lock, self._db:
             now = self._clock()
-            today = day_of(now)
-            rewards = list(due(self._db, today))
-            self._give(user_id, today)
+            rewards = list(due(self._db, now))
+            self._give(user_id, day_of(now))
             for r in rewards:
                 new = self._db.execute(
                     "INSERT INTO gift_rewards"

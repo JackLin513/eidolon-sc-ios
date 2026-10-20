@@ -16,3 +16,8 @@
 - [ ] 本地构建版上用 Playwright 看一眼看板那一小节
 
 ## Comments
+
+### 票 01 交接
+
+- 解锁的阶段和集齐在 `Happenings._happened` 里已经拿到：`given` 里的奖励按键映射成 `achievements.Unlocked` / `Completed`（`done` 字典），到账以后写运行记录就接在每日任务那段 `daily_task_done` 循环旁边。
+- 到账键：`achievement:{成就}:{角色或空}:{第几阶段}`、`achievement_complete:{角色}`；看板「发出的抽奖次数」可按 `Unlocked.draws` 记进 `result`。

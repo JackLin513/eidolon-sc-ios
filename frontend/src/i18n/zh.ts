@@ -1835,6 +1835,40 @@ export const zh = {
       description: "这里还没有开放好感度和礼物。已经有的礼物会留着，开放后照常能送。",
     },
   },
+  /** 成就（GLOSSARY.md「成就」）：她的对话页面板和礼物页那一小节里每一行的字。 */
+  achievements: {
+    names: {
+      turns: "和她的回合",
+      call_time: "和她通话",
+      gifts: "送她的礼物",
+      tier: "她的好感度到过",
+      characters: "往来过的角色",
+      intimate_characters: "到过亲密的角色",
+      days: "来过的天数",
+      draws: "抽过的奖",
+    } as Record<string, string>,
+    /** 进度和门槛的写法（通话时长另见 `duration`）；不认识的成就只写数字。 */
+    units: {
+      turns: (n: number) => `${n} 个回合`,
+      gifts: (n: number) => `${n} 件`,
+      characters: (n: number) => `${n} 位`,
+      intimate_characters: (n: number) => `${n} 位`,
+      days: (n: number) => `${n} 天`,
+      draws: (n: number) => `${n} 次`,
+    } as Record<string, (n: number) => string>,
+    duration: {
+      minutes: (m: number) => `${m} 分钟`,
+      hours: (h: number) => `${h} 小时`,
+      hoursMinutes: (h: number, m: number) => `${h} 小时 ${m} 分`,
+    },
+    /** 档位那一行只写下一个档位，不写好感度的数值。 */
+    nextTier: (tier: string) => `下一个：${tier}`,
+    allUnlocked: "全部解锁",
+    draws: (n: number) => `抽奖 ×${n}`,
+    complete: "集齐",
+    completed: "集齐了",
+    resetCards: (n: number) => `重置卡 ×${n}`,
+  },
   memories: {
     intro: "角色们在对话中记下的、关于你的事。所有角色共用这些记忆，对一位角色说过的事，其他角色会以转述的口吻知道。删除后，角色不会再想起这件事。标为「已被取代」的记忆，已经被你后来说的话更新，角色不会再想起；删掉取代它的那条，它就恢复。",
     loading: "正在读取…",
