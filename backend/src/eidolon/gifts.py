@@ -194,6 +194,8 @@ class GiftState:
     characters: list[tuple[str, Status]]
     """Each character's affinity with the user, for choosing whom to give to and telling
     whom a reset card would bring back: none while closed, as affinity shows nothing then."""
+    rewarded_at: datetime | None
+    """When the user was last rewarded (`Gifts.reward`); None if never."""
 
     def shown(self) -> dict:
         """As the browser is told it."""
@@ -213,6 +215,7 @@ class GiftState:
                 {"id": c, "cooling": status.cooling} | status.shown()
                 for c, status in self.characters
             ],
+            "rewarded_at": self.rewarded_at and self.rewarded_at.isoformat(),
         }
 
 
@@ -319,6 +322,7 @@ class Gifts:
                     (user_id,),
                 ).fetchall()
             )
+            rewarded_at = self._last_rewarded(user_id)
         draws, reset_cards = row or (0, 0)
         backpack = [(g, held[g]) for g in self._catalog if g in held]
         statuses = (
@@ -327,7 +331,9 @@ class Gifts:
         )
         characters = [(c, status) for c, status in statuses if status is not None]
         next_draw_at = next_day(now) if is_open else None
-        return GiftState(is_open, draws, backpack, reset_cards, next_draw_at, characters)
+        return GiftState(
+            is_open, draws, backpack, reset_cards, next_draw_at, characters, rewarded_at
+        )
 
     def draw(self, user_id: str, *, all: bool = False) -> Drawn:
         """Draw once, or as many times as the user has chances if `all`, having been given
@@ -442,14 +448,14 @@ class Gifts:
 
     def reward(
         self, user_id: str, due: Callable[[sqlite3.Connection, date], Iterable[Reward]]
-    ) -> list[Reward]:
+    ) -> tuple[list[Reward], datetime]:
         """Give the user each reward `due` says is due that they have not been given yet by
         its key, having been given the draw chances due today; one with no draw chances yet
         is given the new user's one first. `due` is called with the connection and today
         (`affinity.day_of`) holding the lock, in the transaction the rewards are given in, so
         what it keeps is kept with them or not at all, on the same day the draw chances are
         given for, and two rewarded at once for the same are rewarded once. The rewards
-        given now. Raises GiftsClosed if gifts are not open."""
+        given now, and when. Raises GiftsClosed if gifts are not open."""
         self.notice()
         if not self._is_open():
             raise GiftsClosed()
@@ -473,7 +479,14 @@ class Gifts:
                         (r.draws, r.reset_cards, user_id),
                     )
                     given.append(r)
-        return given
+        return given, now
+
+    def _last_rewarded(self, user_id: str) -> datetime | None:
+        """When the user was last rewarded; None if never. Holding the lock."""
+        (at,) = self._db.execute(
+            "SELECT MAX(rewarded_at) FROM gift_rewards WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        return at and datetime.fromisoformat(at)
 
     def grant_reset_cards(self) -> Grant:
         """Give every user there is now a reset card, banned ones and admins too, all at

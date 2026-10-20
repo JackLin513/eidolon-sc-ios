@@ -8,8 +8,9 @@ const t = copy.gifts.dailyTasks;
 /**
  * 礼物页抽奖台下面那一节「每日任务」（DESIGN.md「礼物页」）：描边圆角块，标题、做完几项（「1/3」）、右边换新的时刻；
  * 每项一行，没做完空圈、做完打勾且字变淡划掉，目标不止 1 的没做完时带「3/10」，右边「抽奖 ×1」。
+ * 在这一页上刚做完的（`justDone`，id）打勾时弹一下，减少动态时不弹。
  */
-export function DailyTasksSection({ view }: { view: DailyTasksView }) {
+export function DailyTasksSection({ view, justDone = [] }: { view: DailyTasksView; justDone?: readonly string[] }) {
   return (
     <section aria-label={t.title} className="flex flex-col gap-1 rounded-2xl border px-5 py-3">
       <p className="flex items-baseline gap-2">
@@ -22,7 +23,10 @@ export function DailyTasksSection({ view }: { view: DailyTasksView }) {
         {view.rows.map((row) => (
           <li key={row.id} className="flex min-h-11 items-center gap-3">
             {row.isDone ? (
-              <SuccessIcon aria-hidden className="size-5 shrink-0" />
+              <SuccessIcon
+                aria-hidden
+                className={cn("size-5 shrink-0", justDone.includes(row.id) && "motion-safe:animate-jump")}
+              />
             ) : (
               <TaskOpenIcon aria-hidden className="size-5 shrink-0 text-muted-foreground" />
             )}

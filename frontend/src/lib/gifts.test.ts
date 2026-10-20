@@ -98,6 +98,7 @@ describe("送出后底部提示的那句话", () => {
     change,
     affinity: { tier: change?.tier ?? "cold", cooling: cooldown_until !== null, cooldown_until },
     left: 0,
+    rewarded: null,
   });
   const note = (g: Given) => givenNote(g, "凛世", now, "Asia/Tokyo");
 

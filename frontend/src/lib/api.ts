@@ -14,6 +14,7 @@ import {
 } from "@/lib/localOwnKeys";
 import type { LLMOffer, LLMProvider } from "@/lib/llmProviders";
 import type { EffortHint } from "@/lib/reasoningEffort";
+import type { Rewarded } from "@/lib/rewards";
 import { detectTimezone } from "@/lib/timezone";
 import type { Speaking } from "@/lib/call";
 import type { Emotion, Nod } from "@/lib/standAnimations";
@@ -190,14 +191,20 @@ export type Recorded = Message | ConversationEvent | ReachOut;
 /** A turn's events: `user`, then `photo` if she sends one (its id, before her first words), any
  * `delta`s, then `photos-used-up` if the user asked for a photo with this hour's used up (when they
  * may ask again, ISO), and `done`, or `error`. `done` says too where the turn left her affinity, null
- * while affinity is off, and her ending the conversation after it, recorded after her reply, if she
- * did. */
+ * while affinity is off, her ending the conversation after it, recorded after her reply, if she
+ * did, and what the turn was rewarded with (lib/rewards), null if nothing. */
 export type TurnEvent =
   | { type: "user"; text: string }
   | { type: "photo"; id: string; status: "pending" }
   | { type: "delta"; segment: number; lang: "ja" | "zh"; text: string }
   | { type: "photos-used-up"; retry_at: string }
-  | { type: "done"; message: Message; affinity: AffinityStatus | null; ended?: ConversationEvent | null }
+  | {
+      type: "done";
+      message: Message;
+      affinity: AffinityStatus | null;
+      ended?: ConversationEvent | null;
+      rewarded?: Rewarded | null;
+    }
   | { type: "error"; message: string };
 
 export type Gender = "male" | "female";

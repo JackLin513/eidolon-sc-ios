@@ -31,3 +31,11 @@ export function dailyTasksView(daily: DailyTasks, next: string): DailyTasksView 
     })),
   };
 }
+
+/** 到账里做完的那几项（`done` 是 id）当场记成做完，不等重读礼物状态。 */
+export function withDone(daily: DailyTasks, done: readonly string[]): DailyTasks {
+  return {
+    ...daily,
+    tasks: daily.tasks.map((task) => (done.includes(task.id) ? { ...task, done: true, progress: task.goal } : task)),
+  };
+}

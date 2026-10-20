@@ -79,11 +79,22 @@ DAILY_TASKS = (
 @dataclass(frozen=True)
 class Rewarded:
     """What something the user did was rewarded with: draw chances, reset cards, and the
-    daily tasks it did."""
+    daily tasks it did; and when, by the time the rewards are kept by, for the browser to
+    tell what it has seen."""
 
     draws: int
     reset_cards: int
     daily_tasks: list[str]
+    rewarded_at: datetime
+
+    def shown(self) -> dict:
+        """As the browser is told it."""
+        return {
+            "draws": self.draws,
+            "reset_cards": self.reset_cards,
+            "daily_tasks": self.daily_tasks,
+            "rewarded_at": self.rewarded_at.isoformat(),
+        }
 
 
 @dataclass(frozen=True)
@@ -161,7 +172,7 @@ class Happenings:
         try:
             if not self._is_open():
                 return None
-            given = self._gifts.reward(user_id, due)
+            given, at = self._gifts.reward(user_id, due)
         except GiftsClosed:  # closed since: as if it had been all along
             return None
         except Exception:
@@ -173,6 +184,7 @@ class Happenings:
             sum(r.draws for r in given),
             sum(r.reset_cards for r in given),
             [done[r.key] for r in given],
+            at,
         )
 
 

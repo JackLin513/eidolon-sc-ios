@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { dailyTasksView, type DailyTasks } from "@/lib/dailyTasks";
+import { dailyTasksView, withDone, type DailyTasks } from "@/lib/dailyTasks";
 
 function tasks(turns: number, gifts: number): DailyTasks {
   const task = (id: string, progress: number, goal: number) => ({
@@ -60,5 +60,15 @@ describe("每日任务那一节", () => {
 
     expect(view.count).toBe("0/4");
     expect(view.rows[3]).toEqual({ id: "later", name: "later", isDone: false, progress: null, reward: "抽奖 ×2" });
+  });
+});
+
+describe("送礼到账后当场打勾", () => {
+  it("到账里做完的那几项记成做完、进度到目标，别的不动", () => {
+    expect(withDone(tasks(9, 0), ["one_gift", "ten_turns"])).toEqual(tasks(10, 1));
+  });
+
+  it("不认识的一项不管", () => {
+    expect(withDone(tasks(1, 0), ["birthday"])).toEqual(tasks(1, 0));
   });
 });

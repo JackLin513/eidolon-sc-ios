@@ -7,6 +7,7 @@
 import { api, json } from "@/lib/api";
 import { cueText, untilText, type AffinityChange, type AffinityStatus, type Tier } from "@/lib/affinity";
 import type { DailyTasks } from "@/lib/dailyTasks";
+import type { Rewarded } from "@/lib/rewards";
 import { copy } from "@/i18n";
 
 /** 礼物的类别：吃的、饮品、花草、小物件。 */
@@ -42,6 +43,8 @@ export type GiftState = {
   characters: GiftCharacter[];
   /** 今天的每日任务；没开放时是 null。 */
   daily_tasks: DailyTasks | null;
+  /** 最近一次到账的时刻（ISO），导航「礼物」上的点靠它；从来没有过是 null。 */
+  rewarded_at: string | null;
 };
 
 /** 抽一次抽到的：一件礼物，或一张重置卡。 */
@@ -80,12 +83,13 @@ export async function spendResetCard(): Promise<void> {
   await json(await api("/api/gifts/resets", { method: "POST" }));
 }
 
-/** 送礼接口给的：记录放进了哪段对话、这次的变化（没有胶囊时是 null）、她现在的好感度、这件还剩几件。 */
+/** 送礼接口给的：记录放进了哪段对话、这次的变化（没有胶囊时是 null）、她现在的好感度、这件还剩几件、这次到账了什么（没有是 null）。 */
 export type Given = {
   conversation_id: string;
   change: AffinityChange | null;
   affinity: AffinityStatus & { cooling: boolean };
   left: number;
+  rewarded: Rewarded | null;
 };
 
 /**

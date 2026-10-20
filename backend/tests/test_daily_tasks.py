@@ -8,6 +8,7 @@ API, with the clock moved."""
 
 import sqlite3
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -19,6 +20,7 @@ from tests.conftest import ClientFactory
 from tests.fakes import FAKE_JUDGE, FakeClock, FakeIdentityProvider, FakeLLM, FakeSpeech
 from tests.test_admin_users import ADMIN, admin_beside
 from tests.test_affinity import AFFINITY, keep
+from tests.browser import Browser
 from tests.test_call_stats import call
 from tests.test_conversation_events import hang_up
 from tests.test_data_package import import_package
@@ -284,3 +286,81 @@ def rows_of(database: Path) -> list[int]:
             db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
             for table in ("daily_task_progress", "gift_rewards")
         ]
+
+
+def rewarded(*daily_tasks: str, at: datetime) -> dict:
+    """What something that did `daily_tasks` at `at` says it was rewarded with."""
+    return {
+        "draws": len(daily_tasks),
+        "reset_cards": 0,
+        "daily_tasks": list(daily_tasks),
+        "rewarded_at": at.isoformat(),
+    }
+
+
+async def test_a_turn_says_what_it_was_rewarded_with_and_none_if_nothing(
+    make_client: ClientFactory,
+):
+    clock = FakeClock()
+    client = make_client(FakeLLM(*[REPLY] * 10), clock=clock)
+    conversation = await start_conversation(client)
+
+    began = clock.now
+    first = await send_turn(client, conversation, "你好")
+    second = await send_turn(client, conversation, "第二句")
+    for i in range(7):
+        await turns(client, conversation, 1)
+    clock.advance(minutes=1)
+    tenth = await send_turn(client, conversation, "第十句")
+
+    assert first[-1]["rewarded"] == rewarded("one_turn", at=began)
+    assert second[-1]["type"] == "done"
+    assert second[-1]["rewarded"] is None
+    assert tenth[-1]["rewarded"] == rewarded("ten_turns", at=clock.now)
+
+
+async def test_a_turn_in_a_call_says_what_it_was_rewarded_with(
+    make_client: ClientFactory, speech: FakeSpeech, browser: Browser
+):
+    clock = FakeClock()
+    client = make_client(FakeLLM(REPLY), clock=clock)
+
+    await browser.call(client, conversation_id=await start_conversation(client))
+    await browser.connect()
+    await speech.stts[-1].hear("你好")
+    done = (await browser.turn())[-1]
+    await browser.hang_up()
+
+    assert done["type"] == "done"
+    assert done["rewarded"] == rewarded("one_turn", at=clock.now)
+
+
+async def test_a_gift_given_says_what_it_was_rewarded_with_once(make_client: ClientFactory):
+    clock = FakeClock()
+    client = holding(make_client, clock, CAKE, CAKE)
+    await draw_them(client, clock, 2)
+
+    first = await given(client, "cake")
+    second = await given(client, "cake")
+
+    assert first["rewarded"] == rewarded("one_gift", at=clock.now)
+    assert second["rewarded"] is None
+
+
+async def test_when_the_user_was_last_rewarded_is_none_until_they_are_then_the_latest(
+    make_client: ClientFactory,
+):
+    clock = FakeClock()
+    client = make_client(FakeLLM(REPLY, REPLY), clock=clock)
+    conversation = await start_conversation(client)
+    never = await state(client)
+
+    began = clock.now
+    await turns(client, conversation, 1)
+    once = await state(client)
+    clock.advance(hours=1)
+    await turns(client, conversation, 1)  # rewarded with nothing
+    unchanged = await state(client)
+
+    assert never["rewarded_at"] is None
+    assert once["rewarded_at"] == unchanged["rewarded_at"] == began.isoformat()
