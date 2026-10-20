@@ -61,7 +61,7 @@ The "chat model" plays the character; the "background model" extracts memories a
 
 ## Characters
 
-Characters are written in [`characters/characters.toml`](../characters/characters.toml), one `[[characters]]` block each. All 28 idols from the game's eight units are already set up, and their character sheets, character facts and avatars are committed with the repository (ADR-0003).
+Characters are written in [`characters/characters.toml`](../characters/characters.toml), one `[[characters]]` block each. All 28 idols from the game's eight units and the office clerk Nanakusa Hazuki are already set up, and their character sheets, character facts and avatars are committed with the repository (ADR-0003).
 
 ```toml
 [[characters]]
@@ -243,7 +243,7 @@ Every turn carries a section on the world setting after the character sheet ([AD
 - her own songs (those she sings alone, and those her whole unit sings), with the releases they are on and their release dates;
 - the lives she has stood on and will stand on: each live day's date and venue, leaving out days her CV was absent.
 
-The data is in [`characters/world.json`](../characters/world.json), committed to the repository. Every character's display name must match an idol in the data, or the backend won't start. Without the file, the backend runs as usual, just without the world setting.
+The data is in [`characters/world.json`](../characters/world.json), committed to the repository. Every character's display name must match an idol (or one of the office staff, such as the clerk Nanakusa Hazuki) in the data, or the backend won't start. Without the file, the backend runs as usual, just without the world setting.
 
 <details>
 <summary><b>Updating the world setting (eidolon world sync)</b></summary>
