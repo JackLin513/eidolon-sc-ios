@@ -13,8 +13,9 @@ status: accepted
 
 ## Consequences
 
-- 只列我们能说的接口：models.dev 记为 Anthropic SDK 的用 Anthropic Messages，OpenAI SDK 的用 Responses，Google、Bedrock 等自有协议的不列，其余按 OpenAI 兼容（Chat Completions）。models.dev 没写地址的几家（OpenAI、Anthropic、Google 等）由代码给出地址，Google 用它的 OpenAI 兼容地址。不是 HTTPS、是 IP、`localhost` 或模板地址（`${…}`）的不列。
+- 只列我们能说的接口：models.dev 记为 Anthropic SDK 的用 Anthropic Messages，OpenAI SDK 的用 Responses，Google、Bedrock 等自有协议的不列，其余按 OpenAI 兼容（Chat Completions）；模型写了 `shape` 的，按它在 Responses 和 Chat Completions 之间选。models.dev 没写地址的几家（OpenAI、Anthropic、Google 等）由代码给出地址，Google 用它的 OpenAI 兼容地址。不是 HTTPS、是 IP、`localhost`（连同 `*.localhost`）或模板地址（`${…}`）的不列。
 - 同一家服务商的不同模型可能走不同接口（例如 CommandCode 的 Claude 走 Anthropic Messages），所以接口类型和地址按选的那个模型填，不只按服务商。
-- 名单里的地址本来就是 ADR-0022 的已知服务商，选出来的 LLM 打开代理开关后都能走代理。
-- 服务器还没拉到目录（新部署、models.dev 访问不了）时没有名单，两个下拉框不显示，照旧手填。
-- models.dev 只有英文名，搜「智谱」「火山」这类中文名靠前端一张只管搜索的别名表；它不影响显示和填进去的值，过时了只是搜不到，选列表照样能用。
+- 名单里的地址都是 ADR-0022 的已知服务商：模型自己写的地址（例如 freemodel 的 GPT 不在服务商的地址上）也一并记成已知服务商，所以选出来的 LLM 打开代理开关后都能走代理。
+- 编辑已存的 LLM 时按地址认出是哪家，模型自己的地址也算；几家共用一个地址时（按量和编程套餐常这样，例如 MiniMax），认在这个地址有这个模型的那家。
+- 服务器还没拉到目录（新部署、models.dev 访问不了）时没有名单，两个下拉框不显示，照旧手填；前端不记住空名单，下次打开表单再问。
+- models.dev 只有英文名，搜「智谱」「火山」这类中文名靠前端一张只管搜索的别名表，连着打（「智谱套餐」）和隔开打一样；它不影响显示和填进去的值，过时了只是搜不到，选列表照样能用。

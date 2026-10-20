@@ -100,6 +100,15 @@ def _is_address(host: str) -> bool:
         return False
     return True
 
+
+def _named(host: str) -> bool:
+    """Whether `host` is a name on the internet: not an address, nor a name for this
+    machine (`*.localhost`), nor a placeholder (`${DATABRICKS_HOST}`)."""
+    return (
+        _DOMAIN.fullmatch(host) is not None and not host.endswith(".localhost")
+        and not _is_address(host)
+    )
+
 MAKERS = [
     "openai", "anthropic", "google", "deepseek", "xai", "mistral", "moonshotai",
     "alibaba-cn", "zhipuai", "minimax",
@@ -107,23 +116,41 @@ MAKERS = [
 """The models.dev providers that make the models they serve, in the order a model at a
 host no catalog knows (a relay's) is looked for among them."""
 
-def _protocol(npm: object) -> LLMProtocol | None:
+SHAPES: dict[object, LLMProtocol] = {"responses": "responses", "completions": "chat-completions"}
+"""Which of OpenAI's protocols a model is spoken to over where models.dev says so of it
+(`shape`), whatever its SDK would have it."""
+
+
+def _protocol(npm: object, shape: object = None) -> LLMProtocol | None:
     """The protocol a provider or model is spoken to over, by the SDK models.dev names
-    (`ANTHROPIC_SDKS`), or None for one of their own."""
+    (`ANTHROPIC_SDKS`) and, for one of OpenAI's, the `shape` it gives; None for one of
+    their own."""
     if not isinstance(npm, str):
-        return "chat-completions"
-    if npm in ANTHROPIC_SDKS:
+        protocol: LLMProtocol | None = "chat-completions"
+    elif npm in ANTHROPIC_SDKS:
         return "anthropic"
-    if npm in RESPONSES_SDKS:
-        return "responses"
-    if npm.startswith(OTHER_SDKS):
+    elif npm in RESPONSES_SDKS:
+        protocol = "responses"
+    elif npm.startswith(OTHER_SDKS):
         return None
-    return "chat-completions"
+    else:
+        protocol = "chat-completions"
+    return SHAPES.get(shape, protocol)
+
+
+def _https_host(api: str) -> str | None:
+    """The host `api` is at if it is over HTTPS; not over HTTPS, it is on this machine or
+    next to it."""
+    try:
+        parts = urlsplit(api)
+        return parts.hostname if parts.scheme == "https" else None
+    except ValueError:
+        return None
 
 
 def _usable(base_url: object) -> bool:
-    """Whether `base_url` is one a provider serves its models at over HTTPS: a name on the
-    internet, not an address, nor a placeholder (`https://${AZURE_RESOURCE_NAME}…`)."""
+    """Whether `base_url` is one a provider serves its models at over HTTPS: at a name on
+    the internet (`_named`), not a placeholder (`https://${AZURE_RESOURCE_NAME}…`)."""
     if not isinstance(base_url, str):
         return False
     try:
@@ -132,8 +159,8 @@ def _usable(base_url: object) -> bool:
     except ValueError:
         return False
     return (
-        parts.scheme == "https" and host is not None and _DOMAIN.fullmatch(host) is not None
-        and not _is_address(host) and "$" not in base_url and "{" not in base_url
+        parts.scheme == "https" and host is not None and _named(host)
+        and "$" not in base_url and "{" not in base_url
     )
 
 
@@ -289,8 +316,9 @@ def parse_models_dev(
     data: object,
 ) -> tuple[list[Listed], list[Thinking], list[tuple[str, str]]]:
     """The models models.dev prices per token, how each model it lists thinks, and the
-    host each provider is at, leaving out its copy of OpenRouter's (`parse_openrouter`)
-    and whatever it does not say plainly."""
+    hosts each provider is at (a model may say it is served at one of its own), leaving
+    out its copy of OpenRouter's (`parse_openrouter`) and whatever it does not say
+    plainly."""
     listed: list[Listed] = []
     thinking: list[Thinking] = []
     hosts: list[tuple[str, str]] = []
@@ -300,8 +328,8 @@ def parse_models_dev(
         if provider == OPENROUTER or not isinstance(entry, dict):
             continue
         api = entry.get("api")
-        if isinstance(api, str):  # not over HTTPS, it is on this machine or next to it
-            host = urlsplit(api).hostname if urlsplit(api).scheme == "https" else None
+        if isinstance(api, str):
+            host = _https_host(api)
         else:
             host = HOSTS.get(provider)
         if host:
@@ -311,6 +339,10 @@ def parse_models_dev(
             if not isinstance(m, dict):
                 continue
             thinking.append(_thinking(provider, model, m))
+            own = m.get("provider")
+            if isinstance(own, dict) and isinstance(at := own.get("api"), str):
+                if (host := _https_host(at)) is not None:
+                    hosts.append((host.lower(), provider))
             cost = m.get("cost")
             if not isinstance(cost, dict) or (input := _number(cost.get("input"))) is None:
                 continue
@@ -360,7 +392,13 @@ def parse_offers(data: object) -> tuple[list[Provider], list[Offer]]:
                 continue
             own = m.get("provider")
             own = own if isinstance(own, dict) else {}
-            speaks = _protocol(own["npm"]) if "npm" in own else protocol
+            speaks: LLMProtocol | None
+            if "npm" in own:
+                speaks = _protocol(own["npm"], own.get("shape"))
+            elif protocol in ("responses", "chat-completions"):  # OpenAI's, `shape` picks
+                speaks = SHAPES.get(own.get("shape"), protocol)
+            else:
+                speaks = protocol
             at = own["api"] if "api" in own else base_url
             if speaks is None or not isinstance(at, str) or not _usable(at):
                 continue
@@ -566,8 +604,7 @@ class Catalog:
         (`https://${DATABRICKS_HOST}`)."""
         host = host.lower().rstrip(".")
         listed = host in self._hosts or host in HOSTS.values()
-        named = _DOMAIN.fullmatch(host) is not None and not host.endswith(".localhost")
-        return listed and named and not _is_address(host)
+        return listed and _named(host)
 
     def providers(self) -> list[Provider]:
         """The providers a user's own LLM may be picked from, by name (`parse_offers`)."""
@@ -718,10 +755,11 @@ def describe_thinking(thinking: Thinking, protocol: LLMProtocol) -> dict:
     }
 
 
-def describe_provider(provider: Provider) -> dict:
+def describe_provider(provider: Provider, offers: Iterable[Offer]) -> dict:
     return {
         "id": provider.id, "name": provider.name,
         "protocol": provider.protocol, "base_url": provider.base_url,
+        "base_urls": sorted({o.base_url for o in offers}),
     }
 
 

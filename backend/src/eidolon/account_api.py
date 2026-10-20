@@ -453,14 +453,15 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
     def llm_providers(user_id: UserId) -> dict:
         """The providers an LLM may be picked from, as models.dev lists them
         (`price_catalog.parse_offers`): where each serves its models and over which
-        protocol, for the settings page and the admin console to fill in. None before the
-        catalogs are first fetched, which has them fetched if they were last tried a while
-        ago. No key needed, nothing kept."""
+        protocol, for the settings page and the admin console to fill in, and every address
+        its models are at, for them to tell which an LLM saved is at. None (an empty list)
+        before the catalogs are first fetched, which has them fetched if they were last
+        tried a while ago. No key needed, nothing kept."""
         catalog = backend.prices.catalog
         providers = catalog.providers()
         if not providers:
             catalog.refresh_soon(missing=True)
-        return {"providers": [describe_provider(p) for p in providers]}
+        return {"providers": [describe_provider(p, catalog.offers(p.id)) for p in providers]}
 
     @app.get("/api/account/keys/llm/providers/{provider}/models")
     def llm_provider_models(

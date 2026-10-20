@@ -71,6 +71,18 @@ MODELS_DEV = {
             },
         },
     },
+    "sakana": {
+        "id": "sakana", "name": "Sakana", "npm": "@ai-sdk/openai-compatible",
+        "api": "https://api.sakana.example/v1",
+        "models": {
+            "fugu": {"id": "fugu", "name": "Fugu", **TOOLS, "provider": {"shape": "responses"}},
+        },
+    },
+    "loopback": {
+        "id": "loopback", "name": "Loopback", "npm": "@ai-sdk/openai-compatible",
+        "api": "https://llm.localhost/v1",
+        "models": {"qwen-4-8b": {"id": "qwen-4-8b", "name": "Qwen 4 8B", **TOOLS}},
+    },
     "lmstudio": {
         "id": "lmstudio", "name": "LMStudio", "npm": "@ai-sdk/openai-compatible",
         "api": "http://127.0.0.1:1234/v1",
@@ -83,8 +95,9 @@ MODELS_DEV = {
     },
 }
 """A few providers as models.dev lists them: at an address of their own or one it does
-not write down, a model served over another protocol than its provider's, and providers
-reached only on this machine or at a placeholder."""
+not write down, models served over another protocol than their provider's (by another
+SDK, or another of OpenAI's), and providers reached only on this machine or at a
+placeholder."""
 
 
 @pytest.fixture
@@ -119,22 +132,30 @@ async def test_the_providers_each_with_where_and_over_which_protocol_by_name(
 ):
     admin = await fetched(make_client, github, FakeCatalog(MODELS_DEV))
 
-    # Only one reached at a placeholder (Azure's) or on this machine (LM Studio) is left
-    # out; one whose models.dev entry does not say where is where we know it is, and
-    # Google over its OpenAI-compatible endpoint, not its own protocol.
+    # Only one reached at a placeholder (Azure's) or on this machine (LM Studio's, and
+    # one at a name for it) is left out; one whose models.dev entry does not say where is
+    # where we know it is, and Google over its OpenAI-compatible endpoint, not its own
+    # protocol. Each with every address its models are at, to tell one saved by.
     assert await providers(admin) == [
         {"id": "commandcode", "name": "CommandCode", "protocol": "chat-completions",
-         "base_url": "https://api.commandcode.ai/provider/v1"},
+         "base_url": "https://api.commandcode.ai/provider/v1",
+         "base_urls": ["https://api.commandcode.ai/provider/v1"]},
         {"id": "deepseek", "name": "DeepSeek", "protocol": "chat-completions",
-         "base_url": "https://api.deepseek.com"},
+         "base_url": "https://api.deepseek.com", "base_urls": ["https://api.deepseek.com"]},
         {"id": "google", "name": "Google", "protocol": "chat-completions",
-         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai"},
+         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+         "base_urls": ["https://generativelanguage.googleapis.com/v1beta/openai"]},
         {"id": "openai", "name": "OpenAI", "protocol": "responses",
-         "base_url": "https://api.openai.com/v1"},
+         "base_url": "https://api.openai.com/v1", "base_urls": ["https://api.openai.com/v1"]},
         {"id": "openrouter", "name": "OpenRouter", "protocol": "chat-completions",
-         "base_url": "https://openrouter.ai/api/v1"},
+         "base_url": "https://openrouter.ai/api/v1",
+         "base_urls": ["https://openrouter.ai/api/v1"]},
+        {"id": "sakana", "name": "Sakana", "protocol": "chat-completions",
+         "base_url": "https://api.sakana.example/v1",
+         "base_urls": ["https://api.sakana.example/v1"]},
         # Not at an address of its own over one of ours, but one of its models is.
-        {"id": "vertex", "name": "Vertex", "protocol": None, "base_url": None},
+        {"id": "vertex", "name": "Vertex", "protocol": None, "base_url": None,
+         "base_urls": ["https://vertex.example/anthropic/v1"]},
     ]
 
 
@@ -155,6 +176,8 @@ async def test_a_providers_models_each_over_its_own_protocol_where_it_says(
     # nothing of calling tools is listed.
     assert [m["model"] for m in await models(admin, "openai")] == ["gpt-6-sol"]
     assert [m["model"] for m in await models(admin, "openrouter")] == ["z-ai/glm-5"]
+    # One models.dev says is spoken to over OpenAI's Responses, not its provider's.
+    assert [m["protocol"] for m in await models(admin, "sakana")] == ["responses"]
     assert await models(admin, "vertex") == [
         {"model": "claude-opus-5-5", "name": "Claude Opus 5.5", "protocol": "anthropic",
          "base_url": "https://vertex.example/anthropic/v1"},

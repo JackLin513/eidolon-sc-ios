@@ -19,6 +19,7 @@ import {
   matchesOffer,
   matchesProvider,
   providerAt,
+  providersAt,
   type LLMOffer,
   type LLMProvider,
 } from "@/lib/llmProviders";
@@ -32,15 +33,17 @@ const MANUAL = "manual";
 /** 选了服务商或模型后要填进表单的几项；没有的项不改。 */
 export type LLMPick = { protocol?: LLMProtocol; base_url?: string; model?: string };
 
-// 服务商列表整页只拉一次；每家的模型拉过就留着。拉失败的不留，下次打开表单再试。
+// 服务商列表整页只拉一次；每家的模型拉过就留着。拉失败的、和服务器还没拉到目录时的空列表都不留，下次打开表单再试。
 let providersRequest: Promise<LLMProvider[]> | null = null;
 const modelsRequests = new Map<string, Promise<LLMOffer[]>>();
 
 function loadProviders(): Promise<LLMProvider[]> {
-  providersRequest ??= getLLMProviders().catch(() => {
-    providersRequest = null;
-    return [];
-  });
+  providersRequest ??= getLLMProviders()
+    .catch((): LLMProvider[] => [])
+    .then((list) => {
+      if (list.length === 0) providersRequest = null;
+      return list;
+    });
   return providersRequest;
 }
 
@@ -59,7 +62,7 @@ function loadModels(provider: string): Promise<LLMOffer[]> {
 /**
  * 选服务商和模型（ADR-0027），放在接口协议、地址和模型名几项的上面：选了服务商就填好协议和地址，
  * 再选模型就填好模型名（连同这个模型自己的协议和地址）。几项照样能手改，存的也只是那几项。
- * 正在填的地址正好是某家的默认地址时，就显示那一家，所以修改已存的 LLM 时也能接着选模型。
+ * 正在填的地址是某家的地址时，就显示那一家（几家共用一个地址时按模型名认），所以修改已存的 LLM 时也能接着选模型。
  * 拉不到服务商列表（服务器还没拉到 models.dev）时什么都不显示，照旧手填。
  */
 export function LLMProviderPicker({
@@ -77,7 +80,8 @@ export function LLMProviderPicker({
   const [providers, setProviders] = useState<LLMProvider[]>([]);
   // 自己选的那家，连同选的时候的地址：地址被改成别的以后，改按地址认。
   const [chosen, setChosen] = useState<{ id: string; at: string } | null>(null);
-  const [offers, setOffers] = useState<{ provider: string; list: LLMOffer[] } | null>(null);
+  // 拉到的各家模型，按服务商 id。
+  const [served, setServed] = useState<ReadonlyMap<string, LLMOffer[]>>(new Map());
 
   useEffect(() => {
     let current = true;
@@ -87,22 +91,28 @@ export function LLMProviderPicker({
     };
   }, []);
 
-  const guessed = providerAt(providers, baseUrl)?.id ?? MANUAL;
+  const guessed = providerAt(providers, baseUrl, model, served)?.id ?? MANUAL;
   const provider = chosen && chosen.at === baseUrl ? chosen.id : guessed;
 
+  // 选着的那家，和在这个地址的几家（要按模型名认是哪家）：模型都拉下来。
+  const wanted = [provider, ...providersAt(providers, baseUrl).map((p) => p.id)]
+    .filter((p) => p !== MANUAL && !served.has(p))
+    .join(" ");
   useEffect(() => {
-    if (provider === MANUAL) return;
+    if (!wanted) return;
     let current = true;
-    loadModels(provider).then((list) => current && setOffers({ provider, list: distinctOffers(list) }));
+    for (const id of new Set(wanted.split(" "))) {
+      loadModels(id).then((list) => current && setServed((s) => new Map(s).set(id, list)));
+    }
     return () => {
       current = false;
     };
-  }, [provider]);
+  }, [wanted]);
 
   if (providers.length === 0) return null;
 
   const byId = new Map(providers.map((p) => [p.id, p]));
-  const listed = offers?.provider === provider ? offers.list : [];
+  const listed = distinctOffers(served.get(provider) ?? []);
   const byModel = new Map(listed.map((o) => [o.model, o]));
 
   function chooseProvider(next: string) {
