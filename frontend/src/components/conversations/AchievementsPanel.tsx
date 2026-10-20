@@ -3,7 +3,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { copy } from "@/i18n";
-import { achievementRow, COMPLETE, completeRow, type HerAchievements } from "@/lib/achievements";
+import { achievementRow, COMPLETE, completeRow, type Achievement, type HerAchievements } from "@/lib/achievements";
 import { cn } from "@/lib/utils";
 import { herVars } from "@/theme/herVars";
 import { SuccessIcon, TaskOpenIcon } from "@/theme/icons";
@@ -12,9 +12,8 @@ const t = copy.achievements;
 
 /**
  * 「成就」面板（DESIGN.md「Overlays」）：她的对话页更多菜单的「成就」打开，宽屏居中的 Dialog，窄屏底部的 Drawer，
- * 都用她的颜色（同「历史对话」面板）。她的四个成就一行一个（`achievementRow`）：名字、阶段点，下面一行只写下一个阶段，
- * 右边下一阶段的奖励；最后一行是「集齐」（`completeRow`）。新解锁的那几行（`unseen`，成就 id，集齐是 `COMPLETE`）
- * 名字旁一个点。
+ * 都用她的颜色（同「历史对话」面板）。她的四个成就一行一个（`AchievementLine`），最后一行是「集齐」（`completeRow`）。
+ * 新解锁的那几行（`unseen`，成就 id，集齐是 `COMPLETE`）名字旁一个点。
  */
 export function AchievementsPanel({
   isOpen,
@@ -34,22 +33,9 @@ export function AchievementsPanel({
 }) {
   const body = her && (
     <ul className="flex flex-col">
-      {her.achievements.map((achievement) => {
-        const row = achievementRow(achievement);
-        return (
-          <li key={row.id} className="flex min-h-14 items-center gap-3 py-1">
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span className="flex items-center gap-2 text-body">
-                {row.name}
-                {unseen.has(row.id) && <UnseenDot />}
-              </span>
-              <span className="text-meta text-muted-foreground tabular-nums">{row.progress}</span>
-            </div>
-            <Stages stages={row.stages} />
-            <span className="w-14 shrink-0 text-right text-meta text-muted-foreground">{row.reward}</span>
-          </li>
-        );
-      })}
+      {her.achievements.map((achievement) => (
+        <AchievementLine key={achievement.id} achievement={achievement} isUnseen={unseen.has(achievement.id)} />
+      ))}
       <CompleteLine her={her} isUnseen={unseen.has(COMPLETE)} />
     </ul>
   );
@@ -77,6 +63,27 @@ export function AchievementsPanel({
         <div className="min-h-0 overflow-y-auto px-4 pb-6">{body}</div>
       </DrawerContent>
     </Drawer>
+  );
+}
+
+/**
+ * 一个成就那一行（`achievementRow`）：名字（新解锁时旁边一个点），下面一行只写下一个阶段，右边阶段点和下一阶段的奖励。
+ * 面板和礼物页那一小节共用。
+ */
+export function AchievementLine({ achievement, isUnseen }: { achievement: Achievement; isUnseen: boolean }) {
+  const row = achievementRow(achievement);
+  return (
+    <li className="flex min-h-14 items-center gap-3 py-1">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="flex items-center gap-2 text-body">
+          {row.name}
+          {isUnseen && <UnseenDot />}
+        </span>
+        <span className="text-meta text-muted-foreground tabular-nums">{row.progress}</span>
+      </div>
+      <Stages stages={row.stages} />
+      <span className="w-14 shrink-0 text-right text-meta text-muted-foreground">{row.reward}</span>
+    </li>
   );
 }
 

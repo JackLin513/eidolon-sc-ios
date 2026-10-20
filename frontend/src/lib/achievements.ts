@@ -8,6 +8,7 @@
 
 import type { Tier } from "@/lib/affinity";
 import { api, json } from "@/lib/api";
+import type { Rewarded } from "@/lib/rewards";
 import { isUnseen, keepSeenOnDevice, later, seenOnDevice } from "@/lib/seenOnDevice";
 import { copy } from "@/i18n";
 
@@ -102,6 +103,9 @@ export function keepAchievementsSeenUpTo(userId: string, scope: string, at: stri
   keepSeenOnDevice(seenKey(userId, scope), at);
 }
 
+/** 合起来的那几个（礼物页那一小节）记看过时的范围；角色的 id 里没有这个。 */
+export const OF_ALL = "all";
+
 /** 面板里集齐那一行在 `unseenRows` 里的 id。 */
 export const COMPLETE = "complete";
 
@@ -121,4 +125,26 @@ export function unseenRows({ achievements, complete }: Listed, seenAt: string | 
     .map((a) => a.id);
   if (complete && isUnseen(complete.completed_at, seenAt)) rows.push(COMPLETE);
   return new Set(rows);
+}
+
+/**
+ * 送礼、抽奖的返回里带着合起来的阶段（`character_id` 为 null）时，不等重读就把它们标成解锁：解锁时刻就是这次到账的
+ * （后端解锁和到账在同一个事务里、用同一个时刻），进度至少到那个阶段的门槛。这次没有到账时原样返回。
+ */
+export function withUnlocked(achievements: Achievement[], rewarded: Rewarded | null): Achievement[] {
+  const unlocked = (rewarded?.achievements ?? []).filter((u) => u.character_id === null);
+  if (!rewarded || unlocked.length === 0) return achievements;
+  return achievements.map((a) => {
+    const stages = unlocked.filter((u) => u.achievement === a.id).map((u) => u.stage);
+    if (stages.length === 0) return a;
+    const reached = Math.max(...stages);
+    const goal = a.stages[reached - 1]?.goal;
+    return {
+      ...a,
+      progress: typeof goal === "number" && typeof a.progress !== "string" ? Math.max(a.progress ?? 0, goal) : a.progress,
+      stages: a.stages.map((s, i) =>
+        stages.includes(i + 1) && s.unlocked_at === null ? { ...s, unlocked_at: rewarded.rewarded_at } : s,
+      ),
+    };
+  });
 }

@@ -26,8 +26,10 @@ decide.
 And the characters by her affinity with the user (GLOSSARY.md「好感度」), whatever the range:
 those in each tier, from cold to intimate, in the idols' order, by tier alone, never by
 value, so that none in a tier reads higher than another; one in a cooldown is in cold all
-the same. Where affinity is off there are no tiers and no gifts, as the user is shown
-nothing of either elsewhere.
+the same. And how many stages of the achievements (GLOSSARY.md「成就」) the user has
+unlocked and how many characters are complete, as the achievements keep them, so whatever the
+range and a past conversation deleted. Where affinity is off there are no tiers, no gifts and
+no achievements, as the user is shown nothing of them elsewhere.
 """
 
 from collections import Counter, defaultdict
@@ -94,6 +96,7 @@ def add_stats_routes(app: FastAPI, backend: Backend) -> None:
             "affinity": by_tier(
                 (c.id, backend.affinities.tier(user_id, c.id)) for c in idols
             ) if affinity_on else None,
+            "achievements": backend.happenings.tally(user_id),
             "range": in_range(
                 span,
                 [(c, at) for c, at in contacts if since is None or at.date() >= since],

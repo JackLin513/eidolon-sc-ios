@@ -53,8 +53,8 @@ export type GiftState = {
 /** 抽一次抽到的：一件礼物，或一张重置卡。 */
 export type Drawn = { kind: "gift"; gift_id: string } | { kind: "reset_card" };
 
-/** 抽奖接口给的：按抽出的顺序排的结果，和抽完还剩几次。 */
-export type DrawResult = { drawn: Drawn[]; draws: number };
+/** 抽奖接口给的：按抽出的顺序排的结果、抽完还剩几次（连同这次到账的），和这次抽奖到账了什么（没有是 null）。 */
+export type DrawResult = { drawn: Drawn[]; draws: number; rewarded: Rewarded | null };
 
 /** 读礼物状态；后端读的时候把到今天（北京时间）为止该发的次数补上。 */
 export async function getGiftState(): Promise<GiftState> {

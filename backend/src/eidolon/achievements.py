@@ -336,6 +336,23 @@ def of_all(db: sqlite3.Connection, user_id: str) -> list[Progress]:
     ]
 
 
+def tally(db: sqlite3.Connection, user_id: str) -> dict:
+    """How many stages the user has unlocked in all, whatever the goals are now, and how many
+    characters are complete, as the stats show them (GLOSSARY.md「统计」)."""
+    ((stages,),) = db.execute(
+        "SELECT COUNT(*) FROM achievement_stages WHERE user_id = ?", (user_id,)
+    )
+    characters = db.execute(
+        "SELECT DISTINCT character_id FROM achievement_stages"
+        " WHERE user_id = ? AND character_id != ?",
+        (user_id, _ALL),
+    ).fetchall()
+    return {
+        "stages": stages,
+        "complete": sum(_complete(_unlocked(db, user_id, c)) for (c,) in characters),
+    }
+
+
 def _unlock(
     db: sqlite3.Connection, user_id: str, character_id: str | None, now: datetime
 ) -> list[tuple[Reward, Unlocked | Completed]]:

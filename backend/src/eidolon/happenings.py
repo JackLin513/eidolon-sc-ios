@@ -227,6 +227,13 @@ class Happenings:
             return None
         return achievements.of_all(self._db, user_id)
 
+    def tally(self, user_id: str) -> dict | None:
+        """How many stages the user has unlocked and how many characters are complete;
+        None while closed."""
+        if not self._is_open():
+            return None
+        return achievements.tally(self._db, user_id)
+
     def close(self) -> None:
         self._db.close()
 

@@ -7,6 +7,7 @@ import {
   keepAchievementsSeenUpTo,
   latestUnlock,
   unseenRows,
+  withUnlocked,
   type Achievement,
   type HerAchievements,
 } from "@/lib/achievements";
@@ -184,5 +185,53 @@ describe("她的成就上的点", () => {
     expect(unseenRows(her, before)).toEqual(new Set(["turns", "complete"]));
     expect(unseenRows(her, after)).toEqual(new Set());
     expect(unseenRows(her, null)).toEqual(new Set(["turns", "gifts", "complete"]));
+  });
+});
+
+/** 合起来的四个里的两个：往来过的角色第一阶段、抽过的奖前两个阶段各在什么时刻解锁。 */
+function ofAll({ characters = null, draws = [null, null] }: { characters?: string | null; draws?: (string | null)[] } = {}) {
+  return [
+    { id: "characters", progress: 4, stages: [{ goal: 3, draws: 1, unlocked_at: characters }, { goal: 10, draws: 2, unlocked_at: null }] },
+    { id: "draws", progress: 9, stages: draws.map((at, i) => ({ goal: [10, 50][i], draws: i + 1, unlocked_at: at })) },
+  ] satisfies Achievement[];
+}
+
+describe("礼物页那一小节", () => {
+  const before = "2026-10-20T08:00:00+00:00";
+  const after = "2026-10-20T09:00:00+00:00";
+
+  it("带点的是解锁晚于进礼物页前看过的那几行；这台设备上没看过时解锁过的都带点", () => {
+    const achievements = ofAll({ characters: before, draws: [after, null] });
+
+    expect(unseenRows({ achievements }, before)).toEqual(new Set(["draws"]));
+    expect(unseenRows({ achievements }, after)).toEqual(new Set());
+    expect(unseenRows({ achievements }, null)).toEqual(new Set(["characters", "draws"]));
+    expect(latestUnlock({ achievements })).toBe(after);
+  });
+
+  it("送礼、抽奖返回里带着合起来的阶段：当场标成解锁，时刻是这次到账的，进度至少到它的门槛", () => {
+    const rewarded = {
+      draws: 1,
+      reset_cards: 0,
+      daily_tasks: [],
+      achievements: [
+        { achievement: "draws", character_id: null, stage: 1, draws: 1 },
+        { achievement: "turns", character_id: "mano", stage: 1, draws: 1 },
+      ],
+      completed: [],
+      rewarded_at: after,
+    };
+
+    const [characters, draws] = withUnlocked(ofAll({ characters: before }), rewarded);
+
+    expect(characters).toEqual(ofAll({ characters: before })[0]);
+    expect(draws.progress).toBe(10);
+    expect(draws.stages.map((s) => s.unlocked_at)).toEqual([after, null]);
+    expect(achievementRow(draws).progress).toBe("10 次 / 50 次");
+  });
+
+  it("这次没有到账时原样不动", () => {
+    const achievements = ofAll();
+    expect(withUnlocked(achievements, null)).toBe(achievements);
   });
 });
