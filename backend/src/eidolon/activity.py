@@ -23,6 +23,10 @@ in its conversation after it and before the next. The store marks it so as it re
 turn or keeps the call (`Store.add_turn`, `Store.keep_call`), by the record its reach-out
 names; or as that is kept, should they have been in touch since (`Store.reach_out_recorded_as`).
 
+A daily task done (GLOSSARY.md「每日任务」) has a record of its own, with no character and
+which task in its result (`ActivityLog.daily_task_done`): no turn nor call, nor counted as
+one anywhere.
+
 A photo she sends (`photos`) is generated in the context of the turn it was begun in, and
 often comes out after the turn is over: its request to the image service is recorded under
 the turn all the same, with the turn's record if that is still to be written, under it once
@@ -108,13 +112,14 @@ LLM_SERVICES: tuple[ServiceName, ...] = ("chat_llm", "memory_llm")
 """The LLMs among them (`llm_origin`): a user's own is recorded as `OWN`, and each call
 says how soon its first word came and at which reasoning effort."""
 
-RecordKind = Literal["turn", "call", "reach_out"]
+RecordKind = Literal["turn", "call", "reach_out", "daily_task"]
 """A reach-out is neither a turn nor a call, nor counted as one anywhere; it is always on the
-deployer's keys."""
+deployer's keys. Nor is a daily task done, which has no character and no service calls."""
 Result = Literal["success", "failed", "rejected", "left", "not_connected"]
 """How a turn or call turned out (GLOSSARY.md「回合」「接通」): a turn succeeded, failed on
 a service, was rejected (over the limit, or its input), or the user left before it was
-done; a call also may never have connected. A reach-out succeeds or fails."""
+done; a call also may never have connected. A reach-out succeeds or fails. A daily task
+done has which task it was (`happenings.DAILY_TASKS`) instead."""
 RESULTS: tuple[Result, ...] = ("success", "failed", "rejected", "left", "not_connected")
 
 ErrorKind = Literal[
@@ -131,7 +136,7 @@ these, and sorts the users by them (`Store.find_users`)."""
 
 TURNS_AND_CALLS = "kind IN ('turn', 'call')"
 """Which records, in SQL over `activity_records`, are of turns and calls: not of reach-outs,
-which the user did not take."""
+which the user did not take, nor of daily tasks done."""
 
 JUDGEMENT_COLUMNS = ("affinity_level", "out_of_line", "manipulation", "cooled")
 """What a turn's record keeps of how the judge model judged it, as its columns are named."""
@@ -457,7 +462,8 @@ class RecordGroup:
 
     kind: RecordKind
     character_id: str
-    result: Result
+    result: Result | str
+    """How it turned out; for a daily task done, which task."""
     own_keys: bool
     """`RecordRow.own_keys`: for a turn, its own LLM; for a call, its being exempt."""
     in_call: bool
@@ -587,7 +593,8 @@ class Recording:
         self.time_to_speak_ms: float | None = None
         self.calls: list[ServiceCall] = []
         self.finished = False
-        self.result: Result | None = None
+        self.result: Result | str | None = None
+        """How it turned out; for a daily task done, which task."""
         self.duration_s: float | None = None
         self.end_reason: CallEndReason | None = None
         self.judged_as: Judged | None = None
@@ -637,12 +644,12 @@ class Recording:
 
     def finish(
         self,
-        result: Result,
+        result: Result | str,
         duration_s: float | None = None,
         end_reason: CallEndReason | None = None,
     ) -> None:
         """Write the record, as `result` (a call's with how long it lasted and why it
-        ended), with its service calls; only the first time. A turn in a call is written
+        ended; a daily task done's, which task), with its service calls; only the first time. A turn in a call is written
         with the call, or at once if the call's record has been written already."""
         if self.finished:
             return
@@ -690,6 +697,10 @@ class ActivityLog:
         now = self._clock()
         self._forget_before(now - KEPT)
         return Recording(self, kind, user_id, character_id, now, own_llm, exempt)
+
+    def daily_task_done(self, user_id: str, task_id: str, at: datetime) -> None:
+        """The user did the daily task `at`: recorded, with no character."""
+        Recording(self, "daily_task", user_id, "", at, False, False).finish(task_id)
 
     def call(
         self,

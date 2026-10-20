@@ -333,7 +333,9 @@ def build(
         gift_catalog, random or secure_random, store,
     )
     closers.append(gifts.close)
-    happenings = Happenings(settings.database_path, clock, lambda: config.affinity_on, gifts)
+    happenings = Happenings(
+        settings.database_path, clock, lambda: config.affinity_on, gifts, activity
+    )
     closers.append(happenings.close)
     engine = ConversationEngine(
         store, characters, gift_catalog, memories, titles, clock, retrieval,

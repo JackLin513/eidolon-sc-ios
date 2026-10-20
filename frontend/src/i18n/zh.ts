@@ -1072,6 +1072,11 @@ export const zh = {
         title: "搭话",
         tiles: { succeeded: "成功", failed: "失败", answered: "被回了" },
       },
+      /** 「好感度」里的「每日任务」一小节：范围内每一项各做完几次。 */
+      dailyTasks: {
+        title: "每日任务",
+        tiles: { one_turn: "一个回合", one_gift: "送一件礼", ten_turns: "十个回合" },
+      },
       affinity: {
         title: "好感度",
         tiles: {

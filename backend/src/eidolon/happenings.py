@@ -13,6 +13,9 @@ conversation takes nothing back. Nothing is kept while affinity and gifts are cl
 (`LiveConfig.affinity_on`); what was kept before stays. Keeping it failing is only logged,
 as the turn or the gift it was told of is recorded already.
 
+Each task done, once its reward is given, has an activity record (`ActivityLog.daily_task_done`)
+for the dashboard to count; writing it failing is only logged too.
+
 Each user's progress today is theirs, deleted with them (`database.USER_DATA`), and goes in
 no data package."""
 
@@ -24,6 +27,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
+from eidolon.activity import ActivityLog
 from eidolon.affinity import day_of, next_day
 from eidolon.clock import Clock
 from eidolon.database import connect
@@ -121,13 +125,19 @@ class Happenings:
     the gifts they are rewarded with."""
 
     def __init__(
-        self, path: Path, clock: Clock, is_open: Callable[[], bool], gifts: Gifts
+        self,
+        path: Path,
+        clock: Clock,
+        is_open: Callable[[], bool],
+        gifts: Gifts,
+        activity: ActivityLog,
     ) -> None:
         """`is_open` tells whether affinity and gifts are open now."""
         self._db = connect(path)
         self._clock = clock
         self._is_open = is_open
         self._gifts = gifts
+        self._activity = activity
         with self._db:
             self._db.executescript(_SCHEMA)
 
@@ -180,11 +190,14 @@ class Happenings:
             return None
         if not given:
             return None
+        tasks = [done[r.key] for r in given]
+        for task in tasks:
+            try:
+                self._activity.daily_task_done(user_id, task, at)
+            except Exception:
+                log.exception("recording daily task %s done failed", task)
         return Rewarded(
-            sum(r.draws for r in given),
-            sum(r.reset_cards for r in given),
-            [done[r.key] for r in given],
-            at,
+            sum(r.draws for r in given), sum(r.reset_cards for r in given), tasks, at
         )
 
 
