@@ -9,17 +9,33 @@ export type DailyTask = { id: string; done: boolean; progress: number; goal: num
 /** 读礼物状态接口给的今天的每日任务，和换新的时刻（ISO，下一个北京时间 0 点）。 */
 export type DailyTasks = { tasks: DailyTask[]; renews_at: string };
 
-/** 那一节的一行：名字、打勾没有、没做完且目标不止 1 时的进度（「3/10」）、右边的「抽奖 ×1」。 */
-export type DailyTaskRow = { id: string; name: string; isDone: boolean; progress: string | null; reward: string };
+/** 没做完的一项旁边一步到能做它的地方：「去对话」去对话列表，「挑一件」滚到我的礼物。 */
+export type DailyTaskAction = "converse" | "pick";
 
-/** 那一节：标题旁做完几项（「1/3」）、右边换新的时刻、每项一行。 */
-export type DailyTasksView = { count: string; renews: string; rows: DailyTaskRow[] };
+/** 回合任务旁边「去对话」，送礼那项旁边「挑一件」；不认识的一项不带。 */
+const ACTIONS: Record<string, DailyTaskAction> = { one_turn: "converse", ten_turns: "converse", one_gift: "pick" };
 
-/** 每日任务那一节怎么显示；`next` 是 `nextDrawText` 写好的换新时刻。后端给了不认识的一项也照样列出，名字用 id。 */
-export function dailyTasksView(daily: DailyTasks, next: string): DailyTasksView {
+/** 那一节的一行：名字、打勾没有、没做完且目标不止 1 时的进度（「3/10」）、右边的「抽奖 ×1」、旁边的按钮（没有是 null）。 */
+export type DailyTaskRow = {
+  id: string;
+  name: string;
+  isDone: boolean;
+  progress: string | null;
+  reward: string;
+  action: DailyTaskAction | null;
+};
+
+/** 那一节：都做完了没有（做完了整节收成一行）、标题旁做完几项（「1/3」）、右边换新的时刻、每项一行。 */
+export type DailyTasksView = { isAllDone: boolean; count: string; renews: string; rows: DailyTaskRow[] };
+
+/**
+ * 每日任务那一节怎么显示；`next` 是 `nextDrawText` 写好的换新时刻，`hasGifts` 是背包里有没有礼物（没有时不带「挑一件」）。后端给了不认识的一项也照样列出，名字用 id。
+ */
+export function dailyTasksView(daily: DailyTasks, next: string, hasGifts: boolean): DailyTasksView {
   const t = copy.gifts.dailyTasks;
   const done = daily.tasks.filter((task) => task.done).length;
   return {
+    isAllDone: daily.tasks.length > 0 && done === daily.tasks.length,
     count: t.of(done, daily.tasks.length),
     renews: t.renews(next),
     rows: daily.tasks.map((task) => ({
@@ -28,8 +44,14 @@ export function dailyTasksView(daily: DailyTasks, next: string): DailyTasksView 
       isDone: task.done,
       progress: !task.done && task.goal > 1 ? t.of(task.progress, task.goal) : null,
       reward: t.reward(task.draws),
+      action: task.done ? null : actionOf(task.id, hasGifts),
     })),
   };
+}
+
+function actionOf(id: string, hasGifts: boolean): DailyTaskAction | null {
+  const action = ACTIONS[id] ?? null;
+  return action === "pick" && !hasGifts ? null : action;
 }
 
 /** 到账里做完的那几项（`done` 是 id）当场记成做完，不等重读礼物状态。 */

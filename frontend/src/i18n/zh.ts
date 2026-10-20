@@ -1726,11 +1726,16 @@ export const zh = {
     draw: {
       title: "抽奖",
       left: (n: number) => `还有 ${n} 次`,
+      /** 小点的读屏；`over` 是每日任务给的让次数超过上限时，不再说「最多攒几次」。 */
       label: (n: number, max: number) => `抽奖还有 ${n} 次，最多攒 ${max} 次`,
+      over: (n: number) => `抽奖还有 ${n} 次`,
+      /** 超过上限（每日任务给的）时 7 个点后面写超出几次。 */
+      more: (n: number) => `+${n}`,
       /** 下面那句说明：平时、攒满、用完。`next` 是下次到账的「今天 / 明天 HH:MM」（每天北京时间 0 点发，按制作人的时区写）。 */
       notes: {
         usual: (next: string, max: number) => `${next} 再发 1 次，最多攒 ${max} 次`,
-        full: (max: number) => `已攒满 ${max} 次，抽掉之前不会再发`,
+        /** 每天发的那份攒到上限了；每日任务给的可以超过上限，所以不写「攒满几次」。 */
+        full: "每天发的已攒满，抽掉之前不会再发",
         none: (next: string) => `已经抽完了，${next} 再发 1 次`,
       },
       once: "抽一次",
@@ -1781,6 +1786,10 @@ export const zh = {
         ten_turns: "和角色们一共有 10 个回合",
       } as Record<string, string>,
       reward: (draws: number) => `抽奖 ×${draws}`,
+      /** 三项都做完时整节收成的那一行。 */
+      allDone: "每日任务都做完了",
+      /** 没做完的一项旁边：回合任务去对话列表，送礼那项滚到我的礼物。 */
+      actions: { converse: "去对话", pick: "挑一件" },
     },
     rarity: { common: "普通", uncommon: "少见", rare: "稀有" },
     mine: "我的礼物",
