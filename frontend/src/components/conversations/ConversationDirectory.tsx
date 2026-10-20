@@ -50,7 +50,8 @@ import { getGiftState, type GiftState } from "@/lib/gifts";
 import { keepListPreferences, listPreferences, NO_PREFERENCES, type ListPreferences } from "@/lib/listPreferences";
 import { isLive, LiveConversation, NOT_OPEN, type LiveCall } from "@/lib/liveConversation";
 import { departure, isGiftsInView } from "@/lib/navShell";
-import { hasNewRewards, keepRewardsSeenUpTo, later, rewardsSeenUpTo, type Rewarded } from "@/lib/rewards";
+import { hasNewRewards, keepRewardsSeenUpTo, rewardsSeenUpTo, type Rewarded } from "@/lib/rewards";
+import { later } from "@/lib/seenOnDevice";
 
 import { MicSheet } from "./MicSheet";
 import { useCallTones } from "./useCallTones";

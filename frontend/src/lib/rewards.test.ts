@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { hasNewRewards, keepRewardsSeenUpTo, later, rewardsSeenUpTo } from "@/lib/rewards";
+import { hasNewRewards, keepRewardsSeenUpTo, rewardsSeenUpTo } from "@/lib/rewards";
 
 /** This browser's localStorage, kept in memory. */
 function storage(initial: Record<string, string> = {}) {
@@ -85,15 +85,5 @@ describe("the dot on 「礼物」", () => {
 
   it("is not lit while gifts are closed", () => {
     expect(hasNewRewards({ isOpen: false, rewardedAt: at, seenAt: null })).toBe(false);
-  });
-});
-
-describe("the latest of two times", () => {
-  it("is the later one, either way round, nothing being earlier than any", () => {
-    expect(later("2026-10-20T08:00:00+00:00", "2026-10-20T09:00:00+00:00")).toBe("2026-10-20T09:00:00+00:00");
-    expect(later("2026-10-20T09:00:00+00:00", "2026-10-20T08:00:00+00:00")).toBe("2026-10-20T09:00:00+00:00");
-    expect(later(null, "2026-10-20T08:00:00+00:00")).toBe("2026-10-20T08:00:00+00:00");
-    expect(later("2026-10-20T08:00:00+00:00", null)).toBe("2026-10-20T08:00:00+00:00");
-    expect(later(null, null)).toBeNull();
   });
 });

@@ -39,7 +39,8 @@ import {
   type LineCard,
   type LineCardEvent,
 } from "@/lib/linePacing";
-import { later, type Rewarded } from "@/lib/rewards";
+import type { Rewarded } from "@/lib/rewards";
+import { later } from "@/lib/seenOnDevice";
 import { CALM, type StandDirection } from "@/lib/standAnimations";
 import { directionOf, directStand, startingStand, type StandEvent, type StandState } from "@/lib/standDirection";
 

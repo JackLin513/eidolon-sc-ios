@@ -108,10 +108,10 @@ function Stages({ stages }: { stages: boolean[] }) {
   );
 }
 
-/** 新解锁的点：6px，`bg-foreground`，同导航上的点。 */
-function UnseenDot() {
+/** 新解锁的点：6px，`bg-foreground`，同导航上的点；读屏读「新解锁」。更多菜单的「成就」后面也用它。 */
+export function UnseenDot({ className }: { className?: string }) {
   return (
-    <span className="size-1.5 shrink-0 rounded-full bg-foreground">
+    <span className={cn("size-1.5 shrink-0 rounded-full bg-foreground", className)}>
       <span className="sr-only">{t.unseen}</span>
     </span>
   );

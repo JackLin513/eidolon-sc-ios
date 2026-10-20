@@ -2,9 +2,9 @@
 // 送礼的返回带着「这次到账」；礼物状态带着最近一次到账的时刻。导航栏和 dock 的「礼物」上那个点意思是「有新到的
 // 抽奖次数」：开关开着、最近一次到账晚于这台设备上看过的，就亮。
 //
-// 看过只记在这台设备上，照公告已读（lib/announcements）的做法：localStorage 里按用户分开存
-// （eidolon.rewardsSeen.<用户 id>），存的是看过的最近一次到账时刻。读不出或者不是时刻的，算没看过；
-// 这台设备上还没存过时，任何到账都算没看过。存不进去（无痕浏览）时只在这次页面里记着。
+// 看过只记在这台设备上（lib/seenOnDevice）：按用户分开存（eidolon.rewardsSeen.<用户 id>），存的是看过的最近一次到账时刻。
+
+import { isUnseen, keepSeenOnDevice, seenOnDevice } from "@/lib/seenOnDevice";
 
 /** 这次解锁的一个成就阶段（lib/achievements）：哪个成就、哪位角色（合起来的是 null）、第几阶段、给了几次抽奖。 */
 export type UnlockedStage = { achievement: string; character_id: string | null; stage: number; draws: number };
@@ -29,9 +29,6 @@ function seenKey(userId: string): string {
   return `eidolon.rewardsSeen.${userId}`;
 }
 
-/** 存不进去时，这次页面里记着的，按存的键。 */
-const seenThisPage = new Map<string, string>();
-
 /** 这位用户在这台设备上看过的最近一次到账时刻；没看过为 null。 */
 export function rewardsSeenUpTo(userId: string): string | null {
   return seenOnDevice(seenKey(userId));
@@ -40,32 +37,6 @@ export function rewardsSeenUpTo(userId: string): string | null {
 /** 记下这位用户看过了 `at` 为止的到账；别的标签页已经记下更晚的，就留着那个。 */
 export function keepRewardsSeenUpTo(userId: string, at: string): void {
   keepSeenOnDevice(seenKey(userId), at);
-}
-
-/**
- * 这台设备上存在 `key` 下的「看过的最近时刻」：读不出或者不是时刻的，算没看过，这次页面里记着的除外。
- * 到账和成就（lib/achievements）的「看过」都这样存。
- */
-export function seenOnDevice(key: string): string | null {
-  let stored: unknown = null;
-  try {
-    stored = JSON.parse(localStorage.getItem(key) ?? "null");
-  } catch {
-    // 读不出或者坏了：算没看过，这次页面里记着的除外。
-  }
-  const kept = typeof stored === "string" && !Number.isNaN(Date.parse(stored)) ? stored : null;
-  return later(kept, seenThisPage.get(key) ?? null);
-}
-
-/** 在 `key` 下记下看过了 `at` 为止；别的标签页已经记下更晚的，就留着那个。存不进去时只在这次页面里记着。 */
-export function keepSeenOnDevice(key: string, at: string): void {
-  const seen = later(seenOnDevice(key), at) ?? at;
-  seenThisPage.set(key, seen);
-  try {
-    localStorage.setItem(key, JSON.stringify(seen));
-  } catch {
-    // 存不进去：只在这次页面里记着。
-  }
 }
 
 /** 「礼物」上的点亮不亮：开关开着（`isOpen`），而且最近一次到账（`rewardedAt`）晚于看过的（`seenAt`）。 */
@@ -78,13 +49,5 @@ export function hasNewRewards({
   rewardedAt: string | null;
   seenAt: string | null;
 }): boolean {
-  if (!isOpen || rewardedAt === null) return false;
-  return seenAt === null || Date.parse(rewardedAt) > Date.parse(seenAt);
-}
-
-/** 两个时刻里晚的那个；null 比哪个都早。 */
-export function later(a: string | null, b: string | null): string | null {
-  if (a === null) return b;
-  if (b === null) return a;
-  return Date.parse(b) > Date.parse(a) ? b : a;
+  return isOpen && isUnseen(rewardedAt, seenAt);
 }

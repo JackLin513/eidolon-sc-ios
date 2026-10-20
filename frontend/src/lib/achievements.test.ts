@@ -4,7 +4,6 @@ import {
   achievementRow,
   achievementsSeenUpTo,
   completeRow,
-  isUnseen,
   keepAchievementsSeenUpTo,
   latestUnlock,
   unseenRows,
@@ -148,32 +147,6 @@ describe("这台设备上看过的成就", () => {
     expect(achievementsSeenUpTo("seen-2", "hikari")).toBe("2026-10-18T08:00:00+00:00");
     expect(achievementsSeenUpTo("seen-2", "all")).toBeNull();
   });
-
-  it("没存过、或者存的不是时刻，算没看过", () => {
-    storage({ "eidolon.achievementsSeen.broken-1.hikari": "{not json" });
-
-    expect(achievementsSeenUpTo("broken-1", "hikari")).toBeNull();
-    expect(achievementsSeenUpTo("never-1", "hikari")).toBeNull();
-  });
-
-  it("别的标签页记下了更晚的，留着那个", () => {
-    storage({ "eidolon.achievementsSeen.tabs-1.hikari": JSON.stringify("2026-10-20T09:00:00+00:00") });
-
-    keepAchievementsSeenUpTo("tabs-1", "hikari", "2026-10-20T08:00:00+00:00");
-
-    expect(achievementsSeenUpTo("tabs-1", "hikari")).toBe("2026-10-20T09:00:00+00:00");
-  });
-
-  it("存储用不了时退回这一页的内存", () => {
-    const unreachable = () => {
-      throw new DOMException("denied", "SecurityError");
-    };
-    vi.stubGlobal("localStorage", { getItem: unreachable, setItem: unreachable, removeItem: unreachable });
-
-    expect(achievementsSeenUpTo("private-1", "hikari")).toBeNull();
-    expect(() => keepAchievementsSeenUpTo("private-1", "hikari", "2026-10-20T08:00:00+00:00")).not.toThrow();
-    expect(achievementsSeenUpTo("private-1", "hikari")).toBe("2026-10-20T08:00:00+00:00");
-  });
 });
 
 /** 她的成就：回合前两个阶段、礼物第一阶段各在什么时刻解锁，集齐了没有。 */
@@ -203,17 +176,6 @@ describe("她的成就上的点", () => {
     expect(latestUnlock(hers({ turns: [before, after], gifts: before }))).toBe(after);
     expect(latestUnlock(hers({ turns: [before, before], gifts: before, completedAt: after }))).toBe(after);
     expect(latestUnlock(hers())).toBeNull();
-  });
-
-  it("菜单键：没存过时有解锁就亮，看过以后不亮，新解锁又亮", () => {
-    expect(isUnseen(before, null)).toBe(true);
-    expect(isUnseen(before, before)).toBe(false);
-    expect(isUnseen(after, before)).toBe(true);
-    expect(isUnseen(null, null)).toBe(false);
-  });
-
-  it("比的是时刻，不是写法", () => {
-    expect(isUnseen("2026-10-20T16:00:00+08:00", before)).toBe(false);
   });
 
   it("面板里带点的是解锁晚于打开前看过的那几行，连同集齐", () => {

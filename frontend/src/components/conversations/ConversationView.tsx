@@ -63,7 +63,7 @@ import {
 } from "@/theme/icons";
 import { Ja } from "@/theme/Ja";
 
-import { AchievementsPanel } from "./AchievementsPanel";
+import { AchievementsPanel, UnseenDot } from "./AchievementsPanel";
 import { AffinityBadge, CueArrowIcon } from "./AffinityBadge";
 import { CallBar } from "./CallBar";
 import { EVENT_ICONS, eventText } from "./EventIcon";
@@ -217,9 +217,9 @@ export function ConversationView({
       </div>
       {phoneKey}
       {trophy && <TrophyCue key={trophy.key} trophy={trophy} isReducedMotion={isReducedMotion} />}
-      {/* 礼貌的 live region 一直在，奖杯出现时读「成就，抽奖 +n」 */}
+      {/* 礼貌的 live region 一直在，奖杯出现时读「成就，抽奖 +n」；按 key 换节点，同样的 n 再来一次也读 */}
       <span role="status" className="sr-only">
-        {trophy && copy.achievements.trophy(trophy.draws)}
+        {trophy && <span key={trophy.key}>{copy.achievements.trophy(trophy.draws)}</span>}
       </span>
       {affinity && (
         <AffinityBadge
@@ -267,11 +267,7 @@ export function ConversationView({
             <DropdownMenuItem onClick={() => achievements.setPanelOpen(true)}>
               <AchievementsIcon aria-hidden />
               {copy.achievements.open}
-              {achievements.isUnseen && (
-                <span className="ml-auto size-1.5 shrink-0 rounded-full bg-foreground">
-                  <span className="sr-only">{copy.achievements.unseen}</span>
-                </span>
-              )}
+              {achievements.isUnseen && <UnseenDot className="ml-auto" />}
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>

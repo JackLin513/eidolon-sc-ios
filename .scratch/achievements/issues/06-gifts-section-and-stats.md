@@ -21,3 +21,10 @@
 ### 票 01 交接
 
 - `GiftState.achievements`（`lib/gifts`）是合起来的四个，顺序 `characters`、`intimate_characters`、`days`、`draws`，开关关着为 null；每一行用 `lib/achievements` 的 `achievementRow`，文案已在 `copy.achievements`（「5 位 / 10 位」「12 天 / 30 天」「37 次 / 50 次」）。
+
+### 票 05 交接
+
+- 看过用 `lib/achievements` 的 `achievementsSeenUpTo(userId, 范围)`/`keepAchievementsSeenUpTo`；票 05 没定合起来的范围名，这里自己定一个（例如 `"all"`，角色 id 里没有这个）。
+- 哪几行带点：`unseenRows({ achievements }, seenAt)`（不传 `complete`），最近解锁：`latestUnlock({ achievements })`；比较时刻用 `lib/seenOnDevice` 的 `isUnseen`、`later`。
+- 面板里的点 `UnseenDot`（6px，读屏「新解锁」）在 `components/conversations/AchievementsPanel.tsx` 里导出，那一小节可以拿去用。
+

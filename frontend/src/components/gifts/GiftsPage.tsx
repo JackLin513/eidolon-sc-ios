@@ -41,7 +41,7 @@ import {
   type GiftState,
   type Given,
 } from "@/lib/gifts";
-import { later } from "@/lib/rewards";
+import { later } from "@/lib/seenOnDevice";
 import { cn } from "@/lib/utils";
 import { CloseIcon, DrawIcon, GiftIcon } from "@/theme/icons";
 
