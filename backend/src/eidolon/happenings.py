@@ -18,8 +18,8 @@ as the turn or the gift it was told of is recorded already.
 Each task done, once its reward is given, has an activity record (`ActivityLog.daily_task_done`)
 for the dashboard to count; writing it failing is only logged too.
 
-Each user's progress today and with the achievements is theirs, deleted with them (`database.USER_DATA`), and goes in
-no data package."""
+Each user's progress today and with the achievements is theirs, deleted with them
+(`database.USER_DATA`), and goes in no data package."""
 
 import logging
 import sqlite3

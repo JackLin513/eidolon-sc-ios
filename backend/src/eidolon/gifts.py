@@ -453,10 +453,9 @@ class Gifts:
         """Give the user each reward `due` says is due that they have not been given yet by
         its key, having been given the draw chances due today; one with no draw chances yet
         is given the new user's one first. `due` is called with the connection and now
-        holding the lock, in the transaction the rewards are given in, so
-        what it keeps is kept with them or not at all, by the same now the draw chances are
-        given by, and two rewarded at once for the same are rewarded once. The rewards
-        given now, and when. Raises GiftsClosed if gifts are not open."""
+        holding the lock, in the transaction the rewards are given in, so what it keeps is
+        kept with them or not at all, by the same now the draw chances are given by, and two
+        rewarded at once for the same are rewarded once. The rewards given now, and when. Raises GiftsClosed if gifts are not open."""
         self.notice()
         if not self._is_open():
             raise GiftsClosed()

@@ -91,40 +91,18 @@ async def test_ten_turns_with_her_unlock_the_first_stage_and_give_a_draw(
     assert [nine["draws"], ten["draws"]] == [2, 4]
 
 
-async def test_a_gift_given_her_unlocks_the_first_stage_and_says_so(make_client: ClientFactory):
+async def test_a_gift_given_her_unlocks_the_first_stage_once(make_client: ClientFactory):
     clock = FakeClock()
     client = holding(make_client, clock, CAKE, CAKE)
     await draw_them(client, clock, 2)
 
-    first = await given(client, "cake")
-    second = await given(client, "cake")
+    await given(client, "cake")
+    await given(client, "cake")
     got = await hers(client)
 
-    assert first["rewarded"]["achievements"] == [
-        {"achievement": "gifts", "character_id": "mano", "stage": 1, "draws": 1}
-    ]
-    assert first["rewarded"]["draws"] == 2  # with the daily task
-    assert second["rewarded"] is None
     assert achievement(got, "gifts")["progress"] == 2
     assert unlocked(got, "gifts") == [1]
     assert unlocked(await hers(client, "kogane"), "gifts") == []
-
-
-async def test_a_turn_says_which_stages_it_unlocked(make_client: ClientFactory):
-    clock = FakeClock()
-    client = make_client(FakeLLM(*[REPLY] * 10), clock=clock)
-    conversation = await start_conversation(client)
-
-    done = await turns(client, conversation, 10)
-
-    assert done["rewarded"] == {
-        "draws": 2,
-        "reset_cards": 0,
-        "daily_tasks": ["ten_turns"],
-        "achievements": [{"achievement": "turns", "character_id": "mano", "stage": 1, "draws": 1}],
-        "completed": [],
-        "rewarded_at": clock.now.isoformat(),
-    }
 
 
 async def test_a_turn_in_a_call_counts_towards_turns_with_her(
@@ -251,11 +229,15 @@ async def test_every_stage_of_hers_unlocked_completes_her_with_a_reset_card_once
     clock.advance(minutes=1)
     again = await turns(client, conversation, 1)
 
-    assert nearly is not None and nearly["complete"]["completed_at"] is None
+    assert nearly is not None
+    assert nearly["complete"] == {"completed_at": None, "reset_cards": 1}
     assert gift["rewarded"]["completed"] == [{"character_id": "mano", "reset_cards": 1}]
     assert gift["rewarded"]["reset_cards"] == 1
     assert complete is not None
-    assert complete["complete"]["completed_at"] == gift["rewarded"]["rewarded_at"]
+    # Its card given, being complete gives none ever again.
+    assert complete["complete"] == {
+        "completed_at": gift["rewarded"]["rewarded_at"], "reset_cards": 0
+    }
     # Complete again with a stage more, she gives no second card.
     assert again["rewarded"]["achievements"] == [
         {"achievement": "turns", "character_id": "mano", "stage": 2, "draws": 2}

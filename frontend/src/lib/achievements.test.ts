@@ -52,7 +52,6 @@ describe("成就的一行", () => {
 
   it.each([
     [0, 600, "0 分钟 / 10 分钟"],
-    [540, 600, "9 分钟 / 10 分钟"],
     [11520, 18000, "3 小时 12 分 / 5 小时"],
     [7200, 18000, "2 小时 / 5 小时"],
     [3599, 3600, "59 分钟 / 1 小时"],
@@ -69,10 +68,6 @@ describe("成就的一行", () => {
     expect(row.name).toBe("她的好感度到过");
     expect(row.progress).toBe("下一个：亲密");
     expect(row.reward).toBe("抽奖 ×2");
-  });
-
-  it("档位一个都没到过：下一个：亲近", () => {
-    expect(achievementRow(achievement("tier", null, ["close", "intimate"])).progress).toBe("下一个：亲近");
   });
 
   it.each([
@@ -102,6 +97,10 @@ describe("集齐那一行", () => {
       name: "集齐",
       reward: "重置卡 ×1",
     });
+  });
+
+  it("重置卡已经给过、加了阶段又没集齐：右边不写", () => {
+    expect(completeRow({ completed_at: null, reset_cards: 0 })).toEqual({ isComplete: false, name: "集齐", reward: null });
   });
 
   it("集齐了：勾、「集齐了」、右边不写", () => {

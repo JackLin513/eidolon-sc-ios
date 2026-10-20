@@ -3,7 +3,6 @@
 // 写成一行：名字、阶段点、只写下一个阶段的进度、下一阶段的奖励。档位只有档位名，不给好感度的数值。
 
 import type { Tier } from "@/lib/affinity";
-import type { Rewarded } from "@/lib/rewards";
 import { copy } from "@/i18n";
 
 /** 一个阶段：门槛（档位类是档位名）、解锁时给几次抽奖、解锁时刻（ISO，没解锁是 null）。 */
@@ -12,14 +11,11 @@ export type AchievementStage = { goal: number | Tier; draws: number; unlocked_at
 /** 一个成就：id、累计进度（通话是秒，档位类是到过的最高档位、一个没到过是 null）、按序号排的阶段。 */
 export type Achievement = { id: string; progress: number | Tier | null; stages: AchievementStage[] };
 
-/** 集齐那一行：集齐的时刻（ISO，没集齐是 null）、集齐给几张重置卡。 */
+/** 集齐那一行：集齐的时刻（ISO，没集齐是 null）、集齐给几张重置卡（这位角色的已经给过就是 0，一辈子只给一次）。 */
 export type Complete = { completed_at: string | null; reset_cards: number };
 
 /** 读她的成就接口给的：她按角色算的四个，和集齐那一行。开关关着时接口给 null。 */
 export type HerAchievements = { achievements: Achievement[]; complete: Complete };
-
-/** 这次到账里解锁的一个阶段：哪个成就、哪位角色（合起来的是 null）、第几阶段、给了几次抽奖。 */
-export type UnlockedStage = Rewarded["achievements"][number];
 
 /** 一行：名字、阶段点（解锁的为 true）、全部解锁没有、下一个阶段的进度（全部解锁时写「全部解锁」）、下一阶段的奖励（全部解锁是 null）。 */
 export type AchievementRow = {
@@ -31,7 +27,7 @@ export type AchievementRow = {
   reward: string | null;
 };
 
-/** 集齐那一行：集齐了没有、「集齐」或「集齐了」、没集齐时右边的「重置卡 ×n」。 */
+/** 集齐那一行：集齐了没有、「集齐」或「集齐了」、没集齐而且还会给时右边的「重置卡 ×n」。 */
 export type CompleteRow = { isComplete: boolean; name: string; reward: string | null };
 
 /**
@@ -59,7 +55,7 @@ export function completeRow(complete: Complete): CompleteRow {
   return {
     isComplete,
     name: isComplete ? t.completed : t.complete,
-    reward: isComplete ? null : t.resetCards(complete.reset_cards),
+    reward: isComplete || complete.reset_cards === 0 ? null : t.resetCards(complete.reset_cards),
   };
 }
 

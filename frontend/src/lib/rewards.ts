@@ -6,16 +6,22 @@
 // （eidolon.rewardsSeen.<用户 id>），存的是看过的最近一次到账时刻。读不出或者不是时刻的，算没看过；
 // 这台设备上还没存过时，任何到账都算没看过。存不进去（无痕浏览）时只在这次页面里记着。
 
+/** 这次解锁的一个成就阶段（lib/achievements）：哪个成就、哪位角色（合起来的是 null）、第几阶段、给了几次抽奖。 */
+export type UnlockedStage = { achievement: string; character_id: string | null; stage: number; draws: number };
+
+/** 这次集齐的一位角色，和给了几张重置卡。 */
+export type CompletedCharacter = { character_id: string; reset_cards: number };
+
 /**
- * 这次到账了什么：抽奖次数、重置卡张数、做完了哪几项每日任务（id）、解锁了哪些成就阶段（lib/achievements；合起来的
- * 角色是 null）、集齐了哪几位角色，和这位用户最近一次到账的时刻（ISO，服务器时间）。
+ * 这次到账了什么：抽奖次数、重置卡张数、做完了哪几项每日任务（id）、解锁了哪些成就阶段、集齐了哪几位角色，
+ * 和这位用户最近一次到账的时刻（ISO，服务器时间）。
  */
 export type Rewarded = {
   draws: number;
   reset_cards: number;
   daily_tasks: string[];
-  achievements: { achievement: string; character_id: string | null; stage: number; draws: number }[];
-  completed: { character_id: string; reset_cards: number }[];
+  achievements: UnlockedStage[];
+  completed: CompletedCharacter[];
   rewarded_at: string;
 };
 

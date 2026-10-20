@@ -30,7 +30,8 @@ SCHEMA = """
 -- One row per user, achievement and character (empty for those of all the characters
 -- together) with anything kept towards it: how much (a tier's rank among
 -- `achievements.TIERS_REACHED` for the tier reached), and for the days come the last of them
--- (`affinity.day_of`).
+-- (`affinity.day_of`). A character complete has a row too, `complete`, of the reset cards it
+-- gave.
 CREATE TABLE IF NOT EXISTS achievement_progress (
     user_id TEXT NOT NULL REFERENCES users(id),
     achievement TEXT NOT NULL,
@@ -99,6 +100,9 @@ COMPLETE_RESET_CARDS = 1
 _ALL = ""
 """The character of those of all the characters together."""
 
+_COMPLETE = "complete"
+"""What a character complete is kept as, next to the achievements."""
+
 
 @dataclass(frozen=True)
 class Unlocked:
@@ -160,11 +164,12 @@ class Progress:
 
 @dataclass(frozen=True)
 class Hers:
-    """A character's own achievements with the user, and when she was complete (None if
-    not)."""
+    """A character's own achievements with the user, when she was complete (None if not),
+    and the reset cards being complete gives: none once it has given them, ever."""
 
     achievements: list[Progress]
     completed_at: datetime | None
+    reset_cards: int
 
     def shown(self) -> dict:
         """As the browser is told it."""
@@ -172,7 +177,7 @@ class Hers:
             "achievements": [p.shown() for p in self.achievements],
             "complete": {
                 "completed_at": self.completed_at and self.completed_at.isoformat(),
-                "reset_cards": COMPLETE_RESET_CARDS,
+                "reset_cards": self.reset_cards,
             },
         }
 
@@ -213,8 +218,15 @@ def hers(db: sqlite3.Connection, user_id: str, character_id: str) -> Hers:
     ]
     completed_at = None
     if _complete(unlocked):
-        completed_at = max((at for p in achievements for at in p.unlocked.values()), default=None)
-    return Hers(achievements, completed_at)
+        completed_at = max(
+            (
+                p.unlocked[n] for p in achievements
+                for n in range(1, len(p.achievement.stages) + 1)
+            ),
+            default=None,
+        )
+    given = counts.get((_COMPLETE, character_id)) is not None
+    return Hers(achievements, completed_at, 0 if given else COMPLETE_RESET_CARDS)
 
 
 def of_all(db: sqlite3.Connection, user_id: str) -> list[Progress]:
@@ -251,6 +263,11 @@ def _unlock(
                 Unlocked(achievement.id, character or None, n, stage.draws),
             ))
     if _complete(_unlocked(db, user_id, character_id)):
+        db.execute(
+            "INSERT INTO achievement_progress (user_id, achievement, character_id, count)"
+            " VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
+            (user_id, _COMPLETE, character_id, COMPLETE_RESET_CARDS),
+        )
         due.append((
             Reward(f"achievement_complete:{character_id}", 0, COMPLETE_RESET_CARDS),
             Completed(character_id, COMPLETE_RESET_CARDS),

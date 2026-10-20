@@ -42,5 +42,10 @@
 - 到账键：`achievement:{成就}:{角色或空}:{第几阶段}`、`achievement_complete:{角色}`。每次记进度都把所有已达到的阶段的键交给 `Gifts.reward`，靠键唯一只到账一次；集齐看的是「现在每个按角色的成就的每个阶段都有解锁行」，不看进度，所以门槛调高不影响、加了阶段后再集齐键已存在不给第二张。
 - `Happenings._happened` 在同一个 `due` 回调里先算每日任务、再调 `achievements.keep`，同一把锁、同一个事务；`Rewarded` 加 `achievements`（解锁的阶段）和 `completed`（集齐的角色）。
 - 接口：`GET /api/characters/{id}/achievements` 在 `gifts_api.py`，返回 `{achievements: [{id, progress, stages: [{goal, draws, unlocked_at}]}], complete: {completed_at, reset_cards}}`，没有这位角色 404，开关关着 null；`GET /api/gifts` 加 `achievements`（合起来的四个，同样的 `{id, progress, stages}`，关着 null）。通话的进度和门槛单位是秒。
-- 判断：集齐那一行的 `completed_at` 是「现在全部解锁」时最晚的解锁时刻；以后加了阶段，没再集齐时为 null。`reset_cards` 总是给常量 1，哪怕这位角色的重置卡已经给过（只在以后加阶段时才会碰到）。
-- 前端：`lib/achievements.ts` 的 `achievementRow`、`completeRow` 和类型（`Achievement`、`HerAchievements`、`UnlockedStage`），文案在 `copy.achievements`；`Rewarded`（`lib/rewards`）和 `GiftState.achievements`（`lib/gifts`）跟上了接口形状。下一个阶段取第一个没解锁的阶段，不按进度。
+- 判断：集齐那一行的 `completed_at` 是「现在的每个阶段都解锁了」时其中最晚的解锁时刻（删掉的阶段不算）；以后加了阶段、没再集齐时为 null。`reset_cards` 是「集齐（还）会给几张」：第一次集齐时在进度表记一行 `complete`，之后为 0，前端这时不写「重置卡 ×n」。
+- 前端：`lib/achievements.ts` 的 `achievementRow`、`completeRow` 和类型（`Achievement`、`HerAchievements`；`UnlockedStage`、`CompletedCharacter` 在 `lib/rewards`），文案在 `copy.achievements`；`Rewarded`（`lib/rewards`）和 `GiftState.achievements`（`lib/gifts`）跟上了接口形状。下一个阶段取第一个没解锁的阶段，不按进度。
+
+### 审查（票 01）
+
+- 已修：集齐那一行重置卡给过以后为 0（规格「每位角色一辈子最多 1 张」）；`completed_at` 不算删掉的阶段；删了和 `test_daily_tasks.py` 重复的两处「这次到账」断言、前端两条不分支的用例；`Rewarded` 里的阶段和集齐改成具名类型；两处 docstring 折行。
+- 只报告、没改（判断题）：成就 id 是裸字符串，后端 `Progress.shown`、`_of_all` 和前端 `progressText` 各按 id 分支（Repeated Switches）；`_happened` 里 `done` 混放任务 id、`Unlocked`、`Completed` 再用 `isinstance` 拆；合起来的角色库里是空字符串、出库是 None。等票 03 加通话、抽奖、档位时如果分支继续变多，再考虑把推算和展示方式挂到 `Achievement` 上。
