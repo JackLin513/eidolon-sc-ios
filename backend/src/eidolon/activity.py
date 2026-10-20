@@ -40,11 +40,23 @@ its own, failed.
 Records are kept for 90 days (`KEPT`); older ones are deleted whenever a turn begins, as
 uses of the limit are. A deleted user's records stay, for the numbers not to change, but
 no longer say whose they were (`database.ANONYMIZED_USER_DATA`).
+
+As each record and service call is written, it is also rolled up, in the same transaction,
+into the slot of `SLOT` seconds it began in, and what the dashboard sums up only over a whole
+range into its UTC day too (`_roll_up_records`, `_roll_up_calls`): the dashboard sums up
+these (`ActivityLog.tally`), however many records a range holds. A range so begins where the
+slot its first moment falls in does (`range_start`). Counts, usage and users are as many as
+the records say; how long things took, only to a bucket of the spread (`_bucket`). A
+reach-out marked answered moves in the rollups too (a trigger: the store marks it). The
+rollups are made from the records when there are none (`_roll_up_all`): a database from
+before them, or one whose rollups were dropped, as they are to be by hand after running an
+earlier version that wrote records without rolling them up.
 """
 
 import asyncio
 import json
 import logging
+import math
 import re
 import secrets
 import sqlite3
@@ -195,6 +207,103 @@ CREATE TABLE IF NOT EXISTS service_calls (
 CREATE INDEX IF NOT EXISTS service_calls_by_time ON service_calls(at);
 CREATE INDEX IF NOT EXISTS service_calls_by_record ON service_calls(record_id);
 """
+
+SLOT = 15 * 60
+"""How long, in seconds, the slots records and service calls are rolled up in are: every
+time zone is a whole number of them off UTC, so that the admin's round hours and days, where
+the dashboard's stretches begin, each begin a slot."""
+DAY = 24 * 60 * 60
+
+DURATIONS: tuple[tuple[int, int | None], ...] = (
+    (0, 60), (60, 180), (180, 600), (600, 1800), (1800, None)
+)
+"""The stretches, in seconds, calls' durations are counted in, as they are rolled up: the
+rollups are to be made anew should they change."""
+
+_ROLLUP_SCHEMA = """
+-- The records and service calls rolled up as they are written (see the module's doc): each
+-- row sums up those alike in all the dashboard counts them by that began in one slot,
+-- `length` seconds long from `start` (epoch seconds). Those summed up only over a whole range
+-- are rolled up into UTC days too; those that make the trend, only into slots of `SLOT`
+-- seconds. A NULL is rolled up as '', or -1, so that rows alike are one.
+--
+-- `record_rollups` are the records, by `RecordGroup`'s fields; `taken_rollups` how many
+-- turns and calls began in each slot; `user_rollups` who took any turn or call in it
+-- (`who` is `user_id`, or once they are deleted `anonymous_id`), and whether a judged turn
+-- of theirs in it began a cooldown. `call_rollups` are the service calls, by `CallGroup`'s
+-- fields, with when the first of them was made.
+--
+-- `spread_rollups` are how long things took, for their spreads: how many of each `measure`
+-- of the calls to each service on whose keys (of a record's, '' and 0), in each bucket
+-- (`_bucket`), with the least and the most of them. Its `lasted_within` are how many calls
+-- lasted within each of `DURATIONS`, by its index as the bucket.
+CREATE TABLE IF NOT EXISTS record_rollups (
+    length INTEGER NOT NULL,
+    start INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    character_id TEXT NOT NULL,
+    result TEXT NOT NULL,
+    own_keys INTEGER NOT NULL,
+    in_call INTEGER NOT NULL,
+    end_reason TEXT NOT NULL,
+    affinity_level INTEGER NOT NULL,
+    out_of_line INTEGER NOT NULL,
+    manipulation INTEGER NOT NULL,
+    cooled INTEGER NOT NULL,
+    ended INTEGER NOT NULL,
+    answered INTEGER NOT NULL,
+    count INTEGER NOT NULL,
+    PRIMARY KEY (length, start, kind, character_id, result, own_keys, in_call, end_reason,
+                 affinity_level, out_of_line, manipulation, cooled, ended, answered)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS taken_rollups (
+    start INTEGER PRIMARY KEY,
+    turns INTEGER NOT NULL,
+    calls INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS user_rollups (
+    length INTEGER NOT NULL,
+    start INTEGER NOT NULL,
+    who TEXT NOT NULL,
+    cooled INTEGER NOT NULL,
+    PRIMARY KEY (length, start, who)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS user_rollups_by_who ON user_rollups(who);
+CREATE TABLE IF NOT EXISTS call_rollups (
+    start INTEGER NOT NULL,
+    service TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    own_key INTEGER NOT NULL,
+    error TEXT NOT NULL,
+    usage_unit TEXT NOT NULL,
+    input_told INTEGER NOT NULL,
+    output_told INTEGER NOT NULL,
+    stripped_tags TEXT NOT NULL,
+    first_at REAL NOT NULL,
+    calls INTEGER NOT NULL,
+    usage_input REAL,
+    usage_output REAL,
+    usage_cached REAL,
+    PRIMARY KEY (start, service, provider, model, own_key, error, usage_unit, input_told,
+                 output_told, stripped_tags)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS spread_rollups (
+    length INTEGER NOT NULL,
+    start INTEGER NOT NULL,
+    measure TEXT NOT NULL,
+    service TEXT NOT NULL,
+    own_key INTEGER NOT NULL,
+    bucket INTEGER NOT NULL,
+    count INTEGER NOT NULL,
+    least REAL NOT NULL,
+    most REAL NOT NULL,
+    PRIMARY KEY (length, start, measure, service, own_key, bucket)
+) WITHOUT ROWID;
+"""
+
+ROLLUPS = ("record_rollups", "taken_rollups", "user_rollups", "call_rollups", "spread_rollups")
+"""The rollups' tables: dropped all together, they are made anew from the records."""
 
 
 @dataclass(frozen=True)
@@ -554,6 +663,10 @@ class ActivityLog:
             _add_judgement_columns(self._db)
             _add_answered_column(self._db)
             _forget_own_llms(self._db)
+        self._db.create_function("spread_bucket", 1, _bucket, deterministic=True)
+        self._db.executescript(_ROLLUP_SCHEMA + _answered_trigger())
+        with self._lock, self._db:
+            _roll_up_all(self._db)
         # Summing up a long range takes a while: on a connection of its own, records are
         # written meanwhile, not kept waiting.
         self._reader = connect(path)
@@ -646,23 +759,17 @@ class ActivityLog:
             ],
         )
 
-    def tally(
-        self,
-        moment: datetime,
-        starts: Sequence[datetime],
-        durations: Sequence[tuple[int, int | None]],
-    ) -> Tally:
-        """The records and service calls after `moment`, summed up in the database rather
-        than read one by one, for there may be millions: their trend in stretches beginning
-        at `starts` (the first taking in whatever comes before it), and how many calls lasted
-        within each of `durations`, from so many seconds to before so many (None: however
-        long)."""
-        at = moment.timestamp()
+    def tally(self, moment: datetime, starts: Sequence[datetime]) -> Tally:
+        """The records and service calls from the start of the slot `moment` falls in
+        (`range_start`), summed up from their rollups, for there may be millions: their trend
+        in stretches beginning at `starts` (the first taking in whatever comes before it),
+        and how many calls lasted within each of `DURATIONS`."""
+        at = range_start(moment).timestamp()
         with self._reading:
             db = self._reader
             db.execute("BEGIN")  # all of it as of one moment
             try:
-                return _tally(db, at, starts, durations)
+                return _tally(db, at, starts)
             finally:
                 db.rollback()
 
@@ -782,12 +889,13 @@ class ActivityLog:
         except sqlite3.IntegrityError:  # the user was deleted meanwhile
             cursor = self._db.execute(insert, (None, anonymous, *row))
         recording.row_id = cursor.lastrowid
+        _roll_up_records(self._db, "id = ?", (recording.row_id,))
         for call in recording.calls:
             self._insert_call(call, recording.row_id)
 
     def _insert_call(self, call: ServiceCall, record_id: int | None) -> None:
         origin, billed = call.origin, call.billed
-        self._db.execute(
+        cursor = self._db.execute(
             "INSERT INTO service_calls (record_id, at, service, provider, model, own_key,"
             " error, latency_ms, usage_unit, usage_input, usage_output, first_token_ms,"
             " reasoning_effort, usage_cached, stripped_tags)"
@@ -799,31 +907,226 @@ class ActivityLog:
                 json.dumps(call.stripped) if call.stripped is not None else None,
             ),
         )
+        _roll_up_calls(self._db, "id = ?", (cursor.lastrowid,))
 
     def _forget_before(self, moment: datetime) -> None:
+        """Delete the records and service calls up to `moment`, and the rollups of the slots
+        and days over by then: one that is not holds some of those deleted still, as the
+        range it begins does (`range_start`)."""
         at = moment.timestamp()
         with self._lock, self._db:
             self._db.execute("DELETE FROM service_calls WHERE at <= ?", (at,))
             self._db.execute("DELETE FROM activity_records WHERE started_at <= ?", (at,))
+            for table in ("record_rollups", "user_rollups", "spread_rollups"):
+                for length in (SLOT, DAY):
+                    self._db.execute(
+                        f"DELETE FROM {table} WHERE length = ? AND start <= ?",
+                        (length, at - length),
+                    )
+            for table in ("taken_rollups", "call_rollups"):
+                self._db.execute(f"DELETE FROM {table} WHERE start <= ?", (at - SLOT,))
 
 
-def _tally(
-    db: sqlite3.Connection,
-    at: float,
-    starts: Sequence[datetime],
-    durations: Sequence[tuple[int, int | None]],
-) -> Tally:
-    who = "COALESCE(user_id, anonymous_id)"
+def range_start(moment: datetime) -> datetime:
+    """Where a range of the dashboard reaching back to `moment` begins: where the slot of
+    `SLOT` seconds it falls in does, which its rollups begin with."""
+    at = moment.timestamp()
+    return _time(at - at % SLOT)
+
+
+_RECORD_KEY = (
+    ("kind", "{r}kind"),
+    ("character_id", "{r}character_id"),
+    ("result", "{r}result"),
+    ("own_keys", "{r}own_keys != 0"),
+    ("in_call", "{r}call_id IS NOT NULL"),
+    ("end_reason", "IFNULL({r}end_reason, '')"),
+    ("affinity_level", "IFNULL({r}affinity_level, -1)"),
+    ("out_of_line", "IFNULL({r}out_of_line, -1)"),
+    ("manipulation", "IFNULL({r}manipulation, -1)"),
+    ("cooled", "IFNULL({r}cooled, -1)"),
+    ("ended", "{r}ended_conversation IS NOT NULL"),
+    ("answered", "{r}answered != 0"),
+)
+"""The columns of `record_rollups` a record is rolled up by, each with what it is of the
+record, as SQL over a row of `activity_records` named by `{r}` (a prefix: '', `OLD.`)."""
+
+_COOLING = (
+    "kind = 'turn' AND result = 'success' AND affinity_level IS NOT NULL"
+    " AND IFNULL(cooled, 0) != 0"
+)
+"""Whether a record, in SQL over `activity_records`, is of a judged turn that began a
+cooldown."""
+
+_BAND = "CASE " + " ".join(
+    f"WHEN duration_s >= {low}" + (f" AND duration_s < {high}" if high is not None else "")
+    + f" THEN {i}"
+    for i, (low, high) in enumerate(DURATIONS)
+) + " END"
+"""Which of `DURATIONS` a call's record lasted within, by its index, as SQL over
+`activity_records`; NULL for none."""
+
+_SPREAD_ADDED = (
+    " ON CONFLICT DO UPDATE SET count = count + excluded.count,"
+    " least = MIN(least, excluded.least), most = MAX(most, excluded.most)"
+)
+
+BUCKETS_PER_DOUBLING = 16
+"""How many buckets a spread has from any length of time to twice it: each is 2^(1/16)
+wide, so that what a percentile took is told to within about 2%."""
+
+_NOTHING = -(2**31)
+"""The bucket of a time of nothing, which has no logarithm."""
+
+
+def _bucket(value: float | None) -> int | None:
+    """Which bucket of a spread `value` falls in; None of none."""
+    if value is None:
+        return None
+    return math.floor(math.log2(value) * BUCKETS_PER_DOUBLING) if value > 0 else _NOTHING
+
+
+def _start(column: str, length: int, row: str = "") -> str:
+    """Where the slot (or day), `length` seconds long, a row's time `column` is in begins, as
+    SQL over the row, named by `row` (a prefix)."""
+    return f"CAST({row}{column} / {length} AS INTEGER) * {length}"
+
+
+def _positions(first: int, last: int) -> str:
+    return ", ".join(str(i) for i in range(first, last + 1))
+
+
+def _roll_up_records(db: sqlite3.Connection, where: str, params: Sequence[object]) -> None:
+    """Roll up the records that are `where`, in SQL over `activity_records`, into the slots,
+    and days, they began in."""
+    key = ", ".join(expr.format(r="") for _, expr in _RECORD_KEY)
+    for length in (SLOT, DAY):
+        start = _start("started_at", length)
+        db.execute(
+            f"INSERT INTO record_rollups SELECT {length}, {start}, {key}, COUNT(*)"
+            f" FROM activity_records WHERE {where}"
+            f" GROUP BY {_positions(2, 2 + len(_RECORD_KEY))}"
+            " ON CONFLICT DO UPDATE SET count = count + excluded.count",
+            params,
+        )
+        db.execute(
+            f"INSERT INTO user_rollups SELECT {length}, {start},"
+            f" COALESCE(user_id, anonymous_id), MAX({_COOLING}) FROM activity_records"
+            f" WHERE ({where}) AND {TURNS_AND_CALLS} GROUP BY 2, 3"
+            " ON CONFLICT DO UPDATE SET cooled = MAX(cooled, excluded.cooled)",
+            params,
+        )
+        for measure, kind, value, bucket in [
+            ("time_to_speak", "turn", "time_to_speak_ms", "spread_bucket(time_to_speak_ms)"),
+            ("lasted", "call", "duration_s", "spread_bucket(duration_s)"),
+            ("lasted_within", "call", "duration_s", _BAND),
+        ]:
+            db.execute(
+                f"INSERT INTO spread_rollups SELECT {length}, {start}, '{measure}', '', 0,"
+                f" {bucket}, COUNT(*), MIN({value}), MAX({value}) FROM activity_records"
+                f" WHERE ({where}) AND kind = '{kind}' AND {value} IS NOT NULL"
+                f" AND {bucket} IS NOT NULL GROUP BY 2, 6" + _SPREAD_ADDED,
+                params,
+            )
+    db.execute(
+        f"INSERT INTO taken_rollups SELECT {_start('started_at', SLOT)}, SUM(kind = 'turn'),"
+        f" SUM(kind = 'call') FROM activity_records WHERE ({where}) AND {TURNS_AND_CALLS}"
+        " GROUP BY 1 ON CONFLICT DO UPDATE SET turns = turns + excluded.turns,"
+        " calls = calls + excluded.calls",
+        params,
+    )
+
+
+def _roll_up_calls(db: sqlite3.Connection, where: str, params: Sequence[object]) -> None:
+    """Roll up the service calls that are `where`, in SQL over `service_calls`, into the
+    slots, and for their spreads days, they were made in."""
+    db.execute(
+        f"INSERT INTO call_rollups SELECT {_start('at', SLOT)}, service, provider, model,"
+        " own_key != 0, IFNULL(error, ''), IFNULL(usage_unit, ''), usage_input IS NOT NULL,"
+        " usage_output IS NOT NULL, IFNULL(stripped_tags, ''), MIN(at), COUNT(*),"
+        " SUM(usage_input), SUM(usage_output), SUM(usage_cached) FROM service_calls"
+        f" WHERE {where} GROUP BY {_positions(1, 10)}"
+        # Alike, all of them said what their input and output were billed for, or none did.
+        " ON CONFLICT DO UPDATE SET first_at = MIN(first_at, excluded.first_at),"
+        " calls = calls + excluded.calls, usage_input = usage_input + excluded.usage_input,"
+        " usage_output = usage_output + excluded.usage_output, usage_cached ="
+        " COALESCE(usage_cached + excluded.usage_cached, usage_cached, excluded.usage_cached)",
+        params,
+    )
+    for length in (SLOT, DAY):
+        for measure, value in [("latency", "latency_ms"), ("first_token", "first_token_ms")]:
+            db.execute(
+                f"INSERT INTO spread_rollups SELECT {length}, {_start('at', length)},"
+                f" '{measure}', service, own_key != 0, spread_bucket({value}), COUNT(*),"
+                f" MIN({value}), MAX({value}) FROM service_calls"
+                f" WHERE ({where}) AND {value} IS NOT NULL GROUP BY 2, 4, 5, 6"
+                + _SPREAD_ADDED,
+                params,
+            )
+
+
+def _roll_up_all(db: sqlite3.Connection) -> None:
+    """Roll up all the records and service calls, should there be no rollups of any: a
+    database from before them, or whose rollups were dropped."""
+    if _any_rolled_up(db):
+        return
+    began = perf_counter()
+    _roll_up_records(db, "true", ())
+    _roll_up_calls(db, "true", ())
+    if _any_rolled_up(db):
+        log.info("Rolled up the activity records in %.1fs", perf_counter() - began)
+
+
+def _any_rolled_up(db: sqlite3.Connection) -> bool:
+    return any(db.execute(f"SELECT EXISTS (SELECT 1 FROM {t})").fetchone()[0] for t in ROLLUPS)
+
+
+def _answered_trigger() -> str:
+    """The trigger that moves a reach-out's record, as it is marked answered, in the
+    rollups: the store marks it, through a connection of its own."""
+    moved = []
+    for length in (SLOT, DAY):
+        was = " AND ".join(
+            f"{column} = ({expr.format(r='OLD.')})" for column, expr in _RECORD_KEY
+        )
+        now = ", ".join(expr.format(r="NEW.") for _, expr in _RECORD_KEY)
+        moved += [
+            f"UPDATE record_rollups SET count = count - 1 WHERE length = {length}"
+            f" AND start = {_start('started_at', length, 'OLD.')} AND {was};",
+            f"INSERT INTO record_rollups VALUES ({length},"
+            f" {_start('started_at', length, 'NEW.')}, {now}, 1)"
+            " ON CONFLICT DO UPDATE SET count = count + 1;",
+        ]
+    return (
+        "CREATE TRIGGER IF NOT EXISTS record_rollups_answered AFTER UPDATE OF answered"
+        " ON activity_records WHEN OLD.answered IS NOT NEW.answered BEGIN "
+        + " ".join(moved) + " END;"
+    )
+
+
+def _whole_range(at: float) -> tuple[str, list[float]]:
+    """Which rollups make up the whole of a range from `at`, the start of a slot, as SQL
+    over a table of them by `length`, with its parameters: the days from the first wholly in
+    it on, and the slots before."""
+    first_day = math.ceil(at / DAY) * DAY
+    return (
+        f"(length = {DAY} AND start >= ? OR length = {SLOT} AND start >= ? AND start < ?)",
+        [first_day, at, first_day],
+    )
+
+
+def _tally(db: sqlite3.Connection, at: float, starts: Sequence[datetime]) -> Tally:
+    whole, whole_params = _whole_range(at)
     records = []
     for (
         kind, character, result, own, in_call, reason, level, out_of_line, manipulation,
         cooled, ended, answered, count,
     ) in db.execute(
-        "SELECT kind, character_id, result, own_keys != 0, call_id IS NOT NULL, end_reason,"
-        f" {', '.join(JUDGEMENT_COLUMNS)}, ended_conversation IS NOT NULL, answered != 0,"
-        " COUNT(*) FROM activity_records WHERE started_at > ?"
-        " GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12",
-        (at,),
+        "SELECT kind, character_id, result, own_keys, in_call, NULLIF(end_reason, ''),"
+        " NULLIF(affinity_level, -1), NULLIF(out_of_line, -1), NULLIF(manipulation, -1),"
+        " NULLIF(cooled, -1), ended, answered, SUM(count) FROM record_rollups"
+        f" WHERE {whole} GROUP BY {_positions(1, 12)} HAVING SUM(count) > 0",
+        whole_params,
     ):
         judged, was_cooled = _reading_judgement(level, out_of_line, manipulation, cooled)
         records.append(RecordGroup(
@@ -831,7 +1134,7 @@ def _tally(
             in_call=bool(in_call), end_reason=reason, judged=judged, cooled=was_cooled,
             ended_conversation=bool(ended), answered=bool(answered), count=count,
         ))
-    stretch, stretch_params = _stretch("at", starts)
+    stretch, stretch_params = _stretch("start", starts)
     calls = [
         CallGroup(
             stretch=index, service=service, provider=provider, model=model,
@@ -844,63 +1147,61 @@ def _tally(
             index, service, provider, model, own, error, unit, input_told, output_told,
             stripped, count, used_in, used_out, cached,
         ) in db.execute(
-            f"SELECT {stretch}, service, provider, model, own_key != 0, error, usage_unit,"
-            " usage_input IS NOT NULL, usage_output IS NOT NULL, stripped_tags, COUNT(*),"
-            " SUM(usage_input), SUM(usage_output), SUM(usage_cached) FROM service_calls"
-            " WHERE at > ? GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 ORDER BY MIN(at)",
+            f"SELECT {stretch}, service, provider, model, own_key, NULLIF(error, ''),"
+            " NULLIF(usage_unit, ''), input_told, output_told, NULLIF(stripped_tags, ''),"
+            " SUM(calls), SUM(usage_input), SUM(usage_output), SUM(usage_cached)"
+            f" FROM call_rollups WHERE start >= ? GROUP BY {_positions(1, 10)}"
+            " ORDER BY MIN(first_at)",
             (*stretch_params, at),
         )
     ]
     users, cooled_users = db.execute(
-        f"SELECT COUNT(DISTINCT {who}), COUNT(DISTINCT CASE WHEN kind = 'turn'"
-        " AND result = 'success' AND affinity_level IS NOT NULL AND cooled"
-        f" THEN {who} END) FROM activity_records WHERE started_at > ? AND {TURNS_AND_CALLS}",
-        (at,),
+        "SELECT COUNT(DISTINCT who), COUNT(DISTINCT CASE WHEN cooled THEN who END)"
+        f" FROM user_rollups WHERE {whole}",
+        whole_params,
     ).fetchone()
-    stretch, stretch_params = _stretch("started_at", starts)
     taken = {
-        index: Taken(turns, calls_taken, takers)
-        for index, turns, calls_taken, takers in db.execute(
-            f"SELECT {stretch}, SUM(kind = 'turn'), SUM(kind = 'call'), COUNT(DISTINCT {who})"
-            f" FROM activity_records WHERE started_at > ? AND {TURNS_AND_CALLS} GROUP BY 1",
+        index: (turns, calls_taken)
+        for index, turns, calls_taken in db.execute(
+            f"SELECT {stretch}, SUM(turns), SUM(calls) FROM taken_rollups WHERE start >= ?"
+            " GROUP BY 1",
             (*stretch_params, at),
         )
     }
-    bounds = [
-        "SUM(duration_s >= ?" + (" AND duration_s < ?)" if high is not None else ")")
-        for _, high in durations
-    ]
-    within = db.execute(
-        f"SELECT {', '.join(bounds) or 'NULL'} FROM activity_records"
-        " WHERE started_at > ? AND kind = 'call' AND duration_s IS NOT NULL",
-        (*(b for low, high in durations for b in (low, high) if b is not None), at),
-    ).fetchone()
-    by_service = ["service", "own_key != 0"]
+    takers = dict(db.execute(
+        f"SELECT {stretch}, COUNT(DISTINCT who) FROM user_rollups"
+        f" WHERE length = {SLOT} AND start >= ? GROUP BY 1",
+        (*stretch_params, at),
+    ).fetchall())
+    within = dict(db.execute(
+        "SELECT bucket, SUM(count) FROM spread_rollups"
+        f" WHERE measure = 'lasted_within' AND {whole} GROUP BY 1",
+        whole_params,
+    ).fetchall())
     latency, first_token = (
         {
             (service, bool(own)): spread
-            for (service, own), spread in _spreads(
-                db, "service_calls", by_service, measure, "at > ?", (at,)
-            ).items()
+            for (service, own), spread in _spreads(db, measure, whole, whole_params).items()
         }
-        for measure in ("latency_ms", "first_token_ms")
+        for measure in ("latency", "first_token")
     )
     speaking, lasted = (
-        _spreads(db, "activity_records", ["kind"], measure, "started_at > ? AND kind = ?",
-                 (at, kind)).get((kind,), Spread(0, {}))
-        for kind, measure in (("turn", "time_to_speak_ms"), ("call", "duration_s"))
+        _spreads(db, measure, whole, whole_params).get(("", 0), Spread(0, {}))
+        for measure in ("time_to_speak", "lasted")
     )
     return Tally(
         records=records,
         calls=calls,
         users=users,
         cooled_users=cooled_users,
-        stretches=[taken.get(i, Taken(0, 0, 0)) for i in range(len(starts))],
+        stretches=[
+            Taken(*taken.get(i, (0, 0)), takers.get(i, 0)) for i in range(len(starts))
+        ],
         latency=latency,
         first_token=first_token,
         time_to_speak=speaking,
         lasted=lasted,
-        lasted_within=[n or 0 for n in within] if durations else [],
+        lasted_within=[within.get(i, 0) for i in range(len(DURATIONS))],
     )
 
 
@@ -918,33 +1219,41 @@ def _stretch(column: str, starts: Sequence[datetime]) -> tuple[str, list[float]]
 
 
 def _spreads(
-    db: sqlite3.Connection,
-    table: str,
-    group: Sequence[str],
-    measure: str,
-    where: str,
-    params: Sequence[object],
-) -> dict[tuple, Spread]:
-    """The `Spread` of the `measure` column, where known, of the rows of `table` that are
-    `where`, for each `group` of them; sorted in the database, which reads back only the
-    rows at the percentiles."""
-    keys = ", ".join(f"{column} AS g{i}" for i, column in enumerate(group))
-    named = ", ".join(f"g{i}" for i in range(len(group)))
-    # The nearest rank of the pth percentile of n: ceil(p * n / 100), and at least the first.
-    ranks = " OR ".join(f"rank = MAX(1, ({p} * known + 99) / 100)" for p in PERCENTILES)
-    spreads: dict[tuple, Spread] = {}
-    for *key, known, rank, value in db.execute(
-        f"SELECT {named}, known, rank, value FROM (SELECT {keys}, {measure} AS value,"
-        " COUNT(*) OVER whole AS known, ROW_NUMBER() OVER (whole ORDER BY"
-        f" {measure}) AS rank FROM {table} WHERE {where} AND {measure} IS NOT NULL"
-        f" WINDOW whole AS (PARTITION BY {', '.join(group)})) WHERE {ranks}",
-        params,
+    db: sqlite3.Connection, measure: str, whole: str, params: Sequence[object]
+) -> dict[tuple[Any, int], Spread]:
+    """The `Spread` of the `measure` over a range (`_whole_range`), for each service and
+    whose keys it was on (of a record's, '' and 0)."""
+    buckets: dict[tuple[Any, int], list[tuple[int, int, float, float]]] = {}
+    for service, own, bucket, count, least, most in db.execute(
+        "SELECT service, own_key, bucket, SUM(count), MIN(least), MAX(most) FROM spread_rollups"
+        f" WHERE measure = ? AND {whole} GROUP BY 1, 2, 3 ORDER BY 1, 2, 3",
+        (measure, *params),
     ):
-        spread = spreads.setdefault(tuple(key), Spread(known, {}))
-        for p in PERCENTILES:
-            if rank == max(1, (p * known + 99) // 100):
-                spread.percentiles[p] = value
-    return spreads
+        buckets.setdefault((service, own), []).append((bucket, count, least, most))
+    return {key: _spread(counted) for key, counted in buckets.items()}
+
+
+def _spread(buckets: Sequence[tuple[int, int, float, float]]) -> Spread:
+    """The `Spread` of the values in `buckets`, in order: how many of them in each, the least
+    and the most. The value at a percentile's nearest rank is told as the least of its bucket
+    or the most, if it is the first there or the last; else as the bucket's middle, as far as
+    those allow."""
+    known = sum(count for _, count, _, _ in buckets)
+    percentiles: dict[int, float] = {}
+    for p in PERCENTILES:
+        rank = max(1, (p * known + 99) // 100)  # ceil(p * n / 100), and at least the first
+        for bucket, count, least, most in buckets:
+            if rank <= count:
+                middle = (
+                    0.0 if bucket == _NOTHING else 2 ** ((bucket + 0.5) / BUCKETS_PER_DOUBLING)
+                )
+                percentiles[p] = (
+                    least if rank == 1 else most if rank == count
+                    else min(max(middle, least), most)
+                )
+                break
+            rank -= count
+    return Spread(known, percentiles)
 
 
 def _time(epoch: float) -> datetime:

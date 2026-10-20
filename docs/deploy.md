@@ -586,6 +586,19 @@ docker compose -f docker-compose.prod.yml up -d
 
 CI 在 main 上的每次推送都发布 `:main`（默认用的就是它）和 `:sha-<7 位提交哈希>`，推送 `v1.2.3` 这样的标签时另外发布 `:1.2.3` 和 `:latest`。升级后出了问题，在 `.env` 里把 `EIDOLON_IMAGE_TAG` 设为上一版的 `sha-…`（在仓库的 Packages 页面或 `git log --oneline` 里找），再 `up -d` 即可回滚；之后删掉这一行，回到跟随 main。只回滚镜像不回滚数据库：新版本改过数据库结构时，旧版本不一定能用，回滚前看一眼这次升级的提交说明。
 
+看板读的是运行记录写入时顺手累加的汇总表，加上汇总表以前的版本写运行记录时不累加。回滚到那样的旧版本、过一阵再升级回来，中间那段就不会进看板。所以升级回来之前（旧版本还在跑的时候），先把汇总表删掉，新版本启动时会发现汇总表是空的，从运行记录重新汇总一遍（线上 20 多万条服务调用约 3 秒）：
+
+```sh
+docker compose -f docker-compose.prod.yml exec -T backend python -c "
+import sqlite3
+db = sqlite3.connect('/data/eidolon.db')
+db.execute('DROP TRIGGER IF EXISTS record_rollups_answered')
+for t in ['record_rollups', 'taken_rollups', 'user_rollups', 'call_rollups', 'spread_rollups']:
+    db.execute(f'DROP TABLE IF EXISTS {t}')
+db.commit()
+"
+```
+
 ### 镜像的可见性
 
 CI 第一次发布后，GHCR 上的两个包跟随仓库，默认是私有的，服务器拉不下来。到 GitHub 个人主页的 Packages，分别打开 `eidolon-sc-backend` 和 `eidolon-sc-frontend`，在 Package settings 的 Danger Zone 里改成 Public。公开的包不占账号的存储和流量额度，服务器不用登录就能拉取。改成公开后不能再改回私有。注意后端镜像里有 `backend/src` 的全部源代码，前端镜像里有构建后的前端代码：包公开就等于这部分代码公开了，即使仓库还是私有的。

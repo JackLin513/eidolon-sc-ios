@@ -271,6 +271,11 @@ async def test_each_range_takes_the_turns_since_that_long_ago(
     assert day["turns"]["total"] == 1
     assert day["bucket"] == "hour" and len(day["trend"]) == 24
     clock.advance(minutes=1)
+    # The range begins where the slot of 15 minutes 24 hours ago does, the turn's.
+    assert (await dashboard(admin, "24h"))["turns"]["total"] == 1
+    clock.advance(minutes=14, seconds=59)
+    assert (await dashboard(admin, "24h"))["turns"]["total"] == 1
+    clock.advance(seconds=1)
     assert (await dashboard(admin, "24h"))["turns"]["total"] == 0
     week = await dashboard(admin, "7d")
     assert week["turns"]["total"] == 1
@@ -289,7 +294,8 @@ async def test_records_are_forgotten_after_90_days(
     client = make_client(FakeLLM(REPLY), clock=clock)
     await send_turn(client, await start_conversation(client), "在吗")
 
-    clock.advance(days=90)
+    # Its rollups go with the slot of 15 minutes it began in, which a range may begin with.
+    clock.advance(days=90, minutes=15)
     later = make_client(FakeLLM(REPLY), clock=clock)  # signed in again
     await send_turn(later, await start_conversation(later), "在吗")
     admin = await admin_client(make_client, github, clock)
@@ -298,6 +304,10 @@ async def test_records_are_forgotten_after_90_days(
     with sqlite3.connect(settings.database_path) as db:
         assert db.execute("SELECT COUNT(*) FROM activity_records").fetchone() == (1,)
         assert db.execute("SELECT COUNT(*) FROM service_calls").fetchone() == (1,)
+        # Its day's are kept till the day is over: a range begins with its slots before that.
+        for slots in ["record_rollups WHERE length = 900", "taken_rollups", "call_rollups"]:
+            [(first,)] = db.execute(f"SELECT MIN(start) FROM {slots}").fetchall()
+            assert first > START.timestamp(), slots
 
 
 async def test_deleting_a_user_keeps_the_numbers_but_not_who_it_was(

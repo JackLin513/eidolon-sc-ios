@@ -21,8 +21,9 @@ or any were recorded in the range. Nothing anyone said is in it, nor whose any o
 How many calls are in progress now is not in the records but the calls themselves:
 `/api/admin/calls/live`, which the page asks every minute.
 
-The records are summed up in the database (`ActivityLog.tally`), not read one by one: a range
-may hold millions.
+The records are summed up from their rollups (`ActivityLog.tally`), not read one by one: a
+range may hold millions. A range so begins where the slot of 15 minutes its first moment falls
+in does (`activity.range_start`).
 """
 
 from collections import Counter, defaultdict
@@ -36,6 +37,7 @@ from fastapi import FastAPI, Header, Query
 
 from eidolon.activity import (
     CALL_END_REASONS,
+    DURATIONS,
     LLM_SERVICES,
     RESULTS,
     SERVICES,
@@ -44,6 +46,7 @@ from eidolon.activity import (
     Spread,
     Taken,
     Tally,
+    range_start,
 )
 from eidolon.affinity import LEVEL_STEPS, Judged
 from eidolon.admin_api import Admin
@@ -83,8 +86,9 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
         """The activity of the last `range`, summed up."""
         span = SPANS[range]
         now = backend.clock()
+        start = range_start(now - span.length)
         starts = stretches(now, span, _zone(timezone))
-        tally = backend.activity.tally(now - span.length, starts, DURATIONS)
+        tally = backend.activity.tally(start, starts)
         # Reach-outs are no turns nor calls, and taken by no user; their service calls count.
         records = [r for r in tally.records if r.kind != "reach_out"]
         reach_out_records = [r for r in tally.records if r.kind == "reach_out"]
@@ -95,7 +99,7 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
         )
         return {
             "range": range,
-            "from": (now - span.length).isoformat(),
+            "from": start.isoformat(),
             "to": now.isoformat(),
             "bucket": span.bucket,
             "health": health(tally),
@@ -240,12 +244,6 @@ def turns(records: Sequence[RecordGroup], speaking: Spread) -> dict:
 
 CALL_RESULTS = ("success", "failed", "rejected", "not_connected")
 """How a call can turn out: a user leaving a call is hanging it up, not a result."""
-
-DURATIONS: tuple[tuple[int, int | None], ...] = (
-    (0, 60), (60, 180), (180, 600), (600, 1800), (1800, None)
-)
-"""The stretches, in seconds, calls' durations are counted in."""
-
 
 def calls(records: Sequence[RecordGroup], tally: Tally) -> dict:
     """The calls: how they turned out, on whose keys, how long those that connected

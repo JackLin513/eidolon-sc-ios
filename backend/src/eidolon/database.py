@@ -65,6 +65,7 @@ they are made to say so no longer, and which rows they are."""
 
 ANONYMIZED_USER_DATA = [
     ("activity_records", "user_id = NULL, anonymous_id = :anonymous", "user_id = :user"),
+    ("user_rollups", "who = :anonymous", "who = :user"),
 ]
 """Every table holding a user's data that is kept when the user is deleted: how its rows
 of theirs are made no one's, and which rows they are. `:anonymous` is an id made up anew
@@ -76,7 +77,8 @@ NOT_USER_DATA = frozenset(
         "service_calls", "config_overrides", "price_overrides", "price_catalog",
         "price_catalog_thinking", "price_catalog_hosts", "price_catalog_providers",
         "price_catalog_offers", "price_catalog_state", "banned_identities", "announcements",
-        "sponsor", "gifts_opened", "reset_card_grants", "backup_runs",
+        "sponsor", "gifts_opened", "reset_card_grants", "backup_runs", "record_rollups",
+        "taken_rollups", "call_rollups", "spread_rollups",
     }
 )
 """Every other table: the story corpus, the embedded text set, the calls to outside
