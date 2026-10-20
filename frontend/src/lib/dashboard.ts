@@ -244,6 +244,8 @@ export type Dashboard = {
   /** How many times each daily task was done (GLOSSARY「每日任务」); null where affinity is off and
    * none were done in the range. */
   daily_tasks: DailyTasksSection | null;
+  /** The achievements' stages unlocked and what they gave (GLOSSARY「成就」); null where `daily_tasks` is. */
+  achievements: AchievementsSection | null;
   /** What the deployer's keys cost, estimated at the prices (`lib/adminPrices`). */
   cost: Cost;
 };
@@ -275,8 +277,21 @@ const DAILY_TASK_IDS = ["one_turn", "one_gift", "ten_turns"] as const;
 /** The section's tiles, as the page shows them, in the order of the gifts page; none where it is empty. */
 export function dailyTaskTiles(section: DailyTasksSection | null): { id: string; label: string; value: string }[] {
   if (section === null) return [];
-  const words = copy.admin.dashboard.dailyTasks.tiles;
+  const words = copy.admin.dashboard.tasksAndAchievements.tiles;
   return DAILY_TASK_IDS.map((id) => ({ id, label: words[id], value: formatCount(section[id]) }));
+}
+
+/** The dashboard's achievements, beside the daily tasks: how many stages were unlocked, the draw
+ * chances they gave, and the reset cards characters complete gave. */
+export type AchievementsSection = { stages: number; draws: number; reset_cards: number };
+
+const ACHIEVEMENT_TILE_IDS = ["stages", "draws", "reset_cards"] as const;
+
+/** The achievements' tiles, as the page shows them after the daily tasks'; none where they are empty. */
+export function achievementTiles(section: AchievementsSection | null): { id: string; label: string; value: string }[] {
+  if (section === null) return [];
+  const words = copy.admin.dashboard.tasksAndAchievements.tiles;
+  return ACHIEVEMENT_TILE_IDS.map((id) => ({ id, label: words[id], value: formatCount(section[id]) }));
 }
 
 /** The levels the judge model judges a turn at, from hurting her (0) to making her very happy (4). */

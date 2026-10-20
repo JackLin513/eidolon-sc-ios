@@ -1072,10 +1072,17 @@ export const zh = {
         title: "搭话",
         tiles: { succeeded: "成功", failed: "失败", answered: "被回了" },
       },
-      /** 「好感度」里的「每日任务」一小节：范围内每一项各做完几次。 */
-      dailyTasks: {
-        title: "每日任务",
-        tiles: { one_turn: "一个回合", one_gift: "送一件礼", ten_turns: "十个回合" },
+      /** 「好感度」里的「每日任务和成就」一小节：范围内每一项各做完几次，解锁了几个成就阶段、发出几次抽奖、几张重置卡。 */
+      tasksAndAchievements: {
+        title: "每日任务和成就",
+        tiles: {
+          one_turn: "一个回合",
+          one_gift: "送一件礼",
+          ten_turns: "十个回合",
+          stages: "解锁的阶段",
+          draws: "发出的抽奖次数",
+          reset_cards: "重置卡",
+        },
       },
       affinity: {
         title: "好感度",

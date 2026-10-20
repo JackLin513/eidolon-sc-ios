@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  achievementTiles,
   affinityRows,
   countTicks,
   dailyTaskTiles,
@@ -318,6 +319,20 @@ describe("dailyTaskTiles", () => {
       ["一个回合", "1,200"],
       ["送一件礼", "3"],
       ["十个回合", "0"],
+    ]);
+  });
+});
+
+describe("achievementTiles", () => {
+  it("are none where the section is empty", () => {
+    expect(achievementTiles(null)).toEqual([]);
+  });
+
+  it("count the stages unlocked, the draws they gave and the reset cards", () => {
+    expect(achievementTiles({ stages: 1200, draws: 3400, reset_cards: 0 }).map((tile) => [tile.label, tile.value])).toEqual([
+      ["解锁的阶段", "1,200"],
+      ["发出的抽奖次数", "3,400"],
+      ["重置卡", "0"],
     ]);
   });
 });

@@ -16,7 +16,9 @@ conversation takes nothing back. Nothing is kept while affinity and gifts are cl
 as the turn or the gift it was told of is recorded already.
 
 Each task done, once its reward is given, has an activity record (`ActivityLog.daily_task_done`)
-for the dashboard to count; writing it failing is only logged too.
+for the dashboard to count, and so has each stage unlocked and each character complete
+(`ActivityLog.achievement_unlocked`, `ActivityLog.character_complete`); writing them failing
+is only logged too.
 
 Each user's progress today and with the achievements is theirs, deleted with them
 (`database.USER_DATA`), and goes in no data package."""
@@ -230,11 +232,33 @@ class Happenings:
                 self._activity.daily_task_done(user_id, task, at)
             except Exception:
                 log.exception("recording daily task %s done failed", task)
-        return Rewarded(
+        rewarded = Rewarded(
             sum(r.draws for r in given), sum(r.reset_cards for r in given), tasks, at,
             [w for w in what if isinstance(w, Unlocked)],
             [w for w in what if isinstance(w, Completed)],
         )
+        self._record_achievements(user_id, rewarded)
+        return rewarded
+
+    def _record_achievements(self, user_id: str, rewarded: Rewarded) -> None:
+        """Record the stages unlocked and the characters completed, once rewarded. Only what
+        happens is recorded: those the launch works out from before it are rewarded without
+        coming here."""
+        at = rewarded.rewarded_at
+        for stage in rewarded.achievements:
+            try:
+                self._activity.achievement_unlocked(
+                    user_id, stage.character_id, stage.achievement, stage.stage, at
+                )
+            except Exception:
+                log.exception(
+                    "recording %s stage %d unlocked failed", stage.achievement, stage.stage
+                )
+        for complete in rewarded.completed:
+            try:
+                self._activity.character_complete(user_id, complete.character_id, at)
+            except Exception:
+                log.exception("recording %s complete failed", complete.character_id)
 
 
 def _counts(db: sqlite3.Connection, user_id: str, today: date) -> Counts:
