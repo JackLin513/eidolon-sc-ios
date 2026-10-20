@@ -551,8 +551,9 @@ class Catalog:
         self._providers = sorted(
             (Provider(*row) for row in providers), key=lambda p: (p.name.casefold(), p.id)
         )
-        # Fetched before there were providers to keep (an older version's), or none found.
-        self._no_providers = not providers
+        # Models.dev's models fetched without its providers: by an older version, before
+        # there were any to keep. Catalogs fetched empty are not.
+        self._no_providers = not providers and bool(thinking)
         served: dict[str, list[Offer]] = {}
         for row in offers:
             served.setdefault(row[0], []).append(Offer(*row))
