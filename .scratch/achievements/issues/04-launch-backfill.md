@@ -15,3 +15,10 @@
 - [ ] 后端测试：用 sqlite 直接往库里塞回合、通话、送礼记录和好感度历史，再建 client，从接口看补出来的阶段、抽奖次数和重置卡；各项来源各测一次；数据包导入的旧记录也算；抽奖从 0；再建一次 client（模拟重启）不再发；不写运行记录；高门槛用 monkeypatch 降下来
 
 ## Comments
+
+### 票 03 交接
+
+- 通话时长记在 `achievement_progress` 的 `call_time`，存的是秒，可以带小数（`calls.duration_s` 原样累加），补算直接 `SUM(duration_s)` 就和平时一致；平时只记 `keep_call` 写进了库的通话。
+- 档位存 `TIERS_REACHED` 的序号（1 亲近、2 亲密），写时取 `MAX`；`achievements.keep(..., tier=...)` 只认亲近、亲密，别的档位不写。
+- 「来过几天」只由回合和送礼加；通话和抽奖不算来过。
+

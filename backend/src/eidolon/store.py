@@ -942,18 +942,19 @@ class Store:
             for r in rows
         ]
 
-    def keep_call(self, conversation_id: str, connected_at: datetime, duration_s: float) -> None:
+    def keep_call(self, conversation_id: str, connected_at: datetime, duration_s: float) -> bool:
         """Keep a call in the conversation that connected at `connected_at` and lasted
         `duration_s` seconds once it had, for stats; not into its record. It answers her
         latest reach-out in it (`_answer_reach_out`). Nothing is kept if the conversation is
-        gone meanwhile, deleted with the user, say."""
+        gone meanwhile, deleted with the user, say. Whether it was kept."""
         with self._lock, self._db:
-            self._db.execute(
+            kept = self._db.execute(
                 "INSERT INTO calls (conversation_id, connected_at, duration_s)"
                 " SELECT id, ?, ? FROM conversations WHERE id = ?",
                 (connected_at.astimezone(UTC).isoformat(), duration_s, conversation_id),
-            )
+            ).rowcount
             self._answer_reach_out(conversation_id)
+        return bool(kept)
 
     def kept_calls(self, user_id: str) -> list[KeptCall]:
         """Every call kept in what is left of the user's conversations; in no order."""

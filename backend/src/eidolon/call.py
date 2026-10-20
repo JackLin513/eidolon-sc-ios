@@ -948,7 +948,8 @@ class Calls:
     ) -> None:
         """Calls last as long, and take as many turns, as `limits` says as each starts.
         Calls of users banned or deleted meanwhile, as `store` has them, are hung up. Each
-        that connected is kept in `store`, then told to `happenings`."""
+        that connected is kept in `store`, then, if its conversation is still there to keep
+        it in, told to `happenings`."""
         self._settings = settings
         self._engine = engine
         self._admissions = admissions
@@ -1013,8 +1014,8 @@ class Calls:
         admission = self._admissions.call(user_id, character.id, brought)
 
         def keep(connected_at: datetime, duration_s: float) -> None:
-            self._store.keep_call(conversation.id, connected_at, duration_s)
-            self._happenings.call_ended(user_id, character.id, duration_s)
+            if self._store.keep_call(conversation.id, connected_at, duration_s):
+                self._happenings.call_ended(user_id, character.id, duration_s)
 
         outcome = CallOutcome(admission, self._limits(), self._clock, keep)
         return await self._start(

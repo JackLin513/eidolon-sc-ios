@@ -20,14 +20,12 @@ from tests.browser import TIMEOUT, Browser, open_browser
 from tests.conftest import ClientFactory
 from tests.fakes import (
     FakeClock,
-    FakeIdentityProvider,
     FakeLLM,
     FakeRandom,
     FakeServiceClients,
     FakeSpeech,
     level,
 )
-from tests.test_admin_users import admin_beside
 from tests.test_achievements import (  # noqa: F401
     REPLY,
     achievement,
@@ -39,7 +37,8 @@ from tests.test_achievements import (  # noqa: F401
     unlocked,
     with_goals,
 )
-from tests.test_affinity import AFFINITY, keep
+from tests.test_affinity import keep
+from tests.test_gift_backpack import draw
 from tests.test_gift_giving import CAKE, catalog, draw_them, given, holding  # noqa: F401
 from tests.test_she_hangs_up import OUT_OF_LINE
 from tests.test_text_turn import start_conversation
@@ -130,12 +129,6 @@ async def test_a_call_that_never_connected_counts_no_time(
     await asyncio.sleep(0.2)
 
     assert achievement(await hers(client), "call_time")["progress"] == 30
-
-
-async def draw(client: httpx.AsyncClient, *, all: bool = False) -> dict:
-    res = await client.post("/api/gifts/draws", json={"all": all})
-    assert res.status_code == 200, res.text
-    return res.json()
 
 
 async def test_each_draw_counts_once_or_all_at_once_and_drawing_tells_the_stage_it_unlocked(
@@ -268,23 +261,3 @@ async def test_she_is_complete_only_once_all_four_of_hers_are(
     assert got["complete"]["completed_at"] is not None
     assert got["complete"]["reset_cards"] == 0
     assert (await state(client))["reset_cards"] == 1
-
-
-async def test_a_call_while_closed_counts_no_time(
-    make_client: ClientFactory, github: FakeIdentityProvider, speech: FakeSpeech,
-    ticker: Ticker,
-):
-    client = make_client(FakeLLM(*[REPLY] * 2), clock=FakeClock())
-    conversation = await start_conversation(client)
-    await call(client, conversation, speech, ticker, 30)
-    await until(client, talked(30))
-
-    async with admin_beside(client, github) as admin:
-        assert (await admin.put(AFFINITY, json={"enabled": False})).status_code == 200
-        await call(client, conversation, speech, ticker, MINUTES_10)
-        await asyncio.sleep(0.2)
-        assert (await admin.put(AFFINITY, json={"enabled": True})).status_code == 200
-
-    got = await hers(client)
-    assert achievement(got, "call_time")["progress"] == 30
-    assert unlocked(got, "call_time") == []

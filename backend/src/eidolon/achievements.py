@@ -28,10 +28,10 @@ from eidolon.gifts import Reward
 
 SCHEMA = """
 -- One row per user, achievement and character (empty for those of all the characters
--- together) with anything kept towards it: how much (seconds for the time talked in calls,
--- a tier's rank among `achievements.TIERS_REACHED` for the tier reached), and for the days come the last of them
--- (`affinity.day_of`). A character complete has a row too, `complete`, of the reset cards it
--- gave.
+-- together) with anything kept towards it: how much (seconds, not whole ones, for the time
+-- talked in calls; a tier's rank among `achievements.TIERS_REACHED` for the tier reached),
+-- and for the days come the last of them (`affinity.day_of`). A character complete has a
+-- row too, `complete`, of the reset cards it gave.
 CREATE TABLE IF NOT EXISTS achievement_progress (
     user_id TEXT NOT NULL REFERENCES users(id),
     achievement TEXT NOT NULL,
