@@ -16,7 +16,8 @@ with them (`database.USER_DATA`).
 A user is rewarded for what they do (`reward`), as daily tasks are done and achievements'
 stages unlocked (`happenings`): each reward given once by its key, its draw chances over and
 above the most kept of those given each day, and its reset cards, never anything of her
-affinity.
+affinity. As the achievements launch, everyone is rewarded for what they did before, open
+or not (`reward_everyone`).
 
 An admin may give every user there is a reset card at once (`grant_reset_cards`), banned
 ones and admins too, but no one user anything on their own. Each grant is kept, when and
@@ -479,6 +480,37 @@ class Gifts:
                     )
                     given.append(r)
         return given, now
+
+    def reward_everyone(
+        self, due: Callable[[sqlite3.Connection, datetime], Iterable[tuple[str, Reward]]]
+    ) -> list[tuple[str, Reward]]:
+        """Give each user each reward `due` says is due them that they have not been given
+        yet by its key, open or not, as the achievements launch: none of the draw chances
+        due today, but the new user's one first to one with none yet. `due` is called as
+        `reward`'s is. The rewards given, and to whom."""
+        given = []
+        with self._lock, self._db:
+            now = self._clock()
+            for user_id, r in list(due(self._db, now)):
+                new = self._db.execute(
+                    "INSERT INTO gift_rewards"
+                    " (user_id, key, draws, reset_cards, rewarded_at) VALUES (?, ?, ?, ?, ?)"
+                    " ON CONFLICT (user_id, key) DO NOTHING",
+                    (user_id, r.key, r.draws, r.reset_cards, now.isoformat()),
+                ).rowcount
+                if not new:
+                    continue
+                if not self._db.execute(
+                    "SELECT 1 FROM gift_balances WHERE user_id = ?", (user_id,)
+                ).fetchone():
+                    self._start(user_id, day_of(now))
+                self._db.execute(
+                    "UPDATE gift_balances SET draws = draws + ?,"
+                    " reset_cards = reset_cards + ? WHERE user_id = ?",
+                    (r.draws, r.reset_cards, user_id),
+                )
+                given.append((user_id, r))
+        return given
 
     def _last_rewarded(self, user_id: str) -> datetime | None:
         """When the user was last rewarded; None if never. Holding the lock."""

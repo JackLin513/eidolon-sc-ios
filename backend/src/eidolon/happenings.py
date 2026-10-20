@@ -10,6 +10,9 @@ not. Each done gives its draw chances through the gifts (`Gifts.reward`), once a
 same transaction as what was done is kept, so that two done at once are rewarded once. So
 does each achievement's stage unlocked, and each character complete.
 
+The achievements were worked out once as they launched, from what was recorded before
+(`achievements.launch`): rewarded open or not, logged, with no activity record.
+
 Only what is told here counts: a turn refused or failed is never recorded, so never told; a
 data package's turns and gifts are put in the database, not told; deleting a past
 conversation takes nothing back. Nothing is kept while affinity and gifts are closed
@@ -151,6 +154,32 @@ class Happenings:
         self._activity = activity
         with self._db:
             self._db.executescript(_SCHEMA + achievements.SCHEMA)
+        self._launch()
+
+    def _launch(self) -> None:
+        """Reward everyone, once ever, for how far they had come before the achievements
+        launched, open or not: no activity record, as it did not happen now."""
+        what: dict[tuple[str, str], Unlocked | Completed] = {}
+        """Each stage unlocked or character completed, by the user and key it is rewarded
+        by."""
+        launched = False
+
+        def due(db: sqlite3.Connection, now: datetime) -> list[tuple[str, Reward]]:
+            nonlocal launched
+            unlocked = achievements.launch(db, now)
+            launched = unlocked is not None
+            what.update({(u, r.key): w for u, (r, w) in unlocked or []})
+            return [(u, r) for u, (r, _) in unlocked or []]
+
+        given = self._gifts.reward_everyone(due)
+        if launched:
+            log.info(
+                "achievements launched: %d users, %d stages, %d draw chances, %d reset cards",
+                len({u for u, _ in given}),
+                sum(isinstance(what[u, r.key], Unlocked) for u, r in given),
+                sum(r.draws for _, r in given),
+                sum(r.reset_cards for _, r in given),
+            )
 
     def turn_recorded(
         self, user_id: str, character_id: str, tier: Tier | None = None

@@ -14,6 +14,11 @@ number, so goals may be changed but not reordered. Stage n gives n draw chances
 (`Stage.draws`). Every stage of a character's own achievements unlocked, she is complete,
 giving `COMPLETE_RESET_CARDS` once ever for her, however many stages there come to be.
 
+As they launch, once ever, how far each user had come before is worked out from what is
+recorded (`launch`): turns, calls that connected and gifts given, data packages imported
+and all; the tiers her replies and gifts left her affinity in, and the one it is in; the
+days of the turns and the gifts. The times drawn were never recorded, so start from none.
+
 What is kept and unlocked is kept on the connection and in the transaction it is rewarded in
 (`Gifts.reward`), so that two at once unlock and reward a stage once. Each user's is theirs,
 deleted with them (`database.USER_DATA`), and goes in no data package."""
@@ -23,7 +28,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from eidolon.affinity import Tier
+from eidolon.affinity import TIERS, Tier, day_of, tier_of
 from eidolon.gifts import Reward
 
 SCHEMA = """
@@ -48,6 +53,11 @@ CREATE TABLE IF NOT EXISTS achievement_stages (
     stage INTEGER NOT NULL,
     unlocked_at TEXT NOT NULL,
     PRIMARY KEY (user_id, achievement, character_id, stage)
+);
+-- One row once the achievements have launched (`launch`): when. No one's.
+CREATE TABLE IF NOT EXISTS achievements_launched (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    launched_at TEXT NOT NULL
 );
 """
 
@@ -225,6 +235,75 @@ def keep(
             (user_id, _ALL, today.isoformat()),
         )
     return _unlock(db, user_id, character_id, now)
+
+
+def launch(
+    db: sqlite3.Connection, now: datetime
+) -> list[tuple[str, tuple[Reward, Unlocked | Completed]]] | None:
+    """Keep, once ever, how far every user had come before the achievements launched,
+    `now`, by what is recorded of them, data packages imported and all; and unlock the
+    stages reached by now: the rewards due each user for every stage unlocked and every
+    character complete, each with what it is for. None if launched before."""
+    if not db.execute(
+        "INSERT INTO achievements_launched (id, launched_at) VALUES (1, ?)"
+        " ON CONFLICT DO NOTHING",
+        (now.isoformat(),),
+    ).rowcount:
+        return None
+    kept = list(db.execute(
+        "SELECT c.user_id, 'turns', c.character_id, COUNT(*) FROM messages m"
+        " JOIN conversations c ON c.id = m.conversation_id WHERE m.role = 'user'"
+        " GROUP BY c.user_id, c.character_id"
+        " UNION ALL SELECT c.user_id, 'call_time', c.character_id, SUM(k.duration_s)"
+        " FROM calls k JOIN conversations c ON c.id = k.conversation_id"
+        " GROUP BY c.user_id, c.character_id"
+        " UNION ALL SELECT c.user_id, 'gifts', c.character_id, COUNT(*)"
+        " FROM conversation_events e JOIN conversations c ON c.id = e.conversation_id"
+        " WHERE e.kind = 'gift' GROUP BY c.user_id, c.character_id"
+    ))
+    tiers: dict[tuple[str, str], int] = {}
+    for user_id, character_id, tier in db.execute(
+        "SELECT DISTINCT c.user_id, c.character_id, json_extract(m.affinity, '$.tier')"
+        " FROM messages m JOIN conversations c ON c.id = m.conversation_id"
+        " WHERE m.affinity IS NOT NULL"
+        " UNION SELECT c.user_id, c.character_id, json_extract(e.affinity, '$.tier')"
+        " FROM conversation_events e JOIN conversations c ON c.id = e.conversation_id"
+        " WHERE e.kind = 'gift' AND e.affinity IS NOT NULL"
+        # Recovering only ever brings it back to normal: as kept, it is in the tier it is.
+        " UNION SELECT user_id, character_id, value FROM affinities WHERE value >= ?",
+        (dict(TIERS)[TIERS_REACHED[0]],),
+    ):
+        if isinstance(tier, float):
+            tier = tier_of(tier)
+        if tier in TIERS_REACHED:
+            rank = TIERS_REACHED.index(tier) + 1
+            tiers[user_id, character_id] = max(tiers.get((user_id, character_id), 0), rank)
+    kept += [(u, "tier", c, rank) for (u, c), rank in tiers.items()]
+    db.create_function(
+        "day_of", 1, lambda at: day_of(datetime.fromisoformat(at)).isoformat(),
+        deterministic=True,
+    )
+    days = db.execute(
+        "SELECT user_id, ?, COUNT(DISTINCT day), MAX(day) FROM ("
+        " SELECT c.user_id, day_of(m.created_at) AS day FROM messages m"
+        " JOIN conversations c ON c.id = m.conversation_id WHERE m.role = 'user'"
+        " UNION ALL SELECT c.user_id, day_of(e.created_at) FROM conversation_events e"
+        " JOIN conversations c ON c.id = e.conversation_id WHERE e.kind = 'gift'"
+        ") GROUP BY user_id",
+        (_ALL,),
+    ).fetchall()
+    db.executemany(
+        "INSERT INTO achievement_progress"
+        " (user_id, achievement, character_id, count, last_day) VALUES (?, ?, ?, ?, ?)"
+        " ON CONFLICT (user_id, achievement, character_id) DO UPDATE"
+        " SET count = MAX(count, excluded.count),"
+        " last_day = MAX(last_day, excluded.last_day)",
+        [(*k, None) for k in kept] + [(u, "days", c, n, last) for u, c, n, last in days],
+    )
+    due = []
+    for user_id, character_id in sorted({(u, c) for u, _, c, _ in kept}):
+        due += [(user_id, d) for d in _unlock(db, user_id, character_id, now)]
+    return due
 
 
 def hers(db: sqlite3.Connection, user_id: str, character_id: str) -> Hers:
