@@ -17,3 +17,10 @@
 - [ ] 后端测试：回合 `done`、通话里回合的 `done`、送礼返回里的「这次到账」；`rewarded_at` 随到账更新
 - [ ] 前端测试：点的亮灭（照 `announcements.test.ts`）；导航相关的照 `navShell.test.ts`、`conversationList.test.ts` 补
 - [ ] 本地构建版上用 Playwright 验：对话页做完一项出点、通话里做完出点（能造就造）、进礼物页消失、礼物页送礼当场打勾不出点
+
+## Comments
+
+### 票 02 交接
+
+- 「这次到账」已经有了：`Happenings.turn_recorded` / `gift_given` 返回 `Rewarded | None`（`draws`、`reset_cards`、`daily_tasks`），只是现在没人用。回合在 `engine.py` 里 `_record` 之后调用（把返回值带进 `TurnDone`），送礼在 `gifts_api.py` 的 `give` 路由里调用（把它并进 `given.shown()`）。
+- `rewarded_at` 取 `gift_rewards` 里这位用户最新的 `rewarded_at`。

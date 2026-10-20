@@ -9,6 +9,7 @@ import { PageShell } from "@/components/app/PageShell";
 import { SectionHeading } from "@/components/app/SubpageHeader";
 import { useDirectory, useWide } from "@/components/conversations/ConversationDirectory";
 import { useProducerTimezone } from "@/components/conversations/useProducerTimezone";
+import { DailyTasksSection } from "@/components/gifts/DailyTasksSection";
 import { DrawDialog, type Drawing } from "@/components/gifts/DrawDialog";
 import { GivenToast, type GivenNotice } from "@/components/gifts/GivenToast";
 import { GivePanel, type Giving } from "@/components/gifts/GivePanel";
@@ -20,6 +21,7 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { copy } from "@/i18n";
 import { ApiError, type Character } from "@/lib/api";
 import { arrange } from "@/lib/conversationList";
+import { dailyTasksView } from "@/lib/dailyTasks";
 import { toFailure, type Failure } from "@/lib/failure";
 import {
   chosenFirst,
@@ -51,7 +53,7 @@ const NOTICE_MS = 8000;
 
 /**
  * 礼物页（DESIGN.md「礼物页」）：导航栏右边整块一栏，内容最宽 `max-w-3xl`、居中，手机和电脑同一个版式。
- * 上面是抽奖台，有重置卡时下面一条重置卡条，再下面「我的礼物」；点一件（或单抽结果上的「送给谁…」）拉出送礼面板，
+ * 上面是抽奖台，下面「每日任务」一节，有重置卡时再下面一条重置卡条，最后「我的礼物」；点一件（或单抽结果上的「送给谁…」）拉出送礼面板，
  * 送出后面板收起、底部出提示，页面不跳走。好感度和礼物没开放时整页是「礼物暂时没有开放」，「礼物」照样留在导航里；
  * 抽奖、送礼或用重置卡时才知道没开放（收到「没开放」的 409）也切成这样。
  * 从对话页跳来（`pick`）时页首下面一条「给{角色名}挑一件礼物」：点哪件礼物，面板里都已选好她、排在第一个，
@@ -200,6 +202,14 @@ export function GiftsPage({ pick }: { pick: GiftsFor | null }) {
               isDrawing={drawing !== null}
               onDraw={draw}
             />
+            {state.daily_tasks && (
+              <DailyTasksSection
+                view={dailyTasksView(
+                  state.daily_tasks,
+                  nextDrawText(state.daily_tasks.renews_at, new Date(), timeZone),
+                )}
+              />
+            )}
             {state.reset_cards > 0 && (
               <ResetCards
                 count={state.reset_cards}

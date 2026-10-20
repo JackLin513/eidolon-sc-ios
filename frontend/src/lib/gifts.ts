@@ -6,6 +6,7 @@
 
 import { api, json } from "@/lib/api";
 import { cueText, untilText, type AffinityChange, type AffinityStatus, type Tier } from "@/lib/affinity";
+import type { DailyTasks } from "@/lib/dailyTasks";
 import { copy } from "@/i18n";
 
 /** 礼物的类别：吃的、饮品、花草、小物件。 */
@@ -39,6 +40,8 @@ export type GiftState = {
   /** 现在用重置卡会拉回的角色；没开放时是空的。 */
   resettable: Resettable[];
   characters: GiftCharacter[];
+  /** 今天的每日任务；没开放时是 null。 */
+  daily_tasks: DailyTasks | null;
 };
 
 /** 抽一次抽到的：一件礼物，或一张重置卡。 */

@@ -1767,6 +1767,19 @@ export const zh = {
         becomes: (now: string) => `，${now}，会回到信任`,
       },
     },
+    /** 抽奖台下面那一节「每日任务」。`next` 是换新时刻的「今天 / 明天 HH:MM」（每天北京时间 0 点，按制作人的时区写）。 */
+    dailyTasks: {
+      title: "每日任务",
+      /** 标题旁做完几项（「1/3」），和第三项没做完时的进度（「3/10」）。 */
+      of: (some: number, all: number) => `${some}/${all}`,
+      renews: (next: string) => `${next} 换新`,
+      names: {
+        one_turn: "和角色有一个回合",
+        one_gift: "送出一件礼物",
+        ten_turns: "和角色们一共有 10 个回合",
+      } as Record<string, string>,
+      reward: (draws: number) => `抽奖 ×${draws}`,
+    },
     rarity: { common: "普通", uncommon: "少见", rare: "稀有" },
     mine: "我的礼物",
     filters: {

@@ -12,3 +12,9 @@
 - [ ] 后端测试：三格的次数、按范围；开关关着且没有记录时这一小节为空；回合数、活跃用户和趋势不变（照 `test_affinity_dashboard.py`、`test_activity_records.py`）
 - [ ] 前端测试：这一小节什么时候显示（照 `dashboard.test.ts`）
 - [ ] 本地构建版上用 Playwright 看一眼看板这一小节
+
+## Comments
+
+### 票 04 交接
+
+- 运行记录在 `happenings.py` 的 `Happenings._happened` 里写最合适：`Gifts.reward` 返回了这次新发的 `Reward`，用 `done[r.key]` 能拿到任务 id，到账成功之后对每一项写一条。

@@ -124,6 +124,7 @@ from eidolon.characters import Character
 from eidolon.clock import Clock
 from eidolon.config import FishAudioModel, ImageSettings
 from eidolon.gift_catalog import Gift
+from eidolon.happenings import Happenings
 from eidolon.judge import JudgeError
 from eidolon.llm import ChatLLM, ChatMessage, Reasoning, Tool, ToolCall, TurnLLMs
 from eidolon.memory import Memories, last_turn_query
@@ -506,6 +507,7 @@ class ConversationEngine:
         affinities: Affinities | None = None,
         affinity_judge: AffinityJudge | None = None,
         photos: Photos | None = None,
+        happenings: Happenings | None = None,
     ) -> None:
         """Without `retrieval`, turns carry no story or character facts and find no
         memories. Each turn reads only the conversation's latest turns, as many as
@@ -514,7 +516,8 @@ class ConversationEngine:
         carry no world setting. Without `affinities`, turns change no affinity; with them,
         retrieval's judge judges what turns do to it, or without retrieval
         `affinity_judge`, which judges whether turns ask for a photo too. Without `photos`,
-        or without the judge model, no turn has a photo."""
+        or without the judge model, no turn has a photo. Each turn recorded is told to
+        `happenings`, if any."""
         self._store = store
         self._characters = characters
         self._gift_catalog = gift_catalog
@@ -527,6 +530,7 @@ class ConversationEngine:
         self._affinities = affinities
         self._affinity_judge = affinity_judge
         self._photos = photos
+        self._happenings = happenings
         self._ended_listeners: list[Callable[[str, EndsFor], None]] = []
 
     def on_ended(self, listener: Callable[[str, EndsFor], None]) -> None:
@@ -745,6 +749,8 @@ class ConversationEngine:
         except ConversationEnded:  # elsewhere, as the turn was under way
             yield TurnRejected(ENDED)
             return
+        if self._happenings is not None:
+            self._happenings.turn_recorded(conversation.user_id, conversation.character_id)
         if photo.id is not None and self._photos is not None:
             photo.recorded = True
             self._photos.recorded(photo.id)

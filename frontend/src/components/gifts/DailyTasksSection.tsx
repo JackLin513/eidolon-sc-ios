@@ -1,0 +1,41 @@
+import { copy } from "@/i18n";
+import type { DailyTasksView } from "@/lib/dailyTasks";
+import { cn } from "@/lib/utils";
+import { SuccessIcon, TaskOpenIcon } from "@/theme/icons";
+
+const t = copy.gifts.dailyTasks;
+
+/**
+ * 礼物页抽奖台下面那一节「每日任务」（DESIGN.md「礼物页」）：描边圆角块，标题、做完几项（「1/3」）、右边换新的时刻；
+ * 每项一行，没做完空圈、做完打勾且字变淡划掉，目标不止 1 的没做完时带「3/10」，右边「抽奖 ×1」。
+ */
+export function DailyTasksSection({ view }: { view: DailyTasksView }) {
+  return (
+    <section aria-label={t.title} className="flex flex-col gap-1 rounded-2xl border px-5 py-3">
+      <p className="flex items-baseline gap-2">
+        <span className="text-header">{t.title}</span>
+        <span className="text-sm text-muted-foreground tabular-nums">{view.count}</span>
+        <span className="flex-1" />
+        <span className="text-meta text-muted-foreground">{view.renews}</span>
+      </p>
+      <ul>
+        {view.rows.map((row) => (
+          <li key={row.id} className="flex min-h-11 items-center gap-3">
+            {row.isDone ? (
+              <SuccessIcon aria-hidden className="size-5 shrink-0" />
+            ) : (
+              <TaskOpenIcon aria-hidden className="size-5 shrink-0 text-muted-foreground" />
+            )}
+            <span className={cn("min-w-0 flex-1 text-body", row.isDone && "text-muted-foreground line-through")}>
+              {row.name}
+              {row.progress && (
+                <span className="ml-2 text-meta text-muted-foreground tabular-nums">{row.progress}</span>
+              )}
+            </span>
+            <span className="shrink-0 text-meta text-muted-foreground">{row.reward}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}

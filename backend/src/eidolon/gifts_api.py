@@ -36,6 +36,7 @@ class GiftInput(BaseModel):
 
 def add_gift_routes(app: FastAPI, backend: Backend) -> None:
     catalog, gifts, store = backend.gift_catalog, backend.gifts, backend.store
+    happenings = backend.happenings
 
     @app.exception_handler(GiftsClosed)
     async def gifts_closed(_: Request, e: GiftsClosed) -> JSONResponse:
@@ -57,8 +58,11 @@ def add_gift_routes(app: FastAPI, backend: Backend) -> None:
     def read_state(user_id: UserId) -> dict:
         """What the user has, having been given the draw chances due today; whether gifts
         are open, and if so when the next chance is given and each character's affinity,
-        for choosing whom to give to."""
-        return gifts.state(user_id).shown()
+        for choosing whom to give to, and how far the user is with today's daily tasks."""
+        daily_tasks = happenings.daily_tasks(user_id)
+        return gifts.state(user_id).shown() | {
+            "daily_tasks": daily_tasks and daily_tasks.shown()
+        }
 
     @app.post("/api/gifts/draws")
     def draw(body: DrawInput, user_id: UserId) -> dict:
@@ -75,6 +79,7 @@ def add_gift_routes(app: FastAPI, backend: Backend) -> None:
             given = gifts.give(user_id, body.gift_id, character_id)
         except NoSuchCharacter as e:
             raise HTTPException(404, str(e)) from None
+        happenings.gift_given(user_id, character_id)
         return given.shown()
 
     @app.post("/api/gifts/resets")

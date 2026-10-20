@@ -39,6 +39,7 @@ from eidolon.call import Calls, Speech, SpeechServices
 from eidolon.characters import Character, load_characters
 from eidolon.gift_catalog import Gift, check_liked_gifts, gifts_path, load_gift_catalog
 from eidolon.gifts import Gifts
+from eidolon.happenings import Happenings
 from eidolon.hot_words import hot_words
 from eidolon.randomness import Random, secure_random
 from eidolon.clock import Clock, utc_now
@@ -115,6 +116,8 @@ class Backend:
     """Every user's affinity with every character, where it is on."""
     gifts: Gifts
     """Every user's draw chances, backpack and reset cards, where gifts are open."""
+    happenings: Happenings
+    """What happens between users and characters, as it counts towards their daily tasks."""
     backups: Backups
     """The database's backups, as the admin console runs them, and the record of each."""
     photos: Photos
@@ -325,9 +328,17 @@ def build(
     closers.append(own_images.aclose)
     photos = Photos(store, config.image_generator, activity, usage, own_images.generator)
     closers.append(photos.aclose)  # closed before the store and usage, so no photo is still kept
+    gifts = Gifts(
+        settings.database_path, clock, lambda: config.affinity_on, affinities, characters,
+        gift_catalog, random or secure_random, store,
+    )
+    closers.append(gifts.close)
+    happenings = Happenings(settings.database_path, clock, lambda: config.affinity_on, gifts)
+    closers.append(happenings.close)
     engine = ConversationEngine(
         store, characters, gift_catalog, memories, titles, clock, retrieval,
         lambda: config.history_turns, world, affinities, config.affinity_judge(), photos,
+        happenings,
     )
     own_keys = OwnKeys(
         own_llm_service, config, activity, speech, exempting=lambda: config.exempting_keys,
@@ -342,11 +353,6 @@ def build(
     closers.append(calls.aclose)  # closed before memory, so no call is still taking turns
     affinities.on_cooldown(calls.cooled)
     engine.on_ended(calls.conversation_ended)
-    gifts = Gifts(
-        settings.database_path, clock, lambda: config.affinity_on, affinities, characters,
-        gift_catalog, random or secure_random, store,
-    )
-    closers.append(gifts.close)
     reach_outs = ReachOuts(
         settings.database_path, store, engine, characters, config, affinities, activity, usage,
         calls.in_call, clock, random or secure_random,
@@ -376,6 +382,7 @@ def build(
         sponsor=sponsor,
         affinities=affinities,
         gifts=gifts,
+        happenings=happenings,
         backups=backups,
         photos=photos,
         service_status=service_status,
