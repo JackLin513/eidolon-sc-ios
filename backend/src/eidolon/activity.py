@@ -217,8 +217,9 @@ DAY = 24 * 60 * 60
 DURATIONS: tuple[tuple[int, int | None], ...] = (
     (0, 60), (60, 180), (180, 600), (600, 1800), (1800, None)
 )
-"""The stretches, in seconds, calls' durations are counted in, as they are rolled up: the
-rollups are to be made anew should they change."""
+"""The stretches, in seconds, calls' durations are counted in, as they are rolled up: should
+they change, as should `SLOT` or what a record is rolled up by (`_RECORD_KEY`), the rollups
+and their trigger are to be dropped (`ROLLUPS`), to be made anew."""
 
 _ROLLUP_SCHEMA = """
 -- The records and service calls rolled up as they are written (see the module's doc): each
@@ -303,7 +304,9 @@ CREATE TABLE IF NOT EXISTS spread_rollups (
 """
 
 ROLLUPS = ("record_rollups", "taken_rollups", "user_rollups", "call_rollups", "spread_rollups")
-"""The rollups' tables: dropped all together, they are made anew from the records."""
+"""The rollups' tables: dropped all together, they are made anew from the records. Their
+trigger (`record_rollups_answered`) is not dropped with them, and is to be too: else marking
+a reach-out answered fails meanwhile."""
 
 
 @dataclass(frozen=True)
@@ -993,6 +996,7 @@ def _start(column: str, length: int, row: str = "") -> str:
 
 
 def _positions(first: int, last: int) -> str:
+    """The columns from `first` to `last` of a SELECT, by their positions, to group by."""
     return ", ".join(str(i) for i in range(first, last + 1))
 
 
@@ -1078,6 +1082,7 @@ def _roll_up_all(db: sqlite3.Connection) -> None:
 
 
 def _any_rolled_up(db: sqlite3.Connection) -> bool:
+    """Whether any of the rollups' tables holds anything."""
     return any(db.execute(f"SELECT EXISTS (SELECT 1 FROM {t})").fetchone()[0] for t in ROLLUPS)
 
 

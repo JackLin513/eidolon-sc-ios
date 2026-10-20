@@ -50,7 +50,8 @@ ORIGINS = [
     Origin("image", "image.invalid", "v4"),
 ]
 KINDS: tuple[RecordKind, ...] = ("turn", "turn", "call", "reach_out")
-ZONES = ["UTC", "Asia/Shanghai", "Asia/Kolkata"]
+ZONES = ["UTC", "Asia/Shanghai", "Asia/Kolkata", "Asia/Kathmandu"]
+"""Days apart from UTC's; half an hour off a round hour; three quarters."""
 WITHIN = 2 ** (1 / 32)
 """How far off what a percentile took may be told, as a ratio: half a bucket."""
 
@@ -124,7 +125,8 @@ def service_call(rng: random.Random, at: datetime) -> ServiceCall:
 
 
 @pytest.mark.parametrize("zone", ZONES)
-@pytest.mark.parametrize("name", list(SPANS))
+# 90 days is summed up as 30 are: in days, each holding all three days of records.
+@pytest.mark.parametrize("name", ["24h", "7d", "30d"])
 def test_the_rollups_sum_up_as_the_records_do(tmp_path: Path, name: Range, zone: str):
     clock = FakeClock(START - timedelta(days=3, minutes=7))
     log = activity(tmp_path / "eidolon.db", clock)
@@ -136,19 +138,19 @@ def test_the_rollups_sum_up_as_the_records_do(tmp_path: Path, name: Range, zone:
         with closing(database.connect(tmp_path / "eidolon.db")) as db:
             read = scanned(db, range_start(moment).timestamp(), starts)
 
-        assert sorted(rolled.records, key=repr) == sorted(read.records, key=repr)
-        assert sorted(rolled.calls, key=repr) == sorted(read.calls, key=repr)
-        assert (rolled.users, rolled.cooled_users) == (read.users, read.cooled_users)
-        assert rolled.stretches == read.stretches
-        assert rolled.lasted_within == read.lasted_within
-        assert rolled.latency.keys() == read.latency.keys()
+        assert sorted(rolled.records, key=repr) == sorted(read.records, key=repr), moment
+        assert sorted(rolled.calls, key=repr) == sorted(read.calls, key=repr), moment
+        assert (rolled.users, rolled.cooled_users) == (read.users, read.cooled_users), moment
+        assert rolled.stretches == read.stretches, moment
+        assert rolled.lasted_within == read.lasted_within, moment
+        assert rolled.latency.keys() == read.latency.keys(), moment
         for key, spread in rolled.latency.items():
-            assert_near(spread, read.latency[key])
-        assert rolled.first_token.keys() == read.first_token.keys()
+            assert_near(spread, read.latency[key], (moment, key))
+        assert rolled.first_token.keys() == read.first_token.keys(), moment
         for key, spread in rolled.first_token.items():
-            assert_near(spread, read.first_token[key])
-        assert_near(rolled.time_to_speak, read.time_to_speak)
-        assert_near(rolled.lasted, read.lasted)
+            assert_near(spread, read.first_token[key], (moment, key))
+        assert_near(rolled.time_to_speak, read.time_to_speak, moment)
+        assert_near(rolled.lasted, read.lasted, moment)
         if moment == now - span.length:  # some of each
             assert read.users > 0 and read.calls and read.time_to_speak.known
             assert read.lasted.known and any(r.answered for r in read.records)
@@ -186,12 +188,14 @@ def test_what_a_percentile_took_is_told_exactly_where_it_alone_is_in_its_bucket(
     log.close()
 
 
-def assert_near(rolled: Spread, read: Spread) -> None:
-    assert rolled.known == read.known
-    assert rolled.percentiles.keys() == read.percentiles.keys()
+def assert_near(rolled: Spread, read: Spread, of: object) -> None:
+    assert rolled.known == read.known, of
+    assert rolled.percentiles.keys() == read.percentiles.keys(), of
     for p, value in read.percentiles.items():
         told = rolled.percentiles[p]
-        assert (told == value == 0) or value / WITHIN <= told <= value * WITHIN, (p, told, value)
+        assert (told == value == 0) or value / WITHIN <= told <= value * WITHIN, (
+            of, p, told, value
+        )
 
 
 # What follows is how the records were summed up before there were rollups, read one by

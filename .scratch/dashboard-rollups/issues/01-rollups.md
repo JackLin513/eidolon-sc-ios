@@ -4,7 +4,7 @@
 
 **Blocked by:** None
 
-**Status:** ready-for-agent
+**Status:** done
 
 ## 为什么会要做
 
@@ -52,12 +52,12 @@
 
 ## 验收
 
-- [ ] 写运行记录、服务调用时在同一个事务里累加进汇总表；`answered`、删号匿名化、过期删除都同步到汇总表
-- [ ] 看板只读汇总表，接口字段不变；`from` 取整到 15 分钟
-- [ ] 启动时汇总表空就从原始记录回填
-- [ ] 测试里和旧的 `_tally` 对拍：次数、用量、花费、人数相等，分位数误差 ±2% 以内
-- [ ] 线上库快照上新旧两版对拍，并量各个范围的耗时
-- [ ] 部署文档写明部署前备份、回滚后再升级要删汇总表
+- [x] 写运行记录、服务调用时在同一个事务里累加进汇总表；`answered`、删号匿名化、过期删除都同步到汇总表
+- [x] 看板只读汇总表，接口字段不变；`from` 取整到 15 分钟
+- [x] 启动时汇总表空就从原始记录回填
+- [x] 测试里和旧的 `_tally` 对拍：次数、用量、花费、人数相等，分位数误差约 ±2% 以内（半个区间，最多 2.19%）
+- [x] 线上库快照上新旧两版对拍，并量各个范围的耗时
+- [x] 部署文档写明部署前备份、回滚后再升级要删汇总表
 
 ## 怎么量
 
@@ -81,3 +81,21 @@
 | 90d | 4.3 万 | 21.0 万 | 2.4s |
 
 每天的服务调用：10-18 约 8.5 万，10-19 约 12.1 万，之前每天几百。约每万次服务调用 0.15s，照每天 12 万估：「7 天」1–2 天内过 5 秒，攒满 7 天约 12 秒；「90 天」攒满约 2–3 分钟。
+
+### 实现说明（票 01）
+
+- `activity.py`：新表 `record_rollups`、`taken_rollups`、`user_rollups`、`call_rollups`、`spread_rollups`（`ROLLUPS`），触发器 `record_rollups_answered`。`_insert` / `_insert_call` 写完一行就用 `_roll_up_records` / `_roll_up_calls`（`WHERE id = ?`）累加；启动时五张表全空就用同一套 SQL（`WHERE true`）回填（`_roll_up_all`），两条路共用一份汇总口径。`tally(moment, starts)` 不再收 `durations`，`DURATIONS` 从 `dashboard.py` 挪到 `activity.py`；新函数 `range_start`。
+- `dashboard.py`：`from` 是 `range_start(now - span)`。`database.py`：`user_rollups` 进 `ANONYMIZED_USER_DATA`，其余四张进 `NOT_USER_DATA`。
+- 判断：
+  - 分位数的区间里另记最小、最大值，排名落在区间第一个或最后一个时给真值，所以数据少时和以前完全一样，现有测试里的精确延迟断言不用改。
+  - 搭话被回用触发器，不在 `store.py` 里写汇总代码；删表时要连触发器一起删，部署文档的脚本里写了。
+  - 原始记录照旧按 `<= now - 90 天` 删；汇总表的格和天要整段过完才删，所以 90 天范围开头那一格里，可能还算着原始记录里已经删掉的几条，和第 4 条「最多多算 15 分钟」是同一个口径。`test_records_are_forgotten_after_90_days` 和 `test_each_range_takes_the_turns_since_that_long_ago` 按这个口径改了时间。
+- 线上快照对拍（2026-10-20）：四个范围逐字段一致，分位数最多差 2.19%；耗时 24h 1.36s → 0.19s、7d 3.47s → 0.07s、30d 3.53s → 0.05s、90d 2.44s → 0.05s；回填 3.1s；每个回合（4 次服务调用）写入 1.71ms → 2.16ms。
+
+### 审查留下的判断题（没改）
+
+- 「空值存成 '' 或 -1」在写入端（`_RECORD_KEY`、`_roll_up_calls`）和读出端（`_tally` 里的 `NULLIF`）各写一遍，以后加分组列要改三处（表结构、`_RECORD_KEY`、`_tally`）。
+- `for length in (SLOT, DAY)` 出现四次，`_forget_before` 按有没有 `length` 列手动拆表名；部署文档里的删表脚本也写死了表名。
+- measure 的名字（`latency`、`first_token`、`time_to_speak`、`lasted`、`lasted_within`）是裸字符串，没有 `Literal`；「时长分档」叫 `DURATIONS`、`_BAND`、`lasted_within` 三个名字。
+- `dashboard.py` 先算一次 `range_start`，`tally` 里又算一次（结果一样）。
+- 「汇总表 / 格」没单独进 GLOSSARY，只写在「看板」词条里。

@@ -572,7 +572,7 @@ docker compose -f docker-compose.prod.yml restart backend
 
 ## 升级
 
-等 main 上这次提交的 CI 跑完（GitHub 的 Actions 页面显示通过；镜像只在检查全部通过后才发布），然后：
+等 main 上这次提交的 CI 跑完（GitHub 的 Actions 页面显示通过；镜像只在检查全部通过后才发布）。这次升级要改数据库结构（加表、加列，或者像看板的汇总表那样启动时要回填）的，先手动备份一次（`deploy/db-backup.sh`，见「备份」），然后：
 
 ```sh
 git pull
