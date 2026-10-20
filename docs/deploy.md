@@ -601,6 +601,25 @@ db.commit()
 "
 ```
 
+### 发版本
+
+平时部署跟随 main，不用发版本。想给一批改动定一个版本号、写一份更新说明时，在 GitHub 的 Actions 页面选 Release，点 Run workflow 手动触发（只能选 main）：
+
+- **版本号升哪一位**：patch / minor / major，从最新的 `v*` 标签往上加；还没有标签时是 `v0.1.0`。也可以直接填一个版本号。
+- **先存草稿**：不勾时直接发布；勾了只存一份草稿 Release，在网页上看过、改过再点发布。
+
+它会在 main 的最新提交上发 Release，更新说明由 LLM 根据上一个版本以来合进 main 的 PR 和提交来写（[`scripts/release_notes.py`](../scripts/release_notes.py)）；首个版本写的是功能总览。然后把这个提交在 main 上测过的镜像重新打成 `:1.2.3` 和 `:latest`，不重新构建。所以要等 main 上这次提交的 CI 跑完再触发，没跑完时会直接失败。勾了草稿的，标签在你发布时才打，CI 会照常跑一遍并发布这两个镜像标签。
+
+第一次用之前，在仓库的 Settings → Secrets and variables → Actions 里配好 LLM（OpenAI 兼容的 `/chat/completions` 接口）：
+
+| 名字 | 放在 | 填什么 |
+| --- | --- | --- |
+| `RELEASE_LLM_BASE_URL` | Variables | 服务地址，如 `https://api.openai.com/v1` |
+| `RELEASE_LLM_MODEL` | Variables | 模型名 |
+| `RELEASE_LLM_API_KEY` | Secrets | API 密钥 |
+
+想先看看会给 LLM 什么材料：`python3 scripts/release_notes.py --version v0.2.0 --prev v0.1.0 --dry-run`（要装好 `gh` 并登录）。
+
 ### 镜像的可见性
 
 CI 第一次发布后，GHCR 上的两个包跟随仓库，默认是私有的，服务器拉不下来。到 GitHub 个人主页的 Packages，分别打开 `eidolon-sc-backend` 和 `eidolon-sc-frontend`，在 Package settings 的 Danger Zone 里改成 Public。公开的包不占账号的存储和流量额度，服务器不用登录就能拉取。改成公开后不能再改回私有。注意后端镜像里有 `backend/src` 的全部源代码，前端镜像里有构建后的前端代码：包公开就等于这部分代码公开了，即使仓库还是私有的。
