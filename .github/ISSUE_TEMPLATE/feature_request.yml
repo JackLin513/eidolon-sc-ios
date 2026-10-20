@@ -7,6 +7,14 @@ body:
       value: |
         动手前会先在 `.scratch/<feature>/` 写 spec 和 ticket；涉及已有设计决策的，请先看看 [docs/adr/](https://github.com/Sallyn0225/eidolon-sc/tree/main/docs/adr)。
 
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: 已有的 issue
+      options:
+        - label: 我在[已有的 issue](https://github.com/Sallyn0225/eidolon-sc/issues?q=is%3Aissue)（含已关闭的）里搜过，没有一样的
+          required: true
+
   - type: textarea
     id: problem
     attributes:
