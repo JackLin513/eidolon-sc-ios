@@ -61,7 +61,7 @@
 
 ## 角色
 
-角色写在 [`characters/characters.toml`](../characters/characters.toml) 里，每位一段 `[[characters]]`。现在原作的八个组合、28 位偶像都已经配好，人设、角色资料和头像也都随仓库提交（ADR-0003）。
+角色写在 [`characters/characters.toml`](../characters/characters.toml) 里，每位一段 `[[characters]]`。现在原作的八个组合、28 位偶像和事务员七草はづき都已经配好，人设、角色资料和头像也都随仓库提交（ADR-0003）。
 
 ```toml
 [[characters]]
@@ -243,7 +243,7 @@ docker compose exec backend eidolon story sync
 - 她自己的歌（她一个人唱的、她所在组合全员唱的），附收录的唱片和发售日；
 - 她上过和将要站上的演出：每个演出日的日期和会场，声优缺席的日子不算。
 
-资料在 [`characters/world.json`](../characters/world.json)，已提交进仓库。每位角色的显示名都要和资料里的偶像对得上，否则后端不会启动；没有这个文件时照常运行，只是不带世界设定。
+资料在 [`characters/world.json`](../characters/world.json)，已提交进仓库。每位角色的显示名都要和资料里的偶像（或事务所职员，例如事务员七草はづき）对得上，否则后端不会启动；没有这个文件时照常运行，只是不带世界设定。
 
 <details>
 <summary><b>更新世界设定（eidolon world sync）</b></summary>
@@ -353,7 +353,7 @@ flowchart LR
 制作人明确要她发照片时，她在回复里发来一张拍到她本人的照片，文字对话和通话里都一样，一个回合最多一张。是不是在要照片由判断模型认，拍什么、拍不拍由她决定：好感度在冷淡这一档时她不发，其余时候也可以按情境推掉；她不会主动发。照片由生图服务按她的外貌和当时的情境生成，只有全年龄的内容（[ADR-0023](adr/0023-photos-all-ages-without-image-check.md)）；照片存在数据库里，只有用户本人能看，管理者也看不到，随所在的对话一起删除，也会进备份（[ADR-0024](adr/0024-photos-stored-in-the-database.md)）。
 
 - **开启**：要有判断模型，再加部署者的生图（填 `NOVELAI_API_KEY`）或用户自带的生图。**没有判断模型的部署没有照片**，自带的生图也填不进去（提示「这个部署发不了照片」）。都没有时，她知道自己发不了照片，用户要时她用自己的话推掉；这句说明每个回合都带，不问判断模型。
-- **角色**：`characters.toml` 里要有 `photo_tag`（她的角色 tag，Danbooru 的写法、小写）和 `photo_appearance`（只写发色、发型、瞳色的外貌 tag），两项都配了她才能发，缺一项时启动会警告。现有 28 位都已配好。
+- **角色**：`characters.toml` 里要有 `photo_tag`（她的角色 tag，Danbooru 的写法、小写）和 `photo_appearance`（只写发色、发型、瞳色的外貌 tag），两项都配了她才能发，缺一项时启动会警告。现有 29 位都已配好。
 
 接口形式用 `NOVELAI_API_FORMAT` 二选一，不会自动探测：
 

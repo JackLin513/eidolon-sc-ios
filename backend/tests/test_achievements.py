@@ -332,7 +332,7 @@ async def test_all_together_show_in_order_as_hers_do(make_client: ClientFactory)
         "stages": [
             {"goal": 3, "draws": 1, "unlocked_at": None},
             {"goal": 10, "draws": 2, "unlocked_at": None},
-            {"goal": 28, "draws": 3, "unlocked_at": None},
+            {"goal": 29, "draws": 3, "unlocked_at": None},
         ],
     }
 

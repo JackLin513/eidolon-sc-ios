@@ -25,7 +25,7 @@ Voice · Text · Story recall · Memory shared across characters
 
 Eidolon-SC lets you, as **a producer at 283 Production**, text or call the idols from the game. She answers in her own Japanese voice, with Chinese subtitles. She can recall the episodes she lived through in the game. She also remembers what you tell her, and word "gets around" among the idols.
 
-All **28 idols** from the game's eight units are already set up and ready to talk. Once deployed publicly, anyone can sign in with Google or GitHub and use it.
+All **28 idols** from the game's eight units, plus the office clerk Nanakusa Hazuki, are already set up and ready to talk. Once deployed publicly, anyone can sign in with Google or GitHub and use it.
 
 > [!IMPORTANT]
 > This is an unofficial fan project, not affiliated with Bandai Namco or the rights holders of *THE iDOLM@STER* series; the characters are played by AI. Story data is **not distributed with this repository**; you must prepare it yourself ([ADR-0003](docs/adr/0003-corpus-and-voices-stay-private.md)). Through their replies, the characters indirectly pass story content on to signed-in users; for this risk, see [ADR-0006](docs/adr/0006-open-to-the-public-with-oauth.md).
@@ -78,7 +78,7 @@ All **28 idols** from the game's eight units are already set up and ready to tal
 </table>
 
 <details>
-<summary><b>Landing page</b>: a beam of white light splits into 28 image colors, one for each idol</summary>
+<summary><b>Landing page</b>: a beam of white light splits into 29 image colors, one for each character</summary>
 
 <br>
 

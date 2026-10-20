@@ -97,7 +97,7 @@ PER_CHARACTER = (
 since connected, gifts given, the rank of the tier reached."""
 
 ALL_CHARACTERS = (
-    Achievement("characters", _stages(3, 10, 28)),
+    Achievement("characters", _stages(3, 10, 29)),  # the last, every character
     Achievement("intimate_characters", _stages(1, 3, 10)),
     Achievement("days", _stages(7, 30, 100, 365)),
     Achievement("draws", _stages(10, 50, 200, 500)),
