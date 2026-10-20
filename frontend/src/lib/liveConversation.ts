@@ -39,6 +39,7 @@ import {
   type LineCard,
   type LineCardEvent,
 } from "@/lib/linePacing";
+import type { Rewarded } from "@/lib/rewards";
 import { CALM, type StandDirection } from "@/lib/standAnimations";
 import { directionOf, directStand, startingStand, type StandEvent, type StandState } from "@/lib/standDirection";
 
@@ -260,6 +261,9 @@ export type Ports = {
   /** The conversation list's line for her has changed: a turn was recorded, or a
    * conversation was started. Told even after the page is left. */
   onListChanged: () => void;
+  /** A turn recorded, typed or in a call, was rewarded (lib/rewards): told even after the page
+   * is left, for the dot on 「礼物」. */
+  onRewarded: (rewarded: Rewarded) => void;
   startCall: (
     conversationId: string,
     preferences: CallPreferences,
@@ -717,6 +721,7 @@ export class LiveConversation {
     // Recorded: the list's line for her now ends with it, even if the page has been left.
     if (event.type === "done") {
       this.ports.onListChanged();
+      if (event.rewarded) this.ports.onRewarded(event.rewarded);
       this.affinityLeft(event.affinity, event.message.affinity);
     }
   }

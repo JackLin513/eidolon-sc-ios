@@ -124,6 +124,7 @@ from eidolon.characters import Character
 from eidolon.clock import Clock
 from eidolon.config import FishAudioModel, ImageSettings
 from eidolon.gift_catalog import Gift
+from eidolon.happenings import Happenings, Rewarded
 from eidolon.judge import JudgeError
 from eidolon.llm import ChatLLM, ChatMessage, Reasoning, Tool, ToolCall, TurnLLMs
 from eidolon.memory import Memories, last_turn_query
@@ -202,12 +203,14 @@ class PhotosUsedUp:
 @dataclass(frozen=True)
 class TurnDone:
     """The recorded reply, with how the turn changed her affinity if it did; her affinity
-    after it (`Status.shown`), None where affinity is off; and her ending the conversation
-    after it (`ConversationEvent.shown`), None if she did not. The turn succeeded."""
+    after it (`Status.shown`), None where affinity is off; her ending the conversation
+    after it (`ConversationEvent.shown`), None if she did not; and what the turn was rewarded
+    with (`Happenings.turn_recorded`), None if nothing. The turn succeeded."""
 
     message: Message
     affinity: dict[str, str | None] | None = None
     ended: dict | None = None
+    rewarded: Rewarded | None = None
     type: Literal["done"] = field(default="done", init=False)
 
 
@@ -286,9 +289,13 @@ event as it goes out to the browser, except `SpeechDelta`, `SegmentComplete`,
 
 
 def shown(event: TurnEvent) -> dict:
-    """The event as it goes out to the browser: `done`'s reply as `Message.shown` has it."""
+    """The event as it goes out to the browser: `done`'s reply as `Message.shown` has it,
+    and what the turn was rewarded with as `Rewarded.shown` has it."""
     if isinstance(event, TurnDone):
-        return asdict(event) | {"message": event.message.shown()}
+        return asdict(event) | {
+            "message": event.message.shown(),
+            "rewarded": event.rewarded and event.rewarded.shown(),
+        }
     return asdict(event)
 
 FAILED = "角色暂时无法回复，请稍后再试。"
@@ -506,6 +513,7 @@ class ConversationEngine:
         affinities: Affinities | None = None,
         affinity_judge: AffinityJudge | None = None,
         photos: Photos | None = None,
+        happenings: Happenings | None = None,
     ) -> None:
         """Without `retrieval`, turns carry no story or character facts and find no
         memories. Each turn reads only the conversation's latest turns, as many as
@@ -514,7 +522,8 @@ class ConversationEngine:
         carry no world setting. Without `affinities`, turns change no affinity; with them,
         retrieval's judge judges what turns do to it, or without retrieval
         `affinity_judge`, which judges whether turns ask for a photo too. Without `photos`,
-        or without the judge model, no turn has a photo."""
+        or without the judge model, no turn has a photo. Each turn recorded is told to
+        `happenings`, if any."""
         self._store = store
         self._characters = characters
         self._gift_catalog = gift_catalog
@@ -527,6 +536,7 @@ class ConversationEngine:
         self._affinities = affinities
         self._affinity_judge = affinity_judge
         self._photos = photos
+        self._happenings = happenings
         self._ended_listeners: list[Callable[[str, EndsFor], None]] = []
 
     def on_ended(self, listener: Callable[[str, EndsFor], None]) -> None:
@@ -745,6 +755,9 @@ class ConversationEngine:
         except ConversationEnded:  # elsewhere, as the turn was under way
             yield TurnRejected(ENDED)
             return
+        rewarded = self._happenings and self._happenings.turn_recorded(
+            conversation.user_id, conversation.character_id
+        )
         if photo.id is not None and self._photos is not None:
             photo.recorded = True
             self._photos.recorded(photo.id)
@@ -770,7 +783,9 @@ class ConversationEngine:
             )
         if photo_asked and photo_asked.used_up_until is not None:
             yield PhotosUsedUp(photo_asked.used_up_until.isoformat())
-        yield TurnDone(reply.without_cues(), affinity and affinity.shown(), ended and ended.shown())
+        yield TurnDone(
+            reply.without_cues(), affinity and affinity.shown(), ended and ended.shown(), rewarded
+        )
 
     async def reach_out(self, conversation: Conversation, llm: ChatLLM) -> list[Segment]:
         """What she says first in `conversation`, the user not talking to her (GLOSSARY.md

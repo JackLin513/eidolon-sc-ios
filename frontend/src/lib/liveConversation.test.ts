@@ -15,6 +15,7 @@ import {
 import type { Call, CallHandlers, MicInUse } from "@/lib/call";
 import type { CallPreferences } from "@/lib/callPreferences";
 import { LiveConversation, type Ports } from "@/lib/liveConversation";
+import type { Rewarded } from "@/lib/rewards";
 import { CALM } from "@/lib/standAnimations";
 
 /** A call that has connected: records what the conversation asks of it. */
@@ -109,6 +110,8 @@ function opening(options: Options = {}) {
   /** Which conversation each call and text turn went to. */
   const sentTo: string[] = [];
   let listChanged = 0;
+  /** What each turn recorded was rewarded with, as the shell is told. */
+  const rewarded: Rewarded[] = [];
   /** What each reading of the preferences gave. */
   const loaded: CallPreferences[] = [];
   let stored: CallPreferences = {
@@ -131,6 +134,7 @@ function opening(options: Options = {}) {
     getAffinity: async () => options.affinity ?? null,
     getPhoto: async () => ({ status: "pending", reason: null }),
     onListChanged: () => listChanged++,
+    onRewarded: (r) => rewarded.push(r),
     startCall: (conversationId, preferences, handlers) => {
       sentTo.push(conversationId);
       // 麦克风一拨就打开；要看它打开之前的，测试自己换掉这个 port。
@@ -168,6 +172,7 @@ function opening(options: Options = {}) {
     preferences: () => stored,
     published: () => published,
     listChanged: () => listChanged,
+    rewarded,
   };
 }
 
@@ -2170,6 +2175,44 @@ describe("LiveConversation: the list", () => {
     await live.hangUp();
 
     expect(listChanged()).toBe(0);
+  });
+});
+
+describe("LiveConversation: rewards", () => {
+  const oneTurn: Rewarded = { draws: 1, reset_cards: 0, daily_tasks: ["one_turn"], rewarded_at: "2026-10-20T08:00:00+00:00" };
+
+  it("tells the shell what a text turn was rewarded with, and nothing for one rewarded with nothing", async () => {
+    const turns = [
+      scripted([
+        { type: "user", text: "你好" },
+        { type: "done", message: message(4, "character", "こんにちは"), affinity: null, rewarded: oneTurn },
+      ]),
+      scripted([
+        { type: "user", text: "再见" },
+        { type: "done", message: message(6, "character", "またね"), affinity: null, rewarded: null },
+      ]),
+    ];
+    const { live, rewarded } = await conversation({ turns: () => turns.shift()!() });
+    live.setDraft("你好");
+    await live.submit();
+    const once = [...rewarded];
+
+    live.setDraft("再见");
+    await live.submit();
+
+    expect(once).toEqual([oneTurn]);
+    expect(rewarded).toEqual([oneTurn]);
+  });
+
+  it("tells the shell what a turn in a call was rewarded with", async () => {
+    const { live, attempts, rewarded } = await conversation();
+    await connected(live, attempts);
+    const { handlers } = attempts[0];
+
+    handlers.onEvent({ type: "user", text: "你好", reply: 1 });
+    handlers.onEvent({ type: "done", message: message(4, "character", "こんにちは"), affinity: null, rewarded: oneTurn });
+
+    expect(rewarded).toEqual([oneTurn]);
   });
 });
 

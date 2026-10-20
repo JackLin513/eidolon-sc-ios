@@ -36,6 +36,7 @@ class GiftInput(BaseModel):
 
 def add_gift_routes(app: FastAPI, backend: Backend) -> None:
     catalog, gifts, store = backend.gift_catalog, backend.gifts, backend.store
+    happenings = backend.happenings
 
     @app.exception_handler(GiftsClosed)
     async def gifts_closed(_: Request, e: GiftsClosed) -> JSONResponse:
@@ -57,8 +58,11 @@ def add_gift_routes(app: FastAPI, backend: Backend) -> None:
     def read_state(user_id: UserId) -> dict:
         """What the user has, having been given the draw chances due today; whether gifts
         are open, and if so when the next chance is given and each character's affinity,
-        for choosing whom to give to."""
-        return gifts.state(user_id).shown()
+        for choosing whom to give to, and how far the user is with today's daily tasks."""
+        daily_tasks = happenings.daily_tasks(user_id)
+        return gifts.state(user_id).shown() | {
+            "daily_tasks": daily_tasks and daily_tasks.shown()
+        }
 
     @app.post("/api/gifts/draws")
     def draw(body: DrawInput, user_id: UserId) -> dict:
@@ -69,13 +73,15 @@ def add_gift_routes(app: FastAPI, backend: Backend) -> None:
     @app.post("/api/characters/{character_id}/gifts")
     def give(character_id: str, body: GiftInput, user_id: UserId) -> dict:
         """Give her one of the gift: where its record went, how her affinity changed, where
-        it is now, and how many of the gift are left. Not a turn: no limit or cooldown holds
+        it is now, how many of the gift are left, and what giving it was rewarded with (None
+        if nothing). Not a turn: no limit or cooldown holds
         it, and the user need not bring their own LLM."""
         try:
             given = gifts.give(user_id, body.gift_id, character_id)
         except NoSuchCharacter as e:
             raise HTTPException(404, str(e)) from None
-        return given.shown()
+        rewarded = happenings.gift_given(user_id, character_id)
+        return given.shown() | {"rewarded": rewarded and rewarded.shown()}
 
     @app.post("/api/gifts/resets")
     def use_reset_card(user_id: UserId) -> dict:

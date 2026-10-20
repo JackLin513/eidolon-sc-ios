@@ -40,9 +40,10 @@ import {
   countTicks,
   DASHBOARD_RANGES,
   DASHBOARD_REFRESH_MS,
-  DASHBOARD_TABS,
+  dailyTaskTiles,
   type Dashboard,
   dashboardHref,
+  dashboardTabs,
   type DashboardRange,
   type DashboardTab,
   durationRange,
@@ -323,7 +324,7 @@ function DashboardBody({
 }) {
   const { turns, calls } = board;
   const fade = cn(FADE, faded && STALE);
-  const tabs = DASHBOARD_TABS.filter((name) => name !== "affinity" || board.affinity !== null);
+  const tabs = dashboardTabs(board);
   const shown = tabs.includes(tab) ? tab : "overview";
   return (
     <Tabs value={shown} onValueChange={(value) => onTab(String(value))} aria-busy={loading} className="gap-6">
@@ -435,9 +436,12 @@ function DashboardBody({
         </DashboardGroup>
       </TabsContent>
 
-      {board.affinity !== null && (
+      {tabs.includes("affinity") && (
         <TabsContent value="affinity" keepMounted className={fade}>
-          <AffinityGroup section={board.affinity} />
+          <DashboardGroup title={t.affinity.title}>
+            {board.affinity !== null && <AffinityGroup section={board.affinity} />}
+            <DailyTaskTiles board={board} />
+          </DashboardGroup>
         </TabsContent>
       )}
 
@@ -757,15 +761,28 @@ function ReachOutTiles({ board }: { board: Dashboard }) {
   );
 }
 
+/** 「好感度」里的「每日任务」一小节：三项各做完几次；为空时（好感度关着、范围内也没人做完）不显示。 */
+function DailyTaskTiles({ board }: { board: Dashboard }) {
+  const tiles = dailyTaskTiles(board.daily_tasks);
+  if (tiles.length === 0) return null;
+  return (
+    <TileGroup caption={t.dailyTasks.title} grid="grid-cols-2 md:grid-cols-3">
+      {tiles.map((tile) => (
+        <StatTile key={tile.id} label={tile.label} value={tile.value} />
+      ))}
+    </TileGroup>
+  );
+}
+
 /**
- * 「好感度」一组（好感度生效时才有）：三张数字卡（进入冷却和涉及几位用户、不该说的话、操纵），
+ * 「好感度」一组里好感度的部分（好感度生效时才有）：三张数字卡（进入冷却和涉及几位用户、不该说的话、操纵），
  * 打分分布（样子同「回合结果」），按角色的表（不并进「按角色」那张）。都不落到任何一位用户。
  */
 function AffinityGroup({ section }: { section: AffinitySection }) {
   const words = t.affinity;
   const judged = section.levels.reduce((sum, n) => sum + n, 0);
   return (
-    <DashboardGroup title={words.title}>
+    <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <StatTile
           label={words.tiles.cooldowns}
@@ -793,7 +810,7 @@ function AffinityGroup({ section }: { section: AffinitySection }) {
       <DashboardCard title={words.characters.title}>
         <AffinityCharactersTable section={section} />
       </DashboardCard>
-    </DashboardGroup>
+    </>
   );
 }
 

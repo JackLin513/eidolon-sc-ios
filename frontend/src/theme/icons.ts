@@ -36,6 +36,9 @@ export { CircleAlert as FailureIcon } from "lucide-react";
 // 设置页「已绑定」的提示和它的关闭键（shadcn-redesign 18）。
 export { CircleCheck as SuccessIcon, X as CloseIcon } from "lucide-react";
 
+// 礼物页每日任务一节里没做完的一项（做完的用 SuccessIcon）。
+export { Circle as TaskOpenIcon } from "lucide-react";
+
 // 对话列表页首的公告铃铛（GLOSSARY.md「公告」）；后台导航的公告用 Megaphone。
 export { Bell as AnnouncementsBellIcon } from "lucide-react";
 

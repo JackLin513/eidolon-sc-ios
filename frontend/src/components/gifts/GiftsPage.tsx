@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { FailureNotice } from "@/components/app/FailureNotice";
 import { MarkedAvatar } from "@/components/app/MarkedAvatar";
@@ -9,10 +9,11 @@ import { PageShell } from "@/components/app/PageShell";
 import { SectionHeading } from "@/components/app/SubpageHeader";
 import { useDirectory, useWide } from "@/components/conversations/ConversationDirectory";
 import { useProducerTimezone } from "@/components/conversations/useProducerTimezone";
+import { DailyTasksSection } from "@/components/gifts/DailyTasksSection";
 import { DrawDialog, type Drawing } from "@/components/gifts/DrawDialog";
 import { GivenToast, type GivenNotice } from "@/components/gifts/GivenToast";
 import { GivePanel, type Giving } from "@/components/gifts/GivePanel";
-import { MyGifts } from "@/components/gifts/MyGifts";
+import { MY_GIFTS_ID, MyGifts } from "@/components/gifts/MyGifts";
 import { ResetCards } from "@/components/gifts/ResetCards";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -20,9 +21,11 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { copy } from "@/i18n";
 import { ApiError, type Character } from "@/lib/api";
 import { arrange } from "@/lib/conversationList";
+import { dailyTasksView, withDone } from "@/lib/dailyTasks";
 import { toFailure, type Failure } from "@/lib/failure";
 import {
   chosenFirst,
+  drawDots,
   drawGifts,
   drawNote,
   emptyNote,
@@ -38,6 +41,7 @@ import {
   type GiftState,
   type Given,
 } from "@/lib/gifts";
+import { later } from "@/lib/rewards";
 import { cn } from "@/lib/utils";
 import { CloseIcon, DrawIcon, GiftIcon } from "@/theme/icons";
 
@@ -51,7 +55,7 @@ const NOTICE_MS = 8000;
 
 /**
  * 礼物页（DESIGN.md「礼物页」）：导航栏右边整块一栏，内容最宽 `max-w-3xl`、居中，手机和电脑同一个版式。
- * 上面是抽奖台，有重置卡时下面一条重置卡条，再下面「我的礼物」；点一件（或单抽结果上的「送给谁…」）拉出送礼面板，
+ * 上面是抽奖台，下面「每日任务」一节（「去对话」去对话列表，「挑一件」滚到我的礼物），有重置卡时再下面一条重置卡条，最后「我的礼物」；点一件（或单抽结果上的「送给谁…」）拉出送礼面板，
  * 送出后面板收起、底部出提示，页面不跳走。好感度和礼物没开放时整页是「礼物暂时没有开放」，「礼物」照样留在导航里；
  * 抽奖、送礼或用重置卡时才知道没开放（收到「没开放」的 409）也切成这样。
  * 从对话页跳来（`pick`）时页首下面一条「给{角色名}挑一件礼物」：点哪件礼物，面板里都已选好她、排在第一个，
@@ -70,7 +74,9 @@ export function GiftsPage({ pick }: { pick: GiftsFor | null }) {
   const isReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)", false);
   const isWide = useWide();
   const timeZone = useProducerTimezone();
-  const { characters, latest, preferences, go, refresh } = useDirectory();
+  const { characters, latest, preferences, go, refresh, giftsRead, rewardedAt } = useDirectory();
+  // 在这一页上送礼刚做完的每日任务：那一行打勾时弹一下。
+  const [justDone, setJustDone] = useState<string[]>([]);
   const router = useRouter();
   // 点过 ✕ 的预选：地址换掉以前（重新渲染要等一下）就不再显示。地址换回 /gifts 以后忘掉，
   // 这一页没卸下又从结束卡带着她跳来时（通话层由外壳画在礼物页上）照样预选。
@@ -92,15 +98,33 @@ export function GiftsPage({ pick }: { pick: GiftsFor | null }) {
     return () => clearTimeout(timer);
   }, [notice]);
 
+  /** 读到的礼物状态：这一页照它显示，开关和最近一次到账也告诉外壳（在这一页上就记成看过，「礼物」上不出点）。 */
+  const applyGiftState = useCallback(
+    (s: GiftState) => {
+      setState(s);
+      giftsRead(s);
+    },
+    [giftsRead],
+  );
+
+  // 别处（通话里、别的设备）到账了，这一页读到的落后了：重读一遍，那一节跟着更新。每个时刻只重读一次。
+  const rereadFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!state || !rewardedAt || later(state.rewarded_at, rewardedAt) === state.rewarded_at) return;
+    if (rereadFor.current === rewardedAt) return;
+    rereadFor.current = rewardedAt;
+    getGiftState().then(applyGiftState, () => {});
+  }, [state, rewardedAt, applyGiftState]);
+
   useEffect(() => {
     Promise.all([getGiftState(), getGiftCatalog()]).then(
       ([s, c]) => {
-        setState(s);
+        applyGiftState(s);
         setCatalog(c);
       },
       (e) => setFailure(toFailure(e)),
     );
-  }, []);
+  }, [applyGiftState]);
 
   async function draw(all: boolean) {
     setFailure(null);
@@ -113,7 +137,7 @@ export function GiftsPage({ pick }: { pick: GiftsFor | null }) {
       setDrawing({ all, result });
       // 先按抽到的把背包补上，「送给谁…」马上打开时件数就是对的；随后再整个读一遍。
       setState((s) => s && withDrawn(s, result, catalog ?? []));
-      getGiftState().then(setState, (e) => setFailure(toFailure(e)));
+      getGiftState().then(applyGiftState, (e) => setFailure(toFailure(e)));
     } catch (e) {
       setDrawing(null);
       failed(e);
@@ -122,7 +146,10 @@ export function GiftsPage({ pick }: { pick: GiftsFor | null }) {
 
   /** 收到「没开放」的 409 时整页切成未开放，别的失败在页上方说。 */
   function failed(e: unknown) {
-    if (e instanceof ApiError && e.giftsClosed) setState((s) => s && { ...s, open: false });
+    if (e instanceof ApiError && e.giftsClosed) {
+      setState((s) => s && { ...s, open: false });
+      giftsRead({ open: false, rewarded_at: null });
+    }
     else setFailure(toFailure(e));
   }
 
@@ -143,17 +170,20 @@ export function GiftsPage({ pick }: { pick: GiftsFor | null }) {
       const given = await giveGift(to.id, giving.gift.id);
       setGiveOpen(false);
       setState((s) => s && afterGiving(s, giving.gift.id, to.id, given));
+      // 做完了任务：那一行当场打勾、弹一下（到账就在这一页上，重读回来记成看过，不出点）。
+      if (given.rewarded) setJustDone(given.rewarded.daily_tasks);
       setNotice({
         key: Date.now(),
         character: to,
         note: givenNote(given, to.name, new Date(), timeZone),
       });
       refresh();
+      getGiftState().then(applyGiftState, () => {});
     } catch (e) {
       setGiveOpen(false);
       failed(e);
       // 另一个标签页可能刚送掉了最后一件：重新读一遍背包。
-      getGiftState().then(setState, () => {});
+      getGiftState().then(applyGiftState, () => {});
     } finally {
       setSending(false);
     }
@@ -168,7 +198,7 @@ export function GiftsPage({ pick }: { pick: GiftsFor | null }) {
       // 没开放切成未开放；没有卡了、确认框打开期间她们自己回到了信任，在页上方说，卡没有扣。
       failed(e);
     }
-    getGiftState().then(setState, (e) => setFailure(toFailure(e)));
+    getGiftState().then(applyGiftState, (e) => setFailure(toFailure(e)));
   }
 
   // 没开放时没有下次，抽奖台和「还没有礼物」也不显示。
@@ -200,6 +230,23 @@ export function GiftsPage({ pick }: { pick: GiftsFor | null }) {
               isDrawing={drawing !== null}
               onDraw={draw}
             />
+            {state.daily_tasks && (
+              <DailyTasksSection
+                view={dailyTasksView(
+                  state.daily_tasks,
+                  nextDrawText(state.daily_tasks.renews_at, new Date(), timeZone),
+                  state.backpack.length > 0,
+                )}
+                justDone={justDone}
+                onAction={(action) => {
+                  if (action === "converse") go("/conversations");
+                  else
+                    document
+                      .getElementById(MY_GIFTS_ID)
+                      ?.scrollIntoView({ behavior: isReducedMotion ? "auto" : "smooth", block: "start" });
+                }}
+              />
+            )}
             {state.reset_cards > 0 && (
               <ResetCards
                 count={state.reset_cards}
@@ -260,8 +307,12 @@ function withDrawn(state: GiftState, result: DrawResult, catalog: GiftInfo[]): G
 
 /** 送出一件以后的礼物状态：这件按接口给的件数（送完的不再列），她的好感度换成现在的。 */
 function afterGiving(state: GiftState, giftId: string, characterId: string, given: Given): GiftState {
+  const { rewarded } = given;
   return {
     ...state,
+    draws: state.draws + (rewarded?.draws ?? 0),
+    daily_tasks: state.daily_tasks && withDone(state.daily_tasks, rewarded?.daily_tasks ?? []),
+    rewarded_at: later(state.rewarded_at, rewarded?.rewarded_at ?? null),
     backpack: state.backpack
       .map((b) => (b.gift_id === giftId ? { ...b, count: given.left } : b))
       .filter((b) => b.count > 0),
@@ -290,7 +341,7 @@ function PickedFor({ character, onCancel }: { character: Character; onCancel: ()
 }
 
 /**
- * 抽奖台：`bg-muted` 圆角块，「抽奖 还有 n 次」、7 个小点（攒了几次亮几个）和一句说明；右边「抽一次」，
+ * 抽奖台：`bg-muted` 圆角块，「抽奖 还有 n 次」、7 个小点（攒了几次亮几个，每日任务给的超过 7 次时全亮、后面写「+n」）和一句说明；右边「抽一次」，
  * 攒了 2 次以上时旁边多一个「全部抽完」，次数为 0 时「抽一次」不可用。
  */
 function DrawDesk({
@@ -307,6 +358,7 @@ function DrawDesk({
   isDrawing: boolean;
   onDraw: (all: boolean) => void;
 }) {
+  const dots = drawDots(draws, max);
   return (
     <section aria-label={t.draw.title} className="flex flex-wrap items-center gap-4 rounded-2xl bg-muted p-5">
       <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -314,10 +366,13 @@ function DrawDesk({
           <span className="text-header">{t.draw.title}</span>
           <span className="text-sm text-muted-foreground tabular-nums">{t.draw.left(draws)}</span>
         </p>
-        <span role="img" aria-label={t.draw.label(draws, max)} className="flex gap-1">
+        <span role="img" aria-label={dots.label} className="flex items-center gap-1">
           {Array.from({ length: max }, (_, i) => (
-            <span key={i} className={cn("size-2 rounded-full", i < draws ? "bg-foreground" : "bg-foreground/15")} />
+            <span key={i} className={cn("size-2 rounded-full", i < dots.lit ? "bg-foreground" : "bg-foreground/15")} />
           ))}
+          {dots.more && (
+            <span className="ml-0.5 text-meta leading-none text-muted-foreground tabular-nums">{dots.more}</span>
+          )}
         </span>
         <p className="text-subtitle text-muted-foreground">{drawNote(draws, max, next)}</p>
       </div>
