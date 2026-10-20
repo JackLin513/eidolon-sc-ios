@@ -58,7 +58,7 @@ All **28 idols** from the game's eight units are already set up and ready to tal
       <p align="center"><sub><b>Photos</b>: ask, and she takes one of herself in the moment</sub></p>
     </td>
     <td width="50%">
-      <img src="docs/images/gifts.webp" alt="Gifts page: the draw counter, a reset card and the gifts in the backpack">
+      <img src="docs/images/gifts.webp" alt="Gifts page: the draw counter, daily tasks, achievements, a reset card and the gifts in the backpack">
       <p align="center"><sub><b>Gifts</b>: draw every day, give her the ones she likes</sub></p>
     </td>
   </tr>
@@ -94,7 +94,7 @@ All **28 idols** from the game's eight units are already set up and ready to tal
 - 🇯🇵 **Japanese voice + Chinese subtitles**: She answers in Japanese, keeping her verbal tics, with a Chinese subtitle for every line ([ADR-0001](docs/adr/0001-japanese-replies-with-chinese-subtitles.md)). Proper names are pronounced from a readings table.
 - 🎭 **A living stand**: During a call her Spine stand from the game breathes, blinks, moves her lips and changes expression with her emotion. When the game releases new cards, the weekly sync makes them wearable.
 - 📷 **She sends photos**: Ask, and she takes one of herself in the moment and sends it. All-ages only ([configuration guide](docs/configuration.en.md#photos)).
-- 💗 **Affinity and gifts**: What you say draws her closer or pushes her away; offend her too much and she hangs up, or ends the conversation. Draw gifts every day and give them to her; she responds. Daily tasks earn you extra draws.
+- 💗 **Affinity and gifts**: What you say draws her closer or pushes her away; offend her too much and she hangs up, or ends the conversation. Draw gifts every day and give them to her; she responds. Daily tasks and achievements earn you extra draws.
 - 💌 **She reaches out**: When you've been away a while, she says a few words first in your conversation; the closer you are, the sooner she does ([configuration guide](docs/configuration.en.md#reach-outs)).
 
 **What she remembers**
