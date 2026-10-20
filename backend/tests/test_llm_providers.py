@@ -4,6 +4,7 @@ serves it, for the settings page and the admin console to fill in the address, p
 and model with. Driven through the backend's external API, the catalogs served by a fake
 over HTTP."""
 
+import sqlite3
 from dataclasses import replace
 
 import httpx
@@ -215,3 +216,25 @@ async def test_before_the_catalogs_are_fetched_there_are_none_and_asking_fetches
 
     assert catalog.fetches == 1
     assert [p["id"] for p in await providers(admin)][:1] == ["commandcode"]
+
+
+async def test_catalogs_fetched_before_there_were_providers_are_fetched_again_soon(
+    make_client: ClientFactory, github: FakeIdentityProvider, settings: Settings
+):
+    catalog = FakeCatalog(MODELS_DEV)
+    clock = FakeClock()
+    admin = await admin_on(make_client, github, clock, catalog)
+    await admin.post(REFRESH)
+    # As an older version fetched them, without the providers.
+    with sqlite3.connect(settings.database_path) as db:
+        db.execute("DELETE FROM price_catalog_providers")
+        db.execute("DELETE FROM price_catalog_offers")
+    db.close()
+    clock.advance(minutes=11)
+    deployed = await admin_on(make_client, github, clock, catalog)  # as after a deploy
+
+    assert await providers(deployed) == []
+    await settled(deployed)
+
+    assert catalog.fetches == 2
+    assert [p["id"] for p in await providers(deployed)][:1] == ["commandcode"]

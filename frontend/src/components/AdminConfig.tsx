@@ -8,7 +8,7 @@ import { Notice } from "@/components/app/admin/Notice";
 import { NumberInput } from "@/components/app/admin/NumberInput";
 import { StatusDot } from "@/components/app/StatusDot";
 import { FailureNotice } from "@/components/app/FailureNotice";
-import { LLMProviderPicker } from "@/components/app/LLMProviderPicker";
+import { LLMProviderPicker, type ModelLister } from "@/components/app/LLMProviderPicker";
 import { ModelChoiceField } from "@/components/app/ModelChoiceField";
 import { EffortField, ExtraBodyField, useEffortHint } from "@/components/app/ReasoningEffortFields";
 import { OpenFormProvider, useOpenForm } from "@/components/admin/OpenForm";
@@ -66,6 +66,7 @@ import {
   type ItemName,
   type ReadOnlyItem,
   UNLIMITED,
+  listItemModels,
 } from "@/lib/adminConfig";
 import type { FishAudioModel, LLMProtocol } from "@/lib/localOwnKeys";
 import { EFFORT_UNSET, effortLabel } from "@/lib/reasoningEffort";
@@ -331,6 +332,21 @@ function ItemCard({
       {children}
     </AvailableItem>
   );
+}
+
+/**
+ * 向服务商查模型槽能用的模型（ADR-0027）：没填 key 时用正在生效的那把，只在它生效的地址上用。
+ * 还没填地址时是 null；不是模型槽是 undefined。
+ */
+function modelLister(name: ItemName, form: Form): ModelLister | null | undefined {
+  if (name !== "chat_llm" && name !== "memory_llm") return undefined;
+  const base_url = form.base_url?.trim() ?? "";
+  const api_key = form.api_key?.trim() ?? "";
+  if (!base_url) return null;
+  return {
+    key: `${name} ${form.protocol} ${base_url} ${api_key}`,
+    ask: () => listItemModels(name, { protocol: form.protocol, base_url, ...(api_key && { api_key }) }),
+  };
 }
 
 /**
@@ -603,6 +619,7 @@ function AvailableItem({
                         baseUrl={form.base_url}
                         model={form.model}
                         onPick={(pick) => setForm((f) => ({ ...f, ...pick }))}
+                        lister={modelLister(name, form)}
                       />
                       {selectField()}
                     </Fragment>

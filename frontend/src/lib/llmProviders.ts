@@ -82,7 +82,7 @@ export function matchesProvider(provider: LLMProvider, query: string): boolean {
 }
 
 /** 这个模型对不对得上搜索框里的字：名字和模型名都算。 */
-export function matchesOffer(offer: LLMOffer, query: string): boolean {
+export function matchesOffer(offer: Pick<LLMOffer, "model" | "name">, query: string): boolean {
   return matches(`${offer.name} ${offer.model}`.toLowerCase(), query);
 }
 

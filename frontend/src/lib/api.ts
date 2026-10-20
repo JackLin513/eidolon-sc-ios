@@ -5,6 +5,7 @@ import {
   turnOwnKeys,
   type BailianRegion,
   type FishAudioModel,
+  type LLMProtocol,
   type LocalImage,
   type LocalLLM,
   type LocalModel,
@@ -509,6 +510,17 @@ export async function getEffortHint(
  * server has fetched the catalog. No key is sent. */
 export async function getLLMProviders(): Promise<LLMProvider[]> {
   return (await json<{ providers: LLMProvider[] }>(await api("/api/account/keys/llm/providers"))).providers;
+}
+
+/** The models the service at `base_url` offers the user's key, as it lists them (ADR-0027); nothing is
+ * kept. Fails with what the service said, or with when to ask again if asked too often. */
+export async function listOwnLLMModels(protocol: LLMProtocol, base_url: string, api_key: string): Promise<string[]> {
+  const listed = await api("/api/account/keys/llm/models", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ protocol, base_url, api_key }),
+  });
+  return (await json<{ models: string[] }>(listed)).models;
 }
 
 /** The models `provider` serves that an LLM may be picked from, each with its own address and protocol. */

@@ -263,6 +263,25 @@ EXTRA_BODY_REFUSED = (
 """What an extra request body may not set: the adapters write these to make the request."""
 
 
+NOT_AN_ADDRESS = "接口地址不是一个网址，应该像 https://api.example.com/v1 这样"
+
+
+def checked_base_url(value: str) -> str:
+    """`value`, an LLM's address, without surrounding spaces; raises ValueError
+    (`NOT_AN_ADDRESS`) unless it is a web address: not a link pasted with its brackets
+    (`[https://…](…)`), nor a host alone."""
+    url = value.strip()
+    try:
+        parts = urlsplit(url)
+        named = parts.scheme in ("http", "https") and parts.hostname is not None
+        parts.port  # noqa: B018 - raises ValueError for one that is not a number
+    except ValueError:
+        named = False
+    if not named:
+        raise ValueError(NOT_AN_ADDRESS)
+    return url
+
+
 def checked_extra_body(value: object) -> dict[str, Any]:
     """`value` as an extra request body, merged into each request last; raises ValueError
     saying why it is not one: it must be a JSON object, and not set what makes the

@@ -551,6 +551,8 @@ class Catalog:
         self._providers = sorted(
             (Provider(*row) for row in providers), key=lambda p: (p.name.casefold(), p.id)
         )
+        # Fetched before there were providers to keep (an older version's), or none found.
+        self._no_providers = not providers
         served: dict[str, list[Offer]] = {}
         for row in offers:
             served.setdefault(row[0], []).append(Offer(*row))
@@ -571,12 +573,16 @@ class Catalog:
         )
 
     def refresh_soon(self, missing: bool = False) -> None:
-        """Fetch the catalogs again in the background if they are stale (`STALE_AFTER`),
+        """Fetch the catalogs again in the background if they are stale (`STALE_AFTER`, or
+        fetched without the providers an LLM is picked from, as before there were any),
         or if a model is `missing` a price and they were last tried `MISSING_AFTER` ago;
         a failed fetch is not tried again for `RETRY_AFTER`. Returns at once."""
         state, now = self._state, self._clock()
         tried = max((d for d in [state.fetched_at, state.failed_at] if d), default=None)
-        stale = state.fetched_at is None or now - state.fetched_at >= STALE_AFTER
+        stale = (
+            state.fetched_at is None or now - state.fetched_at >= STALE_AFTER
+            or self._no_providers
+        )
         due = (
             tried is None
             or (stale and now - tried >= RETRY_AFTER)

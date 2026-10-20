@@ -42,6 +42,7 @@ from eidolon.config import (
     ReasoningEffort,
     SttKey,
     SttProvider,
+    checked_base_url,
     checked_extra_body,
     effort_problem,
 )
@@ -50,6 +51,7 @@ from eidolon.own_keys import NO_PHOTOS, BroughtKeys, OwnKeyRejected, named_servi
 from eidolon.price_catalog import describe_offer, describe_provider, describe_thinking
 from eidolon.reach_outs import ReachOutsOff
 from eidolon.store import LastSignInMethod
+from eidolon.throttle import Throttle
 from eidolon.sessions import (
     SESSION_COOKIE,
     SignedIn,
@@ -88,6 +90,17 @@ ApiKey = Secret[
 """A user's own key as a request brings it, never shown in a repr or traceback."""
 
 
+class OwnLLMListInput(BaseModel):
+    """Where the user's LLM is and their key, for the service to list the models it offers
+    the key."""
+
+    base_url: str = Field(min_length=1, max_length=500)
+    api_key: ApiKey
+    protocol: LLMProtocol = "chat-completions"
+
+    _base_url = field_validator("base_url")(checked_base_url)
+
+
 class OwnLLMInput(BaseModel):
     """A model of the user's own, as their browser keeps it and brings it with each text
     turn and call: its effort and extra body checked here each time, as the admin console
@@ -100,6 +113,8 @@ class OwnLLMInput(BaseModel):
     protocol: LLMProtocol = "chat-completions"
     reasoning_effort: ReasoningEffort | None = None
     extra_body: dict[str, Any] | None = None
+
+    _base_url = field_validator("base_url")(checked_base_url)
 
     @field_validator("extra_body", mode="before")
     @classmethod
@@ -390,6 +405,7 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
         clear_session_cookie(response, settings)
 
     own_keys = backend.own_keys
+    throttle = Throttle(backend.clock)
 
     @app.exception_handler(OwnKeyRejected)
     async def own_key_rejected(_: Request, e: OwnKeyRejected) -> JSONResponse:
@@ -415,7 +431,8 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
         failed, or with why its effort or extra body cannot be sent. Its address and model
         as the browser is to keep them."""
         own = body.chat_settings()
-        await own_keys.check_llm(own)
+        with throttle.asking(user_id):
+            await own_keys.check_llm(own)
         return {"base_url": own.text.base_url, "model": own.text.model}
 
     @app.post("/api/account/keys/memory-llm/check")
@@ -424,7 +441,8 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
         it, as `check_own_llm` does their LLM; why it failed comes after saying it was this
         one."""
         own = body.settings()
-        await own_keys.check_memory_llm(own)
+        with throttle.asking(user_id):
+            await own_keys.check_memory_llm(own)
         return {"base_url": own.base_url, "model": own.model}
 
     @app.get("/api/account/keys/llm/efforts")
@@ -449,8 +467,23 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
             return None
         return describe_thinking(thinking, protocol)
 
+    @app.post("/api/account/keys/llm/models")
+    async def list_own_llm_models(body: OwnLLMListInput, user_id: UserId) -> dict:
+        """The models the user's key is offered at the address, as the service lists them
+        (`listing.list_models`), for the settings page to pick one from; keeping nothing
+        here, and asked as often as a key is tried (`throttle`). 422 with what the service
+        said if it did not list them."""
+        with throttle.asking(user_id):
+            try:
+                models = await own_keys.list_llm_models(
+                    body.protocol, body.base_url, body.api_key.get_secret_value()
+                )
+            except OwnKeyRejected as e:
+                raise HTTPException(422, f"获取模型失败：{e}") from None
+        return {"models": models}
+
     @app.get("/api/account/keys/llm/providers")
-    def llm_providers(user_id: UserId) -> dict:
+    def llm_providers(user_id: UserId, response: Response) -> dict:
         """The providers an LLM may be picked from, as models.dev lists them
         (`price_catalog.parse_offers`): where each serves its models and over which
         protocol, for the settings page and the admin console to fill in, and every address
@@ -461,23 +494,28 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
         providers = catalog.providers()
         if not providers:
             catalog.refresh_soon(missing=True)
+        else:  # the same for everyone, and fetched again once a day
+            response.headers["Cache-Control"] = "private, max-age=3600"
         return {"providers": [describe_provider(p, catalog.offers(p.id)) for p in providers]}
 
     @app.get("/api/account/keys/llm/providers/{provider}/models")
     def llm_provider_models(
-        user_id: UserId, provider: Annotated[str, Path(max_length=200)]
+        user_id: UserId, provider: Annotated[str, Path(max_length=200)], response: Response
     ) -> dict:
         """The models `provider` serves that an LLM may be picked from, each with where and
         over which protocol (a provider may serve some over another); none for a provider
         not listed."""
         offers = backend.prices.catalog.offers(provider)
+        if offers:
+            response.headers["Cache-Control"] = "private, max-age=3600"
         return {"models": [describe_offer(o) for o in offers]}
 
     @app.post("/api/account/keys/tts/check")
     async def check_own_tts(body: OwnTTSInput, user_id: UserId) -> dict:
         """Try the user's own key for speech synthesis before their browser keeps it,
         keeping nothing here; 422 with what the service said if the try failed."""
-        await own_keys.check_tts(body.api_key.get_secret_value(), body.model)
+        with throttle.asking(user_id):
+            await own_keys.check_tts(body.api_key.get_secret_value(), body.model)
         return {}
 
     @app.post("/api/account/keys/stt/check")
@@ -486,7 +524,8 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
         their browser keeps it, keeping nothing here; 422 with what the service said if
         the try failed. A DashScope key is tried in each region: the one it works in, for
         the browser to keep with it (None for Soniox)."""
-        key = await own_keys.check_stt(body.provider, body.api_key.get_secret_value())
+        with throttle.asking(user_id):
+            key = await own_keys.check_stt(body.provider, body.api_key.get_secret_value())
         return {"region": key.region}
 
     @app.post("/api/account/keys/image/check")
@@ -499,7 +538,8 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
         if backend.config.judge_settings is None:
             raise OwnKeyRejected(NO_PHOTOS)
         own = body.settings()
-        await own_keys.check_image(own)
+        with throttle.asking(user_id):
+            await own_keys.check_image(own)
         return {"base_url": own.base_url, "model": own.model}
 
     @app.post("/api/account/consent", status_code=204)
