@@ -28,8 +28,8 @@ from eidolon.gifts import Reward
 
 SCHEMA = """
 -- One row per user, achievement and character (empty for those of all the characters
--- together) with anything kept towards it: how much (a tier's rank among
--- `achievements.TIERS_REACHED` for the tier reached), and for the days come the last of them
+-- together) with anything kept towards it: how much (seconds for the time talked in calls,
+-- a tier's rank among `achievements.TIERS_REACHED` for the tier reached), and for the days come the last of them
 -- (`affinity.day_of`). A character complete has a row too, `complete`, of the reset cards it
 -- gave.
 CREATE TABLE IF NOT EXISTS achievement_progress (
@@ -142,15 +142,17 @@ class Progress:
     number."""
 
     achievement: Achievement
-    progress: int
+    progress: float
     unlocked: dict[int, datetime]
 
     def shown(self) -> dict:
-        """As the browser is told it: the tier reached by its name, never her affinity."""
+        """As the browser is told it: the tier reached by its name, never her affinity; the
+        time talked in whole seconds."""
         tier = self.achievement.id == "tier"
+        progress = int(self.progress)
         return {
             "id": self.achievement.id,
-            "progress": _tier(self.progress) if tier else self.progress,
+            "progress": _tier(progress) if tier else progress,
             "stages": [
                 {
                     "goal": _tier(s.goal) if tier else s.goal,
@@ -183,28 +185,45 @@ class Hers:
 
 
 def keep(
-    db: sqlite3.Connection, user_id: str, character_id: str, now: datetime, today: date,
-    *, turns: int = 0, gifts: int = 0,
+    db: sqlite3.Connection, user_id: str, character_id: str | None, now: datetime, today: date,
+    *, turns: int = 0, gifts: int = 0, call_time: float = 0, draws: int = 0,
+    tier: Tier | None = None,
 ) -> list[tuple[Reward, Unlocked | Completed]]:
-    """Keep that the user had `turns` turns with the character and gave her `gifts` gifts
-    `now`, on `today`, and unlock the stages reached by now: the rewards due for every stage
-    unlocked and her being complete, newly or not, each with what it is for."""
-    for achievement, count in (("turns", turns), ("gifts", gifts)):
-        if count:
+    """Keep that the user, `now`, on `today`, had `turns` turns with the character, gave her
+    `gifts` gifts, talked with her `call_time` seconds in a call, drew `draws` times (no
+    character for that alone), and left her affinity in `tier` (None for unchanged); and
+    unlock the stages reached by now: the rewards due for every stage unlocked and her being
+    complete, newly or not, each with what it is for. A turn or a gift makes `today` a day
+    come; a call or a draw alone does not."""
+    for achievement, character, count in (
+        ("turns", character_id, turns),
+        ("gifts", character_id, gifts),
+        ("call_time", character_id, call_time),
+        ("draws", _ALL, draws),
+    ):
+        if count and character is not None:
             db.execute(
                 "INSERT INTO achievement_progress (user_id, achievement, character_id, count)"
                 " VALUES (?, ?, ?, ?) ON CONFLICT (user_id, achievement, character_id)"
                 " DO UPDATE SET count = count + excluded.count",
-                (user_id, achievement, character_id, count),
+                (user_id, achievement, character, count),
             )
-    db.execute(
-        "INSERT INTO achievement_progress"
-        " (user_id, achievement, character_id, count, last_day) VALUES (?, 'days', ?, 1, ?)"
-        " ON CONFLICT (user_id, achievement, character_id) DO UPDATE"
-        " SET count = count + 1, last_day = excluded.last_day"
-        " WHERE last_day < excluded.last_day",
-        (user_id, _ALL, today.isoformat()),
-    )
+    if tier in TIERS_REACHED and character_id is not None:
+        db.execute(
+            "INSERT INTO achievement_progress (user_id, achievement, character_id, count)"
+            " VALUES (?, 'tier', ?, ?) ON CONFLICT (user_id, achievement, character_id)"
+            " DO UPDATE SET count = MAX(count, excluded.count)",
+            (user_id, character_id, TIERS_REACHED.index(tier) + 1),
+        )
+    if turns or gifts:
+        db.execute(
+            "INSERT INTO achievement_progress"
+            " (user_id, achievement, character_id, count, last_day) VALUES (?, 'days', ?, 1, ?)"
+            " ON CONFLICT (user_id, achievement, character_id) DO UPDATE"
+            " SET count = count + 1, last_day = excluded.last_day"
+            " WHERE last_day < excluded.last_day",
+            (user_id, _ALL, today.isoformat()),
+        )
     return _unlock(db, user_id, character_id, now)
 
 
@@ -239,13 +258,15 @@ def of_all(db: sqlite3.Connection, user_id: str) -> list[Progress]:
 
 
 def _unlock(
-    db: sqlite3.Connection, user_id: str, character_id: str, now: datetime
+    db: sqlite3.Connection, user_id: str, character_id: str | None, now: datetime
 ) -> list[tuple[Reward, Unlocked | Completed]]:
-    """Unlock the stages reached of the character's own achievements and of those of all
-    together; the rewards due for each stage reached, and for her being complete if she is."""
+    """Unlock the stages reached of the character's own achievements, if any character, and
+    of those of all together; the rewards due for each stage reached, and for her being
+    complete if she is."""
     counts = _counts(db, user_id)
     reached = [
-        (a, character_id, counts.get((a.id, character_id), 0)) for a in PER_CHARACTER
+        (a, character_id, counts.get((a.id, character_id), 0))
+        for a in PER_CHARACTER if character_id is not None
     ] + [(a, _ALL, _of_all(counts, a.id)) for a in ALL_CHARACTERS]
     due: list[tuple[Reward, Unlocked | Completed]] = []
     for achievement, character, progress in reached:
@@ -262,7 +283,7 @@ def _unlock(
                 Reward(f"achievement:{achievement.id}:{character}:{n}", stage.draws),
                 Unlocked(achievement.id, character or None, n, stage.draws),
             ))
-    if _complete(_unlocked(db, user_id, character_id)):
+    if character_id is not None and _complete(_unlocked(db, user_id, character_id)):
         db.execute(
             "INSERT INTO achievement_progress (user_id, achievement, character_id, count)"
             " VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
@@ -275,16 +296,16 @@ def _unlock(
     return due
 
 
-def _counts(db: sqlite3.Connection, user_id: str) -> dict[tuple[str, str], int]:
+def _counts(db: sqlite3.Connection, user_id: str) -> dict[tuple[str, str], float]:
     """Everything kept towards the user's achievements, by achievement and character."""
-    rows: Iterable[tuple[str, str, int]] = db.execute(
+    rows: Iterable[tuple[str, str, float]] = db.execute(
         "SELECT achievement, character_id, count FROM achievement_progress WHERE user_id = ?",
         (user_id,),
     )
     return {(a, c): count for a, c, count in rows}
 
 
-def _of_all(counts: dict[tuple[str, str], int], achievement: str) -> int:
+def _of_all(counts: dict[tuple[str, str], float], achievement: str) -> float:
     """How far the user has come with one of the achievements of all the characters
     together, worked out from each character's own where it is."""
     if achievement == "characters":

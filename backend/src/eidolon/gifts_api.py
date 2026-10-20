@@ -10,6 +10,8 @@ admin console does. Gifts not open, drawing, giving, using a reset card and gran
 are refused with 409 and `gifts_closed`, told apart from a cooldown's 409, so the page shows
 them closed."""
 
+from dataclasses import replace
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -72,8 +74,13 @@ def add_gift_routes(app: FastAPI, backend: Backend) -> None:
     @app.post("/api/gifts/draws")
     def draw(body: DrawInput, user_id: UserId) -> dict:
         """Draw once or every chance, having been given those due today: what each draw
-        gave, in order, and how many chances are left."""
-        return gifts.draw(user_id, all=body.all).shown()
+        gave, in order, how many chances are left, and what drawing was rewarded with (None
+        if nothing), its draw chances among those left."""
+        drawn = gifts.draw(user_id, all=body.all)
+        rewarded = happenings.drew(user_id, len(drawn.drawn))
+        if rewarded is not None:
+            drawn = replace(drawn, draws=drawn.draws + rewarded.draws)
+        return drawn.shown() | {"rewarded": rewarded and rewarded.shown()}
 
     @app.post("/api/characters/{character_id}/gifts")
     def give(character_id: str, body: GiftInput, user_id: UserId) -> dict:
@@ -85,7 +92,7 @@ def add_gift_routes(app: FastAPI, backend: Backend) -> None:
             given = gifts.give(user_id, body.gift_id, character_id)
         except NoSuchCharacter as e:
             raise HTTPException(404, str(e)) from None
-        rewarded = happenings.gift_given(user_id, character_id)
+        rewarded = happenings.gift_given(user_id, character_id, given.affinity.tier)
         return given.shown() | {"rewarded": rewarded and rewarded.shown()}
 
     @app.get("/api/characters/{character_id}/achievements")

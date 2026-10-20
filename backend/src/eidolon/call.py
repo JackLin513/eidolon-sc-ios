@@ -14,7 +14,8 @@ counts towards the user's limit, and what the browser is told when the backend e
 is `CallOutcome`'s to decide; the call only reports to it. So is the call's activity
 record: each turn of the call has one under it, and its speech recognition and synthesis
 are recorded under it by `CallMeter`, which also lays each error in the pipeline at the
-door of the service it came from.
+door of the service it came from. A call that connected is kept as it is settled, for stats
+and towards the achievements (`Happenings.call_ended`).
 Whose turn it is during the call, what is a follow-on and what interrupts the character, is
 likewise `TurnTaking`'s.
 
@@ -30,7 +31,6 @@ from contextlib import nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from functools import partial
 from typing import Any, Literal, Protocol
 
 import httpx
@@ -141,6 +141,7 @@ from eidolon.own_keys import (
     Service,
 )
 from eidolon.greetings import FISH_TTS_HTTP_URL
+from eidolon.happenings import Happenings
 from eidolon.proxy import ProxiedWebsocket, ProxyRoutes, masked, open_client
 from eidolon.readings import Reading, pronunciation_dictionary
 from eidolon.reply_format import SegmentComplete, SegmentDelta, SpeechDelta
@@ -943,9 +944,11 @@ class Calls:
         speech: Speech,
         clock: Clock,
         store: Store,
+        happenings: Happenings,
     ) -> None:
         """Calls last as long, and take as many turns, as `limits` says as each starts.
-        Calls of users banned or deleted meanwhile, as `store` has them, are hung up."""
+        Calls of users banned or deleted meanwhile, as `store` has them, are hung up. Each
+        that connected is kept in `store`, then told to `happenings`."""
         self._settings = settings
         self._engine = engine
         self._admissions = admissions
@@ -954,6 +957,7 @@ class Calls:
         self._speech = speech
         self._clock = clock
         self._store = store
+        self._happenings = happenings
         self._webrtc = SmallWebRTCRequestHandler(
             ice_servers=[RTCIceServer(**server) for server in settings.ice_servers]
         )
@@ -1007,9 +1011,12 @@ class Calls:
         fails before the call is served, it never connected; once it is served, it is
         settled as it ends, letting go of the keys it brought."""
         admission = self._admissions.call(user_id, character.id, brought)
-        outcome = CallOutcome(
-            admission, self._limits(), self._clock, partial(self._store.keep_call, conversation.id)
-        )
+
+        def keep(connected_at: datetime, duration_s: float) -> None:
+            self._store.keep_call(conversation.id, connected_at, duration_s)
+            self._happenings.call_ended(user_id, character.id, duration_s)
+
+        outcome = CallOutcome(admission, self._limits(), self._clock, keep)
         return await self._start(
             user_id, conversation, character, options, offer, admission, outcome, brought.image
         )

@@ -1,7 +1,8 @@
 """What happens between the user and the characters, as it happens (GLOSSARY.md「每日任务」):
-a turn recorded, typed or in a call alike, and a gift given. Each is told here once, and
-whatever it counts towards is kept and rewarded here: today's daily tasks, and the
-achievements (`achievements`).
+a turn recorded, typed or in a call alike, and a gift given, each with the tier it leaves her
+affinity in; a call that connected ended; and drawing. Each is told here once, and whatever
+it counts towards is kept and rewarded here: today's daily tasks, turns and gifts alone, and
+the achievements (`achievements`).
 
 The daily tasks are the same each day (`DAILY_TASKS`), the day in Beijing wherever the user
 is (`affinity.day_of`), by the clock as each happens: what was done the day before counts
@@ -34,7 +35,7 @@ from typing import Literal
 from eidolon import achievements
 from eidolon.achievements import Completed, Hers, Progress, Unlocked
 from eidolon.activity import ActivityLog
-from eidolon.affinity import day_of, next_day
+from eidolon.affinity import Tier, day_of, next_day
 from eidolon.clock import Clock
 from eidolon.database import connect
 from eidolon.gifts import Gifts, GiftsClosed, Reward
@@ -151,15 +152,29 @@ class Happenings:
         with self._db:
             self._db.executescript(_SCHEMA + achievements.SCHEMA)
 
-    def turn_recorded(self, user_id: str, character_id: str) -> Rewarded | None:
-        """A turn of the user's with the character was recorded, now: what it was rewarded
-        with; None if nothing."""
-        return self._happened(user_id, character_id, Counts(turns=1, gifts=0))
+    def turn_recorded(
+        self, user_id: str, character_id: str, tier: Tier | None = None
+    ) -> Rewarded | None:
+        """A turn of the user's with the character was recorded, now, leaving her affinity
+        in `tier` (None if not known): what it was rewarded with; None if nothing."""
+        return self._happened(user_id, character_id, Counts(turns=1, gifts=0), tier=tier)
 
-    def gift_given(self, user_id: str, character_id: str) -> Rewarded | None:
-        """The user gave the character a gift, now: what it was rewarded with; None if
-        nothing."""
-        return self._happened(user_id, character_id, Counts(turns=0, gifts=1))
+    def gift_given(
+        self, user_id: str, character_id: str, tier: Tier | None = None
+    ) -> Rewarded | None:
+        """The user gave the character a gift, now, leaving her affinity in `tier` (None if
+        not known): what it was rewarded with; None if nothing."""
+        return self._happened(user_id, character_id, Counts(turns=0, gifts=1), tier=tier)
+
+    def call_ended(self, user_id: str, character_id: str, seconds: float) -> Rewarded | None:
+        """A call of the user's with the character that connected ended, now, having lasted
+        `seconds` once it had: what it was rewarded with; None if nothing."""
+        return self._happened(user_id, character_id, Counts(0, 0), call_time=seconds)
+
+    def drew(self, user_id: str, times: int) -> Rewarded | None:
+        """The user drew `times` times, now: what it was rewarded with; None if nothing.
+        Told once the gifts have let go of their lock, which is taken again to reward it."""
+        return self._happened(user_id, None, Counts(0, 0), draws=times)
 
     def daily_tasks(self, user_id: str) -> DailyTasks | None:
         """How far the user is with today's daily tasks; None while closed."""
@@ -186,30 +201,45 @@ class Happenings:
     def close(self) -> None:
         self._db.close()
 
-    def _happened(self, user_id: str, character_id: str, happened: Counts) -> Rewarded | None:
-        """Keep what `happened` with the character towards today's daily tasks and the
-        achievements, and give the rewards for the tasks it did and the stages it unlocked:
-        what it was rewarded with; None if nothing, or if closed."""
+    def _happened(
+        self,
+        user_id: str,
+        character_id: str | None,
+        happened: Counts,
+        *,
+        call_time: float = 0,
+        draws: int = 0,
+        tier: Tier | None = None,
+    ) -> Rewarded | None:
+        """Keep what `happened` with the character (None for none) towards today's daily
+        tasks, if anything, and with it the time talked in a call, the times drawn and the
+        tier her affinity was left in towards the achievements, and give the rewards for the
+        tasks it did and the stages it unlocked: what it was rewarded with; None if nothing,
+        or if closed."""
         done: dict[str, str | Unlocked | Completed] = {}
         """Each task's id, stage unlocked or character completed, by the key it is rewarded
         by."""
 
         def due(db: sqlite3.Connection, now: datetime) -> list[Reward]:
             today = day_of(now)
-            counts = _counts(db, user_id, today) + happened
-            db.execute(
-                "INSERT INTO daily_task_progress (user_id, day, turns, gifts) VALUES (?, ?, ?, ?)"
-                " ON CONFLICT (user_id) DO UPDATE"
-                " SET day = excluded.day, turns = excluded.turns, gifts = excluded.gifts",
-                (user_id, today.isoformat(), counts.turns, counts.gifts),
-            )
-            done.update({_key(today, t): t.id for t in DAILY_TASKS})
-            rewards = [
-                Reward(_key(today, t), t.draws) for t in DAILY_TASKS if t.of(counts) >= t.goal
-            ]
+            rewards = []
+            if happened != Counts(0, 0):
+                counts = _counts(db, user_id, today) + happened
+                db.execute(
+                    "INSERT INTO daily_task_progress (user_id, day, turns, gifts)"
+                    " VALUES (?, ?, ?, ?) ON CONFLICT (user_id) DO UPDATE"
+                    " SET day = excluded.day, turns = excluded.turns, gifts = excluded.gifts",
+                    (user_id, today.isoformat(), counts.turns, counts.gifts),
+                )
+                done.update({_key(today, t): t.id for t in DAILY_TASKS})
+                rewards = [
+                    Reward(_key(today, t), t.draws) for t in DAILY_TASKS
+                    if t.of(counts) >= t.goal
+                ]
             unlocked = achievements.keep(
                 db, user_id, character_id, now, today,
                 turns=happened.turns, gifts=happened.gifts,
+                call_time=call_time, draws=draws, tier=tier,
             )
             done.update({reward.key: what for reward, what in unlocked})
             return rewards + [reward for reward, _ in unlocked]
@@ -221,7 +251,7 @@ class Happenings:
         except GiftsClosed:  # closed since: as if it had been all along
             return None
         except Exception:
-            log.exception("keeping what happened failed; the daily tasks miss it")
+            log.exception("keeping what happened failed; the daily tasks and achievements miss it")
             return None
         if not given:
             return None

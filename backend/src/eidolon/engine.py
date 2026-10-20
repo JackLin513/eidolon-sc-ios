@@ -756,7 +756,7 @@ class ConversationEngine:
             yield TurnRejected(ENDED)
             return
         rewarded = self._happenings and self._happenings.turn_recorded(
-            conversation.user_id, conversation.character_id
+            conversation.user_id, conversation.character_id, affinity and affinity.tier
         )
         if photo.id is not None and self._photos is not None:
             photo.recorded = True
