@@ -60,6 +60,7 @@ from eidolon.stats import add_stats_routes
 from eidolon.service_status import add_service_status_routes
 from eidolon.stand_outfits import list_path, outfit_path
 from eidolon.store import Conversation, ConversationEvent, IsCurrent, ReachOut, Recorded
+from eidolon.throttle import Throttled
 from eidolon.turn_outcome import TurnOutcome
 from eidolon.usage import OverLimit
 from eidolon.world import World
@@ -310,6 +311,16 @@ def create_app(backend: Backend) -> FastAPI:
     @app.exception_handler(CallsUnavailable)
     async def calls_unavailable(_: Request, e: CallsUnavailable) -> JSONResponse:
         return JSONResponse({"detail": str(e)}, status_code=503)
+
+    @app.exception_handler(Throttled)
+    async def throttled(_: Request, e: Throttled) -> JSONResponse:
+        """Asked services on the internet too often: when to ask again, in words too."""
+        wait = e.retry_after
+        later = f"{wait} 秒" if wait < 120 else f"{math.ceil(wait / 60)} 分钟"
+        return JSONResponse(
+            {"detail": f"{e}，请 {later}后再试"}, status_code=429,
+            headers={"Retry-After": str(wait)},
+        )
 
     @app.exception_handler(UnknownService)
     async def unknown_service(_: Request, e: UnknownService) -> JSONResponse:

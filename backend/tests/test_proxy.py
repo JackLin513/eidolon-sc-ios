@@ -402,14 +402,18 @@ KNOWN = "https://llm.known.example/v1"
 
 @pytest.fixture
 def catalog(settings: Settings) -> Catalog:
-    """The price catalogs as fetched: a provider at `KNOWN`, and those that are not on the
-    internet by name: one run on this machine, as models.dev lists LM Studio, and others
-    at an address or a name for this machine."""
+    """The price catalogs as fetched: a provider at `KNOWN`, one whose model says it is
+    served at an address of its own, and those that are not on the internet by name: one
+    run on this machine, as models.dev lists LM Studio, and others at an address or a name
+    for this machine."""
     fake = FakeCatalog({
         "known": {"id": "known", "api": KNOWN, "models": {}},
         "lmstudio": {"id": "lmstudio", "api": "http://lmstudio.example/v1", "models": {}},
         "private": {"id": "private", "api": "https://10.0.0.8/v1", "models": {}},
         "loopback": {"id": "loopback", "api": "https://llm.localhost/v1", "models": {}},
+        "relayed": {"id": "relayed", "models": {
+            "m": {"id": "m", "provider": {"api": "https://llm.relayed.example/anthropic/v1"}},
+        }},
     })
     catalog = Catalog(settings.database_path, FakeClock(), fake.transport())
     catalog.refresh()
@@ -519,8 +523,8 @@ def test_known_providers_are_the_catalogs_hosts_and_those_written_down_by_name_o
     known = [
         host for host in (
             "llm.known.example", "LLM.Known.Example", "generativelanguage.googleapis.com",
-            "openrouter.ai", "lmstudio.example", "10.0.0.8", "llm.localhost",
-            "llm.unknown.example",
+            "openrouter.ai", "llm.relayed.example", "lmstudio.example", "10.0.0.8",
+            "llm.localhost", "llm.unknown.example",
         )
         if catalog.known_provider(host)
     ]
@@ -528,7 +532,7 @@ def test_known_providers_are_the_catalogs_hosts_and_those_written_down_by_name_o
 
     assert known == [
         "llm.known.example", "LLM.Known.Example", "generativelanguage.googleapis.com",
-        "openrouter.ai",
+        "openrouter.ai", "llm.relayed.example",
     ]
 
 

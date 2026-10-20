@@ -5,12 +5,14 @@ import {
   turnOwnKeys,
   type BailianRegion,
   type FishAudioModel,
+  type LLMProtocol,
   type LocalImage,
   type LocalLLM,
   type LocalModel,
   type OwnService,
   type SttProvider,
 } from "@/lib/localOwnKeys";
+import type { LLMOffer, LLMProvider } from "@/lib/llmProviders";
 import type { EffortHint } from "@/lib/reasoningEffort";
 import { detectTimezone } from "@/lib/timezone";
 import type { Speaking } from "@/lib/call";
@@ -502,6 +504,29 @@ export async function getEffortHint(
 ): Promise<EffortHint | null> {
   const query = new URLSearchParams({ protocol, base_url: baseUrl, model });
   return json(await api(`/api/account/keys/llm/efforts?${query}`, { signal }));
+}
+
+/** The providers an LLM may be picked from, as models.dev lists them (ADR-0027); none before the
+ * server has fetched the catalog. No key is sent. */
+export async function getLLMProviders(): Promise<LLMProvider[]> {
+  return (await json<{ providers: LLMProvider[] }>(await api("/api/account/keys/llm/providers"))).providers;
+}
+
+/** The models the service at `base_url` offers the user's key, as it lists them (ADR-0027); nothing is
+ * kept. Fails with what the service said, or with when to ask again if asked too often. */
+export async function listOwnLLMModels(protocol: LLMProtocol, base_url: string, api_key: string): Promise<string[]> {
+  const listed = await api("/api/account/keys/llm/models", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ protocol, base_url, api_key }),
+  });
+  return (await json<{ models: string[] }>(listed)).models;
+}
+
+/** The models `provider` serves that an LLM may be picked from, each with its own address and protocol. */
+export async function getLLMProviderModels(provider: string): Promise<LLMOffer[]> {
+  const path = `/api/account/keys/llm/providers/${encodeURIComponent(provider)}/models`;
+  return (await json<{ models: LLMOffer[] }>(await api(path))).models;
 }
 
 /**

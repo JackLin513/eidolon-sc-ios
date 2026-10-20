@@ -74,6 +74,7 @@ from eidolon.config import (
     JevSettings,
     JudgeSettings,
     EXEMPTING_SERVICES,
+    LLMProtocol,
     LLMSettings,
     OWN_KEYS_PROXIED,
     PROXIED_SERVICES,
@@ -857,6 +858,12 @@ def _proxy_settings(values: Values) -> ProxySettings:
     )
 
 
+def _bare(url: str) -> str:
+    """`url` as written in either of the ways it may be: without surrounding spaces, a
+    slash at the end, or capitals."""
+    return url.strip().rstrip("/").lower()
+
+
 def _names_user(url: str | None) -> bool:
     return url is not None and "@" in urlsplit(url).netloc
 
@@ -1101,6 +1108,26 @@ class LiveConfig:
         if self._in_effect(item):
             values |= self._overrides.get(name, {})
         return values
+
+    async def list_models(
+        self, name: Literal["chat_llm", "memory_llm"], protocol: LLMProtocol, base_url: str,
+        api_key: str | None,
+    ) -> list[str]:
+        """The models the service at `base_url` offers the key, as it lists them, for the
+        admin console to pick the model `name` is from: the key in effect now when none is
+        given, but only at the address it is in effect for, never sent to another. Raises
+        ConfigRejected saying why not."""
+        if not api_key:
+            current = self.effective(name)
+            if _bare(base_url) != _bare(current["base_url"] or ""):
+                raise ConfigRejected("换了接口地址，要先填这家的 API key")
+            api_key = current["api_key"]
+            if not api_key:
+                raise ConfigRejected("还没有 API key，请填写")
+        try:
+            return await self._clients.list_models(name, protocol, base_url, api_key)
+        except LLMError as e:
+            raise ConfigRejected(str(e)[:MAX_REASON_LENGTH]) from None
 
     def lease(self) -> DeployerLease:
         """The deployer's keys for a turn or call starting now, held until it releases

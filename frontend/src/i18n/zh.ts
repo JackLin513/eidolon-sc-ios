@@ -74,6 +74,23 @@ export const zh = {
       onlyAHint: "仅供参考，不影响保存。",
     },
   },
+  /** 选 LLM 的服务商和模型（ADR-0027）：设置页的自带 LLM 和后台的模型共用。 */
+  llmPicker: {
+    provider: "服务商",
+    providerHint: "选你用的服务商或编程套餐，接口类型和地址会自动填好。找不到就选「手动填写」。",
+    manual: "手动填写",
+    search: "搜索服务商，例如 DeepSeek、智谱、Coding Plan",
+    noProvider: "没有找到这家，可以选「手动填写」",
+    model: "选择模型",
+    modelHint: "选了会填好下面的模型名和接口类型。列表里没有的，直接填模型名。",
+    modelPlaceholder: "从列表里选",
+    modelSearch: "搜索模型",
+    noModel: "没有找到这个模型，可以直接在模型名里填",
+    fetch: "获取可用模型",
+    fetching: "获取中…",
+    fetched: (n: number) => `服务商列出了 ${n} 个模型。`,
+    fetchNeedsKey: "填好接口地址和 API key 后可以获取。",
+  },
   conversationList: {
     title: "对话",
     noneSelected: "选一位偶像开始对话",
