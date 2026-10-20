@@ -1,6 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { achievementRow, completeRow, type Achievement } from "@/lib/achievements";
+import {
+  achievementRow,
+  achievementsSeenUpTo,
+  completeRow,
+  isUnseen,
+  keepAchievementsSeenUpTo,
+  latestUnlock,
+  unseenRows,
+  type Achievement,
+  type HerAchievements,
+} from "@/lib/achievements";
 
 const AT = "2026-09-25T12:00:00+00:00";
 
@@ -109,5 +119,108 @@ describe("集齐那一行", () => {
       name: "集齐了",
       reward: null,
     });
+  });
+});
+
+/** 这台浏览器的 localStorage，放在内存里。 */
+function storage(initial: Record<string, string> = {}) {
+  const items = new Map(Object.entries(initial));
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => items.get(key) ?? null,
+    setItem: (key: string, value: string) => void items.set(key, value),
+    removeItem: (key: string) => void items.delete(key),
+  });
+  return items;
+}
+
+describe("这台设备上看过的成就", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("按用户、按范围分开记，读回来就是记下的", () => {
+    storage();
+
+    keepAchievementsSeenUpTo("seen-1", "hikari", "2026-10-20T08:00:00+00:00");
+    keepAchievementsSeenUpTo("seen-1", "all", "2026-10-19T08:00:00+00:00");
+    keepAchievementsSeenUpTo("seen-2", "hikari", "2026-10-18T08:00:00+00:00");
+
+    expect(achievementsSeenUpTo("seen-1", "hikari")).toBe("2026-10-20T08:00:00+00:00");
+    expect(achievementsSeenUpTo("seen-1", "all")).toBe("2026-10-19T08:00:00+00:00");
+    expect(achievementsSeenUpTo("seen-2", "hikari")).toBe("2026-10-18T08:00:00+00:00");
+    expect(achievementsSeenUpTo("seen-2", "all")).toBeNull();
+  });
+
+  it("没存过、或者存的不是时刻，算没看过", () => {
+    storage({ "eidolon.achievementsSeen.broken-1.hikari": "{not json" });
+
+    expect(achievementsSeenUpTo("broken-1", "hikari")).toBeNull();
+    expect(achievementsSeenUpTo("never-1", "hikari")).toBeNull();
+  });
+
+  it("别的标签页记下了更晚的，留着那个", () => {
+    storage({ "eidolon.achievementsSeen.tabs-1.hikari": JSON.stringify("2026-10-20T09:00:00+00:00") });
+
+    keepAchievementsSeenUpTo("tabs-1", "hikari", "2026-10-20T08:00:00+00:00");
+
+    expect(achievementsSeenUpTo("tabs-1", "hikari")).toBe("2026-10-20T09:00:00+00:00");
+  });
+
+  it("存储用不了时退回这一页的内存", () => {
+    const unreachable = () => {
+      throw new DOMException("denied", "SecurityError");
+    };
+    vi.stubGlobal("localStorage", { getItem: unreachable, setItem: unreachable, removeItem: unreachable });
+
+    expect(achievementsSeenUpTo("private-1", "hikari")).toBeNull();
+    expect(() => keepAchievementsSeenUpTo("private-1", "hikari", "2026-10-20T08:00:00+00:00")).not.toThrow();
+    expect(achievementsSeenUpTo("private-1", "hikari")).toBe("2026-10-20T08:00:00+00:00");
+  });
+});
+
+/** 她的成就：回合前两个阶段、礼物第一阶段各在什么时刻解锁，集齐了没有。 */
+function hers({
+  turns = [null, null],
+  gifts = null,
+  completedAt = null,
+}: {
+  turns?: (string | null)[];
+  gifts?: string | null;
+  completedAt?: string | null;
+} = {}): HerAchievements {
+  return {
+    achievements: [
+      { id: "turns", progress: 120, stages: turns.map((at, i) => ({ goal: [10, 100][i], draws: i + 1, unlocked_at: at })) },
+      { id: "gifts", progress: 3, stages: [{ goal: 1, draws: 1, unlocked_at: gifts }] },
+    ],
+    complete: { completed_at: completedAt, reset_cards: 1 },
+  };
+}
+
+describe("她的成就上的点", () => {
+  const before = "2026-10-20T08:00:00+00:00";
+  const after = "2026-10-20T09:00:00+00:00";
+
+  it("最近解锁的时刻是所有阶段和集齐里最晚的那个；一个都没解锁是 null", () => {
+    expect(latestUnlock(hers({ turns: [before, after], gifts: before }))).toBe(after);
+    expect(latestUnlock(hers({ turns: [before, before], gifts: before, completedAt: after }))).toBe(after);
+    expect(latestUnlock(hers())).toBeNull();
+  });
+
+  it("菜单键：没存过时有解锁就亮，看过以后不亮，新解锁又亮", () => {
+    expect(isUnseen(before, null)).toBe(true);
+    expect(isUnseen(before, before)).toBe(false);
+    expect(isUnseen(after, before)).toBe(true);
+    expect(isUnseen(null, null)).toBe(false);
+  });
+
+  it("比的是时刻，不是写法", () => {
+    expect(isUnseen("2026-10-20T16:00:00+08:00", before)).toBe(false);
+  });
+
+  it("面板里带点的是解锁晚于打开前看过的那几行，连同集齐", () => {
+    const her = hers({ turns: [before, after], gifts: before, completedAt: after });
+
+    expect(unseenRows(her, before)).toEqual(new Set(["turns", "complete"]));
+    expect(unseenRows(her, after)).toEqual(new Set());
+    expect(unseenRows(her, null)).toEqual(new Set(["turns", "gifts", "complete"]));
   });
 });

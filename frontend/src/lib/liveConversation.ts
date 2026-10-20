@@ -1,8 +1,8 @@
 // The conversation page for one character: opening her conversation (or starting a new
 // one), its log, the text turn under way, the call and how the call layer is shown, her
 // stand as the call moves it on (by the rules in `standDirection.ts`), and her affinity as
-// each turn leaves it, and the photos she sent as they come out, kept outside React so the page
-// only renders a snapshot and passes on clicks.
+// each turn leaves it, the stages of her achievements each turn unlocks, and the photos she sent
+// as they come out, kept outside React so the page only renders a snapshot and passes on clicks.
 
 import type { AffinityChange, AffinityStatus } from "@/lib/affinity";
 import {
@@ -39,7 +39,7 @@ import {
   type LineCard,
   type LineCardEvent,
 } from "@/lib/linePacing";
-import type { Rewarded } from "@/lib/rewards";
+import { later, type Rewarded } from "@/lib/rewards";
 import { CALM, type StandDirection } from "@/lib/standAnimations";
 import { directionOf, directStand, startingStand, type StandEvent, type StandState } from "@/lib/standDirection";
 
@@ -68,11 +68,19 @@ export type CallState =
  * status line (spec「页首标识」「变化胶囊和通话里的提示」). */
 export const CUE_MS = 2600;
 
+/** How long the trophy pops up beside her affinity badge as a turn unlocks stages of her
+ * achievements (spec「她的对话页」). */
+export const TROPHY_MS = 3000;
+
 /** How often a photo she sent that is still being generated is asked after (GLOSSARY.md「照片」). */
 export const PHOTO_POLL_MS = 2000;
 
 /** A change of her affinity just recorded, shown for `CUE_MS`; `key` tells one from the next. */
 export type AffinityCue = { change: AffinityChange; key: number };
+
+/** Stages of her achievements a turn just unlocked, shown for `TROPHY_MS`: the draws they gave;
+ * `key` tells one from the next. */
+export type Trophy = { draws: number; key: number };
 
 /** A call under way: dialing or connected. Leaving the page hangs it up. */
 export type LiveCall = Extract<CallState, { phase: "dialing" | "connected" }>;
@@ -157,6 +165,14 @@ export type Snapshot = {
   affinity: AffinityStatus | null;
   /** The change of her affinity the last turn made, for `CUE_MS` after it was recorded. */
   affinityCue: AffinityCue | null;
+  /** Stages of her own achievements (lib/achievements) the last turn unlocked, for `TROPHY_MS`
+   * after it was recorded; not while the call layer covers the header, nor for another
+   * character's stages or those of all together. */
+  trophy: Trophy | null;
+  /** When a turn on this page last unlocked stages of her own achievements (ISO, server time),
+   * shown under the call layer or not: the page's dots light up at once, before her achievements
+   * are read again. Null until one does. */
+  herUnlockedAt: string | null;
   /** She is in a cooldown with the user (GLOSSARY.md「冷却」), until `affinity.cooldown_until`:
    * no text turns, no calls, until it ends by itself. A new conversation can still be started. */
   cooling: boolean;
@@ -204,6 +220,8 @@ const IDLE: Omit<State, "log" | "card" | "stand" | "dial" | "callPhotoId"> = {
   failure: null,
   affinity: null,
   affinityCue: null,
+  trophy: null,
+  herUnlockedAt: null,
   newPhoto: false,
 };
 
@@ -301,6 +319,8 @@ export class LiveConversation {
   private pacing: ReturnType<typeof setTimeout> | null = null;
   /** Stops showing the change of her affinity; null while none is shown. */
   private cueing: ReturnType<typeof setTimeout> | null = null;
+  /** Stops showing the trophy; null while none is shown. */
+  private trophying: ReturnType<typeof setTimeout> | null = null;
   /** Ends the cooldown she is in as it is due to; null while she is in none. */
   private thawing: ReturnType<typeof setTimeout> | null = null;
   /** Asks after the photos in the log still being generated when next due to; null while it
@@ -349,6 +369,7 @@ export class LiveConversation {
     this.disposed = true;
     if (this.pacing !== null) clearTimeout(this.pacing);
     if (this.cueing !== null) clearTimeout(this.cueing);
+    if (this.trophying !== null) clearTimeout(this.trophying);
     if (this.thawing !== null) clearTimeout(this.thawing);
     if (this.polling !== null) clearTimeout(this.polling);
     this.attempt = null;
@@ -721,9 +742,32 @@ export class LiveConversation {
     // Recorded: the list's line for her now ends with it, even if the page has been left.
     if (event.type === "done") {
       this.ports.onListChanged();
-      if (event.rewarded) this.ports.onRewarded(event.rewarded);
+      if (event.rewarded) {
+        this.ports.onRewarded(event.rewarded);
+        this.unlocked(event.rewarded);
+      }
       this.affinityLeft(event.affinity, event.message.affinity);
     }
+  }
+
+  /** A recorded turn was rewarded: for stages of her own achievements, the trophy pops up with
+   * the draws they gave, for `TROPHY_MS`, unless the call layer covers the header. */
+  private unlocked(rewarded: Rewarded): void {
+    const hers = rewarded.achievements.filter((a) => a.character_id === this.characterId);
+    if (hers.length === 0) return;
+    const herUnlockedAt = later(this.state.herUnlockedAt, rewarded.rewarded_at);
+    const layer = this.state.layer;
+    if (layer !== null && !layer.collapsed) {
+      this.update({ herUnlockedAt });
+      return;
+    }
+    if (this.trophying !== null) clearTimeout(this.trophying);
+    const draws = hers.reduce((n, a) => n + a.draws, 0);
+    this.update({ herUnlockedAt, trophy: { draws, key: (this.state.trophy?.key ?? 0) + 1 } });
+    this.trophying = setTimeout(() => {
+      this.trophying = null;
+      this.update({ trophy: null });
+    }, TROPHY_MS);
   }
 
   /** Her affinity as a recorded turn left it, and how the turn changed it, shown for

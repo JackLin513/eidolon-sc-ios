@@ -1,8 +1,14 @@
 // 成就（GLOSSARY.md「成就」）：她的对话页面板和礼物页那一小节里，每一行怎么写。一个成就分几个阶段，按序号解锁，
 // 第 n 阶段给 n 次抽奖；她按角色算的阶段全部解锁叫集齐，另给重置卡。门槛、奖励、解锁了哪几个都由后端给，这里只管
 // 写成一行：名字、阶段点、只写下一个阶段的进度、下一阶段的奖励。档位只有档位名，不给好感度的数值。
+//
+// 新解锁的点：看过只记在这台设备上，和导航「礼物」上的点（lib/rewards）同一套存法：localStorage 里按用户、按范围
+// （某位角色的 id，合起来的是 `ALL`）存看过的最近解锁时刻（eidolon.achievementsSeen.<用户 id>.<范围>）；
+// 存不进去时只在这次页面里记着；还没存过时任何解锁都算没看过（上线补算出来的照样出点）。
 
 import type { Tier } from "@/lib/affinity";
+import { api, json } from "@/lib/api";
+import { keepSeenOnDevice, later, seenOnDevice } from "@/lib/rewards";
 import { copy } from "@/i18n";
 
 /** 一个阶段：门槛（档位类是档位名）、解锁时给几次抽奖、解锁时刻（ISO，没解锁是 null）。 */
@@ -16,6 +22,11 @@ export type Complete = { completed_at: string | null; reset_cards: number };
 
 /** 读她的成就接口给的：她按角色算的四个，和集齐那一行。开关关着时接口给 null。 */
 export type HerAchievements = { achievements: Achievement[]; complete: Complete };
+
+/** 读她的成就；「好感度和礼物」关着时是 null。隐藏的角色照样读得到。 */
+export async function getHerAchievements(characterId: string): Promise<HerAchievements | null> {
+  return json(await api(`/api/characters/${encodeURIComponent(characterId)}/achievements`));
+}
 
 /** 一行：名字、阶段点（解锁的为 true）、全部解锁没有、下一个阶段的进度（全部解锁时写「全部解锁」）、下一阶段的奖励（全部解锁是 null）。 */
 export type AchievementRow = {
@@ -75,4 +86,48 @@ function duration(seconds: number): string {
   if (minutes < 60) return t.minutes(minutes);
   const rest = minutes % 60;
   return rest ? t.hoursMinutes(Math.floor(minutes / 60), rest) : t.hours(minutes / 60);
+}
+
+/** 合起来的那几个成就在「看过」里的范围。 */
+export const ALL = "all";
+
+function seenKey(userId: string, scope: string): string {
+  return `eidolon.achievementsSeen.${userId}.${scope}`;
+}
+
+/** 这位用户在这台设备上看过的、这个范围（她的 id 或 `ALL`）的最近解锁时刻；没看过为 null。 */
+export function achievementsSeenUpTo(userId: string, scope: string): string | null {
+  return seenOnDevice(seenKey(userId, scope));
+}
+
+/** 记下这位用户看过了这个范围 `at` 为止的解锁；别的标签页已经记下更晚的，就留着那个。 */
+export function keepAchievementsSeenUpTo(userId: string, scope: string, at: string): void {
+  keepSeenOnDevice(seenKey(userId, scope), at);
+}
+
+/** 面板里集齐那一行在 `unseenRows` 里的 id。 */
+export const COMPLETE = "complete";
+
+/** 这几个成就（连同集齐那一行，有的话）里最近一次解锁的时刻；一个都没解锁是 null。 */
+export function latestUnlock({ achievements, complete }: { achievements: Achievement[]; complete?: Complete }): string | null {
+  const times = achievements.flatMap((a) => a.stages.map((s) => s.unlocked_at));
+  return [...times, complete?.completed_at ?? null].reduce(later, null);
+}
+
+/** 解锁时刻 `at` 算不算没看过：有解锁，而且晚于看过的（`seenAt`，没看过是 null）。菜单键上的点和面板里的点都看它。 */
+export function isUnseen(at: string | null, seenAt: string | null): boolean {
+  if (at === null) return false;
+  return seenAt === null || Date.parse(at) > Date.parse(seenAt);
+}
+
+/** 带点的那几行（成就的 id，集齐那一行是 `COMPLETE`）：有阶段的解锁晚于看过的（`seenAt`）。 */
+export function unseenRows(
+  { achievements, complete }: { achievements: Achievement[]; complete?: Complete },
+  seenAt: string | null,
+): Set<string> {
+  const rows = achievements
+    .filter((a) => a.stages.some((s) => isUnseen(s.unlocked_at, seenAt)))
+    .map((a) => a.id);
+  if (complete && isUnseen(complete.completed_at, seenAt)) rows.push(COMPLETE);
+  return new Set(rows);
 }

@@ -164,6 +164,8 @@ export const zh = {
   conversation: {
     back: "返回对话列表",
     menu: "更多操作",
+    /** 她有没看过的成就解锁时，更多菜单键的读屏名字。 */
+    menuUnseen: "更多操作，有新解锁的成就",
     newConversation: "新对话",
     call: (name: string) => `和${name}通话`,
     callTooltip: "语音通话",
@@ -1875,6 +1877,15 @@ export const zh = {
     complete: "集齐",
     completed: "集齐了",
     resetCards: (n: number) => `重置卡 ×${n}`,
+    /** 她的对话页更多菜单里的那一项和它打开的面板。 */
+    open: "成就",
+    title: "成就",
+    /** 阶段点的读屏名字。 */
+    stagesLabel: (unlocked: number, count: number) => `解锁了 ${unlocked}/${count} 个阶段`,
+    /** 新解锁那一行名字旁的点的读屏文字。 */
+    unseen: "新解锁",
+    /** 页首的奖杯：解锁她的阶段时跳出来，「+n」是这次到账的抽奖次数。 */
+    trophy: (draws: number) => `成就，抽奖 +${draws}`,
   },
   memories: {
     intro: "角色们在对话中记下的、关于你的事。所有角色共用这些记忆，对一位角色说过的事，其他角色会以转述的口吻知道。删除后，角色不会再想起这件事。标为「已被取代」的记忆，已经被你后来说的话更新，角色不会再想起；删掉取代它的那条，它就恢复。",

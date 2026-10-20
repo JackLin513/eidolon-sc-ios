@@ -29,27 +29,40 @@ function seenKey(userId: string): string {
   return `eidolon.rewardsSeen.${userId}`;
 }
 
-/** 存不进去时，这次页面里记着的。 */
+/** 存不进去时，这次页面里记着的，按存的键。 */
 const seenThisPage = new Map<string, string>();
 
 /** 这位用户在这台设备上看过的最近一次到账时刻；没看过为 null。 */
 export function rewardsSeenUpTo(userId: string): string | null {
-  let stored: unknown = null;
-  try {
-    stored = JSON.parse(localStorage.getItem(seenKey(userId)) ?? "null");
-  } catch {
-    // 读不出或者坏了：算没看过，这次页面里记着的除外。
-  }
-  const kept = typeof stored === "string" && !Number.isNaN(Date.parse(stored)) ? stored : null;
-  return later(kept, seenThisPage.get(userId) ?? null);
+  return seenOnDevice(seenKey(userId));
 }
 
 /** 记下这位用户看过了 `at` 为止的到账；别的标签页已经记下更晚的，就留着那个。 */
 export function keepRewardsSeenUpTo(userId: string, at: string): void {
-  const seen = later(rewardsSeenUpTo(userId), at) ?? at;
-  seenThisPage.set(userId, seen);
+  keepSeenOnDevice(seenKey(userId), at);
+}
+
+/**
+ * 这台设备上存在 `key` 下的「看过的最近时刻」：读不出或者不是时刻的，算没看过，这次页面里记着的除外。
+ * 到账和成就（lib/achievements）的「看过」都这样存。
+ */
+export function seenOnDevice(key: string): string | null {
+  let stored: unknown = null;
   try {
-    localStorage.setItem(seenKey(userId), JSON.stringify(seen));
+    stored = JSON.parse(localStorage.getItem(key) ?? "null");
+  } catch {
+    // 读不出或者坏了：算没看过，这次页面里记着的除外。
+  }
+  const kept = typeof stored === "string" && !Number.isNaN(Date.parse(stored)) ? stored : null;
+  return later(kept, seenThisPage.get(key) ?? null);
+}
+
+/** 在 `key` 下记下看过了 `at` 为止；别的标签页已经记下更晚的，就留着那个。存不进去时只在这次页面里记着。 */
+export function keepSeenOnDevice(key: string, at: string): void {
+  const seen = later(seenOnDevice(key), at) ?? at;
+  seenThisPage.set(key, seen);
+  try {
+    localStorage.setItem(key, JSON.stringify(seen));
   } catch {
     // 存不进去：只在这次页面里记着。
   }
