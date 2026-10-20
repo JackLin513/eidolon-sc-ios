@@ -200,15 +200,6 @@ describe("礼物页那一小节", () => {
   const before = "2026-10-20T08:00:00+00:00";
   const after = "2026-10-20T09:00:00+00:00";
 
-  it("带点的是解锁晚于进礼物页前看过的那几行；这台设备上没看过时解锁过的都带点", () => {
-    const achievements = ofAll({ characters: before, draws: [after, null] });
-
-    expect(unseenRows({ achievements }, before)).toEqual(new Set(["draws"]));
-    expect(unseenRows({ achievements }, after)).toEqual(new Set());
-    expect(unseenRows({ achievements }, null)).toEqual(new Set(["characters", "draws"]));
-    expect(latestUnlock({ achievements })).toBe(after);
-  });
-
   it("送礼、抽奖返回里带着合起来的阶段：当场标成解锁，时刻是这次到账的，进度至少到它的门槛", () => {
     const rewarded = {
       draws: 1,

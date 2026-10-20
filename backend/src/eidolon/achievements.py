@@ -336,9 +336,21 @@ def of_all(db: sqlite3.Connection, user_id: str) -> list[Progress]:
     ]
 
 
-def tally(db: sqlite3.Connection, user_id: str) -> dict:
+@dataclass(frozen=True)
+class Tally:
     """How many stages the user has unlocked in all, whatever the goals are now, and how many
     characters are complete, as the stats show them (GLOSSARY.md「统计」)."""
+
+    stages: int
+    complete: int
+
+    def shown(self) -> dict:
+        """As the browser is told it."""
+        return {"stages": self.stages, "complete": self.complete}
+
+
+def tally(db: sqlite3.Connection, user_id: str) -> Tally:
+    """How far the user has come with the achievements, all told."""
     ((stages,),) = db.execute(
         "SELECT COUNT(*) FROM achievement_stages WHERE user_id = ?", (user_id,)
     )
@@ -347,10 +359,7 @@ def tally(db: sqlite3.Connection, user_id: str) -> dict:
         " WHERE user_id = ? AND character_id != ?",
         (user_id, _ALL),
     ).fetchall()
-    return {
-        "stages": stages,
-        "complete": sum(_complete(_unlocked(db, user_id, c)) for (c,) in characters),
-    }
+    return Tally(stages, sum(_complete(_unlocked(db, user_id, c)) for (c,) in characters))
 
 
 def _unlock(

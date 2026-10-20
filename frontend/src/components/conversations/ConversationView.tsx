@@ -12,6 +12,7 @@ import {
   type RefObject,
 } from "react";
 
+import { UnseenDot } from "@/components/app/AchievementLine";
 import { FailureNotice, SignInButton } from "@/components/app/FailureNotice";
 import { MarkedAvatar } from "@/components/app/MarkedAvatar";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
@@ -63,7 +64,7 @@ import {
 } from "@/theme/icons";
 import { Ja } from "@/theme/Ja";
 
-import { AchievementsPanel, UnseenDot } from "./AchievementsPanel";
+import { AchievementsPanel } from "./AchievementsPanel";
 import { AffinityBadge, CueArrowIcon } from "./AffinityBadge";
 import { CallBar } from "./CallBar";
 import { EVENT_ICONS, eventText } from "./EventIcon";

@@ -23,3 +23,8 @@
 
 - `GLOSSARY.md`「成就」写着「导入的数据包不算」「关着期间发生的事也不算」，上线补算是例外（上线前导入的、关着时的记录都算一次）。改文档时顺手补半句。
 - 补算的日志一行形如 `achievements launched: N users, N stages, N draw chances, N reset cards`，`deploy.md` 提补算时可以说去日志里看这一行。
+
+### 票 06 交接
+
+- 礼物页「成就」一小节在每日任务下面（`components/gifts/AchievementsSection.tsx`），开关关着时没有；重拍 `gifts.webp` 时拍的用户要有解锁过的合起来的阶段，四行才不全是空点。截图里的点取决于这台浏览器上下文有没有记过看过（新上下文全带点）。
+- 统计页「成就」一节在好感度分组下面（`GET /api/stats` 的 `achievements`），分享图不带。

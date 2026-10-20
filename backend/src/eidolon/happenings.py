@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Literal
 
 from eidolon import achievements
-from eidolon.achievements import Completed, Hers, Progress, Unlocked
+from eidolon.achievements import Completed, Hers, Progress, Tally, Unlocked
 from eidolon.activity import ActivityLog
 from eidolon.affinity import Tier, day_of, next_day
 from eidolon.clock import Clock
@@ -227,7 +227,7 @@ class Happenings:
             return None
         return achievements.of_all(self._db, user_id)
 
-    def tally(self, user_id: str) -> dict | None:
+    def tally(self, user_id: str) -> Tally | None:
         """How many stages the user has unlocked and how many characters are complete;
         None while closed."""
         if not self._is_open():

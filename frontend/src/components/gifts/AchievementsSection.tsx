@@ -1,4 +1,4 @@
-import { AchievementLine } from "@/components/conversations/AchievementsPanel";
+import { AchievementLine } from "@/components/app/AchievementLine";
 import { copy } from "@/i18n";
 import type { Achievement } from "@/lib/achievements";
 

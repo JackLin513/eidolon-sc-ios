@@ -96,7 +96,7 @@ def add_stats_routes(app: FastAPI, backend: Backend) -> None:
             "affinity": by_tier(
                 (c.id, backend.affinities.tier(user_id, c.id)) for c in idols
             ) if affinity_on else None,
-            "achievements": backend.happenings.tally(user_id),
+            "achievements": (tally := backend.happenings.tally(user_id)) and tally.shown(),
             "range": in_range(
                 span,
                 [(c, at) for c, at in contacts if since is None or at.date() >= since],
