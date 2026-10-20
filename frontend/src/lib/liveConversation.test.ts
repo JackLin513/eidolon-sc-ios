@@ -2179,7 +2179,14 @@ describe("LiveConversation: the list", () => {
 });
 
 describe("LiveConversation: rewards", () => {
-  const oneTurn: Rewarded = { draws: 1, reset_cards: 0, daily_tasks: ["one_turn"], rewarded_at: "2026-10-20T08:00:00+00:00" };
+  const oneTurn: Rewarded = {
+    draws: 1,
+    reset_cards: 0,
+    daily_tasks: ["one_turn"],
+    achievements: [],
+    completed: [],
+    rewarded_at: "2026-10-20T08:00:00+00:00",
+  };
 
   it("tells the shell what a text turn was rewarded with, and nothing for one rewarded with nothing", async () => {
     const turns = [
@@ -2213,6 +2220,87 @@ describe("LiveConversation: rewards", () => {
     handlers.onEvent({ type: "done", message: message(4, "character", "こんにちは"), affinity: null, rewarded: oneTurn });
 
     expect(rewarded).toEqual([oneTurn]);
+  });
+});
+
+describe("LiveConversation: the trophy", () => {
+  const at = "2026-10-20T08:00:00+00:00";
+  const unlocked = (...achievements: Rewarded["achievements"]): Rewarded => ({
+    draws: achievements.reduce((n, a) => n + a.draws, 0),
+    reset_cards: 0,
+    daily_tasks: [],
+    achievements,
+    completed: [],
+    rewarded_at: at,
+  });
+  const hers = { achievement: "turns", character_id: "hikari", stage: 2, draws: 2 };
+  const done = (rewarded: Rewarded): Extract<TurnEvent, { type: "done" }> => ({
+    type: "done",
+    message: message(4, "character", "こんにちは"),
+    affinity: null,
+    rewarded,
+  });
+  const turn = (rewarded: Rewarded) => scripted([{ type: "user", text: "你好" }, done(rewarded)]);
+
+  it("pops up with the draws her stages gave as a turn unlocks them, for 3s", async () => {
+    vi.useFakeTimers();
+    const together = { achievement: "characters", character_id: null, stage: 1, draws: 1 };
+    const opened = opening({
+      turns: turn(unlocked(hers, { achievement: "gifts", character_id: "hikari", stage: 1, draws: 1 }, together)),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    const { live } = opened;
+
+    live.setDraft("你好");
+    await live.submit();
+    const shown = live.snapshot();
+    vi.advanceTimersByTime(2999);
+    const stillShown = live.snapshot().trophy;
+    vi.advanceTimersByTime(1);
+
+    expect(shown).toMatchObject({ trophy: { draws: 3, key: 1 }, herUnlockedAt: at });
+    expect(stillShown).not.toBeNull();
+    expect(live.snapshot()).toMatchObject({ trophy: null, herUnlockedAt: at });
+    vi.useRealTimers();
+  });
+
+  it("is not for another character's stages, nor those of all together", async () => {
+    const { live } = await conversation({
+      turns: turn(
+        unlocked(
+          { achievement: "turns", character_id: "mano", stage: 1, draws: 1 },
+          { achievement: "days", character_id: null, stage: 1, draws: 1 },
+        ),
+      ),
+    });
+
+    live.setDraft("你好");
+    await live.submit();
+
+    expect(live.snapshot()).toMatchObject({ trophy: null, herUnlockedAt: null });
+  });
+
+  it("does not pop up under the call layer, only leaving her stages unseen", async () => {
+    const { live, attempts } = await conversation();
+    await connected(live, attempts);
+    const { handlers } = attempts[0];
+
+    handlers.onEvent({ type: "user", text: "你好", reply: 1 });
+    handlers.onEvent(done(unlocked(hers)));
+
+    expect(live.snapshot()).toMatchObject({ trophy: null, herUnlockedAt: at });
+  });
+
+  it("pops up for a turn in a call with the call layer folded away", async () => {
+    const { live, attempts } = await conversation();
+    await connected(live, attempts);
+    live.collapse();
+    const { handlers } = attempts[0];
+
+    handlers.onEvent({ type: "user", text: "你好", reply: 1 });
+    handlers.onEvent(done(unlocked(hers)));
+
+    expect(live.snapshot().trophy).toEqual({ draws: 2, key: 1 });
   });
 });
 

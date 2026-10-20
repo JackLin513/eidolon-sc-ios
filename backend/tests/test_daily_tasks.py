@@ -133,8 +133,8 @@ async def test_a_gift_given_does_the_second_once_in_a_cooldown_too(
     await given(client, "cake")
 
     assert once["daily_tasks"]["tasks"] == tasks(gifts=1)
-    assert once["draws"] == 1
-    assert (await state(client))["draws"] == 1
+    assert once["draws"] == 2  # and the first gift's achievement stage
+    assert (await state(client))["draws"] == 2
 
 
 async def test_turns_refused_or_failed_count_for_nothing(
@@ -175,8 +175,8 @@ async def test_at_midnight_in_beijing_they_begin_again_and_what_was_not_done_is_
     assert next_day["daily_tasks"] == {
         "tasks": tasks(turns=1), "renews_at": "2026-09-26T16:00:00+00:00"
     }
-    # The day's one, and the first task each day.
-    assert [late["draws"], next_day["draws"]] == [2, 4]
+    # The day's one, and the first task each day; and the tenth turn's achievement stage.
+    assert [late["draws"], next_day["draws"]] == [2, 5]
 
 
 async def test_what_they_give_goes_over_seven_and_the_next_day_keeps_it(
@@ -288,12 +288,18 @@ def rows_of(database: Path) -> list[int]:
         ]
 
 
-def rewarded(*daily_tasks: str, at: datetime) -> dict:
-    """What something that did `daily_tasks` at `at` says it was rewarded with."""
+def rewarded(*daily_tasks: str, at: datetime, stage: tuple[str, int] | None = None) -> dict:
+    """What something that did `daily_tasks` at `at`, and unlocked the first `stage` of an
+    achievement of hers (by id, with her by turns or gifts), says it was rewarded with."""
     return {
-        "draws": len(daily_tasks),
+        "draws": len(daily_tasks) + (stage is not None),
         "reset_cards": 0,
         "daily_tasks": list(daily_tasks),
+        "achievements": [
+            {"achievement": a, "character_id": "mano", "stage": n, "draws": n}
+            for a, n in ([stage] if stage else [])
+        ],
+        "completed": [],
         "rewarded_at": at.isoformat(),
     }
 
@@ -316,7 +322,7 @@ async def test_a_turn_says_what_it_was_rewarded_with_and_none_if_nothing(
     assert first[-1]["rewarded"] == rewarded("one_turn", at=began)
     assert second[-1]["type"] == "done"
     assert second[-1]["rewarded"] is None
-    assert tenth[-1]["rewarded"] == rewarded("ten_turns", at=clock.now)
+    assert tenth[-1]["rewarded"] == rewarded("ten_turns", at=clock.now, stage=("turns", 1))
 
 
 async def test_a_turn_in_a_call_says_what_it_was_rewarded_with(
@@ -343,7 +349,7 @@ async def test_a_gift_given_says_what_it_was_rewarded_with_once(make_client: Cli
     first = await given(client, "cake")
     second = await given(client, "cake")
 
-    assert first["rewarded"] == rewarded("one_gift", at=clock.now)
+    assert first["rewarded"] == rewarded("one_gift", at=clock.now, stage=("gifts", 1))
     assert second["rewarded"] is None
 
 

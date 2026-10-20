@@ -13,9 +13,11 @@ again, which gives one that day. So when it last opened is kept (`notice`), as t
 starts and as the switch changes. That is no one's; what each user has is theirs, deleted
 with them (`database.USER_DATA`).
 
-A user is rewarded for what they do (`reward`), as daily tasks are done (`happenings`): each
-reward given once by its key, its draw chances over and above the most kept of those given
-each day, never anything of her affinity.
+A user is rewarded for what they do (`reward`), as daily tasks are done and achievements'
+stages unlocked (`happenings`): each reward given once by its key, its draw chances over and
+above the most kept of those given each day, and its reset cards, never anything of her
+affinity. As the achievements launch, everyone is rewarded for what they did before, open
+or not (`reward_everyone`).
 
 An admin may give every user there is a reset card at once (`grant_reset_cards`), banned
 ones and admins too, but no one user anything on their own. Each grant is kept, when and
@@ -447,39 +449,59 @@ class Gifts:
         return Reset(brought_back, taken[0])
 
     def reward(
-        self, user_id: str, due: Callable[[sqlite3.Connection, date], Iterable[Reward]]
+        self, user_id: str, due: Callable[[sqlite3.Connection, datetime], Iterable[Reward]]
     ) -> tuple[list[Reward], datetime]:
         """Give the user each reward `due` says is due that they have not been given yet by
         its key, having been given the draw chances due today; one with no draw chances yet
-        is given the new user's one first. `due` is called with the connection and today
-        (`affinity.day_of`) holding the lock, in the transaction the rewards are given in, so
-        what it keeps is kept with them or not at all, on the same day the draw chances are
-        given for, and two rewarded at once for the same are rewarded once. The rewards
-        given now, and when. Raises GiftsClosed if gifts are not open."""
+        is given the new user's one first. `due` is called with the connection and now
+        holding the lock, in the transaction the rewards are given in, so what it keeps is
+        kept with them or not at all, by the same now the draw chances are given by, and two
+        rewarded at once for the same are rewarded once. The rewards given now, and when. Raises GiftsClosed if gifts are not open."""
         self.notice()
         if not self._is_open():
             raise GiftsClosed()
+        with self._lock, self._db:
+            now = self._clock()
+            rewards = list(due(self._db, now))
+            self._give(user_id, day_of(now))
+            given = [r for r in rewards if self._credit(user_id, r, now)]
+        return given, now
+
+    def reward_everyone(
+        self, due: Callable[[sqlite3.Connection, datetime], Iterable[tuple[str, Reward]]]
+    ) -> list[tuple[str, Reward]]:
+        """Give each user each reward `due` says is due them that they have not been given
+        yet by its key, open or not, as the achievements launch: none of the draw chances
+        due today, but the new user's one first to one with none yet. `due` is called as
+        `reward`'s is. The rewards given, and to whom."""
         given = []
         with self._lock, self._db:
             now = self._clock()
-            today = day_of(now)
-            rewards = list(due(self._db, today))
-            self._give(user_id, today)
-            for r in rewards:
-                new = self._db.execute(
-                    "INSERT INTO gift_rewards"
-                    " (user_id, key, draws, reset_cards, rewarded_at) VALUES (?, ?, ?, ?, ?)"
-                    " ON CONFLICT (user_id, key) DO NOTHING",
-                    (user_id, r.key, r.draws, r.reset_cards, now.isoformat()),
-                ).rowcount
-                if new:
-                    self._db.execute(
-                        "UPDATE gift_balances SET draws = draws + ?,"
-                        " reset_cards = reset_cards + ? WHERE user_id = ?",
-                        (r.draws, r.reset_cards, user_id),
-                    )
-                    given.append(r)
-        return given, now
+            for user_id, r in list(due(self._db, now)):
+                if not self._db.execute(
+                    "SELECT 1 FROM gift_balances WHERE user_id = ?", (user_id,)
+                ).fetchone():
+                    self._start(user_id, day_of(now))
+                if self._credit(user_id, r, now):
+                    given.append((user_id, r))
+        return given
+
+    def _credit(self, user_id: str, reward: Reward, now: datetime) -> bool:
+        """Give the user, who has draw chances, `reward` `now` unless given it before by its
+        key: whether given now. Called holding the lock, in a transaction."""
+        new = self._db.execute(
+            "INSERT INTO gift_rewards"
+            " (user_id, key, draws, reset_cards, rewarded_at) VALUES (?, ?, ?, ?, ?)"
+            " ON CONFLICT (user_id, key) DO NOTHING",
+            (user_id, reward.key, reward.draws, reward.reset_cards, now.isoformat()),
+        ).rowcount
+        if new:
+            self._db.execute(
+                "UPDATE gift_balances SET draws = draws + ?,"
+                " reset_cards = reset_cards + ? WHERE user_id = ?",
+                (reward.draws, reward.reset_cards, user_id),
+            )
+        return bool(new)
 
     def _last_rewarded(self, user_id: str) -> datetime | None:
         """When the user was last rewarded; None if never. Holding the lock."""

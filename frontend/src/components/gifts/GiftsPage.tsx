@@ -9,6 +9,7 @@ import { PageShell } from "@/components/app/PageShell";
 import { SectionHeading } from "@/components/app/SubpageHeader";
 import { useDirectory, useWide } from "@/components/conversations/ConversationDirectory";
 import { useProducerTimezone } from "@/components/conversations/useProducerTimezone";
+import { AchievementsSection } from "@/components/gifts/AchievementsSection";
 import { DailyTasksSection } from "@/components/gifts/DailyTasksSection";
 import { DrawDialog, type Drawing } from "@/components/gifts/DrawDialog";
 import { GivenToast, type GivenNotice } from "@/components/gifts/GivenToast";
@@ -19,6 +20,14 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { copy } from "@/i18n";
+import {
+  achievementsSeenUpTo,
+  keepAchievementsSeenUpTo,
+  latestUnlock,
+  OF_ALL,
+  unseenRows,
+  withUnlocked,
+} from "@/lib/achievements";
 import { ApiError, type Character } from "@/lib/api";
 import { arrange } from "@/lib/conversationList";
 import { dailyTasksView, withDone } from "@/lib/dailyTasks";
@@ -41,7 +50,7 @@ import {
   type GiftState,
   type Given,
 } from "@/lib/gifts";
-import { later } from "@/lib/rewards";
+import { later } from "@/lib/seenOnDevice";
 import { cn } from "@/lib/utils";
 import { CloseIcon, DrawIcon, GiftIcon } from "@/theme/icons";
 
@@ -53,9 +62,12 @@ const OPENING_MS = 900;
 /** 送出后的提示留多久。 */
 const NOTICE_MS = 8000;
 
+const NONE: ReadonlySet<string> = new Set();
+
 /**
  * 礼物页（DESIGN.md「礼物页」）：导航栏右边整块一栏，内容最宽 `max-w-3xl`、居中，手机和电脑同一个版式。
- * 上面是抽奖台，下面「每日任务」一节（「去对话」去对话列表，「挑一件」滚到我的礼物），有重置卡时再下面一条重置卡条，最后「我的礼物」；点一件（或单抽结果上的「送给谁…」）拉出送礼面板，
+ * 上面是抽奖台，下面「每日任务」一节（「去对话」去对话列表，「挑一件」滚到我的礼物）、「成就」一小节（合起来的四个；
+ * 解锁晚于进这一页前看过的那几行带点，离开这一页记成看过），有重置卡时再下面一条重置卡条，最后「我的礼物」；点一件（或单抽结果上的「送给谁…」）拉出送礼面板，
  * 送出后面板收起、底部出提示，页面不跳走。好感度和礼物没开放时整页是「礼物暂时没有开放」，「礼物」照样留在导航里；
  * 抽奖、送礼或用重置卡时才知道没开放（收到「没开放」的 409）也切成这样。
  * 从对话页跳来（`pick`）时页首下面一条「给{角色名}挑一件礼物」：点哪件礼物，面板里都已选好她、排在第一个，
@@ -74,7 +86,11 @@ export function GiftsPage({ pick }: { pick: GiftsFor | null }) {
   const isReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)", false);
   const isWide = useWide();
   const timeZone = useProducerTimezone();
-  const { characters, latest, preferences, go, refresh, giftsRead, rewardedAt } = useDirectory();
+  const { account, characters, latest, preferences, go, refresh, giftsRead, rewardedAt } = useDirectory();
+  const userId = account?.id ?? null;
+  // 进这一页前这台设备上看过的合起来的成就：那一小节里解锁晚于它的带点，留到离开这一页。
+  const [seen, setSeen] = useState<{ userId: string; at: string | null } | null>(null);
+  if (userId && seen?.userId !== userId) setSeen({ userId, at: achievementsSeenUpTo(userId, OF_ALL) });
   // 在这一页上送礼刚做完的每日任务：那一行打勾时弹一下。
   const [justDone, setJustDone] = useState<string[]>([]);
   const router = useRouter();
@@ -91,6 +107,18 @@ export function GiftsPage({ pick }: { pick: GiftsFor | null }) {
   }, [characters, latest, preferences]);
   const recipients = useMemo(() => chosenFirst(arranged, chosen?.id ?? null), [arranged, chosen]);
   const statuses = useMemo(() => new Map((state?.characters ?? []).map((c) => [c.id, c])), [state]);
+
+  // 离开这一页（卸下）时把看过记成合起来的成就里最近一次解锁。
+  const latestOfAll = useRef<string | null>(null);
+  useEffect(() => {
+    latestOfAll.current = state?.achievements ? latestUnlock({ achievements: state.achievements }) : null;
+  }, [state]);
+  useEffect(() => {
+    if (!userId) return;
+    return () => {
+      if (latestOfAll.current) keepAchievementsSeenUpTo(userId, OF_ALL, latestOfAll.current);
+    };
+  }, [userId]);
 
   useEffect(() => {
     if (!notice) return;
@@ -247,6 +275,12 @@ export function GiftsPage({ pick }: { pick: GiftsFor | null }) {
                 }}
               />
             )}
+            {state.achievements && (
+              <AchievementsSection
+                achievements={state.achievements}
+                unseen={seen ? unseenRows({ achievements: state.achievements }, seen.at) : NONE}
+              />
+            )}
             {state.reset_cards > 0 && (
               <ResetCards
                 count={state.reset_cards}
@@ -290,7 +324,7 @@ export function GiftsPage({ pick }: { pick: GiftsFor | null }) {
   );
 }
 
-/** 抽完以后的礼物状态：剩下的次数，抽到的礼物叠进背包（按目录的顺序），重置卡另计。 */
+/** 抽完以后的礼物状态：剩下的次数，抽到的礼物叠进背包（按目录的顺序），重置卡另计，这次解锁的合起来的阶段标上。 */
 function withDrawn(state: GiftState, result: DrawResult, catalog: GiftInfo[]): GiftState {
   const counts = new Map(state.backpack.map((b) => [b.gift_id, b.count]));
   let cards = state.reset_cards;
@@ -302,16 +336,23 @@ function withDrawn(state: GiftState, result: DrawResult, catalog: GiftInfo[]): G
     const count = counts.get(g.id);
     return count ? [{ gift_id: g.id, count }] : [];
   });
-  return { ...state, draws: result.draws, backpack, reset_cards: cards };
+  return {
+    ...state,
+    draws: result.draws,
+    backpack,
+    reset_cards: cards,
+    achievements: state.achievements && withUnlocked(state.achievements, result.rewarded),
+  };
 }
 
-/** 送出一件以后的礼物状态：这件按接口给的件数（送完的不再列），她的好感度换成现在的。 */
+/** 送出一件以后的礼物状态：这件按接口给的件数（送完的不再列），她的好感度换成现在的，这次解锁的合起来的阶段标上。 */
 function afterGiving(state: GiftState, giftId: string, characterId: string, given: Given): GiftState {
   const { rewarded } = given;
   return {
     ...state,
     draws: state.draws + (rewarded?.draws ?? 0),
     daily_tasks: state.daily_tasks && withDone(state.daily_tasks, rewarded?.daily_tasks ?? []),
+    achievements: state.achievements && withUnlocked(state.achievements, rewarded),
     rewarded_at: later(state.rewarded_at, rewarded?.rewarded_at ?? null),
     backpack: state.backpack
       .map((b) => (b.gift_id === giftId ? { ...b, count: given.left } : b))

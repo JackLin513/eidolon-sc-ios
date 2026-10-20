@@ -17,7 +17,9 @@ they began, in all and for each character, with how often she hung up a call or 
 conversation (`affinity`). How many times characters reached out (GLOSSARY.md「搭话」), how
 many times that failed, and the share answered (`reach_outs`), where the deployer has them on
 or any were recorded in the range. How many times each daily task was done (GLOSSARY.md
-「每日任务」, `daily_tasks`), where affinity is on or any were done in the range. Nothing
+「每日任务」, `daily_tasks`), and how many achievements' stages were unlocked, the draw chances
+they gave and the reset cards characters complete gave (「成就」, `achievements`): the two
+together, where affinity is on or any were done or unlocked in the range. Nothing
 anyone said is in it, nor whose any of it was.
 
 How many calls are in progress now is not in the records but the calls themselves:
@@ -39,6 +41,7 @@ from fastapi import FastAPI, Header, Query
 
 from eidolon.activity import (
     CALL_END_REASONS,
+    COMPLETE,
     DURATIONS,
     LLM_SERVICES,
     RESULTS,
@@ -49,6 +52,7 @@ from eidolon.activity import (
     Taken,
     Tally,
     range_start,
+    stage_of,
 )
 from eidolon.affinity import LEVEL_STEPS, Judged
 from eidolon.admin_api import Admin
@@ -92,11 +96,13 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
         start = range_start(now - span.length)
         starts = stretches(now, span, _zone(timezone))
         tally = backend.activity.tally(start, starts)
-        # Reach-outs and daily tasks done are no turns nor calls, and taken by no user; the
-        # reach-outs' service calls count.
+        # Reach-outs, daily tasks done and achievements are no turns nor calls, and taken by
+        # no user; the reach-outs' service calls count.
         records = [r for r in tally.records if r.kind in ("turn", "call")]
         reach_out_records = [r for r in tally.records if r.kind == "reach_out"]
         task_records = [r for r in tally.records if r.kind == "daily_task"]
+        achievement_records = [r for r in tally.records if r.kind == "achievement"]
+        section_shown = bool(backend.config.affinity_on or task_records or achievement_records)
         names = {id: c.name for id, c in backend.characters.items()}
         spent = cost(tally.calls, backend.prices.pricing(), starts)
         backend.prices.catalog.refresh_soon(
@@ -121,10 +127,8 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
                 reach_outs(reach_out_records)
                 if backend.config.reach_outs.enabled or reach_out_records else None
             ),
-            "daily_tasks": (
-                daily_tasks(task_records)
-                if backend.config.affinity_on or task_records else None
-            ),
+            "daily_tasks": daily_tasks(task_records) if section_shown else None,
+            "achievements": achievements(achievement_records) if section_shown else None,
             "cost": spent,
         }
 
@@ -378,6 +382,17 @@ def reach_outs(records: Sequence[RecordGroup]) -> dict:
 def daily_tasks(records: Sequence[RecordGroup]) -> dict[str, int]:
     """How many times each daily task was done, by its id, in the order of `DAILY_TASKS`."""
     return {t.id: _count(r for r in records if r.result == t.id) for t in DAILY_TASKS}
+
+
+def achievements(records: Sequence[RecordGroup]) -> dict[str, int]:
+    """How many achievements' stages were unlocked, the draw chances they gave (stage n gives
+    n), and the reset cards characters complete gave (one each)."""
+    stages = [r for r in records if r.result != COMPLETE]
+    return {
+        "stages": _count(stages),
+        "draws": sum(stage_of(r.result) * r.count for r in stages),
+        "reset_cards": _count(r for r in records if r.result == COMPLETE),
+    }
 
 
 def _share(turns: Sequence[RecordGroup], moved: Callable[[float], bool]) -> float:

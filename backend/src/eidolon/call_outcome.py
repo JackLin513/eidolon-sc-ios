@@ -54,7 +54,7 @@ _ENDED_BY: dict[EndReason, CallEndReason] = {
 """Why the call's activity record says it ended, when the browser was told why."""
 
 
-KeepCall = Callable[[datetime, float], None]
+KeepCall = Callable[[datetime, float], object]
 """Keeps a call that connected, for stats: when it connected, and how long it lasted once it
 had, in seconds."""
 

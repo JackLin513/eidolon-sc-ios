@@ -350,7 +350,8 @@ def build(
         usage, activity, own_keys, cooldown_until=affinities.cooldown_until
     )
     calls = Calls(
-        settings, engine, admissions, own_keys, lambda: config.usage_limits, speech, clock, store
+        settings, engine, admissions, own_keys, lambda: config.usage_limits, speech, clock, store,
+        happenings,
     )
     closers.append(calls.aclose)  # closed before memory, so no call is still taking turns
     affinities.on_cooldown(calls.cooled)

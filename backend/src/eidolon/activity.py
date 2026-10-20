@@ -25,7 +25,10 @@ names; or as that is kept, should they have been in touch since (`Store.reach_ou
 
 A daily task done (GLOSSARY.md「每日任务」) has a record of its own, with no character and
 which task in its result (`ActivityLog.daily_task_done`): no turn nor call, nor counted as
-one anywhere.
+one anywhere. So has an achievement's stage unlocked (GLOSSARY.md「成就」), with the
+character it is hers of (none for those of all the characters together) and which stage of
+which achievement in its result, and a character complete, with `COMPLETE` in its result
+(`ActivityLog.achievement_unlocked`, `ActivityLog.character_complete`).
 
 A photo she sends (`photos`) is generated in the context of the turn it was begun in, and
 often comes out after the turn is over: its request to the image service is recorded under
@@ -112,15 +115,30 @@ LLM_SERVICES: tuple[ServiceName, ...] = ("chat_llm", "memory_llm")
 """The LLMs among them (`llm_origin`): a user's own is recorded as `OWN`, and each call
 says how soon its first word came and at which reasoning effort."""
 
-RecordKind = Literal["turn", "call", "reach_out", "daily_task"]
+RecordKind = Literal["turn", "call", "reach_out", "daily_task", "achievement"]
 """A reach-out is neither a turn nor a call, nor counted as one anywhere; it is always on the
-deployer's keys. Nor is a daily task done, which has no character and no service calls."""
+deployer's keys. Nor is a daily task done, which has no character and no service calls, nor
+an achievement's stage unlocked or a character complete, which have none either."""
 Result = Literal["success", "failed", "rejected", "left", "not_connected"]
 """How a turn or call turned out (GLOSSARY.md「回合」「接通」): a turn succeeded, failed on
 a service, was rejected (over the limit, or its input), or the user left before it was
 done; a call also may never have connected. A reach-out succeeds or fails. A daily task
-done has which task it was (`happenings.DAILY_TASKS`) instead."""
+done has which task it was (`happenings.DAILY_TASKS`) instead; an achievement's record, which
+stage of which (`stage_unlocked`), or `COMPLETE`."""
 RESULTS: tuple[Result, ...] = ("success", "failed", "rejected", "left", "not_connected")
+
+COMPLETE = "complete"
+"""The result of the record of a character complete."""
+
+
+def stage_unlocked(achievement: str, stage: int) -> str:
+    """The result of the record of the achievement's `stage` unlocked, by number."""
+    return f"{achievement}:{stage}"
+
+
+def stage_of(result: str) -> int:
+    """The stage, by number, an achievement's stage unlocked's record's `result` is of."""
+    return int(result.rsplit(":", 1)[1])
 
 ErrorKind = Literal[
     "timeout", "connection", "rate_limited", "unauthorized", "refused", "server_error",
@@ -136,7 +154,7 @@ these, and sorts the users by them (`Store.find_users`)."""
 
 TURNS_AND_CALLS = "kind IN ('turn', 'call')"
 """Which records, in SQL over `activity_records`, are of turns and calls: not of reach-outs,
-which the user did not take, nor of daily tasks done."""
+which the user did not take, nor of daily tasks done or achievements."""
 
 JUDGEMENT_COLUMNS = ("affinity_level", "out_of_line", "manipulation", "cooled")
 """What a turn's record keeps of how the judge model judged it, as its columns are named."""
@@ -463,7 +481,8 @@ class RecordGroup:
     kind: RecordKind
     character_id: str
     result: Result | str
-    """How it turned out; for a daily task done, which task."""
+    """How it turned out; for a daily task done, which task; for an achievement, which
+    stage, or `COMPLETE`."""
     own_keys: bool
     """`RecordRow.own_keys`: for a turn, its own LLM; for a call, its being exempt."""
     in_call: bool
@@ -594,7 +613,8 @@ class Recording:
         self.calls: list[ServiceCall] = []
         self.finished = False
         self.result: Result | str | None = None
-        """How it turned out; for a daily task done, which task."""
+        """How it turned out; for a daily task done, which task; for an achievement, which
+        stage, or `COMPLETE`."""
         self.duration_s: float | None = None
         self.end_reason: CallEndReason | None = None
         self.judged_as: Judged | None = None
@@ -701,6 +721,19 @@ class ActivityLog:
     def daily_task_done(self, user_id: str, task_id: str, at: datetime) -> None:
         """The user did the daily task `at`: recorded, with no character."""
         Recording(self, "daily_task", user_id, "", at, False, False).finish(task_id)
+
+    def achievement_unlocked(
+        self, user_id: str, character_id: str | None, achievement: str, stage: int, at: datetime
+    ) -> None:
+        """The user unlocked the achievement's `stage` `at`: recorded, with the character it is
+        hers of, or none for those of all the characters together."""
+        Recording(self, "achievement", user_id, character_id or "", at, False, False).finish(
+            stage_unlocked(achievement, stage)
+        )
+
+    def character_complete(self, user_id: str, character_id: str, at: datetime) -> None:
+        """The user completed the character `at`: recorded."""
+        Recording(self, "achievement", user_id, character_id, at, False, False).finish(COMPLETE)
 
     def call(
         self,

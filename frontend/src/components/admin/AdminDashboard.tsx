@@ -37,6 +37,7 @@ import {
   affinityRows,
   CALL_END_REASONS,
   CALL_RESULTS,
+  achievementTiles,
   countTicks,
   DASHBOARD_RANGES,
   DASHBOARD_REFRESH_MS,
@@ -440,7 +441,7 @@ function DashboardBody({
         <TabsContent value="affinity" keepMounted className={fade}>
           <DashboardGroup title={t.affinity.title}>
             {board.affinity !== null && <AffinityGroup section={board.affinity} />}
-            <DailyTaskTiles board={board} />
+            <TasksAndAchievementsTiles board={board} />
           </DashboardGroup>
         </TabsContent>
       )}
@@ -761,12 +762,15 @@ function ReachOutTiles({ board }: { board: Dashboard }) {
   );
 }
 
-/** 「好感度」里的「每日任务」一小节：三项各做完几次；为空时（好感度关着、范围内也没人做完）不显示。 */
-function DailyTaskTiles({ board }: { board: Dashboard }) {
-  const tiles = dailyTaskTiles(board.daily_tasks);
+/**
+ * 「好感度」里的「每日任务和成就」一小节：三项各做完几次，再是解锁的成就阶段、发出的抽奖次数、重置卡；
+ * 为空时（好感度关着、范围内也没人做完或解锁）不显示。
+ */
+function TasksAndAchievementsTiles({ board }: { board: Dashboard }) {
+  const tiles = [...dailyTaskTiles(board.daily_tasks), ...achievementTiles(board.achievements)];
   if (tiles.length === 0) return null;
   return (
-    <TileGroup caption={t.dailyTasks.title} grid="grid-cols-2 md:grid-cols-3">
+    <TileGroup caption={t.tasksAndAchievements.title} grid="grid-cols-2 md:grid-cols-3">
       {tiles.map((tile) => (
         <StatTile key={tile.id} label={tile.label} value={tile.value} />
       ))}

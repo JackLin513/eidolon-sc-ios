@@ -6,6 +6,7 @@
 
 import { api, json } from "@/lib/api";
 import { cueText, untilText, type AffinityChange, type AffinityStatus, type Tier } from "@/lib/affinity";
+import type { Achievement } from "@/lib/achievements";
 import type { DailyTasks } from "@/lib/dailyTasks";
 import type { Rewarded } from "@/lib/rewards";
 import { copy } from "@/i18n";
@@ -43,6 +44,8 @@ export type GiftState = {
   characters: GiftCharacter[];
   /** 今天的每日任务；没开放时是 null。 */
   daily_tasks: DailyTasks | null;
+  /** 合起来的四个成就（lib/achievements）；没开放时是 null。 */
+  achievements: Achievement[] | null;
   /** 最近一次到账的时刻（ISO），导航「礼物」上的点靠它；从来没有过是 null。 */
   rewarded_at: string | null;
 };
@@ -50,8 +53,8 @@ export type GiftState = {
 /** 抽一次抽到的：一件礼物，或一张重置卡。 */
 export type Drawn = { kind: "gift"; gift_id: string } | { kind: "reset_card" };
 
-/** 抽奖接口给的：按抽出的顺序排的结果，和抽完还剩几次。 */
-export type DrawResult = { drawn: Drawn[]; draws: number };
+/** 抽奖接口给的：按抽出的顺序排的结果、抽完还剩几次（连同这次到账的），和这次抽奖到账了什么（没有是 null）。 */
+export type DrawResult = { drawn: Drawn[]; draws: number; rewarded: Rewarded | null };
 
 /** 读礼物状态；后端读的时候把到今天（北京时间）为止该发的次数补上。 */
 export async function getGiftState(): Promise<GiftState> {
