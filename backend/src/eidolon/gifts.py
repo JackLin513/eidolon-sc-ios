@@ -460,25 +460,11 @@ class Gifts:
         self.notice()
         if not self._is_open():
             raise GiftsClosed()
-        given = []
         with self._lock, self._db:
             now = self._clock()
             rewards = list(due(self._db, now))
             self._give(user_id, day_of(now))
-            for r in rewards:
-                new = self._db.execute(
-                    "INSERT INTO gift_rewards"
-                    " (user_id, key, draws, reset_cards, rewarded_at) VALUES (?, ?, ?, ?, ?)"
-                    " ON CONFLICT (user_id, key) DO NOTHING",
-                    (user_id, r.key, r.draws, r.reset_cards, now.isoformat()),
-                ).rowcount
-                if new:
-                    self._db.execute(
-                        "UPDATE gift_balances SET draws = draws + ?,"
-                        " reset_cards = reset_cards + ? WHERE user_id = ?",
-                        (r.draws, r.reset_cards, user_id),
-                    )
-                    given.append(r)
+            given = [r for r in rewards if self._credit(user_id, r, now)]
         return given, now
 
     def reward_everyone(
@@ -492,25 +478,30 @@ class Gifts:
         with self._lock, self._db:
             now = self._clock()
             for user_id, r in list(due(self._db, now)):
-                new = self._db.execute(
-                    "INSERT INTO gift_rewards"
-                    " (user_id, key, draws, reset_cards, rewarded_at) VALUES (?, ?, ?, ?, ?)"
-                    " ON CONFLICT (user_id, key) DO NOTHING",
-                    (user_id, r.key, r.draws, r.reset_cards, now.isoformat()),
-                ).rowcount
-                if not new:
-                    continue
                 if not self._db.execute(
                     "SELECT 1 FROM gift_balances WHERE user_id = ?", (user_id,)
                 ).fetchone():
                     self._start(user_id, day_of(now))
-                self._db.execute(
-                    "UPDATE gift_balances SET draws = draws + ?,"
-                    " reset_cards = reset_cards + ? WHERE user_id = ?",
-                    (r.draws, r.reset_cards, user_id),
-                )
-                given.append((user_id, r))
+                if self._credit(user_id, r, now):
+                    given.append((user_id, r))
         return given
+
+    def _credit(self, user_id: str, reward: Reward, now: datetime) -> bool:
+        """Give the user, who has draw chances, `reward` `now` unless given it before by its
+        key: whether given now. Called holding the lock, in a transaction."""
+        new = self._db.execute(
+            "INSERT INTO gift_rewards"
+            " (user_id, key, draws, reset_cards, rewarded_at) VALUES (?, ?, ?, ?, ?)"
+            " ON CONFLICT (user_id, key) DO NOTHING",
+            (user_id, reward.key, reward.draws, reward.reset_cards, now.isoformat()),
+        ).rowcount
+        if new:
+            self._db.execute(
+                "UPDATE gift_balances SET draws = draws + ?,"
+                " reset_cards = reset_cards + ? WHERE user_id = ?",
+                (reward.draws, reward.reset_cards, user_id),
+            )
+        return bool(new)
 
     def _last_rewarded(self, user_id: str) -> datetime | None:
         """When the user was last rewarded; None if never. Holding the lock."""

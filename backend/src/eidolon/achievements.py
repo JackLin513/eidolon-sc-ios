@@ -250,7 +250,7 @@ def launch(
         (now.isoformat(),),
     ).rowcount:
         return None
-    kept = list(db.execute(
+    progress = list(db.execute(
         "SELECT c.user_id, 'turns', c.character_id, COUNT(*) FROM messages m"
         " JOIN conversations c ON c.id = m.conversation_id WHERE m.role = 'user'"
         " GROUP BY c.user_id, c.character_id"
@@ -278,7 +278,7 @@ def launch(
         if tier in TIERS_REACHED:
             rank = TIERS_REACHED.index(tier) + 1
             tiers[user_id, character_id] = max(tiers.get((user_id, character_id), 0), rank)
-    kept += [(u, "tier", c, rank) for (u, c), rank in tiers.items()]
+    progress += [(u, "tier", c, rank) for (u, c), rank in tiers.items()]
     db.create_function(
         "day_of", 1, lambda at: day_of(datetime.fromisoformat(at)).isoformat(),
         deterministic=True,
@@ -298,10 +298,10 @@ def launch(
         " ON CONFLICT (user_id, achievement, character_id) DO UPDATE"
         " SET count = MAX(count, excluded.count),"
         " last_day = MAX(last_day, excluded.last_day)",
-        [(*k, None) for k in kept] + [(u, "days", c, n, last) for u, c, n, last in days],
+        [(*p, None) for p in progress] + [(u, "days", c, n, last) for u, c, n, last in days],
     )
     due = []
-    for user_id, character_id in sorted({(u, c) for u, _, c, _ in kept}):
+    for user_id, character_id in sorted({(u, c) for u, _, c, _ in progress}):
         due += [(user_id, d) for d in _unlock(db, user_id, character_id, now)]
     return due
 

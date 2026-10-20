@@ -18,3 +18,8 @@
 - [ ] 跨票验收（本地构建版、Playwright、`docs/agents/local-acceptance.md`）：往库里塞老记录后重启跑补算，导航「礼物」上和她对话页的更多菜单上出点、点开消失；通话挂断后过一会儿时长阶段在导航和她的更多菜单上出点（能造就造，造不出来的列进人工验证清单）
 
 ## Comments
+
+### 票 04 交接
+
+- `GLOSSARY.md`「成就」写着「导入的数据包不算」「关着期间发生的事也不算」，上线补算是例外（上线前导入的、关着时的记录都算一次）。改文档时顺手补半句。
+- 补算的日志一行形如 `achievements launched: N users, N stages, N draw chances, N reset cards`，`deploy.md` 提补算时可以说去日志里看这一行。

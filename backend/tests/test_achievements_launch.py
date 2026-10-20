@@ -294,32 +294,24 @@ async def test_what_data_packages_brought_before_counts(
     assert achievement(await state(client), "days")["progress"] == 10
 
 
-async def test_it_is_done_once_however_often_the_backend_starts_again(
-    make_client: ClientFactory, history: History, caplog: pytest.LogCaptureFixture
+async def test_it_is_done_once_however_often_the_backend_starts_again_recording_nothing(
+    make_client: ClientFactory, history: History, caplog: pytest.LogCaptureFixture,
+    github: FakeIdentityProvider,
 ):
     history.turns(history.conversation(), 10)
 
     with caplog.at_level(logging.INFO, "eidolon.happenings"):
-        launched = await state(history.launch())
+        launched = history.launch()
+        held = await state(launched)
         again = await state(restart(make_client))
+    async with admin_beside(launched, github) as admin:
+        board = await dashboard(admin, "7d")
 
-    assert launched["draws"] == again["draws"] == 2
+    assert held["draws"] == again["draws"] == 2
     assert unlocked(await hers(restart(make_client)), "turns") == [1]
     assert [r.getMessage() for r in caplog.records if r.name == "eidolon.happenings"] == [
         "achievements launched: 1 users, 1 stages, 1 draw chances, 0 reset cards"
     ]
-
-
-async def test_it_records_nothing_for_the_dashboard(
-    make_client: ClientFactory, history: History, github: FakeIdentityProvider
-):
-    history.turns(history.conversation(), 10)
-
-    client = history.launch()
-    async with admin_beside(client, github) as admin:
-        board = await dashboard(admin, "7d")
-
-    assert unlocked(await hers(client), "turns") == [1]
     assert board["achievements"] == {"stages": 0, "draws": 0, "reset_cards": 0}
 
 
