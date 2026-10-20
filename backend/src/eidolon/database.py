@@ -82,7 +82,7 @@ NOT_USER_DATA = frozenset(
         "price_catalog_thinking", "price_catalog_hosts", "price_catalog_providers",
         "price_catalog_offers", "price_catalog_state", "banned_identities", "announcements",
         "sponsor", "gifts_opened", "reset_card_grants", "backup_runs", "record_rollups",
-        "taken_rollups", "call_rollups", "spread_rollups",
+        "taken_rollups", "call_rollups", "spread_rollups", "achievements_launched",
     }
 )
 """Every other table: the story corpus, the embedded text set, the calls to outside
@@ -92,7 +92,8 @@ online, the ban list, hashes of the identities banned users since deleted signed
 with, which say whose they were to no one, the announcements admins write, which say
 nothing of who wrote them, the sponsor code admins upload, when gifts last opened, which
 is no one's, and the reset cards admins have given every user, which say nothing of who
-gave them or to whom, and the record of each backup run, which says nothing of anyone's."""
+gave them or to whom, the record of each backup run, which says nothing of anyone's, and
+when the achievements launched, which is no one's."""
 
 
 def connect(path: Path) -> sqlite3.Connection:
