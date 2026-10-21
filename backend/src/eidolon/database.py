@@ -117,6 +117,24 @@ def connect(path: Path) -> sqlite3.Connection:
     return db
 
 
+def readable(path: Path) -> bool:
+    """Whether the database at `path` can be read now, on a connection of its own, so as
+    to wait on no module's lock; for the health check."""
+    try:
+        db = sqlite3.connect(path, timeout=READ_TIMEOUT)
+        try:
+            db.execute("SELECT 1 FROM sqlite_master LIMIT 1").fetchall()
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return False
+    return True
+
+
+READ_TIMEOUT = 2.0
+"""How long, in seconds, the health check waits to read the database."""
+
+
 def delete_user_data(db: sqlite3.Connection, user_id: str) -> None:
     """Delete the user and everything of theirs, for good, all at once, through `db`, which
     the caller keeps anyone else from using meanwhile, but what is only made no one's. A

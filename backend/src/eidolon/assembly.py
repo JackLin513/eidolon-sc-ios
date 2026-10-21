@@ -43,6 +43,7 @@ from eidolon.gifts import Gifts
 from eidolon.happenings import Happenings
 from eidolon.hot_words import hot_words
 from eidolon.housekeeping import keep_tidy
+from eidolon.loop_lag import watch_the_loop
 from eidolon.randomness import Random, secure_random
 from eidolon.clock import Clock, utc_now
 from eidolon.config import DEFAULT_BAILIAN_STT_MODEL, Settings
@@ -142,13 +143,15 @@ class Backend:
     _probing: asyncio.Task[None] | None = field(default=None, repr=False)
     _reaching_out: asyncio.Task[None] | None = field(default=None, repr=False)
     _tidying: asyncio.Task[None] | None = field(default=None, repr=False)
+    _watching: asyncio.Task[None] | None = field(default=None, repr=False)
 
     async def start(self) -> None:
         """What is done as the server starts, on its event loop: try the overrides of the
         configuration, falling back to `.env` where one fails; keep the price catalogs
         fresh from now on, fetching them in the background, try the services without
-        calls for their status, have characters reach out once their time comes, and delete
-        what ages out (`housekeeping`)."""
+        calls for their status, have characters reach out once their time comes, delete
+        what ages out (`housekeeping`), and watch how far behind the loop runs
+        (`loop_lag`)."""
         asyncio.get_running_loop().set_default_executor(
             ThreadPoolExecutor(THREADS, thread_name_prefix="eidolon")
         )
@@ -157,12 +160,16 @@ class Backend:
         self._probing = asyncio.create_task(self.service_status.keep_probing())
         self._reaching_out = asyncio.create_task(self.reach_outs.keep_reaching_out())
         self._tidying = asyncio.create_task(keep_tidy(self.usage.forget_old, self.activity.forget_old))
+        self._watching = asyncio.create_task(watch_the_loop(lambda: self.calls.in_progress))
 
     async def aclose(self) -> None:
         """Close what `build` opened, last opened first, once what `start` began is over."""
         tasks = [
             task
-            for task in (self._keeping_fresh, self._probing, self._reaching_out, self._tidying)
+            for task in (
+                self._keeping_fresh, self._probing, self._reaching_out, self._tidying,
+                self._watching,
+            )
             if task is not None
         ]
         for task in tasks:

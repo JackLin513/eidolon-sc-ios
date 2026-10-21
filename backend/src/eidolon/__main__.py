@@ -149,10 +149,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
+GRACEFUL_SHUTDOWN_SECONDS = 20
+
+
 def _serve() -> int:
     import uvicorn
     from loguru import logger
 
+    from eidolon import server_logs
     from eidolon.app import create_app
     from eidolon.assembly import build
 
@@ -161,16 +165,7 @@ def _serve() -> int:
     logger.remove()
     logger.add(sys.stderr, level="INFO")
 
-    # Which settings the admin console overrides, for a deployer wondering why `.env`'s
-    # did not take (ADR-0013), and what the backups begun from it did, which is not in
-    # `logs/db-backup.log`, the photo tags the tag table does not know, for the deployer to
-    # add to the rewrite table, and what the achievements' launch gave (deploy.md「升级」);
-    # nothing configures the root logger to show any of them.
-    to_stderr = logging.StreamHandler()
-    to_stderr.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
-    for name in ["eidolon.live_config", "eidolon.backup", "eidolon.photo_prompt", "eidolon.happenings"]:
-        logging.getLogger(name).addHandler(to_stderr)
-        logging.getLogger(name).setLevel(logging.INFO)
+    server_logs.configure()
 
     try:  # missing settings, an unusable DashScope key or Cloudflare token, a broken
         # character configuration
@@ -192,6 +187,10 @@ def _serve() -> int:
         app,
         host=os.environ.get("HOST", "0.0.0.0"),
         port=int(os.environ.get("PORT", "8000")),
+        log_config=server_logs.uvicorn_log_config(),
+        # Requests under way (a text turn's reply) are given this long to finish as the
+        # server stops, within the 30 seconds compose gives it; calls are hung up after.
+        timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
     )
     return 0
 
