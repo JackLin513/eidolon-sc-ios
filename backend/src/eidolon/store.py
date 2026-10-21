@@ -80,6 +80,10 @@ CREATE TABLE IF NOT EXISTS conversations (
     created_at TEXT NOT NULL,
     title TEXT
 );
+-- A user's conversations, with each character, newest last: listing them, finding the
+-- current one, and every join from a user to what is in their conversations.
+CREATE INDEX IF NOT EXISTS conversations_by_user
+    ON conversations(user_id, character_id, created_at);
 -- `hurt` and `out_of_line`, on the user's message of a typed turn (`Typed`), are what the
 -- turn took off her affinity and whether it was out of line; NULL for a turn of a call, or
 -- one recorded before typed turns were counted.
@@ -970,14 +974,17 @@ class Store:
         """When the first thing still in the user's conversations with each character, a
         message, an event or a call kept, was recorded; only those with anything left."""
         with self._lock:
+            # Each from the user's conversations, so as to read only what is in them.
             rows = self._db.execute(
-                "SELECT c.character_id, MIN(r.created_at) AS first FROM ("
-                " SELECT conversation_id, created_at FROM messages"
-                " UNION ALL SELECT conversation_id, created_at FROM conversation_events"
-                " UNION ALL SELECT conversation_id, connected_at FROM calls"
-                ") r JOIN conversations c ON c.id = r.conversation_id"
-                " WHERE c.user_id = ? GROUP BY c.character_id",
-                (user_id,),
+                "SELECT character_id, MIN(at) AS first FROM ("
+                " SELECT c.character_id, m.created_at AS at FROM conversations c"
+                "  JOIN messages m ON m.conversation_id = c.id WHERE c.user_id = :user"
+                " UNION ALL SELECT c.character_id, e.created_at FROM conversations c"
+                "  JOIN conversation_events e ON e.conversation_id = c.id WHERE c.user_id = :user"
+                " UNION ALL SELECT c.character_id, k.connected_at FROM conversations c"
+                "  JOIN calls k ON k.conversation_id = c.id WHERE c.user_id = :user"
+                ") GROUP BY character_id",
+                {"user": user_id},
             ).fetchall()
         return {r["character_id"]: _at(r["first"]) for r in rows}
 
@@ -1254,10 +1261,14 @@ class Store:
                 "  ORDER BY n.created_at DESC, n.rowid DESC LIMIT 1)"
             ).fetchall()
             calls: dict[str, list[tuple[str, float]]] = {}
+            # The calls in the same conversations, picked out the same way: as many ids as
+            # there are conversations would be more than a statement may bind.
             for call in self._db.execute(
-                "SELECT conversation_id, connected_at, duration_s FROM calls"
-                f" WHERE conversation_id IN ({','.join('?' * len(rows))})",
-                [row["id"] for row in rows],
+                "SELECT k.conversation_id, k.connected_at, k.duration_s FROM calls k"
+                " JOIN conversations c ON c.id = k.conversation_id"
+                " WHERE c.rowid = (SELECT n.rowid FROM conversations n"
+                "  WHERE n.user_id = c.user_id AND n.character_id = c.character_id"
+                "  ORDER BY n.created_at DESC, n.rowid DESC LIMIT 1)"
             ):
                 calls.setdefault(call["conversation_id"], []).append(
                     (call["connected_at"], call["duration_s"])

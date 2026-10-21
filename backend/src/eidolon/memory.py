@@ -94,6 +94,8 @@ CREATE TABLE IF NOT EXISTS memories (
     superseded_by INTEGER,
     UNIQUE (user_id, text)
 );
+-- Deleting a conversation clears this from the memories written down in it.
+CREATE INDEX IF NOT EXISTS memories_by_conversation ON memories(conversation_id);
 CREATE TABLE IF NOT EXISTS memory_vectors (
     memory_id INTEGER NOT NULL,
     user_id TEXT NOT NULL,

@@ -105,6 +105,9 @@ def connect(path: Path) -> sqlite3.Connection:
         # Readers need not wait for a writer: several modules, and the command line in
         # another process, each have a connection to this database.
         db.execute("PRAGMA journal_mode = WAL")
+        # In WAL mode a commit need not wait for the disk: losing power may lose the last
+        # commits, never corrupt the database.
+        db.execute("PRAGMA synchronous = NORMAL")
         # What is deleted is overwritten, not just freed: deleting a user is for good.
         db.execute("PRAGMA secure_delete = ON")
         db.execute("PRAGMA foreign_keys = ON")
