@@ -31,7 +31,7 @@ REACH_TIMEOUT = httpx.Timeout(10)
 
 MAX_CONNECTIONS = 300
 """How many connections each way a service has to its provider (direct, or through a
-proxy) may have open at once (#165). Every user's turns and calls share them: httpx's own
+proxy) may have open at once. Every user's turns and calls share them: httpx's own
 100 are for one program's requests, and with replies streamed for up to a minute, a busy
 hour would wait on them."""
 

@@ -345,6 +345,8 @@ def create_app(backend: Backend) -> FastAPI:
 
     @app.exception_handler(StillPlacing)
     async def still_placing(_: Request, e: StillPlacing) -> JSONResponse:
+        """Refused for now, the user's last call not yet answered; as a conflict, told apart
+        from a call refused for the limit's 429."""
         return JSONResponse({"detail": str(e)}, status_code=409)
 
     @app.exception_handler(CallFailed)

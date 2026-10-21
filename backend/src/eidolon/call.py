@@ -1173,10 +1173,10 @@ class Calls:
         """Raise StillPlacing if the user's last call is still being placed, CallsBusy if
         there are as many calls under way as there may be at once, but for the user's own,
         which a new one replaces."""
-        placing = [placing.user_id for placing in list(self._placing)]
-        if user_id in placing:
+        placing_users = [placing.user_id for placing in list(self._placing)]
+        if user_id in placing_users:
             raise StillPlacing()
-        under_way = placing + [
+        under_way = placing_users + [
             live.user_id for live in list(self._live) if not live.over and live.user_id != user_id
         ]
         most = self._usage_limits().concurrent_calls

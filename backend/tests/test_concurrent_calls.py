@@ -1,5 +1,5 @@
-"""How many calls there may be at once (#165): each user one at a time, a new one hanging
-up the one they had, and all users together as many as the limits say
+"""How many calls there may be at once: each user one at a time, a new one, let through,
+hanging up the one they had, and all users together as many as the limits say
 (`UsageLimits.concurrent_calls`). A call is under way from being placed until it is over;
 one refused is refused before anything is asked of it, both as the browser asks what it
 needs to call and as it places the call."""
@@ -39,7 +39,8 @@ def another_user(client: httpx.AsyncClient, name: str) -> httpx.AsyncClient:
 async def test_a_users_new_call_hangs_up_the_one_they_had(
     make_client: ClientFactory, one_call_at_once: Settings, browser: Browser
 ):
-    """Theirs is not counted against the calls at once: it is hung up as theirs connects."""
+    """Theirs is not counted against the calls at once: it is hung up as the new one is
+    let through."""
     client = make_client(FakeLLM(), settings=one_call_at_once)
     conversation_id = await start_conversation(client)
     await browser.call(client, conversation_id=conversation_id)

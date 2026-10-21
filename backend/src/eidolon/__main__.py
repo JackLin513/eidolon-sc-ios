@@ -150,6 +150,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 GRACEFUL_SHUTDOWN_SECONDS = 20
+"""How long, in seconds, requests under way are given to finish as the server stops; within
+the grace compose gives it (`stop_grace_period` in docker-compose.prod.yml)."""
 
 
 def _serve() -> int:
@@ -188,8 +190,7 @@ def _serve() -> int:
         host=os.environ.get("HOST", "0.0.0.0"),
         port=int(os.environ.get("PORT", "8000")),
         log_config=server_logs.uvicorn_log_config(),
-        # Requests under way (a text turn's reply) are given this long to finish as the
-        # server stops, within the 30 seconds compose gives it; calls are hung up after.
+        # Calls are no requests: they are hung up after, as the backend closes.
         timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
     )
     return 0

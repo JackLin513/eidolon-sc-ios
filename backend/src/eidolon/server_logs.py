@@ -1,4 +1,4 @@
-"""What the server logs, and how (#165): everything logged through `logging` at INFO and up,
+"""What the server logs, and how: everything logged through `logging` at INFO and up,
 each line with its time and which logger, but for libraries that log every request or ICE
 check at INFO; and uvicorn's access log, with the time too, each request's path without its
 query, which may carry what is not to be kept (an OAuth callback's `code`)."""

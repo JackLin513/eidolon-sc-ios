@@ -5,7 +5,7 @@ Idle, the call ends straight away; a reply she has started speaking goes no furt
 recorded with what was complete of it, and one she has not is dropped; nothing said after
 that is taken up. The browser is told `ended` as for a cooldown, with when it ends, the
 「挂断了电话」event is written into the call's conversation, and the call is a success,
-ended by her (「角色挂断」). A user has one call at a time (#165), so no other call of
+ended by her (「角色挂断」). A user has one call at a time, so no other call of
 theirs, with her or anyone, is there to go on or end with it.
 
 Driven through the backend's external API, with browsers calling in over real WebRTC

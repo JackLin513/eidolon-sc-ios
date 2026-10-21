@@ -1,5 +1,5 @@
 """How far behind the event loop runs: every call's audio and every request are served on
-the one loop, and anything run on it that blocks holds all of them up (#165). Measured every
+the one loop, and anything run on it that blocks holds all of them up. Measured every
 `INTERVAL` from when the server starts, and logged as a warning once it is more than
 `TOLERATED` late, with how many calls there are then; only logged, to know where to begin."""
 

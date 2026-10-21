@@ -230,7 +230,7 @@ DEFAULT_TURNS_PER_CALL = 40
 DEFAULT_PHOTOS_PER_HOUR = 5
 DEFAULT_CONCURRENT_CALLS = 10
 """What one process on the deployment's two cores carries, every call's audio on the one
-event loop (#165)."""
+event loop."""
 DEFAULT_HISTORY_TURNS = 20
 """How many of a conversation's latest turns the chat model reads; memories carry the rest."""
 
