@@ -92,10 +92,17 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
         timezone: Annotated[str | None, Header(alias="X-Timezone")] = None,
     ) -> dict:
         """The activity of the last `range`, summed up."""
-        # The activity records and the price catalogs, on connections of their own, are
-        # read on a thread, and summed up there.
-        pricing = await backend.prices.pricing()
-        return await run_in_threadpool(summed_up, range, timezone, pricing)
+        # The activity records, on a connection of their own, are read on a thread, and
+        # summed up there.
+        summed = await run_in_threadpool(
+            summed_up, range, timezone, await backend.prices.pricing()
+        )
+        backend.prices.catalog.refresh_soon(
+            missing=any(
+                r["unit"] == "tokens" and r["price"] is None for r in summed["cost"]["rows"]
+            )
+        )
+        return summed
 
     def summed_up(range: Range, timezone: str | None, pricing: Pricing) -> dict:
         span = SPANS[range]
@@ -112,9 +119,6 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
         section_shown = bool(backend.config.affinity_on or task_records or achievement_records)
         names = {id: c.name for id, c in backend.characters.items()}
         spent = cost(tally.calls, pricing, starts)
-        backend.prices.catalog.refresh_soon(
-            missing=any(r["unit"] == "tokens" and r["price"] is None for r in spent["rows"])
-        )
         return {
             "range": range,
             "from": start.isoformat(),

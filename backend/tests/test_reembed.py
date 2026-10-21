@@ -12,7 +12,8 @@ from pathlib import Path
 import pytest
 
 from eidolon.characters import Character, load_characters
-from eidolon.corpus import Episode, Line, StoryCorpus
+from eidolon.corpus import Episode, Line
+from eidolon.data_access import Database
 from eidolon.embedding import Document, EmbeddingError
 from eidolon.facts import CharacterFacts
 from eidolon.memory import Memories
@@ -29,6 +30,7 @@ from tests.fakes import (
     FakeSpeech,
     build_faked,
 )
+from tests.stories import corpus_in
 from tests.test_memories import NOW, World, tell, writing_with
 from tests.test_shared_memory import CAT, TRIP, memorized
 from tests.test_world_retrieval import ENTRIES as WORK_FACTS
@@ -74,12 +76,11 @@ class Deployment:
 
     async def embed_everything_with(self, model: str) -> None:
         embedder = FakeEmbedder(model)
-        corpus = StoryCorpus(self.database, embedder)
-        await corpus.save(EPISODES)
-        corpus.close()
-        facts = CharacterFacts(self.database, embedder, [self.mano])
-        await facts.embed_missing()
-        facts.close()
+        async with corpus_in(self.database, embedder) as corpus:
+            await corpus.save(EPISODES)
+        db = Database(self.database)
+        await CharacterFacts(db, embedder, [self.mano]).embed_missing()
+        await db.close()
         memories = writing_with(
             Memories(
                 self.database, self.characters, lambda: NOW, embedder=embedder,
@@ -142,9 +143,8 @@ async def test_everything_is_embedded_again_and_then_the_old_vectors_dropped(
     assert deployment.vectors("memory_vectors") == {NEW: 2}
     # Each passage is re-embedded from its text, under its title.
     assert "W.I.N.G.編「第1話」" in embedder.titles
-    corpus = StoryCorpus(deployment.database, embedder)
-    [park] = await corpus.search("鳩", "mano", 1)
-    corpus.close()
+    async with corpus_in(deployment.database, embedder) as corpus:
+        [park] = await corpus.search("鳩", "mano", 1)
     assert park.episode.id == "produce_events/100100101"
 
 
@@ -290,17 +290,15 @@ async def test_an_import_meanwhile_is_not_overwritten(deployment: Deployment):
 
         async def embed_documents(self, documents: Sequence[Document]) -> list[list[float]]:
             if not self.documents:
-                importer = StoryCorpus(deployment.database, FakeEmbedder(NEW))
-                await importer.save([rewritten])
-                importer.close()
+                async with corpus_in(deployment.database, FakeEmbedder(NEW)) as importer:
+                    await importer.save([rewritten])
             return await super().embed_documents(documents)
 
     embedder = ImportingMeanwhile(NEW)
     await reembed(deployment.database, deployment.characters.values(), embedder)
 
-    corpus = StoryCorpus(deployment.database, embedder)
-    [found] = await corpus.search("優勝", "mano", 1)
-    corpus.close()
+    async with corpus_in(deployment.database, embedder) as corpus:
+        [found] = await corpus.search("優勝", "mano", 1)
     assert found.episode.id == EPISODES[0].id and "優勝しました" in found.text
     assert deployment.vectors("episode_passages") == {NEW: 5}
 

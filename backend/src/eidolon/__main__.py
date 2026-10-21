@@ -242,6 +242,7 @@ async def _import_story(args: argparse.Namespace) -> int:
     from eidolon.characters import load_characters
     from eidolon.config import EmbeddingSettings
     from eidolon.corpus import StoryCorpus
+    from eidolon.data_access import Database
     from eidolon.embedding import EmbeddingError, open_embedder
     from eidolon.story_import import import_csv_directory, import_json_directory
 
@@ -256,15 +257,16 @@ async def _import_story(args: argparse.Namespace) -> int:
         return 1
     embedder = open_embedder(settings)
     try:
-        corpus = StoryCorpus(args.db or database_path_from_env(), embedder)
+        db = Database(args.db or database_path_from_env())
         try:
+            corpus = StoryCorpus(db, embedder)
             import_stories = (
                 import_json_directory if args.action == "import-json" else import_csv_directory
             )
             report = await import_stories(args.directory, corpus, characters.values())
-            catalogs = {c.name: corpus.catalog(c.id) for c in characters.values()}
+            catalogs = {c.name: await corpus.catalog(c.id) for c in characters.values()}
         finally:
-            corpus.close()
+            await db.close()
     except EmbeddingError as e:
         print(f"导入中断（已导入的剧情会保留，重新运行即可继续）：{e}", file=sys.stderr)
         return 1
@@ -293,6 +295,7 @@ async def _sync_story(args: argparse.Namespace) -> int:
     from eidolon.characters import load_characters
     from eidolon.config import EmbeddingSettings
     from eidolon.corpus import StoryCorpus
+    from eidolon.data_access import Database
     from eidolon.embedding import EmbeddingError, open_embedder
     from eidolon.mirror import Mirror
     from eidolon.story_sync import load_event_names, sync_stories
@@ -319,19 +322,19 @@ async def _sync_story(args: argparse.Namespace) -> int:
     embedder = open_embedder(settings)
     mirror = Mirror()
     try:
-        corpus = StoryCorpus(args.db or database_path_from_env(), embedder)
+        db = Database(args.db or database_path_from_env())
         try:
             report = await sync_stories(
                 story,
                 args.cache or mirror_cache_path_from_env(),
-                corpus,
+                StoryCorpus(db, embedder),
                 characters.values(),
                 mirror,
                 event_names=event_names,
                 idols=args.idol,
             )
         finally:
-            corpus.close()
+            await db.close()
     except EmbeddingError as e:
         print(f"同步中断（已导入的剧情和已下载的剧本会保留，重新运行即可继续）：{e}", file=sys.stderr)
         return 1
@@ -616,6 +619,7 @@ async def _draft_sheet(args: argparse.Namespace) -> int:
     from eidolon.characters import load_characters
     from eidolon.config import LLMSettings
     from eidolon.corpus import StoryCorpus
+    from eidolon.data_access import Database
     from eidolon.embedding import NoEmbedder
     from eidolon.llm import LLMError
     from eidolon.llm.providers import open_llm
@@ -664,16 +668,17 @@ async def _draft_sheet(args: argparse.Namespace) -> int:
     logging.getLogger("eidolon.sheet_draft").addHandler(progress)
     logging.getLogger("eidolon.sheet_draft").setLevel(logging.INFO)
     llm = open_llm(llm_settings)
-    corpus = StoryCorpus(args.db or database_path_from_env(), NoEmbedder())
+    db = Database(args.db or database_path_from_env())
     try:
         report = await draft_sheet(
-            character, corpus, llm, output=path, overwrite=args.force, budget=budget
+            character, StoryCorpus(db, NoEmbedder()), llm, output=path, overwrite=args.force,
+            budget=budget,
         )
     except (NoEpisodes, LLMError) as e:
         print(e, file=sys.stderr)
         return 1
     finally:
-        corpus.close()
+        await db.close()
         await llm.aclose()
     sampled = (
         f"（素材太多，均匀抽取了其中 {report.episodes_read} 段）"
@@ -733,6 +738,7 @@ async def _eval_rerank(args: argparse.Namespace) -> int:
 
     from eidolon.characters import load_characters
     from eidolon.config import EmbeddingSettings, RerankSettings
+    from eidolon.data_access import Database
     from eidolon.embedding import EmbeddingError, open_embedder
     from eidolon.rerank import RerankError, SiliconFlowReranker, thresholds_for
     from eidolon.rerank_eval import CalibrationError, evaluate, load_calibration, report
@@ -758,16 +764,15 @@ async def _eval_rerank(args: argparse.Namespace) -> int:
     logging.getLogger("eidolon.retrieval").addHandler(warnings)
     embedder = open_embedder(embedding)
     reranker = SiliconFlowReranker(rerank.api_key, rerank.model, rerank.base_url)
-    sources = open_reference_sources(
-        args.db or database_path_from_env(), embedder, characters.values(), world
-    )
+    db = Database(args.db or database_path_from_env())
     try:
+        sources = open_reference_sources(db, embedder, characters.values(), world)
         results = await evaluate(calibration, characters, reranker, sources)
     except (CalibrationError, EmbeddingError, RerankError) as e:
         print(e, file=sys.stderr)
         return 1
     finally:
-        sources.close()
+        await db.close()
         await embedder.aclose()
         await reranker.aclose()
     print(report(results, rerank.model, thresholds_for(rerank)))

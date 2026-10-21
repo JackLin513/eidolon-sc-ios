@@ -16,3 +16,7 @@
 - [ ] 受影响的测试通过，CI 绿。
 
 ## Comments
+
+### 票 02 交接
+
+- `Reembeddable.forget_other_models` 改成了 async。`Memories.forget_other_models` 现在是在 `to_thread` 里跑原来的同步体，用 `Memories` 自己的连接和锁。迁移时改成一个写任务。

@@ -327,14 +327,18 @@ class Memories:
         task = asyncio.create_task(embed(), context=detached())
         self._hold(user_id, task)
 
-    def forget_other_models(self) -> int:
+    async def forget_other_models(self) -> int:
         """Drop every memory's vector not from the embedder given; returns how many there
         were."""
         model = self._reembedder().model
-        with self._lock, self._db:
-            return self._db.execute(
-                "DELETE FROM memory_vectors WHERE model != ?", (model,)
-            ).rowcount
+
+        def forget() -> int:
+            with self._lock, self._db:
+                return self._db.execute(
+                    "DELETE FROM memory_vectors WHERE model != ?", (model,)
+                ).rowcount
+
+        return await asyncio.to_thread(forget)
 
     def _reembedder(self) -> Embedder:
         """The embedder given, which embedding the memories again needs."""

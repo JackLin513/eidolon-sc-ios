@@ -30,6 +30,7 @@ from eidolon.config import (
     split_proxy_password,
     with_proxy_password,
 )
+from eidolon.data_access import Database
 from eidolon.llm import ChatMessage, LLMError
 from eidolon.image_generation import ImageFailed
 from eidolon.own_keys import OwnImageService, ProviderLLMService
@@ -402,7 +403,7 @@ KNOWN = "https://llm.known.example/v1"
 
 
 @pytest.fixture
-def catalog(settings: Settings) -> Catalog:
+async def catalog(settings: Settings) -> AsyncIterator[Catalog]:
     """The price catalogs as fetched: a provider at `KNOWN`, one whose model says it is
     served at an address of its own, and those that are not on the internet by name: one
     run on this machine, as models.dev lists LM Studio, and others at an address or a name
@@ -416,9 +417,12 @@ def catalog(settings: Settings) -> Catalog:
             "m": {"id": "m", "provider": {"api": "https://llm.relayed.example/anthropic/v1"}},
         }},
     })
-    catalog = Catalog(settings.database_path, FakeClock(), fake.transport())
-    catalog.refresh()
-    return catalog
+    db = Database(settings.database_path)
+    catalog = Catalog(db, FakeClock(), fake.transport())
+    await catalog.refresh()
+    yield catalog
+    await catalog.aclose()
+    await db.close()
 
 
 async def own_llm_fails(service: ProviderLLMService, base_url: str) -> str:
@@ -445,7 +449,6 @@ async def test_a_users_own_llm_goes_through_the_proxy_only_to_a_known_providers_
     finally:
         await service.aclose()
         await routes.aclose()
-        catalog.close()
 
     assert proxy.went == ["llm.known.example:443"]
     for why in [over_http, not_ticked]:
@@ -468,7 +471,6 @@ async def test_a_known_providers_llm_is_tried_through_the_proxy_not_looked_up_he
     finally:
         await service.aclose()
         await routes.aclose()
-        catalog.close()
 
     assert "公网地址" not in str(through_proxy.value) and "找不到" not in str(through_proxy.value)
     assert proxy.went and set(proxy.went) == {"llm.known.example:443"}
@@ -529,7 +531,6 @@ def test_known_providers_are_the_catalogs_hosts_and_those_written_down_by_name_o
         )
         if catalog.known_provider(host)
     ]
-    catalog.close()
 
     assert known == [
         "llm.known.example", "LLM.Known.Example", "generativelanguage.googleapis.com",

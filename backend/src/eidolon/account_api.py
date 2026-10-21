@@ -449,7 +449,7 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
         return {"base_url": own.base_url, "model": own.model}
 
     @app.get("/api/account/keys/llm/efforts")
-    def llm_efforts(
+    async def llm_efforts(
         user_id: UserId,
         protocol: LLMProtocol,
         base_url: Annotated[str, Query(max_length=500)],
@@ -486,7 +486,7 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
         return {"models": models}
 
     @app.get("/api/account/keys/llm/providers")
-    def llm_providers(user_id: UserId, response: Response) -> dict:
+    async def llm_providers(user_id: UserId, response: Response) -> dict:
         """The providers an LLM may be picked from, as models.dev lists them
         (`price_catalog.parse_offers`): where each serves its models and over which
         protocol, for the settings page and the admin console to fill in, and every address

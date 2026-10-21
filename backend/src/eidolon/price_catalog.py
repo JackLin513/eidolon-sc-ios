@@ -5,14 +5,15 @@ cache too where they say, for pricing the deployer's service calls in place of t
 
 The catalogs are fetched in the background as the server starts, again once they are a
 day old, and sooner when a model has no price (`refresh_soon`), or when an admin asks
-(`refresh`). Kept in the database, they are matched to a call by the host it was at and
-the model it named: the providers at that host (models.dev's `api`, or the few without
-one written down here, or OpenRouter), then the model's name, as it is and then looser
-and looser. A model at a host no catalog knows (a relay, a proxy) is looked for among
-the providers that make models, and priced as its maker prices it. OpenRouter's catalog
-is its own API's, not models.dev's copy, which goes without the judge models' prices.
-The same hosts are the known providers', which alone users' own LLMs may reach through the
-proxy (`known_provider`, ADR-0022).
+(`refresh`), each a task of its own on the event loop, written through the data access
+layer. Kept in the database, and in memory as last read from it, they are matched to a
+call by the host it was at and the model it named: the providers at that host
+(models.dev's `api`, or the few without one written down here, or OpenRouter), then the
+model's name, as it is and then looser and looser. A model at a host no catalog knows (a
+relay, a proxy) is looked for among the providers that make models, and priced as its
+maker prices it. OpenRouter's catalog is its own API's, not models.dev's copy, which goes
+without the judge models' prices. The same hosts are the known providers', which alone
+users' own LLMs may reach through the proxy (`known_provider`, ADR-0022).
 
 models.dev's says how each model thinks, too (`Thinking`), found the same way (`thinking`):
 for the efforts beside a model's to note which it is listed taking, a hint only, never
@@ -24,13 +25,13 @@ from instead of written in by hand (`providers`, `offers`, ADR-0027)."""
 
 import asyncio
 import ipaddress
+import json
 import logging
 import re
-import threading
+import sqlite3
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Literal, TypeVar
 from urllib.parse import urlsplit
 
@@ -38,7 +39,7 @@ import httpx
 
 from eidolon.clock import Clock
 from eidolon.config import REASONING_EFFORTS, LLMProtocol, ReasoningEffort
-from eidolon.database import connect
+from eidolon.data_access import Database
 
 MODELS_DEV_URL = "https://models.dev/api.json"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/models?output_modalities=all"
@@ -487,115 +488,62 @@ def _match(listing: Mapping[str, Mapping[str, T]], providers: list[str], model: 
     return None
 
 
+@dataclass(frozen=True)
+class _Listing:
+    """The catalogs as last fetched, as they are kept in memory to be looked up in."""
+
+    models: Mapping[str, Mapping[str, Listed]]
+    thinking: Mapping[str, Mapping[str, Thinking]]
+    hosts: Mapping[str, list[str]]
+    providers: list[Provider]
+    no_providers: bool
+    """Whether models.dev's models were fetched without its providers: by an older
+    version, before there were any to keep. Catalogs fetched empty are not."""
+    offers: Mapping[str, list[Offer]]
+    state: State
+
+
 class Catalog:
     """The price catalogs as last fetched, fetching them again on asking (`refresh`)."""
 
     def __init__(
-        self, path: Path, clock: Clock, transport: httpx.BaseTransport | None = None
+        self, db: Database, clock: Clock, transport: httpx.AsyncBaseTransport | None = None
     ) -> None:
-        self._db = connect(path)
-        self._lock = threading.Lock()
-        with self._lock, self._db:
-            self._db.executescript(_SCHEMA)
-            columns = {name for _, name, *_ in self._db.execute("PRAGMA table_info(price_catalog)")}
-            # Catalogs fetched before cache prices were kept have none until fetched again.
-            if "cache_read" not in columns:
-                self._db.execute("ALTER TABLE price_catalog ADD COLUMN cache_read REAL")
+        self._db = db
+        self._listing = db.prepare(_open)
         self._clock = clock
-        self._fetching = threading.Lock()
-        self._background: threading.Thread | None = None
-        self._starting = threading.Lock()
+        self._fetching: asyncio.Task[None] | None = None
         self._closed = False
-        self._http = httpx.Client(
+        self._http = httpx.AsyncClient(
             transport=transport, timeout=60, headers={"User-Agent": "eidolon-sc"},
             follow_redirects=True,
         )
-        self._load()
-
-    def _load(self) -> None:
-        with self._lock:
-            listed = self._db.execute(
-                "SELECT provider, model, input, output, cache_read FROM price_catalog"
-            ).fetchall()
-            thinking = self._db.execute(
-                "SELECT provider, model, thinks, efforts, switch FROM price_catalog_thinking"
-            ).fetchall()
-            hosts = self._db.execute("SELECT host, provider FROM price_catalog_hosts").fetchall()
-            providers = self._db.execute(
-                "SELECT provider, name, protocol, base_url FROM price_catalog_providers"
-            ).fetchall()
-            offers = self._db.execute(
-                "SELECT provider, model, name, protocol, base_url FROM price_catalog_offers"
-            ).fetchall()
-            state = self._db.execute(
-                "SELECT fetched_at, failed_at, error FROM price_catalog_state"
-            ).fetchone()
-        models: dict[str, dict[str, Listed]] = {}
-        for provider, model, input, output, cache_read in listed:
-            models.setdefault(provider, {})[model] = Listed(
-                provider, model, input, output, cache_read
-            )
-        thinks: dict[str, dict[str, Thinking]] = {}
-        for provider, model, does, efforts, switch in thinking:
-            taken = efforts.split()
-            thinks.setdefault(provider, {})[model] = Thinking(
-                provider, model, bool(does),
-                tuple(e for e in REASONING_EFFORTS if e in taken), bool(switch),
-            )
-        at: dict[str, list[str]] = {OPENROUTER_HOST: [OPENROUTER]}
-        for host, provider in hosts:
-            at.setdefault(host, []).append(provider)
-        self._models = models
-        self._thinking = thinks
-        self._hosts = {host: sorted(set(listed)) for host, listed in at.items()}
-        self._providers = sorted(
-            (Provider(*row) for row in providers), key=lambda p: (p.name.casefold(), p.id)
-        )
-        # Models.dev's models fetched without its providers: by an older version, before
-        # there were any to keep. Catalogs fetched empty are not.
-        self._no_providers = not providers and bool(thinking)
-        served: dict[str, list[Offer]] = {}
-        for row in offers:
-            served.setdefault(row[0], []).append(Offer(*row))
-        self._offers = {
-            p: sorted(o, key=lambda o: (o.name.casefold(), o.model)) for p, o in served.items()
-        }
-        when = lambda s: datetime.fromisoformat(s) if s else None  # noqa: E731
-        self._state = (
-            State(when(state[0]), when(state[1]), state[2]) if state else State(None, None, None)
-        )
 
     def state(self) -> State:
-        return replace(self._state, fetching=self._busy())
+        return replace(self._listing.state, fetching=self._busy())
 
     def _busy(self) -> bool:
-        return self._fetching.locked() or (
-            self._background is not None and self._background.is_alive()
-        )
+        return self._fetching is not None and not self._fetching.done()
 
     def refresh_soon(self, missing: bool = False) -> None:
         """Fetch the catalogs again in the background if they are stale (`STALE_AFTER`, or
         fetched without the providers an LLM is picked from, as before there were any),
         or if a model is `missing` a price and they were last tried `MISSING_AFTER` ago;
-        a failed fetch is not tried again for `RETRY_AFTER`. Returns at once."""
-        state, now = self._state, self._clock()
+        a failed fetch is not tried again for `RETRY_AFTER`. Returns at once; call it on
+        the event loop."""
+        state, now = self._listing.state, self._clock()
         tried = max((d for d in [state.fetched_at, state.failed_at] if d), default=None)
         stale = (
             state.fetched_at is None or now - state.fetched_at >= STALE_AFTER
-            or self._no_providers
+            or self._listing.no_providers
         )
         due = (
             tried is None
             or (stale and now - tried >= RETRY_AFTER)
             or (missing and now - tried >= MISSING_AFTER)
         )
-        with self._starting:
-            if not due or self._closed or self._busy():
-                return
-            self._background = threading.Thread(
-                target=self.refresh, name="price-catalog", daemon=True
-            )
-            self._background.start()
+        if due and not self._closed and not self._busy():
+            self._fetch_in_background()
 
     async def keep_fresh(self) -> None:
         """Look whether the catalogs are stale now and every `CHECK_EVERY` seconds after,
@@ -610,34 +558,34 @@ class Catalog:
         internet, not an address, nor a name for this machine, nor a placeholder
         (`https://${DATABRICKS_HOST}`)."""
         host = host.lower().rstrip(".")
-        listed = host in self._hosts or host in HOSTS.values()
+        listed = host in self._listing.hosts or host in HOSTS.values()
         return listed and _named(host)
 
     def providers(self) -> list[Provider]:
         """The providers a user's own LLM may be picked from, by name (`parse_offers`)."""
-        return self._providers
+        return self._listing.providers
 
     def offers(self, provider: str) -> list[Offer]:
         """The models `provider` serves that a user's own LLM may be picked from, by name;
         none for a provider not listed."""
-        return self._offers.get(provider, [])
+        return self._listing.offers.get(provider, [])
 
     def find(self, host: str, model: str) -> tuple[Listed, bool] | None:
         """The catalogs' price of `model` at `host`, if they have one, and whether it is
         its maker's, for a host no catalog knows (a relay, a proxy): what it is likely
         to cost there, not what it does."""
-        return self._find(self._models, host, model)
+        return self._find(self._listing.models, host, model)
 
     def thinking(self, host: str, model: str) -> Thinking | None:
         """How `model` at `host` thinks, as models.dev lists it, found as its price is
         (`find`): at a host no catalog knows, as its maker lists it."""
-        found = self._find(self._thinking, host, model)
+        found = self._find(self._listing.thinking, host, model)
         return found[0] if found else None
 
     def _find(
         self, listing: Mapping[str, Mapping[str, T]], host: str, model: str
     ) -> tuple[T, bool] | None:
-        providers = self._hosts.get(host.lower())
+        providers = self._listing.hosts.get(host.lower())
         if providers:
             found = _match(listing, providers, model)
             return (found, False) if found is not None else None
@@ -646,98 +594,182 @@ class Catalog:
         found = _match(listing, sorted(MAKERS, key=lambda m: m != named), model)
         return (found, True) if found is not None else None
 
-    def refresh(self) -> None:
+    async def refresh(self) -> None:
         """Fetch the catalogs again, keeping the ones last fetched if either fails; when
-        they are being fetched already, wait for that instead. Blocks: call it from a
-        thread of its own, not the event loop."""
-        if not self._fetching.acquire(blocking=False):
-            with self._fetching:
-                return
+        they are being fetched already, wait for that instead. Cancelling the wait leaves
+        the fetch to finish. Once closing, nothing is fetched."""
+        if self._closed:
+            return
+        fetching = self._fetching if self._busy() else self._fetch_in_background()
+        assert fetching is not None
+        await asyncio.shield(fetching)
+
+    def _fetch_in_background(self) -> "asyncio.Task[None]":
+        self._fetching = asyncio.create_task(self._fetch())
+        self._fetching.add_done_callback(_logged)
+        return self._fetching
+
+    async def _fetch(self) -> None:
+        now = self._clock()
         try:
-            now = self._clock()
-            try:
-                models_dev = self._get(MODELS_DEV_URL)
-                listed, thinking, hosts = parse_models_dev(models_dev)
-                providers, offers = parse_offers(models_dev)
-                listed += parse_openrouter(self._get(OPENROUTER_URL))
-            except (httpx.HTTPError, ValueError) as e:
-                log.warning("could not fetch the price catalogs: %s", e)
-                self._save_failure(now, f"{type(e).__name__}: {e}"[:500])
-            else:
-                self._save(now, listed, thinking, hosts, providers, offers)
-            self._load()
-        finally:
-            self._fetching.release()
+            listed, thinking, hosts, providers, offers = await asyncio.to_thread(
+                _from_models_dev, await self._get(MODELS_DEV_URL)
+            )
+            listed += await asyncio.to_thread(_from_openrouter, await self._get(OPENROUTER_URL))
+        except (httpx.HTTPError, ValueError) as e:
+            log.warning("could not fetch the price catalogs: %s", e)
+            await self._db.write(
+                _save_failure, now.isoformat(), f"{type(e).__name__}: {e}"[:500]
+            )
+        else:
+            await self._db.write(
+                _save, now.isoformat(), listed, thinking, hosts, providers, offers
+            )
+        self._listing = await self._db.read(_listing)
 
-    def _get(self, url: str) -> object:
-        response = self._http.get(url)
+    async def _get(self, url: str) -> bytes:
+        response = await self._http.get(url)
         response.raise_for_status()
-        return response.json()
+        return response.content
 
-    def _save(
-        self,
-        now: datetime,
-        listed: Iterable[Listed],
-        thinking: Iterable[Thinking],
-        hosts: Iterable[tuple[str, str]],
-        providers: Iterable[Provider],
-        offers: Iterable[Offer],
-    ) -> None:
-        with self._lock, self._db:
-            self._db.execute("DELETE FROM price_catalog")
-            self._db.executemany(
-                "INSERT OR REPLACE INTO price_catalog (provider, model, input, output, cache_read)"
-                " VALUES (?, ?, ?, ?, ?)",
-                ((m.provider, m.model, m.input, m.output, m.cache_read) for m in listed),
-            )
-            self._db.execute("DELETE FROM price_catalog_thinking")
-            self._db.executemany(
-                "INSERT OR REPLACE INTO price_catalog_thinking"
-                " (provider, model, thinks, efforts, switch) VALUES (?, ?, ?, ?, ?)",
-                (
-                    (t.provider, t.model, t.thinks, " ".join(t.efforts), t.switch)
-                    for t in thinking
-                ),
-            )
-            self._db.execute("DELETE FROM price_catalog_hosts")
-            self._db.executemany(
-                "INSERT OR IGNORE INTO price_catalog_hosts (host, provider) VALUES (?, ?)", hosts
-            )
-            self._db.execute("DELETE FROM price_catalog_providers")
-            self._db.executemany(
-                "INSERT OR REPLACE INTO price_catalog_providers (provider, name, protocol, base_url)"
-                " VALUES (?, ?, ?, ?)",
-                ((p.id, p.name, p.protocol, p.base_url) for p in providers),
-            )
-            self._db.execute("DELETE FROM price_catalog_offers")
-            self._db.executemany(
-                "INSERT OR REPLACE INTO price_catalog_offers"
-                " (provider, model, name, protocol, base_url) VALUES (?, ?, ?, ?, ?)",
-                ((o.provider, o.model, o.name, o.protocol, o.base_url) for o in offers),
-            )
-            self._db.execute(
-                "INSERT OR REPLACE INTO price_catalog_state (id, fetched_at, failed_at, error)"
-                " VALUES (1, ?, NULL, NULL)",
-                (now.isoformat(),),
-            )
+    async def aclose(self) -> None:
+        """Let a fetch under way finish, then close."""
+        self._closed = True
+        if self._fetching is not None:
+            await asyncio.gather(self._fetching, return_exceptions=True)
+        await self._http.aclose()
 
-    def _save_failure(self, now: datetime, error: str) -> None:
-        with self._lock, self._db:
-            self._db.execute(
-                "INSERT INTO price_catalog_state (id, failed_at, error) VALUES (1, ?, ?)"
-                " ON CONFLICT (id) DO UPDATE SET failed_at = excluded.failed_at,"
-                " error = excluded.error",
-                (now.isoformat(), error),
-            )
 
-    def close(self) -> None:
-        with self._starting:
-            self._closed = True
-        if self._background is not None:  # let a fetch under way finish
-            self._background.join()
-        with self._fetching:
-            self._http.close()
-            self._db.close()
+def _logged(fetching: "asyncio.Task[None]") -> None:
+    """Log what a fetch failed with beyond the catalogs not being fetched, which no one
+    may be waiting for."""
+    if not fetching.cancelled() and (error := fetching.exception()) is not None:
+        log.error("fetching the price catalogs failed", exc_info=error)
+
+
+def _from_models_dev(
+    content: bytes,
+) -> tuple[list[Listed], list[Thinking], list[tuple[str, str]], list[Provider], list[Offer]]:
+    """What models.dev's catalog, as fetched, prices, how its models think, where its
+    providers are, and the providers and models an LLM may be picked from."""
+    data = json.loads(content)
+    return *parse_models_dev(data), *parse_offers(data)
+
+
+def _from_openrouter(content: bytes) -> list[Listed]:
+    return parse_openrouter(json.loads(content))
+
+
+def _open(db: sqlite3.Connection) -> _Listing:
+    """Make the tables, or bring them up to date, and read the catalogs kept in them."""
+    db.executescript(_SCHEMA)
+    columns = {name for _, name, *_ in db.execute("PRAGMA table_info(price_catalog)")}
+    # Catalogs fetched before cache prices were kept have none until fetched again.
+    if "cache_read" not in columns:
+        db.execute("ALTER TABLE price_catalog ADD COLUMN cache_read REAL")
+    return _listing(db)
+
+
+def _listing(db: sqlite3.Connection) -> _Listing:
+    listed = db.execute(
+        "SELECT provider, model, input, output, cache_read FROM price_catalog"
+    ).fetchall()
+    thinking = db.execute(
+        "SELECT provider, model, thinks, efforts, switch FROM price_catalog_thinking"
+    ).fetchall()
+    hosts = db.execute("SELECT host, provider FROM price_catalog_hosts").fetchall()
+    providers = db.execute(
+        "SELECT provider, name, protocol, base_url FROM price_catalog_providers"
+    ).fetchall()
+    offers = db.execute(
+        "SELECT provider, model, name, protocol, base_url FROM price_catalog_offers"
+    ).fetchall()
+    state = db.execute("SELECT fetched_at, failed_at, error FROM price_catalog_state").fetchone()
+    models: dict[str, dict[str, Listed]] = {}
+    for provider, model, input, output, cache_read in listed:
+        models.setdefault(provider, {})[model] = Listed(provider, model, input, output, cache_read)
+    thinks: dict[str, dict[str, Thinking]] = {}
+    for provider, model, does, efforts, switch in thinking:
+        taken = efforts.split()
+        thinks.setdefault(provider, {})[model] = Thinking(
+            provider, model, bool(does),
+            tuple(e for e in REASONING_EFFORTS if e in taken), bool(switch),
+        )
+    at: dict[str, list[str]] = {OPENROUTER_HOST: [OPENROUTER]}
+    for host, provider in hosts:
+        at.setdefault(host, []).append(provider)
+    served: dict[str, list[Offer]] = {}
+    for row in offers:
+        served.setdefault(row[0], []).append(Offer(*row))
+    when = lambda s: datetime.fromisoformat(s) if s else None  # noqa: E731
+    return _Listing(
+        models=models,
+        thinking=thinks,
+        hosts={host: sorted(set(listed)) for host, listed in at.items()},
+        providers=sorted(
+            (Provider(*row) for row in providers), key=lambda p: (p.name.casefold(), p.id)
+        ),
+        no_providers=not providers and bool(thinking),
+        offers={
+            p: sorted(o, key=lambda o: (o.name.casefold(), o.model)) for p, o in served.items()
+        },
+        state=(
+            State(when(state[0]), when(state[1]), state[2]) if state else State(None, None, None)
+        ),
+    )
+
+
+def _save(
+    db: sqlite3.Connection,
+    now: str,
+    listed: Iterable[Listed],
+    thinking: Iterable[Thinking],
+    hosts: Iterable[tuple[str, str]],
+    providers: Iterable[Provider],
+    offers: Iterable[Offer],
+) -> None:
+    db.execute("DELETE FROM price_catalog")
+    db.executemany(
+        "INSERT OR REPLACE INTO price_catalog (provider, model, input, output, cache_read)"
+        " VALUES (?, ?, ?, ?, ?)",
+        ((m.provider, m.model, m.input, m.output, m.cache_read) for m in listed),
+    )
+    db.execute("DELETE FROM price_catalog_thinking")
+    db.executemany(
+        "INSERT OR REPLACE INTO price_catalog_thinking"
+        " (provider, model, thinks, efforts, switch) VALUES (?, ?, ?, ?, ?)",
+        ((t.provider, t.model, t.thinks, " ".join(t.efforts), t.switch) for t in thinking),
+    )
+    db.execute("DELETE FROM price_catalog_hosts")
+    db.executemany(
+        "INSERT OR IGNORE INTO price_catalog_hosts (host, provider) VALUES (?, ?)", hosts
+    )
+    db.execute("DELETE FROM price_catalog_providers")
+    db.executemany(
+        "INSERT OR REPLACE INTO price_catalog_providers (provider, name, protocol, base_url)"
+        " VALUES (?, ?, ?, ?)",
+        ((p.id, p.name, p.protocol, p.base_url) for p in providers),
+    )
+    db.execute("DELETE FROM price_catalog_offers")
+    db.executemany(
+        "INSERT OR REPLACE INTO price_catalog_offers"
+        " (provider, model, name, protocol, base_url) VALUES (?, ?, ?, ?, ?)",
+        ((o.provider, o.model, o.name, o.protocol, o.base_url) for o in offers),
+    )
+    db.execute(
+        "INSERT OR REPLACE INTO price_catalog_state (id, fetched_at, failed_at, error)"
+        " VALUES (1, ?, NULL, NULL)",
+        (now,),
+    )
+
+
+def _save_failure(db: sqlite3.Connection, now: str, error: str) -> None:
+    db.execute(
+        "INSERT INTO price_catalog_state (id, failed_at, error) VALUES (1, ?, ?)"
+        " ON CONFLICT (id) DO UPDATE SET failed_at = excluded.failed_at,"
+        " error = excluded.error",
+        (now, error),
+    )
 
 
 TurnsOff = Literal["by_effort", "by_switch"]

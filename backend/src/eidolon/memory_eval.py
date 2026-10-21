@@ -38,6 +38,7 @@ from zoneinfo import ZoneInfo
 
 from eidolon.characters import Character
 from eidolon.corpus import StoryCorpus
+from eidolon.data_access import Database
 from eidolon.embedding import Embedder
 from eidolon.judge import JudgeError, JudgeModel, JudgeThresholds
 from eidolon.llm import ChatLLM, ChatMessage, Streamed, Tool
@@ -451,11 +452,12 @@ async def evaluate(
     `workdir`, telling `progress` which case is next."""
     workdir.mkdir(parents=True, exist_ok=True)
     # No references to look up: a turn needing them finds only memories.
-    sources = ReferenceSources(
-        services.embedder, [], StoryCorpus(workdir / "references.db", services.embedder), None
-    )
+    references = Database(workdir / "references.db")
     total = len(memory_eval.extraction) + len(memory_eval.recall)
     try:
+        sources = ReferenceSources(
+            services.embedder, [], StoryCorpus(references, services.embedder), None
+        )
         extraction = []
         for i, case in enumerate(memory_eval.extraction):
             if progress is not None:
@@ -472,7 +474,7 @@ async def evaluate(
                 await _recall(case, workdir / f"recall-{i}.db", characters, services, sources)
             )
     finally:
-        sources.close()
+        await references.close()
     return MemoryEvalResults(extraction, recall)
 
 

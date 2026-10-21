@@ -20,3 +20,8 @@
 
 - `spread_bucket` 用 `database.function("spread_bucket", 1, _bucket, deterministic=True)` 注册，在 `ActivityLog` 构造时调。它会把读连接全部借出来，所以只在构造时调。
 - 看板（`dashboard.summed_up`）和后台价格（`admin_prices_api.described_by`）现在把读 `ActivityLog` 的同步部分整段放在 `run_in_threadpool` 里。迁完后改成直接 await，CPU 的汇总看情况留在线程里。
+
+### 票 02 交接
+
+- 价格目录的查找（`Pricing.find`、`listed`、`catalog_as_of`）都只读内存，不碰库。看板 `summed_up` 和后台价格 `described_by` 留在 `run_in_threadpool` 里的，只剩读 `ActivityLog`，加上纯 CPU 的汇总和定价。
+- `refresh_soon` 必须在事件循环上调，现在在两个 handler 的 await 之后调。收掉 `run_in_threadpool` 时别把它挪回线程里。

@@ -194,7 +194,7 @@ def build(
     identity_providers: dict[ProviderName, IdentityProvider] | None = None,
     own_llm_service: LLMService | None = None,
     clients: ServiceClients | None = None,
-    catalog_transport: httpx.BaseTransport | None = None,
+    catalog_transport: httpx.AsyncBaseTransport | None = None,
     backup_transport: httpx.AsyncBaseTransport | None = None,
     image_transport: httpx.AsyncBaseTransport | None = None,
     random: Random | None = None,
@@ -242,8 +242,8 @@ def build(
     )
     activity = ActivityLog(settings.database_path, clock)
     closers.append(activity.close)
-    catalog = Catalog(settings.database_path, clock, catalog_transport)
-    closers.append(catalog.close)
+    catalog = Catalog(database, clock, catalog_transport)
+    closers.append(catalog.aclose)
     prices = Prices(database, clock, catalog)
     announcements = Announcements(database, clock)
     sponsor = Sponsor(database, clock)
@@ -313,13 +313,10 @@ def build(
     if retrieval_judge is not None and embedder is not None and reranker is not None:
         retrieval = Retrieval(
             retrieval_judge,
-            open_reference_sources(
-                settings.database_path, embedder, characters.values(), world
-            ),
+            open_reference_sources(database, embedder, characters.values(), world),
             reranker,
             lambda: config.rerank_thresholds.references,
         )
-        closers.append(retrieval.close)
         memories = Memories(
             settings.database_path, characters, clock, embedder=embedder, reranker=reranker,
             min_relevance=lambda: config.rerank_thresholds.memories,

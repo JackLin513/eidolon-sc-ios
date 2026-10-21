@@ -46,20 +46,21 @@ def add_admin_price_routes(app: FastAPI, backend: Backend) -> None:
     prices = backend.prices
 
     async def described() -> dict:
-        # The activity records and the price catalogs, on connections of their own, are
-        # read on a thread.
-        return await run_in_threadpool(described_by, await prices.pricing())
-
-    def described_by(pricing: Pricing) -> dict:
-        billed = backend.activity.billed_models(backend.clock() - KEPT)
-        without = unpriced(billed, pricing)
+        # The activity records, on a connection of their own, are read on a thread, and
+        # the prices described there.
+        described, without = await run_in_threadpool(described_by, await prices.pricing())
         prices.catalog.refresh_soon(missing=any(u["unit"] == "tokens" for u in without))
         return {
             "preset_as_of": (d.isoformat() if (d := preset_as_of()) else None),
             "catalog": describe_state(prices.catalog.state()),
-            "prices": pricing.describe(billed),
+            "prices": described,
             "unpriced": without,
         }
+
+    def described_by(pricing: Pricing) -> tuple[list[dict], list[dict]]:
+        """Every price, and the models billed without one."""
+        billed = backend.activity.billed_models(backend.clock() - KEPT)
+        return pricing.describe(billed), unpriced(billed, pricing)
 
     @app.get("/api/admin/prices")
     async def get_prices(_: Admin) -> dict:
@@ -75,7 +76,7 @@ def add_admin_price_routes(app: FastAPI, backend: Backend) -> None:
     @app.post("/api/admin/prices/refresh")
     async def refresh_catalog(_: Admin) -> dict:
         """Fetch the price catalogs online again now, or wait for the fetch under way."""
-        await run_in_threadpool(prices.catalog.refresh)
+        await prices.catalog.refresh()
         return await described()
 
     @app.delete("/api/admin/prices")
