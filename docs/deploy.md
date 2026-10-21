@@ -67,6 +67,10 @@ docker compose -f docker-compose.prod.yml up -d
 
 第一次启动时 Caddy 会申请证书，稍等片刻后用浏览器打开 `https://你的域名`。后端启动失败时（缺少人设文件、对话模型检查不通过等），用 `docker compose -f docker-compose.prod.yml logs backend` 查看原因。
 
+- **日志**：每个容器的日志最多留 5 个 10 MB 的文件，旧的自动删掉。后端每行都带时间和来源；访问日志不记查询字符串。事件循环比预期晚醒 200 ms 以上时，后端会记一条 `the event loop ran … ms late, … calls in progress`，可以用来判断机器是否忙不过来。
+- **健康检查**：后端的 `/api/health` 读不了数据库时返回 503，`docker compose ps` 里显示为 unhealthy，但不会自动重启。
+- **停止和更新**：后端停止时，先给进行中的请求 20 秒（比如正在生成的文字回复），然后挂断所有通话。所以更新时正在进行的通话会断开，但都会正常结算。
+
 不用自带的 Caddy、自己配反向代理（nginx 等）的，要给 `/api/account/data-package` 这一个地址放开请求体的大小上限到 200 MiB：用户导入的数据包就是这个地址的请求体，nginx 默认只放 1 MB（`client_max_body_size 200m;`）。后端自己也会拒绝超过 200 MiB 的数据包。
 
 下面的命令都要带上 `-f docker-compose.prod.yml`。嫌麻烦的话，在这台服务器上执行一次 `export COMPOSE_FILE=docker-compose.prod.yml`（或者写进 shell 的配置文件），之后 README 和配置指南里的 `docker compose ...` 命令就能原样使用。

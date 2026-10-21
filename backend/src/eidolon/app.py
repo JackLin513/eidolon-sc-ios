@@ -18,13 +18,16 @@ from eidolon.admission import CoolingDown
 from eidolon.assembly import Backend
 from eidolon.call import (
     CallFailed,
+    CallsBusy,
     CallNotFound,
     CallOptions,
     IceCandidate,
     Quality,
     SessionDescription,
+    StillPlacing,
 )
 from eidolon.characters import Character, ScriptedLine, in_idol_order
+from eidolon.database import readable
 from eidolon.engine import ENDED, TurnJudged, shown
 from eidolon.greetings import (
     LANDING_MEMORY_STILL_PATH,
@@ -64,6 +67,10 @@ from eidolon.throttle import Throttled
 from eidolon.turn_outcome import TurnOutcome
 from eidolon.usage import OverLimit
 from eidolon.world import World
+
+HEALTH_TIMEOUT = 5.0
+"""How long, in seconds, the health check may take before the backend is taken not to
+serve: its threads may all be taken."""
 
 _PICTURE_CACHE = {"Cache-Control": "public, max-age=86400"}
 """Avatars and call backgrounds change only with a deploy (ADR-0003): browsers keep them a
@@ -330,6 +337,18 @@ def create_app(backend: Backend) -> FastAPI:
     async def call_not_found(_: Request, e: CallNotFound) -> JSONResponse:
         return JSONResponse({"detail": str(e)}, status_code=404)
 
+    @app.exception_handler(CallsBusy)
+    async def calls_busy(_: Request, e: CallsBusy) -> JSONResponse:
+        """Refused for now, as many calls being under way as there may be at once; told
+        apart from calls being unavailable by its `code`."""
+        return JSONResponse({"detail": str(e), "code": "calls_busy"}, status_code=503)
+
+    @app.exception_handler(StillPlacing)
+    async def still_placing(_: Request, e: StillPlacing) -> JSONResponse:
+        """Refused for now, the user's last call not yet answered; as a conflict, told apart
+        from a call refused for the limit's 429."""
+        return JSONResponse({"detail": str(e)}, status_code=409)
+
     @app.exception_handler(CallFailed)
     async def call_failed(_: Request, e: CallFailed) -> JSONResponse:
         return JSONResponse({"detail": str(e)}, status_code=500)
@@ -348,9 +367,24 @@ def create_app(backend: Backend) -> FastAPI:
         if store.ended(conversation.id) is not None:
             raise HTTPException(409, ENDED)
 
+    def conversation_to_call(conversation_id: str, user_id: str) -> Conversation:
+        """The user's conversation a call is to go into, as `conversation_or_404` finds it,
+        unless she has ended it (`refuse_if_ended`)."""
+        conversation = conversation_or_404(conversation_id, user_id)
+        refuse_if_ended(conversation)
+        return conversation
+
     @app.get("/api/health")
-    def health() -> dict:
-        return {"ok": True}
+    async def health() -> JSONResponse:
+        """Whether the backend can serve: 503 when it cannot read the database in time,
+        on a thread, as those it serves are."""
+        try:
+            ok = await asyncio.wait_for(
+                asyncio.to_thread(readable, backend.settings.database_path), HEALTH_TIMEOUT
+            )
+        except TimeoutError:
+            ok = False
+        return JSONResponse({"ok": ok}, status_code=200 if ok else 503)
 
     add_account_routes(app, backend)
     add_admin_routes(app, backend)
@@ -393,8 +427,9 @@ def create_app(backend: Backend) -> FastAPI:
             )
         if body.call is None:
             raise HTTPException(422, "缺少要通话的对话")
-        conversation = conversation_or_404(body.call.conversation_id, user_id)
-        refuse_if_ended(conversation)
+        conversation = await asyncio.to_thread(
+            conversation_to_call, body.call.conversation_id, user_id
+        )
         return await calls.start(
             user_id,
             conversation,
