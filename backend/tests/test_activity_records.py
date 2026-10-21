@@ -108,7 +108,7 @@ async def test_the_dashboard_counts_turns_by_how_they_turned_out_and_says_nothin
 
     succeeded = await send_turn(producer, conversation_id, SAID)
     failed = await send_turn(producer, conversation_id, "在吗")
-    await leave_turn(producer, conversation_id, "你好", after="user")
+    await leave_turn(producer, conversation_id, "你好", after="delta")  # once asked
     refused = await post_turn(producer, conversation_id)
     await send_turn(friend, await start_conversation(friend, "kogane"), "早上好")
     board = await dashboard(admin)

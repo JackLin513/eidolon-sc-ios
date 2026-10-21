@@ -1011,7 +1011,10 @@ class Calls:
         `brought`, let through by `Admissions.call`, whose exceptions it raises. Whatever
         fails before the call is served, it never connected; once it is served, it is
         settled as it ends, letting go of the keys it brought."""
-        admission = self._admissions.call(user_id, character.id, brought)
+        # On a thread, as the limits and records are in the database.
+        admission = await asyncio.to_thread(
+            self._admissions.call, user_id, character.id, brought
+        )
 
         def keep(connected_at: datetime, duration_s: float) -> None:
             if self._store.keep_call(conversation.id, connected_at, duration_s):

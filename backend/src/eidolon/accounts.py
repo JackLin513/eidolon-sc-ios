@@ -14,6 +14,7 @@ with are kept on a ban list, only as keyed hashes (`identity_hash`), and can nei
 in nor be linked again.
 """
 
+import asyncio
 import hashlib
 import hmac
 from dataclasses import dataclass, field
@@ -112,12 +113,17 @@ class Accounts:
         list."""
         await self.calls.hang_up(user_id)
         await self.memories.forget(user_id)
+        # On a thread: overwriting all they had, and the log after, takes a while.
+        await asyncio.to_thread(self._delete_for_good, user_id)
+        await self.calls.hang_up(user_id)  # any placed while memory was settling
+
+    def _delete_for_good(self, user_id: str) -> None:
+        """Delete the user's data, putting a banned user's identities on the ban list."""
         banned = self.store.get_user(user_id).banned_at is not None
         self.store.delete_user(user_id, [
             identity_hash(self._ban_key, m.provider, m.subject)
             for m in self.store.sign_in_methods(user_id)
         ] if banned else None)
-        await self.calls.hang_up(user_id)  # any placed while memory was settling
 
     def _check(self, identity: Identity) -> None:
         if self.store.is_banned_identity(

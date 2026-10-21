@@ -130,7 +130,13 @@ from eidolon.llm import ChatLLM, ChatMessage, Reasoning, Tool, ToolCall, TurnLLM
 from eidolon.memory import Memories, last_turn_query
 from eidolon.own_keys import OwnKeyFailed
 from eidolon.photos import CANNOT_SEND, NOT_RECEIVED, Eligibility, Photos, photo_turn
-from eidolon.producer import effective_timezone, local_date, now_prompt, producer_prompt
+from eidolon.producer import (
+    ProducerProfile,
+    effective_timezone,
+    local_date,
+    now_prompt,
+    producer_prompt,
+)
 from eidolon.reply_format import (
     format_instructions,
     PhotoTagged,
@@ -360,6 +366,21 @@ async def _judged(
     except JudgeError:
         log.warning("judging apart failed; affinity stays as it is, and no photo", exc_info=True)
         return None, False
+
+
+@dataclass(frozen=True)
+class _Read:
+    """What a turn reads from the database before it is asked: her character, the
+    conversation's record, when the user and she were last in touch (None in a call, where
+    she knows they are talking), her affinity as it begins, what it may send for a photo, and
+    the producer profile."""
+
+    character: Character
+    record: list[Recorded]
+    last_contact: datetime | None
+    affinity: Status | None
+    eligibility: Eligibility | None
+    profile: ProducerProfile
 
 
 @dataclass
@@ -598,25 +619,24 @@ class ConversationEngine:
         voiced_by: FishAudioModel | None,
         photo: _Photo,
     ) -> AsyncIterator[TurnEvent]:
-        if self._store.ended(conversation.id) is not None:
+        # The database is read and written on threads all through the turn: waiting on it
+        # on the event loop would keep everyone's calls on it from going on meanwhile.
+        read = await asyncio.to_thread(self._read, conversation, in_call is not None, photo.own)
+        if read is None:
             yield TurnRejected(ENDED)
             return
-        character = self._characters[conversation.character_id]
-        record = self._store.record(conversation.id)
+        character, record, affinity, eligibility, profile = (
+            read.character, read.record, read.affinity, read.eligibility, read.profile
+        )
         # Said after reading the record, so an event this turn's prompt does not tell of
         # comes before the turn, and is told of with its words from the next turn on.
         said_at = timestamp()
-        last_contact = (
-            self._store.last_contact(conversation.user_id, conversation.character_id)
-            if in_call is None else None  # in a call, she knows they are talking
-        )
+        last_contact = read.last_contact
         messages = [entry for entry in record if isinstance(entry, Message)]
         turns = self._history_turns()
         # What all but the chat model read: her reach-outs the user answers her latest words.
         history = [*latest_turns(messages, turns), *_answering(record)]
-        affinity = self._affinity(conversation)
         judging = affinity is not None and not affinity.cooling
-        eligibility = self._photo_eligibility(conversation, character, photo.own)
         asking_photo = eligibility is not None
         judged_apart = None
         if (judging or asking_photo) and self._retrieval is None and self._affinity_judge:
@@ -624,7 +644,6 @@ class ConversationEngine:
                 _judged(self._affinity_judge, character, history, text, judging, asking_photo)
             )
         try:
-            profile = self._store.get_profile(conversation.user_id)
             timezone = effective_timezone(profile, device_timezone)
             memory = await self._memory.begin(
                 conversation, timezone, llms.background, llms.hold_background
@@ -644,13 +663,15 @@ class ConversationEngine:
             if judged_apart is not None and not judged_apart.done():
                 judged_apart.cancel()
         now = self._clock()
-        cools = self._cools(conversation, judged)
+        cools = await asyncio.to_thread(self._cools, conversation, judged)
         if in_call is not None:
             out_of_line_before, hurt_before = in_call.out_of_line, in_call.hurts
         else:
             # As many as are weighed, so that whether she warns is told against the latest
             # before this one; out of line is counted in the latest with this one among them.
-            earlier = self._store.typed_turns(conversation.id, FED_UP_TURNS)
+            earlier = await asyncio.to_thread(
+                self._store.typed_turns, conversation.id, FED_UP_TURNS
+            )
             out_of_line_before = sum(t.out_of_line for t in earlier[-(FED_UP_TURNS - 1):])
             hurt_before = [t.hurt for t in earlier]
         ending = ends(judged, cools, out_of_line_before, hurt_before)
@@ -748,6 +769,7 @@ class ConversationEngine:
         )
         ends_conversation = typed is not None and ending is not None
         try:
+            # On the event loop: a cooldown it begins hangs up her calls with the user there.
             reply, affinity = self._record(
                 conversation, text, said_at, parser.complete, judged, affinity, typed,
                 ends_conversation, NewPhoto(photo.id, photo.tag) if photo.id else None,
@@ -755,8 +777,9 @@ class ConversationEngine:
         except ConversationEnded:  # elsewhere, as the turn was under way
             yield TurnRejected(ENDED)
             return
-        rewarded = self._happenings and self._happenings.turn_recorded(
-            conversation.user_id, conversation.character_id, affinity and affinity.tier
+        rewarded = self._happenings and await asyncio.to_thread(
+            self._happenings.turn_recorded,
+            conversation.user_id, conversation.character_id, affinity and affinity.tier,
         )
         if photo.id is not None and self._photos is not None:
             photo.recorded = True
@@ -764,7 +787,10 @@ class ConversationEngine:
         memory.write_down(history, text, reply, retrieved.query_vector)
         turn = sum(m.role == "user" for m in messages) + 1
         self._titles.after_turn(conversation, turn, llms.background, llms.hold_background)
-        ended = self._store.ended(conversation.id) if ends_conversation else None
+        ended = (
+            await asyncio.to_thread(self._store.ended, conversation.id)
+            if ends_conversation else None
+        )
         if ended is not None and ending is not None:
             for listener in self._ended_listeners:
                 listener(conversation.id, ending)
@@ -799,12 +825,17 @@ class ConversationEngine:
         Raises EmptyReply if the model says nothing she could say, and whatever the model
         raises."""
         character = self._characters[conversation.character_id]
-        record = self._store.record(conversation.id)
+        record, profile, affinity, last_contact = await asyncio.to_thread(
+            lambda: (
+                self._store.record(conversation.id),
+                self._store.get_profile(conversation.user_id),
+                self._affinity(conversation),
+                self._store.last_contact(conversation.user_id, conversation.character_id),
+            )
+        )
         messages = [entry for entry in record if isinstance(entry, Message)]
-        profile = self._store.get_profile(conversation.user_id)
         timezone = effective_timezone(profile, None)
         now = self._clock()
-        affinity = self._affinity(conversation)
         world_prompt = (
             self._world.prompt(character.name, local_date(now, timezone)) if self._world else None
         )
@@ -820,7 +851,7 @@ class ConversationEngine:
                 now_prompt(
                     profile, now, timezone, "apart",
                     affinity_prompt(affinity.tier, None) if affinity is not None else [],
-                    self._store.last_contact(conversation.user_id, conversation.character_id),
+                    last_contact,
                 ),
             ],
             [*([memories] if memories else []), REACH_OUT_RULES],
@@ -839,6 +870,25 @@ class ConversationEngine:
         if not parser.complete:
             raise EmptyReply("对话模型没有返回任何内容")
         return parser.complete
+
+    def _read(
+        self, conversation: Conversation, in_call: bool, own_image: ImageSettings | None
+    ) -> _Read | None:
+        """What a turn of `conversation` reads before it is asked, `in_call` if it is taken
+        in one, bringing the user's `own_image` generation if any; None if she has ended
+        the conversation."""
+        if self._store.ended(conversation.id) is not None:
+            return None
+        character = self._characters[conversation.character_id]
+        return _Read(
+            character,
+            self._store.record(conversation.id),
+            None if in_call
+            else self._store.last_contact(conversation.user_id, conversation.character_id),
+            self._affinity(conversation),
+            self._photo_eligibility(conversation, character, own_image),
+            self._store.get_profile(conversation.user_id),
+        )
 
     def _photo_eligibility(
         self,

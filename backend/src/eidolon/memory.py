@@ -40,7 +40,7 @@ import json
 import logging
 import sqlite3
 import threading
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -441,9 +441,10 @@ class Memories:
         memories = await asyncio.to_thread(self.kept, user_id)
         vectors = await self._vectors(embedder, user_id, memories)
         holding = _holding(memories, character_id)
-        return [
-            holding[i] for i, _ in nearest([vectors[m.id] for m in holding], query_vector, limit)
-        ]
+        found = await asyncio.to_thread(
+            nearest, [vectors[m.id] for m in holding], query_vector, limit
+        )
+        return [holding[i] for i, _ in found]
 
     async def _shown(
         self,
@@ -658,31 +659,49 @@ class Memories:
         all the user's, forgetting those of memories that are gone. A memory deleted while
         it was being embedded gets no vector."""
         model = embedder.model
-        with self._lock:
-            stored: dict[int, bytes] = dict(
-                self._db.execute(
-                    "SELECT memory_id, embedding FROM memory_vectors"
-                    " WHERE user_id = ? AND model = ?",
-                    (user_id, model),
-                ).fetchall()
-            )
+        stored = await asyncio.to_thread(self._stored_vectors, user_id, model)
         missing = [m for m in memories if m.id not in stored]
         stale = stored.keys() - {m.id for m in memories} if forget else set()
         if missing:
             embedded = await embedder.embed_documents([Document(m.text) for m in missing])
             stored.update(zip((m.id for m in missing), map(to_blob, embedded), strict=True))
         if missing or stale:
-            with self._lock, self._db:
-                self._db.executemany(
-                    "INSERT OR REPLACE INTO memory_vectors (memory_id, user_id, model, embedding)"
-                    " SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM memories WHERE id = ?)",
-                    [(m.id, user_id, model, stored[m.id], m.id) for m in missing],
-                )
-                self._db.executemany(
-                    "DELETE FROM memory_vectors WHERE memory_id = ? AND model = ?",
-                    [(memory_id, model) for memory_id in stale],
-                )
+            await asyncio.to_thread(
+                self._store_vectors, user_id, model, [(m.id, stored[m.id]) for m in missing],
+                stale,
+            )
         return stored
+
+    def _stored_vectors(self, user_id: str, model: str) -> dict[int, bytes]:
+        """The vector of each of the user's memories stored for `model`."""
+        with self._lock:
+            return dict(
+                self._db.execute(
+                    "SELECT memory_id, embedding FROM memory_vectors"
+                    " WHERE user_id = ? AND model = ?",
+                    (user_id, model),
+                ).fetchall()
+            )
+
+    def _store_vectors(
+        self,
+        user_id: str,
+        model: str,
+        added: Sequence[tuple[int, bytes]],
+        stale: Iterable[int],
+    ) -> None:
+        """Store the `added` vectors for `model`, but of memories deleted meanwhile, and
+        forget those of the `stale` memories."""
+        with self._lock, self._db:
+            self._db.executemany(
+                "INSERT OR REPLACE INTO memory_vectors (memory_id, user_id, model, embedding)"
+                " SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM memories WHERE id = ?)",
+                [(memory_id, user_id, model, vector, memory_id) for memory_id, vector in added],
+            )
+            self._db.executemany(
+                "DELETE FROM memory_vectors WHERE memory_id = ? AND model = ?",
+                [(memory_id, model) for memory_id in stale],
+            )
 
 
 class MemoryTurn:
