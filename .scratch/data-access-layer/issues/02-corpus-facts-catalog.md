@@ -14,3 +14,8 @@
 - [ ] 受影响的测试通过，CI 绿。
 
 ## Comments
+
+### 票 01 交接
+
+- `Pricing.find`、`Pricing.listed` 还直接调 `Catalog.state()`、`Catalog.find()`（同步、碰库）。所以看板（`dashboard.summed_up`）和后台价格（`admin_prices_api.described_by`）先 `await prices.pricing()`，再把整段同步部分放进 `run_in_threadpool`。`Catalog` 迁完以后，`Prices.pricing()` 要在一次读里连目录一起读好，交给 `Pricing`；这两处的 `run_in_threadpool` 等 05 迁完 `ActivityLog` 再一起收掉。
+- 刷新目录的 handler 现在是 `await run_in_threadpool(prices.catalog.refresh)`。

@@ -20,3 +20,8 @@
 - [ ] 受影响的测试通过，CI 绿。
 
 ## Comments
+
+### 票 01 交接
+
+- `/api/account` 已经改成 `async def`：先 `await backend.sponsor.state()`，剩下读 `Store`、`ReachOuts` 的部分整段放在 `run_in_threadpool(lambda: {...})` 里。`Store` 这一块迁完后，把这里改成直接 await。
+- 层的形状：`Database.write` 在写线程上先 `BEGIN IMMEDIATE`；`prepare` 给构造时建表、迁移用（同步等）；`ON_THE_LOOP_RAISES` 在 `conftest` 里设成真。`checkpoint()` 还没做。

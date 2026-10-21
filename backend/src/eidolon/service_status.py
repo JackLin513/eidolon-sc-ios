@@ -181,7 +181,7 @@ class ServiceStatus:
             self._cached = None
             self._generation += 1
 
-    def _changed(self) -> None:
+    async def _changed(self) -> None:
         """The configuration changed, maybe a service's key: what was found of it by trying
         it no longer holds, and it is tried again at the next tick."""
         self._probed.clear()

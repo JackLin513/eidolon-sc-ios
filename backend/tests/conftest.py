@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 import eidolon.bailian
+import eidolon.data_access
 from eidolon.__main__ import main
 from eidolon.app import create_app
 from eidolon.assembly import Backend
@@ -32,6 +33,10 @@ from tests.fakes import (
     build_faked,
 )
 from tests.stories import write_sample_stories
+
+# A connection to the database taken on the event loop's thread fails the test, so that
+# every path the tests run keeps the database off the loop.
+eidolon.data_access.ON_THE_LOOP_RAISES = True
 
 
 class Admin:

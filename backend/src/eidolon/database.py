@@ -1,8 +1,9 @@
 """The database: one SQLite file holding the users and their conversations, memories and
 usage, next to the story corpus and the embedded text set.
 
-Every connection to it is opened by `connect`, the same way. Each module that keeps
-tables in it opens its own connection and creates its own tables; which tables hold a
+Every connection to it is opened by `connect`, the same way: the data access layer's
+(`data_access`, ADR-0028), and those of the modules not yet moved onto it. Each module
+that keeps tables in it creates its own tables; which tables hold a
 user's data, and which rows of them are the user's, is listed here (`USER_DATA`), and so
 is every other table (`NOT_USER_DATA`), so a table cannot be added without being one or
 the other. A table of a user's data may instead be kept when the user is deleted, but no

@@ -47,6 +47,7 @@ from eidolon.loop_lag import watch_the_loop
 from eidolon.randomness import Random, secure_random
 from eidolon.clock import Clock, utc_now
 from eidolon.config import DEFAULT_BAILIAN_STT_MODEL, Settings
+from eidolon.data_access import Database
 from eidolon.data_package import DataPackages
 from eidolon.embedding import EMBEDDING_TIMEOUT, Embedder, open_embedder
 from eidolon.engine import ConversationEngine
@@ -93,6 +94,8 @@ class Backend:
     """Everything the API serves from, ready to run."""
 
     settings: Settings
+    database: Database
+    """The database, as the modules moved onto the data access layer read and write it."""
     store: Store
     characters: dict[str, Character]
     gift_catalog: dict[str, Gift]
@@ -214,7 +217,9 @@ def build(
     else:
         world.check_characters(characters, path)
     clock = clock or utc_now
-    closers: list[Closer] = []
+    # Closed last, once what writes through it has finished.
+    database = Database(settings.database_path)
+    closers: list[Closer] = [database.close]
 
     store = Store(settings.database_path)
     closers.append(store.close)
@@ -239,13 +244,10 @@ def build(
     closers.append(activity.close)
     catalog = Catalog(settings.database_path, clock, catalog_transport)
     closers.append(catalog.close)
-    prices = Prices(settings.database_path, clock, catalog)
-    closers.append(prices.close)
-    announcements = Announcements(settings.database_path, clock)
-    closers.append(announcements.close)
-    sponsor = Sponsor(settings.database_path, clock)
-    closers.append(sponsor.close)
-    backups = Backups(settings.database_path, clock, transport=backup_transport)
+    prices = Prices(database, clock, catalog)
+    announcements = Announcements(database, clock)
+    sponsor = Sponsor(database, clock)
+    backups = Backups(database, clock, transport=backup_transport)
     closers.append(backups.aclose)
     image_client = None
     if image_transport is not None:
@@ -254,8 +256,8 @@ def build(
         )
         closers.append(image_client.aclose)
     config = LiveConfig(
-        settings, clients or ProviderClients(routes), clock, activity=activity, speech=speech,
-        routes=routes, image_client=image_client,
+        settings, clients or ProviderClients(routes), clock, db=database, activity=activity,
+        speech=speech, routes=routes, image_client=image_client,
         **({"reach": reach} if reach is not None else {}),
     )
     closers.append(config.aclose)
@@ -386,9 +388,11 @@ def build(
         calls.in_call, clock, random or secure_random,
     )
     closers.append(reach_outs.close)
-    config.on_change(gifts.notice)
+    # On a thread: gifts, on a connection of their own, are not on the data access layer yet.
+    config.on_change(lambda: asyncio.to_thread(gifts.notice))
     return Backend(
         settings=settings,
+        database=database,
         store=store,
         characters=characters,
         gift_catalog=gift_catalog,

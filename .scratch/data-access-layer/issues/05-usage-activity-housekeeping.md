@@ -15,3 +15,8 @@
 - [ ] 受影响的测试通过，CI 绿。
 
 ## Comments
+
+### 票 01 交接
+
+- `spread_bucket` 用 `database.function("spread_bucket", 1, _bucket, deterministic=True)` 注册，在 `ActivityLog` 构造时调。它会把读连接全部借出来，所以只在构造时调。
+- 看板（`dashboard.summed_up`）和后台价格（`admin_prices_api.described_by`）现在把读 `ActivityLog` 的同步部分整段放在 `run_in_threadpool` 里。迁完后改成直接 await，CPU 的汇总看情况留在线程里。

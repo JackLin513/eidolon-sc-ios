@@ -573,14 +573,15 @@ async def _backup(args: argparse.Namespace) -> int:
     import time
 
     from eidolon.backup import EXPORT_FAILED, Backups, describe
+    from eidolon.data_access import Database
 
     started = time.monotonic()
     try:
-        backups = Backups(args.db or database_path_from_env(), utc_now)
+        db = Database(args.db or database_path_from_env())
         try:
-            report = await backups.run(args.source)
+            report = await Backups(db, utc_now).run(args.source)
         finally:
-            backups.close()
+            await db.close()
     except sqlite3.Error as e:  # not a missing setting, which exiting 1 would say
         print(f"没有备份：备份记录写不进数据库：{e}", file=sys.stderr)
         return EXPORT_FAILED

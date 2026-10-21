@@ -22,3 +22,7 @@
 - [ ] 受影响的测试通过，CI 绿。
 
 ## Comments
+
+### 票 01 交接
+
+- `LiveConfig.on_change` 的监听器已经是 async（`Callable[[], Awaitable[None]]`）。`assembly` 里暂时是 `config.on_change(lambda: asyncio.to_thread(gifts.notice))`，`Gifts` 迁完后把 `notice` 改成 async，直接 `config.on_change(gifts.notice)`，那句注释一起删。

@@ -14,3 +14,8 @@
 - [ ] 在实现说明里列出上线前后要对比的日志：`event loop ran`、写队列和读池的 warning、checkpoint 的 error，各自用什么 grep。
 
 ## Comments
+
+### 票 01 交接
+
+- 票 01 留下的过渡写法：`dashboard.summed_up`、`admin_prices_api.described_by`、`/api/account` 的 `run_in_threadpool`，`assembly` 里 `gifts.notice` 的 `to_thread`。02、03、05、06 各自收掉；收口时 grep 一遍 `run_in_threadpool` 和 `to_thread`，确认只剩纯 CPU 的活。
+- `database.py` 模块说明里「the data access layer's, and those of the modules not yet moved onto it」那句，到这时改成只有层（和健康检查、备份导出、restore）。

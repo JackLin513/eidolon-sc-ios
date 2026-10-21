@@ -10,12 +10,13 @@ from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
+from starlette.concurrency import run_in_threadpool
 
 from eidolon.activity import KEPT
 from eidolon.admin_api import Admin
 from eidolon.assembly import Backend
 from eidolon.price_catalog import describe_state
-from eidolon.prices import preset_as_of, unpriced
+from eidolon.prices import Pricing, preset_as_of, unpriced
 
 Unit = Literal["tokens", "bytes", "characters", "seconds", "images"]
 """The units service calls are billed in (`prices.PER`)."""
@@ -44,42 +45,47 @@ class PriceInput(BaseModel):
 def add_admin_price_routes(app: FastAPI, backend: Backend) -> None:
     prices = backend.prices
 
-    def described() -> dict:
+    async def described() -> dict:
+        # The activity records and the price catalogs, on connections of their own, are
+        # read on a thread.
+        return await run_in_threadpool(described_by, await prices.pricing())
+
+    def described_by(pricing: Pricing) -> dict:
         billed = backend.activity.billed_models(backend.clock() - KEPT)
-        without = unpriced(billed, prices.pricing())
+        without = unpriced(billed, pricing)
         prices.catalog.refresh_soon(missing=any(u["unit"] == "tokens" for u in without))
         return {
             "preset_as_of": (d.isoformat() if (d := preset_as_of()) else None),
             "catalog": describe_state(prices.catalog.state()),
-            "prices": prices.describe(billed),
+            "prices": pricing.describe(billed),
             "unpriced": without,
         }
 
     @app.get("/api/admin/prices")
-    def get_prices(_: Admin) -> dict:
-        return described()
+    async def get_prices(_: Admin) -> dict:
+        return await described()
 
     @app.put("/api/admin/prices")
-    def save_price(price: PriceInput, _: Admin) -> dict:
+    async def save_price(price: PriceInput, _: Admin) -> dict:
         """Price a provider's model so from now on, in place of its preset, if any."""
-        prices.save((price.provider, price.model, price.unit), price.input, price.output,
-                    price.currency, price.cache_read)
-        return described()
+        await prices.save((price.provider, price.model, price.unit), price.input,
+                          price.output, price.currency, price.cache_read)
+        return await described()
 
     @app.post("/api/admin/prices/refresh")
-    def refresh_catalog(_: Admin) -> dict:
+    async def refresh_catalog(_: Admin) -> dict:
         """Fetch the price catalogs online again now, or wait for the fetch under way."""
-        prices.catalog.refresh()
-        return described()
+        await run_in_threadpool(prices.catalog.refresh)
+        return await described()
 
     @app.delete("/api/admin/prices")
-    def restore_price(
+    async def restore_price(
         _: Admin,
         provider: Annotated[str, Query()],
         model: Annotated[str, Query()],
         unit: Annotated[str, Query()],
     ) -> dict:
         """Back to the preset, or unpriced if there is none."""
-        if not prices.restore((provider, model, unit)):
+        if not await prices.restore((provider, model, unit)):
             raise HTTPException(404, "这个模型没有在后台设过单价")
-        return described()
+        return await described()
