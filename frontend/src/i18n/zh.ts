@@ -384,6 +384,10 @@ export const zh = {
         /** 点名这个部署的免限额密钥（GLOSSARY.md「免限额密钥」），经 `sayServices` 拼上服务名。 */
         body: (services: string) => `这个部署上，带上自己的${services}的通话不计入限额。`,
       },
+      busy: {
+        title: "现在打电话的人太多",
+        body: "稍后再拨一次试试。",
+      },
       own_key: {
         title: "你的自带密钥出错了",
         body: "自带密钥调用失败时，不会悄悄改用部署者的密钥。检查一下设置页里的密钥再重拨。",
@@ -1398,6 +1402,7 @@ export const zh = {
         photos_per_hour: "每小时照片数",
         call_minutes: "单次通话的时长上限（分钟）",
         turns_per_call: "单次通话的回合上限",
+        concurrent_calls: "同时进行的通话数上限",
         history_turns: "带上的历史回合数",
         /** 免限额密钥（GLOSSARY.md「免限额密钥」）的三个开关。 */
         exempting_llm: "免限额密钥：LLM",

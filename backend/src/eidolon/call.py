@@ -222,6 +222,20 @@ class CallNotFound(Exception):
         super().__init__("通话不存在")
 
 
+class CallsBusy(Exception):
+    """There are as many calls as there may be at once (`UsageLimits.concurrent_calls`)."""
+
+    def __init__(self) -> None:
+        super().__init__("现在打电话的人太多，稍后再试")
+
+
+class StillPlacing(Exception):
+    """The user's last call is still being placed, not yet answered."""
+
+    def __init__(self) -> None:
+        super().__init__("上一通电话还在拨，稍后再试")
+
+
 class CallFailed(Exception):
     """The call could not be set up; it did not count towards the user's limit."""
 
@@ -932,6 +946,12 @@ class Calls:
     call can renegotiate it or add ICE candidates to it. As a character falls into a
     cooldown with a user (`cooled`), she hangs up the user's calls with her; as she ends a
     conversation (`conversation_ended`), the call in it.
+
+    Each user has one call at a time, and all users together as many as the limits say
+    (`UsageLimits.concurrent_calls`), exempt calls too: a call is under way from being
+    placed until it is over, before its connection has closed. A user's new call, let
+    through, hangs up the one they had, which they may well have left without the backend
+    knowing yet (their page reloaded, their network changed).
     """
 
     def __init__(
@@ -964,6 +984,7 @@ class Calls:
         )
         self._owners: dict[str, str] = {}  # peer connection id → the user it belongs to
         self._live: set[_LiveCall] = set()
+        self._placing: set[_Placing] = set()  # calls placed, not yet served
         self._watch: asyncio.Task | None = None  # hangs up banned and deleted users' calls
 
     def _limits(self) -> CallLimits:
@@ -983,10 +1004,12 @@ class Calls:
         """What the browser needs before calling: ICE servers, with TURN credentials of its
         own; how long a call may last, in seconds (None for no limit); and whether a call
         bringing the user's own keys for `own` would be exempt from the limit. Raises
-        CoolingDown, for a call with `character_id` if given, and CallsUnavailable, as
-        `OwnKeys.call_exempt` does, before anything is spent on a call that could not start."""
+        CoolingDown, for a call with `character_id` if given, StillPlacing and CallsBusy, as
+        `start` would, and CallsUnavailable, as `OwnKeys.call_exempt` does, before anything
+        is spent on a call that could not start."""
         if character_id is not None:
             self._admissions.refuse_while_cooling(user_id, character_id)
+        self._refuse_unless_room(user_id)
         exempt = self._own_keys.call_exempt(own)
         servers: list[IceServer] = list(self._settings.ice_servers)
         if self._settings.turn is not None:
@@ -1008,9 +1031,32 @@ class Calls:
         brought: BroughtKeys = BroughtKeys(),
     ) -> dict:
         """Answer a new call into the user's `conversation` with `character`, bringing
-        `brought`, let through by `Admissions.call`, whose exceptions it raises. Whatever
-        fails before the call is served, it never connected; once it is served, it is
-        settled as it ends, letting go of the keys it brought."""
+        `brought`, let through by `Admissions.call`, whose exceptions it raises; once it
+        is, the user's call under way, if any, is hung up as left. Raises StillPlacing while
+        the user's last call is still being placed, and CallsBusy while there are as many
+        as there may be at once, not counting the user's own, before anything is asked or
+        recorded. Whatever fails before the call is served, it never connected; once it is
+        served, it is settled as it ends, letting go of the keys it brought."""
+        self._refuse_unless_room(user_id)
+        placing = _Placing(user_id)
+        self._placing.add(placing)
+        try:
+            return await self._admit_and_start(
+                user_id, conversation, character, options, offer, brought, placing
+            )
+        finally:
+            self._placing.discard(placing)
+
+    async def _admit_and_start(
+        self,
+        user_id: str,
+        conversation: Conversation,
+        character: Character,
+        options: CallOptions,
+        offer: SessionDescription,
+        brought: BroughtKeys,
+        placing: "_Placing",
+    ) -> dict:
 
         def keep(connected_at: datetime, duration_s: float) -> None:
             if self._store.keep_call(conversation.id, connected_at, duration_s):
@@ -1031,8 +1077,14 @@ class Calls:
             admitting.add_done_callback(never_set_up)
             raise
         outcome = CallOutcome(admission, self._limits(), self._clock, keep)
+        try:
+            await self.hang_up(user_id, "left")
+        except BaseException:
+            outcome.set_up_failed()
+            raise
         return await self._start(
-            user_id, conversation, character, options, offer, admission, outcome, brought.image
+            user_id, conversation, character, options, offer, admission, outcome, placing,
+            brought.image,
         )
 
     async def _start(
@@ -1044,6 +1096,7 @@ class Calls:
         offer: SessionDescription,
         admission: Admission[CallKeys],
         outcome: CallOutcome,
+        placing: "_Placing",
         own_image: ImageSettings | None = None,
     ) -> dict:
         keys = admission.keys
@@ -1061,6 +1114,7 @@ class Calls:
                 connection, call, self._engine, self._store, self._speech, keys, outcome,
                 keys.emotions,
             )
+            self._placing.discard(placing)  # under way as a live call from now on
             self._live.add(live)
             live.start(on_done=self._live.discard)
             started.append(live)
@@ -1114,6 +1168,23 @@ class Calls:
     def in_progress(self) -> int:
         """How many calls there are now, connected or still connecting."""
         return len(self._live)
+
+    def _refuse_unless_room(self, user_id: str) -> None:
+        """Raise StillPlacing if the user's last call is still being placed, CallsBusy if
+        there are as many calls under way as there may be at once, but for the user's own,
+        which a new one replaces."""
+        placing = [placing.user_id for placing in list(self._placing)]
+        if user_id in placing:
+            raise StillPlacing()
+        under_way = placing + [
+            live.user_id for live in list(self._live) if not live.over and live.user_id != user_id
+        ]
+        most = self._usage_limits().concurrent_calls
+        if most is not None and len(under_way) >= most:
+            log.warning(
+                "refused a call: %d calls under way, at most %d at once", len(under_way), most
+            )
+            raise CallsBusy()
 
     def in_call(self, conversation_id: str) -> bool:
         """Whether there is a call in the conversation now, connected or still connecting."""
@@ -1178,6 +1249,13 @@ class Calls:
     def _require_owner(self, user_id: str, pc_id: str) -> None:
         if self._owners.get(pc_id) != user_id:
             raise CallNotFound()
+
+
+class _Placing:
+    """A call placed by the user, from being placed until it is served or fails to be."""
+
+    def __init__(self, user_id: str) -> None:
+        self.user_id = user_id
 
 
 async def _no_new_connection(connection: SmallWebRTCConnection) -> None:
@@ -1251,6 +1329,8 @@ class _LiveCall:
         )
         self._connected = asyncio.Event()
         self._hung_up = False
+        self.over = False
+        """Whether the call is over, its connection perhaps still closing."""
         self._task: asyncio.Task | None = None
         self._hanging_up_on: asyncio.Task | None = None  # hangs it up for a cooldown, unconnected
 
@@ -1335,6 +1415,7 @@ class _LiveCall:
             self._outcome.ended_by("failed")
             self._report_failure()
         finally:
+            self.over = True
             self._meter.close()
             self._outcome.settle()
             await _within_disconnect_timeout(  # lets the browser know the call is over

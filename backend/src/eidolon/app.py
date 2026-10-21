@@ -18,11 +18,13 @@ from eidolon.admission import CoolingDown
 from eidolon.assembly import Backend
 from eidolon.call import (
     CallFailed,
+    CallsBusy,
     CallNotFound,
     CallOptions,
     IceCandidate,
     Quality,
     SessionDescription,
+    StillPlacing,
 )
 from eidolon.characters import Character, ScriptedLine, in_idol_order
 from eidolon.engine import ENDED, TurnJudged, shown
@@ -329,6 +331,16 @@ def create_app(backend: Backend) -> FastAPI:
     @app.exception_handler(CallNotFound)
     async def call_not_found(_: Request, e: CallNotFound) -> JSONResponse:
         return JSONResponse({"detail": str(e)}, status_code=404)
+
+    @app.exception_handler(CallsBusy)
+    async def calls_busy(_: Request, e: CallsBusy) -> JSONResponse:
+        """Refused for now, as many calls being under way as there may be at once; told
+        apart from calls being unavailable by its `code`."""
+        return JSONResponse({"detail": str(e), "code": "calls_busy"}, status_code=503)
+
+    @app.exception_handler(StillPlacing)
+    async def still_placing(_: Request, e: StillPlacing) -> JSONResponse:
+        return JSONResponse({"detail": str(e)}, status_code=409)
 
     @app.exception_handler(CallFailed)
     async def call_failed(_: Request, e: CallFailed) -> JSONResponse:
