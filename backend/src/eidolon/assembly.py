@@ -41,6 +41,7 @@ from eidolon.gift_catalog import Gift, check_liked_gifts, gifts_path, load_gift_
 from eidolon.gifts import Gifts
 from eidolon.happenings import Happenings
 from eidolon.hot_words import hot_words
+from eidolon.housekeeping import keep_tidy
 from eidolon.randomness import Random, secure_random
 from eidolon.clock import Clock, utc_now
 from eidolon.config import DEFAULT_BAILIAN_STT_MODEL, Settings
@@ -134,20 +135,23 @@ class Backend:
     _keeping_fresh: asyncio.Task[None] | None = field(default=None, repr=False)
     _probing: asyncio.Task[None] | None = field(default=None, repr=False)
     _reaching_out: asyncio.Task[None] | None = field(default=None, repr=False)
+    _tidying: asyncio.Task[None] | None = field(default=None, repr=False)
 
     async def start(self) -> None:
         """What is done as the server starts, on its event loop: try the overrides of the
         configuration, falling back to `.env` where one fails; keep the price catalogs
         fresh from now on, fetching them in the background, try the services without
-        calls for their status, and have characters reach out once their time comes."""
+        calls for their status, have characters reach out once their time comes, and delete
+        what ages out (`housekeeping`)."""
         await self.config.start()
         self._keeping_fresh = asyncio.create_task(self.prices.catalog.keep_fresh())
         self._probing = asyncio.create_task(self.service_status.keep_probing())
         self._reaching_out = asyncio.create_task(self.reach_outs.keep_reaching_out())
+        self._tidying = asyncio.create_task(keep_tidy(self.usage.forget_old, self.activity.forget_old))
 
     async def aclose(self) -> None:
         """Close what `build` opened, last opened first."""
-        for task in (self._keeping_fresh, self._probing, self._reaching_out):
+        for task in (self._keeping_fresh, self._probing, self._reaching_out, self._tidying):
             if task is not None:
                 task.cancel()
         for close in reversed(self._closers):

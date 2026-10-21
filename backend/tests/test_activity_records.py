@@ -42,6 +42,7 @@ from tests.fakes import (
 )
 from tests.test_embedding import Answer, scripted
 from tests.test_retrieval_services import ranked
+from tests.test_service_status import backend_of
 from tests.test_delete_account import rows_mentioning, user_id
 from tests.test_llm_protocols import recorded, serving
 from tests.test_openai_compat import RECORDED_STREAM
@@ -299,6 +300,7 @@ async def test_records_are_forgotten_after_90_days(
     later = make_client(FakeLLM(REPLY), clock=clock)  # signed in again
     await send_turn(later, await start_conversation(later), "在吗")
     admin = await admin_client(make_client, github, clock)
+    backend_of(later).activity.forget_old()  # as the backend tidies up
 
     assert (await dashboard(admin, "90d"))["turns"]["total"] == 1
     with sqlite3.connect(settings.database_path) as db:
