@@ -12,7 +12,6 @@ from eidolon.memory import Memories
 from eidolon.store import Store
 
 LOOKUPS = [
-    "SELECT * FROM conversations WHERE user_id = ?",
     "SELECT * FROM conversations WHERE user_id = ? AND character_id = ?",
     "SELECT MAX(m.created_at) FROM messages m JOIN conversations c ON c.id = m.conversation_id"
     " WHERE c.user_id = ? AND c.character_id = ?",

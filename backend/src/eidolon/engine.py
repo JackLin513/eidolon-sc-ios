@@ -369,7 +369,7 @@ async def _judged(
 
 
 @dataclass(frozen=True)
-class _Read:
+class _BeforeAsking:
     """What a turn reads from the database before it is asked: her character, the
     conversation's record, when the user and she were last in touch (None in a call, where
     she knows they are talking), her affinity as it begins, what it may send for a photo, and
@@ -621,17 +621,19 @@ class ConversationEngine:
     ) -> AsyncIterator[TurnEvent]:
         # The database is read and written on threads all through the turn: waiting on it
         # on the event loop would keep everyone's calls on it from going on meanwhile.
-        read = await asyncio.to_thread(self._read, conversation, in_call is not None, photo.own)
+        read = await asyncio.to_thread(
+            self._read_before_asking, conversation, in_call is not None, photo.own
+        )
         if read is None:
             yield TurnRejected(ENDED)
             return
-        character, record, affinity, eligibility, profile = (
-            read.character, read.record, read.affinity, read.eligibility, read.profile
+        character, record, last_contact, affinity, eligibility, profile = (
+            read.character, read.record, read.last_contact, read.affinity, read.eligibility,
+            read.profile,
         )
         # Said after reading the record, so an event this turn's prompt does not tell of
         # comes before the turn, and is told of with its words from the next turn on.
         said_at = timestamp()
-        last_contact = read.last_contact
         messages = [entry for entry in record if isinstance(entry, Message)]
         turns = self._history_turns()
         # What all but the chat model read: her reach-outs the user answers her latest words.
@@ -871,16 +873,16 @@ class ConversationEngine:
             raise EmptyReply("对话模型没有返回任何内容")
         return parser.complete
 
-    def _read(
+    def _read_before_asking(
         self, conversation: Conversation, in_call: bool, own_image: ImageSettings | None
-    ) -> _Read | None:
+    ) -> _BeforeAsking | None:
         """What a turn of `conversation` reads before it is asked, `in_call` if it is taken
         in one, bringing the user's `own_image` generation if any; None if she has ended
         the conversation."""
         if self._store.ended(conversation.id) is not None:
             return None
         character = self._characters[conversation.character_id]
-        return _Read(
+        return _BeforeAsking(
             character,
             self._store.record(conversation.id),
             None if in_call

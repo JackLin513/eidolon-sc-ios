@@ -160,6 +160,13 @@ CREATE TABLE IF NOT EXISTS banned_identities (
 );
 """
 
+_CURRENT = (
+    "c.rowid = (SELECT n.rowid FROM conversations n"
+    " WHERE n.user_id = c.user_id AND n.character_id = c.character_id"
+    " ORDER BY n.created_at DESC, n.rowid DESC LIMIT 1)"
+)
+"""That the conversation `c` is its user's current one with its character: their newest."""
+
 SESSION_LIFETIME = timedelta(days=30)
 """How long a session lasts after it was last used."""
 SESSION_RENEWAL = timedelta(hours=1)
@@ -1256,19 +1263,14 @@ class Store:
                 " EXISTS (SELECT 1 FROM conversation_events e WHERE e.conversation_id = c.id"
                 "  AND e.kind = 'ended') AS ended"
                 " FROM conversations c JOIN users u ON u.id = c.user_id AND u.banned_at IS NULL"
-                " WHERE c.rowid = (SELECT n.rowid FROM conversations n"
-                "  WHERE n.user_id = c.user_id AND n.character_id = c.character_id"
-                "  ORDER BY n.created_at DESC, n.rowid DESC LIMIT 1)"
+                f" WHERE {_CURRENT}"
             ).fetchall()
             calls: dict[str, list[tuple[str, float]]] = {}
             # The calls in the same conversations, picked out the same way: as many ids as
             # there are conversations would be more than a statement may bind.
             for call in self._db.execute(
                 "SELECT k.conversation_id, k.connected_at, k.duration_s FROM calls k"
-                " JOIN conversations c ON c.id = k.conversation_id"
-                " WHERE c.rowid = (SELECT n.rowid FROM conversations n"
-                "  WHERE n.user_id = c.user_id AND n.character_id = c.character_id"
-                "  ORDER BY n.created_at DESC, n.rowid DESC LIMIT 1)"
+                f" JOIN conversations c ON c.id = k.conversation_id WHERE {_CURRENT}"
             ):
                 calls.setdefault(call["conversation_id"], []).append(
                     (call["connected_at"], call["duration_s"])

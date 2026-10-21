@@ -24,7 +24,13 @@ def tidy(*forgetting: Callable[[], None]) -> None:
 
 
 async def keep_tidy(*forgetting: Callable[[], None]) -> None:
-    """`tidy` now and at every `TICK`, until cancelled."""
+    """`tidy` now and at every `TICK`, until cancelled; cancelled while tidying, once the
+    thread is done, so that what it uses is not closed under it."""
     while True:
-        await asyncio.to_thread(tidy, *forgetting)
+        tidying = asyncio.ensure_future(asyncio.to_thread(tidy, *forgetting))
+        try:
+            await asyncio.shield(tidying)
+        except asyncio.CancelledError:
+            await tidying
+            raise
         await asyncio.sleep(TICK.total_seconds())

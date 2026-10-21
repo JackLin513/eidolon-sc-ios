@@ -25,6 +25,7 @@ closes only what `build` made, in the order that lets what is still running fini
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 import httpx
@@ -79,6 +80,11 @@ from eidolon.world import World, load_world, world_path
 log = logging.getLogger(__name__)
 
 Closer = Callable[[], Awaitable[None] | None]
+
+THREADS = 32
+"""How many threads the event loop's work waits on at once (`asyncio.to_thread`): the
+database's, mostly, for every turn, and a backup or data package taking minutes too. More
+than the default, a few on a small server, so that those do not keep turns waiting."""
 
 
 @dataclass
@@ -143,6 +149,9 @@ class Backend:
         fresh from now on, fetching them in the background, try the services without
         calls for their status, have characters reach out once their time comes, and delete
         what ages out (`housekeeping`)."""
+        asyncio.get_running_loop().set_default_executor(
+            ThreadPoolExecutor(THREADS, thread_name_prefix="eidolon")
+        )
         await self.config.start()
         self._keeping_fresh = asyncio.create_task(self.prices.catalog.keep_fresh())
         self._probing = asyncio.create_task(self.service_status.keep_probing())
@@ -150,10 +159,15 @@ class Backend:
         self._tidying = asyncio.create_task(keep_tidy(self.usage.forget_old, self.activity.forget_old))
 
     async def aclose(self) -> None:
-        """Close what `build` opened, last opened first."""
-        for task in (self._keeping_fresh, self._probing, self._reaching_out, self._tidying):
-            if task is not None:
-                task.cancel()
+        """Close what `build` opened, last opened first, once what `start` began is over."""
+        tasks = [
+            task
+            for task in (self._keeping_fresh, self._probing, self._reaching_out, self._tidying)
+            if task is not None
+        ]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         for close in reversed(self._closers):
             result = close()
             if result is not None:

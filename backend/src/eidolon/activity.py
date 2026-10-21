@@ -904,8 +904,11 @@ class ActivityLog:
         )
 
     def close(self) -> None:
-        self._db.close()
-        self._reader.close()
+        """Close the connections once nothing on another thread is using them."""
+        with self._lock:
+            self._db.close()
+        with self._reading:
+            self._reader.close()
 
     def _write(self, recording: Recording) -> None:
         """Write a finished record with its service calls and, for a call, its turns."""

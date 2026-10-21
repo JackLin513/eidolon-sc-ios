@@ -232,7 +232,9 @@ class UsageLimiter:
         )
 
     def close(self) -> None:
-        self._db.close()
+        """Close the connection once nothing on another thread is using it."""
+        with self._lock:
+            self._db.close()
 
     def _refuse_over(self, user_id: str, kind: UsageKind, now: datetime) -> None:
         """Raise OverLimit if the last hour already holds as many of the user's counting

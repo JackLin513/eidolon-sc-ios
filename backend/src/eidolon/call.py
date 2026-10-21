@@ -1011,15 +1011,25 @@ class Calls:
         `brought`, let through by `Admissions.call`, whose exceptions it raises. Whatever
         fails before the call is served, it never connected; once it is served, it is
         settled as it ends, letting go of the keys it brought."""
-        # On a thread, as the limits and records are in the database.
-        admission = await asyncio.to_thread(
-            self._admissions.call, user_id, character.id, brought
-        )
 
         def keep(connected_at: datetime, duration_s: float) -> None:
             if self._store.keep_call(conversation.id, connected_at, duration_s):
                 self._happenings.call_ended(user_id, character.id, duration_s)
 
+        # On a thread, as the limits and records are in the database. Cancelled meanwhile,
+        # the thread goes on all the same: what it lets in never set up, so settled.
+        admitting = asyncio.ensure_future(
+            asyncio.to_thread(self._admissions.call, user_id, character.id, brought)
+        )
+        try:
+            admission = await asyncio.shield(admitting)
+        except asyncio.CancelledError:
+            def never_set_up(admitted: asyncio.Future[Admission[CallKeys]]) -> None:
+                if not admitted.cancelled() and admitted.exception() is None:
+                    CallOutcome(admitted.result(), self._limits(), self._clock, keep).set_up_failed()
+
+            admitting.add_done_callback(never_set_up)
+            raise
         outcome = CallOutcome(admission, self._limits(), self._clock, keep)
         return await self._start(
             user_id, conversation, character, options, offer, admission, outcome, brought.image

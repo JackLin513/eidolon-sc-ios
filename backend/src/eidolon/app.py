@@ -348,7 +348,7 @@ def create_app(backend: Backend) -> FastAPI:
         if store.ended(conversation.id) is not None:
             raise HTTPException(409, ENDED)
 
-    def callable_conversation(conversation_id: str, user_id: str) -> Conversation:
+    def conversation_to_call(conversation_id: str, user_id: str) -> Conversation:
         """The user's conversation a call is to go into, as `conversation_or_404` finds it,
         unless she has ended it (`refuse_if_ended`)."""
         conversation = conversation_or_404(conversation_id, user_id)
@@ -401,7 +401,7 @@ def create_app(backend: Backend) -> FastAPI:
         if body.call is None:
             raise HTTPException(422, "缺少要通话的对话")
         conversation = await asyncio.to_thread(
-            callable_conversation, body.call.conversation_id, user_id
+            conversation_to_call, body.call.conversation_id, user_id
         )
         return await calls.start(
             user_id,
