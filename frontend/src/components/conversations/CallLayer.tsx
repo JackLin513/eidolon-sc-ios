@@ -49,7 +49,7 @@ import {
   PhotoIcon,
   SendIcon,
   TextOnlyIcon,
-  TypeIcon,
+  TypingIcon,
 } from "@/theme/icons";
 import { Ja } from "@/theme/Ja";
 
@@ -466,6 +466,8 @@ function Ripple({ isOn, children }: { isOn: boolean; children: ReactNode }) {
  * 她还没开口时是一句提示。用户正在说、还没定稿的话放在最下面。
  */
 function LineCard({ line, previousLine, hearing, typed, textOnly }: Props) {
+  // 卡底一行：用户正在说的话，不在说时是刚打出去的那句。
+  const foot = hearing ? t.hearing(hearing) : typed && t.typed(typed);
   return (
     <div className="w-full max-w-[34em] rounded-3xl bg-white/12 px-5 py-4 text-center text-balance backdrop-blur-md">
       <div aria-live="polite">
@@ -488,11 +490,7 @@ function LineCard({ line, previousLine, hearing, typed, textOnly }: Props) {
           !typed && <p className="text-sm text-white/80">{textOnly ? t.repliesInText : t.speakFreely}</p>
         )}
       </div>
-      {hearing ? (
-        <p className="mt-3 text-sm text-white/80">{t.hearing(hearing)}</p>
-      ) : (
-        typed && <p className="mt-3 text-sm text-white/80">{t.typed(typed)}</p>
-      )}
+      {foot && <p className="mt-3 text-sm text-white/80">{foot}</p>}
     </div>
   );
 }
@@ -642,7 +640,7 @@ function Dock({
           onClick={onToggleMic}
         />
         <RoundKey label={t.switchMic} icon={MicSwitchIcon} isDisabled={!isConnected} onClick={onSwitchMic} />
-        <RoundKey label={t.type} icon={TypeIcon} isDisabled={!isConnected} onClick={onOpenTyping} keyRef={typeKey} />
+        <RoundKey label={t.type} icon={TypingIcon} isDisabled={!isConnected} onClick={onOpenTyping} keyRef={typeKey} />
         <Button variant="hangup" size="call-dock" onClick={onHangUp} className="ml-2">
           <HangUpIcon aria-hidden />
           {t.hangUp}
@@ -676,7 +674,7 @@ function TypingBar({ draft, onDraft, onSend, onCloseTyping }: Props) {
   return (
     <footer className="relative flex justify-center px-4 pt-2 pb-3">
       <form
-        className="flex w-full max-w-[34em] items-end gap-1.5 rounded-[28px] bg-white/12 p-1.5 backdrop-blur-md"
+        className="flex w-full max-w-[34em] items-end gap-1.5 rounded-3xl bg-white/12 p-1.5 backdrop-blur-md"
         onSubmit={(e) => {
           e.preventDefault();
           if (canSend) onSend();
@@ -695,7 +693,7 @@ function TypingBar({ draft, onDraft, onSend, onCloseTyping }: Props) {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               if (canSend) onSend();
-            } else if (e.key === "Escape") {
+            } else if (e.key === "Escape" && !e.nativeEvent.isComposing) {
               e.preventDefault();
               onCloseTyping();
             }

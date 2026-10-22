@@ -67,9 +67,9 @@ export type LineCard = {
   reply: Reply | null;
   /** Since when her voice has not been playing; null while it plays. */
   quietSince: number | null;
-  /** What the user typed last, and the latest reply as they sent it (-1 for none); null once a
-   * later reply shows, or the user speaks. */
-  typed: { text: string; after: number } | null;
+  /** What the user typed last, and the number of her latest reply as they sent it (-1 for none);
+   * null once a later reply shows, or the user speaks. */
+  typed: { text: string; afterReply: number } | null;
 };
 
 export type LineCardEvent =
@@ -119,7 +119,7 @@ export function movedCard(card: LineCard, event: LineCardEvent, now: number): Li
     case "voice":
       return { ...card, quietSince: event.playing ? null : (card.quietSince ?? now) };
     case "interrupted": {
-      const typed = event.typed === undefined ? null : { text: event.typed, after: card.reply?.number ?? -1 };
+      const typed = event.typed === undefined ? null : { text: event.typed, afterReply: card.reply?.number ?? -1 };
       return { ...card, typed, reply: card.reply && { ...card.reply, interrupted: true } };
     }
     case "call-over":
@@ -215,6 +215,6 @@ function shownUpTo(card: LineCard, segment: number, now: number): LineCard {
   if (current?.reply === reply.number && current.segment >= segment) return card;
   const text = reply.segments[segment] ?? { ja: "", zh: "" };
   // Her reply to what was typed: it is said.
-  const typed = card.typed && reply.number > card.typed.after ? null : card.typed;
+  const typed = card.typed && reply.number > card.typed.afterReply ? null : card.typed;
   return { ...card, typed, shown: [...card.shown, { reply: reply.number, segment, text, at: now }] };
 }
