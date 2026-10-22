@@ -1,0 +1,41 @@
+name: EidolonIOS
+
+options:
+  bundleIdPrefix: com.jacklin
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1
+
+targets:
+  EidolonIOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: EidolonIOS
+        excludes:
+          - Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jacklin.eidolon
+        PRODUCT_NAME: Eidolon
+        TARGETED_DEVICE_FAMILY: "1"
+        INFOPLIST_FILE: EidolonIOS/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+schemes:
+  EidolonIOS:
+    build:
+      targets:
+        EidolonIOS: all
+    run:
+      config: Debug
