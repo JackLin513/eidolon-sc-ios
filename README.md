@@ -194,6 +194,7 @@ flowchart LR
 | [`.env.example`](.env.example) | 全部环境变量及说明 |
 | [架构决策记录](docs/adr/) | 为什么这样设计：日语原声、共享记忆、对公众开放、自带密钥只存在浏览器里等 |
 | [`GLOSSARY.md`](GLOSSARY.md) | 领域术语表 |
+| [社区玩法仓库](docs/community-forks.md) | 大家在各自 fork 上做的玩法，以及怎么登记自己的 |
 | [`DESIGN.md`](DESIGN.md) · [`PRODUCT.md`](PRODUCT.md) | 视觉规范 · 产品定位 |
 
 ## 🌐 部署

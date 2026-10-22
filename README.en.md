@@ -194,6 +194,7 @@ flowchart LR
 | [`.env.example`](.env.example) | Every environment variable, with descriptions |
 | [Architecture decision records](docs/adr/) | Why it is designed this way: the Japanese voice, shared memory, opening to the public, own keys kept only in the browser and more |
 | [`GLOSSARY.md`](GLOSSARY.md) | Domain glossary |
+| [Community forks](docs/community-forks.md) (Chinese) | Gameplay others have built in their own forks, and how to list yours |
 | [`DESIGN.md`](DESIGN.md) · [`PRODUCT.md`](PRODUCT.md) | Visual design system · Product positioning |
 
 ## 🌐 Deployment

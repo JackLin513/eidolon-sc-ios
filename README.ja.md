@@ -194,6 +194,7 @@ flowchart LR
 | [`.env.example`](.env.example) | すべての環境変数とその説明 |
 | [アーキテクチャ決定記録](docs/adr/) | なぜこう設計したか：日本語の声、共有メモリー、一般公開、自前のキーはブラウザーにだけ保存、など |
 | [`GLOSSARY.md`](GLOSSARY.md) | ドメイン用語集 |
+| [コミュニティのフォーク](docs/community-forks.md)（中国語） | みんなが自分のフォークで作った遊び方と、自分のフォークを登録する方法 |
 | [`DESIGN.md`](DESIGN.md) · [`PRODUCT.md`](PRODUCT.md) | ビジュアル仕様 · プロダクトの位置づけ |
 
 ## 🌐 デプロイ
