@@ -99,6 +99,7 @@ the judge model read those the user answers, after the last turn, as her latest 
 
 import asyncio
 import logging
+import sqlite3
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field, replace
@@ -109,7 +110,6 @@ from typing import Literal, ParamSpec, TypeVar
 from eidolon.affinity import (
     FED_UP_TURNS,
     Affinities,
-    Change,
     EndsFor,
     Judged,
     Parting,
@@ -123,6 +123,7 @@ from eidolon.affinity_judge import AffinityJudge
 from eidolon.characters import Character
 from eidolon.clock import Clock
 from eidolon.config import FishAudioModel, ImageSettings
+from eidolon.data_access import Database
 from eidolon.gift_catalog import Gift
 from eidolon.happenings import Happenings, Rewarded
 from eidolon.judge import JudgeError
@@ -159,6 +160,11 @@ from eidolon.store import (
     Recorded,
     Store,
     Typed,
+    add_turn,
+    read_ended,
+    read_last_contact,
+    read_profile,
+    read_record,
     timestamp,
 )
 from eidolon.titles import Titles
@@ -370,11 +376,13 @@ async def _judged(
 
 @dataclass(frozen=True)
 class _BeforeAsking:
-    """What a turn reads from the database before it is asked: her character, the
-    conversation's record, when the user and she were last in touch (None in a call, where
-    she knows they are talking), her affinity as it begins, what it may send for a photo, and
-    the producer profile."""
+    """What a turn, or her reaching out, reads from the database before she is asked:
+    whether she has ended the conversation, her character, the conversation's record, when
+    the user and she were last in touch (None in a call, where she knows they are talking),
+    her affinity as it begins, what it may send for a photo (None for a reach-out), and the
+    producer profile."""
 
+    ended: bool
     character: Character
     record: list[Recorded]
     last_contact: datetime | None
@@ -386,13 +394,14 @@ class _BeforeAsking:
 @dataclass
 class _Photo:
     """The photo a turn sends, on the user's `own` image generation if the turn brings it:
-    once it begins one, its id and the tag she wrote for it, and whether her reply is
-    recorded with it."""
+    once it begins one, its id and the tag she wrote for it, and whether her reply has been
+    handed in to be recorded with it: from then on, recording it tells the photos what
+    became of it (`ConversationEngine._keep`)."""
 
     own: ImageSettings | None = None
     id: str | None = None
     tag: str = ""
-    recorded: bool = False
+    handed_in: bool = False
 
 
 def latest_turns(messages: list[Message], turns: int | None) -> list[Message]:
@@ -522,6 +531,7 @@ def _answering(record: Sequence[Recorded]) -> list[Message]:
 class ConversationEngine:
     def __init__(
         self,
+        db: Database,
         store: Store,
         characters: dict[str, Character],
         gift_catalog: Mapping[str, Gift],
@@ -545,6 +555,7 @@ class ConversationEngine:
         `affinity_judge`, which judges whether turns ask for a photo too. Without `photos`,
         or without the judge model, no turn has a photo. Each turn recorded is told to
         `happenings`, if any."""
+        self._db = db
         self._store = store
         self._characters = characters
         self._gift_catalog = gift_catalog
@@ -559,11 +570,17 @@ class ConversationEngine:
         self._photos = photos
         self._happenings = happenings
         self._ended_listeners: list[Callable[[str, EndsFor], None]] = []
+        self._cooled_listeners: list[Callable[[str, str, datetime], None]] = []
 
     def on_ended(self, listener: Callable[[str, EndsFor], None]) -> None:
         """Have `listener` told the conversation's id, and why, as she ends one, once it is
         recorded."""
         self._ended_listeners.append(listener)
+
+    def on_cooled(self, listener: Callable[[str, str, datetime], None]) -> None:
+        """Have `listener` told the user, the character and when it ends as a turn begins a
+        cooldown, once it is recorded, in the task that took the turn."""
+        self._cooled_listeners.append(listener)
 
     async def turn(
         self,
@@ -605,7 +622,7 @@ class ConversationEngine:
             log.exception("turn failed in conversation %s", conversation.id)
             yield TurnFailed(FAILED)
         finally:
-            if photo.id is not None and not photo.recorded and self._photos is not None:
+            if photo.id is not None and not photo.handed_in and self._photos is not None:
                 self._photos.dropped(photo.id)
 
     async def _reply(
@@ -621,10 +638,10 @@ class ConversationEngine:
     ) -> AsyncIterator[TurnEvent]:
         # The database is read and written on threads all through the turn: waiting on it
         # on the event loop would keep everyone's calls on it from going on meanwhile.
-        read = await asyncio.to_thread(
-            self._read_before_asking, conversation, in_call is not None, photo.own
+        read = await self._db.read(
+            self._before_turn, conversation, in_call is not None, photo.own, self._affinity_on
         )
-        if read is None:
+        if read.ended:
             yield TurnRejected(ENDED)
             return
         character, record, last_contact, affinity, eligibility, profile = (
@@ -665,15 +682,13 @@ class ConversationEngine:
             if judged_apart is not None and not judged_apart.done():
                 judged_apart.cancel()
         now = self._clock()
-        cools = await asyncio.to_thread(self._cools, conversation, judged)
+        cools = await self._cools(conversation, judged)
         if in_call is not None:
             out_of_line_before, hurt_before = in_call.out_of_line, in_call.hurts
         else:
             # As many as are weighed, so that whether she warns is told against the latest
             # before this one; out of line is counted in the latest with this one among them.
-            earlier = await asyncio.to_thread(
-                self._store.typed_turns, conversation.id, FED_UP_TURNS
-            )
+            earlier = await self._store.typed_turns(conversation.id, FED_UP_TURNS)
             out_of_line_before = sum(t.out_of_line for t in earlier[-(FED_UP_TURNS - 1):])
             hurt_before = [t.hurt for t in earlier]
         ending = ends(judged, cools, out_of_line_before, hurt_before)
@@ -770,29 +785,24 @@ class ConversationEngine:
             else Typed(hurt(judged), judged is not None and judged.out_of_line)
         )
         ends_conversation = typed is not None and ending is not None
+        # Once handed in, the turn is recorded whatever becomes of it, and what comes of that
+        # is told all the same, should the turn be cancelled meanwhile, the user gone, say:
+        # in a task of its own, which carries this one's context, so that a call taking the
+        # turn is told it is the one.
+        photo.handed_in = True
+        keeping = asyncio.ensure_future(self._keep(
+            conversation, text, said_at, parser.complete, judged, affinity, typed,
+            ends_conversation, photo,
+        ))
         try:
-            # On the event loop: a cooldown it begins hangs up her calls with the user there.
-            reply, affinity = self._record(
-                conversation, text, said_at, parser.complete, judged, affinity, typed,
-                ends_conversation, NewPhoto(photo.id, photo.tag) if photo.id else None,
-            )
+            reply, affinity, rewarded = await asyncio.shield(keeping)
         except ConversationEnded:  # elsewhere, as the turn was under way
             yield TurnRejected(ENDED)
             return
-        rewarded = self._happenings and await asyncio.to_thread(
-            self._happenings.turn_recorded,
-            conversation.user_id, conversation.character_id, affinity and affinity.tier,
-        )
-        if photo.id is not None and self._photos is not None:
-            photo.recorded = True
-            self._photos.recorded(photo.id)
         memory.write_down(history, text, reply, retrieved.query_vector)
         turn = sum(m.role == "user" for m in messages) + 1
         self._titles.after_turn(conversation, turn, llms.background, llms.hold_background)
-        ended = (
-            await asyncio.to_thread(self._store.ended, conversation.id)
-            if ends_conversation else None
-        )
+        ended = await self._store.ended(conversation.id) if ends_conversation else None
         if ended is not None and ending is not None:
             for listener in self._ended_listeners:
                 listener(conversation.id, ending)
@@ -826,14 +836,9 @@ class ConversationEngine:
         to say something first. Nothing else is retrieved, no tool offered, nothing judged.
         Raises EmptyReply if the model says nothing she could say, and whatever the model
         raises."""
-        character = self._characters[conversation.character_id]
-        record, profile, affinity, last_contact = await asyncio.to_thread(
-            lambda: (
-                self._store.record(conversation.id),
-                self._store.get_profile(conversation.user_id),
-                self._affinity(conversation),
-                self._store.last_contact(conversation.user_id, conversation.character_id),
-            )
+        read = await self._db.read(self._before_reaching_out, conversation, self._affinity_on)
+        character, record, affinity, last_contact, profile = (
+            read.character, read.record, read.affinity, read.last_contact, read.profile
         )
         messages = [entry for entry in record if isinstance(entry, Message)]
         timezone = effective_timezone(profile, None)
@@ -873,38 +878,72 @@ class ConversationEngine:
             raise EmptyReply("对话模型没有返回任何内容")
         return parser.complete
 
+    def _before_turn(
+        self,
+        db: sqlite3.Connection,
+        conversation: Conversation,
+        in_call: bool,
+        own_image: ImageSettings | None,
+        affinity_on: bool,
+    ) -> _BeforeAsking:
+        """What a turn of `conversation` reads before it is asked, through `db`, all in one
+        read: `in_call` if it is taken in one, bringing the user's `own_image` generation if
+        any, her affinity if `affinity_on`."""
+        return self._read_before_asking(
+            db, conversation, in_call=in_call, own_image=own_image, sends_photo=True,
+            affinity_on=affinity_on,
+        )
+
+    def _before_reaching_out(
+        self, db: sqlite3.Connection, conversation: Conversation, affinity_on: bool
+    ) -> _BeforeAsking:
+        """What her reaching out in `conversation` reads before she is asked, through `db`,
+        as a typed turn would, all in one read; she sends no photo."""
+        return self._read_before_asking(
+            db, conversation, in_call=False, own_image=None, sends_photo=False,
+            affinity_on=affinity_on,
+        )
+
     def _read_before_asking(
-        self, conversation: Conversation, in_call: bool, own_image: ImageSettings | None
-    ) -> _BeforeAsking | None:
-        """What a turn of `conversation` reads before it is asked, `in_call` if it is taken
-        in one, bringing the user's `own_image` generation if any; None if she has ended
-        the conversation."""
-        if self._store.ended(conversation.id) is not None:
-            return None
+        self,
+        db: sqlite3.Connection,
+        conversation: Conversation,
+        *,
+        in_call: bool,
+        own_image: ImageSettings | None,
+        sends_photo: bool,
+        affinity_on: bool,
+    ) -> _BeforeAsking:
+        """What a turn or a reach-out in `conversation` reads before she is asked, through
+        `db`: what it may send for a photo only if it `sends_photo`, her affinity only if
+        `affinity_on`, as told on the event loop as it was handed in."""
         character = self._characters[conversation.character_id]
         return _BeforeAsking(
+            read_ended(db, conversation.id) is not None,
             character,
-            self._store.record(conversation.id),
+            read_record(db, conversation.id),
             None if in_call
-            else self._store.last_contact(conversation.user_id, conversation.character_id),
-            self._affinity(conversation),
-            self._photo_eligibility(conversation, character, own_image),
-            self._store.get_profile(conversation.user_id),
+            else read_last_contact(db, conversation.user_id, conversation.character_id),
+            self._affinity(db, conversation) if affinity_on else None,
+            self._photo_eligibility(db, conversation, character, own_image)
+            if sends_photo else None,
+            read_profile(db, conversation.user_id),
         )
 
     def _photo_eligibility(
         self,
+        db: sqlite3.Connection,
         conversation: Conversation,
         character: Character,
         own: ImageSettings | None,
     ) -> Eligibility | None:
         """What a turn with her may send, bringing the user's `own` image generation if any,
         if it could have a photo, and so the judge model is asked whether it asks for one:
-        there being the judge model to ask, typed or in a call alike."""
+        there being the judge model to ask, typed or in a call alike; read through `db`."""
         has_judge = self._retrieval is not None or self._affinity_judge is not None
         if not has_judge or self._photos is None:
             return None
-        return self._photos.eligibility(character, conversation.user_id, own)
+        return self._photos.eligibility(db, character, conversation.user_id, own)
 
     async def photo_came_out(self, photo_id: str, user_id: str) -> Photo | None:
         """The photo a turn of the user's sent (`photo`), once it has come out, sent or not,
@@ -921,19 +960,25 @@ class ConversationEngine:
         photo.id, photo.tag = self._photos.begin(character, tag, user_id, photo.own), tag
         return PhotoPending(photo.id)
 
-    def _affinity(self, conversation: Conversation) -> Status | None:
-        """Her affinity with the user as the turn begins; None where affinity is off."""
-        if self._affinities is None:
-            return None
-        return self._affinities.status(conversation.user_id, conversation.character_id)
+    @property
+    def _affinity_on(self) -> bool:
+        """Whether turns go by affinity now: the engine has it, and it is on."""
+        return self._affinities is not None and self._affinities.on
 
-    def _cools(self, conversation: Conversation, judged: Judged | None) -> bool:
+    def _affinity(self, db: sqlite3.Connection, conversation: Conversation) -> Status:
+        """Her affinity with the user as the turn begins, read through `db`, affinity on."""
+        assert self._affinities is not None
+        return self._affinities.read_status(db, conversation.user_id, conversation.character_id)
+
+    async def _cools(self, conversation: Conversation, judged: Judged | None) -> bool:
         """Whether the turn, as `judged`, would begin a cooldown; never if not judged."""
         if judged is None or self._affinities is None:
             return False
-        return self._affinities.cools(conversation.user_id, conversation.character_id, judged)
+        return await self._affinities.cools(
+            conversation.user_id, conversation.character_id, judged
+        )
 
-    def _record(
+    async def _keep(
         self,
         conversation: Conversation,
         text: str,
@@ -943,23 +988,69 @@ class ConversationEngine:
         affinity: Status | None,
         typed: Typed | None,
         ends_conversation: bool,
-        photo: NewPhoto | None,
-    ) -> tuple[Message, Status | None]:
-        """Record the turn, as said at `said_at`, changing her affinity as `judged` says, if
-        judged, with what a typed turn came to, her ending the conversation after it if she
-        does, and the photo she sends with it if any: the reply, and her affinity after it
-        (`affinity`, as the turn began, if not judged)."""
-
-        def add_turn(change: Change | None) -> Message:
-            return self._store.add_turn(
-                conversation.id, text, reply, change, said_at, typed, ends_conversation, photo
+        photo: _Photo,
+    ) -> tuple[Message, Status | None, Rewarded | None]:
+        """Record the turn (`_record`), and tell what comes of it: should it begin a
+        cooldown, those `on_cooled` has; the photos, whether her reply is recorded with the
+        photo, if any; and the activity log, what the turn was rewarded for. The reply, her
+        affinity after it, and what it was rewarded with."""
+        try:
+            message, affinity, rewarded = await self._db.write(
+                self._record,
+                conversation, text, said_at, reply, judged, affinity, typed, ends_conversation,
+                NewPhoto(photo.id, photo.tag) if photo.id else None,
+                self._happenings is not None and self._happenings.open,
             )
+        except Exception:
+            if photo.id is not None and self._photos is not None:
+                self._photos.dropped(photo.id)
+            raise
+        until = affinity and affinity.cooldown_until
+        if message.affinity is not None and message.affinity.cooldown and until is not None:
+            # In the turn's context: her calls with the user hang up there and then, one this
+            # turn is taken in after it.
+            for cooled in self._cooled_listeners:
+                cooled(conversation.user_id, conversation.character_id, until)
+        if photo.id is not None and self._photos is not None:
+            await self._photos.recorded(photo.id)
+        if self._happenings is not None:
+            await self._happenings.write_records(conversation.user_id, rewarded)
+        return message, affinity, rewarded
 
-        if judged is None or self._affinities is None:
-            return add_turn(None), affinity
-        return self._affinities.change(
-            conversation.user_id, conversation.character_id, judged, add_turn
+    def _record(
+        self,
+        db: sqlite3.Connection,
+        conversation: Conversation,
+        text: str,
+        said_at: str,
+        reply: list[Segment],
+        judged: Judged | None,
+        affinity: Status | None,
+        typed: Typed | None,
+        ends_conversation: bool,
+        photo: NewPhoto | None,
+        happenings_open: bool,
+    ) -> tuple[Message, Status | None, Rewarded | None]:
+        """Record the turn, as said at `said_at`, through `db`, in one transaction with all
+        it changes: her affinity as `judged` says, if judged, with what a typed turn came
+        to, her ending the conversation after it if she does, the photo she sends with it if
+        any, and what it counts towards (`Happenings.turn_recorded`), if `happenings_open`,
+        all of it or none.
+        The reply, her affinity after it (`affinity`, as the turn began, if not judged),
+        and what it was rewarded with."""
+        change = None
+        if judged is not None and self._affinities is not None:
+            change, affinity = self._affinities.change(
+                db, conversation.user_id, conversation.character_id, judged
+            )
+        message = add_turn(
+            db, conversation.id, text, reply, change, said_at, typed, ends_conversation, photo
         )
+        rewarded = self._happenings and self._happenings.turn_recorded(
+            db, conversation.user_id, conversation.character_id, affinity and affinity.tier,
+            happenings_open,
+        )
+        return message, affinity, rewarded
 
     async def _call_tool(self, character: Character, call: ToolCall) -> str:
         """The tool's result, or what went wrong, for the model to read."""

@@ -1,17 +1,19 @@
 """The database: one SQLite file holding the users and their conversations, memories and
 usage, next to the story corpus and the embedded text set.
 
-Every connection to it is opened by `connect`, the same way. Each module that keeps
-tables in it opens its own connection and creates its own tables; which tables hold a
-user's data, and which rows of them are the user's, is listed here (`USER_DATA`), and so
-is every other table (`NOT_USER_DATA`), so a table cannot be added without being one or
-the other. A table of a user's data may instead be kept when the user is deleted, but no
+The data access layer (`data_access`, ADR-0028) is the only way into it, but for the
+health check (`readable`), on a read-only connection of its own, and for the backup, which
+copies it (`VACUUM INTO`), and restoring one in its place (`restore`), each on a
+connection of its own opened by `connect`, the same way as the layer's. Each module that
+keeps tables in it creates its own tables; which tables hold a user's data, and which rows
+of them are the user's, is listed here (`USER_DATA`), and so is every other table
+(`NOT_USER_DATA`), so a table cannot be added without being one or the other. A table of a user's data may instead be kept when the user is deleted, but no
 longer say whose it is (`ANONYMIZED_USER_DATA`), as activity records are, so that the
 numbers they add up to do not change.
 
 Deleting a user (`delete_user_data`) is for good (ADR-0006): what is deleted is
-overwritten, not just freed, and the write-ahead log is truncated, so none of it is left
-in the files. Deleting a memory, or clearing them all, or a past conversation
+overwritten, not just freed, and the write-ahead log is then emptied
+(`Database.checkpoint`), so none of it is left in the files. Deleting a memory, or clearing them all, or a past conversation
 (`delete_conversation_data`), overwrites it in the database too, but earlier frames of the write-ahead log may still hold it until a later checkpoint or
 the user is deleted."""
 
@@ -106,8 +108,9 @@ def connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(path, check_same_thread=False, timeout=30)
     try:
-        # Readers need not wait for a writer: several modules, and the command line in
-        # another process, each have a connection to this database.
+        # Readers need not wait for a writer: the data access layer's readers, the health
+        # check and the backup, and the command line in another process, each have a
+        # connection to this database.
         db.execute("PRAGMA journal_mode = WAL")
         # In WAL mode a commit need not wait for the disk: losing power may lose the last
         # commits, never corrupt the database.
@@ -123,8 +126,8 @@ def connect(path: Path) -> sqlite3.Connection:
 
 def readable(path: Path) -> bool:
     """Whether the database at `path` can be read now, on a read-only connection of its
-    own, so as to wait on no module's lock, nor make a database where there is none; for
-    the health check."""
+    own, outside the data access layer so as to wait on no write task, nor make a
+    database where there is none; for the health check."""
     try:
         db = sqlite3.connect(
             f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=HEALTH_READ_TIMEOUT
@@ -139,20 +142,18 @@ def readable(path: Path) -> bool:
 
 
 def delete_user_data(db: sqlite3.Connection, user_id: str) -> None:
-    """Delete the user and everything of theirs, for good, all at once, through `db`, which
-    the caller keeps anyone else from using meanwhile, but what is only made no one's. A
-    table not created yet (by a module this process has not opened) is passed over."""
-    with db:
-        present = tables(db)
-        names = {"user": user_id, "anonymous": secrets.token_hex(16)}
-        for table, anonymize, where in ANONYMIZED_USER_DATA:
-            if table in present:
-                db.execute(f"UPDATE {table} SET {anonymize} WHERE {where}", names)
-        for table, where in USER_DATA:
-            if table in present:
-                db.execute(f"DELETE FROM {table} WHERE {where}", (user_id,))
-    # The write-ahead log still holds the pages as they were.
-    db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    """Delete the user and everything of theirs, for good, but what is only made no one's,
+    through `db`, in the caller's transaction; the write-ahead log still holds the pages as
+    they were until it is checkpointed. A table not created yet (by a module this process
+    has not opened) is passed over."""
+    present = tables(db)
+    names = {"user": user_id, "anonymous": secrets.token_hex(16)}
+    for table, anonymize, where in ANONYMIZED_USER_DATA:
+        if table in present:
+            db.execute(f"UPDATE {table} SET {anonymize} WHERE {where}", names)
+    for table, where in USER_DATA:
+        if table in present:
+            db.execute(f"DELETE FROM {table} WHERE {where}", (user_id,))
 
 
 def delete_conversation_data(db: sqlite3.Connection, conversation_id: str) -> None:
@@ -167,6 +168,14 @@ def delete_conversation_data(db: sqlite3.Connection, conversation_id: str) -> No
         if table in present:
             db.execute(f"DELETE FROM {table} WHERE {where}", (conversation_id,))
     db.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+
+
+def by_name(db: sqlite3.Connection) -> sqlite3.Cursor:
+    """A cursor on `db` whose rows are read by name, leaving the connection's, which other
+    modules share, as they are."""
+    cursor = db.cursor()
+    cursor.row_factory = sqlite3.Row
+    return cursor
 
 
 def tables(db: sqlite3.Connection) -> set[str]:

@@ -26,7 +26,7 @@ from pydantic import (
     BaseModel, Field, Secret, StrictBool, StringConstraints, field_validator, model_validator,
 )
 
-from eidolon.accounts import SignInRefused, is_admin
+from eidolon.accounts import SignInRefused, signs_in_as_admin
 from eidolon.activity import host
 from eidolon.assembly import Backend
 from eidolon.config import (
@@ -252,11 +252,11 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
     def callback_url(provider: str) -> str:
         return f"{settings.public_origin}/api/auth/{provider}/callback"
 
-    def signed_in(user_id: str, response: Response, request: Request) -> None:
+    async def signed_in(user_id: str, response: Response, request: Request) -> None:
         """Start a session for the user in this browser, ending the one it had."""
         if old := request.cookies.get(SESSION_COOKIE):
-            store.end_session(old)
-        set_session_cookie(response, store.create_session(user_id, clock()), settings)
+            await store.end_session(old)
+        set_session_cookie(response, await store.create_session(user_id, clock()), settings)
 
     @app.get("/api/auth/providers")
     def sign_in_providers() -> dict:
@@ -270,14 +270,16 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
         }
 
     @app.get("/api/auth/{provider}/start")
-    def start_sign_in(provider: str, request: Request, link: bool = False) -> RedirectResponse:
+    async def start_sign_in(
+        provider: str, request: Request, link: bool = False
+    ) -> RedirectResponse:
         """Off to the provider to sign in, or with `link`, to link another identity to the
         signed-in user."""
         identity_provider = providers.get(provider)  # pyright: ignore[reportArgumentType]
         if identity_provider is None:
             raise HTTPException(404, "没有这种登录方式")
         if link:
-            user = session_user(request)
+            user = await session_user(request)
             if user is None or user.consented_at is None:
                 return RedirectResponse("/login", status_code=302)
         state = secrets.token_urlsafe(24)
@@ -332,69 +334,73 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
             return go(f"{back}?error=provider")
         try:
             if linking:
-                user = session_user(request)
+                user = await session_user(request)
                 if user is None or user.consented_at is None:
                     return go("/login?error=state")
-                accounts.link(user.id, identity)
+                await accounts.link(user.id, identity)
                 return go(f"/settings/sign-in?linked={provider}")
-            user = accounts.sign_in(identity)
+            user = await accounts.sign_in(identity)
         except SignInRefused as e:
             return go(f"{back}?error={e.reason}")
         response = go("/conversations")
-        signed_in(user.id, response, request)
+        await signed_in(user.id, response, request)
         return response
 
     @app.post("/api/auth/logout", status_code=204)
-    def logout(request: Request, response: Response) -> None:
+    async def logout(request: Request, response: Response) -> None:
         """Sign this browser out; its session ends even if it has already expired."""
         if token := request.cookies.get(SESSION_COOKIE):
-            store.end_session(token)
+            await store.end_session(token)
         clear_session_cookie(response, settings)
 
     @app.get("/api/account")
-    def account(user_id: UserId) -> dict:
+    async def account(user_id: UserId) -> dict:
         """The signed-in user, by the id their browser keeps their own keys apart by, the
         identities they sign in with, whether they are an admin, who may enter the admin
         console, the exempting keys now (GLOSSARY.md「免限额密钥」), in a fixed order, and
         whether they have their own switch for reach-outs on (GLOSSARY.md「搭话」), None where
         the deployer has reach-outs off, and the version of the sponsor code (GLOSSARY.md
         「赞赏」) while users are shown it, else None."""
+        sponsor = await backend.sponsor.state()
+        user = await store.get_user(user_id)
+        methods = await store.sign_in_methods(user_id)
+        reach_outs = await backend.reach_outs.switch_of(user_id)
         return {
             "id": user_id,
-            "name": store.get_user(user_id).name,
+            "name": user.name,
             "sign_in_methods": [
                 {"provider": m.provider, "display_name": m.display_name, "email": m.email}
-                for m in store.sign_in_methods(user_id)
+                for m in methods
             ],
-            "is_admin": is_admin(store, settings, user_id),
+            "is_admin": signs_in_as_admin(methods, settings),
             "exempting_keys": [s for s in SERVICES if s in backend.config.exempting_keys],
-            "reach_outs": backend.reach_outs.switch_of(user_id),
-            "sponsor_version": backend.sponsor.state().version,
+            "reach_outs": reach_outs,
+            "sponsor_version": sponsor.version,
         }
 
     @app.put("/api/account/reach-outs", status_code=204)
-    def switch_reach_outs(body: ReachOutSwitch, user_id: UserId) -> None:
+    async def switch_reach_outs(body: ReachOutSwitch, user_id: UserId) -> None:
         """Turn the user's own switch for reach-outs on or off, for all the characters; 409
         where the deployer has reach-outs off."""
         try:
-            backend.reach_outs.switch(user_id, body.on)
+            await backend.reach_outs.switch(user_id, body.on)
         except ReachOutsOff:
             raise HTTPException(409, "搭话没有开放") from None
 
     @app.delete("/api/account/sign-in-methods/{provider}", status_code=204)
-    def unlink(provider: str, user_id: UserId) -> None:
+    async def unlink(provider: str, user_id: UserId) -> None:
         """Stop signing in with the identity at `provider`; never the last one."""
         try:
-            found = store.remove_sign_in_method(user_id, provider)
+            found = await store.remove_sign_in_method(user_id, provider)
         except LastSignInMethod:
             raise HTTPException(409, "这是你唯一的登录方式，解绑后就无法再登录了") from None
         if not found:
             raise HTTPException(404, "没有绑定这种登录方式")
 
     @app.post("/api/account/logout-everywhere", status_code=204)
-    def logout_everywhere(user_id: UserId, response: Response) -> None:
+    async def logout_everywhere(user_id: UserId, response: Response) -> None:
         """Sign the user out on every device, this one included."""
-        store.end_sessions(user_id)
+        await store.end_sessions(user_id)
         clear_session_cookie(response, settings)
 
     @app.post("/api/account/delete", status_code=204)
@@ -446,7 +452,7 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
         return {"base_url": own.base_url, "model": own.model}
 
     @app.get("/api/account/keys/llm/efforts")
-    def llm_efforts(
+    async def llm_efforts(
         user_id: UserId,
         protocol: LLMProtocol,
         base_url: Annotated[str, Query(max_length=500)],
@@ -483,7 +489,7 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
         return {"models": models}
 
     @app.get("/api/account/keys/llm/providers")
-    def llm_providers(user_id: UserId, response: Response) -> dict:
+    async def llm_providers(user_id: UserId, response: Response) -> dict:
         """The providers an LLM may be picked from, as models.dev lists them
         (`price_catalog.parse_offers`): where each serves its models and over which
         protocol, for the settings page and the admin console to fill in, and every address
@@ -543,14 +549,14 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
         return {"base_url": own.base_url, "model": own.model}
 
     @app.post("/api/account/consent", status_code=204)
-    def consent(body: Consent, user: SignedIn) -> None:
+    async def consent(body: Consent, user: SignedIn) -> None:
         """Agree to the privacy policy and terms of use, which the rest of the API waits for."""
-        store.consent(user.id, clock())
+        await store.consent(user.id, clock())
 
     if settings.dev_login:
 
         @app.post("/api/auth/dev-login", status_code=204)
-        def dev_login(body: DevLogin, request: Request, response: Response) -> None:
+        async def dev_login(body: DevLogin, request: Request, response: Response) -> None:
             """Sign in as the user with this name, made if there is none (development only)."""
-            user = store.first_user_named(body.name) or store.create_user(body.name)
-            signed_in(user.id, response, request)
+            user = await store.first_user_named(body.name) or await store.create_user(body.name)
+            await signed_in(user.id, response, request)

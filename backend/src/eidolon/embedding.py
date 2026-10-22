@@ -75,7 +75,7 @@ class Reembeddable(Protocol):
         embedded."""
         ...
 
-    def forget_other_models(self) -> int:
+    async def forget_other_models(self) -> int:
         """Drop the vectors not from its embedder; returns how many there were."""
         ...
 

@@ -1,8 +1,8 @@
 """What happens between the user and the characters, as it happens (GLOSSARY.md「每日任务」):
 a turn recorded, typed or in a call alike, and a gift given, each with the tier it leaves her
-affinity in; a call that connected ended; and drawing. Each is told here once, and whatever
-it counts towards is kept and rewarded here: today's daily tasks, turns and gifts alone, and
-the achievements (`achievements`).
+affinity in; a call that connected ended; and drawing. Each is kept here once, a gift given,
+a call kept and drawing here altogether, and whatever it counts towards is kept and rewarded
+with it: today's daily tasks, turns and gifts alone, and the achievements (`achievements`).
 
 The daily tasks are the same each day (`DAILY_TASKS`), the day in Beijing wherever the user
 is (`affinity.day_of`), by the clock as each happens: what was done the day before counts
@@ -16,13 +16,14 @@ The achievements were worked out once as they launched, from what was recorded b
 Only what is told here counts: a turn refused or failed is never recorded, so never told; a
 data package's turns and gifts are put in the database, not told; deleting a past
 conversation takes nothing back. Nothing is kept while affinity and gifts are closed
-(`LiveConfig.affinity_on`); what was kept before stays. Keeping it failing is only logged,
-as the turn or the gift it was told of is recorded already.
+(`LiveConfig.affinity_on`); what was kept before stays. What happened is kept in the same
+transaction as the turn, the gift, the call or the draw it was told of: keeping it failing,
+none of them is kept either (ADR-0028).
 
 Each task done, once its reward is given, has an activity record (`ActivityLog.daily_task_done`)
 for the dashboard to count, and so has each stage unlocked and each character complete
-(`ActivityLog.achievement_unlocked`, `ActivityLog.character_complete`); writing them failing
-is only logged too.
+(`ActivityLog.achievement_unlocked`, `ActivityLog.character_complete`): written apart, once
+what it records is kept, writing them failing is only logged.
 
 Each user's progress today and with the achievements is theirs, deleted with them
 (`database.USER_DATA`), and goes in no data package."""
@@ -32,7 +33,6 @@ import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from pathlib import Path
 from typing import Literal
 
 from eidolon import achievements
@@ -40,8 +40,9 @@ from eidolon.achievements import Completed, Hers, Progress, Tally, Unlocked
 from eidolon.activity import ActivityLog
 from eidolon.affinity import Tier, day_of, next_day
 from eidolon.clock import Clock
-from eidolon.database import connect
-from eidolon.gifts import Gifts, GiftsClosed, Reward
+from eidolon.data_access import Database
+from eidolon.gifts import Drawn, Given, Gifts, Reward
+from eidolon.store import keep_call
 
 log = logging.getLogger(__name__)
 
@@ -135,26 +136,36 @@ class DailyTasks:
 
 
 class Happenings:
-    """What happens between users and characters, kept in the database at `path` next to
-    the gifts they are rewarded with."""
+    """What happens between users and characters, kept in the database next to the gifts
+    they are rewarded with. What a turn, a gift, a call or a draw counts towards is kept and
+    rewarded in the transaction the turn, the gift, the call or the draw is kept in, with it
+    or not at all: a turn's is a body of the write task the turn is recorded in
+    (`turn_recorded`); giving a gift, keeping a call and drawing are each such a task here
+    (`give`, `call_ended`, `draw`)."""
 
     def __init__(
         self,
-        path: Path,
+        db: Database,
         clock: Clock,
         is_open: Callable[[], bool],
         gifts: Gifts,
         activity: ActivityLog,
     ) -> None:
         """`is_open` tells whether affinity and gifts are open now."""
-        self._db = connect(path)
+        self._db = db
         self._clock = clock
         self._is_open = is_open
         self._gifts = gifts
         self._activity = activity
-        with self._db:
-            self._db.executescript(_SCHEMA + achievements.SCHEMA)
+        db.prepare(_open)
         self._launch()
+
+    @property
+    def open(self) -> bool:
+        """Whether affinity and gifts are open now, so that what happens is kept towards
+        them: told on the event loop, before handing in the write task it is kept in
+        (`turn_recorded`)."""
+        return self._is_open()
 
     def _launch(self) -> None:
         """Reward everyone, once ever, for how far they had come before the achievements
@@ -171,7 +182,7 @@ class Happenings:
             what.update({(u, r.key): w for u, (r, w) in unlocked or []})
             return [(u, r) for u, (r, _) in unlocked or []]
 
-        given = self._gifts.reward_everyone(due)
+        given = self._db.prepare(self._gifts.reward_everyone, due)
         if launched:
             log.info(
                 "achievements launched: %d users, %d stages, %d draw chances, %d reset cards",
@@ -182,63 +193,141 @@ class Happenings:
             )
 
     def turn_recorded(
-        self, user_id: str, character_id: str, tier: Tier | None = None
+        self,
+        db: sqlite3.Connection,
+        user_id: str,
+        character_id: str,
+        tier: Tier | None,
+        open: bool,
     ) -> Rewarded | None:
-        """A turn of the user's with the character was recorded, now, leaving her affinity
-        in `tier` (None if not known): what it was rewarded with; None if nothing."""
-        return self._happened(user_id, character_id, Counts(turns=1, gifts=0), tier=tier)
+        """A turn of the user's with the character is recorded, now, leaving her affinity in
+        `tier` (None if not known), through `db`, in the transaction it is recorded in, while
+        affinity and gifts are `open` or not, as `open` told as it was handed in: what it is
+        rewarded with; None if nothing. Its activity records are `write_records`'s."""
+        if not open:
+            return None
+        return self._happened(db, user_id, character_id, Counts(turns=1, gifts=0), tier=tier)
 
-    def gift_given(
-        self, user_id: str, character_id: str, tier: Tier | None = None
+    async def give(
+        self, user_id: str, gift_id: str, character_id: str
+    ) -> tuple[Given, Rewarded | None]:
+        """Give the character one of the gift (`Gifts.give`), and keep it towards the daily
+        tasks and the achievements, in one transaction: what giving it did, and what it was
+        rewarded with (None if nothing). Raises GiftsClosed if gifts are not open,
+        NoSuchCharacter for no such character, NoneLeft if the user has none of it."""
+        await self._gifts.refuse_unless_open()
+        self._gifts.refuse_unknown(gift_id, character_id)
+        given, rewarded = await self._db.write(self._give, user_id, gift_id, character_id)
+        await self.write_records(user_id, rewarded)
+        return given, rewarded
+
+    async def call_ended(
+        self,
+        conversation_id: str,
+        user_id: str,
+        character_id: str,
+        connected_at: datetime,
+        seconds: float,
     ) -> Rewarded | None:
-        """The user gave the character a gift, now, leaving her affinity in `tier` (None if
-        not known): what it was rewarded with; None if nothing."""
-        return self._happened(user_id, character_id, Counts(turns=0, gifts=1), tier=tier)
+        """A call of the user's with the character in the conversation, that connected at
+        `connected_at`, ended, now, having lasted `seconds` once it had: kept for stats
+        (`store.keep_call`) and towards the achievements, in one transaction; what it was
+        rewarded with, None if nothing, or if the conversation is gone meanwhile."""
+        rewarded = await self._db.write(
+            self._call_ended,
+            conversation_id, user_id, character_id, connected_at, seconds, self.open,
+        )
+        await self.write_records(user_id, rewarded)
+        return rewarded
 
-    def call_ended(self, user_id: str, character_id: str, seconds: float) -> Rewarded | None:
-        """A call of the user's with the character that connected ended, now, having lasted
-        `seconds` once it had: what it was rewarded with; None if nothing."""
-        return self._happened(user_id, character_id, Counts(0, 0), call_time=seconds)
+    async def draw(self, user_id: str, *, all: bool = False) -> tuple[Drawn, Rewarded | None]:
+        """Draw once, or every chance if `all` (`Gifts.draw`), and keep it towards the
+        achievements, in one transaction: what drawing gave, and what it was rewarded with
+        (None if nothing). Raises GiftsClosed if gifts are not open, NoDraws if there are no
+        chances to draw."""
+        await self._gifts.refuse_unless_open()
+        drawn, rewarded = await self._db.write(self._draw, user_id, all)
+        await self.write_records(user_id, rewarded)
+        return drawn, rewarded
 
-    def drew(self, user_id: str, times: int) -> Rewarded | None:
-        """The user drew `times` times, now: what it was rewarded with; None if nothing.
-        Told once the gifts have let go of their lock, which is taken again to reward it."""
-        return self._happened(user_id, None, Counts(0, 0), draws=times)
+    async def write_records(self, user_id: str, rewarded: Rewarded | None) -> None:
+        """Write the activity records of what the user was `rewarded` for, once it is kept:
+        each daily task done, each stage unlocked and each character complete, each a write
+        task of its own, apart from what it records; failing, only logged. Only what happens
+        is recorded: those the launch works out from before it are rewarded without coming
+        here."""
+        if rewarded is None:
+            return
+        at = rewarded.rewarded_at
+        for task in rewarded.daily_tasks:
+            await self._activity.daily_task_done(user_id, task, at)
+        for stage in rewarded.achievements:
+            await self._activity.achievement_unlocked(
+                user_id, stage.character_id, stage.achievement, stage.stage, at
+            )
+        for complete in rewarded.completed:
+            await self._activity.character_complete(user_id, complete.character_id, at)
 
-    def daily_tasks(self, user_id: str) -> DailyTasks | None:
+    async def daily_tasks(self, user_id: str) -> DailyTasks | None:
         """How far the user is with today's daily tasks; None while closed."""
         if not self._is_open():
             return None
         now = self._clock()
-        counts = _counts(self._db, user_id, day_of(now))
+        counts = await self._db.read(_counts, user_id, day_of(now))
         return DailyTasks([(t, min(t.of(counts), t.goal)) for t in DAILY_TASKS], next_day(now))
 
-    def hers(self, user_id: str, character_id: str) -> Hers | None:
+    async def hers(self, user_id: str, character_id: str) -> Hers | None:
         """How far the user has come with the character's own achievements; None while
         closed."""
         if not self._is_open():
             return None
-        return achievements.hers(self._db, user_id, character_id)
+        return await self._db.read(achievements.hers, user_id, character_id)
 
-    def of_all(self, user_id: str) -> list[Progress] | None:
+    async def of_all(self, user_id: str) -> list[Progress] | None:
         """How far the user has come with the achievements of all the characters together;
         None while closed."""
         if not self._is_open():
             return None
-        return achievements.of_all(self._db, user_id)
+        return await self._db.read(achievements.of_all, user_id)
 
-    def tally(self, user_id: str) -> Tally | None:
+    async def tally(self, user_id: str) -> Tally | None:
         """How many stages the user has unlocked and how many characters are complete;
         None while closed."""
         if not self._is_open():
             return None
-        return achievements.tally(self._db, user_id)
+        return await self._db.read(achievements.tally, user_id)
 
-    def close(self) -> None:
-        self._db.close()
+    def _give(
+        self, db: sqlite3.Connection, user_id: str, gift_id: str, character_id: str
+    ) -> tuple[Given, Rewarded | None]:
+        given = self._gifts.give(db, user_id, gift_id, character_id)
+        return given, self._happened(
+            db, user_id, character_id, Counts(turns=0, gifts=1), tier=given.affinity.tier
+        )
+
+    def _call_ended(
+        self,
+        db: sqlite3.Connection,
+        conversation_id: str,
+        user_id: str,
+        character_id: str,
+        connected_at: datetime,
+        seconds: float,
+        open: bool,
+    ) -> Rewarded | None:
+        if not keep_call(db, conversation_id, connected_at, seconds) or not open:
+            return None
+        return self._happened(db, user_id, character_id, Counts(0, 0), call_time=seconds)
+
+    def _draw(
+        self, db: sqlite3.Connection, user_id: str, all: bool
+    ) -> tuple[Drawn, Rewarded | None]:
+        drawn = self._gifts.draw(db, user_id, all=all)
+        return drawn, self._happened(db, user_id, None, Counts(0, 0), draws=len(drawn.drawn))
 
     def _happened(
         self,
+        db: sqlite3.Connection,
         user_id: str,
         character_id: str | None,
         happened: Counts,
@@ -250,8 +339,9 @@ class Happenings:
         """Keep what `happened` with the character (None for none) towards today's daily
         tasks, if anything, and with it the time talked in a call, the times drawn and the
         tier her affinity was left in towards the achievements, and give the rewards for the
-        tasks it did and the stages it unlocked: what it was rewarded with; None if nothing,
-        or if closed."""
+        tasks it did and the stages it unlocked, through `db`, in the transaction what
+        happened is kept in, affinity and gifts open: what it was rewarded with; None if
+        nothing."""
         done: dict[str, str | Unlocked | Completed] = {}
         """Each task's id, stage unlocked or character completed, by the key it is rewarded
         by."""
@@ -280,51 +370,20 @@ class Happenings:
             done.update({reward.key: what for reward, what in unlocked})
             return rewards + [reward for reward, _ in unlocked]
 
-        try:
-            if not self._is_open():
-                return None
-            given, at = self._gifts.reward(user_id, due)
-        except GiftsClosed:  # closed since: as if it had been all along
-            return None
-        except Exception:
-            log.exception("keeping what happened failed; the daily tasks and achievements miss it")
-            return None
+        given, at = self._gifts.reward(db, user_id, due)
         if not given:
             return None
         what = [done[r.key] for r in given]
-        tasks = [w for w in what if isinstance(w, str)]
-        for task in tasks:
-            try:
-                self._activity.daily_task_done(user_id, task, at)
-            except Exception:
-                log.exception("recording daily task %s done failed", task)
-        rewarded = Rewarded(
-            sum(r.draws for r in given), sum(r.reset_cards for r in given), tasks, at,
+        return Rewarded(
+            sum(r.draws for r in given), sum(r.reset_cards for r in given),
+            [w for w in what if isinstance(w, str)], at,
             [w for w in what if isinstance(w, Unlocked)],
             [w for w in what if isinstance(w, Completed)],
         )
-        self._record_achievements(user_id, rewarded)
-        return rewarded
 
-    def _record_achievements(self, user_id: str, rewarded: Rewarded) -> None:
-        """Record the stages unlocked and the characters completed, once rewarded. Only what
-        happens is recorded: those the launch works out from before it are rewarded without
-        coming here."""
-        at = rewarded.rewarded_at
-        for stage in rewarded.achievements:
-            try:
-                self._activity.achievement_unlocked(
-                    user_id, stage.character_id, stage.achievement, stage.stage, at
-                )
-            except Exception:
-                log.exception(
-                    "recording %s stage %d unlocked failed", stage.achievement, stage.stage
-                )
-        for complete in rewarded.completed:
-            try:
-                self._activity.character_complete(user_id, complete.character_id, at)
-            except Exception:
-                log.exception("recording %s complete failed", complete.character_id)
+
+def _open(db: sqlite3.Connection) -> None:
+    db.executescript(_SCHEMA + achievements.SCHEMA)
 
 
 def _counts(db: sqlite3.Connection, user_id: str, today: date) -> Counts:

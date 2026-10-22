@@ -7,8 +7,8 @@ what a percentile took, within its bucket."""
 import json
 import random
 import sqlite3
-from collections.abc import Sequence
-from contextlib import closing
+from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager, closing
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -38,6 +38,7 @@ from eidolon.activity import (
 from eidolon.affinity import Judged
 from eidolon.billing import Billing
 from eidolon.dashboard import SPANS, Range, stretches
+from tests.conftest import activity_in
 from tests.fakes import START, FakeClock
 
 USERS = ["u1", "u2", "u3", "u4"]
@@ -56,7 +57,8 @@ WITHIN = 2 ** (1 / 32)
 """How far off what a percentile took may be told, as a ratio: half a bucket."""
 
 
-def activity(path: Path, clock: FakeClock, seed: int = 7) -> ActivityLog:
+@asynccontextmanager
+async def activity(path: Path, clock: FakeClock, seed: int = 7) -> AsyncIterator[ActivityLog]:
     """An activity log over three days of records of every kind, by the `USERS` and one deleted
     meanwhile, with service calls in them and on their own; some reach-outs then answered,
     one user then deleted."""
@@ -64,7 +66,12 @@ def activity(path: Path, clock: FakeClock, seed: int = 7) -> ActivityLog:
         db.execute("CREATE TABLE users (id TEXT PRIMARY KEY)")
         db.executemany("INSERT INTO users VALUES (?)", [(u,) for u in USERS])
     rng = random.Random(seed)
-    log = ActivityLog(path, clock)
+    async with activity_in(path, clock) as log:
+        await _fill(log, path, clock, rng)
+        yield log
+
+
+async def _fill(log: ActivityLog, path: Path, clock: FakeClock, rng: random.Random) -> None:
     while clock.now < START:
         clock.advance(seconds=rng.uniform(1, 1200))
         kind = rng.choice(KINDS)
@@ -73,7 +80,7 @@ def activity(path: Path, clock: FakeClock, seed: int = 7) -> ActivityLog:
             own_llm=rng.random() < 0.3, exempt=rng.random() < 0.2,
         )
         for _ in range(rng.randint(0, 3)):
-            log.record(service_call(rng, clock.now), record)
+            await log.record(service_call(rng, clock.now), record)
         if kind == "turn":
             record.time_to_speak_ms = rng.choice([None, 0.0, rng.uniform(200, 9000)])
             if rng.random() < 0.6:
@@ -81,22 +88,22 @@ def activity(path: Path, clock: FakeClock, seed: int = 7) -> ActivityLog:
                     Judged(rng.randint(0, 4), rng.random() < 0.2, rng.random() < 0.1),
                     rng.random() < 0.3, rng.choice([None, "fed_up", "cooldown"]),
                 )
-            record.finish(rng.choice(["success", "success", "failed", "rejected", "left"]))
+            await record.finish(rng.choice(["success", "success", "failed", "rejected", "left"]))
         elif kind == "call":
             for _ in range(rng.randint(0, 2)):
                 turn = record.turn(own_llm=rng.random() < 0.5)
                 turn.time_to_speak_ms = rng.uniform(300, 4000)
-                turn.finish("success")
+                await turn.finish("success")
             connected = rng.random() < 0.8
-            record.finish(
+            await record.finish(
                 "success" if connected else rng.choice(["not_connected", "rejected"]),
                 rng.choice([0.0, 59.9, 60.0, rng.uniform(1, 4000)]) if connected else None,
                 rng.choice(CALL_END_REASONS) if connected else None,
             )
         else:
-            record.finish(rng.choice(["success", "failed"]))
+            await record.finish(rng.choice(["success", "failed"]))
         if rng.random() < 0.3:
-            log.record(service_call(rng, clock.now), None)
+            await log.record(service_call(rng, clock.now), None)
         if rng.random() < 0.1:
             clock.advance(hours=rng.uniform(1, 10))
     with closing(database.connect(path)) as db:  # as the store marks them, and deletes a user
@@ -105,8 +112,8 @@ def activity(path: Path, clock: FakeClock, seed: int = 7) -> ActivityLog:
                 "UPDATE activity_records SET answered = 1"
                 " WHERE kind = 'reach_out' AND id % 3 = 0"
             )
-        database.delete_user_data(db, "u2")
-    return log
+        with db:
+            database.delete_user_data(db, "u2")
 
 
 def service_call(rng: random.Random, at: datetime) -> ServiceCall:
@@ -127,14 +134,17 @@ def service_call(rng: random.Random, at: datetime) -> ServiceCall:
 @pytest.mark.parametrize("zone", ZONES)
 # 90 days is summed up as 30 are: in days, each holding all three days of records.
 @pytest.mark.parametrize("name", ["24h", "7d", "30d"])
-def test_the_rollups_sum_up_as_the_records_do(tmp_path: Path, name: Range, zone: str):
+async def test_the_rollups_sum_up_as_the_records_do(tmp_path: Path, name: Range, zone: str):
     clock = FakeClock(START - timedelta(days=3, minutes=7))
-    log = activity(tmp_path / "eidolon.db", clock)
-    span, now = SPANS[name], clock.now
-    starts = stretches(now, span, ZoneInfo(zone))
+    async with activity(tmp_path / "eidolon.db", clock) as log:
+        span, now = SPANS[name], clock.now
+        starts = stretches(now, span, ZoneInfo(zone))
+        tallies = [
+            (moment, await log.tally(moment, starts))
+            for moment in [now - span.length, now - timedelta(hours=30, minutes=22), now]
+        ]
 
-    for moment in [now - span.length, now - timedelta(hours=30, minutes=22), now]:
-        rolled = log.tally(moment, starts)
+    for moment, rolled in tallies:
         with closing(database.connect(tmp_path / "eidolon.db")) as db:
             read = scanned(db, range_start(moment).timestamp(), starts)
 
@@ -154,38 +164,33 @@ def test_the_rollups_sum_up_as_the_records_do(tmp_path: Path, name: Range, zone:
         if moment == now - span.length:  # some of each
             assert read.users > 0 and read.calls and read.time_to_speak.known
             assert read.lasted.known and any(r.answered for r in read.records)
-    log.close()
 
 
-def test_rollups_dropped_are_made_anew_from_the_records(tmp_path: Path):
+async def test_rollups_dropped_are_made_anew_from_the_records(tmp_path: Path):
     clock = FakeClock(START - timedelta(days=3))
-    log = activity(tmp_path / "eidolon.db", clock, seed=11)
-    span = SPANS["7d"]
-    starts = stretches(clock.now, span, ZoneInfo("Asia/Shanghai"))
-    before = log.tally(clock.now - span.length, starts)
-    log.close()
+    async with activity(tmp_path / "eidolon.db", clock, seed=11) as log:
+        span = SPANS["7d"]
+        starts = stretches(clock.now, span, ZoneInfo("Asia/Shanghai"))
+        before = await log.tally(clock.now - span.length, starts)
     with closing(database.connect(tmp_path / "eidolon.db")) as db:
         for table in ROLLUPS:
             db.execute(f"DROP TABLE {table}")
 
-    again = ActivityLog(tmp_path / "eidolon.db", clock)
-
-    assert again.tally(clock.now - span.length, starts) == before
-    again.close()
+    async with activity_in(tmp_path / "eidolon.db", clock) as again:
+        assert await again.tally(clock.now - span.length, starts) == before
 
 
-def test_what_a_percentile_took_is_told_exactly_where_it_alone_is_in_its_bucket(
+async def test_what_a_percentile_took_is_told_exactly_where_it_alone_is_in_its_bucket(
     tmp_path: Path,
 ):
     clock = FakeClock()
-    log = ActivityLog(tmp_path / "eidolon.db", clock)
-    for latency in [900.0, 120.0, 0.0, 4321.5]:
-        log.record(ServiceCall(ORIGINS[0], clock.now, None, latency, Billing()), None)
+    async with activity_in(tmp_path / "eidolon.db", clock) as log:
+        for latency in [900.0, 120.0, 0.0, 4321.5]:
+            await log.record(ServiceCall(ORIGINS[0], clock.now, None, latency, Billing()), None)
 
-    spread = log.tally(clock.now, [clock.now]).latency[("chat_llm", False)]
+        spread = (await log.tally(clock.now, [clock.now])).latency[("chat_llm", False)]
 
     assert spread == Spread(4, {50: 120.0, 90: 4321.5, 95: 4321.5})
-    log.close()
 
 
 def assert_near(rolled: Spread, read: Spread, of: object) -> None:

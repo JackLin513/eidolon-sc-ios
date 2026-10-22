@@ -47,6 +47,7 @@ from eidolon.loop_lag import watch_the_loop
 from eidolon.randomness import Random, secure_random
 from eidolon.clock import Clock, utc_now
 from eidolon.config import DEFAULT_BAILIAN_STT_MODEL, Settings
+from eidolon.data_access import Database
 from eidolon.data_package import DataPackages
 from eidolon.embedding import EMBEDDING_TIMEOUT, Embedder, open_embedder
 from eidolon.engine import ConversationEngine
@@ -83,9 +84,10 @@ log = logging.getLogger(__name__)
 Closer = Callable[[], Awaitable[None] | None]
 
 THREADS = 32
-"""How many threads the event loop's work waits on at once (`asyncio.to_thread`): the
-database's, mostly, for every turn, and a backup or data package taking minutes too. More
-than the default, a few on a small server, so that those do not keep turns waiting."""
+"""How many threads the event loop's work waits on at once, on the default executor: the
+data access layer's reads, for every turn, the work that is all computing (pictures,
+similarities), and a backup or data package taking minutes too. More than the
+default, a few on a small server, so that those do not keep turns waiting."""
 
 
 @dataclass
@@ -93,6 +95,8 @@ class Backend:
     """Everything the API serves from, ready to run."""
 
     settings: Settings
+    database: Database
+    """The database, as the modules moved onto the data access layer read and write it."""
     store: Store
     characters: dict[str, Character]
     gift_catalog: dict[str, Gift]
@@ -191,7 +195,7 @@ def build(
     identity_providers: dict[ProviderName, IdentityProvider] | None = None,
     own_llm_service: LLMService | None = None,
     clients: ServiceClients | None = None,
-    catalog_transport: httpx.BaseTransport | None = None,
+    catalog_transport: httpx.AsyncBaseTransport | None = None,
     backup_transport: httpx.AsyncBaseTransport | None = None,
     image_transport: httpx.AsyncBaseTransport | None = None,
     random: Random | None = None,
@@ -214,10 +218,11 @@ def build(
     else:
         world.check_characters(characters, path)
     clock = clock or utc_now
-    closers: list[Closer] = []
+    # Closed last, once what writes through it has finished.
+    database = Database(settings.database_path)
+    closers: list[Closer] = [database.close]
 
-    store = Store(settings.database_path)
-    closers.append(store.close)
+    store = Store(database)
     if identity_providers is None:
         identity_providers = open_identity_providers(settings.github, settings.google)
         closers.extend(p.aclose for p in identity_providers.values())
@@ -235,17 +240,14 @@ def build(
     speech = speech or SpeechServices(
         bailian_model, readings, hot_words(readings, characters.values(), world), routes=routes
     )
-    activity = ActivityLog(settings.database_path, clock)
-    closers.append(activity.close)
-    catalog = Catalog(settings.database_path, clock, catalog_transport)
-    closers.append(catalog.close)
-    prices = Prices(settings.database_path, clock, catalog)
-    closers.append(prices.close)
-    announcements = Announcements(settings.database_path, clock)
-    closers.append(announcements.close)
-    sponsor = Sponsor(settings.database_path, clock)
-    closers.append(sponsor.close)
-    backups = Backups(settings.database_path, clock, transport=backup_transport)
+    activity = ActivityLog(database, clock)
+    closers.append(activity.aclose)
+    catalog = Catalog(database, clock, catalog_transport)
+    closers.append(catalog.aclose)
+    prices = Prices(database, clock, catalog)
+    announcements = Announcements(database, clock)
+    sponsor = Sponsor(database, clock)
+    backups = Backups(database, clock, transport=backup_transport)
     closers.append(backups.aclose)
     image_client = None
     if image_transport is not None:
@@ -254,8 +256,8 @@ def build(
         )
         closers.append(image_client.aclose)
     config = LiveConfig(
-        settings, clients or ProviderClients(routes), clock, activity=activity, speech=speech,
-        routes=routes, image_client=image_client,
+        settings, clients or ProviderClients(routes), clock, db=database, activity=activity,
+        speech=speech, routes=routes, image_client=image_client,
         **({"reach": reach} if reach is not None else {}),
     )
     closers.append(config.aclose)
@@ -311,15 +313,12 @@ def build(
     if retrieval_judge is not None and embedder is not None and reranker is not None:
         retrieval = Retrieval(
             retrieval_judge,
-            open_reference_sources(
-                settings.database_path, embedder, characters.values(), world
-            ),
+            open_reference_sources(database, embedder, characters.values(), world),
             reranker,
             lambda: config.rerank_thresholds.references,
         )
-        closers.append(retrieval.close)
         memories = Memories(
-            settings.database_path, characters, clock, embedder=embedder, reranker=reranker,
+            database, characters, clock, embedder=embedder, reranker=reranker,
             min_relevance=lambda: config.rerank_thresholds.memories,
         )
     else:
@@ -329,21 +328,19 @@ def build(
             " SILICONFLOW_API_KEY for reranking, and the judge model's (JEV_API_KEY, or"
             " CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID with JUDGE_PROVIDER=cloudflare)"
         )
-        memories = Memories(settings.database_path, characters, clock)
+        memories = Memories(database, characters, clock)
     closers.append(memories.aclose)  # closed before the clients, so what it writes down can finish
     titles = Titles(store, characters, gift_catalog)
     closers.append(titles.aclose)  # likewise, so what it is naming can finish
 
-    affinities = Affinities(settings.database_path, clock, lambda: config.affinity_on)
-    closers.append(affinities.close)
+    affinities = Affinities(database, clock, lambda: config.affinity_on)
     unphotographed = [c.id for c in characters.values() if not c.photographed]
     if config.image_settings is not None and unphotographed:
         log.warning(
             "%s have no photo_tag and photo_appearance in the character configuration, and"
             " send no photos", ", ".join(unphotographed),
         )
-    usage = UsageLimiter(settings.database_path, lambda: config.usage_limits, clock)
-    closers.append(usage.close)
+    usage = UsageLimiter(database, lambda: config.usage_limits, clock)
     # Users' own image generation, in the deployment's art style; in tests, on the same
     # fake as the deployer's, told apart by its key.
     own_images = OwnImageService(
@@ -352,18 +349,14 @@ def build(
     )
     closers.append(own_images.aclose)
     photos = Photos(store, config.image_generator, activity, usage, own_images.generator)
-    closers.append(photos.aclose)  # closed before the store and usage, so no photo is still kept
+    closers.append(photos.aclose)  # closed before the database, so no photo is still kept
     gifts = Gifts(
-        settings.database_path, clock, lambda: config.affinity_on, affinities, characters,
-        gift_catalog, random or secure_random, store,
+        database, clock, lambda: config.affinity_on, affinities, characters, gift_catalog,
+        random or secure_random,
     )
-    closers.append(gifts.close)
-    happenings = Happenings(
-        settings.database_path, clock, lambda: config.affinity_on, gifts, activity
-    )
-    closers.append(happenings.close)
+    happenings = Happenings(database, clock, lambda: config.affinity_on, gifts, activity)
     engine = ConversationEngine(
-        store, characters, gift_catalog, memories, titles, clock, retrieval,
+        database, store, characters, gift_catalog, memories, titles, clock, retrieval,
         lambda: config.history_turns, world, affinities, config.affinity_judge(), photos,
         happenings,
     )
@@ -374,21 +367,22 @@ def build(
     admissions = Admissions(
         usage, activity, own_keys, cooldown_until=affinities.cooldown_until
     )
+    closers.append(admissions.aclose)  # closed after the calls, which may leave some to settle
     calls = Calls(
         settings, engine, admissions, own_keys, lambda: config.usage_limits, speech, clock, store,
         happenings,
     )
     closers.append(calls.aclose)  # closed before memory, so no call is still taking turns
-    affinities.on_cooldown(calls.cooled)
+    engine.on_cooled(calls.cooled)
     engine.on_ended(calls.conversation_ended)
     reach_outs = ReachOuts(
-        settings.database_path, store, engine, characters, config, affinities, activity, usage,
+        database, store, engine, characters, config, affinities, activity,
         calls.in_call, clock, random or secure_random,
     )
-    closers.append(reach_outs.close)
     config.on_change(gifts.notice)
     return Backend(
         settings=settings,
+        database=database,
         store=store,
         characters=characters,
         gift_catalog=gift_catalog,
@@ -414,9 +408,7 @@ def build(
         backups=backups,
         photos=photos,
         service_status=service_status,
-        data_packages=DataPackages(
-            settings.database_path, store, memories, characters, gift_catalog, clock
-        ),
+        data_packages=DataPackages(database, store, memories, characters, gift_catalog, clock),
         reach_outs=reach_outs,
         world=world,
         _closers=closers,

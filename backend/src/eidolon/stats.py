@@ -39,7 +39,9 @@ from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Header, Query
+from starlette.concurrency import run_in_threadpool
 
+from eidolon.achievements import Tally
 from eidolon.affinity import TIERS, Tier
 from eidolon.assembly import Backend
 from eidolon.characters import in_idol_order
@@ -60,16 +62,43 @@ def add_stats_routes(app: FastAPI, backend: Backend) -> None:
     store = backend.store
 
     @app.get("/api/stats")
-    def stats(
+    async def stats(
         user_id: UserId,
         span: Annotated[Range, Query(alias="range")] = "all",
         device_timezone: Annotated[str | None, Header(alias="X-Timezone")] = None,
     ) -> dict:
-        zone = ZoneInfo(effective_timezone(store.get_profile(user_id), device_timezone))
+        profile = await store.get_profile(user_id)
+        zone = ZoneInfo(effective_timezone(profile, device_timezone))
+        signed_up = datetime.fromisoformat((await store.get_user(user_id)).created_at)
+        contacts = await store.contacts(user_id)
+        first = await store.first_records(user_id)
+        calls = await store.kept_calls(user_id)
+        idols = in_idol_order(backend.characters.values())
+        tiers = (
+            await backend.affinities.tiers(user_id, [c.id for c in idols])
+            if backend.config.affinity_on else None
+        )
+        tally = await backend.happenings.tally(user_id)
+        # Counting goes over every contact kept: on a thread.
+        return await run_in_threadpool(
+            summed_up, span, zone, signed_up, contacts, first, calls, tiers, tally
+        )
+
+    def summed_up(
+        span: Range,
+        zone: ZoneInfo,
+        signed_up: datetime,
+        kept_contacts: list[Contact],
+        first: dict[str, datetime],
+        calls: list[KeptCall],
+        tiers: list[Tier] | None,
+        tally: Tally | None,
+    ) -> dict:
+        """What the stats show, from what was read: `tiers`, each of the idols' in their
+        order, None where affinity is off, as `tally` is."""
         today = backend.clock().astimezone(zone).date()
-        contacts = [(c, c.at.astimezone(zone)) for c in store.contacts(user_id)]
+        contacts = [(c, c.at.astimezone(zone)) for c in kept_contacts]
         per_day = Counter(at.date() for _, at in contacts)
-        signed_up = datetime.fromisoformat(store.get_user(user_id).created_at)
         start = today - timedelta(days=today.weekday() + 7 * HEATMAP_WEEKS)
 
         def days_since(at: datetime) -> int:
@@ -78,9 +107,7 @@ def add_stats_routes(app: FastAPI, backend: Backend) -> None:
 
         days = RANGE_DAYS[span]
         since = None if days is None else today - timedelta(days=days - 1)
-        first = store.first_records(user_id)
         idols = in_idol_order(backend.characters.values())
-        affinity_on = backend.config.affinity_on
         return {
             # Since signing up, or since the first thing kept if earlier: conversations imported
             # in a data package from another deployment (GLOSSARY.md「统计」).
@@ -94,19 +121,19 @@ def add_stats_routes(app: FastAPI, backend: Backend) -> None:
                 ],
             },
             "affinity": by_tier(
-                (c.id, backend.affinities.tier(user_id, c.id)) for c in idols
-            ) if affinity_on else None,
-            "achievements": (tally := backend.happenings.tally(user_id)) and tally.shown(),
+                (c.id, tier) for c, tier in zip(idols, tiers)
+            ) if tiers is not None else None,
+            "achievements": tally and tally.shown(),
             "range": in_range(
                 span,
                 [(c, at) for c, at in contacts if since is None or at.date() >= since],
                 [
                     call
-                    for call in store.kept_calls(user_id)
+                    for call in calls
                     if since is None or call.connected_at.astimezone(zone).date() >= since
                 ],
                 {c.id: days_since(first[c.id]) for c in idols if c.id in first},
-                gifts_on=affinity_on,
+                gifts_on=tiers is not None,
             ),
         }
 

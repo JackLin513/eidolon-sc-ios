@@ -2,6 +2,7 @@
 whichever device they come from, driven through the backend's external API
 with a clock the tests control."""
 
+import asyncio
 from dataclasses import replace
 from datetime import datetime, timedelta
 
@@ -67,6 +68,23 @@ async def test_all_of_a_users_devices_share_one_limit_and_other_users_have_their
     assert (await post_turn(phone, conversation_id)).status_code == 429
     events = await send_turn(friend, await start_conversation(friend), "在吗")
     assert events[-1]["type"] == "done"
+
+
+async def test_two_turns_at_once_never_both_take_the_last_turn_of_the_hour(
+    make_client: ClientFactory, settings: Settings
+):
+    client = make_client(FakeLLM(REPLY, REPLY), settings=limited(settings, turns=2))
+    with_mano = await start_conversation(client)
+    with_kogane = await start_conversation(client, "kogane")
+    await send_turn(client, with_mano, "在吗")
+
+    statuses = sorted(
+        r.status_code for r in await asyncio.gather(
+            post_turn(client, with_mano), post_turn(client, with_kogane)
+        )
+    )
+
+    assert statuses == [200, 429]
 
 
 async def test_voice_calls_have_their_own_hourly_limit_and_renegotiating_is_free(

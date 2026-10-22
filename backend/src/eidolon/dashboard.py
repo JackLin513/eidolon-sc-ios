@@ -60,7 +60,7 @@ from eidolon.assembly import Backend
 from eidolon.config import ServiceName
 from eidolon.happenings import DAILY_TASKS
 from eidolon.photo_prompt import CROSSINGS
-from eidolon.prices import cost
+from eidolon.prices import Pricing, cost
 
 Range = Literal["24h", "7d", "30d", "90d"]
 
@@ -85,17 +85,26 @@ SPANS: dict[Range, Span] = {
 
 def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
     @app.get("/api/admin/dashboard")
-    def dashboard(
+    async def dashboard(
         _: Admin,
         range: Annotated[Range, Query()] = "24h",
         timezone: Annotated[str | None, Header(alias="X-Timezone")] = None,
     ) -> dict:
         """The activity of the last `range`, summed up."""
+        summed = await summed_up(range, timezone, await backend.prices.pricing())
+        backend.prices.catalog.refresh_soon(
+            missing=any(
+                r["unit"] == "tokens" and r["price"] is None for r in summed["cost"]["rows"]
+            )
+        )
+        return summed
+
+    async def summed_up(range: Range, timezone: str | None, pricing: Pricing) -> dict:
         span = SPANS[range]
         now = backend.clock()
         start = range_start(now - span.length)
         starts = stretches(now, span, _zone(timezone))
-        tally = backend.activity.tally(start, starts)
+        tally = await backend.activity.tally(start, starts)
         # Reach-outs, daily tasks done and achievements are no turns nor calls, and taken by
         # no user; the reach-outs' service calls count.
         records = [r for r in tally.records if r.kind in ("turn", "call")]
@@ -104,10 +113,7 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
         achievement_records = [r for r in tally.records if r.kind == "achievement"]
         section_shown = bool(backend.config.affinity_on or task_records or achievement_records)
         names = {id: c.name for id, c in backend.characters.items()}
-        spent = cost(tally.calls, backend.prices.pricing(), starts)
-        backend.prices.catalog.refresh_soon(
-            missing=any(r["unit"] == "tokens" and r["price"] is None for r in spent["rows"])
-        )
+        spent = cost(tally.calls, pricing, starts)
         return {
             "range": range,
             "from": start.isoformat(),

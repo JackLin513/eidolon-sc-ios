@@ -995,7 +995,7 @@ class Calls:
             limits.turns_per_call,
         )
 
-    def ice_servers(
+    async def ice_servers(
         self,
         user_id: str,
         own: frozenset[Service] = frozenset(),
@@ -1008,7 +1008,7 @@ class Calls:
         `start` would, and CallsUnavailable, as `OwnKeys.call_exempt` does, before anything
         is spent on a call that could not start."""
         if character_id is not None:
-            self._admissions.refuse_while_cooling(user_id, character_id)
+            await self._admissions.refuse_while_cooling(user_id, character_id)
         self._refuse_unless_room(user_id)
         exempt = self._own_keys.call_exempt(own)
         servers: list[IceServer] = list(self._settings.ice_servers)
@@ -1058,29 +1058,21 @@ class Calls:
         placing: "_Placing",
     ) -> dict:
 
-        def keep(connected_at: datetime, duration_s: float) -> None:
-            if self._store.keep_call(conversation.id, connected_at, duration_s):
-                self._happenings.call_ended(user_id, character.id, duration_s)
+        async def keep(connected_at: datetime, duration_s: float) -> None:
+            await self._happenings.call_ended(
+                conversation.id, user_id, character.id, connected_at, duration_s
+            )
 
-        # On a thread, as the limits and records are in the database. Cancelled meanwhile,
-        # the thread goes on all the same: what it lets in never set up, so settled.
-        admitting = asyncio.ensure_future(
-            asyncio.to_thread(self._admissions.call, user_id, character.id, brought)
+        # Cancelled meanwhile, what is let in never set up, so is settled.
+        admission = await self._admissions.admitted(
+            self._admissions.call(user_id, character.id, brought),
+            lambda let_in: CallOutcome(let_in, self._limits(), self._clock, keep).set_up_failed(),
         )
-        try:
-            admission = await asyncio.shield(admitting)
-        except asyncio.CancelledError:
-            def never_set_up(admitted: asyncio.Future[Admission[CallKeys]]) -> None:
-                if not admitted.cancelled() and admitted.exception() is None:
-                    CallOutcome(admitted.result(), self._limits(), self._clock, keep).set_up_failed()
-
-            admitting.add_done_callback(never_set_up)
-            raise
         outcome = CallOutcome(admission, self._limits(), self._clock, keep)
         try:
             await self.hang_up(user_id, "left")
         except BaseException:
-            outcome.set_up_failed()
+            await outcome.set_up_failed()
             raise
         return await self._start(
             user_id, conversation, character, options, offer, admission, outcome, placing,
@@ -1129,14 +1121,14 @@ class Calls:
             answer = await self._answer(SmallWebRTCRequest(offer.sdp, offer.type), serve)
         except BaseException:
             if not started:  # once served, the call is settled as it ends
-                outcome.set_up_failed()
+                await outcome.set_up_failed()
             raise
         if answer is None or not started:
             if started:
                 await started[0].hang_up("failed")
             elif connections:  # the pipeline could not be built; Pipecat only logs why
                 await _within_disconnect_timeout(connections[0].disconnect(), "a call")
-            outcome.set_up_failed()
+            await outcome.set_up_failed()
             raise CallFailed()
         self._owners[answer["pc_id"]] = user_id
         return answer
@@ -1201,7 +1193,7 @@ class Calls:
         """The character has fallen into a cooldown with the user, ending `until`: she hangs
         up the user's calls with her, but for the one whose turn began it, if a call's did,
         straight away; that one after its turn."""
-        taking = _taking_turn.get()  # whose turn began it, as told while it is recorded
+        taking = _taking_turn.get()  # whose turn began it, as told once it is recorded
         for live in list(self._live):
             if live.user_id == user_id and live.character_id == character_id:
                 live.cooled(until, taking)
@@ -1219,9 +1211,9 @@ class Calls:
         while self._live:
             await asyncio.sleep(USER_CHECK_INTERVAL)
             users = {live.user_id for live in self._live}
-            for user_id in users - self._store.active_users(users):
+            for user_id in users - await self._store.active_users(users):
                 try:
-                    self._store.get_user(user_id)
+                    await self._store.get_user(user_id)
                     reason: CallEndReason = "banned"
                 except NotFound:
                     reason = "deleted"
@@ -1417,7 +1409,7 @@ class _LiveCall:
         finally:
             self.over = True
             self._meter.close()
-            self._outcome.settle()
+            await self._outcome.settle()
             await _within_disconnect_timeout(  # lets the browser know the call is over
                 self._connection.disconnect(),
                 f"the call in conversation {self._call.conversation.id}",
@@ -1675,7 +1667,7 @@ class CallTurns(FrameProcessor):
         words are voiced, as the call's record says she hung up whoever leaves first."""
         message = ending.ended
         if message is not None and ending.by_her:
-            event = self._store.hang_up(self._call.conversation.id)
+            event = await self._store.hang_up(self._call.conversation.id)
             message = {**message, "event": event.shown()}
         await self._carry_out(self._turns.call_ending())
         if message is not None:
@@ -1696,7 +1688,7 @@ class CallTurns(FrameProcessor):
             reply, self._reply = self._reply, None
             if reply is not None and not reply.done():
                 await self.cancel_task(reply)
-            turn.over(cut_short_by_failure=self._outcome.ended_by_failure)
+            await turn.over(cut_short_by_failure=self._outcome.ended_by_failure)
 
     def _start_reply(self, text: str, number: int, after: asyncio.Event | None = None) -> None:
         """Reply to `text`, as reply `number`, once `after` is set, if given."""

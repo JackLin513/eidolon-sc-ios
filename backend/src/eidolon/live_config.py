@@ -38,7 +38,7 @@ import base64
 import json
 import logging
 import os
-import threading
+import sqlite3
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, replace
@@ -95,7 +95,7 @@ from eidolon.config import (
     split_proxy_password,
     with_proxy_password,
 )
-from eidolon.database import connect
+from eidolon.data_access import Database
 from eidolon.affinity import Judged
 from eidolon.affinity_judge import ModelAffinityJudge
 from eidolon.emotion import EmotionJudging, ModelEmotionJudge
@@ -880,14 +880,16 @@ class LiveConfig:
         clients: ServiceClients,
         clock: Clock,
         *,
+        db: Database,
         activity: ActivityLog,
         speech: KeyCheck | None = None,
         routes: ProxyRoutes | None = None,
         reach: Reach = reach_provider,
         image_client: httpx.AsyncClient | None = None,
     ) -> None:
-        """The chat, memory and judge models are made by `clients`, each question to the
-        judge model recorded in `activity`; `speech` tries the keys for speech synthesis
+        """The overrides are kept in the database `db` is on. The chat, memory and judge
+        models are made by `clients`, each question to the judge model recorded in
+        `activity`; `speech` tries the keys for speech synthesis
         and recognition. Each service goes through the proxy or direct as `routes` have
         it, kept to the proxy settings in effect; a change to them is tried by `reach`.
         Image generation is on `image_client`, by default the routes' for it."""
@@ -900,20 +902,10 @@ class LiveConfig:
         self._speech = speech
         self._activity = activity
         self._cipher = _cipher(settings.secret_key) if settings.secret_key else None
-        self._db = connect(settings.database_path)
-        self._db_lock = threading.Lock()
+        self._db = db
         self._changing = asyncio.Lock()
-        self._listeners: list[Callable[[], None]] = []
-        with self._db_lock, self._db:
-            self._db.executescript(_SCHEMA)
-            # Whether users had to bring their own LLM, which no longer is a setting.
-            self._db.execute("DELETE FROM config_overrides WHERE name = 'limits.own_llm_required'")
-            self._rows = {
-                name: _Row(value, last4)
-                for name, value, last4 in self._db.execute(
-                    "SELECT name, value, last4 FROM config_overrides"
-                )
-            }
+        self._listeners: list[Callable[[], Awaitable[None]]] = []
+        self._rows = db.prepare(_open)
         self._items: dict[str, _Item] = {
             item.name: item
             for item in (
@@ -1210,7 +1202,7 @@ class LiveConfig:
                 self._failures[item.name] = str(e)
                 await item.apply(self.effective(item.name))
                 if item.name == JUDGE:
-                    self._judge_changed(values, self.effective(item.name), clear=False)
+                    await self._judge_changed(values, self.effective(item.name), clear=False)
                 log.warning(
                     "the admin console's override of %s failed, so .env's is used until an"
                     " admin fixes or restores it: %s",
@@ -1287,10 +1279,10 @@ class LiveConfig:
             values, prepared = await item.tried(values)
             if item.bound_model() is not None:
                 values[FOR_MODEL] = item.bound_model()
-            self._write(item, values, keep={f for f in item.secrets if f not in change})
+            await self._write(item, values, keep={f for f in item.secrets if f not in change})
             self._failures.pop(name, None)
             await item.apply(values, prepared)
-            self._changed(name, current, values)
+            await self._changed(name, current, values)
 
     async def restore(self, name: str) -> None:
         """Delete the item's overrides, so that `.env`'s holds from now on."""
@@ -1299,40 +1291,38 @@ class LiveConfig:
             raise Unavailable(item.unavailable_reason)
         async with self._changing:
             before = self.effective(name)
-            self._delete(name)
+            await self._delete(name)
             after = self.effective(name)
             if after != before:
                 await item.apply(after)
-            self._changed(name, before, after)
+            await self._changed(name, before, after)
 
-    def on_change(self, listener: Callable[[], None]) -> None:
+    def on_change(self, listener: Callable[[], Awaitable[None]]) -> None:
         """Have `listener` called after each item an admin saves or restores, whether or not
         it changed what is in effect."""
         self._listeners.append(listener)
 
-    def _changed(self, name: str, before: dict[str, Any], after: dict[str, Any]) -> None:
+    async def _changed(self, name: str, before: dict[str, Any], after: dict[str, Any]) -> None:
         """Item `name` went from `before` to `after`."""
         if name == JUDGE:
-            self._judge_changed(before, after, clear=True)
+            await self._judge_changed(before, after, clear=True)
         for listener in self._listeners:
-            listener()
+            await listener()
 
-    def _judge_changed(self, before: Values, after: Values, *, clear: bool) -> None:
+    async def _judge_changed(self, before: Values, after: Values, *, clear: bool) -> None:
         """The judge model went from `before`'s to `after`'s: a model not calibrated is
         warned of, and with `clear`, thresholds that no longer hold for it go."""
         if after["model"] == before["model"]:
             return
         warn_if_uncalibrated(after["model"])
         if clear and not same_judge_family(before["model"], after["model"]):
-            self._delete(JUDGE_THRESHOLDS)
+            await self._delete(JUDGE_THRESHOLDS)
 
     async def aclose(self) -> None:
         await self._chat.aclose()
         await self._memory.aclose()
         if self._judge is not None:
             await self._judge.aclose()
-        with self._db_lock:
-            self._db.close()
 
     def _judge_settings(self, values: Values) -> JudgeSettings:
         if values["provider"] == "cloudflare":
@@ -1486,7 +1476,7 @@ class LiveConfig:
                 values[field] = json.loads(row.value)
         return values
 
-    def _write(self, item: _Item, values: Values, *, keep: set[str]) -> None:
+    async def _write(self, item: _Item, values: Values, *, keep: set[str]) -> None:
         """Keep as the item's overrides every field of `values` that differs from
         `.env`'s; a key kept as it was (in `keep`) is not encrypted again."""
         env = item.env()
@@ -1512,18 +1502,7 @@ class LiveConfig:
             rows[f"{item.name}.{FOR_MODEL}"] = (
                 _Row(json.dumps(values[FOR_MODEL]), None) if kept else None
             )
-        with self._db_lock, self._db:
-            for name, row in rows.items():
-                if row is None:
-                    self._db.execute("DELETE FROM config_overrides WHERE name = ?", (name,))
-                else:
-                    self._db.execute(
-                        "INSERT INTO config_overrides (name, value, last4, updated_at)"
-                        " VALUES (?, ?, ?, ?) ON CONFLICT (name) DO UPDATE SET"
-                        " value = excluded.value, last4 = excluded.last4,"
-                        " updated_at = excluded.updated_at",
-                        (name, row.value, row.last4, now),
-                    )
+        await self._db.write(_keep, rows, now)
         for name, row in rows.items():
             if row is None:
                 self._rows.pop(name, None)
@@ -1534,9 +1513,8 @@ class LiveConfig:
         else:
             self._overrides.pop(item.name, None)
 
-    def _delete(self, name: str) -> None:
-        with self._db_lock, self._db:
-            self._db.execute("DELETE FROM config_overrides WHERE name LIKE ?", (f"{name}.%",))
+    async def _delete(self, name: str) -> None:
+        await self._db.write(_forget, name)
         self._rows = {n: r for n, r in self._rows.items() if not n.startswith(f"{name}.")}
         self._overrides.pop(name, None)
         self._failures.pop(name, None)
@@ -1629,6 +1607,37 @@ class LiveAffinityJudge:
             return await judge.judge(character, history, text, affinity, photo)
         finally:
             lease.release()
+
+
+def _open(db: sqlite3.Connection) -> dict[str, _Row]:
+    """The overrides kept, the table made if need be."""
+    db.executescript(_SCHEMA)
+    # Whether users had to bring their own LLM, which no longer is a setting.
+    db.execute("DELETE FROM config_overrides WHERE name = 'limits.own_llm_required'")
+    return {
+        name: _Row(value, last4)
+        for name, value, last4 in db.execute("SELECT name, value, last4 FROM config_overrides")
+    }
+
+
+def _keep(db: sqlite3.Connection, rows: dict[str, _Row | None], now: str) -> None:
+    """Keep each of `rows` as it is, deleting those None."""
+    for name, row in rows.items():
+        if row is None:
+            db.execute("DELETE FROM config_overrides WHERE name = ?", (name,))
+        else:
+            db.execute(
+                "INSERT INTO config_overrides (name, value, last4, updated_at)"
+                " VALUES (?, ?, ?, ?) ON CONFLICT (name) DO UPDATE SET"
+                " value = excluded.value, last4 = excluded.last4,"
+                " updated_at = excluded.updated_at",
+                (name, row.value, row.last4, now),
+            )
+
+
+def _forget(db: sqlite3.Connection, name: str) -> None:
+    """Delete the overrides of the item `name`."""
+    db.execute("DELETE FROM config_overrides WHERE name LIKE ?", (f"{name}.%",))
 
 
 def _check_ranges(item: _Item, values: Values) -> None:
