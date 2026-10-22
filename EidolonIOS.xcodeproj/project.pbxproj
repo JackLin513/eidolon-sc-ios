@@ -1,0 +1,402 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		10BA2565084D529C4152A890 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38579B2A473B296EC588CBD6 /* AppModel.swift */; };
+		27EE9A61F1EA6DD131D5D03F /* EidolonIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6567288D9C69EE4C18792B6 /* EidolonIOSApp.swift */; };
+		6945EC868753B0B3B3C49EF5 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E426C67C1839C9BE655544CE /* APIClient.swift */; };
+		704890B5E251A9847582AD53 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08D219EFDEF2BCFD77A95D40 /* LoginView.swift */; };
+		74CCA2B5799F3C07FD73E150 /* Backend.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B5A75E3173EE6022962E1E /* Backend.swift */; };
+		791DD675A29C48B88185FACE /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE21F722ED79A2089F060B7F /* Theme.swift */; };
+		9DE409627BE4363A227DD407 /* ConversationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40B7B5AA3042F29A949E938 /* ConversationListView.swift */; };
+		A1B405F9250C7DCD499A4A7E /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77736DA8D3A8B0B2407A626B /* ChatView.swift */; };
+		B2DF1A14F646EDBA6EAECF48 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2610401DD1C29D8D7AB56C /* SettingsView.swift */; };
+		C1AE9110E9253D1676939EAD /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = E067E3A3A4193DC81645E040 /* Models.swift */; };
+		E0F9B1FA2BA982860CDD2BC3 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A72BB12039666C937D7C04 /* RootView.swift */; };
+		EA1247FCD229927B45022897 /* ConsentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67F751E2400FD769487901C7 /* ConsentView.swift */; };
+		FB74EA11C1B5E34D38ED3937 /* ChatStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA937E9DC437925E1DD0673 /* ChatStore.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		08D219EFDEF2BCFD77A95D40 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		0E396CD6E4C64449524CEC32 /* EidolonIOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = EidolonIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		14A72BB12039666C937D7C04 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		38579B2A473B296EC588CBD6 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		67F751E2400FD769487901C7 /* ConsentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsentView.swift; sourceTree = "<group>"; };
+		6DA937E9DC437925E1DD0673 /* ChatStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStore.swift; sourceTree = "<group>"; };
+		77736DA8D3A8B0B2407A626B /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		C40B7B5AA3042F29A949E938 /* ConversationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationListView.swift; sourceTree = "<group>"; };
+		CE21F722ED79A2089F060B7F /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		DC2610401DD1C29D8D7AB56C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		E067E3A3A4193DC81645E040 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		E426C67C1839C9BE655544CE /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		E7B5A75E3173EE6022962E1E /* Backend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Backend.swift; sourceTree = "<group>"; };
+		F6567288D9C69EE4C18792B6 /* EidolonIOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EidolonIOSApp.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		27A0BC2BCA46C88574A55902 = {
+			isa = PBXGroup;
+			children = (
+				8428DAC951AA7D13E5248556 /* EidolonIOS */,
+				D74BC4D4FEFFE9A287143AFF /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		4EB1ECB7DD9E2A371CAEF70A /* Conversations */ = {
+			isa = PBXGroup;
+			children = (
+				C40B7B5AA3042F29A949E938 /* ConversationListView.swift */,
+			);
+			path = Conversations;
+			sourceTree = "<group>";
+		};
+		689A5C957FC75EE927E77D7D /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				8DD528FF0F49C56E429F79F4 /* Chat */,
+				4EB1ECB7DD9E2A371CAEF70A /* Conversations */,
+				FAA7A3C13438C8633E6C1EB4 /* Login */,
+				8FC025C14471CB5AB9B8E831 /* Settings */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		8428DAC951AA7D13E5248556 /* EidolonIOS */ = {
+			isa = PBXGroup;
+			children = (
+				A03C8252AFD0E637325A2848 /* App */,
+				AB93147C4769FE640D212437 /* Core */,
+				689A5C957FC75EE927E77D7D /* Features */,
+			);
+			path = EidolonIOS;
+			sourceTree = "<group>";
+		};
+		8DD528FF0F49C56E429F79F4 /* Chat */ = {
+			isa = PBXGroup;
+			children = (
+				6DA937E9DC437925E1DD0673 /* ChatStore.swift */,
+				77736DA8D3A8B0B2407A626B /* ChatView.swift */,
+			);
+			path = Chat;
+			sourceTree = "<group>";
+		};
+		8FC025C14471CB5AB9B8E831 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				DC2610401DD1C29D8D7AB56C /* SettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		A03C8252AFD0E637325A2848 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				38579B2A473B296EC588CBD6 /* AppModel.swift */,
+				F6567288D9C69EE4C18792B6 /* EidolonIOSApp.swift */,
+				14A72BB12039666C937D7C04 /* RootView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		AB93147C4769FE640D212437 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				E426C67C1839C9BE655544CE /* APIClient.swift */,
+				E7B5A75E3173EE6022962E1E /* Backend.swift */,
+				E067E3A3A4193DC81645E040 /* Models.swift */,
+				CE21F722ED79A2089F060B7F /* Theme.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		D74BC4D4FEFFE9A287143AFF /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				0E396CD6E4C64449524CEC32 /* EidolonIOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		FAA7A3C13438C8633E6C1EB4 /* Login */ = {
+			isa = PBXGroup;
+			children = (
+				67F751E2400FD769487901C7 /* ConsentView.swift */,
+				08D219EFDEF2BCFD77A95D40 /* LoginView.swift */,
+			);
+			path = Login;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E750EECA85E66DE8B22D1663 /* EidolonIOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B19BDED4E7A46DB1BEEEB5A1 /* Build configuration list for PBXNativeTarget "EidolonIOS" */;
+			buildPhases = (
+				35F3F47F98BC46AAF4AF47CD /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = EidolonIOS;
+			packageProductDependencies = (
+			);
+			productName = EidolonIOS;
+			productReference = 0E396CD6E4C64449524CEC32 /* EidolonIOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		379E28C85FA2AD7FFACA899D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					E750EECA85E66DE8B22D1663 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 07011334F616A2EB2B740C38 /* Build configuration list for PBXProject "EidolonIOS" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 27A0BC2BCA46C88574A55902;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = D74BC4D4FEFFE9A287143AFF /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E750EECA85E66DE8B22D1663 /* EidolonIOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		35F3F47F98BC46AAF4AF47CD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6945EC868753B0B3B3C49EF5 /* APIClient.swift in Sources */,
+				10BA2565084D529C4152A890 /* AppModel.swift in Sources */,
+				74CCA2B5799F3C07FD73E150 /* Backend.swift in Sources */,
+				FB74EA11C1B5E34D38ED3937 /* ChatStore.swift in Sources */,
+				A1B405F9250C7DCD499A4A7E /* ChatView.swift in Sources */,
+				EA1247FCD229927B45022897 /* ConsentView.swift in Sources */,
+				9DE409627BE4363A227DD407 /* ConversationListView.swift in Sources */,
+				27EE9A61F1EA6DD131D5D03F /* EidolonIOSApp.swift in Sources */,
+				704890B5E251A9847582AD53 /* LoginView.swift in Sources */,
+				C1AE9110E9253D1676939EAD /* Models.swift in Sources */,
+				E0F9B1FA2BA982860CDD2BC3 /* RootView.swift in Sources */,
+				B2DF1A14F646EDBA6EAECF48 /* SettingsView.swift in Sources */,
+				791DD675A29C48B88185FACE /* Theme.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		257F3DC7916C9DA224E9DB03 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EidolonIOS/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.jacklin.eidolon;
+				PRODUCT_NAME = Eidolon;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		334CE1257C4B5FDD9DA9B09B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A3704641DD2CFBC811FDEEF8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		DC004F2A9071B60BAE804E06 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EidolonIOS/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.jacklin.eidolon;
+				PRODUCT_NAME = Eidolon;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		07011334F616A2EB2B740C38 /* Build configuration list for PBXProject "EidolonIOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				334CE1257C4B5FDD9DA9B09B /* Debug */,
+				A3704641DD2CFBC811FDEEF8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B19BDED4E7A46DB1BEEEB5A1 /* Build configuration list for PBXNativeTarget "EidolonIOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DC004F2A9071B60BAE804E06 /* Debug */,
+				257F3DC7916C9DA224E9DB03 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 379E28C85FA2AD7FFACA899D /* Project object */;
+}
