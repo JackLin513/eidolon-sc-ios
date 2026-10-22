@@ -634,11 +634,31 @@ class DataPackages:
         """Write the user's package, with the categories in `include`, to the file `to`."""
         categories = chosen(include)
         profile = await self._store.get_profile(user_id) if "profile" in categories else None
-        # The rest, on connections of their own, is read on a thread, and written there.
-        await asyncio.to_thread(self._export, user_id, categories, profile, to)
+        conversations = (
+            await self._store.whole_conversations(user_id)
+            if "conversations" in categories else []
+        )
+        loop = asyncio.get_running_loop()
+
+        def picture_of(photo_id: str) -> bytes | None:
+            """The photo's picture, read as the package is written, on a thread."""
+            return asyncio.run_coroutine_threadsafe(
+                self._store.photo_image(photo_id, user_id), loop
+            ).result()
+
+        # The memories, on a connection of their own, are read on a thread, and the package
+        # written there.
+        await asyncio.to_thread(
+            self._export, user_id, categories, profile, conversations, picture_of, to
+        )
 
     def _export(
-        self, user_id: str, categories: list[Category], profile: ProducerProfile | None,
+        self,
+        user_id: str,
+        categories: list[Category],
+        profile: ProducerProfile | None,
+        conversations: list[WholeConversation],
+        picture_of: Callable[[str], bytes | None],
         to: Path,
     ) -> None:
         data = PackageData()
@@ -649,7 +669,7 @@ class DataPackages:
         if "conversations" in categories:
             data.conversations = [
                 PackagedConversation.of(c, self._name(c.character_id), "photos" in categories)
-                for c in self._store.whole_conversations(user_id)
+                for c in conversations
             ]
             counts["conversations"] = len(data.conversations)
         if "photos" in categories:
@@ -670,7 +690,7 @@ class DataPackages:
                 _json(manifest.model_dump()),
                 compress_type=zipfile.ZIP_STORED,
             )
-            self._write_pictures(user_id, data, package, now)
+            self._write_pictures(picture_of, data, package, now)
             package.writestr(
                 zipfile.ZipInfo(DATA, _zip_time(now)),
                 _json(data.model_dump(exclude_unset=True)),
@@ -678,17 +698,21 @@ class DataPackages:
             )
 
     def _write_pictures(
-        self, user_id: str, data: PackageData, package: zipfile.ZipFile, now: datetime
+        self,
+        picture_of: Callable[[str], bytes | None],
+        data: PackageData,
+        package: zipfile.ZipFile,
+        now: datetime,
     ) -> None:
-        """Write into `package` the picture of each photo sent in `data`, read one at a time;
-        one whose picture is gone by then, its conversation deleted as the package is
-        written, goes as not sent."""
+        """Write into `package` the picture of each photo sent in `data`, read one at a time
+        by `picture_of`; one whose picture is gone by then, its conversation deleted as the
+        package is written, goes as not sent."""
         for conversation in data.conversations or []:
             for message in conversation.messages:
                 photo = message.photo
                 if photo is None or not photo.sent:
                     continue
-                picture = self._store.photo_image(photo.id, user_id)
+                picture = picture_of(photo.id)
                 if picture is None:
                     message.photo = photo.not_sent()
                     continue

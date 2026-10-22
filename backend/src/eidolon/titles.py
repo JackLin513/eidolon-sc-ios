@@ -109,12 +109,12 @@ class Titles:
 
     async def _name(self, conversation: Conversation, llm: ChatLLM) -> None:
         try:
-            current = await asyncio.to_thread(self._store.get_conversation, conversation.id)
+            current = await self._store.get_conversation(conversation.id)
             if current is None or current.title is not None:
                 return
             # Her reach-outs are no part of what the conversation is about.
             record = [
-                entry for entry in await asyncio.to_thread(self._store.record, conversation.id)
+                entry for entry in await self._store.record(conversation.id)
                 if not isinstance(entry, ReachOut)
             ]
             character = self._characters[conversation.character_id]
@@ -131,7 +131,7 @@ class Titles:
                 conversation.id, len(answer),
             )
             return
-        await asyncio.to_thread(self._store.name_conversation, conversation.id, title)
+        await self._store.name_conversation(conversation.id, title)
 
 
 def title_from(answer: str) -> str | None:

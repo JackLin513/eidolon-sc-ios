@@ -25,3 +25,13 @@
 
 - `ReachOuts._due` 拿着自己的锁，在自己的连接上调 `store.read_profile(self._db, …)` 读档案。迁移时改成在层的读任务里调。
 - `/api/account` 里的 `reach_outs.switch_of` 还在 `run_in_threadpool` 里。
+
+### 票 04 交接
+
+- 「`add_reach_out` 改成接收『她在不在通话里』」这一项已经做了：`Store.add_reach_out(conversation_id, said, contact, in_call: bool)`。
+  - 正在进行的文字回合（`taking_turn`）和 `in_call` 都由 `add_reach_out` 在事件循环上、交写任务之前查。
+  - 写任务 `_add_reach_out` 只重新确认库里的条件：还是当前对话、没结束、上次联系没变、之后没搭过话。
+  - `ReachOuts._reach_out` 传的是 `self._in_call(conversation.id)`。
+- `Store.current_conversations`、`reach_out_recorded_as` 已经走层；`ReachOuts` 里对它们的 `to_thread` 删了。还剩 `_due`、`_within_the_day`、`_put_off` 的 `to_thread`，是 `ReachOuts` 自己的连接。
+- 搭话的提示词读取并进了 `ConversationEngine._read_before_asking`，和回合共用一个读任务。
+- `ReachOuts._due` 在 `to_thread` 里调 `_talking`，所以 `Store.is_taking_turn` 和 `Calls.in_call` 是在线程里读的。`_due` 改成 async 以后，把 `_talking` 挪回循环上。

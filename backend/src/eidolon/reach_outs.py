@@ -173,7 +173,7 @@ class ReachOuts:
             return
         now = self._clock()
         due: list[_Due] = []
-        for current in await asyncio.to_thread(self._store.current_conversations):
+        for current in await self._store.current_conversations():
             try:
                 if (found := await asyncio.to_thread(self._due, current, now)) is not None:
                     due.append(found)
@@ -366,14 +366,14 @@ class ReachOuts:
         finally:
             lease.release()
         try:
-            reach_out = await asyncio.to_thread(
-                self._store.add_reach_out, conversation.id, said, contact, self._in_call
+            reach_out = await self._store.add_reach_out(
+                conversation.id, said, contact, self._in_call(conversation.id)
             )
         except ReachOutRefused:  # they were in touch meanwhile
             recording.finish("rejected")
             return
         recording.finish("success")
-        await asyncio.to_thread(self._store.reach_out_recorded_as, reach_out.id, recording.row_id)
+        await self._store.reach_out_recorded_as(reach_out.id, recording.row_id)
 
 
 def _at_night(at: datetime, zone: ZoneInfo) -> bool:

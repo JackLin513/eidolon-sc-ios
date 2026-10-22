@@ -88,7 +88,7 @@ class CallUnderTest:
     ) -> "CallUnderTest":
         """One into the conversation `conversation_id`."""
         async with store_in(settings.database_path) as store:
-            conversation = store.get_conversation(conversation_id)
+            conversation = await store.get_conversation(conversation_id)
         assert conversation is not None
         return cls(settings, client, conversation)
 

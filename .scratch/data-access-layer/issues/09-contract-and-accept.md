@@ -23,3 +23,8 @@
 ### 票 03 交接
 
 - `test_off_the_event_loop.py` 只剩回合读库和线程数两个用例。
+
+### 票 04 交接
+
+- `Store.close` 已经删了。`conftest.store_in`、命令行 `_user_command`、`memory_eval._Scratch` 现在只是开 `Database`、建 `Store`、最后 `await db.close()`。
+- `test_off_the_event_loop.py` 只剩线程数一个用例：回合读库那个用例删了，由层的检查代替。

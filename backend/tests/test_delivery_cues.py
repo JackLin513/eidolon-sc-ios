@@ -147,7 +147,7 @@ async def test_a_text_turn_shows_no_cues_but_keeps_them_for_the_next_turn(
     # The model reads its reply as it wrote it.
     assert [m.content for m in llm.prompts[1] if m.role == "assistant"] == [REPLY[0]]
     async with store_in(settings.database_path) as store:
-        assert store.list_messages(conversation_id)[1].ja == "[shyly] えへへ、(happy)ありがとう"
+        assert (await store.list_messages(conversation_id))[1].ja == "[shyly] えへへ、(happy)ありがとう"
 
 
 async def test_the_conversation_list_shows_the_last_reply_without_cues(

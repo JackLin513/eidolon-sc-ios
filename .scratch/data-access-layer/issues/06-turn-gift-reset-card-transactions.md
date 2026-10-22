@@ -30,3 +30,12 @@
 ### 票 03 交接
 
 - `/api/admin/gifts` 的 `gifts.last_grant` 在 `run_in_threadpool` 里。`/api/stats` 的 `affinities.tier`、`happenings.tally` 在 `summed_up` 里，也在线程池里跑。
+
+### 票 04 交接
+
+- `Store.add_turn`、`add_gift`、`keep_call` 还是同步方法：SQL 已经搬进模块级事务体 `_add_turn`、`_add_gift`、`_keep_call`，经 `Database.prepare` 阻塞地交给写线程。合并事务时，直接在新的写任务里调这三个事务体，把同一条连接传进去；然后删掉这三个同步方法，`prepare` 文档里那半句也一起删。
+- 回合开头的读取已经收成一个读任务 `ConversationEngine._read_before_asking`（回合和搭话共用）。里面的 `self._affinity(conversation)` 现在调的是 `Affinities.status`，用的还是它自己的连接。迁完后改成接收同一条读连接的事务体。
+- `engine._reply` 里还有两处 `to_thread`：`_cools`（`Affinities.cools`）和 `happenings.turn_recorded`。
+- `/api/stats` 的 `summed_up` 里只剩 `affinities.tier` 和 `happenings.tally` 还在线程池里读库。`Store` 那三项已经在 handler 里 await 了。
+- `/api/ice-servers` 整个 `calls.ice_servers` 放在 `run_in_threadpool` 里，是因为 `refuse_while_cooling` 要读冷却。
+- 注意：`add_turn`（`engine._record`）和 `keep_call`（`CallOutcome._settle`）现在是在事件循环上经 `prepare` 等写队列。层的检查只看交出连接的线程，查不到这种等待，所以这一张必须把它们改成 await。

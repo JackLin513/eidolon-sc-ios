@@ -317,7 +317,7 @@ async def test_her_tag_is_never_voiced_nor_one_written_in_the_middle_of_her_word
             clients=asking(),
             image_transport=FakeImageService().transport(),
         )
-        record = turns.record()
+        record = await turns.record()
 
     def said(kind: str, lang: str | None = None) -> str:
         return "".join(e["text"] for e in events if e["type"] == kind and e.get("lang") == lang)

@@ -30,3 +30,10 @@
 
 - 后台用户页（`admin_users_api`）里还放在 `run_in_threadpool` 里的有：`described` 和 `details` 读 `activity.taken_since`、`limiter.user_limits`、`activity.of_user` 的部分，以及 `set_limits`、`take_off_limits` 里的 `limiter.set_user_limits`。迁完改成 await。
 - 命令行 `user usage` 还在 `asyncio.run` 里直接用同步的 `UsageLimiter`。
+
+### 票 04 交接
+
+- `/api/conversations/{id}/turns`（`app.text_turn`）改成了 `async def`，`admissions.turn` 暂时放在 `run_in_threadpool` 里。`admissions.turn` 改成 async 后直接 await。
+  - 注意取消：handler 在等放行时被取消，放行拿到的用量和运行记录就没人结算了。通话那边（`Calls._admit_and_start`）用 `shield` 加 `never_set_up` 处理了这种情况，文字回合也要照样处理。
+- `/api/ice-servers` 也改成了 `async def`，`calls.ice_servers` 整个放在 `run_in_threadpool` 里，因为它读冷却（`Affinities`，06）。
+- `Photos.eligibility` 里的 `usage.check` 现在在回合开头那个读任务的事务体里调（`ConversationEngine._read_before_asking`），用的是 `UsageLimiter` 自己的连接。迁完后改成接收同一条读连接的事务体。

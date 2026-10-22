@@ -222,7 +222,6 @@ def build(
     closers: list[Closer] = [database.close]
 
     store = Store(database)
-    closers.append(store.close)
     if identity_providers is None:
         identity_providers = open_identity_providers(settings.github, settings.google)
         closers.extend(p.aclose for p in identity_providers.values())
@@ -351,7 +350,7 @@ def build(
     )
     closers.append(own_images.aclose)
     photos = Photos(store, config.image_generator, activity, usage, own_images.generator)
-    closers.append(photos.aclose)  # closed before the store and usage, so no photo is still kept
+    closers.append(photos.aclose)  # closed before the database and usage, so no photo is still kept
     gifts = Gifts(
         settings.database_path, clock, lambda: config.affinity_on, affinities, characters,
         gift_catalog, random or secure_random, store,
@@ -362,7 +361,7 @@ def build(
     )
     closers.append(happenings.close)
     engine = ConversationEngine(
-        store, characters, gift_catalog, memories, titles, clock, retrieval,
+        database, store, characters, gift_catalog, memories, titles, clock, retrieval,
         lambda: config.history_turns, world, affinities, config.affinity_judge(), photos,
         happenings,
     )

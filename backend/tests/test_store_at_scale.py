@@ -51,7 +51,7 @@ async def test_every_users_current_conversation_however_many(tmp_path: Path):
         )
 
     async with store_in(path) as store:
-        current = {c.conversation.id: c for c in store.current_conversations()}
+        current = {c.conversation.id: c for c in await store.current_conversations()}
 
     assert len(current) == count
     assert current["conversation-7"].last_contact is not None

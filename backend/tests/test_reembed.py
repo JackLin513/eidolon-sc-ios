@@ -88,7 +88,7 @@ class Deployment:
         )
         async with store_in(self.database) as store:
             world = await World.made(store, self.characters)
-            await tell(memories, world, world.conversation("mano"), "我家的猫叫小白，下个月去北海道")
+            await tell(memories, world, await world.conversation("mano"), "我家的猫叫小白，下个月去北海道")
             await memories.entries(world.producer)  # written down, and embedded
         await memories.aclose()
 

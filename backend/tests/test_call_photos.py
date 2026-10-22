@@ -76,7 +76,7 @@ async def call(
         settings, llm, clients=asking(), clock=lambda: NOW, image_transport=image.transport()
     )
     try:
-        conversation = backend.store.get_conversation(conversation_id)
+        conversation = await backend.store.get_conversation(conversation_id)
         assert conversation is not None
         admission = backend.admissions.call(conversation.user_id, "mano", BroughtKeys())
         mano = backend.characters["mano"]

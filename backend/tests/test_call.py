@@ -184,7 +184,7 @@ async def test_a_call_failing_as_it_is_answered_never_connected_and_lets_go_of_i
     )
     try:
         user = (await backend.store.create_user("producer")).id
-        conversation = backend.store.create_conversation(user, "mano")
+        conversation = await backend.store.create_conversation(user, "mano")
         released: list[None] = []
         lease = backend.config.lease
 
@@ -296,7 +296,7 @@ async def test_shutting_down_hangs_up_calls_and_drops_the_reply_in_progress(
         await backend.calls.aclose()  # should shutting down leave a call behind
 
     async with store_in(settings.database_path) as store:
-        assert store.list_messages(conversation_id) == []
+        assert await store.list_messages(conversation_id) == []
 
 
 async def test_a_connection_that_will_not_close_is_given_up_and_the_call_still_ends(

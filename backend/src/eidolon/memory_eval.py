@@ -542,7 +542,7 @@ async def _recall(
     try:
         await scratch.start_with(case.memories)
         turn = await scratch.memories.begin(
-            scratch.conversation(case.character), TIMEZONE, _ScriptedBackground(None)
+            await scratch.conversation(case.character), TIMEZONE, _ScriptedBackground(None)
         )
         retrieved = await retrieval.retrieve(
             characters[case.character], case.history, case.said, turn
@@ -589,9 +589,9 @@ class _Scratch:
         )
         self._conversations: dict[str, Conversation] = {}
 
-    def conversation(self, character_id: str) -> Conversation:
+    async def conversation(self, character_id: str) -> Conversation:
         if character_id not in self._conversations:
-            self._conversations[character_id] = self._store.create_conversation(
+            self._conversations[character_id] = await self._store.create_conversation(
                 self.user, character_id
             )
         return self._conversations[character_id]
@@ -625,14 +625,13 @@ class _Scratch:
         written down. Raises TimeoutError if that takes over `WRITE_TIMEOUT`."""
         written = asyncio.Event()
         turn = await self.memories.begin(
-            self.conversation(character_id), TIMEZONE, llm, lambda: written.set
+            await self.conversation(character_id), TIMEZONE, llm, lambda: written.set
         )
         turn.write_down(history, said, reply)
         await asyncio.wait_for(written.wait(), WRITE_TIMEOUT)
 
     async def aclose(self) -> None:
         await self.memories.aclose()
-        self._store.close()
         await self._database.close()
 
 

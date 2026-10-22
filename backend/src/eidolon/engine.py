@@ -99,6 +99,7 @@ the judge model read those the user answers, after the last turn, as her latest 
 
 import asyncio
 import logging
+import sqlite3
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field, replace
@@ -123,6 +124,7 @@ from eidolon.affinity_judge import AffinityJudge
 from eidolon.characters import Character
 from eidolon.clock import Clock
 from eidolon.config import FishAudioModel, ImageSettings
+from eidolon.data_access import Database
 from eidolon.gift_catalog import Gift
 from eidolon.happenings import Happenings, Rewarded
 from eidolon.judge import JudgeError
@@ -131,6 +133,7 @@ from eidolon.memory import Memories, last_turn_query
 from eidolon.own_keys import OwnKeyFailed
 from eidolon.photos import CANNOT_SEND, NOT_RECEIVED, Eligibility, Photos, photo_turn
 from eidolon.producer import (
+    ProducerProfile,
     effective_timezone,
     local_date,
     now_prompt,
@@ -158,6 +161,10 @@ from eidolon.store import (
     Recorded,
     Store,
     Typed,
+    read_ended,
+    read_last_contact,
+    read_profile,
+    read_record,
     timestamp,
 )
 from eidolon.titles import Titles
@@ -369,16 +376,19 @@ async def _judged(
 
 @dataclass(frozen=True)
 class _BeforeAsking:
-    """What a turn reads from the database before it is asked, but the producer profile: her
-    character, the conversation's record, when the user and she were last in touch (None in
-    a call, where she knows they are talking), her affinity as it begins, and what it may
-    send for a photo."""
+    """What a turn, or her reaching out, reads from the database before she is asked:
+    whether she has ended the conversation, her character, the conversation's record, when
+    the user and she were last in touch (None in a call, where she knows they are talking),
+    her affinity as it begins, what it may send for a photo (None for a reach-out), and the
+    producer profile."""
 
+    ended: bool
     character: Character
     record: list[Recorded]
     last_contact: datetime | None
     affinity: Status | None
     eligibility: Eligibility | None
+    profile: ProducerProfile
 
 
 @dataclass
@@ -520,6 +530,7 @@ def _answering(record: Sequence[Recorded]) -> list[Message]:
 class ConversationEngine:
     def __init__(
         self,
+        db: Database,
         store: Store,
         characters: dict[str, Character],
         gift_catalog: Mapping[str, Gift],
@@ -543,6 +554,7 @@ class ConversationEngine:
         `affinity_judge`, which judges whether turns ask for a photo too. Without `photos`,
         or without the judge model, no turn has a photo. Each turn recorded is told to
         `happenings`, if any."""
+        self._db = db
         self._store = store
         self._characters = characters
         self._gift_catalog = gift_catalog
@@ -619,16 +631,16 @@ class ConversationEngine:
     ) -> AsyncIterator[TurnEvent]:
         # The database is read and written on threads all through the turn: waiting on it
         # on the event loop would keep everyone's calls on it from going on meanwhile.
-        read = await asyncio.to_thread(
-            self._read_before_asking, conversation, in_call is not None, photo.own
+        read = await self._db.read(
+            self._before_turn, conversation, in_call is not None, photo.own
         )
-        if read is None:
+        if read.ended:
             yield TurnRejected(ENDED)
             return
-        character, record, last_contact, affinity, eligibility = (
+        character, record, last_contact, affinity, eligibility, profile = (
             read.character, read.record, read.last_contact, read.affinity, read.eligibility,
+            read.profile,
         )
-        profile = await self._store.get_profile(conversation.user_id)
         # Said after reading the record, so an event this turn's prompt does not tell of
         # comes before the turn, and is told of with its words from the next turn on.
         said_at = timestamp()
@@ -669,9 +681,7 @@ class ConversationEngine:
         else:
             # As many as are weighed, so that whether she warns is told against the latest
             # before this one; out of line is counted in the latest with this one among them.
-            earlier = await asyncio.to_thread(
-                self._store.typed_turns, conversation.id, FED_UP_TURNS
-            )
+            earlier = await self._store.typed_turns(conversation.id, FED_UP_TURNS)
             out_of_line_before = sum(t.out_of_line for t in earlier[-(FED_UP_TURNS - 1):])
             hurt_before = [t.hurt for t in earlier]
         ending = ends(judged, cools, out_of_line_before, hurt_before)
@@ -783,14 +793,11 @@ class ConversationEngine:
         )
         if photo.id is not None and self._photos is not None:
             photo.recorded = True
-            self._photos.recorded(photo.id)
+            await self._photos.recorded(photo.id)
         memory.write_down(history, text, reply, retrieved.query_vector)
         turn = sum(m.role == "user" for m in messages) + 1
         self._titles.after_turn(conversation, turn, llms.background, llms.hold_background)
-        ended = (
-            await asyncio.to_thread(self._store.ended, conversation.id)
-            if ends_conversation else None
-        )
+        ended = await self._store.ended(conversation.id) if ends_conversation else None
         if ended is not None and ending is not None:
             for listener in self._ended_listeners:
                 listener(conversation.id, ending)
@@ -824,15 +831,10 @@ class ConversationEngine:
         to say something first. Nothing else is retrieved, no tool offered, nothing judged.
         Raises EmptyReply if the model says nothing she could say, and whatever the model
         raises."""
-        character = self._characters[conversation.character_id]
-        record, affinity, last_contact = await asyncio.to_thread(
-            lambda: (
-                self._store.record(conversation.id),
-                self._affinity(conversation),
-                self._store.last_contact(conversation.user_id, conversation.character_id),
-            )
+        read = await self._db.read(self._before_reaching_out, conversation)
+        character, record, affinity, last_contact, profile = (
+            read.character, read.record, read.affinity, read.last_contact, read.profile
         )
-        profile = await self._store.get_profile(conversation.user_id)
         messages = [entry for entry in record if isinstance(entry, Message)]
         timezone = effective_timezone(profile, None)
         now = self._clock()
@@ -871,22 +873,51 @@ class ConversationEngine:
             raise EmptyReply("对话模型没有返回任何内容")
         return parser.complete
 
+    def _before_turn(
+        self,
+        db: sqlite3.Connection,
+        conversation: Conversation,
+        in_call: bool,
+        own_image: ImageSettings | None,
+    ) -> _BeforeAsking:
+        """What a turn of `conversation` reads before it is asked, through `db`, all in one
+        read: `in_call` if it is taken in one, bringing the user's `own_image` generation if
+        any."""
+        return self._read_before_asking(
+            db, conversation, in_call=in_call, own_image=own_image, sends_photo=True
+        )
+
+    def _before_reaching_out(
+        self, db: sqlite3.Connection, conversation: Conversation
+    ) -> _BeforeAsking:
+        """What her reaching out in `conversation` reads before she is asked, through `db`,
+        as a typed turn would, all in one read; she sends no photo."""
+        return self._read_before_asking(
+            db, conversation, in_call=False, own_image=None, sends_photo=False
+        )
+
     def _read_before_asking(
-        self, conversation: Conversation, in_call: bool, own_image: ImageSettings | None
-    ) -> _BeforeAsking | None:
-        """What a turn of `conversation` reads before it is asked, `in_call` if it is taken
-        in one, bringing the user's `own_image` generation if any; None if she has ended
-        the conversation."""
-        if self._store.ended(conversation.id) is not None:
-            return None
+        self,
+        db: sqlite3.Connection,
+        conversation: Conversation,
+        *,
+        in_call: bool,
+        own_image: ImageSettings | None,
+        sends_photo: bool,
+    ) -> _BeforeAsking:
+        """What a turn or a reach-out in `conversation` reads before she is asked, through
+        `db`: what it may send for a photo only if it `sends_photo`."""
         character = self._characters[conversation.character_id]
         return _BeforeAsking(
+            read_ended(db, conversation.id) is not None,
             character,
-            self._store.record(conversation.id),
+            read_record(db, conversation.id),
             None if in_call
-            else self._store.last_contact(conversation.user_id, conversation.character_id),
+            else read_last_contact(db, conversation.user_id, conversation.character_id),
+            # Their own connections, till they are on the data access layer too.
             self._affinity(conversation),
-            self._photo_eligibility(conversation, character, own_image),
+            self._photo_eligibility(conversation, character, own_image) if sends_photo else None,
+            read_profile(db, conversation.user_id),
         )
 
     def _photo_eligibility(

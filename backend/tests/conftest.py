@@ -59,11 +59,7 @@ async def store_in(database: Path) -> AsyncIterator[Store]:
     another process."""
     db = Database(database)
     try:
-        store = Store(db)
-        try:
-            yield store
-        finally:
-            store.close()
+        yield Store(db)
     finally:
         await db.close()
 

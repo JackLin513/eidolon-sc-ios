@@ -1675,7 +1675,7 @@ class CallTurns(FrameProcessor):
         words are voiced, as the call's record says she hung up whoever leaves first."""
         message = ending.ended
         if message is not None and ending.by_her:
-            event = self._store.hang_up(self._call.conversation.id)
+            event = await self._store.hang_up(self._call.conversation.id)
             message = {**message, "event": event.shown()}
         await self._carry_out(self._turns.call_ending())
         if message is not None:

@@ -153,7 +153,9 @@ class Database:
 
     def prepare(self, body: Callable[[sqlite3.Connection, Unpack[A]], T], *args: Unpack[A]) -> T:
         """`body` written as `write` writes it, waited for here, blocking: for a module's
-        tables and migrations as it is made, which is before the server serves anything."""
+        tables and migrations as it is made, which is before the server serves anything;
+        and for the writes still made where nothing awaits them (`Store.add_turn`,
+        `add_gift`, `keep_call`), till they are part of write tasks of their own."""
         return self._submit(body, args).result()
 
     def function(

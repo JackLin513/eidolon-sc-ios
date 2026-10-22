@@ -146,11 +146,7 @@ async def _user_command(args: argparse.Namespace) -> int:
 
     db = Database(args.db or database_path_from_env())
     try:
-        store = Store(db)
-        try:
-            await args.run(store, args)
-        finally:
-            store.close()
+        await args.run(Store(db), args)
     except NotFound as e:
         print(e, file=sys.stderr)
         return 1

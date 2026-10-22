@@ -21,3 +21,9 @@
 
 - 导出已经改成 `async export`：先 await `get_profile`，其余数据在 `_export` 里（线程上）读出并打包。08 把这些读取也改成一个读任务。
 - 导入在自己的连接、自己的事务里用 `store.read_profile(db, …)` 读档案。改成层的写任务后，照样在同一个事务里调它。
+
+### 票 04 交接
+
+- `DataPackages.export` 现在先 await `whole_conversations`。照片的图片在线程里一张一张读：`asyncio.run_coroutine_threadsafe(store.photo_image(…), loop)`。线程里直接读库的只剩 `memories.kept`。
+  - 改成一个读任务时，可以用模块级事务体 `store._whole_conversations`、`_photo_image`。也可以考虑图片照旧一张一张读，免得一次全读进内存。
+- `picture_of` 的 `.result()` 没设超时：事件循环在导出中途停掉时，打包线程会一直等。重做时改掉。

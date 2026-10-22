@@ -238,13 +238,13 @@ class Photos:
         task.add_done_callback(self._tasks.discard)
         return photo_id
 
-    def recorded(self, photo_id: str) -> None:
+    async def recorded(self, photo_id: str) -> None:
         """Her reply is recorded with the photo, being generated: it is kept as it comes out,
         or now, if it has."""
         generating = self._generating[photo_id]
         generating.recorded = True
         if generating.outcome is not None:
-            self._keep(photo_id, *generating.outcome)
+            await self._keep(photo_id, *generating.outcome)
 
     def dropped(self, photo_id: str) -> None:
         """Her reply is never to be recorded: the photo is not kept, however it comes out."""
@@ -261,7 +261,7 @@ class Photos:
         generating = self._generating.get(photo_id)
         if generating is not None:
             await generating.settled.wait()
-        return self._store.photo(photo_id, user_id)
+        return await self._store.photo(photo_id, user_id)
 
     async def _generate(
         self,
@@ -293,7 +293,7 @@ class Photos:
         if generating.dropped:
             self._forget(photo_id)
         elif generating.recorded:
-            self._keep(photo_id, *outcome)
+            await self._keep(photo_id, *outcome)
         else:
             generating.outcome = outcome
 
@@ -371,10 +371,14 @@ class Photos:
             if not queue.photos:
                 del self._queues[key, at_a_time]
 
-    def _keep(self, photo_id: str, image: bytes | None, reason: PhotoFailure | None) -> None:
-        if not self._store.finish_photo(photo_id, image, reason):
-            log.info("photo %s came out after its reply was deleted; not kept", photo_id)
-        self._forget(photo_id)
+    async def _keep(
+        self, photo_id: str, image: bytes | None, reason: PhotoFailure | None
+    ) -> None:
+        try:
+            if not await self._store.finish_photo(photo_id, image, reason):
+                log.info("photo %s came out after its reply was deleted; not kept", photo_id)
+        finally:  # kept, or failed to be: none waits on it for good
+            self._forget(photo_id)
 
     def _forget(self, photo_id: str) -> None:
         """The photo is settled: kept, or dropped."""
