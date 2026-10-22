@@ -209,10 +209,10 @@ async def test_a_call_failing_as_it_is_answered_never_connected_and_lets_go_of_i
                 SessionDescription("v=0", "offer"),
             )
 
-        records, _ = backend.activity.since(backend.clock() - timedelta(hours=1))
+        records, _ = await backend.activity.since(backend.clock() - timedelta(hours=1))
         assert [(r.kind, r.result) for r in records] == [("call", "not_connected")]
         assert released == [None]
-        backend.usage.take(user, "call")  # given back: the hour's one call is still there
+        await backend.usage.take(user, "call")  # given back: the hour's one call is still there
     finally:
         await backend.aclose()
 

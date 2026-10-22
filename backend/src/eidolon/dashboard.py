@@ -38,7 +38,6 @@ from typing import Annotated, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, Header, Query
-from starlette.concurrency import run_in_threadpool
 
 from eidolon.activity import (
     CALL_END_REASONS,
@@ -92,11 +91,7 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
         timezone: Annotated[str | None, Header(alias="X-Timezone")] = None,
     ) -> dict:
         """The activity of the last `range`, summed up."""
-        # The activity records, on a connection of their own, are read on a thread, and
-        # summed up there.
-        summed = await run_in_threadpool(
-            summed_up, range, timezone, await backend.prices.pricing()
-        )
+        summed = await summed_up(range, timezone, await backend.prices.pricing())
         backend.prices.catalog.refresh_soon(
             missing=any(
                 r["unit"] == "tokens" and r["price"] is None for r in summed["cost"]["rows"]
@@ -104,12 +99,12 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
         )
         return summed
 
-    def summed_up(range: Range, timezone: str | None, pricing: Pricing) -> dict:
+    async def summed_up(range: Range, timezone: str | None, pricing: Pricing) -> dict:
         span = SPANS[range]
         now = backend.clock()
         start = range_start(now - span.length)
         starts = stretches(now, span, _zone(timezone))
-        tally = backend.activity.tally(start, starts)
+        tally = await backend.activity.tally(start, starts)
         # Reach-outs, daily tasks done and achievements are no turns nor calls, and taken by
         # no user; the reach-outs' service calls count.
         records = [r for r in tally.records if r.kind in ("turn", "call")]

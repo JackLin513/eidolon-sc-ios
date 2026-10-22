@@ -1062,25 +1062,16 @@ class Calls:
             if self._store.keep_call(conversation.id, connected_at, duration_s):
                 self._happenings.call_ended(user_id, character.id, duration_s)
 
-        # On a thread, as the limits and records are in the database. Cancelled meanwhile,
-        # the thread goes on all the same: what it lets in never set up, so settled.
-        admitting = asyncio.ensure_future(
-            asyncio.to_thread(self._admissions.call, user_id, character.id, brought)
+        # Cancelled meanwhile, what is let in never set up, so is settled.
+        admission = await self._admissions.admitted(
+            self._admissions.call(user_id, character.id, brought),
+            lambda let_in: CallOutcome(let_in, self._limits(), self._clock, keep).set_up_failed(),
         )
-        try:
-            admission = await asyncio.shield(admitting)
-        except asyncio.CancelledError:
-            def never_set_up(admitted: asyncio.Future[Admission[CallKeys]]) -> None:
-                if not admitted.cancelled() and admitted.exception() is None:
-                    CallOutcome(admitted.result(), self._limits(), self._clock, keep).set_up_failed()
-
-            admitting.add_done_callback(never_set_up)
-            raise
         outcome = CallOutcome(admission, self._limits(), self._clock, keep)
         try:
             await self.hang_up(user_id, "left")
         except BaseException:
-            outcome.set_up_failed()
+            await outcome.set_up_failed()
             raise
         return await self._start(
             user_id, conversation, character, options, offer, admission, outcome, placing,
@@ -1129,14 +1120,14 @@ class Calls:
             answer = await self._answer(SmallWebRTCRequest(offer.sdp, offer.type), serve)
         except BaseException:
             if not started:  # once served, the call is settled as it ends
-                outcome.set_up_failed()
+                await outcome.set_up_failed()
             raise
         if answer is None or not started:
             if started:
                 await started[0].hang_up("failed")
             elif connections:  # the pipeline could not be built; Pipecat only logs why
                 await _within_disconnect_timeout(connections[0].disconnect(), "a call")
-            outcome.set_up_failed()
+            await outcome.set_up_failed()
             raise CallFailed()
         self._owners[answer["pc_id"]] = user_id
         return answer
@@ -1417,7 +1408,7 @@ class _LiveCall:
         finally:
             self.over = True
             self._meter.close()
-            self._outcome.settle()
+            await self._outcome.settle()
             await _within_disconnect_timeout(  # lets the browser know the call is over
                 self._connection.disconnect(),
                 f"the call in conversation {self._call.conversation.id}",
@@ -1696,7 +1687,7 @@ class CallTurns(FrameProcessor):
             reply, self._reply = self._reply, None
             if reply is not None and not reply.done():
                 await self.cancel_task(reply)
-            turn.over(cut_short_by_failure=self._outcome.ended_by_failure)
+            await turn.over(cut_short_by_failure=self._outcome.ended_by_failure)
 
     def _start_reply(self, text: str, number: int, after: asyncio.Event | None = None) -> None:
         """Reply to `text`, as reply `number`, once `after` is set, if given."""

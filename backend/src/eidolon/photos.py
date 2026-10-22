@@ -47,6 +47,7 @@ means (`NOT_RECEIVED`), so that she knows the user never saw it.
 
 import asyncio
 import logging
+import sqlite3
 import uuid
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager, nullcontext
@@ -204,12 +205,17 @@ class Photos:
             log.info("%s photos were being generated as the server stopped; not sent", given_up)
 
     def eligibility(
-        self, character: Character, user_id: str, own: ImageSettings | None = None
+        self,
+        db: sqlite3.Connection,
+        character: Character,
+        user_id: str,
+        own: ImageSettings | None = None,
     ) -> Eligibility | None:
         """What a turn of the user's with her may send, bringing their `own` image
         generation if any; None if it could have no photo: she has no photo tags, or it
         brings none and there is no image generation, or the user's limit is 0. Takes none
-        of the user's photos, nor checks any on their own."""
+        of the user's photos, nor checks any on their own. Read through `db`, in the body of
+        a read task of the caller's."""
         if not character.photographed:
             return None
         if own is not None:
@@ -217,7 +223,7 @@ class Photos:
         if self._generator() is None:
             return None
         try:
-            self._usage.check(user_id, "photo")
+            self._usage.check(db, user_id, "photo")
         except OverLimit as e:
             return None if e.retry_at is None else Eligibility(e.retry_at)
         return Eligibility()
@@ -278,7 +284,7 @@ class Photos:
         recorded under `turn`; given back if not sent."""
         outcome: tuple[bytes | None, PhotoFailure | None]
         try:
-            use = self._usage.take(user_id, "photo", exempt=own is not None)
+            use = await self._usage.take(user_id, "photo", exempt=own is not None)
         except OverLimit:
             log.info("photo %s: the user's photos this hour were used up meanwhile", photo_id)
             outcome = None, "used_up"
@@ -288,7 +294,7 @@ class Photos:
         else:
             outcome = await self._generated(photo_id, character, tag, own, until, turn)
             if outcome[0] is None:
-                use.give_back()
+                await use.give_back()
         generating = self._generating[photo_id]
         if generating.dropped:
             self._forget(photo_id)

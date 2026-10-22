@@ -35,3 +35,8 @@
 - `Store.current_conversations`、`reach_out_recorded_as` 已经走层；`ReachOuts` 里对它们的 `to_thread` 删了。还剩 `_due`、`_within_the_day`、`_put_off` 的 `to_thread`，是 `ReachOuts` 自己的连接。
 - 搭话的提示词读取并进了 `ConversationEngine._read_before_asking`，和回合共用一个读任务。
 - `ReachOuts._due` 在 `to_thread` 里调 `_talking`，所以 `Store.is_taking_turn` 和 `Calls.in_call` 是在线程里读的。`_due` 改成 async 以后，把 `_talking` 挪回循环上。
+
+### 票 05 交接
+
+- `ReachOuts` 不再收 `usage`。`_due` 用模块函数 `usage.read_user_limits(self._db, …)` 读用户自己的限额，`_within_the_day` 用 `activity.read_reached_out_since(self._db, …)` 数今天搭过几次话。两处都在 `ReachOuts` 自己的连接上、拿着它的锁读。迁移时把这两个事务体放进层的读任务里调，连同 `read_profile`。
+

@@ -15,8 +15,10 @@ import pytest
 import eidolon.bailian
 import eidolon.data_access
 from eidolon.__main__ import main
+from eidolon.activity import ActivityLog
 from eidolon.app import create_app
 from eidolon.assembly import Backend
+from eidolon.clock import Clock
 from eidolon.config import LLMSettings, Settings
 from eidolon.data_access import Database
 from eidolon.gift_catalog import GIFTS_FILE
@@ -29,6 +31,7 @@ from tests.fakes import (
     DEPLOYER_SONIOX_KEY,
     START,
     FakeCatalog,
+    FakeClock,
     FakeDashScope,
     FakeIdentityProvider,
     FakeLLM,
@@ -60,6 +63,19 @@ async def store_in(database: Path) -> AsyncIterator[Store]:
     db = Database(database)
     try:
         yield Store(db)
+    finally:
+        await db.close()
+
+
+@asynccontextmanager
+async def activity_in(
+    database: Path, clock: Clock | None = None
+) -> AsyncIterator[ActivityLog]:
+    """The activity log of the database at `database`, on a data access layer of its own,
+    as in another process, by `clock` (a fake one's by default)."""
+    db = Database(database)
+    try:
+        yield ActivityLog(db, clock or FakeClock())
     finally:
         await db.close()
 

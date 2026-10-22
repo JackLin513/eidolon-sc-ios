@@ -1,58 +1,78 @@
 """Housekeeping: what ages out is deleted as the backend starts and every 10 minutes after,
-off the event loop, each apart from the others."""
+each apart from the others, in batches that let other writes in between."""
 
 import asyncio
+import sqlite3
 import threading
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 
 from eidolon import housekeeping
+from eidolon.data_access import Database
 
 
-def test_one_failing_keeps_none_of_the_others_from_tidying_up():
+async def test_one_failing_keeps_none_of_the_others_from_tidying_up():
     tidied: list[str] = []
 
-    def failing() -> None:
+    async def failing() -> None:
         raise RuntimeError("database is locked")
 
-    housekeeping.tidy(failing, lambda: tidied.append("activity"))
+    async def activity() -> None:
+        tidied.append("activity")
+
+    await housekeeping.tidy(failing, activity)
 
     assert tidied == ["activity"]
 
 
-async def test_it_tidies_up_as_it_starts_then_every_tick_off_the_event_loop(
-    monkeypatch: pytest.MonkeyPatch,
-):
+async def test_it_tidies_up_as_it_starts_then_every_tick(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(housekeeping, "TICK", timedelta(seconds=0.01))
-    loop = threading.get_ident()
-    threads: list[int] = []
-    tidying = asyncio.create_task(housekeeping.keep_tidy(lambda: threads.append(threading.get_ident())))
+    tidied: list[bool] = []
 
+    async def forget() -> None:
+        tidied.append(True)
+
+    tidying = asyncio.create_task(housekeeping.keep_tidy(forget))
     await asyncio.sleep(0.1)
     tidying.cancel()
 
-    assert len(threads) >= 2
-    assert loop not in threads
+    assert len(tidied) >= 2
 
 
-async def test_cancelled_as_it_tidies_up_it_ends_once_the_thread_is_done():
-    """So that the backend shutting down closes nothing the thread is still using."""
-    tidying_up, may_finish = threading.Event(), threading.Event()
-    finished: list[bool] = []
+async def test_each_batch_is_a_write_task_of_its_own_and_others_come_in_between(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(housekeeping, "BATCH", 2)
+    db = Database(tmp_path / "eidolon.db")
+    try:
+        await db.write(lambda conn: conn.executescript(
+            "CREATE TABLE aged (id INTEGER PRIMARY KEY);"
+            "INSERT INTO aged VALUES (1), (2), (3), (4), (5);"
+        ))
+        happened: list[str] = []
+        deleting, may_go_on = threading.Event(), threading.Event()
 
-    def slow() -> None:
-        tidying_up.set()
-        may_finish.wait(5)
-        finished.append(True)
+        def forget(conn: sqlite3.Connection, batch: int) -> int:
+            deleting.set()
+            may_go_on.wait(5)
+            deleted = conn.execute(
+                "DELETE FROM aged WHERE id IN (SELECT id FROM aged LIMIT ?)", (batch,)
+            ).rowcount
+            happened.append(f"deleted {deleted}")
+            return deleted
 
-    tidying = asyncio.create_task(housekeeping.keep_tidy(slow))
-    await asyncio.to_thread(tidying_up.wait, 5)
-    tidying.cancel()
-    await asyncio.sleep(0.05)
-    assert not tidying.done()
+        def other(conn: sqlite3.Connection) -> None:
+            happened.append("another write")
 
-    may_finish.set()
-    with pytest.raises(asyncio.CancelledError):
-        await tidying
-    assert finished == [True]
+        forgetting = asyncio.create_task(housekeeping.in_batches(db, forget))
+        await asyncio.to_thread(deleting.wait, 5)
+        writing = asyncio.create_task(db.write(other))  # handed in as the first batch runs
+        await asyncio.sleep(0)
+        may_go_on.set()
+        await asyncio.gather(forgetting, writing)
+
+        assert happened == ["deleted 2", "another write", "deleted 2", "deleted 1"]
+    finally:
+        await db.close()

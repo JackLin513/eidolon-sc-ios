@@ -160,7 +160,9 @@ class CallUnderTest:
         )
         try:
             mano = backend.characters["mano"]
-            admission = backend.admissions.call(self.conversation.user_id, "mano", BroughtKeys())
+            admission = await backend.admissions.call(
+                self.conversation.user_id, "mano", BroughtKeys()
+            )
             call = Call(self.conversation, mano, admission.llms, muted, "standard")
             outcome = CallOutcome(
                 admission, limits, backend.clock,
@@ -175,7 +177,7 @@ class CallUnderTest:
             if cooled is not None:
                 asyncio.get_running_loop().call_later(cooled[0], turns.cooled, cooled[1])
             down, _ = await run_test(turns, frames_to_send=frames)
-            outcome.settle()
+            await outcome.settle()
         finally:
             await backend.aclose()
         return down
@@ -190,7 +192,9 @@ class CallUnderTest:
         backend = build_faked(self._settings, llm, clock=lambda: NOW)
         try:
             mano = backend.characters["mano"]
-            admission = backend.admissions.call(self.conversation.user_id, "mano", BroughtKeys())
+            admission = await backend.admissions.call(
+                self.conversation.user_id, "mano", BroughtKeys()
+            )
             call = Call(self.conversation, mano, admission.llms, False, "standard")
             outcome = CallOutcome(
                 admission, CallLimits(), backend.clock,
@@ -219,7 +223,7 @@ class CallUnderTest:
             assert outcome.service_failed(None) is not None
             await worker.cancel()
             await running
-            outcome.settle()
+            await outcome.settle()
         finally:
             await backend.aclose()
 

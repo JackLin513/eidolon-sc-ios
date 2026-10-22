@@ -78,7 +78,7 @@ async def call(
     try:
         conversation = await backend.store.get_conversation(conversation_id)
         assert conversation is not None
-        admission = backend.admissions.call(conversation.user_id, "mano", BroughtKeys())
+        admission = await backend.admissions.call(conversation.user_id, "mano", BroughtKeys())
         mano = backend.characters["mano"]
         on = Call(conversation, mano, admission.llms, False, "standard")
         outcome = CallOutcome(
@@ -88,7 +88,7 @@ async def call(
         turns = CallTurns(backend.engine, backend.store, on, outcome, SONIOX_FOLLOW_ON_TIMEOUT)
         turns.connected()
         down, _ = await run_test(turns, frames_to_send=frames)
-        outcome.settle()
+        await outcome.settle()
         if after is not None:
             after.set()
             await photos_settled(settings, conversation_id)

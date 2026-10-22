@@ -13,11 +13,11 @@ from pathlib import Path
 import pytest
 
 from eidolon.activity import ActivityLog, Recording, Result
+from eidolon.data_access import Database
 from eidolon.engine import TurnDone, TurnEvent, TurnFailed, TurnRejected, UserSaid
 from eidolon.reply_format import SegmentDelta
 from eidolon.store import Message
 from eidolon.turn_outcome import TurnOutcome
-from tests.conftest import store_in
 from tests.fakes import FakeClock
 
 SAID = UserSaid("在吗")
@@ -35,15 +35,20 @@ class Turn:
             "turn", "producer", "mano", own_llm=False, exempt=False
         )
         self.settled: list[Result] = []
-        self.outcome = TurnOutcome(self.recording, self.settled.append)
+
+        async def settle(result: Result) -> None:
+            self.settled.append(result)
+
+        self.outcome = TurnOutcome(self.recording, settle)
 
 
 @pytest.fixture
 async def activity(tmp_path: Path) -> AsyncIterator[ActivityLog]:
-    async with store_in(tmp_path / "eidolon.db"):
-        activity = ActivityLog(tmp_path / "eidolon.db", FakeClock())
-        yield activity
-        activity.close()
+    db = Database(tmp_path / "eidolon.db")
+    try:
+        yield ActivityLog(db, FakeClock())
+    finally:
+        await db.close()
 
 
 @pytest.mark.parametrize(
@@ -60,7 +65,7 @@ async def activity(tmp_path: Path) -> AsyncIterator[ActivityLog]:
         ([SAID, DONE, SAID, DELTA], False, "success"),
     ],
 )
-def test_a_turn_turns_out_as_its_last_result_or_as_what_cut_it_short(
+async def test_a_turn_turns_out_as_its_last_result_or_as_what_cut_it_short(
     activity: ActivityLog,
     events: list[TurnEvent],
     cut_short_by_failure: bool,
@@ -70,23 +75,23 @@ def test_a_turn_turns_out_as_its_last_result_or_as_what_cut_it_short(
 
     for event in events:
         turn.outcome.see(event)
-    turn.outcome.over(cut_short_by_failure=cut_short_by_failure)
+    await turn.outcome.over(cut_short_by_failure=cut_short_by_failure)
 
     assert turn.settled == [result]
 
 
-def test_a_turn_is_settled_only_the_first_time_it_is_over(activity: ActivityLog):
+async def test_a_turn_is_settled_only_the_first_time_it_is_over(activity: ActivityLog):
     turn = Turn(activity)
 
     turn.outcome.see(SAID)
-    turn.outcome.over(cut_short_by_failure=False)
+    await turn.outcome.over(cut_short_by_failure=False)
     turn.outcome.see(DONE)
-    turn.outcome.over(cut_short_by_failure=True)
+    await turn.outcome.over(cut_short_by_failure=True)
 
     assert turn.settled == ["left"]
 
 
-def test_the_character_began_to_speak_the_first_time_she_was_said_to(activity: ActivityLog):
+async def test_the_character_began_to_speak_the_first_time_she_was_said_to(activity: ActivityLog):
     turn = Turn(activity)
 
     turn.outcome.see(SAID)

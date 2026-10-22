@@ -239,8 +239,8 @@ def build(
     speech = speech or SpeechServices(
         bailian_model, readings, hot_words(readings, characters.values(), world), routes=routes
     )
-    activity = ActivityLog(settings.database_path, clock)
-    closers.append(activity.close)
+    activity = ActivityLog(database, clock)
+    closers.append(activity.aclose)
     catalog = Catalog(database, clock, catalog_transport)
     closers.append(catalog.aclose)
     prices = Prices(database, clock, catalog)
@@ -340,8 +340,7 @@ def build(
             "%s have no photo_tag and photo_appearance in the character configuration, and"
             " send no photos", ", ".join(unphotographed),
         )
-    usage = UsageLimiter(settings.database_path, lambda: config.usage_limits, clock)
-    closers.append(usage.close)
+    usage = UsageLimiter(database, lambda: config.usage_limits, clock)
     # Users' own image generation, in the deployment's art style; in tests, on the same
     # fake as the deployer's, told apart by its key.
     own_images = OwnImageService(
@@ -350,7 +349,7 @@ def build(
     )
     closers.append(own_images.aclose)
     photos = Photos(store, config.image_generator, activity, usage, own_images.generator)
-    closers.append(photos.aclose)  # closed before the database and usage, so no photo is still kept
+    closers.append(photos.aclose)  # closed before the database, so no photo is still kept
     gifts = Gifts(
         settings.database_path, clock, lambda: config.affinity_on, affinities, characters,
         gift_catalog, random or secure_random, store,
@@ -372,6 +371,7 @@ def build(
     admissions = Admissions(
         usage, activity, own_keys, cooldown_until=affinities.cooldown_until
     )
+    closers.append(admissions.aclose)  # closed after the calls, which may leave some to settle
     calls = Calls(
         settings, engine, admissions, own_keys, lambda: config.usage_limits, speech, clock, store,
         happenings,
@@ -380,7 +380,7 @@ def build(
     affinities.on_cooldown(calls.cooled)
     engine.on_ended(calls.conversation_ended)
     reach_outs = ReachOuts(
-        settings.database_path, store, engine, characters, config, affinities, activity, usage,
+        settings.database_path, store, engine, characters, config, affinities, activity,
         calls.in_call, clock, random or secure_random,
     )
     closers.append(reach_outs.close)

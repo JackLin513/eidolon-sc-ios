@@ -914,25 +914,27 @@ class ConversationEngine:
             read_record(db, conversation.id),
             None if in_call
             else read_last_contact(db, conversation.user_id, conversation.character_id),
-            # Their own connections, till they are on the data access layer too.
+            # On a connection of its own, till it is on the data access layer too.
             self._affinity(conversation),
-            self._photo_eligibility(conversation, character, own_image) if sends_photo else None,
+            self._photo_eligibility(db, conversation, character, own_image)
+            if sends_photo else None,
             read_profile(db, conversation.user_id),
         )
 
     def _photo_eligibility(
         self,
+        db: sqlite3.Connection,
         conversation: Conversation,
         character: Character,
         own: ImageSettings | None,
     ) -> Eligibility | None:
         """What a turn with her may send, bringing the user's `own` image generation if any,
         if it could have a photo, and so the judge model is asked whether it asks for one:
-        there being the judge model to ask, typed or in a call alike."""
+        there being the judge model to ask, typed or in a call alike; read through `db`."""
         has_judge = self._retrieval is not None or self._affinity_judge is not None
         if not has_judge or self._photos is None:
             return None
-        return self._photos.eligibility(character, conversation.user_id, own)
+        return self._photos.eligibility(db, character, conversation.user_id, own)
 
     async def photo_came_out(self, photo_id: str, user_id: str) -> Photo | None:
         """The photo a turn of the user's sent (`photo`), once it has come out, sent or not,

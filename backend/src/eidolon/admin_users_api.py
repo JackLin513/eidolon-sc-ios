@@ -31,7 +31,6 @@ from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field, model_validator
-from starlette.concurrency import run_in_threadpool
 
 from eidolon.accounts import signs_in_as_admin
 from eidolon.activity import ActivityLog, RecordRow
@@ -104,13 +103,11 @@ def add_admin_user_routes(app: FastAPI, backend: Backend) -> None:
         ids = [u.id for u in users]
         active = await store.last_active(ids) if users else {}
         methods = await store.sign_in_methods_of(ids)
-        # The activity log and the limits, on connections of their own, are read on a thread.
-        taken, own_limits = await run_in_threadpool(lambda: (
-            activity.taken_since(ids, clock() - RECENT), {i: limits(i) for i in ids}
-        ))
+        taken = await activity.taken_since(ids, clock() - RECENT)
+        own_limits = await limiter.limits_of(ids)
         return [
             summary(user, methods[user.id], active.get(user.id), taken.get(user.id, {}),
-                    own_limits[user.id])
+                    asdict(own) if (own := own_limits[user.id]) else None)
             for user in users
         ]
 
@@ -134,12 +131,6 @@ def add_admin_user_routes(app: FastAPI, backend: Backend) -> None:
             "usage_24h": {"turns": taken.get("turn", 0), "calls": taken.get("call", 0)},
         }
 
-    def limits(user_id: str) -> dict | None:
-        """The user's own limits, if an admin set any; a limit not set (None) follows the
-        deployment's."""
-        own = limiter.user_limits(user_id)
-        return asdict(own) if own else None
-
     async def details(user_id: str) -> dict:
         """What a user's own page shows of them; 404 for no such user."""
         try:
@@ -148,9 +139,7 @@ def add_admin_user_routes(app: FastAPI, backend: Backend) -> None:
             raise HTTPException(404, "没有这位用户") from None
         [shown] = await described([user])
         now = clock()
-        records = await run_in_threadpool(
-            activity.of_user, user_id, now - max(USAGE_RANGES.values())
-        )
+        records = await activity.of_user(user_id, now - max(USAGE_RANGES.values()))
         return shown | {
             "banned_at": user.banned_at,
             "ban_note": user.ban_note,
@@ -208,8 +197,7 @@ def add_admin_user_routes(app: FastAPI, backend: Backend) -> None:
         """Set the user's own limits, replacing those they had; from their next turn or
         call on."""
         await details(user_id)
-        # The limits, on a connection of their own, are written on a thread.
-        await run_in_threadpool(limiter.set_user_limits, user_id, UserLimits(
+        await limiter.set_user_limits(user_id, UserLimits(
             body.turns_per_hour, body.calls_per_hour, (body.note or "").strip() or None,
             photos_per_hour=body.photos_per_hour,
         ))
@@ -219,5 +207,5 @@ def add_admin_user_routes(app: FastAPI, backend: Backend) -> None:
     async def take_off_limits(user_id: str, _: Admin) -> dict:
         """Take off the user's own limits; the deployment's hold for them again."""
         await details(user_id)
-        await run_in_threadpool(limiter.set_user_limits, user_id, None)
+        await limiter.set_user_limits(user_id, None)
         return await details(user_id)

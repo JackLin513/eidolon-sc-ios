@@ -14,8 +14,9 @@ as cut short by how the call ended. A call that connected is kept, too, for stat
 (ADR-0021).
 """
 
-from collections.abc import Callable
+import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from time import perf_counter
@@ -147,12 +148,11 @@ class CallOutcome:
     def _connected(self) -> bool:
         return self._connected_at is not None
 
-    def set_up_failed(self) -> dict | None:
+    async def set_up_failed(self) -> None:
         """The call could not be set up. It never connected; the browser learns of it from
         the answer to its offer, so there is nothing to tell it here."""
         self.ended_by("failed")
-        self._settle()
-        return None
+        await self._settle()
 
     def connected(self) -> dict | None:
         """The call has connected (GLOSSARY.md「接通」)."""
@@ -172,9 +172,9 @@ class CallOutcome:
         activity record, which goes under the call's; kept until it is settled."""
         recording = self.recording.turn(own_llm)
 
-        def settle(result: Result) -> None:
+        async def settle(result: Result) -> None:
             self._open_turns.remove(turn)
-            recording.finish(result)
+            await recording.finish(result)
 
         turn = TurnOutcome(recording, settle)
         self._open_turns.append(turn)
@@ -288,12 +288,11 @@ class CallOutcome:
             return Ending(why, None)
         return Ending(why, self._tell(reason, f"{why}，先挂断啦。想接着聊可以重新拨打。"))
 
-    def settle(self) -> dict | None:
+    async def settle(self) -> None:
         """The call is over, however it ended: settle it, once, any turn still open first."""
         for turn in list(self._open_turns):
-            turn.over(cut_short_by_failure=self.ended_by_failure)
-        self._settle()
-        return None
+            await turn.over(cut_short_by_failure=self.ended_by_failure)
+        await self._settle()
 
     def _tell(self, reason: EndReason, message: str) -> dict:
         """The `ended` message telling the browser why the call ended and, from what has
@@ -308,7 +307,7 @@ class CallOutcome:
             return "not_connected"
         return "failed" if self._failed else "success"
 
-    def _settle(self) -> None:
+    async def _settle(self) -> None:
         if self._settled:
             return
         self._settled = True
@@ -317,11 +316,13 @@ class CallOutcome:
             duration = perf_counter() - self._connected_at
         result = self._result()
         try:
-            self._admission.settle(result, duration, self._ended_by or "left")
+            await self._admission.settle(result, duration, self._ended_by or "left")
         finally:
             connected = self._connected_by_clock
             if result != "not_connected" and connected is not None and duration is not None:
                 try:
-                    self._keep(connected, duration)
+                    # On a thread: what keeps it writes, still waiting there for the
+                    # data access layer, or on connections of its own.
+                    await asyncio.to_thread(self._keep, connected, duration)
                 except Exception:  # its record is settled; stats only miss the call
                     log.exception("could not keep a call for stats")

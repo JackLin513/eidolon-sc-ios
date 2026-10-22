@@ -10,7 +10,6 @@ from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
-from starlette.concurrency import run_in_threadpool
 
 from eidolon.activity import KEPT
 from eidolon.admin_api import Admin
@@ -46,9 +45,7 @@ def add_admin_price_routes(app: FastAPI, backend: Backend) -> None:
     prices = backend.prices
 
     async def described() -> dict:
-        # The activity records, on a connection of their own, are read on a thread, and
-        # the prices described there.
-        described, without = await run_in_threadpool(described_by, await prices.pricing())
+        described, without = await described_by(await prices.pricing())
         prices.catalog.refresh_soon(missing=any(u["unit"] == "tokens" for u in without))
         return {
             "preset_as_of": (d.isoformat() if (d := preset_as_of()) else None),
@@ -57,9 +54,9 @@ def add_admin_price_routes(app: FastAPI, backend: Backend) -> None:
             "unpriced": without,
         }
 
-    def described_by(pricing: Pricing) -> tuple[list[dict], list[dict]]:
+    async def described_by(pricing: Pricing) -> tuple[list[dict], list[dict]]:
         """Every price, and the models billed without one."""
-        billed = backend.activity.billed_models(backend.clock() - KEPT)
+        billed = await backend.activity.billed_models(backend.clock() - KEPT)
         return pricing.describe(billed), unpriced(billed, pricing)
 
     @app.get("/api/admin/prices")

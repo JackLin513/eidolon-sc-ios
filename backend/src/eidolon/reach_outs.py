@@ -42,7 +42,7 @@ from datetime import datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from eidolon.activity import ActivityLog
+from eidolon.activity import ActivityLog, read_reached_out_since
 from eidolon.affinity import Affinities, Tier
 from eidolon.characters import Character
 from eidolon.clock import Clock
@@ -58,7 +58,7 @@ from eidolon.store import (
     Store,
     read_profile,
 )
-from eidolon.usage import UsageLimiter
+from eidolon.usage import read_user_limits
 
 log = logging.getLogger(__name__)
 
@@ -123,9 +123,9 @@ class _Due:
 
 class ReachOuts:
     """Her reach-outs, on the database at `path` beside the conversations of `store`, on the
-    deployer's models of `config`, each recorded in `activity`; `usage` has the users' own
-    limits, `in_call` says whether there is a call in a conversation, and `random` draws
-    when. A time that came before `clock` says it is as they begin is missed."""
+    deployer's models of `config`, each recorded in `activity`, not to users whose own
+    limit on turns is 0 (`usage`); `in_call` says whether there is a call in a conversation,
+    and `random` draws when. A time that came before `clock` says it is as they begin is missed."""
 
     def __init__(
         self,
@@ -136,7 +136,6 @@ class ReachOuts:
         config: LiveConfig,
         affinities: Affinities,
         activity: ActivityLog,
-        usage: UsageLimiter,
         in_call: Callable[[str], bool],
         clock: Clock,
         random: Random,
@@ -147,7 +146,6 @@ class ReachOuts:
         self._config = config
         self._affinities = affinities
         self._activity = activity
-        self._usage = usage
         self._in_call = in_call
         self._clock = clock
         self._random = random
@@ -229,7 +227,8 @@ class ReachOuts:
             return None
         if current.reached_out_at is not None and current.reached_out_at >= contact:
             return None
-        limits = self._usage.user_limits(conversation.user_id)
+        with self._lock:  # read on the reach-outs' own connection, on this thread
+            limits = read_user_limits(self._db, conversation.user_id)
         if limits is not None and limits.turns_per_hour == 0:
             return None
         if not self._switched_on(conversation.user_id):
@@ -267,9 +266,9 @@ class ReachOuts:
         off to the next day's morning."""
         today = now.astimezone(due.zone).date()
         began = datetime.combine(today, time(), due.zone)
-        if self._activity.reached_out_since(due.conversation.user_id, began) < (
-            self._config.reach_outs.per_day
-        ):
+        with self._lock:  # read on the reach-outs' own connection, on this thread
+            reached_out = read_reached_out_since(self._db, due.conversation.user_id, began)
+        if reached_out < self._config.reach_outs.per_day:
             return True
         tomorrow = datetime.combine(today + timedelta(days=1), NIGHT[1], due.zone)
         self._put_off(due.conversation.id, due.contact, tomorrow + MORNING * self._draw())
@@ -358,7 +357,7 @@ class ReachOuts:
             # Not logged with what was raised: a service's error may repeat what it was asked.
             log.warning("reaching out in conversation %s failed: %s", conversation.id,
                         type(e).__name__)
-            recording.finish("failed")
+            await recording.finish("failed")
             await asyncio.to_thread(
                 self._put_off, conversation.id, contact, now + self._interval(due.tier)
             )
@@ -370,9 +369,9 @@ class ReachOuts:
                 conversation.id, said, contact, self._in_call(conversation.id)
             )
         except ReachOutRefused:  # they were in touch meanwhile
-            recording.finish("rejected")
+            await recording.finish("rejected")
             return
-        recording.finish("success")
+        await recording.finish("success")
         await self._store.reach_out_recorded_as(reach_out.id, recording.row_id)
 
 

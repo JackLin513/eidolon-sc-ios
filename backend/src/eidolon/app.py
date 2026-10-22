@@ -3,7 +3,7 @@
 import asyncio
 import json
 import math
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import aclosing, asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
@@ -15,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.types import Receive, Scope, Send
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from eidolon.admission import Admission, CoolingDown
+from eidolon.admission import CoolingDown
 from eidolon.assembly import Backend
 from eidolon.call import (
     CallFailed,
@@ -41,7 +41,6 @@ from eidolon.reply_format import SegmentComplete, SegmentDelta, SpeechDelta
 from eidolon.own_keys import (
     BroughtKeys,
     CallsUnavailable,
-    TurnKeys,
     UnknownService,
     named_services,
 )
@@ -624,28 +623,19 @@ def create_app(backend: Backend) -> FastAPI:
         if body.own_llm is not None:  # transitional: see `TurnInput.own_llm`
             raise HTTPException(422, "页面已经更新，请刷新后再发")
         brought = body.own_keys.brought() if body.own_keys else BroughtKeys()
-        # On a thread: the limits and records are on connections of their own, not on the
-        # data access layer yet. Cancelled meanwhile, the thread goes on all the same: what
-        # it lets in never runs, so is settled as left.
-        admitting = asyncio.ensure_future(run_in_threadpool(
-            admissions.turn, user_id, conversation.character_id, brought
-        ))
-        try:
-            admission = await asyncio.shield(admitting)
-        except asyncio.CancelledError:
-            def never_ran(admitted: asyncio.Future[Admission[TurnKeys]]) -> None:
-                if not admitted.cancelled() and admitted.exception() is None:
-                    let_in = admitted.result()
-                    TurnOutcome(let_in.recording, let_in.settle).over(cut_short_by_failure=False)
-
-            admitting.add_done_callback(never_ran)
-            raise
+        # Cancelled meanwhile, what is let in never runs, so is settled as left.
+        admission = await admissions.admitted(
+            admissions.turn(user_id, conversation.character_id, brought),
+            lambda let_in: TurnOutcome(let_in.recording, let_in.settle).over(
+                cut_short_by_failure=False
+            ),
+        )
         outcome = TurnOutcome(admission.recording, admission.settle)
 
         async def events() -> AsyncIterator[str]:
             # Closed as the response is, so that the turn is no longer under way once the user
             # has gone (`Store.taking_turn`).
-            with outcome.running():
+            async with outcome.running():
                 async with aclosing(engine.turn(
                     conversation, body.text, admission.llms, device_timezone,
                     own_image=brought.image,
@@ -667,7 +657,7 @@ class _TurnResponse(StreamingResponse):
     """A text turn's events, `end` called once they are sent or the page is gone, even
     gone before they began, when the stream of them never runs."""
 
-    def __init__(self, events: AsyncIterator[str], end: Callable[[], None]) -> None:
+    def __init__(self, events: AsyncIterator[str], end: Callable[[], Awaitable[None]]) -> None:
         super().__init__(
             events,
             media_type="text/event-stream",
@@ -679,7 +669,7 @@ class _TurnResponse(StreamingResponse):
         try:
             await super().__call__(scope, receive, send)
         finally:
-            self._end()
+            await self._end()
 
 
 def _sse(payload: dict) -> str:

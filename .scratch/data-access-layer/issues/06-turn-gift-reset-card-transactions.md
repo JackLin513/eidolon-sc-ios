@@ -39,3 +39,10 @@
 - `/api/stats` 的 `summed_up` 里只剩 `affinities.tier` 和 `happenings.tally` 还在线程池里读库。`Store` 那三项已经在 handler 里 await 了。
 - `/api/ice-servers` 整个 `calls.ice_servers` 放在 `run_in_threadpool` 里，是因为 `refuse_while_cooling` 要读冷却。
 - 注意：`add_turn`（`engine._record`）和 `keep_call`（`CallOutcome._settle`）现在是在事件循环上经 `prepare` 等写队列。层的检查只看交出连接的线程，查不到这种等待，所以这一张必须把它们改成 await。
+
+### 票 05 交接
+
+- `ActivityLog.daily_task_done`、`achievement_unlocked`、`character_complete` 还是同步方法，经 `Database.prepare` 阻塞地写，因为 `Happenings` 在线程里调它们。`Happenings` 改成 async 后，把它们改成 async（照 `Recording.finish` 走 `ActivityLog._write`，失败只记日志），删掉 `_written_now`。它们仍然在事务之外单独写。
+- `Admissions.turn`、`call` 里 `refuse_while_cooling` 放在 `asyncio.to_thread` 里，因为它读冷却。`Affinities` 迁完后改成 await，`/api/ice-servers` 的 `run_in_threadpool` 也一起收掉。
+- `CallOutcome._settle` 里的 `keep`（`keep_call` 加 `happenings.call_ended`）现在用 `asyncio.to_thread` 跑。合成一个写任务以后，把 `KeepCall` 改成 async，直接 await，去掉 `to_thread` 和那句注释。
+

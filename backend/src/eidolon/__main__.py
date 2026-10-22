@@ -97,6 +97,7 @@ from eidolon.config import (
     mirror_cache_path_from_env,
     story_path_from_env,
 )
+from eidolon.data_access import Database
 from eidolon.identity import PROVIDER_LABELS
 from eidolon.store import NotFound, Store
 from eidolon.usage import Tally, UsageLimiter
@@ -146,7 +147,7 @@ async def _user_command(args: argparse.Namespace) -> int:
 
     db = Database(args.db or database_path_from_env())
     try:
-        await args.run(Store(db), args)
+        await args.run(db, args)
     except NotFound as e:
         print(e, file=sys.stderr)
         return 1
@@ -926,7 +927,8 @@ async def _eval_memory(args: argparse.Namespace) -> int:
     return 0
 
 
-async def _list_users(store: Store, _: argparse.Namespace) -> None:
+async def _list_users(db: Database, _: argparse.Namespace) -> None:
+    store = Store(db)
     users = await store.list_users()
     methods_of = await store.sign_in_methods_of([user.id for user in users])
     for user in users:
@@ -941,24 +943,20 @@ async def _list_users(store: Store, _: argparse.Namespace) -> None:
         print(f"{user.id}\t{user.name}\t{methods}\t创建于 {user.created_at}\t{state}")
 
 
-async def _ban_user(store: Store, args: argparse.Namespace) -> None:
-    await store.set_banned(args.user_id, datetime.now(UTC), args.note or None)
+async def _ban_user(db: Database, args: argparse.Namespace) -> None:
+    await Store(db).set_banned(args.user_id, datetime.now(UTC), args.note or None)
     print(f"已封禁用户 {args.user_id}，并让他在所有设备上退出登录；正在进行的通话会在几秒内挂断")
 
 
-async def _unban_user(store: Store, args: argparse.Namespace) -> None:
-    await store.set_banned(args.user_id, None)
+async def _unban_user(db: Database, args: argparse.Namespace) -> None:
+    await Store(db).set_banned(args.user_id, None)
     print(f"已解封用户 {args.user_id}")
 
 
-async def _user_usage(store: Store, args: argparse.Namespace) -> None:
-    await store.get_user(args.user_id)  # NotFound for no such user
+async def _user_usage(db: Database, args: argparse.Namespace) -> None:
+    await Store(db).get_user(args.user_id)  # NotFound for no such user
     # The limits play no part in looking over what was used.
-    usage = UsageLimiter(args.db or database_path_from_env(), UsageLimits(), utc_now)
-    try:
-        day = usage.last_day(args.user_id)
-    finally:
-        usage.close()
+    day = await UsageLimiter(db, UsageLimits(), utc_now).last_day(args.user_id)
     print(f"用户 {args.user_id} 最近 24 小时的用量（UTC，按小时）：")
     print("时间\t文字回合\t通话\t其中不计入限额的回合\t其中不计入限额的通话")
     for hour, tally in day.hours.items():
