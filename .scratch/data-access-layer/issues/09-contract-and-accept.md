@@ -9,7 +9,7 @@
 - [x] 各模块残留的连接、锁和包读库的 `to_thread` 都删掉。除了数据访问层、健康检查、备份导出和 `restore` 换库文件，没有别的地方再调 `connect`。
 - [x] `Backend.aclose` 里按模块倒序关连接的那一串，只剩关闭这一层（以及非库的资源）。
 - [x] `test_off_the_event_loop.py` 删掉，它由事件循环上的检查取代。
-- [ ] 本机跑一次完整测试（输出写文件、包 timeout），CI 绿。
+- [x] 本机跑一次完整测试（输出写文件、包 timeout），CI 绿。
 - [x] 按 `docs/agents/local-acceptance.md`，在本地构建版上用 Playwright 验收：发消息、打一通电话、送礼、删账号；看一眼后端日志，没有事件循环检查的 error。
 - [x] 在实现说明里列出上线前后要对比的日志：`event loop ran`、写队列和读池的 warning、checkpoint 的 error，各自用什么 grep。
 
