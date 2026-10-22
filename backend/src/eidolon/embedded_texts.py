@@ -8,8 +8,8 @@ keeps what it finished) and those of texts no longer among them are forgotten; s
 edited facts file or data file takes effect after a restart without any command and
 costs only the changed texts. The scope's vectors are then kept in memory, scaled to
 length 1 as `unit_rows`, as its texts do not change while the server runs, and a scope is
-loaded only once at a time. The
-database is read and written through the data access layer, off the event loop.
+loaded only once at a time. The database is read and written through the data access
+layer, off the event loop.
 
 The vectors were once kept in a table for the character facts and another for the work
 facts; opening the set moves their rows over and drops them, embedding nothing again.

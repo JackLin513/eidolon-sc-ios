@@ -267,14 +267,14 @@ class StoryCorpus:
         """The load under way, else one begun now."""
         if self._loading is None:
             self._loading = asyncio.create_task(self._load())
-            self._loading.add_done_callback(_told)
+            self._loading.add_done_callback(_log_failure)
         return self._loading
 
     async def _load(self) -> _Vectors:
         try:
             started = time.monotonic()
             version, passages, cast = await self._db.read(_vectors, self._embedder.model)
-            held = await asyncio.to_thread(_held, version, passages, cast)
+            held = await asyncio.to_thread(_searchable, version, passages, cast)
             self._held = held
             log.info(
                 "story vectors loaded: version %d, %d passages, %.0f MB, in %.0f ms",
@@ -449,7 +449,7 @@ def _vectors(
     return _version(db), passages, cast
 
 
-def _held(
+def _searchable(
     version: int, passages: list[tuple[str, int, bytes]], cast: list[tuple[str, str]]
 ) -> _Vectors:
     """What `_vectors` reads, to search."""
@@ -467,7 +467,7 @@ def _held(
     )
 
 
-def _told(loading: "asyncio.Task[_Vectors]") -> None:
+def _log_failure(loading: "asyncio.Task[_Vectors]") -> None:
     """Log how loading the vectors failed, which no search may be waiting to hear of."""
     if loading.cancelled():
         return

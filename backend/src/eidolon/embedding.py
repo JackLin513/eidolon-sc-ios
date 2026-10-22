@@ -315,11 +315,12 @@ def nearest(
 def unit_rows(vectors: Sequence[bytes]) -> np.ndarray:
     """The stored `vectors` as the rows of a matrix, each scaled to length 1, so that
     `nearest_rows` finds by cosine similarity what `nearest` does, without working out
-    their lengths again each time."""
+    their lengths again each time. Read-only."""
     if not vectors:
         return np.empty((0, 0), dtype=np.float32)
     matrix = np.stack([np.frombuffer(v, dtype=np.float32) for v in vectors])
     matrix /= np.linalg.norm(matrix, axis=1, keepdims=True) + 1e-12
+    matrix.flags.writeable = False  # searched on many threads at once
     return matrix
 
 
