@@ -321,6 +321,11 @@ export const zh = {
     speakFreely: "直接说话就好",
     repliesInText: "她会用文字回复",
     hearing: (text: string) => `你：${text}…`,
+    /** 通话里打出去的话，她开口前留在台词卡底部。 */
+    typed: (text: string) => `你：${text}`,
+    /** 底栏的打字键；点了底栏换成输入栏。 */
+    type: "打字",
+    closeTyping: "收起输入栏",
     micMute: "麦克风静音",
     micUnmute: "取消麦克风静音",
     hangUp: "挂断",
