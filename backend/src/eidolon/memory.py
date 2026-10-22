@@ -530,9 +530,10 @@ class Memories:
     async def kept(self, user_id: str) -> list[Memory]:
         """All of the user's memories, oldest first, as they are now: not waiting for what
         is being written down (`entries` does)."""
-        return await self._db.read(self._kept, user_id)
+        return await self._db.read(self.read_kept, user_id)
 
-    def _kept(self, db: sqlite3.Connection, user_id: str) -> list[Memory]:
+    def read_kept(self, db: sqlite3.Connection, user_id: str) -> list[Memory]:
+        """What `kept` reads, read through `db`: for a data package too."""
         rows = db.execute(
             "SELECT id, user_id, source_character_id, text, created_at, superseded_by,"
             " conversation_id FROM memories WHERE user_id = ? ORDER BY id",
@@ -545,7 +546,7 @@ class Memories:
     ) -> tuple[list[Memory], dict[int, bytes]]:
         """All of the user's memories, and their vectors stored for `model`, as they were at
         one moment."""
-        return self._kept(db, user_id), _stored_vectors(db, user_id, model)
+        return self.read_kept(db, user_id), _stored_vectors(db, user_id, model)
 
     def _memory(
         self, id: int, user_id: str, source_character_id: str, text: str, created_at: str,

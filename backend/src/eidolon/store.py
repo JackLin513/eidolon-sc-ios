@@ -691,12 +691,6 @@ class Store:
         is not deleted: `IsCurrent`. See `database.delete_conversation_data`."""
         await self._db.write(_delete_conversation, conversation)
 
-    async def whole_conversations(self, user_id: str) -> list[WholeConversation]:
-        """Every one of the user's conversations, with every character, the oldest first, and
-        all that is kept under each, for a data package; not the pictures of photos, read
-        one at a time (`photo_image`)."""
-        return await self._db.read(_whole_conversations, user_id)
-
     async def contacts(self, user_id: str) -> list[Contact]:
         """Every turn the user took and gift they gave, in what is left of their
         conversations, as stats count them (GLOSSARY.md「统计」); in no order."""
@@ -1111,8 +1105,7 @@ def _end_sessions(db: sqlite3.Connection, user_id: str) -> None:
 
 def read_profile(db: sqlite3.Connection, user_id: str) -> ProducerProfile:
     """The user's producer profile, read through `db`: what `Store.get_profile` reads, and
-    modules not yet on the data access layer on connections of their own; all defaults
-    until they save one."""
+    what other modules read in their own transactions; all defaults until they save one."""
     row = by_name(db).execute(
         "SELECT form_of_address, gender, timezone, birthday_month, birthday_day"
         " FROM producer_profiles WHERE user_id = ?",
@@ -1130,7 +1123,7 @@ def read_profile(db: sqlite3.Connection, user_id: str) -> ProducerProfile:
 
 def write_profile(db: sqlite3.Connection, user_id: str, profile: ProducerProfile) -> None:
     """Save the user's whole producer profile through `db`, in the caller's transaction: what
-    `Store.save_profile` does, and importing a data package in a transaction of its own."""
+    `Store.save_profile` does, and importing a data package in its write task."""
     birthday = profile.birthday
     db.execute(
         "INSERT INTO producer_profiles"
@@ -1200,7 +1193,10 @@ def _delete_conversation(db: sqlite3.Connection, conversation: Conversation) -> 
     delete_conversation_data(db, conversation.id)
 
 
-def _whole_conversations(db: sqlite3.Connection, user_id: str) -> list[WholeConversation]:
+def read_whole_conversations(db: sqlite3.Connection, user_id: str) -> list[WholeConversation]:
+    """Every one of the user's conversations, with every character, the oldest first, and
+    all that is kept under each, read through `db`, for a data package; not the pictures of
+    photos, read one at a time (`Store.photo_image`)."""
     named = by_name(db)
     conversations = named.execute(
         "SELECT * FROM conversations WHERE user_id = ? ORDER BY created_at, rowid",

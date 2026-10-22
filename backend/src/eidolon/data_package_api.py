@@ -25,7 +25,6 @@ from typing import cast
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
-from starlette.concurrency import run_in_threadpool
 
 from eidolon.affinity import day_of
 from eidolon.assembly import Backend
@@ -118,7 +117,7 @@ def add_data_package_routes(app: FastAPI, backend: Backend) -> None:
         path = _temporary_file()
         try:
             with packages.one_at_a_time(user_id):
-                await run_in_threadpool(packages.check_imports_left, user_id)
+                await packages.check_imports_left(user_id)
                 with path.open("wb") as file:
                     size = 0
                     async for chunk in request.stream():
