@@ -17,7 +17,8 @@
 1. fork 本仓库，在 fork 的 **Settings → General** 里把仓库名改掉，不再叫 `eidolon-sc`。改名后旧地址会自动跳转，已有的 clone 照常能推拉。
 2. 在自己的仓库里做你的玩法。
 3. 用 [玩法仓库登记](https://github.com/Sallyn0225/eidolon-sc/issues/new?template=fork_showcase.yml) 模板开一个 issue，填上仓库地址、项目名、署名、玩法简介和内容分级。
-4. 收录后 issue 会关闭。之后地址变了、想更新简介或不想再被列出，在原 issue 下留言。
+4. 开好后会自动检查一遍：仓库能不能打开、是不是公开、改没改名，结果写在 issue 的评论里。没通过的话改好后直接编辑 issue，会再查一遍。
+5. 维护者看过后收录，issue 会自动关闭。之后地址变了、想更新简介或不想再被列出，在原 issue 下留言。
 
 ## fork 前要知道的
 
