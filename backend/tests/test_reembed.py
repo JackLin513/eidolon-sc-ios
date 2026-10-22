@@ -145,7 +145,7 @@ async def test_everything_is_embedded_again_and_then_the_old_vectors_dropped(
     assert "W.I.N.G.編「第1話」" in embedder.titles
     async with corpus_in(deployment.database, embedder) as corpus:
         [park] = await corpus.search("鳩", "mano", 1)
-    assert park.episode.id == "produce_events/100100101"
+    assert park.episode_id == "produce_events/100100101"
 
 
 async def test_a_second_run_has_nothing_to_do(deployment: Deployment):
@@ -302,7 +302,7 @@ async def test_an_import_meanwhile_is_not_overwritten(deployment: Deployment):
 
     async with corpus_in(deployment.database, embedder) as corpus:
         [found] = await corpus.search("優勝", "mano", 1)
-    assert found.episode.id == EPISODES[0].id and "優勝しました" in found.text
+    assert found.episode_id == EPISODES[0].id and "優勝しました" in found.text
     assert deployment.vectors("episode_passages") == {NEW: 5}
 
 

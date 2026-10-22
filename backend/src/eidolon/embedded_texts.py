@@ -6,8 +6,9 @@ The first time a scope is searched, the vectors stored for it are read, those of
 texts not stored yet are embedded (in batches, each committed, so an interrupted run
 keeps what it finished) and those of texts no longer among them are forgotten; so an
 edited facts file or data file takes effect after a restart without any command and
-costs only the changed texts. The scope's vectors are then kept in memory, as its texts
-do not change while the server runs, and a scope is loaded only once at a time. The
+costs only the changed texts. The scope's vectors are then kept in memory, scaled to
+length 1 as `unit_rows`, as its texts do not change while the server runs, and a scope is
+loaded only once at a time. The
 database is read and written through the data access layer, off the event loop.
 
 The vectors were once kept in a table for the character facts and another for the work
@@ -17,10 +18,13 @@ facts; opening the set moves their rows over and drops them, embedding nothing a
 import asyncio
 import sqlite3
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
+
+import numpy as np
 
 from eidolon.corpus import REEMBED_BATCH
 from eidolon.data_access import Database
-from eidolon.embedding import Document, Embedder, nearest, to_blob
+from eidolon.embedding import Document, Embedder, nearest_rows, to_blob, unit_rows
 
 WORK_SCOPE = "work"
 """The scope of the work facts, shared by every character."""
@@ -43,11 +47,20 @@ def character_scope(character_id: str) -> str:
     return f"{CHARACTER_SCOPES}:{character_id}"
 
 
+@dataclass(frozen=True)
+class _Vectors:
+    """A scope's vectors, as `unit_rows`."""
+
+    rows: dict[str, int]
+    """Each text's row."""
+    matrix: np.ndarray
+
+
 class EmbeddedTexts:
     def __init__(self, db: Database, embedder: Embedder) -> None:
         self._db = db
         self._embedder = embedder
-        self._loaded: dict[str, dict[str, bytes]] = {}
+        self._loaded: dict[str, _Vectors] = {}
         self._loading: dict[str, asyncio.Lock] = {}
         db.prepare(_create)
 
@@ -62,11 +75,10 @@ class EmbeddedTexts:
         """The positions in `documents` (the scope's texts, all of them) of those most
         similar to a query embedded with this set's embedder, best first, with their
         similarity; only those at the positions `among`, if given."""
-        vectors = await self._load(scope, documents)
+        vectors, _ = await self._vectors(scope, documents)
         positions = range(len(documents)) if among is None else among
-        best = await asyncio.to_thread(
-            nearest, [vectors[i] for i in positions], query_vector, limit
-        )
+        rows = np.array([vectors.rows[documents[i].text] for i in positions], dtype=np.intp)
+        best = await asyncio.to_thread(nearest_rows, vectors.matrix, query_vector, limit, rows)
         return [(positions[i], similarity) for i, similarity in best]
 
     async def embed_missing(
@@ -82,17 +94,12 @@ class EmbeddedTexts:
         character's) not from this set's embedder; returns how many there were."""
         return await self._db.write(_forget_other_models, scopes, self._embedder.model)
 
-    async def _load(self, scope: str, documents: Sequence[Document]) -> list[bytes]:
-        """The vector of each of `documents`, in order."""
-        vectors, _ = await self._vectors(scope, documents)
-        return [vectors[d.text] for d in documents]
-
     async def _vectors(
         self, scope: str, documents: Sequence[Document], batch: int = REEMBED_BATCH
-    ) -> tuple[dict[str, bytes], int]:
-        """The vectors of the scope's texts, by text, embedding those not yet stored (in
-        batches, each committed); and how many it embedded. Loaded once per scope, then
-        kept in memory."""
+    ) -> tuple[_Vectors, int]:
+        """The vectors of the scope's texts, embedding those not yet stored (in batches,
+        each committed); and how many it embedded. Loaded once per scope, then kept in
+        memory."""
         async with self._loading.setdefault(scope, asyncio.Lock()):
             if (loaded := self._loaded.get(scope)) is not None:
                 return loaded, 0
@@ -110,8 +117,13 @@ class EmbeddedTexts:
                 ]
                 await self._db.write(_save, rows)
                 stored.update((text, blob) for _, text, _, blob in rows)
-            self._loaded[scope] = stored
-            return stored, len(missing)
+            vectors = await asyncio.to_thread(_vectors_of, stored)
+            self._loaded[scope] = vectors
+            return vectors, len(missing)
+
+
+def _vectors_of(stored: dict[str, bytes]) -> _Vectors:
+    return _Vectors({text: row for row, text in enumerate(stored)}, unit_rows(list(stored.values())))
 
 
 def _create(db: sqlite3.Connection) -> None:

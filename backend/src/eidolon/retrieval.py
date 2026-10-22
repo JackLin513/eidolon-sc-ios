@@ -163,7 +163,7 @@ class StoryReferences:
         self, query_vector: Sequence[float], character: Character, limit: int
     ) -> list[Reference]:
         passages = await self.corpus.search_by_vector(query_vector, character.id, limit)
-        return [Reference(self.kind, p.text, p.episode.id, p.score) for p in passages]
+        return [Reference(self.kind, p.text, p.episode_id, p.score) for p in passages]
 
     async def embed_missing(self, batch: int, progress: Callable[[int], None]) -> int:
         return await self.corpus.embed_missing(batch, progress)

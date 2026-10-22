@@ -127,17 +127,17 @@ async def test_search_only_finds_episodes_the_character_is_cast_in(
     await importer.run(story)
 
     mano = await importer.corpus.search("鳩の話", "mano", limit=1)
-    assert [p.episode.id for p in mano] == ["produce_events/100100101"]
+    assert [p.episode_id for p in mano] == ["produce_events/100100101"]
     assert "公園で鳩と一緒に歌っていました" in mano[0].text
 
     kogane = await importer.corpus.search("鳩の話", "kogane")
-    assert "produce_events/100100101" not in {p.episode.id for p in kogane}
-    assert {p.episode.id for p in kogane} == {"produce_events/201100401"}
+    assert "produce_events/100100101" not in {p.episode_id for p in kogane}
+    assert {p.episode_id for p in kogane} == {"produce_events/201100401"}
 
     # Hiori's event is about a photo shoot in the park, but no configured character is in it.
     for character in ("mano", "kogane"):
         hits = await importer.corpus.search("公園で写真", character)
-        assert "game_event_communications/400100401" not in {p.episode.id for p in hits}
+        assert "game_event_communications/400100401" not in {p.episode_id for p in hits}
 
 
 async def test_adding_a_characters_speaker_name_casts_her_on_the_next_import(
@@ -149,7 +149,7 @@ async def test_adding_a_characters_speaker_name_casts_her_on_the_next_import(
     await importer.run(story)
 
     hits = await importer.corpus.search("公園で写真", "hiori")
-    assert [p.episode.id for p in hits] == ["game_event_communications/400100401"]
+    assert [p.episode_id for p in hits] == ["game_event_communications/400100401"]
 
 
 async def catalog(importer: Importer, character_id: str) -> list[tuple[str, str, list[str]]]:
@@ -223,7 +223,7 @@ async def test_a_failure_ending_left_from_an_earlier_import_is_removed(
     assert await importer.corpus.get("produce_events/600100102") is None
     assert report.removed == 1
     assert "produce_events/600100102" not in {
-        p.episode.id for p in await importer.corpus.search("負け", "mano")
+        p.episode_id for p in await importer.corpus.search("負け", "mano")
     }
 
 
