@@ -317,7 +317,7 @@ def build(
             lambda: config.rerank_thresholds.references,
         )
         memories = Memories(
-            settings.database_path, characters, clock, embedder=embedder, reranker=reranker,
+            database, characters, clock, embedder=embedder, reranker=reranker,
             min_relevance=lambda: config.rerank_thresholds.memories,
         )
     else:
@@ -327,7 +327,7 @@ def build(
             " SILICONFLOW_API_KEY for reranking, and the judge model's (JEV_API_KEY, or"
             " CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID with JUDGE_PROVIDER=cloudflare)"
         )
-        memories = Memories(settings.database_path, characters, clock)
+        memories = Memories(database, characters, clock)
     closers.append(memories.aclose)  # closed before the clients, so what it writes down can finish
     titles = Titles(store, characters, gift_catalog)
     closers.append(titles.aclose)  # likewise, so what it is naming can finish
@@ -375,10 +375,9 @@ def build(
     engine.on_cooled(calls.cooled)
     engine.on_ended(calls.conversation_ended)
     reach_outs = ReachOuts(
-        settings.database_path, store, engine, characters, config, affinities, activity,
+        database, store, engine, characters, config, affinities, activity,
         calls.in_call, clock, random or secure_random,
     )
-    closers.append(reach_outs.close)
     config.on_change(gifts.notice)
     return Backend(
         settings=settings,

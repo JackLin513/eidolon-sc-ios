@@ -27,3 +27,9 @@
 - `DataPackages.export` 现在先 await `whole_conversations`。照片的图片在线程里一张一张读：`asyncio.run_coroutine_threadsafe(store.photo_image(…), loop)`。线程里直接读库的只剩 `memories.kept`。
   - 改成一个读任务时，可以用模块级事务体 `store._whole_conversations`、`_photo_image`。也可以考虑图片照旧一张一张读，免得一次全读进内存。
 - `picture_of` 的 `.result()` 没设超时：事件循环在导出中途停掉时，打包线程会一直等。重做时改掉。
+
+### 票 07 交接
+
+- `Memories.kept` 已经是 async（读任务）。`export` 现在先 await 它，再把记忆作为参数交给 `_export` 在线程里打包；`_export` 不再收 `user_id`。改成一个读任务读出全部数据时，可以把 `Memories._kept` 也放进去，它是 `(db, user_id)` 形状的事务体。
+- `embed_carried` → `embed_missing` 的读写已经走层（读任务 `_unembedded`、写任务 `_store_embedded`）。验收项「补向量本身的读写经过这一层」已经满足，只剩「导入返回后在循环上启动」，现在本来就是这样。
+- `add_carried(db, user_id, carried)` 的形状没变，导入的写任务里照样传同一条连接调它。

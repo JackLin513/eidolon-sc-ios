@@ -25,7 +25,6 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import (
     BaseModel, Field, Secret, StrictBool, StringConstraints, field_validator, model_validator,
 )
-from starlette.concurrency import run_in_threadpool
 
 from eidolon.accounts import SignInRefused, signs_in_as_admin
 from eidolon.activity import host
@@ -365,8 +364,7 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
         sponsor = await backend.sponsor.state()
         user = await store.get_user(user_id)
         methods = await store.sign_in_methods(user_id)
-        # The reach-outs, on a connection of their own, are read on a thread.
-        reach_outs = await run_in_threadpool(backend.reach_outs.switch_of, user_id)
+        reach_outs = await backend.reach_outs.switch_of(user_id)
         return {
             "id": user_id,
             "name": user.name,
@@ -381,11 +379,11 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
         }
 
     @app.put("/api/account/reach-outs", status_code=204)
-    def switch_reach_outs(body: ReachOutSwitch, user_id: UserId) -> None:
+    async def switch_reach_outs(body: ReachOutSwitch, user_id: UserId) -> None:
         """Turn the user's own switch for reach-outs on or off, for all the characters; 409
         where the deployer has reach-outs off."""
         try:
-            backend.reach_outs.switch(user_id, body.on)
+            await backend.reach_outs.switch(user_id, body.on)
         except ReachOutsOff:
             raise HTTPException(409, "搭话没有开放") from None
 

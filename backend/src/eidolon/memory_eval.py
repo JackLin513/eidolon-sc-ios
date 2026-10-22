@@ -584,7 +584,7 @@ class _Scratch:
         self.user = ""
         """The made-up user, once `start_with` has made them."""
         self.memories = Memories(
-            path, characters, lambda: NOW, embedder=services.embedder,
+            self._database, characters, lambda: NOW, embedder=services.embedder,
             reranker=services.reranker, min_relevance=lambda: services.rerank_thresholds.memories,
         )
         self._conversations: dict[str, Conversation] = {}

@@ -80,7 +80,7 @@ async def begin(memories: Memories, conversation: Conversation) -> MemoryTurn:
 
 
 @pytest.fixture
-async def make_memories(tmp_path: Path, world: World) -> AsyncIterator[MemoriesFactory]:
+async def make_memories(world: World) -> AsyncIterator[MemoriesFactory]:
     """Memories on the world's database; with a background model, embedder and reranker
     unless told otherwise (`off=True`)."""
     made: list[Memories] = []
@@ -93,11 +93,11 @@ async def make_memories(tmp_path: Path, world: World) -> AsyncIterator[MemoriesF
         reranker: FakeReranker | None = None,
     ) -> Memories:
         memories = (
-            Memories(tmp_path / "eidolon.db", world.characters, lambda: NOW)
+            Memories(world.db, world.characters, lambda: NOW)
             if off
             else writing_with(
                 Memories(
-                    tmp_path / "eidolon.db", world.characters, lambda: NOW,
+                    world.db, world.characters, lambda: NOW,
                     embedder=embedder or FakeEmbedder(),
                     reranker=reranker or FakeReranker("制作人"),
                 ),
@@ -159,14 +159,14 @@ async def test_a_memory_told_to_the_character_herself_is_not_hearsay(
 
 
 async def test_a_memory_told_to_a_character_since_removed_is_hearsay_from_another_idol(
-    tmp_path: Path, world: World, make_memories: MemoriesFactory
+    world: World, make_memories: MemoriesFactory
 ):
     earlier = make_memories(memorized(CAT))
     await tell(earlier, world, await world.conversation("mano"), "我家的猫叫小白哦")
     await earlier.entries(world.producer)  # written down
     without_mano = {"kogane": world.characters["kogane"]}
     memories = Memories(
-        tmp_path / "eidolon.db", without_mano, lambda: NOW,
+        world.db, without_mano, lambda: NOW,
         embedder=FakeEmbedder(), reranker=FakeReranker("制作人"),
     )
 
@@ -638,7 +638,7 @@ async def test_memories_kept_before_superseding_all_hold(tmp_path: Path, world: 
         )
     db.close()
     memories = Memories(
-        tmp_path / "eidolon.db", world.characters, lambda: NOW,
+        world.db, world.characters, lambda: NOW,
         embedder=FakeEmbedder(), reranker=FakeReranker("制作人"),
     )
 

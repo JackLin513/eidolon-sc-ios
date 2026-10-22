@@ -638,6 +638,7 @@ class DataPackages:
             await self._store.whole_conversations(user_id)
             if "conversations" in categories else []
         )
+        memories = await self._memories.kept(user_id) if "memories" in categories else []
         loop = asyncio.get_running_loop()
 
         def picture_of(photo_id: str) -> bytes | None:
@@ -646,18 +647,16 @@ class DataPackages:
                 self._store.photo_image(photo_id, user_id), loop
             ).result()
 
-        # The memories, on a connection of their own, are read on a thread, and the package
-        # written there.
         await asyncio.to_thread(
-            self._export, user_id, categories, profile, conversations, picture_of, to
+            self._export, categories, profile, conversations, memories, picture_of, to
         )
 
     def _export(
         self,
-        user_id: str,
         categories: list[Category],
         profile: ProducerProfile | None,
         conversations: list[WholeConversation],
+        memories: list[Memory],
         picture_of: Callable[[str], bytes | None],
         to: Path,
     ) -> None:
@@ -677,7 +676,7 @@ class DataPackages:
         if "memories" in categories:
             data.memories = [
                 PackagedMemory.of(m, "conversations" in categories)
-                for m in self._memories.kept(user_id)
+                for m in memories
             ]
             counts["memories"] = len(data.memories)
         now = self._clock()

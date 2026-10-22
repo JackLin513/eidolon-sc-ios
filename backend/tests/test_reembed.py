@@ -79,21 +79,21 @@ class Deployment:
         db = Database(self.database)
         await CharacterFacts(db, embedder, [self.mano]).embed_missing()
         await db.close()
-        memories = writing_with(
-            Memories(
-                self.database, self.characters, lambda: NOW, embedder=embedder,
-                reranker=FakeReranker(),
-            ),
-            FakeBackgroundLLM(memorized(CAT, TRIP)),
-        )
         db = Database(self.database)
         try:
             world = await World.made(db, self.characters)
+            memories = writing_with(
+                Memories(
+                    db, self.characters, lambda: NOW, embedder=embedder,
+                    reranker=FakeReranker(),
+                ),
+                FakeBackgroundLLM(memorized(CAT, TRIP)),
+            )
             await tell(memories, world, await world.conversation("mano"), "我家的猫叫小白，下个月去北海道")
             await memories.entries(world.producer)  # written down, and embedded
+            await memories.aclose()
         finally:
             await db.close()
-        await memories.aclose()
 
     def settings(self) -> Settings:
         return Settings(
@@ -185,13 +185,15 @@ async def test_an_interrupted_run_keeps_what_it_finished_and_drops_nothing(
 
 async def test_deleted_memories_are_not_embedded(deployment: Deployment):
     await deployment.embed_everything_with(OLD)
-    memories = Memories(deployment.database, deployment.characters, lambda: NOW)
     async with store_in(deployment.database) as store:
         producer = await store.first_user_named("producer")
     assert producer is not None
+    db = Database(deployment.database)
+    memories = Memories(db, deployment.characters, lambda: NOW)
     [trip, cat] = await memories.entries(producer.id)
     await memories.delete(cat.user_id, cat.id)
     await memories.aclose()
+    await db.close()
     embedder = FakeEmbedder(NEW)
 
     report = await reembed(deployment.database, deployment.characters.values(), embedder)

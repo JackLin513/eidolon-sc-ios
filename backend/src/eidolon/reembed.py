@@ -66,7 +66,7 @@ async def reembed(
     by_id = {c.id: c for c in characters}
     # Passages missing vectors are what this is for; no need to warn of them.
     db = Database(path)
-    memories = Memories(path, by_id, utc_now, embedder=embedder)
+    memories = Memories(db, by_id, utc_now, embedder=embedder)
     try:
         sources = open_reference_sources(db, embedder, by_id.values(), world, warn=False)
         everything: list[Reembeddable] = [*sources.embedded(), memories]

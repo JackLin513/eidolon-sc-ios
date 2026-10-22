@@ -8,11 +8,11 @@
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 两个模块不再自己开连接、不再持有锁，碰库的公开方法改成 async。
-- [ ] 记忆和搭话里包读库的 `to_thread` 删掉；最近邻搜索这类纯 CPU 的活照样放在线程里。
-- [ ] `add_reach_out` 改成接收「她在不在通话里」这个参数，由调用方先在循环上查好。事务体里不再调 `Calls.in_call`。
+- [x] 两个模块不再自己开连接、不再持有锁，碰库的公开方法改成 async。
+- [x] 记忆和搭话里包读库的 `to_thread` 删掉；最近邻搜索这类纯 CPU 的活照样放在线程里。
+- [x] `add_reach_out` 改成接收「她在不在通话里」这个参数，由调用方先在循环上查好。事务体里不再调 `Calls.in_call`。
 - [ ] 受影响的测试通过，CI 绿。
 
 ## Comments
@@ -45,3 +45,18 @@
 - `ReachOuts._tier` 现在先看 `affinities.on`（在 `_due` 所在的线程里看），再在 `ReachOuts` 自己的连接上、拿着它的锁调事务体 `affinities.read_status(self._db, …)`。
   - 迁移时，把 `read_status` 放进 `_due` 的读任务里，和 `read_profile`、`read_user_limits`、`read_reached_out_since` 一起读。
   - `affinities.on` 改到循环上、交读任务之前看，作为参数传进去。ADR-0028 要求事务体里不读循环那边的状态。
+
+### 实现说明（票 07）
+
+- `Memories(db: Database, …)`、`ReachOuts(db: Database, …)`：不再收库文件路径，建表和迁移经 `db.prepare(_open)`；两个模块都没有自己的连接和锁了。`ReachOuts.close` 删掉，`Memories.aclose` 只等还在写的记忆，不再关连接。
+- `Memories`：
+  - `kept` 改成 async（读任务），`entries`、`for_reaching_out`、`_shown` 跟着 await。
+  - 删除、清空、整理（`_add`）、存向量、`embed_missing` 的读和写、`forget_other_models` 都是读任务或写任务。事务体大多放在模块级；`_add`、`_kept` 留在类里，因为要用 `self._characters` 拼出 `Memory`。
+  - 判断题：`_nearest` 把「全部记忆」和「已存的向量」合成一个读任务（`_kept_with_vectors`），两者是同一份快照。`_vectors` 改成由调用方传入已存的向量。
+  - `nearest` 照样在线程里跑。
+- `ReachOuts`：
+  - `_due`、`_within_the_day` 改成 async，在循环上跑。限额、开关、好感度（只在 `affinities.on` 时读，`on` 在循环上看好再传进去）、日程、档案合成一个读任务（`_standing`）。`_talking` 回到循环上。
+  - 日程按「先读后写」：读任务里读到的日程是这次联系的，就直接用；不是，就在循环上抽好位置，交写任务 `_schedule_for`，写任务里再确认一次。晨间位置、顺延各是一个写任务。检查的先后顺序和什么时候抽随机数都和原来一样。
+  - `switch_of`、`switch` 改成 async。`/api/account` 去掉了 `run_in_threadpool`，`PUT /api/account/reach-outs` 改成 `async def`。
+- `add_reach_out` 接收 `in_call` 这一项票 04 已经做了，这里只勾掉。
+- `DataPackages.export` 先 await `memories.kept`，再把记忆交给线程打包，因为 `kept` 改成 async 了。
