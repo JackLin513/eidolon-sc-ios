@@ -115,7 +115,7 @@ class Admissions:
         usage: UsageLimiter,
         activity: ActivityLog,
         own_keys: OwnKeys,
-        cooldown_until: Callable[[str, str], datetime | None],
+        cooldown_until: Callable[[str, str], Awaitable[datetime | None]],
     ) -> None:
         """`cooldown_until` tells when the cooldown a character (by id) is in with a user
         ends, None if she is in none or affinity is off."""
@@ -126,10 +126,10 @@ class Admissions:
         self._settling: set[asyncio.Future[Any]] = set()
         """What was let in as no one waited for it any more, till it is settled."""
 
-    def refuse_while_cooling(self, user_id: str, character_id: str) -> None:
+    async def refuse_while_cooling(self, user_id: str, character_id: str) -> None:
         """Raise CoolingDown if the character is in a cooldown with the user: as each turn
         or call begins, before anything else is asked, and before a call is placed."""
-        until = self._cooldown_until(user_id, character_id)
+        until = await self._cooldown_until(user_id, character_id)
         if until is not None:
             raise CoolingDown(until)
 
@@ -140,8 +140,7 @@ class Admissions:
         Raises CoolingDown, recording nothing, while she is in a cooldown with them;
         OverLimit when they have no turns left this hour; then, and whatever else fails before it
         begins, it is recorded and takes no use of the limit."""
-        # On a thread: affinity is on a connection of its own, not on the data access layer.
-        await asyncio.to_thread(self.refuse_while_cooling, user_id, character_id)
+        await self.refuse_while_cooling(user_id, character_id)
         return await self._admit("turn", user_id, character_id, self._own_keys.for_turn(brought))
 
     async def call(
@@ -152,7 +151,7 @@ class Admissions:
         before it begins, it is recorded and takes no use of the limit. Raises
         CallsUnavailable, recording nothing, when the deployment has no keys for calls and
         neither does the call bring them; CoolingDown as a turn does."""
-        await asyncio.to_thread(self.refuse_while_cooling, user_id, character_id)
+        await self.refuse_while_cooling(user_id, character_id)
         return await self._admit("call", user_id, character_id, self._own_keys.for_call(brought))
 
     async def admitted(

@@ -166,7 +166,10 @@ class CallUnderTest:
             call = Call(self.conversation, mano, admission.llms, muted, "standard")
             outcome = CallOutcome(
                 admission, limits, backend.clock,
-                partial(backend.store.keep_call, self.conversation.id),
+                partial(
+                    backend.happenings.call_ended,
+                    self.conversation.id, self.conversation.user_id, "mano",
+                ),
             )
             turns = CallTurns(
                 backend.engine, backend.store, call, outcome, follow_on_timeout,
@@ -198,7 +201,10 @@ class CallUnderTest:
             call = Call(self.conversation, mano, admission.llms, False, "standard")
             outcome = CallOutcome(
                 admission, CallLimits(), backend.clock,
-                partial(backend.store.keep_call, self.conversation.id),
+                partial(
+                    backend.happenings.call_ended,
+                    self.conversation.id, self.conversation.user_id, "mano",
+                ),
             )
             turns = CallTurns(
                 backend.engine, backend.store, call, outcome, SONIOX_FOLLOW_ON_TIMEOUT

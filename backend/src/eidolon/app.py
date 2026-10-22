@@ -11,7 +11,6 @@ from typing import Annotated
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
-from starlette.concurrency import run_in_threadpool
 from starlette.types import Receive, Scope, Send
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -419,11 +418,7 @@ def create_app(backend: Backend) -> FastAPI:
         if conversation:
             into = await conversation_to_call(conversation, user_id)
             character_id = into.character_id
-        # On a thread: her cooldown is read on a connection of its own, not on the data
-        # access layer yet.
-        return await run_in_threadpool(
-            calls.ice_servers, user_id, named_services(own), character_id
-        )
+        return await calls.ice_servers(user_id, named_services(own), character_id)
 
     @app.post("/api/offer")
     async def offer(
@@ -528,12 +523,12 @@ def create_app(backend: Backend) -> FastAPI:
         return _picture(character.background, request)
 
     @app.get("/api/characters/{character_id}/affinity")
-    def affinity(character_id: str, user_id: UserId) -> dict | None:
+    async def affinity(character_id: str, user_id: UserId) -> dict | None:
         """Her affinity with the user now, by tier only, and when the cooldown ends if she
         is in one; null while affinity is off."""
         if character_id not in characters:
             raise HTTPException(404, "角色不存在")
-        status = backend.affinities.status(user_id, character_id)
+        status = await backend.affinities.status(user_id, character_id)
         return status and status.shown()
 
     @app.get("/api/memories")

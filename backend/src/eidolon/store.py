@@ -702,14 +702,6 @@ class Store:
         conversations, as stats count them (GLOSSARY.md「统计」); in no order."""
         return await self._db.read(_contacts, user_id)
 
-    def keep_call(self, conversation_id: str, connected_at: datetime, duration_s: float) -> bool:
-        """Keep a call in the conversation that connected at `connected_at` and lasted
-        `duration_s` seconds once it had, for stats; not into its record. It answers her
-        latest reach-out in it (`_answer_reach_out`). Nothing is kept if the conversation is
-        gone meanwhile, deleted with the user, say. Whether it was kept. Waited for here,
-        blocking, as the call is settled where nothing awaits."""
-        return self._db.prepare(_keep_call, conversation_id, connected_at, duration_s)
-
     async def kept_calls(self, user_id: str) -> list[KeptCall]:
         """Every call kept in what is left of the user's conversations; in no order."""
         return await self._db.read(_kept_calls, user_id)
@@ -727,29 +719,6 @@ class Store:
         and whether it has a reach-out the user has not seen (GLOSSARY.md「没看过的搭话」); for
         the conversation list."""
         return await self._db.read(_latest_conversations, user_id)
-
-    def add_turn(
-        self,
-        conversation_id: str,
-        text: str,
-        reply: list[Segment],
-        affinity: Change | None = None,
-        said_at: str | None = None,
-        typed: Typed | None = None,
-        ends: bool = False,
-        photo: NewPhoto | None = None,
-    ) -> Message:
-        """Record the user's input, said at `said_at` (as `timestamp` gives it; now by
-        default), and the character's reply together, with how the turn changed her
-        affinity, if it did, and for a typed turn what it came to (`typed`); returns the
-        reply. The photo she sends with it, if any, is recorded being generated. Should she
-        end the conversation after it (`ends`), that is recorded with it, after it
-        (`ended`). It answers her latest reach-out in it (`_answer_reach_out`). Into a
-        conversation she has ended already, nothing is recorded: `ConversationEnded`.
-        Waited for here, blocking, as her affinity is changed with it inside a lock."""
-        return self._db.prepare(
-            _add_turn, conversation_id, text, reply, affinity, said_at, typed, ends, photo
-        )
 
     async def finish_photo(
         self, photo_id: str, image: bytes | None, reason: PhotoFailure | None
@@ -773,23 +742,6 @@ class Store:
         """The picture of the photo, sent, in one of the user's conversations; None if there
         is none such."""
         return await self._db.read(_photo_image, photo_id, user_id)
-
-    def add_gift(
-        self,
-        user_id: str,
-        character_id: str,
-        gift_id: str,
-        liked: bool,
-        affinity: Change | None,
-    ) -> Conversation:
-        """Record the user's giving the character the gift, now, whether she liked it, with
-        how it changed her affinity, if it did; returns the conversation it is recorded in:
-        her newest, her current one (GLOSSARY.md「当前对话」), if she has not ended it, else
-        one begun for it, which is her current one from then on. Where it goes is chosen in
-        the same transaction it is recorded in, so it never goes into one she ends
-        meanwhile. Waited for here, blocking, as her affinity is changed with it inside a
-        lock."""
-        return self._db.prepare(_add_gift, user_id, character_id, gift_id, liked, affinity)
 
     async def hang_up(self, conversation_id: str) -> ConversationEvent:
         """Record that she hung up on the user in the conversation, now (`hung_up`), unless
@@ -1329,9 +1281,14 @@ def _contacts(db: sqlite3.Connection, user_id: str) -> list[Contact]:
     ]
 
 
-def _keep_call(
+def keep_call(
     db: sqlite3.Connection, conversation_id: str, connected_at: datetime, duration_s: float
 ) -> bool:
+    """Keep a call in the conversation that connected at `connected_at` and lasted
+    `duration_s` seconds once it had, for stats, through `db`, in the transaction what it
+    comes to is kept in (`Happenings.call_ended`); not into its record. It answers her
+    latest reach-out in it (`_answer_reach_out`). Nothing is kept if the conversation is
+    gone meanwhile, deleted with the user, say. Whether it was kept."""
     kept = db.execute(
         "INSERT INTO calls (conversation_id, connected_at, duration_s)"
         " SELECT id, ?, ? FROM conversations WHERE id = ?",
@@ -1426,17 +1383,25 @@ def _last(db: sqlite3.Connection, conversation_id: str) -> Recorded | None:
     return latest if after else message
 
 
-def _add_turn(
+def add_turn(
     db: sqlite3.Connection,
     conversation_id: str,
     text: str,
     reply: list[Segment],
-    affinity: Change | None,
-    said_at: str | None,
-    typed: Typed | None,
-    ends: bool,
-    photo: NewPhoto | None,
+    affinity: Change | None = None,
+    said_at: str | None = None,
+    typed: Typed | None = None,
+    ends: bool = False,
+    photo: NewPhoto | None = None,
 ) -> Message:
+    """Record the user's input, said at `said_at` (as `timestamp` gives it; now by
+    default), and the character's reply together, through `db`, in the transaction the
+    turn is recorded in with what it changes (`ConversationEngine`), with how the turn
+    changed her affinity, if it did, and for a typed turn what it came to (`typed`);
+    returns the reply. The photo she sends with it, if any, is recorded being generated.
+    Should she end the conversation after it (`ends`), that is recorded with it, after it
+    (`ended`). It answers her latest reach-out in it (`_answer_reach_out`). Into a
+    conversation she has ended already, nothing is recorded: `ConversationEnded`."""
     if read_ended(db, conversation_id) is not None:
         raise ConversationEnded()
     _insert_message(db, conversation_id, "user", text=text, created_at=said_at, typed=typed)
@@ -1494,7 +1459,7 @@ def _photo_image(db: sqlite3.Connection, photo_id: str, user_id: str) -> bytes |
     return row[0] if row else None
 
 
-def _add_gift(
+def add_gift(
     db: sqlite3.Connection,
     user_id: str,
     character_id: str,
@@ -1502,6 +1467,12 @@ def _add_gift(
     liked: bool,
     affinity: Change | None,
 ) -> Conversation:
+    """Record the user's giving the character the gift, now, whether she liked it, with how
+    it changed her affinity, if it did, through `db`, in the transaction the gift is given
+    in (`Happenings.give`); returns the conversation it is recorded in: her newest, her
+    current one (GLOSSARY.md「当前对话」), if she has not ended it, else one begun for it,
+    which is her current one from then on. Where it goes is chosen in the same transaction
+    it is recorded in, so it never goes into one she ends meanwhile."""
     hers = _conversations(db, user_id, character_id)
     conversation = hers[0] if hers and read_ended(db, hers[0].id) is None else None
     if conversation is None:

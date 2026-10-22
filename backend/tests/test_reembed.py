@@ -86,10 +86,13 @@ class Deployment:
             ),
             FakeBackgroundLLM(memorized(CAT, TRIP)),
         )
-        async with store_in(self.database) as store:
-            world = await World.made(store, self.characters)
+        db = Database(self.database)
+        try:
+            world = await World.made(db, self.characters)
             await tell(memories, world, await world.conversation("mano"), "我家的猫叫小白，下个月去北海道")
             await memories.entries(world.producer)  # written down, and embedded
+        finally:
+            await db.close()
         await memories.aclose()
 
     def settings(self) -> Settings:

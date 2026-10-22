@@ -153,9 +153,7 @@ class Database:
 
     def prepare(self, body: Callable[[sqlite3.Connection, Unpack[A]], T], *args: Unpack[A]) -> T:
         """`body` written as `write` writes it, waited for here, blocking: for a module's
-        tables and migrations as it is made, which is before the server serves anything;
-        and for the writes still made where nothing awaits them (`Store.add_turn`,
-        `add_gift`, `keep_call`), till they are part of write tasks of their own."""
+        tables and migrations as it is made, which is before the server serves anything."""
         return self._submit(body, args).result()
 
     def function(
@@ -342,7 +340,7 @@ def _off_the_loop(body: Callable[..., Any]) -> None:
 
 
 def _name(body: Callable[..., Any]) -> str:
-    """The name a body goes by in the logs: its qualified name, as `Store._add_turn`."""
+    """The name a body goes by in the logs: its qualified name, as `ConversationEngine._record`."""
     return getattr(body, "__qualname__", None) or repr(body)
 
 

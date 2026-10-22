@@ -83,7 +83,7 @@ async def call(
         on = Call(conversation, mano, admission.llms, False, "standard")
         outcome = CallOutcome(
             admission, CallLimits(), backend.clock,
-            partial(backend.store.keep_call, conversation.id),
+            partial(backend.happenings.call_ended, conversation.id, conversation.user_id, "mano"),
         )
         turns = CallTurns(backend.engine, backend.store, on, outcome, SONIOX_FOLLOW_ON_TIMEOUT)
         turns.connected()

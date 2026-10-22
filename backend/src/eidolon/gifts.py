@@ -1,5 +1,7 @@
 """Gifts (GLOSSARY.md「礼物」「抽奖」「重置卡」): each user's draw chances, what they have drawn
-and their reset cards, the one way into them for the gifts page and the admin console.
+and their reset cards, the one way into them for the gifts page and the admin console, but
+for drawing and giving, which count towards the daily tasks and the achievements and so are
+kept with them (`happenings.Happenings.draw`, `Happenings.give`).
 
 Draw chances are given one a day (`affinity.DRAWS_PER_DAY`) as the day begins, at midnight
 Beijing time wherever the user is (`affinity.day_of`), kept up to `affinity.MAX_DRAWS`.
@@ -31,12 +33,10 @@ with (`randomness.Random`). Drawing calls no model and leaves no activity record
 """
 
 import sqlite3
-import threading
 from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
 from itertools import accumulate
-from pathlib import Path
 
 from eidolon.affinity import (
     BELOW_TRUST,
@@ -51,10 +51,10 @@ from eidolon.affinity import (
 )
 from eidolon.characters import Character
 from eidolon.clock import Clock
-from eidolon.database import connect
+from eidolon.data_access import Database
 from eidolon.gift_catalog import Gift
 from eidolon.randomness import Random
-from eidolon.store import Conversation, Store
+from eidolon.store import add_gift
 
 _SCHEMA = """
 -- One row per user given any draw chances: how many they have, the day they were last given
@@ -256,331 +256,249 @@ class Grant:
 
 
 class Gifts:
-    """Every user's draw chances, backpack and reset cards, kept in the database at `path`,
-    next to the users they belong to."""
+    """Every user's draw chances, backpack and reset cards, kept in the database, next to the
+    users they belong to. Drawing, giving and rewarding are bodies of the write tasks they
+    are part of (`Happenings`), given the task's connection, so that what they count towards
+    is kept with them or not at all."""
 
     def __init__(
         self,
-        path: Path,
+        db: Database,
         clock: Clock,
         is_open: Callable[[], bool],
         affinities: Affinities,
         characters: dict[str, Character],
         catalog: dict[str, Gift],
         random: Random,
-        store: Store,
     ) -> None:
         """`is_open` tells whether gifts are open now (the live configuration's affinity
-        switch); draws take their numbers from `random`; gift records are kept in `store`.
-        Notices whether they have opened since last noticed."""
-        self._db = connect(path)
-        self._store = store
-        self._lock = threading.Lock()
+        switch); draws take their numbers from `random`. Notices whether they have opened
+        since last noticed."""
+        self._db = db
         self._clock = clock
         self._is_open = is_open
         self._affinities = affinities
         self._characters = characters
         self._catalog = catalog
         self._random = random
-        with self._lock, self._db:
-            self._db.executescript(_SCHEMA)
-        self.notice()
+        db.prepare(_open)
+        db.prepare(self._notice, is_open())
 
-    def notice(self) -> None:
+    async def notice(self) -> None:
         """Keep when gifts opened, if they were closed when last noticed and are open now:
-        as the backend starts and whenever the configuration changes."""
+        as the backend starts and whenever the configuration changes. Read first, and
+        written only when it changes."""
         is_open = self._is_open()
-        with self._lock, self._db:
-            row = self._db.execute("SELECT open FROM gifts_opened WHERE id = 1").fetchone()
-            if row is not None and bool(row[0]) == is_open:
-                return
-            if is_open:
-                self._db.execute(
-                    "INSERT OR REPLACE INTO gifts_opened (id, open, opened_at) VALUES (1, 1, ?)",
-                    (self._clock().isoformat(),),
-                )
-            else:
-                self._db.execute(
-                    "INSERT INTO gifts_opened (id, open) VALUES (1, 0)"
-                    " ON CONFLICT (id) DO UPDATE SET open = 0"
-                )
+        if not await self._db.read(_noticed, is_open):
+            await self._db.write(self._notice, is_open)
 
-    def state(self, user_id: str) -> GiftState:
+    async def refuse_unless_open(self) -> None:
+        """Raise GiftsClosed unless gifts are open now, having noticed whether they are:
+        before anything is done with what the user has."""
+        await self.notice()
+        if not self._is_open():
+            raise GiftsClosed()
+
+    async def state(self, user_id: str) -> GiftState:
         """What the user has now, having been given the draw chances due today, if gifts are
         open. Notices first whether they have opened, as the switch may have just been
-        turned on and not yet noticed."""
-        self.notice()
+        turned on and not yet noticed. Read first, and written only when chances are due."""
+        await self.notice()
         is_open = self._is_open()
         now = self._clock()
-        with self._lock, self._db:
-            if is_open:
-                self._give(user_id, day_of(now))
-            row = self._db.execute(
-                "SELECT draws, reset_cards FROM gift_balances WHERE user_id = ?", (user_id,)
-            ).fetchone()
-            held = dict(
-                self._db.execute(
-                    "SELECT gift_id, count FROM gift_backpacks WHERE user_id = ? AND count > 0",
-                    (user_id,),
-                ).fetchall()
-            )
-            rewarded_at = self._last_rewarded(user_id)
-        draws, reset_cards = row or (0, 0)
-        backpack = [(g, held[g]) for g in self._catalog if g in held]
-        statuses = (
-            (character_id, self._affinities.status(user_id, character_id))
-            for character_id in (self._characters if is_open else ())
-        )
-        characters = [(c, status) for c, status in statuses if status is not None]
-        next_draw_at = next_day(now) if is_open else None
-        return GiftState(
-            is_open, draws, backpack, reset_cards, next_draw_at, characters, rewarded_at
-        )
+        found = await self._db.read(self._state, user_id, is_open, now, False)
+        if found is None:
+            found = await self._db.write(self._state, user_id, is_open, now, True)
+        assert found is not None
+        return found
 
-    def draw(self, user_id: str, *, all: bool = False) -> Drawn:
+    def draw(self, db: sqlite3.Connection, user_id: str, *, all: bool = False) -> Drawn:
         """Draw once, or as many times as the user has chances if `all`, having been given
-        the chances due today; in one go, so that two drawing at once draw no more than
-        there are chances. Raises GiftsClosed if gifts are not open, NoDraws if there are
+        the chances due today, through `db`, in the transaction what drawing counts towards
+        is kept in (`Happenings.draw`), so that two drawing at once draw no more than there
+        are chances. Gifts are to be open (`refuse_unless_open`). Raises NoDraws if there are
         no chances to draw."""
-        self.notice()
-        if not self._is_open():
-            raise GiftsClosed()
-        with self._lock, self._db:
-            self._give(user_id, day_of(self._clock()))
-            (draws,) = self._db.execute(
-                "SELECT draws FROM gift_balances WHERE user_id = ?", (user_id,)
-            ).fetchone()
-            if draws == 0:
-                raise NoDraws()
-            drawn = [self._draw_one() for _ in range(draws if all else 1)]
-            for d in drawn:
-                if d == RESET_CARD:
-                    self._db.execute(
-                        "UPDATE gift_balances SET reset_cards = reset_cards + 1"
-                        " WHERE user_id = ?",
-                        (user_id,),
-                    )
-                else:
-                    self._db.execute(
-                        "INSERT INTO gift_backpacks (user_id, gift_id, count) VALUES (?, ?, 1)"
-                        " ON CONFLICT (user_id, gift_id) DO UPDATE SET count = count + 1",
-                        (user_id, d),
-                    )
-            left = draws - len(drawn)
-            self._db.execute(
-                "UPDATE gift_balances SET draws = ? WHERE user_id = ?", (left, user_id)
-            )
-        return Drawn(drawn, left)
-
-    def give(self, user_id: str, gift_id: str, character_id: str) -> Given:
-        """Give the character one of the gift; its record goes where `Store.add_gift`
-        places it. The one taken is put back
-        should recording it fail, so two giving the last one at once give it once. Raises
-        GiftsClosed if gifts are not open, NoSuchCharacter for no such character, NoneLeft
-        if the user has none of it."""
-        self.notice()
-        if not self._is_open():
-            raise GiftsClosed()
-        character = self._characters.get(character_id)
-        if character is None:
-            raise NoSuchCharacter()
-        gift = self._catalog.get(gift_id)
-        if gift is None:
-            raise NoneLeft()
-        with self._lock, self._db:
-            taken = self._db.execute(
-                "UPDATE gift_backpacks SET count = count - 1"
-                " WHERE user_id = ? AND gift_id = ? AND count > 0 RETURNING count",
-                (user_id, gift_id),
-            ).fetchone()
-        if taken is None:
-            raise NoneLeft()
-        liked = gift_id in character.liked_gifts
-
-        def record(change: Change | None) -> Conversation:
-            return self._store.add_gift(
-                user_id, character_id,
-                gift_id=gift_id, liked=liked, affinity=change,
-            )
-
-        try:
-            (conversation, change), affinity = self._affinities.receive_gift(
-                user_id, character_id, gift.rarity, liked,
-                lambda change: (record(change), change),
-            )
-        except BaseException:
-            with self._lock, self._db:
-                self._db.execute(
-                    "UPDATE gift_backpacks SET count = count + 1 WHERE user_id = ? AND gift_id = ?",
-                    (user_id, gift_id),
-                )
-            raise
-        return Given(conversation.id, change, affinity, taken[0])
-
-    def use_reset_card(self, user_id: str) -> Reset:
-        """Use one of the user's reset cards, bringing every character below trust with them
-        now back to it (`Affinities.reset`). It leaves no trace: no gift record, no
-        conversation event. The card taken is put back should no one be below trust by now,
-        or bringing them back fail, so two using the last card at once use it once. Raises
-        GiftsClosed if gifts are not open, NoResetCards if the user has none, NoOneToReset
-        if no one is below trust."""
-        self.notice()
-        if not self._is_open():
-            raise GiftsClosed()
-        with self._lock, self._db:
-            taken = self._db.execute(
-                "UPDATE gift_balances SET reset_cards = reset_cards - 1"
-                " WHERE user_id = ? AND reset_cards > 0 RETURNING reset_cards",
-                (user_id,),
-            ).fetchone()
-        if taken is None:
-            raise NoResetCards()
-        try:
-            brought_back = self._affinities.reset(user_id, self._characters)
-            if not brought_back:
-                raise NoOneToReset()
-        except BaseException:
-            with self._lock, self._db:
-                self._db.execute(
+        _give(db, user_id, day_of(self._clock()))
+        (draws,) = db.execute(
+            "SELECT draws FROM gift_balances WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        if draws == 0:
+            raise NoDraws()
+        drawn = [self._draw_one() for _ in range(draws if all else 1)]
+        for d in drawn:
+            if d == RESET_CARD:
+                db.execute(
                     "UPDATE gift_balances SET reset_cards = reset_cards + 1 WHERE user_id = ?",
                     (user_id,),
                 )
-            raise
-        return Reset(brought_back, taken[0])
+            else:
+                db.execute(
+                    "INSERT INTO gift_backpacks (user_id, gift_id, count) VALUES (?, ?, 1)"
+                    " ON CONFLICT (user_id, gift_id) DO UPDATE SET count = count + 1",
+                    (user_id, d),
+                )
+        left = draws - len(drawn)
+        db.execute("UPDATE gift_balances SET draws = ? WHERE user_id = ?", (left, user_id))
+        return Drawn(drawn, left)
+
+    def refuse_unknown(self, gift_id: str, character_id: str) -> None:
+        """Raise NoSuchCharacter for no such character, NoneLeft for no such gift: before
+        anything is written, as neither can be given."""
+        if character_id not in self._characters:
+            raise NoSuchCharacter()
+        if gift_id not in self._catalog:
+            raise NoneLeft()
+
+    def give(
+        self, db: sqlite3.Connection, user_id: str, gift_id: str, character_id: str
+    ) -> Given:
+        """Give the character one of the gift, through `db`, in the transaction what giving
+        it counts towards is kept in (`Happenings.give`): taken from the backpack, raising
+        her affinity, and recorded where `store.add_gift` places it, all or none of it, so
+        two giving the last one at once give it once. Gifts are to be open
+        (`refuse_unless_open`), and the gift and the character to be there
+        (`refuse_unknown`). Raises NoneLeft if the user has none of it."""
+        taken = db.execute(
+            "UPDATE gift_backpacks SET count = count - 1"
+            " WHERE user_id = ? AND gift_id = ? AND count > 0 RETURNING count",
+            (user_id, gift_id),
+        ).fetchone()
+        if taken is None:
+            raise NoneLeft()
+        liked = gift_id in self._characters[character_id].liked_gifts
+        change, affinity = self._affinities.receive_gift(
+            db, user_id, character_id, self._catalog[gift_id].rarity, liked
+        )
+        conversation = add_gift(db, user_id, character_id, gift_id, liked, change)
+        return Given(conversation.id, change, affinity, taken[0])
+
+    async def use_reset_card(self, user_id: str) -> Reset:
+        """Use one of the user's reset cards, bringing every character below trust with them
+        now back to it (`Affinities.reset`), in one transaction: should no one be below
+        trust by now, or bringing them back fail, the card is still theirs, so two using the
+        last card at once use it once. It leaves no trace: no gift record, no conversation
+        event. Raises GiftsClosed if gifts are not open, NoResetCards if the user has none,
+        NoOneToReset if no one is below trust."""
+        await self.refuse_unless_open()
+        return await self._db.write(self._use_reset_card, user_id)
 
     def reward(
-        self, user_id: str, due: Callable[[sqlite3.Connection, datetime], Iterable[Reward]]
+        self,
+        db: sqlite3.Connection,
+        user_id: str,
+        due: Callable[[sqlite3.Connection, datetime], Iterable[Reward]],
     ) -> tuple[list[Reward], datetime]:
         """Give the user each reward `due` says is due that they have not been given yet by
         its key, having been given the draw chances due today; one with no draw chances yet
-        is given the new user's one first. `due` is called with the connection and now
-        holding the lock, in the transaction the rewards are given in, so what it keeps is
-        kept with them or not at all, by the same now the draw chances are given by, and two
-        rewarded at once for the same are rewarded once. The rewards given now, and when. Raises GiftsClosed if gifts are not open."""
-        self.notice()
-        if not self._is_open():
-            raise GiftsClosed()
-        with self._lock, self._db:
-            now = self._clock()
-            rewards = list(due(self._db, now))
-            self._give(user_id, day_of(now))
-            given = [r for r in rewards if self._credit(user_id, r, now)]
+        is given the new user's one first. Gifts are to be open, as the one who rewards
+        found them on the event loop; they are noticed open first. Through `db`, in the
+        transaction what they are rewarded for is kept in, so that it is rewarded with it or
+        not at all, and two rewarded at once for the same are rewarded once; `due` is
+        called with the connection and now, the same now the draw chances are given by. The
+        rewards given now, and when."""
+        self._notice(db, True)
+        now = self._clock()
+        rewards = list(due(db, now))
+        _give(db, user_id, day_of(now))
+        given = [r for r in rewards if _credit(db, user_id, r, now)]
         return given, now
 
     def reward_everyone(
-        self, due: Callable[[sqlite3.Connection, datetime], Iterable[tuple[str, Reward]]]
+        self,
+        db: sqlite3.Connection,
+        due: Callable[[sqlite3.Connection, datetime], Iterable[tuple[str, Reward]]],
     ) -> list[tuple[str, Reward]]:
         """Give each user each reward `due` says is due them that they have not been given
-        yet by its key, open or not, as the achievements launch: none of the draw chances
-        due today, but the new user's one first to one with none yet. `due` is called as
-        `reward`'s is. The rewards given, and to whom."""
+        yet by its key, open or not, as the achievements launch, through `db`: none of the
+        draw chances due today, but the new user's one first to one with none yet. `due` is
+        called as `reward`'s is. The rewards given, and to whom."""
         given = []
-        with self._lock, self._db:
-            now = self._clock()
-            for user_id, r in list(due(self._db, now)):
-                if not self._db.execute(
-                    "SELECT 1 FROM gift_balances WHERE user_id = ?", (user_id,)
-                ).fetchone():
-                    self._start(user_id, day_of(now))
-                if self._credit(user_id, r, now):
-                    given.append((user_id, r))
+        now = self._clock()
+        for user_id, r in list(due(db, now)):
+            if not db.execute(
+                "SELECT 1 FROM gift_balances WHERE user_id = ?", (user_id,)
+            ).fetchone():
+                _start(db, user_id, day_of(now))
+            if _credit(db, user_id, r, now):
+                given.append((user_id, r))
         return given
 
-    def _credit(self, user_id: str, reward: Reward, now: datetime) -> bool:
-        """Give the user, who has draw chances, `reward` `now` unless given it before by its
-        key: whether given now. Called holding the lock, in a transaction."""
-        new = self._db.execute(
-            "INSERT INTO gift_rewards"
-            " (user_id, key, draws, reset_cards, rewarded_at) VALUES (?, ?, ?, ?, ?)"
-            " ON CONFLICT (user_id, key) DO NOTHING",
-            (user_id, reward.key, reward.draws, reward.reset_cards, now.isoformat()),
-        ).rowcount
-        if new:
-            self._db.execute(
-                "UPDATE gift_balances SET draws = draws + ?,"
-                " reset_cards = reset_cards + ? WHERE user_id = ?",
-                (reward.draws, reward.reset_cards, user_id),
-            )
-        return bool(new)
-
-    def _last_rewarded(self, user_id: str) -> datetime | None:
-        """When the user was last rewarded; None if never. Holding the lock."""
-        (at,) = self._db.execute(
-            "SELECT MAX(rewarded_at) FROM gift_rewards WHERE user_id = ?", (user_id,)
-        ).fetchone()
-        return at and datetime.fromisoformat(at)
-
-    def grant_reset_cards(self) -> Grant:
+    async def grant_reset_cards(self) -> Grant:
         """Give every user there is now a reset card, banned ones and admins too, all at
         once, so that whoever signs up meanwhile gets none; one who has had no draw chances
         yet is given the new user's one too, that day. Raises GiftsClosed if gifts are not
         open."""
-        self.notice()
-        if not self._is_open():
-            raise GiftsClosed()
-        now = self._clock()
-        with self._lock, self._db:
-            # Writing first holds the database for writing until done: no one signs up in
-            # between.
-            given = self._db.execute(
-                "UPDATE gift_balances SET reset_cards = reset_cards + 1"
-            ).rowcount
-            unbalanced = self._db.execute(
-                "SELECT id FROM users WHERE id NOT IN (SELECT user_id FROM gift_balances)"
-            ).fetchall()
-            for (user_id,) in unbalanced:
-                self._start(user_id, day_of(now), reset_cards=1)
-            grant = Grant(now, given + len(unbalanced))
-            self._db.execute(
-                "INSERT INTO reset_card_grants (granted_at, count) VALUES (?, ?)",
-                (now.isoformat(), grant.count),
-            )
-        return grant
+        await self.refuse_unless_open()
+        return await self._db.write(_grant_reset_cards, self._clock())
 
-    def last_grant(self) -> Grant | None:
+    async def last_grant(self) -> Grant | None:
         """The latest time every user was given a reset card; None if never."""
-        with self._lock:
-            row = self._db.execute(
-                "SELECT granted_at, count FROM reset_card_grants"
-                " ORDER BY granted_at DESC, rowid DESC LIMIT 1"
-            ).fetchone()
-        return row and Grant(datetime.fromisoformat(row[0]), row[1])
+        return await self._db.read(_last_grant)
 
-    def close(self) -> None:
-        with self._lock:
-            self._db.close()
+    def _notice(self, db: sqlite3.Connection, is_open: bool) -> None:
+        """`notice`, gifts being open now or not as `is_open` says, through `db`."""
+        if _noticed(db, is_open):
+            return
+        if is_open:
+            db.execute(
+                "INSERT OR REPLACE INTO gifts_opened (id, open, opened_at) VALUES (1, 1, ?)",
+                (self._clock().isoformat(),),
+            )
+        else:
+            db.execute(
+                "INSERT INTO gifts_opened (id, open) VALUES (1, 0)"
+                " ON CONFLICT (id) DO UPDATE SET open = 0"
+            )
 
-    def _give(self, user_id: str, today: date) -> None:
-        """Give the user the draw chances due by `today`: one if they have none yet; else
-        one for each day since they were last given, counted from the day before gifts
-        last opened if they opened since, up to the most kept. Called holding the lock, in
-        a transaction."""
-        row = self._db.execute(
-            "SELECT draws, given_on FROM gift_balances WHERE user_id = ?", (user_id,)
+    def _state(
+        self,
+        db: sqlite3.Connection,
+        user_id: str,
+        is_open: bool,
+        now: datetime,
+        giving: bool,
+    ) -> GiftState | None:
+        """What the user has at `now`, read through `db`: giving the draw chances due if
+        `giving`, else None if any are due."""
+        if is_open:
+            if giving:
+                _give(db, user_id, day_of(now))
+            elif _due(db, user_id, day_of(now)):
+                return None
+        row = db.execute(
+            "SELECT draws, reset_cards FROM gift_balances WHERE user_id = ?", (user_id,)
         ).fetchone()
-        if row is None:
-            self._start(user_id, today)
-            return
-        draws, given_on = row[0], date.fromisoformat(row[1])
-        if today <= given_on:
-            return
-        since = given_on
-        opened = self._opened_on()
-        if opened is not None and opened > given_on:
-            since = opened - timedelta(days=1)
-        due = (today - since).days * DRAWS_PER_DAY
-        self._db.execute(
-            "UPDATE gift_balances SET draws = ?, given_on = ? WHERE user_id = ?",
-            (max(draws, min(draws + due, MAX_DRAWS)), today.isoformat(), user_id),
+        held = dict(
+            db.execute(
+                "SELECT gift_id, count FROM gift_backpacks WHERE user_id = ? AND count > 0",
+                (user_id,),
+            ).fetchall()
+        )
+        draws, reset_cards = row or (0, 0)
+        backpack = [(g, held[g]) for g in self._catalog if g in held]
+        # Open where affinity is on: what is shown of her affinity is shown while open.
+        characters = [
+            (c, self._affinities.read_status(db, user_id, c))
+            for c in (self._characters if is_open else ())
+        ]
+        next_draw_at = next_day(now) if is_open else None
+        return GiftState(
+            is_open, draws, backpack, reset_cards, next_draw_at, characters,
+            _last_rewarded(db, user_id),
         )
 
-    def _start(self, user_id: str, today: date, reset_cards: int = 0) -> None:
-        """Give a user who has had no draw chances yet the new user's one, `today`, and
-        `reset_cards`. Called holding the lock, in a transaction."""
-        self._db.execute(
-            "INSERT INTO gift_balances (user_id, draws, given_on, reset_cards) VALUES (?, ?, ?, ?)",
-            (user_id, DRAWS_PER_DAY, today.isoformat(), reset_cards),
-        )
+    def _use_reset_card(self, db: sqlite3.Connection, user_id: str) -> Reset:
+        taken = db.execute(
+            "UPDATE gift_balances SET reset_cards = reset_cards - 1"
+            " WHERE user_id = ? AND reset_cards > 0 RETURNING reset_cards",
+            (user_id,),
+        ).fetchone()
+        if taken is None:
+            raise NoResetCards()
+        brought_back = self._affinities.reset(db, user_id, self._characters)
+        if not brought_back:
+            raise NoOneToReset()
+        return Reset(brought_back, taken[0])
 
     def _draw_one(self) -> str:
         """What one draw gives: `RESET_CARD`, or the identifier of a gift not retired."""
@@ -593,10 +511,112 @@ class Gifts:
         pool = [g.id for g in self._catalog.values() if g.rarity == kind and not g.retired]
         return pool[self._random(len(pool))]
 
-    def _opened_on(self) -> date | None:
-        """The day gifts last opened on (`affinity.day_of`); None if never noticed
-        opening."""
-        row = self._db.execute("SELECT opened_at FROM gifts_opened WHERE id = 1").fetchone()
-        if row is None or row[0] is None:
-            return None
-        return day_of(datetime.fromisoformat(row[0]))
+
+def _open(db: sqlite3.Connection) -> None:
+    db.executescript(_SCHEMA)
+
+
+def _noticed(db: sqlite3.Connection, is_open: bool) -> bool:
+    """Whether gifts are as open now, as `is_open` says, as when last noticed, read through
+    `db`."""
+    row = db.execute("SELECT open FROM gifts_opened WHERE id = 1").fetchone()
+    return row is not None and bool(row[0]) == is_open
+
+
+def _credit(db: sqlite3.Connection, user_id: str, reward: Reward, now: datetime) -> bool:
+    """Give the user, who has draw chances, `reward` `now` unless given it before by its key,
+    through `db`: whether given now."""
+    new = db.execute(
+        "INSERT INTO gift_rewards"
+        " (user_id, key, draws, reset_cards, rewarded_at) VALUES (?, ?, ?, ?, ?)"
+        " ON CONFLICT (user_id, key) DO NOTHING",
+        (user_id, reward.key, reward.draws, reward.reset_cards, now.isoformat()),
+    ).rowcount
+    if new:
+        db.execute(
+            "UPDATE gift_balances SET draws = draws + ?,"
+            " reset_cards = reset_cards + ? WHERE user_id = ?",
+            (reward.draws, reward.reset_cards, user_id),
+        )
+    return bool(new)
+
+
+def _last_rewarded(db: sqlite3.Connection, user_id: str) -> datetime | None:
+    """When the user was last rewarded; None if never."""
+    (at,) = db.execute(
+        "SELECT MAX(rewarded_at) FROM gift_rewards WHERE user_id = ?", (user_id,)
+    ).fetchone()
+    return at and datetime.fromisoformat(at)
+
+
+def _grant_reset_cards(db: sqlite3.Connection, now: datetime) -> Grant:
+    # Writing first holds the database for writing until done: no one signs up in between.
+    given = db.execute("UPDATE gift_balances SET reset_cards = reset_cards + 1").rowcount
+    unbalanced = db.execute(
+        "SELECT id FROM users WHERE id NOT IN (SELECT user_id FROM gift_balances)"
+    ).fetchall()
+    for (user_id,) in unbalanced:
+        _start(db, user_id, day_of(now), reset_cards=1)
+    grant = Grant(now, given + len(unbalanced))
+    db.execute(
+        "INSERT INTO reset_card_grants (granted_at, count) VALUES (?, ?)",
+        (now.isoformat(), grant.count),
+    )
+    return grant
+
+
+def _last_grant(db: sqlite3.Connection) -> Grant | None:
+    row = db.execute(
+        "SELECT granted_at, count FROM reset_card_grants"
+        " ORDER BY granted_at DESC, rowid DESC LIMIT 1"
+    ).fetchone()
+    return row and Grant(datetime.fromisoformat(row[0]), row[1])
+
+
+def _due(db: sqlite3.Connection, user_id: str, today: date) -> bool:
+    """Whether the user has draw chances due by `today` not given yet (`_give`)."""
+    row = db.execute(
+        "SELECT given_on FROM gift_balances WHERE user_id = ?", (user_id,)
+    ).fetchone()
+    return row is None or today > date.fromisoformat(row[0])
+
+
+def _give(db: sqlite3.Connection, user_id: str, today: date) -> None:
+    """Give the user the draw chances due by `today`, through `db`: one if they have none
+    yet; else one for each day since they were last given, counted from the day before
+    gifts last opened if they opened since, up to the most kept."""
+    row = db.execute(
+        "SELECT draws, given_on FROM gift_balances WHERE user_id = ?", (user_id,)
+    ).fetchone()
+    if row is None:
+        _start(db, user_id, today)
+        return
+    draws, given_on = row[0], date.fromisoformat(row[1])
+    if today <= given_on:
+        return
+    since = given_on
+    opened = _opened_on(db)
+    if opened is not None and opened > given_on:
+        since = opened - timedelta(days=1)
+    due = (today - since).days * DRAWS_PER_DAY
+    db.execute(
+        "UPDATE gift_balances SET draws = ?, given_on = ? WHERE user_id = ?",
+        (max(draws, min(draws + due, MAX_DRAWS)), today.isoformat(), user_id),
+    )
+
+
+def _start(db: sqlite3.Connection, user_id: str, today: date, reset_cards: int = 0) -> None:
+    """Give a user who has had no draw chances yet the new user's one, `today`, and
+    `reset_cards`, through `db`."""
+    db.execute(
+        "INSERT INTO gift_balances (user_id, draws, given_on, reset_cards) VALUES (?, ?, ?, ?)",
+        (user_id, DRAWS_PER_DAY, today.isoformat(), reset_cards),
+    )
+
+
+def _opened_on(db: sqlite3.Connection) -> date | None:
+    """The day gifts last opened on (`affinity.day_of`); None if never noticed opening."""
+    row = db.execute("SELECT opened_at FROM gifts_opened WHERE id = 1").fetchone()
+    if row is None or row[0] is None:
+        return None
+    return day_of(datetime.fromisoformat(row[0]))

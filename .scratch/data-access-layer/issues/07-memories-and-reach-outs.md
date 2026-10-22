@@ -40,3 +40,8 @@
 
 - `ReachOuts` 不再收 `usage`。`_due` 用模块函数 `usage.read_user_limits(self._db, …)` 读用户自己的限额，`_within_the_day` 用 `activity.read_reached_out_since(self._db, …)` 数今天搭过几次话。两处都在 `ReachOuts` 自己的连接上、拿着它的锁读。迁移时把这两个事务体放进层的读任务里调，连同 `read_profile`。
 
+### 票 06 交接
+
+- `ReachOuts._tier` 现在先看 `affinities.on`（在 `_due` 所在的线程里看），再在 `ReachOuts` 自己的连接上、拿着它的锁调事务体 `affinities.read_status(self._db, …)`。
+  - 迁移时，把 `read_status` 放进 `_due` 的读任务里，和 `read_profile`、`read_user_limits`、`read_reached_out_since` 一起读。
+  - `affinities.on` 改到循环上、交读任务之前看，作为参数传进去。ADR-0028 要求事务体里不读循环那边的状态。

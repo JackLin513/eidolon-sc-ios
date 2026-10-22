@@ -20,7 +20,7 @@ synthesis and emotion judging are recorded under the call (`Recording.add`), not
 
 A reach-out's record says whether the user answered it: had a turn, or a call that connected,
 in its conversation after it and before the next. The store marks it so as it records the
-turn or keeps the call (`Store.add_turn`, `Store.keep_call`), by the record its reach-out
+turn or keeps the call (`store.add_turn`, `store.keep_call`), by the record its reach-out
 names; or as that is kept, should they have been in touch since (`Store.reach_out_recorded_as`).
 
 A daily task done (GLOSSARY.md「每日任务」) has a record of its own, with no character and
@@ -174,7 +174,7 @@ _SCHEMA = """
 -- she ended the conversation after a typed turn (`affinity.EndsFor`), NULL if she did not.
 -- `answered` is whether a reach-out was answered (GLOSSARY.md「搭话」): the user had a turn,
 -- or a call connected, in its conversation after it and before the next; the store marks it
--- so, by the record its reach-out keeps (`Store.add_turn`, `Store.keep_call`,
+-- so, by the record its reach-out keeps (`store.add_turn`, `store.keep_call`,
 -- `Store.reach_out_recorded_as`). 0 for others.
 CREATE TABLE IF NOT EXISTS activity_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -722,26 +722,24 @@ class ActivityLog:
         for table in ("taken_rollups", "call_rollups"):
             await in_batches(self._db, _forget_rollups_before, table, None, at - SLOT)
 
-    def daily_task_done(self, user_id: str, task_id: str, at: datetime) -> None:
-        """The user did the daily task `at`: recorded, with no character. Written before it
-        returns, blocking (`Database.prepare`): what tells it does so on a thread."""
-        self._written_now(Recording(self, "daily_task", user_id, "", at, False, False), task_id)
+    async def daily_task_done(self, user_id: str, task_id: str, at: datetime) -> None:
+        """The user did the daily task `at`: recorded, with no character, as a write task of
+        its own; failing, only logged."""
+        await Recording(self, "daily_task", user_id, "", at, False, False).finish(task_id)
 
-    def achievement_unlocked(
+    async def achievement_unlocked(
         self, user_id: str, character_id: str | None, achievement: str, stage: int, at: datetime
     ) -> None:
         """The user unlocked the achievement's `stage` `at`: recorded, with the character it is
-        hers of, or none for those of all the characters together; written as
-        `daily_task_done` is."""
-        self._written_now(
-            Recording(self, "achievement", user_id, character_id or "", at, False, False),
-            stage_unlocked(achievement, stage),
-        )
+        hers of, or none for those of all the characters together, as `daily_task_done` is."""
+        await Recording(
+            self, "achievement", user_id, character_id or "", at, False, False
+        ).finish(stage_unlocked(achievement, stage))
 
-    def character_complete(self, user_id: str, character_id: str, at: datetime) -> None:
+    async def character_complete(self, user_id: str, character_id: str, at: datetime) -> None:
         """The user completed the character `at`: recorded, as `daily_task_done` is."""
-        self._written_now(
-            Recording(self, "achievement", user_id, character_id, at, False, False), COMPLETE
+        await Recording(self, "achievement", user_id, character_id, at, False, False).finish(
+            COMPLETE
         )
 
     def ended_call(
@@ -893,11 +891,6 @@ class ActivityLog:
             await self._db.write(_insert_records, _handed_in(recording), secrets.token_hex(16))
         except Exception:
             log.exception("writing the activity record of a %s failed", recording.kind)
-
-    def _written_now(self, recording: Recording, result: str) -> None:
-        """Write `recording`, finished as `result`, before returning, blocking."""
-        recording.finished, recording.result = True, result
-        self._db.prepare(_insert_records, _handed_in(recording), secrets.token_hex(16))
 
 
 def read_reached_out_since(db: sqlite3.Connection, user_id: str, moment: datetime) -> int:

@@ -332,8 +332,7 @@ def build(
     titles = Titles(store, characters, gift_catalog)
     closers.append(titles.aclose)  # likewise, so what it is naming can finish
 
-    affinities = Affinities(settings.database_path, clock, lambda: config.affinity_on)
-    closers.append(affinities.close)
+    affinities = Affinities(database, clock, lambda: config.affinity_on)
     unphotographed = [c.id for c in characters.values() if not c.photographed]
     if config.image_settings is not None and unphotographed:
         log.warning(
@@ -351,14 +350,10 @@ def build(
     photos = Photos(store, config.image_generator, activity, usage, own_images.generator)
     closers.append(photos.aclose)  # closed before the database, so no photo is still kept
     gifts = Gifts(
-        settings.database_path, clock, lambda: config.affinity_on, affinities, characters,
-        gift_catalog, random or secure_random, store,
+        database, clock, lambda: config.affinity_on, affinities, characters, gift_catalog,
+        random or secure_random,
     )
-    closers.append(gifts.close)
-    happenings = Happenings(
-        settings.database_path, clock, lambda: config.affinity_on, gifts, activity
-    )
-    closers.append(happenings.close)
+    happenings = Happenings(database, clock, lambda: config.affinity_on, gifts, activity)
     engine = ConversationEngine(
         database, store, characters, gift_catalog, memories, titles, clock, retrieval,
         lambda: config.history_turns, world, affinities, config.affinity_judge(), photos,
@@ -377,15 +372,14 @@ def build(
         happenings,
     )
     closers.append(calls.aclose)  # closed before memory, so no call is still taking turns
-    affinities.on_cooldown(calls.cooled)
+    engine.on_cooled(calls.cooled)
     engine.on_ended(calls.conversation_ended)
     reach_outs = ReachOuts(
         settings.database_path, store, engine, characters, config, affinities, activity,
         calls.in_call, clock, random or secure_random,
     )
     closers.append(reach_outs.close)
-    # On a thread: gifts, on a connection of their own, are not on the data access layer yet.
-    config.on_change(lambda: asyncio.to_thread(gifts.notice))
+    config.on_change(gifts.notice)
     return Backend(
         settings=settings,
         database=database,

@@ -15,10 +15,11 @@ import pytest
 
 from eidolon.characters import Character, load_characters
 from eidolon import memory
+from eidolon.data_access import Database
 from eidolon.llm import ChatLLM
 from eidolon.memory import Memories, MemoryTurn, memory_query
-from eidolon.store import Conversation, Message, Segment, Store
-from tests.conftest import CharacterConfig, store_in
+from eidolon.store import Conversation, Message, Segment, Store, add_turn
+from tests.conftest import CharacterConfig
 from tests.fakes import FakeBackgroundLLM, FakeEmbedder, FakeReranker
 from tests.test_shared_memory import CAT, TRIP, memorized
 
@@ -29,27 +30,36 @@ TZ = "Asia/Shanghai"
 class World:
     """A store with users and conversations for the memories module to remember them by."""
 
-    def __init__(self, store: Store, characters: dict[str, Character], producer: str) -> None:
+    def __init__(
+        self, db: Database, store: Store, characters: dict[str, Character], producer: str
+    ) -> None:
+        self.db = db
         self.store = store
         self.characters = characters
         self.producer = producer
 
     @classmethod
-    async def made(cls, store: Store, characters: dict[str, Character]) -> "World":
-        """The world of `store`, the producer made in it."""
-        return cls(store, characters, (await store.create_user("producer")).id)
+    async def made(cls, db: Database, characters: dict[str, Character]) -> "World":
+        """The world of the store in `db`, the producer made in it."""
+        store = Store(db)
+        return cls(db, store, characters, (await store.create_user("producer")).id)
 
     async def conversation(self, character_id: str, user_id: str | None = None) -> Conversation:
         return await self.store.create_conversation(user_id or self.producer, character_id)
 
-    def reply(self, conversation: Conversation, text: str) -> Message:
-        return self.store.add_turn(conversation.id, text, [Segment("はいっ", "好的")])
+    async def reply(
+        self, conversation: Conversation, text: str, reply: Segment = Segment("はいっ", "好的")
+    ) -> Message:
+        return await self.db.write(add_turn, conversation.id, text, [reply])
 
 
 @pytest.fixture
 async def world(tmp_path: Path, characters: CharacterConfig) -> AsyncIterator[World]:
-    async with store_in(tmp_path / "eidolon.db") as store:
-        yield await World.made(store, load_characters(characters.path))
+    db = Database(tmp_path / "eidolon.db")
+    try:
+        yield await World.made(db, load_characters(characters.path))
+    finally:
+        await db.close()
 
 
 MemoriesFactory = Callable[..., Memories]
@@ -106,7 +116,7 @@ async def tell(memories: Memories, world: World, conversation: Conversation, tex
     """Take a turn in which the user says `text`, and write down what it reveals."""
     turn = await begin(memories, conversation)
     history = await world.store.list_messages(conversation.id)
-    turn.write_down(history, text, world.reply(conversation, text))
+    turn.write_down(history, text, await world.reply(conversation, text))
 
 
 async def find(memories: Memories, world: World, conversation: Conversation, text: str) -> str:
@@ -358,8 +368,8 @@ async def test_writing_down_embeds_the_turn_with_the_characters_previous_reply_a
     memories = make_memories(memorized(CAT), memorized(), embedder=embedder)
     conversation = await world.conversation("mano")
     await tell(memories, world, conversation, "我家的猫叫小白哦")
-    world.store.add_turn(
-        conversation.id, "我回来了", [Segment("[happy] おかえりなさい", "[happy] 欢迎回来，猫还好吗？")]
+    await world.reply(
+        conversation, "我回来了", Segment("[happy] おかえりなさい", "[happy] 欢迎回来，猫还好吗？")
     )
 
     await tell(memories, world, conversation, "它昨晚又叫了一夜")
@@ -382,7 +392,7 @@ async def test_writing_down_a_turn_embedded_already_embeds_it_no_more(
     history, text = await world.store.list_messages(conversation.id), "小白最近胖了"
     query_vector = await FakeEmbedder().embed_query(memory_query(history, text))
 
-    turn.write_down(history, text, world.reply(conversation, text), query_vector)
+    turn.write_down(history, text, await world.reply(conversation, text), query_vector)
     await memories.entries(world.producer)
 
     assert embedder.queries == ["我家的猫叫小白哦"]

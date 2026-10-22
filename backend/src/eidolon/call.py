@@ -995,7 +995,7 @@ class Calls:
             limits.turns_per_call,
         )
 
-    def ice_servers(
+    async def ice_servers(
         self,
         user_id: str,
         own: frozenset[Service] = frozenset(),
@@ -1008,7 +1008,7 @@ class Calls:
         `start` would, and CallsUnavailable, as `OwnKeys.call_exempt` does, before anything
         is spent on a call that could not start."""
         if character_id is not None:
-            self._admissions.refuse_while_cooling(user_id, character_id)
+            await self._admissions.refuse_while_cooling(user_id, character_id)
         self._refuse_unless_room(user_id)
         exempt = self._own_keys.call_exempt(own)
         servers: list[IceServer] = list(self._settings.ice_servers)
@@ -1058,9 +1058,10 @@ class Calls:
         placing: "_Placing",
     ) -> dict:
 
-        def keep(connected_at: datetime, duration_s: float) -> None:
-            if self._store.keep_call(conversation.id, connected_at, duration_s):
-                self._happenings.call_ended(user_id, character.id, duration_s)
+        async def keep(connected_at: datetime, duration_s: float) -> None:
+            await self._happenings.call_ended(
+                conversation.id, user_id, character.id, connected_at, duration_s
+            )
 
         # Cancelled meanwhile, what is let in never set up, so is settled.
         admission = await self._admissions.admitted(
@@ -1192,7 +1193,7 @@ class Calls:
         """The character has fallen into a cooldown with the user, ending `until`: she hangs
         up the user's calls with her, but for the one whose turn began it, if a call's did,
         straight away; that one after its turn."""
-        taking = _taking_turn.get()  # whose turn began it, as told while it is recorded
+        taking = _taking_turn.get()  # whose turn began it, as told once it is recorded
         for live in list(self._live):
             if live.user_id == user_id and live.character_id == character_id:
                 live.cooled(until, taking)

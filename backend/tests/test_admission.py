@@ -53,6 +53,10 @@ class CountingDeployer:
         self.released += 1
 
 
+async def not_cooling(*_: str) -> None:
+    """No character is in a cooldown with anyone."""
+
+
 class Deployment:
     """A user allowed one turn and one call an hour, and everything letting them begin."""
 
@@ -70,7 +74,7 @@ class Deployment:
 
     def admissions(self) -> Admissions:
         return Admissions(
-            self.usage, self.activity, self.own_keys(), cooldown_until=lambda *_: None
+            self.usage, self.activity, self.own_keys(), cooldown_until=not_cooling
         )
 
     def own_keys(self) -> OwnKeys:

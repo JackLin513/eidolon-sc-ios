@@ -35,9 +35,10 @@ class Limiter(Deployment):
         self, limits: CallLimits = CallLimits(), brought: BroughtKeys = BroughtKeys()
     ) -> CallOutcome:
         admission = await self.admissions().call(self.user, "mano", brought)
-        return CallOutcome(
-            admission, limits, self.clock, lambda at, lasted: self.kept.append((at, lasted))
-        )
+        async def keep(at: datetime, lasted: float) -> None:
+            self.kept.append((at, lasted))
+
+        return CallOutcome(admission, limits, self.clock, keep)
 
     async def call_records(self) -> list[tuple[Result, CallEndReason | None, bool]]:
         """Each call's record: how it turned out, why it ended, and whether it says how

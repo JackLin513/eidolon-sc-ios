@@ -281,9 +281,12 @@ class ReachOuts:
     def _tier(self, conversation: Conversation) -> Tier | None:
         """The tier she reaches out by, trust where affinity is off; None if she is not to,
         in a cooldown or in a tier without a range."""
-        status = self._affinities.status(conversation.user_id, conversation.character_id)
-        if status is None:
+        if not self._affinities.on:
             return "trust"
+        with self._lock:  # read on the reach-outs' own connection, on this thread
+            status = self._affinities.read_status(
+                self._db, conversation.user_id, conversation.character_id
+            )
         if status.cooling or status.tier not in INTERVALS:
             return None
         return status.tier

@@ -14,9 +14,8 @@ as cut short by how the call ended. A call that connected is kept, too, for stat
 (ADR-0021).
 """
 
-import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from time import perf_counter
@@ -55,9 +54,9 @@ _ENDED_BY: dict[EndReason, CallEndReason] = {
 """Why the call's activity record says it ended, when the browser was told why."""
 
 
-KeepCall = Callable[[datetime, float], object]
-"""Keeps a call that connected, for stats: when it connected, and how long it lasted once it
-had, in seconds."""
+KeepCall = Callable[[datetime, float], Awaitable[object]]
+"""Keeps a call that connected, for stats, and what it comes to: when it connected, and how
+long it lasted once it had, in seconds."""
 
 
 @dataclass(frozen=True)
@@ -321,8 +320,6 @@ class CallOutcome:
             connected = self._connected_by_clock
             if result != "not_connected" and connected is not None and duration is not None:
                 try:
-                    # On a thread: what keeps it writes, still waiting there for the
-                    # data access layer, or on connections of its own.
-                    await asyncio.to_thread(self._keep, connected, duration)
-                except Exception:  # its record is settled; stats only miss the call
+                    await self._keep(connected, duration)
+                except Exception:  # its record is settled; stats and achievements miss the call
                     log.exception("could not keep a call for stats")
