@@ -84,9 +84,9 @@ log = logging.getLogger(__name__)
 Closer = Callable[[], Awaitable[None] | None]
 
 THREADS = 32
-"""How many threads the event loop's work waits on at once (`asyncio.to_thread`): the
+"""How many threads the event loop's work waits on at once, on the default executor: the
 data access layer's reads, for every turn, the work that is all computing (pictures,
-similarities, packing), and a backup or data package taking minutes too. More than the
+similarities), and a backup or data package taking minutes too. More than the
 default, a few on a small server, so that those do not keep turns waiting."""
 
 

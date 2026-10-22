@@ -43,15 +43,15 @@
 
 **验收**（本地构建版、Playwright、开发登录的一次性用户，走代理连 Fish）：发消息（回复记下 2 条）、打一通电话（接通、挂断后 `calls` 多一行）、送礼（背包 2 → 1，好感度 50 → 53，「送出一件礼物」打勾，三样同一个事务）、删账号（用户和对话都没了，跳回首页）都过。后端日志里没有「on the event loop's thread」的 error，也没有 `event loop ran`。启动时有一条 `write task _open took 922 ms`：冷启动时第一个建表任务读 190 MB 的库文件，开始服务之前就做完了，看日志时不用算它。
 
-**上线前后要对比的日志。** 日志格式是 `时间 级别 logger: 消息`，下面都在服务器上跑，`--since` 按要看的天数改：
+**上线前后要对比的日志。** 日志格式是 `时间 级别 logger: 消息`。下面都在服务器上跑：服务器 `.env` 里设了 `COMPOSE_FILE`，不用带 `-f`；`--since` 按要看的天数改，但日志每个容器只留 5 × 10 MB，能看多远以最早一行为准。
 
 ```sh
-# 事件循环延迟（loop_lag，上线前的基线也用这条）：条数，以及延迟的分布
+# 事件循环延迟（loop_lag，上线前的基线也用这条）：条数，以及按 100 ms 分桶的分布
 ssh vps 'cd eidolon-sc && docker compose logs --since 72h backend | grep -c "event loop ran"'
-ssh vps 'cd eidolon-sc && docker compose logs --since 72h backend | grep "event loop ran" | grep -oE "ran [0-9]+ ms late, [0-9]+ calls" | sort | uniq -c | sort -rn | head'
+ssh vps 'cd eidolon-sc && docker compose logs --since 72h backend | grep -oE "event loop ran [0-9]+ ms" | awk "{print int(\$4/100)*100}" | sort -n | uniq -c'
 
-# 写队列：排队超过 200 ms、执行超过 200 ms，按任务名数（启动时的 _open 不算）
-ssh vps 'cd eidolon-sc && docker compose logs --since 72h backend | grep -E "write task .* (waited|took) [0-9]+ ms" | grep -oE "write task [^ ]+ (waited|took)" | sort | uniq -c | sort -rn'
+# 写队列：排队超过 200 ms、执行超过 200 ms，按任务名数（去掉启动时建表的 _open 那几个）
+ssh vps 'cd eidolon-sc && docker compose logs --since 72h backend | grep -E "write task .* (waited|took) [0-9]+ ms" | grep -v "write task _open " | grep -oE "write task [^ ]+ (waited|took)" | sort | uniq -c | sort -rn'
 
 # 读池：读连接都占着、等了超过 200 ms
 ssh vps 'cd eidolon-sc && docker compose logs --since 72h backend | grep -E "read .* waited [0-9]+ ms for a connection"'
@@ -64,3 +64,11 @@ ssh vps 'cd eidolon-sc && docker compose logs --since 72h backend | grep "on the
 ```
 
 想一次看层的全部日志，`grep "eidolon.data_access"` 即可（`checkpointing the database was held up` 是 info，删账号碰上备份时会有，正常）。
+
+### 票 09 审查
+
+- 改了：`database.py` 模块说明原来写「每条连接都由 `connect` 打开」，和健康检查自己开只读连接矛盾；「the backup's copy」也不准（备份是在线上库的连接上 `VACUUM INTO`）。`THREADS` 说明去掉 `asyncio.to_thread` 的说法（层的读走默认 executor）和重复的「packing」。grep：写队列那条排除 `_open`，延迟分布改成按 100 ms 分桶，注明 `COMPOSE_FILE` 和日志轮转的上限。
+- 没改，留作判断：
+  - 删了 `test_off_the_event_loop.py` 以后，`THREADS = 32` 没有测试管了。规格要删，而且它按 CODING_STANDARDS 属于「构造上就成立」。
+  - 任务名取 `__qualname__`，拿不到时退回 `repr`，里面可能带空格，写队列那条 grep 的 `[^ ]+` 会截断名字。事务体都是函数或方法，实际碰不到。
+  - 票头先写 `done`、「CI 绿」那格等 CI 绿了再单独提交勾上，和票 01–08 一样。

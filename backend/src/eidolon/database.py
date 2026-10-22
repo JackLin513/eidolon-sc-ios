@@ -1,13 +1,13 @@
 """The database: one SQLite file holding the users and their conversations, memories and
 usage, next to the story corpus and the embedded text set.
 
-Every connection to it is opened by `connect`, the same way. The data access layer
-(`data_access`, ADR-0028) is the only way into it, but for the health check (`readable`),
-the backup's copy of it (`backup`) and restoring one in its place (`restore`), each on a
-connection of its own. Each module that keeps tables in it creates its own tables; which
-tables hold a user's data, and which rows of them are the user's, is listed here (`USER_DATA`), and so
-is every other table (`NOT_USER_DATA`), so a table cannot be added without being one or
-the other. A table of a user's data may instead be kept when the user is deleted, but no
+The data access layer (`data_access`, ADR-0028) is the only way into it, but for the
+health check (`readable`), on a read-only connection of its own, and for the backup, which
+copies it (`VACUUM INTO`), and restoring one in its place (`restore`), each on a
+connection of its own opened by `connect`, the same way as the layer's. Each module that
+keeps tables in it creates its own tables; which tables hold a user's data, and which rows
+of them are the user's, is listed here (`USER_DATA`), and so is every other table
+(`NOT_USER_DATA`), so a table cannot be added without being one or the other. A table of a user's data may instead be kept when the user is deleted, but no
 longer say whose it is (`ANONYMIZED_USER_DATA`), as activity records are, so that the
 numbers they add up to do not change.
 
