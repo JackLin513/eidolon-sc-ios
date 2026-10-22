@@ -448,14 +448,14 @@ def create_app(backend: Backend) -> FastAPI:
         return {"ok": True}
 
     @app.get("/api/profile")
-    def get_profile(user_id: UserId) -> dict:
-        return asdict(store.get_profile(user_id))
+    async def get_profile(user_id: UserId) -> dict:
+        return asdict(await store.get_profile(user_id))
 
     @app.put("/api/profile")
-    def update_profile(body: ProfileInput, user_id: UserId) -> dict:
+    async def update_profile(body: ProfileInput, user_id: UserId) -> dict:
         birthday = body.birthday and Birthday(body.birthday.month, body.birthday.day)
         profile = ProducerProfile(body.form_of_address, body.gender, body.timezone, birthday)
-        store.save_profile(user_id, profile)
+        await store.save_profile(user_id, profile)
         return asdict(profile)
 
     @app.get("/api/characters")

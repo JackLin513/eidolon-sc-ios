@@ -105,7 +105,8 @@ def activity(path: Path, clock: FakeClock, seed: int = 7) -> ActivityLog:
                 "UPDATE activity_records SET answered = 1"
                 " WHERE kind = 'reach_out' AND id % 3 = 0"
             )
-        database.delete_user_data(db, "u2")
+        with db:
+            database.delete_user_data(db, "u2")
     return log
 
 

@@ -138,14 +138,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "eval":
         return asyncio.run(_eval_rerank(args))
 
-    store = Store(args.db or database_path_from_env())
+    return asyncio.run(_user_command(args))
+
+
+async def _user_command(args: argparse.Namespace) -> int:
+    from eidolon.data_access import Database
+
+    db = Database(args.db or database_path_from_env())
     try:
-        args.run(store, args)
+        store = Store(db)
+        try:
+            await args.run(store, args)
+        finally:
+            store.close()
     except NotFound as e:
         print(e, file=sys.stderr)
         return 1
     finally:
-        store.close()
+        await db.close()
     return 0
 
 
@@ -920,12 +930,14 @@ async def _eval_memory(args: argparse.Namespace) -> int:
     return 0
 
 
-def _list_users(store: Store, _: argparse.Namespace) -> None:
-    for user in store.list_users():
+async def _list_users(store: Store, _: argparse.Namespace) -> None:
+    users = await store.list_users()
+    methods_of = await store.sign_in_methods_of([user.id for user in users])
+    for user in users:
         methods = "、".join(
             f"{PROVIDER_LABELS.get(m.provider, m.provider)} {m.display_name}"  # pyright: ignore[reportCallIssue, reportArgumentType]
             f" ({m.provider}:{m.subject})"
-            for m in store.sign_in_methods(user.id)
+            for m in methods_of[user.id]
         ) or "（没有登录方式）"
         state = f"已封禁于 {user.banned_at}" if user.banned_at else "正常"
         if user.ban_note:
@@ -933,18 +945,18 @@ def _list_users(store: Store, _: argparse.Namespace) -> None:
         print(f"{user.id}\t{user.name}\t{methods}\t创建于 {user.created_at}\t{state}")
 
 
-def _ban_user(store: Store, args: argparse.Namespace) -> None:
-    store.set_banned(args.user_id, datetime.now(UTC), args.note or None)
+async def _ban_user(store: Store, args: argparse.Namespace) -> None:
+    await store.set_banned(args.user_id, datetime.now(UTC), args.note or None)
     print(f"已封禁用户 {args.user_id}，并让他在所有设备上退出登录；正在进行的通话会在几秒内挂断")
 
 
-def _unban_user(store: Store, args: argparse.Namespace) -> None:
-    store.set_banned(args.user_id, None)
+async def _unban_user(store: Store, args: argparse.Namespace) -> None:
+    await store.set_banned(args.user_id, None)
     print(f"已解封用户 {args.user_id}")
 
 
-def _user_usage(store: Store, args: argparse.Namespace) -> None:
-    store.get_user(args.user_id)  # NotFound for no such user
+async def _user_usage(store: Store, args: argparse.Namespace) -> None:
+    await store.get_user(args.user_id)  # NotFound for no such user
     # The limits play no part in looking over what was used.
     usage = UsageLimiter(args.db or database_path_from_env(), UsageLimits(), utc_now)
     try:

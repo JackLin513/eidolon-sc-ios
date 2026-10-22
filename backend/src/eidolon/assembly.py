@@ -221,7 +221,7 @@ def build(
     database = Database(settings.database_path)
     closers: list[Closer] = [database.close]
 
-    store = Store(settings.database_path)
+    store = Store(database)
     closers.append(store.close)
     if identity_providers is None:
         identity_providers = open_identity_providers(settings.github, settings.google)

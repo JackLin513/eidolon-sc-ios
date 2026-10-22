@@ -20,3 +20,8 @@
 ### 票 02 交接
 
 - `Reembeddable.forget_other_models` 改成了 async。`Memories.forget_other_models` 现在是在 `to_thread` 里跑原来的同步体，用 `Memories` 自己的连接和锁。迁移时改成一个写任务。
+
+### 票 03 交接
+
+- `ReachOuts._due` 拿着自己的锁，在自己的连接上调 `store.read_profile(self._db, …)` 读档案。迁移时改成在层的读任务里调。
+- `/api/account` 里的 `reach_outs.switch_of` 还在 `run_in_threadpool` 里。

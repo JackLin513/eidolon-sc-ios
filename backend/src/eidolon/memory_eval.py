@@ -579,8 +579,10 @@ class _Scratch:
     def __init__(
         self, path: Path, characters: Mapping[str, Character], services: MemoryServices
     ) -> None:
-        self._store = Store(path)
-        self.user = self._store.create_user("评测用的制作人").id
+        self._database = Database(path)
+        self._store = Store(self._database)
+        self.user = ""
+        """The made-up user, once `start_with` has made them."""
         self.memories = Memories(
             path, characters, lambda: NOW, embedder=services.embedder,
             reranker=services.reranker, min_relevance=lambda: services.rerank_thresholds.memories,
@@ -595,8 +597,10 @@ class _Scratch:
         return self._conversations[character_id]
 
     async def start_with(self, memories: Sequence[StartingMemory]) -> dict[str, int]:
-        """Write `memories` down, each in a turn with its source character, in order,
-        superseding those it superseded; returns each one's id by key."""
+        """Make the user, then write `memories` down, each in a turn with its source
+        character, in order, superseding those it superseded; returns each one's id by
+        key."""
+        self.user = (await self._store.create_user("评测用的制作人")).id
         for memory in memories:
             superseded = [m.text for m in memories if m.superseded_by == memory.key]
             model = _ScriptedBackground(memory.text, superseded)
@@ -629,6 +633,7 @@ class _Scratch:
     async def aclose(self) -> None:
         await self.memories.aclose()
         self._store.close()
+        await self._database.close()
 
 
 class _ScriptedBackground:

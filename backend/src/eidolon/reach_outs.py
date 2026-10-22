@@ -51,7 +51,13 @@ from eidolon.engine import ConversationEngine
 from eidolon.live_config import LiveConfig
 from eidolon.producer import effective_timezone
 from eidolon.randomness import Random
-from eidolon.store import Conversation, CurrentConversation, ReachOutRefused, Store
+from eidolon.store import (
+    Conversation,
+    CurrentConversation,
+    ReachOutRefused,
+    Store,
+    read_profile,
+)
 from eidolon.usage import UsageLimiter
 
 log = logging.getLogger(__name__)
@@ -234,7 +240,9 @@ class ReachOuts:
         place, morning, due = self._schedule(conversation.id, contact)
         if due is None:
             due = contact + self._interval(tier, place)
-        zone = ZoneInfo(effective_timezone(self._store.get_profile(conversation.user_id), None))
+        with self._lock:  # read on the reach-outs' own connection, on this thread
+            profile = read_profile(self._db, conversation.user_id)
+        zone = ZoneInfo(effective_timezone(profile, None))
         if _at_night(due, zone):
             night = due
         elif due <= now and _at_night(now, zone):

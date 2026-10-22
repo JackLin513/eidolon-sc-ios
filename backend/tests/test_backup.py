@@ -24,8 +24,7 @@ from eidolon.clock import Clock, utc_now
 from eidolon.config import Settings
 from eidolon.data_access import Database
 from eidolon.s3 import S3Settings
-from eidolon.store import Store
-from tests.conftest import Admin
+from tests.conftest import Admin, aside, users_in
 from tests.fakes import START
 from tests.test_stand_upload import FakeBucket
 
@@ -63,9 +62,7 @@ class Deployment:
 
     def __init__(self, tmp_path: Path) -> None:
         self.database = tmp_path / "eidolon.db"
-        store = Store(self.database)
-        store.create_user("producer")
-        store.close()
+        aside(users_in(self.database, "producer"))
         self.storage = FakeBucket("backups")
         self.refuses_puts = False
         self.cancelled_during_put = False
@@ -256,10 +253,7 @@ async def test_when_the_upload_fails_old_backups_are_still_deleted_save_the_newe
 async def test_a_database_that_cannot_be_copied_whole_is_not_uploaded(
     deployment: Deployment, tmp_path: Path
 ):
-    store = Store(deployment.database)
-    for n in range(500):
-        store.create_user(f"user {n:03d} " + "x" * 200)
-    store.close()
+    await users_in(deployment.database, *(f"user {n:03d} " + "x" * 200 for n in range(500)))
     middle = deployment.database.stat().st_size // 2 // 4096 * 4096
     with deployment.database.open("r+b") as file:  # break a page among the users
         file.seek(middle)

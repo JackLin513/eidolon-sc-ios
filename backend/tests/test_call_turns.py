@@ -49,8 +49,8 @@ from eidolon.call_outcome import CallLimits, CallOutcome
 from eidolon.config import EmotionSettings, Settings
 from eidolon.engine import MAX_INPUT_LENGTH
 from eidolon.own_keys import BroughtKeys
-from eidolon.store import Store
-from tests.conftest import ClientFactory
+from eidolon.store import Conversation
+from tests.conftest import ClientFactory, store_in
 from tests.fakes import (
     FAKE_JUDGE,
     HANG,
@@ -75,13 +75,22 @@ MANO_REPLY = ["<ja>ほわっ、", "おはようございます！</ja><zh>哇，
 class CallUnderTest:
     """One call into a fresh conversation with Mano, and the API to read its record."""
 
-    def __init__(self, settings: Settings, client: httpx.AsyncClient, conversation_id: str):
+    def __init__(
+        self, settings: Settings, client: httpx.AsyncClient, conversation: Conversation
+    ):
         self._settings = settings
         self._client = client
-        self._store = Store(settings.database_path)
-        conversation = self._store.get_conversation(conversation_id)
-        assert conversation is not None
         self.conversation = conversation
+
+    @classmethod
+    async def of(
+        cls, settings: Settings, client: httpx.AsyncClient, conversation_id: str
+    ) -> "CallUnderTest":
+        """One into the conversation `conversation_id`."""
+        async with store_in(settings.database_path) as store:
+            conversation = store.get_conversation(conversation_id)
+        assert conversation is not None
+        return cls(settings, client, conversation)
 
     async def run(
         self,
@@ -231,9 +240,6 @@ class CallUnderTest:
         """What the user said in each recorded turn, None for the character's replies."""
         return [row[1] for row in await self.record()]
 
-    def close(self) -> None:
-        self._store.close()
-
 
 class HoldsUpCancelling(FrameProcessor):
     """Never passes on a `CancelFrame`, as a processor stuck cancelling would not."""
@@ -248,9 +254,7 @@ class HoldsUpCancelling(FrameProcessor):
 @pytest.fixture
 async def mano_call(make_client: ClientFactory, settings: Settings):
     client = make_client(FakeLLM())
-    under_test = CallUnderTest(settings, client, await start_conversation(client, "mano"))
-    yield under_test
-    under_test.close()
+    return await CallUnderTest.of(settings, client, await start_conversation(client, "mano"))
 
 
 def one_by_one(*frames: Frame) -> list[Frame]:

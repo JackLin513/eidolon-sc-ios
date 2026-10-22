@@ -131,7 +131,6 @@ from eidolon.memory import Memories, last_turn_query
 from eidolon.own_keys import OwnKeyFailed
 from eidolon.photos import CANNOT_SEND, NOT_RECEIVED, Eligibility, Photos, photo_turn
 from eidolon.producer import (
-    ProducerProfile,
     effective_timezone,
     local_date,
     now_prompt,
@@ -370,17 +369,16 @@ async def _judged(
 
 @dataclass(frozen=True)
 class _BeforeAsking:
-    """What a turn reads from the database before it is asked: her character, the
-    conversation's record, when the user and she were last in touch (None in a call, where
-    she knows they are talking), her affinity as it begins, what it may send for a photo, and
-    the producer profile."""
+    """What a turn reads from the database before it is asked, but the producer profile: her
+    character, the conversation's record, when the user and she were last in touch (None in
+    a call, where she knows they are talking), her affinity as it begins, and what it may
+    send for a photo."""
 
     character: Character
     record: list[Recorded]
     last_contact: datetime | None
     affinity: Status | None
     eligibility: Eligibility | None
-    profile: ProducerProfile
 
 
 @dataclass
@@ -627,10 +625,10 @@ class ConversationEngine:
         if read is None:
             yield TurnRejected(ENDED)
             return
-        character, record, last_contact, affinity, eligibility, profile = (
+        character, record, last_contact, affinity, eligibility = (
             read.character, read.record, read.last_contact, read.affinity, read.eligibility,
-            read.profile,
         )
+        profile = await self._store.get_profile(conversation.user_id)
         # Said after reading the record, so an event this turn's prompt does not tell of
         # comes before the turn, and is told of with its words from the next turn on.
         said_at = timestamp()
@@ -827,14 +825,14 @@ class ConversationEngine:
         Raises EmptyReply if the model says nothing she could say, and whatever the model
         raises."""
         character = self._characters[conversation.character_id]
-        record, profile, affinity, last_contact = await asyncio.to_thread(
+        record, affinity, last_contact = await asyncio.to_thread(
             lambda: (
                 self._store.record(conversation.id),
-                self._store.get_profile(conversation.user_id),
                 self._affinity(conversation),
                 self._store.last_contact(conversation.user_id, conversation.character_id),
             )
         )
+        profile = await self._store.get_profile(conversation.user_id)
         messages = [entry for entry in record if isinstance(entry, Message)]
         timezone = effective_timezone(profile, None)
         now = self._clock()
@@ -889,7 +887,6 @@ class ConversationEngine:
             else self._store.last_contact(conversation.user_id, conversation.character_id),
             self._affinity(conversation),
             self._photo_eligibility(conversation, character, own_image),
-            self._store.get_profile(conversation.user_id),
         )
 
     def _photo_eligibility(

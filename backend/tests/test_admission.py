@@ -23,8 +23,8 @@ from eidolon.own_keys import (
     DeployerLease,
     OwnKeys,
 )
-from eidolon.store import Store
 from eidolon.usage import OverLimit, UsageKind, UsageLimiter
+from tests.conftest import aside, users_in
 from tests.fakes import FakeBackgroundLLM, FakeClock, FakeLLM, FakeLLMService, FakeSpeech
 
 MY_LLM = ChatModelSettings(
@@ -57,8 +57,7 @@ class Deployment:
 
     def __init__(self, path: Path) -> None:
         self.clock = FakeClock()
-        self.store = Store(path)
-        self.user = self.store.create_user("producer").id
+        [self.user] = aside(users_in(path, "producer"))
         self.usage = UsageLimiter(
             path, UsageLimits(turns_per_hour=1, calls_per_hour=1), self.clock
         )
@@ -103,7 +102,6 @@ class Deployment:
     def close(self) -> None:
         self.activity.close()
         self.usage.close()
-        self.store.close()
 
 
 @pytest.fixture

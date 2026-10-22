@@ -18,9 +18,8 @@ from eidolon.embedding import Document, EmbeddingError
 from eidolon.facts import CharacterFacts
 from eidolon.memory import Memories
 from eidolon.reembed import reembed
-from eidolon.store import Store
 from eidolon.config import LLMSettings, Settings
-from tests.conftest import Admin, CharacterConfig
+from tests.conftest import Admin, CharacterConfig, store_in
 from tests.fakes import (
     FakeBackgroundLLM,
     FakeEmbedder,
@@ -72,7 +71,6 @@ class Deployment:
         config.add("kogane", "月岡恋鐘", "sheet", speakers=["恋鐘"])
         self.characters_path = config.path
         self.characters = load_characters(config.path)
-        self.store = Store(self.database)
 
     async def embed_everything_with(self, model: str) -> None:
         embedder = FakeEmbedder(model)
@@ -88,9 +86,10 @@ class Deployment:
             ),
             FakeBackgroundLLM(memorized(CAT, TRIP)),
         )
-        world = World(self.store, self.characters)
-        await tell(memories, world, world.conversation("mano"), "我家的猫叫小白，下个月去北海道")
-        await memories.entries(world.producer)  # written down, and embedded
+        async with store_in(self.database) as store:
+            world = await World.made(store, self.characters)
+            await tell(memories, world, world.conversation("mano"), "我家的猫叫小白，下个月去北海道")
+            await memories.entries(world.producer)  # written down, and embedded
         await memories.aclose()
 
     def settings(self) -> Settings:
@@ -122,10 +121,8 @@ class ClosableEmbedder(FakeEmbedder):
 
 
 @pytest.fixture
-def deployment(tmp_path: Path):
-    deployment = Deployment(tmp_path)
-    yield deployment
-    deployment.store.close()
+def deployment(tmp_path: Path) -> Deployment:
+    return Deployment(tmp_path)
 
 
 async def test_everything_is_embedded_again_and_then_the_old_vectors_dropped(
@@ -186,7 +183,8 @@ async def test_an_interrupted_run_keeps_what_it_finished_and_drops_nothing(
 async def test_deleted_memories_are_not_embedded(deployment: Deployment):
     await deployment.embed_everything_with(OLD)
     memories = Memories(deployment.database, deployment.characters, lambda: NOW)
-    producer = deployment.store.first_user_named("producer")
+    async with store_in(deployment.database) as store:
+        producer = await store.first_user_named("producer")
     assert producer is not None
     [trip, cat] = await memories.entries(producer.id)
     await memories.delete(cat.user_id, cat.id)

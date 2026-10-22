@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from eidolon.memory import Memories
-from eidolon.store import Store
+from tests.conftest import store_in, users_in
 
 LOOKUPS = [
     "SELECT * FROM conversations WHERE user_id = ? AND character_id = ?",
@@ -20,11 +20,12 @@ LOOKUPS = [
 
 
 @pytest.mark.parametrize("lookup", LOOKUPS)
-def test_what_is_looked_up_by_user_or_conversation_reads_no_one_elses(
+async def test_what_is_looked_up_by_user_or_conversation_reads_no_one_elses(
     tmp_path: Path, lookup: str
 ):
     path = tmp_path / "eidolon.db"
-    Store(path)
+    async with store_in(path):
+        pass
     Memories(path, {}, lambda: datetime.now(UTC))
 
     with sqlite3.connect(path) as db:
@@ -34,10 +35,9 @@ def test_what_is_looked_up_by_user_or_conversation_reads_no_one_elses(
     assert not [step for step in plan if step.startswith("SCAN")], plan
 
 
-def test_every_users_current_conversation_however_many(tmp_path: Path):
+async def test_every_users_current_conversation_however_many(tmp_path: Path):
     path = tmp_path / "eidolon.db"
-    store = Store(path)
-    user = store.create_user("producer").id
+    [user] = await users_in(path, "producer")
     count = 33_000  # more than SQLite's 32,766 values a statement
     with sqlite3.connect(path) as db:
         db.executemany(
@@ -50,7 +50,8 @@ def test_every_users_current_conversation_however_many(tmp_path: Path):
             " VALUES ('conversation-7', '2026-10-02T00:00:00+00:00', 60)"
         )
 
-    current = {c.conversation.id: c for c in store.current_conversations()}
+    async with store_in(path) as store:
+        current = {c.conversation.id: c for c in store.current_conversations()}
 
     assert len(current) == count
     assert current["conversation-7"].last_contact is not None

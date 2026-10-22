@@ -149,12 +149,9 @@ async def test_she_is_told_whether_the_turn_is_typed_or_in_a_call_after_what_is_
     client = make_client(typed_llm)
     conversation = await start_conversation(client, "mano")
     await send_turn(client, conversation, "早上好")
-    call = CallUnderTest(settings, client, conversation)
+    call = await CallUnderTest.of(settings, client, conversation)
     call_llm = FakeLLM(MANO_REPLY)
-    try:
-        await call.run(call_llm, [spoken("早上好")])
-    finally:
-        call.close()
+    await call.run(call_llm, [spoken("早上好")])
 
     [typed], [in_call] = typed_llm.prompts, call_llm.prompts
     assert TYPING in context_of(typed) and IN_A_CALL not in context_of(typed)

@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 
 from eidolon.config import UsageLimits
-from eidolon.store import Store
 from eidolon.usage import OverLimit, Tally, UsageLimiter, UserLimits
+from tests.conftest import aside, users_in
 from tests.fakes import START, FakeClock
 
 
@@ -20,9 +20,7 @@ class Deployment:
 
     def __init__(self, path: Path) -> None:
         self.path = path
-        self.store = Store(path)
-        self.user = self.store.create_user("producer").id
-        self.friend = self.store.create_user("friend").id
+        self.user, self.friend = aside(users_in(path, "producer", "friend"))
         self.clock = FakeClock()
 
     def limiter(self, turns: int | None = 2, calls: int | None = 1) -> UsageLimiter:
@@ -34,7 +32,6 @@ class Deployment:
 def deployment(tmp_path: Path) -> Iterator[Deployment]:
     deployment = Deployment(tmp_path / "eidolon.db")
     yield deployment
-    deployment.store.close()
 
 
 @pytest.fixture

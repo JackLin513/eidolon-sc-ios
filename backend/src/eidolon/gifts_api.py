@@ -15,6 +15,7 @@ from dataclasses import replace
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from eidolon.admin_api import Admin
 from eidolon.assembly import Backend
@@ -110,12 +111,14 @@ def add_gift_routes(app: FastAPI, backend: Backend) -> None:
         return gifts.use_reset_card(user_id).shown()
 
     @app.get("/api/admin/gifts")
-    def read_admin_gifts(_: Admin) -> dict:
+    async def read_admin_gifts(_: Admin) -> dict:
         """How many users there are now, each to be given a reset card; when they last were,
         and how many; and whether gifts are open."""
-        last = gifts.last_grant()
+        users = await store.list_users()
+        # The gifts, on a connection of their own, are read on a thread.
+        last = await run_in_threadpool(gifts.last_grant)
         return {
-            "users": len(store.list_users()),
+            "users": len(users),
             "last_grant": last and last.shown(),
             "open": backend.config.affinity_on,
         }

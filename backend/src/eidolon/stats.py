@@ -39,6 +39,7 @@ from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Header, Query
+from starlette.concurrency import run_in_threadpool
 
 from eidolon.affinity import TIERS, Tier
 from eidolon.assembly import Backend
@@ -60,16 +61,22 @@ def add_stats_routes(app: FastAPI, backend: Backend) -> None:
     store = backend.store
 
     @app.get("/api/stats")
-    def stats(
+    async def stats(
         user_id: UserId,
         span: Annotated[Range, Query(alias="range")] = "all",
         device_timezone: Annotated[str | None, Header(alias="X-Timezone")] = None,
     ) -> dict:
-        zone = ZoneInfo(effective_timezone(store.get_profile(user_id), device_timezone))
+        profile = await store.get_profile(user_id)
+        zone = ZoneInfo(effective_timezone(profile, device_timezone))
+        signed_up = datetime.fromisoformat((await store.get_user(user_id)).created_at)
+        # The rest, on the connections of the modules not yet on the data access layer, is
+        # read on a thread.
+        return await run_in_threadpool(summed_up, user_id, span, zone, signed_up)
+
+    def summed_up(user_id: str, span: Range, zone: ZoneInfo, signed_up: datetime) -> dict:
         today = backend.clock().astimezone(zone).date()
         contacts = [(c, c.at.astimezone(zone)) for c in store.contacts(user_id)]
         per_day = Counter(at.date() for _, at in contacts)
-        signed_up = datetime.fromisoformat(store.get_user(user_id).created_at)
         start = today - timedelta(days=today.weekday() + 7 * HEATMAP_WEEKS)
 
         def days_since(at: datetime) -> int:

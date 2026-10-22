@@ -7,7 +7,7 @@ record is a real one, settled as the text turn's `Admission` or the call's turn 
 would be told.
 """
 
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
@@ -15,8 +15,9 @@ import pytest
 from eidolon.activity import ActivityLog, Recording, Result
 from eidolon.engine import TurnDone, TurnEvent, TurnFailed, TurnRejected, UserSaid
 from eidolon.reply_format import SegmentDelta
-from eidolon.store import Message, Store
+from eidolon.store import Message
 from eidolon.turn_outcome import TurnOutcome
+from tests.conftest import store_in
 from tests.fakes import FakeClock
 
 SAID = UserSaid("在吗")
@@ -38,12 +39,11 @@ class Turn:
 
 
 @pytest.fixture
-def activity(tmp_path: Path) -> Iterator[ActivityLog]:
-    store = Store(tmp_path / "eidolon.db")
-    activity = ActivityLog(tmp_path / "eidolon.db", FakeClock())
-    yield activity
-    activity.close()
-    store.close()
+async def activity(tmp_path: Path) -> AsyncIterator[ActivityLog]:
+    async with store_in(tmp_path / "eidolon.db"):
+        activity = ActivityLog(tmp_path / "eidolon.db", FakeClock())
+        yield activity
+        activity.close()
 
 
 @pytest.mark.parametrize(

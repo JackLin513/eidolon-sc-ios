@@ -25,3 +25,8 @@
 
 - 价格目录的查找（`Pricing.find`、`listed`、`catalog_as_of`）都只读内存，不碰库。看板 `summed_up` 和后台价格 `described_by` 留在 `run_in_threadpool` 里的，只剩读 `ActivityLog`，加上纯 CPU 的汇总和定价。
 - `refresh_soon` 必须在事件循环上调，现在在两个 handler 的 await 之后调。收掉 `run_in_threadpool` 时别把它挪回线程里。
+
+### 票 03 交接
+
+- 后台用户页（`admin_users_api`）里还放在 `run_in_threadpool` 里的有：`described` 和 `details` 读 `activity.taken_since`、`limiter.user_limits`、`activity.of_user` 的部分，以及 `set_limits`、`take_off_limits` 里的 `limiter.set_user_limits`。迁完改成 await。
+- 命令行 `user usage` 还在 `asyncio.run` 里直接用同步的 `UsageLimiter`。

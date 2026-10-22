@@ -235,3 +235,93 @@ async def test_a_function_defined_is_on_every_connection(db: Database):
 
     shouted = await db.read(lambda conn: conn.execute("SELECT shout(name) FROM things").fetchall())
     assert shouted == [("QUIET",)]
+
+
+def errors_of(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        r.getMessage() for r in caplog.records
+        if r.name == "eidolon.data_access" and r.levelname == "ERROR"
+    ]
+
+
+def log_of(path: Path) -> int:
+    """How big the write-ahead log of the database at `path` is, in bytes."""
+    log = path.with_name(path.name + "-wal")
+    return log.stat().st_size if log.exists() else 0
+
+
+async def emptied(path: Path) -> None:
+    """Wait for the write-ahead log of the database at `path` to be emptied."""
+    async with asyncio.timeout(5):
+        while log_of(path):
+            await asyncio.sleep(0.02)
+
+
+def reading(path: Path) -> sqlite3.Connection:
+    """A connection of its own to the database at `path`, in the middle of a read, as a
+    backup's is."""
+    reader = sqlite3.connect(path, isolation_level=None)
+    reader.execute("BEGIN")
+    reader.execute("SELECT COUNT(*) FROM sqlite_master").fetchall()
+    return reader
+
+
+async def test_a_checkpoint_a_reader_holds_up_holds_up_no_write_and_is_done_once_it_is_gone(
+    db: Database, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(eidolon.data_access, "CHECKPOINT_RETRY", 0.1)
+    path = tmp_path / "eidolon.db"
+    await db.write(add, "kept")
+    reader = reading(path)
+    try:
+        started = time.monotonic()
+        await db.checkpoint()
+        await db.write(add, "after")
+        assert time.monotonic() - started < 1
+        assert log_of(path)
+    finally:
+        reader.close()
+
+    await emptied(path)
+    assert await db.read(names) == ["kept", "after"]
+
+
+async def test_a_checkpoint_left_undone_for_long_is_logged_as_an_error_and_still_retried(
+    db: Database, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    monkeypatch.setattr(eidolon.data_access, "CHECKPOINT_RETRY", 0.05)
+    monkeypatch.setattr(eidolon.data_access, "CHECKPOINT_OVERDUE", 0.3)
+    path = tmp_path / "eidolon.db"
+    await db.write(add, "kept")
+    reader = reading(path)
+    try:
+        await db.checkpoint()
+        async with asyncio.timeout(5):
+            while not errors_of(caplog):
+                await asyncio.sleep(0.02)
+    finally:
+        reader.close()
+
+    await emptied(path)
+    (error,) = errors_of(caplog)
+    assert "checkpoint" in error
+
+
+async def test_opening_first_finishes_a_checkpoint_left_undone(tmp_path: Path):
+    path = tmp_path / "eidolon.db"
+    other = sqlite3.connect(path)  # kept open, so that closing it checkpoints nothing
+    try:
+        other.execute("PRAGMA journal_mode = WAL")
+        with other:
+            other.execute("CREATE TABLE things (name TEXT)")
+            other.execute("INSERT INTO things (name) VALUES ('left in the log')")
+        assert log_of(path)
+
+        db = Database(path)
+        try:
+            await emptied(path)
+        finally:
+            await db.close()
+    finally:
+        other.close()

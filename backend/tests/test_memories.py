@@ -18,7 +18,7 @@ from eidolon import memory
 from eidolon.llm import ChatLLM
 from eidolon.memory import Memories, MemoryTurn, memory_query
 from eidolon.store import Conversation, Message, Segment, Store
-from tests.conftest import CharacterConfig
+from tests.conftest import CharacterConfig, store_in
 from tests.fakes import FakeBackgroundLLM, FakeEmbedder, FakeReranker
 from tests.test_shared_memory import CAT, TRIP, memorized
 
@@ -29,10 +29,15 @@ TZ = "Asia/Shanghai"
 class World:
     """A store with users and conversations for the memories module to remember them by."""
 
-    def __init__(self, store: Store, characters: dict[str, Character]) -> None:
+    def __init__(self, store: Store, characters: dict[str, Character], producer: str) -> None:
         self.store = store
         self.characters = characters
-        self.producer = store.create_user("producer").id
+        self.producer = producer
+
+    @classmethod
+    async def made(cls, store: Store, characters: dict[str, Character]) -> "World":
+        """The world of `store`, the producer made in it."""
+        return cls(store, characters, (await store.create_user("producer")).id)
 
     def conversation(self, character_id: str, user_id: str | None = None) -> Conversation:
         return self.store.create_conversation(user_id or self.producer, character_id)
@@ -43,9 +48,8 @@ class World:
 
 @pytest.fixture
 async def world(tmp_path: Path, characters: CharacterConfig) -> AsyncIterator[World]:
-    store = Store(tmp_path / "eidolon.db")
-    yield World(store, load_characters(characters.path))
-    store.close()
+    async with store_in(tmp_path / "eidolon.db") as store:
+        yield await World.made(store, load_characters(characters.path))
 
 
 MemoriesFactory = Callable[..., Memories]
@@ -169,7 +173,7 @@ async def test_one_users_memories_never_reach_another_user(
 ):
     reranker = FakeReranker("猫")
     memories = make_memories(memorized(CAT), memorized("制作人喜欢狗"), reranker=reranker)
-    friend = world.store.create_user("friend").id
+    friend = (await world.store.create_user("friend")).id
 
     await tell(memories, world, world.conversation("mano"), "我家的猫叫小白")
     await tell(memories, world, world.conversation("mano", friend), "我喜欢狗")
@@ -524,7 +528,7 @@ async def test_a_memory_supersedes_only_what_the_background_model_was_shown(
     world: World, make_memories: MemoriesFactory
 ):
     """Another user's memory, numbered past what was shown, stays as it is."""
-    friend = world.store.create_user("friend").id
+    friend = (await world.store.create_user("friend")).id
     memories = make_memories(
         memorized(OSAKA), memorized(DOG),
         json.dumps({"memories": [{"text": TOKYO, "supersedes": [1, 2]}]}, ensure_ascii=False),

@@ -28,6 +28,7 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from eidolon.data_access import Database
+from eidolon.database import by_name
 from eidolon.embedding import Document, Embedder, nearest, to_blob
 
 _SCHEMA = """
@@ -238,19 +239,11 @@ class StoryCorpus:
                 progress(done)
 
 
-def _by_name(db: sqlite3.Connection) -> sqlite3.Cursor:
-    """A cursor on `db` whose rows are read by name, leaving the connection's, which other
-    modules share, as they are."""
-    cursor = db.cursor()
-    cursor.row_factory = sqlite3.Row
-    return cursor
-
-
 def _open(db: sqlite3.Connection, model: str) -> int:
     """Make the tables, or bring them up to date; how many passages have no vector from
     `model`."""
     db.executescript(_SCHEMA)
-    columns = {r["name"] for r in _by_name(db).execute("PRAGMA table_info(episodes)")}
+    columns = {r["name"] for r in by_name(db).execute("PRAGMA table_info(episodes)")}
     if "imported_from" not in columns:  # corpora from before JSON import were all CSV
         db.execute("ALTER TABLE episodes ADD COLUMN imported_from TEXT NOT NULL DEFAULT 'csv'")
     return db.execute(
@@ -300,7 +293,7 @@ def _save(
 
 
 def _get(db: sqlite3.Connection, episode_id: str) -> Episode | None:
-    row = _by_name(db).execute("SELECT * FROM episodes WHERE id = ?", (episode_id,)).fetchone()
+    row = by_name(db).execute("SELECT * FROM episodes WHERE id = ?", (episode_id,)).fetchone()
     return _episode(db, row) if row else None
 
 
@@ -323,9 +316,9 @@ def _episode_ids(db: sqlite3.Connection, prefix: str) -> list[str]:
 
 def _list_episodes(db: sqlite3.Connection, character_id: str | None) -> list[Episode]:
     if character_id is None:
-        rows = _by_name(db).execute("SELECT * FROM episodes ORDER BY id").fetchall()
+        rows = by_name(db).execute("SELECT * FROM episodes ORDER BY id").fetchall()
     else:
-        rows = _by_name(db).execute(
+        rows = by_name(db).execute(
             "SELECT e.* FROM episodes e JOIN episode_cast c ON c.episode_id = e.id"
             " WHERE c.character_id = ? ORDER BY e.id",
             (character_id,),
@@ -354,7 +347,7 @@ def _passages_of_cast(
 ) -> list[sqlite3.Row]:
     """The episode, text and vector from `model` of each passage of the episodes
     `character_id` is cast in."""
-    return _by_name(db).execute(
+    return by_name(db).execute(
         "SELECT p.episode_id, p.text, p.embedding FROM episode_passages p"
         " JOIN episode_cast c ON c.episode_id = p.episode_id"
         " WHERE c.character_id = ? AND p.model = ?",
@@ -367,7 +360,7 @@ def _unembedded(
 ) -> list[sqlite3.Row]:
     """As many as `batch` passages without a vector from `model`, after `after` (an
     episode, and a passage's place in it), with where each comes from."""
-    return _by_name(db).execute(
+    return by_name(db).execute(
         "SELECT p.episode_id, p.seq, p.text, e.source, e.title"
         " FROM episode_passages p JOIN episodes e ON e.id = p.episode_id"
         " WHERE p.model != ? AND (p.episode_id, p.seq) > (?, ?)"

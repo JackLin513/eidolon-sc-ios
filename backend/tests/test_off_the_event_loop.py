@@ -1,7 +1,7 @@
 """Waiting on the database is done on threads, not on the event loop, which every call's
 audio runs on too: a text turn reads and writes the database on threads, but for recording
-the turn itself, which may hang up her calls with the user there; so does deleting an
-account. As many as `assembly.THREADS` may wait on threads at once."""
+the turn itself, which may hang up her calls with the user there. As many as
+`assembly.THREADS` may wait on threads at once."""
 
 import asyncio
 import threading
@@ -14,7 +14,6 @@ from eidolon.assembly import THREADS
 from eidolon.store import Store
 from tests.conftest import ClientFactory
 from tests.fakes import FakeLLM
-from tests.test_delete_account import DELETE
 from tests.test_live_config import start
 from tests.test_service_status import backend_of
 from tests.test_text_turn import send_turn, start_conversation
@@ -46,25 +45,13 @@ async def test_a_text_turn_reads_the_database_off_the_event_loop(
     await send_turn(client, conversation, "早上好")  # so that there is a record to read
     threads = watch(
         monkeypatch, backend_of(client).store,
-        ["ended", "record", "last_contact", "get_profile", "typed_turns"],
+        ["ended", "record", "last_contact", "typed_turns"],
     )
 
     await send_turn(client, conversation, "在吗")
 
     assert all(threads.values()), threads
     assert not [name for name, on in threads.items() if threading.get_ident() in on]
-
-
-async def test_deleting_an_account_deletes_off_the_event_loop(
-    make_client: ClientFactory, monkeypatch: pytest.MonkeyPatch
-):
-    client = make_client(FakeLLM())
-    threads = watch(monkeypatch, backend_of(client).store, ["delete_user"])
-
-    res = await client.post("/api/account/delete", json=DELETE)
-
-    assert res.status_code == 204
-    assert threads["delete_user"] and threading.get_ident() not in threads["delete_user"]
 
 
 async def test_as_many_as_32_wait_on_threads_at_once(make_client: ClientFactory):

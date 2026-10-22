@@ -13,8 +13,7 @@ import pyrage
 import pytest
 
 from eidolon.config import Settings
-from eidolon.store import Store
-from tests.conftest import Admin
+from tests.conftest import Admin, aside, users_in
 from tests.test_backup import IDENTITY, Deployment, backups_in, begun_in, records_in
 
 
@@ -27,10 +26,7 @@ def names(database: Path) -> list[str]:
 
 
 def a_database(path: Path, *users: str) -> Path:
-    store = Store(path)
-    for name in users:
-        store.create_user(name)
-    store.close()
+    aside(users_in(path, *users))
     return path
 
 

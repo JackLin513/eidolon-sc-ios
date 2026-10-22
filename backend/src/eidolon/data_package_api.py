@@ -92,7 +92,7 @@ def add_data_package_routes(app: FastAPI, backend: Backend) -> None:
         path = _temporary_file()
         try:
             with packages.one_at_a_time(user_id):
-                await run_in_threadpool(packages.export, user_id, categories, path)
+                await packages.export(user_id, categories, path)
         except BaseException as e:
             path.unlink(missing_ok=True)
             if not isinstance(e, Busy):

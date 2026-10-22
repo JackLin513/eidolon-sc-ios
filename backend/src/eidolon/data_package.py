@@ -70,6 +70,7 @@ from eidolon.store import (
     Store,
     WholeConversation,
     add_carried_conversation,
+    read_profile,
     write_profile,
 )
 
@@ -629,13 +630,21 @@ class DataPackages:
             with self._working_lock:
                 self._working.discard(user_id)
 
-    def export(self, user_id: str, include: Iterable[Category], to: Path) -> None:
+    async def export(self, user_id: str, include: Iterable[Category], to: Path) -> None:
         """Write the user's package, with the categories in `include`, to the file `to`."""
         categories = chosen(include)
+        profile = await self._store.get_profile(user_id) if "profile" in categories else None
+        # The rest, on connections of their own, is read on a thread, and written there.
+        await asyncio.to_thread(self._export, user_id, categories, profile, to)
+
+    def _export(
+        self, user_id: str, categories: list[Category], profile: ProducerProfile | None,
+        to: Path,
+    ) -> None:
         data = PackageData()
         counts: dict[Category, int] = {}
-        if "profile" in categories:
-            data.profile = PackagedProfile.of(self._store.get_profile(user_id))
+        if profile is not None:
+            data.profile = PackagedProfile.of(profile)
             counts["profile"] = 1
         if "conversations" in categories:
             data.conversations = [
@@ -719,7 +728,7 @@ class DataPackages:
             with db:
                 if "profile" in categories and data.profile is not None:
                     profile = data.profile.profile()
-                    if profile != self._store.get_profile(user_id):
+                    if profile != read_profile(db, user_id):
                         write_profile(db, user_id, profile)
                         imported.profile = True
                 conversations: dict[PackageKey, str] = {}

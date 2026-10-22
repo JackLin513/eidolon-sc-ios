@@ -18,3 +18,11 @@
 - [ ] 受影响的测试通过，CI 绿。
 
 ## Comments
+
+### 票 03 交接
+
+- `Store(db)` 已经接收层，账号这一块走层，存在 `self._database`。其余方法还用自己的连接 `self._db` 和 `self._lock`。迁完去掉它们，再把 `self._database` 改名 `_db`。
+- `call._hang_up_users_gone` 里的 `active_users`、`get_user` 已经 await，走读连接。「通话期间每 5 秒查一次改成走读连接」这一项可以直接勾掉。
+- 回合开头、搭话的档案读取，现在是单独 `await self._store.get_profile`（`_BeforeAsking` 已经去掉 `profile` 字段）。收成一个读方法时，把它并进去。
+- `/api/stats` 里的 `contacts`、`kept_calls`、`first_records` 在 `run_in_threadpool` 的 `summed_up` 里，迁完改成 await。
+- 测试辅助：`tests.conftest.store_in`、`users_in`；`CallUnderTest.of` 和 `test_turns.turns_in` 经 `store_in` 读对话。

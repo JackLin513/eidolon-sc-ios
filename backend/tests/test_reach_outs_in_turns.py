@@ -226,11 +226,8 @@ async def test_in_a_call_the_one_before_it_connected_is_told_before_his_words(
     make_client: ClientFactory, settings: Settings
 ):
     client, _, _, conversation, at = await reached_out(make_client, settings)
-    call = CallUnderTest(settings, client, conversation)
+    call = await CallUnderTest.of(settings, client, conversation)
     call_llm = FakeLLM(MANO_REPLY)
-    try:
-        await call.run(call_llm, [spoken("看到了")])
-    finally:
-        call.close()
+    await call.run(call_llm, [spoken("看到了")])
 
     assert history(call_llm)[-1] == ("user", f"{reached(at)}看到了")

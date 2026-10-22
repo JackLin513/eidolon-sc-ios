@@ -11,8 +11,8 @@ longer say whose it is (`ANONYMIZED_USER_DATA`), as activity records are, so tha
 numbers they add up to do not change.
 
 Deleting a user (`delete_user_data`) is for good (ADR-0006): what is deleted is
-overwritten, not just freed, and the write-ahead log is truncated, so none of it is left
-in the files. Deleting a memory, or clearing them all, or a past conversation
+overwritten, not just freed, and the write-ahead log is then emptied
+(`Database.checkpoint`), so none of it is left in the files. Deleting a memory, or clearing them all, or a past conversation
 (`delete_conversation_data`), overwrites it in the database too, but earlier frames of the write-ahead log may still hold it until a later checkpoint or
 the user is deleted."""
 
@@ -140,20 +140,18 @@ def readable(path: Path) -> bool:
 
 
 def delete_user_data(db: sqlite3.Connection, user_id: str) -> None:
-    """Delete the user and everything of theirs, for good, all at once, through `db`, which
-    the caller keeps anyone else from using meanwhile, but what is only made no one's. A
-    table not created yet (by a module this process has not opened) is passed over."""
-    with db:
-        present = tables(db)
-        names = {"user": user_id, "anonymous": secrets.token_hex(16)}
-        for table, anonymize, where in ANONYMIZED_USER_DATA:
-            if table in present:
-                db.execute(f"UPDATE {table} SET {anonymize} WHERE {where}", names)
-        for table, where in USER_DATA:
-            if table in present:
-                db.execute(f"DELETE FROM {table} WHERE {where}", (user_id,))
-    # The write-ahead log still holds the pages as they were.
-    db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    """Delete the user and everything of theirs, for good, but what is only made no one's,
+    through `db`, in the caller's transaction; the write-ahead log still holds the pages as
+    they were until it is checkpointed. A table not created yet (by a module this process
+    has not opened) is passed over."""
+    present = tables(db)
+    names = {"user": user_id, "anonymous": secrets.token_hex(16)}
+    for table, anonymize, where in ANONYMIZED_USER_DATA:
+        if table in present:
+            db.execute(f"UPDATE {table} SET {anonymize} WHERE {where}", names)
+    for table, where in USER_DATA:
+        if table in present:
+            db.execute(f"DELETE FROM {table} WHERE {where}", (user_id,))
 
 
 def delete_conversation_data(db: sqlite3.Connection, conversation_id: str) -> None:
@@ -168,6 +166,14 @@ def delete_conversation_data(db: sqlite3.Connection, conversation_id: str) -> No
         if table in present:
             db.execute(f"DELETE FROM {table} WHERE {where}", (conversation_id,))
     db.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+
+
+def by_name(db: sqlite3.Connection) -> sqlite3.Cursor:
+    """A cursor on `db` whose rows are read by name, leaving the connection's, which other
+    modules share, as they are."""
+    cursor = db.cursor()
+    cursor.row_factory = sqlite3.Row
+    return cursor
 
 
 def tables(db: sqlite3.Connection) -> set[str]:

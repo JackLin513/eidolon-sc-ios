@@ -24,9 +24,8 @@ from pipecat.tests.utils import SleepFrame
 
 import eidolon.call
 from eidolon.config import Settings
-from eidolon.store import Store
 from tests.browser import TIMEOUT, Browser, open_browser
-from tests.conftest import ClientFactory
+from tests.conftest import ClientFactory, store_in
 from tests.fakes import (
     START,
     FakeClock,
@@ -370,9 +369,8 @@ async def test_a_call_whose_user_is_deleted_elsewhere_ends_for_the_deletion(
     await browser.call(client, conversation_id=await start_conversation(client))
     await browser.connect()
 
-    store = Store(settings.database_path)
-    store.delete_user(user_id(settings.database_path, "producer"))
-    store.close()
+    async with store_in(settings.database_path) as store:
+        await store.delete_user(user_id(settings.database_path, "producer"))
     await browser.hung_up()
     board = await call_recorded(admin)
 

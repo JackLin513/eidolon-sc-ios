@@ -1219,9 +1219,9 @@ class Calls:
         while self._live:
             await asyncio.sleep(USER_CHECK_INTERVAL)
             users = {live.user_id for live in self._live}
-            for user_id in users - self._store.active_users(users):
+            for user_id in users - await self._store.active_users(users):
                 try:
-                    self._store.get_user(user_id)
+                    await self._store.get_user(user_id)
                     reason: CallEndReason = "banned"
                 except NotFound:
                     reason = "deleted"

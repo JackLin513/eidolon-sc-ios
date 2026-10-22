@@ -11,6 +11,12 @@ connection; their SQL stays in them.
 
 Every connection is opened by `database.connect`, the same way, with the SQL functions the
 modules define (`function`) on each.
+
+What is deleted for good must leave the write-ahead log too (ADR-0006): `checkpoint` empties
+it into the database file, waiting for readers only briefly so as to hold up no write for
+long, and, left undone for a reader, tries again a few seconds later until it is done. The
+database is first checkpointed so as it is opened, in case one was left undone as it was
+last closed.
 """
 
 import asyncio
@@ -45,6 +51,18 @@ SLOW = 0.2
 before it is warned of: to tell whether the writing thread holds things up."""
 
 
+CHECKPOINT_BUSY = 0.1
+"""Seconds a checkpoint waits for readers, holding up every write meanwhile, before it is
+left undone for now."""
+
+CHECKPOINT_RETRY = 3.0
+"""Seconds after a checkpoint left undone that it is tried again."""
+
+CHECKPOINT_OVERDUE = 600.0
+"""Seconds a checkpoint may go undone before it is logged as an error, for what was
+deleted is in the write-ahead log still; it is tried again all the same."""
+
+
 class Closed(RuntimeError):
     """The database is closed: no more is read or written."""
 
@@ -60,6 +78,9 @@ class _Task:
     done: Future[Any]
     handed_in: float
     """When, on the monotonic clock."""
+    in_transaction: bool = True
+    """Whether the body is run in a transaction, as all are but the checkpoint, which
+    cannot be."""
 
 
 class Database:
@@ -90,6 +111,13 @@ class Database:
         self._waiting = 0
         """How many reads wait for a connection."""
         self._closed = False
+        self._checkpoint_due: float | None = time.monotonic()
+        """When the checkpoint left undone is to be tried again, on the monotonic clock;
+        None if none is. On the writing thread only, which first tries one at once."""
+        self._undone_since: float | None = None
+        """Since when a checkpoint has been left undone, if one is."""
+        self._overdue_told = False
+        """Whether it has been logged that the checkpoint left undone is overdue."""
         self._thread = threading.Thread(target=self._write_all, name="eidolon-writer", daemon=True)
         self._thread.start()
 
@@ -115,6 +143,13 @@ class Database:
         running.add_done_callback(_retrieved)
         # Cancelling the wait leaves the read to finish, so that closing waits for it.
         return await asyncio.shield(running)
+
+    async def checkpoint(self) -> None:
+        """Have the write-ahead log emptied into the database file, as a write task handed
+        in now but not waited for, which waits `CHECKPOINT_BUSY` at most for readers; left
+        undone, it is tried again every `CHECKPOINT_RETRY` until it is done, and logged as
+        an error once overdue."""
+        self._submit(self._checkpoint, (), in_transaction=False)
 
     def prepare(self, body: Callable[[sqlite3.Connection, Unpack[A]], T], *args: Unpack[A]) -> T:
         """`body` written as `write` writes it, waited for here, blocking: for a module's
@@ -156,16 +191,18 @@ class Database:
         for reader in self._readers:
             reader.close()
 
-    def _submit(self, body: Callable[..., T], args: tuple[Any, ...]) -> "Future[T]":
+    def _submit(
+        self, body: Callable[..., T], args: tuple[Any, ...], *, in_transaction: bool = True
+    ) -> "Future[T]":
         done: Future[T] = Future()
         with self._counts:
             if self._closed:
                 raise Closed()
-            self._tasks.put(_Task(body, args, done, time.monotonic()))
+            self._tasks.put(_Task(body, args, done, time.monotonic(), in_transaction))
         return done
 
     def _write_all(self) -> None:
-        while (task := self._tasks.get()) is not None:
+        while (task := self._next()) is not None:
             started = time.monotonic()
             if started - task.handed_in > SLOW:
                 log.warning(
@@ -174,10 +211,13 @@ class Database:
                 )
             try:
                 _off_the_loop(task.body)
-                # Held from the first statement, so that what the body reads before it
-                # writes holds still for every other connection too.
-                self._writer.execute("BEGIN IMMEDIATE")
-                with self._writer:
+                if task.in_transaction:
+                    # Held from the first statement, so that what the body reads before it
+                    # writes holds still for every other connection too.
+                    self._writer.execute("BEGIN IMMEDIATE")
+                    with self._writer:
+                        result = task.body(self._writer, *task.args)
+                else:
                     result = task.body(self._writer, *task.args)
             except BaseException as e:
                 task.done.set_exception(e)
@@ -189,6 +229,49 @@ class Database:
                     _name(task.body), took * 1000, self._tasks.qsize(),
                 )
         self._writer.close()
+
+    def _next(self) -> _Task | None:
+        """The next write task, once it comes; trying the checkpoint left undone again
+        whenever it is due meanwhile."""
+        while True:
+            due = self._checkpoint_due
+            if due is not None and time.monotonic() >= due:
+                self._checkpoint(self._writer)
+                continue
+            try:
+                return self._tasks.get(
+                    timeout=None if due is None else max(0.0, due - time.monotonic())
+                )
+            except queue.Empty:
+                pass
+
+    def _checkpoint(self, conn: sqlite3.Connection) -> None:
+        """Empty the write-ahead log into the database file through the writing connection,
+        `conn`, waiting `CHECKPOINT_BUSY` at most for readers; left undone, it is due again
+        `CHECKPOINT_RETRY` later."""
+        try:
+            busy = _truncated_log(conn)
+        except sqlite3.OperationalError as e:  # another connection writes meanwhile
+            log.info("checkpointing the database was held up: %s", e)
+            busy = True
+        except sqlite3.Error:
+            log.exception("checkpointing the database failed")
+            busy = True
+        now = time.monotonic()
+        if not busy:
+            self._checkpoint_due = self._undone_since = None
+            self._overdue_told = False
+            return
+        self._checkpoint_due = now + CHECKPOINT_RETRY
+        if self._undone_since is None:
+            self._undone_since = now
+        elif now - self._undone_since > CHECKPOINT_OVERDUE and not self._overdue_told:
+            self._overdue_told = True
+            log.error(
+                "the checkpoint has been left undone for %.0f s, readers holding it up:"
+                " what was deleted is in the write-ahead log still; trying again",
+                now - self._undone_since,
+            )
 
     def _read(self, body: Callable[..., T], args: tuple[Any, ...]) -> T:
         try:
@@ -231,6 +314,18 @@ class Database:
                 _name(body), waited * 1000, waiting,
             )
         return conn
+
+
+def _truncated_log(conn: sqlite3.Connection) -> bool:
+    """Empty the write-ahead log into the database file through `conn`, waiting
+    `CHECKPOINT_BUSY` at most for readers: whether readers held it up, left undone."""
+    [(waits,)] = conn.execute("PRAGMA busy_timeout").fetchall()
+    conn.execute(f"PRAGMA busy_timeout = {round(CHECKPOINT_BUSY * 1000)}")
+    try:
+        [(busy, _, _)] = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
+    finally:
+        conn.execute(f"PRAGMA busy_timeout = {waits}")
+    return bool(busy)
 
 
 def _off_the_loop(body: Callable[..., Any]) -> None:

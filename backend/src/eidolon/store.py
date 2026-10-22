@@ -10,15 +10,21 @@ import sqlite3
 import threading
 import uuid
 from collections import Counter
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any, Literal
 
 from eidolon.affinity import Change
-from eidolon.database import connect, delete_conversation_data, delete_user_data, tables
+from eidolon.data_access import Database
+from eidolon.database import (
+    by_name,
+    connect,
+    delete_conversation_data,
+    delete_user_data,
+    tables,
+)
 from eidolon.delivery_cues import without_cues
 from eidolon.producer import Birthday, ProducerProfile
 from eidolon.reply_format import Segment
@@ -505,83 +511,37 @@ class WholeConversation:
 
 
 class Store:
-    def __init__(self, path: Path) -> None:
-        self._db = connect(path)
+    """Users, their sessions, sign-in methods, producer profiles and bans are read and
+    written through the data access layer, `db` (ADR-0028); the rest, until it is moved
+    there too, on a connection of the store's own."""
+
+    def __init__(self, db: Database) -> None:
+        self._database = db
+        db.prepare(_open)
+        self._db = connect(db.path)
         self._db.row_factory = sqlite3.Row
         self._lock = threading.Lock()
         self._taking_turns: Counter[str] = Counter()
-        with self._lock, self._db:
-            self._db.executescript(_SCHEMA)
-            self._migrate()
 
-    def _migrate(self) -> None:
-        columns = self._columns("users")
-        if "name" not in columns:
-            # Before access keys, users had no name; the one default user keeps its id as name.
-            self._db.execute("ALTER TABLE users ADD COLUMN name TEXT")
-            self._db.execute("UPDATE users SET name = id")
-        self._add_missing_columns("users", ("consented_at", "banned_at", "ban_note"), "TEXT")
-        self._add_missing_columns("producer_profiles", ("birthday_month", "birthday_day"), "INTEGER")
-        self._add_missing_columns("messages", ("affinity",), "TEXT")
-        self._add_missing_columns("messages", ("hurt",), "REAL")
-        self._add_missing_columns("messages", ("out_of_line",), "INTEGER")
-        self._add_missing_columns("conversations", ("title",), "TEXT")
-        self._add_missing_columns("conversation_events", ("gift_id",), "TEXT")
-        self._add_missing_columns("conversation_events", ("liked",), "INTEGER NOT NULL DEFAULT 0")
-        # Whether she has responded to an event is whether she has replied since; never kept.
-        if "responded" in self._columns("conversation_events"):
-            self._db.execute("ALTER TABLE conversation_events DROP COLUMN responded")
-        # Access keys are gone (ADR-0006), and with them unique names.
-        self._db.execute("DROP INDEX IF EXISTS users_by_name")
-        self._db.execute("DROP TABLE IF EXISTS access_keys")
-        # Users' own keys stay in their browsers (ADR-0017); those kept here, encrypted, go.
-        self._db.execute("DROP TABLE IF EXISTS own_keys")
-
-    def _columns(self, table: str) -> set[str]:
-        return {row["name"] for row in self._db.execute(f"PRAGMA table_info({table})")}
-
-    def _add_missing_columns(self, table: str, columns: tuple[str, ...], kind: str) -> None:
-        """Add the columns a table made by an older version lacks; existing rows get NULL."""
-        present = self._columns(table)
-        for column in columns:
-            if column not in present:
-                self._db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
-
-    def create_user(self, name: str) -> User:
+    async def create_user(self, name: str) -> User:
         user = User(uuid.uuid4().hex, name, _now())
-        with self._lock, self._db:
-            self._db.execute(
-                "INSERT INTO users (id, name, created_at) VALUES (?, ?, ?)",
-                (user.id, user.name, user.created_at),
-            )
+        await self._database.write(_insert_user, user)
         return user
 
-    def list_users(self) -> list[User]:
-        with self._lock:
-            rows = self._db.execute(
-                f"SELECT {_USER_COLUMNS} FROM users ORDER BY created_at, rowid"
-            ).fetchall()
-        return [User(**row) for row in rows]
+    async def list_users(self) -> list[User]:
+        return await self._database.read(_users)
 
-    def get_user(self, user_id: str) -> User:
-        with self._lock:
-            row = self._db.execute(
-                f"SELECT {_USER_COLUMNS} FROM users WHERE id = ?", (user_id,)
-            ).fetchone()
-        if row is None:
+    async def get_user(self, user_id: str) -> User:
+        user = await self._database.read(_user, user_id)
+        if user is None:
             raise NotFound(f"用户 {user_id} 不存在")
-        return User(**row)
+        return user
 
-    def first_user_named(self, name: str) -> User | None:
+    async def first_user_named(self, name: str) -> User | None:
         """The earliest user with this name, if any; names are not unique."""
-        with self._lock:
-            row = self._db.execute(
-                f"SELECT {_USER_COLUMNS} FROM users WHERE name = ? ORDER BY created_at, rowid",
-                (name,),
-            ).fetchone()
-        return User(**row) if row else None
+        return await self._database.read(_first_user_named, name)
 
-    def find_users(
+    async def find_users(
         self,
         query: str,
         offset: int,
@@ -593,235 +553,120 @@ class Store:
         an empty query. Newest first, or highest first by `ranking`, an SQL expression
         over a row of `users` with its parameters (as `ActivityLog.ranking`), then newest;
         with how many there are in all."""
-        where, params = "", []
-        if query := query.strip():
-            # Taken as it is: `%` and `_` are not wildcards here.
-            escaped = query.replace("!", "!!").replace("%", "!%").replace("_", "!_")
-            inside = f"%{escaped}%"
-            where = (
-                "WHERE id LIKE ? ESCAPE '!' OR name LIKE ? ESCAPE '!' OR EXISTS ("
-                "SELECT 1 FROM sign_in_methods m WHERE m.user_id = users.id"
-                " AND (m.display_name LIKE ? ESCAPE '!' OR m.email LIKE ? ESCAPE '!'))"
-            )
-            params = [f"{escaped}%", inside, inside, inside]
-        with self._lock:
-            rows = self._db.execute(
-                f"SELECT {_USER_COLUMNS} FROM users {where}"
-                f" ORDER BY {f'{ranking[0]} DESC, ' if ranking else ''}"
-                "created_at DESC, rowid DESC LIMIT ? OFFSET ?",
-                [*params, *(ranking[1] if ranking else []), limit, offset],
-            ).fetchall()
-            [(total,)] = self._db.execute(f"SELECT COUNT(*) FROM users {where}", params)
-        return [User(**row) for row in rows], total
+        return await self._database.read(_find_users, query, offset, limit, ranking)
 
-    def last_active(self, user_ids: list[str]) -> dict[str, datetime]:
+    async def last_active(self, user_ids: list[str]) -> dict[str, datetime]:
         """When each of the users, of those signed in anywhere, was last active: the
         latest renewal of any of their sessions."""
-        with self._lock:
-            rows = self._db.execute(
-                "SELECT user_id, MAX(last_active_at) FROM sessions WHERE user_id IN"
-                f" ({','.join('?' * len(user_ids))}) GROUP BY user_id",
-                user_ids,
-            ).fetchall()
-        return {user_id: datetime.fromtimestamp(at, UTC) for user_id, at in rows}
+        return await self._database.read(_last_active, user_ids)
 
-    def set_banned(
+    async def set_banned(
         self, user_id: str, banned_at: datetime | None, note: str | None = None
     ) -> None:
         """Ban the user as of `banned_at`, with a note only admins see, signing them out
         everywhere; None lifts the ban, and the note with it. Raises NotFound for no such
         user."""
-        with self._lock, self._db:
-            cursor = self._db.execute(
-                "UPDATE users SET banned_at = ?, ban_note = ? WHERE id = ?",
-                (banned_at.isoformat() if banned_at else None,
-                 note if banned_at else None, user_id),
-            )
-            if cursor.rowcount == 0:
-                raise NotFound(f"用户 {user_id} 不存在")
-            if banned_at is not None:
-                self._db.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        await self._database.write(_set_banned, user_id, banned_at, note)
 
-    def active_users(self, user_ids: set[str]) -> set[str]:
+    async def active_users(self, user_ids: set[str]) -> set[str]:
         """Those of the users who still exist and are not banned."""
-        with self._lock:
-            return {
-                row["id"]
-                for row in self._db.execute(
-                    f"SELECT id FROM users WHERE banned_at IS NULL AND id IN"
-                    f" ({','.join('?' * len(user_ids))})",
-                    list(user_ids),
-                )
-            } if user_ids else set()
+        return await self._database.read(_active_users, user_ids) if user_ids else set()
 
-    def consent(self, user_id: str, now: datetime) -> None:
+    async def consent(self, user_id: str, now: datetime) -> None:
         """Record that the user agreed to the privacy policy and terms of use."""
-        with self._lock, self._db:
-            self._db.execute(
-                "UPDATE users SET consented_at = ? WHERE id = ?", (now.isoformat(), user_id)
-            )
+        await self._database.write(_consent, user_id, now)
 
-    def user_signing_in_with(self, provider: str, subject: str) -> str | None:
+    async def user_signing_in_with(self, provider: str, subject: str) -> str | None:
         """The id of the user this identity belongs to, if any."""
-        with self._lock:
-            row = self._db.execute(
-                "SELECT user_id FROM sign_in_methods WHERE provider = ? AND subject = ?",
-                (provider, subject),
-            ).fetchone()
-        return row["user_id"] if row else None
+        return await self._database.read(_user_signing_in_with, provider, subject)
 
-    def create_user_signing_in_with(self, name: str, method: SignInMethod) -> User:
+    async def create_user_signing_in_with(self, name: str, method: SignInMethod) -> User:
         """A new user, whose one sign-in method is `method`. Raises IdentityTaken, making
         no one, if the identity already belongs to someone."""
         user = User(uuid.uuid4().hex, name, _now())
         try:
-            with self._lock, self._db:
-                self._db.execute(
-                    "INSERT INTO users (id, name, created_at) VALUES (?, ?, ?)",
-                    (user.id, user.name, user.created_at),
-                )
-                self._insert_sign_in_method(user.id, method)
+            await self._database.write(_insert_user_signing_in_with, user, method)
         except sqlite3.IntegrityError:
             raise IdentityTaken from None
         return user
 
-    def add_sign_in_method(self, user_id: str, method: SignInMethod) -> None:
+    async def add_sign_in_method(self, user_id: str, method: SignInMethod) -> None:
         """Raises IdentityTaken if the identity already belongs to someone."""
         try:
-            with self._lock, self._db:
-                self._insert_sign_in_method(user_id, method)
+            await self._database.write(_insert_sign_in_method, user_id, method)
         except sqlite3.IntegrityError:
             raise IdentityTaken from None
 
-    def update_sign_in_method(self, provider: str, subject: str, display_name: str,
-                              email: str | None) -> None:
+    async def update_sign_in_method(
+        self, provider: str, subject: str, display_name: str, email: str | None
+    ) -> None:
         """Keep the name and email the provider now gives for the identity."""
-        with self._lock, self._db:
-            self._db.execute(
-                "UPDATE sign_in_methods SET display_name = ?, email = ?"
-                " WHERE provider = ? AND subject = ?",
-                (display_name, email, provider, subject),
-            )
+        await self._database.write(
+            _update_sign_in_method, provider, subject, display_name, email
+        )
 
-    def sign_in_methods(self, user_id: str) -> list[SignInMethod]:
+    async def sign_in_methods(self, user_id: str) -> list[SignInMethod]:
         """In the order they were added."""
-        with self._lock:
-            rows = self._db.execute(
-                "SELECT provider, subject, display_name, email, created_at FROM sign_in_methods"
-                " WHERE user_id = ? ORDER BY created_at, rowid",
-                (user_id,),
-            ).fetchall()
-        return [SignInMethod(**row) for row in rows]
+        return (await self.sign_in_methods_of([user_id]))[user_id]
 
-    def remove_sign_in_method(self, user_id: str, provider: str) -> bool:
+    async def sign_in_methods_of(self, user_ids: list[str]) -> dict[str, list[SignInMethod]]:
+        """Each of the users' sign-in methods, in the order they were added."""
+        return await self._database.read(_sign_in_methods_of, user_ids)
+
+    async def remove_sign_in_method(self, user_id: str, provider: str) -> bool:
         """Remove the user's sign-in method at `provider`; False if they have none there.
         Raises LastSignInMethod, removing nothing, if it is the only one they have."""
-        with self._lock, self._db:
-            providers = [
-                row["provider"]
-                for row in self._db.execute(
-                    "SELECT provider FROM sign_in_methods WHERE user_id = ?", (user_id,)
-                )
-            ]
-            if provider not in providers:
-                return False
-            if len(providers) == 1:
-                raise LastSignInMethod
-            self._db.execute(
-                "DELETE FROM sign_in_methods WHERE user_id = ? AND provider = ?",
-                (user_id, provider),
-            )
-        return True
+        return await self._database.write(_remove_sign_in_method, user_id, provider)
 
-    def delete_user(self, user_id: str, banned_identities: list[str] | None = None) -> None:
+    async def delete_user(self, user_id: str, identities: Sequence[str] = ()) -> None:
         """Delete the user and everything of theirs, for good, all at once (see
-        `database.delete_user_data`), first putting `banned_identities`, hashes of the
-        identities they signed in with, on the ban list if they were banned."""
-        with self._lock:
-            if banned_identities:
-                with self._db:
-                    self._db.executemany(
-                        "INSERT OR IGNORE INTO banned_identities (identity_hash, added_at)"
-                        " VALUES (?, ?)",
-                        [(h, _now()) for h in banned_identities],
-                    )
-            delete_user_data(self._db, user_id)
+        `database.delete_user_data`), first putting `identities`, hashes of the identities
+        they signed in with, on the ban list if they are banned; the write-ahead log is
+        emptied of the pages as they were soon after (`Database.checkpoint`)."""
+        if identities:
+            await self._database.write(_ban_identities_if_banned, user_id, identities)
+        await self._database.write(delete_user_data, user_id)
+        await self._database.checkpoint()
 
-    def is_banned_identity(self, identity_hash: str) -> bool:
+    async def is_banned_identity(self, identity_hash: str) -> bool:
         """Whether a banned user since deleted signed in with the identity of this hash."""
-        with self._lock:
-            return self._db.execute(
-                "SELECT 1 FROM banned_identities WHERE identity_hash = ?", (identity_hash,)
-            ).fetchone() is not None
+        return await self._database.read(_is_banned_identity, identity_hash)
 
-    def create_session(self, user_id: str, now: datetime) -> str:
+    async def create_session(self, user_id: str, now: datetime) -> str:
         """Start a session for the user; returns its token, which is not stored. Every
         session that has expired, whoever's it is, is deleted meanwhile, so that a user who
         does not come back leaves none behind."""
         token = secrets.token_urlsafe(32)
-        with self._lock, self._db:
-            self._db.execute("DELETE FROM sessions WHERE expires_at <= ?", (now.timestamp(),))
-            self._db.execute(
-                "INSERT INTO sessions (token_hash, user_id, last_active_at, expires_at)"
-                " VALUES (?, ?, ?, ?)",
-                (_hash(token), user_id, now.timestamp(), (now + SESSION_LIFETIME).timestamp()),
-            )
+        await self._database.write(_create_session, _hash(token), user_id, now)
         return token
 
-    def use_session(self, token: str, now: datetime) -> Session | None:
+    async def use_session(self, token: str, now: datetime) -> Session | None:
         """The session with this token, renewed for another `SESSION_LIFETIME` if it has
-        not been for a while; None if there is none or it has expired."""
+        not been for a while; None if there is none or it has expired. Only read, but
+        when it is to be renewed or deleted."""
         token_hash = _hash(token)
-        with self._lock, self._db:
-            row = self._db.execute(
-                "SELECT user_id, last_active_at, expires_at FROM sessions WHERE token_hash = ?",
-                (token_hash,),
-            ).fetchone()
-            if row is None:
-                return None
-            if row["expires_at"] <= now.timestamp():
-                self._db.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
-                return None
-            renewed = now.timestamp() - row["last_active_at"] >= SESSION_RENEWAL.total_seconds()
-            if renewed:
-                self._db.execute(
-                    "UPDATE sessions SET last_active_at = ?, expires_at = ? WHERE token_hash = ?",
-                    (now.timestamp(), (now + SESSION_LIFETIME).timestamp(), token_hash),
-                )
-            user = self._db.execute(
-                f"SELECT {_USER_COLUMNS} FROM users WHERE id = ?", (row["user_id"],)
-            ).fetchone()
-        return Session(User(**user), renewed)
+        found = await self._database.read(_session, token_hash)
+        if found is None:
+            return None
+        last_active_at, expires_at, user = found
+        if expires_at > now.timestamp() and not _renewal_due(last_active_at, now):
+            return Session(user, False)
+        # Looked at again as it is written: another request may have renewed it meanwhile.
+        return await self._database.write(_use_session, token_hash, now)
 
-    def end_session(self, token: str) -> None:
-        with self._lock, self._db:
-            self._db.execute("DELETE FROM sessions WHERE token_hash = ?", (_hash(token),))
+    async def end_session(self, token: str) -> None:
+        await self._database.write(_end_session, _hash(token))
 
-    def end_sessions(self, user_id: str) -> None:
+    async def end_sessions(self, user_id: str) -> None:
         """Sign the user out everywhere."""
-        with self._lock, self._db:
-            self._db.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        await self._database.write(_end_sessions, user_id)
 
-    def get_profile(self, user_id: str) -> ProducerProfile:
+    async def get_profile(self, user_id: str) -> ProducerProfile:
         """The user's producer profile; all defaults until they save one."""
-        with self._lock:
-            row = self._db.execute(
-                "SELECT form_of_address, gender, timezone, birthday_month, birthday_day"
-                " FROM producer_profiles WHERE user_id = ?",
-                (user_id,),
-            ).fetchone()
-        if not row:
-            return ProducerProfile()
-        birthday = (
-            Birthday(row["birthday_month"], row["birthday_day"])
-            if row["birthday_month"] is not None and row["birthday_day"] is not None
-            else None
-        )
-        return ProducerProfile(row["form_of_address"], row["gender"], row["timezone"], birthday)
+        return await self._database.read(read_profile, user_id)
 
-    def save_profile(self, user_id: str, profile: ProducerProfile) -> None:
-        with self._lock, self._db:
-            write_profile(self._db, user_id, profile)
+    async def save_profile(self, user_id: str, profile: ProducerProfile) -> None:
+        await self._database.write(write_profile, user_id, profile)
 
     def create_conversation(self, user_id: str, character_id: str) -> Conversation:
         conversation = Conversation(uuid.uuid4().hex, user_id, character_id, _now())
@@ -1420,15 +1265,6 @@ class Store:
     def close(self) -> None:
         self._db.close()
 
-    def _insert_sign_in_method(self, user_id: str, method: SignInMethod) -> None:
-        self._db.execute(
-            "INSERT INTO sign_in_methods"
-            " (user_id, provider, subject, display_name, email, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (user_id, method.provider, method.subject, method.display_name, method.email,
-             method.created_at),
-        )
-
     def _insert_message(
         self,
         conversation_id: str,
@@ -1507,6 +1343,302 @@ _MESSAGE_WITH_PHOTO = (
 """A message with its photo, if any, but not its picture (`_message_with_photo`)."""
 _EVENT_COLUMNS = "id, kind, created_at, affinity, gift_id, liked"
 _REACH_OUT_COLUMNS = "id, ja, zh, segments, created_at"
+
+def _open(db: sqlite3.Connection) -> None:
+    """Make the store's tables, and bring those an older version made up to date."""
+    db.executescript(_SCHEMA)
+    columns = _columns(db, "users")
+    if "name" not in columns:
+        # Before access keys, users had no name; the one default user keeps its id as name.
+        db.execute("ALTER TABLE users ADD COLUMN name TEXT")
+        db.execute("UPDATE users SET name = id")
+    _add_missing_columns(db, "users", ("consented_at", "banned_at", "ban_note"), "TEXT")
+    _add_missing_columns(db, "producer_profiles", ("birthday_month", "birthday_day"), "INTEGER")
+    _add_missing_columns(db, "messages", ("affinity",), "TEXT")
+    _add_missing_columns(db, "messages", ("hurt",), "REAL")
+    _add_missing_columns(db, "messages", ("out_of_line",), "INTEGER")
+    _add_missing_columns(db, "conversations", ("title",), "TEXT")
+    _add_missing_columns(db, "conversation_events", ("gift_id",), "TEXT")
+    _add_missing_columns(db, "conversation_events", ("liked",), "INTEGER NOT NULL DEFAULT 0")
+    # Whether she has responded to an event is whether she has replied since; never kept.
+    if "responded" in _columns(db, "conversation_events"):
+        db.execute("ALTER TABLE conversation_events DROP COLUMN responded")
+    # Access keys are gone (ADR-0006), and with them unique names.
+    db.execute("DROP INDEX IF EXISTS users_by_name")
+    db.execute("DROP TABLE IF EXISTS access_keys")
+    # Users' own keys stay in their browsers (ADR-0017); those kept here, encrypted, go.
+    db.execute("DROP TABLE IF EXISTS own_keys")
+
+
+def _columns(db: sqlite3.Connection, table: str) -> set[str]:
+    return {row["name"] for row in by_name(db).execute(f"PRAGMA table_info({table})")}
+
+
+def _add_missing_columns(
+    db: sqlite3.Connection, table: str, columns: tuple[str, ...], kind: str
+) -> None:
+    """Add the columns a table made by an older version lacks; existing rows get NULL."""
+    present = _columns(db, table)
+    for column in columns:
+        if column not in present:
+            db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+
+
+def _insert_user(db: sqlite3.Connection, user: User) -> None:
+    db.execute(
+        "INSERT INTO users (id, name, created_at) VALUES (?, ?, ?)",
+        (user.id, user.name, user.created_at),
+    )
+
+
+def _users(db: sqlite3.Connection) -> list[User]:
+    rows = by_name(db).execute(
+        f"SELECT {_USER_COLUMNS} FROM users ORDER BY created_at, rowid"
+    ).fetchall()
+    return [User(**row) for row in rows]
+
+
+def _user(db: sqlite3.Connection, user_id: str) -> User | None:
+    row = by_name(db).execute(
+        f"SELECT {_USER_COLUMNS} FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    return User(**row) if row else None
+
+
+def _first_user_named(db: sqlite3.Connection, name: str) -> User | None:
+    row = by_name(db).execute(
+        f"SELECT {_USER_COLUMNS} FROM users WHERE name = ? ORDER BY created_at, rowid",
+        (name,),
+    ).fetchone()
+    return User(**row) if row else None
+
+
+def _find_users(
+    db: sqlite3.Connection,
+    query: str,
+    offset: int,
+    limit: int,
+    ranking: tuple[str, list[Any]] | None,
+) -> tuple[list[User], int]:
+    where, params = "", []
+    if query := query.strip():
+        # Taken as it is: `%` and `_` are not wildcards here.
+        escaped = query.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+        inside = f"%{escaped}%"
+        where = (
+            "WHERE id LIKE ? ESCAPE '!' OR name LIKE ? ESCAPE '!' OR EXISTS ("
+            "SELECT 1 FROM sign_in_methods m WHERE m.user_id = users.id"
+            " AND (m.display_name LIKE ? ESCAPE '!' OR m.email LIKE ? ESCAPE '!'))"
+        )
+        params = [f"{escaped}%", inside, inside, inside]
+    rows = by_name(db).execute(
+        f"SELECT {_USER_COLUMNS} FROM users {where}"
+        f" ORDER BY {f'{ranking[0]} DESC, ' if ranking else ''}"
+        "created_at DESC, rowid DESC LIMIT ? OFFSET ?",
+        [*params, *(ranking[1] if ranking else []), limit, offset],
+    ).fetchall()
+    [(total,)] = db.execute(f"SELECT COUNT(*) FROM users {where}", params)
+    return [User(**row) for row in rows], total
+
+
+def _last_active(db: sqlite3.Connection, user_ids: list[str]) -> dict[str, datetime]:
+    rows = db.execute(
+        "SELECT user_id, MAX(last_active_at) FROM sessions WHERE user_id IN"
+        f" ({','.join('?' * len(user_ids))}) GROUP BY user_id",
+        user_ids,
+    ).fetchall()
+    return {user_id: datetime.fromtimestamp(at, UTC) for user_id, at in rows}
+
+
+def _set_banned(
+    db: sqlite3.Connection, user_id: str, banned_at: datetime | None, note: str | None
+) -> None:
+    cursor = db.execute(
+        "UPDATE users SET banned_at = ?, ban_note = ? WHERE id = ?",
+        (banned_at.isoformat() if banned_at else None,
+         note if banned_at else None, user_id),
+    )
+    if cursor.rowcount == 0:
+        raise NotFound(f"用户 {user_id} 不存在")
+    if banned_at is not None:
+        db.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+
+
+def _active_users(db: sqlite3.Connection, user_ids: set[str]) -> set[str]:
+    return {
+        user_id
+        for (user_id,) in db.execute(
+            f"SELECT id FROM users WHERE banned_at IS NULL AND id IN"
+            f" ({','.join('?' * len(user_ids))})",
+            list(user_ids),
+        )
+    }
+
+
+def _consent(db: sqlite3.Connection, user_id: str, now: datetime) -> None:
+    db.execute("UPDATE users SET consented_at = ? WHERE id = ?", (now.isoformat(), user_id))
+
+
+def _user_signing_in_with(db: sqlite3.Connection, provider: str, subject: str) -> str | None:
+    row = db.execute(
+        "SELECT user_id FROM sign_in_methods WHERE provider = ? AND subject = ?",
+        (provider, subject),
+    ).fetchone()
+    return row[0] if row else None
+
+
+def _insert_user_signing_in_with(
+    db: sqlite3.Connection, user: User, method: SignInMethod
+) -> None:
+    _insert_user(db, user)
+    _insert_sign_in_method(db, user.id, method)
+
+
+def _insert_sign_in_method(db: sqlite3.Connection, user_id: str, method: SignInMethod) -> None:
+    db.execute(
+        "INSERT INTO sign_in_methods"
+        " (user_id, provider, subject, display_name, email, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, method.provider, method.subject, method.display_name, method.email,
+         method.created_at),
+    )
+
+
+def _update_sign_in_method(
+    db: sqlite3.Connection, provider: str, subject: str, display_name: str, email: str | None
+) -> None:
+    db.execute(
+        "UPDATE sign_in_methods SET display_name = ?, email = ?"
+        " WHERE provider = ? AND subject = ?",
+        (display_name, email, provider, subject),
+    )
+
+
+def _sign_in_methods_of(
+    db: sqlite3.Connection, user_ids: list[str]
+) -> dict[str, list[SignInMethod]]:
+    return {
+        user_id: [
+            SignInMethod(**row)
+            for row in by_name(db).execute(
+                "SELECT provider, subject, display_name, email, created_at FROM sign_in_methods"
+                " WHERE user_id = ? ORDER BY created_at, rowid",
+                (user_id,),
+            )
+        ]
+        for user_id in user_ids
+    }
+
+
+def _remove_sign_in_method(db: sqlite3.Connection, user_id: str, provider: str) -> bool:
+    providers = [
+        p for (p,) in db.execute(
+            "SELECT provider FROM sign_in_methods WHERE user_id = ?", (user_id,)
+        )
+    ]
+    if provider not in providers:
+        return False
+    if len(providers) == 1:
+        raise LastSignInMethod
+    db.execute(
+        "DELETE FROM sign_in_methods WHERE user_id = ? AND provider = ?", (user_id, provider)
+    )
+    return True
+
+
+def _ban_identities_if_banned(
+    db: sqlite3.Connection, user_id: str, identity_hashes: Sequence[str]
+) -> None:
+    user = _user(db, user_id)
+    if user is None or user.banned_at is None:
+        return
+    db.executemany(
+        "INSERT OR IGNORE INTO banned_identities (identity_hash, added_at) VALUES (?, ?)",
+        [(h, _now()) for h in identity_hashes],
+    )
+
+
+def _is_banned_identity(db: sqlite3.Connection, identity_hash: str) -> bool:
+    return db.execute(
+        "SELECT 1 FROM banned_identities WHERE identity_hash = ?", (identity_hash,)
+    ).fetchone() is not None
+
+
+def _create_session(
+    db: sqlite3.Connection, token_hash: str, user_id: str, now: datetime
+) -> None:
+    db.execute("DELETE FROM sessions WHERE expires_at <= ?", (now.timestamp(),))
+    db.execute(
+        "INSERT INTO sessions (token_hash, user_id, last_active_at, expires_at)"
+        " VALUES (?, ?, ?, ?)",
+        (token_hash, user_id, now.timestamp(), (now + SESSION_LIFETIME).timestamp()),
+    )
+
+
+def _session(db: sqlite3.Connection, token_hash: str) -> tuple[float, float, User] | None:
+    """When the session with this token hash was last renewed and when it expires, epoch
+    seconds, and whose it is; None if there is none."""
+    row = db.execute(
+        "SELECT user_id, last_active_at, expires_at FROM sessions WHERE token_hash = ?",
+        (token_hash,),
+    ).fetchone()
+    if row is None:
+        return None
+    user_id, last_active_at, expires_at = row
+    user = _user(db, user_id)
+    assert user is not None
+    return last_active_at, expires_at, user
+
+
+def _use_session(db: sqlite3.Connection, token_hash: str, now: datetime) -> Session | None:
+    found = _session(db, token_hash)
+    if found is None:
+        return None
+    last_active_at, expires_at, user = found
+    if expires_at <= now.timestamp():
+        db.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
+        return None
+    renewed = _renewal_due(last_active_at, now)
+    if renewed:
+        db.execute(
+            "UPDATE sessions SET last_active_at = ?, expires_at = ? WHERE token_hash = ?",
+            (now.timestamp(), (now + SESSION_LIFETIME).timestamp(), token_hash),
+        )
+    return Session(user, renewed)
+
+
+def _renewal_due(last_active_at: float, now: datetime) -> bool:
+    """Whether a session last renewed at `last_active_at`, epoch seconds, is to be renewed
+    again `now`."""
+    return now.timestamp() - last_active_at >= SESSION_RENEWAL.total_seconds()
+
+
+def _end_session(db: sqlite3.Connection, token_hash: str) -> None:
+    db.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
+
+
+def _end_sessions(db: sqlite3.Connection, user_id: str) -> None:
+    db.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+
+
+def read_profile(db: sqlite3.Connection, user_id: str) -> ProducerProfile:
+    """The user's producer profile, read through `db`: what `Store.get_profile` reads, and
+    modules not yet on the data access layer on connections of their own; all defaults
+    until they save one."""
+    row = by_name(db).execute(
+        "SELECT form_of_address, gender, timezone, birthday_month, birthday_day"
+        " FROM producer_profiles WHERE user_id = ?",
+        (user_id,),
+    ).fetchone()
+    if not row:
+        return ProducerProfile()
+    birthday = (
+        Birthday(row["birthday_month"], row["birthday_day"])
+        if row["birthday_month"] is not None and row["birthday_day"] is not None
+        else None
+    )
+    return ProducerProfile(row["form_of_address"], row["gender"], row["timezone"], birthday)
+
 
 def write_profile(db: sqlite3.Connection, user_id: str, profile: ProducerProfile) -> None:
     """Save the user's whole producer profile through `db`, in the caller's transaction: what

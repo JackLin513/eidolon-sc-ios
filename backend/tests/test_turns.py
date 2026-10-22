@@ -5,7 +5,8 @@ text turn or during a call; the SSE and call tests only cover how each carries i
 """
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
@@ -18,6 +19,7 @@ from eidolon.llm import ToolCall
 from eidolon.own_keys import BroughtKeys
 from eidolon.reply_format import SegmentComplete, SpeechDelta
 from eidolon.store import Conversation, Store
+from tests.conftest import store_in
 from tests.fakes import (
     HANG,
     FakeBackgroundLLM,
@@ -35,11 +37,10 @@ REPLY = ["<ja>ほわっ、</ja><zh>哇，</zh>"]
 class Turns:
     """A conversation with Mano and the engine that takes its turns."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, store: Store, conversation: Conversation) -> None:
         self._settings = settings
-        self._store = Store(settings.database_path)
-        user = self._store.create_user("producer")
-        self.conversation: Conversation = self._store.create_conversation(user.id, "mano")
+        self._store = store
+        self.conversation = conversation
 
     async def take(
         self,
@@ -73,15 +74,19 @@ class Turns:
     def record(self) -> list[tuple]:
         return [(m.role, m.text, m.ja) for m in self._store.list_messages(self.conversation.id)]
 
-    def close(self) -> None:
-        self._store.close()
+
+@asynccontextmanager
+async def turns_in(settings: Settings) -> AsyncIterator[Turns]:
+    """Turns in a new conversation of a new user with Mano."""
+    async with store_in(settings.database_path) as store:
+        user = await store.create_user("producer")
+        yield Turns(settings, store, store.create_conversation(user.id, "mano"))
 
 
 @pytest.fixture
-def turns(settings: Settings) -> Iterator[Turns]:
-    turns = Turns(settings)
-    yield turns
-    turns.close()
+async def turns(settings: Settings) -> AsyncIterator[Turns]:
+    async with turns_in(settings) as turns:
+        yield turns
 
 
 def types(events: list[dict]) -> list[str]:
