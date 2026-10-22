@@ -85,8 +85,9 @@ Closer = Callable[[], Awaitable[None] | None]
 
 THREADS = 32
 """How many threads the event loop's work waits on at once (`asyncio.to_thread`): the
-database's, mostly, for every turn, and a backup or data package taking minutes too. More
-than the default, a few on a small server, so that those do not keep turns waiting."""
+data access layer's reads, for every turn, the work that is all computing (pictures,
+similarities, packing), and a backup or data package taking minutes too. More than the
+default, a few on a small server, so that those do not keep turns waiting."""
 
 
 @dataclass

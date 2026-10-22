@@ -1,10 +1,11 @@
 """The database: one SQLite file holding the users and their conversations, memories and
 usage, next to the story corpus and the embedded text set.
 
-Every connection to it is opened by `connect`, the same way: the data access layer's
-(`data_access`, ADR-0028), and those of the modules not yet moved onto it. Each module
-that keeps tables in it creates its own tables; which tables hold a
-user's data, and which rows of them are the user's, is listed here (`USER_DATA`), and so
+Every connection to it is opened by `connect`, the same way. The data access layer
+(`data_access`, ADR-0028) is the only way into it, but for the health check (`readable`),
+the backup's copy of it (`backup`) and restoring one in its place (`restore`), each on a
+connection of its own. Each module that keeps tables in it creates its own tables; which
+tables hold a user's data, and which rows of them are the user's, is listed here (`USER_DATA`), and so
 is every other table (`NOT_USER_DATA`), so a table cannot be added without being one or
 the other. A table of a user's data may instead be kept when the user is deleted, but no
 longer say whose it is (`ANONYMIZED_USER_DATA`), as activity records are, so that the
@@ -107,8 +108,9 @@ def connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(path, check_same_thread=False, timeout=30)
     try:
-        # Readers need not wait for a writer: several modules, and the command line in
-        # another process, each have a connection to this database.
+        # Readers need not wait for a writer: the data access layer's readers, the health
+        # check and the backup, and the command line in another process, each have a
+        # connection to this database.
         db.execute("PRAGMA journal_mode = WAL")
         # In WAL mode a commit need not wait for the disk: losing power may lose the last
         # commits, never corrupt the database.
@@ -124,8 +126,8 @@ def connect(path: Path) -> sqlite3.Connection:
 
 def readable(path: Path) -> bool:
     """Whether the database at `path` can be read now, on a read-only connection of its
-    own, so as to wait on no module's lock, nor make a database where there is none; for
-    the health check."""
+    own, outside the data access layer so as to wait on no write task, nor make a
+    database where there is none; for the health check."""
     try:
         db = sqlite3.connect(
             f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=HEALTH_READ_TIMEOUT
