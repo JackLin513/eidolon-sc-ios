@@ -10,6 +10,7 @@ Driven through the backend's external API, the week's jobs kept beforehand in th
 (`publish`) and saved through the API before the clock is moved on; her affinity read from
 the database, as only its tier is shown."""
 
+import asyncio
 import sqlite3
 from dataclasses import replace
 from datetime import timedelta
@@ -96,6 +97,17 @@ async def test_done_as_its_last_slot_ends_it_raises_her_once_and_tells_no_one(
     assert (first_slot, second_slot, done, affinity(database)) == (50.0, 50.0, 50.5, 50.5)
     assert count(database, "conversation_events") == events
     assert count(database, "activity_records") == records
+
+
+async def test_read_at_once_it_is_counted_once(make_client: ClientFactory, settings: Settings):
+    clock = FakeClock(EARLY_MONDAY)
+    client = await scheduled(make_client, settings, clock, ("声乐课", 1, 0, 0))
+    other = make_client(FakeLLM(), clock=clock)
+    clock.advance(days=1)
+
+    await asyncio.gather(read(client), read(other), read(client), read(other))
+
+    assert affinity(settings.database_path) == 50.5
 
 
 async def test_a_turns_prompt_counts_it_too_before_her_affinity_is_read(

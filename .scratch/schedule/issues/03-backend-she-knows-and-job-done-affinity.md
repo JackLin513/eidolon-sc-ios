@@ -12,7 +12,7 @@
 - [x] 做完加好感度：拨假时钟过最后一段的段末后读日程（读接口和组提示词两条路都试），好感度 +0.5、再读不再加；中途不加；两段的在第二段结束才加；好感度关着时读不加、打开后再读补上；日程关着不加；冷却中加 0.5 并在到解冻线时解除；不留对话事件、不写运行记录；三项都做完 +1.5；改档案时区后到期时刻跟着变、仍只算一次（先例 `test_gift_giving.py`、`test_affinity_cooldown.py`、`test_conversation_events.py`）
 - [x] 常量在好感度模块里；每日任务规格（`.scratch/daily-tasks/spec.md`）那条总原则改述；GLOSSARY.md「好感度」「日程」要补就调 `domain-modeling`
 - [x] pyright、ruff 过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
-- [ ] 票收尾：Comments 里写下「此刻」里日程那几句的样子（给票 05 验收时对照）；推一次让 CI 跑、跑 `code-review`
+- [x] 票收尾：Comments 里写下「此刻」里日程那几句的样子（给票 05 验收时对照）；推一次让 CI 跑、跑 `code-review`
 
 ## Comments
 
@@ -38,7 +38,7 @@
 这些是你的制作人排的，你可以按你们的关系抱怨或期待；私人的安排也算他给你留出的时间。做完的工作你可以自己说过程和感受（顺不顺、累不累、小插曲），不要编后续的安排和结果（补拍、播出日期、因此接到的新工作、和别人的合作）。只在相关的时候提起，不在开头就说；同一项在这段对话里说过就不再主动提。别的偶像的安排你不清楚。
 ```
 
-下周的写「下周一（明天）晚上」「下周四下午」；0–6 点没有「现在」那句；只有正在进行的一项时没有引子和列表，只有「现在……」和规则那句。这几行接在「此刻」一节的末尾（`today_lines` 之后）。
+下周的写「下周一（明天）晚上」「下周四下午」；0–6 点没有「现在」那句；只有正在进行的一项时也先写引子，接着「现在……」和规则那句。这几行接在「此刻」一节的末尾（`today_lines` 之后）。
 
 **本机测试**：`test_call_turns.py` 里几条通话时限的测试（如 `test_call_hangs_up_when_time_is_up_once_the_reply_in_progress_is_done`）在 xdist 并行时偶发失败，开工前的提交上同样会挂（换另一条），单独跑 20 次全过，不是这张票引起的。
 
@@ -51,3 +51,13 @@
 - 放置在 `schedule_placements`，`counted_at` 留空给这张票写。读某位用户某周的放置用 `schedule._placements(db, user_id, week)`，工作用 `_jobs(db, week)`（要的话改成公开的）；有效时区和当地时刻是 `_local(db, user_id, device_timezone, now)`，时间段的过去 / 进行中 / 将来是 `time_of(local, this_week, week, day, slot)`，`SLOT_NAMES` 是上午、下午、晚上。
 - `Schedules.read` 现在是「先读、缺这周的工作才开写事务」。补算好感度要写：在读的那一步顺带看有没有到期没算的，有就走写事务（同 `Gifts.state` 的 `giving` 那样）。好感度的开关在 `Affinities` 自己的 `is_on` 里，日程的是 `LiveConfig.schedule_on`。
 - 提示词里「她的工作」只能来自 `weekly_jobs` 里 `character_id` 是她的那几项；搭话没有设备时区，`_local` 传 `None` 就是档案 → 上海。
+
+### 审查（票 03）
+
+两份报告汇总后已修：只有正在进行的一项时也写引子；`read` / `hers` 共用 `_read_first`；`HerSchedule.when` 改名 `time_of` 并补 docstring；测试补「上午到下午」「后天」、只有正在进行的一项、并发读只算一次。
+
+留给用户定的判断题：
+
+- 靠近的日子写成「周三（昨天）」「周日（今天）」「下周一（明天）」，照的是规格那行例子；用户故事 53 里有「今天晚上」的说法，要改成只写「今天晚上」时改 `_day_named`。
+- 通话、搭话这两条路只测了「她知道」，补算只从读接口和打字回合测；三条路走同一个 `Schedules.hers`。
+- 通话测试和打字测试走的是同一个 `_reply`（Standards 认为可能重复），按票的要求留着。

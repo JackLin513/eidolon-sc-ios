@@ -42,7 +42,7 @@ import sqlite3
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
-from typing import Literal
+from typing import Literal, TypeVar
 from zoneinfo import ZoneInfo
 
 from eidolon.affinity import DAY_TIMEZONE, Affinities, day_of
@@ -109,6 +109,8 @@ SLOT_HOURS = 6
 SLOT_NAMES: dict[Slot, str] = {"morning": "上午", "afternoon": "下午", "evening": "晚上"}
 
 When = Literal["past", "now", "future"]
+
+T = TypeVar("T")
 
 # Why a job cannot be placed where asked: the browser's own reasons (`why_not`), then the
 # server's alone.
@@ -234,7 +236,8 @@ class HerSchedule:
     this_week: date
     jobs: list[HerJob]
 
-    def when(self, week: date, day: int, slot: int) -> When:
+    def time_of(self, week: date, day: int, slot: int) -> When:
+        """Whether the slot of `week`'s day is past, under way or to come (`time_of`)."""
         return time_of(self.local, self.this_week, week, day, slot)
 
 
@@ -362,9 +365,10 @@ def why_not(
 
 
 def schedule_lines(schedule: HerSchedule) -> list[str]:
-    """What she is told of her jobs in `schedule`, in what she is told of now: each but the
-    one under way, its day as from today, its slots, and whether done; the one under way, if
-    any, apart; and how to go by them. Nothing without any."""
+    """What she is told of her jobs in `schedule`, in what she is told of now: that they
+    stand whatever the producer says, then each but the one under way, its day as from
+    today, its slots, and whether done; the one under way, if any, apart; and how to go by
+    them. Nothing without any."""
     if not schedule.jobs:
         return []
     listed: list[str] = []
@@ -372,7 +376,8 @@ def schedule_lines(schedule: HerSchedule) -> list[str]:
     for her in schedule.jobs:
         job = her.job
         whens = [
-            schedule.when(her.week, her.day, s) for s in range(her.slot, her.slot + job.length)
+            schedule.time_of(her.week, her.day, s)
+            for s in range(her.slot, her.slot + job.length)
         ]
         if "now" in whens:
             current = schedule.local.hour // SLOT_HOURS - 1
@@ -386,7 +391,7 @@ def schedule_lines(schedule: HerSchedule) -> list[str]:
             f"{_day_named(schedule, her.week, her.day)}{_slots_named(her.slot, job.length)}："
             f"{job.name}——{job.note}{done}"
         )
-    return [*([_HER_JOBS, *listed] if listed else []), *under_way, _ABOUT_HER_JOBS]
+    return [_HER_JOBS, *listed, *under_way, _ABOUT_HER_JOBS]
 
 
 def _day_named(schedule: HerSchedule, week: date, day: int) -> str:
@@ -436,16 +441,10 @@ class Schedules:
         """The user's week and the next once published, their jobs drawn if not yet, and
         the jobs done counted (`_counted`); None while schedules are off. Read first, and
         written only to draw a week or count a job."""
-        if not self._is_on():
-            return None
-        now, counting = self._clock(), self._counting
-        found = await self._db.read(self._read, user_id, device_timezone, now, counting, False)
-        if found is None:
-            found = await self._db.write(
-                self._read, user_id, device_timezone, now, counting, True
-            )
-        assert found is not None
-        return found
+        return await self._read_first(
+            lambda db, now, counting, writing:
+            self._read(db, user_id, device_timezone, now, counting, writing)
+        )
 
     async def hers(
         self, user_id: str, character_id: str, device_timezone: str | None
@@ -453,16 +452,23 @@ class Schedules:
         """Her jobs the user saved of their week and the next, as she is told them, the jobs
         done counted (`_counted`); None while schedules are off. Read first, and written only
         to count a job."""
+        return await self._read_first(
+            lambda db, now, counting, writing:
+            self._hers(db, user_id, character_id, device_timezone, now, counting, writing)
+        )
+
+    async def _read_first(
+        self, body: Callable[[sqlite3.Connection, datetime, bool, bool], T | None]
+    ) -> T | None:
+        """What `body` reads now, counting the jobs done if affinity is on: read first, and
+        if it has anything to write, which it tells by None, written; None while schedules
+        are off."""
         if not self._is_on():
             return None
         now, counting = self._clock(), self._counting
-        found = await self._db.read(
-            self._hers, user_id, character_id, device_timezone, now, counting, False
-        )
+        found = await self._db.read(body, now, counting, False)
         if found is None:
-            found = await self._db.write(
-                self._hers, user_id, character_id, device_timezone, now, counting, True
-            )
+            found = await self._db.write(body, now, counting, True)
         assert found is not None
         return found
 

@@ -42,15 +42,16 @@ async def test_she_is_told_her_jobs_by_day_from_today_the_one_under_way_apart(
     publish(
         settings.database_path, WEEK,
         ("声乐课", 1, None), ("拍摄广告", 2, None), ("开会", 1, None), ("外景", 3, None),
-        ("晚饭", 1, ["evening"]),
+        ("访谈", 1, None), ("晚饭", 1, ["evening"]),
     )
     publish(settings.database_path, WEEK, ("组合排练", 1, None), character="kogane")
     res = await save(
         client, WEEK,
-        placed("声乐课", 0, 0), placed("拍摄广告", 1, 1), placed("开会", 2, 1),
-        placed("外景", 3, 0), placed("晚饭", 6, 2), placed("组合排练", 4, 0),
+        placed("声乐课", 0, 0), placed("拍摄广告", 1, 0), placed("开会", 2, 1),
+        placed("外景", 3, 0), placed("访谈", 4, 1), placed("晚饭", 6, 2),
+        placed("组合排练", 4, 0),
     )
-    assert len(res.json()["saved"]) == 6
+    assert len(res.json()["saved"]) == 7
     clock.advance(days=2, hours=13)  # Wednesday 14:00
 
     told = await told_now(client, llm)
@@ -60,8 +61,9 @@ async def test_she_is_told_her_jobs_by_day_from_today_the_one_under_way_apart(
     assert now.endswith("\n".join([
         HER_JOBS,
         "周一（前天）上午：声乐课——说明（做完了）",
-        "周二（昨天）下午到晚上：拍摄广告——说明（做完了）",
+        "周二（昨天）上午到下午：拍摄广告——说明（做完了）",
         "周四（明天）一整天：外景——说明",
+        "周五（后天）下午：访谈——说明",
         "周日晚上：晚饭——说明",
         f"现在（下午 12–18 点）你正在开会：说明。{UNDER_WAY}",
         ABOUT_THEM,
@@ -115,6 +117,23 @@ async def test_before_6_in_the_morning_no_job_is_under_way(
         ABOUT_THEM,
     ]) in told
     assert "现在（" not in told
+
+
+async def test_with_only_the_one_under_way_she_is_told_it_stands_all_the_same(
+    make_client: ClientFactory, settings: Settings
+):
+    llm = FakeLLM(REPLY)
+    clock = FakeClock(EARLY_MONDAY)
+    client = make_client(llm, clock=clock)
+    publish(settings.database_path, WEEK, ("拍摄广告", 2, None))
+    await save(client, WEEK, placed("拍摄广告", 0, 1))
+    clock.advance(hours=18)  # Monday 19:00, its second slot
+
+    told = await told_now(client, llm)
+
+    assert "\n".join([
+        HER_JOBS, f"现在（晚上 18–24 点）你正在拍摄广告：说明。{UNDER_WAY}", ABOUT_THEM,
+    ]) in told
 
 
 async def test_with_none_of_hers_saved_she_is_told_nothing_of_a_schedule(
