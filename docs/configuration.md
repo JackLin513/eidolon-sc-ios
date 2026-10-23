@@ -68,6 +68,7 @@
 [[characters]]
 id = "mano"                          # 标识，用在网址和剧情库里
 name = "櫻木真乃"
+short_name = "真乃"                   # 短名，日历周视图里地方小时写它
 name_zh = "樱木真乃"                 # 以下三项给对话列表的搜索用
 name_kana = "さくらぎ まの"
 name_romaji = "Sakuragi Mano"

@@ -2,9 +2,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 /**
  * 头像的几档尺寸：`list` 是对话列表（56px），`bubble` 是气泡旁（36px），`call` 是没有立绘时通话层中部（112px），
- * `sm`、`lg` 给记忆页、登录页这类小处。
+ * `sm`、`lg` 给记忆页、登录页这类小处，`xs`（20px）、`2xs`（16px）给日历周视图的工作块和行首的生日。
  */
 const SIZES = {
+  "2xs": "size-4",
+  xs: "size-5",
   sm: "size-6",
   bubble: "size-bubble-avatar",
   lg: "size-12",

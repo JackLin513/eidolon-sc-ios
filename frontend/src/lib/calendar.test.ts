@@ -1,11 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   calendarKinds,
+  calendarMode,
   cellLines,
   type CalendarData,
   type CalendarKind,
   eventsOn,
+  keepCalendarMode,
   monthCells,
   monthOf,
   nextEvent,
@@ -185,5 +187,54 @@ describe("电脑上一格最多三行", () => {
 
   it("超过三件时写前两件，第三行是还有几项", () => {
     expect(lines(4)).toEqual([[0, 1], 2]);
+  });
+});
+
+describe("月视图还是周视图，记在本机", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function storage(initial: Record<string, string> = {}) {
+    const items = new Map(Object.entries(initial));
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => void items.set(key, value),
+      removeItem: (key: string) => void items.delete(key),
+    });
+    return items;
+  }
+
+  it("没选过时是周视图", () => {
+    storage();
+
+    expect(calendarMode("user-1")).toBe("week");
+  });
+
+  it("按用户分开记着上次选的", () => {
+    const items = storage();
+
+    keepCalendarMode("user-1", "month");
+
+    expect(calendarMode("user-1")).toBe("month");
+    expect(calendarMode("user-2")).toBe("week");
+    expect(items.get("eidolon.calendarMode.user-1")).toBe("month");
+    keepCalendarMode("user-1", "week");
+    expect(calendarMode("user-1")).toBe("week");
+  });
+
+  it("存的认不得时回到周视图", () => {
+    storage({ "eidolon.calendarMode.odd": "day" });
+
+    expect(calendarMode("odd")).toBe("week");
+  });
+
+  it("存不进去时只在这次页面里记着", () => {
+    const unreachable = () => {
+      throw new DOMException("denied", "SecurityError");
+    };
+    vi.stubGlobal("localStorage", { getItem: unreachable, setItem: unreachable, removeItem: unreachable });
+
+    expect(calendarMode("private-1")).toBe("week");
+    expect(() => keepCalendarMode("private-1", "month")).not.toThrow();
+    expect(calendarMode("private-1")).toBe("month");
   });
 });

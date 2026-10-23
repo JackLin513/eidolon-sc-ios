@@ -1812,6 +1812,79 @@ export const zh = {
       more: (n: number) => `还有 ${n} 项`,
       /** 格子的读屏名字：「10月27日 周二，2 项」。 */
       cell: (date: string, events: number) => (events > 0 ? `${date}，${events} 项` : date),
+      /** 页首末端的月 / 周切换（日程开着时才有）。 */
+      views: { label: "视图", month: "月", week: "周" },
+    },
+    /** 日历子页的日程（GLOSSARY.md「日程」「工作」「时间段」）：周视图、待排、保存条、确认框和几个抽屉。 */
+    schedule: {
+      /** 周几，0 是周一。 */
+      weekdays: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
+      /** 四类工作，图标的读屏名字。 */
+      categories: { practice: "练习", appearance: "出镜", business: "事务", private: "私人" },
+      /** 三个时间段的名字，和周视图的表头。 */
+      slots: ["上午", "下午", "晚上"],
+      slotHeads: ["上午 6–12", "下午 12–18", "晚上 18–24"],
+      /** 一项占的时间：「周三 下午」「周三 上午到下午」「周三 一整天」。 */
+      when: (day: string, slots: string) => `${day} ${slots}`,
+      span: (from: string, to: string) => `${from}到${to}`,
+      wholeDay: "一整天",
+      /** 周视图的标题和两边的翻页键。 */
+      thisWeek: "本周",
+      nextWeek: "下周",
+      range: (from: string, to: string) => `${from} – ${to}`,
+      previous: "上周",
+      next: "下周",
+      unpublished: "本周的工作北京时间周一 0:00 发布",
+      /** 没有工作的已过、进行中的格子。 */
+      past: "已过",
+      underWay: "进行中",
+      /** 已经开始了的草稿块。 */
+      started: "开始了，存不了",
+      /** 工作块的读屏名字。 */
+      block: (who: string, job: string, state: string) => `${who} ${job}，${state}`,
+      states: { saved: "已保存", draft: "草稿", now: "进行中", done: "做完了", started: "开始了，存不了" },
+      /** 排不了的原因，和后端 `schedule.py` 顶上的常量一样。 */
+      reasons: {
+        wholeDayFromMorning: "一整天的工作只能从上午排",
+        noRoomThatDay: "当天排不下",
+        past: "已经过了",
+        underWay: "正在进行",
+        onlyIn: (slots: string) => `只能排在${slots}`,
+        taken: "格子里有别的工作",
+      },
+      /** 几个时间段连成一句：「晚上」「下午和晚上」。 */
+      slotList: { separator: "、", last: "和" },
+      /** 待排。 */
+      pending: {
+        title: (n: number) => `待排 ${n} 项`,
+        left: (n: number) => `还能排 ${n} 格`,
+        expires: "周日 24 点后作废",
+        tonight: "今晚 24 点后作废",
+        /** 一项的说明：「2 段 · 只能下午、晚上」。 */
+        length: (n: number) => `${n} 段`,
+        only: (slots: string) => `只能${slots}`,
+        allPlaced: "本周的工作都排好了",
+      },
+      /** 手机上点了草稿块的抽屉。 */
+      takeBack: "拿回待排",
+      /** 手机上点了待排一项的抽屉，列出放得下的时间段。 */
+      placeAt: (job: string) => `${job} 排到…`,
+      nowhere: "没有放得下的时间段",
+      /** 页底的保存条。 */
+      drafts: (n: number) => `草稿 ${n} 项`,
+      draftsNote: "保存后她才知道",
+      save: "保存",
+      /** 保存前的确认框。 */
+      confirm: {
+        title: (n: number) => `保存这 ${n} 项？`,
+        description: "保存后不能更改，也不能撤掉。",
+        cancel: "再看看",
+        save: "保存",
+      },
+      /** 保存时没存下的几项：「真乃的拍摄广告：已经开始了，不保存，退回待排。」 */
+      whose: (name: string, job: string) => `${name}的${job}`,
+      startedBack: (jobs: string) => `${jobs}：已经开始了，不保存，退回待排。`,
+      returnedBack: (jobs: string, reason: string) => `${jobs}：${reason}，不保存，退回待排。`,
     },
   },
   /** 礼物子页（`/play/gifts`，GLOSSARY.md「礼物」「抽奖」，DESIGN.md「玩法页」）：抽奖台、重置卡条、我的礼物，和送礼面板、抽奖弹窗里的字。 */

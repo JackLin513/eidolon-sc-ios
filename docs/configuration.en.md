@@ -68,6 +68,7 @@ Characters are written in [`characters/characters.toml`](../characters/character
 [[characters]]
 id = "mano"                          # identifier, used in URLs and the story corpus
 name = "櫻木真乃"
+short_name = "真乃"                   # short name, where the calendar's week view has little room
 name_zh = "樱木真乃"                 # the next three are for searching the conversation list
 name_kana = "さくらぎ まの"
 name_romaji = "Sakuragi Mano"

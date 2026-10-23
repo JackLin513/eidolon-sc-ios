@@ -478,6 +478,7 @@ def create_app(backend: Backend) -> FastAPI:
                 "background_url": f"/api/characters/{c.id}/background" if c.background else None,
                 "stand": _stand(c, backend.settings.stand_assets_url),
                 "idol_id": c.idol_id,
+                "short_name": c.short_name,
                 "name_zh": c.name_zh,
                 "name_kana": c.name_kana,
                 "name_romaji": c.name_romaji,

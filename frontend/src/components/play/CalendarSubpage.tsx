@@ -1,33 +1,52 @@
 "use client";
 
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
+import { FailureNotice } from "@/components/app/FailureNotice";
 import { MarkedAvatar } from "@/components/app/MarkedAvatar";
+import { useDirectory, useWide } from "@/components/conversations/ConversationDirectory";
 import { PlayShell, PlaySubpageHeader } from "@/components/play/PlayShell";
+import { type CharacterOf, SaveBar, ScheduleWeek } from "@/components/play/ScheduleWeek";
 import { useCalendar } from "@/components/play/useCalendar";
+import { Alert, AlertAction, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { copy } from "@/i18n";
-import type { Character } from "@/lib/api";
+import { ApiError, type Character } from "@/lib/api";
 import {
+  addDays,
   CALENDAR_KINDS,
   type CalendarCell,
   type CalendarData,
   type CalendarEvent,
   type CalendarKind,
+  type CalendarMode,
   type CalendarMonth,
   calendarKinds,
+  calendarMode,
   cellLines,
   eventsOn,
+  keepCalendarMode,
   monthCells,
   monthOf,
   partsOf,
   shiftMonth,
 } from "@/lib/calendar";
+import { type Failure, toFailure } from "@/lib/failure";
 import { playTitle } from "@/lib/playCards";
+import { afterSave, type Board, type Placement, returnedNote, saveSchedule, startedNote } from "@/lib/schedule";
 import { cn } from "@/lib/utils";
 import { herVars } from "@/theme/herVars";
-import { BirthdayIcon, HolidayIcon, NextMonthIcon, PreviousMonthIcon } from "@/theme/icons";
+import {
+  BirthdayIcon,
+  CloseIcon,
+  FailureIcon,
+  HolidayIcon,
+  MonthViewIcon,
+  NextMonthIcon,
+  PreviousMonthIcon,
+  WeekViewIcon,
+} from "@/theme/icons";
 
 const t = copy.play.calendar;
 
@@ -40,31 +59,135 @@ const FILTER_ICONS = { character: BirthdayIcon, producer: BirthdayIcon, holiday:
 >;
 
 /**
- * 「日历」子页（`/play/calendar`，DESIGN.md「玩法页」）：页首返回键回玩法页，末端留给日程那一块的月 / 周切换。
- * 内容从上到下是筛选、月视图和点中的那一天的清单（默认今天，制作人时区）。节假日按月视图上的那几年取，
+ * 「日历」子页（`/play/calendar`，DESIGN.md「玩法页」）：页首返回键回玩法页，日程开着时末端是月 / 周切换
+ * （默认周视图，上次选的记在这台设备上，lib/calendar）；日程关着时没有切换、只有月视图。
+ * 月视图从上到下是筛选、月视图和点中的那一天的清单（默认今天，制作人时区）。节假日按月视图和本周、下周上的那几年取，
  * 没回来之前先画生日，这一天所在的年没回来、又没有生日时先不说「这一天没有事」。
+ * 周视图是本周（和已发布的下周）的日程和待排（components/play/ScheduleWeek），有草稿时内容底部一条保存条；
+ * 保存时服务器退回了哪几项，页上方说一句。日程读到之前整页先写「正在读取」，免得先画月视图再跳成周视图。
  * 好感度和礼物没开放时照常有。
  */
 export function CalendarSubpage() {
   const [month, setMonth] = useState<CalendarMonth | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
-  const { calendar, hasHolidaysOf, keepShown } = useCalendar({
-    years: (today) => yearsOn(monthCells(month ?? monthOf(today), today)),
+  const [kept, setKept] = useState<{ userId: string; mode: CalendarMode } | null>(null);
+  const [isNext, setNext] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
+  const [isSaving, setSaving] = useState(false);
+  const isWide = useWide();
+  const { account, characters } = useDirectory();
+  const {
+    calendar,
+    hasHolidaysOf,
+    keepShown,
+    schedule,
+    scheduleFailure,
+    scheduleNow,
+    draftsOn,
+    keepDraftsOn,
+    readSchedule,
+    closeSchedule,
+  } = useCalendar({
+    // 月视图首尾两格所在的年，和周视图本周、下周所在的年（跨年也给）。
+    years: (today) => [
+      ...yearsOn(monthCells(month ?? monthOf(today), today)),
+      partsOf(addDays(today, -6)).year,
+      partsOf(addDays(today, 13)).year,
+    ],
   });
-  if (!calendar) {
+  const header = (end?: ReactNode) => <PlaySubpageHeader title={playTitle("calendar")} end={end} />;
+  if (!calendar || !schedule || !account) {
     return (
-      <PlayShell header={<PlaySubpageHeader title={playTitle("calendar")} />}>
+      <PlayShell header={header()}>
         <p className="text-body text-muted-foreground">{copy.play.loading}</p>
       </PlayShell>
     );
   }
   const { today, data, shown } = calendar;
+  const userId = account.id;
+  const mode: CalendarMode = !schedule.enabled ? "month" : kept?.userId === userId ? kept.mode : calendarMode(userId);
+  const end = schedule.enabled ? (
+    <ModeToggle
+      mode={mode}
+      onChange={(next) => {
+        keepCalendarMode(userId, next);
+        setKept({ userId, mode: next });
+      }}
+    />
+  ) : undefined;
+  const failures = (
+    <>
+      {scheduleFailure && <FailureNotice failure={scheduleFailure} />}
+      {failure && <FailureNotice failure={failure} />}
+    </>
+  );
+
+  if (mode === "week" && schedule.enabled && scheduleNow) {
+    const week = isNext && schedule.next_week ? schedule.next_week : schedule.this_week;
+    const board: Board = { week, drafts: draftsOn(week.id), now: scheduleNow };
+    const byId = new Map((characters ?? []).map((character) => [character.id, character]));
+    const characterOf: CharacterOf = (id) => byId.get(id) ?? { id, name: id, short_name: null, avatar_url: null, color: null };
+    const nameOf = (id: string) => characterOf(id).name;
+
+    const save = async (saving: Placement[], started: Placement[]) => {
+      setFailure(null);
+      setNotice(null);
+      if (saving.length === 0) {
+        // 都已经开始了：不弹确认框，直接退回待排。
+        keepDraftsOn(week.id, afterSave(board.drafts, started));
+        setNotice(startedNote(board, started, nameOf));
+        return;
+      }
+      setSaving(true);
+      try {
+        const { returned } = await saveSchedule(week.id, saving);
+        // 先重读，存下的成了保存过的，再从草稿里去掉试过的，退回的回到待排。
+        await readSchedule();
+        keepDraftsOn(week.id, afterSave(board.drafts, [...saving, ...started]));
+        setNotice(returnedNote(board, returned, nameOf));
+      } catch (e) {
+        if (e instanceof ApiError && e.scheduleClosed) closeSchedule();
+        else setFailure(toFailure(e));
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    return (
+      <PlayShell
+        header={header(end)}
+        footer={
+          week.published && board.drafts.length > 0 ? (
+            <SaveBar board={board} characterOf={characterOf} isSaving={isSaving} onSave={save} />
+          ) : undefined
+        }
+      >
+        {failures}
+        {notice && <ScheduleNotice text={notice} onDismiss={() => setNotice(null)} />}
+        <ScheduleWeek
+          key={week.id}
+          board={board}
+          isNext={week === schedule.next_week}
+          hasNext={schedule.next_week !== null}
+          onWeek={setNext}
+          characterOf={characterOf}
+          calendar={data}
+          who={null}
+          isWide={isWide}
+          onDrafts={(drafts) => keepDraftsOn(week.id, drafts)}
+        />
+      </PlayShell>
+    );
+  }
+
   const kinds = calendarKinds(data.producerBirthday);
   const visible = kinds.filter((kind) => shown.includes(kind));
   const day = picked ?? today;
   const events = eventsOn(day, data, visible);
   return (
-    <PlayShell header={<PlaySubpageHeader title={playTitle("calendar")} />}>
+    <PlayShell header={header(end)}>
+      {failures}
       <Filters
         kinds={kinds}
         visible={visible}
@@ -94,6 +217,46 @@ export function CalendarSubpage() {
         <p className="text-body text-muted-foreground">{copy.play.loading}</p>
       )}
     </PlayShell>
+  );
+}
+
+/** 页首末端的月 / 周切换：两项，图标加字，按下的中性 `bg-muted`。 */
+function ModeToggle({ mode, onChange }: { mode: CalendarMode; onChange: (mode: CalendarMode) => void }) {
+  return (
+    <ToggleGroup
+      aria-label={t.views.label}
+      variant="outline"
+      size="sm"
+      value={[mode]}
+      onValueChange={(next) => {
+        const [chosen] = next;
+        if (chosen === "month" || chosen === "week") onChange(chosen);
+      }}
+    >
+      <ToggleGroupItem value="month">
+        <MonthViewIcon aria-hidden />
+        {t.views.month}
+      </ToggleGroupItem>
+      <ToggleGroupItem value="week">
+        <WeekViewIcon aria-hidden />
+        {t.views.week}
+      </ToggleGroupItem>
+    </ToggleGroup>
+  );
+}
+
+/** 保存时没存下的几项：页上方一句，右边关掉。 */
+function ScheduleNotice({ text, onDismiss }: { text: string; onDismiss: () => void }) {
+  return (
+    <Alert>
+      <FailureIcon />
+      <AlertTitle>{text}</AlertTitle>
+      <AlertAction>
+        <Button variant="ghost" size="icon-sm" aria-label={copy.common.close} onClick={onDismiss}>
+          <CloseIcon />
+        </Button>
+      </AlertAction>
+    </Alert>
   );
 }
 

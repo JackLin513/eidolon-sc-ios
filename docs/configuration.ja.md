@@ -68,6 +68,7 @@
 [[characters]]
 id = "mano"                          # 識別子。URL とシナリオライブラリで使う
 name = "櫻木真乃"
+short_name = "真乃"                   # 短い名前。カレンダーの週表示で場所が狭いところに使う
 name_zh = "樱木真乃"                 # 以下の 3 項目は会話一覧の検索用
 name_kana = "さくらぎ まの"
 name_romaji = "Sakuragi Mano"

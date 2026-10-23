@@ -13,6 +13,7 @@ const mano: Character = {
   background_url: null,
   stand: null,
   idol_id: 1,
+  short_name: null,
   name_zh: null,
   name_kana: null,
   name_romaji: null,

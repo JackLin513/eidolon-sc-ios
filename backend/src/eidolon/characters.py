@@ -12,6 +12,10 @@ mirror's `spine_manifest.json`) and the outfit her stand wears unless the user p
 another (`default_outfit`, e.g. `stand/1030010010`). The stands themselves are not
 committed: they are served from object storage (ADR-0003, revised 2026-09-30).
 
+Optionally, she also has a short name (`short_name`): what the original calls her, the end
+of her name (真乃 of 櫻木真乃), for where there is room for little, the calendar's job
+blocks; without it they show her name.
+
 Optionally, she also has the other names the conversation list searches her by
 (`name_zh`, `name_kana`, `name_romaji`): her name as Chinese readers know it, its reading
 in hiragana and in romaji, given name after family name with a space between. Without
@@ -150,6 +154,8 @@ class Character:
     """Her greeting on the landing page; None shows her there without one."""
     call_opener: CallOpener | None = None
     """Her call opener on the landing page; None, and her call there has no words."""
+    short_name: str | None = None
+    """What the original calls her, the end of her name, e.g. 真乃; None shows her name."""
     name_zh: str | None = None
     """Her name in simplified Chinese as the community writes it, e.g. 八宫巡."""
     name_kana: str | None = None
@@ -295,6 +301,7 @@ def _parse_character(
         default_outfit=default_outfit,
         greeting=_greeting(entry, label, readings),
         call_opener=_call_opener(entry, label, readings),
+        short_name=_short_name(entry, label),
         name_zh=_other_name(entry, "name_zh", label),
         name_kana=_other_name(entry, "name_kana", label),
         name_romaji=_other_name(entry, "name_romaji", label),
@@ -313,6 +320,16 @@ def _other_name(entry: dict, field: str, label: str) -> str | None:
     if not (isinstance(value, str) and value.strip()) or len(value.splitlines()) > 1:
         raise CharacterConfigError(f"角色 {label} 的 {field} 应为不空的单行字符串，现在是 {value!r}")
     return value.strip()
+
+
+def _short_name(entry: dict, label: str) -> str | None:
+    """Her short name, if given: a line of text her name ends with, shorter than it."""
+    short = _other_name(entry, "short_name", label)
+    if short is not None and (short == entry["name"] or not entry["name"].endswith(short)):
+        raise CharacterConfigError(
+            f"角色 {label} 的 short_name 应为 name 末尾的一段（比如「真乃」），现在是 {short!r}"
+        )
+    return short
 
 
 def _greeting(entry: dict, label: str, readings: tuple[Reading, ...]) -> Greeting | None:

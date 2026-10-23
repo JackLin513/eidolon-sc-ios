@@ -42,6 +42,7 @@ async def test_character_list_shows_name_intro_avatar_colour_and_background_but_
             "background_url": "/api/characters/mano/background",
             "stand": None,  # no stand assets URL is configured
             "idol_id": 1,
+            "short_name": None,  # none configured
             "name_zh": None,  # none configured
             "name_kana": None,
             "name_romaji": None,
@@ -64,6 +65,7 @@ async def test_character_list_shows_name_intro_avatar_colour_and_background_but_
             "background_url": None,
             "stand": None,
             "idol_id": None,
+            "short_name": None,
             "name_zh": None,  # none configured
             "name_kana": None,
             "name_romaji": None,
@@ -106,6 +108,18 @@ async def test_character_list_gives_the_other_names_she_is_searched_by(
     assert [listed["meguru"][f] for f in ("name_zh", "name_kana", "name_romaji")] == [
         "八宫巡", "はちみや めぐる", "Hachimiya Meguru",
     ]
+
+
+async def test_character_list_gives_her_short_name(
+    make_client: ClientFactory, characters: CharacterConfig
+):
+    characters.add("meguru", "八宮めぐる", "sheet")
+    add_raw(characters, 'short_name = "めぐる"')
+    client = make_client(FakeLLM(), user=None)
+
+    listed = {c["id"]: c for c in (await client.get("/api/characters")).json()}
+
+    assert listed["meguru"]["short_name"] == "めぐる"
 
 
 async def test_avatar_is_served_without_a_session_so_img_tags_can_load_it(
@@ -533,6 +547,24 @@ def test_other_names_must_each_be_a_line_of_text(tmp_path: Path, field: str, val
 
     with pytest.raises(CharacterConfigError, match=f"角色 mano 的 {field}"):
         load_characters(config.path)
+
+
+@pytest.mark.parametrize("value", ['"  "', '"灯織"', '"櫻木真乃"'])
+def test_short_name_must_be_the_end_of_her_name(tmp_path: Path, value: str):
+    """A line of text her name ends with, and shorter than it: 「真乃」."""
+    config = CharacterConfig(tmp_path).add("mano", "櫻木真乃", "a")
+    add_raw(config, f"short_name = {value}")
+
+    with pytest.raises(CharacterConfigError, match="角色 mano 的 short_name"):
+        load_characters(config.path)
+
+
+def test_repository_gives_each_character_her_short_name():
+    loaded = load_characters(REPO_CHARACTERS / "characters.toml")
+
+    for c in loaded.values():
+        assert c.short_name and c.name.endswith(c.short_name) and c.short_name != c.name, c.id
+    assert loaded["fuyuko"].short_name == "冬優子"
 
 
 def test_repository_gives_each_character_her_other_names():
