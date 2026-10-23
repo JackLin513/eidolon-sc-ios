@@ -24,8 +24,8 @@ describe("日历的筛选记在本机", () => {
     expect(shownKinds("user-1")).toEqual(ALL);
   });
 
-  it("按用户分开存，读回来是存的那几类，按类别的顺序", () => {
-    storage();
+  it("按用户分开存关掉的几类，读回来是开着的几类，按类别的顺序", () => {
+    const items = storage();
 
     keepShownKinds("user-1", ["holiday", "character"]);
     keepShownKinds("user-2", []);
@@ -33,13 +33,6 @@ describe("日历的筛选记在本机", () => {
     expect(shownKinds("user-1")).toEqual(["character", "holiday"]);
     expect(shownKinds("user-2")).toEqual([]);
     expect(shownKinds("user-3")).toEqual(ALL);
-  });
-
-  it("存的是关掉的几类，以后加的类别默认开着", () => {
-    const items = storage();
-
-    keepShownKinds("user-1", ["holiday", "character"]);
-
     expect(items.get("eidolon.calendarKinds.user-1")).toBe(JSON.stringify({ hidden: ["producer", "schedule"] }));
   });
 

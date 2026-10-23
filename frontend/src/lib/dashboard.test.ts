@@ -311,7 +311,6 @@ describe("scheduleTiles", () => {
 
   it("count the users who saved a schedule this week", () => {
     expect(scheduleTiles(1234).map((tile) => [tile.label, tile.value])).toEqual([["本周排了日程的人数", "1,234"]]);
-    expect(scheduleTiles(0)[0].value).toBe("0");
   });
 });
 

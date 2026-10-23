@@ -1,7 +1,7 @@
 // The calendar's arithmetic (.scratch/calendar spec「日历子页」「怎么算」): which days carry what,
 // out of four kinds — the characters' birthdays, the producer's own (「我的生日」), Japan's
-// holidays and, while schedules are on, the jobs placed this week and next (.scratch/schedule spec
-// 「界面」; lib/schedule's `dayJobs` gives them, dated). Birthdays come back every year and are worked out here; holidays are given, a year at
+// holidays and, while schedules are on, the jobs placed this week and next
+// (.scratch/schedule spec「界面」; lib/schedule's `dayJobs` gives them, dated). Birthdays come back every year and are worked out here; holidays are given, a year at
 // a time, as the backend lists them. February 29 falls on February 28 in a year without it, as the
 // producer's birthday does where she congratulates him. The page only draws what these say.
 // Which of the month and the week view this device last showed is kept here too (at the end).
@@ -20,7 +20,14 @@ export type Holiday = { date: string; name: string };
 
 /** A job placed on a day, as the month view shows it: whose, the job's id and name, the slots it
  * takes as written (「下午」「上午到下午」「一整天」), and whether it is saved or a draft. */
-export type DayJob<C> = { date: string; character: C; jobId: string; name: string; slots: string; isSaved: boolean };
+export type DayJob<C> = {
+  date: string;
+  character: C;
+  jobId: string;
+  name: string;
+  slotsText: string;
+  isSaved: boolean;
+};
 
 /** What the calendar is worked out from. `characters` in the idols' order, each with her
  * `birthday` as `MM-DD`; `producerBirthday` null when he has not set one; `holidays` of the years

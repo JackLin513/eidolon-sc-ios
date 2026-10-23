@@ -23,3 +23,9 @@
 - DESIGN.md 「玩法页」的「日历子页」照票 04 的代码补周视图（见票 04「实现说明」和「判断题」：周标题和翻页键、表头、行首、格子和块的五种状态、电脑先挑再放、手机三个抽屉、待排、保存条、确认框、页上方的提示带 ✕、都已开始时不弹框）；她的颜色规则那几处票 04 已改。
 - 图标一节补七枚：`MonthViewIcon`（`CalendarDays`）、`WeekViewIcon`（`Rows3`）、`PracticeJobIcon`（`Music`）、`AppearanceJobIcon`（`Camera`）、`BusinessJobIcon`（`Briefcase`）、`PrivateJobIcon`（`Coffee`）、`LockedIcon`（`Lock`），票 05 的 `ScheduleIcon` 另算；头像尺寸多了 20px、16px 两档（`MarkedAvatar` 的 `xs`、`2xs`）。
 - 角色多了可选的 `short_name`（用户在票 04 定的，`characters.toml` 已填初稿）：三语配置指南只在示例里加了一行，要不要在「几项需要额外说明的」里写一条，收尾时看。
+
+### 票 05 交接
+
+- DESIGN.md「日历子页」还要补票 05 的：筛选多了「日程」（`CalendarCheck`，`ScheduleIcon`，日程关着时没有；本机存的是关掉的几类）；月视图的日程记号（手机格子里她的 `--her-mark` 圆点，保存过的实心、草稿空心；电脑上圆点后跟工作名、保存过的那一行铺 `--her-wall`；清单一行是她 24px 头像、工作名、Meta 字号「下午 · 已保存 / 草稿」）；「只看她」（`?who=`，页首下面一条 `HerStrip`：她的头像、「只看〇〇的日程」、✕ 读屏「看全部」，两种视图和待排都只剩她的，生日和节假日照常）。现在「日历子页」那一节写的「她的颜色只在角色生日的蛋糕…」和代码不一致了，一起改。礼物子页的预选条和它是同一个组件 `HerStrip`，「玩法页」里可以一处写。
+- 图标一节：更多菜单的「她的日程」票 05 已经加了；日程筛选的 `ScheduleIcon` 还没写。
+- 玩法页「日历」卡状态前的「本周还有 n 项工作待排 · 」也写进「玩法页」那一节。

@@ -233,7 +233,7 @@ export function dayJobs<C>(
           character: characterOf(job.character_id),
           jobId: job.id,
           name: job.name,
-          slots: slotsText(placement, job),
+          slotsText: slotsText(placement, job),
           isSaved,
         };
         return [{ day, slot: placement.slot }];

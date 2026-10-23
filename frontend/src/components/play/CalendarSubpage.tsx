@@ -6,6 +6,7 @@ import { type ReactNode, useState } from "react";
 import { FailureNotice } from "@/components/app/FailureNotice";
 import { MarkedAvatar } from "@/components/app/MarkedAvatar";
 import { useDirectory, useWide } from "@/components/conversations/ConversationDirectory";
+import { HerStrip } from "@/components/play/HerStrip";
 import { PlayShell, PlaySubpageHeader } from "@/components/play/PlayShell";
 import { type CharacterOf, SaveBar, ScheduleWeek } from "@/components/play/ScheduleWeek";
 import { useCalendar } from "@/components/play/useCalendar";
@@ -24,8 +25,8 @@ import {
   type CalendarMode,
   type CalendarMonth,
   calendarKinds,
-  type DayJob,
   calendarMode,
+  type DayJob,
   cellLines,
   eventsOn,
   keepCalendarMode,
@@ -61,7 +62,6 @@ import {
 } from "@/theme/icons";
 
 const t = copy.play.calendar;
-const s = copy.play.schedule;
 
 /** 手机上一格最多几个记号。 */
 const CELL_MARKS = 4;
@@ -145,9 +145,11 @@ export function CalendarSubpage({ who }: { who: string | null }) {
       {scheduleFailure && <FailureNotice failure={scheduleFailure} />}
       {failure && <FailureNotice failure={failure} />}
       {her && (
-        <OnlyHer
+        <HerStrip
           character={her}
-          onAll={() => {
+          text={t.onlyHer(her.name)}
+          closeLabel={t.showAll}
+          onClose={() => {
             setDropped(her.id);
             router.replace(playHref("calendar"), { scroll: false });
           }}
@@ -289,20 +291,6 @@ function ModeToggle({ mode, onChange }: { mode: CalendarMode; onChange: (mode: C
 function known(job: DayJob<Character | null>): DayJob<Character>[] {
   const { character } = job;
   return character ? [{ ...job, character }] : [];
-}
-
-/** 「只看她」时页首下面那一条：她的小头像、「只看〇〇的日程」和看全部的 ✕（样子同礼物子页的预选）。 */
-function OnlyHer({ character, onAll }: { character: Character; onAll: () => void }) {
-  return (
-    <div className="flex items-center gap-2 rounded-2xl border py-1 pr-1 pl-3">
-      <MarkedAvatar name={character.name} src={character.avatar_url} size="sm" />
-      <p className="min-w-0 flex-1 truncate text-sm">{t.onlyHer(character.name)}</p>
-      {/* 手机上触控目标不小于 44px */}
-      <Button variant="ghost" size="icon-lg" className="max-md:size-11" aria-label={t.showAll} onClick={onAll}>
-        <CloseIcon />
-      </Button>
-    </div>
-  );
 }
 
 /** 保存时没存下的几项：页上方一句，右边关掉。 */
@@ -491,14 +479,14 @@ function Mark({ event }: { event: CalendarEvent<Character> }) {
   if (event.kind === "character" || event.kind === "schedule") {
     const isHollow = event.kind === "schedule" && !event.job.isSaved;
     const color = event.kind === "character" ? event.character.color : event.job.character.color;
-    return (
-      <span
-        style={herVars(color)}
-        className={cn("size-1.5 rounded-full", isHollow ? "border border-her-mark" : "bg-her-mark")}
-      />
-    );
+    return <span style={herVars(color)} className={cn("size-1.5", herDot(!isHollow))} />;
   }
   return <span className="size-1.5 rounded-full bg-muted-foreground" />;
+}
+
+/** 她颜色的圆点：实心（角色生日、保存过的日程）或空心（草稿）。要在注入了她的颜色的子树里。 */
+function herDot(isSolid: boolean): string {
+  return cn("rounded-full", isSolid ? "bg-her-mark" : "border border-her-mark");
 }
 
 /** 16px 的图标：角色生日是她颜色的蛋糕（每一项单独注入一次她的颜色），日程是她颜色的圆点（保存过的实心、草稿空心，
@@ -507,7 +495,7 @@ function EventIcon({ event }: { event: CalendarEvent<Character> }) {
   if (event.kind === "schedule") {
     return (
       <span className="flex size-4 shrink-0 items-center justify-center">
-        <span className={cn("size-2 rounded-full", event.job.isSaved ? "bg-her-mark" : "border border-her-mark")} />
+        <span className={cn("size-2", herDot(event.job.isSaved))} />
       </span>
     );
   }
@@ -560,7 +548,9 @@ function EventRow({ event }: { event: CalendarEvent<Character> }) {
         <MarkedAvatar name={job.character.name} src={job.character.avatar_url} size="sm" />
         <span className="truncate">{job.name}</span>
         <span className="shrink-0 text-meta text-muted-foreground">
-          {[job.slots, job.isSaved ? s.states.saved : s.states.draft].join(copy.play.separator)}
+          {[job.slotsText, job.isSaved ? copy.play.schedule.states.saved : copy.play.schedule.states.draft].join(
+            copy.play.separator,
+          )}
         </span>
       </>
     );

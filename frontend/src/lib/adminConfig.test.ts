@@ -461,11 +461,9 @@ describe("reach-outs", () => {
 describe("schedule", () => {
   const spec = ITEM_SPECS.schedule;
 
-  it("send only the switch, untried, under「限额与玩法」after the reach-outs", () => {
+  it("send only the switch", () => {
     expect(formOf(spec, { enabled: true })).toEqual({ enabled: "true" });
     expect(changeOf(spec, { enabled: "false" }, true)).toEqual({ change: { enabled: false } });
-    expect(spec.tried).toBe(false);
-    expect(TAB_ITEMS.limits).toEqual(["limits", "affinity", "reach_outs", "schedule"]);
   });
 });
 

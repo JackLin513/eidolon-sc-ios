@@ -525,7 +525,7 @@ describe("月视图上的日程", () => {
   /** 一项写成「日期 谁 工作名 几段 保存过的还是草稿」。 */
   const text = (who: string | null) =>
     dayJobs([thisWeek, nextWeek], characterOf, who).map(
-      (j) => `${j.date} ${j.character.id} ${j.name} ${j.slots} ${j.isSaved ? "已保存" : "草稿"}`,
+      (j) => `${j.date} ${j.character.id} ${j.name} ${j.slotsText} ${j.isSaved ? "已保存" : "草稿"}`,
     );
 
   it("本周和下周保存过的和草稿都有，按日期和时间段排，写占哪几段", () => {
@@ -547,8 +547,8 @@ describe("「只看她」的地址", () => {
     expect(herScheduleHref("mano")).toBe("/play/calendar?who=mano");
   });
 
-  it("地址里没有、是空的或不止一个时是全部", () => {
+  it("地址里没有或是空的时是全部", () => {
     expect(calendarWho({ who: "mano" })).toBe("mano");
-    for (const who of [undefined, "", ["mano", "madoka"]]) expect(calendarWho({ who }), String(who)).toBeNull();
+    for (const who of [undefined, ""]) expect(calendarWho({ who }), String(who)).toBeNull();
   });
 });

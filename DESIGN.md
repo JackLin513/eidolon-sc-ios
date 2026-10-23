@@ -391,7 +391,7 @@ components:
 - 礼物子页：抽奖台的「抽一次」是 `Sparkles`（`DrawIcon`），抽到稀有礼物时插画角上的闪光也是 `Sparkles`（`RareIcon`）；重置卡确认框里「现在的档位 → 信任」的箭头是 `ArrowRight`（`BecomesIcon`）；类别筛选的吃的、饮品、花草、小物件是 `Cookie`（`FoodIcon`）、`CupSoda`（`DrinkIcon`）、`Flower2`（`FlowerIcon`）、`Gem`（`TrinketIcon`）；「还没有礼物」的空状态和揭晓前跳的礼物盒用 `GiftIcon`，送礼记录的分隔线和对话列表的最后一句也是它；送礼面板里冷却中的沙漏是 `CooldownIcon`。每日任务与成就子页：每日任务没做完的一项是 `Circle`（`TaskOpenIcon`），做完的是 `CircleCheck`（`SuccessIcon`）。
 - 她结束了对话：对话事件的分隔线和换掉输入栏的结束卡都是 `MessageCircleOff`（`EndedIcon`），历史对话面板里「她结束了」的标记也是它。
 - 她发来的照片：对话记录里照片生成中的占位是 `Camera`（`PhotoIcon`），对话列表和历史对话面板里最后一句前的相机也是它；没发出来时的说明是 `ImageOff`（`PhotoFailedIcon`）；这一小时的照片用完时的胶囊是 `CameraOff`（`PhotosUsedUpIcon`）。
-- 对话页更多菜单：新对话 `SquarePen`（`NewConversationIcon`）、历史对话 `History`（`PastConversationsIcon`，历史对话的只读卡也用它）、换衣装 `Shirt`（`OutfitIcon`）、成就 `Trophy`（`AchievementsIcon`，页首的奖杯也用它）。对话列表行菜单：置顶 `Pin`（`PinIcon`）、取消置顶 `PinOff`（`UnpinIcon`）、在列表中隐藏 `EyeOff`（`HideIcon`）、在列表中显示 `Eye`（`ShowIcon`）。
+- 对话页更多菜单：新对话 `SquarePen`（`NewConversationIcon`）、历史对话 `History`（`PastConversationsIcon`，历史对话的只读卡也用它）、换衣装 `Shirt`（`OutfitIcon`）、成就 `Trophy`（`AchievementsIcon`，页首的奖杯也用它）、她的日程 `CalendarDays`（`CalendarIcon`，同玩法页「日历」卡）。对话列表行菜单：置顶 `Pin`（`PinIcon`）、取消置顶 `PinOff`（`UnpinIcon`）、在列表中隐藏 `EyeOff`（`HideIcon`）、在列表中显示 `Eye`（`ShowIcon`）。
 - 设置一级：档案 `CircleUser`（`ProfileIcon`）、记忆 `BookHeart`（`MemoriesIcon`）、通话 `PhoneIcon`、自带密钥 `KeyRound`（`OwnKeysIcon`）、登录与数据 `LogIn`（`SignInIcon`）、关于 `Info`（`AboutIcon`）。新标签页打开的链接行尾是 `ExternalLink`（`ExternalLinkIcon`）。
 - 公告用两个图标：用户端的铃铛是 Lucide `Bell`（`AnnouncementsBellIcon`），后台侧栏是 `Megaphone`（`AnnouncementsIcon`），都照上一条导出，不是例外。
 - 品牌标志例外：Lucide 不收品牌标志，需要时照抄 simple-icons 的官方路径，不改形状，同样从那个文件导出。目前只有 `GitHubIcon`。

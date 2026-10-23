@@ -98,7 +98,7 @@ describe("某一天的事", () => {
       character,
       jobId: `2026-11-02-${name}`,
       name,
-      slots: "下午",
+      slotsText: "下午",
       isSaved: true,
     });
     const d = data({ jobs: [job(MADOKA, "拍摄广告"), job(MANO, "舞蹈课"), job(MANO, "吃饭", "2026-11-04")] });

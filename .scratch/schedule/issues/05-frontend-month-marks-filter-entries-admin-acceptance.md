@@ -4,19 +4,19 @@
 
 **Blocked by:** 03（验收里要看她说不说）、04（子页和 `lib/schedule`）
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 月视图：圆点实心 / 空心、电脑上的工作名和底色、清单一行；记号和行数的上限照旧
-- [ ] 筛选「日程」：存法改了，老用户的旧值读出来日程是开的；`lib/calendarFilter` 测试加这几条；日程关着时没有这一项
-- [ ] 「只看她」：`?who=` 下两种视图和待排都只剩她的，页顶一条、✕ 回全部；角色不存在当作没有
-- [ ] 对话页更多菜单「她的日程」，点了进周视图只看她；日程关着时没有
-- [ ] 玩法卡前缀：`lib/playCards` 测试加「本周还有 n 项工作待排 · 」、全排完和没发布时只有「下一个」、关着时只有「下一个」
-- [ ] 后台「日程」卡能开关、改了优先于 `.env`；`adminConfig` 测试加一项
-- [ ] 看板那一格：`lib/dashboard` 测试加那一格和「好感度」标签的显示条件（null 不显示、好感度关着日程开着也显示）
-- [ ] `DESIGN.md`「对话页」更多菜单加「她的日程」（日历子页一节整体是票 06）
-- [ ] 类型检查、lint、前端测试过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
-- [ ] 整块验收走完上面列的；留给用户的清单写进 Comments（真机看周视图和抽屉、打电话听她说日程、别的机器验不了的）
-- [ ] 票收尾：推一次让 CI 跑、跑 `code-review`
+- [x] 月视图：圆点实心 / 空心、电脑上的工作名和底色、清单一行；记号和行数的上限照旧
+- [x] 筛选「日程」：存法改了，老用户的旧值读出来日程是开的；`lib/calendarFilter` 测试加这几条；日程关着时没有这一项
+- [x] 「只看她」：`?who=` 下两种视图和待排都只剩她的，页顶一条、✕ 回全部；角色不存在当作没有
+- [x] 对话页更多菜单「她的日程」，点了进周视图只看她；日程关着时没有
+- [x] 玩法卡前缀：`lib/playCards` 测试加「本周还有 n 项工作待排 · 」、全排完和没发布时只有「下一个」、关着时只有「下一个」
+- [x] 后台「日程」卡能开关、改了优先于 `.env`；`adminConfig` 测试加一项
+- [x] 看板那一格：`lib/dashboard` 测试加那一格和「好感度」标签的显示条件（null 不显示、好感度关着日程开着也显示）
+- [x] `DESIGN.md`「对话页」更多菜单加「她的日程」（日历子页一节整体是票 06）
+- [x] 类型检查、lint、前端测试过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
+- [x] 整块验收走完上面列的；留给用户的清单写进 Comments（真机看周视图和抽屉、打电话听她说日程、别的机器验不了的）
+- [x] 票收尾：推一次让 CI 跑、跑 `code-review`
 
 ## Comments
 
@@ -36,3 +36,32 @@
 
 - 后台配置：实时配置项名 `schedule`，字段只有 `enabled`，接口照 `reach_outs`；`adminConfig.ts` 的 `TAB_ITEMS.limits` 里加上它。
 - 看板：那一格是顶层的 `scheduled_this_week`（日程关着时 null），不在 `affinity` 里。`dashboardTabs` 的「好感度」标签改成 `affinity != null || scheduled_this_week != null` 时显示。
+
+### 实现说明（票 05）
+
+**`lib/calendar`**：类别多了 `schedule`（排在节假日后面），`CalendarEvent` 加 `{ kind: "schedule"; job: DayJob<C> }`；`DayJob` 是月视图上的一项（`date`、`character`、`jobId`、`name`、`slotsText`「下午」「上午到下午」「一整天」、`isSaved`）；`CalendarData` 多一个可选的 `jobs`（玩法页的卡不给，所以「下一个」不会是日程）；`calendarKinds(生日, 日程开没开)`。
+
+**`lib/calendarFilter`**：同一个键 `eidolon.calendarKinds.<用户>`，值改成关掉的几类 `{ "hidden": [...] }`，以后加类别默认开着；读到旧值（开着的几类的数组）时，加日程以前那三类里没在数组里的算关着，日程开着。
+
+**`lib/schedule`**：`dayJobs(几周的 { week, drafts }, characterOf, who)` 给月视图（本周、已发布的下周，保存过的和草稿，按日期和时间段排，「只看她」时只留她的）；`whenText` 拆出 `slotsText`；`herScheduleHref(角色 id)`、`calendarWho(地址参数)`。
+
+**`lib/playCards`**：`PlayContext.schedulePending`（玩法页用 `pendingJobs` 算本周的，草稿算排了；没发布的一周没有工作，所以是 0），大于 0 时状态最前面「本周还有 n 项工作待排」。
+
+**后台**：`adminConfig` 加 `schedule`（只有开关、不试，在「限额与玩法」最后）；`lib/dashboard` 的 `scheduleTiles`、`Dashboard.scheduled_this_week`，`dashboardTabs` 三个条件任一满足就有「好感度」标签；看板「好感度」组最后一小节「日程」一格。
+
+**组件**：`CalendarSubpage` 收 `who`（路由从地址取），角色不存在或日程关着时当作没有；`HerStrip`（`components/play/HerStrip.tsx`）是礼物子页的预选条和「只看〇〇的日程」共用的那一条（审查后从两处抽出来）；月视图手机记号 `Mark`、电脑一行和清单一行各加日程的样子。对话页更多菜单「她的日程」：`useScheduleOn` 读一次 `GET /api/schedule` 看开没开，点了 `keepCalendarMode(用户, "week")` 再 `go(herScheduleHref(她))`。图标 `ScheduleIcon`（`CalendarCheck`）。DESIGN.md 更多菜单和图标一节的更多菜单加「她的日程」。
+
+**验收**（本地构建版、Playwright，专门的开发登录用户，验完删了用户、脚本和截图；后台覆盖验完去掉）：月视图圆点实心 / 空心、电脑上工作名和保存过的底色、清单「上午到下午 · 已保存」「晚上 · 草稿」；筛选有「日程」，老用户旧值读成开着，改存关掉的几类；`?who=` 两种视图和待排只剩她的、✕ 回全部、不存在的角色当作没有；更多菜单成就之后「她的日程」，进周视图只看她；玩法卡「本周还有 15 项工作待排 · 下一个：…」；电脑先挑再放、亮格子、拿回草稿、确认框、保存后锁住；已开始的草稿退回；月 / 周切换刷新后记得；手机点格子抽屉、「排到…」抽屉；后台「日程」卡关掉后看板那一格消失、卡只有「下一个」、只有月视图没切换、筛选没「日程」、更多菜单没「她的日程」；看板「好感度」标签那一格。打了一个回合问冬優子今天明天的工作，她说出了当天保存过的拍摄广告，明天没保存过的就说没听说。没现场造的：好感度关着、日程开着时「好感度」标签照样显示（只有 `lib/dashboard` 的测试），搭话带不带日程（票 03 的测试）。
+
+**判断题**（审查后没改的）：
+
+- 「她的日程」为了知道日程开没开，对话页每次打开读一次 `GET /api/schedule`，这次读会顺带抽本周的工作、补算做完的好感度（一个写事务）。前端没有更轻的开关可读（`schedule_on` 只在后端）；要轻就得给某个已有接口加一个字段，没做。
+- 「只看她」时周视图的保存条和确认框照算这周所有草稿（包括别人的、看不见的）：保存本来就是一次存全部，确认框列出每一项，不会悄悄存下，只是「草稿 n 项」可能比屏幕上的多。规格没说。
+- 新加「日程」一类后 `CalendarSubpage` 里 `eventText`、`eventKey`、`EventRow`、`EventIcon`、`Mark` 各多一个分支（审查说的 Repeated Switches），照原来的写法没改成表。
+- 玩法页和日历子页各自拼 `{ week, drafts: draftsOn(week.id) }`，没收进 `useCalendar`。
+
+### 留给用户的人工验证
+
+- 真机（手机）上看周视图、三个抽屉、保存条在 dock 上方，和月视图的圆点（实心 / 空心）分不分得清。
+- 打电话问她这周的工作，听她说不说、说得对不对；隔一阵子不来，看搭话里有没有带上日程。
+- 线上部署后打开一次看板「好感度」标签那一格。
