@@ -1,0 +1,228 @@
+import Foundation
+import GRDB
+
+/// A prompt as it was sent: what the model read, exactly.
+public struct TracedMessage: Codable, Sendable, Hashable {
+    public var role: String
+    public var content: String
+    public var toolCalls: [String]?
+
+    public init(role: String, content: String, toolCalls: [String]? = nil) {
+        self.role = role
+        self.content = content
+        self.toolCalls = toolCalls
+    }
+
+    init(_ message: PromptMessage) {
+        role = message.role.rawValue
+        content = message.content
+        toolCalls = message.toolCalls.isEmpty
+            ? nil
+            : message.toolCalls.map { "\($0.name)(\($0.arguments))" }
+    }
+}
+
+/// What one candidate looked like before and after reranking, for a turn's trace.
+public struct RetrievalCandidate: Codable, Sendable, Hashable {
+    public var kind: String
+    public var title: String
+    public var similarity: Double
+    public var score: Double?
+    public var chosen: Bool
+
+    public init(kind: String, title: String, similarity: Double, score: Double? = nil, chosen: Bool = false) {
+        self.kind = kind
+        self.title = title
+        self.similarity = similarity
+        self.score = score
+        self.chosen = chosen
+    }
+}
+
+/// What retrieval did in a turn: what it looked for, what it found, what it used, and
+/// where it could not go on (ADR-0011).
+public struct RetrievalTrace: Codable, Sendable, Hashable {
+    public var need: String
+    public var query: String?
+    public var candidates: [RetrievalCandidate]
+    public var degradation: [String]
+
+    public init(
+        need: String = "",
+        query: String? = nil,
+        candidates: [RetrievalCandidate] = [],
+        degradation: [String] = []
+    ) {
+        self.need = need
+        self.query = query
+        self.candidates = candidates
+        self.degradation = degradation
+    }
+}
+
+/// One turn, as it can be gone over afterwards: what she was asked, what the judge
+/// answered, what retrieval found and what each fallback cost (ADR-0012). It stays in the
+/// user library and never leaves the phone.
+public struct TurnTrace: Codable, Sendable, Hashable {
+    public var characterID: String
+    public var prompts: [[TracedMessage]]
+    public var judgeAnswer: String?
+    public var verdict: String?
+    public var retrieval: RetrievalTrace
+    public var toolCalls: [String]
+    public var degradation: [String]
+    public var error: String?
+
+    public init(
+        characterID: String,
+        prompts: [[TracedMessage]] = [],
+        judgeAnswer: String? = nil,
+        verdict: String? = nil,
+        retrieval: RetrievalTrace = RetrievalTrace(),
+        toolCalls: [String] = [],
+        degradation: [String] = [],
+        error: String? = nil
+    ) {
+        self.characterID = characterID
+        self.prompts = prompts
+        self.judgeAnswer = judgeAnswer
+        self.verdict = verdict
+        self.retrieval = retrieval
+        self.toolCalls = toolCalls
+        self.degradation = degradation
+        self.error = error
+    }
+}
+
+public struct TurnTraceRecord: Sendable, Identifiable {
+    public var id: Int64
+    public var conversationID: String?
+    public var createdAt: String
+    public var trace: TurnTrace
+}
+
+/// Whether turns leave a trace, and how many are kept.
+public struct TurnTracing: Sendable, Hashable {
+    public var enabled: Bool
+    public var retention: Int
+
+    public init(enabled: Bool, retention: Int) {
+        self.enabled = enabled
+        self.retention = retention
+    }
+
+    public static let off = TurnTracing(enabled: false, retention: 0)
+    public static let on = TurnTracing(enabled: true, retention: 200)
+}
+
+extension Eidolon {
+    /// Traces, newest first, at most `limit`.
+    public func turnTraces(limit: Int = 200) throws -> [TurnTraceRecord] {
+        try userQueue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT id, conversation_id, created_at, payload FROM turn_traces
+                    ORDER BY id DESC LIMIT ?
+                    """,
+                arguments: [limit]
+            ).compactMap { row in
+                let payload: String = row["payload"]
+                guard let data = payload.data(using: .utf8),
+                      let trace = try? JSONDecoder().decode(TurnTrace.self, from: data)
+                else { return nil }
+                return TurnTraceRecord(
+                    id: row["id"],
+                    conversationID: row["conversation_id"],
+                    createdAt: row["created_at"],
+                    trace: trace
+                )
+            }
+        }
+    }
+
+    /// Every kept trace, as JSON, for the producer to keep elsewhere if they want.
+    public func exportedTraces() throws -> Data {
+        let records = try turnTraces(limit: Int.max)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(records.map { record in
+            ExportedTrace(
+                id: record.id,
+                conversationID: record.conversationID,
+                createdAt: record.createdAt,
+                trace: record.trace
+            )
+        })
+    }
+
+    public func clearTraces() throws {
+        try userQueue.write { db in
+            try db.execute(sql: "DELETE FROM turn_traces")
+        }
+    }
+
+    /// Writes the turn's trace, if tracing is on, and forgets the oldest beyond the
+    /// retention the producer chose.
+    func writeTrace(
+        _ trace: TurnTrace,
+        conversationID: String?,
+        createdAt: String,
+        tracing: TurnTracing
+    ) throws {
+        guard tracing.enabled else { return }
+        let encoded = try JSONEncoder().encode(trace)
+        try userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO turn_traces(conversation_id, created_at, payload)
+                    VALUES (?, ?, ?)
+                    """,
+                arguments: [conversationID, createdAt, String(decoding: encoded, as: UTF8.self)]
+            )
+            try db.execute(
+                sql: """
+                    DELETE FROM turn_traces WHERE id NOT IN (
+                        SELECT id FROM turn_traces ORDER BY id DESC LIMIT ?
+                    )
+                    """,
+                arguments: [max(tracing.retention, 0)]
+            )
+        }
+    }
+
+    private struct ExportedTrace: Encodable {
+        var id: Int64
+        var conversationID: String?
+        var createdAt: String
+        var trace: TurnTrace
+    }
+}
+
+/// A judge answer that could not be read: what the model wrote is kept all the same, so
+/// the trace shows what went wrong.
+public struct JudgeUnreadable: LocalizedError, Equatable {
+    public var raw: String
+    public var reason: String
+
+    public var errorDescription: String? { "判断模型的回复无法解析：\(reason)" }
+}
+
+/// A judge that gives back what the model wrote with its verdict, for the trace.
+public struct JudgeAnswer: Sendable, Hashable {
+    public var verdict: JudgeVerdict
+    public var raw: String
+
+    public init(verdict: JudgeVerdict, raw: String) {
+        self.verdict = verdict
+        self.raw = raw
+    }
+}
+
+public protocol TracingJudgeProvider: JudgeProvider {
+    func judgedWithRaw(
+        characterName: String,
+        history: [PromptMessage],
+        said: String
+    ) async throws -> JudgeAnswer
+}
