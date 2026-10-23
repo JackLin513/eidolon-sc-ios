@@ -35,6 +35,7 @@ import {
   type Occupant,
   pendingJobs,
   type Placement,
+  shortName,
   startedNote,
   startsFor,
   toSave,
@@ -471,7 +472,7 @@ function Block({
     <>
       <span className="flex min-w-0 items-center gap-1">
         <MarkedAvatar name={character.name} src={character.avatar_url} size="xs" />
-        <span className="truncate text-subtitle font-medium">{character.short_name ?? character.name}</span>
+        <span className="truncate text-subtitle font-medium">{shortName(character)}</span>
         {isSaved && <LockedIcon aria-hidden className="ml-auto size-3.5 shrink-0 text-muted-foreground" />}
       </span>
       <span className="flex min-w-0 items-center gap-1 text-meta text-muted-foreground">
@@ -656,6 +657,7 @@ function CellDrawer({
                       className={cn(ROW, "disabled:opacity-50 disabled:hover:bg-transparent")}
                     >
                       <MarkedAvatar name={character.name} src={character.avatar_url} size="sm" />
+                      <span className="shrink-0 text-body">{shortName(character)}</span>
                       <JobName job={job} aside={reason ?? undefined} />
                     </button>
                   </li>

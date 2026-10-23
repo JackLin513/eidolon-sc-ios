@@ -45,6 +45,7 @@ import {
   type Placement,
   returnedNote,
   saveSchedule,
+  shortName,
   startedNote,
 } from "@/lib/schedule";
 import { cn } from "@/lib/utils";
@@ -546,6 +547,7 @@ function EventRow({ event }: { event: CalendarEvent<Character> }) {
     return (
       <>
         <MarkedAvatar name={job.character.name} src={job.character.avatar_url} size="sm" />
+        <span className="shrink-0">{shortName(job.character)}</span>
         <span className="truncate">{job.name}</span>
         <span className="shrink-0 text-meta text-muted-foreground">
           {[job.slotsText, job.isSaved ? copy.play.schedule.states.saved : copy.play.schedule.states.draft].join(
