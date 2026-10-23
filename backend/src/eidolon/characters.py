@@ -1,7 +1,7 @@
 """Characters available for conversation, loaded from the character configuration.
 
 The configuration is a TOML file listing each character's identifier, display
-name, introduction, voice, image colour and the location of her character sheet
+name, introduction, voice, image colour, birthday and the location of her character sheet
 (and, optionally, her character facts, avatars and call background), relative to
 the file, plus the speaker names her lines carry in the story corpus. Adding a
 character or replacing a voice is a configuration change. The sheets, facts,
@@ -56,13 +56,15 @@ from pathlib import Path
 from typing import TypeVar
 
 from eidolon.delivery_cues import voiced, without_cues
+from eidolon.producer import Birthday, is_day_of_the_year
 from eidolon.readings import Reading, load_readings, readings_path, used_in
 
 log = logging.getLogger(__name__)
 
 _VALID_ID = re.compile(r"[a-z][a-z0-9_-]*")
-_REQUIRED = ("id", "name", "intro", "voice_id", "sheet", "color")
+_REQUIRED = ("id", "name", "intro", "voice_id", "sheet", "color", "birthday")
 _IMAGE_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
+_BIRTHDAY = re.compile(r"([0-9]{2})-([0-9]{2})")
 _OUTFIT = re.compile(r"(stand|stand_costume)/[0-9]{10}")
 """An outfit: her everyday clothes on a card (`stand`) or its stage costume
 (`stand_costume`), and the card's ten-digit enzaId."""
@@ -125,6 +127,9 @@ class Character:
     avatar: Path | None
     color: str
     """Her image colour, the official one from the original, as lower-case `#rrggbb`."""
+    birthday: Birthday
+    """Her birthday in the original; February 29 falls on February 28 in a year without it,
+    as the producer's does (`producer.is_birthday`)."""
     background: Path | None = None
     """The picture behind her call screen; None shows a gradient of her image colour."""
     scsp_avatar: Path | None = None
@@ -215,6 +220,13 @@ def _parse_character(
             f"角色 {label} 的 color 应为 #rrggbb 格式的印象色，现在是 {entry['color']!r}"
         )
 
+    birthday = _BIRTHDAY.fullmatch(entry["birthday"])
+    if not (birthday and is_day_of_the_year(int(birthday[1]), int(birthday[2]))):
+        raise CharacterConfigError(
+            f"角色 {label} 的 birthday 应为 MM-DD 格式、一年中有的一天（例如 \"04-25\"），"
+            f"现在是 {entry['birthday']!r}"
+        )
+
     sheet_path = base / entry["sheet"]
     try:
         sheet = sheet_path.read_text(encoding="utf-8").strip()
@@ -273,6 +285,7 @@ def _parse_character(
         sheet=sheet,
         avatar=avatar,
         color=entry["color"].lower(),
+        birthday=Birthday(int(birthday[1]), int(birthday[2])),
         background=background,
         scsp_avatar=scsp_avatar,
         speakers=tuple(speakers),

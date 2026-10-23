@@ -9,6 +9,7 @@ const mano: Character = {
   avatar_url: "/api/characters/mano/avatar",
   scsp_avatar_url: null,
   color: "#ffbad6",
+  birthday: "04-25",
   background_url: null,
   stand: null,
   idol_id: 1,

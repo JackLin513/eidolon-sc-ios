@@ -18,3 +18,11 @@
 - [ ] 类型检查、lint 过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
 - [ ] 按 `docs/agents/local-acceptance.md` 在本地构建版上用 Playwright 自己验：宽屏和手机的第一级三张卡（日历卡在网格里和任务卡并排）、状态一行；没开放（本地后台 `EIDOLON_AFFINITY_AND_GIFTS=0`）只剩日历卡；进子页、返回、刷新；今天的清单（用接口或改本地库凑一个今天有生日的角色、再凑一个节假日看三类都画对、她的颜色只在蛋糕上）
 - [ ] 票收尾：Comments 里写下 `lib/calendar` 的形状（事、筛选、类别的类型）和子页数据怎么读给票 03 用；跑 `code-review`
+
+## Comments
+
+### 票 01 交接
+
+- 角色列表 `GET /api/characters` 每位有 `birthday: "MM-DD"`（前端类型 `Character.birthday: string` 已加）。2 月 29 日的落点规则和制作人生日一样（平年算 2 月 28 日）；目前 29 位里没有 2 月 29 日的。
+- 节假日：`GET /api/calendar/holidays?year=YYYY`，要登录，回 `[{"date": "YYYY-MM-DD", "name": "文化の日"}, …]`，按日期排；年份不合法或库算不出（1949 年前、2099 年后）回 `[]`；浏览器缓存一天（`private, max-age=86400`）。
+- 制作人的生日还是从 `GET /api/profile` 的 `birthday: {month, day} | null` 读。

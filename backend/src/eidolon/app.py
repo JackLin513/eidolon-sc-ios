@@ -60,6 +60,7 @@ from eidolon.admin_users_api import add_admin_user_routes
 from eidolon.admin_config_api import add_admin_config_routes
 from eidolon.admin_prices_api import add_admin_price_routes
 from eidolon.announcements_api import add_announcement_routes
+from eidolon.calendar_api import add_calendar_routes
 from eidolon.gifts_api import add_gift_routes
 from eidolon.photos_api import add_photo_routes
 from eidolon.sessions import UserId, session_middleware
@@ -400,6 +401,7 @@ def create_app(backend: Backend) -> FastAPI:
     add_admin_price_routes(app, backend)
     add_announcement_routes(app, backend)
     add_gift_routes(app, backend)
+    add_calendar_routes(app)
     add_photo_routes(app, backend)
     add_sponsor_routes(app, backend)
     add_data_package_routes(app, backend)
@@ -475,6 +477,7 @@ def create_app(backend: Backend) -> FastAPI:
                 "avatar_url": f"/api/characters/{c.id}/avatar" if c.avatar else None,
                 "scsp_avatar_url": f"/api/characters/{c.id}/scsp-avatar" if c.scsp_avatar else None,
                 "color": c.color,
+                "birthday": f"{c.birthday.month:02}-{c.birthday.day:02}",
                 "background_url": f"/api/characters/{c.id}/background" if c.background else None,
                 "stand": _stand(c, backend.settings.stand_assets_url),
                 "idol_id": c.idol_id,

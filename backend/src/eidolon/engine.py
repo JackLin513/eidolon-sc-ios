@@ -133,6 +133,7 @@ from eidolon.own_keys import OwnKeyFailed
 from eidolon.photos import CANNOT_SEND, NOT_RECEIVED, Eligibility, Photos, photo_turn
 from eidolon.producer import (
     ProducerProfile,
+    Talking,
     effective_timezone,
     local_date,
     now_prompt,
@@ -168,6 +169,7 @@ from eidolon.store import (
     timestamp,
 )
 from eidolon.titles import Titles
+from eidolon.today import her_birthday, today_lines
 from eidolon.world import World
 
 MAX_INPUT_LENGTH = 2000
@@ -715,9 +717,9 @@ class ConversationEngine:
             character, world_prompt, producer_prompt(profile),
             chat_history(messages, turns), narrations(record, self._gift_catalog, timezone),
             [
-                now_prompt(
-                    profile, now, timezone, "in_call" if in_call is not None else "typing",
-                    affinity_lines, last_contact,
+                self._now_prompt(
+                    character, profile, now, timezone,
+                    "in_call" if in_call is not None else "typing", affinity_lines, last_contact,
                 ),
                 *([about_photo] if about_photo else []),
             ],
@@ -855,8 +857,8 @@ class ConversationEngine:
             character, world_prompt, producer_prompt(profile),
             chat_history(messages, self._history_turns()), told,
             [
-                now_prompt(
-                    profile, now, timezone, "apart",
+                self._now_prompt(
+                    character, profile, now, timezone, "apart",
                     affinity_prompt(affinity.tier, None) if affinity is not None else [],
                     last_contact,
                 ),
@@ -1061,6 +1063,23 @@ class ConversationEngine:
             return "调用参数有误：需要 query（要回顾的事，一句概括）。"
         return await self._retrieval.recall_story(character, query.strip())
 
+    def _now_prompt(
+        self,
+        character: Character,
+        profile: ProducerProfile,
+        now: datetime,
+        timezone: str,
+        talking: Talking,
+        affinity_lines: Sequence[str],
+        last_contact: datetime | None,
+    ) -> str:
+        """The prompt section about now (`now_prompt`), what she is told of the day it is in
+        Tokyo (`today_lines`) right after it."""
+        return "\n".join([
+            now_prompt(profile, now, timezone, talking, affinity_lines, last_contact),
+            *today_lines(now, character, self._characters.values(), talking),
+        ])
+
     def _prompt(
         self,
         character: Character,
@@ -1077,7 +1096,7 @@ class ConversationEngine:
         should any photo of the history not have been sent, what that means, then `closing`:
         what retrieval found, or how she is to reach out."""
         # What every user's turns with her that day open with, apart, for a service to cache.
-        shared = [character.sheet]
+        shared = [character.sheet, her_birthday(character)]
         if world_prompt:
             shared.append(world_prompt)
         shared.append(format_instructions(voiced_by))
