@@ -18,7 +18,8 @@ export function generateStaticParams() {
 
 /**
  * 玩法的子页（`/play/<子页>`）：礼物在 `/play/gifts`，从对话页跳来时地址里带着预选的她；
- * 成就在 `/play/achievements`（旧的 `/play/tasks` 在 proxy 里跳过来），日历在 `/play/calendar`。页首返回键回玩法页（DESIGN.md「玩法页」）。
+ * 成就在 `/play/achievements`（旧的 `/play/tasks` 在 proxy 里跳过来），日历在 `/play/calendar`。
+ * 页首返回键回玩法页（DESIGN.md「玩法页」）。
  */
 export default async function PlaySubpageRoute({
   params,

@@ -132,6 +132,11 @@ export function unseenStages(achievements: Achievement[], seenAt: string | null)
   return achievements.reduce((n, a) => n + a.stages.filter((s) => isUnseen(s.unlocked_at, seenAt)).length, 0);
 }
 
+/** 一共解锁了几个阶段，看没看过都算（玩法页「成就」卡平时那一句）。 */
+export function unlockedStages(achievements: Achievement[]): number {
+  return achievements.reduce((n, a) => n + a.stages.filter((s) => s.unlocked_at !== null).length, 0);
+}
+
 /**
  * 送礼、抽奖的返回里带着合起来的阶段（`character_id` 为 null）时，不等重读就把它们标成解锁：解锁时刻就是这次到账的
  * （后端解锁和到账在同一个事务里、用同一个时刻），进度至少到那个阶段的门槛。这次没有到账时原样返回。

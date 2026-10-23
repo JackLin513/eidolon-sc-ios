@@ -1,9 +1,9 @@
 // The play page's addresses (.scratch/play-hub spec「页面和路由」): `/play` is the first level, the
 // cards; `/play/<subpage>` is a card's page, the second level, with nothing below it. A refresh or
 // a shared link opens the same subpage. The old gifts page `/gifts` (with its `?to=` and any other
-// parameters) is sent to `/play/gifts`, the old tasks and achievements subpage `/play/tasks` to
-// `/play/achievements` (the daily tasks retired, .scratch/retire-daily-tasks spec), and play addresses we do not know to `/play`, before any
-// page loads (the same as the settings' old addresses, lib/settingsCategory).
+// parameters) is sent to `/play/gifts`, the old `/play/tasks` to `/play/achievements`, and play
+// addresses we do not know to `/play`, before any page loads (the same as the settings' old
+// addresses, lib/settingsCategory).
 
 /** The subpages, one for each card of the first level. */
 export const PLAY_SUBPAGES = ["gifts", "achievements", "calendar"] as const;

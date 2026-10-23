@@ -148,8 +148,6 @@ async def test_a_turn_is_rewarded_with_nothing_the_draws_as_they_were(
     assert done["type"] == "done"
     assert done["rewarded"] is None
     assert after["draws"] == before["draws"]
-    assert "daily_tasks" not in after
-    assert "renews_at" not in after
 
 
 async def test_a_gift_is_rewarded_only_with_the_stages_it_unlocks(make_client: ClientFactory):

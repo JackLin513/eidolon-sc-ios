@@ -7,7 +7,7 @@
 // there whether affinity and gifts are open or not.
 
 import { copy } from "@/i18n";
-import { unseenStages } from "@/lib/achievements";
+import { unlockedStages, unseenStages } from "@/lib/achievements";
 import { type CalendarEvent, type CalendarView, nextEvent, partsOf } from "@/lib/calendar";
 import type { GiftState } from "@/lib/gifts";
 import { playHref, type PlaySubpage } from "@/lib/playRoute";
@@ -84,11 +84,11 @@ const CARDS: Definition[] = [
     status: (context) => {
       const { state } = context;
       if (!state) return "";
-      const unseen = unlockedCount(state, context);
+      const unseen = unseenCount(state, context);
       if (unseen > 0) return t.cards.achievements.unseen(unseen);
-      return t.cards.achievements.unlocked(state.achievements ? unseenStages(state.achievements, null) : 0);
+      return t.cards.achievements.unlocked(state.achievements ? unlockedStages(state.achievements) : 0);
     },
-    hasDot: (context) => context.state !== null && unlockedCount(context.state, context) > 0,
+    hasDot: (context) => context.state !== null && unseenCount(context.state, context) > 0,
     dotLabel: t.cards.achievements.dot,
   },
   {
@@ -122,7 +122,7 @@ function eventText(event: CalendarEvent<{ name: string }>): string {
 }
 
 /** How many stages of the combined achievements were unlocked since the last seen on this device. */
-function unlockedCount(state: GiftState, { achievementsSeenAt }: PlayContext): number {
+function unseenCount(state: GiftState, { achievementsSeenAt }: PlayContext): number {
   return state.achievements ? unseenStages(state.achievements, achievementsSeenAt) : 0;
 }
 

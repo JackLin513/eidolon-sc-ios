@@ -24,8 +24,8 @@ record for the dashboard to count (`ActivityLog.achievement_unlocked`,
 failing is only logged.
 
 Each user's progress with the achievements is theirs, deleted with them
-(`database.USER_DATA`), and goes in no data package. The daily tasks were kept here too,
-until they were retired: their progress is dropped as the backend starts (`_open`)."""
+(`database.USER_DATA`), and goes in no data package. The retired daily tasks' table of
+progress is dropped as the backend starts (`_open`)."""
 
 import logging
 import sqlite3

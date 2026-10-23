@@ -7,6 +7,7 @@ import {
   keepAchievementsSeenUpTo,
   latestUnlock,
   unseenRows,
+  unlockedStages,
   unseenStages,
   withUnlocked,
   type Achievement,
@@ -209,6 +210,12 @@ describe("「成就」子页那一小节", () => {
     expect(unseenStages(some, after)).toBe(0);
     expect(unseenRows({ achievements: some }, before)).toEqual(new Set(["draws"]));
     expect(unseenStages(ofAll(), null)).toBe(0);
+  });
+
+  it("玩法卡平时写的是一共解锁了几个阶段，不论看没看过", () => {
+    expect(unlockedStages(ofAll({ characters: before, draws: [before, after] }))).toBe(3);
+    expect(unlockedStages(ofAll({ draws: [before, null] }))).toBe(1);
+    expect(unlockedStages(ofAll())).toBe(0);
   });
 
   it("送礼、抽奖返回里带着合起来的阶段：当场标成解锁，时刻是这次到账的，进度至少到它的门槛", () => {

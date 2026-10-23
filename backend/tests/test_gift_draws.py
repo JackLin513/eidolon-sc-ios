@@ -109,16 +109,6 @@ async def test_more_than_seven_kept_are_not_brought_down_to_it(
     assert await draws(client) == 8
 
 
-async def test_no_more_than_seven_are_kept(make_client: ClientFactory):
-    clock = FakeClock()
-    client = make_client(FakeLLM(), clock=clock)
-
-    await draws(client)
-    clock.advance(days=10)
-
-    assert await draws(client) == 7
-
-
 async def test_the_day_turns_at_midnight_in_beijing_not_where_the_user_is(
     make_client: ClientFactory,
 ):

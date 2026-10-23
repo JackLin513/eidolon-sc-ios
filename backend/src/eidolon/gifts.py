@@ -11,9 +11,9 @@ were last given have brought. A user without any yet is given that day's, new or
 Gifts are open where affinity is (`LiveConfig.affinity_on`): the deployment has the judge
 model and the switch「好感度和礼物」is on. Closed, what each user has is kept and read all
 the same, but no chances are given; and the days it was closed give none once it opens
-again, which gives that day's. So when it last opened is kept (`notice`), as the backend
-starts and as the switch changes. That is no one's; what each user has is theirs, deleted
-with them (`database.USER_DATA`).
+again, which gives that day's draw chances. So when it last opened is kept (`notice`), as
+the backend starts and as the switch changes. That is no one's; what each user has is
+theirs, deleted with them (`database.USER_DATA`).
 
 A user is rewarded for what they do (`reward`), as achievements' stages are unlocked
 (`happenings`): each reward given once by its key, its draw chances over and
@@ -390,8 +390,8 @@ class Gifts:
     ) -> tuple[list[Reward], datetime]:
         """Give the user each reward `due` says is due that they have not been given yet by
         its key, having been given the draw chances due today; one with no draw chances yet
-        is given the new user's first. Gifts are to be open, as the one who rewards
-        found them on the event loop; they are noticed open first. Through `db`, in the
+        is given the new user's draw chances first. Gifts are to be open, as the one who
+        rewards found them on the event loop; they are noticed open first. Through `db`, in the
         transaction what they are rewarded for is kept in, so that it is rewarded with it or
         not at all, and two rewarded at once for the same are rewarded once; `due` is
         called with the connection and now, the same now the draw chances are given by. The
@@ -410,7 +410,7 @@ class Gifts:
     ) -> list[tuple[str, Reward]]:
         """Give each user each reward `due` says is due them that they have not been given
         yet by its key, open or not, as the achievements launch, through `db`: none of the
-        draw chances due today, but the new user's first to one with none yet. `due` is
+        draw chances due today, but the new user's draw chances to one with none yet. `due` is
         called as `reward`'s is. The rewards given, and to whom."""
         given = []
         now = self._clock()
@@ -426,8 +426,8 @@ class Gifts:
     async def grant_reset_cards(self) -> Grant:
         """Give every user there is now a reset card, banned ones and admins too, all at
         once, so that whoever signs up meanwhile gets none; one who has had no draw chances
-        yet is given the new user's too, that day. Raises GiftsClosed if gifts are not
-        open."""
+        yet is given the new user's draw chances too, that day. Raises GiftsClosed if gifts
+        are not open."""
         await self.refuse_unless_open()
         return await self._db.write(_grant_reset_cards, self._clock())
 
@@ -606,7 +606,7 @@ def _give(db: sqlite3.Connection, user_id: str, today: date) -> None:
 
 
 def _start(db: sqlite3.Connection, user_id: str, today: date, reset_cards: int = 0) -> None:
-    """Give a user who has had no draw chances yet the new user's, `today`, and
+    """Give a user who has had no draw chances yet the new user's draw chances, `today`, and
     `reset_cards`, through `db`."""
     db.execute(
         "INSERT INTO gift_balances (user_id, draws, given_on, reset_cards) VALUES (?, ?, ?, ?)",
