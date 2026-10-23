@@ -15,6 +15,7 @@ service faked at its transport, where every request it is sent is seen."""
 import asyncio
 import io
 from dataclasses import replace
+from typing import Any
 
 import httpx
 import pytest
@@ -39,6 +40,7 @@ from tests.fakes import level
 from tests.test_affinity import keep
 from tests.test_conversation_events import hang_up
 from tests.test_delete_account import DELETE, rows_mentioning
+from tests.test_live_config_services import backend_of
 from tests.test_text_turn import send_turn, start_conversation
 from tests.test_turns import turns_in
 
@@ -125,12 +127,23 @@ async def test_asked_she_sends_one_before_her_words_and_it_is_kept_with_her_repl
 
 
 async def test_a_photo_out_before_her_reply_is_recorded_is_kept_as_it_is(
-    make_client: ClientFactory,
+    make_client: ClientFactory, monkeypatch: pytest.MonkeyPatch
 ):
     image = FakeImageService()
+    photo_out = asyncio.Event()  # her words wait for it
     client = make_client(
-        FakeLLM(REPLY, delay=0.2), clients=asking(), image_transport=image.transport()
+        FakeLLM([REPLY[0], photo_out, WORDS]), clients=asking(), image_transport=image.transport()
     )
+    photos = backend_of(client).photos
+    generate = photos._generate
+
+    async def generate_then_say_it_is_out(*args: Any) -> None:
+        try:
+            await generate(*args)
+        finally:  # failing, her words go on all the same, and the test fails at once
+            photo_out.set()
+
+    monkeypatch.setattr(photos, "_generate", generate_then_say_it_is_out)
     conversation = await start_conversation(client)
 
     events = await send_turn(client, conversation, "发张自拍给我看看")

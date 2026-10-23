@@ -301,6 +301,11 @@ POOL_LIMIT = MAX_CONNECTIONS
 own 100, which the tunnels below would wait on, given up on, were it that."""
 
 GIVEN_UP = httpx.Timeout(5, connect=0.2, pool=1)
+"""For tunnels whose TLS never starts: given up on soon."""
+
+ROOM = httpx.Timeout(5, pool=1)
+"""For the request then to find room in the pool: failing soon if there is none, with time to
+connect, which tests run side by side can take."""
 
 
 async def test_tunnels_whose_tls_timed_out_leave_the_pool_room(stalling: StallingProxy):
@@ -311,7 +316,7 @@ async def test_tunnels_whose_tls_timed_out_leave_the_pool_room(stalling: Stallin
             return_exceptions=True,
         )
         assert all(isinstance(e, httpx.ConnectTimeout) for e in failed)
-        res = await client.get("http://provider.example/")
+        res = await client.get("http://provider.example/", timeout=ROOM)
     await routes.aclose()
 
     assert res.text == "ok"
@@ -319,7 +324,7 @@ async def test_tunnels_whose_tls_timed_out_leave_the_pool_room(stalling: Stallin
 
 async def test_tunnels_given_up_on_as_tls_starts_leave_the_pool_room(stalling: StallingProxy):
     routes = ProxyRoutes(ProxySettings(stalling.url, True, frozenset({"judge"})))
-    async with routes.client("judge", httpx.Timeout(5, pool=1)) as client:
+    async with routes.client("judge", ROOM) as client:
         requests = [
             asyncio.ensure_future(client.post("https://provider.example/systemone"))
             for _ in range(POOL_LIMIT)
