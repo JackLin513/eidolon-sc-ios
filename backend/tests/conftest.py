@@ -23,6 +23,7 @@ from eidolon.config import LLMSettings, Settings
 from eidolon.data_access import Database
 from eidolon.gift_catalog import GIFTS_FILE
 from eidolon.identity import Identity
+from eidolon.job_list import JOBS_FILE
 from eidolon.sessions import SESSION_COOKIE
 from eidolon.store import Store
 from tests.browser import Browser, open_browser
@@ -127,11 +128,13 @@ AVATAR = b"\x89PNG\r\n\x1a\n fake avatar"
 SCSP_AVATAR = b"\xff\xd8\xff fake SCSP avatar"
 BACKGROUND = b"\xff\xd8\xff fake background"
 REPO_GIFTS = Path(__file__).parents[2] / "characters" / GIFTS_FILE
+REPO_JOBS = Path(__file__).parents[2] / "characters" / JOBS_FILE
 
 
 class CharacterConfig:
     """Writes a character configuration directory, the way an administrator would, with the
-    repository's gift catalog beside it unless a test writes its own (`gifts.toml`)."""
+    repository's gift catalog and job list beside it unless a test writes its own
+    (`gifts.toml`, `jobs.toml`)."""
 
     def __init__(self, directory: Path) -> None:
         self.directory = directory
@@ -214,6 +217,8 @@ class CharacterConfig:
         self.path.write_text("\n".join(self._entries), encoding="utf-8")
         if not (gifts := self.directory / GIFTS_FILE).exists():
             gifts.write_bytes(REPO_GIFTS.read_bytes())
+        if not (jobs := self.directory / JOBS_FILE).exists():
+            jobs.write_bytes(REPO_JOBS.read_bytes())
         return self
 
     def write(self, relative: str, content: str | bytes) -> None:

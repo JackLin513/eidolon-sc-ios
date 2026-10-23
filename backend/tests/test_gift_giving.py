@@ -1,6 +1,6 @@
 """Giving a gift (GLOSSARY.md「礼物」「对话事件」): one at a time, to any character, from the
 gifts page. It takes one from the backpack and raises her affinity by its rarity, more if
-she likes it, by no more than a little in a cooldown, which enough gifts end sooner than
+she likes it, by the same for each in a cooldown, which enough gifts end sooner than
 recovery would; at the top it changes nothing, given all the same. It leaves a gift record
 in her current conversation (GLOSSARY.md「当前对话」) if she has not ended it, else in one
 begun for it, where she responds to it first, whichever conversation it was given from. Given during a turn under way, the record comes after that turn (tested with her
@@ -107,10 +107,10 @@ THAWED = {"up": True, "tier_changed": False, "tier": "cold", "cooldown": False, 
 @pytest.mark.parametrize(
     ("drawn", "gift_id", "change"),
     [
-        (TEA, "tea", happier("trust")),  # 59 + 3
-        (COCOA, "cocoa", happier("trust")),  # 59 + 5
-        (CAKE, "cake", closer("close")),  # 59 + 3 + 3, as she likes it
-        (PLUSH, "plush", closer("close")),  # 59 + 7
+        (TEA, "tea", happier("trust")),  # 64.45 + 0.3
+        (COCOA, "cocoa", happier("trust")),  # 64.45 + 0.5
+        (CAKE, "cake", closer("close")),  # 64.45 + 0.3 + 0.3, as she likes it
+        (PLUSH, "plush", closer("close")),  # 64.45 + 0.7
     ],
 )
 async def test_a_gift_raises_her_affinity_by_its_rarity_and_more_if_she_likes_it(
@@ -120,7 +120,7 @@ async def test_a_gift_raises_her_affinity_by_its_rarity_and_more_if_she_likes_it
     clock = FakeClock()
     client = holding(make_client, clock, drawn, drawn)
     await draw_them(client, clock, 2)
-    keep(settings.database_path, "producer", 59, clock.now)
+    keep(settings.database_path, "producer", 64.45, clock.now)
 
     result = await given(client, gift_id)
 
@@ -131,7 +131,7 @@ async def test_a_gift_raises_her_affinity_by_its_rarity_and_more_if_she_likes_it
     assert (await status(client)).json()["tier"] == change["tier"]
 
 
-async def test_in_a_cooldown_each_gift_counts_for_little_and_the_fourth_ends_it(
+async def test_in_a_cooldown_each_gift_counts_the_same_and_the_fourth_ends_it(
     make_client: ClientFactory, settings: Settings
 ):
     clock = FakeClock()
@@ -142,7 +142,7 @@ async def test_in_a_cooldown_each_gift_counts_for_little_and_the_fourth_ends_it(
 
     results = [await given(client, "cake") for _ in range(4)]
 
-    # She likes cake, which would end it in two were it not held to 3 a gift.
+    # Each raises it by 3, whatever its rarity and though she likes cake.
     assert [r["change"] for r in results] == [None, None, None, THAWED]
     untils = [until, *(r["affinity"]["cooldown_until"] for r in results[:3])]
     assert untils == sorted(untils, reverse=True) and len(set(untils)) == 4

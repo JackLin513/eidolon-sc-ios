@@ -11,19 +11,22 @@ const t = copy.play;
 
 /**
  * 玩法页第一级和子页共用的页面（DESIGN.md「玩法页」）：外壳里整块一栏，内容最宽 `max-w-3xl`、居中，手机和电脑同一个版式，
- * 没有第二栏。`overlays` 是内容外面的浮层（抽奖弹窗、送礼面板、送出后的提示）。
+ * 没有第二栏。`overlays` 是内容外面的浮层（抽奖弹窗、送礼面板、送出后的提示）；`footer` 固定在内容底部
+ * （手机上在 dock 上方），日历子页的保存条放这里。
  */
 export function PlayShell({
   header,
   children,
   overlays,
+  footer,
 }: {
   header: ReactNode;
   children: ReactNode;
   overlays?: ReactNode;
+  footer?: ReactNode;
 }) {
   return (
-    <PageShell width="full" isInShell header={header}>
+    <PageShell width="full" isInShell header={header} footer={footer}>
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-4 py-6">{children}</div>
       {overlays}
     </PageShell>
@@ -35,9 +38,9 @@ export function PlayHeader() {
   return <h1 className="text-list-title">{t.title}</h1>;
 }
 
-/** 子页的页首：返回键回第一级（电脑和手机都有）和卡的名字。 */
-export function PlaySubpageHeader({ title }: { title: string }) {
-  return <SubpageHeader title={title} backHref={playHref()} />;
+/** 子页的页首：返回键回第一级（电脑和手机都有）、卡的名字和末端的操作（日历子页的月 / 周切换）。 */
+export function PlaySubpageHeader({ title, end }: { title: string; end?: ReactNode }) {
+  return <SubpageHeader title={title} backHref={playHref()} end={end} />;
 }
 
 /** 好感度和礼物没开放时：礼物、每日任务与成就两个子页页首下面是这一句（第一级只剩「日历」卡）。 */

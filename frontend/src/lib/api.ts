@@ -37,6 +37,9 @@ export type Character = {
   stand: Stand | null;
   /** Her idol number in the original; the list comes in their order, those without one last. */
   idol_id: number | null;
+  /** What the original calls her, the end of her name (真乃), for where there is room for little: the
+   * calendar's job blocks; null when not configured, and her name is shown there. */
+  short_name: string | null;
   /** Her name in simplified Chinese as the community writes it (八宫巡); null when not configured. */
   name_zh: string | null;
   /** Her full name in hiragana, family and given name a space apart (さくらぎ まの); null when not configured. */
@@ -301,6 +304,9 @@ export class ApiError extends Error {
   /** Refused because affinity and gifts are not open (GLOSSARY.md「礼物」): the play page shows
    * them closed. */
   readonly giftsClosed: boolean;
+  /** Refused because schedules are off (GLOSSARY.md「日程」): the calendar shows the month
+   * alone. */
+  readonly scheduleClosed: boolean;
   /** What the refusal was, where the backend says so beside its reason (a data package's
    * `broken`, `too_new`, `used_up`…); null where it does not. */
   readonly code: string | null;
@@ -314,13 +320,21 @@ export class ApiError extends Error {
     {
       cooldownUntil = null,
       giftsClosed = false,
+      scheduleClosed = false,
       code = null,
       retryAt = null,
-    }: { cooldownUntil?: string | null; giftsClosed?: boolean; code?: string | null; retryAt?: string | null } = {},
+    }: {
+      cooldownUntil?: string | null;
+      giftsClosed?: boolean;
+      scheduleClosed?: boolean;
+      code?: string | null;
+      retryAt?: string | null;
+    } = {},
   ) {
     super(message);
     this.cooldownUntil = cooldownUntil;
     this.giftsClosed = giftsClosed;
+    this.scheduleClosed = scheduleClosed;
     this.code = code;
     this.retryAt = retryAt;
   }
@@ -364,9 +378,10 @@ export async function json<T>(res: Response): Promise<T> {
     // Refused while she is in a cooldown, told apart from the limit's 429.
     const cooldownUntil = res.status === CONFLICT && typeof body?.cooldown_until === "string" ? body.cooldown_until : null;
     const giftsClosed = res.status === CONFLICT && body?.gifts_closed === true;
+    const scheduleClosed = res.status === CONFLICT && body?.schedule_closed === true;
     const code = typeof body?.code === "string" ? body.code : null;
     const retryAt = res.status === OVER_LIMIT && typeof body?.retry_at === "string" ? body.retry_at : null;
-    throw new ApiError(message, res.status, { cooldownUntil, giftsClosed, code, retryAt });
+    throw new ApiError(message, res.status, { cooldownUntil, giftsClosed, scheduleClosed, code, retryAt });
   }
   return res.json();
 }

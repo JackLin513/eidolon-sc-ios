@@ -475,7 +475,7 @@ async def test_a_turn_with_a_follow_on_changes_affinity_as_the_whole_of_it_is_ju
     done = without_emotions(messages)[-1]
 
     # The reply dropped, what it was judged at went with it: she knew it as it was judged.
-    assert value(settings.database_path) == 52
+    assert value(settings.database_path) == pytest.approx(50.2)
     assert FEELINGS[0] in about_now(llm, 0)
     assert FEELINGS[4] in about_now(llm, 1)
     assert FEELINGS[0] not in about_now(llm, 1)

@@ -5,6 +5,7 @@ import { GiftsSubpage } from "@/components/play/GiftsSubpage";
 import { TasksSubpage } from "@/components/play/TasksSubpage";
 import { giftsFor } from "@/lib/gifts";
 import { PLAY_SUBPAGES, type PlaySubpage } from "@/lib/playRoute";
+import { calendarWho } from "@/lib/schedule";
 
 type SearchParams = { [key: string]: string | string[] | undefined };
 
@@ -34,5 +35,5 @@ export default async function PlaySubpageRoute({
 const SUBPAGES: Record<PlaySubpage, (search: SearchParams) => ReactNode> = {
   gifts: (search) => <GiftsSubpage pick={giftsFor(search)} />,
   tasks: () => <TasksSubpage />,
-  calendar: () => <CalendarSubpage />,
+  calendar: (search) => <CalendarSubpage who={calendarWho(search)} />,
 };

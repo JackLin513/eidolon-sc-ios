@@ -182,7 +182,7 @@ async def test_reaching_close_unlocks_its_stage_and_falling_back_takes_nothing_b
     )
     conversation = await start_conversation(client)
     await turns(client, conversation, 1)
-    keep(settings.database_path, "producer", 63, clock.now)
+    keep(settings.database_path, "producer", 64.9, clock.now)
 
     up = await turns(client, conversation, 1)
     close = await hers(client)
@@ -205,7 +205,7 @@ async def test_reaching_intimate_at_once_unlocks_both_and_counts_her_among_those
     client = make_client(FakeLLM(*[REPLY] * 2), clock=clock, clients=judged(level(4), level(4)))
     conversation = await start_conversation(client)
     await turns(client, conversation, 1)
-    keep(settings.database_path, "producer", 84, clock.now)
+    keep(settings.database_path, "producer", 84.9, clock.now)
 
     up = await turns(client, conversation, 1)
     got = await hers(client)
@@ -226,7 +226,7 @@ async def test_a_gift_that_brings_her_close_unlocks_its_stage(
     clock = FakeClock()
     client = holding(make_client, clock, CAKE)
     await draw_them(client, clock, 1)
-    keep(settings.database_path, "producer", 62, clock.now)
+    keep(settings.database_path, "producer", 64.5, clock.now)
 
     gift = await given(client, "cake")
 
@@ -249,7 +249,7 @@ async def test_she_is_complete_only_once_all_four_of_hers_are(
     await draw_them(client, clock, 1)
     conversation = await start_conversation(client)
     await turns(client, conversation, 1)
-    keep(settings.database_path, "producer", 62, clock.now)
+    keep(settings.database_path, "producer", 64.5, clock.now)
     gift = await given(client, "cake")  # close, and a gift: all but the call
     clock.advance(minutes=1)
 

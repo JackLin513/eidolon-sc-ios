@@ -53,7 +53,14 @@ function calendar(change: Partial<CalendarCardContext> = {}): CalendarCardContex
 }
 
 function context(change: Partial<PlayContext> = {}): PlayContext {
-  return { state: giftState(), newRewards: false, achievementsSeenAt: null, calendar: calendar(), ...change };
+  return {
+    state: giftState(),
+    newRewards: false,
+    achievementsSeenAt: null,
+    calendar: calendar(),
+    schedulePending: 0,
+    ...change,
+  };
 }
 
 /** 合起来的一个成就：第一阶段在 `unlockedAt` 解锁（null 是没解锁）。 */
@@ -199,5 +206,14 @@ describe("「日历」卡的状态", () => {
 
   it("好感度和礼物的状态还没回来也有", () => {
     expect(ofId(playCards(context({ state: null })), "calendar")?.status).toBe("下一个：10月27日 樋口円香的生日");
+  });
+
+  it("本周还有工作待排时写在前面；全排完、没发布或日程关着（都给 0）时只有下一个", () => {
+    const pending = (schedulePending: number, change: Partial<CalendarCardContext> = {}) =>
+      ofId(playCards(context({ calendar: calendar(change), schedulePending })), "calendar")?.status;
+
+    expect(pending(3)).toBe("本周还有 3 项工作待排 · 下一个：10月27日 樋口円香的生日");
+    expect(pending(1, only())).toBe("本周还有 1 项工作待排");
+    expect(pending(0)).toBe("下一个：10月27日 樋口円香的生日");
   });
 });

@@ -3,6 +3,8 @@
 # 每位角色一个 [[characters]] 段：
 #   id        规范标识，用在网址和剧情库的出场角色里（小写字母、数字、- 和 _）
 #   name      显示名
+#   short_name 短名（可选）：原作里叫她的名字，是 name 末尾的一段（"真乃"）；日历周视图的工作块地方小，写它。
+#             不写时那里写 name
 #   name_zh、name_kana、name_romaji  对话列表搜索用的另外几种名字（可选；不写时只能用 name 搜到她）：
 #             name_zh 是国内社区通行的中文简体译名，姓名之间不空格（"八宫巡"）；
 #             name_kana 是全名的平假名读音，姓和名之间空一格（"さくらぎ まの"）；
@@ -50,6 +52,7 @@
 [[characters]]
 id = "mano"
 name = "櫻木真乃"
+short_name = "真乃"
 name_zh = "樱木真乃"
 name_kana = "さくらぎ まの"
 name_romaji = "Sakuragi Mano"
@@ -76,6 +79,7 @@ call_opener_subtitle = "啊，喂……我是真乃。那个，现在方便接�
 [[characters]]
 id = "hiori"
 name = "風野灯織"
+short_name = "灯織"
 name_zh = "风野灯织"
 name_kana = "かざの ひおり"
 name_romaji = "Kazano Hiori"
@@ -100,6 +104,7 @@ greeting_subtitle = "初次见面，我是風野灯織。……我会竭尽全�
 [[characters]]
 id = "meguru"
 name = "八宮めぐる"
+short_name = "めぐる"
 name_zh = "八宫巡"
 name_kana = "はちみや めぐる"
 name_romaji = "Hachimiya Meguru"
@@ -124,6 +129,7 @@ greeting_subtitle = "初次见面！嘿嘿，我们要好好相处哦，制作�
 [[characters]]
 id = "kogane"
 name = "月岡恋鐘"
+short_name = "恋鐘"
 name_zh = "月冈恋钟"
 name_kana = "つきおか こがね"
 name_romaji = "Tsukioka Kogane"
@@ -148,6 +154,7 @@ greeting_subtitle = "我是月岡恋鐘！我会成为超——厉害的偶像�
 [[characters]]
 id = "mamimi"
 name = "田中摩美々"
+short_name = "摩美々"
 name_zh = "田中摩美美"
 name_kana = "たなか まみみ"
 name_romaji = "Tanaka Mamimi"
@@ -172,6 +179,7 @@ greeting_subtitle = "哈啊……新来的制作人？摩美々可是坏孩子�
 [[characters]]
 id = "sakuya"
 name = "白瀬咲耶"
+short_name = "咲耶"
 name_zh = "白濑咲耶"
 name_kana = "しらせ さくや"
 name_romaji = "Shirase Sakuya"
@@ -196,6 +204,7 @@ greeting_subtitle = "呵呵，初次见面。你就是制作人吗？请多关�
 [[characters]]
 id = "yuika"
 name = "三峰結華"
+short_name = "結華"
 name_zh = "三峰结华"
 name_kana = "みつみね ゆいか"
 name_romaji = "Mitsumine Yuika"
@@ -220,6 +229,7 @@ greeting_subtitle = "你好呀，我是三峰！那么，就来见识一下制�
 [[characters]]
 id = "kiriko"
 name = "幽谷霧子"
+short_name = "霧子"
 name_zh = "幽谷雾子"
 name_kana = "ゆうこく きりこ"
 name_romaji = "Yukoku Kiriko"
@@ -244,6 +254,7 @@ greeting_subtitle = "我、我是幽谷……霧子……请多、指教……"
 [[characters]]
 id = "toru"
 name = "浅倉透"
+short_name = "透"
 name_zh = "浅仓透"
 name_kana = "あさくら とおる"
 name_romaji = "Asakura Toru"
@@ -268,6 +279,7 @@ greeting_subtitle = "请多关照，制作人。呵呵，接下来好像会很�
 [[characters]]
 id = "madoka"
 name = "樋口円香"
+short_name = "円香"
 name_zh = "樋口圆香"
 name_kana = "ひぐち まどか"
 name_romaji = "Higuchi Madoka"
@@ -292,6 +304,7 @@ greeting_subtitle = "……你好，我是樋口。我可没抱什么期待。"
 [[characters]]
 id = "koito"
 name = "福丸小糸"
+short_name = "小糸"
 name_zh = "福丸小糸"
 name_kana = "ふくまる こいと"
 name_romaji = "Fukumaru Koito"
@@ -316,6 +329,7 @@ greeting_subtitle = "我、我是福丸小糸……！完、完全游刃有余�
 [[characters]]
 id = "hinana"
 name = "市川雛菜"
+short_name = "雛菜"
 name_zh = "市川雏菜"
 name_kana = "いちかわ ひなな"
 name_romaji = "Ichikawa Hinana"
@@ -340,6 +354,7 @@ greeting_subtitle = "啊哈～，制作人？和雛菜一起变得幸福～吧�
 [[characters]]
 id = "nichika"
 name = "七草にちか"
+short_name = "にちか"
 name_zh = "七草日花"
 name_kana = "ななくさ にちか"
 name_romaji = "Nanakusa Nichika"
@@ -364,6 +379,7 @@ greeting_subtitle = "我是七草にちか！我绝对、绝——对会红给�
 [[characters]]
 id = "mikoto"
 name = "緋田美琴"
+short_name = "美琴"
 name_zh = "绯田美琴"
 name_kana = "あけた みこと"
 name_romaji = "Aketa Mikoto"
@@ -388,6 +404,7 @@ greeting_subtitle = "……我是緋田美琴。请多关照，制作人。"
 [[characters]]
 id = "asahi"
 name = "芹沢あさひ"
+short_name = "あさひ"
 name_zh = "芹泽朝日"
 name_kana = "せりざわ あさひ"
 name_romaji = "Serizawa Asahi"
@@ -412,6 +429,7 @@ greeting_subtitle = "我是芹沢あさひ！制作人，有什么好玩的事�
 [[characters]]
 id = "fuyuko"
 name = "黛冬優子"
+short_name = "冬優子"
 name_zh = "黛冬优子"
 name_kana = "まゆずみ ふゆこ"
 name_romaji = "Mayuzumi Fuyuko"
@@ -436,6 +454,7 @@ greeting_subtitle = "我是ふゆ，请多指教～……什么，你就是制�
 [[characters]]
 id = "mei"
 name = "和泉愛依"
+short_name = "愛依"
 name_zh = "和泉爱依"
 name_kana = "いずみ めい"
 name_romaji = "Izumi Mei"
@@ -460,6 +479,7 @@ greeting_subtitle = "嘿嘿～，我是和泉愛依！制作人，真心请多�
 [[characters]]
 id = "kaho"
 name = "小宮果穂"
+short_name = "果穂"
 name_zh = "小宫果穗"
 name_kana = "こみや かほ"
 name_romaji = "Komiya Kaho"
@@ -484,6 +504,7 @@ greeting_subtitle = "我是小宮果穂！我要成为像英雄一样的偶像�
 [[characters]]
 id = "chiyoko"
 name = "園田智代子"
+short_name = "智代子"
 name_zh = "园田智代子"
 name_kana = "そのだ ちよこ"
 name_romaji = "Sonoda Chiyoko"
@@ -508,6 +529,7 @@ greeting_subtitle = "我是巧克力偶像園田智代子！哪怕只记住一�
 [[characters]]
 id = "juri"
 name = "西城樹里"
+short_name = "樹里"
 name_zh = "西城树里"
 name_kana = "さいじょう じゅり"
 name_romaji = "Saijo Juri"
@@ -532,6 +554,7 @@ greeting_subtitle = "……我是西城樹里。请多关照。话说，真的�
 [[characters]]
 id = "rinze"
 name = "杜野凛世"
+short_name = "凛世"
 name_zh = "杜野凛世"
 name_kana = "もりの りんぜ"
 name_romaji = "Morino Rinze"
@@ -556,6 +579,7 @@ greeting_subtitle = "制作人大人……凛世……会一直在您身边…�
 [[characters]]
 id = "natsuha"
 name = "有栖川夏葉"
+short_name = "夏葉"
 name_zh = "有栖川夏叶"
 name_kana = "ありすがわ なつは"
 name_romaji = "Arisugawa Natsuha"
@@ -580,6 +604,7 @@ greeting_subtitle = "我是有栖川夏葉。和我一起，冲上顶点吧！"
 [[characters]]
 id = "amana"
 name = "大崎甘奈"
+short_name = "甘奈"
 name_zh = "大崎甘奈"
 name_kana = "おおさき あまな"
 name_romaji = "Osaki Amana"
@@ -604,6 +629,7 @@ greeting_subtitle = "我是大崎甘奈！我会和甜花一起超——努力�
 [[characters]]
 id = "tenka"
 name = "大崎甜花"
+short_name = "甜花"
 name_zh = "大崎甜花"
 name_kana = "おおさき てんか"
 name_romaji = "Osaki Tenka"
@@ -628,6 +654,7 @@ greeting_subtitle = "我、我是甜花……请、请手下留情……嘿嘿�
 [[characters]]
 id = "chiyuki"
 name = "桑山千雪"
+short_name = "千雪"
 name_zh = "桑山千雪"
 name_kana = "くわやま ちゆき"
 name_romaji = "Kuwayama Chiyuki"
@@ -652,6 +679,7 @@ greeting_subtitle = "我是桑山千雪。呵呵，以后一起做很多美好�
 [[characters]]
 id = "luca"
 name = "斑鳩ルカ"
+short_name = "ルカ"
 name_zh = "斑鸠路加"
 name_kana = "いかるが るか"
 name_romaji = "Ikaruga Luca"
@@ -676,6 +704,7 @@ greeting_subtitle = "……你就是制作人？啧……随你便。"
 [[characters]]
 id = "hana"
 name = "鈴木羽那"
+short_name = "羽那"
 name_zh = "铃木羽那"
 name_kana = "すずき はな"
 name_romaji = "Suzuki Hana"
@@ -700,6 +729,7 @@ greeting_subtitle = "我是鈴木羽那！啊哈，要好好看着我哦？"
 [[characters]]
 id = "haruki"
 name = "郁田はるき"
+short_name = "はるき"
 name_zh = "郁田阳希"
 name_kana = "いくた はるき"
 name_romaji = "Ikuta Haruki"
@@ -724,6 +754,7 @@ greeting_subtitle = "我是郁田はるき。呵呵……接下来，会看到�
 [[characters]]
 id = "hazuki"
 name = "七草はづき"
+short_name = "はづき"
 name_zh = "七草叶月"
 name_kana = "ななくさ はづき"
 name_romaji = "Nanakusa Hazuki"

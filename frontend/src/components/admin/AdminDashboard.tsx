@@ -68,6 +68,7 @@ import {
   isDashboardRange,
   isDashboardTab,
   reachOutTiles,
+  scheduleTiles,
   serviceName,
   splitZeroRows,
   strippedText,
@@ -442,6 +443,7 @@ function DashboardBody({
           <DashboardGroup title={t.affinity.title}>
             {board.affinity !== null && <AffinityGroup section={board.affinity} />}
             <TasksAndAchievementsTiles board={board} />
+            <ScheduleTiles board={board} />
           </DashboardGroup>
         </TabsContent>
       )}
@@ -755,6 +757,19 @@ function ReachOutTiles({ board }: { board: Dashboard }) {
   if (tiles.length === 0) return null;
   return (
     <TileGroup caption={t.reachOuts.title} grid="grid-cols-2 md:grid-cols-3">
+      {tiles.map((tile) => (
+        <StatTile key={tile.id} label={tile.label} value={tile.value} />
+      ))}
+    </TileGroup>
+  );
+}
+
+/** 「好感度」里的「日程」一小节：本周排了日程的人数；日程关着时不显示。 */
+function ScheduleTiles({ board }: { board: Dashboard }) {
+  const tiles = scheduleTiles(board.scheduled_this_week);
+  if (tiles.length === 0) return null;
+  return (
+    <TileGroup caption={t.schedule.title} grid="grid-cols-2 md:grid-cols-3">
       {tiles.map((tile) => (
         <StatTile key={tile.id} label={tile.label} value={tile.value} />
       ))}

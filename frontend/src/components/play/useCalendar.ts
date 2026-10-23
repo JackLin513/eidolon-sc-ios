@@ -1,15 +1,31 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useDirectory } from "@/components/conversations/ConversationDirectory";
 import { type Character, getProfile, type ProducerProfile } from "@/lib/api";
 import { type CalendarKind, type CalendarView, type Holiday, todayIn } from "@/lib/calendar";
 import { keepShownKinds, shownKinds } from "@/lib/calendarFilter";
+import { type Failure, toFailure } from "@/lib/failure";
 import { getHolidays } from "@/lib/holidays";
+import {
+  draftsOf,
+  getSchedule,
+  isOutdated,
+  keepDrafts,
+  localNow,
+  type Placement,
+  readDrafts,
+  type Schedule,
+} from "@/lib/schedule";
 import { producerTimezone } from "@/lib/timezone";
 
 const NO_PROFILE: Pick<ProducerProfile, "timezone" | "birthday"> = { timezone: null, birthday: null };
+
+/** 「此刻」多久走一次：已过、进行中的格子和换周跟着它变。 */
+const TICK_MS = 60_000;
+
+const NO_DRAFTS: readonly Placement[] = [];
 
 /**
  * 玩法页第一级的「日历」卡和日历子页共用的数据（.scratch/calendar spec「数据」）：角色用外壳已经载入的那一份
@@ -18,6 +34,11 @@ const NO_PROFILE: Pick<ProducerProfile, "timezone" | "birthday"> = { timezone: n
  * `keepShown` 改了就存下、重画。
  * 角色、档案和登录的用户都读到之前 `calendar` 是 null；`years` 里的节假日没都回来之前里面先没有它们，`holidaysRead` 为假；
  * `hasHolidaysOf` 看某一年回来了没有。
+ *
+ * 日程（.scratch/schedule spec「界面」）也在这里：读一次日程接口（`schedule`，读到之前是 null；读不到时当作关着，
+ * `scheduleFailure` 说原因），「此刻」每分钟走一次（`scheduleNow`，按接口给的有效时区），制作人那边换了周、或者本周、
+ * 下周的工作发布了就重读。草稿只存在这台设备上（lib/schedule）：`draftsOn(周号)` 是那一周还算数的草稿，
+ * `keepDraftsOn` 存下、重画；`readSchedule` 重读（保存以后；读到了是 true），`closeSchedule` 在保存时收到「日程没开放」后切成关着。
  */
 export function useCalendar({ years }: { years: (today: string) => readonly number[] }) {
   const { account, characters } = useDirectory();
@@ -65,6 +86,63 @@ export function useCalendar({ years }: { years: (today: string) => readonly numb
     [userId],
   );
 
+  const [schedule, setSchedule] = useState<Schedule | null>(null);
+  const [scheduleFailure, setScheduleFailure] = useState<Failure | null>(null);
+  const [clock, setClock] = useState(() => new Date());
+  // 草稿存进本机以后加一，重新从本机读。
+  const [draftsKept, setDraftsKept] = useState(0);
+
+  const readSchedule = useCallback(
+    (): Promise<boolean> =>
+      getSchedule().then(
+        (read) => {
+          setSchedule(read);
+          setScheduleFailure(null);
+          return true;
+        },
+        (e) => {
+          // 读到过的留着；一次也没读到时当作关着，只有月视图。
+          setSchedule((read) => read ?? { enabled: false });
+          setScheduleFailure(toFailure(e));
+          return false;
+        },
+      ),
+    [],
+  );
+  const closeSchedule = useCallback(() => setSchedule({ enabled: false }), []);
+
+  useEffect(() => {
+    readSchedule();
+    const timer = setInterval(() => setClock(new Date()), TICK_MS);
+    return () => clearInterval(timer);
+  }, [readSchedule]);
+
+  // 过时了就重读；每走一次只试一次，服务器的钟和这里差一点时不会一直重读。
+  const triedAt = useRef<Date | null>(null);
+  useEffect(() => {
+    if (!schedule?.enabled || triedAt.current === clock || !isOutdated(schedule, clock)) return;
+    triedAt.current = clock;
+    readSchedule();
+  }, [schedule, clock, readSchedule]);
+
+  const scheduleNow = schedule?.enabled ? localNow(schedule.timezone, clock) : null;
+  const drafts = useMemo(() => {
+    if (!schedule?.enabled || !userId) return new Map<string, Placement[]>();
+    const weeks = schedule.next_week ? [schedule.this_week, schedule.next_week] : [schedule.this_week];
+    const stored = readDrafts(userId, weeks.map((week) => week.id));
+    return new Map(weeks.map((week) => [week.id, draftsOf(week, stored.get(week.id) ?? [])]));
+    // draftsKept 不在里面用到：存下以后靠它重新从本机读。
+  }, [schedule, userId, draftsKept]);
+  const draftsOn = useCallback((week: string) => drafts.get(week) ?? NO_DRAFTS, [drafts]);
+  const keepDraftsOn = useCallback(
+    (week: string, placements: readonly Placement[]) => {
+      if (!userId) return;
+      keepDrafts(userId, week, placements);
+      setDraftsKept((n) => n + 1);
+    },
+    [userId],
+  );
+
   const calendar: CalendarView<Character> | null =
     today && profile && characters && account
       ? {
@@ -79,5 +157,17 @@ export function useCalendar({ years }: { years: (today: string) => readonly numb
       : null;
   const holidaysRead = wanted.length > 0 && wanted.every((year) => holidays.has(year));
   const hasHolidaysOf = (year: number) => holidays.has(year);
-  return { calendar, holidaysRead, hasHolidaysOf, keepShown };
+  return {
+    calendar,
+    holidaysRead,
+    hasHolidaysOf,
+    keepShown,
+    schedule,
+    scheduleFailure,
+    scheduleNow,
+    draftsOn,
+    keepDraftsOn,
+    readSchedule,
+    closeSchedule,
+  };
 }

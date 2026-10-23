@@ -458,6 +458,15 @@ describe("reach-outs", () => {
   });
 });
 
+describe("schedule", () => {
+  const spec = ITEM_SPECS.schedule;
+
+  it("send only the switch", () => {
+    expect(formOf(spec, { enabled: true })).toEqual({ enabled: "true" });
+    expect(changeOf(spec, { enabled: "false" }, true)).toEqual({ change: { enabled: false } });
+  });
+});
+
 describe("tabs", () => {
   it("put every item under exactly one tab", () => {
     const placed = CONFIG_TABS.flatMap((tab) => TAB_ITEMS[tab]);

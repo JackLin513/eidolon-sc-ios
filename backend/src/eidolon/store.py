@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS conversations (
 CREATE INDEX IF NOT EXISTS conversations_by_user
     ON conversations(user_id, character_id, created_at);
 -- `hurt` and `out_of_line`, on the user's message of a typed turn (`Typed`), are what the
--- turn took off her affinity and whether it was out of line; NULL for a turn of a call, or
+-- turn hurt her (`affinity.hurt`) and whether it was out of line; NULL for a turn of a call, or
 -- one recorded before typed turns were counted.
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -328,7 +328,7 @@ class Message:
 @dataclass(frozen=True)
 class Typed:
     """What a typed turn, one taken outside calls, comes to for her ending the conversation
-    (GLOSSARY.md「已结束的对话」): how much it took off her affinity (`affinity.hurt`), and
+    (GLOSSARY.md「已结束的对话」): how much it hurt her (`affinity.hurt`), and
     whether it was out of line."""
 
     hurt: float = 0.0

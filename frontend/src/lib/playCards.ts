@@ -19,13 +19,16 @@ export type CalendarCardContext = CalendarView<{ name: string; birthday: string 
 
 /** What the cards are made of: the gift state (null until it has been read), whether draw chances
  * have come that are not yet seen (`newRewards`, the nav's dot), the latest unlock of the
- * combined achievements seen on this device (`achievementsSeenAt`), and the calendar's (null until
- * the characters, the profile and the holidays have been read). */
+ * combined achievements seen on this device (`achievementsSeenAt`), the calendar's (null until
+ * the characters, the profile and the holidays have been read), and how many of this week's jobs
+ * are still to be placed (`schedulePending`, lib/schedule's `pendingJobs`; 0 while schedules are
+ * off or unread, or this week is not published). */
 export type PlayContext = {
   state: GiftState | null;
   newRewards: boolean;
   achievementsSeenAt: string | null;
   calendar: CalendarCardContext | null;
+  schedulePending: number;
 };
 
 /** A card as the page shows it: `status` is empty until the state has been read. */
@@ -100,23 +103,29 @@ const CARDS: Definition[] = [
     id: "calendar",
     name: t.cards.calendar.name,
     isShown: () => true,
-    status: ({ calendar }) => {
+    status: ({ calendar, schedulePending }) => {
       if (!calendar) return "";
-      const found = nextEvent(calendar.today, calendar.data, calendar.shown);
-      if (!found) return "";
-      const what = eventText(found.event);
-      if (found.date === calendar.today) return t.cards.calendar.today(what);
-      const { month, day } = partsOf(found.date);
-      return t.cards.calendar.next(t.calendar.date(month, day), what);
+      return join([schedulePending > 0 ? t.cards.calendar.pending(schedulePending) : null, nextText(calendar)]);
     },
     hasDot: () => false,
     dotLabel: "",
   },
 ];
 
+/** The calendar card's 「下一个：10月27日 樋口円香的生日」 (「今天：…」 when it is today); null when there is none. */
+function nextText(calendar: CalendarCardContext): string | null {
+  const found = nextEvent(calendar.today, calendar.data, calendar.shown);
+  if (!found) return null;
+  const what = eventText(found.event);
+  if (found.date === calendar.today) return t.cards.calendar.today(what);
+  const { month, day } = partsOf(found.date);
+  return t.cards.calendar.next(t.calendar.date(month, day), what);
+}
+
 /** An event as the calendar card says it: 「樋口円香的生日」「文化の日」「我的生日」. */
 function eventText(event: CalendarEvent<{ name: string }>): string {
   if (event.kind === "character") return t.cards.calendar.birthday(event.character.name);
+  if (event.kind === "schedule") return event.job.name;
   return event.kind === "producer" ? t.calendar.mine : event.name;
 }
 

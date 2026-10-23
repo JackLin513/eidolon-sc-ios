@@ -62,6 +62,12 @@ All **28 idols** from the game's eight units, plus the office clerk Nanakusa Haz
       <p align="center"><sub><b>Play</b>: draws, gifts, daily tasks and achievements, the calendar</sub></p>
     </td>
   </tr>
+  <tr>
+    <td colspan="2">
+      <img src="docs/images/schedule.webp" alt="The calendar's week view: jobs to place on the left, the week's schedule on the right, with jobs done, under way, saved and drafted">
+      <p align="center"><sub><b>Schedules</b>: a batch of jobs each Monday, placed into the idols' week; once saved, she knows</sub></p>
+    </td>
+  </tr>
 </table>
 
 <table>
@@ -96,6 +102,7 @@ All **28 idols** from the game's eight units, plus the office clerk Nanakusa Haz
 - 📷 **She sends photos**: Ask, and she takes one of herself in the moment and sends it. All-ages only ([configuration guide](docs/configuration.en.md#photos)).
 - 💗 **Affinity and gifts**: What you say draws her closer or pushes her away; offend her too much and she hangs up, or ends the conversation. Draw gifts every day under 「玩法」 (Play) and give them to her; she responds. Daily tasks and achievements earn you extra draws.
 - 📅 **Calendar**: The idols' birthdays, yours, and Japan's national holidays, and she knows them on the day.
+- 🗓️ **Schedules**: Jobs published every week, which you place into her week; she knows them and talks with them in mind, and the jobs she finishes bring her closer to you ([configuration guide](docs/configuration.en.md#schedules)).
 - 💌 **She reaches out**: When you've been away a while, she says a few words first in your conversation; the closer you are, the sooner she does ([configuration guide](docs/configuration.en.md#reach-outs)).
 
 **What she remembers**
@@ -111,7 +118,7 @@ All **28 idols** from the game's eight units, plus the office clerk Nanakusa Haz
 **Deployment and operations**
 
 - 👥 **Open to the public**: Sign in with Google or GitHub. Usage is limited per user and memories are isolated; users can delete all their data for good, and the database is backed up offsite, encrypted, every day.
-- 📦 **Data packages**: Export conversations, photos, memories and producer profile as one zip, and carry on on another deployment. Affinity and gifts stay behind ([ADR-0025](docs/adr/0025-data-packages-leave-affinity-and-gifts-behind.md)).
+- 📦 **Data packages**: Export conversations, photos, memories and producer profile as one zip, and carry on on another deployment. Affinity, gifts and schedules stay behind ([ADR-0025](docs/adr/0025-data-packages-leave-affinity-and-gifts-behind.md)).
 - 🔑 **Bring your own keys**: Users can enter their own LLM, speech synthesis, speech recognition and image generation keys to use their own credits, and under some conditions not count toward their limits ([configuration guide](docs/configuration.en.md#bring-your-own-keys)). The keys stay in the browser ([ADR-0017](docs/adr/0017-own-api-keys-stay-in-the-browser.md)).
 - 🛠️ **Admin console**: See usage, cost and live calls, change models and limits without a restart, ban users and post announcements. No one's conversations or memories are visible there.
 - 🚦 **Service status**: Users can see from the conversation list whether each service is working.

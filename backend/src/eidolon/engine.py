@@ -150,6 +150,7 @@ from eidolon.reply_format import (
     format_reply,
 )
 from eidolon.retrieval import RECALL_STORY_TOOL, Retrieval, Retrieved
+from eidolon.schedule import HerSchedule, Schedules, schedule_lines
 from eidolon.store import (
     Conversation,
     ConversationEnded,
@@ -244,7 +245,7 @@ class CallTurnRecorded:
     """What a turn of a call, now recorded, comes to for the call: whether the user was out
     of line in it, and whether she hangs up after it and why; if for a cooldown, when it
     ends (None should the cooldown not have begun after all, another turn recorded
-    meanwhile); how much it took off her affinity (`affinity.hurt`). Comes just before
+    meanwhile); how much it hurt her (`affinity.hurt`). Comes just before
     `done`, in calls only; it stays on the server."""
 
     out_of_line: bool = False
@@ -489,11 +490,11 @@ def narrations(
 
 REACH_OUT_RULES = """# 先开口
 制作人这会儿没在和你说话，你想先给他发几句。
-- 由头你自己挑：先接着你们最近聊过的事，或者他最近的近况；其次才是现在的时间、他的生日。
+- 由头你自己挑：先接着你们最近聊过的事，或者他最近的近况；其次是你这周的工作（如果有）；再其次才是现在的时间、他的生日。
 - 不要只发一句空的问候，比如「早安」「在吗」「想你了」，要有具体想说的事。
 - 写一到两段。
 - 别和你前几次先开口时用一样的开头、一样的由头。
-- 说到你自己那边，只说练习、拍摄、事务所的工作这类平常的事，或者世界设定里有日期的 live 和新歌；不要编具体的剧情，也不要说别的偶像做了什么。
+- 说到你自己那边：日程里有的就说日程里的；没有的话只说练习、拍摄、事务所的工作这类平常的事，或者世界设定里有日期的 live 和新歌；不要编具体的剧情，也不要说别的偶像做了什么。
 - 不发照片，也不说要给他发照片、要给他打电话。
 - 让他好接话，但不必用问句结尾。"""
 """How she is to reach out (GLOSSARY.md「搭话」), told her last in what changes from turn to turn,
@@ -547,6 +548,7 @@ class ConversationEngine:
         affinity_judge: AffinityJudge | None = None,
         photos: Photos | None = None,
         happenings: Happenings | None = None,
+        schedules: Schedules | None = None,
     ) -> None:
         """Without `retrieval`, turns carry no story or character facts and find no
         memories. Each turn reads only the conversation's latest turns, as many as
@@ -556,7 +558,8 @@ class ConversationEngine:
         retrieval's judge judges what turns do to it, or without retrieval
         `affinity_judge`, which judges whether turns ask for a photo too. Without `photos`,
         or without the judge model, no turn has a photo. Each turn recorded is told to
-        `happenings`, if any."""
+        `happenings`, if any. With `schedules`, she is told her jobs the user saved, in
+        turns and reaching out alike."""
         self._db = db
         self._store = store
         self._characters = characters
@@ -571,6 +574,7 @@ class ConversationEngine:
         self._affinity_judge = affinity_judge
         self._photos = photos
         self._happenings = happenings
+        self._schedules = schedules
         self._ended_listeners: list[Callable[[str, EndsFor], None]] = []
         self._cooled_listeners: list[Callable[[str, str, datetime], None]] = []
 
@@ -640,6 +644,8 @@ class ConversationEngine:
     ) -> AsyncIterator[TurnEvent]:
         # The database is read and written on threads all through the turn: waiting on it
         # on the event loop would keep everyone's calls on it from going on meanwhile.
+        # Her jobs first, so that her affinity is read with those done counted.
+        her_jobs = await self._her_jobs(conversation, device_timezone)
         read = await self._db.read(
             self._before_turn, conversation, in_call is not None, photo.own, self._affinity_on
         )
@@ -720,6 +726,7 @@ class ConversationEngine:
                 self._now_prompt(
                     character, profile, now, timezone,
                     "in_call" if in_call is not None else "typing", affinity_lines, last_contact,
+                    her_jobs,
                 ),
                 *([about_photo] if about_photo else []),
             ],
@@ -838,6 +845,7 @@ class ConversationEngine:
         to say something first. Nothing else is retrieved, no tool offered, nothing judged.
         Raises EmptyReply if the model says nothing she could say, and whatever the model
         raises."""
+        her_jobs = await self._her_jobs(conversation, None)
         read = await self._db.read(self._before_reaching_out, conversation, self._affinity_on)
         character, record, affinity, last_contact, profile = (
             read.character, read.record, read.affinity, read.last_contact, read.profile
@@ -860,7 +868,7 @@ class ConversationEngine:
                 self._now_prompt(
                     character, profile, now, timezone, "apart",
                     affinity_prompt(affinity.tier, None) if affinity is not None else [],
-                    last_contact,
+                    last_contact, her_jobs,
                 ),
             ],
             [*([memories] if memories else []), REACH_OUT_RULES],
@@ -1072,13 +1080,27 @@ class ConversationEngine:
         talking: Talking,
         affinity_lines: Sequence[str],
         last_contact: datetime | None,
+        her_jobs: HerSchedule | None,
     ) -> str:
         """The prompt section about now (`now_prompt`), what she is told of the day it is in
-        Tokyo (`today_lines`) right after it."""
+        Tokyo (`today_lines`) right after it, then of `her_jobs` the user saved, if any
+        (`schedule_lines`)."""
         return "\n".join([
             now_prompt(profile, now, timezone, talking, affinity_lines, last_contact),
             *today_lines(now, character, self._characters.values(), talking),
+            *(schedule_lines(her_jobs) if her_jobs is not None else []),
         ])
+
+    async def _her_jobs(
+        self, conversation: Conversation, device_timezone: str | None
+    ) -> HerSchedule | None:
+        """Her jobs the user saved, the user's device in `device_timezone` (None reaching
+        out), those done counted; None without schedules, or while they are off."""
+        if self._schedules is None:
+            return None
+        return await self._schedules.hers(
+            conversation.user_id, conversation.character_id, device_timezone
+        )
 
     def _prompt(
         self,

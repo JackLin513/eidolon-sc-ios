@@ -78,6 +78,18 @@ export { CalendarDays as CalendarIcon } from "lucide-react";
 export { Cake as BirthdayIcon, Flag as HolidayIcon } from "lucide-react";
 // 日历子页月视图标题两边的上个月、下个月。
 export { ChevronLeft as PreviousMonthIcon, ChevronRight as NextMonthIcon } from "lucide-react";
+// 日历子页页首末端的月 / 周切换。
+export { CalendarDays as MonthViewIcon, Rows3 as WeekViewIcon } from "lucide-react";
+// 日程：四类工作（练习、出镜、事务、私人）的图标，都不上色；保存过的工作块末尾的锁。周视图的翻页键沿用上个月、下个月那两枚。
+export {
+  Briefcase as BusinessJobIcon,
+  Camera as AppearanceJobIcon,
+  Coffee as PrivateJobIcon,
+  Lock as LockedIcon,
+  Music as PracticeJobIcon,
+} from "lucide-react";
+// 日历子页筛选里的「日程」。对话页更多菜单的「她的日程」用 CalendarIcon。
+export { CalendarCheck as ScheduleIcon } from "lucide-react";
 
 // 礼物子页：抽奖台的「抽一次」和抽到稀有礼物时插画角上的闪光；我的礼物的四个类别筛选；
 // 重置卡确认框里「现在的档位 → 信任」的箭头。

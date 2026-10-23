@@ -39,6 +39,7 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { copy } from "@/i18n";
 import { cueText, untilText } from "@/lib/affinity";
 import type { Character } from "@/lib/api";
+import { keepCalendarMode } from "@/lib/calendar";
 import type { Entry } from "@/lib/conversationLog";
 import type { Failure } from "@/lib/failure";
 import { giftsHref } from "@/lib/gifts";
@@ -46,11 +47,13 @@ import { isLive, NOT_OPEN, type LiveConversation, type Trophy } from "@/lib/live
 import { linesOf, type Line } from "@/lib/messageLines";
 import { pastDay } from "@/lib/pastConversations";
 import { photosUsedUpText } from "@/lib/photoFailure";
+import { herScheduleHref } from "@/lib/schedule";
 import { cn } from "@/lib/utils";
 import { herVars } from "@/theme/herVars";
 import {
   AchievementsIcon,
   BackIcon,
+  CalendarIcon,
   CooldownIcon,
   EndedIcon,
   GiftIcon,
@@ -77,6 +80,7 @@ import { useFocusBack } from "./useFocusBack";
 import { useHerAchievements } from "./useHerAchievements";
 import { usePastConversation, type Viewing } from "./usePastConversation";
 import { useProducerTimezone } from "./useProducerTimezone";
+import { useScheduleOn } from "./useScheduleOn";
 import { useStandOutfits } from "./useStandOutfits";
 
 const t = copy.conversation;
@@ -99,7 +103,8 @@ const noSubscription = () => () => {};
  * 送礼的入口（冷却时的输入栏、标识的说明末尾、冷却版结束卡）都跳到玩法里的礼物子页，带上她（spec「打开好感度藏起的送礼入口」），
  * 礼物一律记进当前对话；好感度和礼物同一个开关，好感度读不到时这些入口都不在。
  *
- * 更多菜单依次是「新对话」「历史对话」「换衣装」「成就」。「成就」打开她的成就面板（`AchievementsPanel`），「好感度和礼物」关着时没有；
+ * 更多菜单依次是「新对话」「历史对话」「换衣装」「成就」「她的日程」。「成就」打开她的成就面板（`AchievementsPanel`），「好感度和礼物」关着时没有；
+ * 「她的日程」去日历子页只看她、切成周视图，日程关着时没有；
  * 她有没看过的解锁时，更多菜单键右上角和「成就」后面各一个点（`useHerAchievements`）。这一页上的回合解锁了她的阶段、
  * 通话层没盖着页首时，好感度标识左边跳出奖杯和「+n」，约 3 秒收起（快照的 `trophy`）。
  * 「历史对话」打开面板（`PastConversations`），点一段就看那段历史对话
@@ -131,6 +136,7 @@ export function ConversationView({
   // 她现在对制作人的好感度；读不到（好感度关着、没配判断模型或请求失败）就不显示标识，也不出变化胶囊。
   const { affinity, affinityCue, cooling, ended, trophy } = snapshot;
   const achievements = useHerAchievements(character.id, userId, snapshot.herUnlockedAt);
+  const isScheduleOn = useScheduleOn();
   // 解除时刻按制作人的时区写成今天或明天。
   const timeZone = useProducerTimezone();
 
@@ -269,6 +275,17 @@ export function ConversationView({
               <AchievementsIcon aria-hidden />
               {copy.achievements.open}
               {achievements.isUnseen && <UnseenDot className="ml-auto" />}
+            </DropdownMenuItem>
+          )}
+          {isScheduleOn && (
+            <DropdownMenuItem
+              onClick={() => {
+                keepCalendarMode(userId, "week");
+                go(herScheduleHref(character.id));
+              }}
+            >
+              <CalendarIcon aria-hidden />
+              {t.herSchedule}
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>

@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { FailureNotice } from "@/components/app/FailureNotice";
-import { MarkedAvatar } from "@/components/app/MarkedAvatar";
 import { SectionHeading } from "@/components/app/SubpageHeader";
 import { useDirectory, useWide } from "@/components/conversations/ConversationDirectory";
 import { useProducerTimezone } from "@/components/conversations/useProducerTimezone";
@@ -13,13 +12,14 @@ import { GivenToast, type GivenNotice } from "@/components/gifts/GivenToast";
 import { GivePanel, type Giving } from "@/components/gifts/GivePanel";
 import { MY_GIFTS_ID, MyGifts } from "@/components/gifts/MyGifts";
 import { ResetCards } from "@/components/gifts/ResetCards";
+import { HerStrip } from "@/components/play/HerStrip";
 import { PlayClosed, PlayShell, PlaySubpageHeader } from "@/components/play/PlayShell";
 import { usePlayState } from "@/components/play/usePlayState";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { copy } from "@/i18n";
-import { ApiError, type Character } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { arrange } from "@/lib/conversationList";
 import { toFailure } from "@/lib/failure";
 import {
@@ -43,7 +43,7 @@ import { playTitle } from "@/lib/playCards";
 import { playHref } from "@/lib/playRoute";
 import { later } from "@/lib/seenOnDevice";
 import { cn } from "@/lib/utils";
-import { CloseIcon, DrawIcon, GiftIcon } from "@/theme/icons";
+import { DrawIcon, GiftIcon } from "@/theme/icons";
 
 const t = copy.gifts;
 
@@ -219,9 +219,11 @@ export function GiftsSubpage({ pick }: { pick: GiftsFor | null }) {
       ) : (
         <>
           {chosen && (
-            <PickedFor
+            <HerStrip
               character={chosen}
-              onCancel={() => {
+              text={t.pickFor(chosen.name)}
+              closeLabel={t.cancelPick(chosen.name)}
+              onClose={() => {
                 setDropped(chosen.id);
                 router.replace(playHref("gifts"), { scroll: false });
               }}
@@ -288,26 +290,6 @@ function afterGiving(state: GiftState, giftId: string, characterId: string, give
       .filter((b) => b.count > 0),
     characters: state.characters.map((c) => (c.id === characterId ? { id: c.id, ...given.affinity } : c)),
   };
-}
-
-/** 从对话页跳来时页首下面那一条：她的小头像、「给{角色名}挑一件礼物」和取消预选的 ✕。 */
-function PickedFor({ character, onCancel }: { character: Character; onCancel: () => void }) {
-  return (
-    <div className="flex items-center gap-2 rounded-2xl border py-1 pr-1 pl-3">
-      <MarkedAvatar name={character.name} src={character.avatar_url} size="sm" />
-      <p className="min-w-0 flex-1 truncate text-sm">{t.pickFor(character.name)}</p>
-      {/* 手机上触控目标不小于 44px */}
-      <Button
-        variant="ghost"
-        size="icon-lg"
-        className="max-md:size-11"
-        aria-label={t.cancelPick(character.name)}
-        onClick={onCancel}
-      >
-        <CloseIcon />
-      </Button>
-    </div>
-  );
 }
 
 /**

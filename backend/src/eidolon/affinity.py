@@ -25,19 +25,23 @@ It shapes how she speaks to the producer, the same for every character, each in 
 the user said is judged to hurt her or make her happy, she knows it as she replies to it.
 
 In a call she hangs up after the turn that cools her into a cooldown, after the user has
-been out of line in it too many times, or after the call's latest turns have taken too much
-off her affinity between them (`ends`); halfway to that, she warns the user first
-(`warns`). A cooldown begun elsewhere has her hang up the user's calls with her straight
-away, as whoever recorded the turn that began it tells the calls once it is recorded
-(`Affinities.change` says it began). Nothing else has her hang up. Outside calls the same has
-her end the conversation (GLOSSARY.md「已结束的对话」), by the same numbers, counted over the
-conversation's latest typed turns rather than the call's.
+been out of line in it too many times, or after the call's latest turns have hurt her too
+much between them (`ends`), as weighed apart from what they take off her affinity (`hurt`);
+halfway to that, she warns the user first (`warns`). A cooldown begun elsewhere has her hang
+up the user's calls with her straight away, as whoever recorded the turn that began it tells
+the calls once it is recorded (`Affinities.change` says it began). Nothing else has her hang
+up. Outside calls the same has her end the conversation (GLOSSARY.md「已结束的对话」), by the same
+numbers, counted over the conversation's latest typed turns rather than the call's.
 
-Gifts (GLOSSARY.md「礼物」) raise it faster than it recovers, by their rarity and by more if
-she likes the one given, by no more than a little each in a cooldown; draws give them, a
-chance a day, and now and then a reset card instead (GLOSSARY.md「抽奖」「重置卡」), which
-brings every character below trust back to the normal value, out of any cooldown, none of
-them the wiser. How much and how likely are here with the rest.
+Gifts (GLOSSARY.md「礼物」) raise it by their rarity and by more if she likes the one given, the
+rarest she likes by more than a day's turns can; in a cooldown each by the same, enough that
+four end it; draws give them, a chance a day, and now and then a reset card instead
+(GLOSSARY.md「抽奖」「重置卡」), which brings every character below trust back to the normal value,
+out of any cooldown, none of them the wiser. How much and how likely are here with the rest.
+A job of hers the producer scheduled (GLOSSARY.md「日程」) raises it once done, as a gift does
+but by the same whatever the job and in a cooldown alike, told of to no one (`schedule`).
+What the system gives (draw chances, reset cards) never raises it: only what she feels does,
+turns, gifts and jobs done.
 
 It is on only where the deployment has the judge model and the switch「好感度和礼物」is on
 (`LiveConfig.affinity_on`); off, nothing of it is shown, but what is kept stays as it is.
@@ -80,50 +84,63 @@ RECOVERY_PER_DAY = 10.0
 LOWEST, HIGHEST = 0.0, 100.0
 """What it is held between; falling to the lowest begins a cooldown."""
 
-LEVEL_STEPS = (-5.0, -2.0, 0.0, 1.0, 2.0)
+LEVEL_STEPS = (-1.5, -0.5, 0.0, 0.1, 0.2)
 """How much a turn changes it by the level the judge model judges it at, from hurting her
-(0) to making her very happy (4)."""
+(0) to making her very happy (4): a tier takes weeks of turns."""
+
+LEVEL_HURTS = (5.0, 2.0, 0.0, 0.0, 0.0)
+"""How much a turn hurts her by its level, for her warning, hanging up or ending the
+conversation (`hurt`), apart from how much it lowers her affinity: what turns lowered it by
+before it rose and fell more slowly, so that what was kept of turns before is as it would be
+now."""
 
 NO_EFFECT = 2
 """The level of a turn that changes nothing, as one the judge model is unsure of is."""
 
 OUT_OF_LINE_STEP = -10.0
-"""How much a turn out of line (GLOSSARY.md「不该说的话」) lowers it, whatever its level."""
+"""How much a turn out of line (GLOSSARY.md「不该说的话」) lowers it, whatever its level: five
+of them take trust to a cooldown."""
+
+OUT_OF_LINE_HURT = 10.0
+"""How much a turn out of line hurts her, whatever its level (`hurt`)."""
 
 DAY_TIMEZONE = "Asia/Shanghai"
 """The time zone whose midnight begins each day for turns' gains and draw chances: Beijing
 time, wherever the user is, so that everyone has the same days."""
 
-GAINS_PER_DAY = 6.0
+GAINS_PER_DAY = 0.6
 """How much turns can raise it in a day (`day_of`)."""
 
 OUT_OF_LINE_PER_CALL = 2
 """How many times the user may be out of line in one call: she hangs up after the last."""
 
 FED_UP_TURNS = 8
-"""How many of a call's latest turns, or of a conversation's latest typed turns, what took off
-her affinity is added up over (`hurt`), the turn just taken among them."""
+"""How many of a call's latest turns, or of a conversation's latest typed turns, how much they
+hurt her is added up over (`hurt`), the turn just taken among them."""
 
 FED_UP_AT = 12.0
-"""How much those turns may take off it between them: she hangs up, or ends the conversation,
-after the turn that takes it this far. Hurting her a little takes six of them, hurting her
-three."""
+"""How much those turns may hurt her between them: she hangs up, or ends the conversation,
+after the turn that hurts her this far. Upsetting her takes six of them, hurting her three."""
 
 WARNS_AT = 6.0
-"""How much those turns take off it between them before she warns the user she will hang up,
+"""How much those turns hurt her between them before she warns the user she will hang up,
 or not want to talk, should it go on: once as it gets this far, again only should it fall
 back below first."""
 
-GIFT_STEPS: dict[Rarity, float] = {"common": 3.0, "uncommon": 5.0, "rare": 7.0}
+GIFT_STEPS: dict[Rarity, float] = {"common": 0.3, "uncommon": 0.5, "rare": 0.7}
 """How much a gift raises it by its rarity. Gifts are not turns: no day's limit holds them,
 and the rarest she likes raises it more than a day's turns can."""
 
-LIKED_GIFT_STEP = 3.0
+LIKED_GIFT_STEP = 0.3
 """How much more a gift she likes raises it, whatever its rarity."""
 
 COOLDOWN_GIFT_STEP = 3.0
-"""How much a gift raises it at most while she is in a cooldown, whatever its rarity and
-whether she likes it: four bring her out of one begun at 0, sooner than recovery would."""
+"""How much a gift raises it while she is in a cooldown, whatever its rarity and whether she
+likes it: four bring her out of one begun at 0, sooner than recovery would."""
+
+JOB_DONE_STEP = 0.5
+"""How much a job of hers the producer placed in their schedule raises it once done, whatever
+its length and category, in a cooldown too: about an uncommon gift, short of a day's turns."""
 
 DRAWS_PER_DAY = 1
 """How many draw chances (GLOSSARY.md「抽奖」) the user is given each day (`day_of`), as it
@@ -293,7 +310,7 @@ _PARTINGS: dict[Parting, str] = {
 
 EndsFor = Literal["out_of_line", "fed_up", "cooldown"]
 """Why she hangs up on the user in a call, or ends the conversation outside one: out of line
-once too often, the latest turns having taken too much off her affinity, or a cooldown
+once too often, the latest turns having hurt her too much, or a cooldown
 begun."""
 
 
@@ -354,14 +371,16 @@ def affinity_prompt(
 
 
 def hurt(judged: Judged | None) -> float:
-    """How much a turn, as `judged` (None if it was not), took off her affinity, for her
-    hanging up or ending the conversation: what its step lowers it by, before it is held at the lowest; nothing if it
-    raises it, or was not judged."""
-    return 0.0 if judged is None else max(-judged.step, 0.0)
+    """How much a turn, as `judged` (None if it was not), hurt her, for her warning, hanging
+    up or ending the conversation: by `OUT_OF_LINE_HURT` out of line, else by its level's
+    `LEVEL_HURTS`; nothing if it was not judged."""
+    if judged is None:
+        return 0.0
+    return OUT_OF_LINE_HURT if judged.out_of_line else LEVEL_HURTS[judged.level]
 
 
 def _lately(hurts: Sequence[float]) -> float:
-    """How much the latest turns of `hurts`, as many as are weighed, took off her affinity."""
+    """How much the latest turns of `hurts`, as many as are weighed, hurt her."""
     return sum(hurts[-FED_UP_TURNS:])
 
 
@@ -389,8 +408,8 @@ def warns(
     judged: Judged | None, cools: bool, out_of_line_before: int, hurt_before: Sequence[float]
 ) -> bool:
     """Whether she warns the user she will hang up, or not want to talk, should it go on,
-    after a turn, as for `ends`: the turn has what the latest turns took off her affinity get
-    to `WARNS_AT`, from below, and she does not part with the user after it."""
+    after a turn, as for `ends`: the turn has how much the latest turns hurt her get to
+    `WARNS_AT`, from below, and she does not part with the user after it."""
     if judged is None or cools or ends(judged, cools, out_of_line_before, hurt_before):
         return False
     return _lately(hurt_before) < WARNS_AT <= _lately([*hurt_before, hurt(judged)])
@@ -410,16 +429,17 @@ class Change:
 
 
 def _gift_step(rarity: Rarity, liked: bool, cooling: bool) -> float:
-    """How much a gift of `rarity` raises affinity: more if she `liked` it, no more than
-    `COOLDOWN_GIFT_STEP` while `cooling`."""
-    step = GIFT_STEPS[rarity] + (LIKED_GIFT_STEP if liked else 0.0)
-    return min(step, COOLDOWN_GIFT_STEP) if cooling else step
+    """How much a gift of `rarity` raises affinity: more if she `liked` it, and
+    `COOLDOWN_GIFT_STEP` whatever it is while `cooling`."""
+    if cooling:
+        return COOLDOWN_GIFT_STEP
+    return GIFT_STEPS[rarity] + (LIKED_GIFT_STEP if liked else 0.0)
 
 
 class Affinities:
     """Every user's affinity with every character, kept in the database, next to the users
     it belongs to. What changes it is a body of the write task it is changed in, with what
-    changed it (`change`, `receive_gift`, `reset`): given that task's connection, so that it
+    changed it (`change`, `receive_gift`, `job_done`, `reset`): given that task's connection, so that it
     changes with the rest or not at all, and told of by what it returns, never to a
     listener."""
 
@@ -479,7 +499,8 @@ class Affinities:
         gained_today = gained if gained_on == today else 0.0
         step = judged.step
         if step > 0:
-            step = min(step, max(GAINS_PER_DAY - gained_today, 0.0))
+            # Rounded, lest what the steps' fractions leave of the day's gains be a sliver.
+            step = min(step, max(round(GAINS_PER_DAY - gained_today, 9), 0.0))
         after = before.stepped(step)
         value = after.value
         change = None
@@ -514,9 +535,29 @@ class Affinities:
         (None for no change to show), and the affinity left. No day's limit holds gifts, nor
         do they count towards it. In a cooldown, what it is raised to is when it ends,
         sooner; there is a change to show only once it ends."""
+        return self._raise(
+            db, user_id, character_id, lambda cooling: _gift_step(rarity, liked, cooling)
+        )
+
+    def job_done(self, db: sqlite3.Connection, user_id: str, character_id: str) -> None:
+        """Raise the user's affinity with the character for a job of hers in their schedule
+        being done (GLOSSARY.md「日程」), through `db`, in the transaction it is counted in: by
+        `JOB_DONE_STEP`, in a cooldown too, as a gift does, but told of to no one."""
+        self._raise(db, user_id, character_id, lambda _: JOB_DONE_STEP)
+
+    def _raise(
+        self,
+        db: sqlite3.Connection,
+        user_id: str,
+        character_id: str,
+        step: Callable[[bool], float],
+    ) -> tuple[Change | None, Status]:
+        """Raise the user's affinity with the character by `step`, given whether she is
+        cooling, through `db`, beyond the day's limit and out of a cooldown at the thaw line,
+        as a gift does (`receive_gift`)."""
         now = self._clock()
         before = _row(db, user_id, character_id, now)[0]
-        after = before.stepped(_gift_step(rarity, liked, before.cooling))
+        after = before.stepped(step(before.cooling))
         after = Affinity(after.value, now, after.cooling and after.value < THAW)
         thawed = before.cooling and not after.cooling
         change = None

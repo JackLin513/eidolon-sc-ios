@@ -1,5 +1,5 @@
 """She ends the conversation (GLOSSARY.md「已结束的对话」): outside calls, the typed turn that
-has what the conversation's latest typed turns took off her affinity add up to too much, that
+has how much the conversation's latest typed turns hurt her add up to too much, that
 has the user out of line a second time in those turns (this one among them), or that cools
 her into a cooldown has her told to say she does not want to talk any more; once it is
 recorded, the「她结束了对话」event comes after it in the record and `done` carries it, and,
@@ -29,7 +29,7 @@ import httpx
 import pytest
 
 from eidolon.config import Settings, UsageLimits
-from tests.browser import TIMEOUT, open_browser
+from tests.browser import TIMEOUT, open_browser, until_gone
 from tests.conftest import ClientFactory
 from tests.fakes import (
     FAKE_JUDGE,
@@ -264,7 +264,7 @@ async def test_the_turn_that_cools_her_ends_it_saying_till_when_and_the_cooldown
     client = make_client(llm, clients=clients, clock=clock)
     other = await start_conversation(client)
     conversation = await start_conversation(client)
-    keep(settings.database_path, "producer", 5, clock.now)
+    keep(settings.database_path, "producer", 1, clock.now)
 
     [*_, done] = await send_turn(client, conversation, "随便你")
     recorded = await record(client, conversation)
@@ -292,7 +292,7 @@ async def test_a_reset_card_does_not_open_it_again(make_client: ClientFactory, s
     assert (await client.get("/api/gifts")).status_code == 200
     assert (await client.post("/api/gifts/draws", json={"all": True})).status_code == 200
     conversation = await start_conversation(client)
-    keep(settings.database_path, "producer", 5, clock.now)
+    keep(settings.database_path, "producer", 1, clock.now)
     await send_turn(client, conversation, "随便你")
 
     used = await client.post(USE)
@@ -315,7 +315,7 @@ async def test_cooling_her_in_a_call_ends_no_conversation(
     llm = FakeLLM(REPLY, REPLY)
     client = make_client(llm, clients=clients, clock=clock)
     conversation = await start_conversation(client)
-    keep(settings.database_path, "producer", 5, clock.now)
+    keep(settings.database_path, "producer", 1, clock.now)
 
     async with open_browser() as browser:
         await browser.call(client, conversation_id=conversation)
@@ -380,9 +380,11 @@ async def test_a_call_in_it_as_she_ends_it_she_hangs_up_telling_it_she_ended_it(
     async with open_browser() as browser:
         await browser.call(client, conversation_id=conversation)
         await browser.connect()
+        assert browser.pc_id is not None
         typed = await say_each(client, conversation, 2)
         ended = await browser.next_server_message("ended")
         await browser.hung_up()
+        await until_gone(client, browser.pc_id)  # settled, its activity record kept
     recorded = await record(client, conversation)
 
     assert ended_by(typed[-1])

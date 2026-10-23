@@ -442,6 +442,9 @@ class Settings:
     reach_outs: bool = False
     """Whether characters reach out to users (GLOSSARY.md「搭话」), on the deployer's chat
     model; off unless `.env` turns it on, and the admin console may override it."""
+    schedule: bool = True
+    """Whether each week's jobs are published for producers to schedule (GLOSSARY.md「日程」);
+    on unless `.env` turns it off, and the admin console may override it."""
     proxy: ProxySettings = field(default_factory=ProxySettings)
     """Which of the deployer's services go through which proxy; none unless `.env` sets
     one, and the admin console may override it."""
@@ -535,6 +538,7 @@ class Settings:
             exempting_keys=exempting_keys_from_env(),
             affinity_and_gifts=_switch("EIDOLON_AFFINITY_AND_GIFTS", default=True),
             reach_outs=_switch("EIDOLON_REACH_OUTS"),
+            schedule=_switch("EIDOLON_SCHEDULE", default=True),
             proxy=proxy_from_env(),
             service_status=service_status_from_env(),
             domain=os.environ.get("EIDOLON_DOMAIN", "").strip() or None,
