@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import type { Achievement } from "@/lib/achievements";
+import type { CalendarKind } from "@/lib/calendar";
 import type { GiftState } from "@/lib/gifts";
-import { playCards, type PlayContext } from "@/lib/playCards";
+import { type CalendarCardContext, playCards, type PlayContext } from "@/lib/playCards";
 
 const BEFORE = "2026-10-20T08:00:00+00:00";
 const AFTER = "2026-10-20T09:00:00+00:00";
@@ -31,8 +32,28 @@ function giftState(change: Partial<GiftState> = {}): GiftState {
   };
 }
 
+function calendar(change: Partial<CalendarCardContext> = {}): CalendarCardContext {
+  return {
+    today: "2026-10-23",
+    data: {
+      characters: [
+        { name: "櫻木真乃", birthday: "04-25" },
+        { name: "樋口円香", birthday: "10-27" },
+        { name: "福丸小糸", birthday: "10-27" },
+      ],
+      producerBirthday: { month: 11, day: 3 },
+      holidays: [
+        { date: "2026-11-03", name: "文化の日" },
+        { date: "2027-01-01", name: "元日" },
+      ],
+    },
+    shown: ["character", "producer", "holiday"],
+    ...change,
+  };
+}
+
 function context(change: Partial<PlayContext> = {}): PlayContext {
-  return { state: giftState(), newRewards: false, achievementsSeenAt: null, ...change };
+  return { state: giftState(), newRewards: false, achievementsSeenAt: null, calendar: calendar(), ...change };
 }
 
 /** 合起来的一个成就：第一阶段在 `unlockedAt` 解锁（null 是没解锁）。 */
@@ -47,25 +68,29 @@ function achievement(id: string, unlockedAt: string | null, stages = 1): Achieve
 const ofId = (cards: ReturnType<typeof playCards>, id: string) => cards.find((card) => card.id === id);
 
 describe("玩法页的卡", () => {
-  it("好感度和礼物开着时有「礼物」「每日任务与成就」两张，礼物在上面，各去各的子页", () => {
+  it("好感度和礼物开着时有「礼物」「每日任务与成就」「日历」三张，礼物在上面，各去各的子页", () => {
     const cards = playCards(context());
 
     expect(cards.map((card) => [card.id, card.name, card.href])).toEqual([
       ["gifts", "礼物", "/play/gifts"],
       ["tasks", "每日任务与成就", "/play/tasks"],
+      ["calendar", "日历", "/play/calendar"],
     ]);
   });
 
-  it("没开放时一张都没有", () => {
-    expect(playCards(context({ state: giftState({ open: false }) }))).toEqual([]);
+  it("没开放时只剩「日历」", () => {
+    const cards = playCards(context({ state: giftState({ open: false }) }));
+
+    expect(cards.map((card) => card.id)).toEqual(["calendar"]);
   });
 
   it("接口还没回来时卡片就在，状态那一行是空的", () => {
-    const cards = playCards(context({ state: null }));
+    const cards = playCards(context({ state: null, calendar: null }));
 
     expect(cards.map((card) => [card.id, card.status])).toEqual([
       ["gifts", ""],
       ["tasks", ""],
+      ["calendar", ""],
     ]);
   });
 });
@@ -150,5 +175,29 @@ describe("卡片名字旁的点", () => {
 
     expect(ofId(cards, "gifts")?.hasDot).toBe(false);
     expect(ofId(playCards(context({ newRewards: true })), "tasks")?.hasDot).toBe(false);
+  });
+});
+
+describe("「日历」卡的状态", () => {
+  const status = (change: Partial<CalendarCardContext> = {}) =>
+    ofId(playCards(context({ calendar: calendar(change) })), "calendar")?.status;
+  const only = (...shown: CalendarKind[]) => ({ shown });
+
+  it("写最近的一件：谁的生日、节假日、我的生日", () => {
+    expect(status()).toBe("下一个：10月27日 樋口円香的生日");
+    expect(status(only("holiday"))).toBe("下一个：11月3日 文化の日");
+    expect(status(only("producer"))).toBe("下一个：11月3日 我的生日");
+  });
+
+  it("今天就有时写今天", () => {
+    expect(status({ today: "2026-10-27" })).toBe("今天：樋口円香的生日");
+  });
+
+  it("三类全筛掉时为空", () => {
+    expect(status(only())).toBe("");
+  });
+
+  it("好感度和礼物的状态还没回来也有", () => {
+    expect(ofId(playCards(context({ state: null })), "calendar")?.status).toBe("下一个：10月27日 樋口円香的生日");
   });
 });

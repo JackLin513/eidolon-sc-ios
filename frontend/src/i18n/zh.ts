@@ -1750,7 +1750,7 @@ export const zh = {
     loading: "正在读取",
     /** 卡片状态那一行里各段之间。 */
     separator: " · ",
-    /** 好感度和礼物没开放时：第一级没有卡，子页页首下面也是这一句。 */
+    /** 好感度和礼物没开放时：礼物、每日任务与成就两个子页页首下面是这一句（第一级只剩「日历」卡）。 */
     closed: {
       title: "玩法暂时没有开放",
       description: "这里还没有开放好感度和礼物。已经有的礼物会留着，开放后照常能送。",
@@ -1772,6 +1772,46 @@ export const zh = {
         /** 名字旁的点，读屏读的名字：有新解锁的成就。 */
         dot: "有新解锁的成就",
       },
+      calendar: {
+        name: "日历",
+        /** 今天及以后最近的一件：「下一个：10月27日 樋口円香的生日」；今天就有时「今天：…」。 */
+        next: (date: string, what: string) => `下一个：${date} ${what}`,
+        today: (what: string) => `今天：${what}`,
+        birthday: (name: string) => `${name}的生日`,
+      },
+    },
+    /** 日历子页（`/play/calendar`）。 */
+    calendar: {
+      /** 「10月27日」。 */
+      date: (month: number, day: number) => `${month}月${day}日`,
+      /** 星期几，0 是周日。 */
+      weekdays: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
+      /** 这一天的清单里角色生日那一行名字后面的类别。 */
+      birthday: "生日",
+      /** 制作人自己的生日。 */
+      mine: "我的生日",
+      noEvents: "这一天没有事",
+      /** 三类全筛掉时月视图下面那一句。 */
+      nothingShown: "没有要显示的",
+      /** 月视图上方的筛选：一排按钮，按下的是开着的。 */
+      filters: {
+        label: "筛选",
+        character: "角色生日",
+        producer: "我的生日",
+        holiday: "节假日",
+      },
+      /** 月视图的标题「2026年10月」和两边的键。 */
+      month: (year: number, month: number) => `${year}年${month}月`,
+      previousMonth: "上个月",
+      nextMonth: "下个月",
+      /** 不在当月时出现，回到当月并选中今天。 */
+      today: "今天",
+      /** 表头一行周几，周一起。 */
+      weekHeads: ["一", "二", "三", "四", "五", "六", "日"],
+      /** 电脑上一格超过三件时的第三行。 */
+      more: (n: number) => `还有 ${n} 项`,
+      /** 格子的读屏名字：「10月27日 周二，2 项」。 */
+      cell: (date: string, events: number) => (events > 0 ? `${date}，${events} 项` : date),
     },
   },
   /** 礼物子页（`/play/gifts`，GLOSSARY.md「礼物」「抽奖」，DESIGN.md「玩法页」）：抽奖台、重置卡条、我的礼物，和送礼面板、抽奖弹窗里的字。 */

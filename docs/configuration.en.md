@@ -32,6 +32,7 @@ This guide explains how to turn on and tune each feature, and how the characters
 - [Retrieval during conversation](#retrieval-during-conversation)
 - [Memory](#memory)
 - [Affinity and gifts](#affinity-and-gifts)
+- [Calendar](#calendar)
 - [Photos](#photos)
 - [Reach-outs](#reach-outs)
 - [Sign-in, users and usage limits](#sign-in-users-and-usage-limits)
@@ -75,6 +76,7 @@ voice_id = "a1150f3d14ac46fb8ea59c7803cd8357"   # Fish Audio voice, must be set 
 sheet = "sheets/mano.md"
 avatar = "avatars/mano.jpg"
 color = "#ffbad6"                    # official image color, required
+birthday = "04-25"                   # birthday, required
 facts = "facts/mano.md"
 liked_gifts = ["potted-plant", "black-tea"]   # gifts she likes
 speakers = ["真乃"]                  # her speaker names in the scripts
@@ -87,6 +89,7 @@ greeting_subtitle = "呼哇……你就是制作人吗？请多指教！"
 How to write each field is in the comments at the top of the file. A few need extra explanation:
 
 - **`color`**: Everything in the interface that belongs to her (the conversation wallpaper, the call button, the send button, the unread count, the call screen and the call bar) is based on it. The frontend derives a light and a dark set of colors from it, keeping text readable. If it is missing or malformed, the backend refuses to start.
+- **`birthday`**: Her birthday, written `"MM-DD"` (two-digit month, two-digit day), as in the game. The calendar shows it, and she knows her own birthday and the others' (see [Calendar](#calendar)). If it is missing, malformed, or not a day of the year (February 29 is fine), the backend refuses to start.
 - **`background`** (optional): The call screen's background image, kept in `characters/backgrounds/`. Without one, a gradient of her image color is used instead.
 - **Character sheet**: If a character sheet file is missing, the backend refuses to start and names the missing one. docker compose mounts `characters/` read-only into the backend container.
 - **`liked_gifts`**: The gifts she likes, by `id` in the gift catalog [`characters/gifts.toml`](../characters/gifts.toml): one to three, not all of them rare. Each needs its story source in the 「喜欢的礼物」 section of her sources file (`facts/<id>.sources.md`). If they are missing, not in the catalog, too many or all rare, the backend refuses to start.
@@ -343,10 +346,19 @@ Gifts share affinity's switch. Each day at midnight Beijing time (wherever the u
 - **Cooldown**: When affinity hits bottom, a cooldown starts: the user can't start turns or calls with that character for a while (they get a 409, not counted toward limits), lifted automatically within 24 hours. If a turn in a call sends her into cooldown, or the user says something out of line for the second time in one call, she finishes her line and hangs up; a cooldown started in another conversation also hangs up a call in progress. A cooldown is not a ban, and admins can't adjust any user's affinity.
 - **Daily tasks**: 「每日任务」 (Daily tasks) under 「玩法」 (Play) has the same three every day: one turn with any character, giving one gift, and 10 turns in all across characters. Each gives one draw; they renew at midnight Beijing time, and unfinished ones lapse. Turns in calls and turns on the user's own keys both count. These draws aren't held to the daily draw's cap of saving up to 7. The three and their numbers are set in code (`DAILY_TASKS` in [`backend/src/eidolon/happenings.py`](../backend/src/eidolon/happenings.py)); the admin console has no setting for them.
 - **Achievements**: Each character has four of her own: turns with her, total time talking with her in calls, gifts given her, and her affinity having reached close and intimate. Four more count all characters together: how many characters the user has talked with, how many have reached intimate, how many days they came (a day with a turn or a gift given, counted in Beijing time), and how many times they drew. Each achievement has several stages, and stage n gives n draws. When every stage of a character's four achievements is unlocked, her set is complete, which gives one reset card, once per character. The upgrade that adds achievements works them out once from existing records as it starts (see "升级" in [`deploy.md`](deploy.md#升级), Chinese). The achievements, thresholds and rewards are set in code (`PER_CHARACTER` and `ALL_CHARACTERS` in [`backend/src/eidolon/achievements.py`](../backend/src/eidolon/achievements.py)), which is the source of truth for the numbers; the admin console has no setting for them.
-- **When off**: Nothing is judged or shown, and cooldowns don't block anyone. Existing affinity is kept as is; when switched back on, it catches up on the time that passed. The 「玩法」 (Play) page says 「玩法暂时没有开放」 (play isn't open yet), and nothing can be drawn, given or reset; gifts, reset cards and draws already held are kept as they are. No draws are given while it's off, and one is given the day it's back on. Daily tasks and achievements don't show, and nothing counts toward them.
+- **When off**: Nothing is judged or shown, and cooldowns don't block anyone. Existing affinity is kept as is; when switched back on, it catches up on the time that passed. The 「玩法」 (Play) page keeps only the 「日历」 (Calendar) card, the Gifts and the Daily tasks and achievements subpages say 「玩法暂时没有开放」 (play isn't open yet), and nothing can be drawn, given or reset; gifts, reset cards and draws already held are kept as they are. No draws are given while it's off, and one is given the day it's back on. Daily tasks and achievements don't show, and nothing counts toward them.
 - **Cost**: The affinity questions ride along in the retrieval judgement (asked separately when retrieval is off), adding about 1,080 input tokens per judgement on Jev and 820 on Clef and Clef-flash. That cuts Clef-flash's free allocation from about 2,000 judgements a day to about 860, and Clef's from about 750 to about 320. The deployer always pays for judging; it doesn't count toward users' limits. Drawing and giving gifts call no model, cost nothing, and don't count toward limits.
 - **Granting reset cards**: To make up for the judge's mistakes, admins can give every existing user one reset card from the 「好感度和礼物」 card on the admin console's config page. Users who sign up later don't get one, and cards can't be taken back once given. Admins can't adjust any one user's affinity, gifts or draws.
 - **Thresholds**: The thresholds for the out-of-line and manipulation questions are set per model in code, and can be changed in 「判断模型的阈值」 (Judge thresholds) on the admin console's config page.
+
+## Calendar
+
+The 「日历」 (Calendar) card on the Play page and its subpage (`/play/calendar`) list the characters' birthdays, the producer's birthday (only if it's filled in on their profile) and Japan's national holidays. Users can filter by these three kinds; the filter is kept only in the browser.
+
+- **Characters' birthdays**: From `birthday` in `characters.toml` (see [Characters](#characters)). A February 29 birthday falls on February 28 in common years, as the producer's does.
+- **Holidays**: The backend works out Japan's national holidays by law (substitute holidays and 国民の休日 included) locally with the [`holidays`](https://pypi.org/project/holidays/) library, named in Japanese; the New Year break, Obon and Golden Week as such don't count. No network access, nothing to configure.
+- **She knows on the day**: She always knows her own birthday; on her birthday, another idol's, or a holiday (by the date in Tokyo), she knows it while texting, on calls and when reaching out, and may bring it up naturally.
+- **No switch**: The calendar is always on, whatever the affinity and gifts switch says. It calls no model and costs nothing.
 
 ## Photos
 

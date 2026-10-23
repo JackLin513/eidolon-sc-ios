@@ -151,9 +151,9 @@ def system_prompt(llm: FakeLLM) -> str:
 async def test_every_turn_carries_the_world_setting_after_the_character_sheet(
     turns: Turns, characters: CharacterConfig
 ):
-    """The two open the prompt apart, with how she is to format her reply, the same for
-    every user's turns with her that day, marked for a service to cache; the rest of what
-    she is told follows on its own."""
+    """The two open the prompt apart, with her birthday between them and how she is to format
+    her reply, the same for every user's turns with her that day, marked for a service to
+    cache; the rest of what she is told follows on its own."""
     write_world(characters)
     llm = FakeLLM(REPLY)
 
@@ -162,8 +162,8 @@ async def test_every_turn_carries_the_world_setting_after_the_character_sheet(
     [prompt] = llm.prompts
     shared = prompt[0]
     assert shared.cache_breakpoint
-    assert shared.content.startswith(f"{MANO_SHEET}\n\n# 世界设定")
-    world = shared.content.removeprefix(f"{MANO_SHEET}\n\n")
+    assert shared.content.startswith(f"{MANO_SHEET}\n\n你的生日是4月25日。\n\n# 世界设定")
+    world = shared.content.removeprefix(f"{MANO_SHEET}\n\n你的生日是4月25日。\n\n")
     assert "资料截止到 2026年9月28日" in world
     assert "社長：天井努" in world and "事務員：七草はづき" in world
     assert "illumination STARS（いるみねーしょんすたーず）：櫻木真乃、風野灯織" in world

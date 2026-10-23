@@ -40,7 +40,7 @@ export function PlaySubpageHeader({ title }: { title: string }) {
   return <SubpageHeader title={title} backHref={playHref()} />;
 }
 
-/** 好感度和礼物没开放时：第一级没有卡，子页页首下面也是这一句。 */
+/** 好感度和礼物没开放时：礼物、每日任务与成就两个子页页首下面是这一句（第一级只剩「日历」卡）。 */
 export function PlayClosed() {
   return (
     <Empty>

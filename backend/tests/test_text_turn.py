@@ -177,10 +177,11 @@ async def test_prompt_carries_the_character_sheet_and_the_conversation_so_far(
     await send_turn(client, conversation_id, "这只鸽子叫什么？")
     await send_turn(client, conversation_id, "好可爱")
 
-    # Without a world setting, the part every user's turns with her share is her sheet and
-    # how she is to format her reply.
+    # Without a world setting, the part every user's turns with her share is her sheet, her
+    # birthday and how she is to format her reply.
     assert llm.prompts[1][0] == ChatMessage(
-        "system", f"{MANO_SHEET}\n\n{FORMAT_INSTRUCTIONS}", cache_breakpoint=True
+        "system", f"{MANO_SHEET}\n\n你的生日是4月25日。\n\n{FORMAT_INSTRUCTIONS}",
+        cache_breakpoint=True,
     )
     system = system_of(llm.prompts[1])
     assert "櫻木真乃" in system

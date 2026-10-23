@@ -11,6 +11,7 @@ import pytest
 
 from eidolon.characters import CharacterConfigError, Fact, load_characters, parse_facts
 from eidolon.config import Settings, stand_assets_url_from_env
+from eidolon.producer import Birthday
 from tests.conftest import (
     AVATAR, BACKGROUND, KOGANE_SHEET, MANO_SHEET, SCSP_AVATAR, CharacterConfig, ClientFactory,
 )
@@ -37,6 +38,7 @@ async def test_character_list_shows_name_intro_avatar_colour_and_background_but_
             "avatar_url": "/api/characters/mano/avatar",
             "scsp_avatar_url": "/api/characters/mano/scsp-avatar",
             "color": "#ffbad6",
+            "birthday": "04-25",
             "background_url": "/api/characters/mano/background",
             "stand": None,  # no stand assets URL is configured
             "idol_id": 1,
@@ -58,6 +60,7 @@ async def test_character_list_shows_name_intro_avatar_colour_and_background_but_
             "avatar_url": None,
             "scsp_avatar_url": None,
             "color": "#f84cad",
+            "birthday": "02-25",
             "background_url": None,
             "stand": None,
             "idol_id": None,
@@ -379,14 +382,15 @@ def test_character_missing_a_required_field_is_rejected(tmp_path: Path):
     config = CharacterConfig(tmp_path)
     config.write("characters.toml", '[[characters]]\nid = "mano"\nname = "櫻木真乃"\n')
 
-    with pytest.raises(CharacterConfigError, match="intro、voice_id、sheet、color"):
+    with pytest.raises(CharacterConfigError, match="intro、voice_id、sheet、color、birthday"):
         load_characters(config.path)
 
 
 def test_character_id_must_be_safe_to_put_in_a_url(tmp_path: Path):
     config = CharacterConfig(tmp_path)
     config.write("characters.toml", '[[characters]]\nid = "Mano San"\nname = "a"\n'
-                 'intro = ""\nvoice_id = "v"\nsheet = "s.md"\ncolor = "#ffbad6"\n')
+                 'intro = ""\nvoice_id = "v"\nsheet = "s.md"\ncolor = "#ffbad6"\n'
+                 'birthday = "04-25"\n')
 
     with pytest.raises(CharacterConfigError, match="Mano San"):
         load_characters(config.path)
@@ -545,6 +549,28 @@ def test_repository_gives_each_character_her_other_names():
         assert c.name_zh and c.name_kana and c.name_romaji, c.id
         assert c.name_kana.count(" ") == 1 and c.name_kana.replace(" ", "") == readings[c.name], c.id
         assert re.fullmatch(r"[A-Z][a-z]+ [A-Z][a-z]+", c.name_romaji), c.id
+
+
+def test_repository_gives_each_character_her_birthday():
+    """As her character facts' first paragraph tells it; each has one, as loading needs."""
+    loaded = load_characters(REPO_CHARACTERS / "characters.toml")
+
+    assert loaded["madoka"].birthday == Birthday(10, 27)
+    assert loaded["hazuki"].birthday == Birthday(2, 3)
+
+
+@pytest.mark.parametrize("birthday", ["04/25", "02-30"])
+def test_birthday_must_be_a_day_of_the_year_as_mm_dd(tmp_path: Path, birthday: str):
+    config = CharacterConfig(tmp_path).add("mano", "櫻木真乃", "a", birthday=birthday)
+
+    with pytest.raises(CharacterConfigError, match="角色 mano 的 birthday"):
+        load_characters(config.path)
+
+
+def test_birthday_may_be_february_29(tmp_path: Path):
+    config = CharacterConfig(tmp_path).add("mano", "櫻木真乃", "a", birthday="02-29")
+
+    assert load_characters(config.path)["mano"].birthday == Birthday(2, 29)
 
 
 def test_repository_gives_each_character_her_photo_tags():

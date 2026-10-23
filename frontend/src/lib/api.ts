@@ -29,6 +29,8 @@ export type Character = {
   scsp_avatar_url: string | null;
   /** Her image colour, `#rrggbb`; the interface only uses what `herVars()` derives from it. */
   color: string;
+  /** Her birthday in the original, `MM-DD`; February 29 falls on February 28 in a year without it. */
+  birthday: string;
   background_url: string | null;
   /** Her Spine stand on the call layer; null (her call background alone) unless the deployment
    * configures her idol, her default outfit and where the stands are served from. */

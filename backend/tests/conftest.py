@@ -149,6 +149,7 @@ class CharacterConfig:
         avatar: bytes | None = None,
         scsp_avatar: bytes | None = None,
         color: str | None = "#ffbad6",
+        birthday: str | None = "07-07",
         background: bytes | None = None,
         speakers: list[str] | None = None,
         facts: str | None = None,
@@ -164,7 +165,8 @@ class CharacterConfig:
         `call_opener` her call opener, likewise; `other_names` her `name_zh`, `name_kana`
         and `name_romaji`; `liked_gifts` her liked gifts (None leaves them out), cake by
         default as every catalog the tests write has it; `photo` her `photo_tag` and
-        `photo_appearance`."""
+        `photo_appearance`; `birthday` her `"MM-DD"`, a day on which tests' clocks fall
+        on no one's birthday unless they set one (None leaves it out)."""
         entry = f'[[characters]]\nid = "{id}"\nname = "{name}"\nintro = "{intro}"\n'
         entry += f'voice_id = "{voice_id}"\nsheet = "sheets/{id}.md"\n'
         if sheet is not None:
@@ -177,6 +179,8 @@ class CharacterConfig:
             entry += f'scsp_avatar = "avatars-scsp/{id}.jpg"\n'
         if color is not None:
             entry += f'color = "{color}"\n'
+        if birthday is not None:
+            entry += f'birthday = "{birthday}"\n'
         if background is not None:
             self.write(f"backgrounds/{id}.jpg", background)
             entry += f'background = "backgrounds/{id}.jpg"\n'
@@ -231,10 +235,11 @@ def characters(tmp_path: Path) -> CharacterConfig:
             "mano", "櫻木真乃", MANO_SHEET, intro="illumination STARS 的中心", avatar=AVATAR,
             scsp_avatar=SCSP_AVATAR, color="#ffbad6", background=BACKGROUND, speakers=["真乃"],
             voice_id="mano-voice", idol_id=1, default_outfit="stand/1030010010", photo=MANO_PHOTO,
+            birthday="04-25",
         )
         .add(
             "kogane", "月岡恋鐘", KOGANE_SHEET, intro="L'Antica 的偶像", color="#f84cad",
-            speakers=["恋鐘"], voice_id="kogane-voice",
+            speakers=["恋鐘"], voice_id="kogane-voice", birthday="02-25",
         )
     )
 
