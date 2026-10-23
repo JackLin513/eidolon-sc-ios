@@ -252,10 +252,9 @@ class Happenings:
 
     async def write_records(self, user_id: str, rewarded: Rewarded | None) -> None:
         """Write the activity records of what the user was `rewarded` for, once it is kept:
-        each stage unlocked and each character complete, each a write
-        task of its own, apart from what it records; failing, only logged. Only what happens
-        is recorded: those the launch works out from before it are rewarded without coming
-        here."""
+        each stage unlocked and each character complete, each a write task of its own, apart
+        from what it records; failing, only logged. Only what happens is recorded: those the
+        launch works out from before it are rewarded without coming here."""
         if rewarded is None:
             return
         at = rewarded.rewarded_at

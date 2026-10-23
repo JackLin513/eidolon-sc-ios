@@ -939,9 +939,9 @@ def _forget_daily_tasks(db: sqlite3.Connection) -> None:
     """Daily tasks done were recorded, and rolled up, until they were retired; a database of
     theirs is left with none of them. Deleting records is only asked where there are any:
     else one with no table of users, as a test's may be, refuses it."""
-    done = "FROM activity_records WHERE kind = 'daily_task'"
-    if db.execute(f"SELECT EXISTS (SELECT 1 {done})").fetchone()[0]:
-        db.execute(f"DELETE {done}")
+    daily_task_records = "FROM activity_records WHERE kind = 'daily_task'"
+    if db.execute(f"SELECT EXISTS (SELECT 1 {daily_task_records})").fetchone()[0]:
+        db.execute(f"DELETE {daily_task_records}")
     db.execute("DELETE FROM record_rollups WHERE kind = 'daily_task'")
 
 

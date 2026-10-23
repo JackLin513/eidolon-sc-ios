@@ -45,6 +45,8 @@ async def test_the_daily_tasks_records_and_their_rollups_go_and_the_rest_stay(tm
     async with activity_in(path, clock) as log:
         turn = log.begin("turn", "u1", "mano", own_llm=False, exempt=False)
         await turn.finish("success")
+        call = log.begin("call", "u1", "mano", own_llm=False, exempt=False)
+        await call.finish("success", 120, "hung_up")
         await log.achievement_unlocked("u1", "mano", "turns", 1, clock.now)
         await log.character_complete("u1", "mano", clock.now)
         clock.advance(hours=1)

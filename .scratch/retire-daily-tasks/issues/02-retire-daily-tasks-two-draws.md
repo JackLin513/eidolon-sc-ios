@@ -16,3 +16,13 @@
 - [ ] 词汇表四条改完、「每日任务」条目删掉；代码里 grep 不到每日任务
 - [ ] pyright、ruff、前端类型检查和 lint 过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
 - [ ] 票收尾：给票 03 的交接（截图脚本改了什么、文案的新写法）写进票 03 的 Comments；推一次让 CI 跑；跑 `code-review`
+
+## Comments
+
+### 票 02 交接
+
+- 运行记录和看板这边已经拆干净（票 01），`activity.py`、`dashboard.py`、前端 `lib/dashboard` 里没有每日任务了。`Rewarded.daily_tasks` 还在 `happenings.py` 里算，没人读，这张票删。
+- 删 `daily_task_progress` 表的迁移可以挨着 `activity._forget_daily_tasks` 写，或者放在 `happenings._open` 里，看哪边顺。迁移测试可以接着写进 `backend/tests/test_daily_tasks_retired.py`。
+- 词汇表「运行记录」（「做完一项每日任务也留一条」）和「看板」（「每日任务和成就」小节、三项各做完几次）票 01 后已经和代码对不上了，这张票改词汇表时一起改。
+- `test_daily_tasks.py` 里 `test_a_turn_does_the_first_and_gives_a_draw_recording_no_task_done` 断言没有 `daily_task` 记录，随这个文件一起删就行。
+
