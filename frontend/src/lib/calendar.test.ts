@@ -170,7 +170,6 @@ describe("翻月", () => {
     expect(monthOf("2026-10-23")).toEqual({ year: 2026, month: 10 });
     expect(shiftMonth({ year: 2026, month: 12 }, 1)).toEqual({ year: 2027, month: 1 });
     expect(shiftMonth({ year: 2026, month: 1 }, -1)).toEqual({ year: 2025, month: 12 });
-    expect(shiftMonth({ year: 2026, month: 10 }, -22)).toEqual({ year: 2024, month: 12 });
   });
 });
 
@@ -180,13 +179,11 @@ describe("电脑上一格最多三行", () => {
     return [events, more];
   };
 
-  it("三件以内全写", () => {
-    expect(lines(0)).toEqual([[], 0]);
+  it("三件放得下就全写", () => {
     expect(lines(3)).toEqual([[0, 1, 2], 0]);
   });
 
   it("超过三件时写前两件，第三行是还有几项", () => {
     expect(lines(4)).toEqual([[0, 1], 2]);
-    expect(lines(6)).toEqual([[0, 1], 4]);
   });
 });

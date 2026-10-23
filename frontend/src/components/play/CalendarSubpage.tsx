@@ -42,13 +42,13 @@ const FILTER_ICONS = { character: BirthdayIcon, producer: BirthdayIcon, holiday:
 /**
  * 「日历」子页（`/play/calendar`，DESIGN.md「玩法页」）：页首返回键回玩法页，末端留给日程那一块的月 / 周切换。
  * 内容从上到下是筛选、月视图和点中的那一天的清单（默认今天，制作人时区）。节假日按月视图上的那几年取，
- * 没回来之前先画生日，这一天没有生日时先不说「这一天没有事」。
+ * 没回来之前先画生日，这一天所在的年没回来、又没有生日时先不说「这一天没有事」。
  * 好感度和礼物没开放时照常有。
  */
 export function CalendarSubpage() {
   const [month, setMonth] = useState<CalendarMonth | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
-  const { calendar, holidaysRead, keepShown } = useCalendar({
+  const { calendar, hasHolidaysOf, keepShown } = useCalendar({
     years: (today) => yearsOn(monthCells(month ?? monthOf(today), today)),
   });
   if (!calendar) {
@@ -88,7 +88,7 @@ export function CalendarSubpage() {
       />
       {visible.length === 0 ? (
         <p className="text-body text-muted-foreground">{t.nothingShown}</p>
-      ) : events.length > 0 || holidaysRead ? (
+      ) : events.length > 0 || hasHolidaysOf(partsOf(day).year) ? (
         <DayEvents date={day} events={events} />
       ) : (
         <p className="text-body text-muted-foreground">{copy.play.loading}</p>
@@ -108,7 +108,7 @@ function dayLabel(date: string): string {
   return `${t.date(month, day)} ${t.weekdays[weekday]}`;
 }
 
-/** 月历上方的一排筛选：每类一个按钮，按下的（中性 `bg-muted`）是开着的；制作人没生日时没有「我的生日」。 */
+/** 月视图上方的一排筛选：每类一个按钮，按下的（中性 `bg-muted`）是开着的；制作人没生日时没有「我的生日」。 */
 function Filters({
   kinds,
   visible,
@@ -316,11 +316,10 @@ function EventRow({ event }: { event: CalendarEvent<Character> }) {
       </>
     );
   }
-  const Icon = event.kind === "holiday" ? HolidayIcon : BirthdayIcon;
   return (
     <>
       <span className="flex size-6 shrink-0 items-center justify-center">
-        <Icon aria-hidden className="size-4 text-muted-foreground" />
+        <EventIcon event={event} />
       </span>
       <span className="truncate">{eventText(event)}</span>
     </>

@@ -16,7 +16,8 @@ const NO_PROFILE: Pick<ProducerProfile, "timezone" | "birthday"> = { timezone: n
  * （带生日、头像按外观换好），制作人档案读一次（生日和时区；读不到当作没生日、用浏览器的时区），节假日按年取
  * （`years` 从制作人的今天给出要哪几年；取过的留着，翻回来不再等，lib/holidays）。开着的几类读这台设备上记着的，
  * `keepShown` 改了就存下、重画。
- * 角色、档案和登录的用户都读到之前 `calendar` 是 null；`years` 里的节假日没都回来之前里面先没有它们，`holidaysRead` 为假。
+ * 角色、档案和登录的用户都读到之前 `calendar` 是 null；`years` 里的节假日没都回来之前里面先没有它们，`holidaysRead` 为假；
+ * `hasHolidaysOf` 看某一年回来了没有。
  */
 export function useCalendar({ years }: { years: (today: string) => readonly number[] }) {
   const { account, characters } = useDirectory();
@@ -77,5 +78,6 @@ export function useCalendar({ years }: { years: (today: string) => readonly numb
         }
       : null;
   const holidaysRead = wanted.length > 0 && wanted.every((year) => holidays.has(year));
-  return { calendar, holidaysRead, keepShown };
+  const hasHolidaysOf = (year: number) => holidays.has(year);
+  return { calendar, holidaysRead, hasHolidaysOf, keepShown };
 }
