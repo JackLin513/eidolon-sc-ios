@@ -40,6 +40,34 @@ final class PromptFidelityTests: XCTestCase {
         XCTAssertEqual(ReplyFormatInstructions.text, expected)
     }
 
+    func testDirectedFormatInstructionsMatchUpstream() throws {
+        let expected = try String(
+            contentsOf: resource("format-instructions-directed", "txt"),
+            encoding: .utf8
+        )
+        XCTAssertEqual(ReplyFormatInstructions.directed, expected)
+    }
+
+    func testTheVoiceModelChoosesTheInstructions() {
+        // Only drama-3 reads paired tags and directions (upstream `TAG_READERS`).
+        XCTAssertEqual(
+            ReplyFormatInstructions.forVoice(model: "drama-3"),
+            ReplyFormatInstructions.directed
+        )
+        XCTAssertEqual(
+            ReplyFormatInstructions.forVoice(model: "s2.1-pro-free"),
+            ReplyFormatInstructions.text
+        )
+        XCTAssertEqual(
+            ReplyFormatInstructions.forVoice(model: "s2.1-pro"),
+            ReplyFormatInstructions.text
+        )
+        XCTAssertEqual(
+            ReplyFormatInstructions.forVoice(model: nil),
+            ReplyFormatInstructions.text
+        )
+    }
+
     // MARK: - Assembly order
 
     func testPromptFollowsUpstreamOrder() throws {

@@ -17,6 +17,9 @@ struct Scenario: Decodable {
     var now: String
     var history: [Turn]
     var message: String
+    var talking: String?
+    var voiceModel: String?
+
 
     enum CodingKeys: String, CodingKey {
         case characterID = "character_id"
@@ -25,6 +28,8 @@ struct Scenario: Decodable {
         case now
         case history
         case message
+        case talking
+        case voiceModel = "voice_model"
     }
 }
 
@@ -110,7 +115,9 @@ func main() async throws {
         provider: provider,
         now: now,
         timeZone: zone,
-        tracing: .off
+        tracing: .off,
+        talking: scenario.talking == "inCall" ? .inCall : .typing,
+        voicedBy: scenario.voiceModel
     ) {}
 
     let prompt = provider.prompts.last ?? []

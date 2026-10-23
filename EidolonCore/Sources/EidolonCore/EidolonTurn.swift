@@ -66,7 +66,9 @@ extension Eidolon {
         historyTurns: Int = 20,
         now: Date = Date(),
         timeZone: TimeZone = .current,
-        tracing: TurnTracing = .on
+        tracing: TurnTracing = .on,
+        talking: NowPrompt.Talking = .typing,
+        voicedBy model: String? = nil
     ) -> AsyncThrowingStream<TurnEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -81,7 +83,9 @@ extension Eidolon {
                         historyTurns: historyTurns,
                         now: now,
                         timeZone: timeZone,
-                        tracing: tracing
+                        tracing: tracing,
+                        talking: talking,
+                        voicedBy: model
                     ) { continuation.yield($0) }
                     continuation.yield(.finished(record))
                     continuation.finish()
@@ -144,6 +148,8 @@ extension Eidolon {
         now: Date,
         timeZone: TimeZone,
         tracing: TurnTracing,
+        talking: NowPrompt.Talking,
+        voicedBy model: String?,
         emit: (TurnEvent) -> Void
     ) async throws -> TurnRecord {
         let characters = try characters()
@@ -240,9 +246,12 @@ extension Eidolon {
         let nowText = NowPrompt.text(
             now: now,
             timeZone: zone,
-            talking: .typing,
+            talking: talking,
             affinityLines: affinityLines,
-            lastContact: try lastContact(conversationID: existingConversation),
+            // In a call they are talking right now: no "last time" to tell her.
+            lastContact: talking == .inCall
+                ? nil
+                : try lastContact(conversationID: existingConversation),
             birthday: producer.birthday
         )
         let nowSection = ([nowText, PromptAssembler.cannotSendPhoto, retrieved.memories, retrieved.references]
@@ -255,7 +264,8 @@ extension Eidolon {
             world: world,
             producer: producer,
             today: Self.isoDay(now, in: zone),
-            nowSection: nowSection
+            nowSection: nowSection,
+            formatInstructions: ReplyFormatInstructions.forVoice(model: model)
         )
         let messages = try assembler.prompt(history: history, text: text)
 
@@ -795,6 +805,9 @@ struct PromptAssembler {
     let today: String
     /// The per-turn section: the time, and how she feels toward the producer now.
     let nowSection: String?
+    /// The reply format: the variant the voice model reads (ADR-0015's call turns pass
+    /// the model; text turns pass none).
+    var formatInstructions: String = ReplyFormatInstructions.text
 
     func prompt(history: [StoredMessage], text: String) throws -> [PromptMessage] {
         guard let sheetPath = character.sheet else {
@@ -811,7 +824,7 @@ struct PromptAssembler {
         if let world {
             shared.append(world.prompt(name: character.name, today: today))
         }
-        shared.append(ReplyFormatInstructions.text)
+        shared.append(formatInstructions)
 
         var messages = [
             PromptMessage(.system, shared.joined(separator: "\n\n")),

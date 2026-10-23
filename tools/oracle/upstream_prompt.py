@@ -101,9 +101,18 @@ async def run(upstream: Path, scenario: dict) -> list[dict[str, str]]:
                     pass
 
             clock_state["now"] = date(scenario["now"])
+            from eidolon.engine import InCall
+
+            in_call = (
+                InCall(0, ())
+                if scenario.get("talking") == "inCall"
+                else None
+            )
             async for _ in engine.turn(
                 conversation, scenario["message"], llms,
                 device_timezone=scenario["timezone"],
+                in_call=in_call,
+                voiced_by=scenario.get("voice_model"),
             ):
                 pass
             prompt = llm.prompts[-1]

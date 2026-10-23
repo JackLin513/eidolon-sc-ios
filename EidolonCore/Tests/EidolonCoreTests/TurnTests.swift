@@ -132,6 +132,39 @@ final class TurnTests: XCTestCase {
         )
     }
 
+    func testACallTurnAsksHerToAnswerOnThePhone() async throws {
+        let eidolon = try await installedEidolon()
+        let provider = RecordingChatProvider(chunks: ["<ja>もしもし</ja><zh>喂</zh>"])
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano",
+            text: "もしもし",
+            provider: provider,
+            talking: .inCall,
+            voicedBy: "s2.1-pro-free"
+        ) {}
+
+        let prompt = try XCTUnwrap(provider.prompts.first)
+        let all = prompt.filter { $0.role == .system }.map(\.content).joined(separator: "\n")
+        XCTAssertTrue(all.contains("制作人正在和你打电话"))
+        XCTAssertFalse(all.contains("制作人正在用文字和你聊天"))
+        XCTAssertTrue(try XCTUnwrap(prompt.first).content.hasSuffix(ReplyFormatInstructions.text))
+    }
+
+    func testADirectedVoiceModelGetsDirectedInstructions() async throws {
+        let eidolon = try await installedEidolon()
+        let provider = RecordingChatProvider(chunks: ["<ja>もしもし</ja><zh>喂</zh>"])
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano",
+            text: "もしもし",
+            provider: provider,
+            talking: .inCall,
+            voicedBy: "drama-3"
+        ) {}
+
+        let shared = try XCTUnwrap(try XCTUnwrap(provider.prompts.first).first).content
+        XCTAssertTrue(shared.hasSuffix(ReplyFormatInstructions.directed))
+    }
+
     func testTheLastMessageIsWhatTheProducerSaid() async throws {
         let eidolon = try await installedEidolon()
         let provider = RecordingChatProvider(chunks: ["<ja>うん</ja><zh>嗯</zh>"])
