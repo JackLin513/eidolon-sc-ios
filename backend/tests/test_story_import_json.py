@@ -100,7 +100,7 @@ async def test_json_only_episodes_have_no_translation_but_can_be_recalled(
     assert card is not None
     assert all(line.zh is None for line in card.lines)
     hits = await importer.corpus.search("ちゃんぽん", "kogane", limit=1)
-    assert [p.episode.id for p in hits] == ["produce_events/201100501"]
+    assert [p.episode_id for p in hits] == ["produce_events/201100501"]
     [source] = await importer.corpus.catalog("kogane")
     assert source.category == "P卡剧情"
     assert [e.episode_id for e in source.episodes] == ["produce_events/201100501"]

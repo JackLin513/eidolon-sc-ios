@@ -79,7 +79,8 @@ for each deleted user, the same for all their rows, so that they still count as 
 
 NOT_USER_DATA = frozenset(
     {
-        "episodes", "episode_cast", "episode_lines", "episode_passages", "embedded_texts",
+        "episodes", "episode_cast", "episode_lines", "episode_passages",
+        "story_corpus_version", "embedded_texts",
         "service_calls", "config_overrides", "price_overrides", "price_catalog",
         "price_catalog_thinking", "price_catalog_hosts", "price_catalog_providers",
         "price_catalog_offers", "price_catalog_state", "banned_identities", "announcements",

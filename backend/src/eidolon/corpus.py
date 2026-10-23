@@ -12,6 +12,13 @@ Each passage keeps one vector, from the embedding model it was last embedded wit
 only passages embedded with the current model are searched. After the model changes,
 `embed_missing` re-embeds the rest from their stored text (`eidolon reembed`).
 
+The vectors are searched in memory: every passage's from the current model, read at once
+(`load`, as the server starts) and kept as one matrix, with the rows of each character's
+episodes. Episodes are imported and re-embedded by commands, in a process of their own, so
+every write to the corpus also counts up its version, in the same transaction; a search
+that finds the corpus at a version other than the one it searched loads the vectors anew,
+in the background, and searches go on with those held until then.
+
 The story catalog is read from the same tables: each character's episodes, grouped
 by the card or event they belong to, so it is always in step with the last import.
 
@@ -20,16 +27,22 @@ stays out of the repository (ADR-0003), read and written through the data access
 """
 
 import asyncio
+import logging
 import sqlite3
+import time
 import typing
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
-from eidolon.data_access import Database
+import numpy as np
+
+from eidolon.data_access import Closed, Database
 from eidolon.database import by_name
-from eidolon.embedding import Document, Embedder, nearest, to_blob
+from eidolon.embedding import Document, Embedder, nearest_rows, to_blob, unit_rows
+
+log = logging.getLogger(__name__)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS episodes (
@@ -62,6 +75,11 @@ CREATE TABLE IF NOT EXISTS episode_passages (
     embedding BLOB NOT NULL,
     PRIMARY KEY (episode_id, seq)
 );
+CREATE TABLE IF NOT EXISTS story_corpus_version (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    version INTEGER NOT NULL
+);
+INSERT OR IGNORE INTO story_corpus_version (id, version) VALUES (1, 0);
 """
 
 _PASSAGE_CHARS = 1200
@@ -122,9 +140,22 @@ class CatalogSource:
 
 @dataclass(frozen=True)
 class Passage:
-    episode: Episode
+    episode_id: str
     text: str
     score: float
+
+
+@dataclass(frozen=True)
+class _Vectors:
+    """Every passage's vector from one model, as the corpus was at one version."""
+
+    version: int
+    keys: list[tuple[str, int]]
+    """Each row's passage: its episode, and its place in it."""
+    matrix: np.ndarray
+    """The vectors, as `unit_rows`."""
+    rows: dict[str, np.ndarray]
+    """The rows of the passages of the episodes each character is cast in."""
 
 
 class StoryCorpus:
@@ -136,6 +167,10 @@ class StoryCorpus:
         """How many passages had no vector from this corpus's embedder as it was opened,
         and so cannot be found: those embedded before the embedding service, model or
         dimensions changed."""
+        self._held: _Vectors | None = None
+        """The vectors searched, once loaded."""
+        self._loading: asyncio.Task[_Vectors] | None = None
+        """The load under way, if one is."""
 
     async def save(self, episodes: list[Episode]) -> int:
         """Insert or replace these episodes; returns how many passages had to be embedded."""
@@ -155,7 +190,7 @@ class StoryCorpus:
 
     async def remove(self, episode_id: str) -> bool:
         """Remove an episode if present; returns whether it was."""
-        return await self._db.write(_delete, episode_id)
+        return await self._db.write(_remove, episode_id)
 
     async def get(self, episode_id: str) -> Episode | None:
         return await self._db.read(_get, episode_id)
@@ -198,16 +233,57 @@ class StoryCorpus:
     async def search_by_vector(
         self, query_vector: Sequence[float], character_id: str, limit: int = 5
     ) -> list[Passage]:
-        """Like `search`, for a query already embedded with this corpus's embedder."""
-        rows = await self._db.read(_passages_of_cast, character_id, self._embedder.model)
-        best = await asyncio.to_thread(nearest, [r["embedding"] for r in rows], query_vector, limit)
-        found = await self.episodes(dict.fromkeys(rows[i]["episode_id"] for i, _ in best))
-        episodes = {e.id: e for e in found}
+        """Like `search`, for a query already embedded with this corpus's embedder. The
+        first search waits for the vectors to be loaded; one that finds the corpus changed
+        since has them loaded anew, for the searches after it."""
+        held = self._held or await asyncio.shield(self._load_soon())
+        best: list[tuple[tuple[str, int], float]] = []
+        if (rows := held.rows.get(character_id)) is not None:
+            found = await asyncio.to_thread(nearest_rows, held.matrix, query_vector, limit, rows)
+            best = [(held.keys[rows[i]], score) for i, score in found]
+        version, texts = await self._db.read(_texts, [key for key, _ in best])
+        if version != held.version:
+            self._load_soon()
         return [
-            Passage(episodes[rows[i]["episode_id"]], rows[i]["text"], score)
-            for i, score in best
-            if rows[i]["episode_id"] in episodes  # unless removed since
+            Passage(key[0], texts[key], score)
+            for key, score in best
+            if key in texts  # unless removed since
         ]
+
+    async def load(self) -> None:
+        """Load the vectors to search now, as they are in the corpus, waiting for it: as
+        the server starts, so that its first search need not."""
+        if (under_way := self._loading) is not None:
+            await asyncio.wait([under_way])  # begun, it may be, before the corpus changed
+        await asyncio.shield(self._load_soon())
+
+    async def aclose(self) -> None:
+        """Stop loading the vectors, if they are being loaded."""
+        if (loading := self._loading) is not None:
+            loading.cancel()
+            await asyncio.gather(loading, return_exceptions=True)
+
+    def _load_soon(self) -> "asyncio.Task[_Vectors]":
+        """The load under way, else one begun now."""
+        if self._loading is None:
+            self._loading = asyncio.create_task(self._load())
+            self._loading.add_done_callback(_log_failure)
+        return self._loading
+
+    async def _load(self) -> _Vectors:
+        try:
+            started = time.monotonic()
+            version, passages, cast = await self._db.read(_vectors, self._embedder.model)
+            held = await asyncio.to_thread(_searchable, version, passages, cast)
+            self._held = held
+            log.info(
+                "story vectors loaded: version %d, %d passages, %.0f MB, in %.0f ms",
+                version, len(held.keys), held.matrix.nbytes / 1e6,
+                (time.monotonic() - started) * 1000,
+            )
+            return held
+        finally:
+            self._loading = None
 
     async def embed_missing(
         self, batch: int = REEMBED_BATCH, progress: Callable[[int], None] | None = None
@@ -290,6 +366,19 @@ def _save(
                 for i, text in enumerate(passages[episode.id])
             ],
         )
+    _changed(db)
+
+
+def _remove(db: sqlite3.Connection, episode_id: str) -> bool:
+    removed = _delete(db, episode_id)
+    if removed:
+        _changed(db)
+    return removed
+
+
+def _changed(db: sqlite3.Connection) -> None:
+    """Count up the corpus's version, for a server to search it anew."""
+    db.execute("UPDATE story_corpus_version SET version = version + 1")
 
 
 def _get(db: sqlite3.Connection, episode_id: str) -> Episode | None:
@@ -342,17 +431,64 @@ def _catalog(db: sqlite3.Connection, character_id: str) -> list[CatalogSource]:
     ]
 
 
-def _passages_of_cast(
-    db: sqlite3.Connection, character_id: str, model: str
-) -> list[sqlite3.Row]:
-    """The episode, text and vector from `model` of each passage of the episodes
-    `character_id` is cast in."""
-    return by_name(db).execute(
-        "SELECT p.episode_id, p.text, p.embedding FROM episode_passages p"
-        " JOIN episode_cast c ON c.episode_id = p.episode_id"
-        " WHERE c.character_id = ? AND p.model = ?",
-        (character_id, model),
+def _version(db: sqlite3.Connection) -> int:
+    return db.execute("SELECT version FROM story_corpus_version").fetchone()[0]
+
+
+def _vectors(
+    db: sqlite3.Connection, model: str
+) -> tuple[int, list[tuple[str, int, bytes]], list[tuple[str, str]]]:
+    """The corpus's version; the episode, place and vector from `model` of every passage
+    that has one; and each character with an episode they are cast in."""
+    passages = db.execute(
+        "SELECT episode_id, seq, embedding FROM episode_passages WHERE model = ?"
+        " ORDER BY episode_id, seq",
+        (model,),
     ).fetchall()
+    cast = db.execute("SELECT character_id, episode_id FROM episode_cast").fetchall()
+    return _version(db), passages, cast
+
+
+def _searchable(
+    version: int, passages: list[tuple[str, int, bytes]], cast: list[tuple[str, str]]
+) -> _Vectors:
+    """What `_vectors` reads, to search."""
+    of_episode: dict[str, list[int]] = {}
+    for row, (episode_id, _, _) in enumerate(passages):
+        of_episode.setdefault(episode_id, []).append(row)
+    of_character: dict[str, list[int]] = {}
+    for character_id, episode_id in cast:
+        of_character.setdefault(character_id, []).extend(of_episode.get(episode_id, ()))
+    return _Vectors(
+        version,
+        [(episode_id, seq) for episode_id, seq, _ in passages],
+        unit_rows([embedding for _, _, embedding in passages]),
+        {c: np.array(sorted(rows), dtype=np.intp) for c, rows in of_character.items() if rows},
+    )
+
+
+def _log_failure(loading: "asyncio.Task[_Vectors]") -> None:
+    """Log how loading the vectors failed, which no search may be waiting to hear of."""
+    if loading.cancelled():
+        return
+    error = loading.exception()
+    if error is not None and not isinstance(error, Closed):
+        log.error("loading the story vectors failed", exc_info=error)
+
+
+def _texts(
+    db: sqlite3.Connection, keys: list[tuple[str, int]]
+) -> tuple[int, dict[tuple[str, int], str]]:
+    """The corpus's version, and the text of each passage of `keys` (an episode, and a
+    passage's place in it) still in it."""
+    texts = {}
+    for key in keys:
+        row = db.execute(
+            "SELECT text FROM episode_passages WHERE episode_id = ? AND seq = ?", key
+        ).fetchone()
+        if row is not None:
+            texts[key] = row[0]
+    return _version(db), texts
 
 
 def _unembedded(
@@ -372,11 +508,14 @@ def _unembedded(
 def _reembed(db: sqlite3.Connection, rows: list[tuple[str, bytes, str, int, str]]) -> int:
     """Each passage's new model and vector, unless an import rewrote its text since; how
     many were."""
-    return db.executemany(
+    reembedded = db.executemany(
         "UPDATE episode_passages SET model = ?, embedding = ?"
         " WHERE episode_id = ? AND seq = ? AND text = ?",
         rows,
     ).rowcount
+    if reembedded:
+        _changed(db)
+    return reembedded
 
 
 def _known_vectors(

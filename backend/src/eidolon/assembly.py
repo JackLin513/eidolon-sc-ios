@@ -47,6 +47,7 @@ from eidolon.loop_lag import watch_the_loop
 from eidolon.randomness import Random, secure_random
 from eidolon.clock import Clock, utc_now
 from eidolon.config import DEFAULT_BAILIAN_STT_MODEL, Settings
+from eidolon.corpus import StoryCorpus
 from eidolon.data_access import Database
 from eidolon.data_package import DataPackages
 from eidolon.embedding import EMBEDDING_TIMEOUT, Embedder, open_embedder
@@ -142,20 +143,23 @@ class Backend:
     """Has characters reach out to users once their time comes."""
     world: World | None = None
     """The world setting; None without its data file."""
+    corpus: StoryCorpus | None = None
+    """The story corpus retrieval searches; None with retrieval off."""
     _closers: list[Closer] = field(default_factory=list, repr=False)
     _keeping_fresh: asyncio.Task[None] | None = field(default=None, repr=False)
     _probing: asyncio.Task[None] | None = field(default=None, repr=False)
     _reaching_out: asyncio.Task[None] | None = field(default=None, repr=False)
     _tidying: asyncio.Task[None] | None = field(default=None, repr=False)
     _watching: asyncio.Task[None] | None = field(default=None, repr=False)
+    _loading_stories: asyncio.Task[None] | None = field(default=None, repr=False)
 
     async def start(self) -> None:
         """What is done as the server starts, on its event loop: try the overrides of the
         configuration, falling back to `.env` where one fails; keep the price catalogs
         fresh from now on, fetching them in the background, try the services without
         calls for their status, have characters reach out once their time comes, delete
-        what ages out (`housekeeping`), and watch how far behind the loop runs
-        (`loop_lag`)."""
+        what ages out (`housekeeping`), watch how far behind the loop runs (`loop_lag`),
+        and load the story corpus's vectors to search in the background."""
         asyncio.get_running_loop().set_default_executor(
             ThreadPoolExecutor(THREADS, thread_name_prefix="eidolon")
         )
@@ -165,6 +169,8 @@ class Backend:
         self._reaching_out = asyncio.create_task(self.reach_outs.keep_reaching_out())
         self._tidying = asyncio.create_task(keep_tidy(self.usage.forget_old, self.activity.forget_old))
         self._watching = asyncio.create_task(watch_the_loop(lambda: self.calls.in_progress))
+        if self.corpus is not None:
+            self._loading_stories = asyncio.create_task(self.corpus.load())
 
     async def aclose(self) -> None:
         """Close what `build` opened, last opened first, once what `start` began is over."""
@@ -172,7 +178,7 @@ class Backend:
             task
             for task in (
                 self._keeping_fresh, self._probing, self._reaching_out, self._tidying,
-                self._watching,
+                self._watching, self._loading_stories,
             )
             if task is not None
         ]
@@ -310,10 +316,14 @@ def build(
     retrieval_judge = config.retrieval_judge()
 
     retrieval = None
+    corpus = None
     if retrieval_judge is not None and embedder is not None and reranker is not None:
+        references = open_reference_sources(database, embedder, characters.values(), world)
+        corpus = references.corpus
+        closers.append(corpus.aclose)  # closed before the database, loading from it
         retrieval = Retrieval(
             retrieval_judge,
-            open_reference_sources(database, embedder, characters.values(), world),
+            references,
             reranker,
             lambda: config.rerank_thresholds.references,
         )
@@ -411,5 +421,6 @@ def build(
         data_packages=DataPackages(database, store, memories, characters, gift_catalog, clock),
         reach_outs=reach_outs,
         world=world,
+        corpus=corpus,
         _closers=closers,
     )
