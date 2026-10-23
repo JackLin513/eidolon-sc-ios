@@ -264,6 +264,7 @@ async def test_memories_move_to_another_deployment_superseded_as_they_were(
     await turn(here, await start_conversation(here, "mano"), "我住在大阪")
     await turn(here, await start_conversation(here, "kogane"), "我搬到东京了")
     await turn(here, await start_conversation(here, "mano"), "我家的猫叫小白哦")
+    kept = await remembered(here)  # once all three are written down
     there = other_deployment(make_client, settings, tmp_path)
 
     package = await export(here, "memories")
@@ -284,8 +285,8 @@ async def test_memories_move_to_another_deployment_superseded_as_they_were(
 
     assert res.status_code == 200, res.text
     assert res.json() == {**NOTHING_ELSE, "memories": 3, "profile": False}
-    assert await remembered(there) == await remembered(here)
-    assert [m[4] for m in await remembered(there)] == [False, False, True]
+    assert await remembered(there) == kept
+    assert [m[4] for m in kept] == [False, False, True]
 
 
 def memories_package(*memories: dict) -> bytes:
