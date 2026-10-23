@@ -13,7 +13,7 @@
  * 用逗号隔开）给她们开新对话重聊一遍。
  * 通话那几张真的打电话：假麦克风播一段 Windows 语音合成（System.Speech，要装中文语音）念的中文，她听写下来、
  * 用 Fish Audio 的声音回答；每通电话都在她的对话里记下一个回合，所以先拍手机的对话页再打电话。
- * 礼物页那张不真抽奖：直接往开发库（`--database`，默认 backend/data/eidolon.db）里写下固定的背包、一张重置卡、
+ * 玩法页那张（gifts）不真抽奖：直接往开发库（`--database`，默认 backend/data/eidolon.db）里写下固定的背包、一张重置卡、
  * 几次抽奖次数、今天每日任务的进度和合起来的成就，每次重跑都一样；后端要配判断模型，「好感度和礼物」开着。
  * 照片那张要她真发一张：后端要配判断模型和生图（NOVELAI_API_KEY），第一次准备演示对话时花一张图的额度。
  * `--only` 只拍列出的几项，例如 `--only landing,app`；落地页的滚动动图（landing-tour）一步一拍，要十几分钟。
@@ -84,7 +84,7 @@ const CALLEE = "mano";
 const PHOTOGRAPHER = "meguru";
 /** 通话里对她说的话（假麦克风念出来）。 */
 const CALL_LINE = "真乃，最近有没有遇到什么开心的事？";
-/** 礼物页上背包里的礼物（目录 characters/gifts.toml 的 id 和件数）：几类、几档都有，两行正好排满。 */
+/** 背包里的礼物（目录 characters/gifts.toml 的 id 和件数）：几类、几档都有，礼物子页上两行正好排满；玩法页「礼物」卡写的件数是它们的和。 */
 const BACKPACK: Record<string, number> = {
   cake: 1,
   pudding: 2,
@@ -97,13 +97,13 @@ const BACKPACK: Record<string, number> = {
   plush: 1,
   "preserved-flower": 1,
 };
-/** 礼物页上的抽奖次数和重置卡张数。 */
+/** 抽奖次数和重置卡张数（「礼物」卡的状态）。 */
 const DRAWS = 3;
 const RESET_CARDS = 1;
-/** 礼物页上今天每日任务的进度：回合数、送出的礼物件数。 */
+/** 今天每日任务的进度（「每日任务与成就」卡的状态）：回合数、送出的礼物件数。 */
 const TODAY_TASKS = { turns: 3, gifts: 0 };
 /**
- * 礼物页「成就」里合起来的两项各到第 1 阶段：来过的天数、抽过的奖（往来过几位由演示对话推出来）。键是后端的成就 id，
+ * 「成就」里合起来的两项各到第 1 阶段：来过的天数、抽过的奖（往来过几位由演示对话推出来）。键是后端的成就 id，
  * 数值要落在 backend/src/eidolon/achievements.py `ALL_CHARACTERS` 的第 1、2 阶段门槛之间，改门槛时跟着改。
  */
 const ACHIEVEMENTS_OF_ALL = { days: 12, draws: 16 };
@@ -537,18 +537,21 @@ async function stockGifts(context: BrowserContext): Promise<void> {
   }
 }
 
+/** 玩法页第一级：「礼物」和「每日任务与成就」两张卡。 */
 async function gifts(browser: Browser): Promise<void> {
   const context = await signedIn(browser, { ...DESKTOP, colorScheme: "light" });
   try {
     await stockGifts(context);
     const page = await context.newPage();
-    await page.goto(`${origin}/gifts`, { waitUntil: "networkidle" });
+    // 新到的抽奖次数在「礼物」卡上带点，进了礼物子页才记成看过；新解锁的成就在「每日任务与成就」卡上带点、状态里多一段
+    // 「成就 n 个新解锁」，离开那个子页才记成看过：先把两个子页各进一趟再回玩法页，拍出来不带点。
+    await page.goto(`${origin}/play/gifts`, { waitUntil: "networkidle" });
     await page.getByRole("region", { name: "抽奖" }).waitFor();
-    // 成就一行新解锁时名字旁有点，离开礼物页才记成看过：从导航去一趟对话再回来，拍出来不带点。
-    await page.getByRole("link", { name: "对话" }).click();
-    await page.waitForURL("**/conversations");
-    await page.getByRole("link", { name: "礼物" }).click();
+    await page.goto(`${origin}/play/tasks`, { waitUntil: "networkidle" });
     await page.getByRole("region", { name: "成就" }).waitFor();
+    await page.getByRole("button", { name: "返回" }).click();
+    await page.waitForURL("**/play");
+    await page.getByRole("link", { name: /还有 \d+ 次抽奖/ }).waitFor();
     await settle(page);
     await still(page, "gifts");
   } finally {

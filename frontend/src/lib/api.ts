@@ -296,7 +296,7 @@ export class ApiError extends Error {
   /** Refused because she is in a cooldown with the user (GLOSSARY.md「冷却」) until this time
    * (ISO); null for any other refusal. */
   readonly cooldownUntil: string | null;
-  /** Refused because affinity and gifts are not open (GLOSSARY.md「礼物」): the gifts page shows
+  /** Refused because affinity and gifts are not open (GLOSSARY.md「礼物」): the play page shows
    * them closed. */
   readonly giftsClosed: boolean;
   /** What the refusal was, where the backend says so beside its reason (a data package's

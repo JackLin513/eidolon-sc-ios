@@ -60,7 +60,7 @@ describe("what rewards have been seen on this device", () => {
   });
 });
 
-describe("the dot on 「礼物」", () => {
+describe("the dot on 「玩法」 and the gifts card", () => {
   const at = "2026-10-20T08:00:00+00:00";
 
   it("is lit by any reward when none has been seen on this device", () => {

@@ -36,7 +36,7 @@ export { CircleAlert as FailureIcon } from "lucide-react";
 // 设置页「已绑定」的提示和它的关闭键（shadcn-redesign 18）。
 export { CircleCheck as SuccessIcon, X as CloseIcon } from "lucide-react";
 
-// 礼物页每日任务一节里没做完的一项（做完的用 SuccessIcon）；成就面板里没集齐的「集齐」一行也用它。
+// 每日任务一节里没做完的一项（做完的用 SuccessIcon）；成就面板里没集齐的「集齐」一行也用它。
 export { Circle as TaskOpenIcon } from "lucide-react";
 
 // 对话页更多菜单的「成就」，和解锁她的阶段时页首好感度标识左边跳出的奖杯（GLOSSARY.md「成就」）。
@@ -69,10 +69,11 @@ export { Captions as TextOnlyIcon } from "lucide-react";
 // 通话层底栏的打字键：点了底栏换成输入栏。
 export { Keyboard as TypingIcon } from "lucide-react";
 
-// 导航栏（电脑）和 dock（手机）的三项。
-export { Gift as GiftIcon, MessageCircle as ConversationsIcon, Settings as SettingsIcon } from "lucide-react";
+// 导航栏（电脑）和 dock（手机）的三项；玩法页第一级「礼物」卡的图标也是 GiftIcon（「每日任务与成就」卡用 AchievementsIcon）。
+export { MessageCircle as ConversationsIcon, Settings as SettingsIcon, Shapes as PlayIcon } from "lucide-react";
+export { Gift as GiftIcon } from "lucide-react";
 
-// 礼物页：抽奖台的「抽一次」和抽到稀有礼物时插画角上的闪光；我的礼物的四个类别筛选；
+// 礼物子页：抽奖台的「抽一次」和抽到稀有礼物时插画角上的闪光；我的礼物的四个类别筛选；
 // 重置卡确认框里「现在的档位 → 信任」的箭头。
 export { Sparkles as DrawIcon, Sparkles as RareIcon } from "lucide-react";
 export { ArrowRight as BecomesIcon } from "lucide-react";

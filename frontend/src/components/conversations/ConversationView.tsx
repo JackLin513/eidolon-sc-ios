@@ -96,7 +96,7 @@ const noSubscription = () => () => {};
  * 好感度可用时，电话键和更多菜单之间是好感度标识（GLOSSARY.md「好感度」）；不可用时读到 null，不显示。
  * 她在冷却中（GLOSSARY.md「冷却」）时，输入栏换成一行说明和「送她一件礼物」、电话键禁用，到点自己恢复。
  * 她结束了这个对话（GLOSSARY.md「已结束的对话」）时，输入栏换成结束卡「她结束了对话」和「开个新对话」、电话键禁用，只能往上翻看；她还在冷却中时，结束卡写上解除时刻、加「送她一件礼物」。
- * 送礼的入口（冷却时的输入栏、标识的说明末尾、冷却版结束卡）都跳到礼物页，带上她（spec「打开好感度藏起的送礼入口」），
+ * 送礼的入口（冷却时的输入栏、标识的说明末尾、冷却版结束卡）都跳到玩法里的礼物子页，带上她（spec「打开好感度藏起的送礼入口」），
  * 礼物一律记进当前对话；好感度和礼物同一个开关，好感度读不到时这些入口都不在。
  *
  * 更多菜单依次是「新对话」「历史对话」「换衣装」「成就」。「成就」打开她的成就面板（`AchievementsPanel`），「好感度和礼物」关着时没有；
@@ -154,7 +154,7 @@ export function ConversationView({
   }, [snapshot.newPhoto, live]);
 
   const isOpen = conversation.status === "open";
-  // 送礼入口去的礼物页：只带她，礼物一律记进当前对话（历史对话里点的也一样）。
+  // 送礼入口去的礼物子页：只带她，礼物一律记进当前对话（历史对话里点的也一样）。
   const gifts = giftsHref(character.id);
   // 在历史对话里开新对话：先回到当前对话。
   const startNew = () => {
@@ -302,7 +302,7 @@ export function ConversationView({
 
   const canSend = isOpen && draft.trim() !== "";
   const cooldownUntil = cooling ? affinity?.cooldown_until : null;
-  // 冷却中的解除时刻和去礼物页的「送她一件礼物」：冷却那一行和冷却版结束卡共用。
+  // 冷却中的解除时刻和去礼物子页的「送她一件礼物」：冷却那一行和冷却版结束卡共用。
   const until = cooldownUntil ? untilText(new Date(cooldownUntil), new Date(), timeZone) : null;
   const giveHer = (
     <Button variant="outline" size="lg" nativeButton={false} render={<NextLink href={gifts} onClick={guard(gifts)} />}>
@@ -326,7 +326,7 @@ export function ConversationView({
       </Button>
     </ComposerCard>
   ) : until ? (
-    // 冷却中：一行说明代替输入框，右边是去礼物页的「送她一件礼物」；草稿留着，到点换回输入框时还在。
+    // 冷却中：一行说明代替输入框，右边是去礼物子页的「送她一件礼物」；草稿留着，到点换回输入框时还在。
     <div inert={isCovered} className="flex min-h-14 shrink-0 items-center gap-3 border-t bg-background px-3 py-2">
       <div role="status" className="flex min-w-0 flex-1 items-center gap-2 text-body text-muted-foreground">
         <CooldownIcon aria-hidden className="size-4 shrink-0" />

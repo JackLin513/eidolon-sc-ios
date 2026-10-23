@@ -7,6 +7,7 @@ import {
   keepAchievementsSeenUpTo,
   latestUnlock,
   unseenRows,
+  unseenStages,
   withUnlocked,
   type Achievement,
   type HerAchievements,
@@ -196,9 +197,19 @@ function ofAll({ characters = null, draws = [null, null] }: { characters?: strin
   ] satisfies Achievement[];
 }
 
-describe("礼物页那一小节", () => {
+describe("「每日任务与成就」子页那一小节", () => {
   const before = "2026-10-20T08:00:00+00:00";
   const after = "2026-10-20T09:00:00+00:00";
+
+  it("玩法卡上的新解锁数是解锁晚于看过的阶段数，和带点的行用同一个看过的时刻比", () => {
+    const some = ofAll({ characters: before, draws: [before, after] });
+
+    expect(unseenStages(some, null)).toBe(3);
+    expect(unseenStages(some, before)).toBe(1);
+    expect(unseenStages(some, after)).toBe(0);
+    expect(unseenRows({ achievements: some }, before)).toEqual(new Set(["draws"]));
+    expect(unseenStages(ofAll(), null)).toBe(0);
+  });
 
   it("送礼、抽奖返回里带着合起来的阶段：当场标成解锁，时刻是这次到账的，进度至少到它的门槛", () => {
     const rewarded = {

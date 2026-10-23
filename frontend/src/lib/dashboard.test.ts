@@ -314,7 +314,7 @@ describe("dailyTaskTiles", () => {
     expect(dailyTaskTiles(null)).toEqual([]);
   });
 
-  it("count each task done, in the order of the gifts page", () => {
+  it("count each task done, in the order of the daily tasks section", () => {
     expect(dailyTaskTiles({ one_turn: 1200, one_gift: 3, ten_turns: 0 }).map((tile) => [tile.label, tile.value])).toEqual([
       ["一个回合", "1,200"],
       ["送一件礼", "3"],
