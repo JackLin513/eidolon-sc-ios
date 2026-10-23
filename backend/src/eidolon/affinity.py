@@ -142,7 +142,7 @@ JOB_DONE_STEP = 0.5
 """How much a job of hers the producer placed in their schedule raises it once done, whatever
 its length and category, in a cooldown too: about an uncommon gift, short of a day's turns."""
 
-DRAWS_PER_DAY = 1
+DRAWS_PER_DAY = 2
 """How many draw chances (GLOSSARY.md「抽奖」) the user is given each day (`day_of`), as it
 begins."""
 

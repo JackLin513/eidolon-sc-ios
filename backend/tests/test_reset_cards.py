@@ -15,6 +15,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from eidolon.affinity import DRAWS_PER_DAY
 from eidolon.config import Settings
 from tests.conftest import ClientFactory
 from tests.fakes import FAKE_JUDGE, FakeClock, FakeIdentityProvider, FakeLLM, FakeRandom, system_of
@@ -47,8 +48,9 @@ async def holding_cards(
     client = make_client(llm or FakeLLM(REPLY), clock=clock, random=FakeRandom(*[RESET_CARD] * cards))
     assert (await client.get("/api/gifts")).status_code == 200
     if cards:
-        clock.advance(days=cards - 1)
-        res = await client.post("/api/gifts/draws", json={"all": True})
+        clock.advance(days=(cards - 1) // DRAWS_PER_DAY)
+    for _ in range(cards):
+        res = await client.post("/api/gifts/draws", json={})
         assert res.status_code == 200, res.text
     return client
 

@@ -6,12 +6,13 @@ describe("the play page's addresses", () => {
   it("has a first level and a subpage for each card", () => {
     expect(playHref()).toBe("/play");
     expect(playHref("gifts")).toBe("/play/gifts");
-    expect(playHref("tasks")).toBe("/play/tasks");
+    expect(playHref("achievements")).toBe("/play/achievements");
   });
 
   it("tells which subpage a path is", () => {
     expect(playSubpage("/play/gifts")).toBe("gifts");
-    expect(playSubpage("/play/tasks")).toBe("tasks");
+    expect(playSubpage("/play/achievements")).toBe("achievements");
+    expect(playSubpage("/play/tasks")).toBeNull();
     expect(playSubpage("/play/calendar")).toBe("calendar");
     expect(playSubpage("/play")).toBeNull();
     expect(playSubpage("/play/xxx")).toBeNull();
@@ -29,6 +30,11 @@ describe("old and unknown play addresses", () => {
     expect(playRedirect("/gifts?to=mano&x=1")).toBe("/play/gifts?to=mano&x=1");
   });
 
+  it("sends the old tasks and achievements subpage to the achievements, its parameters along", () => {
+    expect(playRedirect("/play/tasks")).toBe("/play/achievements");
+    expect(playRedirect("/play/tasks?x=1")).toBe("/play/achievements?x=1");
+  });
+
   it("sends a subpage we do not know to the first level", () => {
     expect(playRedirect("/play/xxx")).toBe("/play");
     expect(playRedirect("/play/gifts/more")).toBe("/play");
@@ -38,7 +44,7 @@ describe("old and unknown play addresses", () => {
     expect(playRedirect("/play")).toBeNull();
     expect(playRedirect("/play/gifts")).toBeNull();
     expect(playRedirect("/play/gifts?to=mano")).toBeNull();
-    expect(playRedirect("/play/tasks")).toBeNull();
+    expect(playRedirect("/play/achievements")).toBeNull();
     expect(playRedirect("/play/calendar")).toBeNull();
     expect(playRedirect("/gifts/cake")).toBeNull();
     expect(playRedirect("/conversations")).toBeNull();

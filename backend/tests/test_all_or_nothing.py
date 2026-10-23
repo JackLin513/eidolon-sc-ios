@@ -1,8 +1,8 @@
 """All or nothing (ADR-0028): a turn, a gift given and a reset card used are each kept in one
-transaction, with what they change of her affinity and what they count towards, the daily
-tasks and the achievements. Should any of it fail part-way, nothing of it is left: the turn
-fails with no record and her affinity as it was, the gift and the card are still the user's.
-Driven through the backend's external API, the failure made in the database itself."""
+transaction, with what they change of her affinity and what they count towards, the
+achievements. Should any of it fail part-way, nothing of it is left: the turn fails with no
+record and her affinity as it was, the gift and the card are still the user's. Driven
+through the backend's external API, the failure made in the database itself."""
 
 import sqlite3
 from dataclasses import replace
@@ -15,7 +15,7 @@ from tests.conftest import ClientFactory
 from tests.fakes import FAKE_JUDGE, FakeClock, FakeLLM, FakeServiceClients, level
 from tests.test_affinity import keep, status
 from tests.test_conversation_events import record
-from tests.test_daily_tasks import state, tasks
+from tests.test_gift_draws import state
 from tests.test_gift_giving import CAKE, backpack, catalog, draw_them, give, holding  # noqa: F401
 from tests.test_reset_cards import USE, holding_cards, kept
 from tests.test_text_turn import send_turn, start_conversation
@@ -38,7 +38,7 @@ def failing(database: Path, table: str, on: str = "INSERT") -> None:
         )
 
 
-async def test_a_turn_whose_daily_tasks_fail_to_be_kept_fails_leaving_nothing(
+async def test_a_turn_whose_achievements_fail_to_be_kept_fails_leaving_nothing(
     make_client: ClientFactory, settings: Settings
 ):
     clients = FakeServiceClients()
@@ -46,19 +46,17 @@ async def test_a_turn_whose_daily_tasks_fail_to_be_kept_fails_leaving_nothing(
     client = make_client(FakeLLM(REPLY), clients=clients, clock=FakeClock())
     await state(client)
     conversation = await start_conversation(client)
-    failing(settings.database_path, "daily_task_progress")
+    failing(settings.database_path, "achievement_progress")
 
     events = await send_turn(client, conversation, "随便你")
 
     assert events[-1]["type"] == "error"
     assert await record(client, conversation) == []
     assert (await status(client)).json() == {"tier": "trust", "cooldown_until": None}
-    got = await state(client)
-    assert got["daily_tasks"]["tasks"] == tasks()
-    assert got["draws"] == 1
+    assert (await state(client))["draws"] == 2
 
 
-async def test_a_gift_whose_daily_tasks_fail_to_be_kept_is_not_given(
+async def test_a_gift_whose_achievements_fail_to_be_kept_is_not_given(
     make_client: ClientFactory, settings: Settings
 ):
     clock = FakeClock()
@@ -66,7 +64,7 @@ async def test_a_gift_whose_daily_tasks_fail_to_be_kept_is_not_given(
     await draw_them(client, clock, 1)
     conversation = await start_conversation(client)
     keep(settings.database_path, "producer", 25, clock.now)
-    failing(settings.database_path, "daily_task_progress")
+    failing(settings.database_path, "achievement_progress")
 
     with pytest.raises(sqlite3.IntegrityError):
         await give(client, "cake")
@@ -74,7 +72,6 @@ async def test_a_gift_whose_daily_tasks_fail_to_be_kept_is_not_given(
     assert await backpack(client) == {"cake": 1}
     assert kept(settings.database_path, "mano") == (25, False)
     assert await record(client, conversation) == []
-    assert (await state(client))["daily_tasks"]["tasks"] == tasks()
 
 
 async def test_a_reset_card_that_fails_to_bring_her_back_is_still_the_users(

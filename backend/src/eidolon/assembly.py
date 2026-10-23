@@ -132,7 +132,7 @@ class Backend:
     gifts: Gifts
     """Every user's draw chances, backpack and reset cards, where gifts are open."""
     happenings: Happenings
-    """What happens between users and characters, as it counts towards their daily tasks."""
+    """What happens between users and characters, as it counts towards the achievements."""
     backups: Backups
     """The database's backups, as the admin console runs them, and the record of each."""
     photos: Photos
@@ -370,7 +370,7 @@ def build(
         database, clock, lambda: config.affinity_on, affinities, characters, gift_catalog,
         random or secure_random,
     )
-    happenings = Happenings(database, clock, lambda: config.affinity_on, gifts, activity)
+    happenings = Happenings(database, lambda: config.affinity_on, gifts, activity)
     schedules = Schedules(
         database, clock, lambda: config.schedule_on, idols_of(characters, world), job_list,
         affinities,

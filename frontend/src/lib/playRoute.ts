@@ -1,11 +1,12 @@
 // The play page's addresses (.scratch/play-hub spec「页面和路由」): `/play` is the first level, the
 // cards; `/play/<subpage>` is a card's page, the second level, with nothing below it. A refresh or
 // a shared link opens the same subpage. The old gifts page `/gifts` (with its `?to=` and any other
-// parameters) is sent to `/play/gifts`, and play addresses we do not know to `/play`, before any
-// page loads (the same as the settings' old addresses, lib/settingsCategory).
+// parameters) is sent to `/play/gifts`, the old `/play/tasks` to `/play/achievements`, and play
+// addresses we do not know to `/play`, before any page loads (the same as the settings' old
+// addresses, lib/settingsCategory).
 
 /** The subpages, one for each card of the first level. */
-export const PLAY_SUBPAGES = ["gifts", "tasks", "calendar"] as const;
+export const PLAY_SUBPAGES = ["gifts", "achievements", "calendar"] as const;
 
 export type PlaySubpage = (typeof PLAY_SUBPAGES)[number];
 
@@ -29,6 +30,7 @@ export function playRedirect(href: string): string | null {
   const path = url.pathname;
   let to: string;
   if (path === "/gifts") to = playHref("gifts");
+  else if (path === `${PLAY_ROOT}/tasks`) to = playHref("achievements");
   else if (path.startsWith(`${PLAY_ROOT}/`) && playSubpage(path) === null) to = PLAY_ROOT;
   else return null;
   return `${to}${url.search}`;

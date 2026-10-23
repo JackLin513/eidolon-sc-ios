@@ -15,6 +15,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from eidolon.affinity import DRAWS_PER_DAY
 from eidolon.config import Settings
 from eidolon.gift_catalog import GIFTS_FILE
 from tests.conftest import CharacterConfig, ClientFactory
@@ -120,8 +121,9 @@ async def give_gifts(
     client = make_client(FakeLLM(), settings=gifting, clock=clock, random=FakeRandom(*numbers))
     now = clock.now
     assert (await client.get("/api/gifts")).status_code == 200
-    clock.advance(days=len(given) - 1)  # the chances to draw them
-    assert (await client.post("/api/gifts/draws", json={"all": True})).status_code == 200
+    clock.advance(days=(len(given) - 1) // DRAWS_PER_DAY)  # the chances to draw them
+    for _ in given:
+        assert (await client.post("/api/gifts/draws", json={})).status_code == 200
     clock.now = now
     for character, gift, at in given:
         res = await client.post(f"/api/characters/{character}/gifts", json={"gift_id": gift})

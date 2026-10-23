@@ -11,8 +11,8 @@ import { DrinkIcon, FlowerIcon, FoodIcon, TrinketIcon } from "@/theme/icons";
 
 const t = copy.gifts;
 
-/** 「我的礼物」标题的 id：每日任务里的「挑一件」滚到这里。 */
-export const MY_GIFTS_ID = "my-gifts";
+/** 「我的礼物」标题的 id，这一节用它做无障碍名。 */
+const MY_GIFTS_ID = "my-gifts";
 
 const FILTER_ICONS = { food: FoodIcon, drink: DrinkIcon, flower: FlowerIcon, trinket: TrinketIcon };
 

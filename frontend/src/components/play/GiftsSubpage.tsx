@@ -10,7 +10,7 @@ import { useProducerTimezone } from "@/components/conversations/useProducerTimez
 import { DrawDialog, type Drawing } from "@/components/gifts/DrawDialog";
 import { GivenToast, type GivenNotice } from "@/components/gifts/GivenToast";
 import { GivePanel, type Giving } from "@/components/gifts/GivePanel";
-import { MY_GIFTS_ID, MyGifts } from "@/components/gifts/MyGifts";
+import { MyGifts } from "@/components/gifts/MyGifts";
 import { ResetCards } from "@/components/gifts/ResetCards";
 import { HerStrip } from "@/components/play/HerStrip";
 import { PlayClosed, PlayShell, PlaySubpageHeader } from "@/components/play/PlayShell";
@@ -60,7 +60,6 @@ const NOTICE_MS = 8000;
  * 抽奖、送礼或用重置卡时才知道没开放（收到「没开放」的 409）也切成这样。
  * 从对话页跳来（`pick`）时页首下面一条「给{角色名}挑一件礼物」：点哪件礼物，面板里都已选好她、排在第一个，
  * 送出的礼物和别处送的一样记进她的当前对话；点 ✕ 取消预选，地址里的也去掉。地址里的角色不存在时当作没有预选。
- * 地址带着 `#my-gifts`（每日任务里的「挑一件」）时，礼物读到以后滚到「我的礼物」。
  * 进了这个子页（且没被通话层盖住）就把新到的抽奖次数记成看过，在这个子页上到账的当场也记成看过，所以导航和「礼物」卡上都不出点。
  */
 export function GiftsSubpage({ pick }: { pick: GiftsFor | null }) {
@@ -95,16 +94,6 @@ export function GiftsSubpage({ pick }: { pick: GiftsFor | null }) {
     const timer = setTimeout(() => setNotice(null), NOTICE_MS);
     return () => clearTimeout(timer);
   }, [notice]);
-
-  // 每日任务里的「挑一件」带着 #my-gifts 跳来：「我的礼物」一出来就滚过去，只滚一次。
-  const [hasScrolled, setScrolled] = useState(false);
-  useEffect(() => {
-    if (hasScrolled || !state?.open || catalog === null || window.location.hash !== `#${MY_GIFTS_ID}`) return;
-    setScrolled(true);
-    document
-      .getElementById(MY_GIFTS_ID)
-      ?.scrollIntoView({ behavior: isReducedMotion ? "auto" : "smooth", block: "start" });
-  }, [hasScrolled, state, catalog, isReducedMotion]);
 
   async function draw(all: boolean) {
     setFailure(null);
@@ -293,7 +282,7 @@ function afterGiving(state: GiftState, giftId: string, characterId: string, give
 }
 
 /**
- * 抽奖台：`bg-muted` 圆角块，「抽奖 还有 n 次」、7 个小点（攒了几次亮几个，每日任务给的超过 7 次时全亮、后面写「+n」）和一句说明；右边「抽一次」，
+ * 抽奖台：`bg-muted` 圆角块，「抽奖 还有 n 次」、7 个小点（攒了几次亮几个，成就给的超过 7 次时全亮、后面写「+n」）和一句说明；右边「抽一次」，
  * 攒了 2 次以上时旁边多一个「全部抽完」，次数为 0 时「抽一次」不可用。
  */
 function DrawDesk({

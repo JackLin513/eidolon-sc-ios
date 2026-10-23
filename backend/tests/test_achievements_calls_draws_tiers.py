@@ -107,8 +107,8 @@ async def test_calls_that_connected_add_up_their_time_unlocking_each_stage_passe
     assert unlocked(short, "call_time") == []
     assert unlocked(ten, "call_time") == [1]
     assert unlocked(hours, "call_time") == [1, 2]
-    # Her first daily task, then the stages' one and two; the calls are no days come.
-    assert after["draws"] == before["draws"] + 1 + 1 + 2
+    # The stages' one and two; the calls are no days come.
+    assert after["draws"] == before["draws"] + 1 + 2
     assert achievement(after, "days")["progress"] == 1
 
 
@@ -135,15 +135,15 @@ async def test_each_draw_counts_once_or_all_at_once_and_drawing_tells_the_stage_
     make_client: ClientFactory, monkeypatch: pytest.MonkeyPatch
 ):
     clock = FakeClock()
-    client = make_client(FakeLLM(), clock=clock, random=FakeRandom(*CAKE * 4))
+    client = make_client(FakeLLM(), clock=clock, random=FakeRandom(*CAKE * 5))
     with_goals(
         monkeypatch, "ALL_CHARACTERS",
-        characters=goals(3), intimate_characters=goals(1), days=goals(7), draws=goals(2, 4),
+        characters=goals(3), intimate_characters=goals(1), days=goals(7), draws=goals(3, 5),
     )
     await state(client)
 
     once = await draw(client)
-    clock.advance(days=2)
+    clock.advance(days=1)
     both = await draw(client, all=True)
     one_more = await draw(client)
     after = await state(client)
@@ -158,7 +158,7 @@ async def test_each_draw_counts_once_or_all_at_once_and_drawing_tells_the_stage_
         {"achievement": "draws", "character_id": None, "stage": 2, "draws": 2}
     ]
     assert one_more["draws"] == after["draws"] == 2
-    assert achievement(after, "draws")["progress"] == 4
+    assert achievement(after, "draws")["progress"] == 5
     assert unlocked(after, "draws") == [1, 2]
     assert achievement(after, "days")["progress"] == 0  # drawing is no day come
 

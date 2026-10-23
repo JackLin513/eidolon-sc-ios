@@ -1,8 +1,9 @@
-"""The dashboard's「每日任务和成就」section (GLOSSARY.md「看板」「成就」): over the dashboard's
+"""The dashboard's「成就」section (GLOSSARY.md「看板」「成就」): over the dashboard's
 range, how many achievements' stages were unlocked, the draw chances they gave (stage n gives
 n), and the reset cards characters complete gave. Each stage unlocked and each character
 complete has an activity record of its own, written once it is rewarded, counting as no turn,
-no active user and nothing in the trend. The section shows where the daily tasks' does.
+no active user and nothing in the trend. Where affinity and gifts are off there is no section,
+unless the range holds some unlocked while they were on; nor any of daily tasks, ever.
 
 Driven through the backend's external API, with the clock moved and the goals lowered."""
 
@@ -83,6 +84,7 @@ async def test_the_stages_unlocked_count_as_no_turns_users_or_characters(
         board = await dashboard(admin)
 
     assert board["achievements"] == unlocked(stages=1, draws=1)
+    assert "daily_tasks" not in board
     assert board["turns"]["total"] == 10
     assert board["calls"]["total"] == 0
     assert board["active_users"] == 1

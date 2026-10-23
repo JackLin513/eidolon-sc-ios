@@ -62,12 +62,10 @@ def add_gift_routes(app: FastAPI, backend: Backend) -> None:
     async def read_state(user_id: UserId) -> dict:
         """What the user has, having been given the draw chances due today; whether gifts
         are open, and if so when the next chance is given and each character's affinity,
-        for choosing whom to give to, how far the user is with today's daily tasks and with
-        the achievements of all the characters together."""
-        daily_tasks = await happenings.daily_tasks(user_id)
+        for choosing whom to give to, and how far the user has come with the achievements of
+        all the characters together."""
         of_all = await happenings.of_all(user_id)
         return (await gifts.state(user_id)).shown() | {
-            "daily_tasks": daily_tasks and daily_tasks.shown(),
             "achievements": of_all and [p.shown() for p in of_all],
         }
 

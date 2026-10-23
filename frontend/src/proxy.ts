@@ -2,9 +2,9 @@
 // than in next.config, which is fixed when the image is built: where the stands are kept is
 // only known where it runs. Pages rendered ahead of time stay so.
 // Old and unknown settings addresses (`/settings?tab=…`, `/memories`, `/settings/<xxx>`) and the
-// old gifts page and unknown play addresses (`/gifts`, `/play/<xxx>`) are redirected here to the
-// new paths, before any page loads; a redirect leaves no entry in the history, so going back
-// does not land on the old address again.
+// old gifts page, the old tasks subpage and unknown play addresses (`/gifts`, `/play/tasks`,
+// `/play/<xxx>`) are redirected here to the new paths, before any page loads; a redirect leaves
+// no entry in the history, so going back does not land on the old address again.
 
 import { NextResponse, type NextRequest } from "next/server";
 import { contentSecurityPolicy } from "@/lib/contentSecurityPolicy";

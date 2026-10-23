@@ -1,4 +1,4 @@
-// 成就（GLOSSARY.md「成就」）：她的对话页面板和「每日任务与成就」子页那一小节里，每一行怎么写。一个成就分几个阶段，按序号解锁，
+// 成就（GLOSSARY.md「成就」）：她的对话页面板和「成就」子页那一小节里，每一行怎么写。一个成就分几个阶段，按序号解锁，
 // 第 n 阶段给 n 次抽奖；她按角色算的阶段全部解锁叫集齐，另给重置卡。门槛、奖励、解锁了哪几个都由后端给，这里只管
 // 写成一行：名字、阶段点、只写下一个阶段的进度、下一阶段的奖励。档位只有档位名，不给好感度的数值。
 //
@@ -130,6 +130,11 @@ export function unseenRows({ achievements, complete }: Listed, seenAt: string | 
 /** 这几个成就里解锁晚于看过的（`seenAt`）的阶段数；有几行带点（`unseenRows`）用同一个看过的时刻比。 */
 export function unseenStages(achievements: Achievement[], seenAt: string | null): number {
   return achievements.reduce((n, a) => n + a.stages.filter((s) => isUnseen(s.unlocked_at, seenAt)).length, 0);
+}
+
+/** 一共解锁了几个阶段，看没看过都算（玩法页「成就」卡平时那一句）。 */
+export function unlockedStages(achievements: Achievement[]): number {
+  return achievements.reduce((n, a) => n + a.stages.filter((s) => s.unlocked_at !== null).length, 0);
 }
 
 /**

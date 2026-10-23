@@ -1,13 +1,13 @@
 // The cards of the play page's first level (.scratch/play-hub spec「卡片注册表」): for each card, its
 // name, where it goes (its subpage), when it is shown, what its status line says and whether a dot
 // sits by its name. A card is one entry of `CARDS`; the page lays them out (the first across a
-// whole row, the rest in a grid) and only asks what is on them. Gifts and tasks are made of the
-// gift state, which the first level and the subpages read alike; the calendar (.scratch/calendar
+// whole row, the rest in a grid) and only asks what is on them. Gifts and achievements are made of
+// the gift state, which the first level and the subpages read alike; the calendar (.scratch/calendar
 // spec「玩法页的『日历』卡」) of the characters' birthdays, the producer's and the holidays, and is
 // there whether affinity and gifts are open or not.
 
 import { copy } from "@/i18n";
-import { unseenStages } from "@/lib/achievements";
+import { unlockedStages, unseenStages } from "@/lib/achievements";
 import { type CalendarEvent, type CalendarView, nextEvent, partsOf } from "@/lib/calendar";
 import type { GiftState } from "@/lib/gifts";
 import { playHref, type PlaySubpage } from "@/lib/playRoute";
@@ -52,7 +52,7 @@ type Definition = {
   dotLabel: string;
 };
 
-/** Gifts and the daily tasks and achievements are there while affinity and gifts are open; until
+/** Gifts and achievements are there while affinity and gifts are open; until
  * the state has been read nothing says they are not. */
 const isGiftsOpen = ({ state }: PlayContext) => state === null || state.open;
 
@@ -78,26 +78,18 @@ const CARDS: Definition[] = [
     dotLabel: t.cards.gifts.dot,
   },
   {
-    id: "tasks",
-    name: t.cards.tasks.name,
+    id: "achievements",
+    name: t.cards.achievements.name,
     isShown: isGiftsOpen,
     status: (context) => {
       const { state } = context;
       if (!state) return "";
-      const tasks = state.daily_tasks?.tasks ?? [];
-      const done = tasks.filter((task) => task.done).length;
-      const unlocked = unlockedCount(state, context);
-      return join([
-        tasks.length === 0
-          ? null
-          : done === tasks.length
-            ? t.cards.tasks.allDone
-            : t.cards.tasks.daily(done, tasks.length),
-        unlocked > 0 ? t.cards.tasks.unlocked(unlocked) : null,
-      ]);
+      const unseen = unseenCount(state, context);
+      if (unseen > 0) return t.cards.achievements.unseen(unseen);
+      return t.cards.achievements.unlocked(state.achievements ? unlockedStages(state.achievements) : 0);
     },
-    hasDot: (context) => context.state !== null && unlockedCount(context.state, context) > 0,
-    dotLabel: t.cards.tasks.dot,
+    hasDot: (context) => context.state !== null && unseenCount(context.state, context) > 0,
+    dotLabel: t.cards.achievements.dot,
   },
   {
     id: "calendar",
@@ -130,7 +122,7 @@ function eventText(event: CalendarEvent<{ name: string }>): string {
 }
 
 /** How many stages of the combined achievements were unlocked since the last seen on this device. */
-function unlockedCount(state: GiftState, { achievementsSeenAt }: PlayContext): number {
+function unseenCount(state: GiftState, { achievementsSeenAt }: PlayContext): number {
   return state.achievements ? unseenStages(state.achievements, achievementsSeenAt) : 0;
 }
 

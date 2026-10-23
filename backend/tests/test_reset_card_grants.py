@@ -83,7 +83,7 @@ async def test_every_user_there_is_gets_one_banned_and_admins_too_and_later_ones
     assert await read(admin) == {"users": 5, "last_grant": granted, "open": True}
     for client, name in [(producer, "producer"), (drawn, "drawn"), (admin, "boss")]:
         seen = await state(client)
-        assert (seen["reset_cards"], seen["draws"]) == (1, 1), name
+        assert (seen["reset_cards"], seen["draws"]) == (1, 2), name
     assert cards(settings.database_path, "banned") == 1
     assert (await state(later))["reset_cards"] == 0
 
