@@ -39,10 +39,10 @@ POOL_LIMITS = httpx.Limits(max_connections=MAX_CONNECTIONS, max_keepalive_connec
 """`MAX_CONNECTIONS`, of which as many as 60 are kept open between requests (httpx's own
 20)."""
 
-TLS = httpx.create_ssl_context()
+TLS_CONTEXT = httpx.create_ssl_context()
 """How a connection to a provider over HTTPS checks it, as httpx's own transports do, made
-once for every transport here: making it reads every root certificate again, tens of
-milliseconds, at each backend built."""
+once for every transport the backend makes (`own_keys` too): making it reads every root
+certificate again, tens of milliseconds, at each backend built."""
 
 
 def open_client(proxy: str | None, timeout: httpx.Timeout) -> httpx.AsyncClient:
@@ -161,7 +161,7 @@ class _Transport(httpx.AsyncHTTPTransport):
     (`_Tunnel`)."""
 
     def __init__(self, proxy: str | None) -> None:
-        super().__init__(verify=TLS, proxy=proxy, limits=POOL_LIMITS)
+        super().__init__(verify=TLS_CONTEXT, proxy=proxy, limits=POOL_LIMITS)
         if type(self._pool) is httpcore.AsyncHTTPProxy:
             self._pool.__class__ = _HTTPProxy
 

@@ -80,7 +80,7 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
-  # 推送到 main 或 v* 标签、上面全部通过时：按 image 的缓存再构建一次（层都命中，很快），推到 GHCR
+  # 推送到 main 或 v* 标签、上面全部通过时：按 image 的缓存再构建一次（通常层都命中，缓存被清掉时整个重建），推到 GHCR
   publish:
     if: github.event_name == 'push'
     needs: [backend, frontend, shellcheck, image]

@@ -130,16 +130,18 @@ async def test_a_photo_out_before_her_reply_is_recorded_is_kept_as_it_is(
     make_client: ClientFactory, monkeypatch: pytest.MonkeyPatch
 ):
     image = FakeImageService()
-    out = asyncio.Event()  # her words wait for it
+    photo_out = asyncio.Event()  # her words wait for it
     client = make_client(
-        FakeLLM([REPLY[0], out, WORDS]), clients=asking(), image_transport=image.transport()
+        FakeLLM([REPLY[0], photo_out, WORDS]), clients=asking(), image_transport=image.transport()
     )
     photos = backend_of(client).photos
     generate = photos._generate
 
     async def generate_then_say_it_is_out(*args: Any) -> None:
-        await generate(*args)
-        out.set()
+        try:
+            await generate(*args)
+        finally:  # failing, her words go on all the same, and the test fails at once
+            photo_out.set()
 
     monkeypatch.setattr(photos, "_generate", generate_then_say_it_is_out)
     conversation = await start_conversation(client)

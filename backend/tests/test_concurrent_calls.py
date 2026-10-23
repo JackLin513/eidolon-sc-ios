@@ -6,15 +6,17 @@ needs to call and as it places the call."""
 
 import asyncio
 from dataclasses import replace
+from typing import Any
 
 import httpx
 import pytest
 
 from eidolon.assembly import Backend
 from eidolon.config import Settings, UsageLimits
-from tests.browser import Browser, open_browser, until_gone
+from tests.browser import TIMEOUT, Browser, open_browser, until_gone
 from tests.conftest import SITE, ClientFactory, sign_in
 from tests.fakes import FakeLLM
+from tests.test_service_status import backend_of
 from tests.test_text_turn import start_conversation
 
 BUSY = "现在打电话的人太多，稍后再试"
@@ -57,18 +59,31 @@ async def test_a_users_new_call_hangs_up_the_one_they_had(
 
 
 async def test_a_call_placed_while_the_users_last_is_still_being_placed_is_refused(
-    make_client: ClientFactory,
+    make_client: ClientFactory, monkeypatch: pytest.MonkeyPatch
 ):
     client = make_client(FakeLLM())
     conversation_id = await start_conversation(client)
-    async with open_browser() as a, open_browser() as b:
-        placed = await asyncio.gather(
-            a.call(client, conversation_id=conversation_id),
-            b.call(client, conversation_id=conversation_id),
-        )
+    admissions = backend_of(client).admissions
+    let_in = admissions.call
+    letting_in, may_go_on = asyncio.Event(), asyncio.Event()
 
-    assert sorted(res.status_code for res in placed) == [200, 409]
-    assert "还在拨" in next(res for res in placed if res.status_code == 409).json()["detail"]
+    async def call(*args: Any) -> Any:
+        """The first call is held being placed, until it may go on."""
+        if not letting_in.is_set():
+            letting_in.set()
+            await may_go_on.wait()
+        return await let_in(*args)
+
+    monkeypatch.setattr(admissions, "call", call)
+    async with open_browser() as a, open_browser() as b:
+        placing = asyncio.create_task(a.call(client, conversation_id=conversation_id))
+        await asyncio.wait_for(letting_in.wait(), TIMEOUT)
+        refused = await b.call(client, conversation_id=conversation_id)
+        may_go_on.set()
+        placed = await placing
+
+    assert (placed.status_code, refused.status_code) == (200, 409)
+    assert "还在拨" in refused.json()["detail"]
 
 
 async def test_calls_at_once_are_limited_across_users(
