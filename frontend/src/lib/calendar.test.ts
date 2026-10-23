@@ -95,7 +95,7 @@ describe("下一个", () => {
   });
 
   it("同一天几件取排在前的", () => {
-    expect(next("2026-10-28", data(), ["holiday"])).toEqual(["2026-11-03", "文化の日"]);
+    expect(next("2026-10-28", data({ characters: [{ ...MANO, birthday: "11-03" }] }))).toEqual(["2026-11-03", "mano"]);
   });
 
   it("跨年能找到明年的", () => {

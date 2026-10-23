@@ -17,3 +17,13 @@
 - [ ] 类型检查、lint 过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
 - [ ] 按 `docs/agents/local-acceptance.md` 在本地构建版上用 Playwright 自己验：电脑和手机的月视图、翻月和「今天」、点一天的清单、筛选记住（刷新后还在）、全筛掉的样子、跨年翻页节假日跟上、她的颜色只在蛋糕和记号上；用接口或改本地库凑同一天两位生日、生日碰节假日、超过三件的格子
 - [ ] 票收尾：Comments 里写下组件和 `lib/calendar` 最终的形状给票 04 写 `DESIGN.md` 用，以及留给日程那一块的两处位置（页首末端、清单的样子）；跑 `code-review`
+
+## Comments
+
+### 票 03 交接
+
+- `lib/calendar` 的形状、筛选存储和数据怎么读，都写在票 02 的「实现说明（票 02）」里。这张票要接着做的几件事：
+  - **节假日按显示的年取**：`useCalendar({ years })` 现在收的是相对今年的偏移。子页翻月时要改成按显示的年取，比如给它一个 `shownYear`，或者改成直接收绝对年份。卡那边是 `[0, 1]`，改的时候一起顺过来。`lib/holidays` 已经把取过的年留着了。
+  - **筛选的界面**：用 `calendarKinds(profile.birthday)` 决定出哪几个按钮，改了调 `keepShownKinds`。`useCalendar` 现在每次渲染都直接读 `shownKinds(account.id)`，改了以后要让它重画：在 hook 里放一个 state，或者按改动重读一遍。
+  - **这一天的清单**：在 `CalendarSubpage` 的 `DayEvents` 里，日期是传进去的，点一天时换成那一天就行。角色行「生日」前面那个她颜色的蛋糕是票 02 的判断题，见票 02 的 Comments。
+  - **全筛掉时**写「没有要显示的」，不是「这一天没有事」。现在子页全筛掉时显示的是后者，这张票里要分开。

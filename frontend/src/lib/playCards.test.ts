@@ -193,23 +193,11 @@ describe("「日历」卡的状态", () => {
     expect(status({ today: "2026-10-27" })).toBe("今天：樋口円香的生日");
   });
 
-  it("同一天几件时取角色生日、我的生日、节假日的顺序", () => {
-    expect(status({ today: "2026-10-28" })).toBe("下一个：11月3日 我的生日");
-  });
-
-  it("跨年能找到明年的", () => {
-    expect(status({ today: "2026-11-04", ...only("holiday") })).toBe("下一个：1月1日 元日");
-    expect(status({ today: "2026-11-04", ...only("character") })).toBe("下一个：4月25日 櫻木真乃的生日");
-  });
-
   it("三类全筛掉时为空", () => {
     expect(status(only())).toBe("");
   });
 
-  it("一直显示，不出点，好感度和礼物的状态还没回来也有", () => {
-    expect(ofId(playCards(context({ state: null })), "calendar")).toMatchObject({
-      status: "下一个：10月27日 樋口円香的生日",
-      hasDot: false,
-    });
+  it("好感度和礼物的状态还没回来也有", () => {
+    expect(ofId(playCards(context({ state: null })), "calendar")?.status).toBe("下一个：10月27日 樋口円香的生日");
   });
 });

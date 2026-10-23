@@ -34,18 +34,16 @@ describe("日历的筛选记在本机", () => {
     expect(items.get("eidolon.calendarKinds.user-1")).toBe(JSON.stringify(["character", "holiday"]));
   });
 
-  it("存的不是几类时回到全开，认不得的类别略过", () => {
+  it("存的不是一组类别、或者里面有认不得的时回到全开", () => {
     storage({
       "eidolon.calendarKinds.broken-1": "{not json",
       "eidolon.calendarKinds.broken-2": JSON.stringify({ holiday: true }),
-      "eidolon.calendarKinds.broken-3": JSON.stringify("holiday"),
       "eidolon.calendarKinds.odd": JSON.stringify(["holiday", "schedule", 3]),
     });
 
     expect(shownKinds("broken-1")).toEqual(["character", "producer", "holiday"]);
     expect(shownKinds("broken-2")).toEqual(["character", "producer", "holiday"]);
-    expect(shownKinds("broken-3")).toEqual(["character", "producer", "holiday"]);
-    expect(shownKinds("odd")).toEqual(["holiday"]);
+    expect(shownKinds("odd")).toEqual(["character", "producer", "holiday"]);
   });
 
   it("存不进去时只在这次页面里记着", () => {

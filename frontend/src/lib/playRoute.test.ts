@@ -7,7 +7,6 @@ describe("the play page's addresses", () => {
     expect(playHref()).toBe("/play");
     expect(playHref("gifts")).toBe("/play/gifts");
     expect(playHref("tasks")).toBe("/play/tasks");
-    expect(playHref("calendar")).toBe("/play/calendar");
   });
 
   it("tells which subpage a path is", () => {

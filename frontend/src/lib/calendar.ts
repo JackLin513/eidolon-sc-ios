@@ -25,6 +25,14 @@ export type CalendarData<C extends { birthday: string }> = {
   holidays: readonly Holiday[];
 };
 
+/** The calendar as a page shows it: the producer's `today` (in his time zone), the data and the
+ * kinds shown on this device. */
+export type CalendarView<C extends { birthday: string }> = {
+  today: string;
+  data: CalendarData<C>;
+  shown: readonly CalendarKind[];
+};
+
 /** One thing on a day: her birthday, the producer's, or a holiday. */
 export type CalendarEvent<C> = { kind: "character"; character: C } | { kind: "producer" } | { kind: "holiday"; name: string };
 
@@ -40,7 +48,7 @@ export function eventsOn<C extends { birthday: string }>(
   data: CalendarData<C>,
   shown: readonly CalendarKind[],
 ): CalendarEvent<C>[] {
-  const year = Number(date.slice(0, 4));
+  const { year } = partsOf(date);
   const events: CalendarEvent<C>[] = [];
   if (shown.includes("character")) {
     for (const character of data.characters) {
@@ -77,14 +85,14 @@ export function todayIn(timeZone: string, now: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone }).format(now);
 }
 
-/** The month, day and weekday (0 is Sunday) of an ISO day. */
-export function partsOf(date: string): { month: number; day: number; weekday: number } {
+/** The year, month, day and weekday (0 is Sunday) of an ISO day. */
+export function partsOf(date: string): { year: number; month: number; day: number; weekday: number } {
   const [year, month, day] = date.split("-").map(Number);
-  return { month, day, weekday: new Date(Date.UTC(year, month - 1, day)).getUTCDay() };
+  return { year, month, day, weekday: new Date(Date.UTC(year, month - 1, day)).getUTCDay() };
 }
 
 function addDays(date: string, days: number): string {
-  const [year, month, day] = date.split("-").map(Number);
+  const { year, month, day } = partsOf(date);
   return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
 }
 

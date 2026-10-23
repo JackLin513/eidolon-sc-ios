@@ -17,15 +17,17 @@ const THIS_YEAR = [0];
 
 /**
  * 「日历」子页（`/play/calendar`，DESIGN.md「玩法页」）：页首返回键回玩法页，末端留给日程那一块的月 / 周切换；
- * 内容是这一天的清单，现在只有今天（制作人时区）。按这台设备上开着的几类列；节假日没回来之前先列生日。
+ * 内容是这一天的清单，现在只有今天（制作人时区）。按这台设备上开着的几类列；节假日没回来之前先列生日，
+ * 这一天没有生日时先不说「这一天没有事」。
  * 好感度和礼物没开放时照常有。
  */
 export function CalendarSubpage() {
-  const { today, data, shown } = useCalendar({ years: THIS_YEAR });
+  const { calendar, holidaysRead } = useCalendar({ years: THIS_YEAR });
+  const events = calendar ? eventsOn(calendar.today, calendar.data, calendar.shown) : [];
   return (
     <PlayShell header={<PlaySubpageHeader title={playTitle("calendar")} />}>
-      {today && data && shown ? (
-        <DayEvents date={today} events={eventsOn(today, data, shown)} />
+      {calendar && (events.length > 0 || holidaysRead) ? (
+        <DayEvents date={calendar.today} events={events} />
       ) : (
         <p className="text-body text-muted-foreground">{copy.play.loading}</p>
       )}

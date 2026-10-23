@@ -8,19 +8,14 @@
 
 import { copy } from "@/i18n";
 import { unseenStages } from "@/lib/achievements";
-import { type CalendarData, type CalendarEvent, type CalendarKind, nextEvent, partsOf } from "@/lib/calendar";
+import { type CalendarEvent, type CalendarView, nextEvent, partsOf } from "@/lib/calendar";
 import type { GiftState } from "@/lib/gifts";
 import { playHref, type PlaySubpage } from "@/lib/playRoute";
 
 const t = copy.play;
 
-/** What the calendar card is made of: the producer's `today` (in his time zone), the calendar's
- * data and the kinds shown on this device. */
-export type CalendarCardContext = {
-  today: string;
-  data: CalendarData<{ name: string; birthday: string }>;
-  shown: readonly CalendarKind[];
-};
+/** What the calendar card is made of: the calendar, with each character's name and birthday. */
+export type CalendarCardContext = CalendarView<{ name: string; birthday: string }>;
 
 /** What the cards are made of: the gift state (null until it has been read), whether draw chances
  * have come that are not yet seen (`newRewards`, the nav's dot), the latest unlock of the

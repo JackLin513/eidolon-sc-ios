@@ -1,5 +1,5 @@
 // 日历的筛选（.scratch/calendar spec「筛选」）：开着哪几类，只存在这台设备上，在 localStorage 里按用户分开存
-// （键为 eidolon.calendarKinds.<用户 ID>），值是开着的几类。没存过、读不到或数据坏了当作全开；存不进去
+// （键为 eidolon.calendarKinds.<用户 ID>），值是开着的几类（空的是全关）。没存过、读不到或数据坏了（不是一组类别、里面有认不得的）当作全开；存不进去
 // （隐私模式等）时不抛错，只在这次页面里记着。制作人没生日时「我的生日」这一类由 lib/calendar 的
 // `calendarKinds` 略去，这里照存。
 
@@ -22,7 +22,8 @@ export function shownKinds(userId: string): CalendarKind[] {
   } catch {
     stored = null;
   }
-  if (!Array.isArray(stored)) return [...CALENDAR_KINDS];
+  const isKind = (value: unknown) => CALENDAR_KINDS.some((kind) => kind === value);
+  if (!Array.isArray(stored) || !stored.every(isKind)) return [...CALENDAR_KINDS];
   return CALENDAR_KINDS.filter((kind) => stored.includes(kind));
 }
 
