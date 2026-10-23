@@ -6,12 +6,13 @@ import { useDirectory } from "@/components/conversations/ConversationDirectory";
 import type { PlayCard } from "@/lib/playCards";
 import type { PlaySubpage } from "@/lib/playRoute";
 import { cn } from "@/lib/utils";
-import { AchievementsIcon, ForwardIcon, GiftIcon } from "@/theme/icons";
+import { AchievementsIcon, CalendarIcon, ForwardIcon, GiftIcon } from "@/theme/icons";
 
 /** 每张卡的图标：加一张卡就在这里加一行。 */
 const ICONS: Record<PlaySubpage, typeof GiftIcon> = {
   gifts: GiftIcon,
   tasks: AchievementsIcon,
+  calendar: CalendarIcon,
 };
 
 /**

@@ -7,11 +7,13 @@ describe("the play page's addresses", () => {
     expect(playHref()).toBe("/play");
     expect(playHref("gifts")).toBe("/play/gifts");
     expect(playHref("tasks")).toBe("/play/tasks");
+    expect(playHref("calendar")).toBe("/play/calendar");
   });
 
   it("tells which subpage a path is", () => {
     expect(playSubpage("/play/gifts")).toBe("gifts");
     expect(playSubpage("/play/tasks")).toBe("tasks");
+    expect(playSubpage("/play/calendar")).toBe("calendar");
     expect(playSubpage("/play")).toBeNull();
     expect(playSubpage("/play/xxx")).toBeNull();
     expect(playSubpage("/play/gifts/more")).toBeNull();
@@ -38,6 +40,7 @@ describe("old and unknown play addresses", () => {
     expect(playRedirect("/play/gifts")).toBeNull();
     expect(playRedirect("/play/gifts?to=mano")).toBeNull();
     expect(playRedirect("/play/tasks")).toBeNull();
+    expect(playRedirect("/play/calendar")).toBeNull();
     expect(playRedirect("/gifts/cake")).toBeNull();
     expect(playRedirect("/conversations")).toBeNull();
     expect(playRedirect("/player")).toBeNull();

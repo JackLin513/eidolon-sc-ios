@@ -5,7 +5,7 @@
 // page loads (the same as the settings' old addresses, lib/settingsCategory).
 
 /** The subpages, one for each card of the first level. */
-export const PLAY_SUBPAGES = ["gifts", "tasks"] as const;
+export const PLAY_SUBPAGES = ["gifts", "tasks", "calendar"] as const;
 
 export type PlaySubpage = (typeof PLAY_SUBPAGES)[number];
 
