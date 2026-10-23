@@ -26,6 +26,7 @@ import {
   labelledStretches,
   rangeFromQuery,
   reachOutTiles,
+  scheduleTiles,
   splitZeroRows,
   stretchLabel,
   stretchSpan,
@@ -303,6 +304,17 @@ describe("reachOutTiles", () => {
   });
 });
 
+describe("scheduleTiles", () => {
+  it("are none where schedules are off", () => {
+    expect(scheduleTiles(null)).toEqual([]);
+  });
+
+  it("count the users who saved a schedule this week", () => {
+    expect(scheduleTiles(1234).map((tile) => [tile.label, tile.value])).toEqual([["本周排了日程的人数", "1,234"]]);
+    expect(scheduleTiles(0)[0].value).toBe("0");
+  });
+});
+
 describe("foldedCount", () => {
   it("shows the first five of a long list, and all of a list that would hide just one", () => {
     expect([6, 7].map(foldedCount)).toEqual([6, 5]);
@@ -340,13 +352,18 @@ describe("achievementTiles", () => {
 describe("dashboardTabs", () => {
   const affinity = { cooldowns: 0, cooled_users: 0, out_of_line: 0, manipulation: 0, levels: [0, 0, 0, 0, 0], characters: [] };
   const tasks = { one_turn: 0, one_gift: 0, ten_turns: 0 };
+  const WITH = ["overview", "usage", "affinity", "cost"];
 
   it("have「好感度」where affinity is on, or daily tasks were done in the range", () => {
-    expect(dashboardTabs({ affinity, daily_tasks: tasks })).toEqual(["overview", "usage", "affinity", "cost"]);
-    expect(dashboardTabs({ affinity: null, daily_tasks: tasks })).toEqual(["overview", "usage", "affinity", "cost"]);
+    expect(dashboardTabs({ affinity, daily_tasks: tasks, scheduled_this_week: null })).toEqual(WITH);
+    expect(dashboardTabs({ affinity: null, daily_tasks: tasks, scheduled_this_week: null })).toEqual(WITH);
   });
 
-  it("have none where both are empty", () => {
-    expect(dashboardTabs({ affinity: null, daily_tasks: null })).toEqual(["overview", "usage", "cost"]);
+  it("have「好感度」where affinity is off and schedules are on, for their tile", () => {
+    expect(dashboardTabs({ affinity: null, daily_tasks: null, scheduled_this_week: 0 })).toEqual(WITH);
+  });
+
+  it("have none where all are empty", () => {
+    expect(dashboardTabs({ affinity: null, daily_tasks: null, scheduled_this_week: null })).toEqual(["overview", "usage", "cost"]);
   });
 });

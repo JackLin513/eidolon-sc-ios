@@ -8,7 +8,8 @@
 
 import { copy } from "@/i18n";
 import { api, json } from "@/lib/api";
-import { addDays, partsOf } from "@/lib/calendar";
+import { addDays, type DayJob, partsOf } from "@/lib/calendar";
+import { playHref } from "@/lib/playRoute";
 
 const t = copy.play.schedule;
 
@@ -202,14 +203,44 @@ export function cellText({ day, slot }: Cell): string {
 
 /** 一项占的时间：「周三 下午」「周三 上午到下午」「周三 一整天」。 */
 export function whenText(placement: Placement, job: Job): string {
+  return t.when(t.weekdays[placement.day], slotsText(placement, job));
+}
+
+/** 一项占哪几段：「下午」「上午到下午」「一整天」。 */
+function slotsText(placement: Placement, job: Job): string {
+  if (job.length === SLOTS.length) return t.wholeDay;
   const last = placement.slot + job.length - 1;
-  const slots =
-    job.length === SLOTS.length
-      ? t.wholeDay
-      : job.length === 1
-        ? t.slots[placement.slot]
-        : t.span(t.slots[placement.slot], t.slots[last]);
-  return t.when(t.weekdays[placement.day], slots);
+  return job.length === 1 ? t.slots[placement.slot] : t.span(t.slots[placement.slot], t.slots[last]);
+}
+
+/** 月视图上的日程：`weeks`（本周和已发布的下周，各带这台设备上的草稿）里保存过的和草稿，按日期、时间段排；
+ * `who` 不是 null 时只留她的（「只看她」）。`characterOf` 给角色。 */
+export function dayJobs<C>(
+  weeks: readonly Pick<Board, "week" | "drafts">[],
+  characterOf: (id: string) => C,
+  who: string | null,
+): DayJob<C>[] {
+  return weeks
+    .flatMap(({ week, drafts }) =>
+      [
+        ...week.placements.map((placement) => ({ placement, isSaved: true })),
+        ...drafts.map((placement) => ({ placement, isSaved: false })),
+      ].flatMap(({ placement, isSaved }) => {
+        const job = jobOf(week, placement.job_id);
+        if (!job || !isShown(job, who)) return [];
+        const day: DayJob<C> = {
+          date: addDays(week.id, placement.day),
+          character: characterOf(job.character_id),
+          jobId: job.id,
+          name: job.name,
+          slots: slotsText(placement, job),
+          isSaved,
+        };
+        return [{ day, slot: placement.slot }];
+      }),
+    )
+    .sort((a, b) => a.day.date.localeCompare(b.day.date) || a.slot - b.slot)
+    .map(({ day }) => day);
 }
 
 /** 确认框的列表：`placements` 一行一项（哪项工作、哪天哪几段），按周几、哪一段排。 */
@@ -280,6 +311,17 @@ export type GridItem =
   | { kind: "block"; occupant: Occupant; state: BlockState }
   | { kind: "empty"; cell: Cell; when: When }
   | { kind: "hidden"; cell: Cell };
+
+/** 对话页更多菜单的「她的日程」去的地方：日历子页，「只看她」。 */
+export function herScheduleHref(characterId: string): string {
+  return `${playHref("calendar")}?${new URLSearchParams({ who: characterId })}`;
+}
+
+/** 日历子页地址里「只看她」的角色 id；没有 `who`（或者不止一个、是空的）是看全部。是不是真有这位角色由子页判断。 */
+export function calendarWho(query: Record<string, string | string[] | undefined>): string | null {
+  const { who } = query;
+  return typeof who === "string" && who !== "" ? who : null;
+}
 
 /** 「只看她」：`who` 是她的角色 id 时只留她的工作，null 时都留。 */
 export function isShown(job: Job, who: string | null): boolean {

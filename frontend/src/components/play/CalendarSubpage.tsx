@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { type ReactNode, useState } from "react";
 
 import { FailureNotice } from "@/components/app/FailureNotice";
@@ -23,6 +24,7 @@ import {
   type CalendarMode,
   type CalendarMonth,
   calendarKinds,
+  type DayJob,
   calendarMode,
   cellLines,
   eventsOn,
@@ -34,7 +36,16 @@ import {
 } from "@/lib/calendar";
 import { type Failure, toFailure } from "@/lib/failure";
 import { playTitle } from "@/lib/playCards";
-import { afterSave, type Board, type Placement, returnedNote, saveSchedule, startedNote } from "@/lib/schedule";
+import { playHref } from "@/lib/playRoute";
+import {
+  afterSave,
+  type Board,
+  dayJobs,
+  type Placement,
+  returnedNote,
+  saveSchedule,
+  startedNote,
+} from "@/lib/schedule";
 import { cn } from "@/lib/utils";
 import { herVars } from "@/theme/herVars";
 import {
@@ -45,18 +56,22 @@ import {
   MonthViewIcon,
   NextMonthIcon,
   PreviousMonthIcon,
+  ScheduleIcon,
   WeekViewIcon,
 } from "@/theme/icons";
 
 const t = copy.play.calendar;
+const s = copy.play.schedule;
 
 /** 手机上一格最多几个记号。 */
 const CELL_MARKS = 4;
 
-const FILTER_ICONS = { character: BirthdayIcon, producer: BirthdayIcon, holiday: HolidayIcon } satisfies Record<
-  CalendarKind,
-  unknown
->;
+const FILTER_ICONS = {
+  character: BirthdayIcon,
+  producer: BirthdayIcon,
+  holiday: HolidayIcon,
+  schedule: ScheduleIcon,
+} satisfies Record<CalendarKind, unknown>;
 
 /**
  * 「日历」子页（`/play/calendar`，DESIGN.md「玩法页」）：页首返回键回玩法页，日程开着时末端是月 / 周切换
@@ -65,9 +80,11 @@ const FILTER_ICONS = { character: BirthdayIcon, producer: BirthdayIcon, holiday:
  * 没回来之前先画生日，这一天所在的年没回来、又没有生日时先不说「这一天没有事」。
  * 周视图是本周（和已发布的下周）的日程和待排（components/play/ScheduleWeek），有草稿时内容底部一条保存条；
  * 保存时服务器退回了哪几项，页上方说一句。日程读到之前整页先写「正在读取」，免得先画月视图再跳成周视图。
+ * 地址带着 `who`（对话页更多菜单的「她的日程」）时「只看她」：两种视图都只画她的日程和她的待排，页首下面一条
+ * 「只看〇〇的日程」，点 ✕ 地址去掉 `who`。角色不存在、或日程关着时当作没有。
  * 好感度和礼物没开放时照常有。
  */
-export function CalendarSubpage() {
+export function CalendarSubpage({ who }: { who: string | null }) {
   const [month, setMonth] = useState<CalendarMonth | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
   const [kept, setKept] = useState<{ userId: string; mode: CalendarMode } | null>(null);
@@ -76,7 +93,11 @@ export function CalendarSubpage() {
   const [failure, setFailure] = useState<Failure | null>(null);
   const [isSaving, setSaving] = useState(false);
   const isWide = useWide();
+  const router = useRouter();
   const { account, characters } = useDirectory();
+  // 点过 ✕ 的「只看她」：地址换掉以前（重新渲染要等一下）就不再显示；地址里没有 `who` 以后忘掉。
+  const [dropped, setDropped] = useState<string | null>(null);
+  if (!who && dropped !== null) setDropped(null);
   const {
     calendar,
     hasHolidaysOf,
@@ -116,17 +137,28 @@ export function CalendarSubpage() {
       }}
     />
   ) : undefined;
+  const byId = new Map((characters ?? []).map((character) => [character.id, character]));
+  const her = schedule.enabled && who !== null && who !== dropped ? byId.get(who) : undefined;
+  const herId = her?.id ?? null;
   const failures = (
     <>
       {scheduleFailure && <FailureNotice failure={scheduleFailure} />}
       {failure && <FailureNotice failure={failure} />}
+      {her && (
+        <OnlyHer
+          character={her}
+          onAll={() => {
+            setDropped(her.id);
+            router.replace(playHref("calendar"), { scroll: false });
+          }}
+        />
+      )}
     </>
   );
 
   if (mode === "week" && schedule.enabled && scheduleNow) {
     const week = isNext && schedule.next_week ? schedule.next_week : schedule.this_week;
     const board: Board = { week, drafts: draftsOn(week.id), now: scheduleNow };
-    const byId = new Map((characters ?? []).map((character) => [character.id, character]));
     const characterOf: CharacterOf = (id) => byId.get(id) ?? { id, name: id, short_name: null, avatar_url: null, color: null };
     const nameOf = (id: string) => characterOf(id).name;
 
@@ -173,7 +205,7 @@ export function CalendarSubpage() {
           onWeek={setNext}
           characterOf={characterOf}
           calendar={data}
-          who={null}
+          who={herId}
           isWide={isWide}
           onDrafts={(drafts) => keepDraftsOn(week.id, drafts)}
         />
@@ -181,10 +213,18 @@ export function CalendarSubpage() {
     );
   }
 
-  const kinds = calendarKinds(data.producerBirthday);
+  const kinds = calendarKinds(data.producerBirthday, schedule.enabled);
   const visible = kinds.filter((kind) => shown.includes(kind));
   const day = picked ?? today;
-  const events = eventsOn(day, data, visible);
+  const weeks = !schedule.enabled
+    ? []
+    : [schedule.this_week, ...(schedule.next_week ? [schedule.next_week] : [])].map((week) => ({
+        week,
+        drafts: draftsOn(week.id),
+      }));
+  const jobs = dayJobs(weeks, (id) => byId.get(id) ?? null, herId).flatMap(known);
+  const withJobs: CalendarData<Character> = { ...data, jobs };
+  const events = eventsOn(day, withJobs, visible);
   return (
     <PlayShell header={header(end)}>
       {failures}
@@ -200,7 +240,7 @@ export function CalendarSubpage() {
         month={month ?? monthOf(today)}
         today={today}
         picked={day}
-        data={data}
+        data={withJobs}
         visible={visible}
         onMonth={setMonth}
         onPick={setPicked}
@@ -242,6 +282,26 @@ function ModeToggle({ mode, onChange }: { mode: CalendarMode; onChange: (mode: C
         {t.views.week}
       </ToggleGroupItem>
     </ToggleGroup>
+  );
+}
+
+/** 配置里已经没有的角色的日程不画。 */
+function known(job: DayJob<Character | null>): DayJob<Character>[] {
+  const { character } = job;
+  return character ? [{ ...job, character }] : [];
+}
+
+/** 「只看她」时页首下面那一条：她的小头像、「只看〇〇的日程」和看全部的 ✕（样子同礼物子页的预选）。 */
+function OnlyHer({ character, onAll }: { character: Character; onAll: () => void }) {
+  return (
+    <div className="flex items-center gap-2 rounded-2xl border py-1 pr-1 pl-3">
+      <MarkedAvatar name={character.name} src={character.avatar_url} size="sm" />
+      <p className="min-w-0 flex-1 truncate text-sm">{t.onlyHer(character.name)}</p>
+      {/* 手机上触控目标不小于 44px */}
+      <Button variant="ghost" size="icon-lg" className="max-md:size-11" aria-label={t.showAll} onClick={onAll}>
+        <CloseIcon />
+      </Button>
+    </div>
   );
 }
 
@@ -402,16 +462,19 @@ function DayCell({
         </span>
         <span aria-hidden className="flex gap-0.5 px-0.5 md:hidden">
           {events.slice(0, CELL_MARKS).map((event) => (
-            <span
-              key={eventKey(event)}
-              style={event.kind === "character" ? herVars(event.character.color) : undefined}
-              className={cn("size-1.5 rounded-full", event.kind === "character" ? "bg-her-mark" : "bg-muted-foreground")}
-            />
+            <Mark key={eventKey(event)} event={event} />
           ))}
         </span>
         <span aria-hidden className="flex min-w-0 flex-col gap-0.5 max-md:hidden">
           {lines.map((event) => (
-            <span key={eventKey(event)} className="flex min-w-0 items-center gap-1 text-meta">
+            <span
+              key={eventKey(event)}
+              style={event.kind === "schedule" ? herVars(event.job.character.color) : undefined}
+              className={cn(
+                "flex min-w-0 items-center gap-1 text-meta",
+                event.kind === "schedule" && event.job.isSaved && "rounded-sm bg-her-wall",
+              )}
+            >
               <EventIcon event={event} />
               <span className="truncate">{eventText(event)}</span>
             </span>
@@ -423,8 +486,31 @@ function DayCell({
   );
 }
 
-/** 16px 的图标：角色生日是她颜色的蛋糕（每一项单独注入一次她的颜色），我的生日的蛋糕和节假日的旗子不上色。 */
+/** 手机上格子里的一个 6px 记号：角色生日和日程是她的颜色（日程保存过的实心、草稿空心），别的中性。 */
+function Mark({ event }: { event: CalendarEvent<Character> }) {
+  if (event.kind === "character" || event.kind === "schedule") {
+    const isHollow = event.kind === "schedule" && !event.job.isSaved;
+    const color = event.kind === "character" ? event.character.color : event.job.character.color;
+    return (
+      <span
+        style={herVars(color)}
+        className={cn("size-1.5 rounded-full", isHollow ? "border border-her-mark" : "bg-her-mark")}
+      />
+    );
+  }
+  return <span className="size-1.5 rounded-full bg-muted-foreground" />;
+}
+
+/** 16px 的图标：角色生日是她颜色的蛋糕（每一项单独注入一次她的颜色），日程是她颜色的圆点（保存过的实心、草稿空心，
+ * 注入在整行上），我的生日的蛋糕和节假日的旗子不上色。 */
 function EventIcon({ event }: { event: CalendarEvent<Character> }) {
+  if (event.kind === "schedule") {
+    return (
+      <span className="flex size-4 shrink-0 items-center justify-center">
+        <span className={cn("size-2 rounded-full", event.job.isSaved ? "bg-her-mark" : "border border-her-mark")} />
+      </span>
+    );
+  }
   if (event.kind === "character") {
     return (
       <span style={herVars(event.character.color)} className="flex shrink-0">
@@ -438,6 +524,7 @@ function EventIcon({ event }: { event: CalendarEvent<Character> }) {
 
 function eventText(event: CalendarEvent<Character>): string {
   if (event.kind === "character") return event.character.name;
+  if (event.kind === "schedule") return event.job.name;
   return event.kind === "holiday" ? event.name : t.mine;
 }
 
@@ -466,6 +553,18 @@ function DayEvents({ date, events }: { date: string; events: CalendarEvent<Chara
 }
 
 function EventRow({ event }: { event: CalendarEvent<Character> }) {
+  if (event.kind === "schedule") {
+    const { job } = event;
+    return (
+      <>
+        <MarkedAvatar name={job.character.name} src={job.character.avatar_url} size="sm" />
+        <span className="truncate">{job.name}</span>
+        <span className="shrink-0 text-meta text-muted-foreground">
+          {[job.slots, job.isSaved ? s.states.saved : s.states.draft].join(copy.play.separator)}
+        </span>
+      </>
+    );
+  }
   if (event.kind === "character") {
     const { character } = event;
     return (
@@ -491,5 +590,6 @@ function EventRow({ event }: { event: CalendarEvent<Character> }) {
 
 function eventKey(event: CalendarEvent<Character>): string {
   if (event.kind === "character") return `character:${event.character.id}`;
+  if (event.kind === "schedule") return `schedule:${event.job.jobId}`;
   return event.kind === "holiday" ? `holiday:${event.name}` : "producer";
 }

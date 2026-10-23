@@ -458,6 +458,17 @@ describe("reach-outs", () => {
   });
 });
 
+describe("schedule", () => {
+  const spec = ITEM_SPECS.schedule;
+
+  it("send only the switch, untried, under「限额与玩法」after the reach-outs", () => {
+    expect(formOf(spec, { enabled: true })).toEqual({ enabled: "true" });
+    expect(changeOf(spec, { enabled: "false" }, true)).toEqual({ change: { enabled: false } });
+    expect(spec.tried).toBe(false);
+    expect(TAB_ITEMS.limits).toEqual(["limits", "affinity", "reach_outs", "schedule"]);
+  });
+});
+
 describe("tabs", () => {
   it("put every item under exactly one tab", () => {
     const placed = CONFIG_TABS.flatMap((tab) => TAB_ITEMS[tab]);

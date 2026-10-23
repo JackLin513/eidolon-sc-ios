@@ -30,6 +30,7 @@ export type ItemName =
   | "limits"
   | "affinity"
   | "reach_outs"
+  | "schedule"
   | "proxy"
   | "service_status";
 
@@ -85,7 +86,7 @@ export const TAB_ITEMS: Record<ConfigTab, ItemName[]> = {
   image: ["image"],
   network: ["proxy"],
   status: ["service_status"],
-  limits: ["limits", "affinity", "reach_outs"],
+  limits: ["limits", "affinity", "reach_outs", "schedule"],
   sponsor: [],
   prices: [],
   read_only: [],
@@ -331,6 +332,13 @@ export const ITEM_SPECS: Record<ItemName, ItemSpec> = {
       { name: "enabled", kind: "switch" },
       { name: "per_day", kind: "positive" },
     ],
+    tried: false,
+  },
+  // 日程（GLOSSARY.md「日程」）：只有一个开关。不试调。
+  schedule: {
+    rows: ["enabled"],
+    secrets: [],
+    form: [{ name: "enabled", kind: "switch" }],
     tried: false,
   },
   // 网络代理（GLOSSARY.md「网络代理」）：总开关、地址、密码，每项服务一个开关。保存前把换了路线的服务连一遍。

@@ -5,6 +5,7 @@ import {
   calendarMode,
   cellLines,
   type CalendarData,
+  type CalendarEvent,
   type CalendarKind,
   eventsOn,
   keepCalendarMode,
@@ -22,7 +23,7 @@ const MADOKA: Idol = { id: "madoka", name: "樋口円香", birthday: "10-27" };
 const KOITO: Idol = { id: "koito", name: "福丸小糸", birthday: "10-27" };
 const LEAP: Idol = { id: "leap", name: "閏年子", birthday: "02-29" };
 
-const ALL: CalendarKind[] = ["character", "producer", "holiday"];
+const ALL: CalendarKind[] = ["character", "producer", "holiday", "schedule"];
 
 function data(change: Partial<CalendarData<Idol>> = {}): CalendarData<Idol> {
   return {
@@ -37,9 +38,18 @@ function data(change: Partial<CalendarData<Idol>> = {}): CalendarData<Idol> {
   };
 }
 
-/** 这一天的事，一件写成一个词：角色写 id，我的生日写「me」，节假日写名字。 */
-const on = (date: string, d = data(), shown: CalendarKind[] = ALL) =>
-  eventsOn(date, d, shown).map((e) => (e.kind === "character" ? e.character.id : e.kind === "producer" ? "me" : e.name));
+/** 一件事写成一个词：角色写 id，我的生日写「me」，节假日写名字，日程写「谁:工作名」。 */
+const word = (e: CalendarEvent<Idol>) =>
+  e.kind === "character"
+    ? e.character.id
+    : e.kind === "producer"
+      ? "me"
+      : e.kind === "schedule"
+        ? `${e.job.character.id}:${e.job.name}`
+        : e.name;
+
+/** 这一天的事，一件一个词。 */
+const on = (date: string, d = data(), shown: CalendarKind[] = ALL) => eventsOn(date, d, shown).map(word);
 
 describe("某一天的事", () => {
   it("没事的日子什么都没有", () => {
@@ -81,12 +91,29 @@ describe("某一天的事", () => {
     expect(on("2026-11-03", d, ["character", "producer"])).toEqual(["mano", "me"]);
     expect(on("2026-11-03", d, [])).toEqual([]);
   });
+
+  it("日程排在节假日后面，照给的顺序；筛掉「日程」时没有", () => {
+    const job = (character: Idol, name: string, date = "2026-11-03") => ({
+      date,
+      character,
+      jobId: `2026-11-02-${name}`,
+      name,
+      slots: "下午",
+      isSaved: true,
+    });
+    const d = data({ jobs: [job(MADOKA, "拍摄广告"), job(MANO, "舞蹈课"), job(MANO, "吃饭", "2026-11-04")] });
+
+    expect(on("2026-11-03", d)).toEqual(["me", "文化の日", "madoka:拍摄广告", "mano:舞蹈课"]);
+    expect(on("2026-11-04", d)).toEqual(["mano:吃饭"]);
+    expect(on("2026-11-03", d, ["character", "producer", "holiday"])).toEqual(["me", "文化の日"]);
+  });
 });
 
 describe("有哪几类", () => {
-  it("三类；制作人没生日时没有我的生日", () => {
-    expect(calendarKinds({ month: 1, day: 1 })).toEqual(["character", "producer", "holiday"]);
-    expect(calendarKinds(null)).toEqual(["character", "holiday"]);
+  it("四类；制作人没生日时没有我的生日，日程关着时没有日程", () => {
+    expect(calendarKinds({ month: 1, day: 1 }, true)).toEqual(["character", "producer", "holiday", "schedule"]);
+    expect(calendarKinds(null, true)).toEqual(["character", "holiday", "schedule"]);
+    expect(calendarKinds({ month: 1, day: 1 }, false)).toEqual(["character", "producer", "holiday"]);
   });
 });
 
@@ -95,7 +122,7 @@ describe("下一个", () => {
     const found = nextEvent(today, d, shown);
     if (!found) return null;
     const { date, event } = found;
-    return [date, event.kind === "character" ? event.character.id : event.kind === "producer" ? "me" : event.name];
+    return [date, word(event)];
   };
 
   it("找今天以后最近的一件", () => {

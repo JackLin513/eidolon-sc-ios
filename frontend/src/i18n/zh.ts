@@ -167,6 +167,8 @@ export const zh = {
     /** 她有没看过的成就解锁时，更多菜单键的读屏名字。 */
     menuUnseen: "更多操作，有新解锁的成就",
     newConversation: "新对话",
+    /** 更多菜单里去日历子页、只看她的那一项（日程开着时才有）。 */
+    herSchedule: "她的日程",
     call: (name: string) => `和${name}通话`,
     callTooltip: "语音通话",
     placeholder: "用中文或日语说点什么",
@@ -1089,6 +1091,11 @@ export const zh = {
         title: "搭话",
         tiles: { succeeded: "成功", failed: "失败", answered: "被回了" },
       },
+      /** 「好感度」里的「日程」一小节：本周（北京时间）排了日程的人数，不跟时间范围走。 */
+      schedule: {
+        title: "日程",
+        tiles: { scheduled: "本周排了日程的人数" },
+      },
       /** 「好感度」里的「每日任务和成就」一小节：范围内每一项各做完几次，解锁了几个成就阶段、发出几次抽奖、几张重置卡。 */
       tasksAndAchievements: {
         title: "每日任务和成就",
@@ -1361,6 +1368,10 @@ export const zh = {
           title: "搭话",
           hint: "打开后，用户一阵子没来，角色会在当前对话里先说几句。用的是部署者的对话模型，花费由部署者出，自带 LLM 的用户也一样。保存后下一分钟起生效。",
         },
+        schedule: {
+          title: "日程",
+          hint: "打开后，日历里每周发布一批工作，用户排进角色的一周，角色知道并说起；排给她的工作做完了，好感度上升（好感度关着时不加）。关掉时日历只有月视图，角色不再说起日程，已排的原样留着，再打开接着用。保存后从下一次读取起生效。",
+        },
         proxy: {
           title: "网络代理",
           hint: "打开的服务经过这个代理连服务商，其余的直连；用户自带的密钥和部署者的分开选。保存前把换了路线的部署者服务按新路线各连一次，有一项不通就不保存。保存后从下一次请求起生效，进行中的回合和通话也是；已经连上的语音连接不断。",
@@ -1422,6 +1433,7 @@ export const zh = {
       itemFields: {
         chat_llm: { reasoning_effort: "文字的思考强度" },
         reach_outs: { enabled: "搭话", per_day: "每位用户每天最多几次" },
+        schedule: { enabled: "日程" },
         proxy: {
           enabled: "代理",
           url: "代理地址",
@@ -1778,6 +1790,8 @@ export const zh = {
         next: (date: string, what: string) => `下一个：${date} ${what}`,
         today: (what: string) => `今天：${what}`,
         birthday: (name: string) => `${name}的生日`,
+        /** 本周还有工作待排时，状态最前面一段。 */
+        pending: (n: number) => `本周还有 ${n} 项工作待排`,
       },
     },
     /** 日历子页（`/play/calendar`）。 */
@@ -1799,6 +1813,7 @@ export const zh = {
         character: "角色生日",
         producer: "我的生日",
         holiday: "节假日",
+        schedule: "日程",
       },
       /** 月视图的标题「2026年10月」和两边的键。 */
       month: (year: number, month: number) => `${year}年${month}月`,
@@ -1812,6 +1827,9 @@ export const zh = {
       more: (n: number) => `还有 ${n} 项`,
       /** 格子的读屏名字：「10月27日 周二，2 项」。 */
       cell: (date: string, events: number) => (events > 0 ? `${date}，${events} 项` : date),
+      /** 「只看她」时页首下面那一条，和看全部的 ✕。 */
+      onlyHer: (name: string) => `只看${name}的日程`,
+      showAll: "看全部",
       /** 页首末端的月 / 周切换（日程开着时才有）。 */
       views: { label: "视图", month: "月", week: "周" },
     },

@@ -2,11 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   afterSave,
+  calendarWho,
   cellText,
   confirmRows,
+  dayJobs,
   draftsOf,
   expiry,
   freeSlots,
+  herScheduleHref,
   isOutdated,
   isShown,
   jobNote,
@@ -506,5 +509,46 @@ describe("待排一行的说明", () => {
   it("写占几段，有时段限制的再写只能哪几段", () => {
     expect(jobNote(job("a", { length: 2, slots: ["evening", "afternoon"] }))).toBe("2 段 · 只能下午、晚上");
     expect(jobNote(job("b", { length: 3 }))).toBe("3 段");
+  });
+});
+
+describe("月视图上的日程", () => {
+  const shoot = job("shoot", { name: "拍摄广告", length: 2, character_id: "madoka" });
+  const lesson = job("lesson", { name: "舞蹈课" });
+  const dinner = job("dinner", { name: "吃饭", length: 3, character_id: "madoka" });
+  const thisWeek = {
+    week: weekOf(WEEK, { jobs: [shoot, lesson], placements: [{ job_id: "lesson", day: 2, slot: 2 }] }),
+    drafts: [{ job_id: "shoot", day: 2, slot: 0 }],
+  };
+  const nextWeek = { week: weekOf(NEXT, { jobs: [dinner] }), drafts: [{ job_id: "dinner", day: 6, slot: 0 }] };
+  const characterOf = (id: string) => ({ id });
+  /** 一项写成「日期 谁 工作名 几段 保存过的还是草稿」。 */
+  const text = (who: string | null) =>
+    dayJobs([thisWeek, nextWeek], characterOf, who).map(
+      (j) => `${j.date} ${j.character.id} ${j.name} ${j.slots} ${j.isSaved ? "已保存" : "草稿"}`,
+    );
+
+  it("本周和下周保存过的和草稿都有，按日期和时间段排，写占哪几段", () => {
+    expect(text(null)).toEqual([
+      "2026-10-21 madoka 拍摄广告 上午到下午 草稿",
+      "2026-10-21 mano 舞蹈课 晚上 已保存",
+      "2026-11-01 madoka 吃饭 一整天 草稿",
+    ]);
+  });
+
+  it("只看她时只有她的", () => {
+    expect(text("madoka")).toEqual(["2026-10-21 madoka 拍摄广告 上午到下午 草稿", "2026-11-01 madoka 吃饭 一整天 草稿"]);
+    expect(text("nobody")).toEqual([]);
+  });
+});
+
+describe("「只看她」的地址", () => {
+  it("对话页的「她的日程」去日历子页，带着她", () => {
+    expect(herScheduleHref("mano")).toBe("/play/calendar?who=mano");
+  });
+
+  it("地址里没有、是空的或不止一个时是全部", () => {
+    expect(calendarWho({ who: "mano" })).toBe("mano");
+    for (const who of [undefined, "", ["mano", "madoka"]]) expect(calendarWho({ who }), String(who)).toBeNull();
   });
 });
