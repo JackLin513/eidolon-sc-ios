@@ -14,7 +14,9 @@ calls with each character, and in each stretch of the range (`trend`), in stretc
 beginning where the admin's clock (`X-Timezone`) has a round hour or day. Where affinity is
 on (GLOSSARY.md「好感度」), how the judge model judged the turns recorded, and the cooldowns
 they began, in all and for each character, with how often she hung up a call or ended a
-conversation (`affinity`). How many times characters reached out (GLOSSARY.md「搭话」), how
+conversation (`affinity`); and beside it, how many users saved any job into the week
+Beijing is in (GLOSSARY.md「日程」, `scheduled_this_week`), counted from the schedules as the
+dashboard is opened, whatever its range, where schedules are on. How many times characters reached out (GLOSSARY.md「搭话」), how
 many times that failed, and the share answered (`reach_outs`), where the deployer has them on
 or any were recorded in the range. How many times each daily task was done (GLOSSARY.md
 「每日任务」, `daily_tasks`), and how many achievements' stages were unlocked, the draw chances
@@ -128,6 +130,10 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
             "affinity": (
                 affinity(records, names, tally.cooled_users)
                 if backend.config.affinity_on else None
+            ),
+            "scheduled_this_week": (
+                await backend.schedules.scheduled_this_week()
+                if backend.config.schedule_on else None
             ),
             "reach_outs": (
                 reach_outs(reach_out_records)

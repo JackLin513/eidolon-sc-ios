@@ -42,6 +42,7 @@ from eidolon.gift_catalog import Gift, check_liked_gifts, gifts_path, load_gift_
 from eidolon.gifts import Gifts
 from eidolon.happenings import Happenings
 from eidolon.hot_words import hot_words
+from eidolon.job_list import jobs_path, load_job_list
 from eidolon.housekeeping import keep_tidy
 from eidolon.loop_lag import watch_the_loop
 from eidolon.randomness import Random, secure_random
@@ -72,6 +73,7 @@ from eidolon.rerank import (
     thresholds_for,
 )
 from eidolon.retrieval import Retrieval, open_reference_sources
+from eidolon.schedule import Schedules, idols_of
 from eidolon.service_clients import ProviderClients, ServiceClients
 from eidolon.service_status import ServiceStatus, probes
 from eidolon.sponsor import Sponsor
@@ -141,6 +143,8 @@ class Backend:
     """Exports users' data packages, and imports them."""
     reach_outs: ReachOuts
     """Has characters reach out to users once their time comes."""
+    schedules: Schedules
+    """Each week's jobs and every producer's schedule, where schedules are on."""
     world: World | None = None
     """The world setting; None without its data file."""
     corpus: StoryCorpus | None = None
@@ -209,11 +213,13 @@ def build(
 ) -> Backend:
     """The backend `settings` describe, with any of the outside services passed in
     used instead of made. Raises RuntimeError, having opened nothing, if the character
-    configuration (her liked gifts and all), the world setting or the gift catalog is broken,
+    configuration (her liked gifts and all), the world setting, the gift catalog or the job
+    list is broken,
     or a character is none of its idols and none of its staff."""
     characters = load_characters(settings.characters_path)
     gift_catalog = load_gift_catalog(gifts_path(settings.characters_path))
     check_liked_gifts(characters, gift_catalog)
+    job_list = load_job_list(jobs_path(settings.characters_path))
     world = load_world(path := world_path(settings.characters_path))
     if world is None:
         log.info(
@@ -390,6 +396,9 @@ def build(
         calls.in_call, clock, random or secure_random,
     )
     config.on_change(gifts.notice)
+    schedules = Schedules(
+        database, clock, lambda: config.schedule_on, idols_of(characters, world), job_list
+    )
     return Backend(
         settings=settings,
         database=database,
@@ -420,6 +429,7 @@ def build(
         service_status=service_status,
         data_packages=DataPackages(database, store, memories, characters, gift_catalog, clock),
         reach_outs=reach_outs,
+        schedules=schedules,
         world=world,
         corpus=corpus,
         _closers=closers,

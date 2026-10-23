@@ -11,7 +11,7 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Annotated
 from urllib.parse import urlsplit
 
-from fastapi import Depends, HTTPException, Request, Response
+from fastapi import Depends, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
 from eidolon.config import Settings
@@ -119,3 +119,6 @@ def current_user(user: SignedIn) -> str:
 
 
 UserId = Annotated[str, Depends(current_user)]
+
+DeviceTimezone = Annotated[str | None, Header(alias="X-Timezone")]
+"""The time zone the browser detected; the producer profile's own time zone overrides it."""

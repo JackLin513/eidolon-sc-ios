@@ -141,6 +141,7 @@ RERANK = "rerank"
 LIMITS = "limits"
 AFFINITY = "affinity"
 REACH_OUTS = "reach_outs"
+SCHEDULE = "schedule"
 PROXY = "proxy"
 SERVICE_STATUS = "service_status"
 
@@ -741,6 +742,22 @@ class _ReachOuts(_Item):
         return current | change
 
 
+class _Schedule(_Item):
+    """Whether each week's jobs are published for producers to schedule (GLOSSARY.md「日程」),
+    as `.env` has it (on by default); not tried."""
+
+    name = SCHEDULE
+    fields = ("enabled",)
+
+    def env(self) -> Values:
+        return {"enabled": self.c.settings.schedule}
+
+    def candidate(self, current: Values, change: Values) -> Values:
+        if not isinstance(change.get("enabled"), bool):
+            raise ConfigInvalid(f"日程需要是 true 或 false，而不是 {change.get('enabled')!r}")
+        return current | change
+
+
 PROXY_LABELS: dict[ProxiedService, str] = {
     "chat_llm": "扮演角色的 LLM",
     "memory_llm": "后台模型",
@@ -912,7 +929,8 @@ class LiveConfig:
                 # The proxy first: as the server starts, the services are tried through it.
                 _Proxy(self), _ChatLLM(self), _MemoryLLM(self), _TTS(self), _STT(self),
                 _Image(self), _Judge(self), _JudgeThresholds(self), _Rerank(self),
-                _Limits(self), _Affinity(self), _ReachOuts(self), _ServiceStatus(self),
+                _Limits(self), _Affinity(self), _ReachOuts(self), _Schedule(self),
+                _ServiceStatus(self),
             )
         }
         self._failures: dict[str, str] = {}
@@ -1014,6 +1032,11 @@ class LiveConfig:
         most."""
         values = self.effective(REACH_OUTS)
         return ReachOutSettings(values["enabled"], values["per_day"])
+
+    @property
+    def schedule_on(self) -> bool:
+        """Whether each week's jobs are published for producers to schedule now."""
+        return self.effective(SCHEDULE)["enabled"]
 
     @property
     def proxy_settings(self) -> ProxySettings:
