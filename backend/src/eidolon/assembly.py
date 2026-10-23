@@ -371,10 +371,14 @@ def build(
         random or secure_random,
     )
     happenings = Happenings(database, clock, lambda: config.affinity_on, gifts, activity)
+    schedules = Schedules(
+        database, clock, lambda: config.schedule_on, idols_of(characters, world), job_list,
+        affinities,
+    )
     engine = ConversationEngine(
         database, store, characters, gift_catalog, memories, titles, clock, retrieval,
         lambda: config.history_turns, world, affinities, config.affinity_judge(), photos,
-        happenings,
+        happenings, schedules,
     )
     own_keys = OwnKeys(
         own_llm_service, config, activity, speech, exempting=lambda: config.exempting_keys,
@@ -396,9 +400,6 @@ def build(
         calls.in_call, clock, random or secure_random,
     )
     config.on_change(gifts.notice)
-    schedules = Schedules(
-        database, clock, lambda: config.schedule_on, idols_of(characters, world), job_list
-    )
     return Backend(
         settings=settings,
         database=database,

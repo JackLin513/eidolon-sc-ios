@@ -4,17 +4,43 @@
 
 **Blocked by:** 01（`JOB_DONE_STEP` 的尺度是放慢后的）、02（日程表、读接口、开关）
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 「今天的几句」接缝扩成带放置：三处（打字回合、通话回合、搭话）都走同一个接缝，不另改三处；签名和拼法写进实现说明
-- [ ] 提示词：有保存的放置时「此刻」里有引子、每一项、相对日子（昨天 / 今天 / 明天 / 前天 / 后天 / 周X / 下周X）、多段的写法和「（做完了）」；正在进行的那句（0–6 点没有）；规则几句；没有放置时一句不写；日程关着时一句不写；通话里的回合和搭话同样有；别的偶像的放置不在她的提示词里；换周后上周的不出现（先例 `test_dynamic_context.py`、`test_reach_outs.py`、`test_affinity_prompt.py`、`test_calendar.py`）
-- [ ] 搭话：`REACH_OUT_RULES` 是改后的文本（两处）；搭话的次数和时机测试不改照过
-- [ ] 做完加好感度：拨假时钟过最后一段的段末后读日程（读接口和组提示词两条路都试），好感度 +0.5、再读不再加；中途不加；两段的在第二段结束才加；好感度关着时读不加、打开后再读补上；日程关着不加；冷却中加 0.5 并在到解冻线时解除；不留对话事件、不写运行记录；三项都做完 +1.5；改档案时区后到期时刻跟着变、仍只算一次（先例 `test_gift_giving.py`、`test_affinity_cooldown.py`、`test_conversation_events.py`）
-- [ ] 常量在好感度模块里；每日任务规格（`.scratch/daily-tasks/spec.md`）那条总原则改述；GLOSSARY.md「好感度」「日程」要补就调 `domain-modeling`
-- [ ] pyright、ruff 过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
+- [x] 「今天的几句」接缝扩成带放置：三处（打字回合、通话回合、搭话）都走同一个接缝，不另改三处；签名和拼法写进实现说明
+- [x] 提示词：有保存的放置时「此刻」里有引子、每一项、相对日子（昨天 / 今天 / 明天 / 前天 / 后天 / 周X / 下周X）、多段的写法和「（做完了）」；正在进行的那句（0–6 点没有）；规则几句；没有放置时一句不写；日程关着时一句不写；通话里的回合和搭话同样有；别的偶像的放置不在她的提示词里；换周后上周的不出现（先例 `test_dynamic_context.py`、`test_reach_outs.py`、`test_affinity_prompt.py`、`test_calendar.py`）
+- [x] 搭话：`REACH_OUT_RULES` 是改后的文本（两处）；搭话的次数和时机测试不改照过
+- [x] 做完加好感度：拨假时钟过最后一段的段末后读日程（读接口和组提示词两条路都试），好感度 +0.5、再读不再加；中途不加；两段的在第二段结束才加；好感度关着时读不加、打开后再读补上；日程关着不加；冷却中加 0.5 并在到解冻线时解除；不留对话事件、不写运行记录；三项都做完 +1.5；改档案时区后到期时刻跟着变、仍只算一次（先例 `test_gift_giving.py`、`test_affinity_cooldown.py`、`test_conversation_events.py`）
+- [x] 常量在好感度模块里；每日任务规格（`.scratch/daily-tasks/spec.md`）那条总原则改述；GLOSSARY.md「好感度」「日程」要补就调 `domain-modeling`
+- [x] pyright、ruff 过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
 - [ ] 票收尾：Comments 里写下「此刻」里日程那几句的样子（给票 05 验收时对照）；推一次让 CI 跑、跑 `code-review`
 
 ## Comments
+
+### 实现说明（票 03）
+
+**接缝**：没改 `today_lines` 的签名，在引擎拼「此刻」的方法里另拼一组。`ConversationEngine._now_prompt` 多收一个 `her_jobs: HerSchedule | None`，在 `now_prompt`、`today_lines` 之后接 `schedule.schedule_lines(her_jobs)`；打字回合、通话回合（`_reply`）和搭话（`reach_out`）都经过它，三处只是各自先 `await self._her_jobs(conversation, device_timezone)`（搭话传 `None`，有效时区就是档案 → 上海）。`HerSchedule` 是「当地此刻、制作人的本周、她的放置（`HerJob`：工作、周、周几、起始段）」，由 `Schedules.hers(user_id, character_id, device_timezone)` 给，只读本周和下周、`weekly_jobs.character_id` 是她的那几项；日程关着时 `None`，一句不写。回合里先读她的工作再读好感度，所以这一回合的档位已经算进刚做完的工作。
+
+**补算**：`Schedules` 多收 `affinities`（`assembly.py` 里挪到引擎前面建，传给引擎）。`read` 和 `hers` 都是「先读，有要写的才开写事务」：读的那一步里 `_counted` 查这位用户所有 `counted_at` 为空的放置，用 `time_of` 看最后一段是不是 `past`（按这次的有效时区），有就返回 None 走写事务，写事务里每项调 `Affinities.job_done` 再写 `counted_at`。写任务串行，所以并发读只算一次。只在 `Affinities.on`（好感度开关）为真时数，日程关着时 `read` / `hers` 直接返回 None，不数。不限周：换周后上周没算的也补上。
+
+**好感度**：`receive_gift` 的身子抽成 `Affinities._raise(db, user_id, character_id, step)`，`step` 收「是否冷却中」给步子；`receive_gift` 传 `_gift_step`，`job_done` 一律 `JOB_DONE_STEP = 0.5`，返回值丢掉（不留对话事件、不出胶囊、不写运行记录）。
+
+**其他**：`REACH_OUT_RULES` 改了两处。`tests/test_schedule_saving.publish` 加了 `character` 参数。每日任务规格那条总原则改述成「系统发的东西（抽奖次数、重置卡）不直接加好感度；……加好感度的只有回合、收到的礼物和排给她的工作做完了」。GLOSSARY 的「好感度」「工作」「日程」已经写了做完加好感度，没改。
+
+**「此刻」里日程那几句的样子**（给票 05 验收对照；北京时间周三 14:00，真乃的放置：周一上午声乐课、周二下午起两段拍摄广告、周三下午开会、周四一整天外景、周日晚上晚饭）：
+
+```
+制作人给你排了这些工作（日程定了就不会再变；制作人在对话里说取消或改期，你还是按日程上的来）：
+周一（前天）上午：声乐课——说明（做完了）
+周二（昨天）下午到晚上：拍摄广告——说明（做完了）
+周四（明天）一整天：外景——说明
+周日晚上：晚饭——说明
+现在（下午 12–18 点）你正在开会：说明。说话可以带着这个状态（抽空回、在休息），不用每句都提，说过就不再反复说。
+这些是你的制作人排的，你可以按你们的关系抱怨或期待；私人的安排也算他给你留出的时间。做完的工作你可以自己说过程和感受（顺不顺、累不累、小插曲），不要编后续的安排和结果（补拍、播出日期、因此接到的新工作、和别人的合作）。只在相关的时候提起，不在开头就说；同一项在这段对话里说过就不再主动提。别的偶像的安排你不清楚。
+```
+
+下周的写「下周一（明天）晚上」「下周四下午」；0–6 点没有「现在」那句；只有正在进行的一项时没有引子和列表，只有「现在……」和规则那句。这几行接在「此刻」一节的末尾（`today_lines` 之后）。
+
+**本机测试**：`test_call_turns.py` 里几条通话时限的测试（如 `test_call_hangs_up_when_time_is_up_once_the_reply_in_progress_is_done`）在 xdist 并行时偶发失败，开工前的提交上同样会挂（换另一条），单独跑 20 次全过，不是这张票引起的。
 
 ### 票 03 交接
 

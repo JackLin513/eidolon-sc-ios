@@ -27,15 +27,24 @@ WEDNESDAY_AFTERNOON = MONDAY + timedelta(days=2, hours=14)
 """Wednesday 14:00 in Shanghai, where the producer is: the afternoon under way."""
 
 
-def publish(database: Path, week: str, *jobs: tuple[str, int, list[str] | None]) -> None:
-    """Keep Mano's jobs of `week`, each its name, length and slots, as drawn; the job's id
-    is its name."""
+def publish(
+    database: Path,
+    week: str,
+    *jobs: tuple[str, int, list[str] | None],
+    character: str = "mano",
+) -> None:
+    """Keep the character's jobs of `week`, each its name, length and slots, as drawn; the
+    job's id is its name, its note「说明」."""
     with sqlite3.connect(database) as db:
+        position = db.execute(
+            "SELECT COUNT(*) FROM weekly_jobs WHERE week = ?", (week,)
+        ).fetchone()[0]
         db.executemany(
             "INSERT INTO weekly_jobs (id, week, position, character_id, listed_id, name, note,"
-            " category, length, slots) VALUES (?, ?, ?, 'mano', ?, ?, '说明', 'practice', ?, ?)",
+            " category, length, slots) VALUES (?, ?, ?, ?, ?, ?, '说明', 'practice', ?, ?)",
             [
-                (name, week, n, name, name, length, slots and json.dumps(slots))
+                (name, week, position + n, character, name, name, length,
+                 slots and json.dumps(slots))
                 for n, (name, length, slots) in enumerate(jobs)
             ],
         )

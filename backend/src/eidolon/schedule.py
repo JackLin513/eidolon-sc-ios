@@ -24,6 +24,13 @@ that it stays on the same day and slot should the producer move. Each slot holds
 whoever's; a slot begun or past takes none (`why_not`). Placing is saving: what is saved is
 neither moved nor taken back, and there is no way to. The browser keeps the drafts.
 
+**What she knows.** She is told her jobs the producer saved of their week and the next, in
+what she is told of now (`schedule_lines`), typing, in a call or reaching out alike; nothing
+of last week's, nor of the others'. A job is done as its last slot ends, where the producer
+is then; each done raises her affinity once (`Affinities.job_done`), as their schedule is
+next read, for a turn's prompt or by them, while both affinity and schedules are on: nothing
+runs to count them, and those done while either is off are counted once both are on again.
+
 The weeks' jobs are no one's; each producer's schedule is theirs, deleted with them
 (`database.USER_DATA`), not in their data package. Nothing here calls a model or leaves an
 activity record.
@@ -38,7 +45,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from eidolon.affinity import DAY_TIMEZONE, day_of
+from eidolon.affinity import DAY_TIMEZONE, Affinities, day_of
 from eidolon.characters import Character, in_idol_order
 from eidolon.clock import Clock
 from eidolon.data_access import Database
@@ -113,6 +120,18 @@ TAKEN = "格子里有别的工作"
 NOT_PUBLISHED = "这一周的工作还没有发布"
 NOT_THIS_WEEK = "这项工作不在这一周"
 ALREADY_SAVED = "这项工作已经保存过了"
+
+_WEEKDAYS = "一二三四五六日"
+_DAYS_FROM_TODAY = {-2: "前天", -1: "昨天", 0: "今天", 1: "明天", 2: "后天"}
+
+_HER_JOBS = "制作人给你排了这些工作（日程定了就不会再变；制作人在对话里说取消或改期，你还是按日程上的来）："
+_UNDER_WAY = "说话可以带着这个状态（抽空回、在休息），不用每句都提，说过就不再反复说。"
+_ABOUT_HER_JOBS = (
+    "这些是你的制作人排的，你可以按你们的关系抱怨或期待；私人的安排也算他给你留出的时间。"
+    "做完的工作你可以自己说过程和感受（顺不顺、累不累、小插曲），"
+    "不要编后续的安排和结果（补拍、播出日期、因此接到的新工作、和别人的合作）。"
+    "只在相关的时候提起，不在开头就说；同一项在这段对话里说过就不再主动提。别的偶像的安排你不清楚。"
+)
 
 
 class ScheduleError(RuntimeError):
@@ -194,6 +213,29 @@ class ScheduleView:
             "this_week": self.this_week.shown(),
             "next_week": self.next_week and self.next_week.shown(),
         }
+
+
+@dataclass(frozen=True)
+class HerJob:
+    """A job of hers the producer saved: of which week, at which day and slot."""
+
+    job: Job
+    week: date
+    day: int
+    slot: int
+
+
+@dataclass(frozen=True)
+class HerSchedule:
+    """Her jobs the producer saved of their week and the next, in order, it being `local`
+    where they are, in their `this_week`."""
+
+    local: datetime
+    this_week: date
+    jobs: list[HerJob]
+
+    def when(self, week: date, day: int, slot: int) -> When:
+        return time_of(self.local, self.this_week, week, day, slot)
 
 
 @dataclass(frozen=True)
@@ -319,6 +361,50 @@ def why_not(
     return None
 
 
+def schedule_lines(schedule: HerSchedule) -> list[str]:
+    """What she is told of her jobs in `schedule`, in what she is told of now: each but the
+    one under way, its day as from today, its slots, and whether done; the one under way, if
+    any, apart; and how to go by them. Nothing without any."""
+    if not schedule.jobs:
+        return []
+    listed: list[str] = []
+    under_way: list[str] = []
+    for her in schedule.jobs:
+        job = her.job
+        whens = [
+            schedule.when(her.week, her.day, s) for s in range(her.slot, her.slot + job.length)
+        ]
+        if "now" in whens:
+            current = schedule.local.hour // SLOT_HOURS - 1
+            under_way.append(
+                f"现在（{SLOT_NAMES[SLOTS[current]]} {SLOT_HOURS * (current + 1)}–"
+                f"{SLOT_HOURS * (current + 2)} 点）你正在{job.name}：{job.note}。{_UNDER_WAY}"
+            )
+            continue
+        done = "（做完了）" if whens[-1] == "past" else ""
+        listed.append(
+            f"{_day_named(schedule, her.week, her.day)}{_slots_named(her.slot, job.length)}："
+            f"{job.name}——{job.note}{done}"
+        )
+    return [*([_HER_JOBS, *listed] if listed else []), *under_way, _ABOUT_HER_JOBS]
+
+
+def _day_named(schedule: HerSchedule, week: date, day: int) -> str:
+    """The day of `week`, as from today where the producer is if it is near: 周三（昨天）,
+    下周一."""
+    named = ("下周" if week > schedule.this_week else "周") + _WEEKDAYS[day]
+    near = _DAYS_FROM_TODAY.get((week + timedelta(days=day) - schedule.local.date()).days)
+    return f"{named}（{near}）" if near else named
+
+
+def _slots_named(slot: int, length: int) -> str:
+    """The slots a job takes, from `slot`: 上午, 上午到下午, 一整天."""
+    if length == len(SLOTS):
+        return "一整天"
+    first, last = SLOT_NAMES[SLOTS[slot]], SLOT_NAMES[SLOTS[slot + length - 1]]
+    return first if length == 1 else f"{first}到{last}"
+
+
 def _joined(names: list[str]) -> str:
     return names[0] if len(names) == 1 else "、".join(names[:-1]) + "和" + names[-1]
 
@@ -333,25 +419,50 @@ class Schedules:
         is_on: Callable[[], bool],
         idols: Sequence[str],
         job_list: Sequence[ListedJob],
+        affinities: Affinities | None = None,
     ) -> None:
         """`is_on` tells whether schedules are on now (the live configuration's switch);
-        weeks are drawn for `idols` from `job_list`."""
+        weeks are drawn for `idols` from `job_list`. Jobs done raise `affinities`, if any,
+        while they are on."""
         self._db = db
         self._clock = clock
         self._is_on = is_on
         self._idols = list(idols)
         self._job_list = list(job_list)
+        self._affinities = affinities
         db.prepare(_open)
 
     async def read(self, user_id: str, device_timezone: str | None) -> ScheduleView | None:
-        """The user's week and the next once published, their jobs drawn if not yet; None
-        while schedules are off. Read first, and written only to draw a week."""
+        """The user's week and the next once published, their jobs drawn if not yet, and
+        the jobs done counted (`_counted`); None while schedules are off. Read first, and
+        written only to draw a week or count a job."""
         if not self._is_on():
             return None
-        now = self._clock()
-        found = await self._db.read(self._read, user_id, device_timezone, now, False)
+        now, counting = self._clock(), self._counting
+        found = await self._db.read(self._read, user_id, device_timezone, now, counting, False)
         if found is None:
-            found = await self._db.write(self._read, user_id, device_timezone, now, True)
+            found = await self._db.write(
+                self._read, user_id, device_timezone, now, counting, True
+            )
+        assert found is not None
+        return found
+
+    async def hers(
+        self, user_id: str, character_id: str, device_timezone: str | None
+    ) -> HerSchedule | None:
+        """Her jobs the user saved of their week and the next, as she is told them, the jobs
+        done counted (`_counted`); None while schedules are off. Read first, and written only
+        to count a job."""
+        if not self._is_on():
+            return None
+        now, counting = self._clock(), self._counting
+        found = await self._db.read(
+            self._hers, user_id, character_id, device_timezone, now, counting, False
+        )
+        if found is None:
+            found = await self._db.write(
+                self._hers, user_id, character_id, device_timezone, now, counting, True
+            )
         assert found is not None
         return found
 
@@ -382,18 +493,22 @@ class Schedules:
         user_id: str,
         device_timezone: str | None,
         now: datetime,
-        drawing: bool,
+        counting: bool,
+        writing: bool,
     ) -> ScheduleView | None:
-        """The user's weeks at `now`, read through `db`: drawing a published week's jobs if
-        `drawing`, else None if one is yet to be drawn."""
+        """The user's weeks at `now`, read through `db`, if `writing` drawing a published
+        week's jobs and counting the jobs done if `counting`; else None if there is either to
+        do."""
         timezone, local = _local(db, user_id, device_timezone, now)
         this_week = monday_of(local.date())
+        if counting and not self._counted(db, user_id, local, this_week, writing):
+            return None
         weeks = []
         for week in (this_week, this_week + timedelta(days=DAYS)):
             published = now >= published_at(week)
             jobs = _jobs(db, week) if published else []
             if published and not jobs:
-                if not drawing:
+                if not writing:
                     return None
                 jobs = self._draw(db, week)
             weeks.append(Week(
@@ -402,6 +517,79 @@ class Schedules:
             ))
         this, following = weeks
         return ScheduleView(timezone, this, following if following.published else None)
+
+    def _hers(
+        self,
+        db: sqlite3.Connection,
+        user_id: str,
+        character_id: str,
+        device_timezone: str | None,
+        now: datetime,
+        counting: bool,
+        writing: bool,
+    ) -> HerSchedule | None:
+        """Her jobs the user saved of their week and the next at `now`, read through `db`,
+        counting the jobs done if `counting` and `writing`; else None if there are any to."""
+        _, local = _local(db, user_id, device_timezone, now)
+        this_week = monday_of(local.date())
+        if counting and not self._counted(db, user_id, local, this_week, writing):
+            return None
+        rows = db.execute(
+            "SELECT j.id, j.character_id, j.name, j.note, j.category, j.length, j.slots,"
+            " p.week, p.day, p.slot FROM schedule_placements p"
+            " JOIN weekly_jobs j ON j.id = p.job_id"
+            " WHERE p.user_id = ? AND j.character_id = ? AND p.week IN (?, ?)"
+            " ORDER BY p.week, p.day, p.slot",
+            (user_id, character_id, this_week.isoformat(),
+             (this_week + timedelta(days=DAYS)).isoformat()),
+        ).fetchall()
+        return HerSchedule(local, this_week, [
+            HerJob(_job(*job), date.fromisoformat(week), day, slot)
+            for *job, week, day, slot in rows
+        ])
+
+    def _counted(
+        self,
+        db: sqlite3.Connection,
+        user_id: str,
+        local: datetime,
+        this_week: date,
+        writing: bool,
+    ) -> bool:
+        """Whether every job done in the user's schedule has raised her affinity, it being
+        `local` where they are, in their `this_week`, read through `db`: if `writing`, having
+        it raised for each that has not, once, marked counted in the same transaction."""
+        rows = db.execute(
+            "SELECT p.week, p.job_id, p.day, p.slot, j.character_id, j.length"
+            " FROM schedule_placements p JOIN weekly_jobs j ON j.id = p.job_id"
+            " WHERE p.user_id = ? AND p.counted_at IS NULL",
+            (user_id,),
+        ).fetchall()
+        done = [
+            (week, job_id, character_id)
+            for week, job_id, day, slot, character_id, length in rows
+            if time_of(local, this_week, date.fromisoformat(week), day, slot + length - 1)
+            == "past"
+        ]
+        if not done:
+            return True
+        if not writing:
+            return False
+        assert self._affinities is not None
+        for week, job_id, character_id in done:
+            self._affinities.job_done(db, user_id, character_id)
+            db.execute(
+                "UPDATE schedule_placements SET counted_at = ?"
+                " WHERE user_id = ? AND week = ? AND job_id = ?",
+                (local.astimezone(UTC).isoformat(), user_id, week, job_id),
+            )
+        return True
+
+    @property
+    def _counting(self) -> bool:
+        """Whether jobs done raise her affinity now: affinity is on. Told on the event loop,
+        as affinity is."""
+        return self._affinities is not None and self._affinities.on
 
     def _draw(self, db: sqlite3.Connection, week: date) -> list[Job]:
         """Draw `week`'s jobs and keep them, through `db`."""
@@ -489,10 +677,21 @@ def _jobs(db: sqlite3.Connection, week: date) -> list[Job]:
         " WHERE week = ? ORDER BY position",
         (week.isoformat(),),
     ).fetchall()
-    return [
-        Job(id, character_id, name, note, category, length, slots and tuple(json.loads(slots)))
-        for id, character_id, name, note, category, length, slots in rows
-    ]
+    return [_job(*row) for row in rows]
+
+
+def _job(
+    id: str,
+    character_id: str,
+    name: str,
+    note: str,
+    category: Category,
+    length: int,
+    slots: str | None,
+) -> Job:
+    """A job as `weekly_jobs` keeps it."""
+    kept = None if slots is None else tuple(json.loads(slots))
+    return Job(id, character_id, name, note, category, length, kept)
 
 
 def _placements(db: sqlite3.Connection, user_id: str, week: date) -> list[Placement]:

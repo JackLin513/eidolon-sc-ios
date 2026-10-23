@@ -38,6 +38,10 @@ rarest she likes by more than a day's turns can; in a cooldown each by the same,
 four end it; draws give them, a chance a day, and now and then a reset card instead
 (GLOSSARY.md「抽奖」「重置卡」), which brings every character below trust back to the normal value,
 out of any cooldown, none of them the wiser. How much and how likely are here with the rest.
+A job of hers the producer scheduled (GLOSSARY.md「日程」) raises it once done, as a gift does
+but by the same whatever the job and in a cooldown alike, told of to no one (`schedule`).
+What the system gives (draw chances, reset cards) never raises it: only what she feels does,
+turns, gifts and jobs done.
 
 It is on only where the deployment has the judge model and the switch「好感度和礼物」is on
 (`LiveConfig.affinity_on`); off, nothing of it is shown, but what is kept stays as it is.
@@ -133,6 +137,10 @@ LIKED_GIFT_STEP = 0.3
 COOLDOWN_GIFT_STEP = 3.0
 """How much a gift raises it while she is in a cooldown, whatever its rarity and whether she
 likes it: four bring her out of one begun at 0, sooner than recovery would."""
+
+JOB_DONE_STEP = 0.5
+"""How much a job of hers the producer placed in their schedule raises it once done, whatever
+its length and category, in a cooldown too: about an uncommon gift, short of a day's turns."""
 
 DRAWS_PER_DAY = 1
 """How many draw chances (GLOSSARY.md「抽奖」) the user is given each day (`day_of`), as it
@@ -431,7 +439,7 @@ def _gift_step(rarity: Rarity, liked: bool, cooling: bool) -> float:
 class Affinities:
     """Every user's affinity with every character, kept in the database, next to the users
     it belongs to. What changes it is a body of the write task it is changed in, with what
-    changed it (`change`, `receive_gift`, `reset`): given that task's connection, so that it
+    changed it (`change`, `receive_gift`, `job_done`, `reset`): given that task's connection, so that it
     changes with the rest or not at all, and told of by what it returns, never to a
     listener."""
 
@@ -527,9 +535,29 @@ class Affinities:
         (None for no change to show), and the affinity left. No day's limit holds gifts, nor
         do they count towards it. In a cooldown, what it is raised to is when it ends,
         sooner; there is a change to show only once it ends."""
+        return self._raise(
+            db, user_id, character_id, lambda cooling: _gift_step(rarity, liked, cooling)
+        )
+
+    def job_done(self, db: sqlite3.Connection, user_id: str, character_id: str) -> None:
+        """Raise the user's affinity with the character for a job of hers in their schedule
+        being done (GLOSSARY.md「日程」), through `db`, in the transaction it is counted in: by
+        `JOB_DONE_STEP`, in a cooldown too, as a gift does, but told of to no one."""
+        self._raise(db, user_id, character_id, lambda _: JOB_DONE_STEP)
+
+    def _raise(
+        self,
+        db: sqlite3.Connection,
+        user_id: str,
+        character_id: str,
+        step: Callable[[bool], float],
+    ) -> tuple[Change | None, Status]:
+        """Raise the user's affinity with the character by `step`, given whether she is
+        cooling, through `db`, beyond the day's limit and out of a cooldown at the thaw line,
+        as a gift does (`receive_gift`)."""
         now = self._clock()
         before = _row(db, user_id, character_id, now)[0]
-        after = before.stepped(_gift_step(rarity, liked, before.cooling))
+        after = before.stepped(step(before.cooling))
         after = Affinity(after.value, now, after.cooling and after.value < THAW)
         thawed = before.cooling and not after.cooling
         change = None
