@@ -569,30 +569,37 @@ async function gifts(browser: Browser): Promise<void> {
   }
 }
 
+// 下面几样照 src/lib/schedule.ts 抄（脚本不从 src 导入）：接口的形状、三个时间段的名字（`SLOTS`）、草稿在本机的键（`draftsKey`）。
 type Job = { id: string; length: number; slots: ("morning" | "afternoon" | "evening")[] | null };
 type Placement = { job_id: string; day: number; slot: number };
-type ScheduleWeek = { id: string; published: boolean; jobs: Job[] };
+type WeekOfJobs = { id: string; published: boolean; jobs: Job[] };
 
 const SLOT_NAMES = ["morning", "afternoon", "evening"] as const;
+/** 一周的格子数：7 天 × 3 段。 */
+const CELLS = 21;
+/** 每 5 格空出第 5 格，周视图上留几格空着的。 */
+const EVERY_FIFTH_EMPTY = 5;
 
 /**
  * 把这一周的工作从周一上午起依次排下去，每隔几格空一格，最后 SCHEDULE_PENDING 项不排；`SCHEDULE_DRAFTS_FROM`
  * 之前的写进库（保存过的），之后的返回给页面当草稿。不经过保存接口，所以不管现在几点、排没排过，每次重跑都一样。
  */
-async function stockSchedule(context: BrowserContext): Promise<{ timezone: string; week: string; drafts: Placement[] }> {
+async function stockSchedule(
+  context: BrowserContext,
+): Promise<{ userId: string; timezone: string; week: string; drafts: Placement[] }> {
   const read = await context.request.get(`${origin}/api/schedule`);
   if (!read.ok()) throw new Error(`读日程失败（${read.status()}）`);
-  const got = (await read.json()) as { enabled: boolean; timezone: string; this_week: ScheduleWeek };
+  const got = (await read.json()) as { enabled: boolean; timezone: string; this_week: WeekOfJobs };
   if (!got.enabled) throw new Error("日程没开：后端的 EIDOLON_SCHEDULE 不能是 0");
   const week = got.this_week;
   if (!week.published) throw new Error("这一周的工作还没发布");
   const taken = new Set<string>();
   const placed: Placement[] = [];
   const left = [...week.jobs];
-  for (let cell = 0; cell < 21 && left.length > SCHEDULE_PENDING; cell++) {
+  for (let cell = 0; cell < CELLS && left.length > SCHEDULE_PENDING; cell++) {
     const day = Math.floor(cell / 3);
     const slot = cell % 3;
-    if (cell % 5 === 4 || taken.has(`${day}.${slot}`)) continue;
+    if (cell % EVERY_FIFTH_EMPTY === EVERY_FIFTH_EMPTY - 1 || taken.has(`${day}.${slot}`)) continue;
     const fits = (job: Job) =>
       slot + job.length <= 3 &&
       Array.from({ length: job.length }, (_, k) => slot + k).every(
@@ -626,7 +633,7 @@ async function stockSchedule(context: BrowserContext): Promise<{ timezone: strin
   } finally {
     db.close();
   }
-  return { timezone: got.timezone, week: week.id, drafts: placed.filter((p) => p.day >= SCHEDULE_DRAFTS_FROM) };
+  return { userId: id, timezone: got.timezone, week: week.id, drafts: placed.filter((p) => p.day >= SCHEDULE_DRAFTS_FROM) };
 }
 
 /** `timeZone` 里 `date`（YYYY-MM-DD）那天的 `hour:minute` 是哪一刻。 */
@@ -646,8 +653,7 @@ function instantIn(timeZone: string, date: string, hour: number, minute: number)
 async function schedule(browser: Browser): Promise<void> {
   const context = await signedIn(browser, { ...DESKTOP, colorScheme: "light" });
   try {
-    const { timezone, week, drafts } = await stockSchedule(context);
-    const { id } = (await (await context.request.get(`${origin}/api/account`)).json()) as { id: string };
+    const { userId, timezone, week, drafts } = await stockSchedule(context);
     const monday = new Date(`${week}T00:00:00Z`);
     monday.setUTCDate(monday.getUTCDate() + SCHEDULE_NOW.day);
     const page = await context.newPage();
@@ -657,7 +663,7 @@ async function schedule(browser: Browser): Promise<void> {
     // 草稿只存在本机（lib/schedule 的 keepDrafts），页面打开前放进去。
     await page.addInitScript(
       ([key, value]) => localStorage.setItem(key, value),
-      [`eidolon.scheduleDrafts.${id}.${week}`, JSON.stringify(drafts)] as const,
+      [`eidolon.scheduleDrafts.${userId}.${week}`, JSON.stringify(drafts)] as const,
     );
     await page.goto(`${origin}/play/calendar`, { waitUntil: "networkidle" });
     await page.getByText(/^草稿 \d+ 项/).waitFor();
