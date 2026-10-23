@@ -361,7 +361,7 @@ function DrawDesk({
   );
 }
 
-/** 礼物图标加一句标题和说明的 `Empty`：「还没有礼物」，以及没开放时的整页。 */
+/** 礼物图标加一句标题和说明的 `Empty`：「还没有礼物」。 */
 function GiftsEmpty({ title, description }: { title: string; description: string }) {
   return (
     <Empty>

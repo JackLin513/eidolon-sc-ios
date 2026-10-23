@@ -197,7 +197,7 @@ function ofAll({ characters = null, draws = [null, null] }: { characters?: strin
   ] satisfies Achievement[];
 }
 
-describe("礼物页那一小节", () => {
+describe("「每日任务与成就」子页那一小节", () => {
   const before = "2026-10-20T08:00:00+00:00";
   const after = "2026-10-20T09:00:00+00:00";
 

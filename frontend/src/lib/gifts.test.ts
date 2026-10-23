@@ -134,7 +134,7 @@ describe("送出后底部提示的那句话", () => {
 describe("从对话页跳到礼物子页", () => {
   const query = (href: string) => Object.fromEntries(new URL(href, "http://x.invalid").searchParams);
 
-  it("地址只带她的角色 id，礼物页读回来", () => {
+  it("地址只带她的角色 id，礼物子页读回来", () => {
     const href = giftsHref("rinze");
     expect(href).toBe("/play/gifts?to=rinze");
     expect(giftsFor(query(href))).toEqual({ to: "rinze" });

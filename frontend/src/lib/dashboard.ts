@@ -274,7 +274,7 @@ export type DailyTasksSection = { one_turn: number; one_gift: number; ten_turns:
 
 const DAILY_TASK_IDS = ["one_turn", "one_gift", "ten_turns"] as const;
 
-/** The section's tiles, as the page shows them, in the order of the gifts page; none where it is empty. */
+/** The section's tiles, as the page shows them, in the order of the daily tasks section; none where it is empty. */
 export function dailyTaskTiles(section: DailyTasksSection | null): { id: string; label: string; value: string }[] {
   if (section === null) return [];
   const words = copy.admin.dashboard.tasksAndAchievements.tiles;

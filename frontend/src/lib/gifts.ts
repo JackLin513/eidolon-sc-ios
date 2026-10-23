@@ -47,7 +47,7 @@ export type GiftState = {
   daily_tasks: DailyTasks | null;
   /** 合起来的四个成就（lib/achievements）；没开放时是 null。 */
   achievements: Achievement[] | null;
-  /** 最近一次到账的时刻（ISO），导航「礼物」上的点靠它；从来没有过是 null。 */
+  /** 最近一次到账的时刻（ISO），导航「玩法」上的点靠它；从来没有过是 null。 */
   rewarded_at: string | null;
 };
 

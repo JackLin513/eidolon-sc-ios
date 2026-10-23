@@ -6,7 +6,7 @@ const t = copy.achievements;
 
 /**
  * 一个成就那一行（`achievementRow`）：名字（新解锁时旁边一个点），下面一行只写下一个阶段，右边阶段点和下一阶段的奖励。
- * 她的对话页的成就面板和「每日任务与成就」子页那一小节共用（DESIGN.md「成就面板」「礼物页」）。
+ * 她的对话页的成就面板和「每日任务与成就」子页那一小节共用（DESIGN.md「成就面板」「玩法页」）。
  */
 export function AchievementLine({ achievement, isUnseen }: { achievement: Achievement; isUnseen: boolean }) {
   const row = achievementRow(achievement);

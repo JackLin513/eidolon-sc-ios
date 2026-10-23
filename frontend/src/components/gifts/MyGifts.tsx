@@ -17,7 +17,7 @@ export const MY_GIFTS_ID = "my-gifts";
 const FILTER_ICONS = { food: FoodIcon, drink: DrinkIcon, flower: FlowerIcon, trinket: TrinketIcon };
 
 /**
- * 我的礼物（DESIGN.md「礼物页」）：标题右边是类别筛选（`ToggleGroup`），下面是插画网格（手机 3 列，更宽 4、5 列）。
+ * 我的礼物（DESIGN.md「玩法页」）：标题右边是类别筛选（`ToggleGroup`），下面是插画网格（手机 3 列，更宽 4、5 列）。
  * 点一件拉出送礼面板（`onGive`）。网格里不透露哪位角色喜欢什么。背包是空的时候由页面放「还没有礼物」，这里不出。
  */
 export function MyGifts({
