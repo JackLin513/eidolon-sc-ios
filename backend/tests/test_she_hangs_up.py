@@ -1,6 +1,6 @@
 """She hangs up (GLOSSARY.md「通话」「冷却」「不该说的话」): in a call, the turn that takes her
 affinity to 0, the second time in that call the user is out of line, or the turn that has
-what the call's latest turns took off her affinity add up to too much, has her told to hang
+how much the call's latest turns hurt her add up to too much, has her told to hang
 up once she has said it; once it is recorded and what is on its way to her voice is voiced,
 the browser is told `ended`, why (`cooldown`, with when it ends, or `she_hung_up`) and that
 the call counted, along with the「挂断了电话」event, written into the conversation there and
@@ -93,7 +93,7 @@ async def test_the_turn_that_cools_her_has_her_hang_up_once_she_has_said_it(
     llm = FakeLLM(REPLY)
     client = make_client(llm, clients=clients, clock=clock)
     conversation = await start_conversation(client)
-    keep(settings.database_path, "producer", 5, clock.now)
+    keep(settings.database_path, "producer", 1, clock.now)
 
     async with admin_beside(client, github) as admin, open_browser() as browser:
         await browser.call(client, conversation_id=conversation)
@@ -200,7 +200,7 @@ async def test_only_the_latest_turns_count_so_now_and_then_she_never_hangs_up(
 async def test_hanging_up_comes_before_the_turn_limit_the_same_turn_reaches(
     mano_call: CallUnderTest, settings: Settings
 ):
-    keep(settings.database_path, "producer", 5, NOW)
+    keep(settings.database_path, "producer", 1, NOW)
 
     _, messages = await mano_call.run(
         FakeLLM(MANO_REPLY), [spoken("随便你")], limits=CallLimits(turns=1), affinity=[level(0)]
@@ -254,7 +254,7 @@ async def test_a_follow_on_has_the_whole_judged_afresh_and_she_hangs_up_only_if_
 async def test_her_last_line_cut_short_she_hangs_up_all_the_same(
     mano_call: CallUnderTest, settings: Settings
 ):
-    keep(settings.database_path, "producer", 5, NOW)
+    keep(settings.database_path, "producer", 1, NOW)
 
     _, messages = await mano_call.run(
         FakeLLM(INTERRUPTED_REPLY, delay=0.3), [spoken("随便你"), *INTERRUPTING],

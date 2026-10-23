@@ -72,7 +72,7 @@ async def test_a_cooldown_begun_elsewhere_has_her_hang_up_an_idle_call(
     client = make_client(FakeLLM(REPLY), clients=clients, clock=clock)
     in_call = await start_conversation(client)
     elsewhere = await start_conversation(client)
-    keep(settings.database_path, "producer", 5, clock.now)
+    keep(settings.database_path, "producer", 1, clock.now)
 
     async with admin_beside(client, github) as admin, open_browser() as mano:
         await mano.call(client, conversation_id=in_call)

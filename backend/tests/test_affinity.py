@@ -8,6 +8,7 @@ user deletes it. Driven through the backend's external API, with what is kept in
 database set directly and the clock moved."""
 
 import sqlite3
+from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -15,8 +16,20 @@ from pathlib import Path
 import httpx
 import pytest
 
+from eidolon.affinity import (
+    FED_UP_AT,
+    FED_UP_TURNS,
+    NORMAL,
+    OUT_OF_LINE_PER_CALL,
+    WARNS_AT,
+    Affinities,
+    Judged,
+    hurt,
+)
 from eidolon.config import JevSettings, Settings
-from tests.conftest import ClientFactory
+from eidolon.data_access import Database
+from eidolon.gift_catalog import Rarity
+from tests.conftest import ClientFactory, users_in
 from tests.fakes import FAKE_JUDGE, START, FakeClock, FakeIdentityProvider, FakeLLM
 from tests.test_admin_users import admin_beside
 from tests.test_delete_account import user_id
@@ -241,3 +254,134 @@ async def test_deleting_the_user_deletes_it_and_deleting_memories_does_not(
     assert kept == "distant"
     with sqlite3.connect(settings.database_path) as db:
         assert db.execute("SELECT COUNT(*) FROM affinities").fetchone() == (0,)
+
+
+# What it goes by, told apart from the API: turns and gifts raise it by a tenth of what
+# they once did, so that a tier takes weeks; how much a turn hurts her, for her warning,
+# hanging up or ending the conversation, is weighed as before, apart from what it lowers
+# her affinity by.
+
+
+@pytest.mark.parametrize(
+    ("judged", "step", "hurts"),
+    [
+        (Judged(0), -1.5, 5.0),
+        (Judged(1), -0.5, 2.0),
+        (Judged(2), 0.0, 0.0),
+        (Judged(3), 0.1, 0.0),
+        (Judged(4), 0.2, 0.0),
+        (Judged(4, out_of_line=True), -10.0, 10.0),
+        (Judged(0, out_of_line=True), -10.0, 10.0),
+        (Judged(4, manipulation=True), 0.0, 0.0),
+        (Judged(0, manipulation=True), -1.5, 5.0),
+    ],
+)
+def test_each_level_has_its_step_and_hurts_her_by_its_weight(
+    judged: Judged, step: float, hurts: float
+):
+    assert judged.step == step
+    assert hurt(judged) == hurts
+
+
+def test_what_she_puts_up_with_is_weighed_as_before():
+    assert (WARNS_AT, FED_UP_AT, FED_UP_TURNS, OUT_OF_LINE_PER_CALL) == (6.0, 12.0, 8, 2)
+    assert hurt(None) == 0.0
+
+
+@pytest.fixture
+async def affinities(settings: Settings) -> AsyncIterator[tuple[Database, Affinities, str]]:
+    [user] = await users_in(settings.database_path, "producer")
+    db = Database(settings.database_path)
+    try:
+        yield db, Affinities(db, FakeClock(), lambda: True), user
+    finally:
+        await db.close()
+
+
+def kept_value(database: Path, user: str, character: str = "mano") -> float:
+    with sqlite3.connect(database) as db:
+        return db.execute(
+            "SELECT value FROM affinities WHERE user_id = ? AND character_id = ?",
+            (user, character),
+        ).fetchone()[0]
+
+
+async def test_however_many_turns_make_her_happy_a_day_they_raise_it_by_0_6_at_most(
+    settings: Settings, affinities: tuple[Database, Affinities, str]
+):
+    db, affinity, user = affinities
+
+    changes = [
+        (await db.write(affinity.change, user, "mano", Judged(level)))[0]
+        for level in [3, 3, 3, 3, 3, 3, 4, 4, 3, 4]
+    ]
+
+    assert kept_value(settings.database_path, user) == pytest.approx(50.6)
+    assert all(c is not None and c.up for c in changes[:6])
+    assert changes[6:] == [None] * 4
+
+
+async def test_one_hurting_her_or_upsetting_her_lowers_it_by_its_step(
+    settings: Settings, affinities: tuple[Database, Affinities, str]
+):
+    db, affinity, user = affinities
+
+    await db.write(affinity.change, user, "mano", Judged(0))
+    hurt_her = kept_value(settings.database_path, user)
+    await db.write(affinity.change, user, "mano", Judged(1))
+
+    assert hurt_her == pytest.approx(48.5)
+    assert kept_value(settings.database_path, user) == pytest.approx(48.0)
+
+
+@pytest.mark.parametrize(
+    ("rarity", "liked", "raised"),
+    [
+        ("common", False, 0.3),
+        ("uncommon", False, 0.5),
+        ("rare", False, 0.7),
+        ("common", True, 0.6),
+        ("rare", True, 1.0),
+    ],
+)
+async def test_a_gift_raises_it_by_its_rarity_and_more_if_she_likes_it(
+    settings: Settings,
+    affinities: tuple[Database, Affinities, str],
+    rarity: Rarity,
+    liked: bool,
+    raised: float,
+):
+    db, affinity, user = affinities
+
+    await db.write(affinity.receive_gift, user, "mano", rarity, liked)
+
+    assert kept_value(settings.database_path, user) == pytest.approx(NORMAL + raised)
+
+
+@pytest.mark.parametrize(("rarity", "liked"), [("common", False), ("rare", True)])
+async def test_in_a_cooldown_any_gift_raises_it_by_3(
+    settings: Settings,
+    affinities: tuple[Database, Affinities, str],
+    rarity: Rarity,
+    liked: bool,
+):
+    db, affinity, user = affinities
+    keep(settings.database_path, "producer", 0, START, cooling=True)
+
+    await db.write(affinity.receive_gift, user, "mano", rarity, liked)
+
+    assert kept_value(settings.database_path, user) == pytest.approx(3.0)
+
+
+async def test_what_the_steps_fractions_leave_of_the_day_is_no_sliver_to_raise_it_by(
+    settings: Settings, affinities: tuple[Database, Affinities, str]
+):
+    db, affinity, user = affinities
+    keep(settings.database_path, "producer", 63.7, START)
+
+    changes = [
+        (await db.write(affinity.change, user, "mano", Judged(3)))[0] for _ in range(7)
+    ]
+
+    assert kept_value(settings.database_path, user) == pytest.approx(64.3)
+    assert changes[6] is None

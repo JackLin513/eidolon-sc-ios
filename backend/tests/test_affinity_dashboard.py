@@ -92,7 +92,7 @@ async def test_the_section_sums_up_the_judged_turns_and_ranks_the_characters_by_
         await talk(client, kogane, 19)
         keep(settings.database_path, "producer", 5, clock.now, character="kogane")
         await talk(client, kogane, 1)
-        keep(settings.database_path, "producer", 3, clock.now, character="meguru")
+        keep(settings.database_path, "producer", 1, clock.now, character="meguru")
         await talk(client, meguru, 1)
         board = await dashboard(admin)
 

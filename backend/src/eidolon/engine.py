@@ -244,7 +244,7 @@ class CallTurnRecorded:
     """What a turn of a call, now recorded, comes to for the call: whether the user was out
     of line in it, and whether she hangs up after it and why; if for a cooldown, when it
     ends (None should the cooldown not have begun after all, another turn recorded
-    meanwhile); how much it took off her affinity (`affinity.hurt`). Comes just before
+    meanwhile); how much it hurt her (`affinity.hurt`). Comes just before
     `done`, in calls only; it stays on the server."""
 
     out_of_line: bool = False
