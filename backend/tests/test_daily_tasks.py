@@ -74,7 +74,9 @@ async def test_none_is_done_to_begin_with_and_they_begin_again_at_the_next_midni
     }
 
 
-async def test_a_turn_does_the_first_and_gives_a_draw(make_client: ClientFactory):
+async def test_a_turn_does_the_first_and_gives_a_draw_recording_no_task_done(
+    make_client: ClientFactory, settings: Settings
+):
     client = make_client(FakeLLM(REPLY), clock=FakeClock())
     await state(client)  # the day's one
     conversation = await start_conversation(client)
@@ -84,6 +86,8 @@ async def test_a_turn_does_the_first_and_gives_a_draw(make_client: ClientFactory
 
     assert got["daily_tasks"]["tasks"] == tasks(turns=1)
     assert got["draws"] == 2
+    with sqlite3.connect(settings.database_path) as db:
+        assert db.execute("SELECT kind FROM activity_records").fetchall() == [("turn",)]
 
 
 async def test_a_turn_in_a_call_counts_as_one_typed_does(

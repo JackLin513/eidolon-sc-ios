@@ -4,7 +4,6 @@ import {
   achievementTiles,
   affinityRows,
   countTicks,
-  dailyTaskTiles,
   durationRange,
   formatCount,
   formatCacheHitRate,
@@ -320,20 +319,6 @@ describe("foldedCount", () => {
   });
 });
 
-describe("dailyTaskTiles", () => {
-  it("are none where the section is empty", () => {
-    expect(dailyTaskTiles(null)).toEqual([]);
-  });
-
-  it("count each task done, in the order of the daily tasks section", () => {
-    expect(dailyTaskTiles({ one_turn: 1200, one_gift: 3, ten_turns: 0 }).map((tile) => [tile.label, tile.value])).toEqual([
-      ["一个回合", "1,200"],
-      ["送一件礼", "3"],
-      ["十个回合", "0"],
-    ]);
-  });
-});
-
 describe("achievementTiles", () => {
   it("are none where the section is empty", () => {
     expect(achievementTiles(null)).toEqual([]);
@@ -350,19 +335,19 @@ describe("achievementTiles", () => {
 
 describe("dashboardTabs", () => {
   const affinity = { cooldowns: 0, cooled_users: 0, out_of_line: 0, manipulation: 0, levels: [0, 0, 0, 0, 0], characters: [] };
-  const tasks = { one_turn: 0, one_gift: 0, ten_turns: 0 };
+  const achievements = { stages: 0, draws: 0, reset_cards: 0 };
   const WITH = ["overview", "usage", "affinity", "cost"];
 
-  it("have「好感度」where affinity is on, or daily tasks were done in the range", () => {
-    expect(dashboardTabs({ affinity, daily_tasks: tasks, scheduled_this_week: null })).toEqual(WITH);
-    expect(dashboardTabs({ affinity: null, daily_tasks: tasks, scheduled_this_week: null })).toEqual(WITH);
+  it("have「好感度」where affinity is on, or achievements were unlocked in the range while it was", () => {
+    expect(dashboardTabs({ affinity, achievements, scheduled_this_week: null })).toEqual(WITH);
+    expect(dashboardTabs({ affinity: null, achievements, scheduled_this_week: null })).toEqual(WITH);
   });
 
   it("have「好感度」where affinity is off and schedules are on, for their tile", () => {
-    expect(dashboardTabs({ affinity: null, daily_tasks: null, scheduled_this_week: 0 })).toEqual(WITH);
+    expect(dashboardTabs({ affinity: null, achievements: null, scheduled_this_week: 0 })).toEqual(WITH);
   });
 
   it("have none where all are empty", () => {
-    expect(dashboardTabs({ affinity: null, daily_tasks: null, scheduled_this_week: null })).toEqual(["overview", "usage", "cost"]);
+    expect(dashboardTabs({ affinity: null, achievements: null, scheduled_this_week: null })).toEqual(["overview", "usage", "cost"]);
   });
 });

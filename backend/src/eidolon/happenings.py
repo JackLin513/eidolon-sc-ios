@@ -20,10 +20,10 @@ conversation takes nothing back. Nothing is kept while affinity and gifts are cl
 transaction as the turn, the gift, the call or the draw it was told of: keeping it failing,
 none of them is kept either (ADR-0028).
 
-Each task done, once its reward is given, has an activity record (`ActivityLog.daily_task_done`)
-for the dashboard to count, and so has each stage unlocked and each character complete
-(`ActivityLog.achievement_unlocked`, `ActivityLog.character_complete`): written apart, once
-what it records is kept, writing them failing is only logged.
+Each stage unlocked and each character complete, once its reward is given, has an activity
+record for the dashboard to count (`ActivityLog.achievement_unlocked`,
+`ActivityLog.character_complete`): written apart, once what it records is kept, writing them
+failing is only logged; a task done has none.
 
 Each user's progress today and with the achievements is theirs, deleted with them
 (`database.USER_DATA`), and goes in no data package."""
@@ -252,15 +252,13 @@ class Happenings:
 
     async def write_records(self, user_id: str, rewarded: Rewarded | None) -> None:
         """Write the activity records of what the user was `rewarded` for, once it is kept:
-        each daily task done, each stage unlocked and each character complete, each a write
+        each stage unlocked and each character complete, each a write
         task of its own, apart from what it records; failing, only logged. Only what happens
         is recorded: those the launch works out from before it are rewarded without coming
         here."""
         if rewarded is None:
             return
         at = rewarded.rewarded_at
-        for task in rewarded.daily_tasks:
-            await self._activity.daily_task_done(user_id, task, at)
         for stage in rewarded.achievements:
             await self._activity.achievement_unlocked(
                 user_id, stage.character_id, stage.achievement, stage.stage, at
