@@ -1,202 +1,236 @@
+import EidolonCore
 import SwiftUI
 
-@MainActor
 struct ChatView: View {
-    @Environment(AppModel.self) private var app
-    let target: ChatTarget
+    let character: CharacterConfig
+    /// A past conversation to look at; nil shows the current one.
+    var conversationID: String? = nil
 
+    @Environment(AppModel.self) private var app
     @State private var store: ChatStore?
+    @State private var didAutoSend = false
+    @State private var showHistory = false
 
     var body: some View {
         Group {
             if let store {
-                ChatContent(store: store)
+                VStack(spacing: 0) {
+                    transcript(store)
+                    if store.isPast {
+                        pastBar
+                    } else if store.affinity.cooling {
+                        coolingBar(store)
+                    } else if store.ended {
+                        endedBar(store)
+                    }
+                    if let error = store.errorMessage {
+                        errorBar(store, error)
+                    }
+                    if !store.readOnly {
+                        inputBar(store)
+                    }
+                }
             } else {
                 ProgressView()
             }
         }
-        .navigationTitle(target.character.name)
         .navigationBarTitleDisplayMode(.inline)
-        .task { @MainActor in
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showHistory = true
+                } label: {
+                    Image(systemName: "clock.arrow.circlepath")
+                }
+            }
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 1) {
+                    Text(character.name)
+                        .font(.headline)
+                    if let store {
+                        Text(store.affinity.tier.title)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showHistory) {
+            NavigationStack {
+                ConversationHistoryView(character: character)
+            }
+            .environment(app)
+        }
+        .task {
             guard store == nil else { return }
             let created = ChatStore(
-                client: app.client,
-                character: target.character,
-                conversationID: target.conversationID
+                character: character,
+                core: app.core,
+                conversationID: conversationID
             )
-            store = created
             await created.load()
+            store = created
+            autoSendIfRequested(created)
+            #if DEBUG
+            if app.debugShowsHistory { showHistory = true }
+            #endif
         }
     }
-}
 
-private struct ChatContent: View {
-    @Bindable var store: ChatStore
+    /// Development aid: `SIMCTL_CHILD_EIDOLON_SEND_TEXT` sends one line on opening, so
+    /// the simulator can show a real turn without the keyboard.
+    private func autoSendIfRequested(_ store: ChatStore) {
+        #if DEBUG
+        guard conversationID == nil,
+              !didAutoSend,
+              let text = app.debugSendText,
+              !text.isEmpty,
+              let provider = app.chatProvider
+        else { return }
+        didAutoSend = true
+        store.input = text
+        Task { await store.send(
+                            provider: provider,
+                            judge: app.judgeProvider,
+                            embedder: app.embeddingProvider,
+                            reranker: app.rerankProvider,
+                            tracing: app.tracing
+                        ) }
+        #endif
+    }
 
-    var body: some View {
+    // MARK: - Transcript
+
+    private func transcript(_ store: ChatStore) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
-                    ForEach(store.items, id: \.uid) { item in
-                        row(item)
+                LazyVStack(alignment: .leading, spacing: 16) {
+                    if store.messages.isEmpty && store.streaming.isEmpty {
+                        Text("从一句问候开始吧。")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.top, 40)
                     }
-
-                    if let pending = store.pendingUserText {
-                        userBubble(pending)
-                            .id("pending")
+                    ForEach(store.messages) { message in
+                        bubble(message)
+                            .id(message.id)
                     }
-
-                    if !store.liveLines.isEmpty {
-                        liveBubble
-                            .id("live")
+                    if let pending = store.pendingUser {
+                        HStack {
+                            Spacer(minLength: 40)
+                            Text(pending)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(
+                                    Color.accentColor.opacity(0.15),
+                                    in: RoundedRectangle(cornerRadius: 16)
+                                )
+                        }
+                        .id("pending")
                     }
-
-                    if store.isLoading {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
+                    if !store.streaming.isEmpty {
+                        characterBubble(store.streaming)
+                            .id("streaming")
                     }
-
-                    Color.clear
-                        .frame(height: 1)
-                        .id("bottom")
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
             .defaultScrollAnchor(.bottom)
-            .onChange(of: store.items.count) { _, _ in scrollToBottom(proxy) }
-            .onChange(of: store.liveLines.count) { _, _ in scrollToBottom(proxy) }
-            .onChange(of: store.pendingUserText) { _, _ in scrollToBottom(proxy) }
-        }
-        .safeAreaInset(edge: .bottom) {
-            inputBar
-        }
-        .alert("出错了", isPresented: errorBinding) {
-            Button("好") { store.errorMessage = nil }
-        } message: {
-            Text(store.errorMessage ?? "")
+            .scrollDismissesKeyboard(.interactively)
+            .onChange(of: store.messages.count) {
+                proxy.scrollTo(store.messages.last?.id, anchor: .bottom)
+            }
+            .onChange(of: store.streaming) {
+                proxy.scrollTo("streaming", anchor: .bottom)
+            }
+            .onChange(of: store.pendingUser) {
+                proxy.scrollTo("pending", anchor: .bottom)
+            }
         }
     }
 
     @ViewBuilder
-    private func row(_ item: RecordItem) -> some View {
-        if item.isEvent {
-            Text(item.eventDescription)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 2)
-        } else if item.isCharacter {
-            characterBubble(
-                ja: item.japanese,
-                zh: item.chinese,
-                reachOut: item.isReachOut
-            )
+    private func bubble(_ message: ChatMessageRecord) -> some View {
+        if message.isFromCharacter {
+            characterBubble(message.segments)
         } else {
-            userBubble(item.text ?? "")
-        }
-    }
-
-    private func characterBubble(ja: String, zh: String, reachOut: Bool) -> some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
-                if reachOut {
-                    Text("她先开口")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                if !ja.isEmpty {
-                    Text(ja)
-                        .font(.body)
-                }
-                if !zh.isEmpty && zh != ja {
-                    Text(zh)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+            HStack {
+                Spacer(minLength: 40)
+                Text(message.text ?? "")
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 16))
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background(
-                Color(hex: store.character.color).opacity(0.15),
-                in: RoundedRectangle(cornerRadius: 16)
-            )
-
-            Spacer(minLength: 40)
         }
     }
 
-    private func userBubble(_ text: String) -> some View {
-        HStack(alignment: .top) {
-            Spacer(minLength: 40)
-
-            Text(text)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(
-                    Color.accentColor.opacity(0.18),
-                    in: RoundedRectangle(cornerRadius: 16)
-                )
-        }
-    }
-
-    private var liveBubble: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(store.liveLines) { line in
-                    if !line.ja.isEmpty {
-                        Text(line.ja)
-                            .font(.body)
-                    }
-                    if !line.zh.isEmpty && line.zh != line.ja {
-                        Text(line.zh)
-                            .font(.caption)
+    private func characterBubble(_ segments: [ReplySegment]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(ReplyCues.shown(segment.ja))
+                        .font(.body)
+                    if !segment.zh.isEmpty {
+                        Text(segment.zh)
+                            .font(.callout)
                             .foregroundStyle(.secondary)
                     }
                 }
-
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .controlSize(.mini)
-                    Text("正在说…")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.top, 2)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background(
-                Color(hex: store.character.color).opacity(0.15),
-                in: RoundedRectangle(cornerRadius: 16)
-            )
-
-            Spacer(minLength: 40)
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            Color(hex: character.color ?? "#888888").opacity(0.18),
+            in: RoundedRectangle(cornerRadius: 16)
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var inputBar: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            TextField("和她说点什么…", text: $store.draft, axis: .vertical)
-                .lineLimit(1...4)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(
-                    Color(uiColor: .secondarySystemBackground),
-                    in: RoundedRectangle(cornerRadius: 18)
-                )
+    // MARK: - Input
 
-            if store.isSending {
-                ProgressView()
-                    .frame(width: 34, height: 34)
-            } else {
+    private func inputBar(_ store: ChatStore) -> some View {
+        @Bindable var store = store
+        return VStack(spacing: 8) {
+            if !app.chatSettings.isConfigured {
+                Text("先在设置里填写对话模型，才能开始对话。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField("说点什么", text: $store.input, axis: .vertical)
+                    .lineLimit(1...5)
+                    .textFieldStyle(.plain)
+                    .disabled(store.affinity.cooling)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
+
                 Button {
-                    Task { await store.send() }
+                    if store.isStreaming {
+                        store.stop()
+                    } else if let provider = app.chatProvider {
+                        Task { await store.send(
+                            provider: provider,
+                            judge: app.judgeProvider,
+                            embedder: app.embeddingProvider,
+                            reranker: app.rerankProvider,
+                            tracing: app.tracing
+                        ) }
+                    }
                 } label: {
-                    Image(systemName: "arrow.up.circle.fill")
+                    Image(systemName: store.isStreaming ? "stop.circle.fill" : "arrow.up.circle.fill")
                         .font(.system(size: 30))
                 }
-                .disabled(store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(
+                    !store.isStreaming
+                        && (store.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || !app.chatSettings.isConfigured
+                            || store.affinity.cooling)
+                )
             }
         }
         .padding(.horizontal, 12)
@@ -204,18 +238,82 @@ private struct ChatContent: View {
         .background(.bar)
     }
 
-    private func scrollToBottom(_ proxy: ScrollViewProxy) {
-        withAnimation(.easeOut(duration: 0.2)) {
-            proxy.scrollTo("bottom", anchor: .bottom)
+    private func coolingBar(_ store: ChatStore) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "snowflake")
+                .foregroundStyle(.blue)
+            Text(coolingText(store))
+                .font(.footnote)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color.blue.opacity(0.1))
+    }
+
+    private func coolingText(_ store: ChatStore) -> String {
+        guard let until = store.affinity.cooldownUntil else {
+            return "她现在不想说话，晚些时候再来吧。"
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "M月d日 HH:mm"
+        return "她现在不想说话，晚些时候再来吧（大约到 \(formatter.string(from: until))）。"
+    }
+
+    private var pastBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "book")
+                .foregroundStyle(.secondary)
+            Text("这是过去的对话，只能翻看。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
         }
     }
 
-    private var errorBinding: Binding<Bool> {
-        Binding(
-            get: { store.errorMessage != nil },
-            set: { shown in
-                if !shown { store.errorMessage = nil }
+    private func endedBar(_ store: ChatStore) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "moon.zzz")
+                .foregroundStyle(.secondary)
+            Text("这段对话结束了，只能翻看。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+            Button("开始新对话") {
+                Task { await store.startNewConversation() }
             }
-        )
+            .font(.footnote)
+            .buttonStyle(.bordered)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color(.secondarySystemBackground))
+    }
+
+    private func errorBar(_ store: ChatStore, _ message: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(message)
+                .font(.footnote)
+                .lineLimit(2)
+            Spacer(minLength: 0)
+            if let provider = app.chatProvider, !store.input.isEmpty {
+                Button("重试") {
+                    Task { await store.send(
+                            provider: provider,
+                            judge: app.judgeProvider,
+                            embedder: app.embeddingProvider,
+                            reranker: app.rerankProvider,
+                            tracing: app.tracing
+                        ) }
+                }
+                .font(.footnote.weight(.semibold))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color.orange.opacity(0.12))
     }
 }

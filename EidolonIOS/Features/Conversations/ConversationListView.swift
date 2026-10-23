@@ -1,31 +1,41 @@
+import EidolonCore
 import SwiftUI
 
+/// The roster: who she is, the latest thing she said, and whether she reached
+/// out while you were away. Chat arrives in the next ticket.
 struct ConversationListView: View {
     @Environment(AppModel.self) private var app
     @State private var query = ""
-    @State private var path: [ChatTarget] = []
     @State private var showSettings = false
+    @State private var path: [CharacterConfig] = []
 
     var body: some View {
         NavigationStack(path: $path) {
-            List {
-                ForEach(filtered) { character in
-                    Button {
-                        Task {
-                            if let target = await app.open(character) {
-                                path.append(target)
-                            }
-                        }
-                    } label: {
-                        row(character)
-                    }
-                    .buttonStyle(.plain)
+            List(filtered, id: \.id) { character in
+                NavigationLink(value: character) {
+                    row(character)
                 }
             }
             .listStyle(.plain)
             .searchable(text: $query, prompt: "搜中文名、假名、罗马字或组合")
             .navigationTitle("对话")
             .refreshable { await app.refresh() }
+            .navigationDestination(for: CharacterConfig.self) { character in
+                ChatView(character: character)
+            }
+            .task { await app.refresh() }
+            .onAppear {
+                #if DEBUG
+                if app.debugShowsMemories || app.debugShowsTraces {
+                    showSettings = true
+                }
+                if path.isEmpty,
+                   let id = app.debugCharacterID,
+                   let character = app.characters.first(where: { $0.id == id }) {
+                    path = [character]
+                }
+                #endif
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -35,15 +45,16 @@ struct ConversationListView: View {
                     }
                 }
             }
-            .navigationDestination(for: ChatTarget.self) { target in
-                ChatView(target: target)
-            }
             .sheet(isPresented: $showSettings) {
                 SettingsView()
             }
             .overlay {
                 if app.characters.isEmpty {
-                    emptyState
+                    ContentUnavailableView(
+                        "没有角色",
+                        systemImage: "person.2",
+                        description: Text("这份内容包里没有角色")
+                    )
                 }
             }
             .alert("出错了", isPresented: errorBinding) {
@@ -54,25 +65,13 @@ struct ConversationListView: View {
         }
     }
 
-    private var filtered: [Character] {
-        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    private var filtered: [CharacterConfig] {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty else { return app.characters }
-        return app.characters.filter { character in
-            [
-                character.name,
-                character.nameZh ?? "",
-                character.nameKana ?? "",
-                character.nameRomaji ?? "",
-                character.unit ?? "",
-                character.intro,
-            ]
-            .joined(separator: " ")
-            .lowercased()
-            .contains(needle)
-        }
+        return app.characters.filter { $0.matches(needle) }
     }
 
-    private func row(_ character: Character) -> some View {
+    private func row(_ character: CharacterConfig) -> some View {
         HStack(spacing: 12) {
             avatar(character)
 
@@ -99,28 +98,20 @@ struct ConversationListView: View {
 
             Spacer(minLength: 0)
         }
-        .contentShape(Rectangle())
         .padding(.vertical, 4)
     }
 
     @ViewBuilder
-    private func avatar(_ character: Character) -> some View {
-        if let url = app.client.absoluteURL(character.avatarUrl) {
-            AsyncImage(url: url) { phase in
-                if let image = phase.image {
-                    image
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    Circle()
-                        .fill(Color(hex: character.color).opacity(0.35))
-                }
-            }
-            .frame(width: 46, height: 46)
-            .clipShape(Circle())
+    private func avatar(_ character: CharacterConfig) -> some View {
+        if let image = app.avatar(for: character.id) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 46, height: 46)
+                .clipShape(Circle())
         } else {
             Circle()
-                .fill(Color(hex: character.color).opacity(0.35))
+                .fill(Color(hex: character.color ?? "#888888").opacity(0.35))
                 .frame(width: 46, height: 46)
                 .overlay {
                     Text(String(character.name.prefix(1)))
@@ -129,26 +120,9 @@ struct ConversationListView: View {
         }
     }
 
-    private func preview(_ character: Character) -> String {
-        guard let latest = app.latest[character.id] else { return character.intro }
-        return latest.lastMessage?.preview ?? "还没聊过"
-    }
-
-    @ViewBuilder
-    private var emptyState: some View {
-        if let error = app.errorMessage, !error.isEmpty {
-            ContentUnavailableView(
-                "连不上后端",
-                systemImage: "wifi.exclamationmark",
-                description: Text(error)
-            )
-        } else {
-            ContentUnavailableView(
-                "没有角色",
-                systemImage: "person.2",
-                description: Text("后端没有返回角色配置")
-            )
-        }
+    private func preview(_ character: CharacterConfig) -> String {
+        guard let activity = app.latest[character.id] else { return character.intro ?? "" }
+        return activity.lastMessagePreview ?? "还没聊过"
     }
 
     private var errorBinding: Binding<Bool> {
