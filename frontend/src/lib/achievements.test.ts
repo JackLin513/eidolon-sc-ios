@@ -197,7 +197,7 @@ function ofAll({ characters = null, draws = [null, null] }: { characters?: strin
   ] satisfies Achievement[];
 }
 
-describe("「每日任务与成就」子页那一小节", () => {
+describe("「成就」子页那一小节", () => {
   const before = "2026-10-20T08:00:00+00:00";
   const after = "2026-10-20T09:00:00+00:00";
 
@@ -215,7 +215,6 @@ describe("「每日任务与成就」子页那一小节", () => {
     const rewarded = {
       draws: 1,
       reset_cards: 0,
-      daily_tasks: [],
       achievements: [
         { achievement: "draws", character_id: null, stage: 1, draws: 1 },
         { achievement: "turns", character_id: "mano", stage: 1, draws: 1 },

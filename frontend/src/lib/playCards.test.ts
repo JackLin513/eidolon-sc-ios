@@ -18,14 +18,6 @@ function giftState(change: Partial<GiftState> = {}): GiftState {
     next_draw_at: AFTER,
     resettable: [],
     characters: [],
-    daily_tasks: {
-      tasks: [
-        { id: "one_turn", done: false, progress: 0, goal: 1, draws: 1 },
-        { id: "one_gift", done: false, progress: 0, goal: 1, draws: 1 },
-        { id: "ten_turns", done: false, progress: 0, goal: 10, draws: 2 },
-      ],
-      renews_at: AFTER,
-    },
     achievements: [],
     rewarded_at: null,
     ...change,
@@ -75,12 +67,12 @@ function achievement(id: string, unlockedAt: string | null, stages = 1): Achieve
 const ofId = (cards: ReturnType<typeof playCards>, id: string) => cards.find((card) => card.id === id);
 
 describe("玩法页的卡", () => {
-  it("好感度和礼物开着时有「礼物」「每日任务与成就」「日历」三张，礼物在上面，各去各的子页", () => {
+  it("好感度和礼物开着时有「礼物」「成就」「日历」三张，礼物在上面，各去各的子页", () => {
     const cards = playCards(context());
 
     expect(cards.map((card) => [card.id, card.name, card.href])).toEqual([
       ["gifts", "礼物", "/play/gifts"],
-      ["tasks", "每日任务与成就", "/play/tasks"],
+      ["achievements", "成就", "/play/achievements"],
       ["calendar", "日历", "/play/calendar"],
     ]);
   });
@@ -96,7 +88,7 @@ describe("玩法页的卡", () => {
 
     expect(cards.map((card) => [card.id, card.status])).toEqual([
       ["gifts", ""],
-      ["tasks", ""],
+      ["achievements", ""],
       ["calendar", ""],
     ]);
   });
@@ -124,29 +116,23 @@ describe("「礼物」卡的状态", () => {
   });
 });
 
-describe("「每日任务与成就」卡的状态", () => {
-  const tasks = (done: number) => ({
-    tasks: ["one_turn", "one_gift", "ten_turns"].map((id, i) => ({ id, done: i < done, progress: 0, goal: 1, draws: 1 })),
-    renews_at: AFTER,
-  });
+describe("「成就」卡的状态", () => {
   const status = (state: Partial<GiftState>, achievementsSeenAt: string | null = null) =>
-    ofId(playCards(context({ state: giftState(state), achievementsSeenAt })), "tasks")?.status;
+    ofId(playCards(context({ state: giftState(state), achievementsSeenAt })), "achievements")?.status;
 
-  it("没做完时写今天做完几项", () => {
-    expect(status({ daily_tasks: tasks(0) })).toBe("每日任务 今天 0/3");
-    expect(status({ daily_tasks: tasks(2) })).toBe("每日任务 今天 2/3");
+  it("平时写已解锁几个阶段，没解锁的不算", () => {
+    const achievements = [achievement("turns", BEFORE, 3), achievement("draws", null), achievement("gifts", BEFORE)];
+
+    expect(status({ achievements }, AFTER)).toBe("已解锁 2 个阶段");
+    expect(status({ achievements: [] })).toBe("已解锁 0 个阶段");
   });
 
-  it("三项都做完时写今天都做完了", () => {
-    expect(status({ daily_tasks: tasks(3) })).toBe("每日任务 今天都做完了");
-  });
-
-  it("有新解锁的成就时后面加几个，和带点的行用同一个看过的时刻比", () => {
+  it("有新解锁时换成几个新解锁，和带点的行用同一个看过的时刻比", () => {
     const achievements = [achievement("turns", AFTER), achievement("draws", AFTER), achievement("gifts", BEFORE)];
 
-    expect(status({ daily_tasks: tasks(2), achievements }, BEFORE)).toBe("每日任务 今天 2/3 · 成就 2 个新解锁");
-    expect(status({ daily_tasks: tasks(3), achievements }, null)).toBe("每日任务 今天都做完了 · 成就 3 个新解锁");
-    expect(status({ daily_tasks: tasks(2), achievements }, AFTER)).toBe("每日任务 今天 2/3");
+    expect(status({ achievements }, BEFORE)).toBe("2 个新解锁");
+    expect(status({ achievements }, null)).toBe("3 个新解锁");
+    expect(status({ achievements }, AFTER)).toBe("已解锁 3 个阶段");
   });
 });
 
@@ -166,22 +152,22 @@ describe("卡片名字旁的点", () => {
     });
   });
 
-  it("「每日任务与成就」卡的点随新解锁的成就，看过以后就没有", () => {
+  it("「成就」卡的点随新解锁的成就，看过以后就没有", () => {
     const state = giftState({ achievements: [achievement("turns", AFTER)] });
 
-    expect(ofId(playCards(context({ state, achievementsSeenAt: BEFORE })), "tasks")).toMatchObject({
+    expect(ofId(playCards(context({ state, achievementsSeenAt: BEFORE })), "achievements")).toMatchObject({
       hasDot: true,
       dotLabel: "有新解锁的成就",
     });
-    expect(ofId(playCards(context({ state, achievementsSeenAt: AFTER })), "tasks")?.hasDot).toBe(false);
+    expect(ofId(playCards(context({ state, achievementsSeenAt: AFTER })), "achievements")?.hasDot).toBe(false);
   });
 
-  it("新到的抽奖次数不点亮「每日任务与成就」卡，新解锁的成就也不点亮「礼物」卡", () => {
+  it("新到的抽奖次数不点亮「成就」卡，新解锁的成就也不点亮「礼物」卡", () => {
     const state = giftState({ achievements: [achievement("turns", AFTER)] });
     const cards = playCards(context({ state, newRewards: false, achievementsSeenAt: null }));
 
     expect(ofId(cards, "gifts")?.hasDot).toBe(false);
-    expect(ofId(playCards(context({ newRewards: true })), "tasks")?.hasDot).toBe(false);
+    expect(ofId(playCards(context({ newRewards: true })), "achievements")?.hasDot).toBe(false);
   });
 });
 

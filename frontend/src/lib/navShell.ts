@@ -87,7 +87,7 @@ export function currentNavItem(href: string): NavItem | null {
 
 /** Whether the gifts subpage is before the user at `href`: it is shown, and no call layer covers it
  * (`isCallLayerOpen`). Draw chances that come meanwhile are seen as they come. The play page's
- * first level and the tasks and achievements subpage do not count: the cards there show them. */
+ * first level and the achievements subpage do not count: the cards there show them. */
 export function isGiftsSubpageInView(href: string, isCallLayerOpen: boolean): boolean {
   return playSubpage(pathOf(href).path) === "gifts" && !isCallLayerOpen;
 }

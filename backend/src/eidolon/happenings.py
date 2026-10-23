@@ -1,14 +1,12 @@
-"""What happens between the user and the characters, as it happens (GLOSSARY.md「每日任务」):
+"""What happens between the user and the characters, as it happens (GLOSSARY.md「成就」):
 a turn recorded, typed or in a call alike, and a gift given, each with the tier it leaves her
 affinity in; a call that connected ended; and drawing. Each is kept here once, a gift given,
 a call kept and drawing here altogether, and whatever it counts towards is kept and rewarded
-with it: today's daily tasks, turns and gifts alone, and the achievements (`achievements`).
+with it: the achievements (`achievements`).
 
-The daily tasks are the same each day (`DAILY_TASKS`), the day in Beijing wherever the user
-is (`affinity.day_of`), by the clock as each happens: what was done the day before counts
-not. Each done gives its draw chances through the gifts (`Gifts.reward`), once a day, in the
-same transaction as what was done is kept, so that two done at once are rewarded once. So
-does each achievement's stage unlocked, and each character complete.
+Each achievement's stage unlocked, and each character complete, gives its rewards through
+the gifts (`Gifts.reward`), once, in the same transaction as what unlocked it is kept, so
+that two unlocking it at once are rewarded once.
 
 The achievements were worked out once as they launched, from what was recorded before
 (`achievements.launch`): rewarded open or not, logged, with no activity record.
@@ -23,83 +21,36 @@ none of them is kept either (ADR-0028).
 Each stage unlocked and each character complete, once its reward is given, has an activity
 record for the dashboard to count (`ActivityLog.achievement_unlocked`,
 `ActivityLog.character_complete`): written apart, once what it records is kept, writing them
-failing is only logged; a task done has none.
+failing is only logged.
 
-Each user's progress today and with the achievements is theirs, deleted with them
-(`database.USER_DATA`), and goes in no data package."""
+Each user's progress with the achievements is theirs, deleted with them
+(`database.USER_DATA`), and goes in no data package. The daily tasks were kept here too,
+until they were retired: their progress is dropped as the backend starts (`_open`)."""
 
 import logging
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date, datetime
-from typing import Literal
+from datetime import datetime
 
 from eidolon import achievements
 from eidolon.achievements import Completed, Hers, Progress, Tally, Unlocked
 from eidolon.activity import ActivityLog
-from eidolon.affinity import Tier, day_of, next_day
-from eidolon.clock import Clock
+from eidolon.affinity import Tier, day_of
 from eidolon.data_access import Database
 from eidolon.gifts import Drawn, Given, Gifts, Reward
 from eidolon.store import keep_call
 
 log = logging.getLogger(__name__)
 
-_SCHEMA = """
--- One row per user who has done anything towards a daily task: the day it was last on
--- (`affinity.day_of`), and how many turns and gifts that day.
-CREATE TABLE IF NOT EXISTS daily_task_progress (
-    user_id TEXT PRIMARY KEY REFERENCES users(id),
-    day TEXT NOT NULL,
-    turns INTEGER NOT NULL,
-    gifts INTEGER NOT NULL
-);
-"""
-
-
-@dataclass(frozen=True)
-class Counts:
-    """What a user did in a day that daily tasks count: turns and gifts given."""
-
-    turns: int
-    gifts: int
-
-    def __add__(self, other: "Counts") -> "Counts":
-        return Counts(self.turns + other.turns, self.gifts + other.gifts)
-
-
-@dataclass(frozen=True)
-class DailyTask:
-    """A daily task: done as the day's `counts` reach `goal`, giving `draws` draw chances."""
-
-    id: str
-    counts: Literal["turns", "gifts"]
-    goal: int
-    draws: int = 1
-
-    def of(self, counts: Counts) -> int:
-        """How far `counts` take it, past its goal or not."""
-        return getattr(counts, self.counts)
-
-
-DAILY_TASKS = (
-    DailyTask("one_turn", "turns", 1),
-    DailyTask("one_gift", "gifts", 1),
-    DailyTask("ten_turns", "turns", 10),
-)
-"""Each day's daily tasks, in the order the gifts page shows them."""
-
-
 @dataclass(frozen=True)
 class Rewarded:
-    """What something the user did was rewarded with: draw chances, reset cards, the daily
-    tasks it did, the achievements' stages it unlocked and the characters it completed; and
-    when, by the time the rewards are kept by, for the browser to tell what it has seen."""
+    """What something the user did was rewarded with: draw chances, reset cards, the
+    achievements' stages it unlocked and the characters it completed; and when, by the time
+    the rewards are kept by, for the browser to tell what it has seen."""
 
     draws: int
     reset_cards: int
-    daily_tasks: list[str]
     rewarded_at: datetime
     achievements: list[Unlocked] = field(default_factory=list)
     completed: list[Completed] = field(default_factory=list)
@@ -109,29 +60,9 @@ class Rewarded:
         return {
             "draws": self.draws,
             "reset_cards": self.reset_cards,
-            "daily_tasks": self.daily_tasks,
             "achievements": [u.shown() for u in self.achievements],
             "completed": [c.shown() for c in self.completed],
             "rewarded_at": self.rewarded_at.isoformat(),
-        }
-
-
-@dataclass(frozen=True)
-class DailyTasks:
-    """How far the user is with today's daily tasks, and when they begin again."""
-
-    progress: list[tuple[DailyTask, int]]
-    """Each task, and how far towards its goal, no further than it."""
-    renews_at: datetime
-
-    def shown(self) -> dict:
-        """As the browser is told it."""
-        return {
-            "tasks": [
-                {"id": t.id, "done": p >= t.goal, "progress": p, "goal": t.goal, "draws": t.draws}
-                for t, p in self.progress
-            ],
-            "renews_at": self.renews_at.isoformat(),
         }
 
 
@@ -146,14 +77,12 @@ class Happenings:
     def __init__(
         self,
         db: Database,
-        clock: Clock,
         is_open: Callable[[], bool],
         gifts: Gifts,
         activity: ActivityLog,
     ) -> None:
         """`is_open` tells whether affinity and gifts are open now."""
         self._db = db
-        self._clock = clock
         self._is_open = is_open
         self._gifts = gifts
         self._activity = activity
@@ -206,13 +135,13 @@ class Happenings:
         rewarded with; None if nothing. Its activity records are `write_records`'s."""
         if not open:
             return None
-        return self._happened(db, user_id, character_id, Counts(turns=1, gifts=0), tier=tier)
+        return self._happened(db, user_id, character_id, turns=1, tier=tier)
 
     async def give(
         self, user_id: str, gift_id: str, character_id: str
     ) -> tuple[Given, Rewarded | None]:
-        """Give the character one of the gift (`Gifts.give`), and keep it towards the daily
-        tasks and the achievements, in one transaction: what giving it did, and what it was
+        """Give the character one of the gift (`Gifts.give`), and keep it towards the
+        achievements, in one transaction: what giving it did, and what it was
         rewarded with (None if nothing). Raises GiftsClosed if gifts are not open,
         NoSuchCharacter for no such character, NoneLeft if the user has none of it."""
         await self._gifts.refuse_unless_open()
@@ -265,14 +194,6 @@ class Happenings:
         for complete in rewarded.completed:
             await self._activity.character_complete(user_id, complete.character_id, at)
 
-    async def daily_tasks(self, user_id: str) -> DailyTasks | None:
-        """How far the user is with today's daily tasks; None while closed."""
-        if not self._is_open():
-            return None
-        now = self._clock()
-        counts = await self._db.read(_counts, user_id, day_of(now))
-        return DailyTasks([(t, min(t.of(counts), t.goal)) for t in DAILY_TASKS], next_day(now))
-
     async def hers(self, user_id: str, character_id: str) -> Hers | None:
         """How far the user has come with the character's own achievements; None while
         closed."""
@@ -299,7 +220,7 @@ class Happenings:
     ) -> tuple[Given, Rewarded | None]:
         given = self._gifts.give(db, user_id, gift_id, character_id)
         return given, self._happened(
-            db, user_id, character_id, Counts(turns=0, gifts=1), tier=given.affinity.tier
+            db, user_id, character_id, gifts=1, tier=given.affinity.tier
         )
 
     def _call_ended(
@@ -314,85 +235,53 @@ class Happenings:
     ) -> Rewarded | None:
         if not keep_call(db, conversation_id, connected_at, seconds) or not open:
             return None
-        return self._happened(db, user_id, character_id, Counts(0, 0), call_time=seconds)
+        return self._happened(db, user_id, character_id, call_time=seconds)
 
     def _draw(
         self, db: sqlite3.Connection, user_id: str, all: bool
     ) -> tuple[Drawn, Rewarded | None]:
         drawn = self._gifts.draw(db, user_id, all=all)
-        return drawn, self._happened(db, user_id, None, Counts(0, 0), draws=len(drawn.drawn))
+        return drawn, self._happened(db, user_id, None, draws=len(drawn.drawn))
 
     def _happened(
         self,
         db: sqlite3.Connection,
         user_id: str,
         character_id: str | None,
-        happened: Counts,
         *,
+        turns: int = 0,
+        gifts: int = 0,
         call_time: float = 0,
         draws: int = 0,
         tier: Tier | None = None,
     ) -> Rewarded | None:
-        """Keep what `happened` with the character (None for none) towards today's daily
-        tasks, if anything, and with it the time talked in a call, the times drawn and the
-        tier her affinity was left in towards the achievements, and give the rewards for the
-        tasks it did and the stages it unlocked, through `db`, in the transaction what
-        happened is kept in, affinity and gifts open: what it was rewarded with; None if
-        nothing."""
-        done: dict[str, str | Unlocked | Completed] = {}
-        """Each task's id, stage unlocked or character completed, by the key it is rewarded
-        by."""
+        """Keep the `turns` and `gifts` with the character (None for none), the time talked in
+        a call, the times drawn and the tier her affinity was left in towards the
+        achievements, and give the rewards for the stages it unlocked, through `db`, in the
+        transaction what happened is kept in, affinity and gifts open: what it was rewarded
+        with; None if nothing."""
+        done: dict[str, Unlocked | Completed] = {}
+        """Each stage unlocked or character completed, by the key it is rewarded by."""
 
         def due(db: sqlite3.Connection, now: datetime) -> list[Reward]:
-            today = day_of(now)
-            rewards = []
-            if happened != Counts(0, 0):
-                counts = _counts(db, user_id, today) + happened
-                db.execute(
-                    "INSERT INTO daily_task_progress (user_id, day, turns, gifts)"
-                    " VALUES (?, ?, ?, ?) ON CONFLICT (user_id) DO UPDATE"
-                    " SET day = excluded.day, turns = excluded.turns, gifts = excluded.gifts",
-                    (user_id, today.isoformat(), counts.turns, counts.gifts),
-                )
-                done.update({_key(today, t): t.id for t in DAILY_TASKS})
-                rewards = [
-                    Reward(_key(today, t), t.draws) for t in DAILY_TASKS
-                    if t.of(counts) >= t.goal
-                ]
             unlocked = achievements.keep(
-                db, user_id, character_id, now, today,
-                turns=happened.turns, gifts=happened.gifts,
-                call_time=call_time, draws=draws, tier=tier,
+                db, user_id, character_id, now, day_of(now),
+                turns=turns, gifts=gifts, call_time=call_time, draws=draws, tier=tier,
             )
             done.update({reward.key: what for reward, what in unlocked})
-            return rewards + [reward for reward, _ in unlocked]
+            return [reward for reward, _ in unlocked]
 
         given, at = self._gifts.reward(db, user_id, due)
         if not given:
             return None
         what = [done[r.key] for r in given]
         return Rewarded(
-            sum(r.draws for r in given), sum(r.reset_cards for r in given),
-            [w for w in what if isinstance(w, str)], at,
+            sum(r.draws for r in given), sum(r.reset_cards for r in given), at,
             [w for w in what if isinstance(w, Unlocked)],
             [w for w in what if isinstance(w, Completed)],
         )
 
 
 def _open(db: sqlite3.Connection) -> None:
-    db.executescript(_SCHEMA + achievements.SCHEMA)
-
-
-def _counts(db: sqlite3.Connection, user_id: str, today: date) -> Counts:
-    """The user's turns and gifts kept for `today`; none if those kept were another day's."""
-    row = db.execute(
-        "SELECT day, turns, gifts FROM daily_task_progress WHERE user_id = ?", (user_id,)
-    ).fetchone()
-    if row is None or row[0] != today.isoformat():
-        return Counts(0, 0)
-    return Counts(row[1], row[2])
-
-
-def _key(day: date, task: DailyTask) -> str:
-    """The key the task's reward is given by on `day`."""
-    return f"daily_task:{day.isoformat()}:{task.id}"
+    db.executescript(achievements.SCHEMA)
+    db.execute("DROP TABLE IF EXISTS daily_task_progress")

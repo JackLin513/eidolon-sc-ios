@@ -290,7 +290,7 @@ async def test_a_reset_card_does_not_open_it_again(make_client: ClientFactory, s
         FakeLLM(REPLY), clients=clients, clock=clock, random=FakeRandom(RESET_CARD)
     )
     assert (await client.get("/api/gifts")).status_code == 200
-    assert (await client.post("/api/gifts/draws", json={"all": True})).status_code == 200
+    assert (await client.post("/api/gifts/draws", json={})).status_code == 200
     conversation = await start_conversation(client)
     keep(settings.database_path, "producer", 1, clock.now)
     await send_turn(client, conversation, "随便你")

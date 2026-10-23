@@ -5,8 +5,7 @@ import type { Achievement } from "@/lib/achievements";
 const t = copy.achievements;
 
 /**
- * 「每日任务与成就」子页里每日任务下面那一小节「成就」（DESIGN.md「玩法页」）：和每日任务一样的描边圆角块，标题下面合起来的四个成就
- * 一行一个，写法同她的对话页的成就面板（`AchievementLine`）。新解锁的那几行（`unseen`，成就 id）名字旁一个点。
+ * 「成就」子页里那一小节「成就」（DESIGN.md「玩法页」）：描边圆角块，标题下面合起来的四个成就一行一个，写法同她的对话页的成就面板（`AchievementLine`）。新解锁的那几行（`unseen`，成就 id）名字旁一个点。
  */
 export function AchievementsSection({
   achievements,

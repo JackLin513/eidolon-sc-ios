@@ -11,7 +11,7 @@ import { AchievementsIcon, CalendarIcon, ForwardIcon, GiftIcon } from "@/theme/i
 /** 每张卡的图标：加一张卡就在这里加一行。 */
 const ICONS: Record<PlaySubpage, typeof GiftIcon> = {
   gifts: GiftIcon,
-  tasks: AchievementsIcon,
+  achievements: AchievementsIcon,
   calendar: CalendarIcon,
 };
 

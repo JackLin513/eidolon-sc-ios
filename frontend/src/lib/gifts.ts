@@ -1,5 +1,5 @@
 // 礼物（GLOSSARY.md「礼物」「抽奖」「重置卡」）：玩法页和子页读到的状态，和页上那几句话怎么拼、我的礼物怎么筛。
-// 抽奖次数每天北京时间 0 点发 1 次（不论用户在哪个时区），最多攒 7 次，后端读取时补发；做每日任务给的不受这个上限约束；下次什么时候到账
+// 抽奖次数每天北京时间 0 点发 2 次（不论用户在哪个时区），最多攒 7 次，后端读取时补发；成就给的不受这个上限约束；下次什么时候到账
 // 由后端给出，按制作人的时区写成「今天 / 明天 HH:MM」，写法和冷却解除时刻一样。
 // 送礼一次一件，送出后页面底部那条提示的话也在这里拼。对话页上的送礼入口跳到礼物子页时带着谁、从哪段对话来。
 // 重置卡自己用：把所有低于信任的角色拉回信任，重置卡条上那句话也在这里拼。
@@ -7,7 +7,6 @@
 import { api, json } from "@/lib/api";
 import { cueText, untilText, type AffinityChange, type AffinityStatus, type Tier } from "@/lib/affinity";
 import type { Achievement } from "@/lib/achievements";
-import type { DailyTasks } from "@/lib/dailyTasks";
 import { playHref } from "@/lib/playRoute";
 import type { Rewarded } from "@/lib/rewards";
 import { copy } from "@/i18n";
@@ -43,8 +42,6 @@ export type GiftState = {
   /** 现在用重置卡会拉回的角色；没开放时是空的。 */
   resettable: Resettable[];
   characters: GiftCharacter[];
-  /** 今天的每日任务；没开放时是 null。 */
-  daily_tasks: DailyTasks | null;
   /** 合起来的四个成就（lib/achievements）；没开放时是 null。 */
   achievements: Achievement[] | null;
   /** 最近一次到账的时刻（ISO），导航「玩法」上的点靠它；从来没有过是 null。 */
@@ -148,7 +145,7 @@ export function nextDrawText(nextDrawAt: string, now: Date, timeZone: string): s
   return untilText(new Date(nextDrawAt), now, timeZone);
 }
 
-/** 抽奖台的小点：亮几个（不超过上限），超过上限（每日任务给的）时后面写超出几次（「+2」，没超过是 null），读屏怎么读。 */
+/** 抽奖台的小点：亮几个（不超过上限），超过上限（成就给的）时后面写超出几次（「+2」，没超过是 null），读屏怎么读。 */
 export function drawDots(draws: number, max: number): { lit: number; more: string | null; label: string } {
   const t = copy.gifts.draw;
   return draws > max
@@ -156,7 +153,7 @@ export function drawDots(draws: number, max: number): { lit: number; more: strin
     : { lit: draws, more: null, label: t.label(draws, max) };
 }
 
-/** 抽奖台小点下面那句：用完了、攒满了（每日任务给的超过上限也算）、平时三种；`next` 是 `nextDrawText` 写好的下次到账时刻。 */
+/** 抽奖台小点下面那句：用完了、攒满了（成就给的超过上限也算）、平时三种；`next` 是 `nextDrawText` 写好的下次到账时刻。 */
 export function drawNote(draws: number, max: number, next: string): string {
   const t = copy.gifts.draw.notes;
   if (draws <= 0) return t.none(next);

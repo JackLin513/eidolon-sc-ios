@@ -15,6 +15,7 @@ from dataclasses import replace
 import httpx
 import pytest
 
+from eidolon.affinity import DRAWS_PER_DAY
 from eidolon.config import Settings, UsageLimits
 from eidolon.gift_catalog import GIFTS_FILE
 from eidolon.llm import ChatMessage, Streamed, Tool
@@ -68,12 +69,14 @@ def holding(
 
 
 async def draw_them(client: httpx.AsyncClient, clock: FakeClock, count: int) -> None:
-    """Draw `count` gifts (up to 7), waiting the days it takes to have the chances."""
+    """Draw `count` gifts (up to 7), one at a time, waiting the days it takes to have the
+    chances."""
     assert (await client.get("/api/gifts")).status_code == 200
-    clock.advance(days=count - 1)
-    res = await client.post("/api/gifts/draws", json={"all": True})
-    assert res.status_code == 200, res.text
-    assert len(res.json()["drawn"]) == count
+    clock.advance(days=(count - 1) // DRAWS_PER_DAY)
+    for _ in range(count):
+        res = await client.post("/api/gifts/draws", json={})
+        assert res.status_code == 200, res.text
+        assert len(res.json()["drawn"]) == 1
 
 
 def give(client: httpx.AsyncClient, gift_id: str, character: str = "mano", **body: str):

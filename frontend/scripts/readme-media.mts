@@ -14,7 +14,7 @@
  * 通话那几张真的打电话：假麦克风播一段 Windows 语音合成（System.Speech，要装中文语音）念的中文，她听写下来、
  * 用 Fish Audio 的声音回答；每通电话都在她的对话里记下一个回合，所以先拍手机的对话页再打电话。
  * 玩法页那张（gifts）不真抽奖：直接往开发库（`--database`，默认 backend/data/eidolon.db）里写下固定的背包、一张重置卡、
- * 几次抽奖次数、今天每日任务的进度和合起来的成就，每次重跑都一样；后端要配判断模型，「好感度和礼物」开着。
+ * 几次抽奖次数和合起来的成就，每次重跑都一样；后端要配判断模型，「好感度和礼物」开着。
  * 日程那张（schedule）也直接写库：把这一周的工作排进演示用户的日程（周一到周五保存过，周末留几项草稿、几项待排），
  * 页面的时钟停在这一周的周三下午，做完的、进行中的、保存过的和草稿都拍得到；后端的日程要开着。
  * 照片那张要她真发一张：后端要配判断模型和生图（NOVELAI_API_KEY），第一次准备演示对话时花一张图的额度。
@@ -102,8 +102,6 @@ const BACKPACK: Record<string, number> = {
 /** 抽奖次数和重置卡张数（「礼物」卡的状态）。 */
 const DRAWS = 3;
 const RESET_CARDS = 1;
-/** 今天每日任务的进度（「每日任务与成就」卡的状态）：回合数、送出的礼物件数。 */
-const TODAY_TASKS = { turns: 3, gifts: 0 };
 /**
  * 「成就」里合起来的两项各到第 1 阶段：来过的天数、抽过的奖（往来过几位由演示对话推出来）。键是后端的成就 id，
  * 数值要落在 backend/src/eidolon/achievements.py `ALL_CHARACTERS` 的第 1、2 阶段门槛之间，改门槛时跟着改。
@@ -498,8 +496,8 @@ async function outfits(browser: Browser): Promise<void> {
 }
 
 /**
- * 把演示用户的礼物换成固定的一套：背包只有 BACKPACK，抽奖次数 DRAWS，重置卡 RESET_CARDS，今天每日任务做到
- * TODAY_TASKS，合起来的成就到 ACHIEVEMENTS_OF_ALL。
+ * 把演示用户的礼物换成固定的一套：背包只有 BACKPACK，抽奖次数 DRAWS，重置卡 RESET_CARDS，合起来的成就到
+ * ACHIEVEMENTS_OF_ALL。
  * 先读一次礼物状态，让后端建好这位用户的行、把到今天为止的次数发完，今天再读就不会加了。
  */
 async function stockGifts(context: BrowserContext): Promise<void> {
@@ -518,11 +516,8 @@ async function stockGifts(context: BrowserContext): Promise<void> {
       const put = db.prepare("INSERT INTO gift_backpacks (user_id, gift_id, count) VALUES (?, ?, ?)");
       for (const [gift, count] of Object.entries(BACKPACK)) put.run(id, gift, count);
       db.prepare("UPDATE gift_balances SET draws = ?, reset_cards = ? WHERE user_id = ?").run(DRAWS, RESET_CARDS, id);
-      // 每日任务和「来过几天」都按北京时间划天。
+      // 「来过几天」按北京时间划天。
       const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
-      db.prepare(
-        "INSERT OR REPLACE INTO daily_task_progress (user_id, day, turns, gifts) VALUES (?, ?, ?, ?)",
-      ).run(id, today, TODAY_TASKS.turns, TODAY_TASKS.gifts);
       const progress = db.prepare(
         "INSERT OR REPLACE INTO achievement_progress (user_id, achievement, character_id, count, last_day)" +
           " VALUES (?, ?, '', ?, ?)",
@@ -546,17 +541,17 @@ async function stockGifts(context: BrowserContext): Promise<void> {
   }
 }
 
-/** 玩法页第一级：「礼物」「每日任务与成就」和「日历」三张卡。 */
+/** 玩法页第一级：「礼物」「成就」和「日历」三张卡。 */
 async function gifts(browser: Browser): Promise<void> {
   const context = await signedIn(browser, { ...DESKTOP, colorScheme: "light" });
   try {
     await stockGifts(context);
     const page = await context.newPage();
-    // 新到的抽奖次数在「礼物」卡上带点，进了礼物子页才记成看过；新解锁的成就在「每日任务与成就」卡上带点、状态里多一段
-    // 「成就 n 个新解锁」，离开那个子页才记成看过：先把两个子页各进一趟再回玩法页，拍出来不带点。
+    // 新到的抽奖次数在「礼物」卡上带点，进了礼物子页才记成看过；新解锁的成就在「成就」卡上带点、状态换成「n 个新解锁」，
+    // 离开那个子页才记成看过：先把两个子页各进一趟再回玩法页，拍出来不带点。
     await page.goto(`${origin}/play/gifts`, { waitUntil: "networkidle" });
     await page.getByRole("region", { name: "抽奖" }).waitFor();
-    await page.goto(`${origin}/play/tasks`, { waitUntil: "networkidle" });
+    await page.goto(`${origin}/play/achievements`, { waitUntil: "networkidle" });
     await page.getByRole("region", { name: "成就" }).waitFor();
     await page.getByRole("button", { name: "返回" }).click();
     await page.waitForURL("**/play");

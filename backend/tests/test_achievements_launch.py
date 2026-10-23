@@ -156,8 +156,8 @@ async def test_turns_with_her_before_unlock_their_stages_as_of_the_launch(
     assert achievement(got, "turns")["progress"] == 10
     assert achievement(got, "turns")["stages"][0]["unlocked_at"] == LAUNCH.isoformat()
     assert unlocked(await hers(client, "kogane"), "turns") == []
-    # The new user's one, then the stage's one.
-    assert (await state(client))["draws"] == 2
+    # The new user's two, then the stage's one.
+    assert (await state(client))["draws"] == 3
 
 
 async def test_calls_that_connected_before_count_their_time_together(
@@ -263,9 +263,9 @@ async def test_a_character_complete_before_gives_her_reset_card_and_every_draw_i
 
     assert got is not None
     assert got["complete"] == {"completed_at": LAUNCH.isoformat(), "reset_cards": 0}
-    # The new user's one, then 15 for turns' five stages and one each for the other three:
+    # The new user's two, then 15 for turns' five stages and one each for the other three:
     # more than the most kept of those given each day.
-    assert held["draws"] == 1 + 15 + 3
+    assert held["draws"] == 2 + 15 + 3
     assert held["reset_cards"] == 1
 
 
@@ -307,7 +307,7 @@ async def test_it_is_done_once_however_often_the_backend_starts_again_recording_
     async with admin_beside(launched, github) as admin:
         board = await dashboard(admin, "7d")
 
-    assert held["draws"] == again["draws"] == 2
+    assert held["draws"] == again["draws"] == 3
     assert unlocked(await hers(restart(make_client)), "turns") == [1]
     assert [r.getMessage() for r in caplog.records if r.name == "eidolon.happenings"] == [
         "achievements launched: 1 users, 1 stages, 1 draw chances, 0 reset cards"
@@ -324,4 +324,4 @@ async def test_it_is_done_with_affinity_and_gifts_closed_the_draws_there_once_op
     opened = restart(make_client)
 
     assert unlocked(await hers(opened), "turns") == [1]
-    assert (await state(opened))["draws"] == 2
+    assert (await state(opened))["draws"] == 3

@@ -43,7 +43,7 @@ export function PlaySubpageHeader({ title, end }: { title: string; end?: ReactNo
   return <SubpageHeader title={title} backHref={playHref()} end={end} />;
 }
 
-/** 好感度和礼物没开放时：礼物、每日任务与成就两个子页页首下面是这一句（第一级只剩「日历」卡）。 */
+/** 好感度和礼物没开放时：礼物、成就两个子页页首下面是这一句（第一级只剩「日历」卡）。 */
 export function PlayClosed() {
   return (
     <Empty>

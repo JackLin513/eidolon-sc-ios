@@ -1752,14 +1752,14 @@ export const zh = {
       },
     },
   },
-  /** 玩法页（GLOSSARY.md「玩法」）：导航里的第一级，每张卡进一个子页（礼物、每日任务与成就）。 */
+  /** 玩法页（GLOSSARY.md「玩法」）：导航里的第一级，每张卡进一个子页（礼物、成就、日历）。 */
   play: {
     title: "玩法",
     /** 子页读到状态之前。 */
     loading: "正在读取",
     /** 卡片状态那一行里各段之间。 */
     separator: " · ",
-    /** 好感度和礼物没开放时：礼物、每日任务与成就两个子页页首下面是这一句（第一级只剩「日历」卡）。 */
+    /** 好感度和礼物没开放时：礼物、成就两个子页页首下面是这一句（第一级只剩「日历」卡）。 */
     closed: {
       title: "玩法暂时没有开放",
       description: "这里还没有开放好感度和礼物。已经有的礼物会留着，开放后照常能送。",
@@ -1773,11 +1773,12 @@ export const zh = {
         /** 名字旁的点，读屏读的名字：有新到的抽奖次数。 */
         dot: "有新到的抽奖次数",
       },
-      tasks: {
-        name: "每日任务与成就",
-        daily: (done: number, all: number) => `每日任务 今天 ${done}/${all}`,
-        allDone: "每日任务 今天都做完了",
-        unlocked: (n: number) => `成就 ${n} 个新解锁`,
+      achievements: {
+        name: "成就",
+        /** 平时：合起来的成就一共解锁了几个阶段。 */
+        unlocked: (n: number) => `已解锁 ${n} 个阶段`,
+        /** 有这台设备上还没看过的解锁时，换成这一句。 */
+        unseen: (n: number) => `${n} 个新解锁`,
         /** 名字旁的点，读屏读的名字：有新解锁的成就。 */
         dot: "有新解锁的成就",
       },
@@ -1911,17 +1912,17 @@ export const zh = {
     draw: {
       title: "抽奖",
       left: (n: number) => `还有 ${n} 次`,
-      /** 小点的读屏；`over` 是每日任务给的让次数超过上限时，不再说「最多攒几次」。 */
+      /** 小点的读屏；`over` 是成就给的让次数超过上限时，不再说「最多攒几次」。 */
       label: (n: number, max: number) => `抽奖还有 ${n} 次，最多攒 ${max} 次`,
       over: (n: number) => `抽奖还有 ${n} 次`,
-      /** 超过上限（每日任务给的）时 7 个点后面写超出几次。 */
+      /** 超过上限（成就给的）时 7 个点后面写超出几次。 */
       more: (n: number) => `+${n}`,
       /** 下面那句说明：平时、攒满、用完。`next` 是下次到账的「今天 / 明天 HH:MM」（每天北京时间 0 点发，按制作人的时区写）。 */
       notes: {
-        usual: (next: string, max: number) => `${next} 再发 1 次，最多攒 ${max} 次`,
-        /** 每天发的那份攒到上限了；每日任务给的可以超过上限，所以不写「攒满几次」。 */
+        usual: (next: string, max: number) => `${next} 再发 2 次，最多攒 ${max} 次`,
+        /** 每天发的那份攒到上限了；成就给的可以超过上限，所以不写「攒满几次」。 */
         full: "每天发的已攒满，抽掉之前不会再发",
-        none: (next: string) => `已经抽完了，${next} 再发 1 次`,
+        none: (next: string) => `已经抽完了，${next} 再发 2 次`,
       },
       once: "抽一次",
       all: "全部抽完",
@@ -1959,23 +1960,6 @@ export const zh = {
         becomes: (now: string) => `，${now}，会回到信任`,
       },
     },
-    /** 抽奖台下面那一节「每日任务」。`next` 是换新时刻的「今天 / 明天 HH:MM」（每天北京时间 0 点，按制作人的时区写）。 */
-    dailyTasks: {
-      title: "每日任务",
-      /** 标题旁做完几项（「1/3」），和第三项没做完时的进度（「3/10」）。 */
-      of: (some: number, all: number) => `${some}/${all}`,
-      renews: (next: string) => `${next} 换新`,
-      names: {
-        one_turn: "和角色有一个回合",
-        one_gift: "送出一件礼物",
-        ten_turns: "和角色们一共有 10 个回合",
-      } as Record<string, string>,
-      reward: (draws: number) => `抽奖 ×${draws}`,
-      /** 三项都做完时整节收成的那一行。 */
-      allDone: "每日任务都做完了",
-      /** 没做完的一项旁边：回合任务去对话列表，送礼那项滚到我的礼物。 */
-      actions: { converse: "去对话", pick: "挑一件" },
-    },
     rarity: { common: "普通", uncommon: "少见", rare: "稀有" },
     mine: "我的礼物",
     filters: {
@@ -1993,7 +1977,7 @@ export const zh = {
     empty: {
       title: "还没有礼物",
       withDraws: "抽一次，抽到的礼物会放在这里。",
-      withoutDraws: (next: string) => `${next} 会发一次抽奖，抽到的礼物会放在这里。`,
+      withoutDraws: (next: string) => `${next} 会发 2 次抽奖，抽到的礼物会放在这里。`,
     },
     /** 送礼面板：点一件礼物拉出来，选一位送出。 */
     give: {
@@ -2010,7 +1994,7 @@ export const zh = {
       toConversation: "去对话",
     },
   },
-  /** 成就（GLOSSARY.md「成就」）：她的对话页面板和「每日任务与成就」子页那一小节里每一行的字。 */
+  /** 成就（GLOSSARY.md「成就」）：她的对话页面板和「成就」子页那一小节里每一行的字。 */
   achievements: {
     names: {
       turns: "和她的回合",

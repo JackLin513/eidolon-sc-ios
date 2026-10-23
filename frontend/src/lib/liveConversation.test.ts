@@ -2259,11 +2259,10 @@ describe("LiveConversation: the list", () => {
 });
 
 describe("LiveConversation: rewards", () => {
-  const oneTurn: Rewarded = {
+  const tenthTurn: Rewarded = {
     draws: 1,
     reset_cards: 0,
-    daily_tasks: ["one_turn"],
-    achievements: [],
+    achievements: [{ achievement: "turns", character_id: "hikari", stage: 1, draws: 1 }],
     completed: [],
     rewarded_at: "2026-10-20T08:00:00+00:00",
   };
@@ -2272,7 +2271,7 @@ describe("LiveConversation: rewards", () => {
     const turns = [
       scripted([
         { type: "user", text: "你好" },
-        { type: "done", message: message(4, "character", "こんにちは"), affinity: null, rewarded: oneTurn },
+        { type: "done", message: message(4, "character", "こんにちは"), affinity: null, rewarded: tenthTurn },
       ]),
       scripted([
         { type: "user", text: "再见" },
@@ -2287,8 +2286,8 @@ describe("LiveConversation: rewards", () => {
     live.setDraft("再见");
     await live.submit();
 
-    expect(once).toEqual([oneTurn]);
-    expect(rewarded).toEqual([oneTurn]);
+    expect(once).toEqual([tenthTurn]);
+    expect(rewarded).toEqual([tenthTurn]);
   });
 
   it("tells the shell what a turn in a call was rewarded with", async () => {
@@ -2297,9 +2296,9 @@ describe("LiveConversation: rewards", () => {
     const { handlers } = attempts[0];
 
     handlers.onEvent({ type: "user", text: "你好", reply: 1 });
-    handlers.onEvent({ type: "done", message: message(4, "character", "こんにちは"), affinity: null, rewarded: oneTurn });
+    handlers.onEvent({ type: "done", message: message(4, "character", "こんにちは"), affinity: null, rewarded: tenthTurn });
 
-    expect(rewarded).toEqual([oneTurn]);
+    expect(rewarded).toEqual([tenthTurn]);
   });
 });
 
@@ -2308,7 +2307,6 @@ describe("LiveConversation: the trophy", () => {
   const unlocked = (...achievements: Rewarded["achievements"]): Rewarded => ({
     draws: achievements.reduce((n, a) => n + a.draws, 0),
     reset_cards: 0,
-    daily_tasks: [],
     achievements,
     completed: [],
     rewarded_at: at,
