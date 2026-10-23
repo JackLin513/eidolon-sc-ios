@@ -1,13 +1,14 @@
-// 礼物（GLOSSARY.md「礼物」「抽奖」「重置卡」）：礼物页读到的状态，和页上那几句话怎么拼、我的礼物怎么筛。
+// 礼物（GLOSSARY.md「礼物」「抽奖」「重置卡」）：玩法页和子页读到的状态，和页上那几句话怎么拼、我的礼物怎么筛。
 // 抽奖次数每天北京时间 0 点发 1 次（不论用户在哪个时区），最多攒 7 次，后端读取时补发；做每日任务给的不受这个上限约束；下次什么时候到账
 // 由后端给出，按制作人的时区写成「今天 / 明天 HH:MM」，写法和冷却解除时刻一样。
-// 送礼一次一件，送出后页面底部那条提示的话也在这里拼。对话页上的送礼入口跳到礼物页时带着谁、从哪段对话来。
+// 送礼一次一件，送出后页面底部那条提示的话也在这里拼。对话页上的送礼入口跳到礼物子页时带着谁、从哪段对话来。
 // 重置卡自己用：把所有低于信任的角色拉回信任，重置卡条上那句话也在这里拼。
 
 import { api, json } from "@/lib/api";
 import { cueText, untilText, type AffinityChange, type AffinityStatus, type Tier } from "@/lib/affinity";
 import type { Achievement } from "@/lib/achievements";
 import type { DailyTasks } from "@/lib/dailyTasks";
+import { playHref } from "@/lib/playRoute";
 import type { Rewarded } from "@/lib/rewards";
 import { copy } from "@/i18n";
 
@@ -82,7 +83,7 @@ export async function drawGifts(all: boolean): Promise<DrawResult> {
  * （确认框打开期间她自己回到了信任）是 409，都不扣卡。
  */
 export async function spendResetCard(): Promise<void> {
-  // 接口还给拉回了谁、剩几张；礼物页用完重新读一遍状态，不看这些。
+  // 接口还给拉回了谁、剩几张；礼物子页用完重新读一遍状态，不看这些。
   await json(await api("/api/gifts/resets", { method: "POST" }));
 }
 
@@ -120,15 +121,15 @@ export function givenNote(given: Given, name: string, now: Date, timeZone: strin
   return until ? t.stillCooling(name, untilText(new Date(until), now, timeZone)) : t.given(name);
 }
 
-/** 从对话页跳来的礼物页：预选的她。 */
+/** 从对话页跳来的礼物子页：预选的她。 */
 export type GiftsFor = { to: string };
 
-/** 对话页上「送她一件礼物」去的地方：礼物页，带上她的角色 id。不带对话：礼物一律记进她的当前对话（GLOSSARY.md「礼物」）。 */
+/** 对话页上「送她一件礼物」去的地方：玩法里的礼物子页，带上她的角色 id。不带对话：礼物一律记进她的当前对话（GLOSSARY.md「礼物」）。 */
 export function giftsHref(characterId: string): string {
-  return `/gifts?${new URLSearchParams({ to: characterId })}`;
+  return `${playHref("gifts")}?${new URLSearchParams({ to: characterId })}`;
 }
 
-/** 礼物页地址里的预选；没有 `to`（或者不止一个、是空的）就是没有预选。`to` 是不是真有这位角色由礼物页判断。
+/** 礼物子页地址里的预选；没有 `to`（或者不止一个、是空的）就是没有预选。`to` 是不是真有这位角色由礼物子页判断。
  * 以前的链接还带着 `conversation`，不管它。 */
 export function giftsFor(query: Record<string, string | string[] | undefined>): GiftsFor | null {
   const { to } = query;

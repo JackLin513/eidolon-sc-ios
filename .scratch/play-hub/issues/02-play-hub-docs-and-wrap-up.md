@@ -16,3 +16,10 @@
 - [ ] 对外文案（README、隐私、条款、公告）过一遍 `humanizer-zh`
 - [ ] 按 `docs/agents/local-acceptance.md` 在本地构建版上用 Playwright 把宽屏和手机的玩法页第一级、两个子页、没开放的样子再整体过一遍；拍 README 截图用的就是这次起的服务
 - [ ] 列出只有人能验的项（真机看版式、后台发公告）留给用户
+
+## Comments
+
+### 票 01 交接
+- 代码里一批注释引用 `DESIGN.md「礼物页」`（`components/gifts/*`、`zh.ts` 等），新写的引用 `DESIGN.md「玩法页」`（`PlayPage`、`PlayCardLink`、`PlayShell`、`TasksSubpage`、`[subpage]/page.tsx`）。写 `DESIGN.md` 时「玩法页」一节要在；礼物页各小节的说明搬到子页下面以后，把 `components/gifts/*` 里那些引用改成新的节名。
+- `frontend/scripts/readme-media.mts`（约 545 行）还是 `page.goto` 到 `/gifts`，靠 `/gifts` 的跳转能打开，要改成拍 `/play` 第一级。
+- 卡片版式写进 `DESIGN.md` 时以代码为准：单行（圆底图标 | 名字加下面一行状态 | ›），「礼物」卡铺 `bg-muted` 不描边、图标圆底 `bg-background`，其余描边、圆底 `bg-muted`；状态行高度先占着。原型 A 的卡更高，没有照它，详见票 01 的实现说明。

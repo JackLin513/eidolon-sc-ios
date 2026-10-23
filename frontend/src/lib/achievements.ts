@@ -1,4 +1,4 @@
-// 成就（GLOSSARY.md「成就」）：她的对话页面板和礼物页那一小节里，每一行怎么写。一个成就分几个阶段，按序号解锁，
+// 成就（GLOSSARY.md「成就」）：她的对话页面板和「每日任务与成就」子页那一小节里，每一行怎么写。一个成就分几个阶段，按序号解锁，
 // 第 n 阶段给 n 次抽奖；她按角色算的阶段全部解锁叫集齐，另给重置卡。门槛、奖励、解锁了哪几个都由后端给，这里只管
 // 写成一行：名字、阶段点、只写下一个阶段的进度、下一阶段的奖励。档位只有档位名，不给好感度的数值。
 //
@@ -103,13 +103,13 @@ export function keepAchievementsSeenUpTo(userId: string, scope: string, at: stri
   keepSeenOnDevice(seenKey(userId, scope), at);
 }
 
-/** 合起来的那几个（礼物页那一小节）记看过时的范围；角色的 id 里没有这个。 */
+/** 合起来的那几个（子页那一小节）记看过时的范围；角色的 id 里没有这个。 */
 export const OF_ALL = "all";
 
 /** 面板里集齐那一行在 `unseenRows` 里的 id。 */
 export const COMPLETE = "complete";
 
-/** 面板或礼物页那一小节列出的几个成就，和集齐那一行（她的面板里才有）。 */
+/** 面板或子页那一小节列出的几个成就，和集齐那一行（她的面板里才有）。 */
 export type Listed = { achievements: Achievement[]; complete?: Complete };
 
 /** 这几个成就（连同集齐那一行，有的话）里最近一次解锁的时刻；一个都没解锁是 null。 */
@@ -125,6 +125,11 @@ export function unseenRows({ achievements, complete }: Listed, seenAt: string | 
     .map((a) => a.id);
   if (complete && isUnseen(complete.completed_at, seenAt)) rows.push(COMPLETE);
   return new Set(rows);
+}
+
+/** 这几个成就里解锁晚于看过的（`seenAt`）的阶段数；有几行带点（`unseenRows`）用同一个看过的时刻比。 */
+export function unseenStages(achievements: Achievement[], seenAt: string | null): number {
+  return achievements.reduce((n, a) => n + a.stages.filter((s) => isUnseen(s.unlocked_at, seenAt)).length, 0);
 }
 
 /**

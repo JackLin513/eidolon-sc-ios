@@ -1,0 +1,56 @@
+import type { ReactNode } from "react";
+
+import { PageShell } from "@/components/app/PageShell";
+import { SubpageHeader } from "@/components/app/SubpageHeader";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { copy } from "@/i18n";
+import { playHref } from "@/lib/playRoute";
+import { PlayIcon } from "@/theme/icons";
+
+const t = copy.play;
+
+/**
+ * 玩法页第一级和子页共用的页面（DESIGN.md「玩法页」）：外壳里整块一栏，内容最宽 `max-w-3xl`、居中，手机和电脑同一个版式，
+ * 没有第二栏。`overlays` 是内容外面的浮层（抽奖弹窗、送礼面板、送出后的提示）。
+ */
+export function PlayShell({
+  header,
+  children,
+  overlays,
+}: {
+  header: ReactNode;
+  children: ReactNode;
+  overlays?: ReactNode;
+}) {
+  return (
+    <PageShell width="full" isInShell header={header}>
+      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-4 py-6">{children}</div>
+      {overlays}
+    </PageShell>
+  );
+}
+
+/** 第一级的页首：「玩法」大标题。 */
+export function PlayHeader() {
+  return <h1 className="text-list-title">{t.title}</h1>;
+}
+
+/** 子页的页首：返回键回第一级（电脑和手机都有）和卡的名字。 */
+export function PlaySubpageHeader({ title }: { title: string }) {
+  return <SubpageHeader title={title} backHref={playHref()} />;
+}
+
+/** 好感度和礼物没开放时：第一级没有卡，子页页首下面也是这一句。 */
+export function PlayClosed() {
+  return (
+    <Empty>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <PlayIcon />
+        </EmptyMedia>
+        <EmptyTitle>{t.closed.title}</EmptyTitle>
+        <EmptyDescription>{t.closed.description}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
+  );
+}

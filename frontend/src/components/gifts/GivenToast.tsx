@@ -10,7 +10,7 @@ export type GivenNotice = { key: number; character: Character; note: string };
 
 /**
  * 送出后页面底部的提示（DESIGN.md「礼物页」）：前景色底的反色胶囊，她的小头像、一句话、「去对话」；
- * 放在导航外壳的内容区底部（手机上在 dock 上面），由礼物页 8 秒后收起。不自动跳转。
+ * 放在导航外壳的内容区底部（手机上在 dock 上面），由礼物子页 8 秒后收起。不自动跳转。
  */
 export function GivenToast({ notice, onGo }: { notice: GivenNotice | null; onGo: (notice: GivenNotice) => void }) {
   return (

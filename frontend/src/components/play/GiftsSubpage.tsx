@@ -1,37 +1,27 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { FailureNotice } from "@/components/app/FailureNotice";
 import { MarkedAvatar } from "@/components/app/MarkedAvatar";
-import { PageShell } from "@/components/app/PageShell";
 import { SectionHeading } from "@/components/app/SubpageHeader";
 import { useDirectory, useWide } from "@/components/conversations/ConversationDirectory";
 import { useProducerTimezone } from "@/components/conversations/useProducerTimezone";
-import { AchievementsSection } from "@/components/gifts/AchievementsSection";
-import { DailyTasksSection } from "@/components/gifts/DailyTasksSection";
 import { DrawDialog, type Drawing } from "@/components/gifts/DrawDialog";
 import { GivenToast, type GivenNotice } from "@/components/gifts/GivenToast";
 import { GivePanel, type Giving } from "@/components/gifts/GivePanel";
 import { MY_GIFTS_ID, MyGifts } from "@/components/gifts/MyGifts";
 import { ResetCards } from "@/components/gifts/ResetCards";
+import { PlayClosed, PlayShell, PlaySubpageHeader } from "@/components/play/PlayShell";
+import { usePlayState } from "@/components/play/usePlayState";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { copy } from "@/i18n";
-import {
-  achievementsSeenUpTo,
-  keepAchievementsSeenUpTo,
-  latestUnlock,
-  OF_ALL,
-  unseenRows,
-  withUnlocked,
-} from "@/lib/achievements";
 import { ApiError, type Character } from "@/lib/api";
 import { arrange } from "@/lib/conversationList";
-import { dailyTasksView, withDone } from "@/lib/dailyTasks";
-import { toFailure, type Failure } from "@/lib/failure";
+import { toFailure } from "@/lib/failure";
 import {
   chosenFirst,
   drawDots,
@@ -39,7 +29,6 @@ import {
   drawNote,
   emptyNote,
   nextDrawText,
-  getGiftCatalog,
   getGiftState,
   giveGift,
   givenNote,
@@ -50,6 +39,8 @@ import {
   type GiftState,
   type Given,
 } from "@/lib/gifts";
+import { playTitle } from "@/lib/playCards";
+import { playHref } from "@/lib/playRoute";
 import { later } from "@/lib/seenOnDevice";
 import { cn } from "@/lib/utils";
 import { CloseIcon, DrawIcon, GiftIcon } from "@/theme/icons";
@@ -62,21 +53,18 @@ const OPENING_MS = 900;
 /** 送出后的提示留多久。 */
 const NOTICE_MS = 8000;
 
-const NONE: ReadonlySet<string> = new Set();
-
 /**
- * 礼物页（DESIGN.md「礼物页」）：导航栏右边整块一栏，内容最宽 `max-w-3xl`、居中，手机和电脑同一个版式。
- * 上面是抽奖台，下面「每日任务」一节（「去对话」去对话列表，「挑一件」滚到我的礼物）、「成就」一小节（合起来的四个；
- * 解锁晚于进这一页前看过的那几行带点，离开这一页记成看过），有重置卡时再下面一条重置卡条，最后「我的礼物」；点一件（或单抽结果上的「送给谁…」）拉出送礼面板，
- * 送出后面板收起、底部出提示，页面不跳走。好感度和礼物没开放时整页是「礼物暂时没有开放」，「礼物」照样留在导航里；
+ * 礼物子页（`/play/gifts`，DESIGN.md「玩法页」）：玩法页「礼物」卡点进来的二级页面，页首返回键回玩法页，内容最宽 `max-w-3xl`、居中。
+ * 上面是抽奖台，有重置卡时下面一条重置卡条，最后「我的礼物」；点一件（或单抽结果上的「送给谁…」）拉出送礼面板，
+ * 送出后面板收起、底部出提示，页面不跳走。好感度和礼物没开放时页首下面是「玩法暂时没有开放」，「玩法」照样留在导航里；
  * 抽奖、送礼或用重置卡时才知道没开放（收到「没开放」的 409）也切成这样。
  * 从对话页跳来（`pick`）时页首下面一条「给{角色名}挑一件礼物」：点哪件礼物，面板里都已选好她、排在第一个，
  * 送出的礼物和别处送的一样记进她的当前对话；点 ✕ 取消预选，地址里的也去掉。地址里的角色不存在时当作没有预选。
+ * 地址带着 `#my-gifts`（每日任务里的「挑一件」）时，礼物读到以后滚到「我的礼物」。
+ * 进了这个子页（且没被通话层盖住）就把新到的抽奖次数记成看过，在这个子页上到账的当场也记成看过，所以导航和「礼物」卡上都不出点。
  */
-export function GiftsPage({ pick }: { pick: GiftsFor | null }) {
-  const [state, setState] = useState<GiftState | null>(null);
-  const [catalog, setCatalog] = useState<GiftInfo[] | null>(null);
-  const [failure, setFailure] = useState<Failure | null>(null);
+export function GiftsSubpage({ pick }: { pick: GiftsFor | null }) {
+  const { state, setState, catalog, failure, setFailure, applyGiftState } = usePlayState({ withCatalog: true });
   const [drawing, setDrawing] = useState<Drawing | null>(null);
   // 收起面板时留着上一次送的，收起的动画里内容不消失。
   const [giving, setGiving] = useState<Giving | null>(null);
@@ -86,16 +74,10 @@ export function GiftsPage({ pick }: { pick: GiftsFor | null }) {
   const isReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)", false);
   const isWide = useWide();
   const timeZone = useProducerTimezone();
-  const { account, characters, latest, preferences, go, refresh, giftsRead, rewardedAt } = useDirectory();
-  const userId = account?.id ?? null;
-  // 进这一页前这台设备上看过的合起来的成就：那一小节里解锁晚于它的带点，留到离开这一页。
-  const [seen, setSeen] = useState<{ userId: string; at: string | null } | null>(null);
-  if (userId && seen?.userId !== userId) setSeen({ userId, at: achievementsSeenUpTo(userId, OF_ALL) });
-  // 在这一页上送礼刚做完的每日任务：那一行打勾时弹一下。
-  const [justDone, setJustDone] = useState<string[]>([]);
+  const { characters, latest, preferences, go, refresh, giftsRead } = useDirectory();
   const router = useRouter();
-  // 点过 ✕ 的预选：地址换掉以前（重新渲染要等一下）就不再显示。地址换回 /gifts 以后忘掉，
-  // 这一页没卸下又从结束卡带着她跳来时（通话层由外壳画在礼物页上）照样预选。
+  // 点过 ✕ 的预选：地址换掉以前（重新渲染要等一下）就不再显示。地址换回 /play/gifts 以后忘掉，
+  // 这一页没卸下又从结束卡带着她跳来时（通话层由外壳画在礼物子页上）照样预选。
   const [dropped, setDropped] = useState<string | null>(null);
   if (!pick && dropped !== null) setDropped(null);
   const chosen = pick && pick.to !== dropped ? characters?.find((c) => c.id === pick.to) : undefined;
@@ -108,51 +90,21 @@ export function GiftsPage({ pick }: { pick: GiftsFor | null }) {
   const recipients = useMemo(() => chosenFirst(arranged, chosen?.id ?? null), [arranged, chosen]);
   const statuses = useMemo(() => new Map((state?.characters ?? []).map((c) => [c.id, c])), [state]);
 
-  // 离开这一页（卸下）时把看过记成合起来的成就里最近一次解锁。
-  const latestOfAll = useRef<string | null>(null);
-  useEffect(() => {
-    latestOfAll.current = state?.achievements ? latestUnlock({ achievements: state.achievements }) : null;
-  }, [state]);
-  useEffect(() => {
-    if (!userId) return;
-    return () => {
-      if (latestOfAll.current) keepAchievementsSeenUpTo(userId, OF_ALL, latestOfAll.current);
-    };
-  }, [userId]);
-
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(null), NOTICE_MS);
     return () => clearTimeout(timer);
   }, [notice]);
 
-  /** 读到的礼物状态：这一页照它显示，开关和最近一次到账也告诉外壳（在这一页上就记成看过，「礼物」上不出点）。 */
-  const applyGiftState = useCallback(
-    (s: GiftState) => {
-      setState(s);
-      giftsRead(s);
-    },
-    [giftsRead],
-  );
-
-  // 别处（通话里、别的设备）到账了，这一页读到的落后了：重读一遍，那一节跟着更新。每个时刻只重读一次。
-  const rereadFor = useRef<string | null>(null);
+  // 每日任务里的「挑一件」带着 #my-gifts 跳来：「我的礼物」一出来就滚过去，只滚一次。
+  const [hasScrolled, setScrolled] = useState(false);
   useEffect(() => {
-    if (!state || !rewardedAt || later(state.rewarded_at, rewardedAt) === state.rewarded_at) return;
-    if (rereadFor.current === rewardedAt) return;
-    rereadFor.current = rewardedAt;
-    getGiftState().then(applyGiftState, () => {});
-  }, [state, rewardedAt, applyGiftState]);
-
-  useEffect(() => {
-    Promise.all([getGiftState(), getGiftCatalog()]).then(
-      ([s, c]) => {
-        applyGiftState(s);
-        setCatalog(c);
-      },
-      (e) => setFailure(toFailure(e)),
-    );
-  }, [applyGiftState]);
+    if (hasScrolled || !state?.open || catalog === null || window.location.hash !== `#${MY_GIFTS_ID}`) return;
+    setScrolled(true);
+    document
+      .getElementById(MY_GIFTS_ID)
+      ?.scrollIntoView({ behavior: isReducedMotion ? "auto" : "smooth", block: "start" });
+  }, [hasScrolled, state, catalog, isReducedMotion]);
 
   async function draw(all: boolean) {
     setFailure(null);
@@ -198,8 +150,7 @@ export function GiftsPage({ pick }: { pick: GiftsFor | null }) {
       const given = await giveGift(to.id, giving.gift.id);
       setGiveOpen(false);
       setState((s) => s && afterGiving(s, giving.gift.id, to.id, given));
-      // 做完了任务：那一行当场打勾、弹一下（到账就在这一页上，重读回来记成看过，不出点）。
-      if (given.rewarded) setJustDone(given.rewarded.daily_tasks);
+      // 做完了任务的到账就在这一页上：重读回来记成看过，不出点。
       setNotice({
         key: Date.now(),
         character: to,
@@ -233,98 +184,79 @@ export function GiftsPage({ pick }: { pick: GiftsFor | null }) {
   const nextDraw = state?.next_draw_at ? nextDrawText(state.next_draw_at, new Date(), timeZone) : "";
 
   return (
-    <PageShell width="full" isInShell header={<h1 className="text-list-title">{t.title}</h1>}>
-      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-4 py-6">
-        {failure && <FailureNotice failure={failure} />}
-        {state === null || catalog === null ? (
-          !failure && <p className="text-body text-muted-foreground">{t.loading}</p>
-        ) : !state.open ? (
-          <GiftsEmpty title={t.closed.title} description={t.closed.description} />
-        ) : (
-          <>
-            {chosen && (
-              <PickedFor
-                character={chosen}
-                onCancel={() => {
-                  setDropped(chosen.id);
-                  router.replace("/gifts", { scroll: false });
-                }}
-              />
-            )}
-            <DrawDesk
-              draws={state.draws}
-              max={state.max_draws}
-              next={nextDraw}
-              isDrawing={drawing !== null}
-              onDraw={draw}
+    <PlayShell
+      header={<PlaySubpageHeader title={playTitle("gifts")} />}
+      overlays={
+        <>
+          <DrawDialog
+            drawing={drawing}
+            catalog={giftsById}
+            onGive={startGiving}
+            onAgain={() => draw(false)}
+            onClose={() => setDrawing(null)}
+          />
+          <GivePanel
+            giving={giving}
+            isOpen={isGiveOpen}
+            isWide={isWide}
+            isSending={isSending}
+            characters={recipients}
+            statuses={statuses}
+            onChoose={(to) => setGiving((g) => g && { ...g, to })}
+            onSend={send}
+            onClose={() => setGiveOpen(false)}
+          />
+          {/* 「去对话」去她的对话页，那里打开的就是记录放进的那段；通话中去别的角色时先问会不会挂断。 */}
+          <GivenToast notice={notice} onGo={(n) => go(`/conversation/${encodeURIComponent(n.character.id)}`)} />
+        </>
+      }
+    >
+      {failure && <FailureNotice failure={failure} />}
+      {state === null || catalog === null ? (
+        !failure && <p className="text-body text-muted-foreground">{copy.play.loading}</p>
+      ) : !state.open ? (
+        <PlayClosed />
+      ) : (
+        <>
+          {chosen && (
+            <PickedFor
+              character={chosen}
+              onCancel={() => {
+                setDropped(chosen.id);
+                router.replace(playHref("gifts"), { scroll: false });
+              }}
             />
-            {state.daily_tasks && (
-              <DailyTasksSection
-                view={dailyTasksView(
-                  state.daily_tasks,
-                  nextDrawText(state.daily_tasks.renews_at, new Date(), timeZone),
-                  state.backpack.length > 0,
-                )}
-                justDone={justDone}
-                onAction={(action) => {
-                  if (action === "converse") go("/conversations");
-                  else
-                    document
-                      .getElementById(MY_GIFTS_ID)
-                      ?.scrollIntoView({ behavior: isReducedMotion ? "auto" : "smooth", block: "start" });
-                }}
-              />
-            )}
-            {state.achievements && (
-              <AchievementsSection
-                achievements={state.achievements}
-                unseen={seen ? unseenRows({ achievements: state.achievements }, seen.at) : NONE}
-              />
-            )}
-            {state.reset_cards > 0 && (
-              <ResetCards
-                count={state.reset_cards}
-                resettable={state.resettable}
-                characters={arranged}
-                onUse={spendCard}
-              />
-            )}
-            {state.backpack.length > 0 ? (
-              <MyGifts backpack={state.backpack} catalog={catalog} onGive={(held) => startGiving(held.gift)} />
-            ) : (
-              <>
-                <SectionHeading>{t.mine}</SectionHeading>
-                <GiftsEmpty title={t.empty.title} description={emptyNote(state.draws, nextDraw)} />
-              </>
-            )}
-          </>
-        )}
-      </div>
-      <DrawDialog
-        drawing={drawing}
-        catalog={giftsById}
-        onGive={startGiving}
-        onAgain={() => draw(false)}
-        onClose={() => setDrawing(null)}
-      />
-      <GivePanel
-        giving={giving}
-        isOpen={isGiveOpen}
-        isWide={isWide}
-        isSending={isSending}
-        characters={recipients}
-        statuses={statuses}
-        onChoose={(to) => setGiving((g) => g && { ...g, to })}
-        onSend={send}
-        onClose={() => setGiveOpen(false)}
-      />
-      {/* 「去对话」去她的对话页，那里打开的就是记录放进的那段；通话中去别的角色时先问会不会挂断。 */}
-      <GivenToast notice={notice} onGo={(n) => go(`/conversation/${encodeURIComponent(n.character.id)}`)} />
-    </PageShell>
+          )}
+          <DrawDesk
+            draws={state.draws}
+            max={state.max_draws}
+            next={nextDraw}
+            isDrawing={drawing !== null}
+            onDraw={draw}
+          />
+          {state.reset_cards > 0 && (
+            <ResetCards
+              count={state.reset_cards}
+              resettable={state.resettable}
+              characters={arranged}
+              onUse={spendCard}
+            />
+          )}
+          {state.backpack.length > 0 ? (
+            <MyGifts backpack={state.backpack} catalog={catalog} onGive={(held) => startGiving(held.gift)} />
+          ) : (
+            <>
+              <SectionHeading>{t.mine}</SectionHeading>
+              <GiftsEmpty title={t.empty.title} description={emptyNote(state.draws, nextDraw)} />
+            </>
+          )}
+        </>
+      )}
+    </PlayShell>
   );
 }
 
-/** 抽完以后的礼物状态：剩下的次数，抽到的礼物叠进背包（按目录的顺序），重置卡另计，这次解锁的合起来的阶段标上。 */
+/** 抽完以后的礼物状态：剩下的次数，抽到的礼物叠进背包（按目录的顺序），重置卡另计。 */
 function withDrawn(state: GiftState, result: DrawResult, catalog: GiftInfo[]): GiftState {
   const counts = new Map(state.backpack.map((b) => [b.gift_id, b.count]));
   let cards = state.reset_cards;
@@ -341,18 +273,15 @@ function withDrawn(state: GiftState, result: DrawResult, catalog: GiftInfo[]): G
     draws: result.draws,
     backpack,
     reset_cards: cards,
-    achievements: state.achievements && withUnlocked(state.achievements, result.rewarded),
   };
 }
 
-/** 送出一件以后的礼物状态：这件按接口给的件数（送完的不再列），她的好感度换成现在的，这次解锁的合起来的阶段标上。 */
+/** 送出一件以后的礼物状态：这件按接口给的件数（送完的不再列），她的好感度换成现在的，这次到账的次数加上。 */
 function afterGiving(state: GiftState, giftId: string, characterId: string, given: Given): GiftState {
   const { rewarded } = given;
   return {
     ...state,
     draws: state.draws + (rewarded?.draws ?? 0),
-    daily_tasks: state.daily_tasks && withDone(state.daily_tasks, rewarded?.daily_tasks ?? []),
-    achievements: state.achievements && withUnlocked(state.achievements, rewarded),
     rewarded_at: later(state.rewarded_at, rewarded?.rewarded_at ?? null),
     backpack: state.backpack
       .map((b) => (b.gift_id === giftId ? { ...b, count: given.left } : b))
