@@ -89,7 +89,7 @@ def _parse_job(entry: object) -> ListedJob:
         raise JobListError(f"工作标识 {id} 只能用小写字母、数字、- 和 _")
     for field in ("name", "note"):
         value = entry[field]
-        if not isinstance(value, str) or not value.strip() or "\n" in value:
+        if not isinstance(value, str) or not value.strip() or any(c in value for c in "\r\n"):
             raise JobListError(f"工作 {id} 的 {field} 应当是一行文字")
     if category not in get_args(Category):
         raise JobListError(f"工作 {id} 的类别 {category} 不在 {'、'.join(get_args(Category))} 之中")

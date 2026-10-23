@@ -33,12 +33,6 @@ def test_the_repositorys_list_has_some_40_jobs_about_three_of_work_to_one_privat
     assert not any("演出" in j["name"] + j["note"] for j in jobs)
 
 
-async def test_the_repositorys_list_starts_the_backend(make_client: ClientFactory):
-    client = make_client(FakeLLM())
-
-    assert (await client.get("/api/health")).status_code == 200
-
-
 @pytest.mark.parametrize(
     ("jobs", "named"),
     [

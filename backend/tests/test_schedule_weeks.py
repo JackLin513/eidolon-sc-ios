@@ -15,9 +15,9 @@ from datetime import UTC, date, datetime, timedelta
 import httpx
 import pytest
 
-from eidolon.characters import in_idol_order, load_characters
+from eidolon.characters import load_characters
 from eidolon.job_list import JOBS_FILE, WORK, load_job_list
-from eidolon.schedule import FIRST_WEEK, draw_week
+from eidolon.schedule import FIRST_WEEK, draw_week, idols_of
 from eidolon.world import load_world
 
 from tests.conftest import REPO_JOBS, CharacterConfig, ClientFactory
@@ -167,9 +167,7 @@ async def test_the_devices_zone_is_theirs_without_one_in_their_profile(
 
 def test_the_repositorys_list_gives_a_good_week_for_years_of_weeks():
     characters = load_characters(REPO_CHARACTERS / "characters.toml")
-    world = load_world(REPO_CHARACTERS / "world.json")
-    assert world is not None
-    idols = [c.id for c in in_idol_order(characters.values()) if not world.is_staff(c.name)]
+    idols = idols_of(characters, load_world(REPO_CHARACTERS / "world.json"))
     jobs = load_job_list(REPO_JOBS)
 
     for n in range(520):

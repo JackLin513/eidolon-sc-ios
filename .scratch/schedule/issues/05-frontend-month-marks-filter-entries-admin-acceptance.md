@@ -17,3 +17,10 @@
 - [ ] 类型检查、lint、前端测试过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
 - [ ] 整块验收走完上面列的；留给用户的清单写进 Comments（真机看周视图和抽屉、打电话听她说日程、别的机器验不了的）
 - [ ] 票收尾：推一次让 CI 跑、跑 `code-review`
+
+## Comments
+
+### 票 02 交接
+
+- 后台配置：实时配置项名 `schedule`，字段只有 `enabled`，接口照 `reach_outs`；`adminConfig.ts` 的 `TAB_ITEMS.limits` 里加上它。
+- 看板：那一格是顶层的 `scheduled_this_week`（日程关着时 null），不在 `affinity` 里。`dashboardTabs` 的「好感度」标签改成 `affinity != null || scheduled_this_week != null` 时显示。

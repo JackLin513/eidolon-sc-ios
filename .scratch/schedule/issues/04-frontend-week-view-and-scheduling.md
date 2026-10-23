@@ -15,3 +15,11 @@
 - [ ] 文案照规格，不多一句；`themeContrast.test.ts` 预计不用加，核对没有新的固定色
 - [ ] 类型检查、lint、前端测试过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
 - [ ] 票收尾：Comments 里写下子页组件和 `lib/schedule` 的形状给票 05、06 用；推一次让 CI 跑、跑 `code-review`
+
+## Comments
+
+### 票 02 交接
+
+- 接口形状、原因文案见票 02 的「实现说明」。`timeOf` 要用 `GET /api/schedule` 回的 `timezone`（档案优先于设备），不是浏览器自己的时区。
+- 周几 `day` 0 是周一；`slot` 0 是上午。工作的 `slots` 是名字（`morning` / `afternoon` / `evening`），不是下标。
+- 保存一次传这次新加的几项，返回 `saved` 和 `returned`（带 `reason`）；409 带 `schedule_closed` 表示关着。

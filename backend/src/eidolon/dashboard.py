@@ -16,9 +16,9 @@ on (GLOSSARY.md「好感度」), how the judge model judged the turns recorded, 
 they began, in all and for each character, with how often she hung up a call or ended a
 conversation (`affinity`); and beside it, how many users saved any job into the week
 Beijing is in (GLOSSARY.md「日程」, `scheduled_this_week`), counted from the schedules as the
-dashboard is opened, whatever its range, where schedules are on. How many times characters reached out (GLOSSARY.md「搭话」), how
-many times that failed, and the share answered (`reach_outs`), where the deployer has them on
-or any were recorded in the range. How many times each daily task was done (GLOSSARY.md
+dashboard is opened, whatever its range, where schedules are on. How many times characters
+reached out (GLOSSARY.md「搭话」), how many times that failed, and the share answered
+(`reach_outs`), where the deployer has them on or any were recorded in the range. How many times each daily task was done (GLOSSARY.md
 「每日任务」, `daily_tasks`), and how many achievements' stages were unlocked, the draw chances
 they gave and the reset cards characters complete gave (「成就」, `achievements`): the two
 together, where affinity is on or any were done or unlocked in the range. Nothing

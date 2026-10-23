@@ -280,7 +280,7 @@ def _draw_once(
     return drawn
 
 
-def when(local: datetime, this_week: date, week: date, day: int, slot: int) -> When:
+def time_of(local: datetime, this_week: date, week: date, day: int, slot: int) -> When:
     """Whether the slot of `week`'s day is past, under way or to come, it being `local` where
     the producer is, in their `this_week`. Before the first slot of a day, all its slots are
     to come."""
@@ -374,7 +374,7 @@ class Schedules:
 
     async def scheduled_this_week(self) -> int:
         """How many users have saved any of the week Beijing is in."""
-        return await self._db.read(_scheduled, week_of(self._clock()))
+        return await self._db.read(_count_scheduled, week_of(self._clock()))
 
     def _read(
         self,
@@ -386,8 +386,8 @@ class Schedules:
     ) -> ScheduleView | None:
         """The user's weeks at `now`, read through `db`: drawing a published week's jobs if
         `drawing`, else None if one is yet to be drawn."""
-        timezone = effective_timezone(read_profile(db, user_id), device_timezone)
-        this_week = monday_of(now.astimezone(ZoneInfo(timezone)).date())
+        timezone, local = _local(db, user_id, device_timezone, now)
+        this_week = monday_of(local.date())
         weeks = []
         for week in (this_week, this_week + timedelta(days=DAYS)):
             published = now >= published_at(week)
@@ -426,16 +426,14 @@ class Schedules:
         device_timezone: str | None,
         now: datetime,
     ) -> Saved:
-        timezone = effective_timezone(read_profile(db, user_id), device_timezone)
-        local = now.astimezone(ZoneInfo(timezone))
+        _, local = _local(db, user_id, device_timezone, now)
         this_week = monday_of(local.date())
         published = now >= published_at(week)
-        jobs = {j.id: j for j in _jobs(db, week)} if published else {}
+        # Saved into before anyone read it, the week is drawn here.
+        jobs = {j.id: j for j in (_jobs(db, week) or self._draw(db, week))} if published else {}
         placed = _placements(db, user_id, week)
         saved_ids = {p.job_id for p in placed}
-        taken = {
-            (p.day, s) for p in placed for s in range(p.slot, p.slot + jobs[p.job_id].length)
-        }
+        taken = {cell for p in placed for cell in _cells(p, jobs[p.job_id])}
         saved: list[Placement] = []
         returned: list[tuple[Placement, str]] = []
         for p in placements:
@@ -449,7 +447,7 @@ class Schedules:
             else:
                 why = why_not(
                     job, p.day, p.slot,
-                    lambda day, slot: when(local, this_week, week, day, slot),
+                    lambda day, slot: time_of(local, this_week, week, day, slot),
                     lambda day, slot: (day, slot) in taken,
                 )
             if why is not None:
@@ -463,8 +461,21 @@ class Schedules:
             )
             saved.append(p)
             saved_ids.add(p.job_id)
-            taken.update((p.day, s) for s in range(p.slot, p.slot + job.length))
+            taken.update(_cells(p, job))
         return Saved(saved, returned)
+
+
+def _local(
+    db: sqlite3.Connection, user_id: str, device_timezone: str | None, now: datetime
+) -> tuple[str, datetime]:
+    """The user's effective time zone, read through `db`, and `now` there."""
+    timezone = effective_timezone(read_profile(db, user_id), device_timezone)
+    return timezone, now.astimezone(ZoneInfo(timezone))
+
+
+def _cells(placement: Placement, job: Job) -> list[tuple[int, int]]:
+    """The day and slot of each slot `job` takes, placed at `placement`."""
+    return [(placement.day, s) for s in range(placement.slot, placement.slot + job.length)]
 
 
 def _open(db: sqlite3.Connection) -> None:
@@ -494,7 +505,7 @@ def _placements(db: sqlite3.Connection, user_id: str, week: date) -> list[Placem
     return [Placement(*row) for row in rows]
 
 
-def _scheduled(db: sqlite3.Connection, week: date) -> int:
+def _count_scheduled(db: sqlite3.Connection, week: date) -> int:
     (count,) = db.execute(
         "SELECT COUNT(DISTINCT user_id) FROM schedule_placements WHERE week = ?",
         (week.isoformat(),),

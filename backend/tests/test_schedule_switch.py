@@ -17,23 +17,14 @@ from tests.test_schedule_weeks import schedule
 SCHEDULE = "/api/admin/config/schedule"
 
 
-@pytest.mark.parametrize(("value", "on"), [(None, True), ("0", False), ("yes", None)])
-def test_in_env_it_is_on_unless_turned_off(
-    monkeypatch: pytest.MonkeyPatch, value: str | None, on: bool | None
-):
+def test_unset_in_env_it_is_on(monkeypatch: pytest.MonkeyPatch):
+    # 0, 1 and anything else are every switch's (`config._switch`), as test_exempting_keys has.
     monkeypatch.setenv("CHAT_LLM_BASE_URL", "https://llm.example.com/v1")
     monkeypatch.setenv("CHAT_LLM_API_KEY", "sk-deployer")
     monkeypatch.setenv("CHAT_LLM_MODEL", "deployer-model")
-    if value is None:
-        monkeypatch.delenv("EIDOLON_SCHEDULE", raising=False)
-    else:
-        monkeypatch.setenv("EIDOLON_SCHEDULE", value)
+    monkeypatch.delenv("EIDOLON_SCHEDULE", raising=False)
 
-    if on is None:
-        with pytest.raises(RuntimeError, match="EIDOLON_SCHEDULE"):
-            Settings.from_env()
-    else:
-        assert Settings.from_env().schedule is on
+    assert Settings.from_env().schedule is True
 
 
 async def test_off_nothing_is_read_or_saved_and_the_admin_turning_it_on_brings_it_back(

@@ -19,3 +19,9 @@
 ### 票 03 交接
 
 `JOB_DONE_STEP = 0.5` 是按放慢后的尺度定的（票 01 已合进 feat/schedule）。现在的尺度：回合 +0.1 / +0.2，每天上限 0.6；礼物 0.3 / 0.5 / 0.7，喜欢的再 +0.3；冷却中礼物一律 +3；低于 50 时每天恢复 +10，解冻线 10。做完一项工作 +0.5，接近一件少见的礼物、不到一天的对话。礼物那条路在 `Affinities.receive_gift`，冷却中的步子由 `_gift_step` 定；做完的工作冷却中也只加 0.5，通用化时别让它走 `COOLDOWN_GIFT_STEP`。
+
+### 票 02 交接
+
+- 放置在 `schedule_placements`，`counted_at` 留空给这张票写。读某位用户某周的放置用 `schedule._placements(db, user_id, week)`，工作用 `_jobs(db, week)`（要的话改成公开的）；有效时区和当地时刻是 `_local(db, user_id, device_timezone, now)`，时间段的过去 / 进行中 / 将来是 `time_of(local, this_week, week, day, slot)`，`SLOT_NAMES` 是上午、下午、晚上。
+- `Schedules.read` 现在是「先读、缺这周的工作才开写事务」。补算好感度要写：在读的那一步顺带看有没有到期没算的，有就走写事务（同 `Gifts.state` 的 `giving` 那样）。好感度的开关在 `Affinities` 自己的 `is_on` 里，日程的是 `LiveConfig.schedule_on`。
+- 提示词里「她的工作」只能来自 `weekly_jobs` 里 `character_id` 是她的那几项；搭话没有设备时区，`_local` 传 `None` 就是档案 → 上海。
