@@ -5,7 +5,7 @@
 ## 测试
 
 - 写代码时跑类型检查和单个测试文件。
-- 每次提交前跑 `sh scripts/affected-tests.sh <基点>`，基点是这张票开工前的提交。全量 pytest 是 CI 的，本机只在用户要求、或要复现卡住时跑：输出整份写进文件，外面包 `timeout 550`，加 `PYTHONUNBUFFERED=1`，卡住时把调用栈报出来。
+- 每次提交前跑 `sh scripts/affected-tests.sh <基点>`，基点是这张票开工前的提交。全量 pytest 是 CI 的，本机只在用户要求、或要复现卡住时跑：用 `-n auto` 并行跑，输出整份写进文件，外面包 `timeout 550`，加 `PYTHONUNBUFFERED=1`，卡住时把调用栈报出来。
 - 本地后端开着时，`uv run` 可能因为要同步虚拟环境、`eidolon.exe` 被占而失败：先停后端，或者临时设 `UV_NO_SYNC=1`。
 - 测试接缝写在规格的 Testing Decisions 里，已经和用户确认过。`tdd` 要你确认接缝时以它为准，直接开工。
 - affected-tests 找的是导入了改动模块的测试，走 HTTP 断言接口完整返回的测试它找不到。改了某个接口的返回形状，就 grep 测试里断言这个返回的地方（比如返回里独有的键 `"max_draws"`），一起跑。

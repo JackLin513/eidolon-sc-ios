@@ -3,6 +3,7 @@
 #
 #   后端：改过或新增的 backend/tests/test_*.py，加上直接导入了改过模块（backend/src/eidolon/*.py）的测试文件；
 #         被 15 个以上测试导入的枢纽模块（config、store 这类）只加名字里带它的测试。另跑 ruff 和 pyright（全项目，很快）。
+#         测试文件超过 5 个时按 CPU 数并行跑（pytest-xdist），少的时候起进程的那几秒不划算。
 #   前端：vitest related 按导入关系找出改过的 frontend/src 文件相关的测试；另跑 typecheck。
 #
 #   sh scripts/affected-tests.sh [基点]          基点默认是和 origin/main 的分叉点
@@ -66,8 +67,10 @@ run() {
 if [ -n "$backend_changed" ]; then
   (cd backend && run uv run ruff check && run uv run pyright && exit "$failed") || failed=1
   if [ -n "$backend_tests" ]; then
-    # shellcheck disable=SC2046 # 测试文件名不带空格，按行拆成参数
-    (cd backend && run uv run pytest -q -p no:cacheprovider $(printf '%s\n' "$backend_tests" | sed 's#^backend/##') && exit "$failed") || failed=1
+    parallel=
+    [ "$(printf '%s\n' "$backend_tests" | grep -c .)" -gt 5 ] && parallel="-n auto"
+    # shellcheck disable=SC2046,SC2086 # 测试文件名不带空格，按行拆成参数；parallel 是零个或两个参数
+    (cd backend && run uv run pytest -q -p no:cacheprovider $parallel $(printf '%s\n' "$backend_tests" | sed 's#^backend/##') && exit "$failed") || failed=1
   fi
 fi
 if [ -n "$frontend_changed" ]; then

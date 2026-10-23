@@ -34,8 +34,8 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff check
       - run: uv run pyright
-      # 单个测试 2 分钟还没结束时打印所有线程的栈，挂住时能看出卡在哪里
-      - run: uv run pytest -o faulthandler_timeout=120
+      # 每个 CPU 一个进程并行跑（pytest-xdist）；单个测试 2 分钟还没结束时打印所有线程的栈，挂住时能看出卡在哪里
+      - run: uv run pytest -n auto -o faulthandler_timeout=120
 
   frontend:
     runs-on: ubuntu-latest
