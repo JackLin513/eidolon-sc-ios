@@ -20,6 +20,13 @@
 
 ## Comments
 
+### 票 04 交接
+
+- 形状见票 04 的「实现说明」。月视图的日程记号：本周、下周的放置在 `schedule.this_week` / `next_week` 的 `placements`，草稿用 `draftsOn(周号)`，日期用 `addDays(周号, day)`；只有这两周有日程。
+- 「只看她」：`CalendarSubpage` 现在给 `ScheduleWeek` 传 `who={null}`，换成地址里的角色 id 就行（不存在的当作 null）；`weekGrid` 在 `who` 下把别人占着的格子给成 `hidden`（现在画成一块不带字的 `bg-muted/40`，不能点），待排已经按 `isShown` 筛了。页顶那一条要你加。
+- 「她的日程」入口切周视图：`keepCalendarMode(userId, "week")`。
+- 玩法卡前缀：`useCalendar` 已经读日程，待排数是 `pendingJobs({ week: schedule.this_week, drafts: draftsOn(schedule.this_week.id), now: scheduleNow }).length`（草稿算排了；要不算草稿就传 `drafts: []`，你定）。
+
 ### 票 03 交接
 
 - 验收时对照「此刻」里日程那几句：样子写在票 03 的「实现说明」末尾。打字、通话、搭话三处一样；`llm.prompts` 之外，本地构建版上可以改档案时区把「现在」挪到别的时间段，看「（做完了）」和「现在（…）你正在…」。

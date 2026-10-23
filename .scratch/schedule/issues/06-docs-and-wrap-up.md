@@ -15,3 +15,11 @@
 - [ ] 中文过 `humanizer-zh` 再删减；英日文照中文定稿
 - [ ] 公告草稿和部署要点（手动备份、前后端一起、下一块马上开）写进 Comments
 - [ ] 类型检查、lint 过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`；跑 `code-review`；draft PR 描述补全（调 `pr`），转正式和合并等用户说
+
+## Comments
+
+### 票 04 交接
+
+- DESIGN.md 「玩法页」的「日历子页」照票 04 的代码补周视图（见票 04「实现说明」和「判断题」：周标题和翻页键、表头、行首、格子和块的五种状态、电脑先挑再放、手机三个抽屉、待排、保存条、确认框、页上方的提示带 ✕、都已开始时不弹框）；她的颜色规则那几处票 04 已改。
+- 图标一节补七枚：`MonthViewIcon`（`CalendarDays`）、`WeekViewIcon`（`Rows3`）、`PracticeJobIcon`（`Music`）、`AppearanceJobIcon`（`Camera`）、`BusinessJobIcon`（`Briefcase`）、`PrivateJobIcon`（`Coffee`）、`LockedIcon`（`Lock`），票 05 的 `ScheduleIcon` 另算；头像尺寸多了 20px、16px 两档（`MarkedAvatar` 的 `xs`、`2xs`）。
+- 角色多了可选的 `short_name`（用户在票 04 定的，`characters.toml` 已填初稿）：三语配置指南只在示例里加了一行，要不要在「几项需要额外说明的」里写一条，收尾时看。

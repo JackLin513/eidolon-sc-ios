@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   afterSave,
+  cellText,
   confirmRows,
   draftsOf,
   expiry,
@@ -278,6 +279,7 @@ describe("保存：剔掉已开始的、确认框列哪几项、没存下的怎�
       { placement: { job_id: "meeting", day: 4, slot: 0 }, job: meeting, when: "周五 一整天" },
     ]);
     expect(whenText({ job_id: "shoot", day: 0, slot: 1 }, shoot)).toBe("周一 下午到晚上");
+    expect(cellText({ day: 2, slot: 2 })).toBe("周三 晚上");
   });
 
   it("已开始的那句列出谁的哪项", () => {

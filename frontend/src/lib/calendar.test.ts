@@ -203,12 +203,6 @@ describe("月视图还是周视图，记在本机", () => {
     return items;
   }
 
-  it("没选过时是周视图", () => {
-    storage();
-
-    expect(calendarMode("user-1")).toBe("week");
-  });
-
   it("按用户分开记着上次选的", () => {
     const items = storage();
 
@@ -221,9 +215,10 @@ describe("月视图还是周视图，记在本机", () => {
     expect(calendarMode("user-1")).toBe("week");
   });
 
-  it("存的认不得时回到周视图", () => {
+  it("没选过、或者存的认不得时是周视图", () => {
     storage({ "eidolon.calendarMode.odd": "day" });
 
+    expect(calendarMode("user-1")).toBe("week");
     expect(calendarMode("odd")).toBe("week");
   });
 

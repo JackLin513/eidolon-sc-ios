@@ -149,21 +149,22 @@ function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-// 月视图还是周视图（.scratch/schedule spec「界面」）：日程开着时页首末端能切换，上次选的只记在这台设备上，
-// 同筛选的存法：localStorage 里按用户分开存（键为 eidolon.calendarMode.<用户 ID>），没选过、读不到或认不得时是周视图；
-// 存不进去时只在这次页面里记着。
+// The month view or the week view (.scratch/schedule spec「界面」): while schedules are on the
+// header can switch them, and the one last chosen is kept on this device alone, as the filter is:
+// in localStorage, a user apart (key eidolon.calendarMode.<user ID>); the week view when none was
+// chosen, or what is kept cannot be read or is not a view; only for this page when it cannot be kept.
 
-/** 日历子页显示月视图还是周视图。 */
+/** Which view the calendar subpage shows. */
 export type CalendarMode = "month" | "week";
 
 function modeKey(userId: string): string {
   return `eidolon.calendarMode.${userId}`;
 }
 
-/** 存不进去时，这次页面里记着的。 */
+/** What could not be kept, for this page. */
 const modeThisPage = new Map<string, CalendarMode>();
 
-/** 这位用户在这台设备上上次选的视图，默认周视图。 */
+/** The view this user last chose on this device; the week view by default. */
 export function calendarMode(userId: string): CalendarMode {
   const kept = modeThisPage.get(userId);
   if (kept) return kept;
@@ -176,12 +177,12 @@ export function calendarMode(userId: string): CalendarMode {
   return stored === "month" ? "month" : "week";
 }
 
-/** 记下这位用户选的视图。 */
+/** Keep the view this user chose. */
 export function keepCalendarMode(userId: string, mode: CalendarMode): void {
   try {
     localStorage.setItem(modeKey(userId), mode);
   } catch {
-    // 存储不可用：只在这次页面里记着。
+    // No storage: kept for this page alone.
     modeThisPage.set(userId, mode);
   }
 }

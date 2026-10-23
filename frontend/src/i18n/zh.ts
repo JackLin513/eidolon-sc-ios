@@ -1838,9 +1838,7 @@ export const zh = {
       /** 没有工作的已过、进行中的格子。 */
       past: "已过",
       underWay: "进行中",
-      /** 已经开始了的草稿块。 */
-      started: "开始了，存不了",
-      /** 工作块的读屏名字。 */
+      /** 工作块的读屏名字和状态（已经开始了的草稿块上也写 `states.started`）。 */
       block: (who: string, job: string, state: string) => `${who} ${job}，${state}`,
       states: { saved: "已保存", draft: "草稿", now: "进行中", done: "做完了", started: "开始了，存不了" },
       /** 排不了的原因，和后端 `schedule.py` 顶上的常量一样。 */

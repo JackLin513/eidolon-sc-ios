@@ -8,7 +8,7 @@
 
 import { copy } from "@/i18n";
 import { api, json } from "@/lib/api";
-import { addDays } from "@/lib/calendar";
+import { addDays, partsOf } from "@/lib/calendar";
 
 const t = copy.play.schedule;
 
@@ -101,7 +101,7 @@ export function localNow(timeZone: string, now: Date): LocalNow {
       .map((part) => [part.type, part.value]),
   );
   const date = `${parts.year}-${parts.month}-${parts.day}`;
-  const day = dayOfWeek(date);
+  const day = (partsOf(date).weekday + DAYS - 1) % DAYS;
   return { date, week: addDays(date, -day), day, hour: Number(parts.hour) };
 }
 
@@ -193,6 +193,11 @@ export function toSave(board: Board): { saving: Placement[]; started: Placement[
     (hasStarted ? started : saving).push(placement);
   }
   return { saving, started };
+}
+
+/** 一格：「周三 下午」。 */
+export function cellText({ day, slot }: Cell): string {
+  return t.when(t.weekdays[day], t.slots[slot]);
 }
 
 /** 一项占的时间：「周三 下午」「周三 上午到下午」「周三 一整天」。 */
@@ -391,11 +396,6 @@ export function isOutdated(read: OpenSchedule, now: Date): boolean {
   );
 }
 
-/** 一个日期是周几，0 是周一。 */
-function dayOfWeek(date: string): number {
-  const [year, month, day] = date.split("-").map(Number);
-  return (new Date(Date.UTC(year, month - 1, day)).getUTCDay() + 6) % 7;
-}
 
 // 草稿只存在这台设备上（.scratch/schedule spec「日程的规则」）：localStorage 里按用户、按周号一个键
 // （eidolon.scheduleDrafts.<用户 ID>.<周号>），值是放置的列表；读的时候把这位用户别的周的键删掉。存不进去（隐私模式等）时

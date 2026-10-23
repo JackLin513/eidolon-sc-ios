@@ -38,7 +38,7 @@ const NO_DRAFTS: readonly Placement[] = [];
  * 日程（.scratch/schedule spec「界面」）也在这里：读一次日程接口（`schedule`，读到之前是 null；读不到时当作关着，
  * `scheduleFailure` 说原因），「此刻」每分钟走一次（`scheduleNow`，按接口给的有效时区），制作人那边换了周、或者本周、
  * 下周的工作发布了就重读。草稿只存在这台设备上（lib/schedule）：`draftsOn(周号)` 是那一周还算数的草稿，
- * `keepDraftsOn` 存下、重画；`readSchedule` 重读（保存以后），`closeSchedule` 在保存时收到「日程没开放」后切成关着。
+ * `keepDraftsOn` 存下、重画；`readSchedule` 重读（保存以后；读到了是 true），`closeSchedule` 在保存时收到「日程没开放」后切成关着。
  */
 export function useCalendar({ years }: { years: (today: string) => readonly number[] }) {
   const { account, characters } = useDirectory();
@@ -93,16 +93,18 @@ export function useCalendar({ years }: { years: (today: string) => readonly numb
   const [draftsKept, setDraftsKept] = useState(0);
 
   const readSchedule = useCallback(
-    () =>
+    (): Promise<boolean> =>
       getSchedule().then(
         (read) => {
           setSchedule(read);
           setScheduleFailure(null);
+          return true;
         },
         (e) => {
           // 读到过的留着；一次也没读到时当作关着，只有月视图。
           setSchedule((read) => read ?? { enabled: false });
           setScheduleFailure(toFailure(e));
+          return false;
         },
       ),
     [],

@@ -142,9 +142,9 @@ export function CalendarSubpage() {
       setSaving(true);
       try {
         const { returned } = await saveSchedule(week.id, saving);
-        // 先重读，存下的成了保存过的，再从草稿里去掉试过的，退回的回到待排。
-        await readSchedule();
-        keepDraftsOn(week.id, afterSave(board.drafts, [...saving, ...started]));
+        // 先重读，存下的成了保存过的，再从草稿里去掉试过的，退回的回到待排；重读失败时草稿先不动，
+        // 页上方说读不到，下次读到时存下的那几项自己从草稿里消失（lib/schedule 的 draftsOf）。
+        if (await readSchedule()) keepDraftsOn(week.id, afterSave(board.drafts, [...saving, ...started]));
         setNotice(returnedNote(board, returned, nameOf));
       } catch (e) {
         if (e instanceof ApiError && e.scheduleClosed) closeSchedule();

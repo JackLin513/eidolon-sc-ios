@@ -23,6 +23,7 @@ import {
   type Board,
   type BlockState,
   type Cell,
+  cellText,
   confirmRows,
   expiry,
   freeSlots,
@@ -54,7 +55,6 @@ import {
 } from "@/theme/icons";
 
 const t = copy.play.schedule;
-const c = copy.play.calendar;
 
 const CATEGORY_ICONS = {
   practice: PracticeJobIcon,
@@ -66,13 +66,18 @@ const CATEGORY_ICONS = {
 /** 工作块横跨几列。 */
 const SPANS = ["col-span-1", "col-span-2", "col-span-3"];
 
-/** 角色 id → 她；不在名单里的（已经下线）名字是 id，没有短名、头像和颜色（`color` 是 null）。 */
-export type CharacterOf = (
-  id: string,
-) => Pick<Character, "id" | "name" | "short_name" | "avatar_url"> & { color: string | null };
+/** 日程上的一位：不在名单里的（已经下线）名字是 id，没有短名、头像和颜色（`color` 是 null）。 */
+export type ScheduledCharacter = Pick<Character, "id" | "name" | "short_name" | "avatar_url"> & { color: string | null };
+
+/** 角色 id → 她。 */
+export type CharacterOf = (id: string) => ScheduledCharacter;
+
+/** 待排、抽屉里一行一项的按钮。 */
+const ROW =
+  "flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50";
 
 /** 她的颜色，注入到一块上；没有颜色的不注入。 */
-function herStyle({ color }: ReturnType<CharacterOf>): CSSProperties | undefined {
+function herStyle({ color }: ScheduledCharacter): CSSProperties | undefined {
   return color ? herVars(color) : undefined;
 }
 
@@ -111,9 +116,9 @@ export function ScheduleWeek({
 }) {
   // 电脑上选中的待排；手机上打开着的抽屉（收起的动画里内容不消失，所以收起时只改 `open`）。
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [cellSheet, setCellSheet] = useState<Sheet<Cell>>(null);
-  const [jobSheet, setJobSheet] = useState<Sheet<Job>>(null);
-  const [blockSheet, setBlockSheet] = useState<Sheet<Occupant>>(null);
+  const [cellSheet, setCellSheet] = useState<Opened<Cell>>(null);
+  const [jobSheet, setJobSheet] = useState<Opened<Job>>(null);
+  const [blockSheet, setBlockSheet] = useState<Opened<Occupant>>(null);
 
   const pending = pendingJobs(board).filter((job) => isShown(job, who));
   const selected = isWide ? (pending.find((job) => job.id === selectedId) ?? null) : null;
@@ -213,7 +218,7 @@ export function ScheduleWeek({
 }
 
 /** 一个抽屉：给它的那一项和开着没有；从没打开过是 null。 */
-type Sheet<T> = { value: T; open: boolean } | null;
+type Opened<T> = { value: T; open: boolean } | null;
 
 /** 「本周 10月19日 – 10月25日」，两边上周、下周：本周时上周不能翻，下周只在已发布时能翻。 */
 function WeekHeading({
@@ -254,7 +259,7 @@ function WeekHeading({
 /** 「10月19日」。 */
 function dateText(date: string): string {
   const { month, day } = partsOf(date);
-  return c.date(month, day);
+  return copy.play.calendar.date(month, day);
 }
 
 /**
@@ -383,32 +388,38 @@ function GridCell({
   onEmpty: (cell: Cell) => void;
   onBlock: (occupant: Occupant) => void;
 }) {
+  const isDim = selected !== null;
   if (item.kind === "block") {
     return (
       <Block
         occupant={item.occupant}
         state={item.state}
         character={characterOf(item.occupant.job.character_id)}
-        isDim={selected !== null}
+        isDim={isDim}
         isWide={isWide}
         onClick={() => onBlock(item.occupant)}
       />
     );
   }
-  if (item.kind === "hidden") return <span className="min-h-16 rounded-lg bg-muted/40" />;
+  if (item.kind === "hidden") return <span className={cn("min-h-16 rounded-lg bg-muted/40", isDim && "opacity-50")} />;
   const { cell, when } = item;
   if (when !== "future") {
     return (
-      <span className="flex min-h-16 items-center justify-center rounded-lg bg-muted/40 text-meta text-muted-foreground">
+      <span
+        className={cn(
+          "flex min-h-16 items-center justify-center rounded-lg bg-muted/40 text-meta text-muted-foreground",
+          isDim && "opacity-50",
+        )}
+      >
         {when === "now" ? t.underWay : t.past}
       </span>
     );
   }
-  const label = t.when(t.weekdays[cell.day], t.slots[cell.slot]);
+  const label = cellText(cell);
   const isLit = selected !== null && whyNot(board, selected, cell.day, cell.slot) === null;
   // 电脑上没选中待排、或者选中的放不进这一格时，空格只是一格，不能点。
   if (isWide && !isLit) {
-    return <span aria-label={label} className={cn("min-h-16 rounded-lg border", selected && "opacity-50")} />;
+    return <span aria-label={label} className={cn("min-h-16 rounded-lg border", isDim && "opacity-50")} />;
   }
   return (
     <button
@@ -439,7 +450,7 @@ function Block({
 }: {
   occupant: Occupant;
   state: BlockState;
-  character: ReturnType<CharacterOf>;
+  character: ScheduledCharacter;
   /** 电脑上选中了待排，别的格子淡下去。 */
   isDim: boolean;
   isWide: boolean;
@@ -467,7 +478,7 @@ function Block({
         <Icon aria-hidden className="size-3 shrink-0" />
         <span className="truncate">{job.name}</span>
       </span>
-      {state === "started" && <span className="text-meta text-destructive">{t.started}</span>}
+      {state === "started" && <span className="text-meta text-destructive">{t.states.started}</span>}
     </>
   );
   const label = t.block(character.name, job.name, t.states[state]);
@@ -478,7 +489,7 @@ function Block({
         <PopoverTrigger render={<button type="button" aria-label={label} style={style} className={className} />}>
           {face}
         </PopoverTrigger>
-        <PopoverContent style={style} align="start">
+        <PopoverContent align="start">
           <JobAbout occupant={occupant} character={character} />
         </PopoverContent>
       </Popover>
@@ -492,7 +503,7 @@ function Block({
 }
 
 /** 电脑上保存过的块弹出的说明：她的头像、谁的哪项、哪天哪几段，和工作的说明。 */
-function JobAbout({ occupant, character }: { occupant: Occupant; character: ReturnType<CharacterOf> }) {
+function JobAbout({ occupant, character }: { occupant: Occupant; character: ScheduledCharacter }) {
   return (
     <>
       <PopoverHeader className="flex-row items-center gap-2">
@@ -554,10 +565,7 @@ function Pending({
                         type="button"
                         aria-pressed={selectedId === null ? undefined : job.id === selectedId}
                         onClick={() => onJob(job)}
-                        className={cn(
-                          "flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50",
-                          job.id === selectedId && "bg-muted hover:bg-muted",
-                        )}
+                        className={cn(ROW, job.id === selectedId && "bg-muted hover:bg-muted")}
                       >
                         <JobName job={job} />
                       </button>
@@ -591,7 +599,7 @@ function HerDrawerHeader({
   title,
   description,
 }: {
-  character: ReturnType<CharacterOf>;
+  character: ScheduledCharacter;
   title: string;
   description: string;
 }) {
@@ -615,7 +623,7 @@ function CellDrawer({
   onPlace,
   onClose,
 }: {
-  sheet: Sheet<Cell>;
+  sheet: Opened<Cell>;
   board: Board;
   pending: Job[];
   characterOf: CharacterOf;
@@ -634,18 +642,18 @@ function CellDrawer({
         {cell && (
           <>
             <DrawerHeader className="pb-4">
-              <DrawerTitle>{t.when(t.weekdays[cell.day], t.slots[cell.slot])}</DrawerTitle>
+              <DrawerTitle>{cellText(cell)}</DrawerTitle>
             </DrawerHeader>
             <ul className="flex flex-col overflow-y-auto px-4 pb-6">
               {rows.map(({ job, reason }) => {
                 const character = characterOf(job.character_id);
                 return (
-                  <li key={job.id} style={herStyle(character)}>
+                  <li key={job.id}>
                     <button
                       type="button"
                       disabled={reason !== null}
                       onClick={() => onPlace(job, cell)}
-                      className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 disabled:hover:bg-transparent"
+                      className={cn(ROW, "disabled:opacity-50 disabled:hover:bg-transparent")}
                     >
                       <MarkedAvatar name={character.name} src={character.avatar_url} size="sm" />
                       <JobName job={job} aside={reason ?? undefined} />
@@ -669,7 +677,7 @@ function PlaceDrawer({
   onPlace,
   onClose,
 }: {
-  sheet: Sheet<Job>;
+  sheet: Opened<Job>;
   board: Board;
   characterOf: CharacterOf;
   onPlace: (job: Job, cell: Cell) => void;
@@ -691,7 +699,7 @@ function PlaceDrawer({
                   <button
                     type="button"
                     onClick={() => onPlace(job, cell)}
-                    className="w-full rounded-lg px-2 py-2 text-left text-body outline-none hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50"
+                    className={cn(ROW, "text-body")}
                   >
                     {whenText({ job_id: job.id, ...cell }, job)}
                   </button>
@@ -712,7 +720,7 @@ function BlockDrawer({
   onTakeBack,
   onClose,
 }: {
-  sheet: Sheet<Occupant>;
+  sheet: Opened<Occupant>;
   characterOf: CharacterOf;
   onTakeBack: (job: Job) => void;
   onClose: () => void;
