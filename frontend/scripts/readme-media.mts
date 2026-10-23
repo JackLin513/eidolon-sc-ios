@@ -537,7 +537,7 @@ async function stockGifts(context: BrowserContext): Promise<void> {
   }
 }
 
-/** 玩法页第一级：「礼物」和「每日任务与成就」两张卡。 */
+/** 玩法页第一级：「礼物」「每日任务与成就」和「日历」三张卡。 */
 async function gifts(browser: Browser): Promise<void> {
   const context = await signedIn(browser, { ...DESKTOP, colorScheme: "light" });
   try {
@@ -552,6 +552,7 @@ async function gifts(browser: Browser): Promise<void> {
     await page.getByRole("button", { name: "返回" }).click();
     await page.waitForURL("**/play");
     await page.getByRole("link", { name: /还有 \d+ 次抽奖/ }).waitFor();
+    await page.getByRole("link", { name: /(下一个|今天)：/ }).waitFor();
     await settle(page);
     await still(page, "gifts");
   } finally {

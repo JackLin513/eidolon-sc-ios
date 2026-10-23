@@ -58,8 +58,8 @@ All **28 idols** from the game's eight units, plus the office clerk Nanakusa Haz
       <p align="center"><sub><b>Photos</b>: ask, and she takes one of herself in the moment</sub></p>
     </td>
     <td width="50%">
-      <img src="docs/images/gifts.webp" alt="Play page: the Gifts card and the Daily tasks and achievements card">
-      <p align="center"><sub><b>Play</b>: draws, gifts, daily tasks and achievements</sub></p>
+      <img src="docs/images/gifts.webp" alt="Play page: the Gifts, Daily tasks and achievements, and Calendar cards">
+      <p align="center"><sub><b>Play</b>: draws, gifts, daily tasks and achievements, the calendar</sub></p>
     </td>
   </tr>
 </table>
@@ -95,6 +95,7 @@ All **28 idols** from the game's eight units, plus the office clerk Nanakusa Haz
 - 🎭 **A living stand**: During a call her Spine stand from the game breathes, blinks, moves her lips and changes expression with her emotion. When the game releases new cards, the weekly sync makes them wearable.
 - 📷 **She sends photos**: Ask, and she takes one of herself in the moment and sends it. All-ages only ([configuration guide](docs/configuration.en.md#photos)).
 - 💗 **Affinity and gifts**: What you say draws her closer or pushes her away; offend her too much and she hangs up, or ends the conversation. Draw gifts every day under 「玩法」 (Play) and give them to her; she responds. Daily tasks and achievements earn you extra draws.
+- 📅 **Calendar**: The idols' birthdays, yours, and Japan's national holidays, and she knows them on the day.
 - 💌 **She reaches out**: When you've been away a while, she says a few words first in your conversation; the closer you are, the sooner she does ([configuration guide](docs/configuration.en.md#reach-outs)).
 
 **What she remembers**

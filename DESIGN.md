@@ -260,6 +260,14 @@ components:
   - **每日任务与成就子页**（`/play/tasks`）：每日任务一节、成就一节，顺序不变。离开这个子页才把合起来的成就记成看过。
     - **每日任务**（GLOSSARY.md「每日任务」）：最上面：描边的 `rounded-2xl` 块，`px-5 py-3`。标题行左边「每日任务」（Header 字号）后面跟 muted 的做完几项「1/3」（等宽数字），右端 Meta 字号 muted 的「明天 0:00 换新」（换新时刻按制作人的时区写，写法同抽奖台）。下面每项一行（不低于 44px，`gap-3`）：没做完是 20px muted 的空圈 `Circle`（`TaskOpenIcon`），做完是 `CircleCheck`（`SuccessIcon`）、名字变 muted 并划掉；名字后面，目标不止 1 的没做完时跟 Meta 字号 muted 的进度「3/10」（等宽数字）；右端 Meta 字号 muted 的「抽奖 ×1」。没做完的回合任务在「抽奖 ×1」左边一个 ghost `sm` 的「去对话」（去对话列表）；送礼那项没做完、背包里有礼物时那里是「挑一件」（去礼物子页并滚到「我的礼物」），背包空时没有；手机上这两个键高 44px。三项都做完时整节收成一行（同样的描边块）：勾、「每日任务都做完了」、右端「明天 0:00 换新」。怎么显示在 `lib/dailyTasks`。
     - **成就**（GLOSSARY.md「成就」）：每日任务下面：描边的 `rounded-2xl` 块，`px-5 py-3`，标题「成就」（Header 字号）。下面合起来的四个成就一行一个：往来过的角色、到过亲密的角色、来过的天数、抽过的奖，每一行的样子同对话页的成就面板（名字、下面一行只写下一个阶段「5 位 / 10 位」「12 天 / 30 天」「37 次 / 50 次」、阶段点、右边「抽奖 ×n」），没有「集齐」那一行。解锁晚于进这个子页前这台设备上看过的那几行，名字旁一个 6px 的 `bg-foreground` 点（读屏「新解锁」）；离开这个子页才记成看过，没离开之前读到的新解锁当场出点。不弹提示条。
+  - **日历子页**（`/play/calendar`，GLOSSARY.md「日历」「节假日」）：从上到下是筛选、月视图和点中的那一天的清单，好感度和礼物没开放时照常有。页首末端留给日程那一块的月 / 周切换，这一块什么都不放。怎么算（某个月的格子、某一天有哪几件、筛选、电脑上三行怎么截、「下一个」、2 月 29 日落在哪天）都在 `lib/calendar`，页面只管画。
+    - **筛选**：一排 `ToggleGroup`（`multiple`、`outline`、`sm`，按下的中性 `bg-muted`，窄屏折行）：「角色生日」「我的生日」「节假日」，前面各一个图标（蛋糕、蛋糕、旗子，都不上色）。制作人没设生日时没有「我的生日」，也不提示去填。默认全开，改了记在这台设备上（`lib/calendarFilter`），存不进去时只在这次页面里记着；筛选只影响日历和玩法页「日历」卡的状态。
+    - **月视图**：标题行是上个月、下个月两个 ghost `icon-sm` 键夹着标题「2026年10月」（Header 字号、等宽数字，`min-w-28` 居中，翻月时两边的键不跳），翻多远都行；不在当月时后面多一个 ghost `sm` 的「今天」，点了回到当月并选中今天。下面是七列的网格（`gap-px`，`bg-border` 当格线，外面一圈 `rounded-lg` 描边）：表头一行 Meta 字号 muted 的「一 二 … 日」，周一在前；行数按这个月要几周（4–6 行），首尾补前后月的天，这些格子里面一层 `opacity-50`、照常显示事。每格是一个按钮（`aria-pressed` 是选中、今天 `aria-current="date"`，读屏读「10月27日 周二，2 项」），左上角 24px 的圆里写日期（Subtitle 字号、等宽数字），今天铺中性的 `bg-foreground` 配 `text-background`（按制作人时区的日期）；悬停 `bg-muted/60`，点中的格子铺 `bg-muted`，不上她的颜色。
+      - 电脑（≥ 768px）：格子最矮 96px，日期下面最多三行 Meta 字号，一行是 16px 图标加一句（角色生日：她颜色的蛋糕加她的显示名；节假日：muted 的旗子加名字；我的生日：muted 的蛋糕加「我的生日」），放不下截断；超过三件时只写前两件，第三行 muted 的「还有 n 项」。
+      - 手机（< 768px）：格子最矮 56px，日期下面一排 6px 的圆点，不写字：角色生日是她的 `--her-mark`，节假日和我的生日是中性的 `bg-muted-foreground`；最多四个，多了不再加。
+    - **这一天的清单**：月视图下面，默认是今天，点一天换成那一天；翻月时选中的那天不变（可能已经不在显示的月里），点「今天」才回到今天。Subtitle 字号 muted 的日期「10月27日 周二」，下面一行一件（`gap-3`），顺序是角色生日（按偶像顺序）、我的生日、节假日：角色生日是她 24px 的头像、显示名，后面一个 12px 她颜色的蛋糕加 Meta 字号 muted 的「生日」；节假日是 24px 的位置里一个 16px muted 的旗子加名字；我的生日是同样的蛋糕加「我的生日」。这一天什么也没有时一句 muted 的「这一天没有事」；三类全筛掉时月视图还是空格子，下面不写日期，只一句 muted 的「没有要显示的」。
+    - **数据**：角色列表里的生日、制作人档案里的生日，每年重复，月视图自己算；节假日按月视图首尾两格所在的年向接口取（12 月、1 月补上的那几天也看得到），取过的年留着，没回来之前先画生日，这一天所在的年没回来、这天又没有生日时清单先写「正在读取」，不说「这一天没有事」。
+    - **她的颜色**：只在角色生日的蛋糕（格子里和清单里）和手机上的圆点，每一项在自己那一小块上单独注入一次 `herVars(官方色)`（见 The Scoped Colour Rule）；节假日、我的生日、今天的圆底、选中的格子都是中性色。
 
 - **后台（/admin）**：
   - **页框**：shadcn `Sidebar`（16rem），头部「后台」和「管理者：{name}」，菜单「看板 / 配置 / 用户 / 公告」，底部「返回设置」；当前项用 `isActive`（中性底）。窄屏（< 768px）侧栏收进 Sheet。内容区顶上一条 48px 的页首：`SidebarTrigger` + 面包屑（Caption 字号），两者之间不加竖线。
@@ -378,7 +386,8 @@ components:
 ### Icons
 - 全部来自 `lucide-react`，按语义别名从一个文件导出（沿用 `PhoneIcon`、`HangUpIcon`、`MicIcon` 这类名字），组件里不直接散用 Lucide 原名。
 - 导航栏和 dock：对话是 Lucide `MessageCircle`（`ConversationsIcon`），玩法是 `Shapes`（`PlayIcon`），设置是 `Settings`（`SettingsIcon`）。
-- 玩法页第一级的卡：礼物是 `Gift`（`GiftIcon`），每日任务与成就是 `Trophy`（`AchievementsIcon`，和对话页更多菜单里的成就同一个）；没开放的 `Empty` 用 `PlayIcon`。不新增固定颜色。
+- 玩法页第一级的卡：礼物是 `Gift`（`GiftIcon`），每日任务与成就是 `Trophy`（`AchievementsIcon`，和对话页更多菜单里的成就同一个），日历是 `CalendarDays`（`CalendarIcon`）；没开放的 `Empty` 用 `PlayIcon`。不新增固定颜色。
+- 日历子页：角色生日和我的生日都是 `Cake`（`BirthdayIcon`），节假日是 `Flag`（`HolidayIcon`），筛选按钮、格子和清单里同一个；月视图标题两边是 `ChevronLeft`（`PreviousMonthIcon`）、`ChevronRight`（`NextMonthIcon`）。不新增固定颜色，角色生日的蛋糕用她的 `--her-mark`。
 - 礼物子页：抽奖台的「抽一次」是 `Sparkles`（`DrawIcon`），抽到稀有礼物时插画角上的闪光也是 `Sparkles`（`RareIcon`）；重置卡确认框里「现在的档位 → 信任」的箭头是 `ArrowRight`（`BecomesIcon`）；类别筛选的吃的、饮品、花草、小物件是 `Cookie`（`FoodIcon`）、`CupSoda`（`DrinkIcon`）、`Flower2`（`FlowerIcon`）、`Gem`（`TrinketIcon`）；「还没有礼物」的空状态和揭晓前跳的礼物盒用 `GiftIcon`，送礼记录的分隔线和对话列表的最后一句也是它；送礼面板里冷却中的沙漏是 `CooldownIcon`。每日任务与成就子页：每日任务没做完的一项是 `Circle`（`TaskOpenIcon`），做完的是 `CircleCheck`（`SuccessIcon`）。
 - 她结束了对话：对话事件的分隔线和换掉输入栏的结束卡都是 `MessageCircleOff`（`EndedIcon`），历史对话面板里「她结束了」的标记也是它。
 - 她发来的照片：对话记录里照片生成中的占位是 `Camera`（`PhotoIcon`），对话列表和历史对话面板里最后一句前的相机也是它；没发出来时的说明是 `ImageOff`（`PhotoFailedIcon`）；这一小时的照片用完时的胶囊是 `CameraOff`（`PhotosUsedUpIcon`）。
