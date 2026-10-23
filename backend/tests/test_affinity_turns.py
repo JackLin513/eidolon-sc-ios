@@ -164,6 +164,21 @@ async def test_turns_raise_it_by_0_6_a_day_at_most_the_day_in_beijing(
     assert [v for v, _ in tomorrow] == pytest.approx([59.3, 59.5])
 
 
+async def test_what_the_steps_fractions_leave_of_the_day_is_no_sliver_to_raise_it_by(
+    make_client: ClientFactory, settings: Settings
+):
+    clock = FakeClock()
+    clients = FakeServiceClients()
+    clients.judge.judgings = [level(3)] * 7
+    client = make_client(FakeLLM(*[REPLY] * 7), clients=clients, clock=clock)
+    conversation = await start_conversation(client)
+    keep(settings.database_path, "producer", 63.7, clock.now)  # six 0.1s from it leave one
+
+    taken = await turns(client, settings.database_path, conversation, 7)
+
+    assert taken[-1][0] == pytest.approx(64.3)
+    assert taken[-1][1]["message"]["affinity"] is None
+
 async def test_it_falls_no_lower_than_0_where_a_cooldown_begins(
     make_client: ClientFactory, settings: Settings
 ):

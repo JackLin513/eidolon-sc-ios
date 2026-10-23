@@ -25,20 +25,19 @@ It shapes how she speaks to the producer, the same for every character, each in 
 the user said is judged to hurt her or make her happy, she knows it as she replies to it.
 
 In a call she hangs up after the turn that cools her into a cooldown, after the user has
-been out of line in it too many times, or after the call's latest turns have hurt her too much
-between them (`ends`), as weighed apart from what they take off her affinity (`hurt`); halfway
-to that, she warns the user first (`warns`). A cooldown begun elsewhere has her hang up the user's calls with her straight
-away, as whoever recorded the turn that began it tells the calls once it is recorded
-(`Affinities.change` says it began). Nothing else has her hang up. Outside calls the same has
-her end the conversation (GLOSSARY.md「已结束的对话」), by the same numbers, counted over the
-conversation's latest typed turns rather than the call's.
+been out of line in it too many times, or after the call's latest turns have hurt her too
+much between them (`ends`), as weighed apart from what they take off her affinity (`hurt`);
+halfway to that, she warns the user first (`warns`). A cooldown begun elsewhere has her hang
+up the user's calls with her straight away, as whoever recorded the turn that began it tells
+the calls once it is recorded (`Affinities.change` says it began). Nothing else has her hang
+up. Outside calls the same has her end the conversation (GLOSSARY.md「已结束的对话」), by the same
+numbers, counted over the conversation's latest typed turns rather than the call's.
 
-Gifts (GLOSSARY.md「礼物」) raise it by their rarity and by more if she likes the one given,
-the rarest she likes by more than a day's turns can; in a cooldown each by the same, enough
-that four end it; draws give them, a
-chance a day, and now and then a reset card instead (GLOSSARY.md「抽奖」「重置卡」), which
-brings every character below trust back to the normal value, out of any cooldown, none of
-them the wiser. How much and how likely are here with the rest.
+Gifts (GLOSSARY.md「礼物」) raise it by their rarity and by more if she likes the one given, the
+rarest she likes by more than a day's turns can; in a cooldown each by the same, enough that
+four end it; draws give them, a chance a day, and now and then a reset card instead
+(GLOSSARY.md「抽奖」「重置卡」), which brings every character below trust back to the normal value,
+out of any cooldown, none of them the wiser. How much and how likely are here with the rest.
 
 It is on only where the deployment has the judge model and the switch「好感度和礼物」is on
 (`LiveConfig.affinity_on`); off, nothing of it is shown, but what is kept stays as it is.
@@ -87,8 +86,9 @@ LEVEL_STEPS = (-1.5, -0.5, 0.0, 0.1, 0.2)
 
 LEVEL_HURTS = (5.0, 2.0, 0.0, 0.0, 0.0)
 """How much a turn hurts her by its level, for her warning, hanging up or ending the
-conversation (`hurt`), apart from how much it lowers her affinity: what turns once lowered it
-by, as what is kept of turns taken before was."""
+conversation (`hurt`), apart from how much it lowers her affinity: what turns lowered it by
+before it rose and fell more slowly, so that what was kept of turns before is as it would be
+now."""
 
 NO_EFFECT = 2
 """The level of a turn that changes nothing, as one the judge model is unsure of is."""
@@ -421,7 +421,7 @@ class Change:
 
 
 def _gift_step(rarity: Rarity, liked: bool, cooling: bool) -> float:
-    """How much a gift of `rarity` raises affinity: more if she `liked` it, no more than
+    """How much a gift of `rarity` raises affinity: more if she `liked` it, and
     `COOLDOWN_GIFT_STEP` whatever it is while `cooling`."""
     if cooling:
         return COOLDOWN_GIFT_STEP

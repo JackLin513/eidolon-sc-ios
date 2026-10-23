@@ -13,3 +13,9 @@
 - [ ] 常量在好感度模块里；每日任务规格（`.scratch/daily-tasks/spec.md`）那条总原则改述；GLOSSARY.md「好感度」「日程」要补就调 `domain-modeling`
 - [ ] pyright、ruff 过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
 - [ ] 票收尾：Comments 里写下「此刻」里日程那几句的样子（给票 05 验收时对照）；推一次让 CI 跑、跑 `code-review`
+
+## Comments
+
+### 票 03 交接
+
+`JOB_DONE_STEP = 0.5` 是按放慢后的尺度定的（票 01 已合进 feat/schedule）。现在的尺度：回合 +0.1 / +0.2，每天上限 0.6；礼物 0.3 / 0.5 / 0.7，喜欢的再 +0.3；冷却中礼物一律 +3；低于 50 时每天恢复 +10，解冻线 10。做完一项工作 +0.5，接近一件少见的礼物、不到一天的对话。礼物那条路在 `Affinities.receive_gift`，冷却中的步子由 `_gift_step` 定；做完的工作冷却中也只加 0.5，通用化时别让它走 `COOLDOWN_GIFT_STEP`。

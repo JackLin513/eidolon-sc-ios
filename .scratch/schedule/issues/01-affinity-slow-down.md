@@ -4,12 +4,27 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 好感度模块：等级步子、每天上限、礼物三档和喜欢的、冷却中礼物一律 +3 都改成新数；档位起点 0 / 20 / 40 / 65 / 85、正常值 50、每天 +10 的恢复、解冻线 10、冷却最长 24 小时、不该说的话 −10 都不动
-- [ ] 忍耐度权重表在同一个模块里：「伤」按等级查表（不舒服 2、伤到她 5、不该说的话 10），警告线、挂断线、回合数、每通不该说的话的常量都不动；没有迁移
-- [ ] 单元测试（`test_affinity.py`）：等级步子、每天上限、礼物三档和喜欢的、冷却中一律 +3；一天内很多个开心的回合最多 +0.6；送稀有且喜欢的 +1.0；一次伤到她、一次不舒服各减多少；每个等级的「伤」是权重表的数
-- [ ] 现有的 `test_she_hangs_up.py`、`test_she_ends_conversation.py`、`test_affinity_cooldown.py` 断言不改照样过，证明忍耐度没变；别的因常量而断言具体数值的测试（如 `test_affinity_turns.py`、`test_gift_giving.py`、`test_affinity_dashboard.py`）只改数字
-- [ ] 好感度规格「数值」「推算」两段、礼物规格那三处改成新数；`docs/configuration.md` 没写数字，核对一遍不动；GLOSSARY.md 的「好感度」已写「升得很慢，几周才上一档」，核对
-- [ ] pyright、ruff 过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
-- [ ] 票收尾：按 `docs/agents/implementing.md` 推分支开 draft PR、跑 `code-review`；Comments 里写下改了哪些常量，给票 03 定 `JOB_DONE_STEP` 的尺度用
+- [x] 好感度模块：等级步子、每天上限、礼物三档和喜欢的、冷却中礼物一律 +3 都改成新数；档位起点 0 / 20 / 40 / 65 / 85、正常值 50、每天 +10 的恢复、解冻线 10、冷却最长 24 小时、不该说的话 −10 都不动
+- [x] 忍耐度权重表在同一个模块里：「伤」按等级查表（不舒服 2、伤到她 5、不该说的话 10），警告线、挂断线、回合数、每通不该说的话的常量都不动；没有迁移
+- [x] 单元测试（`test_affinity.py`）：等级步子、每天上限、礼物三档和喜欢的、冷却中一律 +3；一天内很多个开心的回合最多 +0.6；送稀有且喜欢的 +1.0；一次伤到她、一次不舒服各减多少；每个等级的「伤」是权重表的数
+- [x] 现有的 `test_she_hangs_up.py`、`test_she_ends_conversation.py`、`test_affinity_cooldown.py` 断言不改照样过，证明忍耐度没变；别的因常量而断言具体数值的测试（如 `test_affinity_turns.py`、`test_gift_giving.py`、`test_affinity_dashboard.py`）只改数字
+- [x] 好感度规格「数值」「推算」两段、礼物规格那三处改成新数；`docs/configuration.md` 没写数字，核对一遍不动；GLOSSARY.md 的「好感度」已写「升得很慢，几周才上一档」，核对
+- [x] pyright、ruff 过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
+- [x] 票收尾：按 `docs/agents/implementing.md` 推分支开 draft PR、跑 `code-review`；Comments 里写下改了哪些常量，给票 03 定 `JOB_DONE_STEP` 的尺度用
+
+## Comments
+
+### 实现说明（票 01）
+
+- 改的常量都在 `backend/src/eidolon/affinity.py`：`LEVEL_STEPS` (−5, −2, 0, 1, 2) → (−1.5, −0.5, 0, 0.1, 0.2)；`GAINS_PER_DAY` 6 → 0.6；`GIFT_STEPS` 3 / 5 / 7 → 0.3 / 0.5 / 0.7；`LIKED_GIFT_STEP` 3 → 0.3；`COOLDOWN_GIFT_STEP` 还是 3，但 `_gift_step` 在冷却中直接返回它，不再取 min。`OUT_OF_LINE_STEP` −10、`NORMAL`、`THAW`、`RECOVERY_PER_DAY`、`TIERS` 都没动。
+- 忍耐度：新加 `LEVEL_HURTS = (5, 2, 0, 0, 0)` 和 `OUT_OF_LINE_HURT = 10`，`hurt()` 查这两张表，不再看 `step`。在每种情况下都和旧的 `max(-step, 0)` 结果一样，所以库里已存的「伤」不用迁移。`WARNS_AT`、`FED_UP_AT`、`FED_UP_TURNS`、`OUT_OF_LINE_PER_CALL` 都没动。
+- 判断题：
+  - 步子改成小数以后，每天额度在累加时会留下浮点碎屑。比如从 63.7 起连着七个 +0.1，第七个回合还会再升 1e-15，变成一次假的「上升」胶囊。所以算剩余额度时取整到 9 位，`test_affinity_turns.py` 加了一条测试守着。
+  - 规格里旧测试的起始值从 5 改成 1，因为一次伤到她现在只减 1.5，从 5 跌不到 0；断言一条没改。
+- 测试：`test_affinity.py` 只加了 `hurt` 权重表那条（每个分支一行）。步子、每天上限、礼物三档和喜欢的、冷却中 +3，已由 `test_affinity_turns.py` 和 `test_gift_giving.py` 走接口守着（改成新数）。审查时按 CODING_STANDARDS「Tests」删掉了重复的单元测试。
+- 文档：好感度规格的「数值」「推算」和 Testing 里的每日上限（顺手把「制作人的今天」改成北京时间，和代码一致）；礼物规格里礼物目录那条、数值模块那条、Further Notes 那句，以及同一文件里送礼那条、礼物表表头、「算加分」那步、Further Notes「最多 / 一律 +3」那条。注释里「伤 = 减掉的好感度」的说法在 `call_outcome.py`、`engine.py`、`store.py` 和两份挂断测试的 docstring 里改成了「伤了她多少」。
+- 审查留下的判断题，没改：
+  - `hurt` 可以照 `Judged.step` 的样子做成 `Judged.hurt` 属性。没改，因为调用方会传 None。
+  - `LEVEL_STEPS` / `LEVEL_HURTS` 是两张靠下标对齐的平行表。再加一个维度时再合成一张。
