@@ -36,7 +36,7 @@ export { CircleAlert as FailureIcon } from "lucide-react";
 // 设置页「已绑定」的提示和它的关闭键（shadcn-redesign 18）。
 export { CircleCheck as SuccessIcon, X as CloseIcon } from "lucide-react";
 
-// 成就面板和「成就」子页里没集齐的「集齐」一行。
+// 成就面板里没集齐的「集齐」一行。
 export { Circle as TaskOpenIcon } from "lucide-react";
 
 // 对话页更多菜单的「成就」，和解锁她的阶段时页首好感度标识左边跳出的奖杯（GLOSSARY.md「成就」）。
