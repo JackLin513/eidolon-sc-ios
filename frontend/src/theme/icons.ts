@@ -73,9 +73,11 @@ export { Keyboard as TypingIcon } from "lucide-react";
 export { MessageCircle as ConversationsIcon, Settings as SettingsIcon, Shapes as PlayIcon } from "lucide-react";
 export { Gift as GiftIcon } from "lucide-react";
 
-// 日历：玩法页第一级「日历」卡；这一天的清单里我的生日（蛋糕，角色生日的蛋糕是她的颜色）和节假日（旗子）。
+// 日历：玩法页第一级「日历」卡；筛选、月视图和这一天的清单里我的生日（蛋糕，角色生日的蛋糕是她的颜色）和节假日（旗子）。
 export { CalendarDays as CalendarIcon } from "lucide-react";
 export { Cake as BirthdayIcon, Flag as HolidayIcon } from "lucide-react";
+// 日历子页月视图标题两边的上个月、下个月。
+export { ChevronLeft as PreviousMonthIcon, ChevronRight as NextMonthIcon } from "lucide-react";
 
 // 礼物子页：抽奖台的「抽一次」和抽到稀有礼物时插画角上的闪光；我的礼物的四个类别筛选；
 // 重置卡确认框里「现在的档位 → 信任」的箭头。

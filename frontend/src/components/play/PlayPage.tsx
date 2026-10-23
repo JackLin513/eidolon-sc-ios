@@ -7,10 +7,14 @@ import { PlayHeader, PlayShell } from "@/components/play/PlayShell";
 import { useCalendar } from "@/components/play/useCalendar";
 import { usePlayState } from "@/components/play/usePlayState";
 import { achievementsSeenUpTo, OF_ALL } from "@/lib/achievements";
+import { partsOf } from "@/lib/calendar";
 import { playCards } from "@/lib/playCards";
 
 /** 「日历」卡要的节假日：今年和明年。 */
-const CALENDAR_YEARS = [0, 1];
+function calendarYears(today: string): number[] {
+  const { year } = partsOf(today);
+  return [year, year + 1];
+}
 
 /**
  * 玩法页第一级（`/play`，DESIGN.md「玩法页」）：页首「玩法」大标题，下面一张张入口卡；第一张（礼物）铺满一行，其余两列网格、窄屏一列。
@@ -23,7 +27,7 @@ export function PlayPage() {
   const { account, newRewards } = useDirectory();
   const { state, failure } = usePlayState({ withCatalog: false });
   const achievementsSeenAt = account && state ? achievementsSeenUpTo(account.id, OF_ALL) : null;
-  const { calendar, holidaysRead } = useCalendar({ years: CALENDAR_YEARS });
+  const { calendar, holidaysRead } = useCalendar({ years: calendarYears });
   const [first, ...rest] = playCards({
     state,
     newRewards,

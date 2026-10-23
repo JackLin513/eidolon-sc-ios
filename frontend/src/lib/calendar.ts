@@ -80,6 +80,46 @@ export function nextEvent<C extends { birthday: string }>(
   return null;
 }
 
+/** A month of a year; `month` runs from 1 to 12. */
+export type CalendarMonth = { year: number; month: number };
+
+/** One square of the month view: its day, whether it is in the month shown (the weeks are filled
+ * out with the days of the months either side) and whether it is the producer's today. */
+export type CalendarCell = { date: string; isInMonth: boolean; isToday: boolean };
+
+/** The month `date` is in. */
+export function monthOf(date: string): CalendarMonth {
+  const { year, month } = partsOf(date);
+  return { year, month };
+}
+
+/** The month `step` months after `from` (before it when negative). */
+export function shiftMonth(from: CalendarMonth, step: number): CalendarMonth {
+  const at = new Date(Date.UTC(from.year, from.month - 1 + step, 1));
+  return { year: at.getUTCFullYear(), month: at.getUTCMonth() + 1 };
+}
+
+/** The squares of `shown`, a week to a row from Monday to Sunday, as many weeks as the month takes. */
+export function monthCells(shown: CalendarMonth, today: string): CalendarCell[] {
+  const first = `${shown.year}-${pad(shown.month)}-01`;
+  const lead = (partsOf(first).weekday + 6) % 7;
+  const days = new Date(Date.UTC(shown.year, shown.month, 0)).getUTCDate();
+  return Array.from({ length: Math.ceil((lead + days) / 7) * 7 }, (_, i) => {
+    const date = addDays(first, i - lead);
+    return { date, isInMonth: i >= lead && i < lead + days, isToday: date === today };
+  });
+}
+
+/** How many lines a square of the month view has on a computer. */
+const CELL_LINES = 3;
+
+/** What a square of the month view writes on a computer: every event when they fit in its three
+ * lines; otherwise the first two, and `more` for the 「还有 n 项」 on the third. */
+export function cellLines<E>(events: readonly E[]): { events: E[]; more: number } {
+  if (events.length <= CELL_LINES) return { events: [...events], more: 0 };
+  return { events: events.slice(0, CELL_LINES - 1), more: events.length - (CELL_LINES - 1) };
+}
+
 /** Today's date where the clock reads `now` in `timeZone`. */
 export function todayIn(timeZone: string, now: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone }).format(now);

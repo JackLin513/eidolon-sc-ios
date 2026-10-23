@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { calendarKinds, type CalendarData, type CalendarKind, eventsOn, nextEvent, todayIn } from "@/lib/calendar";
+import {
+  calendarKinds,
+  cellLines,
+  type CalendarData,
+  type CalendarKind,
+  eventsOn,
+  monthCells,
+  monthOf,
+  nextEvent,
+  shiftMonth,
+  todayIn,
+} from "@/lib/calendar";
 
 type Idol = { id: string; name: string; birthday: string };
 
@@ -116,5 +127,66 @@ describe("今天", () => {
 
     expect(todayIn("Asia/Tokyo", at)).toBe("2026-10-27");
     expect(todayIn("Asia/Shanghai", at)).toBe("2026-10-26");
+  });
+});
+
+describe("某个月的格子", () => {
+  it("周一起，首尾补上前后月的天，凑满整周", () => {
+    const cells = monthCells({ year: 2026, month: 10 }, "2026-10-23");
+
+    expect(cells).toHaveLength(35);
+    expect(cells.slice(0, 4).map((c) => [c.date, c.isInMonth])).toEqual([
+      ["2026-09-28", false],
+      ["2026-09-29", false],
+      ["2026-09-30", false],
+      ["2026-10-01", true],
+    ]);
+    expect(cells.slice(-2).map((c) => [c.date, c.isInMonth])).toEqual([
+      ["2026-10-31", true],
+      ["2026-11-01", false],
+    ]);
+  });
+
+  it("行数按这个月要几周：四周、六周", () => {
+    expect(monthCells({ year: 2027, month: 2 }, "2026-10-23")).toHaveLength(28);
+    expect(monthCells({ year: 2027, month: 2 }, "2026-10-23")[0].date).toBe("2027-02-01");
+    expect(monthCells({ year: 2026, month: 8 }, "2026-10-23")).toHaveLength(42);
+  });
+
+  it("只有今天那一格是今天，补上的天也算", () => {
+    const today = (month: number, date: string) =>
+      monthCells({ year: 2026, month }, date)
+        .filter((c) => c.isToday)
+        .map((c) => c.date);
+
+    expect(today(10, "2026-10-23")).toEqual(["2026-10-23"]);
+    expect(today(10, "2026-11-01")).toEqual(["2026-11-01"]);
+    expect(today(10, "2026-12-01")).toEqual([]);
+  });
+});
+
+describe("翻月", () => {
+  it("今天所在的月；往前往后翻，跨年也行", () => {
+    expect(monthOf("2026-10-23")).toEqual({ year: 2026, month: 10 });
+    expect(shiftMonth({ year: 2026, month: 12 }, 1)).toEqual({ year: 2027, month: 1 });
+    expect(shiftMonth({ year: 2026, month: 1 }, -1)).toEqual({ year: 2025, month: 12 });
+    expect(shiftMonth({ year: 2026, month: 10 }, -22)).toEqual({ year: 2024, month: 12 });
+  });
+});
+
+describe("电脑上一格最多三行", () => {
+  const lines = (n: number) => {
+    const { events, more } = cellLines(Array.from({ length: n }, (_, i) => i));
+    return [events, more];
+  };
+
+  it("三件以内全写", () => {
+    expect(lines(0)).toEqual([[], 0]);
+    expect(lines(3)).toEqual([[0, 1, 2], 0]);
+  });
+
+  it("超过三件时写前两件，第三行是还有几项", () => {
+    expect(lines(4)).toEqual([[0, 1], 2]);
+    expect(lines(6)).toEqual([[0, 1], 4]);
   });
 });

@@ -1791,6 +1791,27 @@ export const zh = {
       /** 制作人自己的生日。 */
       mine: "我的生日",
       noEvents: "这一天没有事",
+      /** 三类全筛掉时月历下面那一句。 */
+      nothingShown: "没有要显示的",
+      /** 月历上方的筛选：一排按钮，按下的是开着的。 */
+      filters: {
+        label: "筛选",
+        character: "角色生日",
+        producer: "我的生日",
+        holiday: "节假日",
+      },
+      /** 月视图的标题「2026年10月」和两边的键。 */
+      month: (year: number, month: number) => `${year}年${month}月`,
+      previousMonth: "上个月",
+      nextMonth: "下个月",
+      /** 不在当月时出现，回到当月并选中今天。 */
+      today: "今天",
+      /** 表头一行周几，周一起。 */
+      weekHeads: ["一", "二", "三", "四", "五", "六", "日"],
+      /** 电脑上一格超过三件时的第三行。 */
+      more: (n: number) => `还有 ${n} 项`,
+      /** 格子的读屏名字：「10月27日 周二，2 项」。 */
+      cell: (date: string, events: number) => (events > 0 ? `${date}，${events} 项` : date),
     },
   },
   /** 礼物子页（`/play/gifts`，GLOSSARY.md「礼物」「抽奖」，DESIGN.md「玩法页」）：抽奖台、重置卡条、我的礼物，和送礼面板、抽奖弹窗里的字。 */
