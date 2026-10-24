@@ -112,6 +112,8 @@ final class ChatStore {
                     switch event {
                     case let .delta(segment, language, shown):
                         append(segment: segment, language: language, text: shown)
+                    case .speechDelta:
+                        break
                     case let .finished(record):
                         affinity = AffinityStatus(
                             tier: record.affinityTier,

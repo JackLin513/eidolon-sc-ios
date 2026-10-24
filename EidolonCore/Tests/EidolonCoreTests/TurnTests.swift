@@ -85,6 +85,8 @@ final class TurnTests: XCTestCase {
             switch event {
             case let .delta(_, _, text):
                 deltas.append(text)
+            case .speechDelta:
+                break
             case let .finished(finished):
                 record = finished
             }

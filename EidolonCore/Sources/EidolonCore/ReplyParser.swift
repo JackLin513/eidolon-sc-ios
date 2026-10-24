@@ -19,6 +19,9 @@ public struct ReplySegment: Codable, Sendable, Hashable {
 public enum ReplyParserEvent: Sendable, Hashable {
     /// More of `segment`'s text, with delivery cues stripped for display.
     case delta(segment: Int, language: ReplyLanguage, text: String)
+    /// More of `segment`'s Japanese as it is to be voiced: delivery cues kept, as the
+    /// voice model is given them.
+    case speechDelta(segment: Int, text: String)
 }
 
 /// Turns the model's stream into per-segment deltas, as upstream's `ReplyParser` does for
@@ -131,6 +134,9 @@ public struct ReplyParser: Sendable {
         switch language {
         case .ja: segments[index].ja += text
         case .zh: segments[index].zh += text
+        }
+        if language == .ja, !text.isEmpty {
+            events.append(.speechDelta(segment: index, text: text))
         }
         let shown = filter.feed(text)
         if !shown.isEmpty {
