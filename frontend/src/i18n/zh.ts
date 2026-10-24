@@ -552,7 +552,7 @@ export const zh = {
   settings: {
     title: "设置",
     loading: "正在读取…",
-    /** 设置一级的十一类，也是各自二级页首的名字。「登录与数据」不叫「账号」：GLOSSARY 把它列为避免的说法。 */
+    /** 设置一级的各类，也是各自二级页首的名字。「登录与数据」不叫「账号」：GLOSSARY 把它列为避免的说法。 */
     categories: {
       profile: "档案",
       memories: "记忆",
@@ -577,10 +577,9 @@ export const zh = {
       phoneTextureOff: "电话质感关",
       scspAvatarsOn: "SCSP 头像开",
       scspAvatarsOff: "SCSP 头像关",
-      reachOutsOn: "开",
-      reachOutsOff: "关",
-      cyclesOn: "开",
-      cyclesOff: "关",
+      /** 搭话、周期这类只有一个开关的。 */
+      switchOn: "开",
+      switchOff: "关",
       ownKeysNone: "全部用部署者的服务",
       ownKeys: (services: string) => `已填 ${services}`,
     },
@@ -1378,7 +1377,7 @@ export const zh = {
         },
         cycles: {
           title: "周期",
-          hint: "打开后，每位用户的每位角色各有一个周期，经前、经期她的言行、好感度、挂断和暖的礼物跟着变；用户可以在设置里自己关。关掉时周期照走，再打开她还在本来的位置。保存后从下一个回合起生效。",
+          hint: "打开后，每位用户的每位角色各有一个周期，经前、经期她的言行、好感度、挂断、暖的礼物和对话事件跟着变；用户可以在设置里自己关。关掉时周期照走，再打开她还在本来的位置。保存后从下一个回合、下一次搭话起生效。",
         },
         proxy: {
           title: "网络代理",

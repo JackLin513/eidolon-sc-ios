@@ -23,3 +23,9 @@
 
 - 这次经期的第一天从 `Cycles.her_day(...)` 返回的 `Period.first_day` 拿。开发口子强制「经期第 N 天」时 `first_day` 按当天往回推 N−1 天，强制着过夜会挪一天，验收时同一天里做完。
 - 测试里要她在经期：`tests/test_her_days.py` 的 `a_noon_when`（拨假时钟）和 `a_key_when`（时钟拨不动时换密钥）；`conftest` 默认 `cycles=False`，要自己打开。
+
+### 票 02 交接
+
+- 入口 `Cycles.her_day(user_id, character_id, at, timezone)` 现在是异步的，自己看部署者和用户两个开关（用户开关读表 `cycles_off`），`user_on` 参数去掉了；返回 None 就是「不受周期影响」，不用另判开关。
+- 它在里面 `await self._db.read(...)`，所以不能在写事务的函数里调：在回合的写事务之前算好她今天在哪（连同 `Period.first_day`），再把结果带进事务。
+- 测试里要她在某一天：用 `tests/test_her_days.py` 的 `on_a_day`（先注册制作人、找好日子，再用拨到那天的时钟登录）；直接拨 `FakeClock` 跨过 30 天会话就过期，返回 401。用户关开关：`tests/test_cycles_switch.py` 的 `switch`。

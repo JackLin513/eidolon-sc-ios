@@ -9,6 +9,7 @@
 // `/settings` from its page, as the server cannot tell the account from the address.
 
 import { copy } from "@/i18n";
+import type { Account } from "@/lib/api";
 import type { Appearance } from "@/lib/appearance";
 import type { CallPreferences } from "@/lib/callPreferences";
 import { OWN_SERVICES, type OwnService } from "@/lib/localOwnKeys";
@@ -29,18 +30,26 @@ export type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number];
 
 const ROOT = "/settings";
 
-/** The user's own switches the account says (`Account`): each null where the deployer has it off, or
- * the account not read yet. */
+/** The user's own switches the account says: each null where the deployer has it off, or the account
+ * not read yet. */
 export type SettingsSwitches = { reachOuts: boolean | null; cycles: boolean | null };
 
-/** The first level's groups for an account with `switches`: without 「搭话」 or 「周期」 where its switch is
- * null. */
+/** The switches `account` says; all null before it is read. */
+export function settingsSwitches(account: Account | null): SettingsSwitches {
+  return { reachOuts: account?.reach_outs ?? null, cycles: account?.cycles ?? null };
+}
+
+/** The categories there only where the deployer has them on, each with its switch, whose value is
+ * also its summary. */
+const SWITCHED = [
+  ["reach-outs", "reachOuts"],
+  ["cycles", "cycles"],
+] as const satisfies readonly (readonly [SettingsCategory, keyof SettingsSwitches])[];
+
+/** The first level's groups for an account with `switches`: without a category whose switch is null. */
 export function settingsGroups(switches: SettingsSwitches): SettingsCategory[][] {
   return SETTINGS_GROUPS.map((group) =>
-    group.filter(
-      (category) =>
-        (category !== "reach-outs" || switches.reachOuts !== null) && (category !== "cycles" || switches.cycles !== null),
-    ),
+    group.filter((category) => SWITCHED.every(([switched, key]) => switched !== category || switches[key] !== null)),
   );
 }
 
@@ -86,7 +95,7 @@ export function settingsRedirect(href: string): string | null {
 export type ProfileEdit = { saved: Draft; draft: Draft };
 
 /** What the first level's summaries are made of; null for what has not been read yet. */
-export type SettingsValues = {
+export type SettingsValues = SettingsSwitches & {
   profile: ProfileEdit | null;
   /** The time zone this device reports, which an automatic profile time zone means. */
   detectedTimezone: string;
@@ -95,10 +104,6 @@ export type SettingsValues = {
   daysKnown: number | null;
   call: CallPreferences | null;
   appearance: Appearance | null;
-  /** The user's own switch for reach-outs (null where the deployer has them off). */
-  reachOuts: boolean | null;
-  /** The user's own switch for cycles (null where the deployer has them off). */
-  cycles: boolean | null;
   /** The services this browser keeps the user's own key for. */
   ownServices: OwnService[] | null;
   signInMethods: Provider[] | null;
@@ -108,7 +113,7 @@ export type SettingsValues = {
  * or「关于」) shows its name alone. */
 export function settingsSummaries(values: SettingsValues): Partial<Record<SettingsCategory, string>> {
   const t = copy.settings.summaries;
-  const { profile, memoryCount, daysKnown, call, appearance, reachOuts, cycles, ownServices, signInMethods } = values;
+  const { profile, memoryCount, daysKnown, call, appearance, ownServices, signInMethods } = values;
   const summaries: Partial<Record<SettingsCategory, string>> = {};
   if (profile) {
     const { saved, draft } = profile;
@@ -121,8 +126,10 @@ export function settingsSummaries(values: SettingsValues): Partial<Record<Settin
   if (daysKnown !== null) summaries.stats = t.daysKnown(daysKnown);
   if (call) summaries.call = `${copy.settings.call.qualities[call.quality]} · ${call.phoneTexture ? t.phoneTextureOn : t.phoneTextureOff}`;
   if (appearance) summaries.appearance = appearance.scspAvatars ? t.scspAvatarsOn : t.scspAvatarsOff;
-  if (reachOuts !== null) summaries["reach-outs"] = reachOuts ? t.reachOutsOn : t.reachOutsOff;
-  if (cycles !== null) summaries.cycles = cycles ? t.cyclesOn : t.cyclesOff;
+  for (const [category, key] of SWITCHED) {
+    const on = values[key];
+    if (on !== null) summaries[category] = on ? t.switchOn : t.switchOff;
+  }
   if (ownServices) {
     const owned = OWN_SERVICES.filter((service) => ownServices.includes(service));
     summaries["own-keys"] =

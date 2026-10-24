@@ -14,3 +14,11 @@
 - [ ] 词汇表「礼物」那条和实现一致
 - [ ] pyright、ruff、前端类型检查过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
 - [ ] 票收尾：推一次让 CI 跑、跑 `code-review`
+
+## Comments
+
+### 票 02 交接
+
+- 入口 `Cycles.her_day(user_id, character_id, at, timezone)` 现在是异步的，自己看部署者和用户两个开关（用户开关读表 `cycles_off`），`user_on` 参数去掉了；返回 None 就是「不受周期影响」，不用另判开关。
+- 给她拼对话记录时按每条送礼事件的时刻现算：每次调用都读一次用户开关，事件多时先读一次开关再算，或者在 `Cycles` 上加一个同步的、接收开关值的入口。
+- 测试里要她在某一天：用 `tests/test_her_days.py` 的 `on_a_day`（先注册制作人、找好日子，再用拨到那天的时钟登录）；直接拨 `FakeClock` 跨过 30 天会话就过期，返回 401。用户关开关：`tests/test_cycles_switch.py` 的 `switch`。

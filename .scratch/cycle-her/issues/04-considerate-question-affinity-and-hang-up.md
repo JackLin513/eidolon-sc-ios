@@ -23,3 +23,11 @@
 - [ ] `affinity_judge` 开头的说明改好；词汇表「体贴」和实现一致
 - [ ] pyright、ruff 过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
 - [ ] 票收尾：Comments 里写下体贴题的题面和答案的读法，给票 05 用；推一次让 CI 跑、跑 `code-review`
+
+## Comments
+
+### 票 02 交接
+
+- 入口 `Cycles.her_day(user_id, character_id, at, timezone)` 现在是异步的，自己看部署者和用户两个开关（用户开关读表 `cycles_off`），`user_on` 参数去掉了；返回 None 就是「不受周期影响」，不用另判开关。
+- 引擎里已有 `ConversationEngine._her_day(conversation, now, timezone)`，回合里「此刻」用的就是它，判断和挂断可以复用同一次的结果，不必再读一次。
+- 测试里要她在某一天：用 `tests/test_her_days.py` 的 `on_a_day`（先注册制作人、找好日子，再用拨到那天的时钟登录）；直接拨 `FakeClock` 跨过 30 天会话就过期，返回 401。用户关开关：`tests/test_cycles_switch.py` 的 `switch`。

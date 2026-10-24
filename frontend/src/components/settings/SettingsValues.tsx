@@ -8,7 +8,7 @@ import { loadCallPreferences, type CallPreferences } from "@/lib/callPreferences
 import { toFailure, type Failure } from "@/lib/failure";
 import { localOwnKeys, ownServices, subscribeOwnKeys, type OwnService } from "@/lib/localOwnKeys";
 import { toDraft, type Draft } from "@/lib/producerProfile";
-import { settingsSummaries, type ProfileEdit, type SettingsCategory } from "@/lib/settingsCategory";
+import { settingsSummaries, settingsSwitches, type ProfileEdit, type SettingsCategory } from "@/lib/settingsCategory";
 import { detectTimezone } from "@/lib/timezone";
 
 type CurrentSettings = {
@@ -87,8 +87,7 @@ export function SettingsValuesProvider({ children }: { children: ReactNode }) {
         call,
         // 外观和角色一起由外壳读出；登录的用户读到之前还是默认值，不算读到。
         appearance: account ? appearance : null,
-        reachOuts: account?.reach_outs ?? null,
-        cycles: account?.cycles ?? null,
+        ...settingsSwitches(account),
         ownServices: ownedServices,
         signInMethods: account?.sign_in_methods.map((method) => method.provider) ?? null,
       }),
