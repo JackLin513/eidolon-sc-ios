@@ -11,6 +11,8 @@ final class ChatStore {
     private let core: Eidolon
 
     private(set) var messages: [ChatMessageRecord] = []
+    /// Calls hung up or failed in this conversation; shown between the turns.
+    private(set) var events: [ConversationEventRecord] = []
     private(set) var streaming: [ReplySegment] = []
     /// The line being answered; recorded only when the turn finishes, but shown at once.
     private(set) var pendingUser: String?
@@ -35,16 +37,27 @@ final class ChatStore {
 
     var readOnly: Bool { isPast || ended }
 
+    /// The conversation in order: turns and what happened around them.
+    var transcript: [ChatLine] {
+        let lines = messages.map(ChatLine.message) + events.map(ChatLine.event)
+        return lines.sorted { left, right in
+            if left.createdAt == right.createdAt { return left.id < right.id }
+            return left.createdAt < right.createdAt
+        }
+    }
+
     func load() async {
         do {
             if let conversationID, let past = try await core.conversation(id: conversationID) {
                 messages = past.messages
                 ended = past.ended
                 isPast = true
+                events = try await core.conversationEvents(conversationID: conversationID)
             } else if let current = try await core.currentConversation(characterID: character.id) {
                 messages = current.messages
                 ended = current.ended
                 isPast = false
+                events = try await core.conversationEvents(conversationID: current.id)
                 if !ended {
                     try await core.markReachOutsSeen(conversationID: current.id)
                 }
@@ -52,6 +65,7 @@ final class ChatStore {
                 messages = []
                 ended = false
                 isPast = false
+                events = []
             }
             affinity = try await core.affinityStatus(characterID: character.id)
         } catch {

@@ -14,6 +14,7 @@
 		28E1D1F65D00588EA9601DA3 /* TraceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D48DCFB6F0FC0D93BD033FC6 /* TraceListView.swift */; };
 		2CF24EECC30E051467FA4D35 /* MicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */; };
 		50FF16442DF243C8411FF741 /* SonioxRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */; };
+		598687CBC444DC728D0C1598 /* ChatLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5145F04AB4F12ED795C7DF1A /* ChatLine.swift */; };
 		791DD675A29C48B88185FACE /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE21F722ED79A2089F060B7F /* Theme.swift */; };
 		8FDA81B5B65A7F24FDDE1659 /* ChatSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730259B31CD6DBF3CA44FC75 /* ChatSettings.swift */; };
 		9221A0F68F374BAAA5282CCE /* MemoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B94AA6A4C5655585B24D2400 /* MemoryListView.swift */; };
@@ -38,6 +39,7 @@
 		362E0BAAF16B958F406E1E08 /* SpeechPlayback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechPlayback.swift; sourceTree = "<group>"; };
 		38579B2A473B296EC588CBD6 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		4472CA53E92E225069B1D652 /* FishSynthesis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FishSynthesis.swift; sourceTree = "<group>"; };
+		5145F04AB4F12ED795C7DF1A /* ChatLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatLine.swift; sourceTree = "<group>"; };
 		6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallSettingsError.swift; sourceTree = "<group>"; };
 		6DA937E9DC437925E1DD0673 /* ChatStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStore.swift; sourceTree = "<group>"; };
 		730259B31CD6DBF3CA44FC75 /* ChatSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSettings.swift; sourceTree = "<group>"; };
@@ -129,6 +131,7 @@
 		8DD528FF0F49C56E429F79F4 /* Chat */ = {
 			isa = PBXGroup;
 			children = (
+				5145F04AB4F12ED795C7DF1A /* ChatLine.swift */,
 				6DA937E9DC437925E1DD0673 /* ChatStore.swift */,
 				77736DA8D3A8B0B2407A626B /* ChatView.swift */,
 				B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */,
@@ -277,6 +280,7 @@
 				10BA2565084D529C4152A890 /* AppModel.swift in Sources */,
 				BBCD2E47044DFC5DAB92ED57 /* CallSettingsError.swift in Sources */,
 				9C1DDAAE28F34ADE34D50C28 /* CallView.swift in Sources */,
+				598687CBC444DC728D0C1598 /* ChatLine.swift in Sources */,
 				8FDA81B5B65A7F24FDDE1659 /* ChatSettings.swift in Sources */,
 				FB74EA11C1B5E34D38ED3937 /* ChatStore.swift in Sources */,
 				A1B405F9250C7DCD499A4A7E /* ChatView.swift in Sources */,

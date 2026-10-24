@@ -15,7 +15,37 @@ public struct ConversationSummary: Sendable, Hashable, Identifiable {
     public var isCurrent: Bool
 }
 
+/// Something that happened in a conversation that is not a turn (GLOSSARY.md「对话事件」):
+/// a call that was hung up, or one that failed.
+public struct ConversationEventRecord: Sendable, Hashable, Identifiable {
+    public var id: Int64
+    public var kind: String
+    public var createdAt: String
+}
+
 extension Eidolon {
+    /// What happened in the conversation besides turns, oldest first. Events are kept out
+    /// of the prompt; they are shown in the conversation and nowhere else.
+    public func conversationEvents(conversationID: String) throws -> [ConversationEventRecord] {
+        try userQueue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT id, kind, created_at FROM conversation_events
+                    WHERE conversation_id = ?
+                    ORDER BY created_at, id
+                    """,
+                arguments: [conversationID]
+            ).map { row in
+                ConversationEventRecord(
+                    id: row["id"],
+                    kind: row["kind"],
+                    createdAt: row["created_at"]
+                )
+            }
+        }
+    }
+
     /// Her conversations, newest first: the current one, ended or not, then the past
     /// ones — those with nothing in them are not listed as past.
     public func conversations(characterID: String) throws -> [ConversationSummary] {

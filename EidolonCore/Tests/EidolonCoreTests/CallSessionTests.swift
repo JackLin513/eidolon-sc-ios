@@ -515,6 +515,37 @@ final class CallSessionTests: XCTestCase {
         await session.hangUp()
     }
 
+    func testAHangUpIsRecordedButStaysOutOfThePrompt() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([["<ja>うん</ja><zh>嗯</zh>"]])
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("answered") {
+            let answered = (try? await eidolon.currentConversation(characterID: "mano")) ?? nil
+            return answered?.messages.count == 2
+        }
+        await session.hangUp()
+        try await waitFor("ended") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+
+        let conversation = try await eidolon.currentConversation(characterID: "mano")
+        let conversationID = try XCTUnwrap(conversation?.id)
+        let events = try await eidolon.conversationEvents(conversationID: conversationID)
+        XCTAssertEqual(events.map(\.kind), ["hung_up"])
+
+        let timeline = try await eidolon.timeline(conversationID: conversationID)
+        XCTAssertEqual(timeline.count, 2, "the call event is not a turn")
+        XCTAssertFalse(timeline.contains { $0.text?.contains("hung_up") == true })
+    }
+
     func testThePrefetchedSegmentIsDroppedOnHangUp() async throws {
         let eidolon = try await installedEidolon()
         let recognition = FakeRecognition([.hang])
