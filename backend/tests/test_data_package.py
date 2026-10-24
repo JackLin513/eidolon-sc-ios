@@ -334,6 +334,7 @@ async def test_a_memory_already_here_is_not_added_again_and_stands_in_for_it(
     """Also importing the same package twice: the second time, every memory is here."""
     client = remembering(make_client, memorized(TOKYO))
     await turn(client, await start_conversation(client, "kogane"), "我搬到东京了")
+    await memories(client)  # once Tokyo is written down: importing does not wait for it
     package = memories_package(
         packaged_memory(1, OSAKA, superseded_by=2),
         packaged_memory(2, TOKYO, superseded_by=3),  # here, holding: left holding
