@@ -153,6 +153,7 @@ class CharacterConfig:
         scsp_avatar: bytes | None = None,
         color: str | None = "#ffbad6",
         birthday: str | None = "07-07",
+        age: int | str | None = 20,
         background: bytes | None = None,
         speakers: list[str] | None = None,
         facts: str | None = None,
@@ -169,7 +170,8 @@ class CharacterConfig:
         and `name_romaji`; `liked_gifts` her liked gifts (None leaves them out), cake by
         default as every catalog the tests write has it; `photo` her `photo_tag` and
         `photo_appearance`; `birthday` her `"MM-DD"`, a day on which tests' clocks fall
-        on no one's birthday unless they set one (None leaves it out)."""
+        on no one's birthday unless they set one (None leaves it out); `age` her age, as
+        TOML writes it, or None to leave it out."""
         entry = f'[[characters]]\nid = "{id}"\nname = "{name}"\nintro = "{intro}"\n'
         entry += f'voice_id = "{voice_id}"\nsheet = "sheets/{id}.md"\n'
         if sheet is not None:
@@ -184,6 +186,8 @@ class CharacterConfig:
             entry += f'color = "{color}"\n'
         if birthday is not None:
             entry += f'birthday = "{birthday}"\n'
+        if age is not None:
+            entry += f"age = {age}\n"
         if background is not None:
             self.write(f"backgrounds/{id}.jpg", background)
             entry += f'background = "backgrounds/{id}.jpg"\n'
@@ -240,11 +244,12 @@ def characters(tmp_path: Path) -> CharacterConfig:
             "mano", "櫻木真乃", MANO_SHEET, intro="illumination STARS 的中心", avatar=AVATAR,
             scsp_avatar=SCSP_AVATAR, color="#ffbad6", background=BACKGROUND, speakers=["真乃"],
             voice_id="mano-voice", idol_id=1, default_outfit="stand/1030010010", photo=MANO_PHOTO,
-            birthday="04-25",
+            birthday="04-25", age=16,
         )
         .add(
             "kogane", "月岡恋鐘", KOGANE_SHEET, intro="L'Antica 的偶像", color="#f84cad",
             speakers=["恋鐘"], voice_id="kogane-voice", birthday="02-25",
+            age=19,
         )
     )
 
@@ -267,6 +272,9 @@ def settings(tmp_path: Path, characters: CharacterConfig) -> Settings:
         secret_key="test-secret-key",
         soniox_api_key=DEPLOYER_SONIOX_KEY,
         fish_audio_api_key=DEPLOYER_FISH_KEY,
+        # Off, so that no test's clock lands in her period or the days before by chance;
+        # those of her cycle turn it on (`test_her_days`).
+        cycles=False,
     )
 
 

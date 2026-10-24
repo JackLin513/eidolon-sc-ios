@@ -28,7 +28,7 @@ async def test_a_passage_is_titled_with_its_card_or_event_and_episode(tmp_path: 
 async def test_a_fact_is_titled_with_its_headings(tmp_path: Path):
     embedder = FakeEmbedder()
     mano = Character(
-        "mano", "櫻木真乃", "", "voice", "sheet", None, "#ffbad6", Birthday(4, 25),
+        "mano", "櫻木真乃", "", "voice", "sheet", None, "#ffbad6", Birthday(4, 25), 16,
         facts=parse_facts("喜欢鸟。\n# 人物关系\n## 風野灯織\n同组合的伙伴。"),
     )
     db = Database(tmp_path / "eidolon.db")

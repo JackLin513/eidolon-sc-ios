@@ -43,6 +43,17 @@ cd backend && EIDOLON_AFFINITY_AND_GIFTS=0 uv run --quiet --env-file=../.env eid
 
 `user_id` 从 `GET /api/account` 拿。验完以这个用户登录调 `POST /api/account/delete`（`{"confirm": true}`），它的一切一起删掉，Sallyn 的数据不动。
 
+## 周期
+
+开关默认开（`EIDOLON_CYCLES`）。要某位角色在经期或经前，不等她自然到，用开发口子（只在 `EIDOLON_DEV_LOGIN=1` 时有），以登录的用户调：
+
+- 经期第 3 天：`PUT /api/dev/cycles/<角色 id>`，`{"phase": "period", "day": 3}`（`day` 1–8）
+- 经前还剩 2 天：`{"phase": "premenstrual", "day": 2}`（`day` 1–5）
+- 平常：`{"phase": "neither"}`
+- 回到她真实的周期：`DELETE /api/dev/cycles/<角色 id>`
+
+强制的只是「她今天在哪」，存在后端进程内存里，重启就没；开关关着时照样不起作用。
+
 ## 通话
 
 Chromium 用假麦克风，上下文给麦克风权限：

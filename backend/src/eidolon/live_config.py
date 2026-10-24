@@ -142,6 +142,7 @@ LIMITS = "limits"
 AFFINITY = "affinity"
 REACH_OUTS = "reach_outs"
 SCHEDULE = "schedule"
+CYCLES = "cycles"
 PROXY = "proxy"
 SERVICE_STATUS = "service_status"
 
@@ -758,6 +759,22 @@ class _Schedule(_Item):
         return current | change
 
 
+class _Cycles(_Item):
+    """Whether her cycle has a part in how she is (GLOSSARY.md「周期」), as `.env` has it (on
+    by default); not tried."""
+
+    name = CYCLES
+    fields = ("enabled",)
+
+    def env(self) -> Values:
+        return {"enabled": self.c.settings.cycles}
+
+    def candidate(self, current: Values, change: Values) -> Values:
+        if not isinstance(change.get("enabled"), bool):
+            raise ConfigInvalid(f"周期需要是 true 或 false，而不是 {change.get('enabled')!r}")
+        return current | change
+
+
 PROXY_LABELS: dict[ProxiedService, str] = {
     "chat_llm": "扮演角色的 LLM",
     "memory_llm": "后台模型",
@@ -930,7 +947,7 @@ class LiveConfig:
                 _Proxy(self), _ChatLLM(self), _MemoryLLM(self), _TTS(self), _STT(self),
                 _Image(self), _Judge(self), _JudgeThresholds(self), _Rerank(self),
                 _Limits(self), _Affinity(self), _ReachOuts(self), _Schedule(self),
-                _ServiceStatus(self),
+                _Cycles(self), _ServiceStatus(self),
             )
         }
         self._failures: dict[str, str] = {}
@@ -1037,6 +1054,11 @@ class LiveConfig:
     def schedule_on(self) -> bool:
         """Whether each week's jobs are published for producers to schedule now."""
         return self.effective(SCHEDULE)["enabled"]
+
+    @property
+    def cycles_on(self) -> bool:
+        """Whether the deployment has her cycle have a part in how she is now."""
+        return self.effective(CYCLES)["enabled"]
 
     @property
     def proxy_settings(self) -> ProxySettings:

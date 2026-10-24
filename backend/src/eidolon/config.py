@@ -445,6 +445,9 @@ class Settings:
     schedule: bool = True
     """Whether each week's jobs are published for producers to schedule (GLOSSARY.md「日程」);
     on unless `.env` turns it off, and the admin console may override it."""
+    cycles: bool = True
+    """Whether her cycle has a part in how she is (GLOSSARY.md「周期」); on unless `.env`
+    turns it off, and the admin console may override it. Her cycle goes on all the same."""
     proxy: ProxySettings = field(default_factory=ProxySettings)
     """Which of the deployer's services go through which proxy; none unless `.env` sets
     one, and the admin console may override it."""
@@ -539,6 +542,7 @@ class Settings:
             affinity_and_gifts=_switch("EIDOLON_AFFINITY_AND_GIFTS", default=True),
             reach_outs=_switch("EIDOLON_REACH_OUTS"),
             schedule=_switch("EIDOLON_SCHEDULE", default=True),
+            cycles=_switch("EIDOLON_CYCLES", default=True),
             proxy=proxy_from_env(),
             service_status=service_status_from_env(),
             domain=os.environ.get("EIDOLON_DOMAIN", "").strip() or None,

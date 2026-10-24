@@ -123,9 +123,11 @@ from eidolon.affinity_judge import AffinityJudge
 from eidolon.characters import Character
 from eidolon.clock import Clock
 from eidolon.config import FishAudioModel, ImageSettings
+from eidolon.cycles import Cycles, cycle_lines
 from eidolon.data_access import Database
 from eidolon.gift_catalog import Gift
 from eidolon.happenings import Happenings, Rewarded
+from eidolon.her_cycle import HerDay
 from eidolon.judge import JudgeError
 from eidolon.llm import ChatLLM, ChatMessage, Reasoning, Tool, ToolCall, TurnLLMs
 from eidolon.memory import Memories, last_turn_query
@@ -549,6 +551,7 @@ class ConversationEngine:
         photos: Photos | None = None,
         happenings: Happenings | None = None,
         schedules: Schedules | None = None,
+        cycles: Cycles | None = None,
     ) -> None:
         """Without `retrieval`, turns carry no story or character facts and find no
         memories. Each turn reads only the conversation's latest turns, as many as
@@ -559,7 +562,8 @@ class ConversationEngine:
         `affinity_judge`, which judges whether turns ask for a photo too. Without `photos`,
         or without the judge model, no turn has a photo. Each turn recorded is told to
         `happenings`, if any. With `schedules`, she is told her jobs the user saved, in
-        turns and reaching out alike."""
+        turns and reaching out alike; with `cycles`, how she feels where her cycle has her,
+        likewise."""
         self._db = db
         self._store = store
         self._characters = characters
@@ -575,6 +579,7 @@ class ConversationEngine:
         self._photos = photos
         self._happenings = happenings
         self._schedules = schedules
+        self._cycles = cycles
         self._ended_listeners: list[Callable[[str, EndsFor], None]] = []
         self._cooled_listeners: list[Callable[[str, str, datetime], None]] = []
 
@@ -726,7 +731,7 @@ class ConversationEngine:
                 self._now_prompt(
                     character, profile, now, timezone,
                     "in_call" if in_call is not None else "typing", affinity_lines, last_contact,
-                    her_jobs,
+                    her_jobs, self._her_day(conversation, now, timezone),
                 ),
                 *([about_photo] if about_photo else []),
             ],
@@ -868,7 +873,7 @@ class ConversationEngine:
                 self._now_prompt(
                     character, profile, now, timezone, "apart",
                     affinity_prompt(affinity.tier, None) if affinity is not None else [],
-                    last_contact, her_jobs,
+                    last_contact, her_jobs, self._her_day(conversation, now, timezone),
                 ),
             ],
             [*([memories] if memories else []), REACH_OUT_RULES],
@@ -1081,15 +1086,26 @@ class ConversationEngine:
         affinity_lines: Sequence[str],
         last_contact: datetime | None,
         her_jobs: HerSchedule | None,
+        her_day: HerDay,
     ) -> str:
         """The prompt section about now (`now_prompt`), what she is told of the day it is in
         Tokyo (`today_lines`) right after it, then of `her_jobs` the user saved, if any
-        (`schedule_lines`)."""
+        (`schedule_lines`), then of where her cycle has her (`cycle_lines`)."""
         return "\n".join([
             now_prompt(profile, now, timezone, talking, affinity_lines, last_contact),
             *today_lines(now, character, self._characters.values(), talking),
             *(schedule_lines(her_jobs) if her_jobs is not None else []),
+            *cycle_lines(her_day),
         ])
+
+    def _her_day(self, conversation: Conversation, now: datetime, timezone: str) -> HerDay:
+        """Where her cycle has her today in the producer's `timezone`; neither without
+        cycles."""
+        if self._cycles is None:
+            return None
+        return self._cycles.her_day(
+            conversation.user_id, conversation.character_id, now, timezone
+        )
 
     async def _her_jobs(
         self, conversation: Conversation, device_timezone: str | None

@@ -111,7 +111,7 @@ async def test_a_rerank_failing_again_or_refused_is_reported(answers: list[Answe
     assert len(answers) == 1  # never asked a third time, nor a second when refused
 
 
-MANO = Character("mano", "櫻木真乃", "", "voice", "sheet", None, "#ffbad6", Birthday(4, 25))
+MANO = Character("mano", "櫻木真乃", "", "voice", "sheet", None, "#ffbad6", Birthday(4, 25), 16)
 
 
 def message(role: str, text: str) -> Message:

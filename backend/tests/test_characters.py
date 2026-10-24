@@ -591,6 +591,29 @@ def test_repository_gives_each_character_her_birthday():
     assert loaded["hazuki"].birthday == Birthday(2, 3)
 
 
+def test_repository_gives_each_character_her_age_as_her_facts_tell_it():
+    """As the third line of her character facts has it, `16 岁` or `19岁`: whether she is
+    under 18 is what her cycle goes by (GLOSSARY.md「周期」)."""
+    loaded = load_characters(REPO_CHARACTERS / "characters.toml")
+
+    assert len(loaded) == 29
+    for character in loaded.values():
+        facts = (REPO_CHARACTERS / "facts" / f"{character.id}.md").read_text(encoding="utf-8")
+        [told] = re.findall(r"([0-9]+) ?岁", facts.splitlines()[2])[:1]
+        assert character.age == int(told), character.id
+    assert loaded["kaho"].age == 12
+    assert loaded["mikoto"].age == 24
+
+
+@pytest.mark.parametrize("age", ['"16"', "16.5", "true", None])
+def test_age_must_be_a_whole_number(tmp_path: Path, age: str | None):
+    """Written as TOML has it; None leaves it out."""
+    config = CharacterConfig(tmp_path).add("mano", "櫻木真乃", "a", age=age)
+
+    with pytest.raises(CharacterConfigError, match="角色 mano 的 age"):
+        load_characters(config.path)
+
+
 @pytest.mark.parametrize("birthday", ["04/25", "02-30"])
 def test_birthday_must_be_a_day_of_the_year_as_mm_dd(tmp_path: Path, birthday: str):
     config = CharacterConfig(tmp_path).add("mano", "櫻木真乃", "a", birthday=birthday)

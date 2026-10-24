@@ -49,6 +49,7 @@ from eidolon.randomness import Random, secure_random
 from eidolon.clock import Clock, utc_now
 from eidolon.config import DEFAULT_BAILIAN_STT_MODEL, Settings
 from eidolon.corpus import StoryCorpus
+from eidolon.cycles import Cycles
 from eidolon.data_access import Database
 from eidolon.data_package import DataPackages
 from eidolon.embedding import EMBEDDING_TIMEOUT, Embedder, open_embedder
@@ -145,6 +146,8 @@ class Backend:
     """Has characters reach out to users once their time comes."""
     schedules: Schedules
     """Each week's jobs and every producer's schedule, where schedules are on."""
+    cycles: Cycles
+    """Where each user's each character's cycle has her, where cycles are on."""
     world: World | None = None
     """The world setting; None without its data file."""
     corpus: StoryCorpus | None = None
@@ -375,10 +378,11 @@ def build(
         database, clock, lambda: config.schedule_on, idols_of(characters, world), job_list,
         affinities,
     )
+    cycles = Cycles(characters, settings.secret_key, lambda: config.cycles_on)
     engine = ConversationEngine(
         database, store, characters, gift_catalog, memories, titles, clock, retrieval,
         lambda: config.history_turns, world, affinities, config.affinity_judge(), photos,
-        happenings, schedules,
+        happenings, schedules, cycles,
     )
     own_keys = OwnKeys(
         own_llm_service, config, activity, speech, exempting=lambda: config.exempting_keys,
@@ -431,6 +435,7 @@ def build(
         data_packages=DataPackages(database, store, memories, characters, gift_catalog, clock),
         reach_outs=reach_outs,
         schedules=schedules,
+        cycles=cycles,
         world=world,
         corpus=corpus,
         _closers=closers,

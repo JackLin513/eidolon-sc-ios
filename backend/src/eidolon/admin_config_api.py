@@ -24,6 +24,7 @@ from eidolon.config import (
 from eidolon.live_config import (
     AFFINITY,
     CHAT_LLM,
+    CYCLES,
     IMAGE,
     JUDGE,
     JUDGE_THRESHOLDS,
@@ -181,6 +182,13 @@ class ScheduleInput(BaseModel):
     enabled: Any
 
 
+class CyclesInput(BaseModel):
+    """Whether her cycle has a part in how she is, true or false; checked by the live
+    configuration."""
+
+    enabled: Any
+
+
 class ProxyInput(BaseModel):
     """The proxy as the admin saves it: the switch, the address (a password typed into it
     is kept apart, as a key is; empty for none), and a switch for each of the deployer's
@@ -232,6 +240,7 @@ INPUTS: dict[str, type[BaseModel]] = {
     AFFINITY: AffinityInput,
     REACH_OUTS: ReachOutsInput,
     SCHEDULE: ScheduleInput,
+    CYCLES: CyclesInput,
     PROXY: ProxyInput,
     SERVICE_STATUS: ServiceStatusInput,
 }

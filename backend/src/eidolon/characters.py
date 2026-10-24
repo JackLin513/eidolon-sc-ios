@@ -7,6 +7,8 @@ the file, plus the speaker names her lines carry in the story corpus. Adding a
 character or replacing a voice is a configuration change. The sheets, facts,
 avatars and backgrounds are committed with the configuration (ADR-0003).
 
+She has her age in the original (`age`), a whole number, as her character facts tell it.
+
 Optionally, she also names her idol in the original (`idol_id`, as in the Spine
 mirror's `spine_manifest.json`) and the outfit her stand wears unless the user picks
 another (`default_outfit`, e.g. `stand/1030010010`). The stands themselves are not
@@ -134,6 +136,9 @@ class Character:
     birthday: Birthday
     """Her birthday in the original; February 29 falls on February 28 in a year without it,
     as the producer's does (`producer.is_birthday`)."""
+    age: int
+    """Her age in the original, as her character facts tell it; whether she is under 18 is
+    what her cycle goes by (`cycles`), and nothing else."""
     background: Path | None = None
     """The picture behind her call screen; None shows a gradient of her image colour."""
     scsp_avatar: Path | None = None
@@ -233,6 +238,13 @@ def _parse_character(
             f"现在是 {entry['birthday']!r}"
         )
 
+    age = entry.get("age")
+    # bool is an int in Python, but `age = true` is a mistake all the same.
+    if type(age) is not int or age <= 0:
+        raise CharacterConfigError(
+            f"角色 {label} 的 age 应为她在原作里的年龄（正整数，和角色资料一致），现在是 {age!r}"
+        )
+
     sheet_path = base / entry["sheet"]
     try:
         sheet = sheet_path.read_text(encoding="utf-8").strip()
@@ -292,6 +304,7 @@ def _parse_character(
         avatar=avatar,
         color=entry["color"].lower(),
         birthday=Birthday(int(birthday[1]), int(birthday[2])),
+        age=age,
         background=background,
         scsp_avatar=scsp_avatar,
         speakers=tuple(speakers),
