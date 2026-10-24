@@ -19,6 +19,10 @@ struct SettingsView: View {
     @State private var embeddingModel = ""
     @State private var rerankModel = ""
     @State private var retrievalAPIKey = ""
+    @State private var sonioxAPIKey = ""
+    @State private var sonioxModel = "stt-rt-v5"
+    @State private var fishAPIKey = ""
+    @State private var fishModel = "s2.1-pro-free"
     @State private var saveError: String?
     @State private var savedNotice = false
     @State private var reachOutHours = 6
@@ -98,6 +102,25 @@ struct SettingsView: View {
                     Text("检索（向量化与重排）")
                 } footer: {
                     Text("内容包的向量是用 Qwen3-Embedding-0.6B 算的，换模型需要重新向量化并重新导出内容包。没有密钥时不做检索。")
+                }
+
+                Section {
+                    SecureField("Soniox 密钥", text: $sonioxAPIKey)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("识别模型（默认 stt-rt-v5）", text: $sonioxModel)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    SecureField("Fish Audio 密钥", text: $fishAPIKey)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("语音模型（默认 s2.1-pro-free）", text: $fishModel)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                } header: {
+                    Text("通话")
+                } footer: {
+                    Text("Soniox 负责实时识别你说的话，Fish Audio 负责她的声音。密钥保存在钥匙串。")
                 }
 
                 Section {
@@ -258,6 +281,10 @@ struct SettingsView: View {
         embeddingModel = settings.embeddingModel
         rerankModel = settings.rerankModel
         retrievalAPIKey = settings.retrievalAPIKey
+        sonioxAPIKey = settings.sonioxAPIKey
+        sonioxModel = settings.sonioxModel
+        fishAPIKey = settings.fishAPIKey
+        fishModel = settings.fishModel
         reachOutHours = settings.reachOutHours
         tracingEnabled = settings.tracingEnabled
         traceRetention = settings.traceRetention
@@ -288,7 +315,11 @@ struct SettingsView: View {
             retrievalAPIKey: retrievalAPIKey,
             reachOutHours: reachOutHours,
             tracingEnabled: tracingEnabled,
-            traceRetention: traceRetention
+            traceRetention: traceRetention,
+            sonioxAPIKey: sonioxAPIKey,
+            sonioxModel: sonioxModel,
+            fishAPIKey: fishAPIKey,
+            fishModel: fishModel
         )
         do {
             try app.saveChatSettings(settings)

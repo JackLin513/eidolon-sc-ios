@@ -62,7 +62,10 @@ public enum CallEnd: Sendable, Hashable {
 
 public enum CallEvent: Sendable, Hashable {
     case state(CallState)
-    /// What the producer said, as recognized.
+    /// What the producer is saying, as the recognizer revises it; each replaces the last,
+    /// and an empty one clears it.
+    case hearing(String)
+    /// What the producer said, when the recognizer found the end of it.
     case recognized(String)
     /// One of her segments, for the subtitle. Delivery cues are stripped.
     case segment(index: Int, ja: String, zh: String)
@@ -201,8 +204,13 @@ public actor CallSession {
             do {
                 for try await event in setup.recognition.listen(audio) {
                     if finished || Task.isCancelled { return }
-                    if case let .final(text) = event {
+                    switch event {
+                    case let .partial(text):
+                        let saying = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !saying.isEmpty { emit(.hearing(saying)) }
+                    case let .final(text):
                         let said = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        emit(.hearing(""))
                         if !said.isEmpty { heard(said) }
                     }
                 }

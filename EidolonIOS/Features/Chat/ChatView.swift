@@ -10,6 +10,7 @@ struct ChatView: View {
     @State private var store: ChatStore?
     @State private var didAutoSend = false
     @State private var showHistory = false
+    @State private var showCall = false
 
     var body: some View {
         Group {
@@ -38,6 +39,14 @@ struct ChatView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    showCall = true
+                } label: {
+                    Image(systemName: "phone")
+                }
+                .disabled(store?.readOnly == true || store?.affinity.cooling == true)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
                     showHistory = true
                 } label: {
                     Image(systemName: "clock.arrow.circlepath")
@@ -54,6 +63,10 @@ struct ChatView: View {
                     }
                 }
             }
+        }
+        .fullScreenCover(isPresented: $showCall) {
+            CallView(character: character)
+                .environment(app)
         }
         .sheet(isPresented: $showHistory) {
             NavigationStack {
@@ -73,6 +86,7 @@ struct ChatView: View {
             autoSendIfRequested(created)
             #if DEBUG
             if app.debugShowsHistory { showHistory = true }
+            if app.debugOpensCall, !created.readOnly { showCall = true }
             #endif
         }
     }
