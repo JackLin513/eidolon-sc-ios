@@ -731,7 +731,7 @@ class ConversationEngine:
                 self._now_prompt(
                     character, profile, now, timezone,
                     "in_call" if in_call is not None else "typing", affinity_lines, last_contact,
-                    her_jobs, self._her_day(conversation, now, timezone),
+                    her_jobs, await self._her_day(conversation, now, timezone),
                 ),
                 *([about_photo] if about_photo else []),
             ],
@@ -873,7 +873,7 @@ class ConversationEngine:
                 self._now_prompt(
                     character, profile, now, timezone, "apart",
                     affinity_prompt(affinity.tier, None) if affinity is not None else [],
-                    last_contact, her_jobs, self._her_day(conversation, now, timezone),
+                    last_contact, her_jobs, await self._her_day(conversation, now, timezone),
                 ),
             ],
             [*([memories] if memories else []), REACH_OUT_RULES],
@@ -1098,12 +1098,14 @@ class ConversationEngine:
             *cycle_lines(her_day),
         ])
 
-    def _her_day(self, conversation: Conversation, now: datetime, timezone: str) -> HerDay:
+    async def _her_day(
+        self, conversation: Conversation, now: datetime, timezone: str
+    ) -> HerDay:
         """Where her cycle has her today in the producer's `timezone`; neither without
         cycles."""
         if self._cycles is None:
             return None
-        return self._cycles.her_day(
+        return await self._cycles.her_day(
             conversation.user_id, conversation.character_id, now, timezone
         )
 

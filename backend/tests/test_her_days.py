@@ -1,7 +1,7 @@
 """How she feels where her cycle has her (GLOSSARY.md「周期」): in her period and the days
 before it, what she is told of now (「此刻」) ends, after her jobs, with how she feels by the
-day and how she keeps it to herself; on her other days, or while the deployment has cycles
-off, nothing. Typing, in a call and reaching out alike; never in what her photos are
+day and how she keeps it to herself; on her other days, or while the deployment or the user
+has cycles off, nothing. Typing, in a call and reaching out alike; never in what her photos are
 prompted with.
 
 Driven through the backend's external API. Where she is is found with her true cycle
@@ -32,6 +32,7 @@ from tests.fakes import (
 from tests.test_admin_commands import user_id
 from tests.test_admin_users import ADMIN, admin_beside
 from tests.test_calendar import REPLY, told_now
+from tests.test_cycles_switch import switch
 from tests.test_call_turns import MANO_REPLY, NOW, CallUnderTest, spoken
 from tests.test_photos import IMAGE, WORDS, asking, photo_events, settled
 from tests.test_reach_outs import backend_of, last_contact
@@ -224,6 +225,22 @@ async def test_the_admin_console_turning_cycles_off_overrides_env(
 
     assert turned_off.status_code == 200
     assert not any(words in told for words in NOTHING_OF_IT)
+
+
+async def test_with_the_user_turning_cycles_off_she_is_told_nothing_of_it_till_it_is_on_again(
+    make_client: ClientFactory, settings: Settings
+):
+    llm = FakeLLM(REPLY, REPLY)
+    client = on_a_day(make_client, settings, in_period(early=True), llm)
+
+    await switch(client, False)
+    told_off = await told_now(client, llm)
+    await switch(client, True)
+    told_on_again = await told_now(client, llm)
+
+    assert not any(words in told_off for words in NOTHING_OF_IT)
+    now, *_ = told_on_again.split("\n\n")
+    assert now.endswith(f"\n{PERIOD_EARLY}\n{IN_PERIOD}")
 
 
 async def test_in_a_call_she_is_told_it_too(make_client: ClientFactory, settings: Settings):

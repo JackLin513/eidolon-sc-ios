@@ -453,6 +453,8 @@ export type SignInMethod = { provider: Provider; display_name: string; email: st
  * towards no limit (GLOSSARY.md「免限额密钥」), in the order of `OWN_SERVICES`; at least one.
  * `reach_outs`: the user's own switch for reach-outs (GLOSSARY.md「搭话」); null where the deployer
  * has them off.
+ * `cycles`: the user's own switch for cycles (GLOSSARY.md「周期」); null where the deployer has them
+ * off.
  * `sponsor_version`: the version of the deployer's sponsor code (GLOSSARY.md「赞赏」), when it was
  * uploaded, for `sponsorImageUrl`; null when users are not shown it (switched off, or no code). */
 export type Account = {
@@ -462,6 +464,7 @@ export type Account = {
   is_admin: boolean;
   exempting_keys: OwnService[];
   reach_outs: boolean | null;
+  cycles: boolean | null;
   sponsor_version: string | null;
 };
 
@@ -481,6 +484,18 @@ export async function getAccount(): Promise<Account> {
 export async function switchReachOuts(on: boolean): Promise<void> {
   await expectNoContent(
     await api("/api/account/reach-outs", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ on }),
+    }),
+  );
+}
+
+/** Turn the user's own switch for cycles on or off, for all the characters; refused where the deployer
+ * has them off. */
+export async function switchCycles(on: boolean): Promise<void> {
+  await expectNoContent(
+    await api("/api/account/cycles", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ on }),

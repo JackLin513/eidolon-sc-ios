@@ -378,7 +378,7 @@ def build(
         database, clock, lambda: config.schedule_on, idols_of(characters, world), job_list,
         affinities,
     )
-    cycles = Cycles(characters, settings.secret_key, lambda: config.cycles_on)
+    cycles = Cycles(database, characters, settings.secret_key, lambda: config.cycles_on)
     engine = ConversationEngine(
         database, store, characters, gift_catalog, memories, titles, clock, retrieval,
         lambda: config.history_turns, world, affinities, config.affinity_judge(), photos,

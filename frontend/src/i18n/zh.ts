@@ -552,13 +552,14 @@ export const zh = {
   settings: {
     title: "设置",
     loading: "正在读取…",
-    /** 设置一级的十类，也是各自二级页首的名字。「登录与数据」不叫「账号」：GLOSSARY 把它列为避免的说法。 */
+    /** 设置一级的十一类，也是各自二级页首的名字。「登录与数据」不叫「账号」：GLOSSARY 把它列为避免的说法。 */
     categories: {
       profile: "档案",
       memories: "记忆",
       stats: "统计",
       call: "通话",
       "reach-outs": "搭话",
+      cycles: "周期",
       appearance: "外观",
       "own-keys": "自带密钥",
       "sign-in": "登录与数据",
@@ -578,6 +579,8 @@ export const zh = {
       scspAvatarsOff: "SCSP 头像关",
       reachOutsOn: "开",
       reachOutsOff: "关",
+      cyclesOn: "开",
+      cyclesOff: "关",
       ownKeysNone: "全部用部署者的服务",
       ownKeys: (services: string) => `已填 ${services}`,
     },
@@ -683,6 +686,10 @@ export const zh = {
     },
     reachOuts: {
       on: "她们会主动搭话",
+    },
+    cycles: {
+      on: "她们的周期",
+      hint: "关掉后她不受周期影响，玩法里不显示周期；记录会留着。",
     },
     appearance: {
       scspAvatars: "SCSP 头像",
@@ -1369,6 +1376,10 @@ export const zh = {
           title: "日程",
           hint: "打开后，日历里每周发布一批工作，用户排进角色的一周，角色知道并说起；排给她的工作做完了，好感度上升（好感度关着时不加）。关掉时日历只有月视图，角色不再说起日程，已排的原样留着，再打开接着用。保存后从下一次读取起生效。",
         },
+        cycles: {
+          title: "周期",
+          hint: "打开后，每位用户的每位角色各有一个周期，经前、经期她的言行、好感度、挂断和暖的礼物跟着变；用户可以在设置里自己关。关掉时周期照走，再打开她还在本来的位置。保存后从下一个回合起生效。",
+        },
         proxy: {
           title: "网络代理",
           hint: "打开的服务经过这个代理连服务商，其余的直连；用户自带的密钥和部署者的分开选。保存前把换了路线的部署者服务按新路线各连一次，有一项不通就不保存。保存后从下一次请求起生效，进行中的回合和通话也是；已经连上的语音连接不断。",
@@ -1431,6 +1442,7 @@ export const zh = {
         chat_llm: { reasoning_effort: "文字的思考强度" },
         reach_outs: { enabled: "搭话", per_day: "每位用户每天最多几次" },
         schedule: { enabled: "日程" },
+        cycles: { enabled: "周期" },
         proxy: {
           enabled: "代理",
           url: "代理地址",

@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import {
   AboutIcon,
   AppearanceIcon,
+  CyclesIcon,
   DataPackageIcon,
   MemoriesIcon,
   OwnKeysIcon,
@@ -32,6 +33,7 @@ const ICONS = {
   stats: StatsIcon,
   call: PhoneIcon,
   "reach-outs": ReachOutsIcon,
+  cycles: CyclesIcon,
   appearance: AppearanceIcon,
   "own-keys": OwnKeysIcon,
   "sign-in": SignInIcon,
@@ -40,7 +42,7 @@ const ICONS = {
 };
 
 /**
- * 设置（DESIGN.md「设置页」）：一级是十类的列表，分四组、组间一条分隔线（部署者没开搭话时没有「搭话」，九类）；二级是一类的页面（`/settings/<类别>`），没有三级。
+ * 设置（DESIGN.md「设置页」）：一级是十一类的列表，分四组、组间一条分隔线（部署者没开搭话时没有「搭话」，没开周期时没有「周期」）；二级是一类的页面（`/settings/<类别>`），没有三级。
  * 部署者开着赞赏（GLOSSARY.md「赞赏」）时，最后一组「关于」上面多一行「赞赏」，不是一类、没有二级，点了放大收款码。
  * - 电脑：导航栏右边第二栏 320px 的一级列表，顶上「设置」大标题，当前那一类铺中性底色、不带 ›（网址就是这一类时才标 `aria-current`）；右栏是这一类的二级页面。
  *   只打开 `/settings` 时右栏是档案，档案是当前项。
@@ -78,7 +80,7 @@ function SettingsLevels({ children }: { children: ReactNode }) {
           <h1 className="text-list-title">{t.title}</h1>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto pb-4">
-          {settingsGroups(account?.reach_outs ?? null).map((group, i) => (
+          {settingsGroups({ reachOuts: account?.reach_outs ?? null, cycles: account?.cycles ?? null }).map((group, i) => (
             <Fragment key={group[0]}>
               {i > 0 && <Separator className="my-1" />}
               <ul>

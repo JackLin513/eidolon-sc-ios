@@ -3,18 +3,25 @@ her true cycle (`her_cycle`) on the producer's calendar day, unless the deployme
 user has turned cycles off, when it has no part in how she is; and what she is told of it
 in what she is told of now (「此刻」, `cycle_lines`).
 
+The user's own switch (`switch`) is on by default, kept on the server so that it holds on
+every device, for all the characters; it cannot be set while the deployment has cycles off.
+Her cycle goes on all the same while either is off: turned on again, she is where she would
+have been.
+
 Where she is is told to her prompts alone: no route, the admin console, the dashboard nor
 the activity records ever show it.
 
 In development (`EIDOLON_DEV_LOGIN=1`), where she is may be forced for a user's character
 (`force`): kept in memory, gone as the server restarts; the switches still hold."""
 
+import sqlite3
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Literal
 
 from eidolon.characters import Character
+from eidolon.data_access import Database
 from eidolon.her_cycle import HerDay, Period, Premenstrual, cycle_seed, her_day, rhythm
 from eidolon.producer import local_date
 
@@ -78,6 +85,18 @@ def cycle_lines(today: HerDay) -> list[str]:
     return []
 
 
+_SCHEMA = """
+-- The users who have turned cycles off, by their own switch; on for all the others.
+CREATE TABLE IF NOT EXISTS cycles_off (
+    user_id TEXT PRIMARY KEY REFERENCES users(id)
+);
+"""
+
+
+class CyclesOff(Exception):
+    """The deployment has cycles off: no user's own switch may be set."""
+
+
 Phase = Literal["period", "premenstrual", "neither"]
 
 
@@ -93,31 +112,31 @@ class Forced:
 class Cycles:
     def __init__(
         self,
+        db: Database,
         characters: Mapping[str, Character],
         secret_key: str | None,
         on: Callable[[], bool],
     ) -> None:
         """Her seed is keyed with the deployment's `secret_key`, if any; `on` says whether
         the deployment has cycles on now."""
+        self._db = db
         self._characters = characters
         self._secret_key = secret_key
         self._on = on
         self._forced: dict[tuple[str, str], Forced] = {}
+        db.prepare(_open)
 
-    def her_day(
-        self,
-        user_id: str,
-        character_id: str,
-        at: datetime,
-        timezone: str,
-        user_on: bool = True,
+    async def her_day(
+        self, user_id: str, character_id: str, at: datetime, timezone: str
     ) -> HerDay:
         """Where the user's character is on the producer's day at `at` in `timezone`, their
         effective one: in her period, premenstrual, or neither; neither too, whatever her
-        cycle, while the deployment has cycles off, or the user (`user_on`), or for a
-        character no longer configured."""
+        cycle, while the deployment has cycles off, or the user, or for a character no
+        longer configured."""
         character = self._characters.get(character_id)
-        if not (self._on() and user_on) or character is None:
+        if not self._on() or character is None:
+            return None
+        if not await self._db.read(_switched_on, user_id):
             return None
         seed = cycle_seed(self._secret_key, user_id, character_id)
         day = local_date(at, timezone)
@@ -131,6 +150,20 @@ class Cycles:
             return Premenstrual(forced.day)
         return None
 
+    async def switch_of(self, user_id: str) -> bool | None:
+        """Whether the user has their own switch on, as it is by default; None where the
+        deployment has cycles off."""
+        if not self._on():
+            return None
+        return await self._db.read(_switched_on, user_id)
+
+    async def switch(self, user_id: str, on: bool) -> None:
+        """Switch the user's own switch on or off, for all the characters, from the next
+        turn; raise `CyclesOff` where the deployment has cycles off."""
+        if not self._on():
+            raise CyclesOff
+        await self._db.write(_switch, user_id, on)
+
     def force(self, user_id: str, character_id: str, forced: Forced | None) -> None:
         """Have the user's character be where `forced` says from now on, in development;
         None, where her true cycle has her again."""
@@ -138,3 +171,19 @@ class Cycles:
             self._forced.pop((user_id, character_id), None)
         else:
             self._forced[(user_id, character_id)] = forced
+
+
+def _open(db: sqlite3.Connection) -> None:
+    db.executescript(_SCHEMA)
+
+
+def _switched_on(db: sqlite3.Connection, user_id: str) -> bool:
+    row = db.execute("SELECT 1 FROM cycles_off WHERE user_id = ?", (user_id,)).fetchone()
+    return row is None
+
+
+def _switch(db: sqlite3.Connection, user_id: str, on: bool) -> None:
+    if on:
+        db.execute("DELETE FROM cycles_off WHERE user_id = ?", (user_id,))
+    else:
+        db.execute("INSERT OR IGNORE INTO cycles_off (user_id) VALUES (?)", (user_id,))

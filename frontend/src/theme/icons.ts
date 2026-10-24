@@ -97,9 +97,10 @@ export { Sparkles as DrawIcon, Sparkles as RareIcon } from "lucide-react";
 export { ArrowRight as BecomesIcon } from "lucide-react";
 export { Cookie as FoodIcon, CupSoda as DrinkIcon, Flower2 as FlowerIcon, Gem as TrinketIcon } from "lucide-react";
 
-// 设置一级的十类（档案、记忆、统计、通话用 PhoneIcon、搭话、外观、自带密钥、登录与数据、数据包、关于）和「关于」上面的「赞赏」；「关于」里新标签页打开的链接行尾的外链图标。
+// 设置一级的十一类（档案、记忆、统计、通话用 PhoneIcon、搭话、周期、外观、自带密钥、登录与数据、数据包、关于）和「关于」上面的「赞赏」；「关于」里新标签页打开的链接行尾的外链图标。
 export {
   BookHeart as MemoriesIcon,
+  CalendarSync as CyclesIcon,
   HandHeart as SponsorIcon,
   ChartColumn as StatsIcon,
   CircleUser as ProfileIcon,
