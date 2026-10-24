@@ -24,7 +24,9 @@
 		BBCD2E47044DFC5DAB92ED57 /* CallSettingsError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */; };
 		C375B67690EAE8B5B255A1B3 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1FF6012F255268462E4A685 /* Keychain.swift */; };
 		CABF61FA71D8DD24099824B3 /* ConversationHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */; };
+		CD54EB8286C493A259743A6D /* SpeechPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362E0BAAF16B958F406E1E08 /* SpeechPlayback.swift */; };
 		D080D9792F63EBF71440173B /* EidolonCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0BE53CDEEF5BB1E157A83EC1 /* EidolonCore */; };
+		D87D5EF9B85BB39DEBD561FB /* FishSynthesis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4472CA53E92E225069B1D652 /* FishSynthesis.swift */; };
 		E0F9B1FA2BA982860CDD2BC3 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A72BB12039666C937D7C04 /* RootView.swift */; };
 		FB74EA11C1B5E34D38ED3937 /* ChatStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA937E9DC437925E1DD0673 /* ChatStore.swift */; };
 /* End PBXBuildFile section */
@@ -33,7 +35,9 @@
 		04FF4244E9E83A9501C1F19E /* EidolonCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = EidolonCore; path = EidolonCore; sourceTree = SOURCE_ROOT; };
 		0E396CD6E4C64449524CEC32 /* EidolonIOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = EidolonIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		14A72BB12039666C937D7C04 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		362E0BAAF16B958F406E1E08 /* SpeechPlayback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechPlayback.swift; sourceTree = "<group>"; };
 		38579B2A473B296EC588CBD6 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		4472CA53E92E225069B1D652 /* FishSynthesis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FishSynthesis.swift; sourceTree = "<group>"; };
 		6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallSettingsError.swift; sourceTree = "<group>"; };
 		6DA937E9DC437925E1DD0673 /* ChatStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStore.swift; sourceTree = "<group>"; };
 		730259B31CD6DBF3CA44FC75 /* ChatSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSettings.swift; sourceTree = "<group>"; };
@@ -198,8 +202,10 @@
 			children = (
 				6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */,
 				FCD1CD149AFF0049C2EE0F58 /* DebugRecognition.swift */,
+				4472CA53E92E225069B1D652 /* FishSynthesis.swift */,
 				D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */,
 				E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */,
+				362E0BAAF16B958F406E1E08 /* SpeechPlayback.swift */,
 			);
 			path = Call;
 			sourceTree = "<group>";
@@ -278,6 +284,7 @@
 				9DE409627BE4363A227DD407 /* ConversationListView.swift in Sources */,
 				0EFF31521A69C5A7C7949BCB /* DebugRecognition.swift in Sources */,
 				27EE9A61F1EA6DD131D5D03F /* EidolonIOSApp.swift in Sources */,
+				D87D5EF9B85BB39DEBD561FB /* FishSynthesis.swift in Sources */,
 				03D1D9AFAE21C9348078853C /* ImportGuideView.swift in Sources */,
 				C375B67690EAE8B5B255A1B3 /* Keychain.swift in Sources */,
 				9221A0F68F374BAAA5282CCE /* MemoryListView.swift in Sources */,
@@ -285,6 +292,7 @@
 				E0F9B1FA2BA982860CDD2BC3 /* RootView.swift in Sources */,
 				B2DF1A14F646EDBA6EAECF48 /* SettingsView.swift in Sources */,
 				50FF16442DF243C8411FF741 /* SonioxRecognition.swift in Sources */,
+				CD54EB8286C493A259743A6D /* SpeechPlayback.swift in Sources */,
 				791DD675A29C48B88185FACE /* Theme.swift in Sources */,
 				28E1D1F65D00588EA9601DA3 /* TraceListView.swift in Sources */,
 			);

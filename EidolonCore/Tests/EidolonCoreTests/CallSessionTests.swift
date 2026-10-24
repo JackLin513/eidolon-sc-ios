@@ -50,6 +50,8 @@ final class FakeRecognition: SpeechRecognition, @unchecked Sendable {
     private let lock = NSLock()
     private var steps: [Step]
     private var live: AsyncThrowingStream<SpeechEvent, Error>.Continuation?
+    /// What was said before the call was listening yet.
+    private var backlog: [SpeechEvent] = []
     private(set) var calls = 0
 
     init(_ steps: [Step] = []) {
@@ -65,25 +67,56 @@ final class FakeRecognition: SpeechRecognition, @unchecked Sendable {
             switch step {
             case let .events(events):
                 for event in events { continuation.yield(event) }
-                self.lock.lock()
-                self.live = continuation
-                self.lock.unlock()
+                self.attach(continuation)
             case .fail:
                 continuation.finish(throwing: URLError(.networkConnectionLost))
             case .hang:
-                self.lock.lock()
-                self.live = continuation
-                self.lock.unlock()
+                self.attach(continuation)
             }
         }
+    }
+
+    private func attach(_ continuation: AsyncThrowingStream<SpeechEvent, Error>.Continuation) {
+        lock.lock()
+        live = continuation
+        let backlog = self.backlog
+        self.backlog = []
+        lock.unlock()
+        for event in backlog { continuation.yield(event) }
     }
 
     /// What the producer says into the live listening stream.
     func say(_ text: String) {
         lock.lock()
-        let live = self.live
+        if let live {
+            lock.unlock()
+            live.yield(.final(text))
+            return
+        }
+        backlog.append(.final(text))
         lock.unlock()
-        live?.yield(.final(text))
+    }
+}
+
+/// What happened in what order, across the fakes that voice and play.
+final class Timeline: @unchecked Sendable {
+    private let lock = NSLock()
+    private var entries: [String] = []
+
+    func add(_ entry: String) {
+        lock.lock()
+        entries.append(entry)
+        lock.unlock()
+    }
+
+    var all: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return entries
+    }
+
+    func index(of entry: String) -> Int? {
+        all.firstIndex(of: entry)
     }
 }
 
@@ -92,6 +125,7 @@ final class FakeSynthesis: SpeechSynthesis, @unchecked Sendable {
     private var spoken: [String] = []
     var failing: (String) -> Bool = { _ in false }
     var delay: Duration?
+    var timeline: Timeline?
 
     var texts: [String] {
         lock.lock()
@@ -100,9 +134,11 @@ final class FakeSynthesis: SpeechSynthesis, @unchecked Sendable {
     }
 
     func synthesize(_ text: String, voice: CallVoice) async throws -> Data {
+        timeline?.add("synth-start:\(text)")
         let (fails, delay) = record(text)
         if let delay { try await Task.sleep(for: delay) }
         if fails { throw URLError(.cannotConnectToHost) }
+        timeline?.add("synth-end:\(text)")
         return Data(text.utf8)
     }
 
@@ -119,6 +155,7 @@ final class FakePlayback: AudioPlayback, @unchecked Sendable {
     private var played: [Data] = []
     private(set) var stopped = false
     var delay: Duration?
+    var timeline: Timeline?
 
     var audio: [Data] {
         lock.lock()
@@ -127,8 +164,11 @@ final class FakePlayback: AudioPlayback, @unchecked Sendable {
     }
 
     func play(_ audio: Data) async throws {
+        let text = String(decoding: audio, as: UTF8.self)
+        timeline?.add("play-start:\(text)")
         if let delay { try await Task.sleep(for: delay) }
         record(audio)
+        timeline?.add("play-end:\(text)")
     }
 
     func stop() async {
@@ -439,6 +479,74 @@ final class CallSessionTests: XCTestCase {
             log.states().contains(.speaking)
         }
         await session.hangUp()
+    }
+
+    func testTheNextSegmentIsSynthesizedWhileTheCurrentOnePlays() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>一つ目</ja><zh>第一句</zh>", "<ja>二つ目</ja><zh>第二句</zh>"],
+        ])
+        let timeline = Timeline()
+        let synthesis = FakeSynthesis()
+        synthesis.timeline = timeline
+        let playback = FakePlayback()
+        playback.timeline = timeline
+        playback.delay = .milliseconds(300)
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            synthesis: synthesis,
+            playback: playback
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("both segments played") { playback.audio.count == 2 }
+
+        let entries = timeline.all
+        let synthStart = try XCTUnwrap(entries.firstIndex(of: "synth-start:二つ目"))
+        let playStart = try XCTUnwrap(entries.firstIndex(of: "play-start:一つ目"))
+        let playEnd = try XCTUnwrap(entries.firstIndex(of: "play-end:一つ目"))
+        XCTAssertGreaterThan(synthStart, playStart, "the next segment is prefetched while the first plays")
+        XCTAssertLessThan(synthStart, playEnd, "the prefetch starts before the first segment finishes")
+        XCTAssertEqual(playback.audio.map { String(decoding: $0, as: UTF8.self) }, ["一つ目", "二つ目"])
+        await session.hangUp()
+    }
+
+    func testThePrefetchedSegmentIsDroppedOnHangUp() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>一つ目</ja><zh>第一句</zh>", "<ja>二つ目</ja><zh>第二句</zh>"],
+        ])
+        let synthesis = FakeSynthesis()
+        synthesis.delay = .milliseconds(200)
+        let playback = FakePlayback()
+        playback.delay = .milliseconds(400)
+        let (session, _, capture) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            synthesis: synthesis,
+            playback: playback
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("the first segment plays") { await session.currentState() == .speaking }
+        await session.hangUp()
+        try await waitFor("ended") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+        let stopped = capture.stopped
+        XCTAssertTrue(stopped)
+        XCTAssertTrue(playback.stopped)
+        let played = playback.audio.count
+        try? await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(playback.audio.count, played, "nothing is played after hanging up")
     }
 
     func testASegmentThatCannotBeVoicedIsSkipped() async throws {

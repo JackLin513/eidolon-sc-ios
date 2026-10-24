@@ -112,9 +112,9 @@ final class AppModel {
         let (capture, recognition) = callAudio()
         let setup = CallSetup(
             capture: capture,
-            playback: SilentPlayback(),
+            playback: SpeechPlayback(),
             recognition: recognition,
-            synthesis: UnvoicedSynthesis(),
+            synthesis: speechSynthesis(),
             voiceModel: chatSettings.fishModel,
             provider: provider,
             judge: judgeProvider,
@@ -139,6 +139,12 @@ final class AppModel {
             MicrophoneCapture(),
             SonioxRecognition(apiKey: chatSettings.sonioxAPIKey, model: chatSettings.sonioxModel)
         )
+    }
+
+    /// Without a Fish Audio key her words are subtitles only (ADR-0011).
+    private func speechSynthesis() -> any SpeechSynthesis {
+        guard !chatSettings.fishAPIKey.isEmpty else { return UnvoicedSynthesis() }
+        return FishSynthesis(apiKey: chatSettings.fishAPIKey)
     }
 
     func saveProducerProfile(_ profile: ProducerProfile) async throws {

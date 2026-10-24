@@ -149,6 +149,10 @@ public actor CallSession {
     private var captions: [Int: (ja: String, zh: String)] = [:]
     private var lastFinalized = -1
     private var queue: [(index: Int, speech: String)] = []
+    /// The segment after the one playing, being made while it plays.
+    private var prefetch: (index: Int, task: Task<Data, Error>)?
+    /// The segment whose audio is playing, if any.
+    private var speakingIndex: Int?
     private var speaking: Task<Void, Never>?
     private var turnActive = false
 
@@ -339,6 +343,7 @@ public actor CallSession {
             if !spoken.isEmpty {
                 queue.append((index: index, speech: spoken))
                 ensureSpeaking()
+                startPrefetch()
             }
         }
     }
@@ -351,24 +356,53 @@ public actor CallSession {
     }
 
     /// Voices the queued segments one at a time; one that cannot be voiced is skipped.
+    /// The next one is made while the current one plays, so the gap between them stays
+    /// short (ADR-0011).
     private func drain() async {
         while !finished, !Task.isCancelled, !queue.isEmpty {
             let item = queue.removeFirst()
             setState(.speaking)
             do {
-                let audio = try await setup.synthesis.synthesize(item.speech, voice: voice)
+                let audio: Data
+                if let held = prefetch, held.index == item.index {
+                    audio = try await held.task.value
+                    if prefetch?.index == held.index { prefetch = nil }
+                } else {
+                    audio = try await setup.synthesis.synthesize(item.speech, voice: voice)
+                }
                 if finished || Task.isCancelled { break }
+                speakingIndex = item.index
+                startPrefetch()
                 try await setup.playback.play(audio)
             } catch is CancellationError {
                 break
             } catch {
                 // This segment is lost; the reply goes on.
             }
+            speakingIndex = nil
         }
+        prefetch?.task.cancel()
+        prefetch = nil
         speaking = nil
         if !finished, !Task.isCancelled {
             goOn()
         }
+    }
+
+    /// Starts making the next segment while the current one plays, unless there is
+    /// nothing next yet; `finalize` calls this again when a later segment arrives.
+    private func startPrefetch() {
+        guard prefetch == nil, speakingIndex != nil, !finished, !Task.isCancelled,
+              let next = queue.first
+        else {
+            return
+        }
+        let text = next.speech
+        let voice = voice
+        let synthesis = setup.synthesis
+        prefetch = (next.index, Task.detached {
+            try await synthesis.synthesize(text, voice: voice)
+        })
     }
 
     // MARK: - Ending
@@ -379,6 +413,8 @@ public actor CallSession {
         for task in tasks { task.cancel() }
         turnTask?.cancel()
         speaking?.cancel()
+        prefetch?.task.cancel()
+        prefetch = nil
         await setup.capture.stop()
         await setup.playback.stop()
         record(reason)

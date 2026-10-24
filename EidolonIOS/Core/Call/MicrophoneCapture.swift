@@ -12,15 +12,20 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
     private var running = false
 
     func start() async throws {
+        guard await Self.microphoneAllowed() else {
+            throw CaptureError.notPermitted
+        }
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(
             .playAndRecord,
             mode: .voiceChat,
             options: [.defaultToSpeaker, .allowBluetoothHFP]
         )
-        try session.setActive(true)
-        guard await Self.microphoneAllowed() else {
-            throw CaptureError.notPermitted
+        // Activation can wait on the route; the asynchronous form does not hold the call.
+        if #available(iOS 27.0, *) {
+            try await session.activate(options: [])
+        } else {
+            try session.setActive(true)
         }
 
         let input = engine.inputNode
@@ -49,7 +54,12 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
             engine.inputNode.removeTap(onBus: 0)
         }
         continuation?.finish()
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        let session = AVAudioSession.sharedInstance()
+        if #available(iOS 27.0, *) {
+            try? await session.deactivate(options: .notifyOthersOnDeactivation)
+        } else {
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 
     func chunks() -> AsyncThrowingStream<Data, Error> {
