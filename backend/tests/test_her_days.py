@@ -14,6 +14,7 @@ from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import httpx
 import pytest
 
 from eidolon.config import Settings
@@ -114,6 +115,22 @@ def premenstrual(near: bool) -> Callable[[HerDay], bool]:
     return lambda d: isinstance(d, Premenstrual) and (d.days_left <= 2) == near
 
 
+def on_a_day(
+    make_client: ClientFactory,
+    settings: Settings,
+    wanted: Callable[[HerDay], bool],
+    llm: FakeLLM,
+    deployment: Settings | None = None,
+    **services,
+) -> httpx.AsyncClient:
+    """A client of the producer's on a noon Mano is where `wanted`, signed in then, so that
+    their session has not run out by it; the deployment as `settings` has it unless
+    `deployment` is given."""
+    make_client(FakeLLM())  # the producer, signed up
+    clock = FakeClock(a_noon_when(settings, wanted))
+    return make_client(llm, clock=clock, settings=deployment or settings, **services)
+
+
 async def told_on(
     make_client: ClientFactory,
     settings: Settings,
@@ -123,9 +140,7 @@ async def told_on(
     """What she is told of now in a typed turn on a day she is where `wanted`, the deployment
     as `settings` has it unless `deployment` is given."""
     llm = FakeLLM(REPLY)
-    clock = FakeClock(START)
-    client = make_client(llm, clock=clock, settings=deployment or settings)
-    clock.now = a_noon_when(settings, wanted)
+    client = on_a_day(make_client, settings, wanted, llm, deployment)
     return await told_now(client, llm)
 
 
@@ -198,9 +213,10 @@ async def test_the_admin_console_turning_cycles_off_overrides_env(
     make_client: ClientFactory, settings: Settings, github: FakeIdentityProvider
 ):
     llm = FakeLLM(REPLY)
-    clock = FakeClock(START)
-    client = make_client(llm, clock=clock, settings=replace(settings, admins=frozenset({ADMIN})))
-    clock.now = a_noon_when(settings, in_period(early=True))
+    client = on_a_day(
+        make_client, settings, in_period(early=True), llm,
+        replace(settings, admins=frozenset({ADMIN})),
+    )
 
     async with admin_beside(client, github) as admin:
         turned_off = await admin.put("/api/admin/config/cycles", json={"enabled": False})
@@ -252,12 +268,11 @@ async def test_what_her_photos_are_prompted_with_tells_nothing_of_it(
 ):
     image = FakeImageService()
     llm = FakeLLM([f"<photo>\nshot: selfie\nframing: upper body\n</photo>{WORDS}"])
-    clock = FakeClock(START)
-    client = make_client(
-        llm, clock=clock, clients=asking(), image_transport=image.transport(),
-        settings=replace(settings, image=IMAGE, judge=FAKE_JUDGE, affinity_and_gifts=False),
+    client = on_a_day(
+        make_client, settings, in_period(early=True), llm,
+        replace(settings, image=IMAGE, judge=FAKE_JUDGE, affinity_and_gifts=False),
+        clients=asking(), image_transport=image.transport(),
     )
-    clock.now = a_noon_when(settings, in_period(early=True))
     conversation = await start_conversation(client)
 
     [photo] = photo_events(await send_turn(client, conversation, "发张自拍给我看看"))

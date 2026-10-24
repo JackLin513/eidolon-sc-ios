@@ -11,7 +11,7 @@ import pytest
 
 from eidolon.config import Settings
 from tests.conftest import ClientFactory
-from tests.fakes import FakeClock, FakeLLM
+from tests.fakes import FakeLLM
 from tests.test_calendar import REPLY, told_now
 from tests.test_her_days import (
     BEFORE_IT,
@@ -19,9 +19,8 @@ from tests.test_her_days import (
     NOTHING_OF_IT,
     PERIOD_LATE,
     PREMENSTRUAL_NEAR,
-    START,
-    a_noon_when,
     in_period,
+    on_a_day,
 )
 
 FORCE = "/api/dev/cycles/mano"
@@ -37,9 +36,7 @@ async def test_forced_she_is_told_how_she_feels_there_until_cleared(
     make_client: ClientFactory, settings: Settings
 ):
     llm = FakeLLM(*[REPLY] * 4)
-    clock = FakeClock(START)
-    client = make_client(llm, clock=clock)
-    clock.now = a_noon_when(settings, lambda d: d is None)
+    client = on_a_day(make_client, settings, lambda d: d is None, llm)
 
     in_her_period = await client.put(FORCE, json={"phase": "period", "day": 3})
     told_in_period = await told_now(client, llm)
@@ -59,9 +56,7 @@ async def test_forced_to_neither_she_is_told_nothing_in_her_true_period(
     make_client: ClientFactory, settings: Settings
 ):
     llm = FakeLLM(REPLY)
-    clock = FakeClock(START)
-    client = make_client(llm, clock=clock)
-    clock.now = a_noon_when(settings, in_period(early=True))
+    client = on_a_day(make_client, settings, in_period(early=True), llm)
 
     await client.put(FORCE, json={"phase": "neither"})
     told = await told_now(client, llm)
