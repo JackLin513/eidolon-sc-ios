@@ -15,3 +15,11 @@
 - [ ] 本地构建版上用 Playwright 看：设置里开关能切、一级列表跟着变；后台关掉后设置里的「周期」消失
 - [ ] 类型检查、lint 过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
 - [ ] 票收尾：推一次让 CI 跑、跑 `code-review`
+
+## Comments
+
+### 票 01 交接
+
+- 入口 `Cycles.her_day(..., user_on: bool = True)` 已留参数位，现在没人传；这张票把用户开关读出来传进去（引擎的 `ConversationEngine._her_day` 是唯一调用处）。
+- 实时配置项名 `cycles`（`live_config.CYCLES`、`config.cycles_on`），字段 `{"enabled": bool}`，后台接口已能读写；前端 `adminConfig.ts` 的「限额与玩法」还没有这张卡。
+- `.env.example` 已写「后台配置页『周期』卡可以改」，这张票做完卡才对得上。

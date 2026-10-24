@@ -51,8 +51,8 @@ PREMENSTRUAL_DAYS = (3, 4, 5)
 (ADR-0029)."""
 
 SEED_INFO = b"eidolon cycles"
-"""What the key seeds are made with is derived from the secret key with. Frozen
-(ADR-0029)."""
+"""What the key her seeds are made with is derived from the secret key with (HKDF's info).
+Frozen (ADR-0029)."""
 
 
 @dataclass(frozen=True)
@@ -82,7 +82,8 @@ class Rhythm:
 
     base_cycle: int
     base_period: int
-    premenstrual: int
+    premenstrual_days: int
+    """How many days before each period she is premenstrual."""
     offset: int
     """How many days before the epoch her 0th cycle begins, below her base cycle."""
 
@@ -116,7 +117,7 @@ def rhythm(seed: bytes) -> Rhythm:
     return Rhythm(
         base_cycle=base_cycle,
         base_period=_weighted(seed, "base period", 0, BASE_PERIODS),
-        premenstrual=PREMENSTRUAL_DAYS[_number(seed, "premenstrual", 0) % len(PREMENSTRUAL_DAYS)],
+        premenstrual_days=PREMENSTRUAL_DAYS[_number(seed, "premenstrual", 0) % len(PREMENSTRUAL_DAYS)],
         offset=_number(seed, "offset", 0) % base_cycle,
     )
 
@@ -124,13 +125,7 @@ def rhythm(seed: bytes) -> Rhythm:
 def cycles(seed: bytes, under_18: bool) -> Iterator[Cycle]:
     """Her cycles from the 0th on, one after another for ever."""
     drawn = rhythm(seed)
-    first_day = EPOCH - timedelta(days=drawn.offset)
-    k = 0
-    while True:
-        cycle = _cycle(seed, under_18, drawn, k, first_day)
-        yield cycle
-        first_day += timedelta(days=cycle.length)
-        k += 1
+    return _cycles_from(seed, under_18, drawn, 0, EPOCH - timedelta(days=drawn.offset))
 
 
 def her_day(seed: bytes, under_18: bool, day: date) -> HerDay:
@@ -141,32 +136,39 @@ def her_day(seed: bytes, under_18: bool, day: date) -> HerDay:
     k = 0
     while day < first_day:
         k -= 1
-        first_day -= timedelta(days=_cycle(seed, under_18, drawn, k).length)
+        first_day -= timedelta(days=_length(seed, under_18, drawn, k))
+    for cycle in _cycles_from(seed, under_18, drawn, k, first_day):
+        into = (day - cycle.first_day).days
+        if into < cycle.period:
+            return Period(into + 1, cycle.period, cycle.first_day)
+        if into < cycle.length:
+            days_left = cycle.length - into
+            return Premenstrual(days_left) if days_left <= drawn.premenstrual_days else None
+    raise AssertionError("her cycles go on for ever")
+
+
+def _cycles_from(
+    seed: bytes, under_18: bool, drawn: Rhythm, k: int, first_day: date
+) -> Iterator[Cycle]:
+    """Her cycles from the `k`th on, which begins on `first_day`."""
     while True:
-        cycle = _cycle(seed, under_18, drawn, k, first_day)
-        if day < first_day + timedelta(days=cycle.length):
-            break
+        cycle = Cycle(first_day, _length(seed, under_18, drawn, k), _period(seed, drawn, k))
+        yield cycle
         first_day += timedelta(days=cycle.length)
         k += 1
-    into = (day - first_day).days
-    if into < cycle.period:
-        return Period(into + 1, cycle.period, first_day)
-    days_left = cycle.length - into
-    return Premenstrual(days_left) if days_left <= drawn.premenstrual else None
 
 
-def _cycle(
-    seed: bytes, under_18: bool, drawn: Rhythm, k: int, first_day: date = EPOCH
-) -> Cycle:
-    """Her `k`th cycle, from `first_day`."""
+def _length(seed: bytes, under_18: bool, drawn: Rhythm, k: int) -> int:
+    """How long her `k`th cycle is."""
     strays = YOUNG_STRAYS if under_18 else ADULT_STRAYS
     length = drawn.base_cycle + _weighted(seed, "cycle", k, strays)
+    return min(max(length, SHORTEST_CYCLE), LONGEST_CYCLE)
+
+
+def _period(seed: bytes, drawn: Rhythm, k: int) -> int:
+    """How long her period is in her `k`th cycle."""
     period = drawn.base_period + _weighted(seed, "period", k, PERIOD_STRAYS)
-    return Cycle(
-        first_day,
-        min(max(length, SHORTEST_CYCLE), LONGEST_CYCLE),
-        min(max(period, SHORTEST_PERIOD), LONGEST_PERIOD),
-    )
+    return min(max(period, SHORTEST_PERIOD), LONGEST_PERIOD)
 
 
 def _weighted(seed: bytes, what: str, k: int, weights: Mapping[int, int]) -> int:

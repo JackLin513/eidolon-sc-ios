@@ -4,19 +4,19 @@ day `day`, premenstrual with `day` days left, or neither, whatever the day; DELE
 where her true cycle has her again. Kept in memory, gone as the server restarts; the
 switches still hold. Without development sign-in, there is no such route."""
 
-from typing import Literal, Self
+from typing import Self
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, model_validator
 
 from eidolon.assembly import Backend
-from eidolon.cycles import Forced
+from eidolon.cycles import Forced, Phase
 from eidolon.her_cycle import LONGEST_PERIOD, PREMENSTRUAL_DAYS
 from eidolon.sessions import UserId
 
 
 class ForcedInput(BaseModel):
-    phase: Literal["period", "premenstrual", "neither"]
+    phase: Phase
     day: int = 0
     """The day of her period, from 1; or how many days are left before it, from 1; none
     for neither."""
@@ -41,8 +41,9 @@ def add_cycle_routes(app: FastAPI, backend: Backend) -> None:
     @app.put("/api/dev/cycles/{character_id}", status_code=204)
     async def force(character_id: str, body: ForcedInput, user_id: UserId) -> None:
         """Have the user's character where `body` says from now on (development only)."""
-        forced = Forced(body.phase, body.day if body.phase != "neither" else 0)
-        backend.cycles.force(user_id, character_or_404(character_id), forced)
+        backend.cycles.force(
+            user_id, character_or_404(character_id), Forced(body.phase, body.day)
+        )
 
     @app.delete("/api/dev/cycles/{character_id}", status_code=204)
     async def clear(character_id: str, user_id: UserId) -> None:

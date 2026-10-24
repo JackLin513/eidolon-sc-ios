@@ -26,8 +26,8 @@ def test_frozen_days_stay_where_they_are():
     keyed = cycle_seed("test-secret-key", "user-0", "mano")
     plain = cycle_seed(None, "user-0", "mano")
 
-    assert rhythm(keyed) == Rhythm(base_cycle=29, base_period=6, premenstrual=5, offset=27)
-    assert rhythm(plain) == Rhythm(base_cycle=32, base_period=6, premenstrual=5, offset=16)
+    assert rhythm(keyed) == Rhythm(base_cycle=29, base_period=6, premenstrual_days=5, offset=27)
+    assert rhythm(plain) == Rhythm(base_cycle=32, base_period=6, premenstrual_days=5, offset=16)
     assert periods_in_2026(keyed, False) == [
         ("01-03", 7), ("02-02", 6), ("03-04", 5), ("04-01", 7), ("04-28", 7), ("05-27", 7),
         ("06-22", 6), ("07-24", 7), ("08-19", 5), ("09-18", 7), ("10-16", 6), ("11-14", 6),
@@ -70,38 +70,30 @@ def test_base_cycles_are_25_to_34_days_mostly_28_or_29_and_premenstrual_3_to_5()
 
     assert set(bases) == set(range(25, 35))
     assert {bases.most_common(2)[0][0], bases.most_common(2)[1][0]} == {28, 29}
-    assert {r.premenstrual for r in rhythms} == {3, 4, 5}
+    assert {r.premenstrual_days for r in rhythms} == {3, 4, 5}
     assert {r.base_period for r in rhythms} == {4, 5, 6, 7}
 
 
-def test_each_cycle_strays_from_her_base_by_at_most_3_days_or_5_under_18():
+def test_each_cycle_strays_from_her_base_by_at_most_3_days_or_5_under_18_its_period_3_to_8():
     for under_18, most in ((False, 3), (True, 5)):
         strays: set[int] = set()
+        periods: set[int] = set()
         for seed in SEEDS[:300]:
             base = rhythm(seed).base_cycle
             for _, cycle in zip(range(40), cycles(seed, under_18)):
                 assert 21 <= cycle.length <= 40
-                assert 3 <= cycle.period <= 8
-                if 21 < cycle.length < 40:
+                if cycle.length > 21:  # where it is not kept from straying further
                     strays.add(cycle.length - base)
+                periods.add(cycle.period)
         assert strays == set(range(-most, most + 1))
-
-
-def test_periods_are_3_to_8_days():
-    periods = Counter(
-        cycle.period
-        for seed in SEEDS[:300]
-        for _, cycle in zip(range(40), cycles(seed, False))
-    )
-
-    assert set(periods) == set(range(3, 9))
+        assert periods == set(range(3, 9))
 
 
 def test_day_after_day_her_cycles_follow_one_another_with_no_gap_nor_overlap():
     """Years of days, from before the epoch on: each period counts up from its first day,
     the days before the next count down to it, and the next begins the day after."""
     for seed, under_18 in ((SEEDS[1], False), (SEEDS[2], True)):
-        premenstrual = rhythm(seed).premenstrual
+        premenstrual = rhythm(seed).premenstrual_days
         day = EPOCH - timedelta(days=400)
         first_days: list[date] = []
         previous = None
@@ -137,14 +129,6 @@ def test_hundreds_of_cycles_on_each_begins_the_day_after_the_one_before_ends():
         assert her_day(seed, True, cycle.first_day) == Period(1, cycle.period, cycle.first_day)
         last = cycle.first_day + timedelta(days=cycle.length - 1)
         assert her_day(seed, True, last) == Premenstrual(1)
-
-
-def test_before_the_epoch_she_goes_on_backwards():
-    seed = SEEDS[3]
-    before = [her_day(seed, False, EPOCH - timedelta(days=n)) for n in range(1, 120)]
-
-    assert any(isinstance(d, Period) for d in before)
-    assert any(isinstance(d, Premenstrual) for d in before)
 
 
 def test_seeds_differ_by_user_character_and_key():

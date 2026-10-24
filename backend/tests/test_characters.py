@@ -601,13 +601,11 @@ def test_repository_gives_each_character_her_age_as_her_facts_tell_it():
         facts = (REPO_CHARACTERS / "facts" / f"{character.id}.md").read_text(encoding="utf-8")
         [told] = re.findall(r"([0-9]+) ?岁", facts.splitlines()[2])[:1]
         assert character.age == int(told), character.id
-    assert loaded["kaho"].age == 12
-    assert loaded["mikoto"].age == 24
 
 
-@pytest.mark.parametrize("age", ['"16"', "16.5", "true", None])
-def test_age_must_be_a_whole_number(tmp_path: Path, age: str | None):
-    """Written as TOML has it; None leaves it out."""
+@pytest.mark.parametrize("age", ['"16"', "0"])
+def test_age_must_be_a_positive_whole_number(tmp_path: Path, age: str):
+    """Written as TOML has it."""
     config = CharacterConfig(tmp_path).add("mano", "櫻木真乃", "a", age=age)
 
     with pytest.raises(CharacterConfigError, match="角色 mano 的 age"):

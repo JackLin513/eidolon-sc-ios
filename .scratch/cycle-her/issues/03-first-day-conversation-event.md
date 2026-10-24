@@ -16,3 +16,10 @@
 - [ ] 本地构建版上用 Playwright 看：用开发口子让她进经期第 3 天，打一个回合，看到对话里的分隔线和列表的最后一句；通话层里不显示
 - [ ] pyright、ruff、前端类型检查和 lint 都过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
 - [ ] 票收尾：推一次让 CI 跑、跑 `code-review`
+
+## Comments
+
+### 票 01 交接
+
+- 这次经期的第一天从 `Cycles.her_day(...)` 返回的 `Period.first_day` 拿。开发口子强制「经期第 N 天」时 `first_day` 按当天往回推 N−1 天，强制着过夜会挪一天，验收时同一天里做完。
+- 测试里要她在经期：`tests/test_her_days.py` 的 `a_noon_when`（拨假时钟）和 `a_key_when`（时钟拨不动时换密钥）；`conftest` 默认 `cycles=False`，要自己打开。

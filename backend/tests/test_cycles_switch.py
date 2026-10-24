@@ -15,30 +15,14 @@ from tests.test_admin_users import ADMIN, admin_beside
 CYCLES = "/api/admin/config/cycles"
 
 
-@pytest.fixture
-def env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
+def test_unset_in_env_it_is_on(monkeypatch: pytest.MonkeyPatch):
+    # 0, 1 and anything else are every switch's (`config._switch`), as test_exempting_keys has.
     monkeypatch.setenv("CHAT_LLM_BASE_URL", "https://llm.example.com/v1")
     monkeypatch.setenv("CHAT_LLM_API_KEY", "sk-deployer")
     monkeypatch.setenv("CHAT_LLM_MODEL", "deployer-model")
     monkeypatch.delenv("EIDOLON_CYCLES", raising=False)
-    return monkeypatch
 
-
-def test_unset_in_env_it_is_on(env: pytest.MonkeyPatch):
     assert Settings.from_env().cycles is True
-
-
-def test_0_in_env_turns_it_off(env: pytest.MonkeyPatch):
-    env.setenv("EIDOLON_CYCLES", "0")
-
-    assert Settings.from_env().cycles is False
-
-
-def test_anything_but_0_or_1_in_env_keeps_the_backend_from_starting(env: pytest.MonkeyPatch):
-    env.setenv("EIDOLON_CYCLES", "yes")
-
-    with pytest.raises(RuntimeError, match="EIDOLON_CYCLES"):
-        Settings.from_env()
 
 
 async def test_the_admin_console_reads_overrides_and_restores_it(

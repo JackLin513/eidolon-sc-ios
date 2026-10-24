@@ -34,6 +34,8 @@ from tests.test_calendar import REPLY, told_now
 from tests.test_call_turns import MANO_REPLY, NOW, CallUnderTest, spoken
 from tests.test_photos import IMAGE, WORDS, asking, photo_events, settled
 from tests.test_reach_outs import backend_of, last_contact
+from tests.test_schedule_saving import WEEK, placed, publish, save
+from tests.test_schedule_she_knows import ABOUT_THEM, EARLY_MONDAY
 from tests.test_text_turn import send_turn, start_conversation
 
 PERIOD_EARLY = (
@@ -80,10 +82,10 @@ def settings(settings: Settings) -> Settings:
     return replace(settings, cycles=True)
 
 
-def where(settings: Settings, day: date, character: str = "mano") -> HerDay:
-    """Where her true cycle has the producer's `character` on `day`."""
-    seed = cycle_seed(settings.secret_key, user_id(settings, "producer"), character)
-    return her_day(seed, MANO_UNDER_18 if character == "mano" else False, day)
+def where(settings: Settings, day: date) -> HerDay:
+    """Where her true cycle has the producer's Mano on `day`."""
+    seed = cycle_seed(settings.secret_key, user_id(settings, "producer"), "mano")
+    return her_day(seed, MANO_UNDER_18, day)
 
 
 def a_noon_when(settings: Settings, wanted: Callable[[HerDay], bool]) -> datetime:
@@ -152,6 +154,26 @@ async def test_in_her_period_and_before_it_what_she_is_told_of_now_ends_with_how
     now, *_ = told.split("\n\n")
     assert now.startswith("# 此刻\n")
     assert now.endswith(f"\n{feeling}\n{keeping}")
+
+
+async def test_with_jobs_saved_she_is_told_it_after_them(
+    make_client: ClientFactory, settings: Settings
+):
+    """On Wednesday 14:00 in Shanghai, a job of hers saved for Friday."""
+    make_client(FakeLLM())  # the producer, signed up
+    wednesday = EARLY_MONDAY + timedelta(days=2, hours=13)
+    keyed = replace(settings, secret_key=a_key_when(settings, wednesday, in_period(early=False)))
+    llm = FakeLLM(REPLY)
+    clock = FakeClock(EARLY_MONDAY)
+    client = make_client(llm, clock=clock, settings=keyed)
+    publish(settings.database_path, WEEK, ("声乐课", 1, None))
+    await save(client, WEEK, placed("声乐课", 4, 0))
+    clock.now = wednesday
+
+    told = await told_now(client, llm)
+
+    now, *_ = told.split("\n\n")
+    assert now.endswith(f"\n{ABOUT_THEM}\n{PERIOD_LATE}\n{IN_PERIOD}")
 
 
 async def test_on_her_other_days_she_is_told_nothing_of_it(

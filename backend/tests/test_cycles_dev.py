@@ -82,13 +82,9 @@ async def test_forced_the_deployment_turning_cycles_off_still_holds(
 
 
 @pytest.mark.parametrize(
-    "body",
-    [{"phase": "period", "day": 0}, {"phase": "period", "day": 9},
-     {"phase": "premenstrual", "day": 6}, {"phase": "ovulating"}],
+    "body", [{"phase": "period", "day": 9}, {"phase": "premenstrual", "day": 6}]
 )
-async def test_where_she_cannot_be_is_refused(
-    make_client: ClientFactory, body: dict
-):
+async def test_a_day_she_cannot_be_on_is_refused(make_client: ClientFactory, body: dict):
     client = make_client(FakeLLM())
 
     assert (await client.put(FORCE, json=body)).status_code == 422

@@ -60,10 +60,10 @@ from eidolon.admin_config_api import add_admin_config_routes
 from eidolon.admin_prices_api import add_admin_price_routes
 from eidolon.announcements_api import add_announcement_routes
 from eidolon.calendar_api import add_calendar_routes
+from eidolon.cycles_api import add_cycle_routes
 from eidolon.gifts_api import add_gift_routes
 from eidolon.photos_api import add_photo_routes
 from eidolon.schedule_api import add_schedule_routes
-from eidolon.cycles_api import add_cycle_routes
 from eidolon.sessions import DeviceTimezone, UserId, session_middleware
 from eidolon.sponsor_api import add_sponsor_routes
 from eidolon.stats import add_stats_routes
