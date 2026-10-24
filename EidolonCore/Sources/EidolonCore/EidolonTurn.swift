@@ -3,6 +3,9 @@ import GRDB
 
 public enum TurnEvent: Sendable {
     case delta(segment: Int, language: ReplyLanguage, text: String)
+    /// Her Japanese as it is to be voiced, delivery cues kept (a call voices it per
+    /// segment; a text turn ignores it).
+    case speechDelta(segment: Int, text: String)
     case finished(TurnRecord)
 }
 
@@ -274,8 +277,11 @@ extension Eidolon {
         var stopped = false
         func shown(_ events: [ReplyParserEvent]) {
             for event in events {
-                if case let .delta(segment, language, text) = event {
+                switch event {
+                case let .delta(segment, language, text):
                     emit(.delta(segment: segment, language: language, text: text))
+                case let .speechDelta(segment, text):
+                    emit(.speechDelta(segment: segment, text: text))
                 }
             }
         }
