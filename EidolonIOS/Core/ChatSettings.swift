@@ -25,6 +25,12 @@ struct ChatSettings {
     var tracingEnabled: Bool = true
     var traceRetention: Int = 200
 
+    /// Calls: the recognizer's key and model, and the voice model her speech is made on.
+    var sonioxAPIKey: String = ""
+    var sonioxModel: String = "stt-rt-v5"
+    var fishAPIKey: String = ""
+    var fishModel: String = "s2.1-pro-free"
+
     private static let baseURLKey = "chat.baseURL"
     private static let modelKey = "chat.model"
     private static let historyKey = "chat.historyTurns"
@@ -43,6 +49,10 @@ struct ChatSettings {
     private static let reachOutHoursKey = "reachOut.hours"
     private static let tracingEnabledKey = "trace.enabled"
     private static let traceRetentionKey = "trace.retention"
+    private static let sonioxModelKey = "call.sonioxModel"
+    private static let sonioxKeychainAccount = "call.sonioxKey"
+    private static let fishModelKey = "call.fishModel"
+    private static let fishKeychainAccount = "call.fishKey"
 
     static func load() -> ChatSettings {
         let defaults = UserDefaults.standard
@@ -62,7 +72,11 @@ struct ChatSettings {
             retrievalAPIKey: Keychain.string(account: retrievalKeychainAccount) ?? "",
             reachOutHours: defaults.object(forKey: reachOutHoursKey) as? Int ?? 6,
             tracingEnabled: defaults.object(forKey: tracingEnabledKey) as? Bool ?? true,
-            traceRetention: defaults.object(forKey: traceRetentionKey) as? Int ?? 200
+            traceRetention: defaults.object(forKey: traceRetentionKey) as? Int ?? 200,
+            sonioxAPIKey: Keychain.string(account: sonioxKeychainAccount) ?? "",
+            sonioxModel: defaults.string(forKey: sonioxModelKey) ?? "stt-rt-v5",
+            fishAPIKey: Keychain.string(account: fishKeychainAccount) ?? "",
+            fishModel: defaults.string(forKey: fishModelKey) ?? "s2.1-pro-free"
         )
     }
 
@@ -84,6 +98,10 @@ struct ChatSettings {
         defaults.set(reachOutHours, forKey: Self.reachOutHoursKey)
         defaults.set(tracingEnabled, forKey: Self.tracingEnabledKey)
         defaults.set(traceRetention, forKey: Self.traceRetentionKey)
+        defaults.set(sonioxModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.sonioxModelKey)
+        defaults.set(fishModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.fishModelKey)
+        try Self.store(sonioxAPIKey, account: Self.sonioxKeychainAccount)
+        try Self.store(fishAPIKey, account: Self.fishKeychainAccount)
     }
 
     /// The provider config, or nil while something still has to be filled in.

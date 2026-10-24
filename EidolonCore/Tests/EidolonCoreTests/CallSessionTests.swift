@@ -309,6 +309,29 @@ final class CallSessionTests: XCTestCase {
         XCTAssertEqual(reason, .hungUpByProducer)
     }
 
+    func testWhatIsBeingSaidIsShownAsItIsHeard() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([
+            .events([.partial("もし"), .partial("もしもし")]),
+            .hang,
+        ])
+        let provider = ReplyScriptProvider([["<ja>あ</ja><zh>啊</zh>"]])
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition
+        )
+
+        try await waitFor("the revision shown") { log.all.contains(.hearing("もしもし")) }
+        try await waitFor("listening again") { await session.currentState() == .listening }
+        recognition.say("もしもし")
+        try await waitFor("cleared when the sentence ends") {
+            guard let index = log.all.lastIndex(of: .recognized("もしもし")) else { return false }
+            return log.all[..<index].contains(.hearing(""))
+        }
+        await session.hangUp()
+    }
+
     func testHangingUpStopsTheVoiceAndRecordsTheEvent() async throws {
         let eidolon = try await installedEidolon()
         let recognition = FakeRecognition([.hang])

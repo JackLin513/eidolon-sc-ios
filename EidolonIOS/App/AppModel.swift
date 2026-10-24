@@ -100,6 +100,47 @@ final class AppModel {
         }
     }
 
+    /// A call with her, on the services the settings name. The microphone and the
+    /// recognizer are the app's; everything else is the core's (ADR-0015).
+    func beginCall(for character: CharacterConfig, now: Date = Date()) async throws -> CallSession {
+        guard let provider = chatProvider else {
+            throw ChatProviderError.notConfigured
+        }
+        if let missing = CallSettingsError.missingSonioxKeyWhenNeeded(chatSettings) {
+            throw missing
+        }
+        let (capture, recognition) = callAudio()
+        let setup = CallSetup(
+            capture: capture,
+            playback: SilentPlayback(),
+            recognition: recognition,
+            synthesis: UnvoicedSynthesis(),
+            voiceModel: chatSettings.fishModel,
+            provider: provider,
+            judge: judgeProvider,
+            embedder: embeddingProvider,
+            reranker: rerankProvider,
+            tracing: tracing,
+            now: { Date() }
+        )
+        return try await core.beginCall(characterID: character.id, setup: setup, now: now)
+    }
+
+    private func callAudio() -> (any AudioCapture, any SpeechRecognition) {
+        #if DEBUG
+        // Development aid: `SIMCTL_CHILD_EIDOLON_CALL_FAKE_SPEECH` answers as if the
+        // producer had said one line, so the call can be seen without a microphone.
+        if let said = ProcessInfo.processInfo.environment["EIDOLON_CALL_FAKE_SPEECH"],
+           !said.isEmpty {
+            return (SilentCapture(), DebugRecognition(said: said))
+        }
+        #endif
+        return (
+            MicrophoneCapture(),
+            SonioxRecognition(apiKey: chatSettings.sonioxAPIKey, model: chatSettings.sonioxModel)
+        )
+    }
+
     func saveProducerProfile(_ profile: ProducerProfile) async throws {
         try await core.updateProducerProfile(profile)
     }
@@ -158,7 +199,11 @@ final class AppModel {
             retrievalBaseURL: environment["EIDOLON_RETRIEVAL_BASE_URL"] ?? "",
             embeddingModel: environment["EIDOLON_EMBEDDING_MODEL"] ?? "",
             rerankModel: environment["EIDOLON_RERANK_MODEL"] ?? "",
-            retrievalAPIKey: environment["EIDOLON_RETRIEVAL_API_KEY"] ?? ""
+            retrievalAPIKey: environment["EIDOLON_RETRIEVAL_API_KEY"] ?? "",
+            sonioxAPIKey: environment["EIDOLON_SONIOX_API_KEY"] ?? "",
+            sonioxModel: environment["EIDOLON_SONIOX_MODEL"] ?? "stt-rt-v5",
+            fishAPIKey: environment["EIDOLON_FISH_API_KEY"] ?? "",
+            fishModel: environment["EIDOLON_FISH_MODEL"] ?? "s2.1-pro-free"
         )
         try? saveChatSettings(settings)
     }
@@ -171,6 +216,15 @@ final class AppModel {
     /// Development aid: `SIMCTL_CHILD_EIDOLON_SEND_TEXT` sends one line on opening.
     var debugSendText: String? {
         ProcessInfo.processInfo.environment["EIDOLON_SEND_TEXT"]
+    }
+
+    /// Development aid: `SIMCTL_CHILD_EIDOLON_OPEN_CALL=1` starts a call on opening a chat.
+    var debugOpensCall: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["EIDOLON_OPEN_CALL"] == "1"
+        #else
+        false
+        #endif
     }
 
     /// Development aid: `SIMCTL_CHILD_EIDOLON_OPEN_HISTORY=1` opens a chat's history.
