@@ -121,6 +121,7 @@ final class AppModel {
             embedder: embeddingProvider,
             reranker: rerankProvider,
             tracing: tracing,
+            reconnectDelay: debugReconnectDelay,
             now: { Date() }
         )
         return try await core.beginCall(characterID: character.id, setup: setup, now: now)
@@ -132,7 +133,13 @@ final class AppModel {
         // producer had said one line, so the call can be seen without a microphone.
         if let said = ProcessInfo.processInfo.environment["EIDOLON_CALL_FAKE_SPEECH"],
            !said.isEmpty {
-            return (SilentCapture(), DebugRecognition(said: said))
+            return (
+                SilentCapture(),
+                DebugRecognition(
+                    said: said,
+                    dropFirst: ProcessInfo.processInfo.environment["EIDOLON_CALL_DROP_ONCE"] == "1"
+                )
+            )
         }
         #endif
         return (
@@ -222,6 +229,18 @@ final class AppModel {
     /// Development aid: `SIMCTL_CHILD_EIDOLON_SEND_TEXT` sends one line on opening.
     var debugSendText: String? {
         ProcessInfo.processInfo.environment["EIDOLON_SEND_TEXT"]
+    }
+
+    /// Development aid: `SIMCTL_CHILD_EIDOLON_CALL_RECONNECT_MS` slows reconnection so the
+    /// 「重连中」 state can be seen in the simulator.
+    var debugReconnectDelay: Duration {
+        #if DEBUG
+        if let milliseconds = ProcessInfo.processInfo.environment["EIDOLON_CALL_RECONNECT_MS"],
+           let value = Int(milliseconds), value >= 0 {
+            return .milliseconds(value)
+        }
+        #endif
+        return .seconds(1)
     }
 
     /// Development aid: `SIMCTL_CHILD_EIDOLON_OPEN_CALL=1` starts a call on opening a chat.

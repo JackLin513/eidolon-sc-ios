@@ -53,12 +53,27 @@ struct CallView: View {
             session = call
             let events = call.events()
             await call.start()
+            autoHangUpIfRequested(call)
             for await event in events {
                 handle(event)
             }
         } catch {
             startError = error.localizedDescription
         }
+    }
+
+    /// Development aid: `SIMCTL_CHILD_EIDOLON_CALL_HANGUP_MS` ends the call by itself,
+    /// so the record it leaves can be seen without tapping.
+    private func autoHangUpIfRequested(_ call: CallSession) {
+        #if DEBUG
+        guard let text = ProcessInfo.processInfo.environment["EIDOLON_CALL_HANGUP_MS"],
+              let milliseconds = Int(text), milliseconds >= 0
+        else { return }
+        Task {
+            try? await Task.sleep(for: .milliseconds(milliseconds))
+            await call.hangUp()
+        }
+        #endif
     }
 
     private func handle(_ event: CallEvent) {
@@ -121,9 +136,10 @@ struct CallView: View {
             }
             if let failure {
                 Text(failure)
-                    .font(.footnote)
+                    .font(.caption)
                     .foregroundStyle(.orange)
                     .multilineTextAlignment(.center)
+                    .lineLimit(3)
                     .padding(.horizontal, 24)
             }
         }

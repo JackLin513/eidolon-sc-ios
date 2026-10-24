@@ -119,16 +119,20 @@ struct ChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
-                    if store.messages.isEmpty && store.streaming.isEmpty {
+                    if store.transcript.isEmpty && store.streaming.isEmpty {
                         Text("从一句问候开始吧。")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .center)
                             .padding(.top, 40)
                     }
-                    ForEach(store.messages) { message in
-                        bubble(message)
-                            .id(message.id)
+                    ForEach(store.transcript) { line in
+                        switch line {
+                        case let .message(message):
+                            bubble(message)
+                        case let .event(event):
+                            conversationEvent(event)
+                        }
                     }
                     if let pending = store.pendingUser {
                         HStack {
@@ -153,8 +157,8 @@ struct ChatView: View {
             }
             .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
-            .onChange(of: store.messages.count) {
-                proxy.scrollTo(store.messages.last?.id, anchor: .bottom)
+            .onChange(of: store.transcript.count) {
+                proxy.scrollTo(store.transcript.last?.id, anchor: .bottom)
             }
             .onChange(of: store.streaming) {
                 proxy.scrollTo("streaming", anchor: .bottom)
@@ -163,6 +167,21 @@ struct ChatView: View {
                 proxy.scrollTo("pending", anchor: .bottom)
             }
         }
+    }
+
+    /// A call that ended is part of the conversation: it is shown here, and nowhere in
+    /// the prompt.
+    private func conversationEvent(_ event: ConversationEventRecord) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: event.kind == "call_failed" ? "phone.down.circle" : "phone.down")
+                .font(.caption2)
+            Text(event.kind == "call_failed" ? "通话中断" : "通话结束")
+                .font(.caption2)
+        }
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.vertical, 2)
+        .id("event-\(event.id)")
     }
 
     @ViewBuilder
