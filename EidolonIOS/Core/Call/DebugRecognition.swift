@@ -1,4 +1,5 @@
 #if DEBUG
+import AVFoundation
 import EidolonCore
 import Foundation
 
@@ -33,10 +34,26 @@ final class SilentCapture: AudioCapture, @unchecked Sendable {
         (stream, continuation) = AsyncStream.makeStream(of: Data.self)
     }
 
-    func start() async throws {}
+    func start() async throws {
+        // No microphone is opened, so the session is a plain playback one.
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default)
+        if #available(iOS 27.0, *) {
+            try? await session.activate(options: [])
+        } else {
+            try? session.setActive(true)
+        }
+    }
 
     func stop() async {
         continuation.finish()
+        if #available(iOS 27.0, *) {
+            try? await AVAudioSession.sharedInstance()
+                .deactivate(options: .notifyOthersOnDeactivation)
+        } else {
+            try? AVAudioSession.sharedInstance()
+                .setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 
     func chunks() -> AsyncThrowingStream<Data, Error> {
