@@ -78,7 +78,7 @@ async def test_the_turn_that_takes_it_to_0_has_her_part_and_begins_a_cooldown(
     other = await start_conversation(client, "kogane")
     keep(settings.database_path, "producer", 45, clock.now, character="kogane")
     conversation = await start_conversation(client)
-    keep(settings.database_path, "producer", 5, clock.now)
+    keep(settings.database_path, "producer", 1, clock.now)
 
     staying = await send_turn(client, other, "随便你")
     parting = await send_turn(client, conversation, "随便你")

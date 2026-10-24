@@ -33,7 +33,7 @@ _WEEKDAYS = "一二三四五六日"
 
 @dataclass(frozen=True)
 class Birthday:
-    """The producer's birthday: a month and a day, never a year."""
+    """A birthday, the producer's or a character's: a month and a day, never a year."""
 
     month: int
     day: int
@@ -45,7 +45,8 @@ def is_day_of_the_year(month: int, day: int) -> bool:
 
 
 def is_birthday(birthday: Birthday, today: date) -> bool:
-    """Whether `today`, the producer's local date, is their birthday.
+    """Whether `today` is `birthday`: the producer's, on their local date, or a character's,
+    on the date in Tokyo.
 
     February 29 falls on February 28 in a year that has no February 29.
     """

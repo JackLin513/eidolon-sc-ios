@@ -24,10 +24,13 @@ export const DASHBOARD_TABS = ["overview", "usage", "affinity", "cost"] as const
 
 export type DashboardTab = (typeof DASHBOARD_TABS)[number];
 
-/** The tabs a dashboard has:「好感度」only where affinity is on, or daily tasks were done in the
- * range while it was. */
-export function dashboardTabs(board: Pick<Dashboard, "affinity" | "daily_tasks">): DashboardTab[] {
-  return DASHBOARD_TABS.filter((name) => name !== "affinity" || board.affinity !== null || board.daily_tasks !== null);
+/** The tabs a dashboard has:「好感度」only where affinity is on, achievements were unlocked in the
+ * range while it was, or schedules are on (their tile is there). */
+export function dashboardTabs(board: Pick<Dashboard, "affinity" | "achievements" | "scheduled_this_week">): DashboardTab[] {
+  return DASHBOARD_TABS.filter(
+    (name) =>
+      name !== "affinity" || board.affinity !== null || board.achievements !== null || board.scheduled_this_week !== null,
+  );
 }
 
 export function isDashboardTab(value: string): value is DashboardTab {
@@ -241,13 +244,14 @@ export type Dashboard = {
   affinity: AffinitySection | null;
   /** Her reach-outs (GLOSSARY「搭话」); null where they are off and none were made in the range. */
   reach_outs: ReachOutsSection | null;
-  /** How many times each daily task was done (GLOSSARY「每日任务」); null where affinity is off and
-   * none were done in the range. */
-  daily_tasks: DailyTasksSection | null;
-  /** The achievements' stages unlocked and what they gave (GLOSSARY「成就」); null where `daily_tasks` is. */
+  /** The achievements' stages unlocked and what they gave (GLOSSARY「成就」); null where affinity is
+   * off and none were unlocked in the range. */
   achievements: AchievementsSection | null;
   /** What the deployer's keys cost, estimated at the prices (`lib/adminPrices`). */
   cost: Cost;
+  /** How many users saved a schedule for this Beijing week (GLOSSARY「日程」), whatever the range;
+   * null where schedules are off. */
+  scheduled_this_week: number | null;
 };
 
 /** The dashboard's「搭话」section: how many times characters reached out, how many times that
@@ -269,28 +273,23 @@ export function reachOutTiles(section: ReachOutsSection | null): { id: string; l
   ];
 }
 
-/** The dashboard's「每日任务」section: how many times each daily task was done, by its id. */
-export type DailyTasksSection = { one_turn: number; one_gift: number; ten_turns: number };
-
-const DAILY_TASK_IDS = ["one_turn", "one_gift", "ten_turns"] as const;
-
-/** The section's tiles, as the page shows them, in the order of the gifts page; none where it is empty. */
-export function dailyTaskTiles(section: DailyTasksSection | null): { id: string; label: string; value: string }[] {
-  if (section === null) return [];
-  const words = copy.admin.dashboard.tasksAndAchievements.tiles;
-  return DAILY_TASK_IDS.map((id) => ({ id, label: words[id], value: formatCount(section[id]) }));
+/** The「日程」tile under「好感度」, as the page shows it; none where schedules are off. */
+export function scheduleTiles(scheduledThisWeek: number | null): { id: string; label: string; value: string }[] {
+  if (scheduledThisWeek === null) return [];
+  const words = copy.admin.dashboard.schedule.tiles;
+  return [{ id: "scheduled", label: words.scheduled, value: formatCount(scheduledThisWeek) }];
 }
 
-/** The dashboard's achievements, beside the daily tasks: how many stages were unlocked, the draw
- * chances they gave, and the reset cards characters complete gave. */
+/** The dashboard's「成就」section: how many stages were unlocked, the draw chances they gave, and
+ * the reset cards characters complete gave. */
 export type AchievementsSection = { stages: number; draws: number; reset_cards: number };
 
 const ACHIEVEMENT_TILE_IDS = ["stages", "draws", "reset_cards"] as const;
 
-/** The achievements' tiles, as the page shows them after the daily tasks'; none where they are empty. */
+/** The section's tiles, as the page shows them; none where it is empty. */
 export function achievementTiles(section: AchievementsSection | null): { id: string; label: string; value: string }[] {
   if (section === null) return [];
-  const words = copy.admin.dashboard.tasksAndAchievements.tiles;
+  const words = copy.admin.dashboard.achievements.tiles;
   return ACHIEVEMENT_TILE_IDS.map((id) => ({ id, label: words[id], value: formatCount(section[id]) }));
 }
 

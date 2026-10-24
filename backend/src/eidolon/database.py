@@ -35,10 +35,10 @@ USER_DATA = [
     ("conversations", "user_id = ?"),
     ("producer_profiles", "user_id = ?"),
     ("affinities", "user_id = ?"),
+    ("schedule_placements", "user_id = ?"),
     ("gift_balances", "user_id = ?"),
     ("gift_backpacks", "user_id = ?"),
     ("gift_rewards", "user_id = ?"),
-    ("daily_task_progress", "user_id = ?"),
     ("achievement_progress", "user_id = ?"),
     ("achievement_stages", "user_id = ?"),
     ("usage", "user_id = ?"),
@@ -86,6 +86,7 @@ NOT_USER_DATA = frozenset(
         "price_catalog_offers", "price_catalog_state", "banned_identities", "announcements",
         "sponsor", "gifts_opened", "reset_card_grants", "backup_runs", "record_rollups",
         "taken_rollups", "call_rollups", "spread_rollups", "achievements_launched",
+        "weekly_jobs",
     }
 )
 """Every other table: the story corpus, the embedded text set, the calls to outside
@@ -96,7 +97,8 @@ with, which say whose they were to no one, the announcements admins write, which
 nothing of who wrote them, the sponsor code admins upload, when gifts last opened, which
 is no one's, and the reset cards admins have given every user, which say nothing of who
 gave them or to whom, the record of each backup run, which says nothing of anyone's, and
-when the achievements launched, which is no one's."""
+when the achievements launched, which is no one's, and each week's jobs, the same for
+everyone."""
 
 
 HEALTH_READ_TIMEOUT = 2.0

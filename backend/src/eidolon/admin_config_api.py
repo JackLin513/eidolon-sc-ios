@@ -33,6 +33,7 @@ from eidolon.live_config import (
     REACH_OUTS,
     READ_ONLY,
     RERANK,
+    SCHEDULE,
     SERVICE_STATUS,
     STT,
     STT_KEY_FIELDS,
@@ -173,6 +174,13 @@ class ReachOutsInput(BaseModel):
     per_day: Any
 
 
+class ScheduleInput(BaseModel):
+    """Whether each week's jobs are published for producers to schedule, true or false;
+    checked by the live configuration."""
+
+    enabled: Any
+
+
 class ProxyInput(BaseModel):
     """The proxy as the admin saves it: the switch, the address (a password typed into it
     is kept apart, as a key is; empty for none), and a switch for each of the deployer's
@@ -223,6 +231,7 @@ INPUTS: dict[str, type[BaseModel]] = {
     LIMITS: LimitsInput,
     AFFINITY: AffinityInput,
     REACH_OUTS: ReachOutsInput,
+    SCHEDULE: ScheduleInput,
     PROXY: ProxyInput,
     SERVICE_STATUS: ServiceStatusInput,
 }

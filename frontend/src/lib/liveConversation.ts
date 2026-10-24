@@ -299,7 +299,7 @@ export type Ports = {
    * conversation was started. Told even after the page is left. */
   onListChanged: () => void;
   /** A turn recorded, typed or in a call, was rewarded (lib/rewards): told even after the page
-   * is left, for the dot on 「礼物」. */
+   * is left, for the dot on 「玩法」. */
   onRewarded: (rewarded: Rewarded) => void;
   startCall: (
     conversationId: string,

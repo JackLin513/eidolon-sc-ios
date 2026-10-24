@@ -1,9 +1,10 @@
-"""Draw chances (GLOSSARY.md「抽奖」): one a day at midnight Beijing time, wherever the user
-is, kept up to seven, given as the gifts' state is read rather than on a schedule; the state
-tells when the next is given. The days affinity and gifts are off give none, and the day
-they open again gives one. The state tells how far today's daily tasks are too. Off, the state is read all the same, saying so. Deleting the user deletes their
-chances; when affinity and gifts last opened is no one's and stays. Driven through the
-backend's external API, with the clock moved."""
+"""Draw chances (GLOSSARY.md「抽奖」): two a day at midnight Beijing time, wherever the user
+is, kept up to seven, those over it (the achievements') kept too, given as the gifts' state is
+read rather than on a schedule; the state tells when the next are given. The days affinity
+and gifts are off give none, and the day they open again gives its two. Off, the state is
+read all the same, saying so. Deleting the user deletes their chances; when affinity and
+gifts last opened is no one's and stays. Driven through the backend's external API, with the
+clock moved."""
 
 import sqlite3
 from dataclasses import replace
@@ -17,7 +18,6 @@ from eidolon.config import Settings
 from tests.conftest import ClientFactory
 from tests.fakes import FAKE_JUDGE, FakeClock, FakeIdentityProvider, FakeLLM
 from tests.test_admin_users import admin_beside
-from tests.test_daily_tasks import tasks
 
 AFFINITY = "/api/admin/config/affinity"
 
@@ -43,14 +43,14 @@ async def draws(client: httpx.AsyncClient) -> int:
     return (await state(client))["draws"]
 
 
-async def test_a_new_user_has_one_draw_the_day_they_come_and_nothing_else_yet(
+async def test_a_new_user_has_two_draws_the_day_they_come_and_nothing_else_yet(
     make_client: ClientFactory,
 ):
     client = make_client(FakeLLM(), clock=FakeClock())
 
     assert await state(client) == {
         "open": True,
-        "draws": 1,
+        "draws": 2,
         "max_draws": 7,
         "backpack": [],
         "reset_cards": 0,
@@ -60,7 +60,6 @@ async def test_a_new_user_has_one_draw_the_day_they_come_and_nothing_else_yet(
             {"id": "mano", "tier": "trust", "cooling": False, "cooldown_until": None},
             {"id": "kogane", "tier": "trust", "cooling": False, "cooldown_until": None},
         ],
-        "daily_tasks": {"tasks": tasks(), "renews_at": "2026-09-25T16:00:00+00:00"},
         "achievements": ANY,  # as test_achievements has them
         "rewarded_at": None,
     }
@@ -73,7 +72,7 @@ async def test_reading_again_the_same_day_gives_no_more(make_client: ClientFacto
     first = await draws(client)
     clock.advance(hours=3)  # 23:00 in Shanghai
 
-    assert [first, await draws(client), await draws(client)] == [1, 1, 1]
+    assert [first, await draws(client), await draws(client)] == [2, 2, 2]
 
 
 async def test_days_away_are_made_up_for_when_they_come_back(make_client: ClientFactory):
@@ -81,19 +80,33 @@ async def test_days_away_are_made_up_for_when_they_come_back(make_client: Client
     client = make_client(FakeLLM(), clock=clock)
 
     await draws(client)
-    clock.advance(days=3)
+    clock.advance(days=2)
 
-    assert await draws(client) == 4
+    assert await draws(client) == 6
 
 
-async def test_no_more_than_seven_are_kept(make_client: ClientFactory):
+async def test_six_kept_are_made_up_to_seven_and_no_more(make_client: ClientFactory):
     clock = FakeClock()
     client = make_client(FakeLLM(), clock=clock)
-
     await draws(client)
-    clock.advance(days=10)
+    clock.advance(days=2)
+    six = await draws(client)
+    clock.advance(days=1)
 
-    assert await draws(client) == 7
+    assert [six, await draws(client)] == [6, 7]
+
+
+async def test_more_than_seven_kept_are_not_brought_down_to_it(
+    make_client: ClientFactory, settings: Settings
+):
+    clock = FakeClock()
+    client = make_client(FakeLLM(), clock=clock)
+    await draws(client)
+    with sqlite3.connect(settings.database_path) as db:  # as the achievements give them
+        db.execute("UPDATE gift_balances SET draws = 8")
+    clock.advance(days=1)
+
+    assert await draws(client) == 8
 
 
 async def test_the_day_turns_at_midnight_in_beijing_not_where_the_user_is(
@@ -109,7 +122,7 @@ async def test_the_day_turns_at_midnight_in_beijing_not_where_the_user_is(
     in_tokyo = await draws(client)
     clock.advance(hours=1)  # 00:30 on the 26th in Beijing
 
-    assert [before, in_tokyo, await draws(client)] == [1, 1, 2]
+    assert [before, in_tokyo, await draws(client)] == [2, 2, 4]
 
 
 async def test_the_next_draw_is_at_the_next_midnight_in_beijing(make_client: ClientFactory):
@@ -124,14 +137,14 @@ async def test_the_next_draw_is_at_the_next_midnight_in_beijing(make_client: Cli
     assert [first, later] == ["2026-09-26T16:00:00+00:00"] * 2
 
 
-async def test_the_days_it_is_off_give_none_and_the_day_it_opens_again_gives_one(
+async def test_the_days_it_is_off_give_none_and_the_day_it_opens_again_gives_its_two(
     make_client: ClientFactory, github: FakeIdentityProvider
 ):
     clock = FakeClock()
     client = make_client(FakeLLM(), clock=clock)
     await draws(client)
     clock.advance(days=1)
-    await draws(client)  # 2
+    await draws(client)  # 4
 
     async with admin_beside(client, github) as admin:
         assert (await admin.put(AFFINITY, json={"enabled": False})).status_code == 200
@@ -143,9 +156,9 @@ async def test_the_days_it_is_off_give_none_and_the_day_it_opens_again_gives_one
     opened = await draws(client)
     clock.advance(days=1)
 
-    assert (closed["open"], closed["draws"]) == (False, 2)
-    assert (still_closed["open"], still_closed["draws"]) == (False, 2)
-    assert [opened, await draws(client)] == [3, 4]
+    assert (closed["open"], closed["draws"]) == (False, 4)
+    assert (still_closed["open"], still_closed["draws"]) == (False, 4)
+    assert [opened, await draws(client)] == [6, 7]
 
 
 async def test_off_the_state_is_read_all_the_same_saying_so(
@@ -161,14 +174,13 @@ async def test_off_the_state_is_read_all_the_same_saying_so(
 
     assert closed == {
         "open": False,
-        "draws": 1,
+        "draws": 2,
         "max_draws": 7,
         "backpack": [],
         "reset_cards": 0,
         "next_draw_at": None,
         "resettable": [],
         "characters": [],
-        "daily_tasks": None,
         "achievements": None,
         "rewarded_at": None,
     }
@@ -185,22 +197,22 @@ async def test_off_a_new_user_is_given_none_until_it_opens(
     clock.advance(days=3)
     opened = await draws(make_client(FakeLLM(), clock=clock))
 
-    assert [closed, opened] == [0, 1]
+    assert [closed, opened] == [0, 2]
 
 
 async def test_starting_with_the_judge_model_once_more_opens_it_that_day(
     make_client: ClientFactory, settings: Settings
 ):
     clock = FakeClock()
-    await draws(make_client(FakeLLM(), clock=clock))  # 1
-    clock.advance(days=1)
     await draws(make_client(FakeLLM(), clock=clock))  # 2
+    clock.advance(days=1)
+    await draws(make_client(FakeLLM(), clock=clock))  # 4
 
     make_client(FakeLLM(), clock=clock, settings=replace(settings, judge=None))
     clock.advance(days=4)
     opened = await draws(make_client(FakeLLM(), clock=clock))
 
-    assert opened == 3
+    assert opened == 6
 
 
 async def test_deleting_the_user_deletes_their_chances_but_not_when_it_opened(

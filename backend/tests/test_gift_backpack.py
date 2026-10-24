@@ -77,7 +77,7 @@ async def test_a_draw_gives_what_the_number_falls_on(
 ):
     client = make_client(FakeLLM(), clock=FakeClock(), random=FakeRandom(*numbers))
 
-    assert await draw(client) == {"drawn": [drawn], "draws": 0, "rewarded": None}
+    assert await draw(client) == {"drawn": [drawn], "draws": 1, "rewarded": None}
 
 
 async def test_a_retired_gift_is_never_drawn(make_client: ClientFactory):
@@ -111,7 +111,7 @@ async def test_drawing_them_all_uses_every_chance_and_what_they_give_stacks_in_t
         random=FakeRandom(UNCOMMON, FIRST, COMMON, FIRST, RESET_CARD, UNCOMMON, FIRST),
     )
     await state(client)
-    clock.advance(days=3)
+    clock.advance(days=1)
 
     drawn = await draw(client, all=True)
 
@@ -133,33 +133,37 @@ async def test_a_draw_first_gives_the_chances_due(make_client: ClientFactory):
     await draw(client)
     clock.advance(days=2)
 
-    assert (await draw(client))["draws"] == 1
+    assert (await draw(client))["draws"] == 4
 
 
 async def test_with_no_chances_left_a_draw_is_refused(make_client: ClientFactory):
-    client = make_client(FakeLLM(), clock=FakeClock(), random=FakeRandom(COMMON, FIRST))
-    await draw(client)
+    client = make_client(
+        FakeLLM(), clock=FakeClock(), random=FakeRandom(COMMON, FIRST, COMMON, FIRST)
+    )
+    await draw(client, all=True)
 
     res = await client.post("/api/gifts/draws", json={"all": True})
 
     assert res.status_code == 409
     assert "gifts_closed" not in res.json()
     after = await state(client)
-    assert (after["draws"], after["backpack"]) == (0, [{"gift_id": "cake", "count": 1}])
+    assert (after["draws"], after["backpack"]) == (0, [{"gift_id": "cake", "count": 2}])
 
 
 async def test_two_tabs_drawing_at_once_draw_no_more_than_there_are_chances(
     make_client: ClientFactory,
 ):
-    client = make_client(FakeLLM(), clock=FakeClock(), random=FakeRandom(COMMON, FIRST))
-    await state(client)
+    client = make_client(
+        FakeLLM(), clock=FakeClock(), random=FakeRandom(COMMON, FIRST, COMMON, FIRST)
+    )
+    await draw(client)  # one chance left
 
     results = await asyncio.gather(
         *(client.post("/api/gifts/draws", json={"all": all}) for all in (False, True))
     )
 
     assert sorted(r.status_code for r in results) == [200, 409]
-    assert (await state(client))["backpack"] == [{"gift_id": "cake", "count": 1}]
+    assert (await state(client))["backpack"] == [{"gift_id": "cake", "count": 2}]
 
 
 async def test_closed_a_draw_is_refused_saying_so_and_what_was_had_is_kept_for_when_it_opens(
@@ -170,7 +174,7 @@ async def test_closed_a_draw_is_refused_saying_so_and_what_was_had_is_kept_for_w
     clock.advance(days=1)
     await draw(make_client(FakeLLM(), clock=clock, random=FakeRandom(RARE, FIRST)))
     clock.advance(days=1)
-    await state(make_client(FakeLLM(), clock=clock))  # one more, kept
+    await state(make_client(FakeLLM(), clock=clock))  # two more, kept
 
     closed = make_client(
         FakeLLM(), clock=clock, settings=replace(settings, affinity_and_gifts=False)
@@ -181,7 +185,7 @@ async def test_closed_a_draw_is_refused_saying_so_and_what_was_had_is_kept_for_w
     assert res.status_code == 409
     assert res.json()["gifts_closed"] is True
     assert reopened["backpack"] == [{"gift_id": "plush", "count": 1}]
-    assert (reopened["draws"], reopened["reset_cards"]) == (1, 1)
+    assert (reopened["draws"], reopened["reset_cards"]) == (4, 1)
 
 
 async def test_deleting_the_user_deletes_their_backpack(

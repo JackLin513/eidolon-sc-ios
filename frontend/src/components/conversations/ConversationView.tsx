@@ -39,6 +39,7 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { copy } from "@/i18n";
 import { cueText, untilText } from "@/lib/affinity";
 import type { Character } from "@/lib/api";
+import { keepCalendarMode } from "@/lib/calendar";
 import type { Entry } from "@/lib/conversationLog";
 import type { Failure } from "@/lib/failure";
 import { giftsHref } from "@/lib/gifts";
@@ -46,11 +47,13 @@ import { isLive, NOT_OPEN, type LiveConversation, type Trophy } from "@/lib/live
 import { linesOf, type Line } from "@/lib/messageLines";
 import { pastDay } from "@/lib/pastConversations";
 import { photosUsedUpText } from "@/lib/photoFailure";
+import { herScheduleHref } from "@/lib/schedule";
 import { cn } from "@/lib/utils";
 import { herVars } from "@/theme/herVars";
 import {
   AchievementsIcon,
   BackIcon,
+  CalendarIcon,
   CooldownIcon,
   EndedIcon,
   GiftIcon,
@@ -77,6 +80,7 @@ import { useFocusBack } from "./useFocusBack";
 import { useHerAchievements } from "./useHerAchievements";
 import { usePastConversation, type Viewing } from "./usePastConversation";
 import { useProducerTimezone } from "./useProducerTimezone";
+import { useScheduleOn } from "./useScheduleOn";
 import { useStandOutfits } from "./useStandOutfits";
 
 const t = copy.conversation;
@@ -96,10 +100,11 @@ const noSubscription = () => () => {};
  * 好感度可用时，电话键和更多菜单之间是好感度标识（GLOSSARY.md「好感度」）；不可用时读到 null，不显示。
  * 她在冷却中（GLOSSARY.md「冷却」）时，输入栏换成一行说明和「送她一件礼物」、电话键禁用，到点自己恢复。
  * 她结束了这个对话（GLOSSARY.md「已结束的对话」）时，输入栏换成结束卡「她结束了对话」和「开个新对话」、电话键禁用，只能往上翻看；她还在冷却中时，结束卡写上解除时刻、加「送她一件礼物」。
- * 送礼的入口（冷却时的输入栏、标识的说明末尾、冷却版结束卡）都跳到礼物页，带上她（spec「打开好感度藏起的送礼入口」），
+ * 送礼的入口（冷却时的输入栏、标识的说明末尾、冷却版结束卡）都跳到玩法里的礼物子页，带上她（spec「打开好感度藏起的送礼入口」），
  * 礼物一律记进当前对话；好感度和礼物同一个开关，好感度读不到时这些入口都不在。
  *
- * 更多菜单依次是「新对话」「历史对话」「换衣装」「成就」。「成就」打开她的成就面板（`AchievementsPanel`），「好感度和礼物」关着时没有；
+ * 更多菜单依次是「新对话」「历史对话」「换衣装」「成就」「她的日程」。「成就」打开她的成就面板（`AchievementsPanel`），「好感度和礼物」关着时没有；
+ * 「她的日程」去日历子页只看她、切成周视图，日程关着时没有；
  * 她有没看过的解锁时，更多菜单键右上角和「成就」后面各一个点（`useHerAchievements`）。这一页上的回合解锁了她的阶段、
  * 通话层没盖着页首时，好感度标识左边跳出奖杯和「+n」，约 3 秒收起（快照的 `trophy`）。
  * 「历史对话」打开面板（`PastConversations`），点一段就看那段历史对话
@@ -131,6 +136,7 @@ export function ConversationView({
   // 她现在对制作人的好感度；读不到（好感度关着、没配判断模型或请求失败）就不显示标识，也不出变化胶囊。
   const { affinity, affinityCue, cooling, ended, trophy } = snapshot;
   const achievements = useHerAchievements(character.id, userId, snapshot.herUnlockedAt);
+  const isScheduleOn = useScheduleOn();
   // 解除时刻按制作人的时区写成今天或明天。
   const timeZone = useProducerTimezone();
 
@@ -154,7 +160,7 @@ export function ConversationView({
   }, [snapshot.newPhoto, live]);
 
   const isOpen = conversation.status === "open";
-  // 送礼入口去的礼物页：只带她，礼物一律记进当前对话（历史对话里点的也一样）。
+  // 送礼入口去的礼物子页：只带她，礼物一律记进当前对话（历史对话里点的也一样）。
   const gifts = giftsHref(character.id);
   // 在历史对话里开新对话：先回到当前对话。
   const startNew = () => {
@@ -271,6 +277,17 @@ export function ConversationView({
               {achievements.isUnseen && <UnseenDot className="ml-auto" />}
             </DropdownMenuItem>
           )}
+          {isScheduleOn && (
+            <DropdownMenuItem
+              onClick={() => {
+                keepCalendarMode(userId, "week");
+                go(herScheduleHref(character.id));
+              }}
+            >
+              <CalendarIcon aria-hidden />
+              {t.herSchedule}
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </header>
@@ -302,7 +319,7 @@ export function ConversationView({
 
   const canSend = isOpen && draft.trim() !== "";
   const cooldownUntil = cooling ? affinity?.cooldown_until : null;
-  // 冷却中的解除时刻和去礼物页的「送她一件礼物」：冷却那一行和冷却版结束卡共用。
+  // 冷却中的解除时刻和去礼物子页的「送她一件礼物」：冷却那一行和冷却版结束卡共用。
   const until = cooldownUntil ? untilText(new Date(cooldownUntil), new Date(), timeZone) : null;
   const giveHer = (
     <Button variant="outline" size="lg" nativeButton={false} render={<NextLink href={gifts} onClick={guard(gifts)} />}>
@@ -326,7 +343,7 @@ export function ConversationView({
       </Button>
     </ComposerCard>
   ) : until ? (
-    // 冷却中：一行说明代替输入框，右边是去礼物页的「送她一件礼物」；草稿留着，到点换回输入框时还在。
+    // 冷却中：一行说明代替输入框，右边是去礼物子页的「送她一件礼物」；草稿留着，到点换回输入框时还在。
     <div inert={isCovered} className="flex min-h-14 shrink-0 items-center gap-3 border-t bg-background px-3 py-2">
       <div role="status" className="flex min-w-0 flex-1 items-center gap-2 text-body text-muted-foreground">
         <CooldownIcon aria-hidden className="size-4 shrink-0" />

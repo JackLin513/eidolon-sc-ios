@@ -102,7 +102,7 @@ class CallOutcome:
     the call has reached them once its time is up (`time_up`, timed by the pipeline from
     `time_limit`) or it has recorded as many turns as it may take, and what the browser is
     told then, every word of it, is said here too. So is how often the user has been out of
-    line in the call, and how much each of its turns took off her affinity, which its turns
+    line in the call, and how much each of its turns hurt her (`affinity.hurt`), which its turns
     are told (`in_call`), and whether she hangs up after the turn recorded last, as it said,
     or for a cooldown begun elsewhere (`cooled`), whichever came first: before its limits,
     which the same turn may reach.
@@ -133,7 +133,7 @@ class CallOutcome:
         self._connected_by_clock: datetime | None = None  # the time `clock` told, once connected
         self._recorded = 0
         self._out_of_line = 0  # turns recorded out of line
-        self._hurts: list[float] = []  # what each turn recorded took off her affinity
+        self._hurts: list[float] = []  # how much each turn recorded hurt her
         self._hanging_up: CallTurnRecorded | None = None  # the turn she hangs up after
         self._time_up = False
         self._told = False  # the browser has been told why the call ended

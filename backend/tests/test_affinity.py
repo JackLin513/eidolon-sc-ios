@@ -5,7 +5,8 @@ thaw line, so when it ends is known in advance. It is read by tier only, never b
 and only where it is on: the deployment has the judge model and the switch「好感度和礼物」
 is on, as `.env` has it (on by default) or the admin console overrides it. Deleting the
 user deletes it. Driven through the backend's external API, with what is kept in the
-database set directly and the clock moved."""
+database set directly and the clock moved; how much a turn hurts her, apart from what it
+changes, is told apart from it."""
 
 import sqlite3
 from dataclasses import replace
@@ -15,6 +16,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from eidolon.affinity import Judged, hurt
 from eidolon.config import JevSettings, Settings
 from tests.conftest import ClientFactory
 from tests.fakes import FAKE_JUDGE, START, FakeClock, FakeIdentityProvider, FakeLLM
@@ -241,3 +243,23 @@ async def test_deleting_the_user_deletes_it_and_deleting_memories_does_not(
     assert kept == "distant"
     with sqlite3.connect(settings.database_path) as db:
         assert db.execute("SELECT COUNT(*) FROM affinities").fetchone() == (0,)
+
+
+
+@pytest.mark.parametrize(
+    ("judged", "hurts"),
+    [
+        (None, 0.0),
+        (Judged(0), 5.0),
+        (Judged(1), 2.0),
+        (Judged(4), 0.0),
+        (Judged(4, out_of_line=True), 10.0),
+    ],
+)
+def test_how_much_a_turn_hurts_her_is_weighed_by_its_level_not_by_its_step(
+    judged: Judged | None, hurts: float
+):
+    """Told apart from the API: how much a turn hurts her, for her warning, hanging up or
+    ending the conversation, is what turns once lowered her affinity by, whatever they lower
+    it by now."""
+    assert hurt(judged) == hurts

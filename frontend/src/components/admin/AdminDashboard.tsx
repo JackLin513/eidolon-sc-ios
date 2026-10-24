@@ -32,6 +32,7 @@ import { useWhileVisible } from "@/hooks/useWhileVisible";
 import { copy } from "@/i18n";
 import {
   AFFINITY_LEVELS,
+  type AchievementsSection,
   type AffinityRow,
   type AffinitySection,
   affinityRows,
@@ -41,7 +42,6 @@ import {
   countTicks,
   DASHBOARD_RANGES,
   DASHBOARD_REFRESH_MS,
-  dailyTaskTiles,
   type Dashboard,
   dashboardHref,
   dashboardTabs,
@@ -68,6 +68,7 @@ import {
   isDashboardRange,
   isDashboardTab,
   reachOutTiles,
+  scheduleTiles,
   serviceName,
   splitZeroRows,
   strippedText,
@@ -441,7 +442,8 @@ function DashboardBody({
         <TabsContent value="affinity" keepMounted className={fade}>
           <DashboardGroup title={t.affinity.title}>
             {board.affinity !== null && <AffinityGroup section={board.affinity} />}
-            <TasksAndAchievementsTiles board={board} />
+            <AchievementTiles section={board.achievements} />
+            <ScheduleTiles board={board} />
           </DashboardGroup>
         </TabsContent>
       )}
@@ -762,15 +764,28 @@ function ReachOutTiles({ board }: { board: Dashboard }) {
   );
 }
 
-/**
- * 「好感度」里的「每日任务和成就」一小节：三项各做完几次，再是解锁的成就阶段、发出的抽奖次数、重置卡；
- * 为空时（好感度关着、范围内也没人做完或解锁）不显示。
- */
-function TasksAndAchievementsTiles({ board }: { board: Dashboard }) {
-  const tiles = [...dailyTaskTiles(board.daily_tasks), ...achievementTiles(board.achievements)];
+/** 「好感度」里的「日程」一小节：本周排了日程的人数；日程关着时不显示。 */
+function ScheduleTiles({ board }: { board: Dashboard }) {
+  const tiles = scheduleTiles(board.scheduled_this_week);
   if (tiles.length === 0) return null;
   return (
-    <TileGroup caption={t.tasksAndAchievements.title} grid="grid-cols-2 md:grid-cols-3">
+    <TileGroup caption={t.schedule.title} grid="grid-cols-2 md:grid-cols-3">
+      {tiles.map((tile) => (
+        <StatTile key={tile.id} label={tile.label} value={tile.value} />
+      ))}
+    </TileGroup>
+  );
+}
+
+/**
+ * 「好感度」里的「成就」一小节：解锁的成就阶段、发出的抽奖次数、重置卡；
+ * 为空时（好感度关着、范围内也没人解锁）不显示。
+ */
+function AchievementTiles({ section }: { section: AchievementsSection | null }) {
+  const tiles = achievementTiles(section);
+  if (tiles.length === 0) return null;
+  return (
+    <TileGroup caption={t.achievements.title} grid="grid-cols-2 md:grid-cols-3">
       {tiles.map((tile) => (
         <StatTile key={tile.id} label={tile.label} value={tile.value} />
       ))}

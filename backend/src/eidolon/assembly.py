@@ -42,6 +42,7 @@ from eidolon.gift_catalog import Gift, check_liked_gifts, gifts_path, load_gift_
 from eidolon.gifts import Gifts
 from eidolon.happenings import Happenings
 from eidolon.hot_words import hot_words
+from eidolon.job_list import jobs_path, load_job_list
 from eidolon.housekeeping import keep_tidy
 from eidolon.loop_lag import watch_the_loop
 from eidolon.randomness import Random, secure_random
@@ -72,6 +73,7 @@ from eidolon.rerank import (
     thresholds_for,
 )
 from eidolon.retrieval import Retrieval, open_reference_sources
+from eidolon.schedule import Schedules, idols_of
 from eidolon.service_clients import ProviderClients, ServiceClients
 from eidolon.service_status import ServiceStatus, probes
 from eidolon.sponsor import Sponsor
@@ -130,7 +132,7 @@ class Backend:
     gifts: Gifts
     """Every user's draw chances, backpack and reset cards, where gifts are open."""
     happenings: Happenings
-    """What happens between users and characters, as it counts towards their daily tasks."""
+    """What happens between users and characters, as it counts towards the achievements."""
     backups: Backups
     """The database's backups, as the admin console runs them, and the record of each."""
     photos: Photos
@@ -141,6 +143,8 @@ class Backend:
     """Exports users' data packages, and imports them."""
     reach_outs: ReachOuts
     """Has characters reach out to users once their time comes."""
+    schedules: Schedules
+    """Each week's jobs and every producer's schedule, where schedules are on."""
     world: World | None = None
     """The world setting; None without its data file."""
     corpus: StoryCorpus | None = None
@@ -209,11 +213,13 @@ def build(
 ) -> Backend:
     """The backend `settings` describe, with any of the outside services passed in
     used instead of made. Raises RuntimeError, having opened nothing, if the character
-    configuration (her liked gifts and all), the world setting or the gift catalog is broken,
+    configuration (her liked gifts and all), the world setting, the gift catalog or the job
+    list is broken,
     or a character is none of its idols and none of its staff."""
     characters = load_characters(settings.characters_path)
     gift_catalog = load_gift_catalog(gifts_path(settings.characters_path))
     check_liked_gifts(characters, gift_catalog)
+    job_list = load_job_list(jobs_path(settings.characters_path))
     world = load_world(path := world_path(settings.characters_path))
     if world is None:
         log.info(
@@ -364,11 +370,15 @@ def build(
         database, clock, lambda: config.affinity_on, affinities, characters, gift_catalog,
         random or secure_random,
     )
-    happenings = Happenings(database, clock, lambda: config.affinity_on, gifts, activity)
+    happenings = Happenings(database, lambda: config.affinity_on, gifts, activity)
+    schedules = Schedules(
+        database, clock, lambda: config.schedule_on, idols_of(characters, world), job_list,
+        affinities,
+    )
     engine = ConversationEngine(
         database, store, characters, gift_catalog, memories, titles, clock, retrieval,
         lambda: config.history_turns, world, affinities, config.affinity_judge(), photos,
-        happenings,
+        happenings, schedules,
     )
     own_keys = OwnKeys(
         own_llm_service, config, activity, speech, exempting=lambda: config.exempting_keys,
@@ -420,6 +430,7 @@ def build(
         service_status=service_status,
         data_packages=DataPackages(database, store, memories, characters, gift_catalog, clock),
         reach_outs=reach_outs,
+        schedules=schedules,
         world=world,
         corpus=corpus,
         _closers=closers,

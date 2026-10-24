@@ -87,8 +87,8 @@ async def test_ten_turns_with_her_unlock_the_first_stage_and_give_a_draw(
 
     assert achievement(got, "turns")["progress"] == 10
     assert unlocked(got, "turns") == [1]
-    # The day's one, the first daily task, the ten turns daily task, then the stage's one.
-    assert [nine["draws"], ten["draws"]] == [2, 4]
+    # The day's two, then the stage's one.
+    assert [nine["draws"], ten["draws"]] == [2, 3]
 
 
 async def test_a_gift_given_her_unlocks_the_first_stage_once(make_client: ClientFactory):
@@ -397,8 +397,8 @@ async def test_two_turns_at_once_reaching_a_goal_unlock_it_once(make_client: Cli
     assert [events[-1]["type"] for events in both] == ["done", "done"]
     assert achievement(await hers(client), "turns")["progress"] == 11
     assert unlocked(await hers(client), "turns") == [1]
-    # The stage's one, and the ten turns daily task's.
-    assert after["draws"] == before["draws"] + 2
+    # The stage's one.
+    assert after["draws"] == before["draws"] + 1
 
 
 async def test_deleting_the_user_leaves_none_of_it(

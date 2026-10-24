@@ -1,7 +1,7 @@
 """Characters available for conversation, loaded from the character configuration.
 
 The configuration is a TOML file listing each character's identifier, display
-name, introduction, voice, image colour and the location of her character sheet
+name, introduction, voice, image colour, birthday and the location of her character sheet
 (and, optionally, her character facts, avatars and call background), relative to
 the file, plus the speaker names her lines carry in the story corpus. Adding a
 character or replacing a voice is a configuration change. The sheets, facts,
@@ -11,6 +11,10 @@ Optionally, she also names her idol in the original (`idol_id`, as in the Spine
 mirror's `spine_manifest.json`) and the outfit her stand wears unless the user picks
 another (`default_outfit`, e.g. `stand/1030010010`). The stands themselves are not
 committed: they are served from object storage (ADR-0003, revised 2026-09-30).
+
+Optionally, she also has a short name (`short_name`): what the original calls her, the end
+of her name (真乃 of 櫻木真乃), for where there is room for little, the calendar's job
+blocks; without it they show her name.
 
 Optionally, she also has the other names the conversation list searches her by
 (`name_zh`, `name_kana`, `name_romaji`): her name as Chinese readers know it, its reading
@@ -56,13 +60,15 @@ from pathlib import Path
 from typing import TypeVar
 
 from eidolon.delivery_cues import voiced, without_cues
+from eidolon.producer import Birthday, is_day_of_the_year
 from eidolon.readings import Reading, load_readings, readings_path, used_in
 
 log = logging.getLogger(__name__)
 
 _VALID_ID = re.compile(r"[a-z][a-z0-9_-]*")
-_REQUIRED = ("id", "name", "intro", "voice_id", "sheet", "color")
+_REQUIRED = ("id", "name", "intro", "voice_id", "sheet", "color", "birthday")
 _IMAGE_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
+_BIRTHDAY = re.compile(r"([0-9]{2})-([0-9]{2})")
 _OUTFIT = re.compile(r"(stand|stand_costume)/[0-9]{10}")
 """An outfit: her everyday clothes on a card (`stand`) or its stage costume
 (`stand_costume`), and the card's ten-digit enzaId."""
@@ -125,6 +131,9 @@ class Character:
     avatar: Path | None
     color: str
     """Her image colour, the official one from the original, as lower-case `#rrggbb`."""
+    birthday: Birthday
+    """Her birthday in the original; February 29 falls on February 28 in a year without it,
+    as the producer's does (`producer.is_birthday`)."""
     background: Path | None = None
     """The picture behind her call screen; None shows a gradient of her image colour."""
     scsp_avatar: Path | None = None
@@ -145,6 +154,8 @@ class Character:
     """Her greeting on the landing page; None shows her there without one."""
     call_opener: CallOpener | None = None
     """Her call opener on the landing page; None, and her call there has no words."""
+    short_name: str | None = None
+    """What the original calls her, the end of her name, e.g. 真乃; None shows her name."""
     name_zh: str | None = None
     """Her name in simplified Chinese as the community writes it, e.g. 八宫巡."""
     name_kana: str | None = None
@@ -215,6 +226,13 @@ def _parse_character(
             f"角色 {label} 的 color 应为 #rrggbb 格式的印象色，现在是 {entry['color']!r}"
         )
 
+    birthday = _BIRTHDAY.fullmatch(entry["birthday"])
+    if not (birthday and is_day_of_the_year(int(birthday[1]), int(birthday[2]))):
+        raise CharacterConfigError(
+            f"角色 {label} 的 birthday 应为 MM-DD 格式、一年中有的一天（例如 \"04-25\"），"
+            f"现在是 {entry['birthday']!r}"
+        )
+
     sheet_path = base / entry["sheet"]
     try:
         sheet = sheet_path.read_text(encoding="utf-8").strip()
@@ -273,6 +291,7 @@ def _parse_character(
         sheet=sheet,
         avatar=avatar,
         color=entry["color"].lower(),
+        birthday=Birthday(int(birthday[1]), int(birthday[2])),
         background=background,
         scsp_avatar=scsp_avatar,
         speakers=tuple(speakers),
@@ -282,6 +301,7 @@ def _parse_character(
         default_outfit=default_outfit,
         greeting=_greeting(entry, label, readings),
         call_opener=_call_opener(entry, label, readings),
+        short_name=_short_name(entry, label),
         name_zh=_other_name(entry, "name_zh", label),
         name_kana=_other_name(entry, "name_kana", label),
         name_romaji=_other_name(entry, "name_romaji", label),
@@ -300,6 +320,16 @@ def _other_name(entry: dict, field: str, label: str) -> str | None:
     if not (isinstance(value, str) and value.strip()) or len(value.splitlines()) > 1:
         raise CharacterConfigError(f"角色 {label} 的 {field} 应为不空的单行字符串，现在是 {value!r}")
     return value.strip()
+
+
+def _short_name(entry: dict, label: str) -> str | None:
+    """Her short name, if given: a line of text her name ends with, shorter than it."""
+    short = _other_name(entry, "short_name", label)
+    if short is not None and (short == entry["name"] or not entry["name"].endswith(short)):
+        raise CharacterConfigError(
+            f"角色 {label} 的 short_name 应为 name 末尾的一段（比如「真乃」），现在是 {short!r}"
+        )
+    return short
 
 
 def _greeting(entry: dict, label: str, readings: tuple[Reading, ...]) -> Greeting | None:

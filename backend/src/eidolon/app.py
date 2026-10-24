@@ -7,9 +7,8 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import aclosing, asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
-from typing import Annotated
 
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from starlette.types import Receive, Scope, Send
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -60,9 +59,11 @@ from eidolon.admin_users_api import add_admin_user_routes
 from eidolon.admin_config_api import add_admin_config_routes
 from eidolon.admin_prices_api import add_admin_price_routes
 from eidolon.announcements_api import add_announcement_routes
+from eidolon.calendar_api import add_calendar_routes
 from eidolon.gifts_api import add_gift_routes
 from eidolon.photos_api import add_photo_routes
-from eidolon.sessions import UserId, session_middleware
+from eidolon.schedule_api import add_schedule_routes
+from eidolon.sessions import DeviceTimezone, UserId, session_middleware
 from eidolon.sponsor_api import add_sponsor_routes
 from eidolon.stats import add_stats_routes
 from eidolon.service_status import add_service_status_routes
@@ -176,10 +177,6 @@ class IceCandidates(BaseModel):
 
     pc_id: str
     candidates: list[IceCandidateInput]
-
-
-DeviceTimezone = Annotated[str | None, Header(alias="X-Timezone")]
-"""The time zone the browser detected; the producer profile's own time zone overrides it."""
 
 
 def _stand(character: Character, assets_url: str | None) -> dict | None:
@@ -400,6 +397,8 @@ def create_app(backend: Backend) -> FastAPI:
     add_admin_price_routes(app, backend)
     add_announcement_routes(app, backend)
     add_gift_routes(app, backend)
+    add_calendar_routes(app)
+    add_schedule_routes(app, backend)
     add_photo_routes(app, backend)
     add_sponsor_routes(app, backend)
     add_data_package_routes(app, backend)
@@ -475,9 +474,11 @@ def create_app(backend: Backend) -> FastAPI:
                 "avatar_url": f"/api/characters/{c.id}/avatar" if c.avatar else None,
                 "scsp_avatar_url": f"/api/characters/{c.id}/scsp-avatar" if c.scsp_avatar else None,
                 "color": c.color,
+                "birthday": f"{c.birthday.month:02}-{c.birthday.day:02}",
                 "background_url": f"/api/characters/{c.id}/background" if c.background else None,
                 "stand": _stand(c, backend.settings.stand_assets_url),
                 "idol_id": c.idol_id,
+                "short_name": c.short_name,
                 "name_zh": c.name_zh,
                 "name_kana": c.name_kana,
                 "name_romaji": c.name_romaji,

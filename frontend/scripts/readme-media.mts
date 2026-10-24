@@ -13,8 +13,10 @@
  * 用逗号隔开）给她们开新对话重聊一遍。
  * 通话那几张真的打电话：假麦克风播一段 Windows 语音合成（System.Speech，要装中文语音）念的中文，她听写下来、
  * 用 Fish Audio 的声音回答；每通电话都在她的对话里记下一个回合，所以先拍手机的对话页再打电话。
- * 礼物页那张不真抽奖：直接往开发库（`--database`，默认 backend/data/eidolon.db）里写下固定的背包、一张重置卡、
- * 几次抽奖次数、今天每日任务的进度和合起来的成就，每次重跑都一样；后端要配判断模型，「好感度和礼物」开着。
+ * 玩法页那张（gifts）不真抽奖：直接往开发库（`--database`，默认 backend/data/eidolon.db）里写下固定的背包、一张重置卡、
+ * 几次抽奖次数和合起来的成就，每次重跑都一样；后端要配判断模型，「好感度和礼物」开着。
+ * 日程那张（schedule）也直接写库：把这一周的工作排进演示用户的日程（周一到周五保存过，周末留几项草稿、几项待排），
+ * 页面的时钟停在这一周的周三下午，做完的、进行中的、保存过的和草稿都拍得到；后端的日程要开着。
  * 照片那张要她真发一张：后端要配判断模型和生图（NOVELAI_API_KEY），第一次准备演示对话时花一张图的额度。
  * `--only` 只拍列出的几项，例如 `--only landing,app`；落地页的滚动动图（landing-tour）一步一拍，要十几分钟。
  *
@@ -84,7 +86,7 @@ const CALLEE = "mano";
 const PHOTOGRAPHER = "meguru";
 /** 通话里对她说的话（假麦克风念出来）。 */
 const CALL_LINE = "真乃，最近有没有遇到什么开心的事？";
-/** 礼物页上背包里的礼物（目录 characters/gifts.toml 的 id 和件数）：几类、几档都有，两行正好排满。 */
+/** 背包里的礼物（目录 characters/gifts.toml 的 id 和件数）：几类、几档都有，礼物子页上两行正好排满；玩法页「礼物」卡写的件数是它们的和。 */
 const BACKPACK: Record<string, number> = {
   cake: 1,
   pudding: 2,
@@ -97,16 +99,20 @@ const BACKPACK: Record<string, number> = {
   plush: 1,
   "preserved-flower": 1,
 };
-/** 礼物页上的抽奖次数和重置卡张数。 */
+/** 抽奖次数和重置卡张数（「礼物」卡的状态）。 */
 const DRAWS = 3;
 const RESET_CARDS = 1;
-/** 礼物页上今天每日任务的进度：回合数、送出的礼物件数。 */
-const TODAY_TASKS = { turns: 3, gifts: 0 };
 /**
- * 礼物页「成就」里合起来的两项各到第 1 阶段：来过的天数、抽过的奖（往来过几位由演示对话推出来）。键是后端的成就 id，
+ * 「成就」里合起来的两项各到第 1 阶段：来过的天数、抽过的奖（往来过几位由演示对话推出来）。键是后端的成就 id，
  * 数值要落在 backend/src/eidolon/achievements.py `ALL_CHARACTERS` 的第 1、2 阶段门槛之间，改门槛时跟着改。
  */
 const ACHIEVEMENTS_OF_ALL = { days: 12, draws: 16 };
+/** 日程那张页面上的「此刻」：这一周的周三（周一是 0）下午 2 点半，按演示用户的时区。 */
+const SCHEDULE_NOW = { day: 2, hour: 14, minute: 30 };
+/** 留在待排里的项数；其余的从周一上午起依次排下去。 */
+const SCHEDULE_PENDING = 4;
+/** 从这天（周一是 0）起排的是草稿，之前的是保存过的。 */
+const SCHEDULE_DRAFTS_FROM = 5;
 
 /** 一项要拍的东西：`name` 给 `--only` 用。 */
 type Item = { name: string; take: (browser: Browser) => Promise<void> };
@@ -118,6 +124,7 @@ const ITEMS: Item[] = [
   { name: "phone", take: phone },
   { name: "outfits", take: outfits },
   { name: "gifts", take: gifts },
+  { name: "schedule", take: schedule },
   { name: "photo", take: photo },
   { name: "call", take: call },
 ];
@@ -489,8 +496,8 @@ async function outfits(browser: Browser): Promise<void> {
 }
 
 /**
- * 把演示用户的礼物换成固定的一套：背包只有 BACKPACK，抽奖次数 DRAWS，重置卡 RESET_CARDS，今天每日任务做到
- * TODAY_TASKS，合起来的成就到 ACHIEVEMENTS_OF_ALL。
+ * 把演示用户的礼物换成固定的一套：背包只有 BACKPACK，抽奖次数 DRAWS，重置卡 RESET_CARDS，合起来的成就到
+ * ACHIEVEMENTS_OF_ALL。
  * 先读一次礼物状态，让后端建好这位用户的行、把到今天为止的次数发完，今天再读就不会加了。
  */
 async function stockGifts(context: BrowserContext): Promise<void> {
@@ -509,11 +516,8 @@ async function stockGifts(context: BrowserContext): Promise<void> {
       const put = db.prepare("INSERT INTO gift_backpacks (user_id, gift_id, count) VALUES (?, ?, ?)");
       for (const [gift, count] of Object.entries(BACKPACK)) put.run(id, gift, count);
       db.prepare("UPDATE gift_balances SET draws = ?, reset_cards = ? WHERE user_id = ?").run(DRAWS, RESET_CARDS, id);
-      // 每日任务和「来过几天」都按北京时间划天。
+      // 「来过几天」按北京时间划天。
       const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
-      db.prepare(
-        "INSERT OR REPLACE INTO daily_task_progress (user_id, day, turns, gifts) VALUES (?, ?, ?, ?)",
-      ).run(id, today, TODAY_TASKS.turns, TODAY_TASKS.gifts);
       const progress = db.prepare(
         "INSERT OR REPLACE INTO achievement_progress (user_id, achievement, character_id, count, last_day)" +
           " VALUES (?, ?, '', ?, ?)",
@@ -537,20 +541,129 @@ async function stockGifts(context: BrowserContext): Promise<void> {
   }
 }
 
+/** 玩法页第一级：「礼物」「成就」和「日历」三张卡。 */
 async function gifts(browser: Browser): Promise<void> {
   const context = await signedIn(browser, { ...DESKTOP, colorScheme: "light" });
   try {
     await stockGifts(context);
     const page = await context.newPage();
-    await page.goto(`${origin}/gifts`, { waitUntil: "networkidle" });
+    // 新到的抽奖次数在「礼物」卡上带点，进了礼物子页才记成看过；新解锁的成就在「成就」卡上带点、状态换成「n 个新解锁」，
+    // 离开那个子页才记成看过：先把两个子页各进一趟再回玩法页，拍出来不带点。
+    await page.goto(`${origin}/play/gifts`, { waitUntil: "networkidle" });
     await page.getByRole("region", { name: "抽奖" }).waitFor();
-    // 成就一行新解锁时名字旁有点，离开礼物页才记成看过：从导航去一趟对话再回来，拍出来不带点。
-    await page.getByRole("link", { name: "对话" }).click();
-    await page.waitForURL("**/conversations");
-    await page.getByRole("link", { name: "礼物" }).click();
+    await page.goto(`${origin}/play/achievements`, { waitUntil: "networkidle" });
     await page.getByRole("region", { name: "成就" }).waitFor();
+    await page.getByRole("button", { name: "返回" }).click();
+    await page.waitForURL("**/play");
+    await page.getByRole("link", { name: /还有 \d+ 次抽奖/ }).waitFor();
+    await page.getByRole("link", { name: /(下一个|今天)：/ }).waitFor();
     await settle(page);
     await still(page, "gifts");
+  } finally {
+    await context.close();
+  }
+}
+
+// 下面几样照 src/lib/schedule.ts 抄（脚本不从 src 导入）：接口的形状、三个时间段的名字（`SLOTS`）、草稿在本机的键（`draftsKey`）。
+type Job = { id: string; length: number; slots: ("morning" | "afternoon" | "evening")[] | null };
+type Placement = { job_id: string; day: number; slot: number };
+type WeekOfJobs = { id: string; published: boolean; jobs: Job[] };
+
+const SLOT_NAMES = ["morning", "afternoon", "evening"] as const;
+/** 一周的格子数：7 天 × 3 段。 */
+const CELLS = 21;
+/** 每 5 格空出第 5 格，周视图上留几格空着的。 */
+const EVERY_FIFTH_EMPTY = 5;
+
+/**
+ * 把这一周的工作从周一上午起依次排下去，每隔几格空一格，最后 SCHEDULE_PENDING 项不排；`SCHEDULE_DRAFTS_FROM`
+ * 之前的写进库（保存过的），之后的返回给页面当草稿。不经过保存接口，所以不管现在几点、排没排过，每次重跑都一样。
+ */
+async function stockSchedule(
+  context: BrowserContext,
+): Promise<{ userId: string; timezone: string; week: string; drafts: Placement[] }> {
+  const read = await context.request.get(`${origin}/api/schedule`);
+  if (!read.ok()) throw new Error(`读日程失败（${read.status()}）`);
+  const got = (await read.json()) as { enabled: boolean; timezone: string; this_week: WeekOfJobs };
+  if (!got.enabled) throw new Error("日程没开：后端的 EIDOLON_SCHEDULE 不能是 0");
+  const week = got.this_week;
+  if (!week.published) throw new Error("这一周的工作还没发布");
+  const taken = new Set<string>();
+  const placed: Placement[] = [];
+  const left = [...week.jobs];
+  for (let cell = 0; cell < CELLS && left.length > SCHEDULE_PENDING; cell++) {
+    const day = Math.floor(cell / 3);
+    const slot = cell % 3;
+    if (cell % EVERY_FIFTH_EMPTY === EVERY_FIFTH_EMPTY - 1 || taken.has(`${day}.${slot}`)) continue;
+    const fits = (job: Job) =>
+      slot + job.length <= 3 &&
+      Array.from({ length: job.length }, (_, k) => slot + k).every(
+        (s) => !taken.has(`${day}.${s}`) && (!job.slots || job.slots.includes(SLOT_NAMES[s])),
+      );
+    const at = left.findIndex(fits);
+    if (at < 0) continue;
+    const [job] = left.splice(at, 1);
+    for (let k = 0; k < job.length; k++) taken.add(`${day}.${slot + k}`);
+    placed.push({ job_id: job.id, day, slot });
+  }
+  const { id } = (await (await context.request.get(`${origin}/api/account`)).json()) as { id: string };
+  const db = new DatabaseSync(args.database);
+  try {
+    db.exec("PRAGMA busy_timeout = 5000");
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare("DELETE FROM schedule_placements WHERE user_id = ? AND week = ?").run(id, week.id);
+      // 算过好感度的时刻也写上，演示用户的好感度不因此变。
+      const now = new Date().toISOString().replace("Z", "+00:00");
+      const put = db.prepare(
+        "INSERT INTO schedule_placements (user_id, week, job_id, day, slot, saved_at, counted_at)" +
+          " VALUES (?, ?, ?, ?, ?, ?, ?)",
+      );
+      for (const p of placed) if (p.day < SCHEDULE_DRAFTS_FROM) put.run(id, week.id, p.job_id, p.day, p.slot, now, now);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  } finally {
+    db.close();
+  }
+  return { userId: id, timezone: got.timezone, week: week.id, drafts: placed.filter((p) => p.day >= SCHEDULE_DRAFTS_FROM) };
+}
+
+/** `timeZone` 里 `date`（YYYY-MM-DD）那天的 `hour:minute` 是哪一刻。 */
+function instantIn(timeZone: string, date: string, hour: number, minute: number): Date {
+  const wanted = Date.parse(`${date}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00Z`);
+  const shown = (at: number) => {
+    const p = Object.fromEntries(
+      new Intl.DateTimeFormat("en-CA", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit" }).formatToParts(at).map((part) => [part.type, part.value]),
+    );
+    return Date.parse(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:00Z`);
+  };
+  return new Date(wanted - (shown(wanted) - wanted));
+}
+
+/** 日历子页的周视图：几项保存过的（做完的、进行中的、还没到的）、周末几项草稿，左边还有待排。 */
+async function schedule(browser: Browser): Promise<void> {
+  const context = await signedIn(browser, { ...DESKTOP, colorScheme: "light" });
+  try {
+    const { userId, timezone, week, drafts } = await stockSchedule(context);
+    const monday = new Date(`${week}T00:00:00Z`);
+    monday.setUTCDate(monday.getUTCDate() + SCHEDULE_NOW.day);
+    const page = await context.newPage();
+    await page.clock.setFixedTime(
+      instantIn(timezone, monday.toISOString().slice(0, 10), SCHEDULE_NOW.hour, SCHEDULE_NOW.minute),
+    );
+    // 草稿只存在本机（lib/schedule 的 keepDrafts），页面打开前放进去。
+    await page.addInitScript(
+      ([key, value]) => localStorage.setItem(key, value),
+      [`eidolon.scheduleDrafts.${userId}.${week}`, JSON.stringify(drafts)] as const,
+    );
+    await page.goto(`${origin}/play/calendar`, { waitUntil: "networkidle" });
+    await page.getByText(/^草稿 \d+ 项/).waitFor();
+    await settle(page);
+    await still(page, "schedule");
   } finally {
     await context.close();
   }
