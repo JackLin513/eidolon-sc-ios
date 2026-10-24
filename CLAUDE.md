@@ -22,7 +22,9 @@ Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agen
 - 手机直接调用这些外部 API：对话 LLM、Fish Audio TTS、Soniox 或百炼 STT、硅基流动 embedding/rerank、判断模型、NovelAI。
 - 剧情同步和 embedding 仍在 Mac 上用上游的 Python 工具跑，产出 SQLite/索引后导入手机；手机运行时不需要 Python。
 
-`EidolonCore/` 是端上引擎（内容包、回合、判断、检索、记忆、搭话、追踪），`EidolonIOS/` 是 SwiftUI 客户端；里程碑 1（文字对话）已经完成，不再依赖后端。通话（ADR-0007）还没开始。
+`EidolonCore/` 是端上引擎（内容包、回合、判断、检索、记忆、搭话、标题、追踪、通话状态机），`EidolonIOS/` 是 SwiftUI 客户端。里程碑 1（文字对话）与里程碑 2（通话 MVP：Soniox 实时识别 + Fish Audio 逐段语音）都已经完成，不再依赖后端；没有登录、OAuth、多用户和后台，外部服务的密钥存钥匙串。
+
+本地验证用的密钥只从 `../eidolon-sc/.env` 读取，不要写进仓库、提交或 issue；上游 checkout 只读。改提示词后必须跑 `tools/oracle/run.sh`，三个场景都要与上游 `identical`；平时 `swift test --package-path EidolonCore` 不联网。模拟器调试用的注入开关见 README「测试」一节。
 
 已经讨论过的取舍：
 

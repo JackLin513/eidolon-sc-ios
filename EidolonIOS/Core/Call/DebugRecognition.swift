@@ -3,19 +3,23 @@ import AVFoundation
 import EidolonCore
 import Foundation
 
-/// Development aid: says one line as if the microphone had heard it, then stays open like
-/// a live recognizer, so the call screen can be seen and driven without a voice.
+/// Development aid: says lines as if the microphone had heard them, then stays open like
+/// a live recognizer, so a call can be seen and driven without a voice. With an interval,
+/// the lines repeat, which is how a long call can be rehearsed.
 /// `EIDOLON_CALL_DROP_ONCE=1` drops the first listening connection, to see a reconnect.
 final class DebugRecognition: SpeechRecognition, @unchecked Sendable {
-    let said: String
+    let said: [String]
     let dropFirst: Bool
+    /// Time between lines; nil means one line, then silence.
+    let interval: Duration?
 
     private let lock = NSLock()
     private var calls = 0
 
-    init(said: String, dropFirst: Bool = false) {
+    init(said: [String], dropFirst: Bool = false, interval: Duration? = nil) {
         self.said = said
         self.dropFirst = dropFirst
+        self.interval = interval
     }
 
     func listen(_ audio: AsyncThrowingStream<Data, Error>) -> AsyncThrowingStream<SpeechEvent, Error> {
@@ -23,14 +27,21 @@ final class DebugRecognition: SpeechRecognition, @unchecked Sendable {
         return AsyncThrowingStream { continuation in
             let task = Task {
                 if shouldDrop {
-                    continuation.yield(.partial(said))
+                    if let first = said.first { continuation.yield(.partial(first)) }
                     try? await Task.sleep(for: .milliseconds(500))
                     continuation.finish(throwing: URLError(.networkConnectionLost))
                     return
                 }
                 try? await Task.sleep(for: .milliseconds(1500))
-                continuation.yield(.partial(said))
-                continuation.yield(.final(said))
+                var index = 0
+                while !Task.isCancelled, !said.isEmpty {
+                    let line = said[index % said.count]
+                    continuation.yield(.partial(line))
+                    continuation.yield(.final(line))
+                    guard interval != nil else { break }
+                    index += 1
+                    try? await Task.sleep(for: interval!)
+                }
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(30))
                 }

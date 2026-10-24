@@ -131,13 +131,15 @@ final class AppModel {
         #if DEBUG
         // Development aid: `SIMCTL_CHILD_EIDOLON_CALL_FAKE_SPEECH` answers as if the
         // producer had said one line, so the call can be seen without a microphone.
-        if let said = ProcessInfo.processInfo.environment["EIDOLON_CALL_FAKE_SPEECH"],
-           !said.isEmpty {
+        if let script = ProcessInfo.processInfo.environment["EIDOLON_CALL_FAKE_SPEECH"],
+           !script.isEmpty {
+            let lines = script.split(separator: "|").map(String.init)
             return (
                 SilentCapture(),
                 DebugRecognition(
-                    said: said,
-                    dropFirst: ProcessInfo.processInfo.environment["EIDOLON_CALL_DROP_ONCE"] == "1"
+                    said: lines,
+                    dropFirst: ProcessInfo.processInfo.environment["EIDOLON_CALL_DROP_ONCE"] == "1",
+                    interval: debugSpeechInterval
                 )
             )
         }
@@ -229,6 +231,18 @@ final class AppModel {
     /// Development aid: `SIMCTL_CHILD_EIDOLON_SEND_TEXT` sends one line on opening.
     var debugSendText: String? {
         ProcessInfo.processInfo.environment["EIDOLON_SEND_TEXT"]
+    }
+
+    /// Development aid: `SIMCTL_CHILD_EIDOLON_CALL_SPEECH_INTERVAL_MS` makes the injected
+    /// lines repeat at that interval, for a long call.
+    var debugSpeechInterval: Duration? {
+        #if DEBUG
+        if let milliseconds = ProcessInfo.processInfo.environment["EIDOLON_CALL_SPEECH_INTERVAL_MS"],
+           let value = Int(milliseconds), value > 0 {
+            return .milliseconds(value)
+        }
+        #endif
+        return nil
     }
 
     /// Development aid: `SIMCTL_CHILD_EIDOLON_CALL_RECONNECT_MS` slows reconnection so the
