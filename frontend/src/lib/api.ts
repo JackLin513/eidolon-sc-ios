@@ -674,6 +674,10 @@ export type DataPackageImported = {
   profile: boolean;
   /** Her conversations not imported: she is not on this deployment. */
   skipped: { character_name: string; conversations: number }[];
+  /** The periods written down that were imported (GLOSSARY.md「周期」). */
+  cycles: number;
+  /** Those not: of a character not here, out of bounds, after today, or overlapping another. */
+  cycles_skipped: number;
 };
 
 /** Import a data package, the file itself as the body, streamed: the categories `include` names

@@ -54,10 +54,13 @@ const MANIFEST = { format: 1, exported_at: "2026-10-19T08:00:00.000000+00:00", c
 
 describe("读数据包开头的 manifest.json", () => {
   it("列出包里有、这里能导入的几类", async () => {
-    const manifest = { ...MANIFEST, categories: ["conversations", "photos", "profile", "albums"] };
+    const manifest = { ...MANIFEST, categories: ["conversations", "photos", "profile", "cycles", "albums"] };
     const file = zip({ "manifest.json": [JSON.stringify(manifest), 0], "data.json": ["{}", 6] });
 
-    expect(await readManifest(file)).toEqual({ kind: "package", categories: ["conversations", "photos", "profile"] });
+    expect(await readManifest(file)).toEqual({
+      kind: "package",
+      categories: ["conversations", "photos", "profile", "cycles"],
+    });
   });
 
   it("格式比这里新时是 too_new", async () => {
@@ -88,7 +91,7 @@ describe("读数据包开头的 manifest.json", () => {
 });
 
 describe("导入结果的一句话", () => {
-  const nothing = { conversations: 0, photos: 0, memories: 0, profile: false, skipped: [] };
+  const nothing = { conversations: 0, photos: 0, memories: 0, profile: false, skipped: [], cycles: 0, cycles_skipped: 0 };
 
   it("说导入了什么", () => {
     expect(importSummary({ ...nothing, profile: true })).toBe("导入了制作人档案。");
@@ -96,6 +99,9 @@ describe("导入结果的一句话", () => {
       "导入了 3 段对话、2 张照片、12 条记忆和制作人档案。",
     );
     expect(importSummary({ ...nothing, memories: 1 })).toBe("导入了 1 条记忆。");
+    expect(importSummary({ ...nothing, memories: 1, cycles: 5, profile: true })).toBe(
+      "导入了 1 条记忆、5 条周期记录和制作人档案。",
+    );
   });
 
   it("什么也没新加时照实说", () => {
@@ -116,6 +122,13 @@ describe("导入结果的一句话", () => {
     expect(importSummary({ ...nothing, skipped: [{ character_name: "月岡恋鐘", conversations: 2 }] })).toBe(
       "没有新的内容要导入。跳过了和月岡恋鐘的 2 段对话，这里没有她。",
     );
+  });
+
+  it("带上跳过的周期记录", () => {
+    expect(importSummary({ ...nothing, cycles: 3, cycles_skipped: 2 })).toBe("导入了 3 条周期记录。跳过了 2 条周期记录。");
+    expect(
+      importSummary({ ...nothing, skipped: [{ character_name: "月岡恋鐘", conversations: 2 }], cycles_skipped: 1 }),
+    ).toBe("没有新的内容要导入。跳过了和月岡恋鐘的 2 段对话，这里没有她。跳过了 1 条周期记录。");
   });
 });
 

@@ -16,7 +16,9 @@ on (GLOSSARY.md「好感度」), how the judge model judged the turns recorded, 
 they began, in all and for each character, with how often she hung up a call or ended a
 conversation (`affinity`); and beside it, how many users saved any job into the week
 Beijing is in (GLOSSARY.md「日程」, `scheduled_this_week`), counted from the schedules as the
-dashboard is opened, whatever its range, where schedules are on. How many times characters
+dashboard is opened, whatever its range, where schedules are on; and how many users have
+written down any period of any character (GLOSSARY.md「周期」, `recorded_cycles`), counted
+likewise, where the deployer has cycles on. How many times characters
 reached out (GLOSSARY.md「搭话」), how many times that failed, and the share answered
 (`reach_outs`), where the deployer has them on or any were recorded in the range. How many
 achievements' stages were unlocked, the draw chances they gave and the reset cards characters
@@ -130,6 +132,10 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
             "scheduled_this_week": (
                 await backend.schedules.scheduled_this_week()
                 if backend.config.schedule_on else None
+            ),
+            "recorded_cycles": (
+                await backend.cycle_records.users_recording()
+                if backend.config.cycles_on else None
             ),
             "reach_outs": (
                 reach_outs(reach_out_records)

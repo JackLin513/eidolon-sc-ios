@@ -26,6 +26,7 @@ import {
   rangeFromQuery,
   reachOutTiles,
   scheduleTiles,
+  cycleTiles,
   splitZeroRows,
   stretchLabel,
   stretchSpan,
@@ -313,6 +314,16 @@ describe("scheduleTiles", () => {
   });
 });
 
+describe("cycleTiles", () => {
+  it("are none where cycles are off", () => {
+    expect(cycleTiles(null)).toEqual([]);
+  });
+
+  it("count the users who wrote down any period", () => {
+    expect(cycleTiles(1234).map((tile) => [tile.label, tile.value])).toEqual([["记过周期的用户数", "1,234"]]);
+  });
+});
+
 describe("foldedCount", () => {
   it("shows the first five of a long list, and all of a list that would hide just one", () => {
     expect([6, 7].map(foldedCount)).toEqual([6, 5]);
@@ -339,15 +350,23 @@ describe("dashboardTabs", () => {
   const WITH = ["overview", "usage", "affinity", "cost"];
 
   it("have「好感度」where affinity is on, or achievements were unlocked in the range while it was", () => {
-    expect(dashboardTabs({ affinity, achievements, scheduled_this_week: null })).toEqual(WITH);
-    expect(dashboardTabs({ affinity: null, achievements, scheduled_this_week: null })).toEqual(WITH);
+    expect(dashboardTabs({ affinity, achievements, scheduled_this_week: null, recorded_cycles: null })).toEqual(WITH);
+    expect(dashboardTabs({ affinity: null, achievements, scheduled_this_week: null, recorded_cycles: null })).toEqual(WITH);
   });
 
   it("have「好感度」where affinity is off and schedules are on, for their tile", () => {
-    expect(dashboardTabs({ affinity: null, achievements: null, scheduled_this_week: 0 })).toEqual(WITH);
+    expect(dashboardTabs({ affinity: null, achievements: null, scheduled_this_week: 0, recorded_cycles: null })).toEqual(WITH);
+  });
+
+  it("have「好感度」where affinity is off and cycles are on, for their tile", () => {
+    expect(dashboardTabs({ affinity: null, achievements: null, scheduled_this_week: null, recorded_cycles: 0 })).toEqual(WITH);
   });
 
   it("have none where all are empty", () => {
-    expect(dashboardTabs({ affinity: null, achievements: null, scheduled_this_week: null })).toEqual(["overview", "usage", "cost"]);
+    expect(dashboardTabs({ affinity: null, achievements: null, scheduled_this_week: null, recorded_cycles: null })).toEqual([
+      "overview",
+      "usage",
+      "cost",
+    ]);
   });
 });

@@ -6,7 +6,7 @@
 // addresses, lib/settingsCategory).
 
 /** The subpages, one for each card of the first level. */
-export const PLAY_SUBPAGES = ["gifts", "achievements", "calendar"] as const;
+export const PLAY_SUBPAGES = ["gifts", "achievements", "calendar", "cycles"] as const;
 
 export type PlaySubpage = (typeof PLAY_SUBPAGES)[number];
 
@@ -34,4 +34,11 @@ export function playRedirect(href: string): string | null {
   else if (path.startsWith(`${PLAY_ROOT}/`) && playSubpage(path) === null) to = PLAY_ROOT;
   else return null;
   return `${to}${url.search}`;
+}
+
+/** Where a subpage that is closed goes instead (replacing it in the history), or null if it is
+ * open: the cycles subpage goes to the first level while the deployment or the user has cycles
+ * off (.scratch/cycle-page spec「玩法页的卡」). */
+export function closedPlayRedirect(subpage: PlaySubpage, { cyclesOn }: { cyclesOn: boolean }): string | null {
+  return subpage === "cycles" && !cyclesOn ? PLAY_ROOT : null;
 }

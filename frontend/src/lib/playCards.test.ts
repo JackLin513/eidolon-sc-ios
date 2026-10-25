@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import type { Achievement } from "@/lib/achievements";
 import type { CalendarKind } from "@/lib/calendar";
+import type { Her } from "@/lib/cycles";
 import type { GiftState } from "@/lib/gifts";
-import { type CalendarCardContext, playCards, type PlayContext } from "@/lib/playCards";
+import { type CalendarCardContext, type CyclesCardContext, playCards, type PlayContext } from "@/lib/playCards";
 
 const BEFORE = "2026-10-20T08:00:00+00:00";
 const AFTER = "2026-10-20T09:00:00+00:00";
@@ -51,6 +52,7 @@ function context(change: Partial<PlayContext> = {}): PlayContext {
     achievementsSeenAt: null,
     calendar: calendar(),
     schedulePending: 0,
+    cycles: null,
     ...change,
   };
 }
@@ -201,5 +203,76 @@ describe("「日历」卡的状态", () => {
     expect(pending(3)).toBe("本周还有 3 项工作待排 · 下一个：10月27日 樋口円香的生日");
     expect(pending(1, only())).toBe("本周还有 1 项工作待排");
     expect(pending(0)).toBe("下一个：10月27日 樋口円香的生日");
+  });
+});
+
+/** 记过的她：下一次推算的经期第一天是 `next`。 */
+function recorded(id: string, next: string): Her {
+  return {
+    character_id: id,
+    records: [{ id: `${id}-1`, first_day: "2026-09-01", days: 5 }],
+    estimate: {
+      cycle: 28,
+      period: 5,
+      reasons: [],
+      periods: [
+        { first_day: next, days: 5 },
+        { first_day: "2026-12-01", days: 5 },
+        { first_day: "2026-12-29", days: 5 },
+      ],
+      off_by: null,
+      today: null,
+    },
+  };
+}
+
+const SHORT: Record<string, string> = { mano: "真乃", madoka: "円香", koito: "小糸" };
+
+function cycles(hers: Her[]): CyclesCardContext {
+  return { today: "2026-10-25", hers, nameOf: (id) => SHORT[id] };
+}
+
+const unrecorded = (id: string): Her => ({ character_id: id, records: [], estimate: null });
+
+describe("「周期」卡", () => {
+  it("周期开着时跟在「日历」后面，去周期子页", () => {
+    const cards = playCards(context({ cycles: cycles([unrecorded("mano")]) }));
+
+    expect(cards.map((card) => [card.id, card.name, card.href])).toEqual([
+      ["gifts", "礼物", "/play/gifts"],
+      ["achievements", "成就", "/play/achievements"],
+      ["calendar", "日历", "/play/calendar"],
+      ["cycles", "周期", "/play/cycles"],
+    ]);
+  });
+
+  it("周期关着、或还没读到时没有这张卡（读到之前不闪出来）", () => {
+    expect(ofId(playCards(context({ cycles: null })), "cycles")).toBeUndefined();
+  });
+
+  it("好感度和礼物没开放时照样有", () => {
+    const cards = playCards(context({ state: giftState({ open: false }), cycles: cycles([]) }));
+
+    expect(cards.map((card) => card.id)).toEqual(["calendar", "cycles"]);
+  });
+
+  const status = (hers: Her[]) => ofId(playCards(context({ cycles: cycles(hers) })), "cycles")?.status;
+
+  it("一位都没记过时写那行说明", () => {
+    expect(status([unrecorded("mano"), unrecorded("madoka")])).toBe("凭她的言行记下她的经期，这里替你推算。");
+  });
+
+  it("记过时写几位，和推算的下一次不早于今天里最早的那位", () => {
+    expect(
+      status([recorded("mano", "2026-11-03"), unrecorded("hiori"), recorded("madoka", "2026-10-31"), recorded("koito", "2026-10-24")]),
+    ).toBe("记过 3 位 · 最近 円香 10月31日");
+  });
+
+  it("推算的下一次就是今天时算最近", () => {
+    expect(status([recorded("mano", "2026-11-03"), recorded("madoka", "2026-10-25")])).toBe("记过 2 位 · 最近 円香 10月25日");
+  });
+
+  it("都过了日子时取推算的下一次最早的那位", () => {
+    expect(status([recorded("mano", "2026-10-20"), recorded("madoka", "2026-10-12")])).toBe("记过 2 位 · 最近 円香 10月12日");
   });
 });

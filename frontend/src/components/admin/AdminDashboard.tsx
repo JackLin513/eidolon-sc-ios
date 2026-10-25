@@ -36,6 +36,7 @@ import {
   type AffinityRow,
   type AffinitySection,
   affinityRows,
+  cycleTiles,
   CALL_END_REASONS,
   CALL_RESULTS,
   achievementTiles,
@@ -444,6 +445,7 @@ function DashboardBody({
             {board.affinity !== null && <AffinityGroup section={board.affinity} />}
             <AchievementTiles section={board.achievements} />
             <ScheduleTiles board={board} />
+            <CycleTiles board={board} />
           </DashboardGroup>
         </TabsContent>
       )}
@@ -770,6 +772,19 @@ function ScheduleTiles({ board }: { board: Dashboard }) {
   if (tiles.length === 0) return null;
   return (
     <TileGroup caption={t.schedule.title} grid="grid-cols-2 md:grid-cols-3">
+      {tiles.map((tile) => (
+        <StatTile key={tile.id} label={tile.label} value={tile.value} />
+      ))}
+    </TileGroup>
+  );
+}
+
+/** 「好感度」里的「周期」一小节：记过周期的用户数；周期关着时不显示。 */
+function CycleTiles({ board }: { board: Dashboard }) {
+  const tiles = cycleTiles(board.recorded_cycles);
+  if (tiles.length === 0) return null;
+  return (
+    <TileGroup caption={t.cycles.title} grid="grid-cols-2 md:grid-cols-3">
       {tiles.map((tile) => (
         <StatTile key={tile.id} label={tile.label} value={tile.value} />
       ))}

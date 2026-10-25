@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { playHref, playRedirect, playSubpage } from "@/lib/playRoute";
+import { closedPlayRedirect, playHref, playRedirect, playSubpage } from "@/lib/playRoute";
 
 describe("the play page's addresses", () => {
   it("has a first level and a subpage for each card", () => {
@@ -14,6 +14,7 @@ describe("the play page's addresses", () => {
     expect(playSubpage("/play/achievements")).toBe("achievements");
     expect(playSubpage("/play/tasks")).toBeNull();
     expect(playSubpage("/play/calendar")).toBe("calendar");
+    expect(playSubpage("/play/cycles")).toBe("cycles");
     expect(playSubpage("/play")).toBeNull();
     expect(playSubpage("/play/xxx")).toBeNull();
     expect(playSubpage("/play/gifts/more")).toBeNull();
@@ -46,8 +47,20 @@ describe("old and unknown play addresses", () => {
     expect(playRedirect("/play/gifts?to=mano")).toBeNull();
     expect(playRedirect("/play/achievements")).toBeNull();
     expect(playRedirect("/play/calendar")).toBeNull();
+    expect(playRedirect("/play/cycles?who=mano")).toBeNull();
     expect(playRedirect("/gifts/cake")).toBeNull();
     expect(playRedirect("/conversations")).toBeNull();
     expect(playRedirect("/player")).toBeNull();
+  });
+});
+
+describe("a subpage that is closed", () => {
+  it("sends the cycles subpage to the first level while cycles are off", () => {
+    expect(closedPlayRedirect("cycles", { cyclesOn: false })).toBe("/play");
+    expect(closedPlayRedirect("cycles", { cyclesOn: true })).toBeNull();
+  });
+
+  it("leaves the other subpages alone", () => {
+    expect(closedPlayRedirect("calendar", { cyclesOn: false })).toBeNull();
   });
 });

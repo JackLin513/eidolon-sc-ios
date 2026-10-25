@@ -38,7 +38,7 @@ from eidolon.data_package import (
     TooLarge,
     TooNew,
 )
-from eidolon.sessions import UserId
+from eidolon.sessions import DeviceTimezone, UserId
 
 log = logging.getLogger(__name__)
 
@@ -105,7 +105,9 @@ def add_data_package_routes(app: FastAPI, backend: Backend) -> None:
         )
 
     @app.post("/api/account/data-package")
-    async def import_data_package(request: Request, user_id: UserId, include: str = "") -> dict:
+    async def import_data_package(
+        request: Request, user_id: UserId, include: str = "", device_timezone: DeviceTimezone = None
+    ) -> dict:
         """Import the package in the request body, the zip itself, into the user's data: the
         categories both `include` names and the package holds. What it added
         (`data_package.Imported`). One at a time for each user, and so many a day; the body
@@ -125,7 +127,7 @@ def add_data_package_routes(app: FastAPI, backend: Backend) -> None:
                         if size > limit:
                             raise TooLarge()
                         file.write(chunk)
-                imported = await packages.import_(user_id, path, categories)
+                imported = await packages.import_(user_id, path, categories, device_timezone)
         except (Busy, ImportsUsedUp, TooLarge, TooNew, BrokenPackage):
             raise
         except Exception:

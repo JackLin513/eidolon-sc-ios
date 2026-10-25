@@ -38,6 +38,7 @@ from pydantic import (
 )
 
 from eidolon.affinity import Change, Tier, next_day
+from eidolon import cycle_records
 from eidolon.characters import Character
 from eidolon.data_access import Database
 from eidolon.gift_catalog import Gift
@@ -77,7 +78,7 @@ from eidolon.store import (
 FORMAT = 3
 """The newest format this version reads, and the one it exports. Changing the format adds
 one to it, and keeps reading the older ones: 2 added her reach-outs (`reach_outs`), 3 her
-being unwell among the events (`unwell`)."""
+being unwell among the events (`unwell`) and the periods the user wrote down (`cycles`)."""
 
 REACH_OUTS_SINCE = 2
 """The format whose conversations first held her reach-outs: before it, none may."""
@@ -85,7 +86,10 @@ REACH_OUTS_SINCE = 2
 UNWELL_SINCE = 3
 """The format whose conversations first held her being unwell: before it, none may."""
 
-Category = Literal["conversations", "photos", "memories", "profile"]
+CYCLES_SINCE = 3
+"""The format whose packages first held the periods the user wrote down: before it, none may."""
+
+Category = Literal["conversations", "photos", "memories", "profile", "cycles"]
 CATEGORIES: tuple[Category, ...] = get_args(Category)
 """What a package may hold, in the order a manifest lists them. Photos go with the
 conversations they were sent in, never without them."""
@@ -505,12 +509,34 @@ class PackagedMemory(_Strict):
         )
 
 
+class PackagedCycle(_Strict):
+    """A period the user wrote down of a character (GLOSSARY.md「周期」): whose, from when, how
+    many days; days out of bounds are skipped as it is imported, not refused."""
+
+    character_id: Annotated[str, Field(min_length=1, max_length=100)]
+    first_day: Day
+    days: StrictInt
+
+    @classmethod
+    def of(cls, record: cycle_records.Carried) -> "PackagedCycle":
+        return cls(
+            character_id=record.character_id, first_day=record.first_day.isoformat(),
+            days=record.days,
+        )
+
+    def carried(self) -> cycle_records.Carried:
+        return cycle_records.Carried(
+            self.character_id, date.fromisoformat(self.first_day), self.days
+        )
+
+
 class PackageData(_Strict):
     """`data.json`: a key for each category the package holds, none for the others."""
 
     profile: PackagedProfile | None = None
     conversations: list[PackagedConversation] | None = None
     memories: list[PackagedMemory] | None = None
+    cycles: list[PackagedCycle] | None = None
 
     @model_validator(mode="after")
     def _memories_told_in_conversations(self) -> "PackageData":
@@ -579,6 +605,10 @@ class Imported:
     memories: int = 0
     profile: bool = False
     skipped: list[Skipped] = field(default_factory=list)
+    cycles: int = 0
+    cycles_skipped: int = 0
+    """The periods written down that were not imported: of a character not here, out of
+    bounds, after today, or overlapping another of hers."""
 
 
 def chosen(include: Iterable[Category]) -> list[Category]:
@@ -650,7 +680,7 @@ class DataPackages:
         but the pictures of their photos read at once, then written on a thread, reading
         the pictures one at a time."""
         categories = chosen(include)
-        profile, conversations, memories = await self._db.read(
+        profile, conversations, memories, cycles = await self._db.read(
             self._read_data, user_id, categories
         )
         loop = asyncio.get_running_loop()
@@ -667,18 +697,21 @@ class DataPackages:
                 raise
 
         await asyncio.to_thread(
-            self._export, categories, profile, conversations, memories, picture_of, to
+            self._export, categories, profile, conversations, memories, cycles, picture_of, to
         )
 
     def _read_data(
         self, db: sqlite3.Connection, user_id: str, categories: list[Category]
-    ) -> tuple[ProducerProfile | None, list[WholeConversation], list[Memory]]:
+    ) -> tuple[
+        ProducerProfile | None, list[WholeConversation], list[Memory], list[cycle_records.Carried]
+    ]:
         """What of the categories the user has, read through `db`, but the pictures of their
-        photos: their profile, conversations and memories."""
+        photos: their profile, conversations, memories and the periods they wrote down."""
         return (
             read_profile(db, user_id) if "profile" in categories else None,
             read_whole_conversations(db, user_id) if "conversations" in categories else [],
             self._memories.read_kept(db, user_id) if "memories" in categories else [],
+            cycle_records.read_carried(db, user_id) if "cycles" in categories else [],
         )
 
     def _export(
@@ -687,6 +720,7 @@ class DataPackages:
         profile: ProducerProfile | None,
         conversations: list[WholeConversation],
         memories: list[Memory],
+        cycles: list[cycle_records.Carried],
         picture_of: Callable[[str], bytes | None],
         to: Path,
     ) -> None:
@@ -709,6 +743,9 @@ class DataPackages:
                 for m in memories
             ]
             counts["memories"] = len(data.memories)
+        if "cycles" in categories:
+            data.cycles = [PackagedCycle.of(r) for r in cycles]
+            counts["cycles"] = len(data.cycles)
         now = self._clock()
         manifest = Manifest(
             format=FORMAT, exported_at=_written(now), categories=categories, counts=counts
@@ -751,15 +788,25 @@ class DataPackages:
                     compress_type=zipfile.ZIP_STORED,  # a WebP is compressed already
                 )
 
-    async def import_(self, user_id: str, package: Path, include: Iterable[Category]) -> Imported:
+    async def import_(
+        self,
+        user_id: str,
+        package: Path,
+        include: Iterable[Category],
+        device_timezone: str | None,
+    ) -> Imported:
         """Import the categories of the package at `package` that `include` names into the
-        user's data, counted among today's imports; raises `TooNew` or `BrokenPackage`
+        user's data, counted among today's imports; the periods written down checked against
+        today where the producer is, by the profile imported with them, if any, else theirs,
+        else `device_timezone`. Raises `TooNew` or `BrokenPackage`
         having written nothing. The package is unzipped and checked on a thread first, then
         written in one write task, all at once or not at all. The memories it adds are
         embedded afterwards, in the background. Whether the user has imports left today is
         for the caller to check first (`check_imports_left`), while it holds `one_at_a_time`."""
         unpacked = await asyncio.to_thread(self._unpack, package, include)
-        imported = await self._db.write(_write_import, user_id, unpacked, self._clock())
+        imported = await self._db.write(
+            _write_import, user_id, unpacked, device_timezone, self._clock()
+        )
         if imported.memories:
             self._memories.embed_carried(user_id)
         return imported
@@ -781,6 +828,11 @@ class DataPackages:
             )
         if "memories" in categories and data.memories is not None:
             unpacked.memories = data.memories
+        if "cycles" in categories and data.cycles is not None:
+            unpacked.cycles = [
+                c.carried() for c in data.cycles if c.character_id in self._characters
+            ]
+            unpacked.cycles_skipped = len(data.cycles) - len(unpacked.cycles)
         return unpacked
 
     def _unpack_conversations(
@@ -828,6 +880,10 @@ class _Unpacked:
     conversations: list[_Carried] = field(default_factory=list)
     skipped: list[Skipped] = field(default_factory=list)
     memories: list[PackagedMemory] = field(default_factory=list)
+    cycles: list[cycle_records.Carried] = field(default_factory=list)
+    """The periods written down to add, of characters here."""
+    cycles_skipped: int = 0
+    """The periods written down of characters not here."""
 
 
 def _create(db: sqlite3.Connection) -> None:
@@ -843,7 +899,11 @@ def _imports_made(db: sqlite3.Connection, user_id: str, since: str) -> int:
 
 
 def _write_import(
-    db: sqlite3.Connection, user_id: str, unpacked: _Unpacked, now: datetime
+    db: sqlite3.Connection,
+    user_id: str,
+    unpacked: _Unpacked,
+    device_timezone: str | None,
+    now: datetime,
 ) -> Imported:
     """Add what of a package is `unpacked` to the user's data through `db`, in the caller's
     transaction, as an import they made `now`; what it added."""
@@ -863,6 +923,11 @@ def _write_import(
         imported.memories = add_carried(
             db, user_id, [m.carried(here) for m in unpacked.memories]
         )
+    if unpacked.cycles:
+        imported.cycles = cycle_records.add_carried(
+            db, user_id, unpacked.cycles, device_timezone, now
+        )
+    imported.cycles_skipped = unpacked.cycles_skipped + len(unpacked.cycles) - imported.cycles
     db.execute(
         "DELETE FROM data_package_imports WHERE user_id = ? AND at < ?",
         (user_id, _today_began(now)),
@@ -906,6 +971,8 @@ def _read(zipped: zipfile.ZipFile) -> tuple[Manifest, PackageData, dict[str, byt
             e.kind == "unwell" for c in data.conversations or [] for e in c.events
         ):
             raise BrokenPackage("her being unwell in a format before it")
+        if manifest.format < CYCLES_SINCE and data.cycles is not None:
+            raise BrokenPackage("periods written down in a format before them")
         listed = set(manifest.categories)
         held = {c for c in CATEGORIES if c != "photos" and getattr(data, c) is not None}
         photos = data.photos()
