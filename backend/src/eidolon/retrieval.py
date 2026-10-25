@@ -142,8 +142,7 @@ class RetrievalJudge(Protocol):
     ) -> tuple[Need, Judged | None, bool]:
         """What answering `text` needs looked up; asked about `affinity` too, what saying it
         does to her affinity (None if that alone cannot be told), the considerate question
-        asked too in her `days`; and asked about `photo`,
-        whether it asks her for a photo (no if that alone cannot be told)."""
+        asked too in her `days`; and asked about `photo`, whether it asks her for a photo (no if that alone cannot be told)."""
         ...
 
 

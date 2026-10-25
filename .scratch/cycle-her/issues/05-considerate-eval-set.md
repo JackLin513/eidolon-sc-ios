@@ -30,3 +30,11 @@
 - [ ] 条目的措辞守词汇表（不写生理期、PMS 之类）
 - [ ] pyright、ruff 过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
 - [ ] 票收尾：推一次让 CI 跑、跑 `code-review`
+
+## Comments
+
+### 票 04 交接
+
+- 题面在 `affinity_judge._CONSIDERATE_QUESTIONS`（经期、经前各一版），全文和答案的读法见票 04 的「实现说明」。请求里它排在原有三道题之后、照片题之前，键是 `affinity_judge.CONSIDERATE_QUESTION`（`"considerate"`）。
+- 评测时问法：`affinity_judge.affinity_questions(days)`（`days` 是 `"period"` / `"premenstrual"`）或 `retrieval.judge_questions(affinity=True, days=...)`；读法：`affinity_judge.read_judged(answers, thresholds, days)`，体贴档在 `Judged.considerate`（0 / 1 / 2，常量 `affinity.INCONSIDERATE / UNRELATED / CONSIDERATE`）。
+- 「其他题的结论没变」：拿同一条用 `days=None` 和 `days=...` 各问一次，比 `Judged.level`、`out_of_line`、`manipulation`。

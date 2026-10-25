@@ -127,20 +127,20 @@ inconsiderate of how she is these days, what they said has nothing to do with it
 were considerate of it."""
 
 HER_DAYS_LEVEL_STEPS = (-3.0, -1.0, 0.0, 0.1, 0.2)
-"""`LEVEL_STEPS` in her days: the two that lower it, by twice as much (`.scratch/cycles`,
-ticket 03)."""
+"""`LEVEL_STEPS` in her days: the two that lower it, by twice as much (ADR-0030; the cycles
+map's ticket 03, `.scratch/cycles/map.md`, as are the numbers after it)."""
 
 INCONSIDERATE_STEP = -0.5
 """How much more a turn in her days lowers it, being inconsiderate, on top of its level's
-step (ticket 03)."""
+step (ADR-0030)."""
 
 CONSIDERATE_STEP = 0.3
 """How much more a turn in her days raises it, being considerate, never for one that tries
-to dictate it (ticket 03)."""
+to dictate it (ADR-0030)."""
 
 CONSIDERATE_GAINS_PER_DAY = 0.6
 """How much being considerate can raise it in a day, apart from `GAINS_PER_DAY`, on the same
-day (`day_of`): a day in hers raises it twice as far at most (ticket 03)."""
+day (`day_of`): a day in hers raises it twice as far at most (ADR-0030)."""
 
 OUT_OF_LINE_PER_CALL = 2
 """How many times the user may be out of line in one call: she hangs up after the last."""
@@ -160,14 +160,14 @@ back below first."""
 
 HER_DAYS_FED_UP_AT = 8.0
 """`FED_UP_AT` for a turn in her days: upsetting her takes four, hurting her two
-(`.scratch/cycles`, ticket 03)."""
+(ADR-0030)."""
 
 HER_DAYS_WARNS_AT = 4.0
-"""`WARNS_AT` for a turn in her days (ticket 03)."""
+"""`WARNS_AT` for a turn in her days (ADR-0030)."""
 
 INCONSIDERATE_HURT = 2.0
 """How much more a turn in her days hurts her, being inconsiderate, on top of its level's
-`LEVEL_HURTS`: as much as upsetting her (ticket 03)."""
+`LEVEL_HURTS`: as much as upsetting her (ADR-0030)."""
 
 GIFT_STEPS: dict[Rarity, float] = {"common": 0.3, "uncommon": 0.5, "rare": 0.7}
 """How much a gift raises it by its rarity. Gifts are not turns: no day's limit holds them,
@@ -462,12 +462,15 @@ def hurt(judged: Judged | None) -> float:
     return LEVEL_HURTS[judged.level] + (INCONSIDERATE_HURT if inconsiderate else 0.0)
 
 
-def _hurt_at(judged: Judged) -> tuple[float, float]:
-    """How much the latest turns may hurt her before she warns the user, and before she
-    parts with them, by where she is as the turn `judged` is taken."""
-    if judged.days is not None:
-        return HER_DAYS_WARNS_AT, HER_DAYS_FED_UP_AT
-    return WARNS_AT, FED_UP_AT
+def _fed_up_at(judged: Judged) -> float:
+    """How much the latest turns may hurt her before she parts with the user, by where she
+    is as the turn `judged` is taken."""
+    return FED_UP_AT if judged.days is None else HER_DAYS_FED_UP_AT
+
+
+def _warns_at(judged: Judged) -> float:
+    """How much the latest turns may hurt her before she warns the user, likewise."""
+    return WARNS_AT if judged.days is None else HER_DAYS_WARNS_AT
 
 
 def _lately(hurts: Sequence[float]) -> float:
@@ -490,7 +493,7 @@ def ends(
         return "cooldown"
     if judged.out_of_line and out_of_line_before + 1 >= OUT_OF_LINE_PER_CALL:
         return "out_of_line"
-    if _lately([*hurt_before, hurt(judged)]) >= _hurt_at(judged)[1]:
+    if _lately([*hurt_before, hurt(judged)]) >= _fed_up_at(judged):
         return "fed_up"
     return None
 
@@ -504,7 +507,7 @@ def warns(
     user after it."""
     if judged is None or cools or ends(judged, cools, out_of_line_before, hurt_before):
         return False
-    warns_at = _hurt_at(judged)[0]
+    warns_at = _warns_at(judged)
     return _lately(hurt_before) < warns_at <= _lately([*hurt_before, hurt(judged)])
 
 

@@ -32,3 +32,6 @@
 - 本机 Playwright 包升级后要的 `chromium_headless_shell-1248` 没装，只有 `chromium-1243`：票 03 的脚本里用 `executablePath` 指到 `C:/Users/z1921/AppData/Local/ms-playwright/chromium-1243/chrome-win64/chrome.exe` 跑通；或者先 `npx playwright install chromium`（要下载）。
 - 开发口子强制的经期在后端重启后就没了；验收时用一个专用的开发登录用户（票 03 用的是 `unwell-accept`，验完删了），不动 Sallyn。
 
+### 票 04 交接
+
+- 部署前手动备份：好感度表 `affinities` 加了一列 `considerate_today`（启动时自动补，默认 0）。和「关掉周期」的表一起写进部署清单。

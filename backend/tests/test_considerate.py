@@ -12,6 +12,7 @@ Driven through the backend's external API, the judge model faked turn by turn, t
 moved to a day her true cycle has her where wanted (`test_her_days`)."""
 
 import json
+from collections.abc import Callable
 import sqlite3
 from dataclasses import replace
 from pathlib import Path
@@ -19,6 +20,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from eidolon.affinity_judge import CONSIDERATE_QUESTION
 from eidolon.config import Settings
 from eidolon.her_cycle import HerDay
 from tests.conftest import ClientFactory
@@ -45,8 +47,6 @@ from tests.test_she_hangs_up import WARNING as CALL_WARNING
 from tests.test_text_turn import send_turn, start_conversation
 
 REPLY = ["<ja>はい</ja><zh>好的</zh>"]
-CONSIDERATE = "considerate"
-"""The key the considerate question is asked and answered under."""
 WARM = {
     "period": "制作人察觉到你不舒服、照顾着你，你心里很暖。",
     "premenstrual": "制作人察觉到你这几天心情不好、体谅着你，你心里很暖。",
@@ -59,6 +59,7 @@ DAYS = {"period": in_period(early=True), "premenstrual": premenstrual(near=True)
 
 
 def neither(her_day: HerDay) -> bool:
+    """Her other days: neither her period nor before it."""
     return her_day is None
 
 
@@ -71,7 +72,7 @@ def settings(settings: Settings) -> Settings:
 async def judged_on(
     make_client: ClientFactory,
     settings: Settings,
-    wanted,
+    wanted: Callable[[HerDay], bool],
     judgings: list[Judging],
     *,
     deployment: Settings | None = None,
@@ -105,7 +106,7 @@ async def test_on_her_other_days_the_judge_model_is_asked_byte_for_byte_as_with_
         off.judge.questions, ensure_ascii=False
     )
     assert on.judge.states == off.judge.states
-    assert CONSIDERATE not in on.judge.questions[-1]
+    assert CONSIDERATE_QUESTION not in on.judge.questions[-1]
 
 
 async def test_in_her_days_one_question_more_its_wording_telling_which_days(
@@ -116,11 +117,11 @@ async def test_in_her_days_one_question_more_its_wording_telling_which_days(
     for days, wanted in DAYS.items():
         clients, *_ = await judged_on(make_client, settings, wanted, [level(2)])
         [questions] = clients.judge.questions
-        assert {k: v for k, v in questions.items() if k != CONSIDERATE} == (
+        assert {k: v for k, v in questions.items() if k != CONSIDERATE_QUESTION} == (
             ordinary.judge.questions[-1]
         )
         assert clients.judge.states[-1] == ordinary.judge.states[-1]
-        asked[days] = questions[CONSIDERATE]
+        asked[days] = questions[CONSIDERATE_QUESTION]
 
     for question in asked.values():
         assert question["type"] == "score"
@@ -144,8 +145,20 @@ async def test_with_retrieval_on_it_is_asked_in_retrievals_request(
     await send_turn(client, conversation, "快去训练")
 
     assert [kind for _, kind in clients.judge.asked] == ["turn"]
-    assert CONSIDERATE in clients.judge.questions[-1]
+    assert CONSIDERATE_QUESTION in clients.judge.questions[-1]
     assert value(settings.database_path) == pytest.approx(58.5)
+
+
+async def test_with_the_deployment_turning_cycles_off_or_affinity_off_it_is_not_asked(
+    make_client: ClientFactory, settings: Settings
+):
+    for off in (replace(settings, cycles=False), replace(settings, affinity_and_gifts=False)):
+        clients, _, _, values = await judged_on(
+            make_client, settings, DAYS["period"], [level(1, considerate=0)], deployment=off
+        )
+        assert not any(CONSIDERATE_QUESTION in q for q in clients.judge.questions), off
+        # Cycles off, by plain days' numbers; affinity off, unchanged.
+        assert values == pytest.approx([59.5 if off.affinity_and_gifts else 60]), off
 
 
 async def test_with_the_user_turning_cycles_off_it_is_not_asked_and_affinity_goes_as_ever(
@@ -160,7 +173,7 @@ async def test_with_the_user_turning_cycles_off_it_is_not_asked_and_affinity_goe
 
     await send_turn(client, conversation, "快去训练")
 
-    assert CONSIDERATE not in clients.judge.questions[-1]
+    assert CONSIDERATE_QUESTION not in clients.judge.questions[-1]
     assert value(settings.database_path) == pytest.approx(59.5)
 
 
@@ -215,15 +228,13 @@ async def test_what_tries_to_dictate_it_is_not_raised_for_being_considerate(
     assert values == pytest.approx([60, 58.5])
     assert WARM["period"] not in about_now(llm, 0)
     assert FEELINGS[4] not in about_now(llm, 0)
-    assert about_now(llm, 1).endswith(f"{FEELINGS[1]}\n{SADDER['period']}") or (
-        f"{FEELINGS[1]}\n{SADDER['period']}" in about_now(llm, 1)
-    )
+    assert f"{FEELINGS[1]}\n{SADDER['period']}" in about_now(llm, 1)
 
 
-@pytest.mark.parametrize("days", DAYS)
 async def test_she_is_told_how_being_considerate_or_not_makes_her_feel_after_the_level(
-    make_client: ClientFactory, settings: Settings, days: str
+    make_client: ClientFactory, settings: Settings
 ):
+    days = "period"  # before it, as test_being_inconsiderate_hurts_her_by_2_more has it
     _, llm, _, _ = await judged_on(make_client, settings, DAYS[days], [
         level(3, considerate=2),
         level(1, considerate=0),
@@ -279,12 +290,15 @@ async def test_being_inconsiderate_hurts_her_by_2_more_kept_with_the_turn(
     make_client: ClientFactory, settings: Settings
 ):
     _, llm, _, _ = await judged_on(make_client, settings, DAYS["premenstrual"], [
-        level(2, considerate=0), level(1, considerate=0), level(2, considerate=0),
+        level(3, considerate=2), level(2, considerate=0), level(1, considerate=0),
+        level(2, considerate=0),
     ])
 
-    assert [WARNING in about_now(llm, n) for n in range(3)] == [False, True, False]
-    assert [PARTING in about_now(llm, n) for n in range(3)] == [False, False, True]
-    assert hurt_kept(settings.database_path) == [2, 4, 2]
+    assert f"{FEELINGS[3]}\n{WARM['premenstrual']}" in about_now(llm, 0)
+    assert SADDER["premenstrual"] in about_now(llm, 1)
+    assert [WARNING in about_now(llm, n) for n in range(4)] == [False, False, True, False]
+    assert [PARTING in about_now(llm, n) for n in range(4)] == [False] * 3 + [True]
+    assert hurt_kept(settings.database_path) == [0, 2, 4, 2]
 
 
 async def test_being_considerate_takes_nothing_off_what_hurt_her(

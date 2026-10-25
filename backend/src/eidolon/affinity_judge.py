@@ -179,13 +179,14 @@ def read_answer(answers: dict[str, Any], days: Days | None = None) -> AffinityAn
                 if n in (INCONSIDERATE, UNRELATED, CONSIDERATE)
             } or None
         except (ValueError, KeyError, TypeError, AttributeError):
+            # Not logged: a log line would tell that it was asked, and so where she is.
             considerate = None
-        if considerate is None:
-            log.warning("the considerate question's answer could not be read")
     return AffinityAnswer(levels, out_of_line, manipulation, days, considerate)
 
 
 def _probabilities(answers: dict[str, Any], key: str) -> dict[int, float]:
+    """The probabilities the Score question under `key` is answered with, by each of its
+    situations."""
     return {int(n): float(p) for n, p in answers[key]["probabilities"].items()}
 
 
