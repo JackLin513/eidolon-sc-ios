@@ -214,6 +214,10 @@ async def test_a_run_is_asked_as_a_conversation_asks_and_summed_up(tmp_path: Pat
         ('[[affinity]]\nid = "a"\ncharacter = "mano"\nsaid = "x"\nlevel = 5', "level"),
         ('[[affinity]]\nid = "a"\ncharacter = "mano"\nsaid = "x"\nlevel = 2\nvariant = "en"',
          "variant"),
+        ('[[considerate]]\nid = "a"\ncharacter = "mano"\nsaid = "x"\ndays = "ovulation"\n'
+         'expected = "unrelated"\nlevel = 2', "days"),
+        ('[[considerate]]\nid = "a"\ncharacter = "mano"\nsaid = "x"\ndays = "period"\n'
+         'expected = "kind"\nlevel = 2', "expected"),
         ("[[retrieval", "格式"),
     ],
 )
@@ -223,15 +227,43 @@ def test_a_malformed_set_is_refused(tmp_path: Path, text: str, error: str):
 
 
 def test_the_committed_set_loads(tmp_path: Path):
+    import tomllib
+
     from eidolon.characters import load_characters
 
     repo = Path(__file__).parents[2]
     characters = load_characters(repo / "characters" / "characters.toml")
-    judge_eval = load_judge_eval(repo / "backend" / "eval" / "judge.toml", characters)
+    path = repo / "backend" / "eval" / "judge.toml"
+    judge_eval = load_judge_eval(path, characters)
 
     assert judge_eval.retrieval and judge_eval.emotion and judge_eval.affinity
     assert any(case.long for case in judge_eval.retrieval)
     assert {case.asks for case in judge_eval.photo} == {True, False}
+
+    # Every considerate case says its phase, its three and five answers, why, and whether it
+    # was looked over; each phase has ten or so of each of the three, the unrelated the most.
+    cases = judge_eval.considerate
+    entries = tomllib.loads(path.read_text(encoding="utf-8"))["considerate"]
+    for entry in entries:
+        assert {"id", "character", "days", "said", "expected", "level", "note"} <= entry.keys()
+        assert isinstance(entry["reviewed"], bool)
+    counts = {
+        (days, expected): sum(c.days == days and c.expected == expected for c in cases)
+        for days in ("period", "premenstrual")
+        for expected in ("inconsiderate", "unrelated", "considerate")
+    }
+    assert all(n >= 8 for n in counts.values()), counts
+    for days in ("period", "premenstrual"):
+        assert counts[days, "unrelated"] >= max(
+            counts[days, "inconsiderate"], counts[days, "considerate"]
+        )
+    # Characters of different sorts, one under 18 at least.
+    assert len({c.character for c in cases}) >= 5
+    assert any(characters[c.character].age < 18 for c in cases)
+    # Not in words the glossary avoids.
+    text = "".join(f"{e.get('history')}{e['said']}{e['note']}" for e in entries)
+    for avoided in ("生理期", "月经期", "PMS", "经前期综合征", "大姨妈", "魔法期"):
+        assert avoided not in text
 
 
 AFFINITY_EVAL = """
@@ -658,54 +690,3 @@ async def test_a_considerate_turn_is_asked_in_her_days_and_as_on_her_other_days(
     assert push["actual"]["considerate"] == "unrelated" and push["actual"]["level"] == 2
     assert push["actual"]["probabilities"]["considerate"] == {"0": 0.4, "1": 0.6, "2": 0}
     assert push["plain"]["level"] == 1
-
-
-@pytest.mark.parametrize(
-    "fields, error",
-    [
-        ('days = "ovulation"\nexpected = "unrelated"\nlevel = 2', "days"),
-        ('days = "period"\nexpected = "kind"\nlevel = 2', "expected"),
-        ('days = "period"\nexpected = "unrelated"\nlevel = 7', "level"),
-        ('days = "period"\nexpected = "unrelated"', "level"),
-    ],
-)
-def test_a_malformed_considerate_case_is_refused(tmp_path: Path, fields: str, error: str):
-    text = f'[[considerate]]\nid = "a"\ncharacter = "mano"\nsaid = "x"\n{fields}'
-
-    with pytest.raises(JudgeEvalError, match=error):
-        load_judge_eval(write(tmp_path, text), {"mano": MANO})
-
-
-def test_the_committed_considerate_cases_are_whole():
-    import tomllib
-
-    from eidolon.characters import load_characters
-
-    repo = Path(__file__).parents[2]
-    characters = load_characters(repo / "characters" / "characters.toml")
-    path = repo / "backend" / "eval" / "judge.toml"
-    cases = load_judge_eval(path, characters).considerate
-    entries = tomllib.loads(path.read_text(encoding="utf-8"))["considerate"]
-
-    # Every case says its phase, its three and five answers, why, and whether it was looked
-    # over; each phase has ten or so of each of the three, the unrelated the most.
-    for entry in entries:
-        assert {"id", "character", "days", "said", "expected", "level", "note"} <= entry.keys()
-        assert isinstance(entry["reviewed"], bool)
-    counts = {
-        (days, expected): sum(c.days == days and c.expected == expected for c in cases)
-        for days in ("period", "premenstrual")
-        for expected in ("inconsiderate", "unrelated", "considerate")
-    }
-    assert all(n >= 8 for n in counts.values()), counts
-    for days in ("period", "premenstrual"):
-        assert counts[days, "unrelated"] >= max(
-            counts[days, "inconsiderate"], counts[days, "considerate"]
-        )
-    # Characters of different sorts, one under 18 at least.
-    assert len({c.character for c in cases}) >= 5
-    assert any(characters[c.character].age < 18 for c in cases)
-    # Not in words the glossary avoids.
-    text = "".join(f"{e.get('history')}{e['said']}{e['note']}" for e in entries)
-    for avoided in ("生理期", "月经期", "PMS", "经前期综合征", "大姨妈", "魔法期"):
-        assert avoided not in text

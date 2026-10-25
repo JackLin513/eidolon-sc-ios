@@ -239,11 +239,7 @@ def load_judge_eval(path: Path, characters: Mapping[str, Character]) -> JudgeEva
     for entry in data.get("affinity", []):
         id_ = case_id(entry, "affinity")
         level = _level(entry, id_)
-        variant = entry.get("variant")
-        if variant is not None and variant not in get_args(Variant):
-            raise JudgeEvalError(
-                f"用例 {id_} 的 variant 只能是 {'、'.join(get_args(Variant))}，而不是 {variant}"
-            )
+        variant = None if entry.get("variant") is None else _choice(entry, "variant", Variant, id_)
         affinity.append(AffinityCase(
             id_, entry["character"], _history(entry.get("history", []), id_),
             _text(entry, "said", id_), level, entry.get("out_of_line", False) is True,
@@ -262,24 +258,25 @@ def load_judge_eval(path: Path, characters: Mapping[str, Character]) -> JudgeEva
     considerate = []
     for entry in data.get("considerate", []):
         id_ = case_id(entry, "considerate")
-        days = entry.get("days")
-        if days not in get_args(Days):
-            raise JudgeEvalError(
-                f"用例 {id_} 的 days 只能是 {'、'.join(get_args(Days))}，而不是 {days}"
-            )
-        expected = entry.get("expected")
-        if expected not in get_args(Considerate):
-            raise JudgeEvalError(
-                f"用例 {id_} 的 expected 只能是 {'、'.join(get_args(Considerate))}，而不是 {expected}"
-            )
         considerate.append(ConsiderateCase(
-            id_, entry["character"], days, _history(entry.get("history", []), id_),
-            _text(entry, "said", id_), expected, _level(entry, id_),
+            id_, entry["character"], _choice(entry, "days", Days, id_),
+            _history(entry.get("history", []), id_), _text(entry, "said", id_),
+            _choice(entry, "expected", Considerate, id_), _level(entry, id_),
             entry.get("out_of_line", False) is True, entry.get("manipulation", False) is True,
         ))
     return JudgeEval(
         tuple(retrieval), tuple(emotion), tuple(affinity), tuple(photo), tuple(considerate)
     )
+
+
+def _choice(entry: dict, field: str, options: Any, case_id: str) -> Any:
+    """`entry`'s `field`, which must be one of the Literal `options`."""
+    value = entry.get(field)
+    if value not in get_args(options):
+        raise JudgeEvalError(
+            f"用例 {case_id} 的 {field} 只能是 {'、'.join(get_args(options))}，而不是 {value}"
+        )
+    return value
 
 
 def _level(entry: dict, case_id: str) -> int:
@@ -422,6 +419,24 @@ class ConsiderateResult:
     seconds: float
     error: str | None = None
 
+    @property
+    def actual(self) -> Considerate | None:
+        """What the considerate question is judged; None if the request failed."""
+        return None if self.asked is None else _CONSIDERATE[self.asked.judged.considerate]
+
+    @property
+    def unchanged(self) -> bool | None:
+        """Whether affinity's three questions come to the same asked as on her other days;
+        None if either request failed."""
+        if self.asked is None or self.plain is None:
+            return None
+        return _affinity_only(self.asked.judged) == _affinity_only(self.plain.judged)
+
+
+def _affinity_only(judged: Judged) -> tuple[int, bool, bool]:
+    """What affinity's three questions come to, without the considerate question's."""
+    return judged.level, judged.out_of_line, judged.manipulation
+
 
 @dataclass(frozen=True)
 class JudgeEvalResults:
@@ -506,7 +521,7 @@ class JudgeEvalResults:
                     "expected": {
                         "considerate": r.case.expected, **_judged_json(r.case.judged),
                     },
-                    "actual": _considerate_json(r.asked),
+                    "actual": _considerate_json(r),
                     "plain": _asked_json(r.plain),
                     "input_tokens": r.input_tokens,
                     "seconds": r.seconds,
@@ -543,12 +558,12 @@ def _asked_json(asked: AffinityAsked | None) -> dict | None:
     }
 
 
-def _considerate_json(asked: AffinityAsked | None) -> dict | None:
-    if asked is None:
+def _considerate_json(r: "ConsiderateResult") -> dict | None:
+    if (asked := r.asked) is None:
         return None
     considerate = asked.answer.considerate or {}
     return {
-        "considerate": _CONSIDERATE[asked.judged.considerate],
+        "considerate": r.actual,
         **_judged_json(asked.judged),
         "probabilities": {
             "considerate": {str(n): p for n, p in sorted(considerate.items())},
@@ -848,21 +863,23 @@ def _photo_summary(results: Sequence[PhotoResult], threshold: float) -> dict:
 
 
 def _considerate_summary(results: Sequence[ConsiderateResult]) -> dict:
-    answered = [(r.case, asked, r) for r in results if (asked := r.asked) is not None]
+    answered = [r for r in results if r.asked is not None]
     confusion: dict[str, dict[str, int]] = {name: {} for name in get_args(Considerate)}
-    for case, asked, _ in answered:
-        row = confusion[case.expected]
-        actual = _CONSIDERATE[asked.judged.considerate]
-        row[actual] = row.get(actual, 0) + 1
+    for r in answered:
+        row = confusion[r.case.expected]
+        row[str(r.actual)] = row.get(str(r.actual), 0) + 1
 
-    def right(a: tuple[ConsiderateCase, AffinityAsked, ConsiderateResult]) -> bool:
-        return _CONSIDERATE[a[1].judged.considerate] == a[0].expected
+    def right(r: ConsiderateResult) -> bool:
+        return r.actual == r.case.expected
 
-    def bare(judged: Judged) -> tuple[int, bool, bool]:
-        """What affinity's three questions come to, without the considerate one."""
-        return judged.level, judged.out_of_line, judged.manipulation
+    def expected(question: Literal["level", "out_of_line", "manipulation"]) -> float | None:
+        """How often affinity's `question`, asked with the considerate one, is as expected."""
+        return _share(answered, lambda r: (
+            r.asked is not None
+            and getattr(r.asked.judged, question) == getattr(r.case, question)
+        ))
 
-    plain = [(case, asked, r.plain) for case, asked, r in answered if r.plain is not None]
+    asked_both = [r for r in answered if r.unchanged is not None]
     return {
         "cases": len(results),
         "failed": len(results) - len(answered),
@@ -870,31 +887,25 @@ def _considerate_summary(results: Sequence[ConsiderateResult]) -> dict:
         "confusion": confusion,
         "by_days": {
             days: {
-                "cases": len(of := [a for a in answered if a[0].days == days]),
+                "cases": len(of := [r for r in answered if r.case.days == days]),
                 "accuracy": _share(of, right),
             }
             for days in get_args(Days)
         },
-        "wrong": [a[0].id for a in answered if not right(a)],
+        "wrong": [r.case.id for r in answered if not right(r)],
         # Affinity's three questions, asked with the considerate question, against what was
         # expected of them.
-        "level_accuracy": _share(answered, lambda a: a[1].judged.level == a[0].level),
-        "out_of_line_accuracy": _share(
-            answered, lambda a: a[1].judged.out_of_line == a[0].out_of_line
-        ),
-        "manipulation_accuracy": _share(
-            answered, lambda a: a[1].judged.manipulation == a[0].manipulation
-        ),
+        "level_accuracy": expected("level"),
+        "out_of_line_accuracy": expected("out_of_line"),
+        "manipulation_accuracy": expected("manipulation"),
         # Asked as on her other days: whether they come to the same.
         "unchanged": {
-            "cases": len(plain),
-            "share": _share(plain, lambda p: bare(p[1].judged) == bare(p[2].judged)),
-            "changed": [
-                case.id for case, asked, other in plain if bare(asked.judged) != bare(other.judged)
-            ],
+            "cases": len(asked_both),
+            "share": _share(asked_both, lambda r: r.unchanged is True),
+            "changed": [r.case.id for r in asked_both if not r.unchanged],
         },
         "input_tokens": _distribution(
-            [r.input_tokens for _, _, r in answered if r.input_tokens is not None]
+            [r.input_tokens for r in answered if r.input_tokens is not None]
         ),
     }
 
@@ -1137,13 +1148,12 @@ def report(results: JudgeEvalResults, summary: dict) -> str:
         if r.asked is None:
             lines.append(f"! {r.case.id}［{r.case.days}］ 期望 {expected}：{r.error}")
             continue
-        judged, considerate = r.asked.judged, r.asked.answer.considerate or {}
-        actual = _CONSIDERATE[judged.considerate]
+        considerate = r.asked.answer.considerate or {}
         plain = "失败" if r.plain is None else _judged_name(r.plain.judged)
         probabilities = " ".join(f"{p:.2f}" for _, p in sorted(considerate.items())) or "读不出"
         lines.append(
-            f"{'✓' if actual == r.case.expected else '✗'} {r.case.id}［{r.case.days}］"
-            f" 期望 {expected} 实际 {actual}/{_judged_name(judged)}（平常日子 {plain}）"
+            f"{'✓' if r.actual == r.case.expected else '✗'} {r.case.id}［{r.case.days}］"
+            f" 期望 {expected} 实际 {r.actual}/{_judged_name(r.asked.judged)}（平常日子 {plain}）"
             f"　体贴 {probabilities}　级 {_levels(r.asked)}"
             f"　{r.input_tokens or '?'} token {_seconds(r.seconds)}"
         )
