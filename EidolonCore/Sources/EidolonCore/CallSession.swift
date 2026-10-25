@@ -180,8 +180,16 @@ public struct CallLimits: Sendable, Hashable {
         self.turns = turns
     }
 
-    /// What a call has until the settings can choose (#25).
-    public static let standard = CallLimits(duration: .seconds(3600), turns: nil)
+    /// From the settings' numbers: 0 is no limit on that dimension, as upstream reads its
+    /// environment (`config.py`'s `_limit`).
+    public init(minutes: Int, turns: Int) {
+        self.duration = minutes > 0 ? .seconds(minutes * 60) : nil
+        self.turns = turns > 0 ? turns : nil
+    }
+
+    /// Upstream's defaults (`DEFAULT_CALL_MINUTES`, `DEFAULT_TURNS_PER_CALL`): ten minutes
+    /// or forty of her turns, about what ten minutes of talking takes.
+    public static let standard = CallLimits(minutes: 10, turns: 40)
 }
 
 public enum CallEvent: Sendable, Hashable {
