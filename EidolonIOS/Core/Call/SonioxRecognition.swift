@@ -24,6 +24,15 @@ final class SonioxRecognition: SpeechRecognition, @unchecked Sendable {
         }
     }
 
+    /// Soniox reporting an error of its own — a missing or refused key, a rejected
+    /// configuration — is the service failing, and ends the call; a dropped connection is
+    /// reconnected (upstream `service_failed`).
+    func failure(_ error: any Error) -> VoiceServiceFailure? {
+        guard case let SonioxError.service(code, message) = error else { return nil }
+        let detail = [code, message].filter { !$0.isEmpty }.joined(separator: " ")
+        return VoiceServiceFailure(service: "Soniox", detail: detail)
+    }
+
     private func run(
         audio: AsyncThrowingStream<Data, Error>,
         emit: AsyncThrowingStream<SpeechEvent, Error>.Continuation

@@ -153,8 +153,13 @@ struct CallView: View {
         case .speaking: "在说"
         case .reconnecting: "重连中…"
         case let .ended(reason):
-            // The full reason is in the footer; the header stays one line.
-            if case .failed = reason { "通话中断了" } else { reasonText(reason) }
+            // The full sentence is in the footer; the header stays short.
+            switch reason {
+            case .notConnected: "通话没能接通"
+            case .dropped: "通话中断了"
+            case .durationLimit, .turnLimit, .hungUpByProducer: "通话已结束"
+            case .sheHungUp: "她挂断了电话"
+            }
         }
     }
 
@@ -170,11 +175,11 @@ struct CallView: View {
     }
 
     private func reasonText(_ reason: CallEnd) -> String {
-        switch reason {
-        case .hungUpByProducer: "通话已结束"
-        case .timeLimit: "通话到了时限，已结束"
-        case let .failed(message): "通话中断了：\(message)"
-        }
+        reason.message
+    }
+
+    private func cooldownText(_ until: Date) -> String {
+        "她现在不想说话，\(CallEnd.moment(until)) 以后可以再找她。"
     }
 
     private var subtitles: some View {
@@ -242,6 +247,15 @@ struct CallView: View {
                 Text(reasonText(reason))
                     .font(.footnote)
                     .foregroundStyle(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                if case let .sheHungUp(until) = reason, let until {
+                    Text(cooldownText(until))
+                        .font(.footnote)
+                        .foregroundStyle(.white.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
                 Button("返回") { dismiss() }
                     .buttonStyle(.borderedProminent)
                     .tint(.white.opacity(0.25))
