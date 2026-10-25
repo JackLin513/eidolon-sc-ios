@@ -42,14 +42,30 @@ public enum AffinityRules {
     public static let lowest = 0.0
     public static let highest = 100.0
     /// How much a turn changes it, from hurting her (0) to making her very happy (4).
-    public static let levelSteps: [Double] = [-5, -2, 0, 1, 2]
+    public static let levelSteps: [Double] = [-1.5, -0.5, 0.0, 0.1, 0.2]
+    /// How much a turn takes off her, whatever its step: what she minds stays with her
+    /// longer than the number says (upstream `LEVEL_HURTS`).
+    public static let levelHurts: [Double] = [5.0, 2.0, 0.0, 0.0, 0.0]
     public static let noEffect = 2
     public static let outOfLineStep = -10.0
-    public static let gainsPerDay = 6.0
+    public static let outOfLineHurt = 10.0
+    /// The most a day can add, however many good turns it takes (upstream `GAINS_PER_DAY`).
+    public static let gainsPerDay = 0.6
+    /// The day gains are counted on is Beijing's, wherever the producer is (upstream
+    /// `DAY_TIMEZONE`).
+    public static let dayTimeZone = "Asia/Shanghai"
     public static let outOfLinePerConversation = 2
     public static let fedUpTurns = 8
     public static let fedUpAt = 12.0
     public static let warnsAt = 6.0
+
+    /// Cuts a gain to what is left of the day's allowance, rounded where floating point
+    /// would otherwise leave it a hair short (upstream `_limited`).
+    public static func limited(_ step: Double, left: Double) -> Double {
+        guard step > 0 else { return step }
+        let allowance = (left * 1_000_000_000).rounded() / 1_000_000_000
+        return min(step, max(allowance, 0))
+    }
 }
 
 public struct Affinity: Sendable, Hashable {
@@ -129,13 +145,31 @@ public struct Judged: Sendable, Hashable {
         return AffinityPrompt.feelings[level]
     }
 
-    /// How much it took off her affinity, for `ends` and `warns`.
-    public var hurt: Double { max(-step, 0) }
+    /// How much it took off her, for `ends` and `warns`: out of line hurts most, else by
+    /// its level, whatever the step (upstream `hurt`).
+    public var hurt: Double {
+        if outOfLine { return AffinityRules.outOfLineHurt }
+        guard (0..<AffinityRules.levelHurts.count).contains(level) else { return 0 }
+        return AffinityRules.levelHurts[level]
+    }
 }
 
 public enum Parting: Sendable, Hashable {
     case parts
     case hangsUp
+}
+
+/// What a call's turns have come to: how many were out of line, and what each took off
+/// her. A call keeps its own count, apart from the conversation's typed turns (upstream
+/// `InCall`).
+public struct CallScope: Sendable, Hashable {
+    public var outOfLine: Int
+    public var hurts: [Double]
+
+    public init(outOfLine: Int = 0, hurts: [Double] = []) {
+        self.outOfLine = outOfLine
+        self.hurts = hurts
+    }
 }
 
 public enum EndsReason: String, Sendable, Hashable {

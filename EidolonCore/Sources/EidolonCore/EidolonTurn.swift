@@ -16,6 +16,13 @@ public struct TurnRecord: Sendable, Hashable {
     public var stopped: Bool
     public var affinityTier: AffinityTier
     public var cooldownUntil: Date?
+    /// What this turn took off her, as `ends` counts it; a call adds it to the call's own.
+    public var hurt: Double
+    /// Whether this turn was out of line.
+    public var outOfLine: Bool
+    /// In a call, the turn made her want to hang up, and why; a text turn ends the
+    /// conversation instead (`ended`) and leaves this nil.
+    public var hangUp: EndsReason?
     /// She ended the conversation with this turn.
     public var ended: Bool
 }
@@ -71,6 +78,9 @@ extension Eidolon {
         timeZone: TimeZone = .current,
         tracing: TurnTracing = .on,
         talking: NowPrompt.Talking = .typing,
+        // The call this turn is taken in, and what its turns have come to; it counts
+        // apart from the conversation's typed turns.
+        inCall: CallScope? = nil,
         voicedBy model: String? = nil
     ) -> AsyncThrowingStream<TurnEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -88,6 +98,7 @@ extension Eidolon {
                         timeZone: timeZone,
                         tracing: tracing,
                         talking: talking,
+                        inCall: inCall,
                         voicedBy: model
                     ) { continuation.yield($0) }
                     continuation.yield(.finished(record))
@@ -152,6 +163,7 @@ extension Eidolon {
         timeZone: TimeZone,
         tracing: TurnTracing,
         talking: NowPrompt.Talking,
+        inCall: CallScope?,
         voicedBy model: String?,
         emit: (TurnEvent) -> Void
     ) async throws -> TurnRecord {
@@ -222,12 +234,23 @@ extension Eidolon {
         )
         let retrieved = await retrieval.retrieve(history: history, text: text, need: need)
 
+        // A call's turns count apart from the conversation's typed ones: what it holds
+        // comes from the call, not from the messages (upstream `in_call`).
+        let call = inCall ?? (talking == .inCall ? CallScope() : nil)
         let cools = try forecastCooling(characterID: characterID, judged: judged, now: now)
-        let recent = try existingConversation.map {
-            try recentTurns(conversationID: $0)
-        } ?? []
-        let outOfLineBefore = recent.suffix(AffinityRules.fedUpTurns - 1).filter(\.outOfLine).count
-        let hurtBefore = recent.map(\.hurt)
+        let outOfLineBefore: Int
+        let hurtBefore: [Double]
+        if let call {
+            outOfLineBefore = call.outOfLine
+            hurtBefore = call.hurts
+        } else {
+            let recent = try existingConversation.map {
+                try recentTurns(conversationID: $0)
+            } ?? []
+            outOfLineBefore = recent.suffix(AffinityRules.fedUpTurns - 1)
+                .filter(\.outOfLine).count
+            hurtBefore = recent.map(\.hurt)
+        }
         let ending = ends(
             judged: judged,
             cools: cools,
@@ -240,11 +263,12 @@ extension Eidolon {
             outOfLineBefore: outOfLineBefore,
             hurtBefore: hurtBefore
         )
+        let way: Parting = call != nil ? .hangsUp : .parts
         let affinityLines = AffinityPrompt.lines(
             tier: affinity.tier,
             judged: judged,
-            parting: (ending != nil || cools) ? .parts : nil,
-            warning: warning ? .parts : nil
+            parting: (ending != nil || cools) ? way : nil,
+            warning: warning ? way : nil
         )
         let nowText = NowPrompt.text(
             now: now,
@@ -397,6 +421,7 @@ extension Eidolon {
             segments: segments,
             judged: judged,
             ending: ending,
+            typed: call == nil,
             now: now
         )
         recordTrace(recorded.conversationID, error: nil)
@@ -421,7 +446,10 @@ extension Eidolon {
             stopped: stopped,
             affinityTier: recorded.affinity.tier,
             cooldownUntil: recorded.affinity.cooldownUntil,
-            ended: ending != nil
+            hurt: judged?.hurt ?? 0,
+            outOfLine: judged?.outOfLine ?? false,
+            hangUp: call != nil ? ending : nil,
+            ended: call == nil && ending != nil
         )
     }
 
@@ -472,7 +500,7 @@ extension Eidolon {
     /// The day's gains are counted on Beijing's day, wherever the producer is.
     private static func beijingDay(_ now: Date) -> String {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        calendar.timeZone = TimeZone(identifier: AffinityRules.dayTimeZone) ?? .current
         let parts = calendar.dateComponents([.year, .month, .day], from: now)
         return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
     }
@@ -587,7 +615,7 @@ extension Eidolon {
                 db,
                 sql: """
                     SELECT out_of_line, hurt FROM messages
-                    WHERE conversation_id = ? AND role = 'character'
+                    WHERE conversation_id = ? AND role = 'character' AND typed = 1
                     ORDER BY created_at DESC, rowid DESC
                     LIMIT ?
                     """,
@@ -624,6 +652,7 @@ extension Eidolon {
         segments: [ReplySegment],
         judged: Judged?,
         ending: EndsReason?,
+        typed: Bool,
         now: Date
     ) throws -> RecordedTurn {
         let stamp = Self.timestamp(now)
@@ -661,11 +690,10 @@ extension Eidolon {
             let gainedBefore = (gainRow?["gained_on"] as String?) == day
                 ? (gainRow?["gained_today"] as Double? ?? 0)
                 : 0
-            if step > 0 {
-                step = min(step, max(AffinityRules.gainsPerDay - gainedBefore, 0))
-            }
+            step = AffinityRules.limited(step, left: AffinityRules.gainsPerDay - gainedBefore)
             let after = before.stepped(step)
-            let gainedToday = gainedBefore + max(after.value - before.value, 0)
+            let rose = max(after.value - before.value, 0)
+            let gainedToday = gainedBefore + min(max(step, 0), rose)
             try db.execute(
                 sql: """
                     INSERT INTO affinities(character_id, value, cooling, updated_at, gained_today, gained_on)
@@ -681,12 +709,16 @@ extension Eidolon {
                 ]
             )
 
+            // What this turn took off her is a typed turn's to record: a call keeps it
+            // itself, and never ends the conversation (upstream `Typed`).
+            let hurt = typed ? (judged?.hurt ?? 0) : 0
+            let outOfLine = typed && (judged?.outOfLine ?? false)
             try db.execute(
                 sql: """
                     INSERT INTO messages(
                         id, conversation_id, role, ja, zh, segments, created_at,
-                        affinity, hurt, out_of_line
-                    ) VALUES (?, ?, 'character', ?, ?, ?, ?, ?, ?, ?)
+                        affinity, hurt, out_of_line, typed
+                    ) VALUES (?, ?, 'character', ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                 arguments: [
                     replyID, conversationID,
@@ -694,12 +726,13 @@ extension Eidolon {
                     segments.map(\.zh).joined(),
                     segmentsJSON, stamp,
                     after.tier.rawValue,
-                    judged?.hurt ?? 0,
-                    (judged?.outOfLine ?? false) ? 1 : 0,
+                    hurt,
+                    outOfLine ? 1 : 0,
+                    typed ? 1 : 0,
                 ]
             )
 
-            if ending != nil {
+            if typed, ending != nil {
                 try db.execute(
                     sql: "UPDATE conversations SET ended_at = ? WHERE id = ?",
                     arguments: [stamp, conversationID]

@@ -63,14 +63,22 @@ final class AffinityTests: XCTestCase {
     }
 
     func testJudgedSteps() {
-        XCTAssertEqual(Judged(level: 0).step, -5)
-        XCTAssertEqual(Judged(level: 1).step, -2)
+        XCTAssertEqual(Judged(level: 0).step, -1.5)
+        XCTAssertEqual(Judged(level: 1).step, -0.5)
         XCTAssertEqual(Judged(level: 2).step, 0)
-        XCTAssertEqual(Judged(level: 3).step, 1)
-        XCTAssertEqual(Judged(level: 4).step, 2)
+        XCTAssertEqual(Judged(level: 3).step, 0.1)
+        XCTAssertEqual(Judged(level: 4).step, 0.2)
         XCTAssertEqual(Judged(level: 4, outOfLine: true).step, -10)
         XCTAssertEqual(Judged(level: 4, manipulation: true).step, 0)
+        // What she minds is counted apart from the step: out of line hurts most, then by
+        // level (upstream LEVEL_HURTS).
+        XCTAssertEqual(Judged(level: 0).hurt, 5)
+        XCTAssertEqual(Judged(level: 1).hurt, 2)
+        XCTAssertEqual(Judged(level: 2).hurt, 0)
+        XCTAssertEqual(Judged(level: 3).hurt, 0)
+        XCTAssertEqual(Judged(level: 4).hurt, 0)
         XCTAssertEqual(Judged(level: 4, outOfLine: true).hurt, 10)
+        XCTAssertEqual(Judged(level: 0, outOfLine: true).hurt, 10)
         XCTAssertEqual(Judged(level: 4).feeling, "制作人刚才说的话让你很开心，觉得被在意。")
         XCTAssertNil(Judged(level: 2).feeling)
         XCTAssertEqual(Judged(level: 0, outOfLine: true).feeling, AffinityPrompt.outOfLineFeeling)
@@ -91,10 +99,39 @@ final class AffinityTests: XCTestCase {
         )
         XCTAssertFalse(warns(judged: Judged(level: 0), cools: false, outOfLineBefore: 0, hurtBefore: hurts))
         XCTAssertTrue(warns(judged: Judged(level: 0), cools: false, outOfLineBefore: 0, hurtBefore: [5]))
+
+        // Six upset turns (two each) reach the line; five do not.
+        XCTAssertEqual(
+            ends(
+                judged: Judged(level: 1),
+                cools: false,
+                outOfLineBefore: 0,
+                hurtBefore: Array(repeating: 2.0, count: 5)
+            ),
+            .fedUp
+        )
+        XCTAssertNil(ends(
+            judged: Judged(level: 1),
+            cools: false,
+            outOfLineBefore: 0,
+            hurtBefore: Array(repeating: 2.0, count: 4)
+        ))
         XCTAssertEqual(
             ends(judged: Judged(level: 2), cools: true, outOfLineBefore: 0, hurtBefore: []),
             .cooldown
         )
+    }
+
+    func testTheDailyAllowanceIsCutAndRounded() {
+        XCTAssertEqual(AffinityRules.limited(0.2, left: AffinityRules.gainsPerDay), 0.2)
+        // What three good turns leave is a hair short of a fourth in floating point; it
+        // still lets the last one in, to the ninth decimal.
+        XCTAssertEqual(AffinityRules.limited(0.2, left: AffinityRules.gainsPerDay - 0.4), 0.2)
+        XCTAssertEqual(AffinityRules.limited(0.2, left: 0.1), 0.1)
+        XCTAssertEqual(AffinityRules.limited(0.2, left: 0), 0)
+        XCTAssertEqual(AffinityRules.limited(0.2, left: -0.1), 0)
+        // What she loses is never cut.
+        XCTAssertEqual(AffinityRules.limited(-1.5, left: 0.6), -1.5)
     }
 
     func testAffinityLines() {
@@ -180,6 +217,27 @@ final class AffinityTurnTests: XCTestCase {
         RecordingChatProvider(chunks: ["<ja>\(text)</ja><zh>嗯</zh>"])
     }
 
+    @discardableResult
+    private func send(
+        _ text: String,
+        on eidolon: Eidolon,
+        judge: (any JudgeProvider)? = nil,
+        inCall: CallScope? = nil
+    ) async throws -> TurnRecord {
+        var record: TurnRecord?
+        for try await event in eidolon.sendTurn(
+            characterID: "mano",
+            text: text,
+            provider: reply(),
+            judge: judge,
+            talking: inCall == nil ? .typing : .inCall,
+            inCall: inCall
+        ) {
+            if case let .finished(finished) = event { record = finished }
+        }
+        return try XCTUnwrap(record)
+    }
+
     func testTurnMovesAffinityAndTellsHerInTheNextPrompt() async throws {
         let eidolon = try await installedEidolon()
         let first = reply()
@@ -204,19 +262,103 @@ final class AffinityTurnTests: XCTestCase {
         XCTAssertTrue(affinity(of: try XCTUnwrap(second.prompts.first)).contains("# 此刻"))
     }
 
-    func testDayGainsAreCappedAtSix() async throws {
+    func testDayGainsAreCappedAtSixTenths() async throws {
         let eidolon = try await installedEidolon()
         let judge = FixedJudge(judged: Judged(level: 4))
         for _ in 0..<5 {
-            for try await _ in eidolon.sendTurn(
-                characterID: "mano",
-                text: "ありがとう",
-                provider: reply(),
-                judge: judge
-            ) {}
+            try await send("ありがとう", on: eidolon, judge: judge)
         }
         let affinity = try await eidolon.readAffinity(characterID: "mano", now: Date())
         XCTAssertEqual(affinity.value, AffinityRules.normal + AffinityRules.gainsPerDay, accuracy: 0.001)
+    }
+
+    /// Five hurt each, twelve at the line: the third takes her there.
+    func testThreeHurtingTurnsEndTheConversation() async throws {
+        let eidolon = try await installedEidolon()
+        let judge = FixedJudge(judged: Judged(level: 0))
+        let first = try await send("ばか", on: eidolon, judge: judge)
+        XCTAssertFalse(first.ended)
+        let second = try await send("ばか", on: eidolon, judge: judge)
+        XCTAssertFalse(second.ended)
+        let third = try await send("ばか", on: eidolon, judge: judge)
+        XCTAssertTrue(third.ended)
+        XCTAssertEqual(third.hurt, 5)
+    }
+
+    /// Upstream's numbers put the end on the sixth upset turn: two each, twelve at the
+    /// line, and its docstring says「upsetting her takes six」. #23's wording says eight,
+    /// which those numbers never reach; upstream wins.
+    func testUpsetTurnsReachTheEndLineOnTheSixth() async throws {
+        let eidolon = try await installedEidolon()
+        let judge = FixedJudge(judged: Judged(level: 1))
+        for turn in 1...5 {
+            let record = try await send("うるさい", on: eidolon, judge: judge)
+            XCTAssertFalse(record.ended, "turn \(turn)")
+        }
+        let sixth = try await send("うるさい", on: eidolon, judge: judge)
+        XCTAssertTrue(sixth.ended)
+    }
+
+    /// A call keeps its own count of what its turns came to, and the conversation keeps
+    /// its own of its typed turns; neither counts the other's (upstream `InCall`).
+    func testCallAndTypedTurnsCountApart() async throws {
+        let eidolon = try await installedEidolon()
+        let judge = FixedJudge(judged: Judged(level: 0, outOfLine: true))
+
+        var scope = CallScope()
+        let callOne = try await send("ひどい", on: eidolon, judge: judge, inCall: scope)
+        XCTAssertNil(callOne.hangUp)
+        XCTAssertFalse(callOne.ended)
+        scope.outOfLine += callOne.outOfLine ? 1 : 0
+        scope.hurts.append(callOne.hurt)
+
+        // The conversation's first typed out-of-line turn: the call's does not count.
+        let typedOne = try await send("ひどい", on: eidolon, judge: judge)
+        XCTAssertNil(typedOne.hangUp)
+        XCTAssertFalse(typedOne.ended)
+
+        // The call's second reaches its own line: she would hang up, but this version
+        // leaves the conversation open.
+        let callTwo = try await send("ひどい", on: eidolon, judge: judge, inCall: scope)
+        XCTAssertEqual(callTwo.hangUp, .outOfLine)
+        XCTAssertFalse(callTwo.ended)
+        let afterCall = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertEqual(afterCall?.ended, false)
+
+        // The conversation's second typed out-of-line turn ends it; the call's two do not
+        // count toward it.
+        let typedTwo = try await send("ひどい", on: eidolon, judge: judge)
+        XCTAssertTrue(typedTwo.ended)
+        XCTAssertNil(typedTwo.hangUp)
+    }
+
+    /// A call's turn changes affinity and is kept as a message, but it has no hurt and no
+    /// out-of-line mark for the typed turns to read (upstream writes NULL for both).
+    func testACallTurnIsKeptWithoutHurtOrOutOfLineMark() async throws {
+        let eidolon = try await installedEidolon()
+        let judge = FixedJudge(judged: Judged(level: 0, outOfLine: true))
+        let record = try await send("ひどい", on: eidolon, judge: judge, inCall: CallScope())
+        XCTAssertEqual(record.hurt, 10)
+        XCTAssertTrue(record.outOfLine)
+        XCTAssertNil(record.hangUp)
+        XCTAssertFalse(record.ended)
+
+        let queue = try DatabaseQueue(
+            path: root.appendingPathComponent("app/User/eidolon.sqlite").path
+        )
+        let row = try await queue.read { db -> (hurt: Int, outOfLine: Int, typed: Int)? in
+            guard let row = try Row.fetchOne(
+                db,
+                sql: "SELECT hurt, out_of_line, typed FROM messages WHERE role = 'character'"
+            ) else {
+                return nil
+            }
+            return (row["hurt"], row["out_of_line"], row["typed"])
+        }
+        let stored = try XCTUnwrap(row)
+        XCTAssertEqual(stored.hurt, 0)
+        XCTAssertEqual(stored.outOfLine, 0)
+        XCTAssertEqual(stored.typed, 0)
     }
 
     func testOutOfLineTwiceEndsTheConversation() async throws {

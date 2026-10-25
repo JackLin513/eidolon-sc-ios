@@ -319,6 +319,7 @@ final class CallSessionTests: XCTestCase {
         recognition: FakeRecognition,
         synthesis: FakeSynthesis = FakeSynthesis(),
         playback: FakePlayback = FakePlayback(),
+        judge: (any JudgeProvider)? = nil,
         timeLimit: Duration = .seconds(3600)
     ) async throws -> (CallSession, EventLog, FakeCapture) {
         let capture = FakeCapture()
@@ -329,6 +330,7 @@ final class CallSessionTests: XCTestCase {
             synthesis: synthesis,
             voiceModel: "s2.1-pro-free",
             provider: provider,
+            judge: judge,
             timeLimit: timeLimit,
             reconnectDelay: .milliseconds(10)
         )
@@ -404,6 +406,49 @@ final class CallSessionTests: XCTestCase {
         }
         let reason = await session.currentStateIfEnded
         XCTAssertEqual(reason, .hungUpByProducer)
+    }
+
+    /// What a call's turns come to stays with the call, apart from the conversation's
+    /// typed turns; this version records it and never hangs up for it.
+    func testTwoOutOfLineTurnsDoNotHangUpTheCall() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>あ</ja><zh>啊</zh>"],
+            ["<ja>い</ja><zh>呀</zh>"],
+        ])
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            judge: FixedJudge(judged: Judged(level: 0, outOfLine: true))
+        )
+        let segments: @Sendable () -> Int = {
+            log.all.filter { event in
+                if case .segment = event { return true }
+                return false
+            }.count
+        }
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ひどい")
+        try await waitFor("the first answer") { segments() >= 1 }
+        try await waitFor("listening after the first") { await session.currentState() == .listening }
+        recognition.say("またひどい")
+        try await waitFor("the second answer") { segments() >= 2 }
+
+        if case .ended = await session.currentState() {
+            XCTFail("the call should still be up")
+        }
+        let conversation = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertEqual(conversation?.ended, false)
+        XCTAssertEqual(conversation?.messages.count, 4)
+
+        await session.hangUp()
+        try await waitFor("ended") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
     }
 
     func testWhatIsBeingSaidIsShownAsItIsHeard() async throws {
