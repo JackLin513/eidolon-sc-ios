@@ -62,12 +62,9 @@ final class DebugRecognition: SpeechRecognition, @unchecked Sendable {
 /// Development aid: a microphone that is always open and always silent, so the simulated
 /// call needs no microphone permission.
 final class SilentCapture: AudioCapture, @unchecked Sendable {
-    private let stream: AsyncStream<Data>
-    private let continuation: AsyncStream<Data>.Continuation
-
-    init() {
-        (stream, continuation) = AsyncStream.makeStream(of: Data.self)
-    }
+    private let lock = NSLock()
+    private var running = false
+    private var hearing = true
 
     func start() async throws {
         // No microphone is opened, so the session is a plain playback one.
@@ -78,10 +75,12 @@ final class SilentCapture: AudioCapture, @unchecked Sendable {
         } else {
             try? session.setActive(true)
         }
+        setRunning(true)
+        setHearingNow(true)
     }
 
     func stop() async {
-        continuation.finish()
+        setRunning(false)
         if #available(iOS 27.0, *) {
             try? await AVAudioSession.sharedInstance()
                 .deactivate(options: .notifyOthersOnDeactivation)
@@ -91,14 +90,48 @@ final class SilentCapture: AudioCapture, @unchecked Sendable {
         }
     }
 
+    func setHearing(_ hearing: Bool) async {
+        setHearingNow(hearing)
+    }
+
+    /// Every listening connection gets its own silence, so a closed one cannot leave the
+    /// next one's stream ended (as it did with a single shared stream).
     func chunks() -> AsyncThrowingStream<Data, Error> {
         AsyncThrowingStream { continuation in
-            let task = Task {
-                for await _ in stream { continuation.yield(Data(repeating: 0, count: 640)) }
-                continuation.finish()
+            let task = Task { [weak self] in
+                while !Task.isCancelled {
+                    if self?.isRunning() == true, self?.isHearingNow() == true {
+                        continuation.yield(Data(repeating: 0, count: 640))
+                    }
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
             }
             continuation.onTermination = { @Sendable _ in task.cancel() }
         }
+    }
+
+    private func setRunning(_ running: Bool) {
+        lock.lock()
+        self.running = running
+        lock.unlock()
+    }
+
+    private func isRunning() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return running
+    }
+
+    private func setHearingNow(_ hearing: Bool) {
+        lock.lock()
+        self.hearing = hearing
+        lock.unlock()
+    }
+
+    private func isHearingNow() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return hearing
     }
 }
 #endif

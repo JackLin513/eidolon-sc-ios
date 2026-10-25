@@ -12,11 +12,15 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
     private var continuation: AsyncThrowingStream<Data, Error>.Continuation?
     private var running = false
     private var tapInstalled = false
+    /// Whether tap buffers reach the recognizer. Closed while her own voice plays, so the
+    /// microphone does not hear the speaker (ADR-0015).
+    private var hearing = true
 
     func start() async throws {
         guard await Self.microphoneAllowed() else {
             throw CaptureError.notPermitted
         }
+        setHearingNow(true)
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(
             .playAndRecord,
@@ -78,8 +82,26 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
 
     func chunks() -> AsyncThrowingStream<Data, Error> {
         AsyncThrowingStream { continuation in
-            setContinuation(continuation)
+            // Each listening connection gets its own stream; the one before it is closed
+            // rather than left waiting for audio that will never come.
+            replaceContinuation(continuation)?.finish()
         }
+    }
+
+    func setHearing(_ hearing: Bool) async {
+        setHearingNow(hearing)
+    }
+
+    private func setHearingNow(_ hearing: Bool) {
+        lock.lock()
+        self.hearing = hearing
+        lock.unlock()
+    }
+
+    private func isHearing() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return hearing
     }
 
     private func markRunning() {
@@ -127,13 +149,20 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
         return (wasRunning, taken)
     }
 
-    private func setContinuation(_ next: AsyncThrowingStream<Data, Error>.Continuation) {
+    private func replaceContinuation(
+        _ next: AsyncThrowingStream<Data, Error>.Continuation
+    ) -> AsyncThrowingStream<Data, Error>.Continuation? {
         lock.lock()
+        let previous = continuation
         continuation = next
         lock.unlock()
+        return previous
     }
 
     private func push(_ buffer: AVAudioPCMBuffer, converter: AVAudioConverter, target: AVAudioFormat) {
+        // Dropped here, before the stream, so a buffer taken while she spoke can never be
+        // handed to the recognizer after the microphone opens again.
+        guard isHearing() else { return }
         let ratio = target.sampleRate / buffer.format.sampleRate
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1024
         guard let output = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else {

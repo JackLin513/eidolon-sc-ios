@@ -16,6 +16,12 @@ public struct CallVoice: Sendable, Hashable {
 public protocol AudioCapture: Sendable {
     func start() async throws
     func stop() async
+    /// Whether the microphone feeds the call. The call closes it while her own voice plays
+    /// from the speaker: with the microphone open, she would hear herself (ADR-0015).
+    func setHearing(_ hearing: Bool) async
+    /// A fresh stream for each listening connection. The recognizer reads it for as long
+    /// as its connection lasts, and a stream that one connection stopped reading must not
+    /// keep the next one silent: every call gets its own.
     func chunks() -> AsyncThrowingStream<Data, Error>
 }
 
@@ -186,8 +192,7 @@ public actor CallSession {
             return
         }
         setState(.listening)
-        let audio = setup.capture.chunks()
-        tasks.append(Task { await self.listenLoop(audio) })
+        tasks.append(Task { await self.listenLoop() })
         tasks.append(Task { await self.timeLimitLoop() })
     }
 
@@ -197,7 +202,7 @@ public actor CallSession {
 
     // MARK: - Listening
 
-    private func listenLoop(_ audio: AsyncThrowingStream<Data, Error>) async {
+    private func listenLoop() async {
         var listeningAgain = false
         while !finished, !Task.isCancelled {
             if listeningAgain {
@@ -205,6 +210,9 @@ public actor CallSession {
                 setState(.listening)
             }
             listeningAgain = true
+            // The microphone feeds this connection only: the previous connection closed
+            // its stream when it closed, and that ended stream would hear nothing.
+            let audio = setup.capture.chunks()
             do {
                 for try await event in setup.recognition.listen(audio) {
                     if finished || Task.isCancelled { return }
@@ -373,7 +381,7 @@ public actor CallSession {
                 if finished || Task.isCancelled { break }
                 speakingIndex = item.index
                 startPrefetch()
-                try await setup.playback.play(audio)
+                await playWhileDeaf(audio)
             } catch is CancellationError {
                 break
             } catch {
@@ -387,6 +395,19 @@ public actor CallSession {
         if !finished, !Task.isCancelled {
             goOn()
         }
+    }
+
+    /// Plays one segment with the microphone closed: her own voice comes out of the
+    /// speaker, and an open microphone would feed it back to the recognizer, where it
+    /// would be heard as something the producer said and she would answer herself.
+    private func playWhileDeaf(_ audio: Data) async {
+        await setup.capture.setHearing(false)
+        do {
+            try await setup.playback.play(audio)
+        } catch {
+            // This segment is lost; the reply goes on.
+        }
+        await setup.capture.setHearing(true)
     }
 
     /// Starts making the next segment while the current one plays, unless there is

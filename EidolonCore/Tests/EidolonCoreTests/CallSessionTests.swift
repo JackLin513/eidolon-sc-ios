@@ -8,6 +8,7 @@ import XCTest
 final class FakeCapture: AudioCapture, @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: AsyncThrowingStream<Data, Error>.Continuation?
+    private var hearing = true
     private(set) var started = false
     private(set) var stopped = false
 
@@ -31,12 +32,40 @@ final class FakeCapture: AudioCapture, @unchecked Sendable {
         stopped = true
     }
 
+    /// Whether the microphone is feeding the call, as the last `setHearing` left it.
+    var isHearing: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return hearing
+    }
+
+    func setHearing(_ hearing: Bool) async {
+        setHearingNow(hearing)
+    }
+
+    private func setHearingNow(_ hearing: Bool) {
+        lock.lock()
+        self.hearing = hearing
+        lock.unlock()
+    }
+
     func chunks() -> AsyncThrowingStream<Data, Error> {
         AsyncThrowingStream { continuation in
             lock.lock()
             self.continuation = continuation
             lock.unlock()
         }
+    }
+
+    /// One chunk of microphone audio, as the tap would deliver it. While the microphone is
+    /// closed nothing reaches the recognizer, as with the real tap.
+    func send(_ byte: UInt8) {
+        lock.lock()
+        let continuation = self.continuation
+        let hearing = self.hearing
+        lock.unlock()
+        guard hearing else { return }
+        continuation?.yield(Data([byte]))
     }
 }
 
@@ -52,10 +81,18 @@ final class FakeRecognition: SpeechRecognition, @unchecked Sendable {
     private var live: AsyncThrowingStream<SpeechEvent, Error>.Continuation?
     /// What was said before the call was listening yet.
     private var backlog: [SpeechEvent] = []
+    /// The microphone audio the recognizer was actually fed.
+    private var fed: [UInt8] = []
     private(set) var calls = 0
 
     init(_ steps: [Step] = []) {
         self.steps = steps
+    }
+
+    var heard: [UInt8] {
+        lock.lock()
+        defer { lock.unlock() }
+        return fed
     }
 
     func listen(_ audio: AsyncThrowingStream<Data, Error>) -> AsyncThrowingStream<SpeechEvent, Error> {
@@ -63,7 +100,21 @@ final class FakeRecognition: SpeechRecognition, @unchecked Sendable {
         calls += 1
         let step = steps.isEmpty ? .hang : steps.removeFirst()
         lock.unlock()
+        // The recognizer takes the microphone for as long as its connection lasts; when
+        // the connection ends, so does its reading (as canceling a task consuming the
+        // stream would).
+        let collector = Task.detached { [weak self] in
+            do {
+                for try await chunk in audio {
+                    guard let self else { return }
+                    self.recordHeard(chunk)
+                }
+            } catch {
+                // The stream ended with the call.
+            }
+        }
         return AsyncThrowingStream { continuation in
+            continuation.onTermination = { @Sendable _ in collector.cancel() }
             switch step {
             case let .events(events):
                 for event in events { continuation.yield(event) }
@@ -74,6 +125,12 @@ final class FakeRecognition: SpeechRecognition, @unchecked Sendable {
                 self.attach(continuation)
             }
         }
+    }
+
+    private func recordHeard(_ chunk: Data) {
+        lock.lock()
+        fed.append(contentsOf: chunk)
+        lock.unlock()
     }
 
     private func attach(_ continuation: AsyncThrowingStream<SpeechEvent, Error>.Continuation) {
@@ -481,6 +538,26 @@ final class CallSessionTests: XCTestCase {
         await session.hangUp()
     }
 
+    func testTheMicrophoneIsStillHeardAfterAReconnect() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.fail, .hang])
+        let provider = ReplyScriptProvider([["<ja>うん</ja><zh>嗯</zh>"]])
+        let (session, log, capture) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition
+        )
+        try await waitFor("reconnecting") { log.states().contains(.reconnecting) }
+        try await waitFor("listening again") {
+            await session.currentState() == .listening
+        }
+        capture.send(0x05)
+        try await waitFor("the new connection hears the microphone") {
+            recognition.heard == [0x05]
+        }
+        await session.hangUp()
+    }
+
     func testTheNextSegmentIsSynthesizedWhileTheCurrentOnePlays() async throws {
         let eidolon = try await installedEidolon()
         let recognition = FakeRecognition([.hang])
@@ -655,6 +732,43 @@ final class CallSessionTests: XCTestCase {
             return nil
         }
         XCTAssertEqual(heard, ["一つ目", "二つ目"])
+        await session.hangUp()
+    }
+
+    func testHerOwnVoiceFromTheSpeakerIsNotHeardAsTheProducer() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([["<ja>あ</ja><zh>啊</zh>"]])
+        let timeline = Timeline()
+        let playback = FakePlayback()
+        playback.delay = .milliseconds(200)
+        playback.timeline = timeline
+        let (session, _, capture) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            playback: playback
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        capture.send(0x01)
+        try await waitFor("the microphone reaches the recognizer") {
+            recognition.heard == [0x01]
+        }
+
+        recognition.say("ねえ")
+        try await waitFor("her voice starts") { timeline.index(of: "play-start:あ") != nil }
+        XCTAssertFalse(capture.isHearing, "the microphone is closed while she speaks")
+        capture.send(0xEE) // her own voice, back through the speaker
+        try await waitFor("her voice ends") { timeline.index(of: "play-end:あ") != nil }
+        try await waitFor("listening again") { await session.currentState() == .listening }
+        XCTAssertTrue(capture.isHearing, "the microphone is open again once she is done")
+
+        capture.send(0x02)
+        try await waitFor("the microphone reaches the recognizer again") {
+            recognition.heard == [0x01, 0x02]
+        }
+        XCTAssertEqual(recognition.heard, [0x01, 0x02], "her echo was never fed to the recognizer")
         await session.hangUp()
     }
 
