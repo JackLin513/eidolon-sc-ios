@@ -45,7 +45,7 @@
 - [x] `DESIGN.md` 的两条颜色规则和周期子页一节都加上
 - [x] Playwright 验收整条走过，结论写进 Comments
 - [x] 人工验证清单、部署前备份清单写进 Comments
-- [ ] 这一波最后一次推送后 CI 是绿的
+- [x] 这一波最后一次推送后 CI 是绿的
 - [x] 票收尾：跑 `code-review`；转正式 PR 和合并等用户当次说
 
 ## Comments
@@ -107,3 +107,6 @@
 - 部署前手动备份一次线上库（照 VPS 部署的做法），这次多了一张新表 `cycle_records`，连同「她的周期」那份带来的 `cycles_off` 表、账号的周期开关和数据包格式 3。
 - 两份规格（「她的周期」PR #188 已合进 main、「周期页」这份）一起部署；公告草稿在对话里给，不写进票。
 
+### CI（票 05）
+
+- e601a818 第一次跑红在后端 `tests/test_call_turns.py::test_call_hangs_up_after_its_last_allowed_turn`（回合事件顺序的断言）。这次提交没动后端，上一个 run 同样的后端是绿的，重跑失败的 job 后通过，判为偶发。
