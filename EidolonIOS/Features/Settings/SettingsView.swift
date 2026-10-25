@@ -28,6 +28,8 @@ struct SettingsView: View {
     @State private var sonioxModel = "stt-rt-v5"
     @State private var fishAPIKey = ""
     @State private var fishModel = "s2.1-pro-free"
+    @State private var callMinutes = 10
+    @State private var callTurns = 40
     @State private var saveError: String?
     @State private var savedNotice = false
     @State private var reachOutHours = 6
@@ -150,10 +152,14 @@ struct SettingsView: View {
                     TextField("语音模型（默认 s2.1-pro-free）", text: $fishModel)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                    TextField("时长上限（分钟，0 为不限）", value: $callMinutes, format: .number)
+                        .keyboardType(.numberPad)
+                    TextField("回合上限（她的回合数，0 为不限）", value: $callTurns, format: .number)
+                        .keyboardType(.numberPad)
                 } header: {
                     Text("通话")
                 } footer: {
-                    Text("Soniox 负责实时识别你说的话，Fish Audio 负责她的声音。密钥保存在钥匙串。")
+                    Text("Soniox 负责实时识别你说的话，Fish Audio 负责她的声音。密钥保存在钥匙串。默认每通电话最多 10 分钟、她最多 40 个回合，从接通起算；时长与回合都到点时先按时长算。改完从下一通电话开始生效。")
                 }
 
                 Section {
@@ -323,6 +329,8 @@ struct SettingsView: View {
         sonioxModel = settings.sonioxModel
         fishAPIKey = settings.fishAPIKey
         fishModel = settings.fishModel
+        callMinutes = settings.callMinutes
+        callTurns = settings.callTurns
         reachOutHours = settings.reachOutHours
         tracingEnabled = settings.tracingEnabled
         traceRetention = settings.traceRetention
@@ -358,6 +366,8 @@ struct SettingsView: View {
             sonioxModel: sonioxModel,
             fishAPIKey: fishAPIKey,
             fishModel: fishModel,
+            callMinutes: callMinutes,
+            callTurns: callTurns,
             judgeService: judgeService,
             bailianWorkspace: bailianWorkspace,
             bailianRegion: bailianRegion,

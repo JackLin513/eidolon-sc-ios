@@ -580,6 +580,34 @@ final class CallSessionTests: XCTestCase {
         XCTAssertEqual(events, ["hung_up"])
     }
 
+    /// The settings' numbers become limits; 0 is no limit on that dimension, as upstream
+    /// reads its environment (`config.py`'s `_limit`).
+    func testZeroInTheSettingsMeansNoLimitOnThatDimension() {
+        XCTAssertEqual(
+            CallLimits(minutes: 0, turns: 0),
+            CallLimits(duration: nil, turns: nil)
+        )
+        XCTAssertEqual(
+            CallLimits(minutes: 10, turns: 0),
+            CallLimits(duration: .seconds(600), turns: nil)
+        )
+        XCTAssertEqual(
+            CallLimits(minutes: 0, turns: 40),
+            CallLimits(duration: nil, turns: 40)
+        )
+        XCTAssertEqual(
+            CallLimits(minutes: 10, turns: 40),
+            CallLimits(duration: .seconds(600), turns: 40)
+        )
+    }
+
+    /// Upstream's defaults (`DEFAULT_CALL_MINUTES`, `DEFAULT_TURNS_PER_CALL`): ten minutes
+    /// and forty of her turns.
+    func testTheStandardLimitsAreUpstreamsDefaults() {
+        XCTAssertEqual(CallLimits.standard.duration, .seconds(600))
+        XCTAssertEqual(CallLimits.standard.turns, 40)
+    }
+
     /// The timer waking with nothing being said ends the call, and both the record and the
     /// trace say why (upstream `call.py` checks `limit_reached` on the timer too).
     func testTheCallEndsAtTheTimeLimit() async throws {
@@ -712,6 +740,42 @@ final class CallSessionTests: XCTestCase {
         let conversation = try await eidolon.currentConversation(characterID: "mano")
         XCTAssertEqual(conversation?.ended, false)
         XCTAssertEqual(conversation?.messages.count, 2)
+    }
+
+    /// 0 and 0 in the settings: neither the timer nor the turn count ends the call, so a
+    /// turn goes through and she listens again (upstream `call.py` with no limits).
+    func testACallWithNoLimitsDoesNotEndAfterATurn() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([["<ja>あ</ja><zh>啊</zh>"]]),
+            recognition: recognition,
+            limits: CallLimits(minutes: 0, turns: 0)
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("her answer") {
+            log.all.contains { event in
+                if case .segment = event { return true }
+                return false
+            }
+        }
+        try await waitFor("listening again after the turn") {
+            if case .ended = await session.currentState() { return true }
+            let conversation = try? await eidolon.currentConversation(characterID: "mano")
+            return await session.currentState() == .listening && conversation != nil
+        }
+        let reason = await session.currentStateIfEnded
+        XCTAssertNil(reason)
+        let conversation = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertEqual(conversation?.ended, false)
+        XCTAssertEqual(conversation?.messages.count, 2)
+        let events = try await eidolon.userQueue.read { db in
+            try String.fetchAll(db, sql: "SELECT kind FROM conversation_events")
+        }
+        XCTAssertEqual(events, [])
     }
 
     /// A call that reaches both ends at once ends by the duration: she hangs up first,

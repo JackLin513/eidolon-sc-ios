@@ -130,6 +130,7 @@ final class AppModel {
             embedder: embeddingProvider,
             reranker: rerankProvider,
             tracing: tracing,
+            limits: chatSettings.callLimits,
             reconnectDelay: debugReconnectDelay,
             now: { Date() }
         )

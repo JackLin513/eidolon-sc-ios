@@ -47,6 +47,11 @@ struct ChatSettings {
     var fishAPIKey: String = ""
     var fishModel: String = "s2.1-pro-free"
 
+    /// How long one call may last and how many of her turns it may take; 0 is no limit
+    /// on that dimension, as upstream's environment reads it (ADR-0007).
+    var callMinutes: Int = 10
+    var callTurns: Int = 40
+
     /// Who judges each turn (ADR-0016): Alibaba Cloud Model Studio's System One by
     /// default, or the chat model asked again, as before.
     var judgeService: JudgeService = .bailian
@@ -77,6 +82,8 @@ struct ChatSettings {
     private static let sonioxKeychainAccount = "call.sonioxKey"
     private static let fishModelKey = "call.fishModel"
     private static let fishKeychainAccount = "call.fishKey"
+    private static let callMinutesKey = "call.minutes"
+    private static let callTurnsKey = "call.turns"
     private static let judgeServiceKey = "judge.service"
     private static let bailianWorkspaceKey = "judge.bailian.workspace"
     private static let bailianRegionKey = "judge.bailian.region"
@@ -106,6 +113,8 @@ struct ChatSettings {
             sonioxModel: defaults.string(forKey: sonioxModelKey) ?? "stt-rt-v5",
             fishAPIKey: Keychain.string(account: fishKeychainAccount) ?? "",
             fishModel: defaults.string(forKey: fishModelKey) ?? "s2.1-pro-free",
+            callMinutes: defaults.object(forKey: callMinutesKey) as? Int ?? 10,
+            callTurns: defaults.object(forKey: callTurnsKey) as? Int ?? 40,
             judgeService: JudgeService(
                 rawValue: defaults.string(forKey: judgeServiceKey) ?? ""
             ) ?? .bailian,
@@ -138,6 +147,8 @@ struct ChatSettings {
         defaults.set(traceRetention, forKey: Self.traceRetentionKey)
         defaults.set(sonioxModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.sonioxModelKey)
         defaults.set(fishModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.fishModelKey)
+        defaults.set(max(0, callMinutes), forKey: Self.callMinutesKey)
+        defaults.set(max(0, callTurns), forKey: Self.callTurnsKey)
         try Self.store(sonioxAPIKey, account: Self.sonioxKeychainAccount)
         try Self.store(fishAPIKey, account: Self.fishKeychainAccount)
         defaults.set(judgeService.rawValue, forKey: Self.judgeServiceKey)
@@ -199,6 +210,12 @@ struct ChatSettings {
             model: bailianModel,
             apiKey: bailianAPIKey
         ).systemOne
+    }
+
+    /// What the next call gets: the limits as the settings write them, 0 meaning none
+    /// (ADR-0007). A call keeps what it started with; changing these affects the next one.
+    var callLimits: CallLimits {
+        CallLimits(minutes: max(0, callMinutes), turns: max(0, callTurns))
     }
 
     /// The retrieval services: SiliconFlow's Qwen embedding and reranker unless filled in
