@@ -109,7 +109,8 @@ final class AppModel {
         if let missing = CallSettingsError.missingSonioxKeyWhenNeeded(chatSettings) {
             throw missing
         }
-        let (capture, recognition) = callAudio()
+        let hotWords = (try? await core.callHotWords()) ?? []
+        let (capture, recognition) = callAudio(hotWords: hotWords)
         let setup = CallSetup(
             capture: capture,
             playback: SpeechPlayback(),
@@ -127,7 +128,7 @@ final class AppModel {
         return try await core.beginCall(characterID: character.id, setup: setup, now: now)
     }
 
-    private func callAudio() -> (any AudioCapture, any SpeechRecognition) {
+    private func callAudio(hotWords: [String]) -> (any AudioCapture, any SpeechRecognition) {
         #if DEBUG
         // Development aid: `SIMCTL_CHILD_EIDOLON_CALL_FAKE_SPEECH` answers as if the
         // producer had said one line, so the call can be seen without a microphone.
@@ -146,7 +147,11 @@ final class AppModel {
         #endif
         return (
             MicrophoneCapture(),
-            SonioxRecognition(apiKey: chatSettings.sonioxAPIKey, model: chatSettings.sonioxModel)
+            SonioxRecognition(
+                apiKey: chatSettings.sonioxAPIKey,
+                model: chatSettings.sonioxModel,
+                terms: hotWords
+            )
         )
     }
 

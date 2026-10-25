@@ -22,6 +22,28 @@ final class SonioxTranscriptTests: XCTestCase {
         XCTAssertEqual(object["api_key"] as? String, "key")
     }
 
+    func testTheRecognizerIsGivenTheNamesToListenFor() throws {
+        // Upstream sends its hot words as the context's terms (`call.py`).
+        let message = try SonioxConfiguration(
+            apiKey: "key",
+            model: "stt-rt-v5",
+            terms: ["櫻木真乃", "樱木真乃"]
+        ).message()
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(message.utf8)) as? [String: Any]
+        )
+        let context = try XCTUnwrap(object["context"] as? [String: Any])
+        XCTAssertEqual(context["terms"] as? [String], ["櫻木真乃", "樱木真乃"])
+    }
+
+    func testNoContextIsSentWithoutNames() throws {
+        let message = try SonioxConfiguration(apiKey: "key", model: "stt-rt-v5").message()
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(message.utf8)) as? [String: Any]
+        )
+        XCTAssertNil(object["context"])
+    }
+
     func testOpenWordsAreShownAsTheyAreRewritten() throws {
         var transcript = SonioxTranscript()
         let first = try feed(
