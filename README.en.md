@@ -68,6 +68,12 @@ All **28 idols** from the game's eight units, plus the office clerk Nanakusa Haz
       <p align="center"><sub><b>Schedules</b>: a batch of jobs each Monday, placed into the idols' week; once saved, she knows</sub></p>
     </td>
   </tr>
+  <tr>
+    <td colspan="2">
+      <img src="docs/images/cycles.webp" alt="The Cycles page: the avatar strip, her calendar with recorded and estimated periods and premenstrual days, and on the right her cycle, period and recorded periods">
+      <p align="center"><sub><b>Cycles</b>: record her periods from how she is; the page estimates the next one and explains how</sub></p>
+    </td>
+  </tr>
 </table>
 
 <table>
@@ -103,6 +109,7 @@ All **28 idols** from the game's eight units, plus the office clerk Nanakusa Haz
 - 💗 **Affinity and gifts**: What you say draws her closer or pushes her away; offend her too much and she hangs up, or ends the conversation. Draw gifts every day under 「玩法」 (Play) and give them to her; she responds. Unlocking achievements earns you extra draws.
 - 📅 **Calendar**: The idols' birthdays, yours, and Japan's national holidays, and she knows them on the day.
 - 🗓️ **Schedules**: Jobs published every week, which you place into her week; she knows them and talks with them in mind, and the jobs she finishes bring her closer to you ([configuration guide](docs/configuration.en.md#schedules)).
+- 🌙 **Cycles**: She has periods too, and is unwell before and during them, when being considerate pays off; record them on the Cycles page from how she is, and it estimates her next one and explains how ([configuration guide](docs/configuration.en.md#cycles)).
 - 💌 **She reaches out**: When you've been away a while, she says a few words first in your conversation; the closer you are, the sooner she does ([configuration guide](docs/configuration.en.md#reach-outs)).
 
 **What she remembers**
@@ -272,6 +279,7 @@ The license covers only the code and documentation in the repository. The follow
 ## 🙏 Acknowledgements
 
 - [LAPLACE Eidolon](https://laplace.live/eidolon): a real-time voice AI companion built for the VTuber Mingqian Nailü (明前奶绿); this project's architectural reference (none of its code is reused)
+- [LAPLACE Cycles](https://laplace.live/cycles): the reference for the Cycles page's estimates, with thanks for publishing how it works (none of its code is reused)
 - [SCTranslationData](https://github.com/ShinyGroup/SCTranslationData): story text and Chinese translations
 - [ShinyColorsDB](https://github.com/ShinyColorsDB): the mirror of the original scripts, and the stand assets
 - [Pipecat](https://github.com/pipecat-ai/pipecat): real-time voice pipeline and WebRTC transport

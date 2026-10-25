@@ -68,6 +68,12 @@ Eidolon-SC 让你以 **283 事务所制作人**的身份，和原作中的偶像
       <p align="center"><sub><b>日程</b>：每周一发布一批工作，排进她们的一周，保存以后她就知道</sub></p>
     </td>
   </tr>
+  <tr>
+    <td colspan="2">
+      <img src="docs/images/cycles.webp" alt="周期页：头像条、她的月历上记下的经期和推算的经期、经前，右边周期、经期和记过的经期">
+      <p align="center"><sub><b>周期</b>：凭她的言行记下她的经期，替你推算下一次，并讲清怎么算</sub></p>
+    </td>
+  </tr>
 </table>
 
 <table>
@@ -103,6 +109,7 @@ Eidolon-SC 让你以 **283 事务所制作人**的身份，和原作中的偶像
 - 💗 **好感度和礼物**：你说的话会让她亲近或疏远你，冒犯多了她会挂断电话、结束这段对话。每天在玩法里抽奖得到礼物送给她，她会回应；解锁成就能多得抽奖次数。
 - 📅 **日历**：角色和制作人的生日、日本的节假日，她当天也知道。
 - 🗓️ **日程**：每周发布的工作，你排进她的一周，她知道并以此说话；做完的工作让她更亲近你（[配置指南](docs/configuration.md#日程)）。
+- 🌙 **周期**：她也有经期，经前、经期这几天会不舒服，体贴她有回报；你凭她的言行把经期记在周期页，页面替你推算下一次，并讲清怎么算（[配置指南](docs/configuration.md#周期)）。
 - 💌 **搭话**：你一阵子没来，她会在对话里先说几句；越亲近来得越早（[配置指南](docs/configuration.md#搭话)）。
 
 **她记得什么**
@@ -272,6 +279,7 @@ eidolon-sc/
 ## 🙏 致谢
 
 - [LAPLACE Eidolon](https://laplace.live/eidolon)：为虚拟主播明前奶绿打造的实时语音 AI 分身，本项目的架构参考（未复用其代码）
+- [LAPLACE Cycles](https://laplace.live/cycles)：周期页推算算法的参考，感谢它公开了做法（未复用其代码）
 - [SCTranslationData](https://github.com/ShinyGroup/SCTranslationData)：剧情文本与中文翻译
 - [ShinyColorsDB](https://github.com/ShinyColorsDB)：原文剧情的镜像与立绘素材
 - [Pipecat](https://github.com/pipecat-ai/pipecat)：实时语音管线与 WebRTC 传输
