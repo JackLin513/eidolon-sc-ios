@@ -110,6 +110,7 @@ from typing import Literal, ParamSpec, TypeVar
 from eidolon.affinity import (
     FED_UP_TURNS,
     Affinities,
+    Days,
     EndsFor,
     Judged,
     Parting,
@@ -127,7 +128,7 @@ from eidolon.cycles import Cycles, cycle_lines
 from eidolon.data_access import Database
 from eidolon.gift_catalog import Gift
 from eidolon.happenings import Happenings, Rewarded
-from eidolon.her_cycle import HerDay, Period
+from eidolon.her_cycle import HerDay, Period, Premenstrual
 from eidolon.judge import JudgeError
 from eidolon.llm import ChatLLM, ChatMessage, Reasoning, Tool, ToolCall, TurnLLMs
 from eidolon.memory import Memories, last_turn_query
@@ -365,6 +366,16 @@ async def _unless_stopped(
     return working.result()
 
 
+def _days(her_day: HerDay) -> Days | None:
+    """Which of her days `her_day` has her in, that turns go by their numbers; None for
+    neither."""
+    if isinstance(her_day, Period):
+        return "period"
+    if isinstance(her_day, Premenstrual):
+        return "premenstrual"
+    return None
+
+
 async def _judged(
     judge: AffinityJudge,
     character: Character,
@@ -372,12 +383,13 @@ async def _judged(
     text: str,
     affinity: bool,
     photo: bool,
+    days: Days | None,
 ) -> tuple[Judged | None, bool]:
     """Asked about `affinity`, what saying `text` does to her affinity (None if not, or if it
-    cannot be told); asked about `photo`, whether it asks her for one (no if not, or if it
-    cannot be told)."""
+    cannot be told), in her `days` if she is in them; asked about `photo`, whether it asks her
+    for one (no if not, or if it cannot be told)."""
     try:
-        return await judge.judge(character, history, text, affinity, photo)
+        return await judge.judge(character, history, text, affinity, photo, days)
     except JudgeError:
         log.warning("judging apart failed; affinity stays as it is, and no photo", exc_info=True)
         return None, False
@@ -674,21 +686,25 @@ class ConversationEngine:
         turns = self._history_turns()
         # What all but the chat model read: her reach-outs the user answers her latest words.
         history = [*latest_turns(messages, turns), *_answering(record)]
+        timezone = effective_timezone(profile, device_timezone)
+        # Before she is judged, as where she is has her judged by these days' numbers; the
+        # same for what she is told and her being unwell.
+        her_day = await self._her_day(conversation, self._clock(), timezone)
+        days = _days(her_day)
         judging = affinity is not None and not affinity.cooling
         asking_photo = eligibility is not None
         judged_apart = None
         if (judging or asking_photo) and self._retrieval is None and self._affinity_judge:
-            judged_apart = asyncio.ensure_future(
-                _judged(self._affinity_judge, character, history, text, judging, asking_photo)
-            )
+            judged_apart = asyncio.ensure_future(_judged(
+                self._affinity_judge, character, history, text, judging, asking_photo, days
+            ))
         try:
-            timezone = effective_timezone(profile, device_timezone)
             memory = await self._memory.begin(
                 conversation, timezone, llms.background, llms.hold_background
             )
             retrieved = (
                 await self._retrieval.retrieve(
-                    character, history, text, memory, judging, asking_photo
+                    character, history, text, memory, judging, asking_photo, days
                 )
                 if self._retrieval
                 else Retrieved(None)
@@ -725,7 +741,6 @@ class ConversationEngine:
         world_prompt = (
             self._world.prompt(character.name, local_date(now, timezone)) if self._world else None
         )
-        her_day = await self._her_day(conversation, now, timezone)
         photo_asked = (
             photo_turn(asked_photo, affinity and affinity.tier, eligibility)
             if eligibility is not None else None

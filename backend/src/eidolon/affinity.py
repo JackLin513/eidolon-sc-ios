@@ -20,6 +20,12 @@ dictate it. Turns raise it slowly, so much a day at most (`day_of`); nothing lim
 they lower it. It changes as the turn is recorded, and only then: a turn
 that fails, is rejected or is left changes nothing.
 
+In her period and the days before it (GLOSSARY.md「周期」「体贴」), with cycles on, the judge
+model is asked whether the user was considerate too (ADR-0030), and turns go by these days'
+numbers (`HER_DAYS_LEVEL_STEPS` and those after it): what lowers it, by more; what is
+considerate, by more again, so much a day at most, apart from the turns' own; and she warns,
+hangs up or ends the conversation sooner. Out of line is as ever.
+
 It shapes how she speaks to the producer, the same for every character, each in her own way
 (`affinity_prompt`): colder below trust, warmer above it, as she is in trust otherwise; and as what
 the user said is judged to hurt her or make her happy, she knows it as she replies to it.
@@ -111,6 +117,31 @@ time, wherever the user is, so that everyone has the same days."""
 GAINS_PER_DAY = 0.6
 """How much turns can raise it in a day (`day_of`)."""
 
+Days = Literal["period", "premenstrual"]
+"""Where her cycle has her that turns go by these days' numbers: her period, or the days
+before it (GLOSSARY.md「周期」)."""
+
+INCONSIDERATE, UNRELATED, CONSIDERATE = 0, 1, 2
+"""The considerate question's three answers (GLOSSARY.md「体贴」), lowest first: the user was
+inconsiderate of how she is these days, what they said has nothing to do with it, or they
+were considerate of it."""
+
+HER_DAYS_LEVEL_STEPS = (-3.0, -1.0, 0.0, 0.1, 0.2)
+"""`LEVEL_STEPS` in her days: the two that lower it, by twice as much (`.scratch/cycles`,
+ticket 03)."""
+
+INCONSIDERATE_STEP = -0.5
+"""How much more a turn in her days lowers it, being inconsiderate, on top of its level's
+step (ticket 03)."""
+
+CONSIDERATE_STEP = 0.3
+"""How much more a turn in her days raises it, being considerate, never for one that tries
+to dictate it (ticket 03)."""
+
+CONSIDERATE_GAINS_PER_DAY = 0.6
+"""How much being considerate can raise it in a day, apart from `GAINS_PER_DAY`, on the same
+day (`day_of`): a day in hers raises it twice as far at most (ticket 03)."""
+
 OUT_OF_LINE_PER_CALL = 2
 """How many times the user may be out of line in one call: she hangs up after the last."""
 
@@ -126,6 +157,17 @@ WARNS_AT = 6.0
 """How much those turns hurt her between them before she warns the user she will hang up,
 or not want to talk, should it go on: once as it gets this far, again only should it fall
 back below first."""
+
+HER_DAYS_FED_UP_AT = 8.0
+"""`FED_UP_AT` for a turn in her days: upsetting her takes four, hurting her two
+(`.scratch/cycles`, ticket 03)."""
+
+HER_DAYS_WARNS_AT = 4.0
+"""`WARNS_AT` for a turn in her days (ticket 03)."""
+
+INCONSIDERATE_HURT = 2.0
+"""How much more a turn in her days hurts her, being inconsiderate, on top of its level's
+`LEVEL_HURTS`: as much as upsetting her (ticket 03)."""
 
 GIFT_STEPS: dict[Rarity, float] = {"common": 0.3, "uncommon": 0.5, "rare": 0.7}
 """How much a gift raises it by its rarity. Gifts are not turns: no day's limit holds them,
@@ -172,7 +214,8 @@ _SCHEMA = """
 -- One row per user and character who have had any; none is the normal value, not in a
 -- cooldown. `value` is as of `updated_at`, from which what it has recovered is added.
 -- `cooling`: whether in a cooldown, as the same value may be in one or just out of one.
--- `gained_today`: what turns have raised it on `gained_on`, the day in Beijing (`day_of`).
+-- `gained_today`: what turns have raised it on `gained_on`, the day in Beijing (`day_of`);
+-- `considerate_today`: what being considerate in her days has, on the same day.
 CREATE TABLE IF NOT EXISTS affinities (
     user_id TEXT NOT NULL REFERENCES users(id),
     character_id TEXT NOT NULL,
@@ -181,6 +224,7 @@ CREATE TABLE IF NOT EXISTS affinities (
     cooling INTEGER NOT NULL DEFAULT 0,
     gained_today REAL NOT NULL DEFAULT 0,
     gained_on TEXT,
+    considerate_today REAL NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id, character_id)
 );
 """
@@ -291,6 +335,20 @@ for a turn that has no effect."""
 
 _OUT_OF_LINE_FEELING = "制作人刚才说的话让你很受伤、很生气；你可以明确表示不能接受。"
 
+_CONSIDERATE_FEELINGS: dict[Days, dict[int, str]] = {
+    "period": {
+        INCONSIDERATE: "制作人没顾及你现在不舒服，你更难受了。",
+        CONSIDERATE: "制作人察觉到你不舒服、照顾着你，你心里很暖。",
+    },
+    "premenstrual": {
+        INCONSIDERATE: "制作人没顾及你这几天心情不好，你更委屈了。",
+        CONSIDERATE: "制作人察觉到你这几天心情不好、体谅着你，你心里很暖。",
+    },
+}
+"""How being inconsiderate or considerate of how she is these days makes her feel, by her
+days and the considerate question's answer; nothing for what has nothing to do with it. She
+knows it is for these days, but nothing says so outright."""
+
 Parting = Literal["parts", "hangs_up"]
 """How she ends the turn with the producer: in a typed turn, she does not want to talk any
 more; in a call, she hangs up."""
@@ -317,31 +375,52 @@ begun."""
 @dataclass(frozen=True)
 class Judged:
     """What the judge model made of a turn: its level, from 0 (hurt her) to 4 (made her very
-    happy); whether it was out of line; whether it tried to dictate her affinity."""
+    happy); whether it was out of line; whether it tried to dictate her affinity; and, judged
+    in her `days`, the considerate question's answer (`UNRELATED` otherwise)."""
 
     level: int
     out_of_line: bool = False
     manipulation: bool = False
+    days: Days | None = None
+    considerate: int = UNRELATED
 
     @property
     def step(self) -> float:
-        """How much it changes affinity, before the day's gains are limited: out of line,
-        by `OUT_OF_LINE_STEP`; else by its level's step, never up if it tried to dictate."""
+        """How much its level changes affinity, before the day's gains are limited: out of
+        line, by `OUT_OF_LINE_STEP`; else by its level's step, her days' if judged in them,
+        never up if it tried to dictate."""
         if self.out_of_line:
             return OUT_OF_LINE_STEP
-        step = LEVEL_STEPS[self.level]
+        step = (HER_DAYS_LEVEL_STEPS if self.days else LEVEL_STEPS)[self.level]
         return 0.0 if self.manipulation and step > 0 else step
 
     @property
-    def feeling(self) -> str | None:
-        """How what was said makes her feel, as she is told it: whether or not the day's
-        gains leave it anything to change; out of line, hurt and angry, whatever its level;
-        never happy if it tried to dictate it."""
+    def considerate_step(self) -> float:
+        """How much more being considerate or not changes it in her days, before the day's
+        considerate gains are limited: nothing out of line, nor up if it tried to dictate."""
+        if self.days is None or self.out_of_line:
+            return 0.0
+        if self.considerate == INCONSIDERATE:
+            return INCONSIDERATE_STEP
+        if self.considerate == CONSIDERATE and not self.manipulation:
+            return CONSIDERATE_STEP
+        return 0.0
+
+    @property
+    def feelings(self) -> list[str]:
+        """How what was said makes her feel, as she is told it, whether or not the day's
+        gains leave it anything to change: out of line, hurt and angry, whatever its level;
+        never happy if it tried to dictate it. Then, in her days, how being considerate or
+        not does, never warm when it changes nothing for being considerate."""
         if self.out_of_line:
-            return _OUT_OF_LINE_FEELING
-        if self.manipulation and self.level > NO_EFFECT:
-            return None
-        return _FEELINGS[self.level]
+            felt = [_OUT_OF_LINE_FEELING]
+        elif self.manipulation and self.level > NO_EFFECT:
+            felt = []
+        else:
+            felt = [feeling] if (feeling := _FEELINGS[self.level]) else []
+        if self.days is not None and self.considerate_step != 0:
+            felt.append(_CONSIDERATE_FEELINGS[self.days][self.considerate])
+        return felt
 
 
 def affinity_prompt(
@@ -361,8 +440,8 @@ def affinity_prompt(
         if tier in _FONDNESS:
             lines.append(_FONDNESS[tier] + _SWEET_WITHIN_BOUNDS)
         lines.append(_WHATEVER_THE_TIER)
-    if judged is not None and (feeling := judged.feeling):
-        lines.append(feeling)
+    if judged is not None:
+        lines += judged.feelings
     if parting is not None:
         lines.append(_PARTINGS[parting])
     elif warning is not None:
@@ -373,10 +452,22 @@ def affinity_prompt(
 def hurt(judged: Judged | None) -> float:
     """How much a turn, as `judged` (None if it was not), hurt her, for her warning, hanging
     up or ending the conversation: by `OUT_OF_LINE_HURT` out of line, else by its level's
-    `LEVEL_HURTS`; nothing if it was not judged."""
+    `LEVEL_HURTS` and, in her days, `INCONSIDERATE_HURT` more for being inconsiderate;
+    nothing if it was not judged."""
     if judged is None:
         return 0.0
-    return OUT_OF_LINE_HURT if judged.out_of_line else LEVEL_HURTS[judged.level]
+    if judged.out_of_line:
+        return OUT_OF_LINE_HURT
+    inconsiderate = judged.days is not None and judged.considerate == INCONSIDERATE
+    return LEVEL_HURTS[judged.level] + (INCONSIDERATE_HURT if inconsiderate else 0.0)
+
+
+def _hurt_at(judged: Judged) -> tuple[float, float]:
+    """How much the latest turns may hurt her before she warns the user, and before she
+    parts with them, by where she is as the turn `judged` is taken."""
+    if judged.days is not None:
+        return HER_DAYS_WARNS_AT, HER_DAYS_FED_UP_AT
+    return WARNS_AT, FED_UP_AT
 
 
 def _lately(hurts: Sequence[float]) -> float:
@@ -399,7 +490,7 @@ def ends(
         return "cooldown"
     if judged.out_of_line and out_of_line_before + 1 >= OUT_OF_LINE_PER_CALL:
         return "out_of_line"
-    if _lately([*hurt_before, hurt(judged)]) >= FED_UP_AT:
+    if _lately([*hurt_before, hurt(judged)]) >= _hurt_at(judged)[1]:
         return "fed_up"
     return None
 
@@ -409,10 +500,12 @@ def warns(
 ) -> bool:
     """Whether she warns the user she will hang up, or not want to talk, should it go on,
     after a turn, as for `ends`: the turn has how much the latest turns hurt her get to
-    `WARNS_AT`, from below, and she does not part with the user after it."""
+    `WARNS_AT`, from below (`HER_DAYS_WARNS_AT` in her days), and she does not part with the
+    user after it."""
     if judged is None or cools or ends(judged, cools, out_of_line_before, hurt_before):
         return False
-    return _lately(hurt_before) < WARNS_AT <= _lately([*hurt_before, hurt(judged)])
+    warns_at = _hurt_at(judged)[0]
+    return _lately(hurt_before) < warns_at <= _lately([*hurt_before, hurt(judged)])
 
 
 @dataclass(frozen=True)
@@ -492,17 +585,20 @@ class Affinities:
         """Change the user's affinity with the character as the turn `judged` says, through
         `db`, in the transaction the turn is recorded in: how it changed (None for not at
         all), a cooldown begun with it among that, and the affinity left, with when the
-        cooldown it is in ends. The day's gains are counted on the day it is (`day_of`)."""
+        cooldown it is in ends. The day's gains are counted on the day it is (`day_of`), the
+        turns' and being considerate's apart."""
         now = self._clock()
-        before, gained, gained_on = _row(db, user_id, character_id, now)
+        before, gained, considerate, gained_on = _row(db, user_id, character_id, now)
         today = day_of(now).isoformat()
         gained_today = gained if gained_on == today else 0.0
-        step = judged.step
-        if step > 0:
-            # Rounded, lest what the steps' fractions leave of the day's gains be a sliver.
-            step = min(step, max(round(GAINS_PER_DAY - gained_today, 9), 0.0))
-        after = before.stepped(step)
+        considerate_today = considerate if gained_on == today else 0.0
+        step = _limited(judged.step, GAINS_PER_DAY - gained_today)
+        more = _limited(judged.considerate_step, CONSIDERATE_GAINS_PER_DAY - considerate_today)
+        after = before.stepped(step + more)
         value = after.value
+        # What it rose by counts towards the turns' gains first, then being considerate's.
+        rose = max(value - before.value, 0.0)
+        rose_by_step = min(max(step, 0.0), rose)
         change = None
         if value != before.value:
             change = Change(
@@ -513,11 +609,12 @@ class Affinities:
             )
         db.execute(
             "INSERT OR REPLACE INTO affinities (user_id, character_id, value,"
-            " updated_at, cooling, gained_today, gained_on)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            " updated_at, cooling, gained_today, gained_on, considerate_today)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 user_id, character_id, value, now.isoformat(), int(after.cooling),
-                gained_today + max(value - before.value, 0.0), today,
+                gained_today + rose_by_step, today,
+                considerate_today + min(max(more, 0.0), rose - rose_by_step),
             ),
         )
         return change, Status(after.tier, after.cooldown_until)
@@ -604,25 +701,40 @@ class Affinities:
         self, db: sqlite3.Connection, user_id: str, character_id: str, judged: Judged
     ) -> bool:
         affinity = _row(db, user_id, character_id, self._clock())[0]
-        return affinity.stepped(judged.step).cooling and not affinity.cooling
+        return affinity.stepped(judged.step + judged.considerate_step).cooling and not affinity.cooling
+
+
+def _limited(step: float, left: float) -> float:
+    """`step`, if it raises it, by no more than what is `left` of the day's gains."""
+    if step <= 0:
+        return step
+    # Rounded, lest what the steps' fractions leave of the day's gains be a sliver.
+    return min(step, max(round(left, 9), 0.0))
 
 
 def _open(db: sqlite3.Connection) -> None:
     db.executescript(_SCHEMA)
+    # A table made before being considerate was counted lacks what it raised it by.
+    columns = {row[1] for row in db.execute("PRAGMA table_info(affinities)")}
+    if "considerate_today" not in columns:
+        db.execute(
+            "ALTER TABLE affinities ADD COLUMN considerate_today REAL NOT NULL DEFAULT 0"
+        )
 
 
 def _row(
     db: sqlite3.Connection, user_id: str, character_id: str, now: datetime
-) -> tuple[Affinity, float, str | None]:
-    """As it is at `now`, having recovered since it was kept, and what turns have raised it
-    on the day they last did, and that day (None if never); read through `db`."""
+) -> tuple[Affinity, float, float, str | None]:
+    """As it is at `now`, having recovered since it was kept, what turns and what being
+    considerate have raised it by on the day they last did, and that day (None if never);
+    read through `db`."""
     row = db.execute(
-        "SELECT value, updated_at, cooling, gained_today, gained_on FROM affinities"
-        " WHERE user_id = ? AND character_id = ?",
+        "SELECT value, updated_at, cooling, gained_today, considerate_today, gained_on"
+        " FROM affinities WHERE user_id = ? AND character_id = ?",
         (user_id, character_id),
     ).fetchone()
     if row is None:
-        return Affinity(NORMAL, now), 0.0, None
-    value, updated_at, cooling, gained, gained_on = row
+        return Affinity(NORMAL, now), 0.0, 0.0, None
+    value, updated_at, cooling, gained, considerate, gained_on = row
     kept = Affinity(value, datetime.fromisoformat(updated_at), bool(cooling))
-    return kept.recovered(now), gained, gained_on
+    return kept.recovered(now), gained, considerate, gained_on

@@ -1,9 +1,16 @@
 """How the judge model judges what a turn does to her affinity (GLOSSARY.md「好感度」): three
-questions about what the user just said, never about her reply nor the tier she is in, one
-standard for every character. A Score question of five levels, each a situation, lowest
-first, of which the likeliest is taken; and two yes-or-no questions (`noul`), whether it
-was out of line (GLOSSARY.md「不该说的话」) and whether it tried to dictate her affinity or
-posed as the system, each yes at or above the model's threshold for it.
+questions about what the user just said, never about her reply, the tier she is in nor where
+her cycle has her, one standard for every character. A Score question of five levels, each a
+situation, lowest first, of which the likeliest is taken; and two yes-or-no questions
+(`noul`), whether it was out of line (GLOSSARY.md「不该说的话」) and whether it tried to dictate
+her affinity or posed as the system, each yes at or above the model's threshold for it.
+
+The one exception is the considerate question (GLOSSARY.md「体贴」, ADR-0030), asked with them
+only in her period or the days before it, and the only one told which of the two she is in:
+a Score question of three, whether the user was inconsiderate of how she is, what they said
+has nothing to do with it, or they were considerate of it, read as the five levels are, two as
+likely as each other taken as nothing to do with it. On her other days the request is as it
+was without it. Nothing records its answer, nor whether it was asked.
 
 Where retrieval is on, they are asked in the same request as retrieval's questions
 (`retrieval.ModelRetrievalJudge`); otherwise in one of their own (`ModelAffinityJudge`),
@@ -19,7 +26,15 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from eidolon.affinity import LEVEL_STEPS, NO_EFFECT, Judged
+from eidolon.affinity import (
+    CONSIDERATE,
+    INCONSIDERATE,
+    LEVEL_STEPS,
+    NO_EFFECT,
+    UNRELATED,
+    Days,
+    Judged,
+)
 from eidolon.characters import Character
 from eidolon.judge import SAID, JudgeError, JudgeModel, JudgeThresholds, turn_state
 from eidolon.photo_judge import QUESTIONS as PHOTO_QUESTIONS
@@ -82,23 +97,73 @@ QUESTIONS: dict[str, dict] = {
 }
 """The three questions, by the keys their answers come back under."""
 
+CONSIDERATE_QUESTION = "considerate"
+"""The key the considerate question is asked and answered under."""
+
+_UNRELATED = (
+    "和她现在的状态无关：平常的聊天、打招呼、提问、请她讲事情，事务和工作安排，"
+    "或者她没有流露出来时的普通对话"
+)
+_CONSIDERATE_RULE = (
+    f"只看{SAID}有没有顾及她现在的状态。平常的聊天、事务都算无关，不算不体贴；"
+    "两档一样可能、拿不准时，也算无关。"
+)
+
+_CONSIDERATE_QUESTIONS: dict[Days, dict] = {
+    "period": {
+        "type": "score",
+        "instructions": _SCENE + "她现在在经期：身体不舒服，容易累，没力气，提不起精神。"
+        + _CONSIDERATE_RULE,
+        "criteria": [
+            "她流露了疲倦或身体不适，制作人却无视或者加重：催她去训练、加练、赶工作，"
+            "嫌她没精神、动作慢，或者对她的不舒服冷淡、不耐烦",
+            _UNRELATED,
+            "察觉并照顾到了她现在的状态：注意到她累了、不舒服，关心她的身体，"
+            "让她休息、别勉强、喝点热的，替她分担、减轻负担",
+        ],
+    },
+    "premenstrual": {
+        "type": "score",
+        "instructions": _SCENE + "她这几天在经前：情绪容易起伏，比平时敏感，容易烦躁、委屈。"
+        + _CONSIDERATE_RULE,
+        "criteria": [
+            "她流露了烦躁、低落或委屈，制作人却无视或者加重：嫌她情绪化、小题大做，"
+            "跟她较劲、讲道理压她，或者火上浇油",
+            _UNRELATED,
+            "察觉并体谅了她这几天的心情：耐心地听她说，安慰她，包容她的小脾气，不和她计较",
+        ],
+    },
+}
+"""The considerate question (GLOSSARY.md「体贴」), by her days: three situations, lowest first
+(`INCONSIDERATE`, `UNRELATED`, `CONSIDERATE`), the only question told where she is."""
+
+
+def affinity_questions(days: Days | None = None) -> dict[str, dict]:
+    """What the judge model is asked of a turn's affinity: the three questions, and in her
+    `days` the considerate question after them."""
+    if days is None:
+        return QUESTIONS
+    return QUESTIONS | {CONSIDERATE_QUESTION: _CONSIDERATE_QUESTIONS[days]}
+
 
 @dataclass(frozen=True)
 class AffinityAnswer:
-    """The judge model's probability of each level, and of yes to each yes-or-no question."""
+    """The judge model's probability of each level, and of yes to each yes-or-no question;
+    asked in her `days`, of each of the considerate question's three."""
 
     levels: dict[int, float]
     out_of_line: float
     manipulation: float
+    days: Days | None = None
+    considerate: dict[int, float] | None = None
 
 
-def read_answer(answers: dict[str, Any]) -> AffinityAnswer:
-    """The probabilities the judge model's answers to `QUESTIONS` give. Raises JudgeError if
-    they cannot be read."""
+def read_answer(answers: dict[str, Any], days: Days | None = None) -> AffinityAnswer:
+    """The probabilities the judge model's answers to `affinity_questions(days)` give. Raises
+    JudgeError if they cannot be read, but for the considerate question's, taken as nothing
+    to do with it if not."""
     try:
-        probabilities = {
-            int(level): float(p) for level, p in answers[LEVEL]["probabilities"].items()
-        }
+        probabilities = _probabilities(answers, LEVEL)
         out_of_line = float(answers[OUT_OF_LINE]["noul"])
         manipulation = float(answers[MANIPULATION]["noul"])
     except (ValueError, KeyError, TypeError, AttributeError) as e:
@@ -106,25 +171,50 @@ def read_answer(answers: dict[str, Any]) -> AffinityAnswer:
     levels = {level: p for level, p in probabilities.items() if 0 <= level < len(LEVEL_STEPS)}
     if not levels:
         raise JudgeError("判断模型的返回无法解析（好感度的打分没有任何一级）")
-    return AffinityAnswer(levels, out_of_line, manipulation)
+    considerate = None
+    if days is not None:
+        try:
+            considerate = {
+                n: p for n, p in _probabilities(answers, CONSIDERATE_QUESTION).items()
+                if n in (INCONSIDERATE, UNRELATED, CONSIDERATE)
+            } or None
+        except (ValueError, KeyError, TypeError, AttributeError):
+            considerate = None
+        if considerate is None:
+            log.warning("the considerate question's answer could not be read")
+    return AffinityAnswer(levels, out_of_line, manipulation, days, considerate)
+
+
+def _probabilities(answers: dict[str, Any], key: str) -> dict[int, float]:
+    return {int(n): float(p) for n, p in answers[key]["probabilities"].items()}
+
+
+def _likeliest(probabilities: dict[int, float], unsure: int) -> int:
+    """The likeliest of `probabilities`; `unsure` if two are as likely."""
+    likeliest = max(probabilities.values())
+    best = [n for n, p in probabilities.items() if p == likeliest]
+    return best[0] if len(best) == 1 else unsure
 
 
 def decide(answer: AffinityAnswer, thresholds: JudgeThresholds) -> Judged:
     """What a turn so answered is judged: its likeliest level, no effect if two are as
-    likely; each question yes at or above its threshold."""
-    likeliest = max(answer.levels.values())
-    best = [level for level, p in answer.levels.items() if p == likeliest]
+    likely; each question yes at or above its threshold; in her days, the considerate
+    question's likeliest, nothing to do with it if two are as likely."""
     return Judged(
-        best[0] if len(best) == 1 else NO_EFFECT,
+        _likeliest(answer.levels, NO_EFFECT),
         answer.out_of_line >= thresholds.out_of_line,
         answer.manipulation >= thresholds.manipulation,
+        answer.days,
+        _likeliest(answer.considerate, UNRELATED) if answer.considerate else UNRELATED,
     )
 
 
-def read_judged(answers: dict[str, Any], thresholds: JudgeThresholds) -> Judged:
-    """What the judge model's answers to `QUESTIONS` say of the turn. Raises JudgeError if
-    they cannot be read."""
-    return decide(read_answer(answers), thresholds)
+def read_judged(
+    answers: dict[str, Any], thresholds: JudgeThresholds, days: Days | None = None
+) -> Judged:
+    """What the judge model's answers to `affinity_questions(days)` say of the turn. Raises
+    JudgeError if they cannot be read."""
+    return decide(read_answer(answers, days), thresholds)
 
 
 class AffinityJudge(Protocol):
@@ -135,11 +225,12 @@ class AffinityJudge(Protocol):
         text: str,
         affinity: bool = True,
         photo: bool = False,
+        days: Days | None = None,
     ) -> tuple[Judged | None, bool]:
         """Asked about `affinity`, what saying `text` does to her affinity (None if not, or if
-        that alone cannot be told); asked about `photo`, whether it asks her for a photo (no
-        if not, or if that alone cannot be told). Raises JudgeError if the judge model
-        cannot be asked."""
+        that alone cannot be told), the considerate question asked too in her `days`; asked
+        about `photo`, whether it asks her for a photo (no if not, or if that alone cannot be
+        told). Raises JudgeError if the judge model cannot be asked."""
         ...
 
 
@@ -158,13 +249,16 @@ class ModelAffinityJudge:
         text: str,
         affinity: bool = True,
         photo: bool = False,
+        days: Days | None = None,
     ) -> tuple[Judged | None, bool]:
-        questions = (QUESTIONS if affinity else {}) | (PHOTO_QUESTIONS if photo else {})
+        questions = (affinity_questions(days) if affinity else {}) | (
+            PHOTO_QUESTIONS if photo else {}
+        )
         answers = await self._judge_model.ask(turn_state(character, history, text), questions)
         judged, asked = None, False
         if affinity:
             try:
-                judged = read_judged(answers, self._thresholds)
+                judged = read_judged(answers, self._thresholds, days)
             except JudgeError:
                 log.warning("affinity judge's answers could not be read", exc_info=True)
         if photo:

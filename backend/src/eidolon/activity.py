@@ -78,7 +78,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from eidolon.affinity import EndsFor, Judged
+from eidolon.affinity import Days, EndsFor, Judged
 from eidolon.billing import Billing, billing
 from eidolon.characters import Character
 from eidolon.clock import Clock
@@ -1742,9 +1742,11 @@ class MeteredJudge:
         text: str,
         affinity: bool = False,
         photo: bool = False,
+        days: Days | None = None,
     ) -> "tuple[Need, Judged | None, bool]":
         return await timed(
-            self._log, self._origin, self._judge.judge(character, history, text, affinity, photo)
+            self._log, self._origin,
+            self._judge.judge(character, history, text, affinity, photo, days),
         )
 
 
@@ -1764,9 +1766,11 @@ class MeteredAffinityJudge:
         text: str,
         affinity: bool = True,
         photo: bool = False,
+        days: Days | None = None,
     ) -> "tuple[Judged | None, bool]":
         return await timed(
-            self._log, self._origin, self._judge.judge(character, history, text, affinity, photo)
+            self._log, self._origin,
+            self._judge.judge(character, history, text, affinity, photo, days),
         )
 
 

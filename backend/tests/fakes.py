@@ -68,7 +68,7 @@ from eidolon.llm.providers import check_chat_models
 from eidolon.mirror import Mirror
 from eidolon.own_keys import OwnKeyRejected
 from eidolon.affinity_judge import LEVEL as AFFINITY_LEVEL
-from eidolon.affinity_judge import MANIPULATION, OUT_OF_LINE
+from eidolon.affinity_judge import CONSIDERATE_QUESTION, MANIPULATION, OUT_OF_LINE
 from eidolon.judge import SAID, JudgeError
 from eidolon.photo_judge import PHOTO
 
@@ -407,12 +407,14 @@ class _ConfiguredLLM:
 class Judging:
     """A script for what the judge model makes of one turn's affinity: how likely each
     level is (each level the only one by default, `level`), whether it is out of line,
-    whether it tries to dictate her affinity; or that the request fails."""
+    whether it tries to dictate her affinity, which of the considerate question's three it
+    is if that is asked (unrelated by default); or that the request fails."""
 
     levels: Mapping[int, float] = field(default_factory=lambda: {2: 1.0})
     out_of_line: bool = False
     manipulation: bool = False
     fails: bool = False
+    considerate: int = 1
 
     def answers(self) -> dict[str, Any]:
         return {
@@ -422,9 +424,16 @@ class Judging:
         }
 
 
-def level(n: int, **judging: bool) -> Judging:
+def level(
+    n: int,
+    *,
+    out_of_line: bool = False,
+    manipulation: bool = False,
+    fails: bool = False,
+    considerate: int = 1,
+) -> Judging:
     """A turn judged at level `n` for sure."""
-    return Judging({n: 1.0}, **judging)
+    return Judging({n: 1.0}, out_of_line, manipulation, fails, considerate)
 
 
 class FakeJudgeModel:
@@ -437,7 +446,8 @@ class FakeJudgeModel:
     recording what they said (`photo_asked`). Records the key each request came with and what
     it asked (`asked`: "turn", with or without affinity's questions and the photo's,
     "affinity" for those alone, with or without the photo's, "photo" for that alone,
-    "emotion" or "check"), and everything it was told of each (`states`)."""
+    "emotion" or "check"), and everything it was told of each (`states`) and asked of it
+    (`questions`)."""
 
     def __init__(self) -> None:
         self.needs: FakeJudge | None = None
@@ -450,6 +460,7 @@ class FakeJudgeModel:
         self.photo = 0.0
         self.photo_asked: list[str] = []
         self.states: list[dict[str, Any]] = []
+        self.questions: list[dict[str, dict]] = []
 
     async def answer(
         self, key: str, state: dict[str, Any], questions: dict[str, dict]
@@ -463,6 +474,7 @@ class FakeJudgeModel:
         )
         self.asked.append((key, kind))
         self.states.append(state)
+        self.questions.append(questions)
         scripted: dict[str, Any] = {}
         if AFFINITY_LEVEL in questions:
             self.affinity_asked.append(state[SAID])
@@ -470,6 +482,8 @@ class FakeJudgeModel:
             if judging.fails:
                 raise JudgeError("fake judge model is down")
             scripted = judging.answers()
+            if CONSIDERATE_QUESTION in questions:
+                scripted[CONSIDERATE_QUESTION] = {"probabilities": {str(judging.considerate): 1.0}}
         if PHOTO in questions:
             self.photo_asked.append(state[SAID])
             scripted |= {PHOTO: {"noul": self.photo}}

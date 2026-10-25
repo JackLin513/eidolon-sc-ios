@@ -96,7 +96,7 @@ from eidolon.config import (
     with_proxy_password,
 )
 from eidolon.data_access import Database
-from eidolon.affinity import Judged
+from eidolon.affinity import Days, Judged
 from eidolon.affinity_judge import ModelAffinityJudge
 from eidolon.emotion import EmotionJudging, ModelEmotionJudge
 from eidolon.image_generation import (
@@ -1606,6 +1606,7 @@ class LiveRetrievalJudge:
         text: str,
         affinity: bool = False,
         photo: bool = False,
+        days: Days | None = None,
     ) -> tuple[Need, Judged | None, bool]:
         lease = self._judge.lease()
         try:
@@ -1614,7 +1615,7 @@ class LiveRetrievalJudge:
                 self._activity,
                 judge_origin(lease.settings),
             )
-            return await judge.judge(character, history, text, affinity, photo)
+            return await judge.judge(character, history, text, affinity, photo, days)
         finally:
             lease.release()
 
@@ -1641,6 +1642,7 @@ class LiveAffinityJudge:
         text: str,
         affinity: bool = True,
         photo: bool = False,
+        days: Days | None = None,
     ) -> tuple[Judged | None, bool]:
         lease = self._judge.lease()
         try:
@@ -1649,7 +1651,7 @@ class LiveAffinityJudge:
                 self._activity,
                 judge_origin(lease.settings),
             )
-            return await judge.judge(character, history, text, affinity, photo)
+            return await judge.judge(character, history, text, affinity, photo, days)
         finally:
             lease.release()
 

@@ -52,9 +52,8 @@ from collections.abc import Callable, Collection, Iterable, Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Literal, Protocol
 
-from eidolon.affinity import Judged
-from eidolon.affinity_judge import QUESTIONS as AFFINITY_QUESTIONS
-from eidolon.affinity_judge import read_judged
+from eidolon.affinity import Days, Judged
+from eidolon.affinity_judge import affinity_questions, read_judged
 from eidolon.characters import Character
 from eidolon.corpus import CatalogSource, Episode, StoryCorpus
 from eidolon.data_access import Database
@@ -139,9 +138,11 @@ class RetrievalJudge(Protocol):
         text: str,
         affinity: bool = False,
         photo: bool = False,
+        days: Days | None = None,
     ) -> tuple[Need, Judged | None, bool]:
         """What answering `text` needs looked up; asked about `affinity` too, what saying it
-        does to her affinity (None if that alone cannot be told); and asked about `photo`,
+        does to her affinity (None if that alone cannot be told), the considerate question
+        asked too in her `days`; and asked about `photo`,
         whether it asks her for a photo (no if that alone cannot be told)."""
         ...
 
@@ -332,10 +333,11 @@ class Retrieval:
         memory: MemoryTurn | None = None,
         affinity: bool = False,
         photo: bool = False,
+        days: Days | None = None,
     ) -> Retrieved:
         """Look up what this turn needs, finding the user's memories through `memory`; and
-        judge what it does to her affinity, and whether it asks her for a photo, if asked
-        to."""
+        judge what it does to her affinity, in her `days` if she is in them, and whether it
+        asks her for a photo, if asked to."""
         query = memory_query(history, text)
         embedding = asyncio.ensure_future(self._embed(query))
         finding = asyncio.ensure_future(self._find(character, embedding, memory))
@@ -344,7 +346,7 @@ class Retrieval:
             judged, asked = None, False
             try:
                 need, judged, asked = await self._judge.judge(
-                    character, history, text, affinity, photo
+                    character, history, text, affinity, photo, days
                 )
             except JudgeError:
                 log.warning("retrieval judge failed; retrieving anyway", exc_info=True)
@@ -627,12 +629,15 @@ _QUESTIONS = {
 }
 
 
-def judge_questions(affinity: bool = False, photo: bool = False) -> dict[str, dict]:
+def judge_questions(
+    affinity: bool = False, photo: bool = False, days: Days | None = None
+) -> dict[str, dict]:
     """What the judge model is asked of a turn: retrieval's three questions, affinity's in
-    the same request if `affinity`, and whether it asks for a photo if `photo`."""
+    the same request if `affinity`, the considerate question with them in her `days`, and
+    whether it asks for a photo if `photo`."""
     return (
         _QUESTIONS
-        | (AFFINITY_QUESTIONS if affinity else {})
+        | (affinity_questions(days) if affinity else {})
         | (PHOTO_QUESTIONS if photo else {})
     )
 
@@ -667,17 +672,18 @@ class ModelRetrievalJudge:
         text: str,
         affinity: bool = False,
         photo: bool = False,
+        days: Days | None = None,
     ) -> tuple[Need, Judged | None, bool]:
         """As `RetrievalJudge.judge`, affinity's questions and the photo's asked in the same
         request."""
         answers = await self._judge_model.ask(
-            turn_state(character, history, text), judge_questions(affinity, photo)
+            turn_state(character, history, text), judge_questions(affinity, photo, days)
         )
         need = self.decide(_answer(answers))
         judged = None
         if affinity:
             try:
-                judged = read_judged(answers, self.thresholds)
+                judged = read_judged(answers, self.thresholds, days)
             except JudgeError:
                 log.warning("affinity judge's answers could not be read", exc_info=True)
         asked = False

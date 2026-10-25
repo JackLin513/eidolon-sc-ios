@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any, Literal, get_args
 from zoneinfo import ZoneInfo
 
+from eidolon.affinity import Days
 from eidolon.characters import Character
 from eidolon.corpus import StoryCorpus
 from eidolon.data_access import Database
@@ -710,6 +711,7 @@ class _RecordedJudge:
         text: str,
         affinity: bool = False,
         photo: bool = False,
+        days: Days | None = None,
     ) -> tuple[Need, None, bool]:
         """Never about affinity nor photos, which the memory eval has nothing to do with."""
         try:
