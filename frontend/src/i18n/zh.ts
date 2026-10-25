@@ -1809,6 +1809,86 @@ export const zh = {
         /** 本周还有工作待排时，状态最前面一段。 */
         pending: (n: number) => `本周还有 ${n} 项工作待排`,
       },
+      cycles: {
+        name: "周期",
+        /** 一位都没记过时。 */
+        empty: "凭她的言行记下她的经期，这里替你推算。",
+        /** 「记过 3 位 · 最近 円香 10月31日」：推算的下一次经期离今天最近的那位。 */
+        status: (n: number, name: string, date: string) => `记过 ${n} 位 · 最近 ${name} ${date}`,
+      },
+    },
+    /** 周期子页（`/play/cycles`，GLOSSARY.md「周期」「推算」）。 */
+    cycles: {
+      lead: "凭她的言行记下她的经期，这里替你推算。",
+      /** 搜索框右边的筛选：电脑上弹出框、手机上抽屉，单选。 */
+      filter: {
+        label: "筛选",
+        only: (what: string) => `筛选，只看${what}`,
+        title: "头像条里显示谁",
+        all: "全部",
+        recorded: "记过的",
+        now: "推算在经前、经期的",
+        unrecorded: "还没记过的",
+        count: (n: number) => `${n} 位`,
+      },
+      /** 她那一块顶上的一句话。 */
+      line: {
+        none: "还没记过。记下一次，这里就开始推算。",
+        recorded: (day: number) => `经期第 ${day} 天`,
+        estimated: "推算在经期",
+        premenstrual: (date: string) => `推算在经前 · ${date} 来`,
+        late: (date: string) => `推算 ${date} 来，还没记下`,
+        next: (date: string, days: number, from: string) => `下次经期推算在 ${date}（还有 ${days} 天），经前从 ${from} 起。`,
+      },
+      /** 月历上的三种记号，也是图例和点中那一天的说明。 */
+      kinds: { recorded: "记下的经期", estimated: "推算的经期", premenstrual: "推算的经前" },
+      /** 电脑上每段经前第一天的格子底部。 */
+      premenstrualMark: "经前",
+      /** 点中那一天的一条。 */
+      day: {
+        prompt: "点一天来记下她这次经期的第一天。",
+        first: "这天是第一天",
+        future: "不能记未来",
+        edit: "改这次",
+      },
+      /** 右栏的三行。 */
+      stats: {
+        cycle: "周期",
+        period: "经期",
+        offBy: "过去的估算平均差",
+        days: (n: string | number) => `${n} 天`,
+        rough: "粗略估计",
+        compareLater: "再记一次就能比较",
+      },
+      /** 推算变淡的原因，每种一句。 */
+      reasons: {
+        once: "再记一次就能按她自己的周期推算。",
+        irregular: "她的周期长短不一，估算只作参考。",
+        missed: "中间可能漏记了一次。",
+        late: "这次可能还没记下。",
+      },
+      /** 右栏的「记过的经期」，新的在上。 */
+      records: {
+        title: "记过的经期",
+        row: (days: number, gap: number | null) => (gap === null ? `${days} 天` : `${days} 天 · 隔 ${gap} 天`),
+        edit: (date: string) => `改${date}这次`,
+        all: (n: number) => `展开全部 ${n} 次`,
+        less: "收起",
+      },
+      /** 记一次、改一次的弹窗。 */
+      dialog: {
+        title: (name: string) => `记${name}的一次经期`,
+        firstDay: "第一天",
+        days: "天数",
+        fewer: "少一天",
+        more: "多一天",
+        cancel: "取消",
+        add: "记下",
+        save: "保存",
+        delete: "删除这次",
+        /** 「2026年10月25日 周日」。 */
+        fullDate: (year: number, month: number, day: number, weekday: string) => `${year}年${month}月${day}日 ${weekday}`,
+      },
     },
     /** 日历子页（`/play/calendar`）。 */
     calendar: {

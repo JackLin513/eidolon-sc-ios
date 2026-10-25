@@ -47,3 +47,14 @@
 - [ ] 人工验证清单、部署前备份清单写进 Comments
 - [ ] 这一波最后一次推送后 CI 是绿的
 - [ ] 票收尾：跑 `code-review`；转正式 PR 和合并等用户当次说
+
+## Comments
+
+### 票 05 交接（从票 02）
+
+- `DESIGN.md` 里还没有「玩法页 · 周期子页」这一节，`ui/button.tsx` 的 `ghost-destructive` 注释和 `CyclesSubpage.tsx` 已经指向它，补的时候用这个名字。另外，「玩法页」一节还写着「卡：三张」，子页列表里也没有 cycles。
+- 要写进 DESIGN.md 的几处实现细节：
+  - 她的颜色只注入月历格子、图例和弹窗。
+  - 推算变淡时，经前用 `bg-muted/30`，虚线圈用 `outline-her-mark/50`。
+  - 「删除这次」用 `ghost-destructive`。
+  - 筛选键同对话列表（右上角中性小点）。

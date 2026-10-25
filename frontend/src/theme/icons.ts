@@ -94,6 +94,10 @@ export {
 // 日历子页筛选里的「日程」。对话页更多菜单的「她的日程」用 CalendarIcon。
 export { CalendarCheck as ScheduleIcon } from "lucide-react";
 
+// 周期：玩法页第一级「周期」卡（中性）；周期子页记录行的铅笔、点中那一天的「改这次」，弹窗里天数的 −/+。
+export { CalendarHeart as CyclesCardIcon } from "lucide-react";
+export { Minus as FewerDaysIcon, Pencil as EditRecordIcon, Plus as MoreDaysIcon } from "lucide-react";
+
 // 礼物子页：抽奖台的「抽一次」和抽到稀有礼物时插画角上的闪光；我的礼物的四个类别筛选；
 // 重置卡确认框里「现在的档位 → 信任」的箭头。
 export { Sparkles as DrawIcon, Sparkles as RareIcon } from "lucide-react";

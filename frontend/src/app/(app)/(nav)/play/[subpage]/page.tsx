@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { AchievementsSubpage } from "@/components/play/AchievementsSubpage";
 import { CalendarSubpage } from "@/components/play/CalendarSubpage";
+import { CyclesSubpage } from "@/components/play/CyclesSubpage";
 import { GiftsSubpage } from "@/components/play/GiftsSubpage";
 import { giftsFor } from "@/lib/gifts";
 import { PLAY_SUBPAGES, type PlaySubpage } from "@/lib/playRoute";
@@ -18,7 +19,8 @@ export function generateStaticParams() {
 
 /**
  * 玩法的子页（`/play/<子页>`）：礼物在 `/play/gifts`，从对话页跳来时地址里带着预选的她；
- * 成就在 `/play/achievements`（旧的 `/play/tasks` 在 proxy 里跳过来），日历在 `/play/calendar`。
+ * 成就在 `/play/achievements`（旧的 `/play/tasks` 在 proxy 里跳过来），日历在 `/play/calendar`，
+ * 周期在 `/play/cycles`（地址带 `?who=` 选中的她）。
  * 页首返回键回玩法页（DESIGN.md「玩法页」）。
  */
 export default async function PlaySubpageRoute({
@@ -37,4 +39,5 @@ const SUBPAGES: Record<PlaySubpage, (search: SearchParams) => ReactNode> = {
   gifts: (search) => <GiftsSubpage pick={giftsFor(search)} />,
   achievements: () => <AchievementsSubpage />,
   calendar: (search) => <CalendarSubpage who={calendarWho(search)} />,
+  cycles: (search) => <CyclesSubpage who={calendarWho(search)} />,
 };

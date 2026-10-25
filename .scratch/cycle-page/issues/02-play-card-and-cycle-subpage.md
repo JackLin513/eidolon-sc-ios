@@ -38,25 +38,25 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 新的 `lib/cycles` 纯函数测试：
-  - [ ] 一个月每格的记号：记下盖过推算、变淡；「经前」只落在每段第一天
-  - [ ] 四类筛选和每类人数；选中的她留在条里；搜索时不看筛选
-  - [ ] 她那一句话的各种情形
-  - [ ] 点中那一天的那条和右端按钮
-  - [ ] 记录的「隔 n 天」和展开规则
-  - [ ] 弹窗的默认天数和 1–10 的夹取；小月历今天以后不能选
-  - [ ] `?who=` 的解析
-- [ ] `playCards` 测第四张卡：出现条件、没记过时的说明、「最近」怎么挑、都过了日子时；`playRoute` 测子页多 `cycles`、关着时回到 `/play`
-- [ ] 本地构建版上用 Playwright，电脑和手机两种宽度：
-  - [ ] 版式；搜索和四种筛选；换人后刷新，`?who=` 还在
-  - [ ] 点一天，记、改、删各一次，推算和卡的状态跟着变；未来的日子记不了
-  - [ ] 小月历；几种变淡（用接口造记录）
-  - [ ] 关掉周期后卡和子页消失
-- [ ] 不新增固定色；她的颜色只用在规格列的三处记号和弹窗的 primary
-- [ ] 前端类型检查、lint 过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
-- [ ] 票收尾：截几张图放进 Comments 给用户看版式；推一次让 CI 跑、跑 `code-review`
+- [x] 新的 `lib/cycles` 纯函数测试：
+  - [x] 一个月每格的记号：记下盖过推算、变淡；「经前」只落在每段第一天
+  - [x] 四类筛选和每类人数；选中的她留在条里；搜索时不看筛选
+  - [x] 她那一句话的各种情形
+  - [x] 点中那一天的那条和右端按钮
+  - [x] 记录的「隔 n 天」和展开规则
+  - [x] 弹窗的默认天数和 1–10 的夹取；小月历今天以后不能选
+  - [x] `?who=` 的解析
+- [x] `playCards` 测第四张卡：出现条件、没记过时的说明、「最近」怎么挑、都过了日子时；`playRoute` 测子页多 `cycles`、关着时回到 `/play`
+- [x] 本地构建版上用 Playwright，电脑和手机两种宽度：
+  - [x] 版式；搜索和四种筛选；换人后刷新，`?who=` 还在
+  - [x] 点一天，记、改、删各一次，推算和卡的状态跟着变；未来的日子记不了
+  - [x] 小月历；几种变淡（用接口造记录）
+  - [x] 关掉周期后卡和子页消失
+- [x] 不新增固定色；她的颜色只用在规格列的三处记号和弹窗的 primary
+- [x] 前端类型检查、lint 过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
+- [x] 票收尾：截几张图放进 Comments 给用户看版式；推一次让 CI 跑、跑 `code-review`
 
 ## Comments
 
@@ -66,3 +66,44 @@
 - 卡片的状态和子页都读 `GET /api/cycles`，请求要带 `X-Timezone`。
 - 记、改、删成功后，直接用返回的 `Her` 替换这一位的数据。
 - 弹窗里的那句原因直接显示 422 的 `detail`。
+
+### 实现说明（票 02）
+
+**截图**（本地构建版，开发登录的验收用户，验完已删）：`.scratch/cycle-page/screens-02/`
+- `01-play-desk.png` 玩法页四张卡（没记过时的说明）
+- `07-many-records-desk.png` 电脑：记了 6 次、展开后的右栏，过了日子变淡
+- `06-faded-irregular-desk.png` 电脑：长短不一
+- `08-filter-popover-desk.png` 筛选弹出框
+- `10-cycles-phone.png`、`14-cycles-phone-lower.png` 手机上叠成一栏
+- `12-dialog-edit-phone.png` 手机上「改这次」的弹窗（primary 是她的颜色，左下「删除这次」）
+- `13-picker-desk.png` 第一天的小月历（今天以后不能选）
+
+截图是审查前截的，那时「这天是第一天」还是她颜色的实底；审查后改成了中性 primary，见下面。
+
+**模块**
+- `frontend/src/lib/cycles.ts`：接口类型（`Her`、`CycleEstimate`、`CyclesView`）和读、记、改、删四个请求，以及子页、卡用到的纯函数：
+  - 月历每格的记号 `monthMarks`
+  - 筛选 `CYCLE_FILTERS`、`filterCounts`、`stripOf`
+  - 一句话 `herLine`
+  - 点中那天的一条 `dayBar`
+  - 记录列表 `shownRecords`
+  - 弹窗 `defaultDays`、`clampDays`、`isPickable`、`canShowNextMonth`、`fullDate`
+  - `?who=` 的 `cyclesWho`
+  - 卡的「最近」`soonest`
+- `lib/playCards`：第四张卡 `cycles`。`PlayContext.cycles` 在关着或还没读到时为 null，卡就不出现，读到之前不会闪出来。
+- `lib/playRoute`：`PLAY_SUBPAGES` 加 `cycles`；新的 `closedPlayRedirect(subpage, { cyclesOn })`。
+- `components/play/useCycles.ts`：读 `GET /api/cycles`。`components/play/CyclesSubpage.tsx`：子页和弹窗。
+- 图标 `CyclesCardIcon`（CalendarHeart）、`EditRecordIcon`、`FewerDaysIcon`、`MoreDaysIcon`。`ui/button` 加了 `ghost-destructive` 变体，给「删除这次」用。
+
+**实现中自己定的几处**
+- 关着时回到 `/play` 在客户端做：proxy 不知道开关，子页读到 `{"enabled": false}` 就 `router.replace("/play")`。写的时候遇到 409，也当作关着处理。
+- 她的颜色只注入月历格子、图例和弹窗，不注入整块。所以「这天是第一天」是中性的 default 键（审查里发现原来是她颜色的实底，超出了规格列的三处）。小月历里选中的日子铺中性 `bg-muted`。
+- 变淡时推算的经前铺 `bg-muted/30`，没有给整格加 `opacity-50`，免得日期数字也跟着淡下去。虚线圈改成 `outline-her-mark/50`。
+- 没记过的那位，右栏三行写「—」。平均差为 null 时写「再记一次就能比较」，不论是只记了一次还是只有一个间隔。
+- 「最近」照规格取每位推算的下一次（`periods[0]`）。她那句话里的「下次」取今天以后的第一次，过了日子时那句改写「推算 M月D日 来，还没记下」。
+- 「改这次」的弹窗标题和记新的时一样，都是「记{角色名}的一次经期」，照票写的。
+
+**审查里属于判断题、没改的**
+- 月历的页首、星期头和格子外壳，和日历子页的 `MonthView` 差不多；筛选键的骨架和对话列表的 `ListFilter` 也一样，搜索框是照抄的。可以抽成项目组件（「月历」「筛选键」），但要动日历子页和对话列表，留到以后。
+- `Her` 这个名字太泛（指一位的记录加推算），和票 01 的接口说明一致，没改。
+- 「删除这次」带了垃圾桶图标，规格没提。

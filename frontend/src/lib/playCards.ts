@@ -4,11 +4,13 @@
 // whole row, the rest in a grid) and only asks what is on them. Gifts and achievements are made of
 // the gift state, which the first level and the subpages read alike; the calendar (.scratch/calendar
 // spec「玩法页的『日历』卡」) of the characters' birthdays, the producer's and the holidays, and is
-// there whether affinity and gifts are open or not.
+// there whether affinity and gifts are open or not; the cycles (.scratch/cycle-page spec「玩法页的卡」) of the
+// periods the user wrote down, there only while the deployment and the user have cycles on.
 
 import { copy } from "@/i18n";
 import { unlockedStages, unseenStages } from "@/lib/achievements";
 import { type CalendarEvent, type CalendarView, nextEvent, partsOf } from "@/lib/calendar";
+import { type Her, monthDay, soonest } from "@/lib/cycles";
 import type { GiftState } from "@/lib/gifts";
 import { playHref, type PlaySubpage } from "@/lib/playRoute";
 
@@ -17,18 +19,24 @@ const t = copy.play;
 /** What the calendar card is made of: the calendar, with each character's name and birthday. */
 export type CalendarCardContext = CalendarView<{ name: string; birthday: string }>;
 
+/** What the cycles card is made of: today, every character's records and estimate, and the short
+ * name of each (lib/schedule's `shortName`). */
+export type CyclesCardContext = { today: string; hers: readonly Her[]; nameOf: (characterId: string) => string };
+
 /** What the cards are made of: the gift state (null until it has been read), whether draw chances
  * have come that are not yet seen (`newRewards`, the nav's dot), the latest unlock of the
  * combined achievements seen on this device (`achievementsSeenAt`), the calendar's (null until
  * the characters, the profile and the holidays have been read), and how many of this week's jobs
  * are still to be placed (`schedulePending`, lib/schedule's `pendingJobs`; 0 while schedules are
- * off or unread, or this week is not published). */
+ * off or unread, or this week is not published), and the cycles' (`cycles`, null while cycles are off
+ * or unread, so the card does not show and then go). */
 export type PlayContext = {
   state: GiftState | null;
   newRewards: boolean;
   achievementsSeenAt: string | null;
   calendar: CalendarCardContext | null;
   schedulePending: number;
+  cycles: CyclesCardContext | null;
 };
 
 /** A card as the page shows it: `status` is empty until the state has been read. */
@@ -102,7 +110,23 @@ const CARDS: Definition[] = [
     hasDot: () => false,
     dotLabel: "",
   },
+  {
+    id: "cycles",
+    name: t.cards.cycles.name,
+    isShown: ({ cycles }) => cycles !== null,
+    status: ({ cycles }) => (cycles ? cyclesText(cycles) : ""),
+    hasDot: () => false,
+    dotLabel: "",
+  },
 ];
+
+/** The cycles card's 「记过 3 位 · 最近 円香 10月31日」, or what it is for while no one is written down. */
+function cyclesText({ today, hers, nameOf }: CyclesCardContext): string {
+  const next = soonest(hers, today);
+  if (!next) return t.cards.cycles.empty;
+  const count = hers.filter((her) => her.records.length > 0).length;
+  return t.cards.cycles.status(count, nameOf(next.characterId), monthDay(next.firstDay));
+}
 
 /** The calendar card's 「下一个：10月27日 樋口円香的生日」 (「今天：…」 when it is today); null when there is none. */
 function nextText(calendar: CalendarCardContext): string | null {
@@ -126,7 +150,7 @@ function unseenCount(state: GiftState, { achievementsSeenAt }: PlayContext): num
   return state.achievements ? unseenStages(state.achievements, achievementsSeenAt) : 0;
 }
 
-/** The cards to show, top to bottom: only the calendar where affinity and gifts are closed. */
+/** The cards to show, top to bottom: no gifts or achievements where affinity and gifts are closed. */
 export function playCards(context: PlayContext): PlayCard[] {
   return CARDS.filter((card) => card.isShown(context)).map((card) => ({
     id: card.id,

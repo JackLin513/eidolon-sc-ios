@@ -20,6 +20,8 @@ const buttonVariants = cva(
         // eidolon: 原来是淡红底红字；DESIGN.md「Buttons」要挂断红实底、白字（白字的对比度在 themeContrast.test.ts 里）。
         destructive:
           "bg-destructive text-white hover:bg-destructive/90 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40",
+        // eidolon: 周期弹窗左下的「删除这次」：destructive 字、不铺底，删前不再确认（DESIGN.md「玩法页 · 周期子页」）。
+        "ghost-destructive": "text-destructive hover:bg-destructive/10 dark:hover:bg-destructive/20",
         link: "text-primary underline-offset-4 hover:underline",
         // eidolon: 她颜色的圆按钮（发送键等，DESIGN.md「button.bg / button.fg」），要在 herVars() 的子树里用。
         her: "rounded-full bg-her-button text-her-button-fg hover:bg-her-button/80",
