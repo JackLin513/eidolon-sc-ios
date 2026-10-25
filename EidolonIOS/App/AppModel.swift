@@ -48,12 +48,25 @@ final class AppModel {
         // so the chat model chooses whether to call the recall-story tool itself.
         if ProcessInfo.processInfo.environment["EIDOLON_NO_JUDGE"] == "1" { return nil }
         #endif
-        switch chatSettings.judgeService {
+        return judgeProvider(for: chatSettings)
+    }
+
+    /// The judge a given set of settings asks for, whether saved or still being edited —
+    /// the settings page tests the fields as they are on screen. Nil while the chosen
+    /// service is not filled in.
+    func judgeProvider(for settings: ChatSettings) -> (any JudgeProvider)? {
+        switch settings.judgeService {
         case .bailian:
-            guard let config = chatSettings.bailianJudgeConfig else { return nil }
+            guard let config = settings.bailianJudgeConfig else { return nil }
+            return SystemOneJudgeProvider(config: config)
+        case .jev:
+            guard let config = settings.jevJudgeConfig else { return nil }
+            return SystemOneJudgeProvider(config: config)
+        case .cloudflare:
+            guard let config = settings.cloudflareJudgeConfig else { return nil }
             return SystemOneJudgeProvider(config: config)
         case .chat:
-            guard let config = chatSettings.judgeConfig(chat: chatSettings.config) else { return nil }
+            guard let config = settings.judgeConfig(chat: settings.config) else { return nil }
             return ChatJudgeProvider(config: config)
         }
     }

@@ -190,6 +190,11 @@ struct TraceDetailView: View {
                     if let family = judge.family {
                         LabeledContent("族", value: family)
                     }
+                    if judge.uncalibrated == true {
+                        Text(JudgeCalibration.uncalibratedNote)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                     if let tokens = judge.inputTokens {
                         LabeledContent("输入 token", value: "\(tokens)")
                     }

@@ -67,6 +67,9 @@ public struct JudgeTrace: Codable, Sendable, Hashable {
     public var service: String
     public var model: String
     public var family: String?
+    /// True when the model's family is unknown and Jev's thresholds were used instead;
+    /// nil when the model was calibrated, so older traces decode unchanged.
+    public var uncalibrated: Bool?
     /// The response as it came, when there was one.
     public var raw: String?
     public var inputTokens: Int?
@@ -78,6 +81,7 @@ public struct JudgeTrace: Codable, Sendable, Hashable {
         service: String,
         model: String,
         family: String? = nil,
+        uncalibrated: Bool? = nil,
         raw: String? = nil,
         inputTokens: Int? = nil,
         latency: Double? = nil,
@@ -86,6 +90,7 @@ public struct JudgeTrace: Codable, Sendable, Hashable {
         self.service = service
         self.model = model
         self.family = family
+        self.uncalibrated = uncalibrated
         self.raw = raw
         self.inputTokens = inputTokens
         self.latency = latency

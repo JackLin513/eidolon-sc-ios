@@ -305,7 +305,7 @@ final class SystemOneTests: XCTestCase {
             XCTAssertEqual(error, .modelNotFound("model decision-model-nope not found"))
             XCTAssertEqual(
                 error.errorDescription,
-                "百炼没有这个模型：model decision-model-nope not found"
+                "判断服务没有这个模型：model decision-model-nope not found"
             )
         }
     }
@@ -389,6 +389,7 @@ final class SystemOneTests: XCTestCase {
         XCTAssertEqual(trace.judge?.service, "阿里云百炼")
         XCTAssertEqual(trace.judge?.model, "decision-model-preview")
         XCTAssertEqual(trace.judge?.family, "decision-model")
+        XCTAssertNil(trace.judge?.uncalibrated, "a calibrated model needs no note")
         XCTAssertEqual(trace.judge?.failure, "判断服务超时")
         XCTAssertNotNil(trace.judge?.latency)
         XCTAssertEqual(trace.retrieval.need, "nothing")

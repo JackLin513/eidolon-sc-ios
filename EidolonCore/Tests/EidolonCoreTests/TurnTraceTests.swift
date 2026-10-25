@@ -24,6 +24,32 @@ struct TracingFixedJudge: TracingJudgeProvider {
     }
 }
 
+struct UncalibratedTracingJudge: TracingJudgeProvider {
+    var judged: Judged = Judged(level: 2)
+    var need: RetrievalNeed = .nothing
+
+    func judge(
+        characterName: String,
+        history: [PromptMessage],
+        said: String
+    ) async throws -> JudgeVerdict {
+        JudgeVerdict(affinity: judged, need: need)
+    }
+
+    func judgedWithRaw(
+        characterName: String,
+        history: [PromptMessage],
+        said: String
+    ) async throws -> JudgeAnswer {
+        JudgeAnswer(verdict: JudgeVerdict(affinity: judged, need: need), raw: "{}")
+    }
+
+    var judgeService: String { "Jev" }
+    var judgeModel: String { "qwen-plus" }
+    var judgeFamily: String? { nil }
+    var judgeUncalibrated: Bool { true }
+}
+
 struct UnreadableJudge: TracingJudgeProvider {
     func judge(
         characterName: String,
@@ -166,6 +192,26 @@ final class TurnTraceTests: XCTestCase {
         XCTAssertTrue(trace.degradation.contains { $0.contains("判断模型失败") })
         XCTAssertEqual(trace.retrieval.need, "nothing")
         XCTAssertNil(trace.verdict)
+    }
+
+    func testAnUncalibratedJudgeIsTracedAsSuch() async throws {
+        let eidolon = try await installedEidolon()
+        try await send(on: eidolon, judge: UncalibratedTracingJudge())
+        let traces = try await eidolon.turnTraces()
+        let trace = try XCTUnwrap(traces.first).trace
+        XCTAssertEqual(trace.judge?.service, "Jev")
+        XCTAssertEqual(trace.judge?.model, "qwen-plus")
+        XCTAssertNil(trace.judge?.family)
+        XCTAssertEqual(trace.judge?.uncalibrated, true, "the trace says the model has no thresholds of its own")
+    }
+
+    func testATraceFromBeforeTheNoteStillDecodes() throws {
+        let trace = try JSONDecoder().decode(
+            JudgeTrace.self,
+            from: Data(#"{"service":"阿里云百炼","model":"decision-model-preview"}"#.utf8)
+        )
+        XCTAssertNil(trace.uncalibrated)
+        XCTAssertNil(trace.family)
     }
 
     func testAFailingReplyIsTracedWithItsError() async throws {

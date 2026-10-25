@@ -79,6 +79,12 @@ public enum JudgeFamilies {
     }
 }
 
+/// A model of no known family is read by Jev's thresholds anyway (upstream
+/// `JudgeFamilies`); the note says so wherever the producer can see the judge.
+public enum JudgeCalibration {
+    public static let uncalibratedNote = "这个模型没有校准，按 Jev 的阈值算"
+}
+
 /// Alibaba Cloud Model Studio's regions, as its host names them.
 public enum BailianRegion: String, Sendable, Hashable, CaseIterable, Codable {
     case beijing
@@ -143,6 +149,108 @@ public struct BailianJudgeConfig: Sendable, Hashable {
     }
 }
 
+/// Jev through TypeSafe's System One endpoint (`/systemone`, which OpenRouter, Vercel AI
+/// Gateway and TypeSafe itself all serve alike). The address is the API base, not the
+/// endpoint: `base_url.rstrip("/") + "/systemone"`, as upstream `JevJudge` does.
+public struct JevJudgeConfig: Sendable, Hashable {
+    public static let defaultBaseURL = "https://openrouter.ai/api/v1"
+    public static let defaultModel = "typesafe/jev-1.13"
+
+    public var baseURL: String
+    public var model: String
+    public var apiKey: String
+
+    public init(
+        baseURL: String = defaultBaseURL,
+        model: String = defaultModel,
+        apiKey: String
+    ) {
+        self.baseURL = baseURL
+        self.model = model
+        self.apiKey = apiKey
+    }
+
+    /// The System One endpoint: the base address without its trailing slashes, `/systemone`.
+    public var systemOneURL: URL? {
+        var base = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !base.isEmpty else { return nil }
+        while base.hasSuffix("/") { base.removeLast() }
+        guard !base.isEmpty else { return nil }
+        return URL(string: base + "/systemone")
+    }
+
+    /// What the provider needs, or nil while something is still missing.
+    public var systemOne: SystemOneConfig? {
+        guard let url = systemOneURL else { return nil }
+        let name = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, !key.isEmpty else { return nil }
+        return SystemOneConfig(baseURL: url, model: name, apiKey: key, service: "Jev")
+    }
+}
+
+/// Clef and Clef-flash on Cloudflare Workers AI: System One's questions, but the model is
+/// named by its bare name in the URL and the body, and the answers come inside Cloudflare's
+/// envelope (upstream `CloudflareJudge`).
+public struct CloudflareJudgeConfig: Sendable, Hashable {
+    public static let defaultModel = "clef-flash"
+
+    public var accountID: String
+    public var model: String
+    public var apiKey: String
+
+    public init(accountID: String, model: String = defaultModel, apiKey: String) {
+        self.accountID = accountID
+        self.model = model
+        self.apiKey = apiKey
+    }
+
+    /// The model as Workers AI names it: no `@cf/cloudflare/` or `cloudflare/` in front.
+    public var bareModel: String {
+        var name = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        for prefix in ["@cf/cloudflare/", "cloudflare/"] {
+            if name.hasPrefix(prefix) {
+                name.removeFirst(prefix.count)
+                break
+            }
+        }
+        return name
+    }
+
+    /// Workers AI's endpoint: the account id and the bare model name.
+    public var systemOneURL: URL? {
+        let account = accountID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = bareModel
+        guard !account.isEmpty, !name.isEmpty else { return nil }
+        return URL(
+            string: "https://api.cloudflare.com/client/v4/accounts/"
+                + "\(account)/ai/run/@cf/cloudflare/\(name)"
+        )
+    }
+
+    /// What the provider needs, or nil while something is still missing.
+    public var systemOne: SystemOneConfig? {
+        guard let url = systemOneURL else { return nil }
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return nil }
+        return SystemOneConfig(
+            baseURL: url,
+            model: bareModel,
+            apiKey: key,
+            service: "Cloudflare Workers AI",
+            response: .cloudflare
+        )
+    }
+}
+
+/// How a System One service wraps its answers.
+public enum SystemOneResponse: Sendable, Hashable {
+    /// `{answers, usage}` at the top level, as Jev and Model Studio answer.
+    case plain
+    /// `{result: {answers, usage}, success, errors, messages}`, as Workers AI answers.
+    case cloudflare
+}
+
 /// One judge service speaking System One: where it is, what it is called, and the key.
 public struct SystemOneConfig: Sendable, Hashable {
     /// The endpoint, with `/systemone` already on it.
@@ -153,23 +261,32 @@ public struct SystemOneConfig: Sendable, Hashable {
     public var service: String
     /// Upstream waits five seconds for the judge (`httpx.Timeout(5, connect=3)`).
     public var timeout: TimeInterval
+    /// Where the answers sit in the response.
+    public var response: SystemOneResponse
 
     public init(
         baseURL: URL,
         model: String,
         apiKey: String,
         service: String = "阿里云百炼",
-        timeout: TimeInterval = 5
+        timeout: TimeInterval = 5,
+        response: SystemOneResponse = .plain
     ) {
         self.baseURL = baseURL
         self.model = model
         self.apiKey = apiKey
         self.service = service
         self.timeout = timeout
+        self.response = response
     }
 
     public var thresholds: JudgeThresholds {
         JudgeFamilies.thresholds(for: model)
+    }
+
+    /// Whether `model` was calibrated at all, or is read by Jev's thresholds by fallback.
+    public var isCalibrated: Bool {
+        JudgeFamilies.family(of: model) != nil
     }
 }
 
@@ -201,6 +318,10 @@ public enum SystemOneError: LocalizedError, Equatable {
     case refused(status: Int, detail: String)
     case modelNotFound(String)
     case invalidResponse(String)
+    /// Workers AI could not find the account: error codes 7000 and 7003, or a 404.
+    case accountMismatch(String)
+    /// Workers AI's 10,000 free neurons for the day are used up: error code 4006.
+    case quotaExhausted(String)
 
     public var errorDescription: String? {
         switch self {
@@ -209,22 +330,45 @@ public enum SystemOneError: LocalizedError, Equatable {
         case let .transport(detail):
             return "无法连接判断服务：\(detail)"
         case let .modelNotFound(detail):
-            return "百炼没有这个模型：\(detail)"
+            return "判断服务没有这个模型：\(detail)"
         case let .refused(status, detail):
             return "判断服务返回 \(status)：\(detail)"
         case let .invalidResponse(reason):
             return "判断模型的返回无法解析：\(reason)"
+        case let .accountMismatch(detail):
+            return "账号不对：\(detail)"
+        case let .quotaExhausted(detail):
+            return "今天的免费额度用完了：\(detail)"
         }
     }
 
-    /// A non-2xx answer: Model Studio's `{"error": {"code", "message"}}` read into
-    /// something the producer can act on, with `model_not_found` named as such (upstream
-    /// `BailianJudge._bailian_error`).
+    /// A non-2xx answer, read into something the producer can act on: Model Studio's
+    /// `{"error": {"code", "message"}}`, with `model_not_found` named as such (upstream
+    /// `BailianJudge._bailian_error`), and Workers AI's `{"success": false, "errors": [...]}`,
+    /// with a wrong account and the day's neurons named as such (upstream `_refused`).
     static func refusal(status: Int, body: String) -> SystemOneError {
-        if let data = body.data(using: .utf8),
-           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let error = object["error"] as? [String: Any]
-        {
+        guard let data = body.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return .refused(status: status, detail: String(body.prefix(500)))
+        }
+        if let errors = object["errors"] as? [[String: Any]] {
+            let codes = errors.compactMap { ($0["code"] as? NSNumber)?.intValue }
+            let said = errors
+                .compactMap { ($0["message"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: "；")
+            let detail = said.isEmpty ? String(body.prefix(500)) : said
+            if codes.contains(7000) || codes.contains(7003) {
+                return .accountMismatch(detail)
+            }
+            if codes.contains(4006) || detail.lowercased().contains("neurons") {
+                return .quotaExhausted(detail)
+            }
+            return .refused(status: status, detail: detail)
+        }
+        if let error = object["error"] as? [String: Any] {
             let code = error["code"] as? String
             let message = (error["message"] as? String)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -259,6 +403,7 @@ public struct SystemOneJudgeProvider: TracingJudgeProvider {
     public var judgeService: String { config.service }
     public var judgeModel: String { config.model }
     public var judgeFamily: String? { JudgeFamilies.family(of: config.model)?.rawValue }
+    public var judgeUncalibrated: Bool { !config.isCalibrated }
 
     public func judge(
         characterName: String,
@@ -277,11 +422,46 @@ public struct SystemOneJudgeProvider: TracingJudgeProvider {
         history: [PromptMessage],
         said: String
     ) async throws -> JudgeAnswer {
-        let body: [String: Any] = [
+        let reply = try await send([
             "model": config.model,
             "state": Self.state(characterName: characterName, history: history, said: said),
             "questions": JudgeQuestions.payload(),
-        ]
+        ])
+        return JudgeAnswer(
+            verdict: try Self.read(answers: reply.answers, thresholds: config.thresholds),
+            raw: reply.raw,
+            inputTokens: reply.inputTokens
+        )
+    }
+
+    /// Asks the service one yes-or-no question about a test state — the least of requests
+    /// (upstream `try_judge_model`) — and reads a refusal into a class the producer can
+    /// act on. The answers themselves are not read: any answer at all means the address,
+    /// the key and the model name work.
+    public func checkJudge() async throws -> JudgeCheck {
+        do {
+            let reply = try await send([
+                "model": config.model,
+                "state": ["测试": "保存前试调"],
+                "questions": ["check": ["type": "noul", "instructions": "这是一条测试消息吗？"]],
+            ])
+            return JudgeCheck(
+                service: config.service,
+                model: config.model,
+                family: JudgeFamilies.family(of: config.model),
+                uncalibrated: !config.isCalibrated,
+                inputTokens: reply.inputTokens
+            )
+        } catch {
+            throw Self.checkError(error, config: config)
+        }
+    }
+
+    /// One System One request, its answers unwrapped from whatever envelope the service
+    /// uses, or the error that stopped it.
+    private func send(
+        _ body: [String: Any]
+    ) async throws -> (answers: [String: Any], inputTokens: Int?, raw: String) {
         var request = URLRequest(url: config.baseURL)
         request.httpMethod = "POST"
         request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
@@ -313,16 +493,66 @@ public struct SystemOneJudgeProvider: TracingJudgeProvider {
         else {
             throw SystemOneError.invalidResponse("不是一个 JSON 对象")
         }
-        guard let answers = object["answers"] as? [String: Any] else {
+        var payload = object
+        switch config.response {
+        case .plain:
+            break
+        case .cloudflare:
+            // Workers AI says success false inside a 2xx as well; either way, its errors
+            // are read the same (upstream `CloudflareJudge.reply`).
+            if object["success"] as? Bool == false {
+                throw SystemOneError.refusal(status: response.statusCode, body: raw)
+            }
+            guard let result = object["result"] as? [String: Any] else {
+                throw SystemOneError.invalidResponse("Cloudflare 的返回里没有 result")
+            }
+            payload = result
+        }
+        guard let answers = payload["answers"] as? [String: Any] else {
             throw SystemOneError.invalidResponse("没有 answers")
         }
-        let tokens = (object["usage"] as? [String: Any])
+        let tokens = (payload["usage"] as? [String: Any])
             .flatMap { ($0["input_tokens"] as? NSNumber)?.intValue }
-        return JudgeAnswer(
-            verdict: try Self.read(answers: answers, thresholds: config.thresholds),
-            raw: raw,
-            inputTokens: tokens
-        )
+        return (answers, tokens, raw)
+    }
+
+    /// What a failed trial request comes to: the classes the producer can act on where the
+    /// service's words name one (upstream `BailianJudge.check` and `CloudflareJudge.check`),
+    /// the service's own words otherwise.
+    static func checkError(_ error: Error, config: SystemOneConfig) -> JudgeCheckError {
+        switch error {
+        case let SystemOneError.modelNotFound(detail):
+            return .modelWrong(detail)
+        case let SystemOneError.accountMismatch(detail):
+            return .accountMismatch(detail)
+        case let SystemOneError.quotaExhausted(detail):
+            return .quotaExhausted(detail)
+        case let SystemOneError.refused(status, detail):
+            switch config.response {
+            case .cloudflare:
+                if status == 404 {
+                    return .accountMismatch(detail)
+                }
+                if status == 401 || status == 403 {
+                    return .invalidKey(
+                        "密钥无效，或者它不属于这个账号、没有 Workers AI 的权限：\(detail)"
+                    )
+                }
+            case .plain:
+                if detail.lowercased().contains("workspace") {
+                    return .workspaceMismatch(detail)
+                }
+                if status == 401 || status == 403 {
+                    return .invalidKey(detail)
+                }
+                if status == 404 {
+                    return .modelWrong(detail)
+                }
+            }
+            return .other(error.localizedDescription)
+        default:
+            return .other(error.localizedDescription)
+        }
     }
 
     // MARK: - Contract
