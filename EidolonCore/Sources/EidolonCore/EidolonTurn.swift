@@ -229,6 +229,7 @@ extension Eidolon {
                 service: judge.judgeService,
                 model: judge.judgeModel,
                 family: judge.judgeFamily,
+                uncalibrated: judge.judgeUncalibrated ? true : nil,
                 raw: raw,
                 inputTokens: tokens,
                 latency: Date().timeIntervalSince(started),

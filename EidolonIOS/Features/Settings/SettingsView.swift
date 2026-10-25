@@ -20,6 +20,15 @@ struct SettingsView: View {
     @State private var bailianRegion: BailianRegion = .beijing
     @State private var bailianModel = "decision-model-preview"
     @State private var bailianAPIKey = ""
+    @State private var jevBaseURL = JevJudgeConfig.defaultBaseURL
+    @State private var jevModel = JevJudgeConfig.defaultModel
+    @State private var jevAPIKey = ""
+    @State private var cloudflareAccountID = ""
+    @State private var cloudflareModel = CloudflareJudgeConfig.defaultModel
+    @State private var cloudflareAPIKey = ""
+    @State private var isTestingJudge = false
+    @State private var judgeCheck: JudgeCheck?
+    @State private var judgeCheckError: String?
     @State private var retrievalBaseURL = ""
     @State private var embeddingModel = ""
     @State private var rerankModel = ""
@@ -92,6 +101,30 @@ struct SettingsView: View {
                         SecureField("百炼密钥", text: $bailianAPIKey)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
+                    case .jev:
+                        TextField(
+                            "接口地址（默认 https://openrouter.ai/api/v1）",
+                            text: $jevBaseURL
+                        )
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        TextField("模型名（默认 typesafe/jev-1.13）", text: $jevModel)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        SecureField("Jev 密钥", text: $jevAPIKey)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    case .cloudflare:
+                        TextField("账号 ID", text: $cloudflareAccountID)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        TextField("模型名（默认 clef-flash）", text: $cloudflareModel)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        SecureField("Cloudflare 密钥", text: $cloudflareAPIKey)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
                     case .chat:
                         TextField("接口地址", text: $judgeBaseURL)
                             .textInputAutocapitalization(.never)
@@ -108,12 +141,33 @@ struct SettingsView: View {
                             .autocorrectionDisabled()
                             .font(.footnote.monospaced())
                     }
+                    if let note = judgeUncalibratedNote {
+                        Text(note)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    Button {
+                        Task { await testJudge() }
+                    } label: {
+                        HStack {
+                            Text("测试判断模型")
+                            if isTestingJudge {
+                                Spacer()
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(isTestingJudge)
                 } header: {
                     Text("判断模型")
                 } footer: {
                     switch judgeService {
                     case .bailian:
-                        Text("每回合用百炼的 System One 一次问完六道题，按 decision-model 的阈值读概率。业务空间 ID 和地域拼出地址；密钥保存在钥匙串。")
+                        Text("每回合用百炼的 System One 一次问完六道题，按这个模型所属一族的阈值读概率。业务空间 ID、地域和密钥要互相对应；密钥保存在钥匙串。")
+                    case .jev:
+                        Text("每回合用 Jev 的 System One 一次问完六道题，地址是接口地址加 /systemone。默认借 OpenRouter 调 typesafe/jev-1.13，按 jev 的阈值读概率；密钥保存在钥匙串。")
+                    case .cloudflare:
+                        Text("每回合用 Workers AI 上的 clef 或 clef-flash 一次问完六道题，地址由账号 ID 和模型名拼出，模型名只写裸名。clef 与 clef-flash 各自按自己的阈值读概率；每天免费的 1 万 neurons 用完后要等第二天。")
                     case .chat:
                         Text("每回合判断这句话对好感度的影响。留空则使用对话模型；都不可用时不做判断，好感度不变。")
                     }
@@ -294,6 +348,16 @@ struct SettingsView: View {
             .alert("已保存", isPresented: $savedNotice) {
                 Button("好") {}
             }
+            .alert("判断模型可用", isPresented: judgeCheckBinding) {
+                Button("好") { judgeCheck = nil }
+            } message: {
+                Text(judgeCheck.map(judgeCheckSummary) ?? "")
+            }
+            .alert("判断模型不可用", isPresented: judgeCheckErrorBinding) {
+                Button("好") { judgeCheckError = nil }
+            } message: {
+                Text(judgeCheckError ?? "")
+            }
             .fileImporter(
                 isPresented: $isPicking,
                 allowedContentTypes: [.eidolonPackage, .data],
@@ -321,6 +385,12 @@ struct SettingsView: View {
         bailianRegion = settings.bailianRegion
         bailianModel = settings.bailianModel
         bailianAPIKey = settings.bailianAPIKey
+        jevBaseURL = settings.jevBaseURL
+        jevModel = settings.jevModel
+        jevAPIKey = settings.jevAPIKey
+        cloudflareAccountID = settings.cloudflareAccountID
+        cloudflareModel = settings.cloudflareModel
+        cloudflareAPIKey = settings.cloudflareAPIKey
         retrievalBaseURL = settings.retrievalBaseURL
         embeddingModel = settings.embeddingModel
         rerankModel = settings.rerankModel
@@ -344,8 +414,10 @@ struct SettingsView: View {
         }
     }
 
-    private func save() async {
-        let settings = ChatSettings(
+    /// The settings as they are on screen: what saving writes, and what the trial request
+    /// is made with, so the test asks exactly what will be used.
+    private var draft: ChatSettings {
+        ChatSettings(
             baseURL: baseURL,
             model: model,
             apiKey: apiKey,
@@ -372,8 +444,18 @@ struct SettingsView: View {
             bailianWorkspace: bailianWorkspace,
             bailianRegion: bailianRegion,
             bailianModel: bailianModel,
-            bailianAPIKey: bailianAPIKey
+            bailianAPIKey: bailianAPIKey,
+            jevBaseURL: jevBaseURL,
+            jevModel: jevModel,
+            jevAPIKey: jevAPIKey,
+            cloudflareAccountID: cloudflareAccountID,
+            cloudflareModel: cloudflareModel,
+            cloudflareAPIKey: cloudflareAPIKey
         )
+    }
+
+    private func save() async {
+        let settings = draft
         do {
             try app.saveChatSettings(settings)
             let zone = profileTimezone.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -395,6 +477,65 @@ struct SettingsView: View {
         } catch {
             saveError = error.localizedDescription
         }
+    }
+
+    /// Asks the chosen service one yes-or-no question with the fields as they are now, and
+    /// says what answered — or which part of the configuration the service refused.
+    private func testJudge() async {
+        guard let provider = app.judgeProvider(for: draft) else {
+            judgeCheckError = "这个服务还没填完：地址（或账号）、模型名和密钥都要有。"
+            return
+        }
+        isTestingJudge = true
+        defer { isTestingJudge = false }
+        do {
+            judgeCheck = try await provider.checkJudge()
+        } catch {
+            judgeCheckError = error.localizedDescription
+        }
+    }
+
+    private func judgeCheckSummary(_ check: JudgeCheck) -> String {
+        var lines = ["服务：\(check.service)", "模型：\(check.model)"]
+        if let family = check.family {
+            lines.append("阈值：\(family.rawValue)")
+        }
+        if check.uncalibrated {
+            lines.append(JudgeCalibration.uncalibratedNote)
+        }
+        if let tokens = check.inputTokens {
+            lines.append("输入 tokens：\(tokens)")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// The note when the chosen service's model has no calibration of its own; nil
+    /// otherwise, the chat judge included — it reads no thresholds at all.
+    private var judgeUncalibratedNote: String? {
+        let model: String
+        switch judgeService {
+        case .bailian: model = bailianModel
+        case .jev: model = jevModel
+        case .cloudflare: model = cloudflareModel
+        case .chat: return nil
+        }
+        let name = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, JudgeFamilies.family(of: name) == nil else { return nil }
+        return JudgeCalibration.uncalibratedNote
+    }
+
+    private var judgeCheckBinding: Binding<Bool> {
+        Binding(
+            get: { judgeCheck != nil },
+            set: { if !$0 { judgeCheck = nil } }
+        )
+    }
+
+    private var judgeCheckErrorBinding: Binding<Bool> {
+        Binding(
+            get: { judgeCheckError != nil },
+            set: { if !$0 { judgeCheckError = nil } }
+        )
     }
 
     private var saveErrorBinding: Binding<Bool> {

@@ -27,6 +27,9 @@ public protocol JudgeProvider: Sendable {
     var judgeService: String { get }
     var judgeModel: String { get }
     var judgeFamily: String? { get }
+    /// Whether the model is read by Jev's thresholds because its family is unknown, so
+    /// the trace and the settings can say so (ADR-0016).
+    var judgeUncalibrated: Bool { get }
 }
 
 extension JudgeProvider {
@@ -36,6 +39,68 @@ extension JudgeProvider {
     public var judgeService: String { "判断模型" }
     public var judgeModel: String { "" }
     public var judgeFamily: String? { nil }
+    public var judgeUncalibrated: Bool { false }
+
+    /// Asks the service one yes-or-no question, the least a request can be. Services that
+    /// cannot say anything useful about themselves leave it here.
+    public func checkJudge() async throws -> JudgeCheck {
+        throw JudgeCheckError.other("这个判断服务不支持测试")
+    }
+}
+
+/// What a trial request to a judge service asked, and what came back.
+public struct JudgeCheck: Sendable, Hashable {
+    public var service: String
+    public var model: String
+    /// The thresholds' family, when the service has thresholds and knows the model.
+    public var family: JudgeFamily?
+    /// True when the model is read by Jev's thresholds by fallback, not by calibration.
+    public var uncalibrated: Bool
+    public var inputTokens: Int?
+
+    public init(
+        service: String,
+        model: String,
+        family: JudgeFamily? = nil,
+        uncalibrated: Bool = false,
+        inputTokens: Int? = nil
+    ) {
+        self.service = service
+        self.model = model
+        self.family = family
+        self.uncalibrated = uncalibrated
+        self.inputTokens = inputTokens
+    }
+}
+
+/// Why the trial request failed, in the few classes the producer can act on, or the
+/// service's own words when it is none of them.
+public enum JudgeCheckError: LocalizedError, Equatable {
+    /// The workspace id, the region and the key do not belong together.
+    case workspaceMismatch(String)
+    case invalidKey(String)
+    case modelWrong(String)
+    case accountMismatch(String)
+    case quotaExhausted(String)
+    /// Anything else, as the service said it.
+    case other(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case let .workspaceMismatch(detail):
+            return "业务空间或地域不对（业务空间 ID、地域和密钥要互相对应）：\(detail)"
+        case let .invalidKey(detail):
+            return "密钥无效：\(detail)"
+        case let .modelWrong(detail):
+            return "模型名不对：\(detail)"
+        case let .accountMismatch(detail):
+            return "账号不对：\(detail)"
+        case let .quotaExhausted(detail):
+            return "当天的免费额度用完了：\(detail)"
+        case let .other(detail):
+            return detail
+        }
+    }
 }
 
 public struct JudgeConfig: Sendable, Hashable {
@@ -89,7 +154,7 @@ public struct ChatJudgeProvider: TracingJudgeProvider {
         said: String
     ) async throws -> JudgeAnswer {
         let state = Self.state(characterName: characterName, history: history, said: said)
-        let body: [String: Any] = [
+        let data = try await post([
             "model": config.model,
             "stream": false,
             "temperature": 0,
@@ -98,24 +163,32 @@ public struct ChatJudgeProvider: TracingJudgeProvider {
                 ["role": "system", "content": Self.instructions],
                 ["role": "user", "content": state],
             ],
-        ]
+        ])
+        return try Self.answer(from: Self.answerText(data))
+    }
+
+    /// Sends one chat request, extra body and all, and gives back its data.
+    private func post(_ body: [String: Any]) async throws -> Data {
         var request = URLRequest(url: config.baseURL.appendingPathComponent("chat/completions"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 20
-        var payload = body
-        if let extraBody = config.extraBody {
-            for (key, value) in extraBody { payload[key] = value.jsonObject }
-        }
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload(body))
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             throw ChatProviderError.status(code, String(decoding: data.prefix(300), as: UTF8.self))
         }
-        return try Self.answer(from: Self.answerText(data))
+        return data
+    }
+
+    private func payload(_ body: [String: Any]) -> [String: Any] {
+        guard let extraBody = config.extraBody else { return body }
+        var payload = body
+        for (key, value) in extraBody { payload[key] = value.jsonObject }
+        return payload
     }
 
     /// The verdict in what the model wrote, or an error carrying what it wrote.
@@ -251,4 +324,41 @@ extension ChatJudgeProvider {
     /// The chat judge has no service of its own: it is the chat model, asked again.
     public var judgeService: String { "对话模型" }
     public var judgeModel: String { config.model }
+
+    /// One yes-or-no question, the least a chat request can be. Anything it writes back
+    /// means the key, the address and the model name all work.
+    public func checkJudge() async throws -> JudgeCheck {
+        let body: [String: Any] = [
+            "model": config.model,
+            "stream": false,
+            "temperature": 0,
+            "max_tokens": 16,
+            "messages": [
+                ["role": "system", "content": "只回答「是」或「否」，不要解释。"],
+                ["role": "user", "content": "这是一条测试消息吗？"],
+            ],
+        ]
+        do {
+            let data = try await post(body)
+            let content = try Self.answerText(data)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !content.isEmpty else {
+                throw JudgeCheckError.other("判断模型没有返回内容")
+            }
+            return JudgeCheck(service: judgeService, model: config.model)
+        } catch let error as ChatProviderError {
+            throw Self.checkError(error)
+        }
+    }
+
+    static func checkError(_ error: ChatProviderError) -> JudgeCheckError {
+        switch error {
+        case let .status(code, detail) where code == 401 || code == 403:
+            return .invalidKey(detail)
+        case let .status(code, detail) where code == 404:
+            return .modelWrong(detail)
+        default:
+            return .other(error.localizedDescription)
+        }
+    }
 }

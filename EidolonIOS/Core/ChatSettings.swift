@@ -1,24 +1,8 @@
 import EidolonCore
 import Foundation
 
-/// Which service judges each turn: Alibaba Cloud Model Studio's System One (ADR-0016),
-/// the default, or the chat model asked again (ADR-0005).
-enum JudgeService: String, CaseIterable, Identifiable {
-    case bailian
-    case chat
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .bailian: "阿里云百炼"
-        case .chat: "对话模型"
-        }
-    }
-}
-
 /// The chat and judge model settings: addresses and model names in UserDefaults, keys in
-/// the Keychain (ADR-0010). A judge left blank uses the chat model's settings.
+/// the Keychain (ADR-0010). A chat judge left blank uses the chat model's settings.
 struct ChatSettings {
     var baseURL: String = ""
     var model: String = ""
@@ -53,12 +37,18 @@ struct ChatSettings {
     var callTurns: Int = 40
 
     /// Who judges each turn (ADR-0016): Alibaba Cloud Model Studio's System One by
-    /// default, or the chat model asked again, as before.
+    /// default, Jev or Cloudflare, or the chat model asked again, as before.
     var judgeService: JudgeService = .bailian
     var bailianWorkspace: String = ""
     var bailianRegion: BailianRegion = .beijing
     var bailianModel: String = "decision-model-preview"
     var bailianAPIKey: String = ""
+    var jevBaseURL: String = JevJudgeConfig.defaultBaseURL
+    var jevModel: String = JevJudgeConfig.defaultModel
+    var jevAPIKey: String = ""
+    var cloudflareAccountID: String = ""
+    var cloudflareModel: String = CloudflareJudgeConfig.defaultModel
+    var cloudflareAPIKey: String = ""
 
     private static let baseURLKey = "chat.baseURL"
     private static let modelKey = "chat.model"
@@ -69,7 +59,6 @@ struct ChatSettings {
     private static let judgeBaseURLKey = "judge.baseURL"
     private static let judgeModelKey = "judge.model"
     private static let judgeExtraBodyKey = "judge.extraBody"
-    private static let judgeKeychainAccount = "judge.apiKey"
 
     private static let retrievalBaseURLKey = "retrieval.baseURL"
     private static let embeddingModelKey = "retrieval.embeddingModel"
@@ -88,19 +77,25 @@ struct ChatSettings {
     private static let bailianWorkspaceKey = "judge.bailian.workspace"
     private static let bailianRegionKey = "judge.bailian.region"
     private static let bailianModelKey = "judge.bailian.model"
-    private static let bailianKeychainAccount = "judge.bailian.key"
+    private static let jevBaseURLKey = "judge.jev.baseURL"
+    private static let jevModelKey = "judge.jev.model"
+    private static let cloudflareAccountKey = "judge.cloudflare.account"
+    private static let cloudflareModelKey = "judge.cloudflare.model"
 
     static func load() -> ChatSettings {
         let defaults = UserDefaults.standard
+        let judgeBaseURL = defaults.string(forKey: judgeBaseURLKey) ?? ""
+        let judgeModel = defaults.string(forKey: judgeModelKey) ?? ""
+        let judgeAPIKey = Keychain.string(account: JudgeService.chat.keychainAccount) ?? ""
         return ChatSettings(
             baseURL: defaults.string(forKey: baseURLKey) ?? "",
             model: defaults.string(forKey: modelKey) ?? "",
             apiKey: Keychain.string(account: keychainAccount) ?? "",
             historyTurns: defaults.object(forKey: historyKey) as? Int ?? 20,
             extraBody: defaults.string(forKey: extraBodyKey) ?? "",
-            judgeBaseURL: defaults.string(forKey: judgeBaseURLKey) ?? "",
-            judgeModel: defaults.string(forKey: judgeModelKey) ?? "",
-            judgeAPIKey: Keychain.string(account: judgeKeychainAccount) ?? "",
+            judgeBaseURL: judgeBaseURL,
+            judgeModel: judgeModel,
+            judgeAPIKey: judgeAPIKey,
             judgeExtraBody: defaults.string(forKey: judgeExtraBodyKey) ?? "",
             retrievalBaseURL: defaults.string(forKey: retrievalBaseURLKey) ?? "",
             embeddingModel: defaults.string(forKey: embeddingModelKey) ?? "",
@@ -115,15 +110,25 @@ struct ChatSettings {
             fishModel: defaults.string(forKey: fishModelKey) ?? "s2.1-pro-free",
             callMinutes: defaults.object(forKey: callMinutesKey) as? Int ?? 10,
             callTurns: defaults.object(forKey: callTurnsKey) as? Int ?? 40,
-            judgeService: JudgeService(
-                rawValue: defaults.string(forKey: judgeServiceKey) ?? ""
-            ) ?? .bailian,
+            judgeService: JudgeService.atLaunch(
+                stored: defaults.string(forKey: judgeServiceKey),
+                chatJudgeFilledIn: [judgeBaseURL, judgeModel, judgeAPIKey].contains {
+                    !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                }
+            ),
             bailianWorkspace: defaults.string(forKey: bailianWorkspaceKey) ?? "",
             bailianRegion: BailianRegion(
                 rawValue: defaults.string(forKey: bailianRegionKey) ?? ""
             ) ?? .beijing,
             bailianModel: defaults.string(forKey: bailianModelKey) ?? "decision-model-preview",
-            bailianAPIKey: Keychain.string(account: bailianKeychainAccount) ?? ""
+            bailianAPIKey: Keychain.string(account: JudgeService.bailian.keychainAccount) ?? "",
+            jevBaseURL: defaults.string(forKey: jevBaseURLKey) ?? JevJudgeConfig.defaultBaseURL,
+            jevModel: defaults.string(forKey: jevModelKey) ?? JevJudgeConfig.defaultModel,
+            jevAPIKey: Keychain.string(account: JudgeService.jev.keychainAccount) ?? "",
+            cloudflareAccountID: defaults.string(forKey: cloudflareAccountKey) ?? "",
+            cloudflareModel: defaults.string(forKey: cloudflareModelKey)
+                ?? CloudflareJudgeConfig.defaultModel,
+            cloudflareAPIKey: Keychain.string(account: JudgeService.cloudflare.keychainAccount) ?? ""
         )
     }
 
@@ -140,7 +145,7 @@ struct ChatSettings {
         defaults.set(retrievalBaseURL.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.retrievalBaseURLKey)
         defaults.set(embeddingModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.embeddingModelKey)
         defaults.set(rerankModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.rerankModelKey)
-        try Self.store(judgeAPIKey, account: Self.judgeKeychainAccount)
+        try Self.store(judgeAPIKey, account: JudgeService.chat.keychainAccount)
         try Self.store(retrievalAPIKey, account: Self.retrievalKeychainAccount)
         defaults.set(reachOutHours, forKey: Self.reachOutHoursKey)
         defaults.set(tracingEnabled, forKey: Self.tracingEnabledKey)
@@ -161,7 +166,22 @@ struct ChatSettings {
             bailianModel.trimmingCharacters(in: .whitespacesAndNewlines),
             forKey: Self.bailianModelKey
         )
-        try Self.store(bailianAPIKey, account: Self.bailianKeychainAccount)
+        try Self.store(bailianAPIKey, account: JudgeService.bailian.keychainAccount)
+        defaults.set(
+            jevBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+            forKey: Self.jevBaseURLKey
+        )
+        defaults.set(jevModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.jevModelKey)
+        try Self.store(jevAPIKey, account: JudgeService.jev.keychainAccount)
+        defaults.set(
+            cloudflareAccountID.trimmingCharacters(in: .whitespacesAndNewlines),
+            forKey: Self.cloudflareAccountKey
+        )
+        defaults.set(
+            cloudflareModel.trimmingCharacters(in: .whitespacesAndNewlines),
+            forKey: Self.cloudflareModelKey
+        )
+        try Self.store(cloudflareAPIKey, account: JudgeService.cloudflare.keychainAccount)
     }
 
     /// The provider config, or nil while something still has to be filled in.
@@ -209,6 +229,24 @@ struct ChatSettings {
             region: bailianRegion,
             model: bailianModel,
             apiKey: bailianAPIKey
+        ).systemOne
+    }
+
+    /// The Jev judge, or nil while the address, the model or the key is still blank.
+    var jevJudgeConfig: SystemOneConfig? {
+        JevJudgeConfig(
+            baseURL: jevBaseURL,
+            model: jevModel,
+            apiKey: jevAPIKey
+        ).systemOne
+    }
+
+    /// The Cloudflare judge, or nil while the account, the model or the key is still blank.
+    var cloudflareJudgeConfig: SystemOneConfig? {
+        CloudflareJudgeConfig(
+            accountID: cloudflareAccountID,
+            model: cloudflareModel,
+            apiKey: cloudflareAPIKey
         ).systemOne
     }
 
