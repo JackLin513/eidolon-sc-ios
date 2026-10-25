@@ -118,12 +118,12 @@ async def test_ones_of_a_character_not_there_after_today_or_out_of_bounds_are_sk
     client = client_of(make_client, settings)  # the 25th in Shanghai
 
     res = await import_package(client, package_with(
-        record("2026-10-01", character="nobody"), record("2026-10-26"), record("2026-09-01", 0),
-        record("2026-08-01", 11), record("2026-10-25", 10),
+        record("2026-10-01", character="nobody"), record("2026-10-26"), record("2026-08-01", 11),
+        record("2026-10-25", 10),
     ), "cycles")
 
     assert res.status_code == 200, res.text
-    assert (res.json()["cycles"], res.json()["cycles_skipped"]) == (1, 4)
+    assert (res.json()["cycles"], res.json()["cycles_skipped"]) == (1, 3)
     assert records_in(settings.database_path) == [("mano", "2026-10-25", 10)]
 
 
@@ -172,15 +172,31 @@ async def test_left_out_of_the_import_none_are_imported(
     assert records_in(settings.database_path) == []
 
 
-@pytest.mark.parametrize("extra", [{"id": "a"}, {"recorded_at": "2026-10-01T00:00:00Z"}])
 async def test_a_record_with_more_than_its_character_first_day_and_days_is_refused(
-    make_client: ClientFactory, settings: Settings, extra: dict
+    make_client: ClientFactory, settings: Settings
 ):
     client = client_of(make_client, settings)
 
-    res = await import_package(client, package_with(record("2026-10-01") | extra), "cycles")
+    res = await import_package(
+        client, package_with(record("2026-10-01") | {"id": "a"}), "cycles"
+    )
 
     assert (res.status_code, res.json()["code"]) == (422, "broken")
+
+
+async def test_a_package_of_format_2_imports_as_before(
+    make_client: ClientFactory, settings: Settings
+):
+    client = client_of(make_client, settings)
+
+    res = await import_package(
+        client, package_of(MANIFEST | {"format": 2}, {"profile": PACKAGED_PROFILE}), "profile,cycles"
+    )
+
+    assert res.status_code == 200, res.text
+    assert (res.json()["profile"], res.json()["cycles"], res.json()["cycles_skipped"]) == (
+        True, 0, 0
+    )
 
 
 async def test_records_in_a_format_before_them_are_refused(

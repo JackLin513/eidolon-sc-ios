@@ -84,8 +84,10 @@ REACH_OUTS_SINCE = 2
 """The format whose conversations first held her reach-outs: before it, none may."""
 
 UNWELL_SINCE = 3
-"""The format whose conversations first held her being unwell, and whose packages the periods
-the user wrote down: before it, none may."""
+"""The format whose conversations first held her being unwell: before it, none may."""
+
+CYCLES_SINCE = 3
+"""The format whose packages first held the periods the user wrote down: before it, none may."""
 
 Category = Literal["conversations", "photos", "memories", "profile", "cycles"]
 CATEGORIES: tuple[Category, ...] = get_args(Category)
@@ -969,7 +971,7 @@ def _read(zipped: zipfile.ZipFile) -> tuple[Manifest, PackageData, dict[str, byt
             e.kind == "unwell" for c in data.conversations or [] for e in c.events
         ):
             raise BrokenPackage("her being unwell in a format before it")
-        if manifest.format < UNWELL_SINCE and data.cycles is not None:
+        if manifest.format < CYCLES_SINCE and data.cycles is not None:
             raise BrokenPackage("periods written down in a format before them")
         listed = set(manifest.categories)
         held = {c for c in CATEGORIES if c != "photos" and getattr(data, c) is not None}

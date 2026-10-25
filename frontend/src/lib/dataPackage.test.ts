@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api";
 import {
   choose,
-  CATEGORIES,
   chosenCategories,
   exportHref,
   packageFailure,
@@ -23,12 +22,6 @@ describe("勾选框", () => {
       "profile",
     ]);
     expect(chosenCategories(selectAll(["profile"]))).toEqual(["profile"]);
-  });
-
-  it("周期记录排在最后，不跟着对话", () => {
-    expect(CATEGORIES).toEqual(["conversations", "photos", "memories", "profile", "cycles"]);
-    const onlyCycles = choose(selectAll(CATEGORIES), "conversations", false);
-    expect(chosenCategories(onlyCycles)).toEqual(["memories", "profile", "cycles"]);
   });
 
   it("不勾对话时照片既不能勾、也算没勾；再勾上对话，照片仍是没勾", () => {

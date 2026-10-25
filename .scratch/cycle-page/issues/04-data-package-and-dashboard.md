@@ -25,16 +25,16 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 数据包：勾了「周期记录」时导出里有记录，没勾时没有
-- [ ] 导入：能并进已有的；重叠的跳过并留已有的；不认识的角色跳过；未来的跳过；跳过几条照实报出
-- [ ] 开关关着时也能导出、导入；格式 2 的包照旧能导入（先例 `test_data_package.py`、`test_data_package_reach_outs.py`）
-- [ ] 看板：那一格是有记录的用户数，一个用户记了几位也只算一次；不跟时间范围；周期关着时为 null；好感度关着、周期开着时「好感度」那组照样有这一格（先例 `test_schedule_dashboard.py`、`test_affinity_dashboard.py`）
-- [ ] 前端 `dataPackage`：勾选项多一类；`dashboard`：那一格，以及「好感度」标签的显示条件
-- [ ] 本地构建版上用 Playwright：勾「周期记录」导出，再导入到另一个开发用户，看周期页
-- [ ] pyright、ruff、前端类型检查和 lint 都过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
-- [ ] 票收尾：推一次让 CI 跑、跑 `code-review`
+- [x] 数据包：勾了「周期记录」时导出里有记录，没勾时没有
+- [x] 导入：能并进已有的；重叠的跳过并留已有的；不认识的角色跳过；未来的跳过；跳过几条照实报出
+- [x] 开关关着时也能导出、导入；格式 2 的包照旧能导入（先例 `test_data_package.py`、`test_data_package_reach_outs.py`）
+- [x] 看板：那一格是有记录的用户数，一个用户记了几位也只算一次；不跟时间范围；周期关着时为 null；好感度关着、周期开着时「好感度」那组照样有这一格（先例 `test_schedule_dashboard.py`、`test_affinity_dashboard.py`）
+- [x] 前端 `dataPackage`：勾选项多一类；`dashboard`：那一格，以及「好感度」标签的显示条件
+- [x] 本地构建版上用 Playwright：勾「周期记录」导出，再导入到另一个开发用户，看周期页
+- [x] pyright、ruff、前端类型检查和 lint 都过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
+- [x] 票收尾：推一次让 CI 跑、跑 `code-review`
 
 ## Comments
 
@@ -43,3 +43,13 @@
 - 记录在 `cycle_records` 表里：id、user_id、character_id、first_day（`YYYY-MM-DD`）、days、recorded_at。模块是 `backend/src/eidolon/cycle_records.py`。
 - 导入时的检查（未来、天数越界、重叠）可以照 `_check` 的写法做。注意导入时要跳过重叠的那条，不要报错。
 - 看板那一格用 `SELECT COUNT(DISTINCT user_id) FROM cycle_records` 算。
+
+### 票 04 收尾
+
+- 接口形状：导入结果多了 `cycles`（导入几条）和 `cycles_skipped`（跳过几条，含角色不在的）；看板多了 `recorded_cycles`（周期关着时为 null）。导入接口现在读 `X-Timezone`，「未来」按导入后档案的时区判断，没有档案时区就用设备的。
+- 本地构建版 Playwright 验收：A 记了真乃 3 次、恋鐘 1 次，只勾「周期记录」导出；B 先记了真乃 9-28 那一次，再导入，结果是「导入了 3 条周期记录。跳过了 1 条周期记录。」，重叠的那次留的是 B 原来的。周期页上真乃的三次和推算都对。看板「好感度」里「周期」一格显示出来了。
+- 审查后改了这些：前端去掉一条断言常量、和已有测试走同一路径的测试；后端多余字段那条只留一个用例，天数越界只留 11；加了 `CYCLES_SINCE`，不再借用 `UNWELL_SINCE`；补了一条格式 2 的包照旧能导入的测试。
+- 审查里的判断题，没有改：
+  - 「重叠的跳过」和「和这次导入里前面的重叠」两条测试走的是同一个重叠判断。后一条另外验了按角色分开，所以两条都留着。
+  - `_insert` 的参数是 user、角色、第一天、天数、时刻，可以收成 `Carried`。但 `_add` 那边是分开传的，收起来反而要多构造一次，所以没收。
+  - `_read_data` 交给 `_export` 的元组到了四项，以后再加类别可以改成一个小数据类。这是本来就有的写法。
