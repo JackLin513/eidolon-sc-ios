@@ -57,6 +57,11 @@
   3. 以 Sallyn 在后台「限额与玩法」的「周期」卡关掉：设置一级列表没有「周期」，`/settings/cycles` 回到 `/settings`，账号 `cycles: null`；拨回开以后又出现。验完 `config_overrides` 里没有 `cycles`，回到 `.env` 的值。
 - **审查后的判断题（没改）**：「开发口子」是规格和词汇表的说法，没改成「开发接口」；日文版转述她回避的词时用了「生理」，词汇表的 Avoid 只管中文；「关掉时」一条和开关那条里「好感度和礼物关着时」边界相近，各留。
 
+### 截图给用户看时的修复（票 07）
+
+- 窄屏（360 宽）上，日期那种写法（「有栖川夏葉好像从 10月21日 起就不太舒服」）放不下一行，又不会折行，右边的时间被挤出屏幕。原因是分隔线中间那段 `shrink-0`，送礼事件也一样。`ConversationView` 的 `EventLine` 改成中间段可以缩，句子 `break-keep wrap-anywhere text-balance`：先在空格处折，日期不拆开，没有空格的长句放不下时照常断开；图标和时间不缩，两边细线最少留 `min-w-4`。360 宽和 320 宽都看过。
+- 给用户看的截图在 `E:/tmp/cycles-voice-live/review/`，不进仓库。
+
 ### 人工验证清单（票 07）
 
 - 看结果页 `prototype_cycles_voice_live.html`（`origin/prototype/cycles-voice`，本机副本 `E:/tmp/cycles-voice-live/cycles_voice_live.html`），认可措辞后才合并；尤其「那种日子」、经前答「是有一点」那几处。

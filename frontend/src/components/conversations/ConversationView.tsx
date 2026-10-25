@@ -686,13 +686,14 @@ function EventLine({ entry, name }: { entry: Extract<Entry, { kind: "event" }>; 
   const Icon = EVENT_ICONS[entry.event];
   return (
     <div role="note" className="flex items-center gap-3 px-2 text-sm text-muted-foreground">
-      <span aria-hidden className="h-px flex-1 bg-foreground/15" />
-      <span className="flex shrink-0 items-center gap-1.5">
-        <Icon aria-hidden className="size-4" />
-        {eventText(entry, name)}
-        <time className="text-meta tabular-nums">{clock(entry.at)}</time>
+      <span aria-hidden className="h-px min-w-4 flex-1 bg-foreground/15" />
+      {/* 窄屏放不下一行时句子折行，先在空格处折（不拆「10月21日」），图标和时间不缩 */}
+      <span className="flex min-w-0 items-center gap-1.5">
+        <Icon aria-hidden className="size-4 shrink-0" />
+        <span className="min-w-0 break-keep text-balance wrap-anywhere">{eventText(entry, name)}</span>
+        <time className="shrink-0 text-meta tabular-nums">{clock(entry.at)}</time>
       </span>
-      <span aria-hidden className="h-px flex-1 bg-foreground/15" />
+      <span aria-hidden className="h-px min-w-4 flex-1 bg-foreground/15" />
     </div>
   );
 }
