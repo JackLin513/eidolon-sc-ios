@@ -116,21 +116,21 @@ const SCHEDULE_PENDING = 4;
 /** 从这天（周一是 0）起排的是草稿，之前的是保存过的。 */
 const SCHEDULE_DRAFTS_FROM = 5;
 
+/** 周期页那张选中的她。 */
+const CYCLES_FEATURED = "mano";
 /**
  * 周期页那张记下的经期：角色、第一天离今天几天、天数。主角（CYCLES_FEATURED）记了四次，间隔 28、29、28 天，
  * 推算出的下一次在四天后，今天落在推算的经前，月历上记下的、推算的经期和经前都看得到；另外两位让卡片和筛选有数。
  */
 const CYCLE_RECORDS: { character: string; daysAgo: number; days: number }[] = [
-  { character: "mano", daysAgo: 109, days: 5 },
-  { character: "mano", daysAgo: 81, days: 6 },
-  { character: "mano", daysAgo: 52, days: 5 },
-  { character: "mano", daysAgo: 24, days: 5 },
+  { character: CYCLES_FEATURED, daysAgo: 109, days: 5 },
+  { character: CYCLES_FEATURED, daysAgo: 81, days: 6 },
+  { character: CYCLES_FEATURED, daysAgo: 52, days: 5 },
+  { character: CYCLES_FEATURED, daysAgo: 24, days: 5 },
   { character: "kogane", daysAgo: 40, days: 6 },
   { character: "kogane", daysAgo: 11, days: 6 },
   { character: "hiori", daysAgo: 3, days: 5 },
 ];
-/** 周期页那张选中的她。 */
-const CYCLES_FEATURED = "mano";
 
 /** 一项要拍的东西：`name` 给 `--only` 用。 */
 type Item = { name: string; take: (browser: Browser) => Promise<void> };
