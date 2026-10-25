@@ -2,6 +2,10 @@ import Foundation
 
 /// The `manifest.json` inside a content bundle (ADR-0003).
 public struct ContentManifest: Codable, Sendable, Hashable {
+    /// The bundle format this app reads. Version 2 added birthdays, idol numbers and the
+    /// holiday table, so a version-1 bundle has to be exported again.
+    public static let supportedFormatVersion = 2
+
     public struct Embedding: Codable, Sendable, Hashable {
         public var model: String
         public var dimensions: Int

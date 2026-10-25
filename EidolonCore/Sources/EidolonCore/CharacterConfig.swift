@@ -19,6 +19,7 @@ public struct CharacterConfig: Sendable, Hashable {
     public var background: String?
     public var speakers: [String]
     public var idolID: Int?
+    public var birthday: Birthday?
     public var raw: [String: JSONValue]
 
     public init(
@@ -37,6 +38,7 @@ public struct CharacterConfig: Sendable, Hashable {
         background: String? = nil,
         speakers: [String] = [],
         idolID: Int? = nil,
+        birthday: Birthday? = nil,
         raw: [String: JSONValue] = [:]
     ) {
         self.id = id
@@ -54,6 +56,7 @@ public struct CharacterConfig: Sendable, Hashable {
         self.background = background
         self.speakers = speakers
         self.idolID = idolID
+        self.birthday = birthday
         self.raw = raw
     }
 
@@ -66,6 +69,19 @@ public struct CharacterConfig: Sendable, Hashable {
         }
         guard let name = object["name"]?.stringValue, !name.isEmpty else {
             throw EidolonError.invalidContent("角色 \(id) 缺少 name")
+        }
+        let birthdayText = object["birthday"]?.stringValue
+        guard let birthdayText, let birthday = Birthday(birthdayText) else {
+            throw EidolonError.invalidContent(
+                "角色 \(id) 的生日应为 MM-DD 格式、一年中有的一天（例如 \"04-25\"），现在是 "
+                    + (birthdayText.map { "\"\($0)\"" } ?? "（缺）")
+            )
+        }
+        let idolID = object["idol_id"]?.intValue
+        if let idolID, idolID <= 0 {
+            throw EidolonError.invalidContent(
+                "角色 \(id) 的偶像编号应为正整数，现在是 \(idolID)"
+            )
         }
         self.init(
             id: id,
@@ -82,7 +98,8 @@ public struct CharacterConfig: Sendable, Hashable {
             avatar: object["avatar"]?.stringValue,
             background: object["background"]?.stringValue,
             speakers: object["speakers"]?.arrayValue?.compactMap(\.stringValue) ?? [],
-            idolID: object["idol_id"]?.intValue,
+            idolID: idolID,
+            birthday: birthday,
             raw: object
         )
     }
