@@ -49,6 +49,7 @@ from eidolon.randomness import Random, secure_random
 from eidolon.clock import Clock, utc_now
 from eidolon.config import DEFAULT_BAILIAN_STT_MODEL, Settings
 from eidolon.corpus import StoryCorpus
+from eidolon.cycle_records import CycleRecords
 from eidolon.cycles import Cycles
 from eidolon.data_access import Database
 from eidolon.data_package import DataPackages
@@ -148,6 +149,8 @@ class Backend:
     """Each week's jobs and every producer's schedule, where schedules are on."""
     cycles: Cycles
     """Where each user's each character's cycle has her, where cycles are on."""
+    cycle_records: CycleRecords
+    """The periods each user wrote down of each character, and what is estimated of her."""
     world: World | None = None
     """The world setting; None without its data file."""
     corpus: StoryCorpus | None = None
@@ -436,6 +439,7 @@ def build(
         reach_outs=reach_outs,
         schedules=schedules,
         cycles=cycles,
+        cycle_records=CycleRecords(database, clock, characters, cycles),
         world=world,
         corpus=corpus,
         _closers=closers,
