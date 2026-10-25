@@ -117,7 +117,10 @@ final class TurnTraceTests: XCTestCase {
         let system = trace.prompts[0].filter { $0.role == "system" }.map(\.content).joined(separator: "\n")
         XCTAssertTrue(system.contains("# 真乃"))
         XCTAssertTrue(trace.prompts[0].contains { $0.role == "user" && $0.content == "写真集の話をして" })
-        XCTAssertEqual(trace.judgeAnswer?.contains("\"level\": 3"), true)
+        XCTAssertEqual(trace.judge?.raw?.contains("\"level\": 3"), true)
+        XCTAssertEqual(trace.judge?.service, "判断模型")
+        XCTAssertNotNil(trace.judge?.latency)
+        XCTAssertNil(trace.judge?.failure)
         XCTAssertEqual(trace.verdict?.contains("retrieval=references"), true)
         XCTAssertEqual(trace.retrieval.need, "references")
         XCTAssertNotNil(trace.retrieval.query)
@@ -141,8 +144,10 @@ final class TurnTraceTests: XCTestCase {
         let traces = try await eidolon.turnTraces()
         let trace = try XCTUnwrap(traces.first).trace
         XCTAssertTrue(trace.degradation.contains { $0.contains("判断模型失败") })
-        XCTAssertNil(trace.judgeAnswer)
-        XCTAssertEqual(trace.retrieval.need, "references", "the turn looks references up anyway")
+        XCTAssertNil(trace.judge?.raw)
+        XCTAssertNotNil(trace.judge?.failure)
+        XCTAssertEqual(trace.retrieval.need, "nothing", "a failed judge looks nothing up")
+        XCTAssertNil(trace.verdict)
     }
 
     func testAReasoningModelsThoughtsAreKeptWhenTheAnswerIsEmpty() throws {
@@ -157,8 +162,9 @@ final class TurnTraceTests: XCTestCase {
         try await send(on: eidolon, judge: UnreadableJudge())
         let traces = try await eidolon.turnTraces()
         let trace = try XCTUnwrap(traces.first).trace
-        XCTAssertEqual(trace.judgeAnswer, "ごめんなさい")
+        XCTAssertEqual(trace.judge?.raw, "ごめんなさい")
         XCTAssertTrue(trace.degradation.contains { $0.contains("判断模型失败") })
+        XCTAssertEqual(trace.retrieval.need, "nothing")
         XCTAssertNil(trace.verdict)
     }
 

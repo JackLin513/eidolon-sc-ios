@@ -20,6 +20,22 @@ public protocol JudgeProvider: Sendable {
         history: [PromptMessage],
         said: String
     ) async throws -> JudgeVerdict
+
+    /// What judged the turn, for the trace. Requirements rather than extension-only
+    /// members: an extension-only property would be dispatched statically through
+    /// `any JudgeProvider`, and a provider's own value would never be read.
+    var judgeService: String { get }
+    var judgeModel: String { get }
+    var judgeFamily: String? { get }
+}
+
+extension JudgeProvider {
+    /// What the trace says judged the turn: the service, the model and, for a model whose
+    /// family has thresholds of its own, the family (ADR-0016). A provider with something
+    /// to say overrides it; a chat judge is its own service.
+    public var judgeService: String { "判断模型" }
+    public var judgeModel: String { "" }
+    public var judgeFamily: String? { nil }
 }
 
 public struct JudgeConfig: Sendable, Hashable {
@@ -229,4 +245,10 @@ public struct ChatJudgeProvider: TracingJudgeProvider {
             need: need
         )
     }
+}
+
+extension ChatJudgeProvider {
+    /// The chat judge has no service of its own: it is the chat model, asked again.
+    public var judgeService: String { "对话模型" }
+    public var judgeModel: String { config.model }
 }

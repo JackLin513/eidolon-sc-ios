@@ -191,12 +191,18 @@ extension Eidolon {
             try loadHistory(conversationID: $0, turns: historyTurns)
         } ?? []
 
-        // The judge is advisory (ADR-0005): whatever it says, the turn goes on; failing,
-        // the turn looks references up anyway, as upstream does.
+        // The judge is advisory (ADR-0005, ADR-0016): whatever it says, the turn goes on.
+        // When it fails — times out, is refused, or answers unreadably — the turn neither
+        // moves affinity nor looks anything up. With no judge asked at all it looks
+        // references up anyway, as before.
         var degradation: [String] = []
-        var judgeAnswer: String?
         var verdict: JudgeVerdict?
+        var judgeTrace: JudgeTrace?
         if let judge {
+            let started = Date()
+            var raw: String?
+            var tokens: Int?
+            var failure: String?
             do {
                 if let tracingJudge = judge as? any TracingJudgeProvider {
                     let answer = try await tracingJudge.judgedWithRaw(
@@ -204,7 +210,8 @@ extension Eidolon {
                         history: PromptAssembler.judgeHistory(history),
                         said: text
                     )
-                    judgeAnswer = answer.raw
+                    raw = answer.raw
+                    tokens = answer.inputTokens
                     verdict = answer.verdict
                 } else {
                     verdict = try await judge.judge(
@@ -214,16 +221,22 @@ extension Eidolon {
                     )
                 }
             } catch {
-                if let unreadable = error as? JudgeUnreadable {
-                    judgeAnswer = unreadable.raw
-                }
-                degradation.append(
-                    "判断模型失败，本回合不动好感、按资料检索：\(error.localizedDescription)"
-                )
+                if let unreadable = error as? JudgeUnreadable { raw = unreadable.raw }
+                failure = error.localizedDescription
+                degradation.append("判断模型失败，本回合不动好感、也不查资料：\(failure ?? "")")
             }
+            judgeTrace = JudgeTrace(
+                service: judge.judgeService,
+                model: judge.judgeModel,
+                family: judge.judgeFamily,
+                raw: raw,
+                inputTokens: tokens,
+                latency: Date().timeIntervalSince(started),
+                failure: failure
+            )
         }
         let judged: Judged? = verdict?.affinity
-        let need: RetrievalNeed = verdict?.need ?? .references
+        let need: RetrievalNeed = verdict?.need ?? (judge == nil ? .references : .nothing)
         let retrieval = RetrievalEngine(
             eidolon: self,
             character: character,
@@ -385,7 +398,7 @@ extension Eidolon {
             let trace = TurnTrace(
                 characterID: characterID,
                 prompts: prompts,
-                judgeAnswer: judgeAnswer,
+                judge: judgeTrace,
                 verdict: verdict.map { judged in
                     "level=\(judged.affinity.level) step=\(judged.affinity.step)"
                         + " out_of_line=\(judged.affinity.outOfLine)"

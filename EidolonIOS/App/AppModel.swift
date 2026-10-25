@@ -39,15 +39,23 @@ final class AppModel {
         chatSettings.rerankConfig.map { SiliconFlowRerank(config: $0) as any RerankProvider }
     }
 
-    /// Nil when no judge is usable; turns then go unjudged and affinity stays put (ADR-0005).
+    /// Nil when no judge is usable; turns then go unjudged and affinity stays put
+    /// (ADR-0005, ADR-0016). Built from the settings as they are now, so a change takes
+    /// effect from the next turn.
     var judgeProvider: (any JudgeProvider)? {
         #if DEBUG
         // Development aid: `SIMCTL_CHILD_EIDOLON_NO_JUDGE=1` leaves the turn unjudged,
         // so the chat model chooses whether to call the recall-story tool itself.
         if ProcessInfo.processInfo.environment["EIDOLON_NO_JUDGE"] == "1" { return nil }
         #endif
-        guard let config = chatSettings.judgeConfig(chat: chatSettings.config) else { return nil }
-        return ChatJudgeProvider(config: config)
+        switch chatSettings.judgeService {
+        case .bailian:
+            guard let config = chatSettings.bailianJudgeConfig else { return nil }
+            return SystemOneJudgeProvider(config: config)
+        case .chat:
+            guard let config = chatSettings.judgeConfig(chat: chatSettings.config) else { return nil }
+            return ChatJudgeProvider(config: config)
+        }
     }
 
     /// Writing down what the producer said is cut short when the app is closed; those
