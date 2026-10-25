@@ -138,16 +138,17 @@ def test_repository_warm_gifts_are_the_hot_drinks_without_caffeine_and_the_hot_w
     assert {id for id, g in catalog.items() if g.warm} == {"cocoa", "honey-drink", "hot-water-bag"}
 
 
-def test_repository_characters_each_like_gifts_and_every_gift_is_liked_or_warm():
+def test_repository_characters_each_like_gifts_and_every_gift_but_the_hot_water_bag_is_liked():
     """Each liked gift has her sources behind it, in order, in her facts' sources file
     (「喜欢的礼物」); a gift nobody likes would be one no gift could be more welcome for, but
-    for a warm one, more welcome in her days (GLOSSARY.md「周期」)."""
+    for the hot water bag, more welcome in her days (GLOSSARY.md「周期」), which her sources
+    have no one liking."""
     characters = load_characters(REPO_GIFTS.parent / "characters.toml")
     catalog = load_gift_catalog(REPO_GIFTS)
 
     check_liked_gifts(characters, catalog)
     liked = {g for c in characters.values() for g in c.liked_gifts}
-    assert {id for id in catalog if id not in liked and not catalog[id].warm} == set()
+    assert set(catalog) - liked == {"hot-water-bag"}
     sourced = {}
     for id in characters:
         sources = (REPO_GIFTS.parent / "facts" / f"{id}.sources.md").read_text(encoding="utf-8")

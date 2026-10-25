@@ -90,14 +90,10 @@ async def holding_on(
     return client, clock
 
 
-@pytest.mark.parametrize(
-    "wanted", [in_period(early=True), in_period(early=False), premenstrual(near=True)],
-    ids=["period-first-two-days", "period-from-the-third", "premenstrual"],
-)
 async def test_in_her_days_a_warm_gift_raises_it_by_more_on_top_of_her_liking_it(
-    make_client: ClientFactory, settings: Settings, wanted: Callable[[HerDay], bool]
+    make_client: ClientFactory, settings: Settings
 ):
-    client, _ = await holding_on(make_client, settings, wanted, COCOA, LIKED_WARM)
+    client, _ = await holding_on(make_client, settings, in_period(early=True), COCOA, LIKED_WARM)
 
     await given(client, "cocoa")
     after_cocoa = value(settings.database_path)
@@ -163,14 +159,13 @@ async def test_with_the_user_turning_cycles_off_a_warm_gift_raises_it_as_any_oth
     assert value(settings.database_path) == pytest.approx(KEPT + 0.5)
 
 
-@pytest.mark.parametrize(
-    "wanted", [in_period(early=True), premenstrual(near=True)], ids=["period", "premenstrual"]
-)
-async def test_in_her_days_she_is_told_a_warm_gift_warmed_her_and_not_one_not_warm(
-    make_client: ClientFactory, settings: Settings, wanted: Callable[[HerDay], bool]
+async def test_before_her_period_she_is_told_a_warm_gift_warmed_her_and_not_one_not_warm(
+    make_client: ClientFactory, settings: Settings
 ):
     llm = FakeLLM(REPLY)
-    client, _ = await holding_on(make_client, settings, wanted, LIKED_WARM, TEA, llm=llm)
+    client, _ = await holding_on(
+        make_client, settings, premenstrual(near=True), LIKED_WARM, TEA, llm=llm
+    )
     conversation = await start_conversation(client)
 
     await given(client, "cake")

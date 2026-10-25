@@ -363,9 +363,8 @@ class Gifts:
         if not self._catalog[gift_id].warm:
             return False
         timezone = effective_timezone(await self._db.read(read_profile, user_id), device_timezone)
-        return await self._cycles.her_day(
-            user_id, character_id, self._clock(), timezone
-        ) is not None
+        her_days = await self._cycles.her_days(user_id, character_id)
+        return her_days(self._clock(), timezone) is not None
 
     def give(
         self, db: sqlite3.Connection, user_id: str, gift_id: str, character_id: str,

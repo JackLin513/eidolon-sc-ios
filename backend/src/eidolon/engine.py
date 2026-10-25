@@ -124,7 +124,7 @@ from eidolon.affinity_judge import AffinityJudge
 from eidolon.characters import Character
 from eidolon.clock import Clock
 from eidolon.config import FishAudioModel, ImageSettings
-from eidolon.cycles import Cycles, HerDays, cycle_lines, nowhere
+from eidolon.cycles import Cycles, HerDays, always_neither, cycle_lines
 from eidolon.data_access import Database
 from eidolon.gift_catalog import Gift
 from eidolon.happenings import Happenings, Rewarded
@@ -492,7 +492,7 @@ def _narration_line(
 
 def narrations(
     record: Sequence[Recorded], gift_catalog: Mapping[str, Gift], timezone: str,
-    her_days: HerDays = nowhere,
+    her_days: HerDays,
 ) -> dict[int | None, str]:
     """The narration of the events and reach-outs in `record`, by the id of the user message
     each comes before, None for those after them all: one line for each she is told of
@@ -1151,7 +1151,7 @@ class ConversationEngine:
         """Where her cycle has her at any time, the switches read now; neither without
         cycles."""
         if self._cycles is None:
-            return nowhere
+            return always_neither
         return await self._cycles.her_days(conversation.user_id, conversation.character_id)
 
     async def _her_jobs(

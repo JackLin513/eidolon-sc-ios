@@ -142,8 +142,9 @@ class Happenings:
     ) -> tuple[Given, Rewarded | None]:
         """Give the character one of the gift (`Gifts.give`), the user's device in
         `device_timezone`, and keep it towards the achievements, in one transaction: what
-        giving it did, and what it was rewarded with (None if nothing). Raises GiftsClosed if gifts are not open,
-        NoSuchCharacter for no such character, NoneLeft if the user has none of it."""
+        giving it did, and what it was rewarded with (None if nothing). Raises GiftsClosed
+        if gifts are not open, NoSuchCharacter for no such character, NoneLeft if the user
+        has none of it."""
         await self._gifts.refuse_unless_open()
         self._gifts.refuse_unknown(gift_id, character_id)
         warmed = await self._gifts.warms(user_id, gift_id, character_id, device_timezone)

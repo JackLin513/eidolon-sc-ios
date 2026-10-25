@@ -103,7 +103,7 @@ HerDays = Callable[[datetime, str], HerDay]
 """Where she is at a time, in a time zone (`Cycles.her_days`)."""
 
 
-def nowhere(at: datetime, timezone: str) -> HerDay:
+def always_neither(at: datetime, timezone: str) -> HerDay:
     """Her days without cycles: neither, whenever."""
     return None
 
@@ -134,25 +134,18 @@ class Cycles:
         self._forced: dict[tuple[str, str], Forced] = {}
         db.prepare(_open)
 
-    async def her_day(
-        self, user_id: str, character_id: str, at: datetime, timezone: str
-    ) -> HerDay:
-        """Where the user's character is on the producer's day at `at` in `timezone`, their
-        effective one: in her period, premenstrual, or neither; neither too, whatever her
-        cycle, while the deployment has cycles off, or the user, or for a character no
-        longer configured."""
-        return (await self.her_days(user_id, character_id))(at, timezone)
-
     async def her_days(self, user_id: str, character_id: str) -> HerDays:
-        """Where the user's character is at any time in any time zone, as `her_day` tells it,
-        the switches read once, now: for telling of many times at once, such as each gift
-        given in a conversation."""
+        """Where the user's character is on the producer's day at any time in their
+        effective time zone: in her period, premenstrual, or neither; neither too, whatever
+        her cycle, while the deployment has cycles off, or the user, or for a character no
+        longer configured. The switches are read once, now, so that many times are told at
+        once, such as each gift given in a conversation."""
         character = self._characters.get(character_id)
         if (
             not self._on() or character is None
             or not await self._db.read(_switched_on, user_id)
         ):
-            return nowhere
+            return always_neither
         seed = cycle_seed(self._secret_key, user_id, character_id)
         under_18 = character.age < ADULT_AGE
         forced = self._forced.get((user_id, character_id))

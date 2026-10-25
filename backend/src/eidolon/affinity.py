@@ -41,9 +41,9 @@ numbers, counted over the conversation's latest typed turns rather than the call
 
 Gifts (GLOSSARY.md「礼物」) raise it by their rarity and by more if she likes the one given, the
 rarest she likes by more than a day's turns can, a warm one by more again in her days; in
-a cooldown each by the same, enough that four end it; draws give them, a chance a day, and now and then a reset card instead
-(GLOSSARY.md「抽奖」「重置卡」), which brings every character below trust back to the normal value,
-out of any cooldown, none of them the wiser. How much and how likely are here with the rest.
+a cooldown each by the same, enough that four end it; draws give them, a chance a day, and
+now and then a reset card instead (GLOSSARY.md「抽奖」「重置卡」), which brings every character
+below trust back to the normal value, out of any cooldown, none of them the wiser. How much and how likely are here with the rest.
 A job of hers the producer scheduled (GLOSSARY.md「日程」) raises it once done, as a gift does
 but by the same whatever the job and in a cooldown alike, told of to no one (`schedule`).
 What the system gives (draw chances, reset cards) never raises it: only what she feels does,
