@@ -181,13 +181,32 @@ struct TraceDetailView: View {
                 }
             }
 
-            Section("判断模型原始输出") {
-                if let answer = trace.judgeAnswer {
-                    Text(answer)
-                        .font(.caption.monospaced())
-                        .textSelection(.enabled)
+            Section("判断") {
+                if let judge = trace.judge {
+                    LabeledContent("服务", value: judge.service)
+                    if !judge.model.isEmpty {
+                        LabeledContent("模型", value: judge.model)
+                    }
+                    if let family = judge.family {
+                        LabeledContent("族", value: family)
+                    }
+                    if let tokens = judge.inputTokens {
+                        LabeledContent("输入 token", value: "\(tokens)")
+                    }
+                    if let latency = judge.latency {
+                        LabeledContent("耗时", value: String(format: "%.2f 秒", latency))
+                    }
+                    if let failure = judge.failure {
+                        Text(failure)
+                            .foregroundStyle(.orange)
+                    }
+                    if let raw = judge.raw {
+                        Text(raw)
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                    }
                 } else {
-                    Text("没有（未配置判断模型，或判断失败）")
+                    Text("没有（未配置判断模型）")
                         .foregroundStyle(.secondary)
                 }
             }

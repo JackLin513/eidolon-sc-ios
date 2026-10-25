@@ -1,6 +1,22 @@
 import EidolonCore
 import Foundation
 
+/// Which service judges each turn: Alibaba Cloud Model Studio's System One (ADR-0016),
+/// the default, or the chat model asked again (ADR-0005).
+enum JudgeService: String, CaseIterable, Identifiable {
+    case bailian
+    case chat
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .bailian: "阿里云百炼"
+        case .chat: "对话模型"
+        }
+    }
+}
+
 /// The chat and judge model settings: addresses and model names in UserDefaults, keys in
 /// the Keychain (ADR-0010). A judge left blank uses the chat model's settings.
 struct ChatSettings {
@@ -31,6 +47,14 @@ struct ChatSettings {
     var fishAPIKey: String = ""
     var fishModel: String = "s2.1-pro-free"
 
+    /// Who judges each turn (ADR-0016): Alibaba Cloud Model Studio's System One by
+    /// default, or the chat model asked again, as before.
+    var judgeService: JudgeService = .bailian
+    var bailianWorkspace: String = ""
+    var bailianRegion: BailianRegion = .beijing
+    var bailianModel: String = "decision-model-preview"
+    var bailianAPIKey: String = ""
+
     private static let baseURLKey = "chat.baseURL"
     private static let modelKey = "chat.model"
     private static let historyKey = "chat.historyTurns"
@@ -53,6 +77,11 @@ struct ChatSettings {
     private static let sonioxKeychainAccount = "call.sonioxKey"
     private static let fishModelKey = "call.fishModel"
     private static let fishKeychainAccount = "call.fishKey"
+    private static let judgeServiceKey = "judge.service"
+    private static let bailianWorkspaceKey = "judge.bailian.workspace"
+    private static let bailianRegionKey = "judge.bailian.region"
+    private static let bailianModelKey = "judge.bailian.model"
+    private static let bailianKeychainAccount = "judge.bailian.key"
 
     static func load() -> ChatSettings {
         let defaults = UserDefaults.standard
@@ -76,7 +105,16 @@ struct ChatSettings {
             sonioxAPIKey: Keychain.string(account: sonioxKeychainAccount) ?? "",
             sonioxModel: defaults.string(forKey: sonioxModelKey) ?? "stt-rt-v5",
             fishAPIKey: Keychain.string(account: fishKeychainAccount) ?? "",
-            fishModel: defaults.string(forKey: fishModelKey) ?? "s2.1-pro-free"
+            fishModel: defaults.string(forKey: fishModelKey) ?? "s2.1-pro-free",
+            judgeService: JudgeService(
+                rawValue: defaults.string(forKey: judgeServiceKey) ?? ""
+            ) ?? .bailian,
+            bailianWorkspace: defaults.string(forKey: bailianWorkspaceKey) ?? "",
+            bailianRegion: BailianRegion(
+                rawValue: defaults.string(forKey: bailianRegionKey) ?? ""
+            ) ?? .beijing,
+            bailianModel: defaults.string(forKey: bailianModelKey) ?? "decision-model-preview",
+            bailianAPIKey: Keychain.string(account: bailianKeychainAccount) ?? ""
         )
     }
 
@@ -102,6 +140,17 @@ struct ChatSettings {
         defaults.set(fishModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.fishModelKey)
         try Self.store(sonioxAPIKey, account: Self.sonioxKeychainAccount)
         try Self.store(fishAPIKey, account: Self.fishKeychainAccount)
+        defaults.set(judgeService.rawValue, forKey: Self.judgeServiceKey)
+        defaults.set(
+            bailianWorkspace.trimmingCharacters(in: .whitespacesAndNewlines),
+            forKey: Self.bailianWorkspaceKey
+        )
+        defaults.set(bailianRegion.rawValue, forKey: Self.bailianRegionKey)
+        defaults.set(
+            bailianModel.trimmingCharacters(in: .whitespacesAndNewlines),
+            forKey: Self.bailianModelKey
+        )
+        try Self.store(bailianAPIKey, account: Self.bailianKeychainAccount)
     }
 
     /// The provider config, or nil while something still has to be filled in.
@@ -139,6 +188,17 @@ struct ChatSettings {
             apiKey: chat.apiKey,
             extraBody: chat.extraBody
         )
+    }
+
+    /// The Bailian judge, or nil while the workspace, the model or the key is still
+    /// blank. Only asked when the judge service is Bailian.
+    var bailianJudgeConfig: SystemOneConfig? {
+        BailianJudgeConfig(
+            workspaceID: bailianWorkspace,
+            region: bailianRegion,
+            model: bailianModel,
+            apiKey: bailianAPIKey
+        ).systemOne
     }
 
     /// The retrieval services: SiliconFlow's Qwen embedding and reranker unless filled in

@@ -60,13 +60,46 @@ public struct RetrievalTrace: Codable, Sendable, Hashable {
     }
 }
 
+/// What the judge did in a turn: which service and model judged, how the model's family
+/// read it, what it answered, what it cost and how long it took — or why it failed
+/// (ADR-0016). Nothing here leaves the phone.
+public struct JudgeTrace: Codable, Sendable, Hashable {
+    public var service: String
+    public var model: String
+    public var family: String?
+    /// The response as it came, when there was one.
+    public var raw: String?
+    public var inputTokens: Int?
+    /// Seconds from sending the request to reading the answer.
+    public var latency: Double?
+    public var failure: String?
+
+    public init(
+        service: String,
+        model: String,
+        family: String? = nil,
+        raw: String? = nil,
+        inputTokens: Int? = nil,
+        latency: Double? = nil,
+        failure: String? = nil
+    ) {
+        self.service = service
+        self.model = model
+        self.family = family
+        self.raw = raw
+        self.inputTokens = inputTokens
+        self.latency = latency
+        self.failure = failure
+    }
+}
+
 /// One turn, as it can be gone over afterwards: what she was asked, what the judge
 /// answered, what retrieval found and what each fallback cost (ADR-0012). It stays in the
 /// user library and never leaves the phone.
 public struct TurnTrace: Codable, Sendable, Hashable {
     public var characterID: String
     public var prompts: [[TracedMessage]]
-    public var judgeAnswer: String?
+    public var judge: JudgeTrace?
     public var verdict: String?
     public var retrieval: RetrievalTrace
     public var toolCalls: [String]
@@ -76,7 +109,7 @@ public struct TurnTrace: Codable, Sendable, Hashable {
     public init(
         characterID: String,
         prompts: [[TracedMessage]] = [],
-        judgeAnswer: String? = nil,
+        judge: JudgeTrace? = nil,
         verdict: String? = nil,
         retrieval: RetrievalTrace = RetrievalTrace(),
         toolCalls: [String] = [],
@@ -85,7 +118,7 @@ public struct TurnTrace: Codable, Sendable, Hashable {
     ) {
         self.characterID = characterID
         self.prompts = prompts
-        self.judgeAnswer = judgeAnswer
+        self.judge = judge
         self.verdict = verdict
         self.retrieval = retrieval
         self.toolCalls = toolCalls
@@ -212,10 +245,13 @@ public struct JudgeUnreadable: LocalizedError, Equatable {
 public struct JudgeAnswer: Sendable, Hashable {
     public var verdict: JudgeVerdict
     public var raw: String
+    /// What the judge said the request cost in input tokens, when it says.
+    public var inputTokens: Int?
 
-    public init(verdict: JudgeVerdict, raw: String) {
+    public init(verdict: JudgeVerdict, raw: String, inputTokens: Int? = nil) {
         self.verdict = verdict
         self.raw = raw
+        self.inputTokens = inputTokens
     }
 }
 

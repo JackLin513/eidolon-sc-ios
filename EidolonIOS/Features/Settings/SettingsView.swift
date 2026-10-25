@@ -15,6 +15,11 @@ struct SettingsView: View {
     @State private var judgeModel = ""
     @State private var judgeAPIKey = ""
     @State private var judgeExtraBody = ""
+    @State private var judgeService: JudgeService = .bailian
+    @State private var bailianWorkspace = ""
+    @State private var bailianRegion: BailianRegion = .beijing
+    @State private var bailianModel = "decision-model-preview"
+    @State private var bailianAPIKey = ""
     @State private var retrievalBaseURL = ""
     @State private var embeddingModel = ""
     @State private var rerankModel = ""
@@ -64,24 +69,52 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    TextField("接口地址", text: $judgeBaseURL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(.URL)
-                    TextField("模型名", text: $judgeModel)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    SecureField("密钥", text: $judgeAPIKey)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    TextField("额外参数（JSON，可空）", text: $judgeExtraBody, axis: .vertical)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .font(.footnote.monospaced())
+                    Picker("判断服务", selection: $judgeService) {
+                        ForEach(JudgeService.allCases) { service in
+                            Text(service.title).tag(service)
+                        }
+                    }
+                    switch judgeService {
+                    case .bailian:
+                        TextField("业务空间 ID", text: $bailianWorkspace)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        Picker("地域", selection: $bailianRegion) {
+                            ForEach(BailianRegion.allCases, id: \.self) { region in
+                                Text(region.title).tag(region)
+                            }
+                        }
+                        TextField("模型名（默认 decision-model-preview）", text: $bailianModel)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        SecureField("百炼密钥", text: $bailianAPIKey)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    case .chat:
+                        TextField("接口地址", text: $judgeBaseURL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
+                        TextField("模型名", text: $judgeModel)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        SecureField("密钥", text: $judgeAPIKey)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        TextField("额外参数（JSON，可空）", text: $judgeExtraBody, axis: .vertical)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .font(.footnote.monospaced())
+                    }
                 } header: {
                     Text("判断模型")
                 } footer: {
-                    Text("每回合判断这句话对好感度的影响。留空则使用对话模型；都不可用时不做判断，好感度不变。")
+                    switch judgeService {
+                    case .bailian:
+                        Text("每回合用百炼的 System One 一次问完六道题，按 decision-model 的阈值读概率。业务空间 ID 和地域拼出地址；密钥保存在钥匙串。")
+                    case .chat:
+                        Text("每回合判断这句话对好感度的影响。留空则使用对话模型；都不可用时不做判断，好感度不变。")
+                    }
                 }
 
                 Section {
@@ -277,6 +310,11 @@ struct SettingsView: View {
         judgeModel = settings.judgeModel
         judgeAPIKey = settings.judgeAPIKey
         judgeExtraBody = settings.judgeExtraBody
+        judgeService = settings.judgeService
+        bailianWorkspace = settings.bailianWorkspace
+        bailianRegion = settings.bailianRegion
+        bailianModel = settings.bailianModel
+        bailianAPIKey = settings.bailianAPIKey
         retrievalBaseURL = settings.retrievalBaseURL
         embeddingModel = settings.embeddingModel
         rerankModel = settings.rerankModel
@@ -319,7 +357,12 @@ struct SettingsView: View {
             sonioxAPIKey: sonioxAPIKey,
             sonioxModel: sonioxModel,
             fishAPIKey: fishAPIKey,
-            fishModel: fishModel
+            fishModel: fishModel,
+            judgeService: judgeService,
+            bailianWorkspace: bailianWorkspace,
+            bailianRegion: bailianRegion,
+            bailianModel: bailianModel,
+            bailianAPIKey: bailianAPIKey
         )
         do {
             try app.saveChatSettings(settings)
