@@ -73,6 +73,8 @@ final class FakeRecognition: SpeechRecognition, @unchecked Sendable {
     enum Step {
         case events([SpeechEvent])
         case fail
+        /// The service itself failing, as Soniox reports a refused key.
+        case failService
         case hang
     }
 
@@ -121,10 +123,27 @@ final class FakeRecognition: SpeechRecognition, @unchecked Sendable {
                 self.attach(continuation)
             case .fail:
                 continuation.finish(throwing: URLError(.networkConnectionLost))
+            case .failService:
+                continuation.finish(throwing: SonioxError.service("401", "invalid api key"))
             case .hang:
                 self.attach(continuation)
             }
         }
+    }
+
+    /// Converts the error as the real recognizer does: only a service error is the
+    /// service failing, a dropped connection is reconnected.
+    func failure(_ error: any Error) -> VoiceServiceFailure? {
+        guard case let SonioxError.service(code, message) = error else { return nil }
+        return VoiceServiceFailure(service: "Soniox", detail: "\(code) \(message)")
+    }
+
+    /// The live connection failing as the service itself would.
+    func failService() {
+        lock.lock()
+        let live = self.live
+        lock.unlock()
+        live?.finish(throwing: SonioxError.service("401", "invalid api key"))
     }
 
     private func recordHeard(_ chunk: Data) {
@@ -320,7 +339,7 @@ final class CallSessionTests: XCTestCase {
         synthesis: FakeSynthesis = FakeSynthesis(),
         playback: FakePlayback = FakePlayback(),
         judge: (any JudgeProvider)? = nil,
-        timeLimit: Duration = .seconds(3600)
+        limits: CallLimits = .standard
     ) async throws -> (CallSession, EventLog, FakeCapture) {
         let capture = FakeCapture()
         let setup = CallSetup(
@@ -331,7 +350,7 @@ final class CallSessionTests: XCTestCase {
             voiceModel: "s2.1-pro-free",
             provider: provider,
             judge: judge,
-            timeLimit: timeLimit,
+            limits: limits,
             reconnectDelay: .milliseconds(10)
         )
         let session = try await eidolon.beginCall(characterID: "mano", setup: setup)
@@ -408,9 +427,10 @@ final class CallSessionTests: XCTestCase {
         XCTAssertEqual(reason, .hungUpByProducer)
     }
 
-    /// What a call's turns come to stays with the call, apart from the conversation's
-    /// typed turns; this version records it and never hangs up for it.
-    func testTwoOutOfLineTurnsDoNotHangUpTheCall() async throws {
+    /// The second out-of-line turn of one call is the one she hangs up on (upstream
+    /// `ends`). The conversation it happened in stays open: a call's hang-up is not the
+    /// chat's ending.
+    func testTwoOutOfLineTurnsMakeHerHangUpTheCall() async throws {
         let eidolon = try await installedEidolon()
         let recognition = FakeRecognition([.hang])
         let provider = ReplyScriptProvider([
@@ -435,19 +455,73 @@ final class CallSessionTests: XCTestCase {
         try await waitFor("the first answer") { segments() >= 1 }
         try await waitFor("listening after the first") { await session.currentState() == .listening }
         recognition.say("またひどい")
-        try await waitFor("the second answer") { segments() >= 2 }
 
-        if case .ended = await session.currentState() {
-            XCTFail("the call should still be up")
+        try await waitFor("ended by her") {
+            if case .ended = await session.currentState() { return true }
+            return false
         }
+        let reason = await session.currentStateIfEnded
+        XCTAssertEqual(reason, .sheHungUp(cooldownUntil: nil))
+        XCTAssertEqual(reason?.message, "她挂断了电话。")
+        // What she said last was played before the call ended.
+        XCTAssertEqual(segments(), 2)
+
         let conversation = try await eidolon.currentConversation(characterID: "mano")
         XCTAssertEqual(conversation?.ended, false)
         XCTAssertEqual(conversation?.messages.count, 4)
+        let events = try await eidolon.userQueue.read { db in
+            try String.fetchAll(db, sql: "SELECT kind FROM conversation_events")
+        }
+        XCTAssertEqual(events, ["she_hung_up"])
 
-        await session.hangUp()
-        try await waitFor("ended") {
+        // The call takes no new turns once it has ended.
+        recognition.say("もしもし")
+        try await Task.sleep(for: .milliseconds(100))
+        let after = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertEqual(after?.messages.count, 4)
+    }
+
+    /// A turn that takes her to the bottom begins a cooldown, and the hang-up carries when
+    /// she is willing to talk again (upstream `cooldown_until`).
+    func testACooldownHangUpCarriesItsDeadline() async throws {
+        let eidolon = try await installedEidolon()
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO affinities(character_id, value, cooling, updated_at, gained_today, gained_on)
+                    VALUES ('mano', 1, 0, ?, 0, NULL)
+                    """,
+                arguments: [Eidolon.timestamp(Date())]
+            )
+        }
+        let recognition = FakeRecognition([.hang])
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([["<ja>あ</ja><zh>啊</zh>"]]),
+            recognition: recognition,
+            judge: FixedJudge(judged: Judged(level: 0, outOfLine: true))
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ひどい")
+        try await waitFor("ended by her") {
             if case .ended = await session.currentState() { return true }
             return false
+        }
+        guard case let .sheHungUp(until) = await session.currentStateIfEnded else {
+            return XCTFail("expected her to hang up")
+        }
+        let deadline = try XCTUnwrap(until)
+        XCTAssertGreaterThan(deadline, Date())
+
+        // While she is cooling down, a new call is refused as the chat already is.
+        do {
+            _ = try await eidolon.beginCall(characterID: "mano", setup: setup(on: eidolon))
+            XCTFail("a cooling character should not answer")
+        } catch let error as EidolonError {
+            guard case .coolingDown = error else {
+                return XCTFail("expected coolingDown, got \(error)")
+            }
         }
     }
 
@@ -506,20 +580,235 @@ final class CallSessionTests: XCTestCase {
         XCTAssertEqual(events, ["hung_up"])
     }
 
+    /// The timer waking with nothing being said ends the call, and both the record and the
+    /// trace say why (upstream `call.py` checks `limit_reached` on the timer too).
     func testTheCallEndsAtTheTimeLimit() async throws {
         let eidolon = try await installedEidolon()
+        let limit: Duration = .milliseconds(80)
         let (session, _, _) = try await begin(
             on: eidolon,
             provider: ReplyScriptProvider([]),
             recognition: FakeRecognition([.hang]),
-            timeLimit: .milliseconds(80)
+            limits: CallLimits(duration: limit, turns: nil)
         )
         try await waitFor("ended by time limit") {
             if case .ended = await session.currentState() { return true }
             return false
         }
         let reason = await session.currentStateIfEnded
-        XCTAssertEqual(reason, .timeLimit)
+        XCTAssertEqual(reason, .durationLimit(limit: limit))
+
+        let traces = try await eidolon.turnTraces()
+        XCTAssertEqual(traces.first?.trace.degradation.first, "通话结束：duration_limit")
+        XCTAssertEqual(traces.first?.trace.degradation.count, 2)
+        let conversation = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertNil(conversation)
+    }
+
+    func testAVoiceServiceThatFailsBeforeATurnNeverConnects() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.failService])
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([]),
+            recognition: recognition
+        )
+
+        try await waitFor("ended, never connected") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+        let reason = await session.currentStateIfEnded
+        XCTAssertEqual(reason, .notConnected(service: "Soniox", detail: "401 invalid api key"))
+        XCTAssertEqual(reason?.message, "语音服务出了故障，通话没能接通")
+        XCTAssertEqual(recognition.calls, 1, "a service failure is not reconnected")
+
+        let traces = try await eidolon.turnTraces()
+        XCTAssertEqual(
+            traces.first?.trace.degradation,
+            ["通话结束：not_connected", "Soniox：401 invalid api key"]
+        )
+        let conversation = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertNil(conversation)
+    }
+
+    func testAVoiceServiceThatFailsMidCallBreaksItOff() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([["<ja>あ</ja><zh>啊</zh>"]]),
+            recognition: recognition
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("the answer") {
+            log.all.contains { event in
+                if case .segment = event { return true }
+                return false
+            }
+        }
+        recognition.failService()
+
+        try await waitFor("ended, broke off") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+        let reason = await session.currentStateIfEnded
+        XCTAssertEqual(reason, .dropped(service: "Soniox", detail: "401 invalid api key"))
+        XCTAssertEqual(reason?.message, "语音服务出了故障，通话中断了")
+        XCTAssertEqual(recognition.calls, 1, "a service failure is not reconnected")
+
+        let conversation = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertEqual(conversation?.ended, false)
+        XCTAssertEqual(conversation?.messages.count, 2)
+        let events = try await eidolon.userQueue.read { db in
+            try String.fetchAll(db, sql: "SELECT kind FROM conversation_events")
+        }
+        XCTAssertEqual(events, ["call_dropped"])
+
+        let traces = try await eidolon.turnTraces()
+        XCTAssertEqual(
+            traces.first?.trace.degradation,
+            ["通话结束：dropped", "Soniox：401 invalid api key"]
+        )
+    }
+
+    func testTheTurnLimitEndsTheCallAfterThatManyOfHerTurns() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>あ</ja><zh>啊</zh>"],
+            ["<ja>い</ja><zh>呀</zh>"],
+        ])
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            limits: CallLimits(duration: nil, turns: 1)
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("ended by turns") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+        let reason = await session.currentStateIfEnded
+        XCTAssertEqual(reason, .turnLimit(turns: 1))
+        XCTAssertEqual(
+            reason?.message,
+            "这次通话已经说了 1 轮了，先挂断啦。想接着聊可以重新拨打。"
+        )
+        let events = try await eidolon.userQueue.read { db in
+            try String.fetchAll(db, sql: "SELECT kind FROM conversation_events")
+        }
+        XCTAssertEqual(events, ["call_turn_limit"])
+
+        // The call takes no new turns once it has ended.
+        recognition.say("もう一回")
+        try await Task.sleep(for: .milliseconds(100))
+        let conversation = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertEqual(conversation?.ended, false)
+        XCTAssertEqual(conversation?.messages.count, 2)
+    }
+
+    /// A call that reaches both ends at once ends by the duration: she hangs up first,
+    /// then the duration, then the turns (upstream `_should_end`).
+    func testTheDurationComesBeforeTheTurnLimit() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let playback = FakePlayback()
+        playback.delay = .milliseconds(200)
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([["<ja>あ</ja><zh>啊</zh>"]]),
+            recognition: recognition,
+            playback: playback,
+            limits: CallLimits(duration: .milliseconds(50), turns: 1)
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("ended by time") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+        let reason = await session.currentStateIfEnded
+        XCTAssertEqual(reason, .durationLimit(limit: .milliseconds(50)))
+    }
+
+    /// She hanging up on the last turn wins over a duration that ran out during her
+    /// speech: the call ends by her, with the time-up reason still on record as ignored.
+    func testSheHangingUpWinsOverTheDurationLimit() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let playback = FakePlayback()
+        playback.delay = .milliseconds(800)
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([
+                ["<ja>あ</ja><zh>啊</zh>"],
+                ["<ja>い</ja><zh>呀</zh>"],
+            ]),
+            recognition: recognition,
+            playback: playback,
+            judge: FixedJudge(judged: Judged(level: 0, outOfLine: true)),
+            limits: CallLimits(duration: .milliseconds(1_200), turns: nil)
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ひどい")
+        try await waitFor("listening after the first", timeout: .seconds(3)) {
+            await session.currentState() == .listening
+        }
+        recognition.say("またひどい")
+
+        try await waitFor("ended by her", timeout: .seconds(4)) {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+        let reason = await session.currentStateIfEnded
+        XCTAssertEqual(reason, .sheHungUp(cooldownUntil: nil))
+    }
+
+    func testAnEndedCallSaysInWordsWhatItEndedBy() {
+        XCTAssertEqual(
+            CallEnd.notConnected(service: "Soniox", detail: "401").message,
+            "语音服务出了故障，通话没能接通"
+        )
+        XCTAssertEqual(
+            CallEnd.dropped(service: "Soniox", detail: "401").message,
+            "语音服务出了故障，通话中断了"
+        )
+        XCTAssertEqual(
+            CallEnd.durationLimit(limit: .seconds(600)).message,
+            "这次通话已经满 10 分钟了，先挂断啦。想接着聊可以重新拨打。"
+        )
+        XCTAssertEqual(
+            CallEnd.turnLimit(turns: 40).message,
+            "这次通话已经说了 40 轮了，先挂断啦。想接着聊可以重新拨打。"
+        )
+        XCTAssertEqual(CallEnd.sheHungUp(cooldownUntil: nil).message, "她挂断了电话。")
+        XCTAssertEqual(CallEnd.hungUpByProducer.message, "通话已结束")
+
+        // Minutes as Python's `{minutes:g}` writes them.
+        XCTAssertEqual(CallEnd.minutes(.seconds(600)), "10")
+        XCTAssertEqual(CallEnd.minutes(.seconds(90)), "1.5")
+    }
+
+    func testAnEndedCallKeepsTheBackendsReason() {
+        XCTAssertEqual(
+            CallEnd.notConnected(service: "Soniox", detail: "").reason,
+            "not_connected"
+        )
+        XCTAssertEqual(CallEnd.dropped(service: "Soniox", detail: "").reason, "dropped")
+        XCTAssertEqual(CallEnd.durationLimit(limit: .seconds(600)).reason, "duration_limit")
+        XCTAssertEqual(CallEnd.turnLimit(turns: 40).reason, "turn_limit")
+        XCTAssertEqual(CallEnd.sheHungUp(cooldownUntil: nil).reason, "she_hung_up")
+        XCTAssertEqual(CallEnd.sheHungUp(cooldownUntil: Date()).reason, "cooldown")
+        XCTAssertEqual(CallEnd.hungUpByProducer.reason, "hung_up_by_producer")
     }
 
     func testCoolingRefusesTheCall() async throws {

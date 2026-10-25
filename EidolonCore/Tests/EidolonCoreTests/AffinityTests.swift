@@ -262,6 +262,39 @@ final class AffinityTurnTests: XCTestCase {
         XCTAssertTrue(affinity(of: try XCTUnwrap(second.prompts.first)).contains("# 此刻"))
     }
 
+    /// In a call she says she will hang up; typing, she only says she does not want to go
+    /// on. The call's turns keep their own count, so one turn with the hurts already there
+    /// is enough to reach the warning.
+    func testACallSaysSheWillHangUpWhileTypingDoesNot() async throws {
+        let eidolon = try await installedEidolon()
+        let judge = FixedJudge(judged: Judged(level: 0))
+
+        let call = reply()
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano",
+            text: "うるさい",
+            provider: call,
+            judge: judge,
+            talking: .inCall,
+            inCall: CallScope(outOfLine: 0, hurts: [4])
+        ) {}
+        let called = affinity(of: try XCTUnwrap(call.prompts.first))
+        XCTAssertTrue(called.contains("你就要挂电话了"))
+        XCTAssertFalse(called.contains("你就不想聊了"))
+
+        _ = try await send("うるさい", on: eidolon, judge: judge)
+        let typed = reply()
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano",
+            text: "うるさい",
+            provider: typed,
+            judge: judge
+        ) {}
+        let typing = affinity(of: try XCTUnwrap(typed.prompts.first))
+        XCTAssertTrue(typing.contains("你就不想聊了"))
+        XCTAssertFalse(typing.contains("你就要挂电话了"))
+    }
+
     func testDayGainsAreCappedAtSixTenths() async throws {
         let eidolon = try await installedEidolon()
         let judge = FixedJudge(judged: Judged(level: 4))

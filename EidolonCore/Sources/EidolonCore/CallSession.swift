@@ -39,10 +39,35 @@ public enum SpeechEvent: Sendable, Hashable {
     case final(String)
 }
 
+/// A voice service failing as a service — a key missing or refused, an account out of
+/// credit — rather than a connection that dropped: the call ends instead of listening
+/// again (upstream `service_failed`).
+public struct VoiceServiceFailure: Sendable, Hashable {
+    /// How the service is named: `Soniox`.
+    public var service: String
+    /// What it said: `401 invalid api key`.
+    public var detail: String
+
+    public init(service: String, detail: String) {
+        self.service = service
+        self.detail = detail
+    }
+}
+
 /// Real-time speech to text over a live audio stream. A stream that ends or throws is a
-/// connection lost; the call reconnects and listens again.
+/// connection lost; the call reconnects and listens again, unless the service itself
+/// failed.
 public protocol SpeechRecognition: Sendable {
     func listen(_ audio: AsyncThrowingStream<Data, Error>) -> AsyncThrowingStream<SpeechEvent, Error>
+    /// Why the error is the service itself failing, if it is; nil for a connection that
+    /// dropped, which the call reconnects from.
+    func failure(_ error: any Error) -> VoiceServiceFailure?
+}
+
+extension SpeechRecognition {
+    /// A recognizer that cannot tell a service failure from a dropped connection keeps
+    /// reconnecting, as the call always did.
+    public func failure(_ error: any Error) -> VoiceServiceFailure? { nil }
 }
 
 /// Text to speech: one segment's Japanese (delivery cues included) to audio the call plays.
@@ -60,10 +85,103 @@ public enum CallState: Sendable, Hashable {
     case ended(CallEnd)
 }
 
+/// Why a call ended: the backend's reasons and its own words (upstream
+/// `call_outcome.py`).
 public enum CallEnd: Sendable, Hashable {
+    /// The voice service failed before a turn was recorded: the call never connected.
+    case notConnected(service: String, detail: String)
+    /// The voice service failed after at least one turn: the call broke off.
+    case dropped(service: String, detail: String)
+    /// It has lasted `limit`.
+    case durationLimit(limit: Duration)
+    /// It has taken `turns` of her turns.
+    case turnLimit(turns: Int)
+    /// She hung up herself; a cooldown she fell into carries when it ends.
+    case sheHungUp(cooldownUntil: Date?)
+    /// The producer hung up. Every key on the phone is the producer's own, so there is no
+    /// separate "own key" reason (upstream has one for the hosted service's keys).
     case hungUpByProducer
-    case timeLimit
-    case failed(String)
+
+    /// How the call ended, in the backend's names (upstream `_ENDED_BY`).
+    public var reason: String {
+        switch self {
+        case .notConnected: "not_connected"
+        case .dropped: "dropped"
+        case .durationLimit: "duration_limit"
+        case .turnLimit: "turn_limit"
+        case let .sheHungUp(cooldownUntil): cooldownUntil == nil ? "she_hung_up" : "cooldown"
+        case .hungUpByProducer: "hung_up_by_producer"
+        }
+    }
+
+    /// The sentence the call shows when it ends, as the backend says it.
+    public var message: String {
+        switch self {
+        case .notConnected:
+            "语音服务出了故障，通话没能接通"
+        case .dropped:
+            "语音服务出了故障，通话中断了"
+        case let .durationLimit(limit):
+            "这次通话已经满 \(Self.minutes(limit)) 分钟了，先挂断啦。想接着聊可以重新拨打。"
+        case let .turnLimit(turns):
+            "这次通话已经说了 \(turns) 轮了，先挂断啦。想接着聊可以重新拨打。"
+        case .sheHungUp:
+            "她挂断了电话。"
+        case .hungUpByProducer:
+            "通话已结束"
+        }
+    }
+
+    /// What the call's trace adds to the reason: the service that failed, the limit that
+    /// was reached, or when she is willing to talk again.
+    public var detail: String? {
+        switch self {
+        case let .notConnected(service, detail), let .dropped(service, detail):
+            "\(service)：\(detail)"
+        case let .durationLimit(limit):
+            "时长上限 \(Self.minutes(limit)) 分钟"
+        case let .turnLimit(turns):
+            "回合上限 \(turns) 轮"
+        case let .sheHungUp(cooldownUntil):
+            cooldownUntil.map { "冷却到 \(Self.moment($0))" }
+        case .hungUpByProducer:
+            nil
+        }
+    }
+
+    /// Minutes as Python's `{minutes:g}` writes them: `10`, `1.5`, no trailing zeros.
+    public static func minutes(_ duration: Duration) -> String {
+        let components = duration.components
+        let seconds = Double(components.seconds) + Double(components.attoseconds) / 1e18
+        return String(
+            format: "%g",
+            locale: Locale(identifier: "en_US_POSIX"),
+            arguments: [seconds / 60]
+        )
+    }
+
+    /// A moment as the app writes it, the same style as the chat's cooling notice.
+    public static func moment(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "M月d日 HH:mm"
+        return formatter.string(from: date)
+    }
+}
+
+/// How long a call may last and how many of her turns it may take; nil is no limit
+/// (upstream `CallLimits`). The count starts when the call connects.
+public struct CallLimits: Sendable, Hashable {
+    public var duration: Duration?
+    public var turns: Int?
+
+    public init(duration: Duration?, turns: Int?) {
+        self.duration = duration
+        self.turns = turns
+    }
+
+    /// What a call has until the settings can choose (#25).
+    public static let standard = CallLimits(duration: .seconds(3600), turns: nil)
 }
 
 public enum CallEvent: Sendable, Hashable {
@@ -93,7 +211,8 @@ public struct CallSetup: Sendable {
     public var embedder: (any EmbeddingProvider)?
     public var reranker: (any RerankProvider)?
     public var tracing: TurnTracing
-    public var timeLimit: Duration
+    /// How long the call may last and how many of her turns it may take.
+    public var limits: CallLimits
     /// How long to wait before listening again after the recognizer's connection dropped.
     public var reconnectDelay: Duration
     public var now: @Sendable () -> Date
@@ -109,7 +228,7 @@ public struct CallSetup: Sendable {
         embedder: (any EmbeddingProvider)? = nil,
         reranker: (any RerankProvider)? = nil,
         tracing: TurnTracing = .on,
-        timeLimit: Duration = .seconds(3600),
+        limits: CallLimits = .standard,
         reconnectDelay: Duration = .seconds(1),
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
@@ -123,7 +242,7 @@ public struct CallSetup: Sendable {
         self.embedder = embedder
         self.reranker = reranker
         self.tracing = tracing
-        self.timeLimit = timeLimit
+        self.limits = limits
         self.reconnectDelay = reconnectDelay
         self.now = now
     }
@@ -162,10 +281,17 @@ public actor CallSession {
     private var speaking: Task<Void, Never>?
     private var turnActive = false
     /// What the call's turns have come to, told to the next one: the call keeps its own
-    /// count, apart from the conversation's typed turns (upstream `InCall`). This version
-    /// records what it comes to; it does not hang up for it yet.
+    /// count, apart from the conversation's typed turns (upstream `InCall`).
     private var callOutOfLine = 0
     private var callHurts: [Double] = []
+    /// Her turns the call has recorded: the turn limit counts these, and a voice service
+    /// failure before the first is a call that never connected (upstream `_recorded`).
+    private var recordedTurns = 0
+    /// The duration has run out; the call ends once the turn in progress is done.
+    private var timeUp = false
+    /// The turn just recorded was one she ended the call with, and a cooldown it began.
+    private var pendingHangUp = false
+    private var pendingCooldownUntil: Date?
 
     init(eidolon: Eidolon, characterID: String, voice: CallVoice, setup: CallSetup) {
         self.eidolon = eidolon
@@ -193,12 +319,14 @@ public actor CallSession {
         do {
             try await setup.capture.start()
         } catch {
-            await finish(.failed(error.localizedDescription))
+            await finish(.notConnected(service: "麦克风", detail: error.localizedDescription))
             return
         }
         setState(.listening)
         tasks.append(Task { await self.listenLoop() })
-        tasks.append(Task { await self.timeLimitLoop() })
+        if setup.limits.duration != nil {
+            tasks.append(Task { await self.timeLimitLoop() })
+        }
     }
 
     public func hangUp() async {
@@ -238,16 +366,31 @@ public actor CallSession {
                 return
             } catch {
                 if finished || Task.isCancelled { return }
+                if let failure = setup.recognition.failure(error) {
+                    await serviceFailed(failure)
+                    return
+                }
                 setState(.reconnecting)
                 try? await Task.sleep(for: setup.reconnectDelay)
             }
         }
     }
 
+    /// A voice service that failed as a service ends the call: before a turn was recorded
+    /// it never connected, after one it broke off (upstream `service_failed`).
+    private func serviceFailed(_ failure: VoiceServiceFailure) async {
+        let end: CallEnd = recordedTurns == 0
+            ? .notConnected(service: failure.service, detail: failure.detail)
+            : .dropped(service: failure.service, detail: failure.detail)
+        await finish(end)
+    }
+
     private func timeLimitLoop() async {
-        try? await Task.sleep(for: setup.timeLimit)
+        guard let limit = setup.limits.duration else { return }
+        try? await Task.sleep(for: limit)
         if !Task.isCancelled, !finished {
-            await finish(.timeLimit)
+            timeUp = true
+            await checkEnding()
         }
     }
 
@@ -304,8 +447,13 @@ public actor CallSession {
                 case let .delta(segment, language, shown):
                     appendCaption(segment, language, shown)
                 case let .finished(record):
+                    recordedTurns += 1
                     callOutOfLine += record.outOfLine ? 1 : 0
                     callHurts.append(record.hurt)
+                    if record.hangUp != nil {
+                        pendingHangUp = true
+                        pendingCooldownUntil = record.cooldownUntil
+                    }
                 }
             }
         } catch is CancellationError {
@@ -320,6 +468,9 @@ public actor CallSession {
             }
         }
         turnActive = false
+        if !finished {
+            await checkEnding()
+        }
         if !finished {
             goOn()
         }
@@ -400,6 +551,9 @@ public actor CallSession {
         prefetch = nil
         speaking = nil
         if !finished, !Task.isCancelled {
+            await checkEnding()
+        }
+        if !finished, !Task.isCancelled {
             goOn()
         }
     }
@@ -435,9 +589,28 @@ public actor CallSession {
 
     // MARK: - Ending
 
+    /// Ends the call if it has come to an end, in the backend's order: she hangs up, then
+    /// the duration, then the turns (upstream `call.py`). Checked after each turn and when
+    /// the timer wakes with nothing being said; while she is still speaking it waits for
+    /// the drain, so what she has already said is played before the call ends.
+    private func checkEnding() async {
+        guard !finished, !turnActive, speaking == nil else { return }
+        if pendingHangUp {
+            pendingHangUp = false
+            let until = pendingCooldownUntil
+            pendingCooldownUntil = nil
+            await finish(.sheHungUp(cooldownUntil: until))
+        } else if timeUp, let limit = setup.limits.duration {
+            await finish(.durationLimit(limit: limit))
+        } else if let limit = setup.limits.turns, recordedTurns >= limit {
+            await finish(.turnLimit(turns: recordedTurns))
+        }
+    }
+
     private func finish(_ reason: CallEnd) async {
         guard !finished else { return }
         finished = true
+        pending.removeAll()
         for task in tasks { task.cancel() }
         turnTask?.cancel()
         speaking?.cancel()
@@ -446,6 +619,7 @@ public actor CallSession {
         await setup.capture.stop()
         await setup.playback.stop()
         record(reason)
+        await trace(reason)
         setState(.ended(reason))
         continuation.finish()
     }
@@ -453,17 +627,39 @@ public actor CallSession {
     /// The call is kept in the conversation's record (GLOSSARY.md「对话事件」): it is not
     /// a turn, and she is not told of it.
     private func record(_ reason: CallEnd) {
-        guard let conversationID = try? eidolon.currentConversationIDNow(characterID) else {
+        guard let conversationID = (try? eidolon.currentConversationIDNow(characterID)) ?? nil else {
             return
-        }
-        let kind = switch reason {
-        case .hungUpByProducer, .timeLimit: "hung_up"
-        case .failed: "call_failed"
         }
         try? eidolon.recordConversationEvent(
             conversationID: conversationID,
-            kind: kind,
+            kind: Self.eventKind(reason),
             at: setup.now()
+        )
+    }
+
+    private static func eventKind(_ reason: CallEnd) -> String {
+        switch reason {
+        case .hungUpByProducer: "hung_up"
+        case .sheHungUp: "she_hung_up"
+        case .notConnected: "call_unconnected"
+        case .dropped: "call_dropped"
+        case .durationLimit: "call_duration_limit"
+        case .turnLimit: "call_turn_limit"
+        }
+    }
+
+    /// How the call ended is kept in the traces too (ADR-0012): the reason, and what else
+    /// the end says — the failing voice service, the limit, or when a cooldown ends.
+    private func trace(_ reason: CallEnd) async {
+        guard setup.tracing.enabled else { return }
+        var notes = ["通话结束：\(reason.reason)"]
+        if let detail = reason.detail { notes.append(detail) }
+        let conversationID = (try? eidolon.currentConversationIDNow(characterID)) ?? nil
+        try? await eidolon.writeTrace(
+            TurnTrace(characterID: characterID, degradation: notes),
+            conversationID: conversationID,
+            createdAt: Eidolon.timestamp(setup.now()),
+            tracing: setup.tracing
         )
     }
 

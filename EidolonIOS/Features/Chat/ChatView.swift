@@ -173,15 +173,35 @@ struct ChatView: View {
     /// the prompt.
     private func conversationEvent(_ event: ConversationEventRecord) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: event.kind == "call_failed" ? "phone.down.circle" : "phone.down")
+            Image(systemName: eventIcon(event.kind))
                 .font(.caption2)
-            Text(event.kind == "call_failed" ? "通话中断" : "通话结束")
+            Text(eventText(event.kind))
                 .font(.caption2)
         }
         .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 2)
         .id("event-\(event.id)")
+    }
+
+    private func eventIcon(_ kind: String) -> String {
+        switch kind {
+        case "call_failed", "call_unconnected", "call_dropped":
+            "phone.down.circle"
+        default:
+            "phone.down"
+        }
+    }
+
+    private func eventText(_ kind: String) -> String {
+        switch kind {
+        case "call_failed", "call_dropped": "通话中断"
+        case "call_unconnected": "通话没能接通"
+        case "call_duration_limit": "通话到了时限"
+        case "call_turn_limit": "通话到了回合上限"
+        case "she_hung_up": "她挂断了电话"
+        default: "通话结束"
+        }
     }
 
     @ViewBuilder
