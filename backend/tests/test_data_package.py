@@ -41,7 +41,10 @@ PROFILE = {
     "birthday": {"month": 2, "day": 29},
 }
 EMPTY_PROFILE = {"form_of_address": None, "gender": None, "timezone": None, "birthday": None}
-NOTHING_ELSE = {"conversations": 0, "photos": 0, "memories": 0, "skipped": []}
+NOTHING_ELSE = {
+    "conversations": 0, "photos": 0, "memories": 0, "skipped": [], "cycles": 0,
+    "cycles_skipped": 0,
+}
 
 
 def other_deployment(make_client: ClientFactory, settings: Settings, tmp_path: Path,

@@ -25,11 +25,17 @@ export const DASHBOARD_TABS = ["overview", "usage", "affinity", "cost"] as const
 export type DashboardTab = (typeof DASHBOARD_TABS)[number];
 
 /** The tabs a dashboard has:「好感度」only where affinity is on, achievements were unlocked in the
- * range while it was, or schedules are on (their tile is there). */
-export function dashboardTabs(board: Pick<Dashboard, "affinity" | "achievements" | "scheduled_this_week">): DashboardTab[] {
+ * range while it was, or schedules or cycles are on (their tiles are there). */
+export function dashboardTabs(
+  board: Pick<Dashboard, "affinity" | "achievements" | "scheduled_this_week" | "recorded_cycles">,
+): DashboardTab[] {
   return DASHBOARD_TABS.filter(
     (name) =>
-      name !== "affinity" || board.affinity !== null || board.achievements !== null || board.scheduled_this_week !== null,
+      name !== "affinity" ||
+      board.affinity !== null ||
+      board.achievements !== null ||
+      board.scheduled_this_week !== null ||
+      board.recorded_cycles !== null,
   );
 }
 
@@ -252,6 +258,9 @@ export type Dashboard = {
   /** How many users saved a schedule for this Beijing week (GLOSSARY「日程」), whatever the range;
    * null where schedules are off. */
   scheduled_this_week: number | null;
+  /** How many users have written down any period (GLOSSARY「周期」), whatever the range; null
+   * where the deployer has cycles off. */
+  recorded_cycles: number | null;
 };
 
 /** The dashboard's「搭话」section: how many times characters reached out, how many times that
@@ -278,6 +287,12 @@ export function scheduleTiles(scheduledThisWeek: number | null): { id: string; l
   if (scheduledThisWeek === null) return [];
   const words = copy.admin.dashboard.schedule.tiles;
   return [{ id: "scheduled", label: words.scheduled, value: formatCount(scheduledThisWeek) }];
+}
+
+/** The「周期」tile, as the page shows it; none where cycles are off. */
+export function cycleTiles(recordedCycles: number | null): { id: string; label: string; value: string }[] {
+  if (recordedCycles === null) return [];
+  return [{ id: "recorded", label: copy.admin.dashboard.cycles.tiles.recorded, value: formatCount(recordedCycles) }];
 }
 
 /** The dashboard's「成就」section: how many stages were unlocked, the draw chances they gave, and

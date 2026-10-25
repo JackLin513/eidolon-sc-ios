@@ -318,6 +318,7 @@ async def test_conversations_with_someone_not_here_are_skipped_and_the_user_told
             {"character_name": "七草はづき", "conversations": 2},
             {"character_name": "chiyuki", "conversations": 1},
         ],
+        "cycles": 0, "cycles_skipped": 0,
     }
     assert await said_in(client) == ["2"]
     assert await told_in(client) == {"制作人住在大阪": None, "制作人养了猫": "2"}

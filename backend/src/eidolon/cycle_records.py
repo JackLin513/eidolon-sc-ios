@@ -11,11 +11,12 @@ talked with her or not.
 
 While the deployment or the user has cycles off, none are read or written; they are kept
 all the same, there again once both are on. The user's data, deleted with them
-(`database.USER_DATA`), not with a conversation."""
+(`database.USER_DATA`), not with a conversation; carried in their data package
+(`read_carried`, `add_carried`), cycles on or off."""
 
 import sqlite3
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Literal
@@ -178,6 +179,10 @@ class CycleRecords:
             self._remove, user_id, record_id, device_timezone, self._clock()
         )
 
+    async def users_recording(self) -> int:
+        """How many users have any record now, of any character, with cycles off too."""
+        return await self._db.read(_users_recording)
+
     async def _on(self, user_id: str) -> bool:
         return await self._cycles.switch_of(user_id) is True
 
@@ -205,12 +210,7 @@ class CycleRecords:
     ) -> HerRecords:
         today = _today(db, user_id, device_timezone, now)
         _check(_records(db, user_id, character_id), first_day, days, today)
-        db.execute(
-            "INSERT INTO cycle_records (id, user_id, character_id, first_day, days,"
-            " recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (uuid.uuid4().hex, user_id, character_id, first_day.isoformat(), days,
-             now.isoformat()),
-        )
+        _insert(db, user_id, character_id, first_day, days, now)
         return _hers(db, user_id, character_id, today)
 
     def _change(
@@ -257,8 +257,74 @@ class CycleRecords:
         return row[0]
 
 
+@dataclass(frozen=True)
+class Carried:
+    """A record as a data package carries it: whose, from when, how many days; not its id,
+    nor when it was written down."""
+
+    character_id: str
+    first_day: date
+    days: int
+
+
+def read_carried(db: sqlite3.Connection, user_id: str) -> list[Carried]:
+    """Every record of the user's, of any character, by first day, for their data package:
+    with cycles off too, and of a character no longer configured."""
+    rows = db.execute(
+        "SELECT character_id, first_day, days FROM cycle_records WHERE user_id = ?"
+        " ORDER BY first_day, character_id",
+        (user_id,),
+    )
+    return [Carried(c, date.fromisoformat(first_day), days) for c, first_day, days in rows]
+
+
+def add_carried(
+    db: sqlite3.Connection,
+    user_id: str,
+    carried: Iterable[Carried],
+    device_timezone: str | None,
+    now: datetime,
+) -> int:
+    """Add to the user's records those of `carried`, of characters configured, that could be
+    written down `now`, one after another, with cycles off too: those after today, out of
+    bounds or overlapping another of hers, there before or added before it, are passed over.
+    How many were added."""
+    today = _today(db, user_id, device_timezone, now)
+    added = 0
+    for record in carried:
+        try:
+            _check(_records(db, user_id, record.character_id), record.first_day, record.days,
+                   today)
+        except Refused:
+            continue
+        _insert(db, user_id, record.character_id, record.first_day, record.days, now)
+        added += 1
+    return added
+
+
+def _users_recording(db: sqlite3.Connection) -> int:
+    (users,) = db.execute("SELECT COUNT(DISTINCT user_id) FROM cycle_records").fetchone()
+    return users
+
+
 def _open(db: sqlite3.Connection) -> None:
     db.executescript(_SCHEMA)
+
+
+def _insert(
+    db: sqlite3.Connection,
+    user_id: str,
+    character_id: str,
+    first_day: date,
+    days: int,
+    now: datetime,
+) -> None:
+    db.execute(
+        "INSERT INTO cycle_records (id, user_id, character_id, first_day, days,"
+        " recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (uuid.uuid4().hex, user_id, character_id, first_day.isoformat(), days,
+         now.isoformat()),
+    )
 
 
 def _today(

@@ -8,7 +8,7 @@ import { ApiError, type DataPackageImported } from "@/lib/api";
 import { toFailure, type Failure } from "@/lib/failure";
 
 /** 数据包里可能有的几类，按清单里的顺序。照片挂在对话下面，不带对话就不带照片。 */
-export const CATEGORIES = ["conversations", "photos", "memories", "profile"] as const;
+export const CATEGORIES = ["conversations", "photos", "memories", "profile", "cycles"] as const;
 
 export type Category = (typeof CATEGORIES)[number];
 
@@ -130,21 +130,24 @@ function fromManifest(decoder: TextDecoder, chunks: Uint8Array[]): ManifestReadi
   return { kind: "package", categories: CATEGORIES.filter((category) => categories.includes(category)) };
 }
 
-/** 导入完的一句话：导入了什么（只算这次新加的），跳过了和谁的几段对话。 */
+/** 导入完的一句话：导入了什么（只算这次新加的），跳过了和谁的几段对话、几条周期记录。 */
 export function importSummary(result: DataPackageImported): string {
   const t = copy.settings.dataPackage;
   const counts = [
     result.conversations > 0 && t.count.conversations(result.conversations),
     result.photos > 0 && t.count.photos(result.photos),
     result.memories > 0 && t.count.memories(result.memories),
+    result.cycles > 0 && t.count.cycles(result.cycles),
   ].filter((count): count is string => Boolean(count));
   let imported: string;
   if (counts.length === 0) imported = result.profile ? t.importedProfile : t.nothingNew;
   else if (result.profile) imported = t.importedWithProfile(counts.join(t.separator));
   else imported = t.imported(counts.join(t.separator));
-  if (result.skipped.length === 0) return imported;
-  const skipped = result.skipped.map((s) => t.skippedPart(s.character_name, s.conversations)).join(t.separator);
-  return imported + t.skipped(skipped, result.skipped.length > 1);
+  if (result.skipped.length > 0) {
+    const skipped = result.skipped.map((s) => t.skippedPart(s.character_name, s.conversations)).join(t.separator);
+    imported += t.skipped(skipped, result.skipped.length > 1);
+  }
+  return result.cycles_skipped > 0 ? imported + t.skippedCycles(result.cycles_skipped) : imported;
 }
 
 /**

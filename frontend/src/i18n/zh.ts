@@ -828,6 +828,7 @@ export const zh = {
         photos: "照片",
         memories: "记忆",
         profile: "制作人档案",
+        cycles: "周期记录",
       },
       export: "导出",
       importTitle: "导入",
@@ -845,12 +846,15 @@ export const zh = {
         conversations: (n: number) => `${n} 段对话`,
         photos: (n: number) => `${n} 张照片`,
         memories: (n: number) => `${n} 条记忆`,
+        cycles: (n: number) => `${n} 条周期记录`,
       },
       separator: "、",
       nothingNew: "没有新的内容要导入。",
       /** 「跳过了和月岡恋鐘的 2 段、櫻木真乃的 1 段对话，这里没有她们。」 */
       skipped: (parts: string, many: boolean) => `跳过了和${parts}对话，这里没有${many ? "她们" : "她"}。`,
       skippedPart: (name: string, n: number) => `${name}的 ${n} 段`,
+      /** 「跳过了 2 条周期记录。」：角色不在、天数不对、在未来，或和已有的重叠。 */
+      skippedCycles: (n: number) => `跳过了 ${n} 条周期记录。`,
       failures: {
         broken: "这不是一个能用的数据包",
         too_new: "这个数据包来自更新的版本，请部署者升级后再导入",
@@ -1108,6 +1112,11 @@ export const zh = {
       schedule: {
         title: "日程",
         tiles: { scheduled: "本周排了日程的人数" },
+      },
+      /** 「好感度」里的「周期」一小节：现在库里记过周期的用户数，不跟时间范围走。 */
+      cycles: {
+        title: "周期",
+        tiles: { recorded: "记过周期的用户数" },
       },
       /** 「好感度」里的「成就」一小节：范围内解锁了几个成就阶段、发出几次抽奖、几张重置卡。 */
       achievements: {
