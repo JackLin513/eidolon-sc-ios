@@ -1189,7 +1189,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     judge.add_argument(
         "--only",
-        choices=["retrieval", "emotion", "affinity", "photo"],
+        choices=["retrieval", "emotion", "affinity", "photo", "considerate"],
         action="append",
         help="只跑这一类用例（可以写几次，默认全跑），例如 --only photo",
     )
