@@ -4,7 +4,7 @@ import GRDB
 /// The writable user library (ADR-0002). Its schema evolves with the app, not
 /// with the content bundle, and is therefore managed by GRDB migrations.
 enum UserSchema {
-    static let version = 3
+    static let version = 4
 
     static func migrate(_ dbQueue: DatabaseQueue) throws {
         var migrator = DatabaseMigrator()
@@ -134,6 +134,12 @@ enum UserSchema {
                 DROP TABLE memory_vectors;
                 ALTER TABLE memory_vectors_v3 RENAME TO memory_vectors;
                 """)
+        }
+        migrator.registerMigration("v4") { db in
+            // A turn taken in a call counts in the call, not in the conversation's typed
+            // turns; what was written before this is read as a typed turn (upstream
+            // records the distinction as `hurt IS NOT NULL`).
+            try db.execute(sql: "ALTER TABLE messages ADD COLUMN typed INTEGER NOT NULL DEFAULT 1")
         }
         try migrator.migrate(dbQueue)
         try dbQueue.write { db in

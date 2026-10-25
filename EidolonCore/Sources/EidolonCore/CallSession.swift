@@ -161,6 +161,11 @@ public actor CallSession {
     private var speakingIndex: Int?
     private var speaking: Task<Void, Never>?
     private var turnActive = false
+    /// What the call's turns have come to, told to the next one: the call keeps its own
+    /// count, apart from the conversation's typed turns (upstream `InCall`). This version
+    /// records what it comes to; it does not hang up for it yet.
+    private var callOutOfLine = 0
+    private var callHurts: [Double] = []
 
     init(eidolon: Eidolon, characterID: String, voice: CallVoice, setup: CallSetup) {
         self.eidolon = eidolon
@@ -289,6 +294,7 @@ public actor CallSession {
                 now: setup.now(),
                 tracing: setup.tracing,
                 talking: .inCall,
+                inCall: CallScope(outOfLine: callOutOfLine, hurts: callHurts),
                 voicedBy: setup.voiceModel
             ) {
                 if finished || Task.isCancelled { break }
@@ -297,8 +303,9 @@ public actor CallSession {
                     appendSpoken(segment, spoken)
                 case let .delta(segment, language, shown):
                     appendCaption(segment, language, shown)
-                case .finished:
-                    break
+                case let .finished(record):
+                    callOutOfLine += record.outOfLine ? 1 : 0
+                    callHurts.append(record.hurt)
                 }
             }
         } catch is CancellationError {
