@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { FailureNotice } from "@/components/app/FailureNotice";
 import { MarkedAvatar } from "@/components/app/MarkedAvatar";
 import { useDirectory, useWide } from "@/components/conversations/ConversationDirectory";
+import { CycleGuide, guideAnchor } from "@/components/play/CycleGuide";
 import { PlayShell, PlaySubpageHeader } from "@/components/play/PlayShell";
 import { useCycles } from "@/components/play/useCycles";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { copy } from "@/i18n";
 import type { Character } from "@/lib/api";
 import { type CalendarMonth, monthCells, monthOf, partsOf, shiftMonth } from "@/lib/calendar";
+import { IRREGULAR_BLOCK_ID } from "@/lib/cycleGuide";
 import {
   addCycleRecord,
   canShowNextMonth,
@@ -69,8 +71,9 @@ type Editing = { record: CycleRecord | null; firstDay: string; days: number };
 
 /**
  * 「周期」子页（`/play/cycles`，DESIGN.md「玩法页 · 周期子页」，.scratch/cycle-page spec「周期子页（版式 D）」）：
- * 从上到下一行说明、搜索框加筛选、头像条，然后是选中的她的一块：电脑上左栏一句话、月历、图例、
- * 点中那一天的一条，右栏 15rem 放三个数字、变淡的原因和记过的经期，高度跟着左栏；手机上叠成一栏。
+ * 从上到下一行说明、搜索框加筛选、头像条，然后是选中的她的一块（电脑上左栏一句话、月历、图例、
+ * 点中那一天的一条，右栏 15rem 放三个数字、变淡的原因和记过的经期，高度跟着左栏；手机上叠成一栏），
+ * 最下面通栏的讲解七块，最后一行免责。
  * 她的颜色只注入月历、图例（记号）和弹窗（primary），其余中性。地址带着 `?who=`，换人时替换历史；没带或不认识时选名单第一位。两个开关任一关着时回到玩法页。
  */
 export function CyclesSubpage({ who }: { who: string | null }) {
@@ -85,6 +88,7 @@ export function CyclesSubpage({ who }: { who: string | null }) {
   const [editing, setEditing] = useState<Editing | null>(null);
   const [isDialogOpen, setDialogOpen] = useState(false);
   const [dialogKey, setDialogKey] = useState(0);
+  const [guideOpen, setGuideOpen] = useState<string | null>(null);
 
   const redirect = view ? closedPlayRedirect("cycles", { cyclesOn: view.enabled }) : null;
   useEffect(() => {
@@ -132,6 +136,13 @@ export function CyclesSubpage({ who }: { who: string | null }) {
   };
   const openNew = (firstDay: string) => open({ record: null, firstDay, days: defaultDays(her.estimate) });
   const openEdit = (record: CycleRecord) => open({ record, firstDay: record.first_day, days: record.days });
+  /** 「长短不一」那句的链接：展开讲解的「青春期」，等它渲染出来再滚过去。 */
+  const showIrregular = () => {
+    setGuideOpen(IRREGULAR_BLOCK_ID);
+    requestAnimationFrame(() =>
+      document.getElementById(guideAnchor(IRREGULAR_BLOCK_ID))?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  };
 
   return (
     <PlayShell
@@ -200,11 +211,13 @@ export function CyclesSubpage({ who }: { who: string | null }) {
         <div className="md:relative md:self-stretch">
           <div className="flex flex-col gap-4 md:absolute md:inset-0">
             <Stats estimate={her.estimate} />
-            <FadeNotes estimate={her.estimate} />
+            <FadeNotes estimate={her.estimate} onIrregular={showIrregular} />
             <Records key={character.id} records={her.records} onEdit={openEdit} />
           </div>
         </div>
       </div>
+      <CycleGuide open={guideOpen} onOpenChange={setGuideOpen} />
+      <p className="text-meta text-muted-foreground">{t.disclaimer}</p>
     </PlayShell>
   );
 }
@@ -478,13 +491,27 @@ function Stats({ estimate }: { estimate: CycleEstimate | null }) {
   );
 }
 
-/** 变淡的原因，每种一句。 */
-function FadeNotes({ estimate }: { estimate: CycleEstimate | null }) {
+/** 变淡的原因，每种一句；「长短不一」那句末尾链到讲解的「青春期」。 */
+function FadeNotes({ estimate, onIrregular }: { estimate: CycleEstimate | null; onIrregular: () => void }) {
   if (!estimate || estimate.reasons.length === 0) return null;
   return (
     <ul className="flex flex-col gap-0.5 text-subtitle text-muted-foreground">
       {estimate.reasons.map((reason) => (
-        <li key={reason}>{t.reasons[reason]}</li>
+        <li key={reason}>
+          {t.reasons[reason]}
+          {reason === "irregular" && (
+            <a
+              href={`#${guideAnchor(IRREGULAR_BLOCK_ID)}`}
+              onClick={(e) => {
+                e.preventDefault();
+                onIrregular();
+              }}
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              {t.reasons.irregularLink}
+            </a>
+          )}
+        </li>
       ))}
     </ul>
   );

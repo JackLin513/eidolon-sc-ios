@@ -1864,6 +1864,8 @@ export const zh = {
       reasons: {
         once: "再记一次就能按她自己的周期推算。",
         irregular: "她的周期长短不一，估算只作参考。",
+        /** 「长短不一」那句末尾的链接，展开讲解的「青春期」。 */
+        irregularLink: "见「青春期」",
         missed: "中间可能漏记了一次。",
         late: "这次可能还没记下。",
       },
@@ -1875,6 +1877,19 @@ export const zh = {
         all: (n: number) => `展开全部 ${n} 次`,
         less: "收起",
       },
+      /** 最下面通栏的讲解七块（正文在 `lib/cycleGuide`）。 */
+      guide: {
+        title: "讲解",
+        diagram: {
+          label: "以 28 天为例：经期第 1–5 天，易孕期第 10–16 天，排卵日第 15 天",
+          period: "经期 第 1–5 天",
+          fertile: "易孕期 第 10–16 天",
+          ovulation: "排卵日 第 15 天",
+          caption: "以 28 天为例",
+        },
+      },
+      /** 页面最后一行。 */
+      disclaimer: "推算只是估计，不是医疗建议，不能用来避孕；身体不适请看医生。",
       /** 记一次、改一次的弹窗。 */
       dialog: {
         title: (name: string) => `记${name}的一次经期`,
