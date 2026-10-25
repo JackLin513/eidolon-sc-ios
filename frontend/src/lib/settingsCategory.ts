@@ -4,10 +4,12 @@
 // the same category. The old addresses (`/settings?tab=…`, `/memories`) are sent to the new paths,
 // and settings addresses we do not know to `/settings`. Each row of the first level shows the
 // category's current value under its name (「设置：一级」). 「搭话」 is there only where the deployer
-// has reach-outs on (.scratch/proactive-messages spec「前端」); its address elsewhere goes back to
+// has reach-outs on (.scratch/proactive-messages spec「前端」), 「周期」 only where the deployer has
+// cycles on (.scratch/cycle-her spec「开关」); the address of either elsewhere goes back to
 // `/settings` from its page, as the server cannot tell the account from the address.
 
 import { copy } from "@/i18n";
+import type { Account } from "@/lib/api";
 import type { Appearance } from "@/lib/appearance";
 import type { CallPreferences } from "@/lib/callPreferences";
 import { OWN_SERVICES, type OwnService } from "@/lib/localOwnKeys";
@@ -17,7 +19,7 @@ import { PROVIDER_LABELS, type Provider } from "@/lib/signIn";
 /** The first level's groups, top to bottom, with a separator between each two. */
 const SETTINGS_GROUPS = [
   ["profile", "memories", "stats"],
-  ["call", "reach-outs", "appearance", "own-keys"],
+  ["call", "reach-outs", "cycles", "appearance", "own-keys"],
   ["sign-in", "data-package"],
   ["about"],
 ] as const;
@@ -28,10 +30,27 @@ export type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number];
 
 const ROOT = "/settings";
 
-/** The first level's groups for an account whose switch for reach-outs is `reachOuts` (null where
- * the deployer has them off, or the account not read yet): without 「搭话」 then. */
-export function settingsGroups(reachOuts: boolean | null): SettingsCategory[][] {
-  return SETTINGS_GROUPS.map((group) => group.filter((category) => category !== "reach-outs" || reachOuts !== null));
+/** The user's own switches the account says: each null where the deployer has it off, or the account
+ * not read yet. */
+export type SettingsSwitches = { reachOuts: boolean | null; cycles: boolean | null };
+
+/** The switches `account` says; all null before it is read. */
+export function settingsSwitches(account: Account | null): SettingsSwitches {
+  return { reachOuts: account?.reach_outs ?? null, cycles: account?.cycles ?? null };
+}
+
+/** The categories there only where the deployer has them on, each with its switch, whose value is
+ * also its summary. */
+const SWITCHED = [
+  ["reach-outs", "reachOuts"],
+  ["cycles", "cycles"],
+] as const satisfies readonly (readonly [SettingsCategory, keyof SettingsSwitches])[];
+
+/** The first level's groups for an account with `switches`: without a category whose switch is null. */
+export function settingsGroups(switches: SettingsSwitches): SettingsCategory[][] {
+  return SETTINGS_GROUPS.map((group) =>
+    group.filter((category) => SWITCHED.every(([switched, key]) => switched !== category || switches[key] !== null)),
+  );
 }
 
 function isCategory(name: string | null | undefined): name is SettingsCategory {
@@ -76,7 +95,7 @@ export function settingsRedirect(href: string): string | null {
 export type ProfileEdit = { saved: Draft; draft: Draft };
 
 /** What the first level's summaries are made of; null for what has not been read yet. */
-export type SettingsValues = {
+export type SettingsValues = SettingsSwitches & {
   profile: ProfileEdit | null;
   /** The time zone this device reports, which an automatic profile time zone means. */
   detectedTimezone: string;
@@ -85,8 +104,6 @@ export type SettingsValues = {
   daysKnown: number | null;
   call: CallPreferences | null;
   appearance: Appearance | null;
-  /** The user's own switch for reach-outs (null where the deployer has them off). */
-  reachOuts: boolean | null;
   /** The services this browser keeps the user's own key for. */
   ownServices: OwnService[] | null;
   signInMethods: Provider[] | null;
@@ -96,7 +113,7 @@ export type SettingsValues = {
  * or「关于」) shows its name alone. */
 export function settingsSummaries(values: SettingsValues): Partial<Record<SettingsCategory, string>> {
   const t = copy.settings.summaries;
-  const { profile, memoryCount, daysKnown, call, appearance, reachOuts, ownServices, signInMethods } = values;
+  const { profile, memoryCount, daysKnown, call, appearance, ownServices, signInMethods } = values;
   const summaries: Partial<Record<SettingsCategory, string>> = {};
   if (profile) {
     const { saved, draft } = profile;
@@ -109,7 +126,10 @@ export function settingsSummaries(values: SettingsValues): Partial<Record<Settin
   if (daysKnown !== null) summaries.stats = t.daysKnown(daysKnown);
   if (call) summaries.call = `${copy.settings.call.qualities[call.quality]} · ${call.phoneTexture ? t.phoneTextureOn : t.phoneTextureOff}`;
   if (appearance) summaries.appearance = appearance.scspAvatars ? t.scspAvatarsOn : t.scspAvatarsOff;
-  if (reachOuts !== null) summaries["reach-outs"] = reachOuts ? t.reachOutsOn : t.reachOutsOff;
+  for (const [category, key] of SWITCHED) {
+    const on = values[key];
+    if (on !== null) summaries[category] = on ? t.switchOn : t.switchOff;
+  }
   if (ownServices) {
     const owned = OWN_SERVICES.filter((service) => ownServices.includes(service));
     summaries["own-keys"] =

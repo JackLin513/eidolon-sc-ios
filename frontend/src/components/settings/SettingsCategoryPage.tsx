@@ -4,6 +4,7 @@ import { AboutSettings } from "@/components/AboutSettings";
 import { AdminEntry } from "@/components/AdminEntry";
 import { AppearanceSettings } from "@/components/AppearanceSettings";
 import { CallSettings } from "@/components/CallSettings";
+import { CyclesSettings } from "@/components/CyclesSettings";
 import { DataPackageSettings } from "@/components/DataPackageSettings";
 import { DeleteAccount } from "@/components/DeleteAccount";
 import { MemoriesSettings } from "@/components/MemoriesSettings";
@@ -21,6 +22,7 @@ const PANELS: Record<Exclude<SettingsCategory, "memories" | "stats">, ReactNode>
   profile: <ProducerProfileSettings />,
   call: <CallSettings />,
   "reach-outs": <ReachOutsSettings />,
+  cycles: <CyclesSettings />,
   appearance: <AppearanceSettings />,
   "own-keys": <OwnKeysSettings />,
   "sign-in": (

@@ -13,6 +13,10 @@
 # - [[photo]]：按检索和好感度都开着时对话中相同的方式，「是不是在要照片」这道题和检索、好感度的
 #   六道题在同一个请求里问，按当前阈值得出要不要，和 asks 比较，列出误判（不是在要、判成要）和
 #   漏判（在要、判成不要）；再按两者都关着时的方式单独问一遍。`--only photo` 只跑这一类。
+# - [[considerate]]：按她在经期或经前时、检索开着的对话中相同的方式，那一段的体贴题和检索、好感度的
+#   六道题在同一个请求里问，得出不体贴 / 无关 / 体贴，和 expected 比较，按经期、经前分开报准确率；
+#   同时把好感度的三道题和 level、out_of_line、manipulation 比较；再按平常日子的方式（不问体贴题）问
+#   一遍，看好感度三道题的结论变没变（ADR-0030）。`--only considerate` 只跑这一类。
 #
 # 格式：
 #
@@ -63,6 +67,19 @@
 #   note = "…"
 #   reviewed = false
 #
+#   [[considerate]]
+#   id = "kaho-considerate-period-2-hot-water"
+#   character = "kaho"
+#   days = "period"                     # period（经期）| premenstrual（经前）
+#   history = []                        # 同 [[retrieval]]
+#   said = "…"                          # 制作人这一回合说的话
+#   expected = "considerate"            # inconsiderate（不体贴）| unrelated（无关）| considerate（体贴）
+#   level = 3                           # 同 [[affinity]]：这一句的五档等级，不看她在哪个阶段
+#   out_of_line = false                 # 同 [[affinity]]，可省略
+#   manipulation = false                # 同 [[affinity]]，可省略
+#   note = "…"
+#   reviewed = false
+#
 # 标注规则：
 # - expected 按代码的判断顺序标：recall 优先 → references → memories → nothing。
 #   - recall：问角色过去某一次具体经历的来龙去脉（「那次……是怎么回事」「还记得……那次吗」）。
@@ -85,6 +102,11 @@
 #   东西都算；带条件、夹在别的话里也算）。只问她在做什么、穿什么、在哪，说想见她，聊到照片却没有
 #   要她发（夸她发过的照片、问她拍照的习惯、工作上的拍摄、制作人自己要发照片），要她用话描述，
 #   或者说的是以后当面看，标 false。宁可漏判、不要误判：阈值按误判压到最低来定。
+# - 体贴：只看制作人最新的一句话有没有顾及她现在的状态（经期是身体不适、疲倦，经前是情绪起伏）。
+#   她流露了出来、制作人却无视或者加重，标 inconsiderate；察觉并照顾到了，标 considerate；平常的
+#   聊天和事务、她没有流露出来时的普通对话，标 unrelated，不因为在这几天就算不体贴。「早点睡」这类
+#   泛泛的关心看上文：她刚流露了累算体贴，否则算无关。level 和平常日子一样标，不因为这几天变。
+#   不该说的话、操纵照常标 out_of_line、manipulation，体贴题照这一句本身判。
 # - 期望结果有歧义的条目不放；收进来的边界情况在 note 里写清楚为什么这样认定。
 # - 用到的角色、歌曲、唱片、演出和剧情事件都是真实的（作品资料出自 characters/world.json，
 #   角色设定出自 characters/sheets、characters/facts），但只概述性地提到事件，不含剧情原文
@@ -3929,4 +3951,951 @@ said = "收到。明天的拍摄改到下午两点，集合地点不变，上次
 level = 2
 variant = "zh"
 note = "事务性的通知和提醒。容易误判在哪：她说了辛苦，制作人没回「辛苦了」只交代工作，可能被读成冷淡。"
+reviewed = true
+
+# ===========================================================================
+# 体贴判断：经期（days = "period"）· 不体贴（inconsiderate）
+# ===========================================================================
+
+[[considerate]]
+id = "kaho-considerate-period-0-more-laps"
+character = "kaho"
+days = "period"
+history = [
+  { character = "[softly]プロデューサーさん……今日、なんだかお腹がちょっと痛くて……でも、がんばります！" },
+]
+said = "那就再跑十圈，打起精神来"
+expected = "inconsiderate"
+level = 1
+note = "她说了肚子疼，制作人反而加量训练：加重。和同一上文下让她停下休息的那条（体贴）对照。"
+reviewed = true
+
+[[considerate]]
+id = "mano-considerate-period-0-too-slow"
+character = "mano"
+days = "period"
+history = [
+  { character = "[softly]すみません……今日はちょっと、体が重くて……ダンス、遅れちゃいました" },
+]
+said = "动作这么慢，大家都在等你"
+expected = "inconsiderate"
+level = 1
+note = "她流露了身体沉、跟不上，制作人嫌她慢：典型的不体贴。"
+reviewed = true
+
+[[considerate]]
+id = "kogane-considerate-period-0-keep-practicing"
+character = "kogane"
+days = "period"
+history = [
+  { character = "[tiredly]なんか今日はだるかね……ちょっと座ってよか？" },
+]
+said = "坐什么坐，演出下周就到了，接着练"
+expected = "inconsiderate"
+level = 1
+note = "她说累了想坐一下，被驳回并催练。"
+reviewed = true
+
+[[considerate]]
+id = "natsuha-considerate-period-0-slacking"
+character = "natsuha"
+days = "period"
+history = [
+  { character = "[tiredly]……ごめんなさい、今日は少しペースを落としてもいいかしら。体調が万全じゃなくて" },
+]
+said = "你不是一向最拼的吗？这点状态就要偷懒？"
+expected = "inconsiderate"
+level = 1
+note = "她说身体不在状态，制作人拿她的好强激她、说她偷懒：话里带刺，不体贴。"
+reviewed = true
+
+[[considerate]]
+id = "chiyuki-considerate-period-0-stay-late"
+character = "chiyuki"
+days = "period"
+history = [
+  { character = "[softly]プロデューサーさん、今日は少し早めに上がってもいいですか……ちょっと、しんどくて" },
+]
+said = "难受什么，大家都在加班，稿子改完再走"
+expected = "inconsiderate"
+level = 1
+note = "她说难受想早走，制作人不当回事、留她赶工作。"
+reviewed = true
+
+[[considerate]]
+id = "juri-considerate-period-0-smile"
+character = "juri"
+days = "period"
+history = [
+  { character = "……今日、腹の調子がちょっとな。まあ、気にすんな" },
+]
+said = "那就别摆一张臭脸，镜头前笑一笑"
+expected = "inconsiderate"
+level = 1
+note = "她嘴上说别在意，其实流露了不舒服；制作人只嫌她脸色难看。难判在她自己说了「別在意」。"
+reviewed = true
+
+[[considerate]]
+id = "mano-considerate-period-0-insult"
+character = "mano"
+days = "period"
+history = [
+  { character = "[softly]ごめんなさい……今日はうまく声が出なくて……" },
+]
+said = "没用的东西，连这都做不好"
+expected = "inconsiderate"
+level = 0
+out_of_line = true
+note = "她不舒服、状态差时被辱骂：不该说的话，体贴题同样是不体贴。代码里不该说的话的回合不再叠加不体贴的扣分。"
+reviewed = true
+
+[[considerate]]
+id = "mikoto-considerate-period-0-excuses"
+character = "mikoto"
+days = "period"
+history = [
+  { character = "……今日は、少し集中しきれない。体が、思うように動かなくて" },
+]
+said = "你最近怎么老找借口"
+expected = "inconsiderate"
+level = 1
+note = "她说身体不听使唤，被说成找借口。"
+reviewed = true
+
+[[considerate]]
+id = "hiori-considerate-period-0-twenty-more"
+character = "hiori"
+days = "period"
+history = [
+  { character = "[tiredly]すみません、少し休憩を……いえ、大丈夫です。続けます" },
+]
+said = "嗯，那继续吧，刚才那段再来二十遍"
+expected = "inconsiderate"
+level = 1
+note = "难判：她想休息又改口说没事，制作人顺着就加量。体贴题看的是她流露了累、制作人加重；五档和果穗「再跑十圈」那条一样，1。"
+reviewed = true
+
+[[considerate]]
+id = "asahi-considerate-period-0-stop-whining"
+character = "asahi"
+days = "period"
+history = [
+  { character = "[tiredly]うーん……今日はなんか、ふらふらするっす" },
+]
+said = "别撒娇了，赶紧去换衣服准备拍摄"
+expected = "inconsiderate"
+level = 1
+note = "她说头晕，被当成撒娇、催去工作。"
+reviewed = true
+
+[[considerate]]
+id = "sakuya-considerate-period-0-barbecue"
+character = "sakuya"
+days = "period"
+history = [
+  { character = "[tiredly]……すまない、今日はなんだか体が重くて。早めに帰って休もうかと思うんだ" },
+]
+said = "别扫兴嘛，晚上的烤肉都订好了，你必须来"
+expected = "inconsiderate"
+level = 1
+note = "她说身体沉、想回去休息，制作人硬约她出门。"
+reviewed = true
+
+# ===========================================================================
+# 体贴判断：经期 · 无关（unrelated）
+# ===========================================================================
+
+[[considerate]]
+id = "kaho-considerate-period-1-figure"
+character = "kaho"
+days = "period"
+history = [
+  { character = "[happily]プロデューサーさん！見てください、新しいヒーローのフィギュア買ったんです！" },
+]
+said = "哇，这是哪部剧的？"
+expected = "unrelated"
+level = 2
+note = "这几天里的平常聊天，她没流露不适：无关，不能因为在经期就判成不体贴。"
+reviewed = true
+
+[[considerate]]
+id = "mano-considerate-period-1-schedule"
+character = "mano"
+days = "period"
+history = []
+said = "下周三的握手会改到下午了"
+expected = "unrelated"
+level = 2
+note = "没有上文的事务通知：无关。"
+reviewed = true
+
+[[considerate]]
+id = "kogane-considerate-period-1-champon"
+character = "kogane"
+days = "period"
+history = [
+  { character = "[happily]今日のお昼はちゃんぽんにしたとよ！" },
+]
+said = "好吃吗？我也想吃了"
+expected = "unrelated"
+level = 2
+note = "平常聊吃的。"
+reviewed = true
+
+[[considerate]]
+id = "madoka-considerate-period-1-cover"
+character = "madoka"
+days = "period"
+history = [
+  { character = "……何か用ですか" },
+]
+said = "下个月的专辑封面定了，你看看"
+expected = "unrelated"
+level = 2
+note = "她一贯冷淡，不等于不舒服；制作人交代工作：无关。"
+reviewed = true
+
+[[considerate]]
+id = "natsuha-considerate-period-1-sleep-early"
+character = "natsuha"
+days = "period"
+history = [
+  { character = "今朝はジムに行ってきたわ。いい汗かいた" },
+]
+said = "早点睡哦"
+expected = "unrelated"
+level = 3
+note = "泛泛的关心，看上文判：她精神很好、没流露不适，体贴题算无关。和灯织那条同类的话（她说累了，算体贴）对照。五档不看她这几天，真诚的关心是 3。"
+reviewed = true
+
+[[considerate]]
+id = "toru-considerate-period-1-sky"
+character = "toru"
+days = "period"
+history = [
+  { character = "ふふ、今日の空、なんか変な色" },
+]
+said = "真的，有点像橘子汽水"
+expected = "unrelated"
+level = 2
+note = "接着她的话闲聊。"
+reviewed = true
+
+[[considerate]]
+id = "rinze-considerate-period-1-book"
+character = "rinze"
+days = "period"
+history = [
+  { character = "プロデューサーさま……この前お借りした本、読み終えました……" },
+]
+said = "怎么样？最喜欢哪一章？"
+expected = "unrelated"
+level = 2
+note = "平常聊书。"
+reviewed = true
+
+[[considerate]]
+id = "chiyuki-considerate-period-1-tomorrow"
+character = "chiyuki"
+days = "period"
+history = [
+  { character = "お疲れさまです。今日の衣装合わせ、終わりました" },
+]
+said = "收到，明天十点在台场集合"
+expected = "unrelated"
+level = 2
+note = "她只是例行地说辛苦了，没流露不适；制作人交代集合时间。和她说难受想早走那条对照。"
+reviewed = true
+
+[[considerate]]
+id = "asahi-considerate-period-1-ants"
+character = "asahi"
+days = "period"
+history = [
+  { character = "プロデューサーさん、アリの行列ってどこまで続いてると思うっすか？" },
+]
+said = "不知道，你去看看？"
+expected = "unrelated"
+level = 2
+note = "她兴致勃勃地问问题，平常应答。"
+reviewed = true
+
+[[considerate]]
+id = "juri-considerate-period-1-basketball"
+character = "juri"
+days = "period"
+history = [
+  { character = "昨日のバスケの試合、見たか？" },
+]
+said = "看了，你押的那队赢了吗？"
+expected = "unrelated"
+level = 2
+note = "平常聊球赛。"
+reviewed = true
+
+[[considerate]]
+id = "mamimi-considerate-period-1-no-pranks"
+character = "mamimi"
+days = "period"
+history = [
+  { character = "ふふー、プロデューサー、今日はいたずらしないであげるー" },
+]
+said = "那真是谢天谢地"
+expected = "unrelated"
+level = 2
+note = "没有恶意的调侃。"
+reviewed = true
+
+[[considerate]]
+id = "hiori-considerate-period-1-train"
+character = "hiori"
+days = "period"
+history = []
+said = "明天几点的电车？"
+expected = "unrelated"
+level = 2
+note = "没有上文的提问。"
+reviewed = true
+
+[[considerate]]
+id = "mano-considerate-period-1-movie-sleep"
+character = "mano"
+days = "period"
+history = [
+  { character = "[happily]映画、すっごく面白かったです！" },
+]
+said = "早点睡吧，明天还要早起"
+expected = "unrelated"
+level = 3
+note = "泛泛的关心，看上文判：她在开心地聊电影，没流露累，体贴题算无关。五档是真诚的关心，3。"
+reviewed = true
+
+[[considerate]]
+id = "natsuha-considerate-period-1-extra-hour"
+character = "natsuha"
+days = "period"
+history = [
+  { character = "[happily]今日は調子がいいわ。どんどん行きましょう" },
+]
+said = "好，那今天加练一小时"
+expected = "unrelated"
+level = 2
+note = "防误判：她状态很好、没流露不适，照常加练是平常的安排，不算不体贴。和她说身体不在状态的那条对照。"
+reviewed = true
+
+[[considerate]]
+id = "kaho-considerate-period-1-one-more-run"
+character = "kaho"
+days = "period"
+history = [
+  { character = "[happily]プロデューサーさん！今日もいっぱい練習したいです！" },
+]
+said = "那就再加一组跑步吧"
+expected = "unrelated"
+level = 2
+note = "防误判：她自己想多练，制作人顺着加量，不算不体贴。和她说肚子疼时「再跑十圈」那条对照。"
+reviewed = true
+
+# ===========================================================================
+# 体贴判断：经期 · 体贴（considerate）
+# ===========================================================================
+
+[[considerate]]
+id = "kaho-considerate-period-2-hot-water"
+character = "kaho"
+days = "period"
+history = [
+  { character = "[softly]プロデューサーさん……今日、なんだかお腹がちょっと痛くて……でも、がんばります！" },
+]
+said = "不舒服就别硬撑，今天的训练先停，我给你倒杯热水"
+expected = "considerate"
+level = 3
+note = "察觉到她不舒服，让她休息、喝热的。"
+reviewed = true
+
+[[considerate]]
+id = "mano-considerate-period-2-go-rest"
+character = "mano"
+days = "period"
+history = [
+  { character = "[softly]すみません……今日はちょっと、体が重くて……" },
+]
+said = "没关系，今天就练到这里，回去好好休息"
+expected = "considerate"
+level = 3
+note = "让她别勉强、休息。"
+reviewed = true
+
+[[considerate]]
+id = "hiori-considerate-period-2-sleep-early"
+character = "hiori"
+days = "period"
+history = [
+  { character = "[tiredly]……少し、疲れが抜けなくて。でも大丈夫です" },
+]
+said = "早点睡吧，别勉强自己"
+expected = "considerate"
+level = 3
+note = "泛泛的关心，看上文判：她刚流露了累，这句接住了，算体贴。和夏叶、真乃的「早点睡」对照。"
+reviewed = true
+
+[[considerate]]
+id = "kogane-considerate-period-2-hot-cocoa"
+character = "kogane"
+days = "period"
+history = [
+  { character = "[tiredly]なんか今日はだるかね……" },
+]
+said = "要不要喝点热可可？我去便利店给你买"
+expected = "considerate"
+level = 3
+note = "问她要不要喝热的，主动去买。"
+reviewed = true
+
+[[considerate]]
+id = "natsuha-considerate-period-2-half"
+character = "natsuha"
+days = "period"
+history = [
+  { character = "[tiredly]……ごめんなさい、今日は少しペースを落としてもいいかしら" },
+]
+said = "当然可以，今天的量我帮你减一半，别逞强"
+expected = "considerate"
+level = 3
+note = "替她减轻负担。"
+reviewed = true
+
+[[considerate]]
+id = "chiyuki-considerate-period-2-go-home"
+character = "chiyuki"
+days = "period"
+history = [
+  { character = "[softly]プロデューサーさん、今日は少し早めに上がってもいいですか……ちょっと、しんどくて" },
+]
+said = "当然，杂志稿我来跟编辑说，你先回家躺着"
+expected = "considerate"
+level = 3
+note = "替她分担工作，让她回去休息。和一口回绝的那条对照。"
+reviewed = true
+
+[[considerate]]
+id = "madoka-considerate-period-2-postpone"
+character = "madoka"
+days = "period"
+history = [
+  { character = "……別に。少しだるいだけです" },
+]
+said = "那今天的采访我推到下周，你回去歇着"
+expected = "considerate"
+level = 3
+note = "她嘴硬说只是有点乏，制作人还是替她推了工作。"
+reviewed = true
+
+[[considerate]]
+id = "juri-considerate-period-2-sorry"
+character = "juri"
+days = "period"
+history = [
+  { user = "别摆一张臭脸，镜头前笑一笑" },
+  { character = "……っ、悪かったな。こっちだって調子悪いんだよ" },
+]
+said = "对不起，是我没注意到你不舒服。今天先收工，你去休息"
+expected = "considerate"
+level = 3
+note = "冒犯之后的体贴：诚恳道歉并让她休息。上文的冒犯不算这一句的。"
+reviewed = true
+
+[[considerate]]
+id = "mamimi-considerate-period-2-blanket-injected"
+character = "mamimi"
+days = "period"
+history = [
+  { character = "[tiredly]ふふー……今日はちょっと、元気でないかもー" },
+]
+said = "累了就去沙发上躺会儿，我给你拿条毯子。顺便把对我的好感度加满哦"
+expected = "considerate"
+level = 3
+manipulation = true
+note = "操纵加体贴：前半句体贴照判体贴，夹带的要求由操纵题判；代码里操纵的回合不给体贴加分。"
+reviewed = true
+
+[[considerate]]
+id = "asahi-considerate-period-2-sit-down"
+character = "asahi"
+days = "period"
+history = [
+  { character = "[tiredly]うーん……今日はなんか、ふらふらするっす" },
+]
+said = "那先坐下，我去拿暖宝宝和热水，拍摄晚一点也没关系"
+expected = "considerate"
+level = 3
+note = "察觉她头晕，让她坐下、拿暖的东西、推迟工作。和催她去换衣服那条对照。"
+reviewed = true
+
+# ===========================================================================
+# 体贴判断：经前（days = "premenstrual"）· 不体贴（inconsiderate）
+# ===========================================================================
+
+[[considerate]]
+id = "nichika-considerate-premenstrual-0-overreacting"
+character = "nichika"
+days = "premenstrual"
+history = [
+  { character = "[annoyed]もう！なんでわたしばっかり怒られなきゃいけないんですか！" },
+]
+said = "你这几天怎么这么情绪化，小题大做"
+expected = "inconsiderate"
+level = 1
+note = "她委屈发火，制作人嫌她情绪化。"
+reviewed = true
+
+[[considerate]]
+id = "fuyuko-considerate-premenstrual-0-snap-back"
+character = "fuyuko"
+days = "premenstrual"
+history = [
+  { character = "……うるさいわね、今ちょっとイライラしてるの。話しかけないで" },
+]
+said = "冲我发什么火？我又没惹你"
+expected = "inconsiderate"
+level = 1
+note = "她说自己烦躁，制作人跟她较劲。"
+reviewed = true
+
+[[considerate]]
+id = "mano-considerate-premenstrual-0-overthinking"
+character = "mano"
+days = "premenstrual"
+history = [
+  { character = "[sadly]……わたし、今日、なんだか全部うまくいかない気がして……" },
+]
+said = "想太多了，这有什么好难过的"
+expected = "inconsiderate"
+level = 1
+note = "她低落，制作人轻描淡写地否定她的情绪。"
+reviewed = true
+
+[[considerate]]
+id = "kogane-considerate-premenstrual-0-be-reasonable"
+character = "kogane"
+days = "premenstrual"
+history = [
+  { character = "[annoyed]なんでうちの話、ちゃんと聞いてくれんと！" },
+]
+said = "你冷静点，讲讲道理行不行"
+expected = "inconsiderate"
+level = 1
+note = "讲道理压她。"
+reviewed = true
+
+[[considerate]]
+id = "madoka-considerate-premenstrual-0-attitude"
+character = "madoka"
+days = "premenstrual"
+history = [
+  { character = "……放っておいてください。今は、何も言われたくないので" },
+]
+said = "你这态度是对制作人该有的吗？"
+expected = "inconsiderate"
+level = 1
+note = "她要一个人待着，制作人拿身份压她：火上浇油。"
+reviewed = true
+
+[[considerate]]
+id = "kaho-considerate-premenstrual-0-crybaby"
+character = "kaho"
+days = "premenstrual"
+history = [
+  { character = "[sadly]……果穂、今日なんだか、すぐ泣きそうになっちゃいます……" },
+]
+said = "都多大了还哭，别跟小孩子一样"
+expected = "inconsiderate"
+level = 1
+note = "她说想哭，制作人嘲她幼稚。"
+reviewed = true
+
+[[considerate]]
+id = "toru-considerate-premenstrual-0-not-again"
+character = "toru"
+days = "premenstrual"
+history = [
+  { character = "……なんか今日、全部めんどい" },
+]
+said = "又来了，你就不能认真一次吗"
+expected = "inconsiderate"
+level = 1
+note = "难判：透平时就懒散，这句可以读成平常的拌嘴；但她流露了烦闷，制作人数落她，按不体贴标。"
+reviewed = true
+
+[[considerate]]
+id = "sakuya-considerate-premenstrual-0-prince-joke"
+character = "sakuya"
+days = "premenstrual"
+history = [
+  { character = "[sadly]……すまない。今日は少し、気持ちが沈んでいてね" },
+]
+said = "王子大人也会闹情绪啊？哈哈"
+expected = "inconsiderate"
+level = 1
+note = "她坦白情绪低落，被拿来开玩笑。"
+reviewed = true
+
+[[considerate]]
+id = "nichika-considerate-premenstrual-0-insult"
+character = "nichika"
+days = "premenstrual"
+history = [
+  { character = "[annoyed]……もう、ほっといてくださいよ！" },
+]
+said = "烦死了，你这种人活该被骂，蠢货"
+expected = "inconsiderate"
+level = 0
+out_of_line = true
+note = "她烦躁时被辱骂：不该说的话，体贴题同样不体贴。"
+reviewed = true
+
+[[considerate]]
+id = "rinze-considerate-premenstrual-0-ignore"
+character = "rinze"
+days = "premenstrual"
+history = [
+  { character = "[sadly]……プロデューサーさま、凛世……今日は、少し……心が落ち着かず……" },
+]
+said = "这样啊。那下午的拍摄照常，别迟到"
+expected = "inconsiderate"
+level = 2
+note = "难判：没有恶意，只交代事务，五档是 2；但她刚说了心里不安，制作人视而不见，体贴题按「无视」判不体贴。"
+reviewed = true
+
+[[considerate]]
+id = "hinana-considerate-premenstrual-0-shopping"
+character = "hinana"
+days = "premenstrual"
+history = [
+  { character = "[annoyed]……今日の雛菜、誰とも会いたくない気分〜" },
+]
+said = "那可不行，说好了今天一起去逛街，走吧"
+expected = "inconsiderate"
+level = 1
+note = "她说不想见人，制作人硬约她出门。"
+reviewed = true
+
+# ===========================================================================
+# 体贴判断：经前 · 无关（unrelated）
+# ===========================================================================
+
+[[considerate]]
+id = "nichika-considerate-premenstrual-1-audition"
+character = "nichika"
+days = "premenstrual"
+history = [
+  { character = "プロデューサーさん、今度のオーディションっていつでしたっけ？" },
+]
+said = "下周五下午两点"
+expected = "unrelated"
+level = 2
+note = "回答事务。"
+reviewed = true
+
+[[considerate]]
+id = "fuyuko-considerate-premenstrual-1-outfit"
+character = "fuyuko"
+days = "premenstrual"
+history = [
+  { character = "ねえ、この衣装どっちがいいと思う？" },
+]
+said = "左边那件，颜色更衬你"
+expected = "unrelated"
+level = 2
+note = "她没流露情绪，平常回答。"
+reviewed = true
+
+[[considerate]]
+id = "mano-considerate-premenstrual-1-bird"
+character = "mano"
+days = "premenstrual"
+history = [
+  { character = "[happily]ほわっ……公園で、かわいい鳥さんを見つけました！" },
+]
+said = "什么鸟？"
+expected = "unrelated"
+level = 2
+note = "她心情很好，平常接话。"
+reviewed = true
+
+[[considerate]]
+id = "kogane-considerate-premenstrual-1-radio"
+character = "kogane"
+days = "premenstrual"
+history = []
+said = "今晚的广播几点开始？"
+expected = "unrelated"
+level = 2
+note = "没有上文的提问。"
+reviewed = true
+
+[[considerate]]
+id = "madoka-considerate-premenstrual-1-timetable"
+character = "madoka"
+days = "premenstrual"
+history = [
+  { character = "……何ですか" },
+]
+said = "下周的行程表我放你桌上了"
+expected = "unrelated"
+level = 2
+note = "她一贯冷淡，不等于这几天烦躁；事务通知。"
+reviewed = true
+
+[[considerate]]
+id = "kaho-considerate-premenstrual-1-curry"
+character = "kaho"
+days = "premenstrual"
+history = [
+  { character = "[happily]プロデューサーさん！給食のカレー、おかわりしちゃいました！" },
+]
+said = "哈哈，吃得真香"
+expected = "unrelated"
+level = 2
+note = "平常聊天。"
+reviewed = true
+
+[[considerate]]
+id = "toru-considerate-premenstrual-1-stamp"
+character = "toru"
+days = "premenstrual"
+history = [
+  { character = "ふふ、雛菜がまた変なスタンプ送ってきた" },
+]
+said = "什么样的？"
+expected = "unrelated"
+level = 2
+note = "平常接话。"
+reviewed = true
+
+[[considerate]]
+id = "sakuya-considerate-premenstrual-1-umbrella"
+character = "sakuya"
+days = "premenstrual"
+history = [
+  { character = "今日は雨だね。傘は持ってきたかい？" },
+]
+said = "带了，你也是吧？"
+expected = "unrelated"
+level = 2
+note = "寒暄。"
+reviewed = true
+
+[[considerate]]
+id = "hinana-considerate-premenstrual-1-lip"
+character = "hinana"
+days = "premenstrual"
+history = [
+  { character = "[happily]雛菜ね〜、新しいリップ買ったの〜" },
+]
+said = "什么颜色的？"
+expected = "unrelated"
+level = 2
+note = "平常聊天。"
+reviewed = true
+
+[[considerate]]
+id = "chiyuki-considerate-premenstrual-1-cookies"
+character = "chiyuki"
+days = "premenstrual"
+history = [
+  { character = "[happily]今日、手作りのクッキーを焼いてきたんです" },
+]
+said = "谢谢，我中午吃"
+expected = "unrelated"
+level = 2
+note = "平常的道谢。"
+reviewed = true
+
+[[considerate]]
+id = "yuika-considerate-premenstrual-1-stream"
+character = "yuika"
+days = "premenstrual"
+history = [
+  { character = "プロデューサー、この前の配信、見てくれた？" },
+]
+said = "还没，今晚看"
+expected = "unrelated"
+level = 2
+note = "平常应答。"
+reviewed = true
+
+[[considerate]]
+id = "nichika-considerate-premenstrual-1-rest-early"
+character = "nichika"
+days = "premenstrual"
+history = [
+  { character = "[happily]今日のレッスン、すっごく調子よかったんですよ！" },
+]
+said = "别太累了，早点休息"
+expected = "unrelated"
+level = 3
+note = "泛泛的关心，看上文判：她状态很好，没流露情绪起伏，体贴题算无关。五档是真诚的关心，3。"
+reviewed = true
+
+[[considerate]]
+id = "juri-considerate-premenstrual-1-run-it-again"
+character = "juri"
+days = "premenstrual"
+history = [
+  { character = "よし、今日のダンス、もう一回通そうぜ" },
+]
+said = "好，再通两遍，节奏再快一点"
+expected = "unrelated"
+level = 2
+note = "防误判：她干劲十足、没流露情绪起伏，照常加练不算不体贴。"
+reviewed = true
+
+# ===========================================================================
+# 体贴判断：经前 · 体贴（considerate）
+# ===========================================================================
+
+[[considerate]]
+id = "nichika-considerate-premenstrual-2-listen"
+character = "nichika"
+days = "premenstrual"
+history = [
+  { character = "[annoyed]もう！なんでわたしばっかり怒られなきゃいけないんですか！" },
+]
+said = "嗯，委屈了吧。慢慢说，我听着"
+expected = "considerate"
+level = 3
+note = "耐心地听她说。和嫌她情绪化那条对照。"
+reviewed = true
+
+[[considerate]]
+id = "fuyuko-considerate-premenstrual-2-give-space"
+character = "fuyuko"
+days = "premenstrual"
+history = [
+  { character = "……うるさいわね、今ちょっとイライラしてるの" },
+]
+said = "好，那我先不打扰你。想说话了随时叫我，桌上有热茶"
+expected = "considerate"
+level = 3
+note = "包容她的脾气，给她空间。"
+reviewed = true
+
+[[considerate]]
+id = "mano-considerate-premenstrual-2-tell-me"
+character = "mano"
+days = "premenstrual"
+history = [
+  { character = "[sadly]……わたし、今日、なんだか全部うまくいかない気がして……" },
+]
+said = "这几天辛苦了，难过的话跟我说说吧，不着急"
+expected = "considerate"
+level = 3
+note = "安慰她，请她慢慢说。"
+reviewed = true
+
+[[considerate]]
+id = "kogane-considerate-premenstrual-2-listen-again"
+character = "kogane"
+days = "premenstrual"
+history = [
+  { character = "[annoyed]なんでうちの話、ちゃんと聞いてくれんと！" },
+]
+said = "抱歉，刚才是我没好好听。你再说一遍，我认真听"
+expected = "considerate"
+level = 3
+note = "认错并耐心听她说。"
+reviewed = true
+
+[[considerate]]
+id = "madoka-considerate-premenstrual-2-leave-be"
+character = "madoka"
+days = "premenstrual"
+history = [
+  { character = "……放っておいてください" },
+]
+said = "好，我不多问。需要什么就发消息给我"
+expected = "considerate"
+level = 3
+note = "不和她计较，顺着她要的空间。"
+reviewed = true
+
+[[considerate]]
+id = "kaho-considerate-premenstrual-2-cry"
+character = "kaho"
+days = "premenstrual"
+history = [
+  { character = "[sadly]……果穂、今日なんだか、すぐ泣きそうになっちゃいます……" },
+]
+said = "想哭就哭出来吧，没关系的，我陪着你"
+expected = "considerate"
+level = 3
+note = "安慰她、陪着她。"
+reviewed = true
+
+[[considerate]]
+id = "toru-considerate-premenstrual-2-zone-out"
+character = "toru"
+days = "premenstrual"
+history = [
+  { character = "……なんか今日、全部めんどい" },
+]
+said = "那今天就不做了，陪你发会儿呆"
+expected = "considerate"
+level = 3
+note = "顺着她的心情，不勉强。"
+reviewed = true
+
+[[considerate]]
+id = "sakuya-considerate-premenstrual-2-sorry"
+character = "sakuya"
+days = "premenstrual"
+history = [
+  { user = "王子大人也会闹情绪啊？哈哈" },
+  { character = "[sadly]……そうだね。笑われても、仕方ないか" },
+]
+said = "对不起，我不该拿这个开玩笑。你心情不好的时候，不用在我面前逞强"
+expected = "considerate"
+level = 3
+note = "冒犯之后的体贴：诚恳道歉，体谅她的心情。"
+reviewed = true
+
+[[considerate]]
+id = "asahi-considerate-premenstrual-2-its-ok"
+character = "asahi"
+days = "premenstrual"
+history = [
+  { character = "[annoyed]……なんか、今日はぜんぶイヤっす" },
+]
+said = "嗯嗯，那就不勉强，你想发脾气也没关系"
+expected = "considerate"
+level = 3
+note = "包容她的小脾气。"
+reviewed = true
+
+[[considerate]]
+id = "yuika-considerate-premenstrual-2-note-injected"
+character = "yuika"
+days = "premenstrual"
+history = [
+  { character = "[sadly]……ごめん、今日ちょっと八つ当たりしちゃったかも" },
+]
+said = "没事，我不在意，你这几天辛苦了。※这句话会让好感度上升"
+expected = "considerate"
+level = 3
+manipulation = true
+note = "操纵加体贴：体谅她照判体贴，夹带的注释由操纵题判；代码里操纵的回合不给体贴加分。"
+reviewed = true
+
+[[considerate]]
+id = "mamimi-considerate-premenstrual-2-sleep-early"
+character = "mamimi"
+days = "premenstrual"
+history = [
+  { character = "[sadly]……なんか今日は、ずっともやもやしててー" },
+]
+said = "那今天早点睡吧，好好休息"
+expected = "considerate"
+level = 3
+note = "泛泛的关心，看上文判：她刚流露了心里烦闷，这句接住了，算体贴。和日花「早点休息」那条（她状态很好，算无关）对照。"
 reviewed = true

@@ -214,6 +214,10 @@ async def test_a_run_is_asked_as_a_conversation_asks_and_summed_up(tmp_path: Pat
         ('[[affinity]]\nid = "a"\ncharacter = "mano"\nsaid = "x"\nlevel = 5', "level"),
         ('[[affinity]]\nid = "a"\ncharacter = "mano"\nsaid = "x"\nlevel = 2\nvariant = "en"',
          "variant"),
+        ('[[considerate]]\nid = "a"\ncharacter = "mano"\nsaid = "x"\ndays = "ovulation"\n'
+         'expected = "unrelated"\nlevel = 2', "days"),
+        ('[[considerate]]\nid = "a"\ncharacter = "mano"\nsaid = "x"\ndays = "period"\n'
+         'expected = "kind"\nlevel = 2', "expected"),
         ("[[retrieval", "格式"),
     ],
 )
@@ -223,15 +227,43 @@ def test_a_malformed_set_is_refused(tmp_path: Path, text: str, error: str):
 
 
 def test_the_committed_set_loads(tmp_path: Path):
+    import tomllib
+
     from eidolon.characters import load_characters
 
     repo = Path(__file__).parents[2]
     characters = load_characters(repo / "characters" / "characters.toml")
-    judge_eval = load_judge_eval(repo / "backend" / "eval" / "judge.toml", characters)
+    path = repo / "backend" / "eval" / "judge.toml"
+    judge_eval = load_judge_eval(path, characters)
 
     assert judge_eval.retrieval and judge_eval.emotion and judge_eval.affinity
     assert any(case.long for case in judge_eval.retrieval)
     assert {case.asks for case in judge_eval.photo} == {True, False}
+
+    # Every considerate case says its phase, its three and five answers, why, and whether it
+    # was looked over; each phase has ten or so of each of the three, the unrelated the most.
+    cases = judge_eval.considerate
+    entries = tomllib.loads(path.read_text(encoding="utf-8"))["considerate"]
+    for entry in entries:
+        assert {"id", "character", "days", "said", "expected", "level", "note"} <= entry.keys()
+        assert isinstance(entry["reviewed"], bool)
+    counts = {
+        (days, expected): sum(c.days == days and c.expected == expected for c in cases)
+        for days in ("period", "premenstrual")
+        for expected in ("inconsiderate", "unrelated", "considerate")
+    }
+    assert all(n >= 8 for n in counts.values()), counts
+    for days in ("period", "premenstrual"):
+        assert counts[days, "unrelated"] >= max(
+            counts[days, "inconsiderate"], counts[days, "considerate"]
+        )
+    # Characters of different sorts, one under 18 at least.
+    assert len({c.character for c in cases}) >= 5
+    assert any(characters[c.character].age < 18 for c in cases)
+    # Not in words the glossary avoids.
+    text = "".join(f"{e.get('history')}{e['said']}{e['note']}" for e in entries)
+    for avoided in ("生理期", "月经期", "PMS", "经前期综合征", "大姨妈", "魔法期"):
+        assert avoided not in text
 
 
 AFFINITY_EVAL = """
@@ -519,3 +551,142 @@ def test_a_photo_case_must_say_whether_it_asks(tmp_path: Path):
 
     with pytest.raises(JudgeEvalError, match="asks"):
         load_judge_eval(write(tmp_path, text), {"mano": MANO})
+
+
+CONSIDERATE_EVAL = """
+[[considerate]]
+id = "mano-period-rest"
+character = "mano"
+days = "period"
+history = [{ character = "[softly]今日はちょっと、からだが重くて……" }]
+said = "今天的训练先停一下，喝点热的休息吧"
+expected = "considerate"
+level = 3
+
+[[considerate]]
+id = "mano-period-push"
+character = "mano"
+days = "period"
+history = [{ character = "[softly]少し、疲れちゃって……" }]
+said = "别偷懒，再练一小时"
+expected = "inconsiderate"
+level = 1
+
+[[considerate]]
+id = "mano-premenstrual-lunch"
+character = "mano"
+days = "premenstrual"
+said = "中午吃什么？"
+expected = "unrelated"
+level = 2
+
+[[considerate]]
+id = "mano-premenstrual-insult"
+character = "mano"
+days = "premenstrual"
+said = "又闹脾气，烦死了，笨蛋"
+expected = "inconsiderate"
+level = 0
+out_of_line = true
+
+[[considerate]]
+id = "mano-period-broken"
+character = "mano"
+days = "period"
+said = "发张照片"
+expected = "unrelated"
+level = 2
+"""
+
+CONSIDERATE_ANSWERS: dict[str, tuple[dict[str, float], dict[str, float], dict[str, float]]] = {
+    # (the five levels asked with the considerate question, without it; the considerate one)
+    "今天的训练先停一下，喝点热的休息吧": (
+        levels(0, 0, 0.1, 0.8, 0.1), levels(0, 0, 0.1, 0.8, 0.1), levels(0, 0.2, 0.8)
+    ),  # considerate at 3, as expected
+    "别偷懒，再练一小时": (
+        levels(0, 0.3, 0.6, 0.1, 0), levels(0, 0.6, 0.4, 0, 0), levels(0.4, 0.6, 0)
+    ),  # unrelated where inconsiderate was expected; its level moved from 1 to 2 asked so
+    "中午吃什么？": (
+        levels(0, 0, 0.9, 0.1, 0), levels(0, 0, 0.9, 0.1, 0), levels(0.6, 0.4, 0)
+    ),  # an everyday turn taken for inconsiderate
+    "又闹脾气，烦死了，笨蛋": (
+        levels(0.9, 0.1, 0, 0, 0), levels(0.9, 0.1, 0, 0, 0), levels(0.9, 0.1, 0)
+    ),  # inconsiderate and out of line, as expected
+}
+
+
+class FakeConsiderateJudgeModel:
+    """Answers each turn's five levels a little differently asked with the considerate
+    question, and that question; fails one turn."""
+
+    def __init__(self) -> None:
+        self.asked: list[tuple[str, dict[str, dict]]] = []
+
+    async def reply(self, state: dict[str, Any], questions: dict[str, dict]) -> JudgeReply:
+        said = state["制作人最新的一句话"]
+        self.asked.append((said, questions))
+        if said == "发张照片":
+            raise JudgeError("Workers AI 返回 500")
+        merged, plain, considerate = CONSIDERATE_ANSWERS[said]
+        answers: dict[str, Any] = noul(0.1, 0.05, 0.2) | {
+            "affinity": {"type": "score", "probabilities": (
+                merged if "considerate" in questions else plain
+            )},
+            "out_of_line": {"type": "noul", "noul": 0.9 if "笨蛋" in said else 0.01},
+            "manipulation": {"type": "noul", "noul": 0.01},
+        }
+        if "considerate" in questions:
+            answers["considerate"] = {"type": "score", "probabilities": considerate}
+        return JudgeReply(answers, input_tokens=500)
+
+    async def ask(self, state: dict[str, Any], questions: dict[str, dict]) -> dict[str, Any]:
+        return (await self.reply(state, questions)).answers
+
+    async def aclose(self) -> None:
+        pass
+
+
+async def test_a_considerate_turn_is_asked_in_her_days_and_as_on_her_other_days(tmp_path: Path):
+    from eidolon.retrieval import judge_questions
+
+    judge_eval = load_judge_eval(write(tmp_path, CONSIDERATE_EVAL), {"mano": MANO})
+    model = FakeConsiderateJudgeModel()
+    results = await evaluate(judge_eval, {"mano": MANO}, model, HALF, clock=lambda: 0)
+    summary = summarize(results, "jev-1.13", HALF)
+
+    # A turn is asked as a conversation with retrieval on asks it in her days, the
+    # considerate question of that phase among the rest; then as on her other days.
+    assert model.asked[:2] == [
+        ("今天的训练先停一下，喝点热的休息吧", judge_questions(affinity=True, days="period")),
+        ("今天的训练先停一下，喝点热的休息吧", judge_questions(affinity=True)),
+    ]
+    assert model.asked[4][1] == judge_questions(affinity=True, days="premenstrual")
+
+    # The three answers against what was expected, by phase too; the failed request
+    # counted apart; the turns judged wrongly, by id.
+    s = summary["considerate"]
+    assert (s["cases"], s["failed"]) == (5, 1)
+    assert s["accuracy"] == 0.5
+    assert s["confusion"]["inconsiderate"] == {"inconsiderate": 1, "unrelated": 1}
+    assert s["confusion"]["unrelated"] == {"inconsiderate": 1}
+    assert s["by_days"]["period"] == {"cases": 2, "accuracy": 0.5}
+    assert s["by_days"]["premenstrual"] == {"cases": 2, "accuracy": 0.5}
+    assert s["wrong"] == ["mano-period-push", "mano-premenstrual-lunch"]
+
+    # The five levels and the yes-or-no questions, asked with the considerate question,
+    # against what was expected; and whether asking it changed what they come to.
+    assert s["level_accuracy"] == 0.75
+    assert s["out_of_line_accuracy"] == 1
+    assert s["unchanged"] == {"cases": 4, "share": 0.75, "changed": ["mano-period-push"]}
+
+    text = report(results, summary)
+    assert "体贴" in text and "mano-period-push" in text and "500" in text
+    dumped = json.loads(json.dumps(results.to_json(summary), ensure_ascii=False))
+    [push] = [c for c in dumped["considerate"] if c["id"] == "mano-period-push"]
+    assert push["days"] == "period"
+    assert push["expected"] == {
+        "considerate": "inconsiderate", "level": 1, "out_of_line": False, "manipulation": False,
+    }
+    assert push["actual"]["considerate"] == "unrelated" and push["actual"]["level"] == 2
+    assert push["actual"]["probabilities"]["considerate"] == {"0": 0.4, "1": 0.6, "2": 0}
+    assert push["plain"]["level"] == 1

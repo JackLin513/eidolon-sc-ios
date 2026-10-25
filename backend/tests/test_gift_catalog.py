@@ -19,15 +19,18 @@ from tests.fakes import FakeLLM
 REPO_ILLUSTRATIONS = Path(__file__).parents[2] / "frontend" / "public" / "gifts"
 
 
-def gift(id: str, rarity: str = "common", category: str = "food", retired: bool = False) -> str:
+def gift(
+    id: str, rarity: str = "common", category: str = "food", retired: bool = False,
+    warm: bool = False,
+) -> str:
     entry = f'[[gifts]]\nid = "{id}"\nname = "{id}"\ncategory = "{category}"\nrarity = "{rarity}"\n'
-    return entry + ("retired = true\n" if retired else "")
+    return entry + ("retired = true\n" if retired else "") + ("warm = true\n" if warm else "")
 
 
 ONE_OF_EACH_RARITY = gift("cake") + gift("cocoa", "uncommon") + gift("plush", "rare")
 
 
-async def test_the_catalog_lists_every_gift_with_its_category_rarity_and_whether_retired(
+async def test_the_catalog_lists_every_gift_with_its_category_rarity_and_whether_retired_not_warm(
     make_client: ClientFactory,
 ):
     client = make_client(FakeLLM())
@@ -36,10 +39,12 @@ async def test_the_catalog_lists_every_gift_with_its_category_rarity_and_whether
 
     assert res.status_code == 200
     catalog = res.json()
-    assert len(catalog) == 19
+    assert len(catalog) == 20
     assert all(set(g) == {"id", "name", "category", "rarity", "retired"} for g in catalog)
-    assert Counter(g["rarity"] for g in catalog) == {"common": 9, "uncommon": 7, "rare": 3}
+    assert Counter(g["rarity"] for g in catalog) == {"common": 9, "uncommon": 8, "rare": 3}
     assert {"id": "pudding", "name": "布丁", "category": "food", "rarity": "common",
+            "retired": False} in catalog
+    assert {"id": "hot-water-bag", "name": "热水袋", "category": "trinket", "rarity": "uncommon",
             "retired": False} in catalog
     assert not any(g["retired"] for g in catalog)
 
@@ -127,14 +132,23 @@ def test_liked_gifts_must_be_a_list_of_gift_ids(
         make_client(FakeLLM())
 
 
-def test_repository_characters_each_like_gifts_and_every_gift_is_liked():
+def test_repository_warm_gifts_are_the_hot_drinks_without_caffeine_and_the_hot_water_bag():
+    catalog = load_gift_catalog(REPO_GIFTS)
+
+    assert {id for id, g in catalog.items() if g.warm} == {"cocoa", "honey-drink", "hot-water-bag"}
+
+
+def test_repository_characters_each_like_gifts_and_every_gift_but_the_hot_water_bag_is_liked():
     """Each liked gift has her sources behind it, in order, in her facts' sources file
-    (「喜欢的礼物」); a gift nobody likes would be one no gift could be more welcome for."""
+    (「喜欢的礼物」); a gift nobody likes would be one no gift could be more welcome for, but
+    for the hot water bag, more welcome in her days (GLOSSARY.md「周期」), which her sources
+    have no one liking."""
     characters = load_characters(REPO_GIFTS.parent / "characters.toml")
     catalog = load_gift_catalog(REPO_GIFTS)
 
     check_liked_gifts(characters, catalog)
-    assert {g for c in characters.values() for g in c.liked_gifts} == set(catalog)
+    liked = {g for c in characters.values() for g in c.liked_gifts}
+    assert set(catalog) - liked == {"hot-water-bag"}
     sourced = {}
     for id in characters:
         sources = (REPO_GIFTS.parent / "facts" / f"{id}.sources.md").read_text(encoding="utf-8")

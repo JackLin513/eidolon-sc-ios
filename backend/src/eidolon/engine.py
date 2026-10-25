@@ -110,6 +110,7 @@ from typing import Literal, ParamSpec, TypeVar
 from eidolon.affinity import (
     FED_UP_TURNS,
     Affinities,
+    Days,
     EndsFor,
     Judged,
     Parting,
@@ -123,9 +124,11 @@ from eidolon.affinity_judge import AffinityJudge
 from eidolon.characters import Character
 from eidolon.clock import Clock
 from eidolon.config import FishAudioModel, ImageSettings
+from eidolon.cycles import Cycles, HerDays, always_neither, cycle_lines
 from eidolon.data_access import Database
 from eidolon.gift_catalog import Gift
 from eidolon.happenings import Happenings, Rewarded
+from eidolon.her_cycle import HerDay, Period, Premenstrual
 from eidolon.judge import JudgeError
 from eidolon.llm import ChatLLM, ChatMessage, Reasoning, Tool, ToolCall, TurnLLMs
 from eidolon.memory import Memories, last_turn_query
@@ -163,11 +166,13 @@ from eidolon.store import (
     Store,
     Typed,
     add_turn,
+    add_unwell,
     read_ended,
     read_last_contact,
     read_profile,
     read_record,
     timestamp,
+    told_her,
 )
 from eidolon.titles import Titles
 from eidolon.today import her_birthday, today_lines
@@ -219,13 +224,15 @@ class PhotosUsedUp:
 class TurnDone:
     """The recorded reply, with how the turn changed her affinity if it did; her affinity
     after it (`Status.shown`), None where affinity is off; her ending the conversation
-    after it (`ConversationEvent.shown`), None if she did not; and what the turn was rewarded
-    with (`Happenings.turn_recorded`), None if nothing. The turn succeeded."""
+    after it (`ConversationEvent.shown`), None if she did not; what the turn was rewarded
+    with (`Happenings.turn_recorded`), None if nothing; and her being unwell, recorded
+    before it (`ConversationEvent.shown`), None if it was not. The turn succeeded."""
 
     message: Message
     affinity: dict[str, str | None] | None = None
     ended: dict | None = None
     rewarded: Rewarded | None = None
+    unwell: dict | None = None
     type: Literal["done"] = field(default="done", init=False)
 
 
@@ -359,6 +366,16 @@ async def _unless_stopped(
     return working.result()
 
 
+def _days(her_day: HerDay) -> Days | None:
+    """Which of her days `her_day` has her in, that turns go by their numbers; None for
+    neither."""
+    if isinstance(her_day, Period):
+        return "period"
+    if isinstance(her_day, Premenstrual):
+        return "premenstrual"
+    return None
+
+
 async def _judged(
     judge: AffinityJudge,
     character: Character,
@@ -366,12 +383,13 @@ async def _judged(
     text: str,
     affinity: bool,
     photo: bool,
+    days: Days | None,
 ) -> tuple[Judged | None, bool]:
     """Asked about `affinity`, what saying `text` does to her affinity (None if not, or if it
-    cannot be told); asked about `photo`, whether it asks her for one (no if not, or if it
-    cannot be told)."""
+    cannot be told), in her `days` if she is in them; asked about `photo`, whether it asks her
+    for one (no if not, or if it cannot be told)."""
     try:
-        return await judge.judge(character, history, text, affinity, photo)
+        return await judge.judge(character, history, text, affinity, photo, days)
     except JudgeError:
         log.warning("judging apart failed; affinity stays as it is, and no photo", exc_info=True)
         return None, False
@@ -431,16 +449,26 @@ RESPOND_TO_GIFTS = (
 )
 """Told her after the gifts she has not replied since, once however many there are."""
 
+WARMED = "这几天你不太舒服，收到暖的东西，你心里很暖。"
+"""Told her of a warm gift given in her period or the days before it (GLOSSARY.md「周期」)."""
 
-def _narration(event: ConversationEvent, gift_catalog: Mapping[str, Gift]) -> str:
-    """What she is told of `event`, as it was."""
+
+def _narration(
+    event: ConversationEvent, gift_catalog: Mapping[str, Gift], her_days: HerDays,
+    timezone: str,
+) -> str:
+    """What she is told of `event`, as it was: of a warm gift, whether `her_days` had her in
+    her days as it was given, the producer in `timezone`, as that is kept nowhere."""
     if event.kind == "hung_up":
         return "（你挂断了制作人的电话。）"
     if event.kind == "ended":  # only read by a turn it will reject
         return "（你结束了和制作人的对话。）"
     assert event.gift_id is not None
+    gift = gift_catalog[event.gift_id]
     liked = "这是你喜欢的东西。" if event.liked else ""
-    return f"（制作人送给你一份{gift_catalog[event.gift_id].name}。{liked}）"
+    given_at = datetime.fromisoformat(event.created_at)
+    warmed = WARMED if gift.warm and her_days(given_at, timezone) is not None else ""
+    return f"（制作人送给你一份{gift.name}。{liked}{warmed}）"
 
 
 def _reached_out(reach_out: ReachOut, timezone: str) -> str:
@@ -452,27 +480,33 @@ def _reached_out(reach_out: ReachOut, timezone: str) -> str:
 
 
 def _narration_line(
-    entry: ConversationEvent | ReachOut, gift_catalog: Mapping[str, Gift], timezone: str
+    entry: ConversationEvent | ReachOut, gift_catalog: Mapping[str, Gift], her_days: HerDays,
+    timezone: str,
 ) -> str:
-    """The line of narration telling her of `entry`, the producer in `timezone`."""
+    """The line of narration telling her of `entry`, the producer in `timezone`, `her_days`
+    telling where she was."""
     if isinstance(entry, ReachOut):
         return f"{_reached_out(entry, timezone)}\n"
-    return f"{_narration(entry, gift_catalog)}\n"
+    return f"{_narration(entry, gift_catalog, her_days, timezone)}\n"
 
 
 def narrations(
-    record: Sequence[Recorded], gift_catalog: Mapping[str, Gift], timezone: str
+    record: Sequence[Recorded], gift_catalog: Mapping[str, Gift], timezone: str,
+    her_days: HerDays,
 ) -> dict[int | None, str]:
     """The narration of the events and reach-outs in `record`, by the id of the user message
-    each comes before, None for those after them all: one line for each, then, if she has
-    neither replied nor reached out since a gift, `RESPOND_TO_GIFTS`. The producer is in
-    `timezone`."""
+    each comes before, None for those after them all: one line for each she is told of
+    (`told_her`), then, if she has neither replied nor reached out since a
+    gift, `RESPOND_TO_GIFTS`. The producer is in `timezone`; `her_days` tells where she was
+    as each gift was given."""
     lines: list[str] = []
     told: dict[int | None, str] = {}
     unanswered = False
     for entry in record:
+        if not told_her(entry):
+            continue
         if not isinstance(entry, Message):
-            lines.append(_narration_line(entry, gift_catalog, timezone))
+            lines.append(_narration_line(entry, gift_catalog, her_days, timezone))
             if isinstance(entry, ReachOut):
                 unanswered = False  # reaching out, she has responded to the gifts before
             else:
@@ -506,16 +540,17 @@ so every protocol takes the prompt, ending with the user, as narration does."""
 
 
 def _since_last_turn(
-    record: Sequence[Recorded], gift_catalog: Mapping[str, Gift], timezone: str
+    record: Sequence[Recorded], gift_catalog: Mapping[str, Gift], timezone: str,
+    her_days: HerDays,
 ) -> str:
-    """The narration of the events and reach-outs after the last turn, one line each, the
-    producer in `timezone`."""
+    """The narration of the events and reach-outs after the last turn, one line for each she
+    is told of, the producer in `timezone`, `her_days` telling where she was."""
     lines: list[str] = []
     for entry in record:
         if isinstance(entry, Message):
             lines = []
-        else:
-            lines.append(_narration_line(entry, gift_catalog, timezone))
+        elif told_her(entry):
+            lines.append(_narration_line(entry, gift_catalog, her_days, timezone))
     return "".join(lines)
 
 
@@ -549,6 +584,7 @@ class ConversationEngine:
         photos: Photos | None = None,
         happenings: Happenings | None = None,
         schedules: Schedules | None = None,
+        cycles: Cycles | None = None,
     ) -> None:
         """Without `retrieval`, turns carry no story or character facts and find no
         memories. Each turn reads only the conversation's latest turns, as many as
@@ -559,7 +595,8 @@ class ConversationEngine:
         `affinity_judge`, which judges whether turns ask for a photo too. Without `photos`,
         or without the judge model, no turn has a photo. Each turn recorded is told to
         `happenings`, if any. With `schedules`, she is told her jobs the user saved, in
-        turns and reaching out alike."""
+        turns and reaching out alike; with `cycles`, how she feels where her cycle has her,
+        likewise."""
         self._db = db
         self._store = store
         self._characters = characters
@@ -575,6 +612,7 @@ class ConversationEngine:
         self._photos = photos
         self._happenings = happenings
         self._schedules = schedules
+        self._cycles = cycles
         self._ended_listeners: list[Callable[[str, EndsFor], None]] = []
         self._cooled_listeners: list[Callable[[str, str, datetime], None]] = []
 
@@ -663,21 +701,26 @@ class ConversationEngine:
         turns = self._history_turns()
         # What all but the chat model read: her reach-outs the user answers her latest words.
         history = [*latest_turns(messages, turns), *_answering(record)]
+        timezone = effective_timezone(profile, device_timezone)
+        # Before she is judged, as where she is has her judged by these days' numbers; the
+        # same for what she is told and her being unwell.
+        her_days = await self._her_days(conversation)
+        her_day = her_days(self._clock(), timezone)
+        days = _days(her_day)
         judging = affinity is not None and not affinity.cooling
         asking_photo = eligibility is not None
         judged_apart = None
         if (judging or asking_photo) and self._retrieval is None and self._affinity_judge:
-            judged_apart = asyncio.ensure_future(
-                _judged(self._affinity_judge, character, history, text, judging, asking_photo)
-            )
+            judged_apart = asyncio.ensure_future(_judged(
+                self._affinity_judge, character, history, text, judging, asking_photo, days
+            ))
         try:
-            timezone = effective_timezone(profile, device_timezone)
             memory = await self._memory.begin(
                 conversation, timezone, llms.background, llms.hold_background
             )
             retrieved = (
                 await self._retrieval.retrieve(
-                    character, history, text, memory, judging, asking_photo
+                    character, history, text, memory, judging, asking_photo, days
                 )
                 if self._retrieval
                 else Retrieved(None)
@@ -721,12 +764,13 @@ class ConversationEngine:
         about_photo = CANNOT_SEND if eligibility is None else photo_asked and photo_asked.prompt
         prompt = self._prompt(
             character, world_prompt, producer_prompt(profile),
-            chat_history(messages, turns), narrations(record, self._gift_catalog, timezone),
+            chat_history(messages, turns),
+            narrations(record, self._gift_catalog, timezone, her_days),
             [
                 self._now_prompt(
                     character, profile, now, timezone,
                     "in_call" if in_call is not None else "typing", affinity_lines, last_contact,
-                    her_jobs,
+                    her_jobs, her_day,
                 ),
                 *([about_photo] if about_photo else []),
             ],
@@ -801,10 +845,10 @@ class ConversationEngine:
         photo.handed_in = True
         keeping = asyncio.ensure_future(self._keep(
             conversation, text, said_at, parser.complete, judged, affinity, typed,
-            ends_conversation, photo,
+            ends_conversation, photo, her_day,
         ))
         try:
-            reply, affinity, rewarded = await asyncio.shield(keeping)
+            reply, affinity, rewarded, unwell = await asyncio.shield(keeping)
         except ConversationEnded:  # elsewhere, as the turn was under way
             yield TurnRejected(ENDED)
             return
@@ -831,7 +875,8 @@ class ConversationEngine:
         if photo_asked and photo_asked.used_up_until is not None:
             yield PhotosUsedUp(photo_asked.used_up_until.isoformat())
         yield TurnDone(
-            reply.without_cues(), affinity and affinity.shown(), ended and ended.shown(), rewarded
+            reply.without_cues(), affinity and affinity.shown(), ended and ended.shown(), rewarded,
+            unwell and unwell.shown(),
         )
 
     async def reach_out(self, conversation: Conversation, llm: ChatLLM) -> list[Segment]:
@@ -856,8 +901,9 @@ class ConversationEngine:
         world_prompt = (
             self._world.prompt(character.name, local_date(now, timezone)) if self._world else None
         )
-        told = narrations(record, self._gift_catalog, timezone)
-        told[None] = _since_last_turn(record, self._gift_catalog, timezone)
+        her_days = await self._her_days(conversation)
+        told = narrations(record, self._gift_catalog, timezone, her_days)
+        told[None] = _since_last_turn(record, self._gift_catalog, timezone, her_days)
         memories = await self._memory.for_reaching_out(
             conversation, timezone, last_turn_query(messages)
         )
@@ -868,7 +914,7 @@ class ConversationEngine:
                 self._now_prompt(
                     character, profile, now, timezone, "apart",
                     affinity_prompt(affinity.tier, None) if affinity is not None else [],
-                    last_contact, her_jobs,
+                    last_contact, her_jobs, her_days(now, timezone),
                 ),
             ],
             [*([memories] if memories else []), REACH_OUT_RULES],
@@ -999,17 +1045,19 @@ class ConversationEngine:
         typed: Typed | None,
         ends_conversation: bool,
         photo: _Photo,
-    ) -> tuple[Message, Status | None, Rewarded | None]:
+        her_day: HerDay,
+    ) -> tuple[Message, Status | None, Rewarded | None, ConversationEvent | None]:
         """Record the turn (`_record`), and tell what comes of it: should it begin a
         cooldown, those `on_cooled` has; the photos, whether her reply is recorded with the
         photo, if any; and the activity log, what the turn was rewarded for. The reply, her
-        affinity after it, and what it was rewarded with."""
+        affinity after it, what it was rewarded with, and her being unwell, if recorded
+        with it."""
         try:
-            message, affinity, rewarded = await self._db.write(
+            message, affinity, rewarded, unwell = await self._db.write(
                 self._record,
                 conversation, text, said_at, reply, judged, affinity, typed, ends_conversation,
                 NewPhoto(photo.id, photo.tag) if photo.id else None,
-                self._happenings is not None and self._happenings.open,
+                self._happenings is not None and self._happenings.open, her_day,
             )
         except Exception:
             if photo.id is not None and self._photos is not None:
@@ -1025,7 +1073,7 @@ class ConversationEngine:
             await self._photos.recorded(photo.id)
         if self._happenings is not None:
             await self._happenings.write_records(conversation.user_id, rewarded)
-        return message, affinity, rewarded
+        return message, affinity, rewarded, unwell
 
     def _record(
         self,
@@ -1040,14 +1088,20 @@ class ConversationEngine:
         ends_conversation: bool,
         photo: NewPhoto | None,
         happenings_open: bool,
-    ) -> tuple[Message, Status | None, Rewarded | None]:
+        her_day: HerDay,
+    ) -> tuple[Message, Status | None, Rewarded | None, ConversationEvent | None]:
         """Record the turn, as said at `said_at`, through `db`, in one transaction with all
-        it changes: her affinity as `judged` says, if judged, with what a typed turn came
-        to, her ending the conversation after it if she does, the photo she sends with it if
-        any, and what it counts towards (`Happenings.turn_recorded`), if `happenings_open`,
-        all of it or none.
+        it changes: her being unwell before it, should `her_day` have her in her period and
+        it be the user's first turn with her in it (`add_unwell`), her affinity as `judged`
+        says, if judged, with what a typed turn came to, her ending the conversation after
+        it if she does, the photo she sends with it if any, and what it counts towards
+        (`Happenings.turn_recorded`), if `happenings_open`, all of it or none.
         The reply, her affinity after it (`affinity`, as the turn began, if not judged),
-        and what it was rewarded with."""
+        what it was rewarded with, and her being unwell, if recorded."""
+        unwell = (
+            add_unwell(db, conversation, her_day.first_day, her_day.day - 1, said_at)
+            if isinstance(her_day, Period) else None
+        )
         change = None
         if judged is not None and self._affinities is not None:
             change, affinity = self._affinities.change(
@@ -1060,7 +1114,7 @@ class ConversationEngine:
             db, conversation.user_id, conversation.character_id, affinity and affinity.tier,
             happenings_open,
         )
-        return message, affinity, rewarded
+        return message, affinity, rewarded, unwell
 
     async def _call_tool(self, character: Character, call: ToolCall) -> str:
         """The tool's result, or what went wrong, for the model to read."""
@@ -1081,15 +1135,24 @@ class ConversationEngine:
         affinity_lines: Sequence[str],
         last_contact: datetime | None,
         her_jobs: HerSchedule | None,
+        her_day: HerDay,
     ) -> str:
         """The prompt section about now (`now_prompt`), what she is told of the day it is in
         Tokyo (`today_lines`) right after it, then of `her_jobs` the user saved, if any
-        (`schedule_lines`)."""
+        (`schedule_lines`), then of where her cycle has her (`cycle_lines`)."""
         return "\n".join([
             now_prompt(profile, now, timezone, talking, affinity_lines, last_contact),
             *today_lines(now, character, self._characters.values(), talking),
             *(schedule_lines(her_jobs) if her_jobs is not None else []),
+            *cycle_lines(her_day),
         ])
+
+    async def _her_days(self, conversation: Conversation) -> HerDays:
+        """Where her cycle has her at any time, the switches read now; neither without
+        cycles."""
+        if self._cycles is None:
+            return always_neither
+        return await self._cycles.her_days(conversation.user_id, conversation.character_id)
 
     async def _her_jobs(
         self, conversation: Conversation, device_timezone: str | None

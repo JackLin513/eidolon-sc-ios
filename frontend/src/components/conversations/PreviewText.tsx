@@ -1,8 +1,9 @@
 import { copy } from "@/i18n";
+import { eventText } from "@/lib/conversationEvents";
 import type { Preview } from "@/lib/conversationList";
 import { PhotoIcon } from "@/theme/icons";
 
-import { EVENT_ICONS, eventText } from "./EventIcon";
+import { EVENT_ICONS } from "./EventIcon";
 
 const t = copy.conversationList;
 
@@ -17,7 +18,7 @@ export function PreviewText({ preview, name }: { preview: Preview; name: string 
     return (
       <>
         <Icon aria-hidden className="mr-1 inline size-3.5 align-middle" />
-        {eventText(preview.event, name, preview.gift)}
+        {eventText(preview, name)}
       </>
     );
   }

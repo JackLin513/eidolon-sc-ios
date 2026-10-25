@@ -8,6 +8,8 @@
 #   category  类别：food（吃的）、drink（饮品）、flower（花草）、trinket（小物件）
 #   rarity    稀有度：common（普通）、uncommon（少见）、rare（稀有）；加多少分、多难抽到见后端 affinity.py
 #   retired   下架（可选，默认 false）：不再从抽奖里出，已经持有的照样显示、照样能送
+#   warm      暖的（可选，默认 false）：她经前、经期时送出额外加好感度，哪里都不提示；
+#             含咖啡因的（红茶、奶茶、咖啡）不标
 #
 # 礼物上线后不删，只能下架；每一档稀有度至少要有一件没下架的，否则那一档抽不出东西。
 # 新加一件时照 frontend/public/gifts/CREDITS.md 的提示词骨架生成插画。
@@ -79,12 +81,14 @@ id = "cocoa"
 name = "热可可"
 category = "drink"
 rarity = "uncommon"
+warm = true
 
 [[gifts]]
 id = "honey-drink"
 name = "蜂蜜热饮"
 category = "drink"
 rarity = "uncommon"
+warm = true
 
 # 花草
 [[gifts]]
@@ -117,6 +121,13 @@ id = "music-cd"
 name = "音乐 CD"
 category = "trinket"
 rarity = "uncommon"
+
+[[gifts]]
+id = "hot-water-bag"
+name = "热水袋"
+category = "trinket"
+rarity = "uncommon"
+warm = true
 
 [[gifts]]
 id = "plush"

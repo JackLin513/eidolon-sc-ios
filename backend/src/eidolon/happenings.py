@@ -138,15 +138,19 @@ class Happenings:
         return self._happened(db, user_id, character_id, turns=1, tier=tier)
 
     async def give(
-        self, user_id: str, gift_id: str, character_id: str
+        self, user_id: str, gift_id: str, character_id: str, device_timezone: str | None
     ) -> tuple[Given, Rewarded | None]:
-        """Give the character one of the gift (`Gifts.give`), and keep it towards the
-        achievements, in one transaction: what giving it did, and what it was
-        rewarded with (None if nothing). Raises GiftsClosed if gifts are not open,
-        NoSuchCharacter for no such character, NoneLeft if the user has none of it."""
+        """Give the character one of the gift (`Gifts.give`), the user's device in
+        `device_timezone`, and keep it towards the achievements, in one transaction: what
+        giving it did, and what it was rewarded with (None if nothing). Raises GiftsClosed
+        if gifts are not open, NoSuchCharacter for no such character, NoneLeft if the user
+        has none of it."""
         await self._gifts.refuse_unless_open()
         self._gifts.refuse_unknown(gift_id, character_id)
-        given, rewarded = await self._db.write(self._give, user_id, gift_id, character_id)
+        warmed = await self._gifts.warms(user_id, gift_id, character_id, device_timezone)
+        given, rewarded = await self._db.write(
+            self._give, user_id, gift_id, character_id, warmed
+        )
         await self.write_records(user_id, rewarded)
         return given, rewarded
 
@@ -216,9 +220,10 @@ class Happenings:
         return await self._db.read(achievements.tally, user_id)
 
     def _give(
-        self, db: sqlite3.Connection, user_id: str, gift_id: str, character_id: str
+        self, db: sqlite3.Connection, user_id: str, gift_id: str, character_id: str,
+        warmed: bool,
     ) -> tuple[Given, Rewarded | None]:
-        given = self._gifts.give(db, user_id, gift_id, character_id)
+        given = self._gifts.give(db, user_id, gift_id, character_id, warmed)
         return given, self._happened(
             db, user_id, character_id, gifts=1, tier=given.affinity.tier
         )

@@ -28,17 +28,27 @@ describe("路径和类别互转", () => {
 });
 
 describe("一级列表有哪几类", () => {
-  it("搭话放在通话和外观之间", () => {
-    expect(settingsGroups(false)[1]).toEqual(["call", "reach-outs", "appearance", "own-keys"]);
+  it("搭话放在通话和外观之间，周期紧跟在搭话后面", () => {
+    expect(settingsGroups({ reachOuts: false, cycles: false })[1]).toEqual([
+      "call",
+      "reach-outs",
+      "cycles",
+      "appearance",
+      "own-keys",
+    ]);
   });
 
-  it("账号里没有搭话（部署者没开）时没有这一类，别的照旧", () => {
-    expect(settingsGroups(null)).toEqual([
+  it("账号里没有搭话、周期（部署者没开）时没有这两类，别的照旧", () => {
+    expect(settingsGroups({ reachOuts: null, cycles: null })).toEqual([
       ["profile", "memories", "stats"],
       ["call", "appearance", "own-keys"],
       ["sign-in", "data-package"],
       ["about"],
     ]);
+  });
+
+  it("两个各看各的：只开周期时有周期、没有搭话", () => {
+    expect(settingsGroups({ reachOuts: null, cycles: true })[1]).toEqual(["call", "cycles", "appearance", "own-keys"]);
   });
 });
 
@@ -73,6 +83,7 @@ describe("一级列表上的摘要", () => {
     call: null,
     appearance: null,
     reachOuts: null,
+    cycles: null,
     ownServices: null,
     signInMethods: null,
   };
@@ -119,6 +130,11 @@ describe("一级列表上的摘要", () => {
   it("搭话是开／关", () => {
     expect(settingsSummaries({ ...loading, reachOuts: true })["reach-outs"]).toBe("开");
     expect(settingsSummaries({ ...loading, reachOuts: false })["reach-outs"]).toBe("关");
+  });
+
+  it("周期是开／关", () => {
+    expect(settingsSummaries({ ...loading, cycles: true }).cycles).toBe("开");
+    expect(settingsSummaries({ ...loading, cycles: false }).cycles).toBe("关");
   });
 
   it("自带密钥按 LLM、语音合成、语音识别的顺序列出填了的，一项都没填时「全部用部署者的服务」", () => {

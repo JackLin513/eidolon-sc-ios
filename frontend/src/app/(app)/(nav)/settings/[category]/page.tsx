@@ -1,7 +1,7 @@
 import { SettingsCategoryPage } from "@/components/settings/SettingsCategoryPage";
 import { SETTINGS_CATEGORIES, type SettingsCategory } from "@/lib/settingsCategory";
 
-// 只有这十类；不认识的 `/settings/<xxx>` 在 proxy 里就换成了 `/settings`，到不了这里。
+// 只有这几类；不认识的 `/settings/<xxx>` 在 proxy 里就换成了 `/settings`，到不了这里。
 export const dynamicParams = false;
 
 export function generateStaticParams() {

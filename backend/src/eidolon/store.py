@@ -12,7 +12,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
 from eidolon.affinity import Change
@@ -28,7 +28,7 @@ from eidolon.producer import Birthday, ProducerProfile
 from eidolon.reply_format import Segment
 
 Role = Literal["user", "character"]
-EventKind = Literal["hung_up", "gift", "ended"]
+EventKind = Literal["hung_up", "gift", "ended", "unwell"]
 PhotoStatus = Literal["pending", "ready", "failed"]
 """A photo being generated, sent, or not sent after all."""
 PhotoFailure = Literal["timeout", "service_error", "bad_image", "own_key_failed", "used_up"]
@@ -112,7 +112,9 @@ CREATE TABLE IF NOT EXISTS conversation_events (
     created_at TEXT NOT NULL,
     affinity TEXT,
     gift_id TEXT,
-    liked INTEGER NOT NULL DEFAULT 0
+    liked INTEGER NOT NULL DEFAULT 0,
+    first_day TEXT,
+    days_ago INTEGER
 );
 CREATE INDEX IF NOT EXISTS conversation_events_by_conversation
     ON conversation_events(conversation_id, created_at);
@@ -339,9 +341,11 @@ class Typed:
 class ConversationEvent:
     """Something that happened in a conversation that is not a turn (GLOSSARY.md「对话事件」):
     her hanging up on the user (`hung_up`), her ending the conversation (`ended`), after which
-    it can only be read, or the user giving her a gift (`gift`), which
+    it can only be read, the user giving her a gift (`gift`), which
     one (`gift_id`) and whether she liked it as it was given (`liked`), kept as it was
-    should what she likes change. It can carry how it changed her affinity (`affinity`)."""
+    should what she likes change, or her being unwell (`unwell`), for the user alone: from
+    the first day of her period (`first_day`, ISO), `days_ago` days before the day it was
+    recorded on. It can carry how it changed her affinity (`affinity`)."""
 
     id: int
     kind: EventKind
@@ -349,12 +353,16 @@ class ConversationEvent:
     affinity: Change | None = None
     gift_id: str | None = None
     liked: bool = False
+    first_day: str | None = None
+    days_ago: int | None = None
     type: Literal["event"] = field(default="event", init=False)
 
     def shown(self) -> dict:
         """As the browser is told it: whether she liked the gift is for her prompt alone;
-        which gift, for a gift's only."""
-        hidden = {"liked"} | ({"gift_id"} if self.gift_id is None else set())
+        which gift, for a gift's only; since when she is unwell, for her being unwell's."""
+        hidden = {"liked"} | ({"gift_id"} if self.gift_id is None else set()) | (
+            {"first_day", "days_ago"} if self.kind != "unwell" else set()
+        )
         return {k: v for k, v in asdict(self).items() if k not in hidden}
 
 
@@ -393,6 +401,12 @@ class ReachOut:
 
 Recorded = Message | ConversationEvent | ReachOut
 """What a conversation's record holds."""
+
+
+def told_her(entry: Recorded) -> bool:
+    """Whether she is told of the entry in her prompts: of all but her being unwell, which
+    she knows herself, and which is for the user alone."""
+    return not (isinstance(entry, ConversationEvent) and entry.kind == "unwell")
 
 
 @dataclass(frozen=True)
@@ -471,6 +485,8 @@ class KeptEvent:
     affinity: Change | None
     gift_id: str | None
     liked: bool
+    first_day: str | None = None
+    days_ago: int | None = None
 
 
 @dataclass(frozen=True)
@@ -823,7 +839,7 @@ _MESSAGE_WITH_PHOTO = (
     " FROM messages m LEFT JOIN photos p ON p.message_id = m.id"
 )
 """A message with its photo, if any, but not its picture (`_message_with_photo`)."""
-_EVENT_COLUMNS = "id, kind, created_at, affinity, gift_id, liked"
+_EVENT_COLUMNS = "id, kind, created_at, affinity, gift_id, liked, first_day, days_ago"
 _REACH_OUT_COLUMNS = "id, ja, zh, segments, created_at"
 
 def _open(db: sqlite3.Connection) -> None:
@@ -842,6 +858,8 @@ def _open(db: sqlite3.Connection) -> None:
     _add_missing_columns(db, "conversations", ("title",), "TEXT")
     _add_missing_columns(db, "conversation_events", ("gift_id",), "TEXT")
     _add_missing_columns(db, "conversation_events", ("liked",), "INTEGER NOT NULL DEFAULT 0")
+    _add_missing_columns(db, "conversation_events", ("first_day",), "TEXT")
+    _add_missing_columns(db, "conversation_events", ("days_ago",), "INTEGER")
     # Whether she has responded to an event is whether she has replied since; never kept.
     if "responded" in _columns(db, "conversation_events"):
         db.execute("ALTER TABLE conversation_events DROP COLUMN responded")
@@ -1228,7 +1246,7 @@ def read_whole_conversations(db: sqlite3.Connection, user_id: str) -> list[Whole
             [
                 KeptEvent(
                     e["kind"], e["created_at"], _change(e["affinity"]), e["gift_id"],
-                    bool(e["liked"]),
+                    bool(e["liked"]), e["first_day"], e["days_ago"],
                 )
                 for e in named.execute(
                     f"SELECT {_EVENT_COLUMNS} FROM conversation_events"
@@ -1476,6 +1494,31 @@ def add_gift(
         _insert_conversation(db, conversation)
     _insert_event(db, conversation.id, "gift", _now(), affinity, gift_id, liked)
     return conversation
+
+
+def add_unwell(
+    db: sqlite3.Connection, conversation: Conversation, first_day: date, days_ago: int,
+    said_at: str,
+) -> ConversationEvent | None:
+    """Record her being unwell in the conversation, from `first_day`, `days_ago` days before
+    today, just before the user's words said at `said_at`, so that it comes before their
+    turn; through `db`, in the transaction the turn is recorded in, before it. Once a period:
+    nothing if one from `first_day` is in any of the user's conversations with her already,
+    which is None."""
+    recorded = db.execute(
+        "SELECT EXISTS (SELECT 1 FROM conversation_events e"
+        " JOIN conversations c ON c.id = e.conversation_id"
+        " WHERE c.user_id = ? AND c.character_id = ? AND e.kind = 'unwell'"
+        " AND e.first_day = ?)",
+        (conversation.user_id, conversation.character_id, first_day.isoformat()),
+    ).fetchone()[0]
+    if recorded:
+        return None
+    before = (_at(said_at) - timedelta(microseconds=1)).isoformat()
+    return _insert_event(
+        db, conversation.id, "unwell", before, first_day=first_day.isoformat(),
+        days_ago=days_ago,
+    )
 
 
 def _hang_up(db: sqlite3.Connection, conversation_id: str) -> ConversationEvent:
@@ -1737,16 +1780,19 @@ def _insert_event(
     affinity: Change | None = None,
     gift_id: str | None = None,
     liked: bool = False,
+    first_day: str | None = None,
+    days_ago: int | None = None,
 ) -> ConversationEvent:
     cursor = db.execute(
         "INSERT INTO conversation_events"
-        " (conversation_id, kind, created_at, affinity, gift_id, liked)"
-        " VALUES (?, ?, ?, ?, ?, ?)",
-        (conversation_id, kind, created_at, _stored_change(affinity), gift_id, int(liked)),
+        " (conversation_id, kind, created_at, affinity, gift_id, liked, first_day, days_ago)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (conversation_id, kind, created_at, _stored_change(affinity), gift_id, int(liked),
+         first_day, days_ago),
     )
     assert cursor.lastrowid is not None
     return ConversationEvent(
-        cursor.lastrowid, kind, created_at, affinity, gift_id=gift_id, liked=liked
+        cursor.lastrowid, kind, created_at, affinity, gift_id, liked, first_day, days_ago
     )
 
 
@@ -1801,11 +1847,11 @@ def add_carried_conversation(
             )
     db.executemany(
         "INSERT INTO conversation_events"
-        " (conversation_id, kind, created_at, affinity, gift_id, liked)"
-        " VALUES (?, ?, ?, ?, ?, ?)",
+        " (conversation_id, kind, created_at, affinity, gift_id, liked, first_day, days_ago)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         [
             (conversation_id, e.kind, e.created_at, _stored_change(e.affinity), e.gift_id,
-             int(e.liked))
+             int(e.liked), e.first_day, e.days_ago)
             for e in conversation.events
         ],
     )
@@ -1858,7 +1904,7 @@ def _message_with_photo(row: sqlite3.Row) -> Message:
 def _event(row: sqlite3.Row) -> ConversationEvent:
     return ConversationEvent(
         row["id"], row["kind"], row["created_at"], _change(row["affinity"]),
-        row["gift_id"], bool(row["liked"]),
+        row["gift_id"], bool(row["liked"]), row["first_day"], row["days_ago"],
     )
 
 

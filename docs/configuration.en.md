@@ -16,6 +16,7 @@ This guide explains how to turn on and tune each feature, and how the characters
 > | Affinity and gifts | A judge (the switch is on by default) |
 > | Photos | A judge, plus an image generation key: `NOVELAI_API_KEY` |
 > | Schedules | Nothing (the switch is on by default) |
+> | Cycles | Nothing (the switch is on by default) |
 > | Reach-outs | `EIDOLON_REACH_OUTS=1` (off by default) |
 > | Stands and the landing page's greetings | `EIDOLON_STAND_ASSETS_URL`, and a bucket holding the assets |
 > | Google / GitHub sign-in | `GOOGLE_CLIENT_*`, `GITHUB_CLIENT_*` |
@@ -35,6 +36,7 @@ This guide explains how to turn on and tune each feature, and how the characters
 - [Affinity and gifts](#affinity-and-gifts)
 - [Calendar](#calendar)
 - [Schedules](#schedules)
+- [Cycles](#cycles)
 - [Photos](#photos)
 - [Reach-outs](#reach-outs)
 - [Sign-in, users and usage limits](#sign-in-users-and-usage-limits)
@@ -80,6 +82,7 @@ sheet = "sheets/mano.md"
 avatar = "avatars/mano.jpg"
 color = "#ffbad6"                    # official image color, required
 birthday = "04-25"                   # birthday, required
+age = 16                             # age, required
 facts = "facts/mano.md"
 liked_gifts = ["potted-plant", "black-tea"]   # gifts she likes
 speakers = ["真乃"]                  # her speaker names in the scripts
@@ -93,6 +96,7 @@ How to write each field is in the comments at the top of the file. A few need ex
 
 - **`color`**: Everything in the interface that belongs to her (the conversation wallpaper, the call button, the send button, the unread count, the call screen and the call bar) is based on it. The frontend derives a light and a dark set of colors from it, keeping text readable. If it is missing or malformed, the backend refuses to start.
 - **`birthday`**: Her birthday, written `"MM-DD"` (two-digit month, two-digit day), as in the game. The calendar shows it, and she knows her own birthday and the others' (see [Calendar](#calendar)). If it is missing, malformed, or not a day of the year (February 29 is fine), the backend refuses to start.
+- **`age`**: Her age in the game, a whole number, as the third line of her character facts has it. It only decides whether her cycle goes as an under-18's or an adult's. If it is missing or not a positive whole number, the backend refuses to start.
 - **`short_name`** (optional): Her short name, the end of `name` (such as 「真乃」), shown where jobs are placed in the calendar; without one, the full name is used. If it isn't the end of `name`, the backend refuses to start.
 - **`background`** (optional): The call screen's background image, kept in `characters/backgrounds/`. Without one, a gradient of her image color is used instead.
 - **Character sheet**: If a character sheet file is missing, the backend refuses to start and names the missing one. docker compose mounts `characters/` read-only into the backend container.
@@ -376,6 +380,20 @@ Each week a batch of jobs is published, and the producer places them into the id
 - **Job list**: In [`characters/jobs.toml`](../characters/jobs.toml). Each job has a name, a one-line note, a category (practice, appearance, business, private) and how many slots it takes, and can be limited to certain slots; see the comments at the top of the file. Restart the backend after editing; if something is wrong, the backend refuses to start. Weeks already published are stored in the database and unaffected; changes apply from the next publishing.
 - **When off**: The calendar has only the month view, the filter has no 「日程」 (Schedules), and the conversation page's more menu has no 「她的日程」 (Her schedule); she doesn't know her schedule, and finished jobs raise no affinity. Saved schedules are kept as they are and carry on when it's back on; jobs finished while it was off raise her affinity then, all at once.
 - **Cost**: It calls no model and costs nothing.
+
+## Cycles
+
+Each of a user's characters has a menstrual cycle of her own, and her premenstrual days and her period change how she talks, her affinity, her hanging up and warm gifts; on all her other days she is as usual. Her true cycle is shown nowhere: not in any API, the admin console, the dashboard nor the activity records, and it isn't exported with the data package, so users can only tell from how she is.
+
+- **How she talks**: During her period she tires easily, says less and doesn't feel like moving, worst on the first two days; before it she is more sensitive than usual, and easily irritable and hurt on the last day or two. Each plays it in her own character, alike when texting, on calls and when reaching out; she never says words like period or menstruation, and when asked outright she sidesteps it as her character would. Her photos are unaffected.
+- **Conversation event**: When the user first comes in her period, before their first words, the conversation gets a line such as 「她好像从前天起就不太舒服」 (She seems to have been unwell since the day before yesterday), for the user alone; she doesn't know of it. A period the user doesn't come in gets none, and none is added later.
+- **Affinity and hanging up**: During these days, what makes her uncomfortable or hurts her costs twice as much, ignoring how she is costs more on top, and being considerate earns more (with a daily cap of its own); she warns sooner and hangs up or ends the conversation sooner. For this, only in these days, one more question, whether the user was considerate, is asked in the same judgement: each judgement's input grows by about 400 characters, with no extra request.
+- **Warm gifts**: During these days, cocoa, a honey drink or a hot-water bag (the gifts marked `warm = true` in `gifts.toml`) raise her affinity a little more; other gifts are as usual. Nothing hints at it anywhere.
+- **Switch**: On by default. Set `EIDOLON_CYCLES=0` in `.env` to turn it off (unset or `1` is on; any other value stops startup with an error), or switch it in the 「周期」 (Cycles) card under 「限额与玩法」 (Limits and play) on the admin console's config page, which takes precedence over `.env`. It needs no judge, and is switched separately from affinity and gifts; with affinity and gifts off, only how she talks and the conversation event follow her cycle. While the deployer has it on, users can also turn it off themselves on the settings page's 「周期」 (Cycles) tab, for all characters at once; the switch goes with the account.
+- **When off**: How she talks, the judgement, hanging up, gifts and the conversation event are all unaffected by her cycle; the cycle itself goes on, and once it's back on she is where she would have been.
+- **Not stored, derived from the key**: Her cycle is worked out from the user, the character and `EIDOLON_SECRET_KEY`, the same for a day whenever it's worked out; her cycle itself isn't stored in the database. With the key set, no one can work out from the public code where anyone's character is on a given day. Changing the key, deleting the account and signing up again, or importing the data package into another account or deployment all draw her cycle anew, with no migration. Days go by the producer's time zone.
+- **Development route**: With development sign-in on (`EIDOLON_DEV_LOGIN=1`), a route can force a character onto a given day of her period or before it, kept in memory and gone on restart; there is no such route in production. See [`local-acceptance.md`](agents/local-acceptance.md#周期) (Chinese) for how to use it.
+- **Cost**: Apart from the considerate question above, it calls no model.
 
 ## Photos
 

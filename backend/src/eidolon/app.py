@@ -60,6 +60,7 @@ from eidolon.admin_config_api import add_admin_config_routes
 from eidolon.admin_prices_api import add_admin_price_routes
 from eidolon.announcements_api import add_announcement_routes
 from eidolon.calendar_api import add_calendar_routes
+from eidolon.cycles_api import add_cycle_routes
 from eidolon.gifts_api import add_gift_routes
 from eidolon.photos_api import add_photo_routes
 from eidolon.schedule_api import add_schedule_routes
@@ -253,14 +254,19 @@ def create_app(backend: Backend) -> FastAPI:
     def last_shown(last: Recorded | None) -> dict | None:
         """The last thing in a conversation as a list shows it: a message without its
         delivery cues, marked `photo` if it is her reply with a photo she sent (not one being
-        generated or not sent after all), or a conversation event, or her reach-out, shown as
-        her message is, marked `reach_out`; None while it has none."""
+        generated or not sent after all), or a conversation event, with which gift for a gift
+        and since when for her being unwell, or her reach-out, shown as her message is, marked
+        `reach_out`; None while it has none."""
         if last is None:
             return None
         if isinstance(last, ConversationEvent):
+            since = (
+                {"first_day": last.first_day, "days_ago": last.days_ago}
+                if last.kind == "unwell" else {}
+            )
             return {"type": "event", "kind": last.kind, "created_at": last.created_at} | gift_of(
                 last
-            )
+            ) | since
         if isinstance(last, ReachOut):
             said = last.without_cues()
             return {
@@ -399,6 +405,7 @@ def create_app(backend: Backend) -> FastAPI:
     add_gift_routes(app, backend)
     add_calendar_routes(app)
     add_schedule_routes(app, backend)
+    add_cycle_routes(app, backend)
     add_photo_routes(app, backend)
     add_sponsor_routes(app, backend)
     add_data_package_routes(app, backend)
