@@ -369,16 +369,16 @@ def build(
     closers.append(own_images.aclose)
     photos = Photos(store, config.image_generator, activity, usage, own_images.generator)
     closers.append(photos.aclose)  # closed before the database, so no photo is still kept
+    cycles = Cycles(database, characters, settings.secret_key, lambda: config.cycles_on)
     gifts = Gifts(
         database, clock, lambda: config.affinity_on, affinities, characters, gift_catalog,
-        random or secure_random,
+        random or secure_random, cycles,
     )
     happenings = Happenings(database, lambda: config.affinity_on, gifts, activity)
     schedules = Schedules(
         database, clock, lambda: config.schedule_on, idols_of(characters, world), job_list,
         affinities,
     )
-    cycles = Cycles(database, characters, settings.secret_key, lambda: config.cycles_on)
     engine = ConversationEngine(
         database, store, characters, gift_catalog, memories, titles, clock, retrieval,
         lambda: config.history_turns, world, affinities, config.affinity_judge(), photos,

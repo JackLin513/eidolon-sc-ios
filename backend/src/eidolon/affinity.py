@@ -40,8 +40,8 @@ up. Outside calls the same has her end the conversation (GLOSSARY.md「已结束
 numbers, counted over the conversation's latest typed turns rather than the call's.
 
 Gifts (GLOSSARY.md「礼物」) raise it by their rarity and by more if she likes the one given, the
-rarest she likes by more than a day's turns can; in a cooldown each by the same, enough that
-four end it; draws give them, a chance a day, and now and then a reset card instead
+rarest she likes by more than a day's turns can, a warm one by more again in her days; in
+a cooldown each by the same, enough that four end it; draws give them, a chance a day, and now and then a reset card instead
 (GLOSSARY.md「抽奖」「重置卡」), which brings every character below trust back to the normal value,
 out of any cooldown, none of them the wiser. How much and how likely are here with the rest.
 A job of hers the producer scheduled (GLOSSARY.md「日程」) raises it once done, as a gift does
@@ -175,6 +175,10 @@ and the rarest she likes raises it more than a day's turns can."""
 
 LIKED_GIFT_STEP = 0.3
 """How much more a gift she likes raises it, whatever its rarity."""
+
+WARM_GIFT_STEP = 0.3
+"""How much more a warm gift raises it in her period and the days before it (GLOSSARY.md「周期」),
+on top of her liking it."""
 
 COOLDOWN_GIFT_STEP = 3.0
 """How much a gift raises it while she is in a cooldown, whatever its rarity and whether she
@@ -524,12 +528,15 @@ class Change:
     thawed: bool = False
 
 
-def _gift_step(rarity: Rarity, liked: bool, cooling: bool) -> float:
-    """How much a gift of `rarity` raises affinity: more if she `liked` it, and
-    `COOLDOWN_GIFT_STEP` whatever it is while `cooling`."""
+def _gift_step(rarity: Rarity, liked: bool, warmed: bool, cooling: bool) -> float:
+    """How much a gift of `rarity` raises affinity: more if she `liked` it, more again if it
+    `warmed` her, and `COOLDOWN_GIFT_STEP` whatever it is while `cooling`."""
     if cooling:
         return COOLDOWN_GIFT_STEP
-    return GIFT_STEPS[rarity] + (LIKED_GIFT_STEP if liked else 0.0)
+    return (
+        GIFT_STEPS[rarity] + (LIKED_GIFT_STEP if liked else 0.0)
+        + (WARM_GIFT_STEP if warmed else 0.0)
+    )
 
 
 class Affinities:
@@ -629,14 +636,16 @@ class Affinities:
         character_id: str,
         rarity: Rarity,
         liked: bool,
+        warmed: bool,
     ) -> tuple[Change | None, Status]:
         """Raise the user's affinity with the character for a gift of `rarity` she `liked`
-        or not, through `db`, in the transaction the gift is recorded in: how it changed
-        (None for no change to show), and the affinity left. No day's limit holds gifts, nor
-        do they count towards it. In a cooldown, what it is raised to is when it ends,
-        sooner; there is a change to show only once it ends."""
+        or not, warm and given in her days (`warmed`) or not, through `db`, in the
+        transaction the gift is recorded in: how it changed (None for no change to show), and
+        the affinity left. No day's limit holds gifts, nor do they count towards it. In a
+        cooldown, what it is raised to is when it ends, sooner; there is a change to show
+        only once it ends."""
         return self._raise(
-            db, user_id, character_id, lambda cooling: _gift_step(rarity, liked, cooling)
+            db, user_id, character_id, lambda cooling: _gift_step(rarity, liked, warmed, cooling)
         )
 
     def job_done(self, db: sqlite3.Connection, user_id: str, character_id: str) -> None:

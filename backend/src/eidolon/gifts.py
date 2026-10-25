@@ -51,10 +51,12 @@ from eidolon.affinity import (
 )
 from eidolon.characters import Character
 from eidolon.clock import Clock
+from eidolon.cycles import Cycles
 from eidolon.data_access import Database
 from eidolon.gift_catalog import Gift
+from eidolon.producer import effective_timezone
 from eidolon.randomness import Random
-from eidolon.store import add_gift
+from eidolon.store import add_gift, read_profile
 
 _SCHEMA = """
 -- One row per user given any draw chances: how many they have, the day they were last given
@@ -270,10 +272,11 @@ class Gifts:
         characters: dict[str, Character],
         catalog: dict[str, Gift],
         random: Random,
+        cycles: Cycles,
     ) -> None:
         """`is_open` tells whether gifts are open now (the live configuration's affinity
-        switch); draws take their numbers from `random`. Notices whether they have opened
-        since last noticed."""
+        switch); draws take their numbers from `random`; `cycles` tells whether she is in her
+        days, for a warm gift. Notices whether they have opened since last noticed."""
         self._db = db
         self._clock = clock
         self._is_open = is_open
@@ -281,6 +284,7 @@ class Gifts:
         self._characters = characters
         self._catalog = catalog
         self._random = random
+        self._cycles = cycles
         db.prepare(_open)
         db.prepare(self._notice, is_open())
 
@@ -349,13 +353,29 @@ class Gifts:
         if gift_id not in self._catalog:
             raise NoneLeft()
 
+    async def warms(
+        self, user_id: str, gift_id: str, character_id: str, device_timezone: str | None
+    ) -> bool:
+        """Whether the gift, given the character now, is warm and she in her period or the
+        days before it (GLOSSARY.md「周期」), on the producer's day, the user's device in
+        `device_timezone`: before it is given (`give`), as where she is is read apart. The
+        gift and the character are to be there (`refuse_unknown`)."""
+        if not self._catalog[gift_id].warm:
+            return False
+        timezone = effective_timezone(await self._db.read(read_profile, user_id), device_timezone)
+        return await self._cycles.her_day(
+            user_id, character_id, self._clock(), timezone
+        ) is not None
+
     def give(
-        self, db: sqlite3.Connection, user_id: str, gift_id: str, character_id: str
+        self, db: sqlite3.Connection, user_id: str, gift_id: str, character_id: str,
+        warmed: bool,
     ) -> Given:
         """Give the character one of the gift, through `db`, in the transaction what giving
         it counts towards is kept in (`Happenings.give`): taken from the backpack, raising
-        her affinity, and recorded where `store.add_gift` places it, all or none of it, so
-        two giving the last one at once give it once. Gifts are to be open
+        her affinity, by more if it `warmed` her (`warms`), and recorded where
+        `store.add_gift` places it, all or none of it, so two giving the last one at once
+        give it once; whether it warmed her is kept nowhere. Gifts are to be open
         (`refuse_unless_open`), and the gift and the character to be there
         (`refuse_unknown`). Raises NoneLeft if the user has none of it."""
         taken = db.execute(
@@ -367,7 +387,7 @@ class Gifts:
             raise NoneLeft()
         liked = gift_id in self._characters[character_id].liked_gifts
         change, affinity = self._affinities.receive_gift(
-            db, user_id, character_id, self._catalog[gift_id].rarity, liked
+            db, user_id, character_id, self._catalog[gift_id].rarity, liked, warmed
         )
         conversation = add_gift(db, user_id, character_id, gift_id, liked, change)
         return Given(conversation.id, change, affinity, taken[0])

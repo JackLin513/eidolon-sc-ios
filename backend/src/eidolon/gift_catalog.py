@@ -6,7 +6,8 @@ characters, and neither `.env` nor the admin console changes it. Each gift has i
 identifier (also its illustration's file name in the frontend's static files, and what
 backpacks and gift records keep), its name, its category and its rarity. A gift is never
 deleted once out, only retired: no draw gives it any more, but whoever has one still sees
-it and can give it. Every rarity needs a gift not retired, or draws of it would come up
+it and can give it. A gift may be warm, more welcome in her period and the days before it
+(GLOSSARY.md「周期」), which no one is told of. Every rarity needs a gift not retired, or draws of it would come up
 empty. What each rarity raises affinity by and how likely a draw is to give it are with
 affinity's other numbers (`affinity`).
 
@@ -52,6 +53,8 @@ class Gift:
     rarity: Rarity
     retired: bool = False
     """No draw gives it any more."""
+    warm: bool = False
+    """More welcome in her days (`affinity.WARM_GIFT_STEP`); never shown."""
 
     def described(self) -> dict:
         """As the gifts page reads it."""
@@ -132,7 +135,10 @@ def _parse_gift(entry: object) -> Gift:
     retired = entry.get("retired", False)
     if not isinstance(retired, bool):
         raise GiftCatalogError(f"礼物 {id} 的 retired 应当是 true 或 false")
-    return Gift(id, name, category, rarity, retired)
+    warm = entry.get("warm", False)
+    if not isinstance(warm, bool):
+        raise GiftCatalogError(f"礼物 {id} 的 warm 应当是 true 或 false")
+    return Gift(id, name, category, rarity, retired, warm)
 
 
 def _one_of(value: object, choices: object, label: str) -> None:

@@ -99,6 +99,14 @@ class CyclesOff(Exception):
 
 Phase = Literal["period", "premenstrual", "neither"]
 
+HerDays = Callable[[datetime, str], HerDay]
+"""Where she is at a time, in a time zone (`Cycles.her_days`)."""
+
+
+def nowhere(at: datetime, timezone: str) -> HerDay:
+    """Her days without cycles: neither, whenever."""
+    return None
+
 
 @dataclass(frozen=True)
 class Forced:
@@ -133,22 +141,34 @@ class Cycles:
         effective one: in her period, premenstrual, or neither; neither too, whatever her
         cycle, while the deployment has cycles off, or the user, or for a character no
         longer configured."""
+        return (await self.her_days(user_id, character_id))(at, timezone)
+
+    async def her_days(self, user_id: str, character_id: str) -> HerDays:
+        """Where the user's character is at any time in any time zone, as `her_day` tells it,
+        the switches read once, now: for telling of many times at once, such as each gift
+        given in a conversation."""
         character = self._characters.get(character_id)
-        if not self._on() or character is None:
-            return None
-        if not await self._db.read(_switched_on, user_id):
-            return None
+        if (
+            not self._on() or character is None
+            or not await self._db.read(_switched_on, user_id)
+        ):
+            return nowhere
         seed = cycle_seed(self._secret_key, user_id, character_id)
-        day = local_date(at, timezone)
+        under_18 = character.age < ADULT_AGE
         forced = self._forced.get((user_id, character_id))
-        if forced is None:
-            return her_day(seed, character.age < ADULT_AGE, day)
-        if forced.phase == "period":
-            length = max(forced.day, rhythm(seed).base_period)
-            return Period(forced.day, length, day - timedelta(days=forced.day - 1))
-        if forced.phase == "premenstrual":
-            return Premenstrual(forced.day)
-        return None
+
+        def where(at: datetime, timezone: str) -> HerDay:
+            day = local_date(at, timezone)
+            if forced is None:
+                return her_day(seed, under_18, day)
+            if forced.phase == "period":
+                length = max(forced.day, rhythm(seed).base_period)
+                return Period(forced.day, length, day - timedelta(days=forced.day - 1))
+            if forced.phase == "premenstrual":
+                return Premenstrual(forced.day)
+            return None
+
+        return where
 
     async def switch_of(self, user_id: str) -> bool | None:
         """Whether the user has their own switch on, as it is by default; None where the

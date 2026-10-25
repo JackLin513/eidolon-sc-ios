@@ -26,7 +26,7 @@ from eidolon.gifts import (
     NoResetCards,
     NoSuchCharacter,
 )
-from eidolon.sessions import UserId
+from eidolon.sessions import DeviceTimezone, UserId
 
 
 class DrawInput(BaseModel):
@@ -80,13 +80,17 @@ def add_gift_routes(app: FastAPI, backend: Backend) -> None:
         return drawn.shown() | {"rewarded": rewarded and rewarded.shown()}
 
     @app.post("/api/characters/{character_id}/gifts")
-    async def give(character_id: str, body: GiftInput, user_id: UserId) -> dict:
+    async def give(
+        character_id: str, body: GiftInput, user_id: UserId, device_timezone: DeviceTimezone = None
+    ) -> dict:
         """Give her one of the gift: where its record went, how her affinity changed, where
         it is now, how many of the gift are left, and what giving it was rewarded with (None
         if nothing). Not a turn: no limit or cooldown holds
         it, and the user need not bring their own LLM."""
         try:
-            given, rewarded = await happenings.give(user_id, body.gift_id, character_id)
+            given, rewarded = await happenings.give(
+                user_id, body.gift_id, character_id, device_timezone
+            )
         except NoSuchCharacter as e:
             raise HTTPException(404, str(e)) from None
         return given.shown() | {"rewarded": rewarded and rewarded.shown()}

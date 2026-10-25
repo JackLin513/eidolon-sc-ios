@@ -124,7 +124,7 @@ from eidolon.affinity_judge import AffinityJudge
 from eidolon.characters import Character
 from eidolon.clock import Clock
 from eidolon.config import FishAudioModel, ImageSettings
-from eidolon.cycles import Cycles, cycle_lines
+from eidolon.cycles import Cycles, HerDays, cycle_lines, nowhere
 from eidolon.data_access import Database
 from eidolon.gift_catalog import Gift
 from eidolon.happenings import Happenings, Rewarded
@@ -449,16 +449,26 @@ RESPOND_TO_GIFTS = (
 )
 """Told her after the gifts she has not replied since, once however many there are."""
 
+WARMED = "这几天你不太舒服，收到暖的东西，你心里很暖。"
+"""Told her of a warm gift given in her period or the days before it (GLOSSARY.md「周期」)."""
 
-def _narration(event: ConversationEvent, gift_catalog: Mapping[str, Gift]) -> str:
-    """What she is told of `event`, as it was."""
+
+def _narration(
+    event: ConversationEvent, gift_catalog: Mapping[str, Gift], her_days: HerDays,
+    timezone: str,
+) -> str:
+    """What she is told of `event`, as it was: of a warm gift, whether `her_days` had her in
+    her days as it was given, the producer in `timezone`, as that is kept nowhere."""
     if event.kind == "hung_up":
         return "（你挂断了制作人的电话。）"
     if event.kind == "ended":  # only read by a turn it will reject
         return "（你结束了和制作人的对话。）"
     assert event.gift_id is not None
+    gift = gift_catalog[event.gift_id]
     liked = "这是你喜欢的东西。" if event.liked else ""
-    return f"（制作人送给你一份{gift_catalog[event.gift_id].name}。{liked}）"
+    given_at = datetime.fromisoformat(event.created_at)
+    warmed = WARMED if gift.warm and her_days(given_at, timezone) is not None else ""
+    return f"（制作人送给你一份{gift.name}。{liked}{warmed}）"
 
 
 def _reached_out(reach_out: ReachOut, timezone: str) -> str:
@@ -470,21 +480,25 @@ def _reached_out(reach_out: ReachOut, timezone: str) -> str:
 
 
 def _narration_line(
-    entry: ConversationEvent | ReachOut, gift_catalog: Mapping[str, Gift], timezone: str
+    entry: ConversationEvent | ReachOut, gift_catalog: Mapping[str, Gift], her_days: HerDays,
+    timezone: str,
 ) -> str:
-    """The line of narration telling her of `entry`, the producer in `timezone`."""
+    """The line of narration telling her of `entry`, the producer in `timezone`, `her_days`
+    telling where she was."""
     if isinstance(entry, ReachOut):
         return f"{_reached_out(entry, timezone)}\n"
-    return f"{_narration(entry, gift_catalog)}\n"
+    return f"{_narration(entry, gift_catalog, her_days, timezone)}\n"
 
 
 def narrations(
-    record: Sequence[Recorded], gift_catalog: Mapping[str, Gift], timezone: str
+    record: Sequence[Recorded], gift_catalog: Mapping[str, Gift], timezone: str,
+    her_days: HerDays = nowhere,
 ) -> dict[int | None, str]:
     """The narration of the events and reach-outs in `record`, by the id of the user message
     each comes before, None for those after them all: one line for each she is told of
     (`told_her`), then, if she has neither replied nor reached out since a
-    gift, `RESPOND_TO_GIFTS`. The producer is in `timezone`."""
+    gift, `RESPOND_TO_GIFTS`. The producer is in `timezone`; `her_days` tells where she was
+    as each gift was given."""
     lines: list[str] = []
     told: dict[int | None, str] = {}
     unanswered = False
@@ -492,7 +506,7 @@ def narrations(
         if not told_her(entry):
             continue
         if not isinstance(entry, Message):
-            lines.append(_narration_line(entry, gift_catalog, timezone))
+            lines.append(_narration_line(entry, gift_catalog, her_days, timezone))
             if isinstance(entry, ReachOut):
                 unanswered = False  # reaching out, she has responded to the gifts before
             else:
@@ -526,16 +540,17 @@ so every protocol takes the prompt, ending with the user, as narration does."""
 
 
 def _since_last_turn(
-    record: Sequence[Recorded], gift_catalog: Mapping[str, Gift], timezone: str
+    record: Sequence[Recorded], gift_catalog: Mapping[str, Gift], timezone: str,
+    her_days: HerDays,
 ) -> str:
     """The narration of the events and reach-outs after the last turn, one line for each she
-    is told of, the producer in `timezone`."""
+    is told of, the producer in `timezone`, `her_days` telling where she was."""
     lines: list[str] = []
     for entry in record:
         if isinstance(entry, Message):
             lines = []
         elif told_her(entry):
-            lines.append(_narration_line(entry, gift_catalog, timezone))
+            lines.append(_narration_line(entry, gift_catalog, her_days, timezone))
     return "".join(lines)
 
 
@@ -689,7 +704,8 @@ class ConversationEngine:
         timezone = effective_timezone(profile, device_timezone)
         # Before she is judged, as where she is has her judged by these days' numbers; the
         # same for what she is told and her being unwell.
-        her_day = await self._her_day(conversation, self._clock(), timezone)
+        her_days = await self._her_days(conversation)
+        her_day = her_days(self._clock(), timezone)
         days = _days(her_day)
         judging = affinity is not None and not affinity.cooling
         asking_photo = eligibility is not None
@@ -748,7 +764,8 @@ class ConversationEngine:
         about_photo = CANNOT_SEND if eligibility is None else photo_asked and photo_asked.prompt
         prompt = self._prompt(
             character, world_prompt, producer_prompt(profile),
-            chat_history(messages, turns), narrations(record, self._gift_catalog, timezone),
+            chat_history(messages, turns),
+            narrations(record, self._gift_catalog, timezone, her_days),
             [
                 self._now_prompt(
                     character, profile, now, timezone,
@@ -884,8 +901,9 @@ class ConversationEngine:
         world_prompt = (
             self._world.prompt(character.name, local_date(now, timezone)) if self._world else None
         )
-        told = narrations(record, self._gift_catalog, timezone)
-        told[None] = _since_last_turn(record, self._gift_catalog, timezone)
+        her_days = await self._her_days(conversation)
+        told = narrations(record, self._gift_catalog, timezone, her_days)
+        told[None] = _since_last_turn(record, self._gift_catalog, timezone, her_days)
         memories = await self._memory.for_reaching_out(
             conversation, timezone, last_turn_query(messages)
         )
@@ -896,7 +914,7 @@ class ConversationEngine:
                 self._now_prompt(
                     character, profile, now, timezone, "apart",
                     affinity_prompt(affinity.tier, None) if affinity is not None else [],
-                    last_contact, her_jobs, await self._her_day(conversation, now, timezone),
+                    last_contact, her_jobs, her_days(now, timezone),
                 ),
             ],
             [*([memories] if memories else []), REACH_OUT_RULES],
@@ -1129,16 +1147,12 @@ class ConversationEngine:
             *cycle_lines(her_day),
         ])
 
-    async def _her_day(
-        self, conversation: Conversation, now: datetime, timezone: str
-    ) -> HerDay:
-        """Where her cycle has her today in the producer's `timezone`; neither without
+    async def _her_days(self, conversation: Conversation) -> HerDays:
+        """Where her cycle has her at any time, the switches read now; neither without
         cycles."""
         if self._cycles is None:
-            return None
-        return await self._cycles.her_day(
-            conversation.user_id, conversation.character_id, now, timezone
-        )
+            return nowhere
+        return await self._cycles.her_days(conversation.user_id, conversation.character_id)
 
     async def _her_jobs(
         self, conversation: Conversation, device_timezone: str | None
