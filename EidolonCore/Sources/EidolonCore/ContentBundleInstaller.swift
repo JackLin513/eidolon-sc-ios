@@ -27,6 +27,7 @@ struct ContentBundleInstaller {
         let manifest = try readManifest(in: staging)
         try validateManifest(manifest)
         try validateFiles(manifest, in: staging)
+        try validateHolidays(in: staging)
         let characters = try readCharacters(in: staging)
         try validateCharacters(manifest, characters, in: staging)
 
@@ -83,9 +84,13 @@ struct ContentBundleInstaller {
     }
 
     private func validateManifest(_ manifest: ContentManifest) throws {
-        guard manifest.formatVersion == 1 else {
+        guard manifest.formatVersion == ContentManifest.supportedFormatVersion else {
+            let hint = manifest.formatVersion < ContentManifest.supportedFormatVersion
+                ? "，需要用新版 tools/export_content_bundle.py 重新导出"
+                : "，请更新 App"
             throw EidolonError.unsupportedVersion(
-                "内容包格式版本 \(manifest.formatVersion)，本 App 支持 1"
+                "内容包格式版本 \(manifest.formatVersion)，本 App 支持 "
+                    + "\(ContentManifest.supportedFormatVersion)\(hint)"
             )
         }
         guard manifest.contentSchemaVersion == ContentSchema.version else {
@@ -116,6 +121,24 @@ struct ContentBundleInstaller {
             if let expected = record.crc32, CRC32.hex(data) != expected {
                 throw EidolonError.invalidBundle("文件 \(path) 校验失败")
             }
+        }
+    }
+
+    private func validateHolidays(in directory: URL) throws {
+        let url = directory.appendingPathComponent("content/holidays.json")
+        guard let data = try? Data(contentsOf: url) else {
+            throw EidolonError.invalidBundle(
+                "缺少日本节假日表 content/holidays.json，需要用新版导出脚本重新导出"
+            )
+        }
+        let table: HolidayTable
+        do {
+            table = try HolidayTable(data: data)
+        } catch {
+            throw EidolonError.invalidBundle("日本节假日表无法解析：\(error.localizedDescription)")
+        }
+        guard !table.names.isEmpty else {
+            throw EidolonError.invalidBundle("日本节假日表是空的")
         }
     }
 

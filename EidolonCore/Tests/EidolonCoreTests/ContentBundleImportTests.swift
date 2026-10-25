@@ -30,7 +30,7 @@ final class ContentBundleImportTests: XCTestCase {
         let bundle = try Fixture.makeBundle(in: root)
         let info = try await eidolon.install(bundleAt: bundle)
 
-        XCTAssertEqual(info.formatVersion, 1)
+        XCTAssertEqual(info.formatVersion, ContentManifest.supportedFormatVersion)
         XCTAssertEqual(info.contentSchemaVersion, ContentSchema.version)
         XCTAssertEqual(info.embeddingModel, "test-embed")
         XCTAssertEqual(info.embeddingDimensions, 4)
@@ -47,9 +47,45 @@ final class ContentBundleImportTests: XCTestCase {
         XCTAssertEqual(characters.map(\.id), ["mano", "hiori"])
         XCTAssertEqual(characters.first?.sheet, "characters/sheets/mano.md")
         XCTAssertEqual(characters.first?.speakers, ["真乃"])
+        XCTAssertEqual(characters.first?.birthday, Birthday(month: 4, day: 25))
+        XCTAssertEqual(characters.first?.idolID, 1)
+        XCTAssertEqual(characters.last?.birthday, Birthday(month: 3, day: 4))
+
+        let holidays = try await eidolon.holidayTable()
+        XCTAssertEqual(holidays.name(year: 2026, month: 1, day: 1), "元日")
+        XCTAssertNil(holidays.name(year: 2026, month: 1, day: 2))
 
         let manoPassages = try await eidolon.episodeCount(characterID: "mano")
         XCTAssertEqual(manoPassages, 2)
+    }
+
+    // MARK: - Birthdays
+
+    func testDecodesFebruary29Birthday() throws {
+        let character = try CharacterConfig(json: .object([
+            "id": .string("leap"),
+            "name": .string("うるう"),
+            "birthday": .string("02-29"),
+        ]))
+        XCTAssertEqual(character.birthday, Birthday(month: 2, day: 29))
+        XCTAssertEqual(character.birthday?.text, "02-29")
+    }
+
+    func testRejectsMalformedBirthdayNamingTheCharacter() throws {
+        XCTAssertThrowsError(try CharacterConfig(json: .object([
+            "id": .string("mano"),
+            "name": .string("櫻木真乃"),
+            "birthday": .string("02-30"),
+        ]))) { error in
+            XCTAssertEqual(
+                error as? EidolonError,
+                .invalidContent("角色 mano 的生日应为 MM-DD 格式、一年中有的一天（例如 \"04-25\"），现在是 \"02-30\"")
+            )
+        }
+        XCTAssertThrowsError(try CharacterConfig(json: .object([
+            "id": .string("mano"),
+            "name": .string("櫻木真乃"),
+        ])))
     }
 
     // MARK: - Rejections
@@ -57,7 +93,7 @@ final class ContentBundleImportTests: XCTestCase {
     func testRejectsUnsupportedFormatVersion() async throws {
         let eidolon = try makeEidolon()
         var options = Fixture.Options()
-        options.formatVersion = 2
+        options.formatVersion = ContentManifest.supportedFormatVersion + 1
         let bundle = try Fixture.makeBundle(in: root, options: options)
 
         await assertThrows(eidolon, bundle) { error in
@@ -66,6 +102,38 @@ final class ContentBundleImportTests: XCTestCase {
             else {
                 return XCTFail("expected unsupportedVersion, got \(error)")
             }
+        }
+    }
+
+    func testRejectsOldBundleAndAsksToReExport() async throws {
+        let eidolon = try makeEidolon()
+        var options = Fixture.Options()
+        options.formatVersion = 1
+        let bundle = try Fixture.makeBundle(in: root, options: options)
+
+        await assertThrows(eidolon, bundle) { error in
+            guard let eidolonError = error as? EidolonError,
+                  case .unsupportedVersion(let reason) = eidolonError
+            else {
+                return XCTFail("expected unsupportedVersion, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("重新导出"), reason)
+        }
+    }
+
+    func testRejectsBundleWithoutHolidays() async throws {
+        let eidolon = try makeEidolon()
+        var options = Fixture.Options()
+        options.includeHolidays = false
+        let bundle = try Fixture.makeBundle(in: root, options: options)
+
+        await assertThrows(eidolon, bundle) { error in
+            guard let eidolonError = error as? EidolonError,
+                  case .invalidBundle(let reason) = eidolonError
+            else {
+                return XCTFail("expected invalidBundle, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("节假日"), reason)
         }
     }
 
@@ -136,7 +204,7 @@ final class ContentBundleImportTests: XCTestCase {
         try await eidolon.install(bundleAt: good)
 
         var bad = Fixture.Options()
-        bad.formatVersion = 2
+        bad.formatVersion = 1
         let badBundle = try Fixture.makeBundle(in: root, options: bad)
         await assertThrows(eidolon, badBundle) { _ in }
 

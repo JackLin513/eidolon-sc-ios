@@ -101,6 +101,16 @@ public actor Eidolon {
         return try contentDatabase().episodeCount(characterID: characterID)
     }
 
+    /// Japan's holidays, as the installed bundle exported them.
+    public func holidayTable() throws -> HolidayTable {
+        try requireContent()
+        let url = location.contentDirectory.appendingPathComponent("content/holidays.json")
+        guard let data = try? Data(contentsOf: url) else {
+            throw EidolonError.invalidBundle("当前内容包缺少 content/holidays.json")
+        }
+        return try HolidayTable(data: data)
+    }
+
     /// The latest message and unseen reach-out per character, keyed by character id.
     /// Both live in the user library, so this is empty until the first conversation.
     public func latestActivities() throws -> [String: LatestActivity] {

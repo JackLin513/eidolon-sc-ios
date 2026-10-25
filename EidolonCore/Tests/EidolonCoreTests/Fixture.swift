@@ -5,14 +5,21 @@ import ZIPFoundation
 
 /// Builds small, complete content bundles for the import tests.
 enum Fixture {
+    /// The holiday table the exporter writes, in miniature.
+    static let holidays = [
+        "2026-01-01": "元日",
+        "2026-02-11": "建国記念の日",
+    ]
+
     struct Options {
-        var formatVersion = 1
+        var formatVersion = ContentManifest.supportedFormatVersion
         var schemaVersion = 1
         var model = "test-embed"
         var dimensions = 4
         var embedPassages = true
         var corruptCRC = false
         var manifestModel: String? = nil
+        var includeHolidays = true
         /// One vector per passage, in order; the default is all-equal vectors.
         var vectors: [[Float]]? = nil
     }
@@ -47,6 +54,7 @@ enum Fixture {
                 "avatar": .string("characters/avatars/mano.jpg"),
                 "speakers": .array([.string("真乃")]),
                 "idol_id": .int(1),
+                "birthday": .string("04-25"),
             ]),
             .object([
                 "id": .string("hiori"),
@@ -54,10 +62,15 @@ enum Fixture {
                 "sheet": .string("characters/sheets/hiori.md"),
                 "speakers": .array([.string("灯織")]),
                 "idol_id": .int(2),
+                "birthday": .string("03-04"),
             ]),
         ]
         let charactersData = try JSONEncoder().encode(characters)
         try charactersData.write(to: charactersDirectory.appendingPathComponent("characters.json"))
+        if options.includeHolidays {
+            let holidays = try JSONEncoder().encode(Fixture.holidays)
+            try holidays.write(to: databaseDirectory.appendingPathComponent("holidays.json"))
+        }
         try "# 真乃\n".write(
             to: sheetsDirectory.appendingPathComponent("mano.md"),
             atomically: true,

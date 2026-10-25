@@ -6,6 +6,7 @@ produces the read-only archive described in docs/adr/0003-content-bundle-format.
 
     manifest.json
     content/eidolon.db          — episodes, cast, lines and vectors only
+    content/holidays.json       — Japan's holidays, 2000–2100, Tokyo date → name
     characters/characters.json  — characters.toml, paths rewritten package-relative
     characters/*.json|*.md|*.jpg
 
@@ -20,8 +21,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import calendar
 import hashlib
 import json
+import re
 import sqlite3
 import sys
 import tempfile
@@ -30,8 +33,22 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-FORMAT_VERSION = 1
+try:
+    import holidays
+except ImportError:  # the exporter runs inside the upstream backend's environment
+    print(
+        "error: 需要 upstream backend 的 holidays 库；在 ../eidolon-sc/backend 里用 uv run 执行本脚本",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
+FORMAT_VERSION = 2
 CONTENT_SCHEMA_VERSION = 1
+
+# The holiday table covers these years, so the app never reckons the calendar itself.
+HOLIDAY_YEARS = range(2000, 2101)
+
+BIRTHDAY = re.compile(r"([0-9]{2})-([0-9]{2})")
 
 CONTENT_TABLES = ("episodes", "episode_cast", "episode_lines", "episode_passages")
 
@@ -164,6 +181,27 @@ def load_units(characters_dir: Path) -> dict[str, str]:
     }
 
 
+def is_day_of_the_year(month: int, day: int) -> bool:
+    """Whether some year has this day; February 29 counts."""
+    return 1 <= month <= 12 and 1 <= day <= calendar.monthrange(2000, month)[1]
+
+
+def build_holidays() -> dict[str, str]:
+    """Japan's holidays by Tokyo date, each with its Japanese name, as upstream
+    `japan_holidays.py` reads them from the same library."""
+    table: dict[str, str] = {}
+    for year in HOLIDAY_YEARS:
+        try:
+            found = holidays.country_holidays("JP", years=year, language="ja")
+        except (NotImplementedError, ValueError, OverflowError):
+            continue
+        for day, name in found.items():
+            table[day.isoformat()] = name
+    if not table:
+        die("holidays 库没有给出任何日本节假日")
+    return table
+
+
 def load_characters(characters_dir: Path) -> tuple[list[dict], set[Path]]:
     """Read characters.toml, rewrite file paths to package-relative, collect files."""
     config_path = characters_dir / "characters.toml"
@@ -187,6 +225,20 @@ def load_characters(characters_dir: Path) -> tuple[list[dict], set[Path]]:
         if character_id in seen:
             die(f"角色 id 重复：{character_id}")
         seen.add(character_id)
+
+        birthday = entry.get("birthday")
+        match = BIRTHDAY.fullmatch(birthday) if isinstance(birthday, str) else None
+        if not (match and is_day_of_the_year(int(match[1]), int(match[2]))):
+            die(
+                f"角色 {character_id} 的 birthday 应为 MM-DD 格式、一年中有的一天"
+                f"（例如 \"04-25\"），现在是 {birthday!r}"
+            )
+        idol_id = entry.get("idol_id")
+        if idol_id is not None and (type(idol_id) is not int or idol_id <= 0):
+            die(
+                f"角色 {character_id} 的 idol_id 应为原作的偶像编号"
+                f"（spine_manifest.json 的 idolId，正整数），现在是 {idol_id!r}"
+            )
 
         item = dict(entry)
         if "unit" not in item and item.get("name") in units:
@@ -237,6 +289,7 @@ def write_bundle(
     with tempfile.TemporaryDirectory() as scratch:
         content_db = Path(scratch) / "eidolon.db"
         report = build_content_db(source_db, content_db)
+        holiday_table = build_holidays()
 
         manifest = {
             "format_version": FORMAT_VERSION,
@@ -255,6 +308,15 @@ def write_bundle(
 
         with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.write(content_db, "content/eidolon.db")
+            archive.writestr(
+                "content/holidays.json",
+                json.dumps(
+                    holiday_table,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            )
             archive.writestr(
                 "characters/characters.json",
                 json.dumps(json_ready(characters), ensure_ascii=False, indent=2),
@@ -298,6 +360,7 @@ def write_bundle(
         f"{report['embedding_dimensions']} 维）"
     )
     print(f"  角色 {len(characters)} 位，附带文件 {len(character_files)} 个")
+    print(f"  日本节假日 {len(holiday_table)} 天（{HOLIDAY_YEARS.start}–{HOLIDAY_YEARS.stop - 1}）")
 
 
 def main() -> int:
