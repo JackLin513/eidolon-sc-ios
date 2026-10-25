@@ -194,6 +194,7 @@ final class AppModel {
     func bootstrap() async {
         #if DEBUG
         applyDebugChatSettings()
+        applyDebugBailianSettings()
         await importBundleForDebuggingIfRequested()
         #endif
         do {
@@ -233,6 +234,23 @@ final class AppModel {
             fishAPIKey: environment["EIDOLON_FISH_API_KEY"] ?? "",
             fishModel: environment["EIDOLON_FISH_MODEL"] ?? "s2.1-pro-free"
         )
+        try? saveChatSettings(settings)
+    }
+
+    /// Development aid: `EIDOLON_BAILIAN_WORKSPACE/_REGION/_MODEL/_API_KEY` fill in the
+    /// Bailian judge without the keyboard. Everything else — the chat model, the call
+    /// keys — stays as it was, so a device already in use is only asked a new question.
+    private func applyDebugBailianSettings() {
+        let environment = ProcessInfo.processInfo.environment
+        guard let key = environment["EIDOLON_BAILIAN_API_KEY"], !key.isEmpty else { return }
+        var settings = chatSettings
+        settings.judgeService = .bailian
+        settings.bailianWorkspace = environment["EIDOLON_BAILIAN_WORKSPACE"] ?? ""
+        settings.bailianRegion = BailianRegion(
+            rawValue: environment["EIDOLON_BAILIAN_REGION"] ?? ""
+        ) ?? .beijing
+        settings.bailianModel = environment["EIDOLON_BAILIAN_MODEL"] ?? "decision-model-preview"
+        settings.bailianAPIKey = key
         try? saveChatSettings(settings)
     }
 
@@ -304,7 +322,11 @@ final class AppModel {
     /// screens that normally sit behind the file picker.
     private func importBundleForDebuggingIfRequested() async {
         guard let path = ProcessInfo.processInfo.environment["EIDOLON_IMPORT_BUNDLE"] else { return }
-        let url = URL(fileURLWithPath: path)
+        // A bare name is looked up in Documents, so a device can be given a freshly
+        // built bundle without knowing its container path.
+        let url = path.hasPrefix("/")
+            ? URL(fileURLWithPath: path)
+            : URL.documentsDirectory.appending(path: path)
         guard FileManager.default.fileExists(atPath: url.path) else {
             errorMessage = "调试用的内容包不存在：\(path)"
             return

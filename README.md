@@ -76,6 +76,7 @@ swift test --package-path EidolonCore
 - `EIDOLON_CALL_DROP_ONCE=1`、`EIDOLON_CALL_RECONNECT_MS`：让首次识别连接断开、放慢重连
 - `EIDOLON_CALL_HANGUP_MS`：到点自动挂断
 - `EIDOLON_OPEN_CHARACTER` / `EIDOLON_OPEN_CALL=1`：直接打开某角色的聊天并发起通话
+- `EIDOLON_BAILIAN_WORKSPACE` / `_REGION` / `_MODEL` / `_API_KEY`：预置百炼判断配置，其余设置不动；真机也能用 `xcrun devicectl device process launch --environment-variables` 传入
 
 这些值和真实密钥一样只用于本地验证，不要提交。
 
