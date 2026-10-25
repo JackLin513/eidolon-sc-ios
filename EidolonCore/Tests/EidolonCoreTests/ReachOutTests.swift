@@ -168,6 +168,8 @@ final class ReachOutTests: XCTestCase {
         XCTAssertTrue(system.contains("# 此刻"))
         XCTAssertTrue(system.contains("你们这会儿没在说话"))
         XCTAssertTrue(system.contains("# 先开口"))
+        XCTAssertTrue(system.contains("其次是你这周的工作（如果有）"))
+        XCTAssertTrue(system.contains("已经过去的只当回忆说，先对照现在的年份"))
         XCTAssertEqual(prompt.last, PromptMessage(.user, ReachOutRules.wantsToReachOut))
 
         let current = try await eidolon.currentConversation(characterID: "mano")
@@ -181,6 +183,22 @@ final class ReachOutTests: XCTestCase {
         try await eidolon.markReachOutsSeen(conversationID: conversation.id)
         let seen = try await eidolon.latestActivities()["mano"]?.unseenReachOut
         XCTAssertEqual(seen, false)
+    }
+
+    func testTheReachOutRulesAreUpstreamsWordForWord() {
+        // Upstream backend/src/eidolon/engine.py REACH_OUT_RULES.
+        let upstream = """
+            # 先开口
+            制作人这会儿没在和你说话，你想先给他发几句。
+            - 由头你自己挑：先接着你们最近聊过的事，或者他最近的近况；其次是你这周的工作（如果有）；再其次才是现在的时间、他的生日。
+            - 不要只发一句空的问候，比如「早安」「在吗」「想你了」，要有具体想说的事。
+            - 写一到两段。
+            - 别和你前几次先开口时用一样的开头、一样的由头。
+            - 说到你自己那边：日程里有的就说日程里的；没有的话只说练习、拍摄、事务所的工作这类平常的事，或者世界设定里快到的 live 和新歌，已经过去的只当回忆说，先对照现在的年份；不要编具体的剧情，也不要说别的偶像做了什么。
+            - 不发照片，也不说要给他发照片、要给他打电话。
+            - 让他好接话，但不必用问句结尾。
+            """
+        XCTAssertEqual(ReachOutRules.rules, upstream)
     }
 
     func testTheThirdTurnNamesTheConversationOnce() async throws {
