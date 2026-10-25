@@ -207,7 +207,9 @@ public struct WorldSetting: Codable, Sendable {
         return lines.joined(separator: "\n")
     }
 
-    private func livesOf(_ name: String) -> [(Live, [LiveDay])] {
+    /// The lives `name` stood on, each with the days of it she performed (upstream
+    /// `World.lives_of`).
+    func livesOf(_ name: String) -> [(Live, [LiveDay])] {
         lives.compactMap { live in
             let days = live.days.filter { $0.performers.contains(name) }
             return days.isEmpty ? nil : (live, days)

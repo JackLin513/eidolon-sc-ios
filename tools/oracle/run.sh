@@ -8,7 +8,7 @@ cd "$(dirname "$0")/../.."
 UPSTREAM=${UPSTREAM:-../eidolon-sc}
 BUNDLE=${BUNDLE:-build/eidolon-content.eidolonpkg}
 OUT=${OUT:-build/oracle}
-SCENARIOS=${SCENARIOS:-"tools/oracle/scenario.json tools/oracle/scenario-call.json tools/oracle/scenario-call-directed.json"}
+SCENARIOS=${SCENARIOS:-"tools/oracle/scenario.json tools/oracle/scenario-call.json tools/oracle/scenario-call-directed.json tools/oracle/scenario-today-her-birthday.json tools/oracle/scenario-today-others-birthday.json tools/oracle/scenario-today-holiday.json"}
 
 mkdir -p "$OUT"
 root=$(pwd)
