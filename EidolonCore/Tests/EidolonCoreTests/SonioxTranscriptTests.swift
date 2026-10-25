@@ -7,6 +7,21 @@ final class SonioxTranscriptTests: XCTestCase {
         try transcript.feed(Data(json.utf8))
     }
 
+    func testTheSessionHearsChineseAndJapanese() throws {
+        // Upstream hears both: the producer may speak either (`language_hints=[ZH, JA]`).
+        let message = try SonioxConfiguration(apiKey: "key", model: "stt-rt-v5").message()
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(message.utf8)) as? [String: Any]
+        )
+        XCTAssertEqual(object["language_hints"] as? [String], ["zh", "ja"])
+        XCTAssertEqual(object["audio_format"] as? String, "pcm_s16le")
+        XCTAssertEqual(object["sample_rate"] as? Int, 16_000)
+        XCTAssertEqual(object["num_channels"] as? Int, 1)
+        XCTAssertEqual(object["enable_endpoint_detection"] as? Bool, true)
+        XCTAssertEqual(object["model"] as? String, "stt-rt-v5")
+        XCTAssertEqual(object["api_key"] as? String, "key")
+    }
+
     func testOpenWordsAreShownAsTheyAreRewritten() throws {
         var transcript = SonioxTranscript()
         let first = try feed(

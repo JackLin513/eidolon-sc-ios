@@ -37,18 +37,9 @@ final class SonioxRecognition: SpeechRecognition, @unchecked Sendable {
             session.invalidateAndCancel()
         }
 
-        let configuration: [String: Any] = [
-            "api_key": apiKey,
-            "model": model,
-            "audio_format": "pcm_s16le",
-            "num_channels": 1,
-            "sample_rate": 16_000,
-            "language_hints": ["ja"],
-            "enable_endpoint_detection": true,
-        ]
         do {
-            let data = try JSONSerialization.data(withJSONObject: configuration)
-            try await socket.send(.string(String(decoding: data, as: UTF8.self)))
+            let configuration = SonioxConfiguration(apiKey: apiKey, model: model)
+            try await socket.send(.string(try configuration.message()))
         } catch {
             emit.finish(throwing: error)
             return
