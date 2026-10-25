@@ -528,7 +528,7 @@ REACH_OUT_RULES = """# 先开口
 - 不要只发一句空的问候，比如「早安」「在吗」「想你了」，要有具体想说的事。
 - 写一到两段。
 - 别和你前几次先开口时用一样的开头、一样的由头。
-- 说到你自己那边：日程里有的就说日程里的；没有的话只说练习、拍摄、事务所的工作这类平常的事，或者世界设定里有日期的 live 和新歌；不要编具体的剧情，也不要说别的偶像做了什么。
+- 说到你自己那边：日程里有的就说日程里的；没有的话只说练习、拍摄、事务所的工作这类平常的事，或者世界设定里快到的 live 和新歌，已经过去的只当回忆说，先对照现在的年份；不要编具体的剧情，也不要说别的偶像做了什么。
 - 不发照片，也不说要给他发照片、要给他打电话。
 - 让他好接话，但不必用问句结尾。"""
 """How she is to reach out (GLOSSARY.md「搭话」), told her last in what changes from turn to turn,
@@ -1142,7 +1142,10 @@ class ConversationEngine:
         (`schedule_lines`), then of where her cycle has her (`cycle_lines`)."""
         return "\n".join([
             now_prompt(profile, now, timezone, talking, affinity_lines, last_contact),
-            *today_lines(now, character, self._characters.values(), talking),
+            *today_lines(
+                now, character, self._characters.values(), talking,
+                self._world.lives_of(character.name) if self._world else (),
+            ),
             *(schedule_lines(her_jobs) if her_jobs is not None else []),
             *cycle_lines(her_day),
         ])

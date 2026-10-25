@@ -15,6 +15,7 @@ from tests.fakes import FakeClock, FakeLLM, FakeRandom, context_of
 from tests.test_call_turns import MANO_REPLY, CallUnderTest, spoken
 from tests.test_reach_outs import backend_of, last_contact
 from tests.test_text_turn import send_turn, start_conversation
+from tests.test_world_setting import write_world
 
 REPLY = ["<ja>はいっ</ja><zh>好的</zh>"]
 HER_BIRTHDAY = "今天是你的生日。"
@@ -161,3 +162,59 @@ async def test_reaching_out_she_is_told_what_the_day_is_too(
     told = context_of(llm.prompts[-1])
     assert "你们这会儿没在说话" in told
     assert "今天是風野灯織的生日。" in told and "今天是日本的节假日：昭和の日。" in told
+
+
+ON_THE_DAY = "今天是2年前你站上「THE IDOLM@STER SHINY COLORS 6thLIVE」第1天的日子（2024年3月2日，ベルーナドーム）。"
+"""Mano's line on 03-02 two years after (`write_world`'s 6thLIVE)."""
+
+
+async def test_on_the_day_of_a_live_she_stood_on_years_ago_she_is_told_it_is_past(
+    make_client: ClientFactory, characters: CharacterConfig
+):
+    """In Tokyo 2026-03-02, 09:00; she stood on 6thLIVE's first day, 2024-03-02, and on no
+    other live on the day."""
+    write_world(characters)
+    llm = FakeLLM(REPLY)
+    client = make_client(llm, clock=lambda: datetime(2026, 3, 2, 0, tzinfo=UTC))
+
+    told = await told_now(client, llm)
+
+    now, *_ = told.split("\n\n")
+    [line] = [line for line in now.splitlines() if "年前你站上" in line]
+    assert line.startswith(ON_THE_DAY)
+    assert "今天没有这场演出" in line and "当回忆" in line
+
+
+async def test_on_the_day_of_a_live_she_was_absent_from_or_still_to_come_she_is_told_nothing_of_it(
+    make_client: ClientFactory, characters: CharacterConfig
+):
+    """6thLIVE's second day, 03-03, her CV absent; and 8thLIVE's first day, 2026-11-07,
+    which is today, not years ago."""
+    write_world(characters)
+    llm = FakeLLM(REPLY, REPLY)
+
+    absent = await told_now(make_client(llm, clock=lambda: datetime(2026, 3, 3, 0, tzinfo=UTC)), llm)
+    to_come = await told_now(make_client(llm, clock=lambda: datetime(2026, 11, 7, 0, tzinfo=UTC)), llm)
+
+    assert "年前你站上" not in absent and "年前你站上" not in to_come
+
+
+async def test_reaching_out_on_the_day_of_a_live_years_ago_she_is_told_it_is_past(
+    make_client: ClientFactory, settings: Settings, characters: CharacterConfig
+):
+    """In Tokyo 2026-03-02, 11:00; 10:00 in Shanghai."""
+    write_world(characters)
+    llm = FakeLLM(REPLY, REPLY)
+    clock = FakeClock(datetime(2026, 3, 1, 23, tzinfo=UTC))
+    client = make_client(
+        llm, clock=clock, random=FakeRandom(0), settings=replace(settings, reach_outs=True)
+    )
+    conversation = await start_conversation(client)
+    await send_turn(client, conversation, "我去练习了")
+    last_contact(settings.database_path, conversation, datetime(2026, 3, 1, 6, tzinfo=UTC))
+    clock.advance(hours=3)
+
+    await backend_of(client).reach_outs.run_due()
+
+    told = context_of(llm.prompts[-1])
+    assert "你们这会儿没在说话" in told and ON_THE_DAY in told

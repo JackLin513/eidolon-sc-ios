@@ -224,5 +224,6 @@ async def test_reaching_out_she_is_told_her_jobs_and_may_reach_out_about_them(
     ) in told
     assert (
         "- 说到你自己那边：日程里有的就说日程里的；没有的话只说练习、拍摄、事务所的工作这类平常的事，"
-        "或者世界设定里有日期的 live 和新歌；不要编具体的剧情，也不要说别的偶像做了什么。"
+        "或者世界设定里快到的 live 和新歌，已经过去的只当回忆说，先对照现在的年份；"
+        "不要编具体的剧情，也不要说别的偶像做了什么。"
     ) in told
