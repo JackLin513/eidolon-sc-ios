@@ -152,7 +152,9 @@ struct CallView: View {
         case .thinking: "在想"
         case .speaking: "在说"
         case .reconnecting: "重连中…"
-        case let .ended(reason): reasonText(reason)
+        case let .ended(reason):
+            // The full reason is in the footer; the header stays one line.
+            if case .failed = reason { "通话中断了" } else { reasonText(reason) }
         }
     }
 
