@@ -209,13 +209,16 @@ def packaged_conversation(
     }
 
 
-def conversations_package(*conversations: dict, memories: list[dict] | None = None) -> bytes:
+def conversations_package(
+    *conversations: dict, memories: list[dict] | None = None, version: int = MANIFEST["format"]
+) -> bytes:
+    """A package of `conversations`, and `memories` if given, in format `version`."""
     categories = ["conversations"] + (["memories"] if memories is not None else [])
     counts = {"conversations": len(conversations)} | (
         {"memories": len(memories)} if memories is not None else {}
     )
     return package_of(
-        {**MANIFEST, "categories": categories, "counts": counts},
+        {**MANIFEST, "format": version, "categories": categories, "counts": counts},
         {"conversations": list(conversations)}
         | ({"memories": memories} if memories is not None else {}),
     )
@@ -378,6 +381,47 @@ async def test_a_memory_told_in_a_conversation_imported_without_them_is_told_in_
     assert await told_in(client) == {"制作人住在大阪": None}
 
 
+UNWELL = {
+    "kind": "unwell", "created_at": "2026-09-01T07:59:59.999999+00:00", "affinity": None,
+    "gift_id": None, "liked": False, "first_day": "2026-08-30", "days_ago": 2,
+}
+"""Her being unwell since two days before, just before the user's words in
+`packaged_conversation("…", "2026-09-01")`."""
+
+
+def be_unwell(database: Path, conversation: str, first_day: str, days_ago: int) -> None:
+    """Record her being unwell in the conversation, now, as her first turn in her period
+    would."""
+    with sqlite3.connect(database) as db:
+        db.execute(
+            "INSERT INTO conversation_events"
+            " (conversation_id, kind, created_at, first_day, days_ago)"
+            " VALUES (?, 'unwell', ?, ?, ?)",
+            (conversation, datetime.now(UTC).isoformat(), first_day, days_ago),
+        )
+
+
+async def test_her_being_unwell_moves_as_it_was(
+    make_client: ClientFactory, settings: Settings, tmp_path: Path
+):
+    here = deployment(make_client, settings, tmp_path, "here", REPLY)
+    conversation = await start_conversation(here)
+    be_unwell(database(tmp_path, "here"), conversation, "2026-08-30", 2)
+    await send_turn(here, conversation, "你好")
+    there = deployment(make_client, settings, tmp_path, "there")
+
+    package = await export(here, "conversations")
+    _, manifest, data = unzipped(package)
+    [packaged] = data["conversations"][0]["events"]
+    imported = await import_package(there, package, "conversations")
+
+    assert manifest["format"] == data_package.FORMAT
+    assert packaged == UNWELL | {"created_at": packaged["created_at"]}
+    assert imported.status_code == 200, imported.text
+    assert await records(there) == await records(here)
+    assert (await records(there))[0][0]["kind"] == "unwell"
+
+
 async def test_conversations_not_in_the_format_are_refused(
     make_client: ClientFactory, settings: Settings, tmp_path: Path
 ):
@@ -407,11 +451,30 @@ async def test_conversations_not_in_the_format_are_refused(
         ]}],
     }
 
-    for case, conversations in broken.items():
-        res = await import_package(client, conversations_package(*conversations), "conversations")
+    unwell_broken = {
+        "her being unwell in the format before it": [good | {"events": [UNWELL]}],
+    }
+    since_broken = {
+        "her being unwell without since when": [good | {"events": [UNWELL | {"days_ago": None}]}],
+        "since when for no such": [good | {"events": [
+            {"kind": "hung_up", "created_at": good["created_at"], "affinity": None,
+             "gift_id": None, "liked": False, "first_day": "2026-08-30", "days_ago": 2},
+        ]}],
+        "a day not a day": [good | {"events": [UNWELL | {"first_day": "2026-8-30"}]}],
+        "days before less than none": [good | {"events": [UNWELL | {"days_ago": -1}]}],
+    }
 
-        assert res.status_code == 422, case
-        assert res.json()["code"] == "broken", case
+    for version, cases in (
+        (MANIFEST["format"], broken),
+        (data_package.UNWELL_SINCE - 1, unwell_broken),
+        (data_package.UNWELL_SINCE, since_broken),
+    ):
+        for case, conversations in cases.items():
+            package = conversations_package(*conversations, version=version)
+            res = await import_package(client, package, "conversations")
+
+            assert res.status_code == 422, case
+            assert res.json()["code"] == "broken", case
     res = await import_package(client, conversations_package(
         good, memories=[told(1, "制作人住在大阪", "9")],
     ), "conversations,memories")

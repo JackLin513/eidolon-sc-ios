@@ -56,6 +56,20 @@ describe("previewOf", () => {
     expect(gift).toEqual({ from: "event", event: "gift", gift: "蛋糕", at: "2026-09-28T04:00:00Z" });
   });
 
+  it("最后是她不太舒服了时，预览带上从哪天起", () => {
+    const unwell = previewOf(
+      latest({ type: "event", kind: "unwell", created_at: "2026-09-28T03:00:00Z", first_day: "2026-09-21", days_ago: 7 }),
+    );
+
+    expect(unwell).toEqual({
+      from: "event",
+      event: "unwell",
+      gift: null,
+      unwell: { firstDay: "2026-09-21", daysAgo: 7 },
+      at: "2026-09-28T03:00:00Z",
+    });
+  });
+
   it("刚开的新对话没有最后一句，时间是对话开始的时间", () => {
     expect(previewOf(latest(null))).toEqual({ from: null, text: "", at: "2026-09-28T01:00:00Z" });
   });

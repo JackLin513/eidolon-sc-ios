@@ -364,4 +364,29 @@ describe("conversationLog", () => {
       pending: false,
     });
   });
+
+  it("puts her being unwell, recorded with the turn, before the user's words on `done`", () => {
+    const unwell = {
+      type: "event", id: 7, kind: "unwell", created_at: "2026-09-28T08:48:59Z", affinity: null,
+      first_day: "2026-09-26", days_ago: 2,
+    } as const;
+    const log = play(
+      [
+        { type: "submitted", text: "在吗", at: NOW },
+        { type: "user", text: "在吗", at: NOW },
+        { type: "done", message: message(4, "character", "いるよ"), affinity: null, unwell },
+      ],
+      history,
+    );
+    expect(log.entries.map((e) => e.kind)).toEqual(["user", "character", "event", "user", "character"]);
+    expect(log.entries[2]).toEqual({
+      kind: "event",
+      key: "e7",
+      event: "unwell",
+      at: "2026-09-28T08:48:59Z",
+      gift: null,
+      unwell: { firstDay: "2026-09-26", daysAgo: 2 },
+      affinity: null,
+    });
+  });
 });

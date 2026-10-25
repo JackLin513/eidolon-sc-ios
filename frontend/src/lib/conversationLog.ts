@@ -2,25 +2,20 @@
 // the same turn events whether the turn is typed or spoken in a call.
 
 import type { AffinityChange } from "@/lib/affinity";
-import type { ConversationEvent, EventKind, Photo, PhotoStatus, Recorded, Segment, TurnEvent } from "@/lib/api";
+import type { ConversationEvent, Photo, PhotoStatus, Recorded, Segment, TurnEvent } from "@/lib/api";
+import { type EventShown, unwellOf } from "@/lib/conversationEvents";
 
 /** One message or conversation event shown, or her reach-out, shown as her reply is but marked
  * `reachOut` (GLOSSARY.md「搭话」). `at` (ISO) is when it was recorded; for the turn
  * under way, when the user sent or said the words, which the reply shares until it is recorded.
  * Her reply keeps how the turn changed her affinity, once recorded, and a gift record how the
- * gift did; null where it did not. A gift record keeps the gift's name too. Her reply keeps the
- * photo she sent with it (GLOSSARY.md「照片」), null if none; and, in a turn the user asked for a
- * photo with this hour's used up, when they may ask again (ISO), which is never recorded. */
+ * gift did; null where it did not. A gift record keeps the gift's name too, and her being unwell
+ * since when (`EventShown`). Her reply keeps the photo she sent with it (GLOSSARY.md「照片」), null
+ * if none; and, in a turn the user asked for a photo with this hour's used up, when they may ask
+ * again (ISO), which is never recorded. */
 export type Entry =
   | { kind: "user"; key: string; text: string; at: string }
-  | {
-      kind: "event";
-      key: string;
-      event: EventKind;
-      at: string;
-      gift: string | null;
-      affinity: AffinityChange | null;
-    }
+  | ({ kind: "event"; key: string; at: string; affinity: AffinityChange | null } & EventShown)
   | {
       kind: "character";
       key: string;
@@ -94,8 +89,11 @@ export function conversationLog(log: ConversationLog, action: LogAction): Conver
       const entries = replaced(log.entries, turn.replyKey, (e) =>
         withUsedUp(withPhoto(reply, settledOf(e, reply)), e),
       );
-      // She ended the conversation after her reply: that comes after it.
-      return { entries: action.ended ? [...entries, toEntry(action.ended)] : entries, turn: null };
+      // She ended the conversation after her reply: that comes after it. Her being unwell was
+      // recorded before the user's words: it comes before them.
+      const before = action.unwell ? toEntry(action.unwell) : null;
+      const shown = before ? entries.flatMap((e) => (e.key === turn.userKey ? [before, e] : [e])) : entries;
+      return { entries: action.ended ? [...shown, toEntry(action.ended)] : shown, turn: null };
     }
     case "error":
     case "interrupted":
@@ -200,6 +198,7 @@ function toEntry(message: Recorded): Entry {
       event: message.kind,
       at: message.created_at,
       gift: message.gift_name ?? null,
+      unwell: unwellOf(message),
       affinity: message.affinity,
     };
   }

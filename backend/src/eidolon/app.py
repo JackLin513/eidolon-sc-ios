@@ -254,14 +254,19 @@ def create_app(backend: Backend) -> FastAPI:
     def last_shown(last: Recorded | None) -> dict | None:
         """The last thing in a conversation as a list shows it: a message without its
         delivery cues, marked `photo` if it is her reply with a photo she sent (not one being
-        generated or not sent after all), or a conversation event, or her reach-out, shown as
-        her message is, marked `reach_out`; None while it has none."""
+        generated or not sent after all), or a conversation event, with which gift for a gift
+        and since when for her being unwell, or her reach-out, shown as her message is, marked
+        `reach_out`; None while it has none."""
         if last is None:
             return None
         if isinstance(last, ConversationEvent):
+            since = (
+                {"first_day": last.first_day, "days_ago": last.days_ago}
+                if last.kind == "unwell" else {}
+            )
             return {"type": "event", "kind": last.kind, "created_at": last.created_at} | gift_of(
                 last
-            )
+            ) | since
         if isinstance(last, ReachOut):
             said = last.without_cues()
             return {

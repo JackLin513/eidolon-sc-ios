@@ -183,6 +183,13 @@ export const zh = {
       hung_up: (name: string) => `${name}挂断了电话`,
       gift: (name: string, gift: string) => `你送给${name}一份${gift}`,
       ended: (name: string) => `${name}结束了对话`,
+      /** 她经期里用户第一次来时记下的（只给用户看）：`since` 是 `unwellSince` 拼出的那几个字。 */
+      unwell: (name: string, since: string) => `${name}好像从${since}起就不太舒服`,
+    },
+    /** 她不太舒服从哪天起：早 0、1、2 天写词，再早写日期（两边留空格，「从 10月21日 起」）。 */
+    unwellSince: {
+      days: ["今天", "昨天", "前天"],
+      date: (month: number, day: number) => ` ${month}月${day}日 `,
     },
     /** 她结束了对话（GLOSSARY.md「已结束的对话」）时换掉输入栏的结束卡：那句话同对话事件（`events.ended`），不写原因；
      * 她在冷却中时换成 `cooling`，写上解除时刻。 */

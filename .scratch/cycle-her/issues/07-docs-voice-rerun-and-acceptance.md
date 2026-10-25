@@ -23,3 +23,12 @@
 - [ ] 人工验证清单、部署前备份清单写进 Comments
 - [ ] 这一波最后一次推送后 CI 是绿的
 - [ ] 票收尾：跑 `code-review`；转正式 PR 和合并等用户当次说
+
+## Comments
+
+### 票 03 交接
+
+- 验收「列表的最后一句」：这条事件总记在那个回合之前，打完回合后列表的最后一句是她的回复，看不到这条事件；列表显示它的写法只在它是最后一条时出现（导入的包），后端测试 `test_the_conversation_lists_last_message_says_since_when_should_it_be_last` 管着。验收时看对话里的分隔线就够。
+- 本机 Playwright 包升级后要的 `chromium_headless_shell-1248` 没装，只有 `chromium-1243`：票 03 的脚本里用 `executablePath` 指到 `C:/Users/z1921/AppData/Local/ms-playwright/chromium-1243/chrome-win64/chrome.exe` 跑通；或者先 `npx playwright install chromium`（要下载）。
+- 开发口子强制的经期在后端重启后就没了；验收时用一个专用的开发登录用户（票 03 用的是 `unwell-accept`，验完删了），不动 Sallyn。
+

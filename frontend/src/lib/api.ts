@@ -110,7 +110,7 @@ export type Conversation = {
  * other than her ending it; null while it has none. */
 export type LastMessage =
   | (Pick<Message, "role" | "text" | "ja" | "zh" | "created_at"> & { photo?: true; reach_out?: true })
-  | Pick<ConversationEvent, "type" | "kind" | "created_at" | "gift_name">
+  | Pick<ConversationEvent, "type" | "kind" | "created_at" | "gift_name" | "first_day" | "days_ago">
   | null;
 
 /** A character's newest conversation with the user, the last thing in it, and whether it has a
@@ -164,8 +164,9 @@ export async function getPhoto(id: string): Promise<PhotoStatus> {
 }
 
 /** The kinds of conversation event (GLOSSARY.md「对话事件」): she hung up on the user; the user
- * gave her a gift; she ended the conversation, which can then only be read (GLOSSARY.md「已结束的对话」). */
-export type EventKind = "hung_up" | "gift" | "ended";
+ * gave her a gift; she ended the conversation, which can then only be read (GLOSSARY.md「已结束的对话」);
+ * she seems unwell, for the user alone. */
+export type EventKind = "hung_up" | "gift" | "ended" | "unwell";
 
 /** Something that happened in a conversation that is not a turn, recorded among its messages. */
 export type ConversationEvent = {
@@ -177,6 +178,10 @@ export type ConversationEvent = {
   /** A gift record's gift, and its name; other events have none. */
   gift_id?: string;
   gift_name?: string;
+  /** Her being unwell's: the first day of her period (ISO date), and how many days before the day
+   * it was recorded on; other events have none. */
+  first_day?: string;
+  days_ago?: number;
 };
 
 /** What she said first in a conversation, the user not talking to her (GLOSSARY.md「搭话」): neither a
@@ -197,7 +202,8 @@ export type Recorded = Message | ConversationEvent | ReachOut;
  * `delta`s, then `photos-used-up` if the user asked for a photo with this hour's used up (when they
  * may ask again, ISO), and `done`, or `error`. `done` says too where the turn left her affinity, null
  * while affinity is off, her ending the conversation after it, recorded after her reply, if she
- * did, and what the turn was rewarded with (lib/rewards), null if nothing. */
+ * did, what the turn was rewarded with (lib/rewards), null if nothing, and her being unwell,
+ * recorded before the user's words, if it was. */
 export type TurnEvent =
   | { type: "user"; text: string }
   | { type: "photo"; id: string; status: "pending" }
@@ -209,6 +215,7 @@ export type TurnEvent =
       affinity: AffinityStatus | null;
       ended?: ConversationEvent | null;
       rewarded?: Rewarded | null;
+      unwell?: ConversationEvent | null;
     }
   | { type: "error"; message: string };
 

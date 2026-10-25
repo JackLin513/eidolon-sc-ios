@@ -1,16 +1,17 @@
 // 消息列表每一行的内容：她最新一次对话的最后一句和时间（spec「信息架构」）；以及显示哪些行、按什么顺序排。
 // 只给出结构，文字由界面按当前语言拼（`copy.conversationList`）。
 
-import type { EventKind, LatestConversation } from "@/lib/api";
+import type { LatestConversation } from "@/lib/api";
 import { matchesSearch, type Searchable } from "@/lib/characterSearch";
+import { type EventShown, unwellOf } from "@/lib/conversationEvents";
 import { NO_PREFERENCES, type ListPreferences } from "@/lib/listPreferences";
 
 /** 列表里的一行预览。`from` 为 null 表示对话已经开了但还没有话；她的话带着发出来了的照片时 `photo`
- * 为 true，界面在前面加相机；`event` 是一条对话事件，原文由界面拼，送礼记录带礼物名（`gift`）。 */
+ * 为 true，界面在前面加相机；`event` 是一条对话事件，那句话见 `eventText`。 */
 export type Preview =
   | { from: "her"; text: string; at: string; photo: boolean }
   | { from: "you" | null; text: string; at: string }
-  | { from: "event"; event: EventKind; gift: string | null; at: string };
+  | ({ from: "event"; at: string } & EventShown);
 
 /** 她最新一次对话的预览（`previewOf` 一段对话）；从没聊过的角色没有预览。 */
 export function previewOf(latest: LatestConversation | undefined): Preview | null {
@@ -22,7 +23,9 @@ export function previewOf(latest: LatestConversation | undefined): Preview | nul
 export function previewOfOne(conversation: Pick<LatestConversation, "created_at" | "last_message">): Preview {
   const last = conversation.last_message;
   if (!last) return { from: null, text: "", at: conversation.created_at };
-  if ("type" in last) return { from: "event", event: last.kind, gift: last.gift_name ?? null, at: last.created_at };
+  if ("type" in last) {
+    return { from: "event", event: last.kind, gift: last.gift_name ?? null, unwell: unwellOf(last), at: last.created_at };
+  }
   if (last.role === "user") return { from: "you", text: last.text ?? "", at: last.created_at };
   return { from: "her", text: last.zh || last.ja || "", at: last.created_at, photo: last.photo === true };
 }

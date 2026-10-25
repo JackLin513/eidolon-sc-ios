@@ -6,11 +6,11 @@ Once a conversation's `TITLED_AT`th turn is recorded, typed or in a call, the ba
 model that turn began with (`TurnLLMs.background`: the deployer's, or the user's own)
 names it, in the background like writing down memories, so it never holds up the reply;
 but apart from memory, which may be off. It reads the record up to then, events and all but
-her reach-outs, her name, and nothing else: no memories, nor who she is. What it answers is
-cut down to a title (`title_from`). It is named once: a conversation the model failed to name, or named
-with nothing, is never named again, and the user is not told. The log says what kind of
-failure it was, or how long the answer was, never what was asked or answered, as that is
-about the user; nor the title.
+her reach-outs and her being unwell, her name, and nothing else: no memories, nor who she
+is. What it answers is cut down to a title (`title_from`). It is named once: a
+conversation the model failed to name, or named with nothing, is never named again, and the
+user is not told. The log says what kind of failure it was, or how long the answer was,
+never what was asked or answered, as that is about the user; nor the title.
 
 The title is for the user alone: she is never told it, nor is the admin shown it. It is
 kept on the conversation, and deleted with it.
@@ -25,7 +25,14 @@ from eidolon.activity import detached
 from eidolon.characters import Character
 from eidolon.gift_catalog import Gift
 from eidolon.llm import ChatLLM, ChatMessage
-from eidolon.store import Conversation, ConversationEvent, Message, ReachOut, Store
+from eidolon.store import (
+    Conversation,
+    ConversationEvent,
+    Message,
+    ReachOut,
+    Store,
+    told_her,
+)
 
 log = logging.getLogger(__name__)
 
@@ -112,10 +119,11 @@ class Titles:
             current = await self._store.get_conversation(conversation.id)
             if current is None or current.title is not None:
                 return
-            # Her reach-outs are no part of what the conversation is about.
+            # Her reach-outs are no part of what the conversation is about, nor her being
+            # unwell, which she is never told of.
             record = [
                 entry for entry in await self._store.record(conversation.id)
-                if not isinstance(entry, ReachOut)
+                if not isinstance(entry, ReachOut) and told_her(entry)
             ]
             character = self._characters[conversation.character_id]
             prompt = _naming_prompt(character, _first_turns(record), self._gift_catalog)

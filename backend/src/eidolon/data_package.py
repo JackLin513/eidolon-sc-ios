@@ -22,7 +22,7 @@ import zipfile
 from collections.abc import Callable, Container, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Literal, get_args
 
@@ -74,12 +74,16 @@ from eidolon.store import (
     write_profile,
 )
 
-FORMAT = 2
+FORMAT = 3
 """The newest format this version reads, and the one it exports. Changing the format adds
-one to it, and keeps reading the older ones: 2 added her reach-outs (`reach_outs`)."""
+one to it, and keeps reading the older ones: 2 added her reach-outs (`reach_outs`), 3 her
+being unwell among the events (`unwell`)."""
 
 REACH_OUTS_SINCE = 2
 """The format whose conversations first held her reach-outs: before it, none may."""
+
+UNWELL_SINCE = 3
+"""The format whose conversations first held her being unwell: before it, none may."""
 
 Category = Literal["conversations", "photos", "memories", "profile"]
 CATEGORIES: tuple[Category, ...] = get_args(Category)
@@ -161,6 +165,16 @@ def _written(at: datetime) -> str:
 
 
 Time = Annotated[str, AfterValidator(_stored_time)]
+
+
+def _day(value: str) -> str:
+    """A calendar day, as the database writes it: ISO 8601, nothing else."""
+    if date.fromisoformat(value).isoformat() != value:
+        raise ValueError("not a day as written")
+    return value
+
+
+Day = Annotated[str, AfterValidator(_day)]
 
 
 class _Strict(BaseModel):
@@ -345,11 +359,18 @@ class PackagedEvent(_Strict):
     gift_id: Annotated[str, Field(min_length=1, max_length=100)] | None
     """Which gift, for a gift's alone."""
     liked: bool
+    first_day: Day | None = None
+    """For her being unwell alone: the first day of her period."""
+    days_ago: Annotated[int, Field(ge=0)] | None = None
+    """For her being unwell alone: how many days before the day it was recorded on."""
 
     @model_validator(mode="after")
     def _gift_for_a_gift(self) -> "PackagedEvent":
         if (self.kind == "gift") != (self.gift_id is not None):
             raise ValueError("a gift without which, or which gift for no gift")
+        unwell = self.kind == "unwell"
+        if unwell != (self.first_day is not None) or unwell != (self.days_ago is not None):
+            raise ValueError("being unwell without since when, or since when for no such")
         return self
 
     @classmethod
@@ -357,12 +378,13 @@ class PackagedEvent(_Strict):
         return cls(
             kind=event.kind, created_at=event.created_at,
             affinity=PackagedChange.of(event.affinity), gift_id=event.gift_id, liked=event.liked,
+            first_day=event.first_day, days_ago=event.days_ago,
         )
 
     def kept(self) -> KeptEvent:
         return KeptEvent(
             self.kind, self.created_at, self.affinity and self.affinity.change(), self.gift_id,
-            self.liked,
+            self.liked, self.first_day, self.days_ago,
         )
 
 
@@ -880,6 +902,10 @@ def _read(zipped: zipfile.ZipFile) -> tuple[Manifest, PackageData, dict[str, byt
             c.reach_outs for c in data.conversations or []
         ):
             raise BrokenPackage("reach-outs in a format before them")
+        if manifest.format < UNWELL_SINCE and any(
+            e.kind == "unwell" for c in data.conversations or [] for e in c.events
+        ):
+            raise BrokenPackage("her being unwell in a format before it")
         listed = set(manifest.categories)
         held = {c for c in CATEGORIES if c != "photos" and getattr(data, c) is not None}
         photos = data.photos()

@@ -2,7 +2,7 @@
 
 数据包（`GLOSSARY.md`「数据包」）是用户在设置的「数据包」里导出的一个 zip：他自己的数据，带到这个部署或别的部署导入，接着用。它不是备份，也没有加密，是用户自己保管的明文。这份说明给别的部署者和以后的版本看：每个键的意思和版本规则。为什么好感度和礼物不在里面，见 ADR-0025。
 
-现在的格式是**第 2 版**。第 2 版在对话里加了她的搭话（`reach_outs`），别的和第 1 版一样。
+现在的格式是**第 3 版**。第 2 版在对话里加了她的搭话（`reach_outs`），第 3 版在对话事件里加了「她不太舒服了」（`unwell`），别的和第 1 版一样。
 
 ## zip 里有什么
 
@@ -18,7 +18,7 @@
 
 ```json
 {
-  "format": 2,
+  "format": 3,
   "exported_at": "2026-10-19T08:00:00.000000+00:00",
   "categories": ["conversations", "photos", "memories", "profile"],
   "counts": { "conversations": 12, "photos": 3, "memories": 40, "profile": 1 }
@@ -85,7 +85,13 @@
       "events": [
         {
           "kind": "gift", "created_at": "2026-09-25T12:05:00.000000+00:00",
-          "affinity": null, "gift_id": "pudding", "liked": true
+          "affinity": null, "gift_id": "pudding", "liked": true,
+          "first_day": null, "days_ago": null
+        },
+        {
+          "kind": "unwell", "created_at": "2026-09-27T10:59:59.999999+00:00",
+          "affinity": null, "gift_id": null, "liked": false,
+          "first_day": "2026-09-25", "days_ago": 2
         }
       ],
       "calls": [{ "connected_at": "2026-09-25T13:00:00.000000+00:00", "duration_s": 75.5 }],
@@ -108,9 +114,9 @@
 - `character_id`、`character_name`：和谁的对话。名字给人看，也用在「跳过了和谁的几段对话」里；导出的部署上已经没有她时是 `null`。
 - `created_at`：对话开始的时间。`title`：对话标题，还没起时是 `null`。
 - `messages`：按原来的先后排（导入时照这个顺序插入）。`role` 是 `"user"`（制作人说的，在 `text` 里）或 `"character"`（她的回复：`ja` 是日文原文，`zh` 是中文字幕，`segments` 是一句句对上的日文和字幕）。她的回复照模型写的原样，带着语气提示（ADR-0007）。`affinity` 是这个回合让好感度怎么变了，`null` 是没变；`hurt`、`out_of_line` 是打字的回合让她多不高兴、是不是说了不该说的话，通话里的回合和更早的记录是 `null`。
-- `events`：对话事件（`GLOSSARY.md`「对话事件」）。`kind` 是 `"hung_up"`（她挂断了电话）、`"gift"`（送了礼物，`gift_id` 是哪件、`liked` 是送的时候她喜不喜欢）或 `"ended"`（她结束了这段对话，之后只能看）。`gift_id` 只有送礼事件有，送礼事件也必须有。`affinity` 同上。
+- `events`：对话事件（`GLOSSARY.md`「对话事件」）。`kind` 是 `"hung_up"`（她挂断了电话）、`"gift"`（送了礼物，`gift_id` 是哪件、`liked` 是送的时候她喜不喜欢）、`"ended"`（她结束了这段对话，之后只能看）或 `"unwell"`（她不太舒服了：她经期里制作人第一次来时，记在那个回合之前，只给用户看）。`gift_id` 只有送礼事件有，送礼事件也必须有。`first_day`、`days_ago` 只有 `"unwell"` 有，它也必须有：`first_day` 是这次经期的第一天（日历日，`YYYY-MM-DD`，按制作人的时区），`days_ago` 是它比记下那天早几天（从 0 起）；其他事件是 `null` 或者没有这两个键。`"unwell"` 第 3 版起才有，更早的包里有就当坏包。她真实的周期不在包里。`affinity` 同上。
 - `calls`：这段对话里接通了的通话，只给统计用：`connected_at` 是接通的时间，`duration_s` 是接通后持续了几秒（不小于 0）。
-- `reach_outs`：她在这段对话里的搭话（`GLOSSARY.md`「搭话」），按原来的先后排：`ja`、`zh`、`segments` 同她的回复，照模型写的原样带着语气提示；`created_at` 是她说的时间。第 2 版起才有：第 1 版的包没有这个键，有就当坏包；第 2 版的包里没有这个键，当没有搭话。用户看没看过、她下次什么时候搭话、用户的「搭话」开关，都不在包里。
+- `reach_outs`：她在这段对话里的搭话（`GLOSSARY.md`「搭话」），按原来的先后排：`ja`、`zh`、`segments` 同她的回复，照模型写的原样带着语气提示；`created_at` 是她说的时间。第 2 版起才有：第 1 版的包没有这个键，有就当坏包；第 2 版起的包里没有这个键，当没有搭话。用户看没看过、她下次什么时候搭话、用户的「搭话」开关，都不在包里。
 
 #### `photo`：她发的照片
 

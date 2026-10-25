@@ -40,6 +40,7 @@ import { copy } from "@/i18n";
 import { cueText, untilText } from "@/lib/affinity";
 import type { Character } from "@/lib/api";
 import { keepCalendarMode } from "@/lib/calendar";
+import { eventText } from "@/lib/conversationEvents";
 import type { Entry } from "@/lib/conversationLog";
 import type { Failure } from "@/lib/failure";
 import { giftsHref } from "@/lib/gifts";
@@ -70,7 +71,7 @@ import { Ja } from "@/theme/Ja";
 import { AchievementsPanel } from "./AchievementsPanel";
 import { AffinityBadge, CueArrowIcon } from "./AffinityBadge";
 import { CallBar } from "./CallBar";
-import { EVENT_ICONS, eventText } from "./EventIcon";
+import { EVENT_ICONS } from "./EventIcon";
 import { LiveCallLayer } from "./CallLayer";
 import { OutfitPicker } from "./OutfitPicker";
 import { PastConversations } from "./PastConversations";
@@ -688,7 +689,7 @@ function EventLine({ entry, name }: { entry: Extract<Entry, { kind: "event" }>; 
       <span aria-hidden className="h-px flex-1 bg-foreground/15" />
       <span className="flex shrink-0 items-center gap-1.5">
         <Icon aria-hidden className="size-4" />
-        {eventText(entry.event, name, entry.gift)}
+        {eventText(entry, name)}
         <time className="text-meta tabular-nums">{clock(entry.at)}</time>
       </span>
       <span aria-hidden className="h-px flex-1 bg-foreground/15" />
