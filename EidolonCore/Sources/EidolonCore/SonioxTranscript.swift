@@ -10,20 +10,29 @@ public enum SpeechUpdate: Sendable, Hashable {
 
 /// How a Soniox real-time stream is opened. The producer may speak Chinese or Japanese:
 /// upstream hears both (`language_hints=[ZH, JA]`), and hints only bias the recognizer.
+/// `terms` are the names it should write as the story writes them (upstream sends its hot
+/// words as the context's terms).
 public struct SonioxConfiguration: Sendable {
     public var apiKey: String
     public var model: String
     public var languageHints: [String]
+    public var terms: [String]
 
-    public init(apiKey: String, model: String, languageHints: [String] = ["zh", "ja"]) {
+    public init(
+        apiKey: String,
+        model: String,
+        languageHints: [String] = ["zh", "ja"],
+        terms: [String] = []
+    ) {
         self.apiKey = apiKey
         self.model = model
         self.languageHints = languageHints
+        self.terms = terms
     }
 
     /// The first message of the stream, as JSON.
     public func message() throws -> String {
-        let object: [String: Any] = [
+        var object: [String: Any] = [
             "api_key": apiKey,
             "model": model,
             "audio_format": "pcm_s16le",
@@ -32,6 +41,9 @@ public struct SonioxConfiguration: Sendable {
             "language_hints": languageHints,
             "enable_endpoint_detection": true,
         ]
+        if !terms.isEmpty {
+            object["context"] = ["terms": terms]
+        }
         return String(decoding: try JSONSerialization.data(withJSONObject: object), as: UTF8.self)
     }
 }

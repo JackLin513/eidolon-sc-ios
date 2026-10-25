@@ -7,11 +7,14 @@ import Foundation
 final class SonioxRecognition: SpeechRecognition, @unchecked Sendable {
     private let apiKey: String
     private let model: String
+    /// The names said in a call that the recognizer should write as the story does.
+    private let terms: [String]
     private let url = URL(string: "wss://stt-rt.soniox.com/transcribe-websocket")!
 
-    init(apiKey: String, model: String) {
+    init(apiKey: String, model: String, terms: [String] = []) {
         self.apiKey = apiKey
         self.model = model
+        self.terms = terms
     }
 
     func listen(_ audio: AsyncThrowingStream<Data, Error>) -> AsyncThrowingStream<SpeechEvent, Error> {
@@ -38,7 +41,11 @@ final class SonioxRecognition: SpeechRecognition, @unchecked Sendable {
         }
 
         do {
-            let configuration = SonioxConfiguration(apiKey: apiKey, model: model)
+            let configuration = SonioxConfiguration(
+                apiKey: apiKey,
+                model: model,
+                terms: terms
+            )
             try await socket.send(.string(try configuration.message()))
         } catch {
             emit.finish(throwing: error)
