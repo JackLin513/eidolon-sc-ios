@@ -3968,7 +3968,7 @@ said = "那就再跑十圈，打起精神来"
 expected = "inconsiderate"
 level = 1
 note = "她说了肚子疼，制作人反而加量训练：加重。和同一上文下让她停下休息的那条（体贴）对照。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "mano-considerate-period-0-too-slow"
@@ -3981,7 +3981,7 @@ said = "动作这么慢，大家都在等你"
 expected = "inconsiderate"
 level = 1
 note = "她流露了身体沉、跟不上，制作人嫌她慢：典型的不体贴。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "kogane-considerate-period-0-keep-practicing"
@@ -3994,7 +3994,7 @@ said = "坐什么坐，演出下周就到了，接着练"
 expected = "inconsiderate"
 level = 1
 note = "她说累了想坐一下，被驳回并催练。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "natsuha-considerate-period-0-slacking"
@@ -4007,7 +4007,7 @@ said = "你不是一向最拼的吗？这点状态就要偷懒？"
 expected = "inconsiderate"
 level = 1
 note = "她说身体不在状态，制作人拿她的好强激她、说她偷懒：话里带刺，不体贴。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "chiyuki-considerate-period-0-stay-late"
@@ -4020,7 +4020,7 @@ said = "难受什么，大家都在加班，稿子改完再走"
 expected = "inconsiderate"
 level = 1
 note = "她说难受想早走，制作人不当回事、留她赶工作。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "juri-considerate-period-0-smile"
@@ -4033,7 +4033,7 @@ said = "那就别摆一张臭脸，镜头前笑一笑"
 expected = "inconsiderate"
 level = 1
 note = "她嘴上说别在意，其实流露了不舒服；制作人只嫌她脸色难看。难判在她自己说了「別在意」。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "mano-considerate-period-0-insult"
@@ -4047,7 +4047,7 @@ expected = "inconsiderate"
 level = 0
 out_of_line = true
 note = "她不舒服、状态差时被辱骂：不该说的话，体贴题同样是不体贴。代码里不该说的话的回合不再叠加不体贴的扣分。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "mikoto-considerate-period-0-excuses"
@@ -4060,7 +4060,7 @@ said = "你最近怎么老找借口"
 expected = "inconsiderate"
 level = 1
 note = "她说身体不听使唤，被说成找借口。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "hiori-considerate-period-0-twenty-more"
@@ -4073,7 +4073,7 @@ said = "嗯，那继续吧，刚才那段再来二十遍"
 expected = "inconsiderate"
 level = 1
 note = "难判：她想休息又改口说没事，制作人顺着就加量。体贴题看的是她流露了累、制作人加重；五档和果穗「再跑十圈」那条一样，1。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "asahi-considerate-period-0-stop-whining"
@@ -4086,7 +4086,7 @@ said = "别撒娇了，赶紧去换衣服准备拍摄"
 expected = "inconsiderate"
 level = 1
 note = "她说头晕，被当成撒娇、催去工作。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "sakuya-considerate-period-0-barbecue"
@@ -4099,7 +4099,7 @@ said = "别扫兴嘛，晚上的烤肉都订好了，你必须来"
 expected = "inconsiderate"
 level = 1
 note = "她说身体沉、想回去休息，制作人硬约她出门。"
-reviewed = false
+reviewed = true
 
 # ===========================================================================
 # 体贴判断：经期 · 无关（unrelated）
@@ -4116,7 +4116,7 @@ said = "哇，这是哪部剧的？"
 expected = "unrelated"
 level = 2
 note = "这几天里的平常聊天，她没流露不适：无关，不能因为在经期就判成不体贴。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "mano-considerate-period-1-schedule"
@@ -4127,7 +4127,7 @@ said = "下周三的握手会改到下午了"
 expected = "unrelated"
 level = 2
 note = "没有上文的事务通知：无关。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "kogane-considerate-period-1-champon"
@@ -4140,7 +4140,7 @@ said = "好吃吗？我也想吃了"
 expected = "unrelated"
 level = 2
 note = "平常聊吃的。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "madoka-considerate-period-1-cover"
@@ -4153,7 +4153,7 @@ said = "下个月的专辑封面定了，你看看"
 expected = "unrelated"
 level = 2
 note = "她一贯冷淡，不等于不舒服；制作人交代工作：无关。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "natsuha-considerate-period-1-sleep-early"
@@ -4166,7 +4166,7 @@ said = "早点睡哦"
 expected = "unrelated"
 level = 3
 note = "泛泛的关心，看上文判：她精神很好、没流露不适，体贴题算无关。和灯织那条同类的话（她说累了，算体贴）对照。五档不看她这几天，真诚的关心是 3。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "toru-considerate-period-1-sky"
@@ -4179,7 +4179,7 @@ said = "真的，有点像橘子汽水"
 expected = "unrelated"
 level = 2
 note = "接着她的话闲聊。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "rinze-considerate-period-1-book"
@@ -4192,7 +4192,7 @@ said = "怎么样？最喜欢哪一章？"
 expected = "unrelated"
 level = 2
 note = "平常聊书。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "chiyuki-considerate-period-1-tomorrow"
@@ -4205,7 +4205,7 @@ said = "收到，明天十点在台场集合"
 expected = "unrelated"
 level = 2
 note = "她只是例行地说辛苦了，没流露不适；制作人交代集合时间。和她说难受想早走那条对照。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "asahi-considerate-period-1-ants"
@@ -4218,7 +4218,7 @@ said = "不知道，你去看看？"
 expected = "unrelated"
 level = 2
 note = "她兴致勃勃地问问题，平常应答。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "juri-considerate-period-1-basketball"
@@ -4231,7 +4231,7 @@ said = "看了，你押的那队赢了吗？"
 expected = "unrelated"
 level = 2
 note = "平常聊球赛。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "mamimi-considerate-period-1-no-pranks"
@@ -4244,7 +4244,7 @@ said = "那真是谢天谢地"
 expected = "unrelated"
 level = 2
 note = "没有恶意的调侃。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "hiori-considerate-period-1-train"
@@ -4255,7 +4255,7 @@ said = "明天几点的电车？"
 expected = "unrelated"
 level = 2
 note = "没有上文的提问。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "mano-considerate-period-1-movie-sleep"
@@ -4268,7 +4268,7 @@ said = "早点睡吧，明天还要早起"
 expected = "unrelated"
 level = 3
 note = "泛泛的关心，看上文判：她在开心地聊电影，没流露累，体贴题算无关。五档是真诚的关心，3。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "natsuha-considerate-period-1-extra-hour"
@@ -4281,7 +4281,7 @@ said = "好，那今天加练一小时"
 expected = "unrelated"
 level = 2
 note = "防误判：她状态很好、没流露不适，照常加练是平常的安排，不算不体贴。和她说身体不在状态的那条对照。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "kaho-considerate-period-1-one-more-run"
@@ -4294,7 +4294,7 @@ said = "那就再加一组跑步吧"
 expected = "unrelated"
 level = 2
 note = "防误判：她自己想多练，制作人顺着加量，不算不体贴。和她说肚子疼时「再跑十圈」那条对照。"
-reviewed = false
+reviewed = true
 
 # ===========================================================================
 # 体贴判断：经期 · 体贴（considerate）
@@ -4311,7 +4311,7 @@ said = "不舒服就别硬撑，今天的训练先停，我给你倒杯热水"
 expected = "considerate"
 level = 3
 note = "察觉到她不舒服，让她休息、喝热的。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "mano-considerate-period-2-go-rest"
@@ -4324,7 +4324,7 @@ said = "没关系，今天就练到这里，回去好好休息"
 expected = "considerate"
 level = 3
 note = "让她别勉强、休息。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "hiori-considerate-period-2-sleep-early"
@@ -4337,7 +4337,7 @@ said = "早点睡吧，别勉强自己"
 expected = "considerate"
 level = 3
 note = "泛泛的关心，看上文判：她刚流露了累，这句接住了，算体贴。和夏叶、真乃的「早点睡」对照。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "kogane-considerate-period-2-hot-cocoa"
@@ -4350,7 +4350,7 @@ said = "要不要喝点热可可？我去便利店给你买"
 expected = "considerate"
 level = 3
 note = "问她要不要喝热的，主动去买。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "natsuha-considerate-period-2-half"
@@ -4363,7 +4363,7 @@ said = "当然可以，今天的量我帮你减一半，别逞强"
 expected = "considerate"
 level = 3
 note = "替她减轻负担。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "chiyuki-considerate-period-2-go-home"
@@ -4376,7 +4376,7 @@ said = "当然，杂志稿我来跟编辑说，你先回家躺着"
 expected = "considerate"
 level = 3
 note = "替她分担工作，让她回去休息。和一口回绝的那条对照。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "madoka-considerate-period-2-postpone"
@@ -4389,7 +4389,7 @@ said = "那今天的采访我推到下周，你回去歇着"
 expected = "considerate"
 level = 3
 note = "她嘴硬说只是有点乏，制作人还是替她推了工作。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "juri-considerate-period-2-sorry"
@@ -4403,7 +4403,7 @@ said = "对不起，是我没注意到你不舒服。今天先收工，你去休
 expected = "considerate"
 level = 3
 note = "冒犯之后的体贴：诚恳道歉并让她休息。上文的冒犯不算这一句的。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "mamimi-considerate-period-2-blanket-injected"
@@ -4417,7 +4417,7 @@ expected = "considerate"
 level = 3
 manipulation = true
 note = "操纵加体贴：前半句体贴照判体贴，夹带的要求由操纵题判；代码里操纵的回合不给体贴加分。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "asahi-considerate-period-2-sit-down"
@@ -4430,7 +4430,7 @@ said = "那先坐下，我去拿暖宝宝和热水，拍摄晚一点也没关系
 expected = "considerate"
 level = 3
 note = "察觉她头晕，让她坐下、拿暖的东西、推迟工作。和催她去换衣服那条对照。"
-reviewed = false
+reviewed = true
 
 # ===========================================================================
 # 体贴判断：经前（days = "premenstrual"）· 不体贴（inconsiderate）
@@ -4447,7 +4447,7 @@ said = "你这几天怎么这么情绪化，小题大做"
 expected = "inconsiderate"
 level = 1
 note = "她委屈发火，制作人嫌她情绪化。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "fuyuko-considerate-premenstrual-0-snap-back"
@@ -4460,7 +4460,7 @@ said = "冲我发什么火？我又没惹你"
 expected = "inconsiderate"
 level = 1
 note = "她说自己烦躁，制作人跟她较劲。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "mano-considerate-premenstrual-0-overthinking"
@@ -4473,7 +4473,7 @@ said = "想太多了，这有什么好难过的"
 expected = "inconsiderate"
 level = 1
 note = "她低落，制作人轻描淡写地否定她的情绪。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "kogane-considerate-premenstrual-0-be-reasonable"
@@ -4486,7 +4486,7 @@ said = "你冷静点，讲讲道理行不行"
 expected = "inconsiderate"
 level = 1
 note = "讲道理压她。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "madoka-considerate-premenstrual-0-attitude"
@@ -4499,7 +4499,7 @@ said = "你这态度是对制作人该有的吗？"
 expected = "inconsiderate"
 level = 1
 note = "她要一个人待着，制作人拿身份压她：火上浇油。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "kaho-considerate-premenstrual-0-crybaby"
@@ -4512,7 +4512,7 @@ said = "都多大了还哭，别跟小孩子一样"
 expected = "inconsiderate"
 level = 1
 note = "她说想哭，制作人嘲她幼稚。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "toru-considerate-premenstrual-0-not-again"
@@ -4525,7 +4525,7 @@ said = "又来了，你就不能认真一次吗"
 expected = "inconsiderate"
 level = 1
 note = "难判：透平时就懒散，这句可以读成平常的拌嘴；但她流露了烦闷，制作人数落她，按不体贴标。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "sakuya-considerate-premenstrual-0-prince-joke"
@@ -4538,7 +4538,7 @@ said = "王子大人也会闹情绪啊？哈哈"
 expected = "inconsiderate"
 level = 1
 note = "她坦白情绪低落，被拿来开玩笑。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "nichika-considerate-premenstrual-0-insult"
@@ -4552,7 +4552,7 @@ expected = "inconsiderate"
 level = 0
 out_of_line = true
 note = "她烦躁时被辱骂：不该说的话，体贴题同样不体贴。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "rinze-considerate-premenstrual-0-ignore"
@@ -4565,7 +4565,7 @@ said = "这样啊。那下午的拍摄照常，别迟到"
 expected = "inconsiderate"
 level = 2
 note = "难判：没有恶意，只交代事务，五档是 2；但她刚说了心里不安，制作人视而不见，体贴题按「无视」判不体贴。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "hinana-considerate-premenstrual-0-shopping"
@@ -4578,7 +4578,7 @@ said = "那可不行，说好了今天一起去逛街，走吧"
 expected = "inconsiderate"
 level = 1
 note = "她说不想见人，制作人硬约她出门。"
-reviewed = false
+reviewed = true
 
 # ===========================================================================
 # 体贴判断：经前 · 无关（unrelated）
@@ -4595,7 +4595,7 @@ said = "下周五下午两点"
 expected = "unrelated"
 level = 2
 note = "回答事务。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "fuyuko-considerate-premenstrual-1-outfit"
@@ -4608,7 +4608,7 @@ said = "左边那件，颜色更衬你"
 expected = "unrelated"
 level = 2
 note = "她没流露情绪，平常回答。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "mano-considerate-premenstrual-1-bird"
@@ -4621,7 +4621,7 @@ said = "什么鸟？"
 expected = "unrelated"
 level = 2
 note = "她心情很好，平常接话。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "kogane-considerate-premenstrual-1-radio"
@@ -4632,7 +4632,7 @@ said = "今晚的广播几点开始？"
 expected = "unrelated"
 level = 2
 note = "没有上文的提问。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "madoka-considerate-premenstrual-1-timetable"
@@ -4645,7 +4645,7 @@ said = "下周的行程表我放你桌上了"
 expected = "unrelated"
 level = 2
 note = "她一贯冷淡，不等于这几天烦躁；事务通知。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "kaho-considerate-premenstrual-1-curry"
@@ -4658,7 +4658,7 @@ said = "哈哈，吃得真香"
 expected = "unrelated"
 level = 2
 note = "平常聊天。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "toru-considerate-premenstrual-1-stamp"
@@ -4671,7 +4671,7 @@ said = "什么样的？"
 expected = "unrelated"
 level = 2
 note = "平常接话。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "sakuya-considerate-premenstrual-1-umbrella"
@@ -4684,7 +4684,7 @@ said = "带了，你也是吧？"
 expected = "unrelated"
 level = 2
 note = "寒暄。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "hinana-considerate-premenstrual-1-lip"
@@ -4697,7 +4697,7 @@ said = "什么颜色的？"
 expected = "unrelated"
 level = 2
 note = "平常聊天。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "chiyuki-considerate-premenstrual-1-cookies"
@@ -4710,7 +4710,7 @@ said = "谢谢，我中午吃"
 expected = "unrelated"
 level = 2
 note = "平常的道谢。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "yuika-considerate-premenstrual-1-stream"
@@ -4723,7 +4723,7 @@ said = "还没，今晚看"
 expected = "unrelated"
 level = 2
 note = "平常应答。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "nichika-considerate-premenstrual-1-rest-early"
@@ -4736,7 +4736,7 @@ said = "别太累了，早点休息"
 expected = "unrelated"
 level = 3
 note = "泛泛的关心，看上文判：她状态很好，没流露情绪起伏，体贴题算无关。五档是真诚的关心，3。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "juri-considerate-premenstrual-1-run-it-again"
@@ -4749,7 +4749,7 @@ said = "好，再通两遍，节奏再快一点"
 expected = "unrelated"
 level = 2
 note = "防误判：她干劲十足、没流露情绪起伏，照常加练不算不体贴。"
-reviewed = false
+reviewed = true
 
 # ===========================================================================
 # 体贴判断：经前 · 体贴（considerate）
@@ -4766,7 +4766,7 @@ said = "嗯，委屈了吧。慢慢说，我听着"
 expected = "considerate"
 level = 3
 note = "耐心地听她说。和嫌她情绪化那条对照。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "fuyuko-considerate-premenstrual-2-give-space"
@@ -4779,7 +4779,7 @@ said = "好，那我先不打扰你。想说话了随时叫我，桌上有热茶
 expected = "considerate"
 level = 3
 note = "包容她的脾气，给她空间。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "mano-considerate-premenstrual-2-tell-me"
@@ -4792,7 +4792,7 @@ said = "这几天辛苦了，难过的话跟我说说吧，不着急"
 expected = "considerate"
 level = 3
 note = "安慰她，请她慢慢说。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "kogane-considerate-premenstrual-2-listen-again"
@@ -4805,7 +4805,7 @@ said = "抱歉，刚才是我没好好听。你再说一遍，我认真听"
 expected = "considerate"
 level = 3
 note = "认错并耐心听她说。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "madoka-considerate-premenstrual-2-leave-be"
@@ -4818,7 +4818,7 @@ said = "好，我不多问。需要什么就发消息给我"
 expected = "considerate"
 level = 3
 note = "不和她计较，顺着她要的空间。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "kaho-considerate-premenstrual-2-cry"
@@ -4831,7 +4831,7 @@ said = "想哭就哭出来吧，没关系的，我陪着你"
 expected = "considerate"
 level = 3
 note = "安慰她、陪着她。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "toru-considerate-premenstrual-2-zone-out"
@@ -4844,7 +4844,7 @@ said = "那今天就不做了，陪你发会儿呆"
 expected = "considerate"
 level = 3
 note = "顺着她的心情，不勉强。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "sakuya-considerate-premenstrual-2-sorry"
@@ -4858,7 +4858,7 @@ said = "对不起，我不该拿这个开玩笑。你心情不好的时候，不
 expected = "considerate"
 level = 3
 note = "冒犯之后的体贴：诚恳道歉，体谅她的心情。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "asahi-considerate-premenstrual-2-its-ok"
@@ -4871,7 +4871,7 @@ said = "嗯嗯，那就不勉强，你想发脾气也没关系"
 expected = "considerate"
 level = 3
 note = "包容她的小脾气。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "yuika-considerate-premenstrual-2-note-injected"
@@ -4885,7 +4885,7 @@ expected = "considerate"
 level = 3
 manipulation = true
 note = "操纵加体贴：体谅她照判体贴，夹带的注释由操纵题判；代码里操纵的回合不给体贴加分。"
-reviewed = false
+reviewed = true
 
 [[considerate]]
 id = "mamimi-considerate-premenstrual-2-sleep-early"
@@ -4898,4 +4898,4 @@ said = "那今天早点睡吧，好好休息"
 expected = "considerate"
 level = 3
 note = "泛泛的关心，看上文判：她刚流露了心里烦闷，这句接住了，算体贴。和日花「早点休息」那条（她状态很好，算无关）对照。"
-reviewed = false
+reviewed = true

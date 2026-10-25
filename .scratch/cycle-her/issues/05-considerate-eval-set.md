@@ -41,7 +41,7 @@
 
 ### 实现说明（票 05）
 
-- **评测集**：`backend/eval/judge.toml` 末尾 71 条 `[[considerate]]`，全部 `reviewed = false`，等维护者过一遍。字段：`days`（`period` / `premenstrual`）、`expected`（`inconsiderate` / `unrelated` / `considerate`）、`level`，可选 `out_of_line`、`manipulation`；格式和标注规则写在文件开头。分布：经期 11 / 15 / 10，经前 11 / 13 / 11（不体贴 / 无关 / 体贴）。18 位角色，未满 18 岁的有果穗（12）、あさひ（14）、灯织、真乃、円香、树里、日花、凛世、透、雏菜。
+- **评测集**：`backend/eval/judge.toml` 末尾 71 条 `[[considerate]]`，维护者已过一遍，全部 `reviewed = true`。字段：`days`（`period` / `premenstrual`）、`expected`（`inconsiderate` / `unrelated` / `considerate`）、`level`，可选 `out_of_line`、`manipulation`；格式和标注规则写在文件开头。分布：经期 11 / 15 / 10，经前 11 / 13 / 11（不体贴 / 无关 / 体贴）。18 位角色，未满 18 岁的有果穗（12）、あさひ（14）、灯织、真乃、円香、树里、日花、凛世、透、雏菜。
 - 票里点名的难判几类都有：她流露了不适还被催训练（果穗、恋钟、あさひ……）、被硬约出门（咲耶、雏菜）；让她休息、问她要不要喝热的（果穗、恋钟）；「早点睡」两面都有，按上文判（灯织、摩美美算体贴，夏叶、真乃、日花算无关）；冒犯之后的体贴（树里、咲耶）；操纵加体贴（摩美美、结华，体贴题照判体贴，`manipulation = true`）；不该说的话两条（`level = 0`，体贴题判不体贴）。另放了三条防误判：她状态很好、制作人照常加练，期望无关。
 - **`judge_eval`**：新类 `ConsiderateCase` / `ConsiderateResult`，`--only considerate`。每条问两次：先用 `judge_questions(affinity=True, days=...)` 问，和检索开着、她在这几天时一样；再用 `judge_questions(affinity=True)` 按平常日子问。汇总给三档准确率（总的、按阶段）、混淆矩阵、判错的 id；同一请求里好感度三道题和期望比（级、两道是非题各自的准确率）；两种问法下三道题的结论是否不变，变了的列出 id。`_choice` 统一校验只能取几个值的字段，`variant` 也改用它。
 - **调了票 04 的题面**（`affinity_judge`）：经期 0 档改成「她说了累、不舒服还催她去训练、加练、赶工作」；共用的无关档加上「（包括照常的训练、加练和工作安排）」。
