@@ -283,6 +283,13 @@ extension Eidolon {
             parting: (ending != nil || cools) ? way : nil,
             warning: warning ? way : nil
         )
+        let todayLines = TodayPrompt.lines(
+            now: now,
+            character: character,
+            characters: characters,
+            herLives: world?.livesOf(character.name) ?? [],
+            holidays: try? holidayTable()
+        )
         let nowText = NowPrompt.text(
             now: now,
             timeZone: zone,
@@ -292,7 +299,8 @@ extension Eidolon {
             lastContact: talking == .inCall
                 ? nil
                 : try lastContact(conversationID: existingConversation),
-            birthday: producer.birthday
+            birthday: producer.birthday,
+            todayLines: todayLines
         )
         let nowSection = ([nowText, PromptAssembler.cannotSendPhoto, retrieved.memories, retrieved.references]
             .compactMap { $0 }
@@ -872,7 +880,12 @@ struct PromptAssembler {
         // Upstream loads a sheet trimmed; the blank run between sections would differ.
         let sheet = contents.trimmingCharacters(in: .whitespacesAndNewlines)
 
+        // Everything every turn of hers carries, apart from what the turn is about, in
+        // upstream's order: her sheet, her birthday, the world, the reply format.
         var shared = [sheet]
+        if let birthday = character.birthday {
+            shared.append(TodayPrompt.herBirthday(birthday))
+        }
         if let world {
             shared.append(world.prompt(name: character.name, today: today))
         }

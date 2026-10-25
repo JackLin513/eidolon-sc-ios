@@ -2,7 +2,8 @@ import Foundation
 
 /// The prompt section about now, ported from upstream `producer.now_prompt`: the time where
 /// the producer is, how they are talking, when they last were in touch, their birthday, and
-/// how she feels toward them (`AffinityPrompt.lines`).
+/// how she feels toward them (`AffinityPrompt.lines`). The day it is in Tokyo
+/// (`TodayPrompt.lines`) comes last, as upstream joins it right after.
 public enum NowPrompt {
     public enum Talking: Sendable {
         case typing
@@ -29,7 +30,8 @@ public enum NowPrompt {
         talking: Talking,
         affinityLines: [String],
         lastContact: Date?,
-        birthday: (month: Int, day: Int)?
+        birthday: (month: Int, day: Int)?,
+        todayLines: [String] = []
     ) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
@@ -61,6 +63,7 @@ public enum NowPrompt {
             )
         }
         lines += affinityLines
+        lines += todayLines
         return lines.joined(separator: "\n")
     }
 

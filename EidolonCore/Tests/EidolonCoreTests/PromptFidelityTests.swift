@@ -115,4 +115,39 @@ final class PromptFidelityTests: XCTestCase {
         XCTAssertEqual(messages[3], PromptMessage(.assistant, "<ja>おはよう</ja><zh>早上好</zh>"))
         XCTAssertEqual(messages[4], PromptMessage(.user, "今日は何する？"))
     }
+
+    func testHerBirthdayFollowsTheSheetInEveryPrompt() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PromptBirthday-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sheets = root.appendingPathComponent("characters/sheets", isDirectory: true)
+        try FileManager.default.createDirectory(at: sheets, withIntermediateDirectories: true)
+        try "# 真乃的人设\n".write(
+            to: sheets.appendingPathComponent("mano.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let character = CharacterConfig(
+            id: "mano",
+            name: "櫻木真乃",
+            sheet: "characters/sheets/mano.md",
+            birthday: Birthday(month: 4, day: 25)
+        )
+        let assembler = PromptAssembler(
+            bundleDirectory: root,
+            character: character,
+            world: nil,
+            producer: .default,
+            today: "2026-10-23",
+            nowSection: nil
+        )
+        let messages = try assembler.prompt(history: [], text: "今日は何する？")
+        // Upstream `engine.py` shares the sheet and her birthday with every turn of the day.
+        XCTAssertTrue(
+            messages[0].content.hasPrefix("# 真乃的人设\n\n你的生日是4月25日。\n\n"),
+            messages[0].content
+        )
+        XCTAssertTrue(messages[0].content.hasSuffix(ReplyFormatInstructions.text))
+    }
 }

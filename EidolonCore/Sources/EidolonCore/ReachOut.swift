@@ -56,20 +56,29 @@ extension Eidolon {
         guard now.timeIntervalSince(contact) > hours * 3600 else { return nil }
         guard try !reachedOut(since: contact, conversationID: conversationID) else { return nil }
 
-        guard let character = try characters().first(where: { $0.id == characterID }) else {
+        let characters = try characters()
+        guard let character = characters.first(where: { $0.id == characterID }) else {
             return nil
         }
         let world = try loadWorld()
         let producer = try producerProfile()
         let zone = producer.timezone.flatMap(TimeZone.init(identifier:)) ?? timeZone
         let history = try loadHistory(conversationID: conversationID, turns: 20)
+        let todayLines = TodayPrompt.lines(
+            now: now,
+            character: character,
+            characters: characters,
+            herLives: world?.livesOf(character.name) ?? [],
+            holidays: try? holidayTable()
+        )
         let nowText = NowPrompt.text(
             now: now,
             timeZone: zone,
             talking: .apart,
             affinityLines: AffinityPrompt.lines(tier: affinity.tier, judged: nil),
             lastContact: contact,
-            birthday: producer.birthday
+            birthday: producer.birthday,
+            todayLines: todayLines
         )
         let memories = await reachingOutMemories(
             characterID: characterID,
