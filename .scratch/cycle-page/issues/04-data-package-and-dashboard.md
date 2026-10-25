@@ -35,3 +35,11 @@
 - [ ] 本地构建版上用 Playwright：勾「周期记录」导出，再导入到另一个开发用户，看周期页
 - [ ] pyright、ruff、前端类型检查和 lint 都过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
 - [ ] 票收尾：推一次让 CI 跑、跑 `code-review`
+
+## Comments
+
+### 票 04 交接
+
+- 记录在 `cycle_records` 表里：id、user_id、character_id、first_day（`YYYY-MM-DD`）、days、recorded_at。模块是 `backend/src/eidolon/cycle_records.py`。
+- 导入时的检查（未来、天数越界、重叠）可以照 `_check` 的写法做。注意导入时要跳过重叠的那条，不要报错。
+- 看板那一格用 `SELECT COUNT(DISTINCT user_id) FROM cycle_records` 算。

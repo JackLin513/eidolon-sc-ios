@@ -24,7 +24,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, model_validator
 
 from eidolon.assembly import Backend
-from eidolon.cycle_records import NotFound, Refused
+from eidolon.cycle_records import NoSuchRecord, Refused
 from eidolon.cycles import CyclesOff, Forced, Phase
 from eidolon.her_cycle import LONGEST_PERIOD, PREMENSTRUAL_DAYS
 from eidolon.sessions import DeviceTimezone, UserId
@@ -60,8 +60,8 @@ def add_cycle_routes(app: FastAPI, backend: Backend) -> None:
             body["overlapping"] = e.overlapping.shown()
         return JSONResponse(body, status_code=422)
 
-    @app.exception_handler(NotFound)
-    async def not_found(_: Request, e: NotFound) -> JSONResponse:
+    @app.exception_handler(NoSuchRecord)
+    async def no_such_record(_: Request, e: NoSuchRecord) -> JSONResponse:
         return JSONResponse({"detail": "没有这条记录或这位角色"}, status_code=404)
 
     @app.exception_handler(CyclesOff)

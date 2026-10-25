@@ -57,3 +57,12 @@
 - [ ] 不新增固定色；她的颜色只用在规格列的三处记号和弹窗的 primary
 - [ ] 前端类型检查、lint 过；提交前 `sh scripts/affected-tests.sh <开工前的提交>`
 - [ ] 票收尾：截几张图放进 Comments 给用户看版式；推一次让 CI 跑、跑 `code-review`
+
+## Comments
+
+### 票 02 交接
+
+读、写接口的形状、422 的 `reason` 和文案，都写在票 01 的「实现说明」里。
+- 卡片的状态和子页都读 `GET /api/cycles`，请求要带 `X-Timezone`。
+- 记、改、删成功后，直接用返回的 `Her` 替换这一位的数据。
+- 弹窗里的那句原因直接显示 422 的 `detail`。

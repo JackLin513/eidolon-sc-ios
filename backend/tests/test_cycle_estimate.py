@@ -111,9 +111,16 @@ def test_one_or_two_long_gaps_alone_are_folded_into_typical_cycles():
         return found.cycle, found.reasons
 
     assert cycle_of(56) == (28, ("missed",))
-    assert cycle_of(84) == (28, ("missed",))
     assert cycle_of(50) == (25, ("missed",))
     assert cycle_of(50, 56) == (27, ("missed",))
+
+
+def test_every_gap_set_aside_it_is_28_days_as_missed():
+    # 84 days, three typical cycles, is past 60 and set aside before any is folded.
+    found = estimate(ending_before(logged(84)), TODAY)
+
+    assert found is not None
+    assert (found.cycle, found.period, found.reasons) == (28, 5, ("missed",))
 
 
 def test_from_a_third_long_gap_her_cycle_is_taken_to_be_long():
