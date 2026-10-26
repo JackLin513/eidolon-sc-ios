@@ -467,9 +467,9 @@ describe("schedule", () => {
   });
 });
 
-describe("cycles", () => {
-  it("are a card of limits and play, after the schedule", () => {
-    expect(TAB_ITEMS.limits).toEqual(["limits", "affinity", "reach_outs", "schedule", "cycles"]);
+describe("cycles and the bar", () => {
+  it("are cards of limits and play, after the schedule", () => {
+    expect(TAB_ITEMS.limits).toEqual(["limits", "affinity", "reach_outs", "schedule", "cycles", "bar"]);
   });
 });
 

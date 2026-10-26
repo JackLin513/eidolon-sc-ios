@@ -38,6 +38,7 @@ from eidolon.announcements import Announcements
 from eidolon.backup import Backups
 from eidolon.call import Calls, Speech, SpeechServices
 from eidolon.characters import Character, load_characters
+from eidolon.drink_catalog import DrinkCatalog, drinks_path, load_drink_catalog
 from eidolon.gift_catalog import Gift, check_liked_gifts, gifts_path, load_gift_catalog
 from eidolon.gifts import Gifts
 from eidolon.happenings import Happenings
@@ -106,6 +107,8 @@ class Backend:
     characters: dict[str, Character]
     gift_catalog: dict[str, Gift]
     """The gift catalog, by identifier."""
+    drink_catalog: DrinkCatalog
+    """The bar's drinks (GLOSSARY.md「饮品」)."""
     memories: Memories
     titles: Titles
     """Names conversations after their third turn."""
@@ -219,13 +222,14 @@ def build(
 ) -> Backend:
     """The backend `settings` describe, with any of the outside services passed in
     used instead of made. Raises RuntimeError, having opened nothing, if the character
-    configuration (her liked gifts and all), the world setting, the gift catalog or the job
-    list is broken,
-    or a character is none of its idols and none of its staff."""
+    configuration (her liked gifts and all), the world setting, the gift catalog, the job
+    list or the drink catalog is broken, or a character is none of its idols and none of its
+    staff."""
     characters = load_characters(settings.characters_path)
     gift_catalog = load_gift_catalog(gifts_path(settings.characters_path))
     check_liked_gifts(characters, gift_catalog)
     job_list = load_job_list(jobs_path(settings.characters_path))
+    drink_catalog = load_drink_catalog(drinks_path(settings.characters_path))
     world = load_world(path := world_path(settings.characters_path))
     if world is None:
         log.info(
@@ -413,6 +417,7 @@ def build(
         store=store,
         characters=characters,
         gift_catalog=gift_catalog,
+        drink_catalog=drink_catalog,
         memories=memories,
         titles=titles,
         engine=engine,

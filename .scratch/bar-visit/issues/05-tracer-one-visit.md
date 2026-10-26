@@ -39,3 +39,8 @@
 - [ ] 收尾：Comments 里写下 SSE 事件的字段、上酒正文的形状、410 / 409 / 422 的回答、光顾记录表的列，给票 06–10 和第二份规格用；推一次让 CI 跑，跑 `code-review`。
 
 ## Comments
+
+### 票 01 交接
+
+- `GET /api/bar` 现在在 `eidolon/bar_api.py` 里直接读 `backend.config.bar_on` 和 `backend.drink_catalog`。酒吧模块有了「读」以后，把它挪进模块，接口层只留 HTTP；返回形状见票 01 的实现说明。
+- 上一杯的判定用 `backend.drink_catalog.match(...)`：调坏的是 `None`（回 422 `broken_drink`），瓶装传 id 字符串。上酒正文里的五种材料、`ice`、`aged`、`method` 和 `drink_catalog.Mixture` 的字段同名，可以直接对上；份数是负数、不是整数或合计超过 20 的 `match` 也当调坏的，接口层不必另查。

@@ -143,6 +143,7 @@ AFFINITY = "affinity"
 REACH_OUTS = "reach_outs"
 SCHEDULE = "schedule"
 CYCLES = "cycles"
+BAR = "bar"
 PROXY = "proxy"
 SERVICE_STATUS = "service_status"
 
@@ -775,6 +776,22 @@ class _Cycles(_Item):
         return current | change
 
 
+class _Bar(_Item):
+    """Whether the bar is open (GLOSSARY.md「酒吧」), as `.env` has it (on by default); not
+    tried."""
+
+    name = BAR
+    fields = ("enabled",)
+
+    def env(self) -> Values:
+        return {"enabled": self.c.settings.bar}
+
+    def candidate(self, current: Values, change: Values) -> Values:
+        if not isinstance(change.get("enabled"), bool):
+            raise ConfigInvalid(f"酒吧需要是 true 或 false，而不是 {change.get('enabled')!r}")
+        return current | change
+
+
 PROXY_LABELS: dict[ProxiedService, str] = {
     "chat_llm": "扮演角色的 LLM",
     "memory_llm": "后台模型",
@@ -947,7 +964,7 @@ class LiveConfig:
                 _Proxy(self), _ChatLLM(self), _MemoryLLM(self), _TTS(self), _STT(self),
                 _Image(self), _Judge(self), _JudgeThresholds(self), _Rerank(self),
                 _Limits(self), _Affinity(self), _ReachOuts(self), _Schedule(self),
-                _Cycles(self), _ServiceStatus(self),
+                _Cycles(self), _Bar(self), _ServiceStatus(self),
             )
         }
         self._failures: dict[str, str] = {}
@@ -1059,6 +1076,11 @@ class LiveConfig:
     def cycles_on(self) -> bool:
         """Whether the deployment has her cycle have a part in how she is now."""
         return self.effective(CYCLES)["enabled"]
+
+    @property
+    def bar_on(self) -> bool:
+        """Whether the bar is open now."""
+        return self.effective(BAR)["enabled"]
 
     @property
     def proxy_settings(self) -> ProxySettings:

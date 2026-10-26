@@ -21,6 +21,7 @@ from eidolon.assembly import Backend
 from eidolon.clock import Clock
 from eidolon.config import LLMSettings, Settings
 from eidolon.data_access import Database
+from eidolon.drink_catalog import DRINKS_FILE
 from eidolon.gift_catalog import GIFTS_FILE
 from eidolon.identity import Identity
 from eidolon.job_list import JOBS_FILE
@@ -129,12 +130,13 @@ SCSP_AVATAR = b"\xff\xd8\xff fake SCSP avatar"
 BACKGROUND = b"\xff\xd8\xff fake background"
 REPO_GIFTS = Path(__file__).parents[2] / "characters" / GIFTS_FILE
 REPO_JOBS = Path(__file__).parents[2] / "characters" / JOBS_FILE
+REPO_DRINKS = Path(__file__).parents[2] / "characters" / DRINKS_FILE
 
 
 class CharacterConfig:
     """Writes a character configuration directory, the way an administrator would, with the
-    repository's gift catalog and job list beside it unless a test writes its own
-    (`gifts.toml`, `jobs.toml`)."""
+    repository's gift catalog, job list and drink catalog beside it unless a test writes its
+    own (`gifts.toml`, `jobs.toml`, `drinks.toml`)."""
 
     def __init__(self, directory: Path) -> None:
         self.directory = directory
@@ -223,6 +225,8 @@ class CharacterConfig:
             gifts.write_bytes(REPO_GIFTS.read_bytes())
         if not (jobs := self.directory / JOBS_FILE).exists():
             jobs.write_bytes(REPO_JOBS.read_bytes())
+        if not (drinks := self.directory / DRINKS_FILE).exists():
+            drinks.write_bytes(REPO_DRINKS.read_bytes())
         return self
 
     def write(self, relative: str, content: str | bytes) -> None:

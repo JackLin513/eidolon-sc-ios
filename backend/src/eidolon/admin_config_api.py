@@ -23,6 +23,7 @@ from eidolon.config import (
 )
 from eidolon.live_config import (
     AFFINITY,
+    BAR,
     CHAT_LLM,
     CYCLES,
     IMAGE,
@@ -189,6 +190,12 @@ class CyclesInput(BaseModel):
     enabled: Any
 
 
+class BarInput(BaseModel):
+    """Whether the bar is open, true or false; checked by the live configuration."""
+
+    enabled: Any
+
+
 class ProxyInput(BaseModel):
     """The proxy as the admin saves it: the switch, the address (a password typed into it
     is kept apart, as a key is; empty for none), and a switch for each of the deployer's
@@ -241,6 +248,7 @@ INPUTS: dict[str, type[BaseModel]] = {
     REACH_OUTS: ReachOutsInput,
     SCHEDULE: ScheduleInput,
     CYCLES: CyclesInput,
+    BAR: BarInput,
     PROXY: ProxyInput,
     SERVICE_STATUS: ServiceStatusInput,
 }
