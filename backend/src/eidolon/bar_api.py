@@ -1,13 +1,15 @@
 """The bar over HTTP (GLOSSARY.md「酒吧」「光顾」), for users who agreed to the terms:
 `/api/bar` reads it; `/api/bar/visits` begins a visit, each of whose drinks is served at
-`/api/bar/visits/{visit_id}/serves`, on the keys it came in with, and which is left by
-deleting it. Beginning a visit and serving a drink answer with the call they set off, as
-server-sent events (`bar.BarEvent`).
+`/api/bar/visits/{visit_id}/serves`, on the keys it came in with, the call it stopped before,
+failing, tried again at `/api/bar/visits/{visit_id}/retry`, and which is left by deleting it.
+Beginning a visit, serving a drink and trying again answer with the call they set off, as
+server-sent events (`bar.BarEvent`): the call tried again from its first line on, with
+nothing sent before it.
 
 Refused: coming in while the bar is closed (409 `bar_closed`), or over the limit (429, as any
 use is); any visit but the user's under way (410 `visit_gone`); serving while she is not
 waiting for a drink (409 `not_waiting`), or what is none of the drinks (422
-`broken_drink`)."""
+`broken_drink`); trying again while no call failed (409 `not_failed`)."""
 
 import json
 from collections.abc import AsyncIterator
@@ -20,7 +22,7 @@ from starlette.types import Receive, Scope, Send
 
 from eidolon.account_api import OwnKeysInput
 from eidolon.assembly import Backend
-from eidolon.bar import BarCall, BarClosed, BrokenDrink, NotWaiting, VisitGone
+from eidolon.bar import BarCall, BarClosed, BrokenDrink, NotFailed, NotWaiting, VisitGone
 from eidolon.drink_catalog import Mixture
 from eidolon.own_keys import BroughtKeys
 from eidolon.sessions import DeviceTimezone, UserId
@@ -73,6 +75,7 @@ def add_bar_routes(app: FastAPI, backend: Backend) -> None:
     app.add_exception_handler(BarClosed, refused(409, "bar_closed"))
     app.add_exception_handler(VisitGone, refused(410, "visit_gone"))
     app.add_exception_handler(NotWaiting, refused(409, "not_waiting"))
+    app.add_exception_handler(NotFailed, refused(409, "not_failed"))
     app.add_exception_handler(BrokenDrink, refused(422, "broken_drink"))
 
     @app.get("/api/bar")
@@ -91,7 +94,12 @@ def add_bar_routes(app: FastAPI, backend: Backend) -> None:
     @app.post("/api/bar/visits/{visit_id}/serves")
     async def serve(visit_id: str, body: ServeInput, user_id: UserId) -> StreamingResponse:
         """A drink served her."""
-        return _events(bar.serve(user_id, visit_id, body.served()))
+        return _events(await bar.serve(user_id, visit_id, body.served()))
+
+    @app.post("/api/bar/visits/{visit_id}/retry")
+    async def retry(visit_id: str, user_id: UserId) -> StreamingResponse:
+        """The call the visit stopped before, failing, tried again."""
+        return _events(await bar.retry(user_id, visit_id))
 
     @app.delete("/api/bar/visits/{visit_id}", status_code=204)
     async def leave(visit_id: str, user_id: UserId) -> None:

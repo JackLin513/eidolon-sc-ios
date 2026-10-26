@@ -2,12 +2,14 @@
 serves them; the chat model writes what is said, the server decides everything else.
 
 `Bar` is all there is to it from outside: reading it (whether it is open, its drinks, whether
-a visit done today would be rewarded), a user coming in, serving a drink, and leaving.
+a visit done today would be rewarded), a user coming in, serving a drink, trying a call again,
+and leaving.
 Everything a visit draws, judges, writes down and is rewarded with is done in here; the API
 only carries it over HTTP.
 
 **A visit.** Each user has at most one at a time, kept in memory and named by an id made up
-for it; coming in again does away with the one before. As she comes in, the server draws
+for it; coming in again does away with the one before, and one untouched for `IDLE` is done
+away with as it is next touched, or swept away (`keep_sweeping`). As she comes in, the server draws
 who she is: the user's character of the day (Beijing's, `affinity.day_of`), by the user and
 the day alone, until they have a visit done that day, and from then on anyone, each as
 likely; whether she is in a cooldown or not. Then her reason for coming: half the time the
@@ -27,7 +29,13 @@ talks and says goodbye drunk. Each streams her lines and the producer's as they 
 it, and sent with the order memo once it names drinks as it should
 (`bar_rules.names_rightly`): if it does not, the call is made again for it alone, told so,
 and if that does not either, she says one of the fixed lines instead
-(`bar_rules.fixed_order`). A call with no line at all, or failing, ends the visit for now.
+(`bar_rules.fixed_order`).
+
+**Failing.** A call that fails, or writes no line it needs, is made again at once, once
+(`ATTEMPTS`), the browser told to clear what it sent (`Retrying`); failing again, the visit
+stops before it (`VisitFailed`) till it is tried again (`Bar.retry`), on the order drawn for
+it, or ended. Her farewell is not stopped before: she says it in fixed lines instead
+(`bar_rules.fixed_farewell`), and the visit is done all the same.
 
 **Let in.** Who she is drawn, the visit is let in as a text turn is (`Admissions.visit`), in a
 cooldown or not: the keys it runs on, the user's own LLM if they bring one, its activity
@@ -35,9 +43,10 @@ record, and its use of the limit, refused over it (`OverLimit`). Every call of t
 and rewriting her order, runs on those keys, its service calls recorded under that record;
 the keys are held until the visit is over, as a call holds them. As it is over it is
 settled, once, whether anyone waits for it or not: done, from the moment its farewell is to
-be written down; left, done away with by another, the page gone while a call is being
-written (read or not, `BarCall`), or under way as the bar is closed; or failed. One failed
-with nothing yet written is given back.
+be written down; failed, if it ends stopped before a call that failed, however it ends; else
+left: left, done away with by another or untouched, the page gone while a call is being
+written (read or not, `BarCall`), or under way as the bar is closed. One failed with nothing
+yet written is given back.
 
 **Serving.** What the bar counter holds is matched against the recipes (`DrinkCatalog.match`):
 broken, it is refused and nothing changes; anything else is served her and judged
@@ -64,9 +73,10 @@ import json
 import logging
 import secrets
 import sqlite3
-from collections.abc import AsyncGenerator, AsyncIterator, Callable, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Coroutine, Sequence
+from contextlib import aclosing
 from dataclasses import asdict, dataclass, field, replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Literal, TypeVar
 
 from eidolon.activity import Result
@@ -94,6 +104,7 @@ from eidolon.bar_rules import (
     cups,
     draw_order,
     drunk,
+    fixed_farewell,
     fixed_order,
     has_best,
     judged,
@@ -118,6 +129,15 @@ from eidolon.world import World
 log = logging.getLogger(__name__)
 
 FAILED = "出了点问题，这次光顾没能接着写下去，请稍后再来"
+
+ATTEMPTS = 2
+"""How many times a call of a visit is tried: once, and once more should it fail."""
+
+IDLE = timedelta(minutes=30)
+"""How long a visit lasts untouched: from then on it is gone."""
+
+SWEEP = timedelta(minutes=5)
+"""How often visits untouched for `IDLE` are looked for, to be done away with."""
 
 _SCHEMA = """
 -- One row per visit done (GLOSSARY.md「光顾」): who came to whom, as she came in and as she
@@ -165,6 +185,13 @@ class NotWaiting(Exception):
         super().__init__("她还没在等这一杯")
 
 
+class NotFailed(Exception):
+    """Her lines have not failed to be written: there is nothing to try again."""
+
+    def __init__(self) -> None:
+        super().__init__("现在没有要再试的")
+
+
 class BrokenDrink(Exception):
     """What the bar counter holds is none of the drinks: it cannot be served."""
 
@@ -200,6 +227,14 @@ class Waiting:
 
 
 @dataclass(frozen=True)
+class Retrying:
+    """The call failed and is made again: what it sent is to be cleared."""
+
+    def shown(self) -> dict:
+        return {"type": "retrying"}
+
+
+@dataclass(frozen=True)
 class Rewarded:
     """What a visit done was rewarded with: draw chances (none if the user had the most kept
     already), and whether her affinity rose."""
@@ -221,7 +256,8 @@ class VisitDone:
 
 @dataclass(frozen=True)
 class VisitFailed:
-    """The call could not be written: the visit is over."""
+    """The call could not be written, tried again or not: the visit stops before it, till it
+    is tried again or left."""
 
     message: str
 
@@ -229,7 +265,7 @@ class VisitFailed:
         return {"type": "failed", "message": self.message}
 
 
-BarEvent = VisitBegan | BarLine | Memo | Waiting | VisitDone | VisitFailed
+BarEvent = VisitBegan | BarLine | Memo | Waiting | Retrying | VisitDone | VisitFailed
 
 
 class BarCall:
@@ -250,9 +286,12 @@ class BarCall:
         self._stopped()
         await self._events.aclose()
 
-Step = Literal["writing", "waiting"]
+Step = Literal["writing", "waiting", "failed"]
+"""Where a visit is: her lines being written, waiting for a drink, or stopped before a call
+that failed."""
 
 _Listed = TypeVar("_Listed", ListedReason, Topic)
+T = TypeVar("T")
 
 
 @dataclass
@@ -281,6 +320,11 @@ class _Visit:
     drunk: bool = False
     """Whether she has had as much as she holds (`bar_rules.drunk`)."""
     step: Step = "writing"
+    asking: str = ""
+    """What the call it is at asks for, to try it again should it fail."""
+    touched: datetime | None = None
+    """When it was last touched: come in, served, tried again, or a call of it over; None
+    till then, for as it came in."""
 
 
 @dataclass(frozen=True)
@@ -388,7 +432,7 @@ class Bar:
         replaced = self._visits.get(user_id)
         self._visits[user_id] = visit
         if replaced is not None:
-            await self._over(replaced, "left")
+            await self._over(replaced, _ending(replaced))
         return self._called(
             visit, opening_ask(visit.orders[0]), VisitBegan(visit.id, character.id)
         )
@@ -440,19 +484,20 @@ class Bar:
             [first],
         )
 
-    def serve(self, user_id: str, visit_id: str, served: Mixture | str) -> "BarCall":
+    async def serve(self, user_id: str, visit_id: str, served: Mixture | str) -> "BarCall":
         """Serve her what the bar counter holds, or a bottled drink by its identifier, in the
         user's visit `visit_id`: the events of the call after it, on the keys the visit came in
         with, from the producer saying one of the fixed lines on. Raises VisitGone unless it is
         the user's visit under way; NotWaiting unless she waits for a drink; BrokenDrink,
         changing nothing, if what is served is none of the drinks."""
-        visit = self._under_way(user_id, visit_id)
+        visit = await self._under_way(user_id, visit_id)
         if visit.step != "waiting":
             raise NotWaiting()
         glass = self._catalog.match(served)
         if glass is None:
             raise BrokenDrink()
         serving = judged(visit.orders[-1], glass, visit.character)
+        visit.touched = self._clock()
         visit.servings.append(serving)
         visit.drunk = drunk(visit.character, visit.servings)
         visit.step = "writing"
@@ -466,16 +511,44 @@ class Bar:
             ask = farewell_ask(serving, enjoy, visit.servings, drunk=visit.drunk)
         return self._called(visit, ask, BarLine("producer", enjoy))
 
+    async def retry(self, user_id: str, visit_id: str) -> "BarCall":
+        """The call the user's visit `visit_id` stopped before, failing, tried again, on the
+        same order: its events. Raises VisitGone unless it is the user's visit under way;
+        NotFailed unless it stopped so."""
+        visit = await self._under_way(user_id, visit_id)
+        if visit.step != "failed":
+            raise NotFailed()
+        visit.touched = self._clock()
+        visit.step = "writing"
+        return self._called(visit, visit.asking, None)
+
     async def leave(self, user_id: str, visit_id: str) -> None:
         """The user leaves their visit `visit_id`, which is over. Raises VisitGone unless it is
         theirs under way."""
-        await self._over(self._under_way(user_id, visit_id), "left")
+        visit = await self._under_way(user_id, visit_id)
+        await self._over(visit, _ending(visit))
+
+    async def sweep(self) -> None:
+        """Every visit untouched for `IDLE` done away with."""
+        for visit in list(self._visits.values()):
+            if self._idle(visit):
+                await self._over(visit, _ending(visit))
+
+    async def keep_sweeping(self) -> None:
+        """`sweep` at every `SWEEP`, until cancelled."""
+        while True:
+            await asyncio.sleep(SWEEP.total_seconds())
+            try:
+                await self.sweep()
+            except Exception:
+                log.exception("sweeping visits away failed")
 
     async def aclose(self) -> None:
-        """Every visit still under way left, and each visit over settled."""
+        """Every visit still under way ended, and each visit over settled."""
         for visit in list(self._visits.values()):
             self._end(visit)
-            self._settling(visit.admission, "left", given_back=_given_back(visit, "left"))
+            result = _ending(visit)
+            self._settling(visit.admission, result, given_back=_given_back(visit, result))
         while self._settles:
             await asyncio.gather(*self._settles, return_exceptions=True)
 
@@ -485,11 +558,20 @@ class Bar:
         loop, as affinity is."""
         return self._affinities is not None and self._gifts is not None and self._affinities.on
 
-    def _under_way(self, user_id: str, visit_id: str) -> _Visit:
+    async def _under_way(self, user_id: str, visit_id: str) -> _Visit:
+        """The user's visit `visit_id` under way. Raises VisitGone unless there is one; if it
+        was untouched for `IDLE`, it is done away with first."""
         visit = self._visits.get(user_id)
         if visit is None or visit.id != visit_id:
             raise VisitGone()
+        if self._idle(visit):
+            await self._over(visit, _ending(visit))
+            raise VisitGone()
         return visit
+
+    def _idle(self, visit: _Visit) -> bool:
+        """Whether the visit was untouched for `IDLE`."""
+        return self._clock() - (visit.touched or visit.entered_at) >= IDLE
 
     def _end(self, visit: _Visit) -> bool:
         """The visit is no longer under way: whether it was until now."""
@@ -517,17 +599,22 @@ class Bar:
     ) -> "asyncio.Future[None]":
         """`admission` settled as `result` (`Admission.settle`), whether anyone waits for it
         or not: before the bar is closed."""
-        settling = asyncio.ensure_future(admission.settle(result, given_back=given_back))
-        self._settles.add(settling)
-        settling.add_done_callback(self._settled)
-        return settling
+        return self._kept(admission.settle(result, given_back=given_back))
+
+    def _kept(self, settling: Coroutine[Any, Any, T]) -> "asyncio.Future[T]":
+        """`settling` run whether anyone waits for it or not: before the bar is closed."""
+        kept = asyncio.ensure_future(settling)
+        self._settles.add(kept)
+        kept.add_done_callback(self._settled)
+        return kept
 
     def _settled(self, settling: "asyncio.Future[Any]") -> None:
         self._settles.discard(settling)
         if not settling.cancelled() and (error := settling.exception()) is not None:
             log.error("settling a visit failed", exc_info=error)
 
-    def _called(self, visit: _Visit, ask: str, first: BarEvent) -> "BarCall":
+    def _called(self, visit: _Visit, ask: str, first: BarEvent | None) -> "BarCall":
+        visit.asking = ask
         return BarCall(self._call(visit, ask, first), lambda: self._left_off(visit))
 
     def _reason(self, character: Character, job: Job | None, recent: frozenset[str]) -> Reason:
@@ -551,76 +638,124 @@ class Bar:
         return fresh[self._random(len(fresh))]
 
     async def _call(
-        self, visit: _Visit, ask: str, first: BarEvent
+        self, visit: _Visit, ask: str, first: BarEvent | None
     ) -> AsyncGenerator[BarEvent, None]:
-        """A call of `visit`, asking for `ask`, sending `first` before it: its lines as they
-        close, held back from the line she orders in on, if she is to order; then the memo
-        and that she waits, or that the visit is done. A visit left or done away with
-        meanwhile is written no further, and the call ends there; one whose page is gone
-        part-way is left. On the visit's keys, its service calls recorded under its record."""
-        yield first
+        """A call of `visit`, asking for `ask`, sending `first` before it if any: its lines as
+        they close, held back from the line she orders in on, if she is to order; then the
+        memo and that she waits, or that the visit is done. Failing, it is made again once
+        (`ATTEMPTS`), after telling the browser to clear what it sent; failing again, the
+        visit stops before it, but for her farewell, said in fixed lines instead (the browser
+        told to clear what it sent first) and done all the same. A visit left or done
+        away with meanwhile is written no further, and the call ends there; one whose page is
+        gone part-way is left. On the visit's keys, its service calls recorded under its
+        record."""
+        if first is not None:
+            yield first
         ordering = len(visit.orders) > len(visit.servings)
-        chat = visit.admission.llms.chat
+        said: list[BarLine] = []
+        failure = FAILED
         try:
-            with visit.admission.recording.current():
-                said: list[BarLine] = []
-                held: list[BarLine] = []
-                parser = BarParser()
-                stream = chat.stream(prompt(visit.shared, visit.about, visit.written, ask))
+            for attempt in range(ATTEMPTS):
+                if attempt:
+                    yield Retrying()
+                said = []
                 try:
-                    async for chunk in stream:
-                        if not isinstance(chunk, str):
-                            continue
-                        if self._visits.get(visit.user_id) is not visit:
-                            return  # left, or done away with by another: written no further
-                        for line in parser.feed(chunk):
-                            for shown in _holding(line, held, ordering):
-                                said.append(shown)
-                                yield shown
-                    for line in parser.finish():
-                        for shown in _holding(line, held, ordering):
-                            said.append(shown)
-                            yield shown
-                finally:
-                    if (close := getattr(stream, "aclose", None)) is not None:
-                        await close()
+                    async with aclosing(self._attempt(visit, ask, ordering, said)) as lines:
+                        async for line in lines:
+                            yield line
+                    break
+                except OwnKeyFailed as e:  # theirs to fix, so they are told what went wrong
+                    log.warning("a visit's call failed on the user's own key: %s", e.service)
+                    failure = e.message
+                except Exception:
+                    log.exception("a visit's call failed")
+                    failure = FAILED
+                if self._visits.get(visit.user_id) is not visit:
+                    return
+            else:
                 if ordering:
-                    if not held:
-                        raise _Unwritten("she did not order")
-                    if not any(line.order for line in held):
-                        held[0] = replace(held[0], order=True)
-                    held = await self._named(visit, chat, ask, said, held)
-                    if self._visits.get(visit.user_id) is not visit:
-                        return
-                    said += held
-                    for line in held:
-                        yield line
-            if not said:
-                raise _Unwritten("nothing was written")
+                    visit.step = "failed"
+                    visit.touched = self._clock()
+                    yield VisitFailed(failure)
+                    return
+                if said:
+                    yield Retrying()
+                said = fixed_farewell(visit.servings[-1], visit.drunk, self._lines, self._random)
+                for line in said:
+                    yield line
             if self._visits.get(visit.user_id) is not visit:
-                return
+                return  # left, or done away with by another: written no further
             visit.written.append((ask, said))
             if ordering:
                 visit.step = "waiting"
-                yield Memo(visit.orders[-1].memo("".join(line.zh for line in held if line.order)))
+                visit.touched = self._clock()
+                yield Memo(visit.orders[-1].memo("".join(line.zh for line in said if line.order)))
                 yield Waiting()
                 return
             self._end(visit)  # done: too late to leave it now
+            try:
+                rewarded = await asyncio.shield(self._kept(self._done(visit)))
+            except Exception:
+                yield VisitFailed(FAILED)
+                return
+            yield VisitDone(rewarded)
+        finally:
+            self._left_off(visit)
+
+    async def _done(self, visit: _Visit) -> Rewarded | None:
+        """The visit done: written down, rewarded if it is to be (`_write_down`), and settled
+        as such; failed, if it cannot be written down."""
+        try:
             rewarded = await self._db.write(
                 self._write_down, visit, self._clock(), self._rewarding
             )
-            await self._over(visit, "success")
-            yield VisitDone(rewarded)
-        except OwnKeyFailed as e:  # theirs to fix, so they are told what went wrong
-            log.warning("a visit's call failed on the user's own key: %s", e.service)
+        except BaseException:
             await self._over(visit, "failed")
-            yield VisitFailed(e.message)
-        except Exception:
-            log.exception("a visit's call failed")
-            await self._over(visit, "failed")
-            yield VisitFailed(FAILED)
-        finally:
-            self._left_off(visit)
+            raise
+        await self._over(visit, "success")
+        return rewarded
+
+    async def _attempt(
+        self, visit: _Visit, ask: str, ordering: bool, said: list[BarLine]
+    ) -> AsyncGenerator[BarLine, None]:
+        """One try at a call of `visit` asking for `ask`, she ordering in it if `ordering`:
+        each line as it is to be sent, `said` keeping all of them. Ends early, short, if the
+        visit is no longer under way; raises if it fails or writes no line it needs."""
+        chat = visit.admission.llms.chat
+        with visit.admission.recording.current():
+            held: list[BarLine] = []
+            parser = BarParser()
+            stream = chat.stream(prompt(visit.shared, visit.about, visit.written, ask))
+            try:
+                async for chunk in stream:
+                    if not isinstance(chunk, str):
+                        continue
+                    if self._visits.get(visit.user_id) is not visit:
+                        return
+                    for line in parser.feed(chunk):
+                        for shown in _holding(line, held, ordering):
+                            said.append(shown)
+                            yield shown
+                for line in parser.finish():
+                    for shown in _holding(line, held, ordering):
+                        said.append(shown)
+                        yield shown
+            finally:
+                if (close := getattr(stream, "aclose", None)) is not None:
+                    await close()
+            if ordering:
+                if not held:
+                    raise _Unwritten("she did not order")
+                if not any(line.order for line in held):
+                    held[0] = replace(held[0], order=True)
+                held = await self._named(visit, chat, ask, said, held)
+                if self._visits.get(visit.user_id) is not visit:
+                    return
+                for line in held:
+                    said.append(line)
+                    yield line
+        if not said:
+            raise _Unwritten("nothing was written")
 
     async def _named(
         self, visit: _Visit, chat: ChatLLM, ask: str, said: list[BarLine], held: list[BarLine]
@@ -699,6 +834,12 @@ class Bar:
 
 class _Unwritten(RuntimeError):
     """The model wrote no line a call needs."""
+
+
+def _ending(visit: _Visit) -> Result:
+    """How the visit turns out, ended now short of done: failed, if it stopped before a call
+    that failed; else left."""
+    return "failed" if visit.step == "failed" else "left"
 
 
 def _given_back(visit: _Visit, result: Result) -> bool:

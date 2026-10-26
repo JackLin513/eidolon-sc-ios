@@ -165,6 +165,7 @@ class Backend:
     _keeping_fresh: asyncio.Task[None] | None = field(default=None, repr=False)
     _probing: asyncio.Task[None] | None = field(default=None, repr=False)
     _reaching_out: asyncio.Task[None] | None = field(default=None, repr=False)
+    _sweeping: asyncio.Task[None] | None = field(default=None, repr=False)
     _tidying: asyncio.Task[None] | None = field(default=None, repr=False)
     _watching: asyncio.Task[None] | None = field(default=None, repr=False)
     _loading_stories: asyncio.Task[None] | None = field(default=None, repr=False)
@@ -173,9 +174,10 @@ class Backend:
         """What is done as the server starts, on its event loop: try the overrides of the
         configuration, falling back to `.env` where one fails; keep the price catalogs
         fresh from now on, fetching them in the background, try the services without
-        calls for their status, have characters reach out once their time comes, delete
-        what ages out (`housekeeping`), watch how far behind the loop runs (`loop_lag`),
-        and load the story corpus's vectors to search in the background."""
+        calls for their status, have characters reach out once their time comes, do away
+        with visits to the bar left untouched, delete what ages out (`housekeeping`), watch
+        how far behind the loop runs (`loop_lag`), and load the story corpus's vectors to
+        search in the background."""
         asyncio.get_running_loop().set_default_executor(
             ThreadPoolExecutor(THREADS, thread_name_prefix="eidolon")
         )
@@ -183,6 +185,7 @@ class Backend:
         self._keeping_fresh = asyncio.create_task(self.prices.catalog.keep_fresh())
         self._probing = asyncio.create_task(self.service_status.keep_probing())
         self._reaching_out = asyncio.create_task(self.reach_outs.keep_reaching_out())
+        self._sweeping = asyncio.create_task(self.bar.keep_sweeping())
         self._tidying = asyncio.create_task(keep_tidy(self.usage.forget_old, self.activity.forget_old))
         self._watching = asyncio.create_task(watch_the_loop(lambda: self.calls.in_progress))
         if self.corpus is not None:
@@ -193,8 +196,8 @@ class Backend:
         tasks = [
             task
             for task in (
-                self._keeping_fresh, self._probing, self._reaching_out, self._tidying,
-                self._watching, self._loading_stories,
+                self._keeping_fresh, self._probing, self._reaching_out, self._sweeping,
+                self._tidying, self._watching, self._loading_stories,
             )
             if task is not None
         ]

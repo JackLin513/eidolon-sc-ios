@@ -326,16 +326,6 @@ async def test_her_lines_are_read_as_forgivingly_as_they_can_be(make_client: Cli
     ]
 
 
-async def test_a_call_with_no_line_ends_the_visit(make_client: ClientFactory):
-    client = make_client(FakeLLM(["她走进店里，点了一杯。"]), random=FakeRandom(0, 0, 0, 0, 0, 0))
-
-    came = await enter(client)
-    afterwards = await serve(client, came[0]["visit_id"], mixed("sugar-rush"))
-
-    assert kinds(came) == ["visit", "failed"]
-    refused(afterwards, 410, "visit_gone")
-
-
 async def test_every_call_tells_her_who_she_is_this_visit_what_came_before_and_what_to_write(
     make_client: ClientFactory, settings: Settings, characters: CharacterConfig
 ):

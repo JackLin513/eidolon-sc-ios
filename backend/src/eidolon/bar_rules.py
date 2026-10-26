@@ -322,6 +322,19 @@ def fixed_order(order: Order, lines: BarLines, random: Random) -> tuple[Order, l
     return order, said
 
 
+def fixed_farewell(
+    serving: Serving, drunk: bool, lines: BarLines, random: Random
+) -> list[BarLine]:
+    """Her reaction to `serving`, her last drink, and her farewell, drunk or not, said in one
+    of the fixed lines each, where the call to write them cannot be."""
+    reactions = lines.reactions[serving.tier]
+    farewells = lines.farewells["drunk" if drunk else "sober"]
+    return [
+        BarLine("her", line.zh, line.ja, line.emotion)
+        for line in (reactions[random(len(reactions))], farewells[random(len(farewells))])
+    ]
+
+
 def _filled(line: Line, order: Order) -> BarLine:
     """`line` with what `order` names filled in."""
     target = order.target

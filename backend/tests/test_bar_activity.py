@@ -3,7 +3,8 @@
 (done, left, done away with by another, failed, or rejected over the limit), whose LLM wrote
 it and who came, with the service calls of all its calls under it; nothing of what was said.
 The dashboard's「酒吧」section counts those begun, done and failed over its range, where the
-bar is open or any were recorded in it. A visit failed with nothing written is given back.
+bar is open or any were recorded in it. A visit ended stopped before a call that failed is
+failed, and given back if nothing was written by then.
 
 Driven through the backend's external API, the records read from the database."""
 
@@ -114,20 +115,25 @@ async def test_a_visit_on_the_users_own_llm_is_recorded_so(
         assert db.execute("SELECT own_key FROM service_calls").fetchall() == [(1,)]
 
 
-async def test_a_visit_failed_with_nothing_written_is_given_back_and_one_failed_later_is_not(
+async def test_a_visit_stopped_failing_and_ended_is_failed_given_back_if_nothing_was_written(
     make_client: ClientFactory, settings: Settings
 ):
-    llm = FakeLLM(["她走进店里，点了一杯。"], COMING_IN, LLMError("模型返回 503: overloaded"))
-    client = make_client(llm, random=FakeRandom(*DRAWS))
+    failing = LLMError("模型返回 503: overloaded")
+    llm = FakeLLM(*[["她走进店里，点了一杯。"], failing] * 2, COMING_IN, failing, failing)
+    # Two visits with one drink, then one with two.
+    client = make_client(llm, random=FakeRandom(*[0] * 12, 0, 0, 20, *DRAWS))
 
-    nothing_written = await enter(client)
+    left = await enter(client)
+    await client.delete(f"{VISITS}/{left[0]['visit_id']}")
+    done_away_with = await enter(client)
     came = await enter(client)
     failed_later = events(await serve(client, came[0]["visit_id"], mixed("sugar-rush")))
+    await client.delete(f"{VISITS}/{came[0]['visit_id']}")
 
-    assert kinds(nothing_written) == ["visit", "failed"]
+    assert kinds(left) == kinds(done_away_with) == ["visit", "retrying", "failed"]
     assert kinds(failed_later)[-1] == "failed"
-    assert [r[0] for r in visit_records(settings.database_path)] == ["failed", "failed"]
-    assert uses(settings.database_path) == [("visit", 0)]  # the second's alone
+    assert [r[0] for r in visit_records(settings.database_path)] == ["failed"] * 3
+    assert uses(settings.database_path) == [("visit", 0)]  # the third's alone
 
 
 async def test_a_visit_whose_page_is_gone_while_her_lines_are_written_is_left(
@@ -157,13 +163,14 @@ async def section(client: httpx.AsyncClient, github: FakeIdentityProvider) -> di
 async def test_the_dashboard_counts_the_visits_begun_done_and_failed(
     make_client: ClientFactory, settings: Settings, github: FakeIdentityProvider
 ):
-    llm = FakeLLM(COMING_IN, COMING_IN, LLMError("模型返回 503: overloaded"), COMING_IN, PARTING)
-    client = make_client(llm, settings=visits_an_hour(settings, 3), random=FakeRandom(*DRAWS))
+    failing = LLMError("模型返回 503: overloaded")
+    llm = FakeLLM(failing, failing, COMING_IN, COMING_IN, PARTING)
+    # The one failed is given back as the next does away with it: three begun, two counted.
+    client = make_client(llm, settings=visits_an_hour(settings, 2), random=FakeRandom(*DRAWS))
     none_yet = await section(client, github)
 
+    assert kinds(await enter(client))[-1] == "failed"
     await come_in_and_leave(client)
-    failing = await enter(client)
-    await serve(client, failing[0]["visit_id"], mixed("sugar-rush"))
     done = await enter(client)
     await serve(client, done[0]["visit_id"], mixed("sugar-rush"))
     assert (await client.post(VISITS, json={})).status_code == 429

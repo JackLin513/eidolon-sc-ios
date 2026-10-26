@@ -142,7 +142,8 @@ class FakeLLM:
 
     Each scripted reply is a list of text chunks, tool calls and reasoning, streamed in
     order, so tests can split the structured reply at awkward boundaries or have the model
-    call a tool; a reply that is an LLMError is raised instead, as a failing service would. With
+    call a tool; a reply that is an LLMError is raised instead, as a failing service would,
+    and a chunk that is one, part-way through the reply. With
     a `delay`, it waits that many seconds before each chunk after the first, as a slow
     model would; at `HANG` it waits forever, and at an `asyncio.Event` till it is set.
     Unless reached through a FakeLLMService, it is the deployer's model. With `tokens`, each
@@ -199,6 +200,8 @@ class FakeLLM:
             if isinstance(chunk, asyncio.Event):
                 await chunk.wait()
                 continue
+            if isinstance(chunk, LLMError):
+                raise chunk
             assert isinstance(chunk, str | ToolCall | Reasoning)
             yield chunk
         if self._tokens is not None:
