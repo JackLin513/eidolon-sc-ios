@@ -182,6 +182,39 @@ final class ContentBundleImportTests: XCTestCase {
         }
     }
 
+    func testRejectsCorruptedStandFile() async throws {
+        let eidolon = try makeEidolon()
+        var options = Fixture.Options()
+        options.includeStand = true
+        options.corruptStandCRC = true
+        let bundle = try Fixture.makeBundle(in: root, options: options)
+
+        await assertThrows(eidolon, bundle) { error in
+            guard let eidolonError = error as? EidolonError,
+                  case .invalidBundle(let reason) = eidolonError
+            else {
+                return XCTFail("expected invalidBundle, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("stand/"), reason)
+        }
+    }
+
+    func testRejectsWrongDatabaseTableCount() async throws {
+        let eidolon = try makeEidolon()
+        var options = Fixture.Options()
+        options.extraContentCounts = ["episodes": 99]
+        let bundle = try Fixture.makeBundle(in: root, options: options)
+
+        await assertThrows(eidolon, bundle) { error in
+            guard let eidolonError = error as? EidolonError,
+                  case .invalidContent(let reason) = eidolonError
+            else {
+                return XCTFail("expected invalidContent, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("episodes"), reason)
+        }
+    }
+
     func testRejectsUnreadableArchive() async throws {
         let eidolon = try makeEidolon()
         let fake = root.appendingPathComponent("not-a-bundle.eidolonpkg")

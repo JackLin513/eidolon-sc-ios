@@ -179,6 +179,28 @@ public actor Eidolon {
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
+    /// Her stand: the default outfit and, when her list reads and its files are in
+    /// the bundle, the outfits she can change into, all under the installed bundle
+    /// (ADR-0018). nil when the bundle carries no stand for her.
+    public func stand(for characterID: String) -> CharacterStand? {
+        guard let character = try? characters().first(where: { $0.id == characterID }),
+              let config = character.stand
+        else { return nil }
+
+        let root = location.contentDirectory
+        let listURL = root.appendingPathComponent(config.outfitListPath)
+        let list = (try? Data(contentsOf: listURL)).flatMap { data in
+            OutfitList(data: data, at: listURL)
+        }
+        return CharacterStand(
+            defaultOutfit: StandOutfit(
+                id: config.defaultOutfitID,
+                directory: root.appendingPathComponent(config.defaultOutfitPath, isDirectory: true)
+            ),
+            outfitList: list
+        )
+    }
+
     // MARK: - Plumbing
 
     private func requireContent() throws {

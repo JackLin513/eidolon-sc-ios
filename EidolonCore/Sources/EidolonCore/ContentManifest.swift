@@ -50,6 +50,8 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
     public var episodeCount: Int
     public var passageCount: Int
     public var characterCount: Int
+    /// How many outfits the bundle carries under `stand/idols/`.
+    public var standOutfitCount: Int
 
     public init(
         formatVersion: Int,
@@ -59,7 +61,8 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
         embeddingDimensions: Int,
         episodeCount: Int,
         passageCount: Int,
-        characterCount: Int
+        characterCount: Int,
+        standOutfitCount: Int = 0
     ) {
         self.formatVersion = formatVersion
         self.contentSchemaVersion = contentSchemaVersion
@@ -69,5 +72,32 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
         self.episodeCount = episodeCount
         self.passageCount = passageCount
         self.characterCount = characterCount
+        self.standOutfitCount = standOutfitCount
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case formatVersion
+        case contentSchemaVersion
+        case installedAt
+        case embeddingModel
+        case embeddingDimensions
+        case episodeCount
+        case passageCount
+        case characterCount
+        case standOutfitCount
+    }
+
+    /// Bundles installed by an older app have no stand count.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        formatVersion = try container.decode(Int.self, forKey: .formatVersion)
+        contentSchemaVersion = try container.decode(Int.self, forKey: .contentSchemaVersion)
+        installedAt = try container.decode(String.self, forKey: .installedAt)
+        embeddingModel = try container.decode(String.self, forKey: .embeddingModel)
+        embeddingDimensions = try container.decode(Int.self, forKey: .embeddingDimensions)
+        episodeCount = try container.decode(Int.self, forKey: .episodeCount)
+        passageCount = try container.decode(Int.self, forKey: .passageCount)
+        characterCount = try container.decode(Int.self, forKey: .characterCount)
+        standOutfitCount = try container.decodeIfPresent(Int.self, forKey: .standOutfitCount) ?? 0
     }
 }
