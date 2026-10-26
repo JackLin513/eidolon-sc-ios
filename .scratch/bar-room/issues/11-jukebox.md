@@ -23,12 +23,12 @@
 
 **Blocked by:** 07（曲目怎么放；店门口在 06）
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `lib/barJukebox`（vitest）：默认 12 首；存取（读不懂的回默认、按用户分开）；放进第一个空槽、对调、清掉、满了 Ready!；下一首、上一首、随机、单曲循环互斥；暂停记住；没有可用音频时不可用。
-- [ ] Playwright（存储桶请求拦到本机音频）：进来是选曲界面，槽已经填好；放进、对调、右键清掉、Ready!；悬停满 2.5 秒才请求试听的那一首，移开就停；手机上下文里长按试听、长按清掉；进门放的是选的第 1 首；小播放器各个按钮；暂停后刷新再进不放；manifest 404 时直接到店门口，「点唱机」是灰的。截图给用户看。
-- [ ] 前端 typecheck、vitest 通过。
-- [ ] 收尾：Comments 写下怎么打开选曲界面、怎么换掉侧边菜单「点唱机」那一格，给票 12。
+- [x] `lib/barJukebox`（vitest）：默认 12 首；存取（读不懂的回默认、按用户分开）；放进第一个空槽、对调、清掉、满了 Ready!；下一首、上一首、随机、单曲循环互斥；暂停记住；没有可用音频时不可用。
+- [x] Playwright（存储桶请求拦到本机音频）：进来是选曲界面，槽已经填好；放进、对调、右键清掉、Ready!；悬停满 2.5 秒才请求试听的那一首，移开就停；手机上下文里长按试听、长按清掉；进门放的是选的第 1 首；小播放器各个按钮；暂停后刷新再进不放；manifest 404 时直接到店门口，「点唱机」是灰的。截图给用户看。
+- [x] 前端 typecheck、vitest 通过。
+- [x] 收尾：Comments 写下怎么打开选曲界面、怎么换掉侧边菜单「点唱机」那一格，给票 12。
 
 ## Comments
 
@@ -54,3 +54,20 @@
 
 - 结束卡上「再营业」（`useBarVisit.again`）只响 `door`，不调 `sound.start()`：曲目接着放是靠这个。点唱机接管播放以后，再营业时同样不能从第 1 首重放。
 - 结束卡盖着整个画面（`BarEndCard` 的遮罩会挡住侧边菜单），点唱机按钮在结束卡出着时点不到。
+
+### 实现说明（票 11）
+
+- `lib/barJukebox`（新）：`defaultSlots`、`pickTrack`、`swapSlots`、`clearSlot`、`isReady`；`jukeboxPages`、`jukeboxPage`（5 首一页，页数照桶里的曲目算）；`hasJukebox(audio)`；播放器按**槽的位置**走（可以重复，按编号找会错）：`slotAfter`（放完接哪个）、`nextSlot`、`previousSlot`、`toggleMode`。随机和单曲循环是一个 `mode: "order" | "shuffle" | "loop"`，所以天然互斥；随机总是换一个别的槽。存法 `storedJukebox(userId, audio)` / `keepJukebox`，键 `eidolon.barJukebox.<用户 ID>`，值 `{ slots, isPaused, mode }`，每项各自校验，读不懂的那项用默认；这次页面里记着的先读。
+- `lib/barAudio`：删了 `nextTrack`（按编号找下一首，曲单有重复时会错），换成上面的按位置。
+- `useBarSound`：不再管曲目，多给一个 `audio: BarAudio | null`（null 是 manifest 还在读，读不到是空的）。`start()` 只建 `AudioContext`；这一页被点过（`navigator.userActivation.hasBeenActive`）时第一次放音效也会建，所以选曲界面上的音效（悬停、放进、对调、boot_up）在进门前就响。
+- `useBarJukebox`（新）：曲目和试听共用的一个 `<audio>`、选择、小播放器。`start()` 在进门那一下里调（`BarSubpage` 把它和 `sound.start()` 合成一个交给 `useBarVisit`），开始过就不动，所以「再营业」、410 回店门口再进门都不从头放；暂停着的不放。
+- `BarJukebox.tsx`（新）：`BarJukeboxSetup`（选曲界面）、`BarJukeboxPlayer`（小播放器），照原型 `jukebox.tsx`。音效照原型：悬停 `mouse_hover`、放进 `jukeselect`、选中和翻页 `jukepick`、对调和翻到头 `jukechange`、清掉 `prompt`、Ready! 和打开小播放器 `mixdone`、收起和点不了的 `buttonnoclick`、小播放器按钮 `buttonclick`。
+- `SideMenu` 多一个 `jukebox: JukeboxCell`（`{ state: "open" | "closed" | "none", onToggle } | null`），`HitArea` 多一个 `pressed`（读屏的开关状态）。
+- 判断：
+  - 「点唱机」那一格和小播放器只在店里（`visit`、`next`）出，店门口不出：店门口整张是霓虹招牌，小播放器盖在上面不像样，进门前也没在放。
+  - 手机长按曲名：按下 0.55 秒认作长按（这时才出等待动画、松手不算点了曲名），从按下算满 2.5 秒放；没满就松手不放。长按右边的槽 0.55 秒清掉。手机长按会弹 `contextmenu`，长按自己会清，那一下不再清。
+  - 电脑说明照手机那句的样子写：「悬停在曲名上试听，右键点击右侧曲目移除，点两首曲目可替换顺序。」；粉字那行「点击左侧的曲名来添加曲目。」两边都有（原型）。
+  - manifest 在读、或者有曲目但还不知道是谁时，盖一层黑的，免得店门口闪一下又换成选曲界面。
+  - 试听不淡出，移开立刻停（票里写「移开就停」；原型是淡出）。
+- 验收（本地构建版、Playwright，存储桶的 `bar/*` 拦到本机提取目录）36 项全过：填好、右键清掉、放进、对调、页码 2/12、悬停 2 秒不请求、满 2.5 秒只请求那一首、移开就停、Ready! 存下不放、进门放选的第 1 首、上一首 / 下一首 / 随机 / 单曲循环互斥 / 暂停、刷新后槽和模式记着、暂停着进来不放、manifest 404 直接到店门口且「点唱机」灰；手机上下文（CDP 触摸）长按 2.5 秒试听、松手接着放、长按不算点、点别处停、长按槽清掉。
+- 留给真机：整页直接打开 `/play/bar`（没点过页面）时悬停试听放不放得出来。Playwright 的 Chromium 怎么都放行，验不出来；放不出来时什么都不提示，页面上点过一下以后就正常。

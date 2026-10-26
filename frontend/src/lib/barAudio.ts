@@ -43,9 +43,3 @@ export function parseManifest(value: unknown): BarManifest | null {
     ? { tracks: tracks as number[], sfx: sfx as string[] }
     : null;
 }
-
-/** The track after `current` in the playlist, from the top after the last (or when `current` is not in it). */
-export function nextTrack(playlist: number[], current: number): number | null {
-  if (playlist.length === 0) return null;
-  return playlist[(playlist.indexOf(current) + 1) % playlist.length];
-}

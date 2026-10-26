@@ -171,6 +171,7 @@ export function HitArea({
   height,
   label,
   cursor,
+  pressed,
   onClick,
 }: {
   x: number;
@@ -180,12 +181,15 @@ export function HitArea({
   label: string;
   /** Its own pointer, over the screen's (a `var(--cur-…)` glove). */
   cursor?: string;
+  /** A switch's state, for screen readers. */
+  pressed?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       aria-label={label}
+      aria-pressed={pressed}
       className="bar-hit absolute"
       style={{ left: x, top: y, width, height, cursor }}
       onClick={onClick}
@@ -197,15 +201,32 @@ export function HitArea({
 const MEMO = { x: 445, y: 279, width: 172 };
 const MEMO_ROWS = 2;
 
+/** How 「点唱机」 in the side menu is: lit while the small player is open, grey with no audio (no
+ * click), not there at all (at the door). */
+export type JukeboxCell = { state: "open" | "closed" | "none"; onToggle: () => void } | null;
+
+const JUKEBOX_INK = { open: BAR_INK.lit, closed: BAR_INK.text, none: BAR_INK.off } as const;
+
 /** The original's side menu, under the bar counter: its upper row (the original's 「设置」 and 「读取」)
  * holds the order memo, the label grey before it, as long as there is one; its lower row 「点唱机」 at
- * (445,312) (ticket 11) and 「离开」 at the original's 「退出」, (543,312), each 72×20, the word 5 px in.
+ * (445,312) (`jukebox`) and 「离开」 at the original's 「退出」, (543,312), each 72×20, the word 5 px in.
  * No hover. */
-export function SideMenu({ memo, leave, onLeave }: { memo: string | null; leave: string; onLeave: () => void }) {
+export function SideMenu({
+  memo,
+  jukebox,
+  leave,
+  onLeave,
+}: {
+  memo: string | null;
+  jukebox: JukeboxCell;
+  leave: string;
+  onLeave: () => void;
+}) {
   const label = `${copy.bar.memo}　`;
   const rows = memo === null ? [] : wrapText(memo, MEMO.width, measurePixelText, measurePixelText(label));
   // 只有两行的地方，再往下就压到「点唱机」「离开」上了：放不下的截掉，读屏读全文。
   if (rows.length > MEMO_ROWS) rows.splice(MEMO_ROWS - 1, Infinity, `${rows[MEMO_ROWS - 1].slice(0, -1)}…`);
+  const juke = copy.bar.jukebox.name;
   return (
     <>
       {memo !== null && (
@@ -215,6 +236,14 @@ export function SideMenu({ memo, leave, onLeave }: { memo: string | null; leave:
           runs={[{ text: label, color: BAR_INK.sub }, { text: rows.join("\n") }]}
           label={`${label}${memo}`}
         />
+      )}
+      {jukebox && (
+        <>
+          <PixelText x={450} y={313} runs={juke} color={JUKEBOX_INK[jukebox.state]} label={jukebox.state === "none" ? juke : ""} />
+          {jukebox.state !== "none" && (
+            <HitArea x={445} y={312} width={72} height={20} label={juke} pressed={jukebox.state === "open"} onClick={jukebox.onToggle} />
+          )}
+        </>
       )}
       <PixelText x={548} y={313} runs={leave} color={BAR_INK.text} label="" />
       <HitArea x={543} y={312} width={72} height={20} label={leave} onClick={onLeave} />

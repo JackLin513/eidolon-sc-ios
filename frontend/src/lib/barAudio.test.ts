@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { availableAudio, BAR_AUDIO, nextTrack, parseManifest } from "@/lib/barAudio";
+import { availableAudio, BAR_AUDIO, parseManifest } from "@/lib/barAudio";
 
 // 运行时读，不 import：前端的 Docker 构建拿不到 characters/，而 next build 也给测试做类型检查。
 const audio = JSON.parse(readFileSync(new URL("../../../characters/bar_audio.json", import.meta.url), "utf-8")) as {
@@ -87,20 +87,5 @@ describe("parseManifest", () => {
     for (const bad of [null, "x", [], { tracks: ["22"], sfx: [] }, { tracks: [], sfx: [1] }]) {
       expect(parseManifest(bad), JSON.stringify(bad)).toBeNull();
     }
-  });
-});
-
-describe("nextTrack", () => {
-  const playlist = [22, 21, 38];
-
-  it("一首完了放下一首，最后一首完了从头", () => {
-    expect(nextTrack(playlist, 22)).toBe(21);
-    expect(nextTrack(playlist, 21)).toBe(38);
-    expect(nextTrack(playlist, 38)).toBe(22);
-  });
-
-  it("不在曲单里的从第 1 首放起，空曲单没有下一首", () => {
-    expect(nextTrack(playlist, 99)).toBe(22);
-    expect(nextTrack([], 22)).toBeNull();
   });
 });

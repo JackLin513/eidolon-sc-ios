@@ -25,4 +25,14 @@ export const BAR_INK = {
   paper: "#ffffff",
   /** The recipe book's grey items, white under the pointer (the prototype's). */
   bookGrey: "#9b9b9b",
+  /** The jukebox's yellow: 「点唱机」 while the small player is open, a picked slot's number (the original's). */
+  lit: "#ffbb31",
+  /** 「点唱机」 with no audio, and the shadow under the small player's title (the original's). */
+  off: "#808080",
+  /** The jukebox's title box (the prototype's). */
+  jukeTitle: "#3c84cf",
+  /** The numbers on the jukebox's slots (the prototype's). */
+  jukeSlot: "#a6023c",
+  /** The jukebox's first line of help (the prototype's). */
+  jukeHint: "#fc1783",
 } as const;

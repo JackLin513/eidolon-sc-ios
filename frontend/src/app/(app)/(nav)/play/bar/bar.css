@@ -154,3 +154,49 @@
 .bar-wipe {
   animation: bar-wipe 0.83s steps(25) forwards;
 }
+
+/* 点唱机（照原型）：选曲界面的底图从上往下擦出 1.13 秒，「JUKEBOX 3」横向长出来；放进一首时那个槽一圈白框放大淡出；
+ * 小播放器从上往下展开；上一首、下一首按下时的亮黄淡出。 */
+.bar-juke-wipe {
+  animation: bar-wipe 1.13s steps(34) forwards;
+}
+@keyframes bar-juke-startup {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.bar-juke-startup {
+  animation: bar-juke-startup 0.44s steps(13) forwards;
+  transform-origin: 131px 0;
+}
+.bar-juke-halo {
+  animation: bar-pulse 0.33s steps(10) forwards;
+  transform-origin: center;
+}
+@keyframes bar-juke-open {
+  from {
+    transform: scaleY(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+.bar-juke-open {
+  animation: bar-juke-open 0.33s steps(10) forwards;
+}
+@keyframes bar-juke-flash {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.bar-juke-flash {
+  animation: bar-juke-flash 0.44s steps(13) forwards;
+}
