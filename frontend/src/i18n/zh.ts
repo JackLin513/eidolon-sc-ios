@@ -2083,6 +2083,19 @@ export const zh = {
       serve: "上酒",
       parts: (name: string, n: number) => `${name}，${n} 份`,
     },
+    /** 配方书：四个标签、每栏的标题、口味和种类的菜单分类名，翻页的读屏。饮品名用英文原名，不在这里。 */
+    book: {
+      tabs: { name: "按名称", flavor: "按口味", kind: "按种类", bottle: "瓶装饮品" },
+      search: { name: "按名称搜索", flavor: "按口味搜索", kind: "按种类搜索", bottle: "瓶装饮品" },
+      flavors: { sweet: "甜味", bitter: "苦味", sour: "酸味", spicy: "辛辣", bubbly: "发泡" },
+      kinds: { girly: "女性化", manly: "男性化", classic: "经典", classy: "时尚", promo: "宣传" },
+      /** 口味、种类的分类和它列出饮品时的标题，如「甜味饮品」。 */
+      category: (name: string) => `${name}饮品`,
+      prev: "上一页",
+      next: "下一页",
+      /** 瓶装的图，读屏读的：拖进摇酒器。 */
+      bottle: (name: string) => `${name}，拖进摇酒器`,
+    },
     /** 光顾没了（上酒得 410）时店门口写的。 */
     visitGone: "这次光顾已经结束了",
   },

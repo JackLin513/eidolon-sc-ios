@@ -141,3 +141,16 @@
     display: flex;
   }
 }
+
+/* 配方书打开（照原型）：从上往下刷开，0.83 秒、25 步。 */
+@keyframes bar-wipe {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+.bar-wipe {
+  animation: bar-wipe 0.83s steps(25) forwards;
+}

@@ -19,4 +19,8 @@ export const BAR_INK = {
   black: "#000000",
   /** The words on the bar counter's buttons (the prototype's). */
   button: "#111111",
+  /** The recipe book's white frame and its tabs. */
+  paper: "#ffffff",
+  /** The recipe book's grey items, white under the pointer (the prototype's). */
+  bookGrey: "#9b9b9b",
 } as const;
