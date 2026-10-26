@@ -15,7 +15,8 @@ public actor Eidolon {
         var contentRoot: URL { root.appendingPathComponent("Content", isDirectory: true) }
         var userDirectory: URL { root.appendingPathComponent("User", isDirectory: true) }
         var userDatabase: URL { userDirectory.appendingPathComponent("eidolon.sqlite") }
-        var contentDirectory: URL { contentRoot.appendingPathComponent("current", isDirectory: true) }
+        /// The installed bundle's directory: where her stand's files are read from (ADR-0018).
+        public var contentDirectory: URL { contentRoot.appendingPathComponent("current", isDirectory: true) }
     }
 
     public nonisolated let location: Location
