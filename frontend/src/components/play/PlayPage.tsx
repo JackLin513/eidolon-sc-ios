@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { FailureNotice } from "@/components/app/FailureNotice";
 import { useDirectory } from "@/components/conversations/ConversationDirectory";
 import { PlayCardLink } from "@/components/play/PlayCardLink";
@@ -8,6 +10,7 @@ import { useCalendar } from "@/components/play/useCalendar";
 import { useCycles } from "@/components/play/useCycles";
 import { usePlayState } from "@/components/play/usePlayState";
 import { achievementsSeenUpTo, OF_ALL } from "@/lib/achievements";
+import { type BarState, getBar } from "@/lib/api";
 import { partsOf } from "@/lib/calendar";
 import { playCards } from "@/lib/playCards";
 import { pendingJobs, shortName } from "@/lib/schedule";
@@ -23,6 +26,7 @@ function calendarYears(today: string): number[] {
  * 读到状态之前卡片就在、状态那一行先空着；读到好感度和礼物没开放时只剩「日历」卡。
  * 「日历」卡要角色、制作人档案和今年、明年的节假日（跨年时找得到明年的），都读到之前状态空着；日程开着时前面加本周还有几项待排。
  * 「周期」卡要周期和角色（短名），开关都开着、两样都读到了才出现，读不到时也不出现。
+ * 「VA-283」卡要 `GET /api/bar`，读到开着才出现，读不到时也不出现。
  * 卡的内容（名字、去哪、状态、点）由 `lib/playCards` 管，这里只管顺序和版式。
  * 只进这一级不算看过：「礼物」卡上的点留着，进了礼物子页才没有；「成就」卡上的点留到离开那个子页。
  */
@@ -36,6 +40,10 @@ export function PlayPage() {
   const schedulePending =
     thisWeek && scheduleNow ? pendingJobs({ week: thisWeek, drafts: draftsOn(thisWeek.id), now: scheduleNow }).length : 0;
   const { view: cycles } = useCycles();
+  const [bar, setBar] = useState<BarState | null>(null);
+  useEffect(() => {
+    getBar().then(setBar, () => {});
+  }, []);
   const byId = new Map((characters ?? []).map((character) => [character.id, character]));
   const [first, ...rest] = playCards({
     state,
@@ -54,6 +62,7 @@ export function PlayPage() {
             },
           }
         : null,
+    bar: bar?.enabled ? { rewardToday: bar.reward_today } : null,
   });
   return (
     <PlayShell header={<PlayHeader />}>

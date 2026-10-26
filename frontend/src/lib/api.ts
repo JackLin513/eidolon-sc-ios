@@ -659,6 +659,40 @@ export async function logout(userId?: string): Promise<void> {
   if (userId) forgetOwnKeys(userId);
 }
 
+/** A drink's flavor and kind (GLOSSARY.md「饮品」), as the recipe book's categories. */
+export type DrinkFlavor = "sweet" | "bitter" | "sour" | "spicy" | "bubbly";
+export type DrinkKind = "girly" | "manly" | "classic" | "classy" | "promo";
+
+type DrinkNames = { id: string; name: string; short_name: string; flavor: DrinkFlavor; kind: DrinkKind };
+
+/** A drink of the catalog (GLOSSARY.md「饮品」「材料」), as the bar counter and the recipe book read it:
+ * mixed of parts of each ingredient (Karmotrine `"optional"` when any number will do), on ice or not,
+ * aged or not, mixed or blended, big of itself or not, with its recipe card's `page` (null for the
+ * few without a card); or bottled, with
+ * its line of description and its parts of Karmotrine. No Japanese name, no character's tastes. */
+export type Drink =
+  | (DrinkNames & {
+      method: "mix" | "blend";
+      adelhyde: number;
+      bronson_extract: number;
+      powdered_delta: number;
+      flanergide: number;
+      karmotrine: number | "optional";
+      ice: boolean;
+      aged: boolean;
+      big: boolean;
+      page: number | null;
+    })
+  | (DrinkNames & { method: "bottle"; description: string; karmotrine: number });
+
+/** `GET /api/bar`: closed, or open with the drinks in catalog order and whether a visit done today
+ * would be rewarded (none done yet today, Beijing time, and affinity and gifts open). */
+export type BarState = { enabled: false } | { enabled: true; drinks: Drink[]; reward_today: boolean };
+
+export async function getBar(): Promise<BarState> {
+  return json(await api("/api/bar"));
+}
+
 /** The user's stats (GLOSSARY.md「统计」), in the producer's time zone, the lower part over
  * `range` (all of it unless given). */
 export async function getStats(range: StatsRange = "all"): Promise<Stats> {

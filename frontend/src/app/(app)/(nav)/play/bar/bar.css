@@ -1,0 +1,60 @@
+/*
+ * 酒吧（`/play/bar`）的样式。酒吧的画面是另立的视觉世界（ADR-0016，.scratch/bar-room spec「视觉和文档」），
+ * 不用 shadcn 组件和应用的色板、字体：原版画框、640×360 的逻辑像素、像素字。这份样式表只在酒吧这一页引入，
+ * 「缝合像素」也只在这一页下载（canvas 上写字时 document.fonts.load 才去取）。
+ */
+
+@font-face {
+  font-family: "BarFusionPixel";
+  src: url("/bar/fonts/fusion-pixel-12px-zh_hans.woff2") format("woff2");
+  font-display: block;
+}
+
+/* 盖住导航外壳的那一层：不滚动，触屏上没有平移、缩放手势（拖材料用 pointer 事件）。 */
+.bar-layer {
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  background: #1f1a2d;
+}
+
+/* 整块逻辑画面：按 lib/barScreen 的倍数 transform 放大，图和字的 canvas 都按最近邻放大。
+ * 图和字不接点击：外框整张盖在上面，点电视这样的地方要穿过它，落到底下的按钮上。 */
+.bar-stage img,
+.bar-stage canvas {
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+.bar-hit {
+  cursor: inherit;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.bar-hit:focus-visible {
+  outline: 1px solid #fff;
+  outline-offset: -1px;
+}
+
+@keyframes bar-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.bar-fan {
+  animation: bar-spin 6s steps(180) infinite;
+  transform-origin: 12px 12px;
+}
+
+/* 竖屏提醒：手机（粗指针）竖着时整层盖上，下面的画面照旧在。 */
+.bar-portrait-guard {
+  display: none;
+}
+@media (orientation: portrait) and (pointer: coarse) {
+  .bar-portrait-guard {
+    display: flex;
+  }
+}

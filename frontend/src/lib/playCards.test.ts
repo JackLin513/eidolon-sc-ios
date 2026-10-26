@@ -53,6 +53,7 @@ function context(change: Partial<PlayContext> = {}): PlayContext {
     calendar: calendar(),
     schedulePending: 0,
     cycles: null,
+    bar: null,
     ...change,
   };
 }
@@ -274,5 +275,38 @@ describe("「周期」卡", () => {
 
   it("都过了日子时取推算的下一次最早的那位", () => {
     expect(status([recorded("mano", "2026-10-20"), recorded("madoka", "2026-10-12")])).toBe("记过 2 位 · 最近 円香 10月12日");
+  });
+});
+
+describe("「VA-283」卡", () => {
+  const bar = (change: Partial<PlayContext>) => ofId(playCards(context(change)), "bar");
+
+  it("酒吧开着时排在最后，去酒吧，没有点", () => {
+    const cards = playCards(context({ cycles: cycles([]), bar: { rewardToday: true } }));
+
+    expect(cards.map((card) => card.id)).toEqual(["gifts", "achievements", "calendar", "cycles", "bar"]);
+    expect(ofId(cards, "bar")).toMatchObject({ name: "VA-283", href: "/play/bar", hasDot: false });
+  });
+
+  it("酒吧关着、或还没读到时没有这张卡（读到之前不闪出来）", () => {
+    expect(bar({ bar: null })).toBeUndefined();
+  });
+
+  it("今天第一次光顾还有奖励时这样写", () => {
+    expect(bar({ bar: { rewardToday: true } })?.status).toBe("今天第一次光顾有奖励");
+  });
+
+  it("好感度和礼物开着、今天玩完过时说奖励领过了", () => {
+    expect(bar({ bar: { rewardToday: false } })?.status).toBe("今天的奖励领过了");
+  });
+
+  it("好感度和礼物关着时只说这里做什么", () => {
+    const shown = bar({ state: giftState({ open: false }), bar: { rewardToday: false } });
+
+    expect(shown?.status).toBe("调一杯给来店的她");
+  });
+
+  it("礼物状态还没读到时状态先空着", () => {
+    expect(bar({ state: null, bar: { rewardToday: false } })?.status).toBe("");
   });
 });

@@ -1840,6 +1840,15 @@ export const zh = {
         /** 「记过 3 位 · 最近 円香 10月31日」：推算的下一次经期离今天最近的那位。 */
         status: (n: number, name: string, date: string) => `记过 ${n} 位 · 最近 ${name} ${date}`,
       },
+      bar: {
+        name: "VA-283",
+        /** 今天还没玩完过光顾，玩完有奖励。 */
+        rewardToday: "今天第一次光顾有奖励",
+        /** 好感度和礼物开着，今天已经玩完过。 */
+        rewarded: "今天的奖励领过了",
+        /** 好感度和礼物关着：光顾什么都不给。 */
+        unrewarded: "调一杯给来店的她",
+      },
     },
     /** 周期子页（`/play/cycles`，GLOSSARY.md「周期」「推算」）。 */
     cycles: {
@@ -2037,6 +2046,17 @@ export const zh = {
       startedBack: (jobs: string) => `${jobs}：已经开始了，不保存，退回待排。`,
       returnedBack: (jobs: string, reason: string) => `${jobs}：${reason}，不保存，退回待排。`,
     },
+  },
+  /** 酒吧（`/play/bar`，GLOSSARY.md「酒吧」）：画面里的字都是像素字，这里是它们写什么。 */
+  bar: {
+    /** 电视，读屏读的名字。 */
+    tv: "换台",
+    /** 侧边菜单下排，原版「退出」的位置：回玩法页。 */
+    leave: "离开",
+    /** 手机竖着时盖住整层的提醒。 */
+    portrait: "请横过来",
+    /** 安卓上提醒下面的按钮：进全屏、锁成横屏。 */
+    fullscreen: "全屏横过来",
   },
   /** 礼物子页（`/play/gifts`，GLOSSARY.md「礼物」「抽奖」，DESIGN.md「玩法页」）：抽奖台、重置卡条、我的礼物，和送礼面板、抽奖弹窗里的字。 */
   gifts: {

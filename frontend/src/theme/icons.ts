@@ -96,6 +96,8 @@ export { CalendarCheck as ScheduleIcon } from "lucide-react";
 
 // 周期：玩法页第一级「周期」卡（中性）；周期子页记录行的铅笔、点中那一天的「改这次」，弹窗里天数的 −/+。
 export { CalendarHeart as CyclesCardIcon } from "lucide-react";
+// 酒吧：玩法页第一级「VA-283」卡（中性）。
+export { Martini as BarCardIcon } from "lucide-react";
 export { Minus as FewerDaysIcon, Pencil as EditRecordIcon, Plus as MoreDaysIcon } from "lucide-react";
 
 // 礼物子页：抽奖台的「抽一次」和抽到稀有礼物时插画角上的闪光；我的礼物的四个类别筛选；
