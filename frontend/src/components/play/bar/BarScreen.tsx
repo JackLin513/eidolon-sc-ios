@@ -150,6 +150,7 @@ export function HitArea({
 
 /** The order memo's room in the side menu's upper row: two rows of 16 from (445,279), up to 「点唱机」. */
 const MEMO = { x: 445, y: 279, width: 172 };
+const MEMO_ROWS = 2;
 
 /** The original's side menu, under the bar counter: its upper row (the original's 「设置」 and 「读取」)
  * holds the order memo, the label grey before it, as long as there is one; its lower row 「点唱机」 at
@@ -158,6 +159,8 @@ const MEMO = { x: 445, y: 279, width: 172 };
 export function SideMenu({ memo, leave, onLeave }: { memo: string | null; leave: string; onLeave: () => void }) {
   const label = `${copy.bar.memo}　`;
   const rows = memo === null ? [] : wrapText(memo, MEMO.width, measurePixelText, measurePixelText(label));
+  // 只有两行的地方，再往下就压到「点唱机」「离开」上了：放不下的截掉，读屏读全文。
+  if (rows.length > MEMO_ROWS) rows.splice(MEMO_ROWS - 1, Infinity, `${rows[MEMO_ROWS - 1].slice(0, -1)}…`);
   return (
     <>
       {memo !== null && (

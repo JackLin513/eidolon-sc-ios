@@ -43,3 +43,15 @@
   - `{ type: "done" }`：台词完了，接着去选曲界面。
 - 流程都写在 `then` 里了：`first.piano-man` 直接接 `closing`，`closing` 接 `jukebox`。没有音频时省掉点唱机那句，由 `lib/barTutorial` 做：`closing` 的 `then` 是 `jukebox` 时不进那一段，直接回店门口。
 
+### 票 06 交接
+
+`lib/barVisit` 的形状（`BarVisitState`）：
+
+- `stage`：`door` | `entering`（`POST /api/bar/visits` 在路上）| `visit`；`notice`：店门口写的话；`visit`：`{ id, characterId }`。
+- `shown`：文本框上那一页 `{ line, page, isLast, typing: { startedAt, finished } }`；`queue`：还没上框的页（`LinePage[]`，一句话分好页以后一页一项）；`isAwaitingLine`：玩家已经点过最后一页，下一句一来马上打。
+- `isOrderTyped`、`isWaiting`：点单句（最后一页）打完了、`waiting` 到了；两样都有时 `openCounter` 把 `isMixing` 设成 true、`pendingMemo` 挪进 `memo`，两个标记清掉。
+- `mood`：她最近一句的情绪。
+
+动作（`BarVisitAction`）：`enter`、`refused { notice }`、`line { line, pages, now }`（组件用 `paginate` 分好页）、`event { event }`（其余事件；`retrying`、`failed`、`done` 现在原样返回）、`tap { now }`、`tick { now }`（组件在一页打完的时刻发）、`left`。派生：`shownText`、`isSpeaking`、`isArrowShown`。组件这边是 `components/play/bar/useBarVisit.ts`：调用的 `AbortController` 在 `call`、光顾 id 在 `visitId`；`enter` 的 `catch` 里光顾已经开始（`visitId` 有值）的错误现在直接忽略。
+
+- 教程不走接口，可以直接往同一个 reducer 发 `event { visit }`（visit id 用一个假的、离开时别发 `DELETE`）和 `line`，`TutorialLine` 的 `who` 要转成 `speaker`；或者另起状态，只复用 `lib/barText` 和 `BarTextBox`、`BarGuest`。`isMixing` 由点单句打完 + `waiting` 打开，教程的「打完讲解才开调酒台」可以照样发一个 `waiting`，但要有一句带 `order: true` 的。

@@ -107,12 +107,12 @@ export function shownRows(page: TextPage, typed: number): TextRow[] {
   const length = lengthOf(typedRowsOfPage);
   const pacedLength = lengthOf(page.rows.filter((row) => !typedRowsOfPage.includes(row)));
   const paced = length ? Math.round((Math.min(typed, length) / length) * pacedLength) : 0;
-  let left = { typed, paced };
+  let remaining = { typed, paced };
   return page.rows.map((row) => {
     const key = typedRowsOfPage.includes(row) ? "typed" : "paced";
     const chars = [...row.text];
-    const shown = Math.min(chars.length, Math.max(0, left[key]));
-    left = { ...left, [key]: left[key] - shown };
+    const shown = Math.min(chars.length, Math.max(0, remaining[key]));
+    remaining = { ...remaining, [key]: remaining[key] - shown };
     return { ...row, text: chars.slice(0, shown).join("") };
   });
 }

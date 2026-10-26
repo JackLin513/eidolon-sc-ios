@@ -37,3 +37,8 @@
 - 存储桶（`EIDOLON_STAND_ASSETS_URL` 下）的键：曲目 `bar/music/<id>.ogg`，音效 `bar/sfx/<name>.ogg`，都是 `audio/ogg`、长期缓存；`bar/manifest.json` 是 `{"tracks": [id…], "sfx": [name…]}`（按清单的顺序，只列桶里有的），`no-cache`。
 - 本机 `.env` 的存储桶是线上的，2026-10-26 已经传好了 `bar/`（59 首、16 个音效都在）；验收时仍然把 `bar/*` 请求拦到本机提取目录（`E:\Download\others\VA11_extract\audio`，文件名见清单的 `file`），或给一份假 manifest。
 - 前端的 Docker 构建上下文只有 `frontend/`，`next build` 还会给测试文件做类型检查：票 03 的 vitest 一开始 `import` 了 `characters/bar_audio.json`，CI 的前端镜像就因此构建失败，后来改成运行时 `readFileSync`。页面要用这份清单时，得先让构建拿得到它（例如改 Docker 构建上下文，或者生成一份进 `frontend/`）。
+
+### 票 06 交接
+
+- 打字音效：她的句子打字时 `isSpeaking(state, now)` 为 true（`lib/barVisit`）；制作人的句子在打时 `shownText(state, now)` 的 `line.speaker === "producer"` 且 `!isTypedOut`。两样都没有时停。计时在 `components/play/bar/useBarVisit.ts`：一页在打时每 1/30 秒重画一次，打完发 `tick`。
+- 进门的门声放在 `useBarVisit` 的 `enter` 开头（这一下点击放行播放）；`enter` 在角色没读到、不在店门口时直接返回，门声放在那个判断之后。

@@ -13,7 +13,7 @@ import { PortraitGuard } from "@/components/play/bar/PortraitGuard";
 import { useBarVisit } from "@/components/play/bar/useBarVisit";
 import { useBar } from "@/components/play/useBar";
 import { copy } from "@/i18n";
-import { isSpeaking, shownText } from "@/lib/barVisit";
+import { isArrowShown, isSpeaking, shownText } from "@/lib/barVisit";
 import { playHref } from "@/lib/playRoute";
 
 /**
@@ -27,19 +27,11 @@ export function BarSubpage() {
   const router = useRouter();
   const { bar, failed } = useBar();
   const { account, characters } = useDirectory();
-  const herOf = (characterId: string | undefined) => characters?.find((c) => c.id === characterId) ?? null;
-  const { state, now, enter, tap, leave } = useBarVisit({
-    userId: account?.id ?? null,
-    herName: (characterId) => {
-      const her = herOf(characterId);
-      return her ? (her.short_name ?? her.name) : "";
-    },
-  });
+  const { state, now, enter, tap, leave } = useBarVisit({ userId: account?.id ?? null, characters });
 
   if (bar && !bar.enabled) notFound();
   if (!bar && !failed) return <div className="bar-layer absolute inset-0" style={{ background: BAR_INK.ground }} />;
-  const her = herOf(state.visit?.characterId);
-  const text = shownText(state, now);
+  const her = characters?.find((c) => c.id === state.visit?.characterId) ?? null;
   return (
     <BarScreen
       room={<BarRoom />}
@@ -48,13 +40,13 @@ export function BarSubpage() {
     >
       {state.stage === "visit" ? (
         <BarTextBox
-          text={text}
+          text={shownText(state, now)}
           herColor={her?.color ?? BAR_INK.text}
-          isArrowShown={text !== null && text.isTypedOut && !state.isAwaitingLine && !state.isMixing}
+          isArrowShown={isArrowShown(state, now)}
           onTap={tap}
         />
       ) : (
-        <BarDoor notice={state.notice} onEnter={() => void enter()} />
+        <BarDoor notice={state.notice} isEntering={state.stage === "entering"} onEnter={() => void enter()} />
       )}
       <SideMenu
         memo={state.memo}

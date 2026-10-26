@@ -38,7 +38,7 @@ export function BarGuest({ character, mood, speaking }: { character: Character; 
           outfits={outfits.toTry}
           framing="waist"
           isPaused={false}
-          entrance="fade"
+          entrance="none"
           direction={direction}
           isReducedMotion={isReducedMotion}
           maxPixelRatio={1}

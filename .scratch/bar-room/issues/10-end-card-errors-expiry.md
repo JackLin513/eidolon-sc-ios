@@ -25,3 +25,19 @@
 - [ ] `lib/barVisit`（vitest）：`done` 后打完最后一句才出结束卡，结束卡三种写法；`retrying` 清掉这次调用的句子；`failed` 和「再试一次」（「请慢用」留着、409 忽略、410 回店门口）；兜底告别照常结束。
 - [ ] Playwright（拦下的 SSE）：两杯的光顾走到三种结束卡；「再营业」直接进门、音乐不断（拦下的音频没有重新请求第 1 首）；得了抽奖后导航「玩法」亮点；出错和「再试一次」；重试清句子；SSE 中途断掉回店门口；410 回店门口。截图给用户看。
 - [ ] 前端 typecheck、vitest 通过。
+
+## Comments
+
+### 票 06 交接
+
+`lib/barVisit` 的形状（`BarVisitState`）：
+
+- `stage`：`door` | `entering`（`POST /api/bar/visits` 在路上）| `visit`；`notice`：店门口写的话；`visit`：`{ id, characterId }`。
+- `shown`：文本框上那一页 `{ line, page, isLast, typing: { startedAt, finished } }`；`queue`：还没上框的页（`LinePage[]`，一句话分好页以后一页一项）；`isAwaitingLine`：玩家已经点过最后一页，下一句一来马上打。
+- `isOrderTyped`、`isWaiting`：点单句（最后一页）打完了、`waiting` 到了；两样都有时 `openCounter` 把 `isMixing` 设成 true、`pendingMemo` 挪进 `memo`，两个标记清掉。
+- `mood`：她最近一句的情绪。
+
+动作（`BarVisitAction`）：`enter`、`refused { notice }`、`line { line, pages, now }`（组件用 `paginate` 分好页）、`event { event }`（其余事件；`retrying`、`failed`、`done` 现在原样返回）、`tap { now }`、`tick { now }`（组件在一页打完的时刻发）、`left`。派生：`shownText`、`isSpeaking`、`isArrowShown`。组件这边是 `components/play/bar/useBarVisit.ts`：调用的 `AbortController` 在 `call`、光顾 id 在 `visitId`；`enter` 的 `catch` 里光顾已经开始（`visitId` 有值）的错误现在直接忽略。
+
+- `retrying` 要「从这次调用开始前的那一页接着」、`failed` 后重试要「先清掉出错这次调用推来的句子」：`LinePage` 现在不知道自己是哪次调用推来的，得加一个调用的标记（比如每次 `enter`、`serves`、`retry` 开头记一个调用序号，`line` 动作带上），再按它从 `queue` 和 `shown` 里清。
+- 光顾中途调用断了（`for await` 抛错、流提前结束）回店门口写一句，在 `useBarVisit` 的 `enter` 的 `catch` 里那个「票 10」注释处接。

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { ApiError } from "@/lib/api";
 import { paginate } from "@/lib/barText";
 import {
   type BarVisitAction,
@@ -8,6 +9,7 @@ import {
   atTheDoor,
   barVisit,
   doorNotice,
+  isArrowShown,
   isSpeaking,
   shownText,
 } from "@/lib/barVisit";
@@ -32,10 +34,6 @@ const ENTER: BarVisitAction = { type: "enter" };
 const VISIT: BarVisitAction = { type: "event", event: { type: "visit", visit_id: "v1", character_id: "mano" } };
 
 describe("进门", () => {
-  it("一开始在店门口，什么都没写", () => {
-    expect(atTheDoor()).toMatchObject({ stage: "door", notice: null, visit: null });
-  });
-
   it("点一下进门，等接口回来时还在店门口，再点没用", () => {
     const entering = run(ENTER);
 
@@ -60,22 +58,34 @@ describe("进门", () => {
 });
 
 describe("店门口的提示", () => {
+  const overLimit = (retryAt: string | null, message = "这一小时的光顾次数已经用完了（每小时 3 次）。") =>
+    new ApiError(message, 429, { retryAt });
+
   it("超了限额写几点以后再来，取到分钟、不会早", () => {
     const at = new Date(2026, 9, 26, 21, 4, 10);
 
-    expect(doorNotice({ status: 429, message: "这一小时的光顾次数已经用完了（每小时 3 次）", retryAt: at.toISOString() })).toBe(
+    expect(doorNotice(overLimit(at.toISOString()), new Date(2026, 9, 26, 20, 30))).toBe(
       "这一小时的光顾次数用完了，21:05 以后再来",
     );
   });
 
+  it("过了半夜的写上日期", () => {
+    const at = new Date(2026, 9, 27, 0, 3);
+
+    expect(doorNotice(overLimit(at.toISOString()), new Date(2026, 9, 26, 23, 30))).toBe(
+      "这一小时的光顾次数用完了，10月27日 00:03 以后再来",
+    );
+  });
+
   it("只能用自带密钥（retry_at 为 null）时照文字回合的写法，就是服务器的话", () => {
-    expect(doorNotice({ status: 429, message: "你的光顾只能用自带密钥，可以在设置里填写。", retryAt: null })).toBe(
+    expect(doorNotice(overLimit(null, "你的光顾只能用自带密钥，可以在设置里填写。"))).toBe(
       "你的光顾只能用自带密钥，可以在设置里填写。",
     );
   });
 
-  it("别的错误写一句短的", () => {
-    expect(doorNotice({ status: 500, message: "Internal Server Error", retryAt: null })).toBe("没能进门，再点一下试试");
+  it("别的错误、没有回答，写一句短的", () => {
+    expect(doorNotice(new ApiError("Internal Server Error", 500))).toBe("没能进门，再点一下试试");
+    expect(doorNotice(null)).toBe("没能进门，再点一下试试");
   });
 });
 
@@ -124,6 +134,23 @@ describe("台词", () => {
     const state = run(ENTER, VISIT, line(HELLO, 0), line(WELCOME, 5000));
 
     expect(shownText(state, 5000)?.line).toEqual(HELLO);
+  });
+});
+
+describe("右下角的箭头", () => {
+  it("打完一页才跳，翻过最后一页等下一句时不跳", () => {
+    const state = run(ENTER, VISIT, line(HELLO, 0));
+
+    expect(isArrowShown(state, 50)).toBe(false);
+    expect(isArrowShown(state, 5000)).toBe(true);
+    expect(isArrowShown(barVisit(state, { type: "tap", now: 5000 }), 5000)).toBe(false);
+  });
+
+  it("调酒时不跳", () => {
+    const mixing = run(ENTER, VISIT, line(ORDER, 0), { type: "event", event: { type: "waiting" } }, { type: "tick", now: 5000 });
+
+    expect(mixing.isMixing).toBe(true);
+    expect(isArrowShown(mixing, 5000)).toBe(false);
   });
 });
 

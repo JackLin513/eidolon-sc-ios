@@ -42,3 +42,17 @@
 ### 票 08 交接
 
 - 来自票 01：提取目录里没有 Frothy Water 的成品图（饮品图 24 张里是 Flaming Moai，没有它），原型的 `drink_fwater` 是坏图。调好 Frothy Water 时画哪张，这张票定（比如借 `drink_beer`），定了写进规格。
+
+### 票 06 交接
+
+`lib/barVisit` 的形状（`BarVisitState`）：
+
+- `stage`：`door` | `entering`（`POST /api/bar/visits` 在路上）| `visit`；`notice`：店门口写的话；`visit`：`{ id, characterId }`。
+- `shown`：文本框上那一页 `{ line, page, isLast, typing: { startedAt, finished } }`；`queue`：还没上框的页（`LinePage[]`，一句话分好页以后一页一项）；`isAwaitingLine`：玩家已经点过最后一页，下一句一来马上打。
+- `isOrderTyped`、`isWaiting`：点单句（最后一页）打完了、`waiting` 到了；两样都有时 `openCounter` 把 `isMixing` 设成 true、`pendingMemo` 挪进 `memo`，两个标记清掉。
+- `mood`：她最近一句的情绪。
+
+动作（`BarVisitAction`）：`enter`、`refused { notice }`、`line { line, pages, now }`（组件用 `paginate` 分好页）、`event { event }`（其余事件；`retrying`、`failed`、`done` 现在原样返回）、`tap { now }`、`tick { now }`（组件在一页打完的时刻发）、`left`。派生：`shownText`、`isSpeaking`、`isArrowShown`。组件这边是 `components/play/bar/useBarVisit.ts`：调用的 `AbortController` 在 `call`、光顾 id 在 `visitId`；`enter` 的 `catch` 里光顾已经开始（`visitId` 有值）的错误现在直接忽略。
+
+- 上酒后要接「请慢用」和她的反应：上酒时 `isMixing` 清掉，同时把 `isAwaitingLine` 设成 true（调酒时箭头不显示，玩家没理由去点），这样「请慢用」一到就顶掉点单句开始打。下一单的点单句照现在的规则打完再开。
+- `memo` 一直留着，下一单的 `memo` 事件来了 `openCounter` 才换。
