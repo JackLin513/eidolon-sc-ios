@@ -25,3 +25,9 @@
 - [ ] 把 GLOSSARY「点单」和实现对一遍。pyright、ruff 通过；提交前跑 affected-tests。
 
 ## Comments
+
+### 票 04 交接
+
+- 模板句在 `bar_lines.orders[phrasing]`，每句是 `Line(ja, zh, emotion)`。要填的占位见 `bar_lines.PLACEHOLDERS`：`{name_ja}`（日语）、`{name}`（中文）、`{flavor}`、`{kind}`、`{conditions}`。启动时已经查过每句的占位都对，用 `str.format` 填就行。
+- 填进去的词要是名词性的说法，模板句是照这个写的（`bar_lines.toml` 开头有说明）：`{flavor}` 中文如「甜的」、日语如「甘いの」；`{kind}` 中文如「时尚的」、日语如「おしゃれなの」；`{conditions}` 是这一单要提的条件用「、」连成一串，如「甜的、加冰、不要酒精」「甘いの、氷入り、アルコール抜き」。打比方的模板句也用 `{conditions}`，填口味和种类（为什么不照描述打比方，见票 04 的 Comments）。日语的口味、种类说法现在还没有，这张票定，放在代码里或者 `bar_lines.toml` 都行。
+- 酒量补的「不要酒精」：换成模板句时，如果这一单补了不要酒精、说法又不是几个条件叠加，就在模板句后面接一句 `bar_lines.no_alcohol`；几个条件叠加的把不要酒精放进 `{conditions}`。

@@ -50,3 +50,8 @@
 - 来意和话题从 `assembly.build` 里的 `bar_visits`（`eidolon.bar_visits.BarVisits`）取：`reasons`、`topics` 都按文件顺序，每一条有 `id`、`note`、`not_for`（`frozenset` 角色 id），来意多一个 `mood`（`Mood`：`happy`、`annoyed`、`tired`、`down`、`calm`）。现在它只校验、没有往下传，酒吧模块建造时接过去。
 - 去重要避开的次数用 `bar_visits.RECENT_VISITS`（3）。启动时已经查过每位角色能用的都多于这个数，所以剔掉 `not_for` 再避开最近 3 次，至少还剩 1 条；「抽空了就放开」只在日程或以后改清单的时候才会碰上。
 - 测试的 `CharacterConfig` 拷仓库清单时去掉了 `not_for`。要测「`not_for` 的不给はづき」，就自己写一份清单（`characters.write(BAR_VISITS_FILE, ...)`），再把はづき加进角色。
+
+### 票 04 交接
+
+- 写死的句子从 `assembly.build` 里的 `bar_lines`（`eidolon.bar_lines.BarLines`）取，现在只校验、没有往下传，酒吧模块建造时接过去。「请慢用」是 `bar_lines.enjoy`（一列中文），推 `line` 时 `speaker: producer`，随机挑一句。
+- 档位的名字 `bar_lines.Tier`（`best`、`right`、`wrong`）和说法的名字 `bar_lines.Phrasing` 已经定了；判定和点单想用自己的类型，就从这里挪过去，`bar_lines` 改成导入。

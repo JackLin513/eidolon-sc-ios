@@ -19,6 +19,7 @@ from eidolon.__main__ import main
 from eidolon.activity import ActivityLog
 from eidolon.app import create_app
 from eidolon.assembly import Backend
+from eidolon.bar_lines import BAR_LINES_FILE
 from eidolon.bar_visits import BAR_VISITS_FILE
 from eidolon.clock import Clock
 from eidolon.config import LLMSettings, Settings
@@ -134,6 +135,7 @@ REPO_GIFTS = Path(__file__).parents[2] / "characters" / GIFTS_FILE
 REPO_JOBS = Path(__file__).parents[2] / "characters" / JOBS_FILE
 REPO_DRINKS = Path(__file__).parents[2] / "characters" / DRINKS_FILE
 REPO_BAR_VISITS = Path(__file__).parents[2] / "characters" / BAR_VISITS_FILE
+REPO_BAR_LINES = Path(__file__).parents[2] / "characters" / BAR_LINES_FILE
 BAR_TASTE: dict[str, object] = {
     "bar_flavors": ["sweet"], "bar_favorites": ["sugar-rush"], "bar_tolerance": "medium",
 }
@@ -143,9 +145,9 @@ unless a test gives others."""
 
 class CharacterConfig:
     """Writes a character configuration directory, the way an administrator would, with the
-    repository's gift catalog, job list, drink catalog and bar reasons and topics beside it
-    unless a test writes its own (`gifts.toml`, `jobs.toml`, `drinks.toml`,
-    `bar_visits.toml`). The reasons and topics are written for every character, none left
+    repository's gift catalog, job list, drink catalog, bar reasons and topics and bar lines
+    beside it unless a test writes its own (`gifts.toml`, `jobs.toml`, `drinks.toml`,
+    `bar_visits.toml`, `bar_lines.toml`). The reasons and topics are written for every character, none left
     out (`not_for`), as the repository's leave out characters a test may not have."""
 
     def __init__(self, directory: Path) -> None:
@@ -245,6 +247,8 @@ class CharacterConfig:
             repository = REPO_BAR_VISITS.read_text(encoding="utf-8")
             everyones = re.sub(r"^not_for = \[[^]]*\]\n", "", repository, flags=re.M)
             visits.write_text(everyones, encoding="utf-8")
+        if not (bar_lines := self.directory / BAR_LINES_FILE).exists():
+            bar_lines.write_bytes(REPO_BAR_LINES.read_bytes())
         return self
 
     def write(self, relative: str, content: str | bytes) -> None:

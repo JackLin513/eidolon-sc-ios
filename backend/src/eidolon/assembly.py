@@ -36,6 +36,7 @@ from eidolon.admission import Admissions
 from eidolon.affinity import Affinities
 from eidolon.announcements import Announcements
 from eidolon.backup import Backups
+from eidolon.bar_lines import bar_lines_path, check_bar_lines, load_bar_lines
 from eidolon.bar_visits import bar_visits_path, check_bar_visits, load_bar_visits
 from eidolon.call import Calls, Speech, SpeechServices
 from eidolon.characters import Character, load_characters
@@ -224,8 +225,8 @@ def build(
     """The backend `settings` describe, with any of the outside services passed in
     used instead of made. Raises RuntimeError, having opened nothing, if the character
     configuration (her liked gifts, her bar tastes and all), the world setting, the gift
-    catalog, the job list, the drink catalog or the bar's reasons and topics is broken, or a
-    character is none of its idols and none of its staff."""
+    catalog, the job list, the drink catalog or the bar's reasons and topics or its fixed lines
+    is broken, or a character is none of its idols and none of its staff."""
     characters = load_characters(settings.characters_path)
     gift_catalog = load_gift_catalog(gifts_path(settings.characters_path))
     check_liked_gifts(characters, gift_catalog)
@@ -234,6 +235,8 @@ def build(
     check_bar_tastes(characters, drink_catalog)
     bar_visits = load_bar_visits(bar_visits_path(settings.characters_path))
     check_bar_visits(characters, bar_visits)
+    bar_lines = load_bar_lines(bar_lines_path(settings.characters_path))
+    check_bar_lines(bar_lines, drink_catalog)
     world = load_world(path := world_path(settings.characters_path))
     if world is None:
         log.info(

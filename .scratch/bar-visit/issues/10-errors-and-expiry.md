@@ -16,3 +16,7 @@
 - [ ] pyright、ruff 通过；提交前跑 affected-tests。
 
 ## Comments
+
+### 票 04 交接
+
+- 兜底的反应在 `bar_lines.reactions[tier]`（`best`、`right`、`wrong`），兜底的告别在 `bar_lines.farewells["sober" | "drunk"]`。每句是 `Line(ja, zh, emotion)`，表情已经标好，推 `line` 时带上；都不含占位，也不提饮品名，哪一杯都能用。
