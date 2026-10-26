@@ -21,7 +21,16 @@ from eidolon.config import Settings
 from tests.conftest import CharacterConfig, ClientFactory
 from tests.fakes import FakeClock, FakeLLM, FakeRandom
 from tests.test_bar_draws import ONE_DRINK, about, visit_done, visit_rows
-from tests.test_bar_visit import COMING_IN, PARTING, REACTING, enter, mano_alone, mixed, serve
+from tests.test_bar_visit import (
+    COMING_IN,
+    PARTING,
+    coming_in,
+    enter,
+    mano_alone,
+    mixed,
+    reacting,
+    serve,
+)
 from tests.test_data_package import export, import_package
 from tests.test_delete_account import user_id
 from tests.test_text_turn import send_turn, start_conversation
@@ -41,11 +50,15 @@ async def test_a_visit_done_is_written_down_and_remembered_next_time_without_a_w
     make_client: ClientFactory, settings: Settings
 ):
     clock = FakeClock()
-    llm = FakeLLM(COMING_IN, REACTING, PARTING, COMING_IN, COMING_IN)
-    # Sugar Rush, then Sparkle Star; a visit left; three days on, her of the day again.
+    llm = FakeLLM(
+        COMING_IN, reacting("sparkle-star"), PARTING, coming_in("blue-fairy"),
+        coming_in("blue-fairy"),
+    )
+    # Sugar Rush, then Sparkle Star; a visit left; three days on, her of the day again; Blue
+    # Fairy both times, what she wanted the last time avoided.
     client = make_client(
         llm, clock=clock,
-        random=FakeRandom(0, 0, 20, 0, 0, 0, 45, 0, 0, 0, *ONE_DRINK, *ONE_DRINK),
+        random=FakeRandom(0, 0, 20, 0, 0, 0, 0, 45, 0, 0, 0, 0, *ONE_DRINK, *ONE_DRINK),
     )
 
     came = await enter(client)
@@ -85,9 +98,14 @@ async def test_five_visits_draw_no_reason_or_topic_of_the_last_three_and_make_he
 ):
     listed = load_bar_visits(settings.characters_path.parent / BAR_VISITS_FILE)
     clock = FakeClock()
-    llm = FakeLLM(*[COMING_IN, PARTING] * 5, COMING_IN, COMING_IN)
+    sugar_rush, sparkle_star = COMING_IN, coming_in("sparkle-star")
+    llm = FakeLLM(
+        *[sugar_rush, PARTING, sparkle_star, PARTING] * 2, sugar_rush, PARTING, sparkle_star,
+        sparkle_star,
+    )
     # Five visits that day, of one drink each, the first of what is left each time, she by
-    # chance from the second on; two weeks on, and a minute more.
+    # chance from the second on; two weeks on, and a minute more. Served Sugar Rush each
+    # time, she wants Sugar Rush and Sparkle Star by turns, avoiding what she wanted last.
     client = make_client(
         llm, clock=clock,
         random=FakeRandom(*ONE_DRINK, 0, *[0, *ONE_DRINK, 0] * 4, *ONE_DRINK, *ONE_DRINK),

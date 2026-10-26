@@ -137,10 +137,11 @@ REPO_DRINKS = Path(__file__).parents[2] / "characters" / DRINKS_FILE
 REPO_BAR_VISITS = Path(__file__).parents[2] / "characters" / BAR_VISITS_FILE
 REPO_BAR_LINES = Path(__file__).parents[2] / "characters" / BAR_LINES_FILE
 BAR_TASTE: dict[str, object] = {
-    "bar_flavors": ["sweet"], "bar_favorites": ["sugar-rush"], "bar_tolerance": "medium",
+    "bar_flavors": ["sweet"], "bar_favorites": ["sugar-rush"], "bar_tolerance": "strong",
 }
 """Her bar tastes, the fields required and no more, as `CharacterConfig.add` writes them
-unless a test gives others."""
+unless a test gives others: holding her drink well, so that no chance is taken on her
+wanting one without alcohol."""
 
 
 class CharacterConfig:

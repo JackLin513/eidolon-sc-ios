@@ -14,14 +14,17 @@ job of hers the producer scheduled today and she has done, if there is one, else
 list's not for leaving her out (`not_for`) and none of her `bar_visits.RECENT_VISITS` latest
 visits with the user, unless that leaves none; the topic likewise; and how many drinks she
 has (`bar_rules.CUPS`). Each of her orders is drawn just before the call that has her order
-it (`bar_rules.draw_order`).
+it (`bar_rules.draw_order`), knowing whether the user is a novice at the bar and what she
+wanted the last time.
 
 **Calls.** A visit is written in as many calls as she has drinks, and one more: her coming in
 and first order; after each drink served, her reaction, the talk and her next order; after
 the last, her reaction, a short talk and her farewell (`bar_prompt`). Each streams her lines
 and the producer's as they close (`bar_reply`); the line she orders in is held back to the
-end of its call, with what follows it, and sent with the order memo. A call with no line at
-all, or failing, ends the visit for now.
+end of its call, with what follows it, and sent with the order memo once it names drinks as
+it should (`bar_rules.names_rightly`): if it does not, the call is made again for it alone,
+told so, and if that does not either, she says one of the fixed lines instead
+(`bar_rules.fixed_order`). A call with no line at all, or failing, ends the visit for now.
 
 **Serving.** What the bar counter holds is matched against the recipes (`DrinkCatalog.match`):
 broken, it is refused and nothing changes; anything else is served her and judged
@@ -52,18 +55,32 @@ from eidolon.bar_prompt import (
     farewell_ask,
     opening_ask,
     prompt,
+    rewrite_ask,
     serving_ask,
     shared_prompt,
     visit_prompt,
 )
 from eidolon.bar_reply import BarLine, BarParser
-from eidolon.bar_rules import Had, Order, Reason, Serving, cups, draw_order, judged
+from eidolon.bar_rules import (
+    NOVICE_VISITS,
+    Had,
+    Known,
+    Order,
+    Reason,
+    Serving,
+    cups,
+    draw_order,
+    fixed_order,
+    judged,
+    names_rightly,
+)
 from eidolon.bar_visits import RECENT_VISITS, BarVisits, Topic
 from eidolon.bar_visits import Reason as ListedReason
 from eidolon.characters import Character
 from eidolon.clock import Clock
 from eidolon.data_access import Database
 from eidolon.drink_catalog import DrinkCatalog, Mixture
+from eidolon.llm import ChatLLM
 from eidolon.own_keys import BroughtKeys, OwnKeyFailed, OwnKeys
 from eidolon.producer import producer_prompt
 from eidolon.randomness import Random
@@ -192,6 +209,8 @@ class _Visit:
     reason: Reason
     topic: Topic
     cups: int
+    known: Known
+    """What her orders are drawn knowing."""
     shared: str
     """The first part of every call's prompt (`bar_prompt.shared_prompt`)."""
     about: str
@@ -205,9 +224,11 @@ class _Visit:
 
 @dataclass(frozen=True)
 class _Before:
-    """What a user coming in reads first: whether they have a visit done today."""
+    """What a user coming in reads first: whether they have a visit done today, and how many
+    they have done, with anyone."""
 
     done_today: bool
+    done: int
 
 
 @dataclass(frozen=True)
@@ -294,11 +315,15 @@ class Bar:
         reason = self._reason(character, _done_today(her_jobs), hers.reasons)
         topic = self._topic(character, hers.topics)
         drinks = cups(self._random)
-        had = frozenset(h.wanted for h in hers.remembered.last_orders)
-        first = draw_order(character, self._catalog, self._random, [], had)
+        known = Known(
+            before.done < NOVICE_VISITS,
+            frozenset(h.wanted for h in hers.remembered.last_orders),
+        )
+        first = draw_order(character, self._catalog, self._random, [], known, first=True)
         world = self._world
         visit = _Visit(
             secrets.token_urlsafe(16), user_id, character, now, today, reason, topic, drinks,
+            known,
             shared_prompt(character, world.prompt(character.name, today) if world else None),
             visit_prompt(
                 hers.about_producer, reason, topic, drinks,
@@ -335,7 +360,9 @@ class Bar:
         enjoy = self._lines.enjoy[self._random(len(self._lines.enjoy))]
         if len(visit.servings) < visit.cups:
             ordered = [o.target.id for o in visit.orders]
-            order = draw_order(visit.character, self._catalog, self._random, ordered, frozenset())
+            order = draw_order(
+                visit.character, self._catalog, self._random, ordered, visit.known, first=False
+            )
             visit.orders.append(order)
             ask = serving_ask(serving, enjoy, order)
         else:
@@ -415,6 +442,9 @@ class Bar:
                     raise _Unwritten("she did not order")
                 if not any(line.order for line in held):
                     held[0] = replace(held[0], order=True)
+                held = await self._named(visit, keys.llms.chat, ask, held)
+                if self._visits.get(visit.user_id) is not visit:
+                    return
                 said += held
                 for line in held:
                     yield line
@@ -426,7 +456,7 @@ class Bar:
             if ordering:
                 visit.step = "waiting"
                 over = False
-                yield Memo(visit.orders[-1].memo)
+                yield Memo(visit.orders[-1].memo("".join(line.zh for line in held if line.order)))
                 yield Waiting()
                 return
             await self._db.write(_write_down, visit, self._clock())
@@ -441,6 +471,43 @@ class Bar:
             keys.release()
             if over:
                 self._end(visit)
+
+
+    async def _named(
+        self, visit: _Visit, chat: ChatLLM, ask: str, held: list[BarLine]
+    ) -> list[BarLine]:
+        """`held`, her order and what follows it in a call asking for `ask`, with her order
+        naming drinks as it should: as written, rewritten in another call, or else said in a
+        fixed line, the visit's order then as that line has it."""
+        order = visit.orders[-1]
+        rest = [line for line in held if not line.order]
+        if names_rightly(order, [line for line in held if line.order], self._catalog):
+            return held
+        rewritten = await self._rewritten(visit, chat, rewrite_ask(ask, order))
+        if rewritten and names_rightly(order, rewritten, self._catalog):
+            return [*rewritten, *rest]
+        visit.orders[-1], fixed = fixed_order(order, self._lines, self._random)
+        return [*fixed, *rest]
+
+    async def _rewritten(self, visit: _Visit, chat: ChatLLM, ask: str) -> list[BarLine]:
+        """Her order as a call asking for `ask` writes it: her lines marked as her order, or
+        else her last; none if it writes none of hers, or fails."""
+        parser = BarParser()
+        lines: list[BarLine] = []
+        stream = chat.stream(prompt(visit.shared, visit.about, visit.written, ask))
+        try:
+            async for chunk in stream:
+                if isinstance(chunk, str):
+                    lines += parser.feed(chunk)
+            lines += parser.finish()
+        except Exception:
+            log.exception("rewriting an order failed")
+            return []
+        finally:
+            if (close := getattr(stream, "aclose", None)) is not None:
+                await close()
+        hers = [line for line in lines if line.speaker == "her"]
+        return [line for line in hers if line.order] or [replace(h, order=True) for h in hers[-1:]]
 
 
 class _Unwritten(RuntimeError):
@@ -495,7 +562,10 @@ def _before(db: sqlite3.Connection, user_id: str, today: date) -> _Before:
         "SELECT 1 FROM visit_records WHERE user_id = ? AND entered_on = ? LIMIT 1",
         (user_id, today.isoformat()),
     ).fetchone()
-    return _Before(found is not None)
+    (done,) = db.execute(
+        "SELECT COUNT(*) FROM visit_records WHERE user_id = ?", (user_id,)
+    ).fetchone()
+    return _Before(found is not None, done)
 
 
 def _hers(db: sqlite3.Connection, user_id: str, character_id: str) -> _Hers:

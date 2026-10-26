@@ -22,17 +22,26 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from eidolon.affinity import day_of
-from eidolon.bar_lines import Tier
+from eidolon.bar_lines import Phrasing, Tier
 from eidolon.bar_reply import BarLine
-from eidolon.bar_rules import LONG_AGO, REGULAR_VISITS, Had, Order, Reason, Serving, Wrong
+from eidolon.bar_rules import (
+    FLAVORS,
+    KINDS,
+    LONG_AGO,
+    NAMING,
+    REGULAR_VISITS,
+    Had,
+    Order,
+    Reason,
+    Serving,
+    Wrong,
+)
 from eidolon.bar_visits import Mood, Topic
 from eidolon.characters import Character
 from eidolon.drink_catalog import Drink, DrinkCatalog, Served
 from eidolon.llm import ChatMessage
 from eidolon.today import her_birthday
 
-FLAVORS = {"sweet": "甜", "bitter": "苦", "sour": "酸", "spicy": "辣", "bubbly": "发泡"}
-KINDS = {"girly": "女性化", "manly": "男性化", "classic": "经典", "classy": "时尚", "promo": "宣传"}
 _TOLERANCES = {"weak": "不太能喝", "medium": "一般", "strong": "很能喝"}
 MOODS: dict[Mood, str] = {
     "happy": "开心", "annoyed": "烦躁", "tired": "疲惫", "down": "低落", "calm": "平静",
@@ -141,15 +150,51 @@ def farewell_ask(serving: Serving, enjoy: str, servings: Sequence[Serving]) -> s
     ])
 
 
+_PHRASINGS: dict[Phrasing, str] = {
+    "name": "直接说出饮品的名字。",
+    "name_big": "直接说出饮品的名字，并说要大杯。",
+    "flavor": "只说想要什么口味的，不说是哪一款。",
+    "kind": "只说想要哪一类的，可以绕着说（比如想要「烈一点的」就是男性化），不说是哪一款。",
+    "conditions": "把下面这几个条件一起说出来，不说是哪一款。",
+    "analogy": "照这款饮品的描述，用你自己的话打个比方，让制作人猜是哪一款；不要照抄描述。",
+    "my_favorite": "让制作人上一杯你喜欢的，不说是哪一款，看制作人记不记得你的口味。",
+    "your_call": "让制作人帮你拿主意，不说想要什么。",
+    "usual": "说要「老样子」，也就是上次来时喝的那款，不说是哪一款。",
+}
+
+
 def order_card(order: Order) -> str:
     """What she is to order, and how: never what else would be right for it."""
     drink = order.target
-    return "\n".join([
+    card = [
         "点单卡：",
-        "- 说法：直接说出饮品的名字。",
+        f"- 说法：{_PHRASINGS[order.phrasing]}",
         f"- 饮品：{drink.name}（日文名 {drink.name_ja}），{_described(drink)}。",
-        f"- 名字：要说出来，日语台词里说「{drink.name_ja}」，中文字幕里写「{drink.name}」。",
-        "- 要提的条件：没有。",
+    ]
+    if order.phrasing == "analogy":
+        card.append(f"- 描述：{drink.description}")
+    if order.phrasing in NAMING:
+        card.append(
+            f"- 名字：要说出来，日语台词里说「{drink.name_ja}」，中文字幕里写「{drink.name}」。"
+        )
+    else:
+        card.append("- 名字：不能说出来。日语台词和中文字幕里都不要出现任何饮品的名字。")
+    card.append(f"- 要提的条件：{'、'.join(order.words()) or '没有'}。")
+    return "\n".join(card)
+
+
+def rewrite_ask(ask: str, order: Order) -> str:
+    """`ask` again, but for her order alone, which named drinks where it should not, or not
+    the one it should."""
+    drink = order.target
+    naming = (
+        f"一定要说出名字：日语台词里说「{drink.name_ja}」，中文字幕里写「{drink.name}」。"
+        if order.phrasing in NAMING else "不要提任何饮品的名字，日语台词和中文字幕里都不行。"
+    )
+    return "\n\n".join([
+        ask,
+        "刚才点单的那一两句不合要求。这次只重写点单的那一两句，标上 order=\"true\"，别的都不写。"
+        + naming,
     ])
 
 
@@ -191,9 +236,10 @@ def _glass(served: Served) -> str:
 
 
 _WRONGS: dict[Wrong, str] = {
+    "not_usual": "错在哪：你要的是老样子，这杯不是上次那款。",
     "flavor_only": "错在哪：口味对了，种类不对。",
     "kind_only": "错在哪：种类对了，口味不对。",
-    "off": "错在哪：不是你点的那款，完全不对。",
+    "off": "错在哪：不是你要的，完全不对。",
 }
 
 
@@ -203,6 +249,8 @@ def _wrong(wrong: Wrong, served: Served) -> str:
             f"错在哪：这是你讨厌的{FLAVORS[served.drink.flavor]}口味。"
             "要写成明显的不喜欢，但不赶人、不翻脸。"
         )
+    if wrong == "alcohol":
+        return "错在哪：你说了不要酒精，这杯却有酒。要写成明显的不喜欢，但不赶人、不翻脸。"
     return _WRONGS[wrong]
 
 

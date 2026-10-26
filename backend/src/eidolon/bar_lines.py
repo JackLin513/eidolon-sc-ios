@@ -122,10 +122,10 @@ def load_bar_lines(path: Path) -> BarLines:
 def check_bar_lines(lines: BarLines, catalog: DrinkCatalog) -> None:
     """Raises BarLinesError unless no line names a drink of `catalog`, in English or in
     Japanese, whatever its case or width."""
-    names = [(d.name, _folded(n)) for d in catalog.drinks.values() for n in (d.name, d.name_ja)]
+    names = [(d.name, folded(n)) for d in catalog.drinks.values() for n in (d.name, d.name_ja)]
     for label, n, text in _texts(lines):
-        folded = _folded(text)
-        if said := [name for name, f in names if f in folded]:
+        compared = folded(text)
+        if said := [name for name, f in names if f in compared]:
             raise BarLinesError(f"{label} 第 {n} 句提到了饮品 {said[0]}")
 
 
@@ -146,7 +146,8 @@ def _texts(lines: BarLines) -> Iterator[tuple[str, int, str]]:
             yield label, n, line.zh
 
 
-def _folded(text: str) -> str:
+def folded(text: str) -> str:
+    """`text` as names in it are compared, whatever its case or width."""
     return unicodedata.normalize("NFKC", text).casefold()
 
 

@@ -8,8 +8,8 @@ prompt and the visit records, as the browser is told none of it but who came.
 The random source is asked, in order: coming in, who she is if the user has a visit done that
 day, her reason (whether it is her job first, if she has one done today), her topic, how many
 drinks (0 one, 20 two, 80 three), and her first order: its bucket (0 a favorite, 45 her
-liking, 80 any) and which of it; serving, the fixed line the producer says, and, another to
-come, her next order likewise."""
+liking, 80 any), which of it and how she says it (0 by name, as everywhere here); serving,
+the fixed line the producer says, and, another to come, her next order likewise."""
 
 import json
 import sqlite3
@@ -28,18 +28,20 @@ from tests.test_bar_visit import (
     COMING_IN,
     MANO_TASTES,
     PARTING,
-    REACTING,
+    coming_in,
     enter,
+    her,
     mano_alone,
     mixed,
+    reacting,
     serve,
 )
 from tests.test_schedule_saving import WEEK, placed, publish, save
 from tests.test_schedule_she_knows import EARLY_MONDAY
 
-ONE_DRINK = [0, 0, 0, 0, 0]
+ONE_DRINK = [0, 0, 0, 0, 0, 0]
 """Coming in to a user's character of the day: her first reason and topic, one drink, her
-first favorite."""
+first favorite, by name."""
 
 
 def only_mano(settings: Settings, tmp_path: Path) -> Settings:
@@ -73,8 +75,10 @@ async def test_her_of_the_day_comes_until_a_visit_is_done_and_then_anyone_does(
     make_client: ClientFactory,
 ):
     # Three times in as her of the day, the last served and done; then by chance, Kogane
-    # (the second) and Mano (the first).
-    llm = FakeLLM(COMING_IN, COMING_IN, COMING_IN, PARTING, COMING_IN, COMING_IN)
+    # (the second) and Mano (the first). Whichever was her of the day had Sugar Rush, and so
+    # orders Sparkle Star: she names both.
+    either = [her("シュガーラッシュか、スパークルスター。", "Sugar Rush，或者 Sparkle Star。", order=True)]
+    llm = FakeLLM(COMING_IN, COMING_IN, COMING_IN, PARTING, either, either)
     client = make_client(llm, random=FakeRandom(*ONE_DRINK * 3, 0, 1, *ONE_DRINK, 0, *ONE_DRINK))
 
     left = (await enter(client))[0]
@@ -106,12 +110,16 @@ async def test_her_of_the_day_changes_with_the_day_by_beijing_time(make_client: 
 
 
 async def test_a_visit_done_after_midnight_is_of_the_day_it_came_in_on(
-    make_client: ClientFactory, settings: Settings
+    make_client: ClientFactory, settings: Settings, tmp_path: Path
 ):
     clock = FakeClock(datetime(2026, 9, 25, 15, 50, tzinfo=UTC))  # 23:50 in Beijing
-    llm = FakeLLM(COMING_IN, PARTING, COMING_IN)
-    # The next day it is her of that day who comes: nothing drawn for who.
-    client = make_client(llm, clock=clock, random=FakeRandom(*ONE_DRINK, 0, *ONE_DRINK))
+    llm = FakeLLM(COMING_IN, PARTING, coming_in("sparkle-star"))
+    # The next day it is her of that day who comes: nothing drawn for who. She had Sugar
+    # Rush, so orders Sparkle Star.
+    client = make_client(
+        llm, settings=only_mano(settings, tmp_path), clock=clock,
+        random=FakeRandom(*ONE_DRINK, 0, *ONE_DRINK),
+    )
 
     came = await enter(client)
     clock.advance(minutes=20)
@@ -222,12 +230,12 @@ def ordered(prompt: list) -> str:
 async def test_she_never_orders_what_she_dislikes_nor_one_drink_twice(
     make_client: ClientFactory, settings: Settings, tmp_path: Path
 ):
-    llm = FakeLLM(COMING_IN, REACTING, REACTING)
+    llm = FakeLLM(COMING_IN, reacting("moonblast"), reacting("marsblast"))
     # Three drinks: a favorite, Sugar Rush; the fourth to her liking, past bitter Sunshine
     # Cloud; any but those, bitter and what she had: the fourth, past Sunshine Cloud again.
     client = make_client(
         llm, settings=only_mano(settings, tmp_path),
-        random=FakeRandom(0, 0, 80, 0, 0, 0, 45, 3, 0, 80, 3),
+        random=FakeRandom(0, 0, 80, 0, 0, 0, 0, 45, 3, 0, 0, 80, 3, 0),
     )
 
     visit_id = (await enter(client))[0]["visit_id"]
@@ -241,12 +249,17 @@ async def test_her_first_order_is_none_of_what_she_wanted_the_last_time(
     make_client: ClientFactory, settings: Settings, tmp_path: Path
 ):
     settings = only_mano(settings, tmp_path)
-    llm = FakeLLM(COMING_IN, REACTING, PARTING, COMING_IN, REACTING)
+    llm = FakeLLM(
+        COMING_IN, reacting("sparkle-star"), PARTING, coming_in("blue-fairy"),
+        reacting("sugar-rush"),
+    )
     # The last time Sugar Rush, served right, then Sparkle Star, served wrong; this time a
     # favorite falls to her liking, past both, and her second is Sugar Rush again.
     client = make_client(
         llm, settings=settings,
-        random=FakeRandom(0, 0, 20, 0, 0, 0, 45, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0),
+        random=FakeRandom(
+            0, 0, 20, 0, 0, 0, 0, 45, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0,
+        ),
     )
 
     await visit_done(client, mixed("sugar-rush"), mixed("blue-fairy"))
@@ -260,13 +273,16 @@ async def test_ordered_by_name_only_that_drink_is_right_in_any_glass(
     make_client: ClientFactory, settings: Settings, tmp_path: Path
 ):
     settings = only_mano(settings, tmp_path)
-    llm = FakeLLM(COMING_IN, REACTING, REACTING, PARTING, COMING_IN, REACTING, PARTING)
+    llm = FakeLLM(
+        COMING_IN, reacting("sparkle-star"), reacting("blue-fairy"), PARTING,
+        coming_in("fluffy-dream"), reacting("sugar-rush"), PARTING,
+    )
     client = make_client(
         llm, settings=settings,
         # Sugar Rush, Sparkle Star, Blue Fairy; then Fluffy Dream and Sugar Rush.
         random=FakeRandom(
-            0, 0, 80, 0, 0, 0, 45, 0, 0, 45, 0, 0,
-            0, 0, 0, 20, 0, 0, 0, 0, 0, 0,
+            0, 0, 80, 0, 0, 0, 0, 45, 0, 0, 0, 45, 0, 0, 0,
+            0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0,
         ),
     )
 

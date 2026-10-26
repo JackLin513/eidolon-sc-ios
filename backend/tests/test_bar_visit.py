@@ -1,7 +1,8 @@
 """A visit to the bar (GLOSSARY.md「光顾」), driven through the backend's external API: she
 comes in and orders, is served each drink and reacts, and says goodbye, the chat model
 writing every line from a script and the random source drawing why she came, what about, how
-many drinks and which. Mano is the only character, so she is the one who comes; who comes is
+many drinks, which and how she orders them (always by name here: how else is
+`test_bar_orders`'s). Mano is the only character, so she is the one who comes; who comes is
 `test_bar_draws`'s."""
 
 import asyncio
@@ -27,13 +28,13 @@ CATALOG = load_drink_catalog(REPO_DRINKS)
 
 MANO_TASTES: dict[str, object] = {
     "bar_flavors": ["sweet"], "bar_kind": "girly", "bar_favorites": ["sugar-rush"],
-    "bar_disliked_flavor": "bitter", "bar_tolerance": "weak",
+    "bar_disliked_flavor": "bitter", "bar_tolerance": "strong",
 }
 
 
 def mano_alone(directory: Path) -> CharacterConfig:
     """A character configuration in `directory` with Mano alone, liking what is sweet and
-    girly, Sugar Rush best, and disliking what is bitter."""
+    girly, Sugar Rush best, disliking what is bitter, and holding her drink well."""
     return CharacterConfig(directory).add(
         "mano", "櫻木真乃", MANO_SHEET, birthday="04-25", bar=MANO_TASTES
     )
@@ -56,15 +57,28 @@ def producer(zh: str) -> str:
     return f"<producer>{zh}</producer>"
 
 
-COMING_IN = [
-    her("こんばんは。", "晚上好。", "happy"),
-    producer("欢迎。"),
-    her("シュガーラッシュをください。", "请给我一杯 Sugar Rush。", order=True),
-]
-"""Her coming in and ordering, as the first call writes it."""
+def coming_in(drink_id: str = "sugar-rush") -> list[str]:
+    """Her coming in and ordering the drink by name, as the first call writes it."""
+    drink = CATALOG.drinks[drink_id]
+    return [
+        her("こんばんは。", "晚上好。", "happy"),
+        producer("欢迎。"),
+        her(f"{drink.name_ja}をください。", f"请给我一杯 {drink.name}。", order=True),
+    ]
 
-REACTING = [her("おいしい！", "好喝！", "happy"), producer("那就好。"), her("次はこれ。", "下一杯要这个。")]
-"""Her reaction, the talk and her next order, as a call after a drink writes it."""
+
+COMING_IN = coming_in()
+"""Her coming in and ordering Sugar Rush."""
+
+
+def reacting(drink_id: str) -> list[str]:
+    """Her reaction, the talk and her next order, the drink by name in her last line, none
+    marked as her order, as a call after a drink writes it."""
+    drink = CATALOG.drinks[drink_id]
+    return [
+        her("おいしい！", "好喝！", "happy"), producer("那就好。"),
+        her(f"次は{drink.name_ja}。", f"下一杯要 {drink.name}。"),
+    ]
 
 PARTING = [her("ごちそうさま。", "多谢款待。"), producer("路上小心。")]
 """Her reaction to the last drink and her farewell."""
@@ -114,10 +128,10 @@ def kinds(evented: list[dict]) -> list[str]:
 async def test_a_visit_comes_in_orders_is_served_each_drink_and_says_goodbye(
     make_client: ClientFactory, settings: Settings
 ):
-    llm = FakeLLM(["".join(COMING_IN)], REACTING, PARTING)
-    # Her reason, her topic, two drinks; Sugar Rush, a favorite; on serving it, the first
-    # fixed line, then a favorite again, which falls to her liking: Sparkle Star.
-    client = make_client(llm, random=FakeRandom(0, 0, 20, 0, 0, 0, 0, 0, 0))
+    llm = FakeLLM(["".join(COMING_IN)], reacting("sparkle-star"), PARTING)
+    # Her reason, her topic, two drinks; Sugar Rush, a favorite, by name; on serving it, the
+    # first fixed line, then a favorite again, which falls to her liking: Sparkle Star.
+    client = make_client(llm, random=FakeRandom(0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0))
     keep(settings.database_path, "producer", 70, datetime.now(UTC))  # close, were affinity on
 
     came_in = await enter(client)
@@ -206,7 +220,7 @@ def refused(res: httpx.Response, status: int, code: str) -> None:
 
 async def test_only_the_users_visit_under_way_is_served_and_left(make_client: ClientFactory):
     llm = FakeLLM(COMING_IN, COMING_IN, COMING_IN)
-    client = make_client(llm, random=FakeRandom(*[0, 0, 20, 0, 0] * 3))
+    client = make_client(llm, random=FakeRandom(*[0, 0, 20, 0, 0, 0] * 3))
     friend = make_client(FakeLLM(), "friend")
 
     first = (await enter(client))[0]["visit_id"]
@@ -250,7 +264,7 @@ async def test_what_is_broken_is_refused_changing_nothing_and_a_bottle_is_served
 async def test_serving_while_her_lines_are_being_written_is_refused(make_client: ClientFactory):
     written = asyncio.Event()
     llm = FakeLLM([COMING_IN[0], written, *COMING_IN[1:]], PARTING)
-    client = make_client(llm, random=FakeRandom(0, 0, 0, 0, 0, 0))
+    client = make_client(llm, random=FakeRandom(0, 0, 0, 0, 0, 0, 0))
 
     came, entering = await streamed(client, VISITS, {}, until="visit")
     too_soon = await serve(client, came[0]["visit_id"], mixed("sugar-rush"))
@@ -269,7 +283,7 @@ async def test_closed_no_one_comes_in_but_a_visit_under_way_goes_on(
     llm = FakeLLM(COMING_IN, PARTING)
     client = make_client(
         llm, settings=replace(settings, admins=frozenset({ADMIN})),
-        random=FakeRandom(0, 0, 0, 0, 0, 0),
+        random=FakeRandom(0, 0, 0, 0, 0, 0, 0),
     )
     visit_id = (await enter(client))[0]["visit_id"]
 
@@ -287,9 +301,10 @@ async def test_her_lines_are_read_as_forgivingly_as_they_can_be(make_client: Cli
     written = [
         "好的，下面是这一段：\n<her emo", 'tion="smug"><ja>ふふ。</ja></her>',
         "<her><zh>只有字幕</zh></her>", "<produ", "cer>来了。</producer>（她笑了）",
-        her("これで。", "就这个。"), "\n以上。",
+        her("シュガーラッシュで。", "就 Sugar Rush。"), "\n以上。",
     ]
-    client = make_client(FakeLLM(written), random=FakeRandom(0, 0, 0, 0, 0))
+
+    client = make_client(FakeLLM(written), random=FakeRandom(0, 0, 0, 0, 0, 0))
 
     came = await enter(client)
 
@@ -297,8 +312,8 @@ async def test_her_lines_are_read_as_forgivingly_as_they_can_be(make_client: Cli
         {"type": "line", "speaker": "her", "emotion": "calm", "ja": "ふふ。", "zh": "ふふ。"},
         {"type": "line", "speaker": "producer", "zh": "来了。"},
         {
-            "type": "line", "speaker": "her", "emotion": "calm", "ja": "これで。", "zh": "就这个。",
-            "order": True,
+            "type": "line", "speaker": "her", "emotion": "calm", "ja": "シュガーラッシュで。",
+            "zh": "就 Sugar Rush。", "order": True,
         },
         {"type": "memo", "text": "她要 Sugar Rush。"},
         {"type": "waiting"},
@@ -306,7 +321,7 @@ async def test_her_lines_are_read_as_forgivingly_as_they_can_be(make_client: Cli
 
 
 async def test_a_call_with_no_line_ends_the_visit(make_client: ClientFactory):
-    client = make_client(FakeLLM(["她走进店里，点了一杯。"]), random=FakeRandom(0, 0, 0, 0, 0))
+    client = make_client(FakeLLM(["她走进店里，点了一杯。"]), random=FakeRandom(0, 0, 0, 0, 0, 0))
 
     came = await enter(client)
     afterwards = await serve(client, came[0]["visit_id"], mixed("sugar-rush"))
@@ -320,10 +335,10 @@ async def test_every_call_tells_her_who_she_is_this_visit_what_came_before_and_w
 ):
     write_world(characters, [("櫻木真乃", "illumination STARS", "関根瞳")])
     birthday = datetime(2026, 4, 25, 3, 0, tzinfo=UTC)  # hers, in Tokyo and Beijing
-    llm = FakeLLM(COMING_IN, REACTING, PARTING)
+    llm = FakeLLM(COMING_IN, reacting("sparkle-star"), PARTING)
     client = make_client(
         llm, settings=replace(settings, judge=FAKE_JUDGE), clock=FakeClock(birthday),
-        random=FakeRandom(0, 0, 20, 0, 0, 0, 0, 0, 0),
+        random=FakeRandom(0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0),
     )
     await client.put("/api/profile", json={"form_of_address": "小林"})
     keep(settings.database_path, "producer", 70, birthday)  # close
@@ -347,7 +362,7 @@ async def test_every_call_tells_her_who_she_is_this_visit_what_came_before_and_w
     assert "今天是你的生日" in about
     assert "这是你第一次来 VA-283" in about
     assert "喜欢的口味：甜" in about and "爱喝的：Sugar Rush" in about
-    assert "讨厌的口味：苦" in about and "酒量：不太能喝" in about
+    assert "讨厌的口味：苦" in about and "酒量：很能喝" in about
     assert "进门" in ask and "Sugar Rush" in ask and "シュガーラッシュ" in ask
 
     after_first, after_last = llm.prompts[1][-1].content, llm.prompts[2][-1].content
@@ -365,7 +380,7 @@ async def test_a_visit_left_while_her_lines_are_being_written_is_written_no_furt
 ):
     written = asyncio.Event()
     llm = FakeLLM([COMING_IN[0], written, *COMING_IN[1:]])
-    client = make_client(llm, random=FakeRandom(0, 0, 0, 0, 0))
+    client = make_client(llm, random=FakeRandom(0, 0, 0, 0, 0, 0))
 
     came, entering = await streamed(client, VISITS, {}, until="visit")
     left = await client.delete(f"{VISITS}/{came[0]['visit_id']}")
