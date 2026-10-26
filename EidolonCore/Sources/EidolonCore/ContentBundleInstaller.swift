@@ -33,6 +33,7 @@ struct ContentBundleInstaller {
 
         let database = try ContentDatabase(contentDirectory: staging, userDatabasePath: userDatabasePath)
         let counts = try validateDatabase(database, manifest: manifest)
+        let standOutfitCount = countStandOutfits(in: staging)
 
         try swapIn(staging)
 
@@ -44,7 +45,8 @@ struct ContentBundleInstaller {
             embeddingDimensions: manifest.embedding.dimensions,
             episodeCount: counts["episodes"] ?? 0,
             passageCount: counts["episode_passages"] ?? 0,
-            characterCount: characters.count
+            characterCount: characters.count,
+            standOutfitCount: standOutfitCount
         )
         return info
     }
@@ -196,10 +198,12 @@ struct ContentBundleInstaller {
             )
         }
         let counts = try database.counts()
-        for (table, expected) in manifest.content where counts[table] != expected {
-            throw EidolonError.invalidContent(
-                "\(table) 有 \(counts[table] ?? 0) 条，manifest 声明 \(expected)"
-            )
+        for (table, expected) in manifest.content where counts[table] != nil {
+            guard counts[table] == expected else {
+                throw EidolonError.invalidContent(
+                    "\(table) 有 \(counts[table] ?? 0) 条，manifest 声明 \(expected)"
+                )
+            }
         }
         guard (counts["episode_passages"] ?? 0) > 0 else {
             throw EidolonError.invalidContent("剧情库是空的")
@@ -219,6 +223,19 @@ struct ContentBundleInstaller {
             )
         }
         return counts
+    }
+
+    /// Each outfit directory holds exactly one `data.json`, so counting those under
+    /// `stand/idols` counts the outfits without reading the manifest's stand entry.
+    private func countStandOutfits(in directory: URL) -> Int {
+        let idols = directory.appendingPathComponent("stand/idols", isDirectory: true)
+        guard let enumerator = fileManager.enumerator(at: idols, includingPropertiesForKeys: nil)
+        else { return 0 }
+        var count = 0
+        for case let url as URL in enumerator where url.lastPathComponent == "data.json" {
+            count += 1
+        }
+        return count
     }
 
     // MARK: - Swapping

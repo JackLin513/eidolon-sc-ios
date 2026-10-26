@@ -1,0 +1,111 @@
+import Foundation
+import XCTest
+@testable import EidolonCore
+
+final class StandTests: XCTestCase {
+    private var root: URL!
+
+    override func setUpWithError() throws {
+        root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("EidolonCoreStand-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    private func installedEidolon(_ change: (inout Fixture.Options) -> Void = { _ in }) async throws -> Eidolon {
+        var options = Fixture.Options()
+        options.includeStand = true
+        change(&options)
+        let eidolon = try Eidolon(location: .init(root: root.appendingPathComponent("app")))
+        try await eidolon.install(bundleAt: Fixture.makeBundle(in: root, options: options))
+        return eidolon
+    }
+
+    // MARK: - Reading her stand
+
+    func testReadsDefaultOutfitAndOutfitList() async throws {
+        let eidolon = try await installedEidolon()
+        let found = await eidolon.stand(for: "mano")
+        let stand = try XCTUnwrap(found)
+
+        let content = eidolon.location.contentDirectory
+        XCTAssertEqual(stand.defaultOutfit.id, "stand/1030010010")
+        XCTAssertEqual(
+            stand.defaultOutfit.directory.standardizedFileURL.path,
+            content.appendingPathComponent("stand/idols/stand/1030010010").standardizedFileURL.path
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: stand.defaultOutfit.directory.appendingPathComponent("data.json").path
+            )
+        )
+
+        let list = try XCTUnwrap(stand.outfitList)
+        XCTAssertEqual(list.idolID, 1)
+        XCTAssertEqual(list.cards.map(\.id), ["1030010010", "1030010020"])
+        XCTAssertEqual(list.cards[0].name, "ナチュラルモード")
+        XCTAssertEqual(list.cards[0].type, "P_SR")
+        XCTAssertNil(list.cards[1].stage)
+
+        let everyday = try XCTUnwrap(list.cards[0].everyday)
+        XCTAssertEqual(everyday.id, "stand/1030010010")
+        XCTAssertEqual(
+            everyday.directory.standardizedFileURL.path,
+            content.appendingPathComponent("stand/idols/stand/1030010010").standardizedFileURL.path
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: everyday.directory.appendingPathComponent("data.png").path
+            )
+        )
+        XCTAssertEqual(list.cards[0].stage?.id, "stand_costume/1030010010")
+    }
+
+    func testOutfitWhoseFilesAreMissingIsLeftOut() async throws {
+        let eidolon = try await installedEidolon { $0.missingStandOutfitFiles = true }
+        let found = await eidolon.stand(for: "mano")
+        let stand = try XCTUnwrap(found)
+        let list = try XCTUnwrap(stand.outfitList)
+
+        XCTAssertNotNil(list.cards[0].everyday)
+        XCTAssertNotNil(list.cards[0].stage)
+        XCTAssertNil(list.cards[1].everyday)
+        XCTAssertNil(list.cards[1].stage)
+    }
+
+    func testUnreadableOutfitListMeansNoList() async throws {
+        let eidolon = try await installedEidolon { $0.unreadableOutfitList = true }
+        let found = await eidolon.stand(for: "mano")
+        let stand = try XCTUnwrap(found)
+
+        XCTAssertEqual(stand.defaultOutfit.id, "stand/1030010010")
+        XCTAssertNil(stand.outfitList)
+    }
+
+    func testCharacterWithoutStandHasNone() async throws {
+        let eidolon = try await installedEidolon()
+        let hiori = await eidolon.stand(for: "hiori")
+        XCTAssertNil(hiori)
+    }
+
+    // MARK: - Installation
+
+    func testBundleWithStandCountKeyInstallsAndCountsOutfits() async throws {
+        let eidolon = try await installedEidolon()
+        let info = try await eidolon.installedContentInfo()
+        XCTAssertEqual(info?.standOutfitCount, 3)
+    }
+
+    func testOldBundleWithoutStandStillInstalls() async throws {
+        let eidolon = try Eidolon(location: .init(root: root.appendingPathComponent("app")))
+        try await eidolon.install(bundleAt: Fixture.makeBundle(in: root))
+
+        let info = try await eidolon.installedContentInfo()
+        XCTAssertEqual(info?.standOutfitCount, 0)
+        let mano = await eidolon.stand(for: "mano")
+        XCTAssertNil(mano)
+    }
+}

@@ -285,6 +285,7 @@ struct SettingsView: View {
                         LabeledContent("剧情", value: "\(info.episodeCount)")
                         LabeledContent("段落", value: "\(info.passageCount)")
                         LabeledContent("角色", value: "\(info.characterCount)")
+                        LabeledContent("立绘", value: "\(info.standOutfitCount) 套")
                         LabeledContent("向量模型", value: info.embeddingModel)
                         LabeledContent("向量维度", value: "\(info.embeddingDimensions)")
                         LabeledContent("内容 schema", value: "\(info.contentSchemaVersion)")
