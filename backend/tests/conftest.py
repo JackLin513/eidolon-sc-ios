@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from collections.abc import AsyncIterator, Callable, Coroutine
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -18,6 +19,7 @@ from eidolon.__main__ import main
 from eidolon.activity import ActivityLog
 from eidolon.app import create_app
 from eidolon.assembly import Backend
+from eidolon.bar_visits import BAR_VISITS_FILE
 from eidolon.clock import Clock
 from eidolon.config import LLMSettings, Settings
 from eidolon.data_access import Database
@@ -131,6 +133,7 @@ BACKGROUND = b"\xff\xd8\xff fake background"
 REPO_GIFTS = Path(__file__).parents[2] / "characters" / GIFTS_FILE
 REPO_JOBS = Path(__file__).parents[2] / "characters" / JOBS_FILE
 REPO_DRINKS = Path(__file__).parents[2] / "characters" / DRINKS_FILE
+REPO_BAR_VISITS = Path(__file__).parents[2] / "characters" / BAR_VISITS_FILE
 BAR_TASTE: dict[str, object] = {
     "bar_flavors": ["sweet"], "bar_favorites": ["sugar-rush"], "bar_tolerance": "medium",
 }
@@ -140,8 +143,10 @@ unless a test gives others."""
 
 class CharacterConfig:
     """Writes a character configuration directory, the way an administrator would, with the
-    repository's gift catalog, job list and drink catalog beside it unless a test writes its
-    own (`gifts.toml`, `jobs.toml`, `drinks.toml`)."""
+    repository's gift catalog, job list, drink catalog and bar reasons and topics beside it
+    unless a test writes its own (`gifts.toml`, `jobs.toml`, `drinks.toml`,
+    `bar_visits.toml`). The reasons and topics are written for every character, none left
+    out (`not_for`), as the repository's leave out characters a test may not have."""
 
     def __init__(self, directory: Path) -> None:
         self.directory = directory
@@ -236,6 +241,10 @@ class CharacterConfig:
             jobs.write_bytes(REPO_JOBS.read_bytes())
         if not (drinks := self.directory / DRINKS_FILE).exists():
             drinks.write_bytes(REPO_DRINKS.read_bytes())
+        if not (visits := self.directory / BAR_VISITS_FILE).exists():
+            repository = REPO_BAR_VISITS.read_text(encoding="utf-8")
+            everyones = re.sub(r"^not_for = \[[^]]*\]\n", "", repository, flags=re.M)
+            visits.write_text(everyones, encoding="utf-8")
         return self
 
     def write(self, relative: str, content: str | bytes) -> None:

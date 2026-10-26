@@ -44,3 +44,9 @@
 
 - `GET /api/bar` 现在在 `eidolon/bar_api.py` 里直接读 `backend.config.bar_on` 和 `backend.drink_catalog`。酒吧模块有了「读」以后，把它挪进模块，接口层只留 HTTP；返回形状见票 01 的实现说明。
 - 上一杯的判定用 `backend.drink_catalog.match(...)`：调坏的是 `None`（回 422 `broken_drink`），瓶装传 id 字符串。上酒正文里的五种材料、`ice`、`aged`、`method` 和 `drink_catalog.Mixture` 的字段同名，可以直接对上；份数是负数、不是整数或合计超过 20 的 `match` 也当调坏的，接口层不必另查。
+
+### 票 03 交接
+
+- 来意和话题从 `assembly.build` 里的 `bar_visits`（`eidolon.bar_visits.BarVisits`）取：`reasons`、`topics` 都按文件顺序，每一条有 `id`、`note`、`not_for`（`frozenset` 角色 id），来意多一个 `mood`（`Mood`：`happy`、`annoyed`、`tired`、`down`、`calm`）。现在它只校验、没有往下传，酒吧模块建造时接过去。
+- 去重要避开的次数用 `bar_visits.RECENT_VISITS`（3）。启动时已经查过每位角色能用的都多于这个数，所以剔掉 `not_for` 再避开最近 3 次，至少还剩 1 条；「抽空了就放开」只在日程或以后改清单的时候才会碰上。
+- 测试的 `CharacterConfig` 拷仓库清单时去掉了 `not_for`。要测「`not_for` 的不给はづき」，就自己写一份清单（`characters.write(BAR_VISITS_FILE, ...)`），再把はづき加进角色。
