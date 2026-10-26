@@ -72,6 +72,8 @@ GLOSSARY.md             # 领域词汇
    open EidolonIOS.xcodeproj
    ```
 
+   构建时 `tools/sync_stand_runtime.sh` 从上游 checkout（默认 `../eidolon-sc`，可用 `EIDOLON_UPSTREAM` 指定）把 `spine-webgl.js` 拷进 App 资源。运行时是第三方代码，不进仓库；没有 checkout 或运行时缺失时脚本只打印一条警告，App 照常编译，只是立绘显示「没有立绘」。
+
 3. 选一个 iPhone 模拟器运行，首次启动点「选择内容包」导入；然后在设置里填对话模型、向量化/重排，以及通话用的 Soniox 与 Fish Audio 密钥（密钥存钥匙串）。
 
 4. 通话：在角色聊天页右上角点电话按钮（模拟器第一次用麦克风时，Mac 会要求给 **Simulator** 麦克风权限：系统设置 → 隐私与安全性 → 麦克风；另外确认 Simulator 菜单 I/O → Audio Input 选的是内置麦克风而不是 None）。接通是静默的——她不会先说话；对着麦克风说一句（中文或日文都行，识别同时提示 zh/ja，她用日语回答并配中文字幕），停一下等句末判定，她就按回合回答。首次通话会请求麦克风权限。设置里的「通话」一节：Soniox 密钥与识别模型（默认 `stt-rt-v5`）、Fish Audio 密钥与语音模型（默认免费档 `s2.1-pro-free`；只有 `drama-3` 会读朗读标记）。没有 Fish 密钥时她的话只显示字幕，通话流程不变。
@@ -106,6 +108,7 @@ swift test --package-path EidolonCore
 - `EIDOLON_CALL_DROP_ONCE=1`、`EIDOLON_CALL_RECONNECT_MS`：让首次识别连接断开、放慢重连
 - `EIDOLON_CALL_HANGUP_MS`：到点自动挂断
 - `EIDOLON_OPEN_CHARACTER` / `EIDOLON_OPEN_CALL=1`：直接打开某角色的聊天并发起通话
+- `EIDOLON_OPEN_STAND_PREVIEW=1`：直接打开设置里的立绘预览（她站在深色背景上待机）
 - `EIDOLON_BAILIAN_WORKSPACE` / `_REGION` / `_MODEL` / `_API_KEY`：预置百炼判断配置，其余设置不动；真机也能用 `xcrun devicectl device process launch --environment-variables` 传入
 
 这些值和真实密钥一样只用于本地验证，不要提交。

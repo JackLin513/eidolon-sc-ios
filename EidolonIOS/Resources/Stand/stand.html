@@ -1,0 +1,44 @@
+<!doctype html>
+<!--
+  Her stand, drawn by the official Spine 3.6 WebGL runtime (ADR-0017). Everything is
+  local: this page, the runtime and the player come from the app bundle, her outfits
+  from the installed content bundle, all through the app's own URL scheme. The page
+  never navigates, never opens a window and never reaches the network.
+-->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src eidolon-stand:; style-src 'unsafe-inline'; img-src eidolon-stand:; connect-src eidolon-stand:;">
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: none;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+  }
+</style>
+</head>
+<body>
+<canvas id="stand"></canvas>
+<!-- The runtime is copied out of the upstream checkout at build time and is third-party
+     code (never in this repository). Without it `stand-player.js` reports that the stand
+     is unavailable, and the app shows no stand. -->
+<script src="spine-webgl.js"></script>
+<script src="stand-player.js"></script>
+</body>
+</html>
