@@ -31,3 +31,9 @@
 - [ ] 前端 `next build` 通过，CI 绿。
 - [ ] Comments 列出合并前留给用户的真机验收：手机上拖材料；小数缩放下的像素字清不清楚；安卓「全屏横过来」能进全屏并锁成横屏；iPhone 竖屏提醒；听一遍默认 12 首；走一遍教程（含跳过和重看）。
 - [ ] Comments 列出部署前的事（两份规格都合进 main 以后一起做）：手动备份；在本机跑一次 `eidolon bar upload` 传进线上存储桶（先问用户）；确认 `EIDOLON_BAR` 开着；公告草稿在对话里给，不写进票。
+
+## Comments
+
+### 票 13 交接
+
+- 来自票 04：`frontend/scripts/bar-logo.png`（外框右上角的「VA-283」logo）不在 `frontend/public/bar/` 下，但含原版外框的像素（小字「Cyberpunk Bartender Action」和大字「VA-」照搬原版，「283」照原版字形手画）。LICENSING.md 写原版素材时把它一起列进非 AGPL 素材，注明是取自 Sukeban Games 原版外框的衍生图。

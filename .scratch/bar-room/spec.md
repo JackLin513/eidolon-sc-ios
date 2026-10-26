@@ -175,6 +175,7 @@ Status: ready-for-agent
 ### logo「VA-283」
 
 - 外框右上角烤着「Cyberpunk Bartender Action / VA-11 HALL-A」，换成「VA-283」的像素 logo。用 magpie-image 的 `generate_image` 出图，出图前先报张数、等用户点头；出来以后缩成外框那一块的像素尺寸、手修成调色板以内的像素图，烤回外框图（素材脚本里记一步「贴 logo」）。
+- 实际做法（票 04）：生成图直接缩到 187×63 太糙，只当字形参考；小字和「VA-」照搬原版像素，「283」照原版大字手画。小字「Cyberpunk Bartender Action」保留，用户看过认可。
 - 店门口的招牌照原型写 VA-283。
 
 ### 入口、路由和外壳
