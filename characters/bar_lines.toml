@@ -18,8 +18,9 @@
 #                   flavor 说口味           ja、zh 都必须用 {flavor}
 #                   kind 说种类             ja、zh 都必须用 {kind}
 #                   conditions 几个条件叠加 ja、zh 都必须用 {conditions}
-#                   analogy 照描述打比方    ja、zh 都必须用 {conditions}（填口味和种类：饮品的描述里
-#                                           有别的饮品名，模板句不能照着打比方）
+#                   analogy 照描述打比方    ja、zh 都必须用 {conditions}，填口味和种类：饮品的描述里有
+#                                           别的饮品名，模板句不能照着打比方；换成模板句的这一单
+#                                           改按几个条件叠加判
 #                   my_favorite「来杯我喜欢的」、your_call「你拿主意」、usual「老样子」  不用占位
 #   no_alcohol    她要不要酒精时接在点单模板句后面补的一句（几个条件叠加的不用，条件里已经有了）
 #   reactions.*   告别那次调用写不出来时，她对最后一杯的反应：best 上得最好、right 上对、wrong 上错
