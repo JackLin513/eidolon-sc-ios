@@ -3,8 +3,10 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { BAR_INK } from "@/components/play/bar/ink";
-import { PixelText } from "@/components/play/bar/PixelText";
+import { measurePixelText, PixelText } from "@/components/play/bar/PixelText";
 import { Sprite } from "@/components/play/bar/Sprite";
+import { copy } from "@/i18n";
+import { wrapText } from "@/lib/barText";
 import { BAR_HEIGHT, BAR_WIDTH, type BarPointer, type BarPlacement, barScreen } from "@/lib/barScreen";
 
 const BarScaleContext = createContext(1);
@@ -146,12 +148,26 @@ export function HitArea({
   );
 }
 
+/** The order memo's room in the side menu's upper row: two rows of 16 from (445,279), up to 「点唱机」. */
+const MEMO = { x: 445, y: 279, width: 172 };
+
 /** The original's side menu, under the bar counter: its upper row (the original's 「设置」 and 「读取」)
- * holds the order memo (ticket 06); its lower row 「点唱机」 at (445,312) (ticket 11) and 「离开」 at
- * the original's 「退出」, (543,312), each 72×20, the word 5 px in. No hover. */
-export function SideMenu({ leave, onLeave }: { leave: string; onLeave: () => void }) {
+ * holds the order memo, the label grey before it, as long as there is one; its lower row 「点唱机」 at
+ * (445,312) (ticket 11) and 「离开」 at the original's 「退出」, (543,312), each 72×20, the word 5 px in.
+ * No hover. */
+export function SideMenu({ memo, leave, onLeave }: { memo: string | null; leave: string; onLeave: () => void }) {
+  const label = `${copy.bar.memo}　`;
+  const rows = memo === null ? [] : wrapText(memo, MEMO.width, measurePixelText, measurePixelText(label));
   return (
     <>
+      {memo !== null && (
+        <PixelText
+          x={MEMO.x}
+          y={MEMO.y}
+          runs={[{ text: label, color: BAR_INK.sub }, { text: rows.join("\n") }]}
+          label={`${label}${memo}`}
+        />
+      )}
       <PixelText x={548} y={313} runs={leave} color={BAR_INK.text} label="" />
       <HitArea x={543} y={312} width={72} height={20} label={leave} onClick={onLeave} />
     </>

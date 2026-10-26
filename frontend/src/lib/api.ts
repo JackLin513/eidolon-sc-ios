@@ -14,6 +14,7 @@ import {
 } from "@/lib/localOwnKeys";
 import type { LLMOffer, LLMProvider } from "@/lib/llmProviders";
 import type { EffortHint } from "@/lib/reasoningEffort";
+import type { VisitEvent } from "@/lib/barVisit";
 import type { Rewarded } from "@/lib/rewards";
 import { detectTimezone } from "@/lib/timezone";
 import type { Speaking } from "@/lib/call";
@@ -693,6 +694,26 @@ export async function getBar(): Promise<BarState> {
   return json(await api("/api/bar"));
 }
 
+/** Comes into the bar, bringing the user's own LLM (as `own_keys`) as a text turn does, and yields
+ * the visit's first call as it comes: `visit` first, then her lines up to her order. Refused while
+ * the bar is closed (409), or over the limit (429, `retryAt` saying when). Aborting `signal` closes
+ * the call, and the server leaves the visit. */
+export async function* enterBar(userId: string, signal?: AbortSignal): AsyncGenerator<VisitEvent> {
+  const res = await api("/api/bar/visits", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ own_keys: turnOwnKeys(userId) }),
+    signal,
+  });
+  yield* serverSentEvents<VisitEvent>(res);
+}
+
+/** Leaves the visit: over, not to be come back to. `keepalive` as the page goes away. */
+export async function leaveBarVisit(visitId: string, { keepalive = false } = {}): Promise<void> {
+  const path = `/api/bar/visits/${encodeURIComponent(visitId)}`;
+  await expectNoContent(await api(path, { method: "DELETE", keepalive }));
+}
+
 /** The user's stats (GLOSSARY.md「统计」), in the producer's time zone, the lower part over
  * `range` (all of it unless given). */
 export async function getStats(range: StatsRange = "all"): Promise<Stats> {
@@ -838,6 +859,11 @@ export async function* sendTurn(conversationId: string, text: string, userId: st
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ text, own_keys: turnOwnKeys(userId) }),
   });
+  yield* serverSentEvents<TurnEvent>(res);
+}
+
+/** The server-sent events of a response, each as it arrives; a refusal thrown as `json` throws it. */
+async function* serverSentEvents<T>(res: Response): AsyncGenerator<T> {
   if (!res.ok || !res.body) {
     await json(res);
     return;
@@ -857,7 +883,7 @@ export async function* sendTurn(conversationId: string, text: string, userId: st
         .filter((line) => line.startsWith("data: "))
         .map((line) => line.slice(6))
         .join("\n");
-      if (data) yield JSON.parse(data) as TurnEvent;
+      if (data) yield JSON.parse(data) as T;
     }
   }
 }

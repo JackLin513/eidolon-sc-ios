@@ -12,6 +12,8 @@ export const BAR_INK = {
   producer: "#7fb2ff",
   /** The original's pink of the logo and the neon. */
   pink: "#f72b62",
+  /** The door's sign between flickers (the prototype's). */
+  pinkDim: "#7a1531",
   /** The TV's 「ChN」. */
   channel: "#24ff00",
   black: "#000000",

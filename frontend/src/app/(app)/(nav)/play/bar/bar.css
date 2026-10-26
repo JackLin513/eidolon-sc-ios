@@ -48,6 +48,26 @@
   transform-origin: 12px 12px;
 }
 
+/* 客人进门（调研笔记「立绘的入场退场」）：先是黑色剪影淡入，再淡成彩色，各 0.5 秒、每次加 1/4。
+ * 剪影叠彩色层，就是把彩色压暗：brightness 从 0 到 1。 */
+@keyframes bar-guest-in {
+  0% {
+    opacity: 0;
+    filter: brightness(0);
+  }
+  50% {
+    opacity: 1;
+    filter: brightness(0);
+  }
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+}
+.bar-guest-in {
+  animation: bar-guest-in 1s steps(4, jump-start) both;
+}
+
 /* 竖屏提醒：手机（粗指针）竖着时整层盖上，下面的画面照旧在。 */
 .bar-portrait-guard {
   display: none;

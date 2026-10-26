@@ -14,6 +14,24 @@ const SIZE = 12;
 const OVERSAMPLE = 2;
 const FAMILY = '"BarFusionPixel", monospace';
 
+/** Loads 「缝合像素」 (only the bar's page has it), so that what is measured is measured in it. */
+export function loadPixelFont(): Promise<unknown> {
+  return document.fonts.load(`${SIZE}px ${FAMILY}`, "あ中a");
+}
+
+let measuring: CanvasRenderingContext2D | null = null;
+
+/** How wide `text` is drawn, in logical pixels, a character at a time as `PixelText` draws it
+ * (lib/barText lays out the text box by it). */
+export function measurePixelText(text: string): number {
+  measuring ??= document.createElement("canvas").getContext("2d");
+  if (!measuring) return [...text].length * SIZE;
+  measuring.font = `${SIZE}px ${FAMILY}`;
+  let width = 0;
+  for (const ch of text) width += measuring.measureText(ch).width;
+  return width;
+}
+
 /** The advance of a character in the monospaced setting: half a square for narrow ones, a whole one
  * for CJK and other wide ones. */
 function monoAdvance(ch: string): number {
