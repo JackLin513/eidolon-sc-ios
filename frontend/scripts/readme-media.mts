@@ -19,6 +19,8 @@
  * 页面的时钟停在这一周的周三下午，做完的、进行中的、保存过的和草稿都拍得到；后端的日程要开着。
  * 周期那张（cycles）经接口给演示用户记几次经期：先删掉这位用户记过的，再按今天往前倒推着记，每次重跑都一样（日子跟着今天走）；
  * 后端的周期要开着。
+ * 酒吧那张（bar）真的进一次门：后端的酒吧要开着、配好对话模型，花一次光顾的额度（连着重拍几次会碰上每小时的限额）；
+ * 立绘和点唱机的小播放器要 EIDOLON_STAND_ASSETS_URL，存储桶里要有 `eidolon bar upload` 传上去的音频。
  * 照片那张要她真发一张：后端要配判断模型和生图（NOVELAI_API_KEY），第一次准备演示对话时花一张图的额度。
  * `--only` 只拍列出的几项，例如 `--only landing,app`；落地页的滚动动图（landing-tour）一步一拍，要十几分钟。
  *
@@ -145,6 +147,7 @@ const ITEMS: Item[] = [
   { name: "schedule", take: schedule },
   { name: "cycles", take: cycles },
   { name: "photo", take: photo },
+  { name: "bar", take: bar },
   { name: "call", take: call },
 ];
 
@@ -745,6 +748,54 @@ async function photo(browser: Browser): Promise<void> {
     await sent.last().scrollIntoViewIfNeeded();
     await settle(page, 1500);
     await still(page, "photo");
+  } finally {
+    await context.close();
+  }
+}
+
+// —— 酒吧
+
+/** 酒吧那张：她在说话（文本框里是她的日语和字幕），右上角开着点唱机的小播放器，只截 640×360 的画面（电脑上放大 2 倍）。 */
+async function bar(browser: Browser): Promise<void> {
+  const context = await signedIn(browser, { ...DESKTOP, colorScheme: "light" });
+  try {
+    const state = await context.request.get(`${origin}/api/bar`);
+    if (!state.ok() || !((await state.json()) as { enabled: boolean }).enabled) {
+      throw new Error("酒吧没开：后端的 EIDOLON_BAR 不能是 0");
+    }
+    const { id } = (await (await context.request.get(`${origin}/api/account`)).json()) as { id: string };
+    const page = await context.newPage();
+    // 跳过第一次进来的教程（lib/barTutorial 的「看过」照 lib/seenOnDevice 存一个时刻）。
+    await page.addInitScript(
+      ([key, value]) => localStorage.setItem(key, value),
+      [`eidolon.barTutorialSeen.${id}`, JSON.stringify(new Date().toISOString())] as const,
+    );
+    await page.goto(`${origin}/play/bar`, { waitUntil: "networkidle" });
+    // 选曲界面先刷开，Ready! 才出来。
+    await page.getByRole("button", { name: "Ready!" }).click({ timeout: 20_000 });
+    await page.getByRole("button", { name: "点一下进门" }).click();
+    const box = page.getByRole("button", { name: "继续" });
+    await box.waitFor({ timeout: 120_000 });
+    await page.getByRole("button", { name: "点唱机" }).click();
+    // 文本框里写的是她的话（有假名）才拍；是制作人的就点过去，点到她点单了还没轮到她就算没拍成。
+    const herLineShown = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll(".bar-stage canvas[aria-label]")].some((c) =>
+          /[\u3040-\u30ff]/.test(c.getAttribute("aria-label") ?? ""),
+        ),
+      );
+    for (let taps = 0; !(await herLineShown()); taps++) {
+      if (taps >= 12 || (await box.count()) === 0) throw new Error("一直没轮到她说话");
+      await box.click();
+      await page.waitForTimeout(1500);
+    }
+    // 等这一页打完（每秒 30 字），立绘也换上了表情。
+    await settle(page, 4000);
+    const stage = await page.locator(".bar-stage:not(.bar-portrait-guard)").boundingBox();
+    if (!stage) throw new Error("找不到酒吧的画面");
+    await still(page, "bar", stage);
+    await page.getByRole("button", { name: "离开" }).click();
+    await page.waitForURL("**/play");
   } finally {
     await context.close();
   }

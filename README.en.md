@@ -74,6 +74,12 @@ All **28 idols** from the game's eight units, plus the office clerk Nanakusa Haz
       <p align="center"><sub><b>Cycles</b>: record her periods from how she is; the page estimates the next one and explains how</sub></p>
     </td>
   </tr>
+  <tr>
+    <td colspan="2">
+      <img src="docs/images/bar.webp" alt="The bar VA-283: in pixel art she talks in the bar, the mixing counter on the right and the jukebox open at the top right">
+      <p align="center"><sub><b>VA-283</b>: she drops by the bar and you mix drinks to her order; the look pays tribute to <i>VA-11 HALL-A</i></sub></p>
+    </td>
+  </tr>
 </table>
 
 <table>
@@ -110,6 +116,7 @@ All **28 idols** from the game's eight units, plus the office clerk Nanakusa Haz
 - 📅 **Calendar**: The idols' birthdays, yours, and Japan's national holidays, and she knows them on the day.
 - 🗓️ **Schedules**: Jobs published every week, which you place into her week; she knows them and talks with them in mind, and the jobs she finishes bring her closer to you ([configuration guide](docs/configuration.en.md#schedules)).
 - 🌙 **Cycles**: She has periods too, and is unwell before and during them, when being considerate pays off; record them on the Cycles page from how she is, and it estimates her next one and explains how ([configuration guide](docs/configuration.en.md#cycles)).
+- 🍸 **VA-283**: She drops by the bar and you mix drinks to her order. The first visit you finish each day gives a draw and brings her closer to you; on your first time in, Hazuki shows you how to mix. The look and the mixing pay tribute to *VA-11 HALL-A*.
 - 💌 **She reaches out**: When you've been away a while, she says a few words first in your conversation; the closer you are, the sooner she does ([configuration guide](docs/configuration.en.md#reach-outs)).
 
 **What she remembers**
@@ -153,7 +160,7 @@ With only the chat model set, you can chat by text. Add other services' keys as 
 | Story corpus | An embedding key: `SILICONFLOW_API_KEY` (default) or `GEMINI_API_KEY` |
 | Retrieval and memory | An embedding key, `SILICONFLOW_API_KEY` (reranking), plus a judge: `JEV_API_KEY` (default), or Cloudflare or Alibaba Cloud Model Studio credentials |
 | Photos | A judge, plus an image generation key: `NOVELAI_API_KEY` |
-| Stands and greetings | `EIDOLON_STAND_ASSETS_URL` and a bucket holding the assets |
+| Stands, greetings and the bar's music | `EIDOLON_STAND_ASSETS_URL` and a bucket holding the assets |
 
 How to configure each one and what it does is in the **[Configuration guide](docs/configuration.en.md)**. Every environment variable is documented in [`.env.example`](.env.example).
 
@@ -176,12 +183,12 @@ flowchart LR
         DB[("SQLite<br/>conversations · photos · memories · story corpus")]
     end
 
-    Bucket[("Object storage<br/>stands · greetings")]
+    Bucket[("Object storage<br/>stands · greetings · bar music")]
 
     UI -- "text turns /api/*" --> API
     Admin --> API
     UI <-- "WebRTC audio + subtitles" --> Call
-    Landing & UI -. "stands, greeting audio" .-> Bucket
+    Landing & UI -. "stands, greeting and bar audio" .-> Bucket
     API --> Engine
     Call -- "Speech recognition<br/>Soniox or Alibaba Cloud Model Studio" --> Engine
     Engine -- "Fish Audio speech synthesis<br/>(with readings table)" --> Call
@@ -274,7 +281,8 @@ The license covers only the code and documentation in the repository. The follow
 
 - **Content from the game**: Story data, character voices and stand assets are not in the repository; when using them, follow the terms of their respective sources (ADR-0003). In the character sheets, character facts, avatars and README screenshots in the repository, the characters and settings belong to the game's rights holders.
 - **Spine Runtimes**: [`frontend/public/vendor/spine-3.6/`](frontend/public/vendor/spine-3.6/README.md), used for the call-screen stand, is included unmodified and is under its own Spine Runtimes license ([ADR-0009](docs/adr/0009-spine-runtime-without-editor-license.md)). [`LICENSING.md`](LICENSING.md) grants an additional permission under section 7 of the AGPL that allows the two to be distributed combined.
-- **Fonts and sound effects**: The landing page's font subsets are under the SIL Open Font License (see `frontend/src/app/(landing)/fonts/`). For the sources and licenses of the call sound effects, see [`CREDITS.md`](frontend/public/sounds/CREDITS.md).
+- **VA-11 HALL-A assets**: The original images the bar uses (`frontend/public/bar/img/`, including the official Chinese text on the recipe cards), the "VA-283" logo on its frame, and the original music and sound effects are © Sukeban Games; see [`LICENSING.md`](LICENSING.md). The music and sound effects are not in the repository; they are uploaded to the bucket at deploy time.
+- **Fonts and sound effects**: The landing page's font subsets and the bar's pixel font Fusion Pixel are under the SIL Open Font License (see `frontend/src/app/(landing)/fonts/` and `frontend/public/bar/fonts/`). For the sources and licenses of the call sound effects, see [`CREDITS.md`](frontend/public/sounds/CREDITS.md).
 
 ## 🙏 Acknowledgements
 
@@ -289,12 +297,14 @@ The license covers only the code and documentation in the repository. The follow
 - [Google Gemini API](https://ai.google.dev/): Gemini Embedding (an optional embedding service)
 - [TypeSafe Jev](https://docs.typesafe.ai/), [OpenRouter](https://openrouter.ai/), [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/), [Alibaba Cloud Model Studio](https://www.alibabacloud.com/help/en/model-studio/): the judge
 - [Spine Runtimes](https://github.com/EsotericSoftware/spine-runtimes): playing the stands (spine-ts 3.6)
+- [VA-11 HALL-A](https://waifubartending.com/) (Sukeban Games): the bar's look, mixing and jukebox pay tribute to it, and use its original images, music and sound effects
+- [Fusion Pixel](https://github.com/TakWolf/fusion-pixel-font): the bar's pixel font
 - [im@sparql](https://sparql.crssnky.xyz/imas/), Lantis, ふじわらはじめ, imas-db, wikiwiki: the idols, releases and lives in the world setting
 
 <div align="center">
 
 ---
 
-<sub>*THE iDOLM@STER SHINY COLORS* and its characters are ©Bandai Namco Entertainment Inc. This is an unofficial fan project, not affiliated with the rights holders; the characters are played by AI.</sub>
+<sub>*THE iDOLM@STER SHINY COLORS* and its characters are ©Bandai Namco Entertainment Inc. This is an unofficial fan project, not affiliated with the rights holders; the characters are played by AI.<br>*VA-11 HALL-A* and its images, music and sound effects are ©Sukeban Games.</sub>
 
 </div>

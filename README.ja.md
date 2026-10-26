@@ -74,6 +74,12 @@ Eidolon-SC では、**283プロのプロデューサー**として原作のア�
       <p align="center"><sub><b>周期</b>：彼女の言動から月経を記録すると、次を推定し、どう計算したかを説明する</sub></p>
     </td>
   </tr>
+  <tr>
+    <td colspan="2">
+      <img src="docs/images/bar.webp" alt="バー VA-283：ピクセルアートの画面で彼女が店内で話し、右にはカクテル台、右上にはジュークボックスが開いている">
+      <p align="center"><sub><b>VA-283</b>：彼女がバーに来店し、あなたは注文どおりにドリンクを作る。画面は『VA-11 HALL-A』へのオマージュ</sub></p>
+    </td>
+  </tr>
 </table>
 
 <table>
@@ -110,6 +116,7 @@ Eidolon-SC では、**283プロのプロデューサー**として原作のア�
 - 📅 **カレンダー**：アイドルとプロデューサーの誕生日、日本の祝日。当日はアイドルも知っています。
 - 🗓️ **スケジュール**：毎週公開される仕事を彼女の 1 週間に組み込むと、彼女はそれを知っていて、それをふまえて話します。終えた仕事が彼女をあなたに近づけます（[設定ガイド](docs/configuration.ja.md#スケジュール)）。
 - 🌙 **周期**：彼女にも月経があり、月経前と月経中の数日は具合が悪く、気づかうと報われます。彼女の言動から周期ページに記録すると、次の月経を推定し、どう計算したかを説明します（[設定ガイド](docs/configuration.ja.md#周期)）。
+- 🍸 **VA-283**：彼女がバーに来店し、あなたは注文どおりにドリンクを作ります。毎日最初に最後まで遊んだ来店で抽選が 1 回もらえ、彼女との距離も縮まります。初めて来たときは、はづきが作り方を教えてくれます。画面と作り方は『VA-11 HALL-A』へのオマージュです。
 - 💌 **声かけ**：しばらく来ないと、会話の中でアイドルのほうから話しかけてくれます。親しいほど早く来ます（[設定ガイド](docs/configuration.ja.md#声かけ)）。
 
 **彼女が覚えていること**
@@ -153,7 +160,7 @@ docker compose up --build
 | シナリオライブラリ | ベクトル化のキー：`SILICONFLOW_API_KEY`（デフォルト）または `GEMINI_API_KEY` |
 | 検索とメモリー | ベクトル化のキー、`SILICONFLOW_API_KEY`（並べ替え用）、判断モデル：`JEV_API_KEY`（デフォルト）、Cloudflare または Alibaba Cloud Model Studio の認証情報 |
 | 写真 | 判断モデルと画像生成のキー：`NOVELAI_API_KEY` |
-| 立ち絵とあいさつ | `EIDOLON_STAND_ASSETS_URL` と素材を置くストレージバケット |
+| 立ち絵、あいさつ、バーの音楽 | `EIDOLON_STAND_ASSETS_URL` と素材を置くストレージバケット |
 
 それぞれの設定方法と設定したときの効果は **[設定ガイド](docs/configuration.ja.md)** を、すべての環境変数の説明は [`.env.example`](.env.example) を参照してください。
 
@@ -176,12 +183,12 @@ flowchart LR
         DB[("SQLite<br/>会話 · 写真 · メモリー · シナリオライブラリ")]
     end
 
-    Bucket[("オブジェクトストレージ<br/>立ち絵 · あいさつ")]
+    Bucket[("オブジェクトストレージ<br/>立ち絵 · あいさつ · バーの音楽")]
 
     UI -- "テキストのターン /api/*" --> API
     Admin --> API
     UI <-- "WebRTC 音声 + 字幕" --> Call
-    Landing & UI -. "立ち絵、あいさつの音声" .-> Bucket
+    Landing & UI -. "立ち絵、あいさつ、バーの音声" .-> Bucket
     API --> Engine
     Call -- "音声認識<br/>Soniox または Alibaba Cloud Model Studio" --> Engine
     Engine -- "Fish Audio 音声合成<br/>（読み表つき）" --> Call
@@ -274,7 +281,8 @@ eidolon-sc/
 
 - **原作のコンテンツ**：シナリオデータ、キャラクター音声、立ち絵素材はリポジトリに含まれておらず、利用時はそれぞれの提供元の条件に従う必要があります（ADR-0003）。リポジトリ内のキャラクターシート・キャラクター資料・アイコンと README のスクリーンショットについても、キャラクターと設定は原作の権利者に帰属します。
 - **Spine Runtimes**：通話画面の立ち絵に使う [`frontend/public/vendor/spine-3.6/`](frontend/public/vendor/spine-3.6/README.md) は無改変で収録しており、それ自身の Spine Runtimes ライセンスが適用されます（[ADR-0009](docs/adr/0009-spine-runtime-without-editor-license.md)）。[`LICENSING.md`](LICENSING.md) に AGPL 第 7 条の追加許可があり、両者を組み合わせて頒布することを認めています。
-- **フォントと効果音**：ランディングページのフォントサブセットには SIL Open Font License が適用されます（`frontend/src/app/(landing)/fonts/` を参照）。通話の効果音の出典とライセンスは [`CREDITS.md`](frontend/public/sounds/CREDITS.md) を参照してください。
+- **VA-11 HALL-A の素材**：バーで使う原作の画像（`frontend/public/bar/img/`、レシピカードの公式中国語を含む）、外枠の「VA-283」ロゴ、原作の音楽と効果音の著作権は Sukeban Games に帰属します。[`LICENSING.md`](LICENSING.md) を参照してください。音楽と効果音はリポジトリに含まれず、デプロイ時にバケットへアップロードします。
+- **フォントと効果音**：ランディングページのフォントサブセットとバーのピクセルフォント「縫合像素（Fusion Pixel）」には SIL Open Font License が適用されます（`frontend/src/app/(landing)/fonts/`、`frontend/public/bar/fonts/` を参照）。通話の効果音の出典とライセンスは [`CREDITS.md`](frontend/public/sounds/CREDITS.md) を参照してください。
 
 ## 🙏 謝辞
 
@@ -289,12 +297,14 @@ eidolon-sc/
 - [Google Gemini API](https://ai.google.dev/)：Gemini Embedding（選択できるベクトル化サービス）
 - [TypeSafe Jev](https://docs.typesafe.ai/)、[OpenRouter](https://openrouter.ai/)、[Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/)、[Alibaba Cloud Model Studio](https://www.alibabacloud.com/help/en/model-studio/)：判断モデル
 - [Spine Runtimes](https://github.com/EsotericSoftware/spine-runtimes)：立ち絵の再生（spine-ts 3.6）
+- [VA-11 HALL-A](https://waifubartending.com/)（Sukeban Games）：バーの画面、作り方、ジュークボックスは原作へのオマージュで、原作の画像、音楽、効果音を使っています
+- [縫合像素（Fusion Pixel）](https://github.com/TakWolf/fusion-pixel-font)：バーのピクセルフォント
 - [im@sparql](https://sparql.crssnky.xyz/imas/)、Lantis、ふじわらはじめ、imas-db、wikiwiki：世界設定のアイドル・CD・ライブのデータ
 
 <div align="center">
 
 ---
 
-<sub>『アイドルマスター シャイニーカラーズ』およびそのキャラクターの著作権は ©Bandai Namco Entertainment Inc. に帰属します。本プロジェクトは非公式のファンメイド作品であり、権利者とは関係ありません。アイドルは AI が演じています。</sub>
+<sub>『アイドルマスター シャイニーカラーズ』およびそのキャラクターの著作権は ©Bandai Namco Entertainment Inc. に帰属します。本プロジェクトは非公式のファンメイド作品であり、権利者とは関係ありません。アイドルは AI が演じています。<br>『VA-11 HALL-A』およびその画像、音楽、効果音の著作権は ©Sukeban Games に帰属します。</sub>
 
 </div>
