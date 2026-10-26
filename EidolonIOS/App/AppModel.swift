@@ -331,6 +331,11 @@ final class AppModel {
         ProcessInfo.processInfo.environment["EIDOLON_OPEN_MEMORIES"] == "1"
     }
 
+    /// Development aid: `SIMCTL_CHILD_EIDOLON_OPEN_STAND_PREVIEW=1` opens the stand preview.
+    var debugShowsStandPreview: Bool {
+        ProcessInfo.processInfo.environment["EIDOLON_OPEN_STAND_PREVIEW"] == "1"
+    }
+
     /// Development aid: `SIMCTL_CHILD_EIDOLON_IMPORT_BUNDLE` points at a bundle
     /// already copied into this app's container, so the simulator can reach the
     /// screens that normally sit behind the file picker.

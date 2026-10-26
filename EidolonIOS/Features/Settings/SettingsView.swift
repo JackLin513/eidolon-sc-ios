@@ -53,6 +53,7 @@ struct SettingsView: View {
     @State private var isPicking = false
     @State private var showMemories = false
     @State private var showTraces = false
+    @State private var showStandPreview = false
 
     var body: some View {
         NavigationStack {
@@ -280,6 +281,18 @@ struct SettingsView: View {
                     Text("每回合记录提示词、判断原始输出、检索候选与分数和降级原因，只存在这台手机上；关闭后不再写入。")
                 }
 
+                Section {
+                    Button {
+                        showStandPreview = true
+                    } label: {
+                        LabeledContent("立绘预览", value: "⇢")
+                    }
+                } header: {
+                    Text("立绘")
+                } footer: {
+                    Text("用内容包里她的默认衣装看一段待机动作。没有同步 Spine 运行时、页面失败或素材缺失时显示「没有立绘」。")
+                }
+
                 Section("内容包") {
                     if let info = app.bundleInfo {
                         LabeledContent("剧情", value: "\(info.episodeCount)")
@@ -312,11 +325,15 @@ struct SettingsView: View {
             .navigationDestination(isPresented: $showTraces) {
                 TraceListView()
             }
+            .navigationDestination(isPresented: $showStandPreview) {
+                StandPreviewView()
+            }
             .task { await app.loadMemories() }
             .onAppear {
                 #if DEBUG
                 if app.debugShowsMemories { showMemories = true }
                 if app.debugShowsTraces { showTraces = true }
+                if app.debugShowsStandPreview { showStandPreview = true }
                 #endif
             }
             .toolbar {
