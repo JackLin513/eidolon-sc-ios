@@ -18,10 +18,20 @@ enum Fixture {
         var dimensions = 4
         var embedPassages = true
         var corruptCRC = false
+        /// Corrupts the CRC recorded for a stand file, leaving the database alone.
+        var corruptStandCRC = false
         var manifestModel: String? = nil
         var includeHolidays = true
         /// One vector per passage, in order; the default is all-equal vectors.
         var vectors: [[Float]]? = nil
+        /// Adds her default outfit and outfit list under `stand/`, and a `stand` entry.
+        var includeStand = false
+        /// Leaves the second card's everyday outfit incomplete on disk.
+        var missingStandOutfitFiles = false
+        /// Writes a broken outfit list, which the app reads as "no list".
+        var unreadableOutfitList = false
+        /// Extra `content` counts, e.g. a key that is not a database table.
+        var extraContentCounts: [String: Int] = [:]
     }
 
     static func makeBundle(in parent: URL, options: Options = Options()) throws -> URL {
@@ -39,23 +49,33 @@ enum Fixture {
             options: options
         )
 
+        var mano: [String: JSONValue] = [
+            "id": .string("mano"),
+            "name": .string("櫻木真乃"),
+            "name_zh": .string("樱木真乃"),
+            "name_kana": .string("さくらぎ まの"),
+            "name_romaji": .string("Sakuragi Mano"),
+            "unit": .string("illumination STARS"),
+            "intro": .string("illumination STARS 的中心。"),
+            "color": .string("#ffbad6"),
+            "voice_id": .string("voice-mano"),
+            "sheet": .string("characters/sheets/mano.md"),
+            "avatar": .string("characters/avatars/mano.jpg"),
+            "speakers": .array([.string("真乃")]),
+            "idol_id": .int(1),
+            "birthday": .string("04-25"),
+        ]
+        if options.includeStand {
+            mano["stand"] = .object([
+                "default_outfit": .object([
+                    "id": .string("stand/1030010010"),
+                    "path": .string("stand/idols/stand/1030010010/"),
+                ]),
+                "outfits": .string("stand/outfits/1.json"),
+            ])
+        }
         let characters: [JSONValue] = [
-            .object([
-                "id": .string("mano"),
-                "name": .string("櫻木真乃"),
-                "name_zh": .string("樱木真乃"),
-                "name_kana": .string("さくらぎ まの"),
-                "name_romaji": .string("Sakuragi Mano"),
-                "unit": .string("illumination STARS"),
-                "intro": .string("illumination STARS 的中心。"),
-                "color": .string("#ffbad6"),
-                "voice_id": .string("voice-mano"),
-                "sheet": .string("characters/sheets/mano.md"),
-                "avatar": .string("characters/avatars/mano.jpg"),
-                "speakers": .array([.string("真乃")]),
-                "idol_id": .int(1),
-                "birthday": .string("04-25"),
-            ]),
+            .object(mano),
             .object([
                 "id": .string("hiori"),
                 "name": .string("風野灯織"),
@@ -84,6 +104,10 @@ enum Fixture {
         let avatarsDirectory = charactersDirectory.appendingPathComponent("avatars", isDirectory: true)
         try FileManager.default.createDirectory(at: avatarsDirectory, withIntermediateDirectories: true)
         try Data([0xFF, 0xD8, 0xFF, 0xD9]).write(to: avatarsDirectory.appendingPathComponent("mano.jpg"))
+
+        if options.includeStand {
+            try writeStand(in: staging, options: options)
+        }
 
         let manifest = makeManifest(
             in: staging,
@@ -166,6 +190,82 @@ enum Fixture {
         ]
     }
 
+    /// A stand tree shaped like the exporter writes it: two outfits with three files
+    /// each, plus a list whose second card points at an outfit.
+    private static func writeStand(in staging: URL, options: Options) throws {
+        let standRoot = staging.appendingPathComponent("stand", isDirectory: true)
+        let outfits = standRoot.appendingPathComponent("idols", isDirectory: true)
+        let complete = [
+            "stand/1030010010",
+            "stand_costume/1030010010",
+        ]
+        for outfit in complete {
+            let directory = outfits.appendingPathComponent(outfit, isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            for name in ["data.json", "data.atlas", "data.png"] {
+                try "\(outfit)/\(name)".write(
+                    to: directory.appendingPathComponent(name),
+                    atomically: true,
+                    encoding: .utf8
+                )
+            }
+        }
+        let second = outfits.appendingPathComponent("stand/1030010020", isDirectory: true)
+        try FileManager.default.createDirectory(at: second, withIntermediateDirectories: true)
+        try "stand/1030010020/data.json".write(
+            to: second.appendingPathComponent("data.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+        if !options.missingStandOutfitFiles {
+            for name in ["data.atlas", "data.png"] {
+                try "stand/1030010020/\(name)".write(
+                    to: second.appendingPathComponent(name),
+                    atomically: true,
+                    encoding: .utf8
+                )
+            }
+        }
+
+        let lists = standRoot.appendingPathComponent("outfits", isDirectory: true)
+        try FileManager.default.createDirectory(at: lists, withIntermediateDirectories: true)
+        let list: [String: JSONValue] = [
+            "idol_id": .int(1),
+            "cards": .array([
+                .object([
+                    "id": .string("1030010010"),
+                    "name": .string("ナチュラルモード"),
+                    "type": .string("P_SR"),
+                    "everyday": .object([
+                        "id": .string("stand/1030010010"),
+                        "url": .string("../idols/stand/1030010010/"),
+                        "thumbnail": .null,
+                    ]),
+                    "stage": .object([
+                        "id": .string("stand_costume/1030010010"),
+                        "url": .string("../idols/stand_costume/1030010010/"),
+                        "thumbnail": .null,
+                    ]),
+                ]),
+                .object([
+                    "id": .string("1030010020"),
+                    "name": .string("ぐうぜんBOOKS"),
+                    "type": .string("P_SR"),
+                    "everyday": .object([
+                        "id": .string("stand/1030010020"),
+                        "url": .string("../idols/stand/1030010020/"),
+                        "thumbnail": .null,
+                    ]),
+                    "stage": .null,
+                ]),
+            ]),
+        ]
+        let data = options.unreadableOutfitList
+            ? Data("{".utf8)
+            : try JSONEncoder().encode(list)
+        try data.write(to: lists.appendingPathComponent("1.json"))
+    }
+
     private static func makeManifest(
         in directory: URL,
         counts: [String: Int],
@@ -186,7 +286,18 @@ enum Fixture {
             if options.corruptCRC, relative.hasPrefix("content/") {
                 crc = "deadbeef"
             }
+            if options.corruptStandCRC, relative.hasPrefix("stand/") {
+                crc = "deadbeef"
+            }
             files[relative] = ContentManifest.FileRecord(size: data.count, crc32: crc)
+        }
+
+        var content = counts
+        if options.includeStand {
+            content["stand"] = 10
+        }
+        for (key, value) in options.extraContentCounts {
+            content[key] = value
         }
 
         return ContentManifest(
@@ -194,7 +305,7 @@ enum Fixture {
             contentSchemaVersion: options.schemaVersion,
             createdAt: "2026-10-23T00:00:00Z",
             embedding: .init(model: options.manifestModel ?? options.model, dimensions: options.dimensions),
-            content: counts,
+            content: content,
             characters: .init(count: characterIDs.count, ids: characterIDs),
             files: files
         )

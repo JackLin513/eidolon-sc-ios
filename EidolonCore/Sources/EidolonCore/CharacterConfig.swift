@@ -19,6 +19,8 @@ public struct CharacterConfig: Sendable, Hashable {
     public var background: String?
     public var speakers: [String]
     public var idolID: Int?
+    /// Her default outfit and outfit list, when the bundle carries her stand.
+    public var stand: StandConfig?
     public var birthday: Birthday?
     public var raw: [String: JSONValue]
 
@@ -38,6 +40,7 @@ public struct CharacterConfig: Sendable, Hashable {
         background: String? = nil,
         speakers: [String] = [],
         idolID: Int? = nil,
+        stand: StandConfig? = nil,
         birthday: Birthday? = nil,
         raw: [String: JSONValue] = [:]
     ) {
@@ -56,6 +59,7 @@ public struct CharacterConfig: Sendable, Hashable {
         self.background = background
         self.speakers = speakers
         self.idolID = idolID
+        self.stand = stand
         self.birthday = birthday
         self.raw = raw
     }
@@ -83,6 +87,12 @@ public struct CharacterConfig: Sendable, Hashable {
                 "角色 \(id) 的偶像编号应为正整数，现在是 \(idolID)"
             )
         }
+        let stand: StandConfig?
+        if let value = object["stand"], value != .null {
+            stand = try StandConfig(json: value, characterID: id)
+        } else {
+            stand = nil
+        }
         self.init(
             id: id,
             name: name,
@@ -99,6 +109,7 @@ public struct CharacterConfig: Sendable, Hashable {
             background: object["background"]?.stringValue,
             speakers: object["speakers"]?.arrayValue?.compactMap(\.stringValue) ?? [],
             idolID: idolID,
+            stand: stand,
             birthday: birthday,
             raw: object
         )

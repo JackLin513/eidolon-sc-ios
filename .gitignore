@@ -7,3 +7,5 @@ xcuserdata/
 *.xcscmblueprint
 .swiftpm/
 .build/
+__pycache__/
+*.pyc
