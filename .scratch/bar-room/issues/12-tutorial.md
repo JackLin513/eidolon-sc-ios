@@ -27,3 +27,19 @@
 - [ ] `lib/barTutorial`（vitest）：两杯的流程；三种反应、两种反应各接得上；Piano Man 跳过第二课；调坏的不判；跳过去选曲；没有音频时省掉点唱机那句；每一步的备忘；「看过」的存取（走完和跳过记、中途不记、按用户分开）。
 - [ ] Playwright：清掉 localStorage 后进来是店门口，进门是はづき；照讲解调对两杯，走完到选曲，Ready! 回店门口，再进门发了 `POST /api/bar/visits`；Piano Man 分支；调成别的也往下走；中途「跳过」去选曲；刷新后教程重来；看过以后进来是选曲界面；店门口点「教程」重看。整个教程期间没有发出 `/api/bar/visits*` 请求。截图给用户看。
 - [ ] 前端 typecheck、vitest 通过。
+
+## Comments
+
+### 票 12 交接
+
+台词数据在 `frontend/src/lib/barTutorialLines.ts`（票 02，用户校对过再用）：
+
+- `TUTORIAL: Record<TutorialSectionId, TutorialSection>`，从 `TUTORIAL_START`（`"opening"`）开始。段的 id：`opening`、`lesson1`、`first.sugar-rush`、`first.piano-man`、`first.other`、`lesson2`、`second.moonblast`、`second.other`、`closing`、`jukebox`。
+- `TutorialSection = { memo: string; lines: readonly TutorialLine[]; then: TutorialThen }`。`memo` 是这一段的备忘，显示在侧边菜单上排；`then: mixer` 那一段，调酒时也显示它。
+- `TutorialLine` 是 `{ who: "her"; ja; zh; emotion }` 或 `{ who: "producer"; zh; emotion }`，`emotion` 是 `lib/standAnimations` 的 `Emotion`。
+- `TutorialThen`：
+  - `{ type: "section", section }`：接着打这一段。
+  - `{ type: "mixer", reactions }`：打完打开调酒台，上酒以后用匹配出的饮品 id（`sugar-rush`、`piano-man`、`moonblast`，同 `GET /api/bar` 的目录）查 `reactions`，查不到就接 `reactions.other`。
+  - `{ type: "done" }`：台词完了，接着去选曲界面。
+- 流程都写在 `then` 里了：`first.piano-man` 直接接 `closing`，`closing` 接 `jukebox`。没有音频时省掉点唱机那句，由 `lib/barTutorial` 做：`closing` 的 `then` 是 `jukebox` 时不进那一段，直接回店门口。
+
