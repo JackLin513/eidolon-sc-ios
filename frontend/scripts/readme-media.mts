@@ -759,10 +759,9 @@ async function photo(browser: Browser): Promise<void> {
 async function bar(browser: Browser): Promise<void> {
   const context = await signedIn(browser, { ...DESKTOP, colorScheme: "light" });
   try {
-    const state = await context.request.get(`${origin}/api/bar`);
-    if (!state.ok() || !((await state.json()) as { enabled: boolean }).enabled) {
-      throw new Error("酒吧没开：后端的 EIDOLON_BAR 不能是 0");
-    }
+    const read = await context.request.get(`${origin}/api/bar`);
+    if (!read.ok()) throw new Error(`读酒吧状态失败（${read.status()}）`);
+    if (!((await read.json()) as { enabled: boolean }).enabled) throw new Error("酒吧没开：后端的 EIDOLON_BAR 不能是 0");
     const { id } = (await (await context.request.get(`${origin}/api/account`)).json()) as { id: string };
     const page = await context.newPage();
     // 跳过第一次进来的教程（lib/barTutorial 的「看过」照 lib/seenOnDevice 存一个时刻）。
