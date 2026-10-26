@@ -132,9 +132,11 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
   const isReading = sound.audio === null || (jukebox.isAvailable && !jukebox.jukebox) || tutorial.isSeen === null;
   const isChoosing = choosing ?? tutorial.isSeen === true;
   const isInside = tutorialState !== null || state.stage === "visit" || state.stage === "next";
-  const isSettingsShown = isSettingsOpen && isInside;
   const her = characters?.find((c) => c.id === scene.visit?.characterId) ?? null;
   const card = endCard(state);
+  // 设置框只在店里开着：回到店门口、出结束卡时收起，「再营业」以后不再自己弹出来。
+  const isSettingsShown = isSettingsOpen && isInside && !card;
+  if (isSettingsOpen && !isSettingsShown) setSettingsOpen(false);
   const leaveBar = () => {
     leave();
     router.push(playHref());
@@ -191,7 +193,7 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
               }
             : null
         }
-        cell={
+        jukebox={
           tutorialState
             ? { label: copy.bar.skip, color: BAR_INK.text, onClick: tutorial.skip }
             : isInside

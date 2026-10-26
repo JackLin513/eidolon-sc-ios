@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { HitArea } from "@/components/play/bar/BarScreen";
+import { CELL, HitArea, MENU_CELLS, MenuItem } from "@/components/play/bar/BarScreen";
 import { BAR_INK } from "@/components/play/bar/ink";
 import { PixelText } from "@/components/play/bar/PixelText";
 import { Sprite } from "@/components/play/bar/Sprite";
@@ -13,9 +13,9 @@ const t = copy.bar.door;
 
 /** The sign over the door, where the original's neon says its name. */
 const SIGN = { x: 290, y: 30, width: 56, height: 24 };
-/** 「全屏」 and 「教程」 in a row left of 「离开」 (the side menu's lower right), each a side menu cell, the
- * word 5 px in: under the notice, which is centred and may run long. */
-const ROW = { y: 312, width: 72, height: 20, right: 543 };
+/** 「全屏」 and 「教程」 in a row left of 「离开」 (the side menu's lower right), as side menu cells: under the
+ * notice, which is centred and may run long. */
+const [ROW_RIGHT, ROW_Y] = MENU_CELLS.leave;
 
 /**
  * 店门口（.scratch/bar-room spec「一次营业的流程」，照原型的 `Door`）：原版 barintro 三帧霓虹闪，招牌写 VA-283；
@@ -41,8 +41,8 @@ export function BarDoor({
   }, []);
   const fullscreen = useBarFullscreen();
   const isFullscreenOffered = fullscreen.canFullscreen && !fullscreen.isFullscreen;
-  const fullscreenCell = { x: ROW.right - ROW.width, y: ROW.y, width: ROW.width, height: ROW.height };
-  const tutorialCell = { ...fullscreenCell, x: fullscreenCell.x - (isFullscreenOffered ? ROW.width : 0) };
+  const fullscreenAt = [ROW_RIGHT - CELL.width, ROW_Y] as const;
+  const tutorialAt = [fullscreenAt[0] - (isFullscreenOffered ? CELL.width : 0), ROW_Y] as const;
   return (
     <>
       <div className="absolute inset-0" style={{ background: BAR_INK.black }} />
@@ -54,16 +54,10 @@ export function BarDoor({
       )}
       <HitArea x={0} y={0} width={640} height={360} label={t.enter} onClick={onEnter} />
       {onTutorial && !isEntering && (
-        <>
-          <PixelText x={tutorialCell.x + 5} y={tutorialCell.y + 1} runs={t.tutorial} label="" />
-          <HitArea {...tutorialCell} label={t.tutorial} onClick={onTutorial} />
-        </>
+        <MenuItem at={tutorialAt} cell={{ label: t.tutorial, color: BAR_INK.text, onClick: onTutorial }} />
       )}
       {isFullscreenOffered && (
-        <>
-          <PixelText x={fullscreenCell.x + 5} y={fullscreenCell.y + 1} runs={copy.bar.screen.full} label="" />
-          <HitArea {...fullscreenCell} label={copy.bar.screen.full} onClick={fullscreen.toggle} />
-        </>
+        <MenuItem at={fullscreenAt} cell={{ label: copy.bar.screen.full, color: BAR_INK.text, onClick: fullscreen.toggle }} />
       )}
     </>
   );

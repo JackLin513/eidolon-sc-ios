@@ -5,8 +5,9 @@
 //
 // - The text box, her mood and the bar counter are lib/barVisit's, fed the tutorial's lines a
 //   section at a time: a section's lines all tapped past, the next section's follow.
-// - A section that opens the bar counter opens it once its last page is typed out (the lesson
-//   told), as her order line does in a visit, with the lesson's memo for the text box to say.
+// - A section that opens the bar counter opens it once its last page is tapped past (the lesson
+//   told and read), as her order line does in a visit, with the lesson's memo for the text box to
+//   say.
 // - Served, what the shaker made (lib/barMixer's match, made as it stopped) picks her reaction: the
 //   drink by its id, or the section's `other`; then on, whatever was served. A broken one cannot
 //   be served, as in a visit.
@@ -16,7 +17,7 @@
 //   part-way, it is not.
 
 import { type BarMixerAction, canServe, emptyMixer } from "@/lib/barMixer";
-import { isTypedOut, type TextPage } from "@/lib/barText";
+import type { TextPage } from "@/lib/barText";
 import { TUTORIAL, TUTORIAL_START, type TutorialLine, type TutorialSectionId } from "@/lib/barTutorialLines";
 import { atTheDoor, barVisit, type BarVisitState, type VisitLine } from "@/lib/barVisit";
 import { keepSeenOnDevice, seenOnDevice } from "@/lib/seenOnDevice";
@@ -40,8 +41,6 @@ export type BarTutorialState = {
 export type BarTutorialAction =
   /** The text box tapped. */
   | { type: "tap"; now: number }
-  /** The page on the text box may have typed out (the screen ticks then). */
-  | { type: "tick"; now: number }
   /** Something done at the open bar counter. */
   | { type: "mix"; action: BarMixerAction }
   /** What is in the shaker served. */
@@ -94,8 +93,6 @@ export function barTutorial(state: BarTutorialState, action: BarTutorialAction):
       const visit = barVisit(state.visit, action);
       return onward({ ...state, visit }, action.now);
     }
-    case "tick":
-      return openCounter({ ...state, visit: barVisit(state.visit, action) }, action.now);
     case "mix":
       return { ...state, visit: barVisit(state.visit, action) };
     case "serve": {
@@ -118,28 +115,19 @@ function say(state: BarTutorialState, section: TutorialSectionId, now: number): 
     (v, { line, pages }) => barVisit(v, { type: "line", line, pages, now }),
     { ...state.visit, isAwaitingLine: true },
   );
-  return openCounter({ ...state, section, visit }, now);
+  return { ...state, section, visit };
 }
 
-/** After a tap: a section's last page tapped past, on to what follows it. */
+/** After a tap: a section's last page tapped past, on to what follows it: the bar counter opened,
+ * with the lesson's memo, after a lesson. */
 function onward(state: BarTutorialState, now: number): BarTutorialState {
   const { visit } = state;
-  if (visit.isMixing || visit.queue.length > 0 || !visit.isAwaitingLine) return openCounter(state, now);
+  if (visit.isMixing || visit.queue.length > 0 || !visit.isAwaitingLine) return state;
   const then = TUTORIAL[state.section].then;
-  if (then.type === "mixer") return state;
+  if (then.type === "mixer") return { ...state, visit: { ...visit, isMixing: true, mixer: emptyMixer(), memo: then.memo } };
   if (then.type === "done") return { ...state, end: "jukebox" };
   if (then.section === "jukebox" && !state.hasJukebox) return { ...state, end: "door" };
   return say(state, then.section, now);
-}
-
-/** The bar counter opened once the last page of a section that opens it is typed out. */
-function openCounter(state: BarTutorialState, now: number): BarTutorialState {
-  const { visit } = state;
-  const { shown } = visit;
-  const then = TUTORIAL[state.section].then;
-  if (then.type !== "mixer" || visit.isMixing || visit.queue.length > 0) return state;
-  if (!shown || !shown.isLast || !isTypedOut(shown.page, shown.typing, now)) return state;
-  return { ...state, visit: { ...visit, isMixing: true, mixer: emptyMixer(), memo: then.memo } };
 }
 
 function seenKey(userId: string): string {

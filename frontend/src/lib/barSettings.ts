@@ -15,15 +15,21 @@ export function gainOf(steps: number): number {
   return steps / VOLUME_STEPS;
 }
 
+/** A volume in percent, as it is read out. */
+export function percentOf(steps: number): number {
+  return Math.round(gainOf(steps) * 100);
+}
+
 /** A volume `by` tenths up or down (the slider's −/+), no further than silent or full. */
 export function stepVolume(steps: number, by: number): number {
   return Math.min(VOLUME_STEPS, Math.max(0, steps + by));
 }
 
-// 原版的滑条 140×17：两头是 −/+（各 18 宽），中间的槽从 x=19 到 x=120（102 宽）；滑块 4 宽，左边从 19 走到 117。
+// 原版的滑条 140×17：两头是 −/+（各 18 宽），中间的槽从 x=19 到 x=120（102 宽）；滑块 4×19，左边从 19 走到 117。
 
-/** Where the slider's groove is in its sprite, and how wide its knob is. */
-export const SLIDER = { groove: 19, grooveWidth: 102, knobWidth: 4 };
+/** The original's slider sprite: how big it is, how wide the −/+ at either end are, where its groove
+ * is, and how big its knob is. */
+export const SLIDER = { width: 140, height: 17, end: 18, groove: 19, grooveWidth: 102, knobWidth: 4, knobHeight: 19 };
 
 /** The knob's left edge in the slider sprite, for a volume. */
 export function knobX(steps: number): number {

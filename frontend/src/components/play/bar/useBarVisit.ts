@@ -212,8 +212,7 @@ export function useBarVisit({
     };
   }, [close]);
 
-  const tick = useCallback((at: number) => dispatch({ type: "tick", now: at }), []);
-  const now = useTypingClock(state.shown, tick);
+  const now = useTypingClock(state.shown);
 
   return { state, now, enter, again, tap, leave, mix, serve, retry };
 }

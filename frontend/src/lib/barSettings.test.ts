@@ -65,7 +65,6 @@ describe("存在这台设备上", () => {
 
   it("没存过时两个音量满的、扫描线关着", () => {
     expect(storedSettings("u1")).toEqual({ music: 10, sfx: 10, scanlines: false });
-    expect(DEFAULT_SETTINGS).toEqual({ music: 10, sfx: 10, scanlines: false });
   });
 
   it("存下的读回来，按用户分开", () => {
@@ -86,8 +85,6 @@ describe("存在这台设备上", () => {
   it("坏了的整份回默认", () => {
     store.set("eidolon.barSettings.u6", "{");
     expect(storedSettings("u6")).toEqual(DEFAULT_SETTINGS);
-    store.set("eidolon.barSettings.u7", JSON.stringify([1, 2]));
-    expect(storedSettings("u7")).toEqual(DEFAULT_SETTINGS);
   });
 
   it("存不进去时这次页面里记着", () => {

@@ -27,6 +27,13 @@ const FAILURE_WIDTH = TEXT_WIDTH - BAR_BUTTON.width - 8;
 /** The most rows the box holds. */
 const MAX_ROWS = 4;
 
+/** `text` wrapped to `width`, cut short with 「…」 past the box's rows. */
+function fitted(text: string, width: number): string {
+  const rows = wrapText(text, width, measurePixelText);
+  if (rows.length > MAX_ROWS) rows.splice(MAX_ROWS - 1, Infinity, `${rows[MAX_ROWS - 1].slice(0, -1)}…`);
+  return rows.join("\n");
+}
+
 /**
  * 文本框（.scratch/bar-room spec「文本框和打字」）：一页台词，名字按角色上色、接冒号（她用官方色，制作人用原型的「我」色），
  * 正文白色，她的中文字幕灰色。打完右下角 `arrow_text_2` 上下跳。点哪都算：交给 lib/barVisit，先打完、再翻页。
@@ -67,15 +74,12 @@ export function BarTextBox({
     runs.push({ text: row.text, color: row.subtitle ? BAR_INK.sub : BAR_INK.text });
   });
   if (memo !== null && !failure) {
-    const rows = wrapText(memo, TEXT_WIDTH, measurePixelText);
-    if (rows.length > MAX_ROWS) rows.splice(MAX_ROWS - 1, Infinity, `${rows[MAX_ROWS - 1].slice(0, -1)}…`);
-    return <PixelText x={BOX.x + INSET.x} y={BOX.y + INSET.y} runs={rows.join("\n")} label={memo} />;
+    return <PixelText x={BOX.x + INSET.x} y={BOX.y + INSET.y} runs={fitted(memo, TEXT_WIDTH)} label={memo} />;
   }
   if (failure) {
-    const rows = wrapText(failure.message, FAILURE_WIDTH, measurePixelText).slice(0, MAX_ROWS);
     return (
       <>
-        <PixelText x={BOX.x + INSET.x} y={BOX.y + INSET.y} runs={rows.join("\n")} />
+        <PixelText x={BOX.x + INSET.x} y={BOX.y + INSET.y} runs={fitted(failure.message, FAILURE_WIDTH)} label={failure.message} />
         {!failure.isRetrying && <BarButton {...RETRY} label={copy.bar.retry} onClick={failure.onRetry} />}
       </>
     );

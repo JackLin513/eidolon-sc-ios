@@ -6,9 +6,11 @@
 //   (lib/barText). A page types out at 30 characters a second, a tap types it out at once; a
 //   tap on a page typed out turns to the next. With no page left while the call is still going,
 //   the box waits, and the next line shows as soon as it comes.
-// - Once her order line is typed out (its last page) and she is `waiting`, the bar counter opens
-//   and the text box says the order memo instead of her line (the original's bartender thinking
-//   the order over); the two may come either way round.
+// - Once her order line (its last page) is tapped past, typed out, and she is `waiting`, the bar
+//   counter opens and the text box says the order memo instead of her line (the original's
+//   bartender thinking the order over); the two may come either way round. Typed out, her order
+//   stays on the box, the arrow bobbing, till the player has read it and taps, as in the original
+//   (the bartender's own line comes between her order and the mixing).
 // - Her mood is that of the line of hers on the box; her mouth moves while it types out.
 // - While the counter is open the player mixes (lib/barMixer, empty as it opens) and serves: the
 //   counter locks while `POST …/serves` is under way; taken, it closes, poured out, and the next line (the
@@ -79,9 +81,9 @@ export type BarVisitState = {
   /** The last page shown before the call under way's, and her mood then: the box and her mood go
    * back to them as the call's lines are cleared. */
   resume: { shown: ShownPage; mood: Emotion } | null;
-  /** Her order line is typed out, the bar counter waiting for `waiting` to open. */
-  isOrderTyped: boolean;
-  /** She is waiting for her drink, the bar counter waiting for her order line to be typed out. */
+  /** Her order line is tapped past, the bar counter waiting for `waiting` to open. */
+  isOrderRead: boolean;
+  /** She is waiting for her drink, the bar counter waiting for her order line to be tapped past. */
   isWaiting: boolean;
   /** The order memo come with her order, shown once the bar counter opens. */
   pendingMemo: string | null;
@@ -115,8 +117,6 @@ export type BarVisitAction =
   | { type: "event"; event: Exclude<VisitEvent, { type: "line" }> }
   /** The text box tapped. */
   | { type: "tap"; now: number }
-  /** The page on the text box may have typed out (the screen ticks then). */
-  | { type: "tick"; now: number }
   /** The visit left: back at the door, the visit gone. */
   | { type: "left" }
   /** 「再营业」 on the end card: `POST /api/bar/visits` sent for the next guest. */
@@ -150,7 +150,7 @@ export function atTheDoor(): BarVisitState {
     call: 0,
     isEnjoyNext: false,
     resume: null,
-    isOrderTyped: false,
+    isOrderRead: false,
     isWaiting: false,
     pendingMemo: null,
     memo: null,
@@ -205,13 +205,14 @@ export function barVisit(state: BarVisitState, action: BarVisitAction): BarVisit
       const { shown } = state;
       if (!shown || state.failure !== null) return state;
       if (!isTypedOut(shown.page, shown.typing, action.now)) {
-        return afterTyping({ ...state, shown: { ...shown, typing: { ...shown.typing, finished: true } } }, action.now);
+        return { ...state, shown: { ...shown, typing: { ...shown.typing, finished: true } } };
       }
-      if (state.queue.length === 0) return state.isAwaitingLine ? state : { ...state, isAwaitingLine: true };
-      return showNext(state, action.now);
+      const next =
+        state.queue.length > 0 ? showNext(state, action.now) : state.isAwaitingLine ? state : { ...state, isAwaitingLine: true };
+      // 她的点单句读完、点过去了：等 `waiting` 一到（或者已经到了）就开调酒台。上过酒以后框上还是那句，再点不算。
+      const isRead = isOrderPage(shown) && !state.isMixing && !state.isEnjoyNext;
+      return isRead ? openCounter({ ...next, isOrderRead: true }) : next;
     }
-    case "tick":
-      return afterTyping(state, action.now);
     case "mix": {
       if (!state.isMixing || state.isServing) return state;
       const mixer = barMixer(state.mixer, action.action);
@@ -260,10 +261,15 @@ function showNext(state: BarVisitState, now: number): BarVisitState {
   const { shown } = state;
   const resume = shown && shown.call !== state.call ? { shown, mood: state.mood } : state.resume;
   const mood = next.line.speaker === "her" ? next.line.emotion : state.mood;
-  return afterTyping(
-    { ...state, shown: { ...next, typing: { startedAt: now, finished: false } }, queue, isAwaitingLine: false, mood, resume },
-    now,
-  );
+  return {
+    ...state,
+    shown: { ...next, typing: { startedAt: now, finished: false } },
+    queue,
+    isAwaitingLine: false,
+    isOrderRead: false,
+    mood,
+    resume,
+  };
 }
 
 /** The lines the call under way sent cleared, typed or not: the box back on the page before them,
@@ -281,21 +287,17 @@ function clearCall(state: BarVisitState): BarVisitState {
   };
 }
 
-/** What follows from the page on the box having typed out by `now`. */
-function afterTyping(state: BarVisitState, now: number): BarVisitState {
-  const { shown } = state;
-  if (!shown || state.isOrderTyped || state.isMixing) return state;
-  const isOrder = shown.line.speaker === "her" && shown.line.order === true && shown.isLast;
-  if (!isOrder || !isTypedOut(shown.page, shown.typing, now)) return state;
-  return openCounter({ ...state, isOrderTyped: true });
+/** The last page of her order line. */
+function isOrderPage(page: LinePage): boolean {
+  return page.line.speaker === "her" && page.line.order === true && page.isLast;
 }
 
-/** The bar counter opened, with her order memo, once her order is typed out and she waits. */
+/** The bar counter opened, with her order memo, once her order is tapped past and she waits. */
 function openCounter(state: BarVisitState): BarVisitState {
-  if (!state.isOrderTyped || !state.isWaiting) return state;
+  if (!state.isOrderRead || !state.isWaiting) return state;
   return {
     ...state,
-    isOrderTyped: false,
+    isOrderRead: false,
     isWaiting: false,
     isMixing: true,
     memo: state.pendingMemo ?? state.memo,

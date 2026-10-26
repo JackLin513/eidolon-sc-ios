@@ -81,6 +81,15 @@ describe("the tutorial", () => {
     expect(onBox(state)).toBe(TUTORIAL.lesson1.lines.at(-1)!.zh);
     expect(state.visit.memo).toBe(memoOf("lesson1"));
   });
+
+  it("keeps the lesson's last line on the box, typed out, till it is tapped past", () => {
+    let state = begin();
+    const last = TUTORIAL.lesson1.lines.at(-1)!.zh;
+    while (onBox(state) !== last) state = barTutorial(state, { type: "tap", now: later() });
+    // 早就打完了，没点也不开。
+    expect(state.visit.isMixing).toBe(false);
+    expect(barTutorial(state, { type: "tap", now: (clock += 60_000) }).visit.isMixing).toBe(true);
+  });
 });
 
 describe("serving in the tutorial", () => {

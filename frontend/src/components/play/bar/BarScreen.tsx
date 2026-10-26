@@ -202,8 +202,8 @@ export function HitArea({
 
 /** The side menu's four cells, as the original's: 「设置」 and 「读取」 above, 「点唱机」 and 「退出」 below,
  * each 72×20, the word 5 px in. */
-const CELLS = { settings: [445, 279], fullscreen: [543, 279], cell: [445, 312], leave: [543, 312] } as const;
-const CELL = { width: 72, height: 20 };
+export const MENU_CELLS = { settings: [445, 279], fullscreen: [543, 279], jukebox: [445, 312], leave: [543, 312] } as const;
+export const CELL = { width: 72, height: 20 };
 
 /** A cell of the side menu: its word and color, whether it is on (a switch, for screen readers), and
  * what a tap does (null: grey, no tap). */
@@ -221,7 +221,8 @@ export function jukeboxCell(state: "open" | "closed" | "none", onToggle: () => v
   };
 }
 
-function MenuItem({ at, cell }: { at: readonly [number, number]; cell: MenuCell }) {
+/** One cell of the side menu at `at` (one of `MENU_CELLS`, or the door's row beside 「离开」). */
+export function MenuItem({ at, cell }: { at: readonly [number, number]; cell: MenuCell }) {
   const [x, y] = at;
   return (
     <>
@@ -233,27 +234,27 @@ function MenuItem({ at, cell }: { at: readonly [number, number]; cell: MenuCell 
 
 /** The original's side menu, under the bar counter, in the original's places (.scratch/bar-room 票 14):
  * 「设置」 (`settings`) and 「全屏」 or 「窗口」 (`fullscreen`, where the original has 「读取」) above,
- * a cell (`cell`: 「点唱机」, or 「跳过」 through the tutorial) and 「离开」 below; any but 「离开」 not
- * there at all when null (at the door; 「全屏」 where the browser cannot go full screen). No hover. */
+ * 「点唱机」 (`jukebox`, or 「跳过」 in its place through the tutorial) and 「离开」 below; any but 「离开」
+ * not there at all when null (at the door; 「全屏」 where the browser cannot go full screen). No hover. */
 export function SideMenu({
   settings,
   fullscreen,
-  cell,
+  jukebox,
   leave,
   onLeave,
 }: {
   settings: MenuCell | null;
   fullscreen: MenuCell | null;
-  cell: MenuCell | null;
+  jukebox: MenuCell | null;
   leave: string;
   onLeave: () => void;
 }) {
   return (
     <>
-      {settings && <MenuItem at={CELLS.settings} cell={settings} />}
-      {fullscreen && <MenuItem at={CELLS.fullscreen} cell={fullscreen} />}
-      {cell && <MenuItem at={CELLS.cell} cell={cell} />}
-      <MenuItem at={CELLS.leave} cell={{ label: leave, color: BAR_INK.text, onClick: onLeave }} />
+      {settings && <MenuItem at={MENU_CELLS.settings} cell={settings} />}
+      {fullscreen && <MenuItem at={MENU_CELLS.fullscreen} cell={fullscreen} />}
+      {jukebox && <MenuItem at={MENU_CELLS.jukebox} cell={jukebox} />}
+      <MenuItem at={MENU_CELLS.leave} cell={{ label: leave, color: BAR_INK.text, onClick: onLeave }} />
     </>
   );
 }

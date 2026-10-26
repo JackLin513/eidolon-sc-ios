@@ -152,7 +152,7 @@ describe("右下角的箭头", () => {
   });
 
   it("调酒时不跳", () => {
-    const mixing = run(ENTER, VISIT, line(ORDER, 0), { type: "event", event: { type: "waiting" } }, { type: "tick", now: 5000 });
+    const mixing = run(ENTER, VISIT, line(ORDER, 0), { type: "event", event: { type: "waiting" } }, { type: "tap", now: 5000 });
 
     expect(mixing.isMixing).toBe(true);
     expect(isArrowShown(mixing, 5000)).toBe(false);
@@ -192,38 +192,39 @@ describe("点单", () => {
   const MEMO: BarVisitAction = { type: "event", event: { type: "memo", text: "她要 Sugar Rush。" } };
   const WAITING: BarVisitAction = { type: "event", event: { type: "waiting" } };
 
-  it("点单句打完、waiting 也到了，才显示备忘、进入调酒", () => {
-    const state = run(...ordered, MEMO, WAITING);
+  it("点单句打完停在框上、箭头跳着，点过去、waiting 也到了，才进入调酒、文本框写备忘", () => {
+    const typed = run(...ordered, MEMO, WAITING);
 
-    expect(state).toMatchObject({ isMixing: false, memo: null });
-    expect(barVisit(state, { type: "tick", now: 9000 })).toMatchObject({ isMixing: true, memo: "她要 Sugar Rush。" });
+    expect(typed).toMatchObject({ isMixing: false });
+    expect(isArrowShown(typed, 9000)).toBe(true);
+    expect(mixingMemo(typed)).toBeNull();
+    const read = barVisit(typed, { type: "tap", now: 9000 });
+    expect(read).toMatchObject({ isMixing: true });
+    expect(mixingMemo(read)).toBe("她要 Sugar Rush。");
   });
 
-  it("点一下打完点单句也算", () => {
-    expect(run(...ordered, MEMO, WAITING, { type: "tap", now: 5010 })).toMatchObject({ isMixing: true });
+  it("点单句没打完时点一下只打完整句，再点一下才开", () => {
+    const finished = run(...ordered, MEMO, WAITING, { type: "tap", now: 5010 });
+
+    expect(finished).toMatchObject({ isMixing: false });
+    expect(barVisit(finished, { type: "tap", now: 5020 })).toMatchObject({ isMixing: true });
   });
 
-  it("点单句先打完、waiting 后到也一样", () => {
-    const typed = run(...ordered, MEMO, { type: "tick", now: 9000 });
+  it("点过点单句、waiting 后到也一样", () => {
+    const read = run(...ordered, MEMO, { type: "tap", now: 9000 });
 
-    expect(typed).toMatchObject({ isMixing: false, memo: null });
-    expect(barVisit(typed, WAITING)).toMatchObject({ isMixing: true, memo: "她要 Sugar Rush。" });
+    expect(read).toMatchObject({ isMixing: false });
+    expect(barVisit(read, WAITING)).toMatchObject({ isMixing: true });
   });
 
-  it("调酒台开着时文本框写备忘，上了酒就不写了", () => {
-    const open = run(...ordered, MEMO, WAITING, { type: "tick", now: 9000 });
-    expect(mixingMemo(run(...ordered, MEMO, WAITING))).toBeNull();
-    expect(mixingMemo(open)).toBe("她要 Sugar Rush。");
-    expect(mixingMemo({ ...open, isServing: true })).toBe("她要 Sugar Rush。");
-    expect(mixingMemo({ ...open, isMixing: false })).toBeNull();
+  it("不是点单的句子点过去，waiting 到了也不开", () => {
+    expect(run(ENTER, VISIT, line(HELLO, 0), WAITING, { type: "tap", now: 9000 })).toMatchObject({ isMixing: false });
   });
 
-  it("点单句还没打完时，tick 不开调酒台", () => {
-    expect(run(...ordered, MEMO, WAITING, { type: "tick", now: 5010 })).toMatchObject({ isMixing: false });
-  });
+  it("上过酒以后再点框上那句点单，下一单的 waiting 到了也不开", () => {
+    const tappedAgain = barVisit(servedVisit(), { type: "tap", now: 30_000 });
 
-  it("不是点单的句子打完，waiting 到了也不开", () => {
-    expect(run(ENTER, VISIT, line(HELLO, 0), WAITING, { type: "tick", now: 9000 })).toMatchObject({ isMixing: false });
+    expect(barVisit(tappedAgain, WAITING)).toMatchObject({ isMixing: false });
   });
 });
 
@@ -253,7 +254,7 @@ describe("调酒和上酒", () => {
     line(ORDER, 0),
     { type: "event", event: { type: "memo", text: "她要 Sugar Rush。" } },
     { type: "event", event: { type: "waiting" } },
-    { type: "tick", now: 9000 },
+    { type: "tap", now: 9000 },
   );
   const made = [
     mix({ type: "add", ingredient: "adelhyde" }),
@@ -324,7 +325,6 @@ describe("结束卡", () => {
     const state = run(...saidGoodbye, done(null));
 
     expect(endCard(state)).toBeNull();
-    expect(endCard(barVisit(state, { type: "tick", now: 9000 }))).toBeNull();
     expect(endCard(barVisit(state, { type: "tap", now: 9000 }))).toEqual({ draws: false, affinityUp: false });
   });
 
@@ -377,7 +377,7 @@ function servedVisit(): BarVisitState {
     line(ORDER, 0),
     { type: "event", event: { type: "memo", text: "她要 Bad Touch。" } },
     { type: "event", event: { type: "waiting" } },
-    { type: "tick", now: 9000 },
+    { type: "tap", now: 9000 },
   );
   const beer: Drink = {
     id: "beer",

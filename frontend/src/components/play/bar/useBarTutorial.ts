@@ -96,8 +96,7 @@ export function useBarTutorial({
     onEnd(end);
   }, [state, end, userId, music, onEnd]);
 
-  const tick = useCallback((now: number) => dispatch({ type: "tick", now }), []);
-  const now = useTypingClock(state?.visit.shown ?? null, tick);
+  const now = useTypingClock(state?.visit.shown ?? null);
 
   const tap = useCallback(() => dispatch({ type: "tap", now: performance.now() }), []);
   const mix = useCallback((action: BarMixerAction) => dispatch({ type: "mix", action }), []);
