@@ -64,3 +64,5 @@
 - 光顾中途调用断了（网络、流提前结束）现在什么都不做，是票 10 的事。
 
 **审查后（固定点 de624f47）**：`Stand` 加 `entrance="none"` 免得两层淡入叠在一起；她的名字每句来时按 `character_id` 现找，hook 直接接 `characters`（不再绕回调）；备忘截到两行；429 跨天带日期；等接口时店门口提示收起；箭头的条件挪进 `lib/barVisit` 的 `isArrowShown`；`doorNotice` 直接接 `ApiError | null`；打字的计时用 `CHARS_PER_SECOND`；reducer 里的辅助函数改名（`showNext`、`afterTyping`、`openCounter`、`onEvent`）。没改的：上面两条判断；`TextLine` 和 `VisitLine` 两个类型分开（`barText` 不该知道情绪和点单）；两份测试里「点一下打完」各测各的一层，没合。
+
+**真机验收（2026-10-26）**：用户在安卓（小米 23049RAD8C，Chrome，无线 adb 转发本地构建版）上看过：横屏的像素字、剪影淡入、竖屏提醒和「全屏」，没问题。顺带把円香的默认衣装从【ダウト】换成【アイドルロード】的私服（main 上 63f437dc，已合进本分支）：原来那套立绘是泳装，放在店里观感不好。
