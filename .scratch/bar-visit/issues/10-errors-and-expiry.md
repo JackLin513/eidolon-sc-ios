@@ -40,3 +40,12 @@
 ### 票 08 交接
 
 - 奖励在 `Bar._write_down` 里发，和写记录在同一个写事务里；`_call` 走到 `await self._db.write(self._write_down, visit, self._clock(), self._rewarding)` 就会发，然后推 `VisitDone(rewarded)`。告别兜底只要也走这一句，「照样发奖励」就自动成立。测试可以照 `test_bar_rewards.py` 断言 `done` 的 `rewarded` 不是 `null`（要用 `FAKE_JUDGE` 和 `affinity_and_gifts=True`）。
+
+### 票 09 交接
+
+- 结束一次光顾一律走 `Bar._over(visit, result)`。它会移出「进行中」，并通过 `_settling` 结算，等的那边被取消也照样写进去。等不了的地方（页面没了）用 `_left_off`：只有 `step == "writing"` 时才按 `left` 结。改成「停在出错的调用之前」后，出错停住时 `step` 不能再是 `writing`（比如加一个 `failed` 步），否则推完 `failed`、流关掉的那一刻会被当成离开。
+- 退回看 `_given_back(visit, result)`：`result == "failed" and not visit.written`。规格要的是「第一次调用彻底失败、一句没写出来就结束的退回（离开、作废都算）」。停在第一次调用的失败上时，离开和作废的结果都应该记 `failed`（「最后停在一次彻底失败的调用上就结束的记 failed」），这条规则就能直接用。
+- 现在 `leave` 固定记 `left`，`_call` 里出错直接 `_over(visit, "failed")`。这两处都要按「停住」改：出错时不结束；离开时如果停在失败上，记 `failed`。
+- 「再试一次」不另计限额：用 `visit.admission` 的钥匙和记录，别再走准入。`serve` 和 `retry` 的正文都不带 `own_keys`。
+- 作废（`IDLE`）结束时用 `_over(visit, "left")`（停在失败上的用 `failed`）。还在进行的光顾，后端关闭时 `Bar.aclose` 按 `left` 结掉；作废扫描如果放在后台任务里，`aclose` 要先停掉它。
+- 被顶掉的已经记 `left`（`Bar.enter`）。

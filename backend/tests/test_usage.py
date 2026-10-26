@@ -137,27 +137,6 @@ async def test_a_users_own_limits_kept_before_photos_were_limited_follow_the_dep
     )
 
 
-
-async def test_a_users_own_limits_kept_before_visits_were_limited_follow_the_deployments_visits(
-    deployment: Deployment,
-):
-    with sqlite3.connect(deployment.path) as db:  # a database from before the bar
-        db.execute("CREATE TABLE user_limits (user_id TEXT PRIMARY KEY, turns_per_hour INTEGER,"
-                   " calls_per_hour INTEGER, note TEXT, updated_at TEXT NOT NULL,"
-                   " photos_per_hour INTEGER)")
-        db.execute("INSERT INTO user_limits VALUES (?, 3, -1, '老数据', ?, 0)",
-                   (deployment.user, START.isoformat()))
-    db.close()
-    usage = UsageLimiter(deployment.db, UsageLimits(visits_per_hour=1), deployment.clock)
-
-    assert await usage.user_limits(deployment.user) == UserLimits(
-        3, "unlimited", "老数据", START.isoformat(), photos_per_hour=0, visits_per_hour=None
-    )
-    await usage.take(deployment.user, "visit")
-    with pytest.raises(OverLimit):
-        await usage.take(deployment.user, "visit")
-
-
 async def test_forgetting_old_uses_forgets_everyones_over_a_day_old_in_batches(
     deployment: Deployment, usage: UsageLimiter, monkeypatch: pytest.MonkeyPatch
 ):

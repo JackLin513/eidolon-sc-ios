@@ -10,17 +10,17 @@ waiting for a drink (409 `not_waiting`), or what is none of the drinks (422
 `broken_drink`)."""
 
 import json
-from collections.abc import AsyncGenerator, AsyncIterator
-from contextlib import aclosing
+from collections.abc import AsyncIterator
 from typing import Literal
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, model_validator
+from starlette.types import Receive, Scope, Send
 
 from eidolon.account_api import OwnKeysInput
 from eidolon.assembly import Backend
-from eidolon.bar import BarClosed, BarEvent, BrokenDrink, NotWaiting, VisitGone
+from eidolon.bar import BarCall, BarClosed, BrokenDrink, NotWaiting, VisitGone
 from eidolon.drink_catalog import Mixture
 from eidolon.own_keys import BroughtKeys
 from eidolon.sessions import DeviceTimezone, UserId
@@ -103,13 +103,28 @@ def _brought(own_keys: OwnKeysInput | None) -> BroughtKeys:
     return own_keys.brought() if own_keys else BroughtKeys()
 
 
-def _events(events: AsyncGenerator[BarEvent, None]) -> StreamingResponse:
+def _events(call: BarCall) -> StreamingResponse:
     async def sent() -> AsyncIterator[str]:
-        async with aclosing(events):  # so that a call left part-way stops at once
-            async for event in events:
-                yield f"data: {json.dumps(event.shown(), ensure_ascii=False)}\n\n"
+        async for event in call:
+            yield f"data: {json.dumps(event.shown(), ensure_ascii=False)}\n\n"
 
-    return StreamingResponse(
-        sent(), media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    return _CallResponse(sent(), call)
+
+
+class _CallResponse(StreamingResponse):
+    """A call's events, the call closed once they are sent or the page is gone, even gone
+    before they began, when the stream of them never runs: so that a call left part-way stops
+    at once, and its visit is left."""
+
+    def __init__(self, events: AsyncIterator[str], call: BarCall) -> None:
+        super().__init__(
+            events, media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+        self._call = call
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            await self._call.aclose()

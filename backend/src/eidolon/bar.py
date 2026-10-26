@@ -34,8 +34,10 @@ cooldown or not: the keys it runs on, the user's own LLM if they bring one, its 
 record, and its use of the limit, refused over it (`OverLimit`). Every call of the visit,
 and rewriting her order, runs on those keys, its service calls recorded under that record;
 the keys are held until the visit is over, as a call holds them. As it is over it is
-settled, once: done; left, done away with by another, or the page gone while a call is being
-written; or failed. One failed with nothing yet written is given back.
+settled, once, whether anyone waits for it or not: done, from the moment its farewell is to
+be written down; left, done away with by another, the page gone while a call is being
+written (read or not, `BarCall`), or under way as the bar is closed; or failed. One failed
+with nothing yet written is given back.
 
 **Serving.** What the bar counter holds is matched against the recipes (`DrinkCatalog.match`):
 broken, it is refused and nothing changes; anything else is served her and judged
@@ -62,7 +64,7 @@ import json
 import logging
 import secrets
 import sqlite3
-from collections.abc import AsyncGenerator, Callable, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime
 from typing import Any, Literal, TypeVar
@@ -229,6 +231,25 @@ class VisitFailed:
 
 BarEvent = VisitBegan | BarLine | Memo | Waiting | VisitDone | VisitFailed
 
+
+class BarCall:
+    """The events of one call of a visit, to be read through, and closed once they are or the
+    page is gone, read or not: closed while her lines are still being written, the visit is
+    left."""
+
+    def __init__(
+        self, events: AsyncGenerator[BarEvent, None], stopped: Callable[[], None]
+    ) -> None:
+        self._events = events
+        self._stopped = stopped
+
+    def __aiter__(self) -> AsyncIterator[BarEvent]:
+        return self._events
+
+    async def aclose(self) -> None:
+        self._stopped()
+        await self._events.aclose()
+
 Step = Literal["writing", "waiting"]
 
 _Listed = TypeVar("_Listed", ListedReason, Topic)
@@ -321,8 +342,8 @@ class Bar:
         self._schedules = schedules
         self._visits: dict[str, _Visit] = {}
         """Each user's visit under way, by user."""
-        self._settling: set[asyncio.Future[Any]] = set()
-        """Visits over as no one waited for them any more, till they are settled."""
+        self._settles: set[asyncio.Future[Any]] = set()
+        """Visits over, till they are settled."""
         db.prepare(_open)
 
     async def read(self, user_id: str) -> dict:
@@ -337,7 +358,7 @@ class Bar:
 
     async def enter(
         self, user_id: str, brought: BroughtKeys, device_timezone: str | None = None
-    ) -> AsyncGenerator[BarEvent, None]:
+    ) -> "BarCall":
         """A visit begun for the user, bringing `brought`, their device in `device_timezone`,
         doing away with any of theirs under way: its first call's events, from the visit's
         id and who she is on. Raises BarClosed while the bar is off; OverLimit, once who she
@@ -357,27 +378,30 @@ class Bar:
             admissions.visit(user_id, character.id, brought), lambda let_in: let_in.settle("left")
         )
         try:
-            visit = await self._drawn(
-                user_id, character, now, before, device_timezone, admission
-            )
-        except BaseException:
-            await admission.settle("failed", given_back=True)
+            visit = await self._drawn(user_id, character, now, before, device_timezone, admission)
+        except Exception:
+            await asyncio.shield(self._settling(admission, "failed", given_back=True))
+            raise
+        except BaseException:  # the page gone as she was being drawn: left
+            self._settling(admission, "left")
             raise
         replaced = self._visits.get(user_id)
         self._visits[user_id] = visit
         if replaced is not None:
             await self._over(replaced, "left")
-        return self._call(visit, opening_ask(visit.orders[0]), VisitBegan(visit.id, character.id))
+        return self._called(
+            visit, opening_ask(visit.orders[0]), VisitBegan(visit.id, character.id)
+        )
 
     async def _drawn(
         self,
         user_id: str,
         character: Character,
         now: datetime,
-        before: "_Before",
+        before: _Before,
         device_timezone: str | None,
         admission: Admission[TurnKeys],
-    ) -> "_Visit":
+    ) -> _Visit:
         """The user's visit by `character`, coming in `now`, let in as `admission`: all the
         rest of it drawn."""
         today = day_of(now)
@@ -400,7 +424,7 @@ class Bar:
         )
         first = draw_order(character, self._catalog, self._random, [], known)
         world = self._world
-        visit = _Visit(
+        return _Visit(
             secrets.token_urlsafe(16), user_id, character, now, today, reason, topic, drinks,
             known,
             shared_prompt(character, world.prompt(character.name, today) if world else None),
@@ -415,16 +439,13 @@ class Bar:
             admission,
             [first],
         )
-        return visit
 
-    def serve(
-        self, user_id: str, visit_id: str, served: Mixture | str
-    ) -> AsyncGenerator[BarEvent, None]:
+    def serve(self, user_id: str, visit_id: str, served: Mixture | str) -> "BarCall":
         """Serve her what the bar counter holds, or a bottled drink by its identifier, in the
-        user's visit `visit_id`: the events of the call after it, on the keys the visit came
-        in with, from the producer saying one of the fixed lines on. Raises VisitGone unless it is the user's
-        visit under way; NotWaiting unless she waits for a drink; BrokenDrink, changing
-        nothing, if what is served is none of the drinks."""
+        user's visit `visit_id`: the events of the call after it, on the keys the visit came in
+        with, from the producer saying one of the fixed lines on. Raises VisitGone unless it is
+        the user's visit under way; NotWaiting unless she waits for a drink; BrokenDrink,
+        changing nothing, if what is served is none of the drinks."""
         visit = self._under_way(user_id, visit_id)
         if visit.step != "waiting":
             raise NotWaiting()
@@ -443,7 +464,7 @@ class Bar:
             ask = serving_ask(serving, enjoy, order)
         else:
             ask = farewell_ask(serving, enjoy, visit.servings, drunk=visit.drunk)
-        return self._call(visit, ask, BarLine("producer", enjoy))
+        return self._called(visit, ask, BarLine("producer", enjoy))
 
     async def leave(self, user_id: str, visit_id: str) -> None:
         """The user leaves their visit `visit_id`, which is over. Raises VisitGone unless it is
@@ -451,9 +472,12 @@ class Bar:
         await self._over(self._under_way(user_id, visit_id), "left")
 
     async def aclose(self) -> None:
-        """Wait for the visits over as no one waited for them any more to be settled."""
-        while self._settling:
-            await asyncio.gather(*self._settling, return_exceptions=True)
+        """Every visit still under way left, and each visit over settled."""
+        for visit in list(self._visits.values()):
+            self._end(visit)
+            self._settling(visit.admission, "left", given_back=_given_back(visit, "left"))
+        while self._settles:
+            await asyncio.gather(*self._settles, return_exceptions=True)
 
     @property
     def _rewarding(self) -> bool:
@@ -475,24 +499,36 @@ class Bar:
         return True
 
     async def _over(self, visit: _Visit, result: Result) -> None:
-        """The visit is over as `result`: no longer under way, and settled, given back if it
-        failed with nothing written yet. Only the first time."""
+        """The visit is over as `result`: no longer under way, and settled (`_settling`), only
+        the first time; settled all the same should the wait be cancelled."""
         self._end(visit)
-        await visit.admission.settle(result, given_back=result == "failed" and not visit.written)
+        await asyncio.shield(
+            self._settling(visit.admission, result, given_back=_given_back(visit, result))
+        )
 
     def _left_off(self, visit: _Visit) -> None:
-        """The visit, if it is still under way, is left as its call stops part-way, the page
-        gone: settled where that cannot be waited for, before the bar is closed."""
-        if not self._end(visit):
-            return  # over already: left, done away with, done or failed
-        settling = asyncio.ensure_future(self._over(visit, "left"))
-        self._settling.add(settling)
+        """The visit is left if its call stops while her lines are still being written, the
+        page gone, and it is still under way: settled where that cannot be waited for."""
+        if visit.step == "writing" and self._end(visit):
+            self._settling(visit.admission, "left", given_back=_given_back(visit, "left"))
+
+    def _settling(
+        self, admission: Admission[TurnKeys], result: Result, *, given_back: bool = False
+    ) -> "asyncio.Future[None]":
+        """`admission` settled as `result` (`Admission.settle`), whether anyone waits for it
+        or not: before the bar is closed."""
+        settling = asyncio.ensure_future(admission.settle(result, given_back=given_back))
+        self._settles.add(settling)
         settling.add_done_callback(self._settled)
+        return settling
 
     def _settled(self, settling: "asyncio.Future[Any]") -> None:
-        self._settling.discard(settling)
+        self._settles.discard(settling)
         if not settling.cancelled() and (error := settling.exception()) is not None:
-            log.error("settling a visit left failed", exc_info=error)
+            log.error("settling a visit failed", exc_info=error)
+
+    def _called(self, visit: _Visit, ask: str, first: BarEvent) -> "BarCall":
+        return BarCall(self._call(visit, ask, first), lambda: self._left_off(visit))
 
     def _reason(self, character: Character, job: Job | None, recent: frozenset[str]) -> Reason:
         """Her reason for coming: half the time `job`, if any; else one of the list's for her,
@@ -525,7 +561,6 @@ class Bar:
         yield first
         ordering = len(visit.orders) > len(visit.servings)
         chat = visit.admission.llms.chat
-        going_on = False
         try:
             with visit.admission.recording.current():
                 said: list[BarLine] = []
@@ -567,10 +602,10 @@ class Bar:
             visit.written.append((ask, said))
             if ordering:
                 visit.step = "waiting"
-                going_on = True
                 yield Memo(visit.orders[-1].memo("".join(line.zh for line in held if line.order)))
                 yield Waiting()
                 return
+            self._end(visit)  # done: too late to leave it now
             rewarded = await self._db.write(
                 self._write_down, visit, self._clock(), self._rewarding
             )
@@ -585,8 +620,7 @@ class Bar:
             await self._over(visit, "failed")
             yield VisitFailed(FAILED)
         finally:
-            if not going_on:
-                self._left_off(visit)
+            self._left_off(visit)
 
     async def _named(
         self, visit: _Visit, chat: ChatLLM, ask: str, said: list[BarLine], held: list[BarLine]
@@ -665,6 +699,12 @@ class Bar:
 
 class _Unwritten(RuntimeError):
     """The model wrote no line a call needs."""
+
+
+def _given_back(visit: _Visit, result: Result) -> bool:
+    """Whether the visit, over as `result`, is given back to the user's limit: failed with
+    nothing yet written."""
+    return result == "failed" and not visit.written
 
 
 def _holding(line: BarLine, held: list[BarLine], ordering: bool) -> list[BarLine]:

@@ -2,13 +2,12 @@
 turns, voice calls, the photos she sends (GLOSSARY.md「照片」) and visits to the bar
 (GLOSSARY.md「光顾」), each apart.
 
-A turn, call or visit exempt on the user's own keys (GLOSSARY.md「免限额密钥」) is recorded
-all the same, for the admin to see, but does not count towards the limit. An admin may set a user's
+A turn, call or visit exempt on the user's own keys (GLOSSARY.md「免限额密钥」) is recorded all the
+same, for the admin to see, but does not count towards the limit. An admin may set a user's
 own limits, apart from the deployment's: a number, unlimited, or 0, which leaves them the
-exempt ones only.
-Each use is kept in the database, next to the
-user it belongs to, for a day; whoever's they are, uses older than that are deleted as the
-backend tidies up (`housekeeping`)."""
+exempt ones only. Each use is kept in the database, next to the user it belongs to, for a
+day; whoever's they are, uses older than that are deleted as the backend tidies up
+(`housekeeping`)."""
 
 import sqlite3
 from collections.abc import Callable, Sequence

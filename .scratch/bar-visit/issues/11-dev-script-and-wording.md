@@ -22,3 +22,8 @@
 ### 票 08 交接
 
 - 「不发奖励」：构造 `Bar` 时不传 `gifts`（或者不传 `affinities`），`_rewarding` 就恒为假，`done` 的 `rewarded` 恒为 `null`，库里也不动抽奖和好感度。
+
+### 票 09 交接
+
+- `Bar` 现在要一个 `Admissions`（代替原来的 `OwnKeys`）：`Admissions(UsageLimiter(db, UsageLimits(visits_per_hour=None), clock), ActivityLog(db, clock), own_keys, cooldown_until=...)`。`cooldown_until` 光顾不问，给一个返回 `None` 的就行。每次调用的用量和用时在临时库的 `service_calls` 里，按 `record_id` 挂在这次光顾的 `activity_records` 下面，脚本可以直接从这里读出来打印。
+- `Bar.enter`、`Bar.serve` 返回 `BarCall`：用 `async for` 读，读完调 `aclose()`；`Bar.leave` 是 async。脚本最后调 `bar.aclose()`，让运行记录写完。

@@ -329,7 +329,7 @@ Status: ready-for-agent
   - `retrying`：这次调用失败了、正在重试，前端把这次调用推来的句子清掉；
   - `failed`：重试后还是失败，带一句短的出错提示，停在这次调用之前；
   - `done`：告别写完了（见「玩完」），带 `rewarded`：`{"draws": 0 或 1, "affinity_up": true/false}`，什么都不给时是 `null`。
-- `POST /api/bar/visits/{visit_id}/serves`：上一杯，正文是调酒台的样子（五种材料各几份、`ice`、`aged`、`method`）或一款瓶装的 id，加 `own_keys`。调坏的 422（`broken_drink`），不是等上酒的时候 409。能上的：先推一句服务器挑的「请慢用」（`line`，`speaker: producer`），再开始下一次调用，推法同上；最后一杯或醉了的那次以 `done` 收尾，否则以 `waiting` 收尾。
+- `POST /api/bar/visits/{visit_id}/serves`：上一杯，正文是调酒台的样子（五种材料各几份、`ice`、`aged`、`method`）或一款瓶装的 id，不带 `own_keys`：这次光顾的每次调用都用进门时拿到的钥匙，持有到这次光顾结束（票 09 定）。调坏的 422（`broken_drink`），不是等上酒的时候 409。能上的：先推一句服务器挑的「请慢用」（`line`，`speaker: producer`），再开始下一次调用，推法同上；最后一杯或醉了的那次以 `done` 收尾，否则以 `waiting` 收尾。
 - `POST /api/bar/visits/{visit_id}/retry`：停在出错的那次调用上时再调一次（用存下的点单卡，不重抽），推法同上；不是出错停住的时候 409。
 - `DELETE /api/bar/visits/{visit_id}`：离开，204。
 - 不存在、已作废、已告别、不是这位用户的 `visit_id` 一律 410（`visit_gone`），前端回店门口。

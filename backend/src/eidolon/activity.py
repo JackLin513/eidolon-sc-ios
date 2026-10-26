@@ -1,11 +1,11 @@
-"""Activity records (GLOSSARY.md「运行记录」): one for each turn, each call, each
-reach-out (GLOSSARY.md「搭话」) and each visit to the bar (GLOSSARY.md「光顾」), saying how
-it turned out, and one for each call to an
-outside service, saying which service, whose key, whether it failed and how, how long it
-took and what it was billed for; an LLM's, also how much of its input hit the provider's
-prompt cache, how soon its first word came and the reasoning effort it was asked for. They
-hold nothing anyone said. Only the admin console reads them: its dashboard (`dashboard`), and its users page, for each user's
-recent usage (`admin_users_api`).
+"""Activity records (GLOSSARY.md「运行记录」): one for each turn, each call, each reach-out
+(GLOSSARY.md「搭话」) and each visit to the bar (GLOSSARY.md「光顾」), saying how it turned out, and
+one for each call to an outside service, saying which service, whose key, whether it failed
+and how, how long it took and what it was billed for; an LLM's, also how much of its input
+hit the provider's prompt cache, how soon its first word came and the reasoning effort it
+was asked for. They hold nothing anyone said. Only the admin console reads them: its
+dashboard (`dashboard`), and its users page, for each user's recent usage
+(`admin_users_api`).
 
 A turn's record is open while the turn runs (`ActivityLog.begin`, then `current`), and the
 service calls made meanwhile, in the turn's context, are recorded under it; its outcome

@@ -4,12 +4,12 @@ of the limit and the deployer's keys it holds, all in one place.
 
 `Admissions` lets each begin, in order: it refuses a turn or call with a character who is in
 a cooldown (`CoolingDown`, GLOSSARY.md「冷却」) before anything else is asked, recording
-nothing, though she comes to the bar all the same; it takes the keys (`OwnKeys`), from those the turn or call brings, whose
-models record each request as a service call to the model they are, opens the activity
-record, and only then takes a use of the limit, so that nothing failing before it is
-counted. One refused over the limit is recorded rejected; whatever else fails on the way
-after the record is opened is recorded so (`_FAILED`); and what was taken is let go
-before it is raised. Before a call is placed, it is only asked whether the call would
+nothing, though she comes to the bar all the same; it takes the keys (`OwnKeys`), from those
+each brings, whose models record each request as a service call to the model they are,
+opens the activity record, and only then takes a use of the limit, so that nothing failing
+before it is counted. One refused over the limit is recorded rejected; whatever else fails
+on the way after the record is opened is recorded so (`_FAILED`); and what was taken is let
+go before it is raised. Before a call is placed, it is only asked whether the call would
 count.
 
 The `Admission` it hands out settles it, once: given back unless its result counts
@@ -44,7 +44,8 @@ turn counts once it was taken, done or left; a call once it connected; a visit o
 in, unless it is given back all the same (`Admission.settle`)."""
 
 _FAILED: dict[Admitted, Result] = {"turn": "failed", "call": "not_connected", "visit": "failed"}
-"""How a turn or call is recorded that failed before it began: a call never connected."""
+"""How a turn, call or visit is recorded that failed before it began: a call never
+connected."""
 
 K = TypeVar("K", TurnKeys, CallKeys)
 

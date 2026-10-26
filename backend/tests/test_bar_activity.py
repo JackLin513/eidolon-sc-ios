@@ -7,6 +7,7 @@ bar is open or any were recorded in it. A visit failed with nothing written is g
 
 Driven through the backend's external API, the records read from the database."""
 
+import asyncio
 import sqlite3
 from dataclasses import replace
 from pathlib import Path
@@ -17,7 +18,14 @@ import pytest
 from eidolon.config import Settings
 from eidolon.llm import LLMError
 from tests.conftest import CharacterConfig, ClientFactory
-from tests.fakes import FakeClock, FakeIdentityProvider, FakeLLM, FakeLLMService, FakeRandom
+from tests.fakes import (
+    HANG,
+    FakeClock,
+    FakeIdentityProvider,
+    FakeLLM,
+    FakeLLMService,
+    FakeRandom,
+)
 from tests.test_activity_records import dashboard
 from tests.test_admin_users import ADMIN, admin_beside
 from tests.test_bar_limits import come_in_and_leave, uses, visits_an_hour
@@ -31,6 +39,7 @@ from tests.test_bar_visit import (
     mano_alone,
     mixed,
     serve,
+    streamed,
 )
 from tests.test_own_llm import LLM
 
@@ -119,6 +128,25 @@ async def test_a_visit_failed_with_nothing_written_is_given_back_and_one_failed_
     assert kinds(failed_later)[-1] == "failed"
     assert [r[0] for r in visit_records(settings.database_path)] == ["failed", "failed"]
     assert uses(settings.database_path) == [("visit", 0)]  # the second's alone
+
+
+async def test_a_visit_whose_page_is_gone_while_her_lines_are_written_is_left(
+    make_client: ClientFactory, settings: Settings
+):
+    client = make_client(FakeLLM([COMING_IN[0], HANG]), random=FakeRandom(*DRAWS))
+    gone = asyncio.Event()
+
+    came, entering = await streamed(client, VISITS, {}, until="visit", gone=gone)
+    gone.set()
+    await asyncio.wait_for(entering, timeout=5)
+    async with asyncio.timeout(5):  # settled as the page is gone, not waited for
+        while not visit_records(settings.database_path):
+            await asyncio.sleep(0.05)
+    afterwards = await serve(client, came[0]["visit_id"], mixed("sugar-rush"))
+
+    assert [r[0] for r in visit_records(settings.database_path)] == ["left"]
+    assert uses(settings.database_path) == [("visit", 0)]  # counted all the same
+    assert afterwards.status_code == 410
 
 
 async def section(client: httpx.AsyncClient, github: FakeIdentityProvider) -> dict | None:

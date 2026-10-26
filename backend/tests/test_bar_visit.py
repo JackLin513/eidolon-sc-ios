@@ -175,11 +175,17 @@ async def test_a_visit_comes_in_orders_is_served_each_drink_and_says_goodbye(
 
 
 async def streamed(
-    client: httpx.AsyncClient, path: str, body: dict, *, until: str
+    client: httpx.AsyncClient,
+    path: str,
+    body: dict,
+    *,
+    until: str,
+    gone: asyncio.Event | None = None,
 ) -> tuple[list[dict], asyncio.Task[None]]:
     """Post `body` to `path` and read its events as they come, until one of type `until`:
-    those that came by then, which goes on growing, and the request going on. Driven as
-    uvicorn drives the app, since httpx's ASGITransport would run it to the end first."""
+    those that came by then, which goes on growing, and the request going on, the page gone
+    once `gone` is set. Driven as uvicorn drives the app, since httpx's ASGITransport would
+    run it to the end first."""
     request = client.build_request("POST", path, json=body)
     scope = {
         "type": "http", "asgi": {"version": "3.0", "spec_version": "2.3"},
@@ -197,8 +203,8 @@ async def streamed(
         if not sent:
             sent = True
             return {"type": "http.request", "body": request.content, "more_body": False}
-        await asyncio.Event().wait()
-        raise AssertionError("never")
+        await (gone or asyncio.Event()).wait()
+        return {"type": "http.disconnect"}
 
     async def send(message: dict) -> None:
         for line in message.get("body", b"").decode().splitlines():
