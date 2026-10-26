@@ -183,17 +183,19 @@ def order_card(order: Order) -> str:
     return "\n".join(card)
 
 
-def rewrite_ask(ask: str, order: Order) -> str:
+def rewrite_ask(ask: str, order: Order, before: Sequence[BarLine]) -> str:
     """`ask` again, but for her order alone, which named drinks where it should not, or not
-    the one it should."""
+    the one it should, after the lines `before` it, which stand."""
     drink = order.target
     naming = (
         f"一定要说出名字：日语台词里说「{drink.name_ja}」，中文字幕里写「{drink.name}」。"
         if order.phrasing in NAMING else "不要提任何饮品的名字，日语台词和中文字幕里都不行。"
     )
+    written = "\n".join(line.written() for line in before)
     return "\n\n".join([
         ask,
-        "刚才点单的那一两句不合要求。这次只重写点单的那一两句，标上 order=\"true\"，别的都不写。"
+        *([f"这次前面已经写好了这些，不用再写：\n{written}"] if before else []),
+        "你接着写的点单那一两句不合要求。这次只重写点单的那一两句，标上 order=\"true\"，别的都不写。"
         + naming,
     ])
 

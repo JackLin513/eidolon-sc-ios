@@ -228,7 +228,7 @@ class _Before:
     they have done, with anyone."""
 
     done_today: bool
-    done: int
+    visits_done: int
 
 
 @dataclass(frozen=True)
@@ -316,10 +316,10 @@ class Bar:
         topic = self._topic(character, hers.topics)
         drinks = cups(self._random)
         known = Known(
-            before.done < NOVICE_VISITS,
+            before.visits_done < NOVICE_VISITS,
             frozenset(h.wanted for h in hers.remembered.last_orders),
         )
-        first = draw_order(character, self._catalog, self._random, [], known, first=True)
+        first = draw_order(character, self._catalog, self._random, [], known)
         world = self._world
         visit = _Visit(
             secrets.token_urlsafe(16), user_id, character, now, today, reason, topic, drinks,
@@ -360,9 +360,7 @@ class Bar:
         enjoy = self._lines.enjoy[self._random(len(self._lines.enjoy))]
         if len(visit.servings) < visit.cups:
             ordered = [o.target.id for o in visit.orders]
-            order = draw_order(
-                visit.character, self._catalog, self._random, ordered, visit.known, first=False
-            )
+            order = draw_order(visit.character, self._catalog, self._random, ordered, visit.known)
             visit.orders.append(order)
             ask = serving_ask(serving, enjoy, order)
         else:
@@ -442,7 +440,7 @@ class Bar:
                     raise _Unwritten("she did not order")
                 if not any(line.order for line in held):
                     held[0] = replace(held[0], order=True)
-                held = await self._named(visit, keys.llms.chat, ask, held)
+                held = await self._named(visit, keys.llms.chat, ask, said, held)
                 if self._visits.get(visit.user_id) is not visit:
                     return
                 said += held
@@ -474,16 +472,17 @@ class Bar:
 
 
     async def _named(
-        self, visit: _Visit, chat: ChatLLM, ask: str, held: list[BarLine]
+        self, visit: _Visit, chat: ChatLLM, ask: str, said: list[BarLine], held: list[BarLine]
     ) -> list[BarLine]:
-        """`held`, her order and what follows it in a call asking for `ask`, with her order
-        naming drinks as it should: as written, rewritten in another call, or else said in a
-        fixed line, the visit's order then as that line has it."""
+        """`held`, her order and what follows it in a call asking for `ask`, after `said`, with
+        her order naming drinks as it should: as written, rewritten in another call, or else
+        said in a fixed line, the visit's last order then changed to how that line says it (an
+        analogy to conditions)."""
         order = visit.orders[-1]
         rest = [line for line in held if not line.order]
         if names_rightly(order, [line for line in held if line.order], self._catalog):
             return held
-        rewritten = await self._rewritten(visit, chat, rewrite_ask(ask, order))
+        rewritten = await self._rewritten(visit, chat, rewrite_ask(ask, order, said))
         if rewritten and names_rightly(order, rewritten, self._catalog):
             return [*rewritten, *rest]
         visit.orders[-1], fixed = fixed_order(order, self._lines, self._random)

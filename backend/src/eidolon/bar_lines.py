@@ -19,6 +19,7 @@ drink by name, nor does any other line (`check_bar_lines`).
 Anything wrong in it keeps the backend from starting (`BarLinesError`).
 """
 
+import re
 import tomllib
 import unicodedata
 from collections.abc import Iterator, Mapping
@@ -121,12 +122,20 @@ def load_bar_lines(path: Path) -> BarLines:
 
 def check_bar_lines(lines: BarLines, catalog: DrinkCatalog) -> None:
     """Raises BarLinesError unless no line names a drink of `catalog`, in English or in
-    Japanese, whatever its case or width."""
-    names = [(d.name, folded(n)) for d in catalog.drinks.values() for n in (d.name, d.name_ja)]
+    Japanese, whatever its case, width or spacing."""
     for label, n, text in _texts(lines):
-        compared = folded(text)
-        if said := [name for name, f in names if f in compared]:
+        if said := names_in(text, catalog):
             raise BarLinesError(f"{label} 第 {n} 句提到了饮品 {said[0]}")
+
+
+def names_in(text: str, catalog: DrinkCatalog) -> list[str]:
+    """The English names of the drinks of `catalog` that `text` names, in English or in
+    Japanese, whatever its case, width or spacing."""
+    compared = folded(text)
+    return [
+        d.name for d in catalog.drinks.values()
+        if folded(d.name) in compared or folded(d.name_ja) in compared
+    ]
 
 
 def _texts(lines: BarLines) -> Iterator[tuple[str, int, str]]:
@@ -147,8 +156,9 @@ def _texts(lines: BarLines) -> Iterator[tuple[str, int, str]]:
 
 
 def folded(text: str) -> str:
-    """`text` as names in it are compared, whatever its case or width."""
-    return unicodedata.normalize("NFKC", text).casefold()
+    """`text` as names in it are compared, whatever its case, width or spacing: without
+    spaces or middle dots (ピアノ マン, ピアノ・マン and ピアノマン alike)."""
+    return re.sub(r"[\s・·]", "", unicodedata.normalize("NFKC", text).casefold())
 
 
 def _group(config: dict, key: str, path: Path, label: str | None = None) -> list:

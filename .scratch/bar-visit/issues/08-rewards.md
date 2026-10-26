@@ -29,3 +29,8 @@
 
 - 玩完时在 `bar._call` 里 `await self._db.write(_write_down, visit, now)`，奖励放进同一个写事务（`_write_down` 里），`rewarded` 列现在写 0。`VisitDone.shown()` 现在恒推 `"rewarded": null`。
 - 「这一天有没有玩完过」是 `bar._before`（按 `entered_on` 查），`reward_today` 可以复用；`GET /api/bar` 的返回在 `Bar.read()`。
+
+### 票 06 交接
+
+- 「没有『上得最好』这一档的单」现在只能从说法看出一部分：直说名字、打比方、「老样子」一定没有。说口味、说种类、条件叠加、「来杯我喜欢的」、「你拿主意」，要看范围里有没有她爱喝的，`Serving` 没记这一点。建议在 `bar_rules` 里加一个 `has_best(order, character, catalog)`：名字加大杯恒有；其余看她爱喝的里，有没有一款不是讨厌的口味、满足 `order.said`、在 `_among` 里。条件里有 `big` 的，要看那一款有没有大杯，或者本身就是大杯。判定时一起记下来。
+- 打比方换成模板句以后，`Serving.order.phrasing` 是 `conditions`，按条件叠加算。

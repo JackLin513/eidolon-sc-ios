@@ -39,7 +39,7 @@ from dataclasses import dataclass, replace
 from datetime import timedelta
 from typing import Literal
 
-from eidolon.bar_lines import BarLines, Line, Phrasing, Tier, folded
+from eidolon.bar_lines import BarLines, Line, Phrasing, Tier, folded, names_in
 from eidolon.bar_reply import BarLine
 from eidolon.bar_visits import Mood
 from eidolon.characters import Character
@@ -93,10 +93,12 @@ the usual; of the flavor she meant but not the kind; of the kind but not the fla
 off."""
 
 FLAVORS: dict[str, str] = {"sweet": "甜", "bitter": "苦", "sour": "酸", "spicy": "辣", "bubbly": "发泡"}
+"""Each flavor in Chinese, by its identifier (a character's tastes have them as text)."""
+
 KINDS: dict[str, str] = {
     "girly": "女性化", "manly": "男性化", "classic": "经典", "classy": "时尚", "promo": "宣传",
 }
-"""As the recipe book's menu names them."""
+"""Each kind in Chinese, as the recipe book's menu names them."""
 
 _FLAVORS_JA: dict[Flavor, str] = {
     "sweet": "甘いの", "bitter": "苦いの", "sour": "酸っぱいの", "spicy": "辛いの",
@@ -221,12 +223,10 @@ def draw_order(
     random: Random,
     ordered: Sequence[str],
     known: Known,
-    *,
-    first: bool,
 ) -> Order:
-    """Her next order, having `ordered` these drinks in the visit so far, `first` if none."""
+    """Her next order, having `ordered` these drinks in the visit so far."""
     target, bucket = _target(
-        _buckets(character, catalog), random, ordered, known.usual if first else frozenset()
+        _buckets(character, catalog), random, ordered, frozenset() if ordered else known.usual
     )
     usuals = [
         d for d in catalog.drinks.values()
@@ -270,16 +270,14 @@ def judged(order: Order, served: Served, character: Character) -> Serving:
 def names_rightly(order: Order, lines: Sequence[BarLine], catalog: DrinkCatalog) -> bool:
     """Whether `lines`, her order, name drinks as they should: the drink she means, in Chinese
     by its English name or in Japanese by its Japanese one, where she orders by name; else
-    none of the catalog's in either, whatever the case or width."""
+    none of the catalog's in either, whatever the case, width or spacing."""
     if order.phrasing in NAMING:
         target = order.target
         return any(
             folded(target.name) in folded(line.zh) or folded(target.name_ja) in folded(line.ja)
             for line in lines
         )
-    names = [folded(n) for d in catalog.drinks.values() for n in (d.name, d.name_ja)]
-    said = [folded(text) for line in lines for text in (line.ja, line.zh)]
-    return not any(name in text for name in names for text in said)
+    return not any(names_in(text, catalog) for line in lines for text in (line.ja, line.zh))
 
 
 def fixed_order(order: Order, lines: BarLines, random: Random) -> tuple[Order, list[BarLine]]:
@@ -361,10 +359,10 @@ def _extras(drink: Drink) -> tuple[Condition, ...]:
 
 def _conditions(target: Drink, random: Random) -> tuple[Condition, ...]:
     """Its flavor or its kind, and one or two of what else she may say of it."""
-    first: Condition = "flavor" if random(2) == 0 else "kind"
+    flavor_or_kind: Condition = "flavor" if random(2) == 0 else "kind"
     left = list(_extras(target))
     picked = [left.pop(random(len(left))) for _ in range(1 + random(2) if len(left) > 1 else 1)]
-    return (first, *(c for c in EXTRAS if c in picked))
+    return (flavor_or_kind, *(c for c in EXTRAS if c in picked))
 
 
 def _wants_it_without_alcohol(character: Character, target: Drink, random: Random) -> bool:

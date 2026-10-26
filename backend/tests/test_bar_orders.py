@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from eidolon.bar_lines import Phrasing, load_bar_lines
-from eidolon.bar_rules import FLAVORS, KINDS, PHRASINGS
+from eidolon.bar_rules import FLAVORS, KINDS, NAMING, PHRASINGS
 from eidolon.config import Settings
 from eidolon.llm import LLMError
 from tests.conftest import MANO_SHEET, REPO_BAR_LINES, CharacterConfig, ClientFactory
@@ -117,7 +117,7 @@ def card(prompt: list) -> str:
 def ordering(drink_id: str, phrasing: Phrasing) -> list[str]:
     """Her coming in and ordering as `phrasing` would have her: by the drink's name, or by
     no name at all."""
-    return coming_in(drink_id) if phrasing in ("name", "name_big") else QUIET
+    return coming_in(drink_id) if phrasing in NAMING else QUIET
 
 
 def memo_for(phrasing: Phrasing, drink_id: str) -> str:
@@ -420,6 +420,8 @@ NAMED_WRONGLY = [
     pytest.param(her("甘いの。", "像 Sugar Rush 那种甜的。", order=True), id="english-name"),
     pytest.param(her("甘いの。", "像 sugar rush 那种甜的。", order=True), id="any-case"),
     pytest.param(her("甘いの。", "像ＳＵＧＡＲ　ＲＵＳＨ那种甜的。", order=True), id="full-width"),
+    pytest.param(her("ピアノマンみたいなの。", "像那种的。", order=True), id="japanese-name-unspaced"),
+    pytest.param(her("ピアノ・マンみたいなの。", "像那种的。", order=True), id="japanese-name-dotted"),
     pytest.param(her("ムーンブラストじゃないの。", "不要那种的。", order=True), id="another-drink"),
 ]
 
@@ -437,6 +439,7 @@ async def test_her_order_naming_a_drink_where_it_should_not_is_rewritten(
     first, again = llm.prompts
     assert again[:-1] == first[:-1]
     assert again[-1].content.startswith(first[-1].content)
+    assert f"这次前面已经写好了这些，不用再写：\n{QUIET[0]}" in again[-1].content
     assert "只重写点单的那一两句" in again[-1].content
     assert "不要提任何饮品的名字" in again[-1].content
     assert came[1:] == [
@@ -577,8 +580,13 @@ async def test_an_analogy_wrong_twice_is_said_and_judged_as_its_flavor_and_kind(
     assert "判定：上对了" in llm.prompts[-1][-1].content
 
 
-async def test_an_analogy_is_noted_as_she_said_it(make_client: ClientFactory, settings: Settings):
-    llm = FakeLLM([her("甘くて、果物っぽくて。", "甜甜的，有水果味。", order=True)])
+async def test_an_analogy_is_noted_as_she_said_it_once_it_names_no_drink(
+    make_client: ClientFactory, settings: Settings
+):
+    llm = FakeLLM(
+        [her("シュガーラッシュっぽいの。", "像 Sugar Rush 那样的。", order=True)],
+        [her("甘くて、果物っぽくて。", "甜甜的，有水果味。", order=True)],
+    )
     client = make_client(llm, random=FakeRandom(*entering(0, 0, says("analogy", ALL))))
     regular(settings)
 

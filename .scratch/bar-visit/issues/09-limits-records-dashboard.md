@@ -36,3 +36,7 @@
 - 现在没有准入：钥匙在 `bar._call` 里每次调用 `own_keys.for_turn(brought)` 拿、写完 `keys.release()`；进门和上一杯的正文都带 `own_keys`。没有运行记录，也不占限额。服务调用照常被 `metered_llm` 记下，但不挂在任何记录下面。
 - 「部署者没有对话模型」现在不存在（`CHAT_LLM_*` 必填），票 05 的那一条落到这里的「限额设成 0 时只能用自带密钥」。
 - 结束的地方：玩完在 `_call` 里 `yield VisitDone()` 之前；离开是 `Bar.leave`；被顶掉是 `Bar.enter` 里 `self._visits[user_id] = visit` 那一刻（旧的那次没有显式结束）。
+
+### 票 06 交接
+
+- 名字检查不过时，`bar._rewritten` 用同一把钥匙（`keys.llms.chat`）再调一次，只重写点单句。这次服务调用也要挂在这次光顾的运行记录下面，但不占限额（规格「重写点单都不再计」）。
