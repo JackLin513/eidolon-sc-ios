@@ -1,6 +1,7 @@
 "use client";
 
 import { notFound, useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 import { useDirectory } from "@/components/conversations/ConversationDirectory";
 import { BarDoor } from "@/components/play/bar/BarDoor";
@@ -10,11 +11,15 @@ import { BarScreen, SideMenu } from "@/components/play/bar/BarScreen";
 import { BarTextBox } from "@/components/play/bar/BarTextBox";
 import { BAR_INK } from "@/components/play/bar/ink";
 import { PortraitGuard } from "@/components/play/bar/PortraitGuard";
+import { useBarSound } from "@/components/play/bar/useBarSound";
 import { useBarVisit } from "@/components/play/bar/useBarVisit";
 import { useBar } from "@/components/play/useBar";
 import { copy } from "@/i18n";
-import { isArrowShown, isSpeaking, shownText } from "@/lib/barVisit";
+import { isArrowShown, isSpeaking, shownText, typingVoice } from "@/lib/barVisit";
 import { playHref } from "@/lib/playRoute";
+
+/** 句子打字时循环的打字音效。 */
+const TYPING_SOUND = { her: "bleep_high", producer: "bleep_low" } as const;
 
 /**
  * 酒吧（`/play/bar`，.scratch/bar-room spec「入口、路由和外壳」「一次营业的流程」）：在导航外壳里（通话不挂断，ADR-0018），
@@ -22,12 +27,21 @@ import { playHref } from "@/lib/playRoute";
  * 读到之前只有一层底色；读不到时照样画画面，「离开」能用。
  * 进来先到店门口，点一下进门，她进来和制作人说话，点单后备忘出来（useBarVisit、lib/barVisit）。
  * 「离开」离开这次光顾、回玩法页，浏览器返回也是（从玩法页的卡进来）。界面上哪里都不写她的口味、醉意和档位。
+ * 声音（useBarSound）：`audioBase` 是存储桶里 `bar/` 的地址，部署没给就是 null，一声不出。进门响门声、放曲目，一直放到离开；
+ * 句子打字时循环打字音效，她是 `bleep_high`，制作人是 `bleep_low`。
  */
-export function BarSubpage() {
+export function BarSubpage({ audioBase }: { audioBase: string | null }) {
   const router = useRouter();
   const { bar, failed } = useBar();
   const { account, characters } = useDirectory();
-  const { state, now, enter, tap, leave } = useBarVisit({ userId: account?.id ?? null, characters });
+  const sound = useBarSound(audioBase);
+  const { state, now, enter, tap, leave } = useBarVisit({ userId: account?.id ?? null, characters, sound });
+
+  const voice = typingVoice(state, now);
+  const { loop } = sound;
+  useEffect(() => {
+    loop(voice && TYPING_SOUND[voice]);
+  }, [voice, loop]);
 
   if (bar && !bar.enabled) notFound();
   if (!bar && !failed) return <div className="bar-layer absolute inset-0" style={{ background: BAR_INK.ground }} />;

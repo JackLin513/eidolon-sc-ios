@@ -180,10 +180,15 @@ export function shownText(
   };
 }
 
+/** Whose line is typing out on the box (its typing sound plays meanwhile); null for none. */
+export function typingVoice(state: BarVisitState, now: number): VisitLine["speaker"] | null {
+  const { shown } = state;
+  return shown !== null && !isTypedOut(shown.page, shown.typing, now) ? shown.line.speaker : null;
+}
+
 /** Her mouth moves: a line of hers is typing out on the box. */
 export function isSpeaking(state: BarVisitState, now: number): boolean {
-  const { shown } = state;
-  return shown !== null && shown.line.speaker === "her" && !isTypedOut(shown.page, shown.typing, now);
+  return typingVoice(state, now) === "her";
 }
 
 /** The arrow at the box's corner bobs: the page is typed out and a tap turns to something, not

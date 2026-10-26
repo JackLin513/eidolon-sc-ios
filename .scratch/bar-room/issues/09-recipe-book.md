@@ -27,3 +27,7 @@
 ### 票 09 交接
 
 - 来自票 05：配方书放进 `BarScreen` 的 `book` 插槽（在立绘上面、外框下面）。分层、`Sprite`、`PixelText`、`HitArea` 见票 05 的「给票 06–12」。
+
+### 票 07 交接
+
+- 放音效：`BarSubpage` 里的 `sound.play(name)`（`useBarSound`），名字照清单的 `name`：`mouse_hover`、`jukeselect`、`jukepick`、`jukechange`。没音频时什么都不做。悬停音效连着触发时每次都新起一个缓冲源，原版也是这样叠的，不用去重。

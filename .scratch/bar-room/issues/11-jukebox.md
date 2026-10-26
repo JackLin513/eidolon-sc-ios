@@ -41,3 +41,11 @@
 ### 票 11 交接
 
 - 来自票 05：侧边菜单下排「点唱机」(445,312) 那一格加进 `components/play/bar/BarScreen.tsx` 的 `SideMenu`（现在只有「离开」），没有悬停效果；像素字、`HitArea` 见票 05 的「给票 06–12」。
+
+### 票 07 交接
+
+- 曲目都在 `components/play/bar/useBarSound.ts`：一个 `new Audio()`（`music.current`），`start()` 在进门那一下里调，等 manifest 读完后放 `available.current.playlist[0]`；`ended` 时用 `nextTrack(available.current.playlist, 当前)` 放下一首。这一张的曲单是 `availableAudio` 给的默认 12 首（`playlist`），`tracks` 是桶里有的全部曲目（照点唱机的顺序），选曲界面用它。
+- 要加的：
+  - 曲单换成本机存的选择：让 `start` 或一个新的 `setPlaylist` 接曲单，`ended` 读它；单曲循环、随机在 `ended` 里分（`nextTrack` 旁边加纯函数，测在 `lib/barJukebox`）；暂停、上一首、下一首直接操作那个 `<audio>`。
+  - 「没有音频」：hook 现在不往外给状态（审查时删了没人用的那个）。选曲界面要分「manifest 还在读」和「没有音频」，加一个 `audio: BarAudio | null`（null 是还在读），在 manifest 的 `then` 里 set；读不到时是全空的 `BarAudio`。
+  - 试听：规格说曲目和试听共用一个 `<audio>`。选曲界面在进门之前，那时 `AudioContext` 还没建，但 `<audio>` 的试听是悬停 / 长按触发的，浏览器要有过点击才放行；电脑上悬停之前没点过的话放不出来，要验一下。

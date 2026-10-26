@@ -55,3 +55,9 @@
 动作（`BarVisitAction`）：`enter`、`refused { notice }`、`line { line, pages, now }`（组件用 `paginate` 分好页）、`event { event }`（其余事件；`retrying`、`failed`、`done` 现在原样返回）、`tap { now }`、`tick { now }`（组件在一页打完的时刻发）、`left`。派生：`shownText`、`isSpeaking`、`isArrowShown`。组件这边是 `components/play/bar/useBarVisit.ts`：调用的 `AbortController` 在 `call`、光顾 id 在 `visitId`；`enter` 的 `catch` 里光顾已经开始（`visitId` 有值）的错误现在直接忽略。
 
 - 教程不走接口，可以直接往同一个 reducer 发 `event { visit }`（visit id 用一个假的、离开时别发 `DELETE`）和 `line`，`TutorialLine` 的 `who` 要转成 `speaker`；或者另起状态，只复用 `lib/barText` 和 `BarTextBox`、`BarGuest`。`isMixing` 由点单句打完 + `waiting` 打开，教程的「打完讲解才开调酒台」可以照样发一个 `waiting`，但要有一句带 `order: true` 的。
+
+### 票 07 交接
+
+- 进门那一下：`useBarVisit` 的 `enter` 开头调 `sound.start()` 和 `sound.play("door")`（`useBarSound`）。教程的进门也要在点击里调这两样；`start()` 现在放默认曲单的第 1 首（正好是 22 Every Day is Night），但放完会接第 2 首。教程要单曲循环 22，得给 `start` 加参数（或用票 11 加的曲单 / 单曲循环口子），别靠默认曲单的顺序。
+- 打字音效不用管：`BarSubpage` 按 `typingVoice(state, now)`（`lib/barVisit`）循环，教程的文本框只要也给出同样形状的状态，或者在教程那边算出谁在打字，照样调 `sound.loop(…)`。
+- 「没有可用的音频」：看票 11 交接里加的 `audio` 状态（null 是还在读，空的是没有）。

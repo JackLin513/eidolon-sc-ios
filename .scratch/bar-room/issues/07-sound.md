@@ -22,12 +22,12 @@
 
 **Blocked by:** 03（曲目表和存储桶里的键名）、06（店门口和文本框）
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 纯函数（vitest）：清单和 manifest 的交集；没有 manifest、放不了 Ogg 时什么都没有；下一首，12 首完了从头。
-- [ ] Playwright：把存储桶的 `bar/*` 请求拦到本机原版提取目录的音频，或给一份假 manifest。进门后只请求了 `door` 和第 1 首；第 1 首放完才请求第 2 首；打字时打字音效在放（查 `AudioContext` 或打桩）；manifest 404 时没有任何音频请求，照常走到点单。不往线上存储桶传。
-- [ ] 前端 typecheck、vitest 通过。
-- [ ] 收尾：Comments 写下放音效和控制曲目的口子，给票 08、09、11、12。
+- [x] 纯函数（vitest）：清单和 manifest 的交集；没有 manifest、放不了 Ogg 时什么都没有；下一首，12 首完了从头。
+- [x] Playwright：把存储桶的 `bar/*` 请求拦到本机原版提取目录的音频，或给一份假 manifest。进门后只请求了 `door` 和第 1 首；第 1 首放完才请求第 2 首；打字时打字音效在放（查 `AudioContext` 或打桩）；manifest 404 时没有任何音频请求，照常走到点单。不往线上存储桶传。
+- [x] 前端 typecheck、vitest 通过。
+- [x] 收尾：Comments 写下放音效和控制曲目的口子，给票 08、09、11、12。
 
 ## Comments
 
@@ -42,3 +42,17 @@
 
 - 打字音效：她的句子打字时 `isSpeaking(state, now)` 为 true（`lib/barVisit`）；制作人的句子在打时 `shownText(state, now)` 的 `line.speaker === "producer"` 且 `!isTypedOut`。两样都没有时停。计时在 `components/play/bar/useBarVisit.ts`：一页在打时每 1/30 秒重画一次，打完发 `tick`。
 - 进门的门声放在 `useBarVisit` 的 `enter` 开头（这一下点击放行播放）；`enter` 在角色没读到、不在店门口时直接返回，门声放在那个判断之后。
+
+### 实现说明（票 07）
+
+- **清单**：前端用 `frontend/src/lib/barAudio.json`，是 `characters/bar_audio.json` 原样的一份（前端镜像只拿得到 `frontend/`，同落地页字体子集的做法）；`lib/barAudio.test.ts` 断言两份一样，改清单时两份一起改。没改 Docker 构建上下文和 CI。
+- **`lib/barAudio`**（纯函数）：`availableAudio(catalog, manifest, canPlayOgg)` 返回 `{ tracks, playlist, sfx }`（清单和 manifest 都有的；曲目照清单的顺序，`playlist` 是默认曲单里有的那些）；没有 manifest、放不了 Ogg 时全空。`parseManifest` 读不懂的当作没有；`nextTrack(playlist, current)` 放完从头。
+- **`lib/barVisit`**：新加 `typingVoice(state, now)`，返回正在打字的句子是谁的（`"her"`、`"producer"`、`null`）；`isSpeaking` 改成用它。
+- **地址**：`/play/bar` 的 `page.tsx` 用 `connection()` 改成按请求渲染，读 `EIDOLON_STAND_ASSETS_URL`，把 `<地址>/bar` 作为 `audioBase` 传给 `BarSubpage`（构建时没有这个变量）。没设时是 null，一声不出。CSP 的 `media-src`、`connect-src` 已经有这个地址；线上存储桶的 `bar/` 回 `Access-Control-Allow-Origin: *`，manifest 是 `no-cache`。
+- **`components/play/bar/useBarSound`**：进来时读一次 manifest（浏览器放不了 Ogg 时也读，交给 `availableAudio` 判）。`start()` 在进门那一下里调，建 `AudioContext`、从曲单第 1 首放起（只用一个 `new Audio()`，`ended` 时换 `src` 放下一首）；已经在放就不动，所以 410 回店门口再进门不重放。`play(name)`、`loop(name | null)` 放音效，音效第一次用到时才下载、解码（验收要求进门后只请求 `door` 和第 1 首，所以不在进门时解码全部 16 个）；manifest 还没读完时等它读完再放，失败的下次再试。卸载（「离开」换页）时全停。
+- 门声和 `start()` 在 `useBarVisit` 的 `enter` 里、角色读到的判断之后；打字音效在 `BarSubpage` 里按 `typingVoice` 循环（她 `bleep_high`，制作人 `bleep_low`）。
+- **验收**（本地构建版，Playwright，存储桶请求拦到本机提取目录）：进门前只读了 manifest；进门后只请求了 `door` 和第 1 首；她打字时 0.11 秒的缓冲循环、打完停；制作人 0.16 秒的循环、点一下打完立刻停；音效各只下载一次；第 1 首放完才请求第 2 首，同一个 `<audio>`；离开后停；manifest 晚到 3 秒时先点进门，门声和第 1 首照样响；manifest 404 时除了 manifest 没有音频请求、一声不出，照常走到点单。没往存储桶传东西。
+- **审查后的判断题（没改）**：
+  - 进门被拒（429、出错）时音乐已经开始放，回到店门口照放。规格只说「离开」才停、营业中不停；被拒时要不要停没写，先照放。
+  - 「离开」本身不停音乐，靠离开时换页卸载停；以后要是有不换页的「离开」，要在那里调停。
+  - 控制曲目的口子（换曲单、单曲循环、暂停、上一首、读「还在读 manifest」和「没有音频」）这一张没做，交接写进票 11、12，由它们照需要加。

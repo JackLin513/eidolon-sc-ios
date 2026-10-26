@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import { loadPixelFont, measurePixelText } from "@/components/play/bar/PixelText";
+import type { BarSound } from "@/components/play/bar/useBarSound";
 import { copy } from "@/i18n";
 import { ApiError, type Character, enterBar, leaveBarVisit } from "@/lib/api";
 import { CHARS_PER_SECOND, paginate, typedOutAt } from "@/lib/barText";
@@ -19,8 +20,17 @@ const TYPING_TICK_MS = 1000 / CHARS_PER_SECOND;
  * 一页在打字时每个字重画一次，打完时告诉它一声（点单句打完才开调酒台）。
  * 关着（409）回玩法页；离开、换页时关掉这次调用、`DELETE` 这次光顾；关页面、刷新时也尽量发出 `DELETE`。
  * 文本框里她的名字按 `visit` 推来的 `character_id` 在 `characters` 里找，每句来时找一次；角色读到之前店门口点了不进。
+ * 进门那一下响门声、放曲目（useBarSound 要在这一下点击里开始）。
  */
-export function useBarVisit({ userId, characters }: { userId: string | null; characters: Character[] | null }) {
+export function useBarVisit({
+  userId,
+  characters,
+  sound,
+}: {
+  userId: string | null;
+  characters: Character[] | null;
+  sound: Pick<BarSound, "start" | "play">;
+}) {
   const router = useRouter();
   const [state, dispatch] = useReducer(barVisit, undefined, atTheDoor);
   const [now, setNow] = useState(() => performance.now());
@@ -42,6 +52,8 @@ export function useBarVisit({ userId, characters }: { userId: string | null; cha
 
   const enter = useCallback(async () => {
     if (!userId || !characters || state.stage !== "door") return;
+    sound.start();
+    sound.play("door");
     dispatch({ type: "enter" });
     const controller = new AbortController();
     call.current = controller;
@@ -73,7 +85,7 @@ export function useBarVisit({ userId, characters }: { userId: string | null; cha
       }
       dispatch({ type: "refused", notice: doorNotice(e instanceof ApiError ? e : null) });
     }
-  }, [userId, characters, state.stage, router]);
+  }, [userId, characters, state.stage, router, sound]);
 
   const tap = useCallback(() => dispatch({ type: "tap", now: performance.now() }), []);
 

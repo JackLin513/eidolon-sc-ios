@@ -12,6 +12,7 @@ import {
   isArrowShown,
   isSpeaking,
   shownText,
+  typingVoice,
 } from "@/lib/barVisit";
 
 /** Every character as wide as a CJK one. */
@@ -168,6 +169,17 @@ describe("立绘", () => {
     expect(isSpeaking(state, 50)).toBe(true);
     expect(isSpeaking(state, 5000)).toBe(false);
     expect(isSpeaking(barVisit(state, { type: "tap", now: 5000 }), 5010)).toBe(false);
+  });
+
+  it("打字音效：她的句子打字时是她的，制作人的是制作人的，打完、点一下打完时停", () => {
+    const state = run(ENTER, VISIT, line(HELLO, 0), line(WELCOME, 0));
+    expect(typingVoice(atTheDoor(), 0)).toBeNull();
+    expect(typingVoice(state, 50)).toBe("her");
+    expect(typingVoice(barVisit(state, { type: "tap", now: 50 }), 60)).toBeNull();
+
+    const producer = barVisit(state, { type: "tap", now: 5000 });
+    expect(typingVoice(producer, 5010)).toBe("producer");
+    expect(typingVoice(producer, 10000)).toBeNull();
   });
 });
 
