@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { primaryPointer } from "@/components/play/bar/BarScreen";
 import { BAR_INK } from "@/components/play/bar/ink";
 import { PixelText } from "@/components/play/bar/PixelText";
 import { copy } from "@/i18n";
@@ -19,7 +20,7 @@ function canGoFullscreenLandscape(): boolean {
   return hasFullscreenButton({
     canLockOrientation: typeof orientation?.lock === "function",
     canFullscreen: document.fullscreenEnabled,
-    pointer: matchMedia("(pointer: coarse)").matches ? "coarse" : "fine",
+    pointer: primaryPointer(),
   });
 }
 

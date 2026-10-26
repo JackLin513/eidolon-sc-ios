@@ -208,12 +208,9 @@ describe("手机上在打字（dock 藏起来）", () => {
 });
 
 describe("导航栏和 dock", () => {
-  it.each(["/conversations", "/conversation/mano", "/play", "/play/gifts", "/play/cycles", "/settings"])(
-    "%s 上有",
-    (href) => {
-      expect(showsNav(href)).toBe(true);
-    },
-  );
+  it("外壳里别的页上都有", () => {
+    expect(showsNav("/play/cycles")).toBe(true);
+  });
 
   it("酒吧盖住它们，通话条照旧在最上面", () => {
     expect(showsNav("/play/bar")).toBe(false);

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { HitArea } from "@/components/play/bar/BarScreen";
 import { BAR_INK } from "@/components/play/bar/ink";
 import { PixelText } from "@/components/play/bar/PixelText";
 import { barImage, Sprite } from "@/components/play/bar/Sprite";
@@ -32,12 +33,12 @@ const CHANNEL_SHOWN_MS = 667;
 /**
  * 吧台背景，最底下一层（.scratch/bar-room spec「画框和缩放」，坐标照原型 `pieces.tsx` 的 BarRoom）：
  * 背景图、转着的吊扇和电视。电视点一下换下一台，共 10 个台，第 10 台关机（黑屏）；换台时左上角亮一下绿字「ChN」。
- * 台号只记在这一次营业里（这个组件还在就记着），进来时随便停在开着的一台。
+ * 台号只记在这一次营业里（这个组件还在就记着），进来时随便停在开着的一台，台号也亮一下（照原型）。
  */
 export function BarRoom() {
   const [channel, setChannel] = useState(() => Math.floor(Math.random() * (CHANNELS.length - 1)));
   const [frame, setFrame] = useState(0);
-  const [isChannelShown, setChannelShown] = useState(false);
+  const [isChannelShown, setChannelShown] = useState(true);
   useEffect(() => {
     const id = window.setInterval(() => setFrame((n) => n + 1), FRAME_MS);
     return () => window.clearInterval(id);
@@ -65,11 +66,9 @@ export function BarRoom() {
       {isChannelShown && !isOff && (
         <PixelText x={TV.x + 5} y={TV.y + 2} runs={`Ch${channel + 1}`} color={BAR_INK.channel} mono label="" />
       )}
-      <button
-        type="button"
-        aria-label={copy.bar.tv}
-        className="bar-hit absolute"
-        style={{ left: TV.x, top: TV.y, width: TV.width, height: TV.height }}
+      <HitArea
+        {...TV}
+        label={copy.bar.tv}
         onClick={() => {
           setChannel((c) => (c + 1) % CHANNELS.length);
           setChannelShown(true);

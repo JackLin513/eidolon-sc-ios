@@ -21,3 +21,9 @@
 - [ ] `lib/barRecipeBook`（vitest）：四个标签的分类和列表、每类最多 6 款、翻页不绕回、到头。
 - [ ] Playwright（拦下的 SSE，走到点单）：调酒时配方书盖住客人窗；四个标签各点一遍，翻到头；调酒状态结束时收起（票 08 做完了就上一杯验，没做完就靠 `lib/barVisit` 的状态）。截图给用户看。
 - [ ] 前端 typecheck、vitest 通过。
+
+## Comments
+
+### 票 09 交接
+
+- 来自票 05：配方书放进 `BarScreen` 的 `book` 插槽（在立绘上面、外框下面）。分层、`Sprite`、`PixelText`、`HitArea` 见票 05 的「给票 06–12」。

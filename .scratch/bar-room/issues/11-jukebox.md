@@ -37,3 +37,7 @@
 - 清单：`characters/bar_audio.json`，形如 `{"tracks": [{"id": 22, "file": "022_every_day_is_night.ogg", "title": "Every Day is Night"}, …], "default_playlist": [22, 21, 38, …], "sfx": [{"name": "door", "file": "095_door.ogg"}, …]}`。曲目的 `id` 是原版的声音编号，不是在点唱机里的位置；`tracks` 的顺序才是点唱机的顺序。音效 16 个，名字是文件名去掉编号前缀：`addingredient`、`iceadd`、`ageadd`、`mixdone`、`glassserve`、`buttonclick`、`buttonnoclick`、`bleep_high`、`bleep_low`、`boot_up`、`jukeselect`、`jukechange`、`jukepick`、`mouse_hover`、`prompt`、`door`。
 - 存储桶（`EIDOLON_STAND_ASSETS_URL` 下）的键：曲目 `bar/music/<id>.ogg`，音效 `bar/sfx/<name>.ogg`，都是 `audio/ogg`、长期缓存；`bar/manifest.json` 是 `{"tracks": [id…], "sfx": [name…]}`（按清单的顺序，只列桶里有的），`no-cache`。
 - 本机 `.env` 的存储桶是线上的，2026-10-26 已经传好了 `bar/`（59 首、16 个音效都在）；验收时仍然把 `bar/*` 请求拦到本机提取目录（`E:\Download\others\VA11_extract\audio`，文件名见清单的 `file`），或给一份假 manifest。
+
+### 票 11 交接
+
+- 来自票 05：侧边菜单下排「点唱机」(445,312) 那一格加进 `components/play/bar/BarScreen.tsx` 的 `SideMenu`（现在只有「离开」），没有悬停效果；像素字、`HitArea` 见票 05 的「给票 06–12」。

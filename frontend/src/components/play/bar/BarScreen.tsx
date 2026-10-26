@@ -5,7 +5,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { BAR_INK } from "@/components/play/bar/ink";
 import { PixelText } from "@/components/play/bar/PixelText";
 import { Sprite } from "@/components/play/bar/Sprite";
-import { BAR_HEIGHT, BAR_WIDTH, type BarPointer, type BarScreen as Placed, barScreen } from "@/lib/barScreen";
+import { BAR_HEIGHT, BAR_WIDTH, type BarPointer, type BarPlacement, barScreen } from "@/lib/barScreen";
 
 const BarScaleContext = createContext(1);
 
@@ -14,12 +14,19 @@ export function useBarScale(): number {
   return useContext(BarScaleContext);
 }
 
+const COARSE = "(pointer: coarse)";
+
+/** The primary pointer: a finger or a mouse. */
+export function primaryPointer(): BarPointer {
+  return matchMedia(COARSE).matches ? "coarse" : "fine";
+}
+
 /** The primary pointer, followed as it changes (a tablet's keyboard put on or taken off). */
 function usePointer(): BarPointer {
   const [pointer, setPointer] = useState<BarPointer>("fine");
   useEffect(() => {
-    const coarse = matchMedia("(pointer: coarse)");
-    const read = () => setPointer(coarse.matches ? "coarse" : "fine");
+    const coarse = matchMedia(COARSE);
+    const read = () => setPointer(primaryPointer());
     read();
     coarse.addEventListener("change", read);
     return () => coarse.removeEventListener("change", read);
@@ -62,7 +69,7 @@ export function BarScreen({
   const layer = useRef<HTMLDivElement>(null);
   const probe = useRef<HTMLDivElement>(null);
   const pointer = usePointer();
-  const [placed, setPlaced] = useState<Placed | null>(null);
+  const [placed, setPlaced] = useState<BarPlacement | null>(null);
 
   useEffect(() => {
     const el = layer.current;
@@ -81,7 +88,7 @@ export function BarScreen({
   }, [pointer]);
 
   return (
-    <div ref={layer} className="bar-layer absolute inset-0">
+    <div ref={layer} className="bar-layer absolute inset-0" style={{ background: BAR_INK.ground }}>
       <div
         ref={probe}
         aria-hidden

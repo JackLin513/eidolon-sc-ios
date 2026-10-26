@@ -23,9 +23,9 @@ export type BarViewport = {
 
 /** The screen's scale, and its top-left corner in CSS pixels from the top-left of the block under
  * the call bar, centred in what is left of it. */
-export type BarScreen = { scale: number; left: number; top: number };
+export type BarPlacement = { scale: number; left: number; top: number };
 
-export function barScreen({ width, height, insets, callBar, pointer }: BarViewport): BarScreen {
+export function barScreen({ width, height, insets, callBar, pointer }: BarViewport): BarPlacement {
   const top = Math.max(insets.top - callBar, 0);
   const free = {
     width: Math.max(width - insets.left - insets.right, 0),

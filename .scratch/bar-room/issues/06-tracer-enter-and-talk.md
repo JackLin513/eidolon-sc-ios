@@ -38,3 +38,10 @@
 - [ ] 接真后端和本机 `.env` 的对话模型走一次：进门、她说话、点单出备忘，立绘按情绪换动作。
 - [ ] 前端 typecheck、vitest 通过。
 - [ ] 收尾：`local-acceptance.md` 那一节写好；Comments 写下 `lib/barVisit` 的状态形状和动作，给票 08、10、12。
+
+## Comments
+
+### 票 06 交接
+
+- 来自票 05：画面怎么分层、像素字、坐标出处、`HitArea`、`useBarScale`、`useFullscreenButton` 见票 05 的「给票 06–12」。立绘放进 `BarScreen` 的 `guest` 插槽；它在 `transform: scale(s)` 的画面里，布局尺寸是逻辑像素，所以 Spine 画布的像素比照原型压到 `1/useBarScale()` 就是逻辑像素大小，再被 transform 按最近邻放大（`.bar-stage canvas` 已经 `pixelated`）。
+- `BarSubpage` 现在读 `useBar()`，读不到（`failed`）时 `bar` 是 null 照样画画面；进门要用目录时记得处理这种情况。侧边菜单上排的备忘加进 `BarScreen.tsx` 的 `SideMenu`。

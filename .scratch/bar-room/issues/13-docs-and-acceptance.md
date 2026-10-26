@@ -37,3 +37,4 @@
 ### 票 13 交接
 
 - 来自票 04：`frontend/scripts/bar-logo.png`（外框右上角的「VA-283」logo）不在 `frontend/public/bar/` 下，但含原版外框的像素（小字「Cyberpunk Bartender Action」和大字「VA-」照搬原版，「283」照原版字形手画）。LICENSING.md 写原版素材时把它一起列进非 AGPL 素材，注明是取自 Sukeban Games 原版外框的衍生图。
+- 来自票 05：酒吧的颜色是自己的 hex（`components/play/bar/ink.ts` 的 `BAR_INK`，和 `bar.css`、inline style），不走 `frontend/AGENTS.md` 的「只用具名主题变量」。`DESIGN.md` 的「酒吧」一节要写明这个例外（像落地页那样另立视觉世界，颜色、字体都不用应用的），审查时提过。

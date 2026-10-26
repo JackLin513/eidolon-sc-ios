@@ -1,16 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
 import { FailureNotice } from "@/components/app/FailureNotice";
 import { useDirectory } from "@/components/conversations/ConversationDirectory";
 import { PlayCardLink } from "@/components/play/PlayCardLink";
 import { PlayHeader, PlayShell } from "@/components/play/PlayShell";
+import { useBar } from "@/components/play/useBar";
 import { useCalendar } from "@/components/play/useCalendar";
 import { useCycles } from "@/components/play/useCycles";
 import { usePlayState } from "@/components/play/usePlayState";
 import { achievementsSeenUpTo, OF_ALL } from "@/lib/achievements";
-import { type BarState, getBar } from "@/lib/api";
 import { partsOf } from "@/lib/calendar";
 import { playCards } from "@/lib/playCards";
 import { pendingJobs, shortName } from "@/lib/schedule";
@@ -40,10 +38,7 @@ export function PlayPage() {
   const schedulePending =
     thisWeek && scheduleNow ? pendingJobs({ week: thisWeek, drafts: draftsOn(thisWeek.id), now: scheduleNow }).length : 0;
   const { view: cycles } = useCycles();
-  const [bar, setBar] = useState<BarState | null>(null);
-  useEffect(() => {
-    getBar().then(setBar, () => {});
-  }, []);
+  const { bar } = useBar();
   const byId = new Map((characters ?? []).map((character) => [character.id, character]));
   const [first, ...rest] = playCards({
     state,

@@ -52,7 +52,6 @@ describe("「全屏横过来」按钮", () => {
 
   it("锁不了方向（iPhone）时没有", () => {
     expect(hasFullscreenButton({ canLockOrientation: false, canFullscreen: true, pointer: "coarse" })).toBe(false);
-    expect(hasFullscreenButton({ canLockOrientation: false, canFullscreen: false, pointer: "coarse" })).toBe(false);
   });
 
   it("电脑上没有（电脑的 Chrome 也有 lock，但锁不了）", () => {

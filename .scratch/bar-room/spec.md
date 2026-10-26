@@ -181,7 +181,7 @@ Status: ready-for-agent
 ### 入口、路由和外壳
 
 - **玩法卡**：卡片注册表加一张 `bar`，名字「VA-283」，排在最后。只在 `GET /api/bar` 读到开着时显示（没读到时不显示，免得出来又消失）。状态：`reward_today` 时「今天第一次光顾有奖励」；好感度和礼物开着但今天已经玩完过「今天的奖励领过了」；好感度和礼物关着时「调一杯给来店的她」。没有点。
-- **子页**：`/play/bar` 加进玩法子页；读到关着时当作不存在（Next 的 not-found）。酒吧画面在导航外壳里，所以通话不挂断（ADR-0018）；画面用一层固定定位盖住导航栏和 dock，正在通话时顶上那条通话条照旧在最上面，酒吧占下面那一块。
+- **子页**：`/play/bar` 加进玩法子页；读到关着时当作不存在（Next 的 not-found）。酒吧画面在导航外壳里，所以通话不挂断（ADR-0018）；外壳在这一页不画导航栏和 dock（`lib/navShell` 的 `showsNav`），酒吧铺满通话条下面那一块，正在通话时顶上那条通话条照旧在最上面；展开的通话层盖在酒吧上面（票 05 的实际做法）。`/play/bar` 单独一个路由，不进 `[subpage]`，酒吧的代码、样式和字体只在这一页加载。
 - 「离开」和浏览器返回回玩法页；离开时调 `DELETE /api/bar/visits/{visit_id}`（有进行中的光顾时），停音乐。
 - 页面不能滚动、不能缩放手势误触（这一层上 `touch-action: none`，拖材料用 pointer 事件）。
 
@@ -189,7 +189,7 @@ Status: ready-for-agent
 
 - 逻辑画面 640×360，五层：吧台背景、客人立绘、调酒时盖住客人的配方书、整张不透明的外框（挖出 L 形的客人窗）、按钮和文字。各区坐标照原型和调研笔记的表。
 - **缩放**：电脑（`pointer: fine`）取放得下的最大整数倍，放不下 1 倍时退成小数；手机（`pointer: coarse`）取放得下的最大小数倍，`image-rendering: pixelated`，不做预渲染再平滑。可视区域去掉安全区（`env(safe-area-inset-*)`）和通话条。
-- **竖屏**：`@media (orientation: portrait) and (pointer: coarse)` 时整层盖「请横过来」的提醒（像素字），下面的画面照旧在、不卸下，横过来接着玩。安卓（Screen Orientation 的 `lock` 能用时）提醒上多一个「全屏横过来」按钮：进全屏再 `screen.orientation.lock("landscape")`；iPhone 没有这个按钮。店门口也放一个同样的「全屏」按钮（只有安卓）。
+- **竖屏**：`@media (orientation: portrait) and (pointer: coarse)` 时整层盖「请横过来」的提醒（像素字），下面的画面照旧在、不卸下，横过来接着玩。安卓（粗指针、能进全屏、Screen Orientation 的 `lock` 能用时；电脑的 Chrome 也有 `lock` 但锁不了，所以要粗指针）提醒上多一个「全屏横过来」按钮：进全屏再 `screen.orientation.lock("landscape")`；iPhone 没有这个按钮。店门口也放一个同样的「全屏」按钮（只有安卓）。
 - 纯函数：给视口尺寸、安全区、指针类型，返回倍数和画面的位置；给 UA 能力，返回有没有「全屏」按钮。
 
 ### 像素字
