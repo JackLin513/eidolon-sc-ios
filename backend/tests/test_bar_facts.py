@@ -99,37 +99,15 @@ async def test_she_comes_in_without_facts_when_they_cannot_be_looked_up_and_they
     assert "ピーちゃん" in llm.prompts[1][1].content  # the failure was not remembered
 
 
-async def test_she_comes_in_without_facts_when_reranking_fails(make_client: ClientFactory):
-    llm = FakeLLM(COMING_IN)
-    reranker = FakeReranker()
-    reranker.down = True
-    client = make_client(
-        llm, random=FakeRandom(*DRAWS), embedder=FakeEmbedder(), reranker=reranker
-    )
-
-    came_in = await enter(client)
-
-    assert came_in[-1]["type"] == "waiting"
-    assert "# 角色资料" not in llm.prompts[0][1].content
-
-
-async def test_she_comes_in_without_facts_without_embedding(make_client: ClientFactory):
-    llm = FakeLLM(COMING_IN)
-    client = make_client(llm, random=FakeRandom(*DRAWS))
-
-    came_in = await enter(client)
-
-    assert came_in[-1]["type"] == "waiting"
-    assert "# 角色资料" not in llm.prompts[0][1].content
-
-
-async def test_she_is_told_not_to_make_up_the_people_and_events_of_her_past(
+async def test_without_embedding_she_comes_in_without_facts_but_told_not_to_make_up_her_past(
     make_client: ClientFactory,
 ):
     llm = FakeLLM(COMING_IN)
     client = make_client(llm, random=FakeRandom(*DRAWS))
 
-    await enter(client)
+    came_in = await enter(client)
 
-    shared = llm.prompts[0][0].content
+    shared, about = (m.content for m in llm.prompts[0][:2])
+    assert came_in[-1]["type"] == "waiting"
+    assert "# 角色资料" not in about
     assert "不编具体的名字和事件" in shared

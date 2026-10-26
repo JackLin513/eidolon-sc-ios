@@ -2,7 +2,7 @@
 from instead of making things up (规格「她的资料」).
 
 What the topic says is the query: embedded, her facts nearest it reranked, the best
-`FACTS` kept, however relevant (the text turns' threshold is calibrated on what users say,
+`MAX_FACTS` kept, however relevant (the text turns' threshold is calibrated on what users say,
 not on a topic). Only her facts are looked in, not the story; her reason for coming has no
 part in it. The query never changes, so what it finds is kept for her and the topic while
 the server runs; failing, she comes in without, and it is looked up again next time.
@@ -21,14 +21,16 @@ from eidolon.retrieval import CANDIDATES_PER_SOURCE
 
 log = logging.getLogger(__name__)
 
-FACTS = 3
+MAX_FACTS = 3
 """How many of her facts a visit is told."""
 
-TIMEOUT = timedelta(seconds=15)
+LOOKUP_TIMEOUT = timedelta(seconds=15)
 """How long looking them up may hold her coming in: past it, she comes in without."""
 
 
 class BarFacts:
+    """Looks up her facts for a visit's topic, keeping what it finds."""
+
     def __init__(self, facts: CharacterFacts, embedder: Embedder, reranker: Reranker) -> None:
         self._facts = facts
         self._embedder = embedder
@@ -42,7 +44,7 @@ class BarFacts:
         if (found := self._found.get(key)) is not None:
             return found
         try:
-            async with asyncio.timeout(TIMEOUT.total_seconds()):
+            async with asyncio.timeout(LOOKUP_TIMEOUT.total_seconds()):
                 found = await self._looked_up(character, topic.note)
         except Exception:
             log.warning("looking up her facts for a visit failed; she comes in without",
@@ -58,4 +60,4 @@ class BarFacts:
             return []
         texts = [c.text for c in candidates]
         ranked = await self._reranker.rerank(query, texts, len(texts))
-        return [texts[i] for i, _ in ranked[:FACTS]]
+        return [texts[i] for i, _ in ranked[:MAX_FACTS]]

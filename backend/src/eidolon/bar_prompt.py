@@ -111,7 +111,7 @@ def visit_prompt(
     now: datetime,
     character: Character,
     catalog: DrinkCatalog,
-    facts: Sequence[str] = (),
+    facts: Sequence[str],
 ) -> str:
     """The second part: this visit, as it is at `now`, as she comes in, with those of her
     `facts` the topic found, best first."""

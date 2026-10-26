@@ -64,6 +64,7 @@ from eidolon.bar_rules import DRUNK_AT, FLAVORS, KINDS, Known, Order, Serving, W
 from eidolon.bar_visits import Topic, bar_visits_path, load_bar_visits
 from eidolon.characters import Character
 from eidolon.config import Settings
+from eidolon.facts import CharacterFacts
 from eidolon.drink_catalog import (
     MAX_PARTS,
     Drink,
@@ -419,7 +420,7 @@ async def _visit(
     visit_id = visit.id
     print(f"来意 {visit.reason.id}：{visit.reason.note}")
     print(f"话题 {visit.topic.id}：{visit.topic.note}｜打算喝 {visit.cups} 杯")
-    heading = "# 角色资料"
+    heading = f"# {CharacterFacts.heading}"
     if heading in visit.about:
         print(f"\n【查到的资料】\n{visit.about[visit.about.index(heading):]}")
     else:
