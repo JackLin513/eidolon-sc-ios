@@ -36,3 +36,9 @@
 - [ ] 接真后端和本机的对话模型，一杯杯上到告别。
 - [ ] 前端 typecheck、vitest 通过。
 - [ ] 收尾：Comments 写下 `lib/barMixer` 的匹配怎么调用，给票 12（教程用它判两杯）。
+
+## Comments
+
+### 票 08 交接
+
+- 来自票 01：提取目录里没有 Frothy Water 的成品图（饮品图 24 张里是 Flaming Moai，没有它），原型的 `drink_fwater` 是坏图。调好 Frothy Water 时画哪张，这张票定（比如借 `drink_beer`），定了写进规格。
