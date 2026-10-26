@@ -29,6 +29,11 @@ these ways that is so: of the flavor she dislikes; with alcohol, wanted without;
 usual; of the flavor of the drink she meant but not its kind, or of the kind but not the
 flavor; quite off.
 
+She is drunk once the Karmotrine of the drinks served her in a visit, a doubled glass's
+doubled, a bottle's as the catalog has it, is as much as she holds (`DRUNK_AT`). It has no
+part in how well a drink is served: more Karmotrine in a drink that leaves it optional is
+still that drink.
+
 What she says ordering is checked for names (`names_rightly`); where it is not right even
 rewritten, she says one of the fixed lines for it instead (`fixed_order`). The order memo is
 the producer's note of what she wants (`Order.memo`).
@@ -70,6 +75,10 @@ NOVICE_VISITS = 3
 NO_ALCOHOL: dict[str, int] = {"weak": 40, "medium": 10, "strong": 0}
 """How likely she wants a drink that may be made without alcohol so, in percent, by how well
 she holds her drink."""
+
+DRUNK_AT: dict[str, int] = {"weak": 8, "medium": 14, "strong": 20}
+"""How many parts of Karmotrine she has in a visit to be drunk, by how well she holds her
+drink."""
 
 CUPS: tuple[tuple[int, int], ...] = ((1, 20), (2, 60), (3, 20))
 """How many drinks she has in a visit, and how likely each, in percent."""
@@ -265,6 +274,13 @@ def judged(order: Order, served: Served, character: Character) -> Serving:
     if not right:
         return Serving(order, served, "wrong", _wrong(order, served, character))
     return Serving(order, served, "best" if _best(order, served, character) else "right")
+
+
+def drunk(character: Character, servings: Sequence[Serving]) -> bool:
+    """Whether she is drunk, having been served `servings` in a visit: as many parts of
+    Karmotrine in them as she holds (`DRUNK_AT`), or more."""
+    at = DRUNK_AT.get(character.bar_tolerance or "")
+    return at is not None and sum(s.served.karmotrine for s in servings) >= at
 
 
 def names_rightly(order: Order, lines: Sequence[BarLine], catalog: DrinkCatalog) -> bool:

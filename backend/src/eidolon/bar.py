@@ -19,8 +19,9 @@ wanted the last time.
 
 **Calls.** A visit is written in as many calls as she has drinks, and one more: her coming in
 and first order; after each drink served, her reaction, the talk and her next order; after
-the last, her reaction, a short talk and her farewell (`bar_prompt`). Each streams her lines
-and the producer's as they close (`bar_reply`); the line she orders in is held back to the
+the last, or the one that leaves her drunk (`bar_rules.drunk`), which is the last she has,
+her reaction, a short talk and her farewell, drunk if she is (`bar_prompt`). Each streams her
+lines and the producer's as they close (`bar_reply`); the line she orders in is held back to the
 end of its call, with what follows it, and sent with the order memo once it names drinks as
 it should (`bar_rules.names_rightly`): if it does not, the call is made again for it alone,
 told so, and if that does not either, she says one of the fixed lines instead
@@ -70,6 +71,7 @@ from eidolon.bar_rules import (
     Serving,
     cups,
     draw_order,
+    drunk,
     fixed_order,
     judged,
     names_rightly,
@@ -219,6 +221,8 @@ class _Visit:
     servings: list[Serving] = field(default_factory=list)
     written: list[tuple[str, list[BarLine]]] = field(default_factory=list)
     """What each call so far asked for, and what was written."""
+    drunk: bool = False
+    """Whether she has had as much as she holds (`bar_rules.drunk`)."""
     step: Step = "writing"
 
 
@@ -356,15 +360,16 @@ class Bar:
             raise BrokenDrink()
         serving = judged(visit.orders[-1], glass, visit.character)
         visit.servings.append(serving)
+        visit.drunk = drunk(visit.character, visit.servings)
         visit.step = "writing"
         enjoy = self._lines.enjoy[self._random(len(self._lines.enjoy))]
-        if len(visit.servings) < visit.cups:
+        if len(visit.servings) < visit.cups and not visit.drunk:
             ordered = [o.target.id for o in visit.orders]
             order = draw_order(visit.character, self._catalog, self._random, ordered, visit.known)
             visit.orders.append(order)
             ask = serving_ask(serving, enjoy, order)
         else:
-            ask = farewell_ask(serving, enjoy, visit.servings)
+            ask = farewell_ask(serving, enjoy, visit.servings, drunk=visit.drunk)
         return self._call(visit, brought, ask, BarLine("producer", enjoy))
 
     def leave(self, user_id: str, visit_id: str) -> None:
@@ -600,10 +605,10 @@ def _write_down(db: sqlite3.Connection, visit: _Visit, now: datetime) -> None:
     ]
     db.execute(
         "INSERT INTO visit_records (user_id, character_id, entered_at, left_at, entered_on,"
-        " reason, topic, orders, drunk, rewarded) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0)",
+        " reason, topic, orders, drunk, rewarded) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
         (
             visit.user_id, visit.character.id, visit.entered_at.isoformat(), now.isoformat(),
             visit.entered_on.isoformat(), visit.reason.id, visit.topic.id,
-            json.dumps(orders),
+            json.dumps(orders), int(visit.drunk),
         ),
     )

@@ -10,8 +10,8 @@ in every call of a visit:
 3. what each call before asked for and what was written, the last marked for the service to
    cache;
 4. what this call is to write: her coming in and ordering, her reaction to a drink and her
-   next order, or her reaction to the last and her farewell; with her order card, and the
-   drink served and how well.
+   next order, or her reaction to the last and her farewell, drunk from after the reaction
+   on if that drink left her so; with her order card, and the drink served and how well.
 
 No tool is offered, nothing is retrieved; neither the conversations nor her memories are
 told of. Nor is she told what else would have been right for an order.
@@ -139,14 +139,24 @@ def serving_ask(serving: Serving, enjoy: str, order: Order) -> str:
     ])
 
 
-def farewell_ask(serving: Serving, enjoy: str, servings: Sequence[Serving]) -> str:
-    """The last part of the call after the last drink of `servings` is served her: her
-    reaction, a short talk and her farewell."""
+def farewell_ask(
+    serving: Serving, enjoy: str, servings: Sequence[Serving], *, drunk: bool
+) -> str:
+    """The last part of the call after the last drink of `servings` is served her, the last
+    she has, `drunk` or not: her reaction, a short talk and her farewell, drunk after her
+    reaction if she is."""
     each = "；".join(f"第 {i} 杯{_TIERS[s.tier]}" for i, s in enumerate(servings, 1))
+    if not drunk:
+        return "\n\n".join([
+            _served(serving, enjoy),
+            "这次写：这杯的反应、一小段闲聊，然后告别。不再点单。",
+            f"这次的每一杯：{each}。你今晚没有喝醉。",
+        ])
     return "\n\n".join([
         _served(serving, enjoy),
-        "这次写：这杯的反应、一小段闲聊，然后告别。不再点单。",
-        f"这次的每一杯：{each}。你今晚没有喝醉。",
+        "这次写：这杯的反应、一小段闲聊，然后告别。你喝醉了，今晚不再点单。",
+        "这杯的反应照常写；写完反应，从这一段起你醉了：闲聊和告别都是醉着的样子，话多、犯困、情绪起伏，会说说心里话。",
+        f"这次的每一杯：{each}。你今晚喝醉了。",
     ])
 
 
