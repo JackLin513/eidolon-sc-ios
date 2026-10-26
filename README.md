@@ -50,6 +50,18 @@ GLOSSARY.md             # 领域词汇
      --db data/eidolon.db --characters ../characters --out ../../eidolon-sc-ios/build/eidolon-content.eidolonpkg
    ```
 
+   要带上她的立绘，先用上游的 `eidolon stand fetch` 和 `eidolon stand outfits` 把素材整理到
+   `build/stand`（`EIDOLON_STAND_BUILD_PATH` 指到这里），再给导出工具加 `--stand`：
+
+   ```sh
+   # 默认衣装 + 清单里的前 3 张卡；--stand-all-outfits 打全部，--stand-cards 0 只打默认衣装
+   uv run --env-file=../.env python ../../eidolon-sc-ios/tools/export_content_bundle.py \
+     --db data/eidolon.db --characters ../characters --stand ../../eidolon-sc-ios/build/stand \
+     --stand-cards 3 --out ../../eidolon-sc-ios/build/eidolon-content.eidolonpkg
+   ```
+
+   没有偶像编号、默认衣装或素材的角色跳过（同步还没跑完也能导出）。
+
 2. **生成并打开工程**：
 
    ```sh

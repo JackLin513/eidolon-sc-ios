@@ -9,12 +9,18 @@ produces the read-only archive described in docs/adr/0003-content-bundle-format.
     content/holidays.json       — Japan's holidays, 2000–2100, Tokyo date → name
     characters/characters.json  — characters.toml, paths rewritten package-relative
     characters/*.json|*.md|*.jpg
+    stand/idols/<outfit_id>/{data.json,data.atlas,data.png}
+    stand/outfits/<idol_id>.json — her outfit list, urls package-relative
+
+The stand files come from the upstream `stand fetch` / `stand outfits` build
+directory (ADR-0018): pass it with `--stand`. Without it the bundle has no stands.
 
 The user database (docs/adr/0002-content-and-user-databases.md) is never read.
 
 Usage:
     python3 tools/export_content_bundle.py \
         --upstream ../eidolon-sc \
+        --stand ../eidolon-sc-ios/build/stand --stand-cards 3 \
         --out build/eidolon-content.eidolonpkg
 """
 
@@ -30,20 +36,18 @@ import sys
 import tempfile
 import tomllib
 import zipfile
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-try:
-    import holidays
-except ImportError:  # the exporter runs inside the upstream backend's environment
-    print(
-        "error: 需要 upstream backend 的 holidays 库；在 ../eidolon-sc/backend 里用 uv run 执行本脚本",
-        file=sys.stderr,
-    )
-    raise SystemExit(1)
-
 FORMAT_VERSION = 2
 CONTENT_SCHEMA_VERSION = 1
+
+# Outfits come from the upstream `stand fetch` / `stand outfits` build directory:
+# `source/assets/spine/idols/<outfit_id>/` holds the three files and `outfits/<idol_id>.json`
+# holds her card list. Chibi (`cb`, `cb_costume`) stands are not 立绘 and are left out.
+STAND_CATEGORIES = ("stand", "stand_costume")
+STAND_FILES = ("data.json", "data.atlas", "data.png")
 
 # The holiday table covers these years, so the app never reckons the calendar itself.
 HOLIDAY_YEARS = range(2000, 2101)
@@ -189,6 +193,10 @@ def is_day_of_the_year(month: int, day: int) -> bool:
 def build_holidays() -> dict[str, str]:
     """Japan's holidays by Tokyo date, each with its Japanese name, as upstream
     `japan_holidays.py` reads them from the same library."""
+    try:
+        import holidays
+    except ImportError:  # the exporter runs inside the upstream backend's environment
+        die("需要 upstream backend 的 holidays 库；在 ../eidolon-sc/backend 里用 uv run 执行本脚本")
     table: dict[str, str] = {}
     for year in HOLIDAY_YEARS:
         try:
@@ -278,12 +286,164 @@ def json_ready(value):
     return str(value)
 
 
+@dataclass
+class StandAssets:
+    """What the stand part of the bundle needs: the characters with a `stand` entry,
+    the outfit files to copy (package path → source path) and the rewritten lists."""
+
+    characters: list[dict]
+    files: dict[str, Path]
+    lists: dict[str, dict]
+    file_count: int
+
+    @classmethod
+    def empty(cls, characters: list[dict]) -> "StandAssets":
+        return cls([dict(item) for item in characters], {}, {}, 0)
+
+
+def outfit_category(outfit_id: str) -> str | None:
+    """`stand` or `stand_costume` for a real outfit, None for chibi and anything else."""
+    category, _, enza_id = outfit_id.partition("/")
+    if category in STAND_CATEGORIES and enza_id:
+        return category
+    return None
+
+
+def outfit_directory(stand_dir: Path, outfit_id: str) -> Path:
+    return stand_dir / "source" / "assets" / "spine" / "idols" / outfit_id
+
+
+def outfit_complete(directory: Path) -> bool:
+    return all((directory / name).is_file() for name in STAND_FILES)
+
+
+def _card_has(entry: dict, outfit_id: str) -> bool:
+    return any((entry.get(key) or {}).get("id") == outfit_id for key in ("everyday", "stage"))
+
+
+def _selected_cards(cards: list[dict], default_outfit: str, limit: int, all_outfits: bool) -> list[dict]:
+    """The first `limit` cards, plus the card her default outfit is on, in list order."""
+    if all_outfits:
+        return list(cards)
+    indices = set(range(min(max(limit, 0), len(cards))))
+    for index, entry in enumerate(cards):
+        if _card_has(entry, default_outfit):
+            indices.add(index)
+            break
+    return [cards[index] for index in sorted(indices)]
+
+
+def build_stand(
+    characters: list[dict],
+    stand_dir: Path | None,
+    *,
+    cards: int,
+    all_outfits: bool,
+) -> StandAssets:
+    """Pack each character's default outfit and a slice of her outfit list.
+
+    A character without an idol number, a default outfit, fetched files or a list is
+    skipped, so exporting keeps working while the upstream sync is still running. Every
+    outfit the packaged list names must have its three files: a list that points at
+    nothing makes the whole export fail rather than produce a broken bundle.
+    """
+    if stand_dir is None:
+        return StandAssets.empty(characters)
+    stand_dir = Path(stand_dir)
+    if not stand_dir.is_dir():
+        die(f"找不到立绘整理目录 {stand_dir}")
+
+    updated: list[dict] = []
+    files: dict[str, Path] = {}
+    lists: dict[str, dict] = {}
+    for original in characters:
+        item = dict(original)
+        idol_id = item.get("idol_id")
+        default_outfit = item.get("default_outfit")
+        if (
+            type(idol_id) is not int
+            or idol_id <= 0
+            or not isinstance(default_outfit, str)
+            or outfit_category(default_outfit) is None
+        ):
+            updated.append(item)
+            continue
+        default_directory = outfit_directory(stand_dir, default_outfit)
+        if not outfit_complete(default_directory):
+            updated.append(item)
+            continue
+        list_path = stand_dir / "outfits" / f"{idol_id}.json"
+        try:
+            source_list = json.loads(list_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            print(
+                f"warning: {item.get('name', item.get('id'))} 还没有衣装清单 {list_path}，不打包立绘",
+                file=sys.stderr,
+            )
+            updated.append(item)
+            continue
+        if not isinstance(source_list.get("cards"), list):
+            die(f"衣装清单 {list_path} 的 cards 不是列表")
+
+        packaged_cards: list[dict] = []
+        for entry in _selected_cards(
+            source_list["cards"], default_outfit, cards, all_outfits
+        ):
+            packaged = dict(entry)
+            for slot in ("everyday", "stage"):
+                outfit = entry.get(slot)
+                outfit_id = outfit.get("id") if isinstance(outfit, dict) else None
+                if outfit_category(outfit_id or "") is None:
+                    packaged[slot] = None
+                    continue
+                source_directory = outfit_directory(stand_dir, outfit_id)
+                if not outfit_complete(source_directory):
+                    die(
+                        f"角色 {item['id']} 的衣装清单引用了 {outfit_id}，"
+                        f"但 {source_directory} 缺文件"
+                    )
+                for name in STAND_FILES:
+                    files[f"stand/idols/{outfit_id}/{name}"] = source_directory / name
+                packaged[slot] = {
+                    "id": outfit_id,
+                    "url": f"../idols/{outfit_id}/",
+                    # The app renders thumbnails itself; there are no thumbnail files
+                    # in the bundle, so nothing may point at one.
+                    "thumbnail": None,
+                }
+            if packaged["everyday"] is None and packaged["stage"] is None:
+                continue
+            packaged_cards.append(packaged)
+
+        for name in STAND_FILES:
+            files.setdefault(f"stand/idols/{default_outfit}/{name}", default_directory / name)
+
+        package_list_path = f"stand/outfits/{idol_id}.json"
+        lists[package_list_path] = {"idol_id": idol_id, "cards": packaged_cards}
+        item["stand"] = {
+            "default_outfit": {
+                "id": default_outfit,
+                "path": f"stand/idols/{default_outfit}/",
+            },
+            "outfits": package_list_path,
+        }
+        updated.append(item)
+
+    return StandAssets(
+        characters=updated,
+        files=files,
+        lists=lists,
+        file_count=len(files) + len(lists),
+    )
+
+
 def write_bundle(
     out_path: Path,
     source_db: Path,
     characters: list[dict],
     character_files: set[Path],
     characters_dir: Path,
+    stand: StandAssets | None = None,
 ) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as scratch:
@@ -291,6 +451,9 @@ def write_bundle(
         report = build_content_db(source_db, content_db)
         holiday_table = build_holidays()
 
+        counts = dict(report["tables"])
+        if stand is not None and stand.file_count:
+            counts["stand"] = stand.file_count
         manifest = {
             "format_version": FORMAT_VERSION,
             "content_schema_version": CONTENT_SCHEMA_VERSION,
@@ -299,7 +462,7 @@ def write_bundle(
                 "model": report["embedding_model"],
                 "dimensions": report["embedding_dimensions"],
             },
-            "content": report["tables"],
+            "content": counts,
             "characters": {
                 "count": len(characters),
                 "ids": [item["id"] for item in characters],
@@ -342,6 +505,15 @@ def write_bundle(
                     continue
                 archive.write(source, f"characters/{relative.as_posix()}")
 
+            if stand is not None:
+                for package_path in sorted(stand.files):
+                    archive.write(stand.files[package_path], package_path)
+                for package_path in sorted(stand.lists):
+                    archive.writestr(
+                        package_path,
+                        json.dumps(stand.lists[package_path], ensure_ascii=False, indent=1),
+                    )
+
             manifest["files"] = {
                 info.filename: {"size": info.file_size, "crc32": f"{info.CRC:08x}"}
                 for info in archive.infolist()
@@ -360,6 +532,8 @@ def write_bundle(
         f"{report['embedding_dimensions']} 维）"
     )
     print(f"  角色 {len(characters)} 位，附带文件 {len(character_files)} 个")
+    if stand is not None and stand.file_count:
+        print(f"  立绘 {len(stand.lists)} 位角色，{stand.file_count} 个文件")
     print(f"  日本节假日 {len(holiday_table)} 天（{HOLIDAY_YEARS.start}–{HOLIDAY_YEARS.stop - 1}）")
 
 
@@ -389,6 +563,24 @@ def main() -> int:
         default=Path("build/eidolon-content.eidolonpkg"),
         help="输出文件（默认 build/eidolon-content.eidolonpkg）",
     )
+    parser.add_argument(
+        "--stand",
+        type=Path,
+        default=None,
+        help="立绘整理目录（上游 stand fetch / stand outfits 的产物，含 source/ 与 outfits/）；"
+        "不给时包里没有立绘",
+    )
+    parser.add_argument(
+        "--stand-cards",
+        type=int,
+        default=3,
+        help="每位角色打包衣装清单里的前几张卡（默认 3；默认衣装所在的卡总会带上）",
+    )
+    parser.add_argument(
+        "--stand-all-outfits",
+        action="store_true",
+        help="打包衣装清单里的全部衣装（不再按 --stand-cards 截取）",
+    )
     args = parser.parse_args()
 
     upstream = args.upstream.resolve()
@@ -398,12 +590,19 @@ def main() -> int:
     characters_dir = (args.characters or upstream / "characters").resolve()
 
     characters, character_files = load_characters(characters_dir)
+    stand = build_stand(
+        characters,
+        args.stand.resolve() if args.stand else None,
+        cards=args.stand_cards,
+        all_outfits=args.stand_all_outfits,
+    )
     write_bundle(
         args.out.resolve(),
         source_db,
-        characters,
+        stand.characters,
         character_files,
         characters_dir,
+        stand,
     )
     return 0
 
