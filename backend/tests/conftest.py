@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from collections.abc import AsyncIterator, Callable, Coroutine
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -18,9 +19,12 @@ from eidolon.__main__ import main
 from eidolon.activity import ActivityLog
 from eidolon.app import create_app
 from eidolon.assembly import Backend
+from eidolon.bar_lines import BAR_LINES_FILE
+from eidolon.bar_visits import BAR_VISITS_FILE
 from eidolon.clock import Clock
 from eidolon.config import LLMSettings, Settings
 from eidolon.data_access import Database
+from eidolon.drink_catalog import DRINKS_FILE
 from eidolon.gift_catalog import GIFTS_FILE
 from eidolon.identity import Identity
 from eidolon.job_list import JOBS_FILE
@@ -129,12 +133,23 @@ SCSP_AVATAR = b"\xff\xd8\xff fake SCSP avatar"
 BACKGROUND = b"\xff\xd8\xff fake background"
 REPO_GIFTS = Path(__file__).parents[2] / "characters" / GIFTS_FILE
 REPO_JOBS = Path(__file__).parents[2] / "characters" / JOBS_FILE
+REPO_DRINKS = Path(__file__).parents[2] / "characters" / DRINKS_FILE
+REPO_BAR_VISITS = Path(__file__).parents[2] / "characters" / BAR_VISITS_FILE
+REPO_BAR_LINES = Path(__file__).parents[2] / "characters" / BAR_LINES_FILE
+BAR_TASTE: dict[str, object] = {
+    "bar_flavors": ["sweet"], "bar_favorites": ["sugar-rush"], "bar_tolerance": "strong",
+}
+"""Her bar tastes, the fields required and no more, as `CharacterConfig.add` writes them
+unless a test gives others: holding her drink well, so that no chance is taken on her
+wanting one without alcohol."""
 
 
 class CharacterConfig:
     """Writes a character configuration directory, the way an administrator would, with the
-    repository's gift catalog and job list beside it unless a test writes its own
-    (`gifts.toml`, `jobs.toml`)."""
+    repository's gift catalog, job list, drink catalog, bar reasons and topics and bar lines
+    beside it unless a test writes its own (`gifts.toml`, `jobs.toml`, `drinks.toml`,
+    `bar_visits.toml`, `bar_lines.toml`). The reasons and topics are written for every character, none left
+    out (`not_for`), as the repository's leave out characters a test may not have."""
 
     def __init__(self, directory: Path) -> None:
         self.directory = directory
@@ -164,12 +179,14 @@ class CharacterConfig:
         other_names: tuple[str, str, str] | None = None,
         liked_gifts: tuple[str, ...] | None = ("cake",),
         photo: tuple[str, str] | None = None,
+        bar: dict[str, object] | None = BAR_TASTE,
     ) -> "CharacterConfig":
         """`greeting` is her greeting in Japanese, delivery cues and all, and its subtitle;
         `call_opener` her call opener, likewise; `other_names` her `name_zh`, `name_kana`
         and `name_romaji`; `liked_gifts` her liked gifts (None leaves them out), cake by
         default as every catalog the tests write has it; `photo` her `photo_tag` and
-        `photo_appearance`; `birthday` her `"MM-DD"`, a day on which tests' clocks fall
+        `photo_appearance`; `bar` her bar tastes, field by field (None leaves them all out);
+        `birthday` her `"MM-DD"`, a day on which tests' clocks fall
         on no one's birthday unless they set one (None leaves it out); `age` her age, as
         TOML writes it, or None to leave it out."""
         entry = f'[[characters]]\nid = "{id}"\nname = "{name}"\nintro = "{intro}"\n'
@@ -216,6 +233,8 @@ class CharacterConfig:
         if photo is not None:
             entry += f"photo_tag = {json.dumps(photo[0])}\n"
             entry += f"photo_appearance = {json.dumps(photo[1])}\n"
+        for field, value in (bar or {}).items():
+            entry += f"{field} = {json.dumps(value)}\n"
         self._entries.append(entry)
         self.directory.mkdir(parents=True, exist_ok=True)
         self.path.write_text("\n".join(self._entries), encoding="utf-8")
@@ -223,6 +242,14 @@ class CharacterConfig:
             gifts.write_bytes(REPO_GIFTS.read_bytes())
         if not (jobs := self.directory / JOBS_FILE).exists():
             jobs.write_bytes(REPO_JOBS.read_bytes())
+        if not (drinks := self.directory / DRINKS_FILE).exists():
+            drinks.write_bytes(REPO_DRINKS.read_bytes())
+        if not (visits := self.directory / BAR_VISITS_FILE).exists():
+            repository = REPO_BAR_VISITS.read_text(encoding="utf-8")
+            everyones = re.sub(r"^not_for = \[[^]]*\]\n", "", repository, flags=re.M)
+            visits.write_text(everyones, encoding="utf-8")
+        if not (bar_lines := self.directory / BAR_LINES_FILE).exists():
+            bar_lines.write_bytes(REPO_BAR_LINES.read_bytes())
         return self
 
     def write(self, relative: str, content: str | bytes) -> None:

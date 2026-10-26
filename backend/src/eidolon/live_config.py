@@ -143,6 +143,7 @@ AFFINITY = "affinity"
 REACH_OUTS = "reach_outs"
 SCHEDULE = "schedule"
 CYCLES = "cycles"
+BAR = "bar"
 PROXY = "proxy"
 SERVICE_STATUS = "service_status"
 
@@ -631,6 +632,7 @@ LIMIT_LABELS = {
     "turns_per_hour": "每小时回合数",
     "calls_per_hour": "每小时通话次数",
     "photos_per_hour": "每小时照片数",
+    "visits_per_hour": "每小时光顾次数",
     "call_minutes": "单次通话的时长上限（分钟）",
     "turns_per_call": "单次通话的回合上限",
     "concurrent_calls": "同时进行的通话数上限",
@@ -670,6 +672,7 @@ class _Limits(_Item):
             "call_minutes": limits.call_minutes or 0,
             "turns_per_call": limits.turns_per_call or 0,
             "concurrent_calls": limits.concurrent_calls or 0,
+            "visits_per_hour": limits.visits_per_hour or 0,
             "history_turns": self.c.settings.history_turns or 0,
         } | {field: s in exempting for s, field in EXEMPTING_FIELDS.items()}
 
@@ -772,6 +775,22 @@ class _Cycles(_Item):
     def candidate(self, current: Values, change: Values) -> Values:
         if not isinstance(change.get("enabled"), bool):
             raise ConfigInvalid(f"周期需要是 true 或 false，而不是 {change.get('enabled')!r}")
+        return current | change
+
+
+class _Bar(_Item):
+    """Whether the bar is open (GLOSSARY.md「酒吧」), as `.env` has it (on by default); not
+    tried."""
+
+    name = BAR
+    fields = ("enabled",)
+
+    def env(self) -> Values:
+        return {"enabled": self.c.settings.bar}
+
+    def candidate(self, current: Values, change: Values) -> Values:
+        if not isinstance(change.get("enabled"), bool):
+            raise ConfigInvalid(f"酒吧需要是 true 或 false，而不是 {change.get('enabled')!r}")
         return current | change
 
 
@@ -947,7 +966,7 @@ class LiveConfig:
                 _Proxy(self), _ChatLLM(self), _MemoryLLM(self), _TTS(self), _STT(self),
                 _Image(self), _Judge(self), _JudgeThresholds(self), _Rerank(self),
                 _Limits(self), _Affinity(self), _ReachOuts(self), _Schedule(self),
-                _Cycles(self), _ServiceStatus(self),
+                _Cycles(self), _Bar(self), _ServiceStatus(self),
             )
         }
         self._failures: dict[str, str] = {}
@@ -1028,6 +1047,7 @@ class LiveConfig:
             values["turns_per_call"] or None,
             values["photos_per_hour"] or None,
             values["concurrent_calls"] or None,
+            values["visits_per_hour"] or None,
         )
 
     @property
@@ -1059,6 +1079,11 @@ class LiveConfig:
     def cycles_on(self) -> bool:
         """Whether the deployment has her cycle have a part in how she is now."""
         return self.effective(CYCLES)["enabled"]
+
+    @property
+    def bar_on(self) -> bool:
+        """Whether the bar is open now."""
+        return self.effective(BAR)["enabled"]
 
     @property
     def proxy_settings(self) -> ProxySettings:

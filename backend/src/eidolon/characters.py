@@ -46,6 +46,14 @@ She likes one to three gifts in the gift catalog (`liked_gifts`, by gift identif
 each with her sources behind it in her facts' sources file (「喜欢的礼物」). Whether they
 are in the catalog is checked once both are loaded (`gift_catalog.check_liked_gifts`).
 
+She has her tastes at the bar (GLOSSARY.md「酒吧」), beside her liked gifts and as unseen by
+the user: the one or two flavors she likes (`bar_flavors`), the kind she likes if any
+(`bar_kind`), the one to three drinks she loves (`bar_favorites`, by drink identifier), the
+flavor she dislikes if any (`bar_disliked_flavor`) and how well she holds her drink
+(`bar_tolerance`), each with its reason in her facts' sources file (「酒吧口味」). That they
+are right by the drink catalog is checked once both are loaded
+(`drink_catalog.check_bar_tastes`).
+
 Character facts are a Markdown file; each section under a heading is one fact,
 retrieved on its own when a turn calls for it.
 
@@ -170,6 +178,17 @@ class Character:
     liked_gifts: tuple[str, ...] = ()
     """The gifts she likes, by identifier in the gift catalog; giving her one raises
     affinity more. Never told to the user."""
+    bar_flavors: tuple[str, ...] = ()
+    """The flavors she likes at the bar, as the drink catalog names them (`sweet`)."""
+    bar_kind: str | None = None
+    """The kind of drink she likes, as the drink catalog names it (`girly`); None, no kind."""
+    bar_favorites: tuple[str, ...] = ()
+    """The drinks she loves, by identifier in the drink catalog."""
+    bar_disliked_flavor: str | None = None
+    """The flavor she will never order; None, none."""
+    bar_tolerance: str | None = None
+    """How well she holds her drink: `weak`, `medium` or `strong`; None only until
+    `drink_catalog.check_bar_tastes` refuses it."""
     photo_tag: str | None = None
     """Her character tag as Danbooru writes it, e.g. `sakuragi mano`, for her photos."""
     photo_appearance: str | None = None
@@ -319,9 +338,31 @@ def _parse_character(
         name_kana=_other_name(entry, "name_kana", label),
         name_romaji=_other_name(entry, "name_romaji", label),
         liked_gifts=tuple(liked_gifts),
+        bar_flavors=_bar_names(entry, "bar_flavors", label),
+        bar_kind=_bar_name(entry, "bar_kind", label),
+        bar_favorites=_bar_names(entry, "bar_favorites", label),
+        bar_disliked_flavor=_bar_name(entry, "bar_disliked_flavor", label),
+        bar_tolerance=_bar_name(entry, "bar_tolerance", label),
         photo_tag=_other_name(entry, "photo_tag", label),
         photo_appearance=_other_name(entry, "photo_appearance", label),
     )
+
+
+def _bar_names(entry: dict, field: str, label: str) -> tuple[str, ...]:
+    """Her flavors or her drinks at the bar, if given: a list of names, checked against the
+    drink catalog later."""
+    names = entry.get(field, [])
+    if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+        raise CharacterConfigError(f"角色 {label} 的 {field} 应为字符串的列表")
+    return tuple(names)
+
+
+def _bar_name(entry: dict, field: str, label: str) -> str | None:
+    """Her kind, disliked flavor or tolerance at the bar, if given: a name, checked later."""
+    name = entry.get(field)
+    if name is not None and not isinstance(name, str):
+        raise CharacterConfigError(f"角色 {label} 的 {field} 应为字符串，现在是 {name!r}")
+    return name
 
 
 def _other_name(entry: dict, field: str, label: str) -> str | None:

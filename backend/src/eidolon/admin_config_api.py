@@ -23,6 +23,7 @@ from eidolon.config import (
 )
 from eidolon.live_config import (
     AFFINITY,
+    BAR,
     CHAT_LLM,
     CYCLES,
     IMAGE,
@@ -152,6 +153,7 @@ class LimitsInput(BaseModel):
     turns_per_hour: Any
     calls_per_hour: Any
     photos_per_hour: Any
+    visits_per_hour: Any
     call_minutes: Any
     turns_per_call: Any
     concurrent_calls: Any
@@ -185,6 +187,12 @@ class ScheduleInput(BaseModel):
 class CyclesInput(BaseModel):
     """Whether her cycle has a part in how she is, true or false; checked by the live
     configuration."""
+
+    enabled: Any
+
+
+class BarInput(BaseModel):
+    """Whether the bar is open, true or false; checked by the live configuration."""
 
     enabled: Any
 
@@ -241,6 +249,7 @@ INPUTS: dict[str, type[BaseModel]] = {
     REACH_OUTS: ReachOutsInput,
     SCHEDULE: ScheduleInput,
     CYCLES: CyclesInput,
+    BAR: BarInput,
     PROXY: ProxyInput,
     SERVICE_STATUS: ServiceStatusInput,
 }

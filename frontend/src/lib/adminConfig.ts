@@ -32,6 +32,7 @@ export type ItemName =
   | "reach_outs"
   | "schedule"
   | "cycles"
+  | "bar"
   | "proxy"
   | "service_status";
 
@@ -87,7 +88,7 @@ export const TAB_ITEMS: Record<ConfigTab, ItemName[]> = {
   image: ["image"],
   network: ["proxy"],
   status: ["service_status"],
-  limits: ["limits", "affinity", "reach_outs", "schedule", "cycles"],
+  limits: ["limits", "affinity", "reach_outs", "schedule", "cycles", "bar"],
   sponsor: [],
   prices: [],
   read_only: [],
@@ -201,6 +202,7 @@ export const LIMIT_FIELDS = [
   "turns_per_hour",
   "calls_per_hour",
   "photos_per_hour",
+  "visits_per_hour",
   "call_minutes",
   "turns_per_call",
   "concurrent_calls",
@@ -344,6 +346,13 @@ export const ITEM_SPECS: Record<ItemName, ItemSpec> = {
   },
   // 周期（GLOSSARY.md「周期」）：只有一个开关。不试调。
   cycles: {
+    rows: ["enabled"],
+    secrets: [],
+    form: [{ name: "enabled", kind: "switch" }],
+    tried: false,
+  },
+  // 酒吧（GLOSSARY.md「酒吧」）：只有一个开关。不试调。
+  bar: {
     rows: ["enabled"],
     secrets: [],
     form: [{ name: "enabled", kind: "switch" }],

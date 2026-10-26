@@ -46,8 +46,10 @@ now and then a reset card instead (GLOSSARY.md「抽奖」「重置卡」), whic
 below trust back to the normal value, out of any cooldown, none of them the wiser. How much and how likely are here with the rest.
 A job of hers the producer scheduled (GLOSSARY.md「日程」) raises it once done, as a gift does
 but by the same whatever the job and in a cooldown alike, told of to no one (`schedule`).
+The day's first visit to the bar done (GLOSSARY.md「光顾」) raises it likewise, by how well her
+drinks were served, as much as a job done at most and never down (`bar`).
 What the system gives (draw chances, reset cards) never raises it: only what she feels does,
-turns, gifts and jobs done.
+turns, gifts, jobs done and visits.
 
 It is on only where the deployment has the judge model and the switch「好感度和礼物」is on
 (`LiveConfig.affinity_on`); off, nothing of it is shown, but what is kept stays as it is.
@@ -58,7 +60,7 @@ import sqlite3
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
-from typing import Literal
+from typing import Literal, NamedTuple
 from zoneinfo import ZoneInfo
 
 from eidolon.clock import Clock
@@ -188,6 +190,19 @@ JOB_DONE_STEP = 0.5
 """How much a job of hers the producer placed in their schedule raises it once done, whatever
 its length and category, in a cooldown too: about an uncommon gift, short of a day's turns."""
 
+HowWell = Literal["best", "right", "wrong"]
+"""How well a drink was served at the bar: 上得最好、上对、上错. `bar_lines.Tier` over again,
+since this module is imported before the bar's, and has a `Tier` of its own."""
+
+SERVED_STEPS: dict[HowWell, float] = {"best": 0.5, "right": 0.4, "wrong": 0.1}
+"""How much each drink served her in the day's first visit to the bar done raises it, by how
+well it was served, averaged over the visit's (`Affinities.visit_done`): as a job done at most,
+never down, wrong or not, so that whoever cannot mix is not set back."""
+
+RIGHT_WITH_NO_BEST_STEP = 0.5
+"""How much a drink served right raises it instead, where nothing would have been better for
+its order (`bar_rules.has_best`): as much as best."""
+
 DRAWS_PER_DAY = 2
 """How many draw chances (GLOSSARY.md「抽奖」) the user is given each day (`day_of`), as it
 begins."""
@@ -200,6 +215,14 @@ DRAW_ODDS: dict[Rarity | Literal["reset_card"], int] = {
 }
 """What a draw gives, in percent: a reset card, or a gift of each rarity, any of that rarity's
 not retired as likely as another; no draw is guaranteed anything rarer."""
+
+
+class DrinkServed(NamedTuple):
+    """A drink served her at the bar, as it raises her affinity: how well, and whether anything
+    would have been better for its order than right."""
+
+    how_well: HowWell
+    has_best: bool
 
 
 def day_of(now: datetime) -> date:
@@ -542,9 +565,9 @@ def _gift_step(rarity: Rarity, liked: bool, warmed: bool, cooling: bool) -> floa
 class Affinities:
     """Every user's affinity with every character, kept in the database, next to the users
     it belongs to. What changes it is a body of the write task it is changed in, with what
-    changed it (`change`, `receive_gift`, `job_done`, `reset`): given that task's connection, so that it
-    changes with the rest or not at all, and told of by what it returns, never to a
-    listener."""
+    changed it (`change`, `receive_gift`, `job_done`, `visit_done`, `reset`): given that
+    task's connection, so that it changes with the rest or not at all, and told of by what it
+    returns, never to a listener."""
 
     def __init__(self, db: Database, clock: Clock, is_on: Callable[[], bool]) -> None:
         """`is_on` tells whether affinity is on now (the live configuration's)."""
@@ -644,9 +667,14 @@ class Affinities:
         the affinity left. No day's limit holds gifts, nor do they count towards it. In a
         cooldown, what it is raised to is when it ends, sooner; there is a change to show
         only once it ends."""
-        return self._raise(
+        before, after = self._raise(
             db, user_id, character_id, lambda cooling: _gift_step(rarity, liked, warmed, cooling)
         )
+        thawed = before.cooling and not after.cooling
+        change = None
+        if thawed or (not after.cooling and after.value != before.value):
+            change = Change(True, after.tier != before.tier, after.tier, False, thawed)
+        return change, Status(after.tier, after.cooldown_until)
 
     def job_done(self, db: sqlite3.Connection, user_id: str, character_id: str) -> None:
         """Raise the user's affinity with the character for a job of hers in their schedule
@@ -654,24 +682,39 @@ class Affinities:
         `JOB_DONE_STEP`, in a cooldown too, as a gift does, but told of to no one."""
         self._raise(db, user_id, character_id, lambda _: JOB_DONE_STEP)
 
+    def visit_done(
+        self,
+        db: sqlite3.Connection,
+        user_id: str,
+        character_id: str,
+        served: Sequence[DrinkServed],
+    ) -> bool:
+        """Raise the user's affinity with the character for the day's first visit to the bar
+        done (GLOSSARY.md「光顾」), having been `served` those drinks, through `db`, in the
+        transaction the visit is written down in: by `SERVED_STEPS` averaged, in a cooldown too, as a job
+        done does. Whether it rose: not if it was as high as it goes."""
+        steps = [
+            RIGHT_WITH_NO_BEST_STEP if d.how_well == "right" and not d.has_best
+            else SERVED_STEPS[d.how_well]
+            for d in served
+        ]
+        before, after = self._raise(db, user_id, character_id, lambda _: sum(steps) / len(steps))
+        return after.value > before.value
+
     def _raise(
         self,
         db: sqlite3.Connection,
         user_id: str,
         character_id: str,
         step: Callable[[bool], float],
-    ) -> tuple[Change | None, Status]:
+    ) -> tuple[Affinity, Affinity]:
         """Raise the user's affinity with the character by `step`, given whether she is
         cooling, through `db`, beyond the day's limit and out of a cooldown at the thaw line,
-        as a gift does (`receive_gift`)."""
+        as a gift does (`receive_gift`): as it was, and as it is now."""
         now = self._clock()
         before = _row(db, user_id, character_id, now)[0]
         after = before.stepped(step(before.cooling))
         after = Affinity(after.value, now, after.cooling and after.value < THAW)
-        thawed = before.cooling and not after.cooling
-        change = None
-        if thawed or (not after.cooling and after.value != before.value):
-            change = Change(True, after.tier != before.tier, after.tier, False, thawed)
         db.execute(
             "INSERT INTO affinities (user_id, character_id, value, updated_at, cooling)"
             " VALUES (?, ?, ?, ?, ?) ON CONFLICT (user_id, character_id) DO UPDATE SET"
@@ -679,7 +722,7 @@ class Affinities:
             " cooling = excluded.cooling",
             (user_id, character_id, after.value, now.isoformat(), int(after.cooling)),
         )
-        return change, Status(after.tier, after.cooldown_until)
+        return before, after
 
     def reset(
         self, db: sqlite3.Connection, user_id: str, character_ids: Iterable[str]

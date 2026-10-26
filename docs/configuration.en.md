@@ -18,6 +18,7 @@ This guide explains how to turn on and tune each feature, and how the characters
 > | Schedules | Nothing (the switch is on by default) |
 > | Cycles | Nothing (the switch is on by default) |
 > | Reach-outs | `EIDOLON_REACH_OUTS=1` (off by default) |
+> | Bar | Nothing (the switch is on by default) |
 > | Stands and the landing page's greetings | `EIDOLON_STAND_ASSETS_URL`, and a bucket holding the assets |
 > | Google / GitHub sign-in | `GOOGLE_CLIENT_*`, `GITHUB_CLIENT_*` |
 
@@ -39,6 +40,7 @@ This guide explains how to turn on and tune each feature, and how the characters
 - [Cycles](#cycles)
 - [Photos](#photos)
 - [Reach-outs](#reach-outs)
+- [Bar](#bar)
 - [Sign-in, users and usage limits](#sign-in-users-and-usage-limits)
 - [Bring your own keys](#bring-your-own-keys)
 - [Proxy](#proxy)
@@ -85,6 +87,10 @@ birthday = "04-25"                   # birthday, required
 age = 16                             # age, required
 facts = "facts/mano.md"
 liked_gifts = ["potted-plant", "black-tea"]   # gifts she likes
+bar_flavors = ["sweet"]              # these are her bar tastes
+bar_kind = "girly"
+bar_favorites = ["sugar-rush", "mulan-tea"]
+bar_tolerance = "weak"
 speakers = ["真乃"]                  # her speaker names in the scripts
 idol_id = 1                          # the next two are for the stand
 default_outfit = "stand/1030010010"  # 【ナチュラルモード】
@@ -101,6 +107,7 @@ How to write each field is in the comments at the top of the file. A few need ex
 - **`background`** (optional): The call screen's background image, kept in `characters/backgrounds/`. Without one, a gradient of her image color is used instead.
 - **Character sheet**: If a character sheet file is missing, the backend refuses to start and names the missing one. docker compose mounts `characters/` read-only into the backend container.
 - **`liked_gifts`**: The gifts she likes, by `id` in the gift catalog [`characters/gifts.toml`](../characters/gifts.toml): one to three, not all of them rare. Each needs its story source in the 「喜欢的礼物」 section of her sources file (`facts/<id>.sources.md`). If they are missing, not in the catalog, too many or all rare, the backend refuses to start.
+- **Bar tastes**: `bar_flavors` is the flavors she likes (one or two), `bar_kind` the kind she likes (optional), `bar_favorites` the drinks she loves (one to three, by `id` in the drink catalog [`characters/drinks.toml`](../characters/drinks.toml)), `bar_disliked_flavor` the flavor she dislikes (optional; it can't be one she likes, and none of her favorite drinks can have it), and `bar_tolerance` how well she holds her drink (`weak`, `medium`, `strong`). The reasoning for each is in the 「酒吧口味」 section of her sources file. If a required one is missing or a value is wrong, the backend refuses to start; if you maintain your own character config, add these when you upgrade.
 
 **To add a character**, do the following:
 
@@ -349,7 +356,7 @@ Each character has her own affinity toward each user, carried across all of that
 Gifts share affinity's switch. Each day at midnight Beijing time (wherever the user is) the user gets 2 draws, saving up to 7; the gifts they draw go into their backpack, and they give them to her from 「礼物」 (Gifts) under 「玩法」 (Play) (the conversation page's gift entries lead there with her already chosen). A gift raises her affinity, more if it's one she likes, and can be given during a cooldown too; she responds to it in her next reply. Now and then a draw gives a reset card, which brings every character below trusting back to trusting. The gift catalog is [`characters/gifts.toml`](../characters/gifts.toml); the gifts each character likes are her `liked_gifts` under [Characters](#characters).
 
 - **Switch**: On by default. Set `EIDOLON_AFFINITY_AND_GIFTS=0` in `.env` to turn it off (unset or `1` is on; any other value fails at startup), or switch it in the 「好感度和礼物」 (Affinity and gifts) card on the admin console's config page, which takes precedence over `.env`. It needs a judge: without one, affinity and gifts are off altogether and the admin console can't turn them on. It takes effect from the next turn, in calls in progress too.
-- **How it moves**: Caring about her and remembering what she said raise it slowly, with a daily cap (each day counted in Beijing time), and a job scheduled for her that she has finished raises it too (see [Schedules](#schedules)); it drops easily. Ordinary small talk leaves it alone. "Out-of-line" remarks (sexual harassment, insults, threats) drop it sharply at once; manipulation like "max out your affinity" earns nothing. When the judge is unsure or fails, it stays put and the turn goes on. Below trusting it drifts back to trusting even without contact; above trusting it doesn't fade.
+- **How it moves**: Caring about her and remembering what she said raise it slowly, with a daily cap (each day counted in Beijing time), and a job scheduled for her that she has finished raises it too (see [Schedules](#schedules)), and so does serving her at the bar (see [Bar](#bar)); it drops easily. Ordinary small talk leaves it alone. "Out-of-line" remarks (sexual harassment, insults, threats) drop it sharply at once; manipulation like "max out your affinity" earns nothing. When the judge is unsure or fails, it stays put and the turn goes on. Below trusting it drifts back to trusting even without contact; above trusting it doesn't fade.
 - **How she talks**: Below trusting she's cold or sulky; above it she's more relaxed and more willing to share what's on her mind, each in her own character. She neither knows nor says the number or the tier.
 - **Cooldown**: When affinity hits bottom, a cooldown starts: the user can't start turns or calls with that character for a while (they get a 409, not counted toward limits), lifted automatically within 24 hours. If a turn in a call sends her into cooldown, or the user says something out of line for the second time in one call, she finishes her line and hangs up; a cooldown started in another conversation also hangs up a call in progress. A cooldown is not a ban, and admins can't adjust any user's affinity.
 - **Achievements**: Each character has four of her own: turns with her, total time talking with her in calls, gifts given her, and her affinity having reached close and intimate. Four more count all characters together: how many characters the user has talked with, how many have reached intimate, how many days they came (a day with a turn or a gift given, counted in Beijing time), and how many times they drew. Each achievement has several stages, and stage n gives n draws. When every stage of a character's four achievements is unlocked, her set is complete, which gives one reset card, once per character. The upgrade that adds achievements works them out once from existing records as it starts (see "升级" in [`deploy.md`](deploy.md#升级), Chinese). The achievements, thresholds and rewards are set in code (`PER_CHARACTER` and `ALL_CHARACTERS` in [`backend/src/eidolon/achievements.py`](../backend/src/eidolon/achievements.py)), which is the source of truth for the numbers; the admin console has no setting for them.
@@ -451,6 +458,17 @@ When a user has been away a while, the character says a few words first in the c
 - **Daily limit**: By default each user is reached out to at most 3 times a day (the day going by the time zone in their producer profile, or Beijing time if none is set); change it in the same card.
 - **Cost**: Generated with the deployer's chat model, at the deployer's expense, even for users who bring their own LLM. It doesn't count towards users' usage limits.
 
+## Bar
+
+One of the 「玩法」 (Play) features: characters visit VA-283, a small bar in an IF setting, where the producer tends bar and mixes drinks to her order. What happens at the bar doesn't go into conversations or become memories.
+
+- **Switch**: On by default. Set `EIDOLON_BAR=0` in `.env` to turn it off (unset or `1` is on; any other value stops startup with an error), or switch it in the 「酒吧」 (Bar) card under 「限额与玩法」 (Limits and play) on the admin console's config page, which takes precedence over `.env`. It needs no judge. While it's off no one can walk in; visits in progress run to the end.
+- **Model**: Her lines are written by the chat model, or by the user's own LLM if they bring one; the reasoning effort follows the text conversation setting.
+- **Her facts**: With embedding and reranking configured (the embedding key and `SILICONFLOW_API_KEY`; no judge needed), she walks in with three of her character facts looked up by the visit's topic; if they can't be looked up, she walks in without them.
+- **Usage limit**: Each user can visit at most `EIDOLON_VISITS_PER_HOUR` times an hour (5 by default, 0 for unlimited), separate from text turns and calls; visits on the user's own LLM don't count. How they count is under [Sign-in, users and usage limits](#sign-in-users-and-usage-limits).
+- **Rewards**: The first finished visit each day (Beijing time) gives one draw, unless the user's draws are already full; her affinity also rises a little, even during a cooldown. Later visits that day give nothing. With affinity and gifts off the bar still works, but gives nothing.
+- **Catalogs and lists**: The drink catalog [`characters/drinks.toml`](../characters/drinks.toml), visit reasons and topics [`characters/bar_visits.toml`](../characters/bar_visits.toml), and fixed lines [`characters/bar_lines.toml`](../characters/bar_lines.toml) can't be changed from the admin console or `.env`; if one is malformed, the backend refuses to start. Each character's tastes are under [Characters](#characters).
+
 ## Sign-in, users and usage limits
 
 Anyone can sign in with Google or GitHub, with no invitation or approval ([ADR-0006](adr/0006-open-to-the-public-with-oauth.md)). The sign-in panel offers whichever OAuth apps are set in `.env`. The steps for creating the apps are in "配置 OAuth 应用" in [`deploy.md`](deploy.md) (Chinese); alternatively, run `scripts/setup-oauth.sh` and follow its prompts step by step.
@@ -462,20 +480,21 @@ Anyone can sign in with Google or GitHub, with no invitation or approval ([ADR-0
 - **Deleting data**: 「删除我的全部数据」 (Delete all my data), after a second confirmation, deletes memories, conversations, the producer profile, sign-in methods and usage limit counts for good, and signs the user out on all devices. Copies in the daily encrypted backups disappear within 30 days at most ([ADR-0012](adr/0012-encrypted-offsite-backups-with-bounded-retention.md)).
 - **Dev login**: For local development, set `EIDOLON_DEV_LOGIN=1`, and the sign-in panel gains 「开发登录」 (Dev login), which signs in directly by name. A public deployment with `EIDOLON_DOMAIN` set refuses to start if it detects this switch.
 
-So that no single user drains the deployer's API credits, the following limits apply by default (0 means unlimited). They can also be changed in the admin console, and turns, calls and photos per hour can be set for an individual user:
+So that no single user drains the deployer's API credits, the following limits apply by default (0 means unlimited). They can also be changed in the admin console, and turns, calls, photos and visits per hour can be set for an individual user:
 
 | Limit | Default | Environment variable |
 |---|---|---|
 | Text turns per hour | 60 | `EIDOLON_TURNS_PER_HOUR` |
 | Voice calls per hour | 5 | `EIDOLON_CALLS_PER_HOUR` |
 | Photos per hour | 5 | `EIDOLON_PHOTOS_PER_HOUR` |
+| Bar visits per hour | 5 | `EIDOLON_VISITS_PER_HOUR` |
 | Duration per call | 10 minutes | `EIDOLON_CALL_MINUTES` |
 | Turns per call | 40 | `EIDOLON_TURNS_PER_CALL` |
 | Calls at once | 10 | `EIDOLON_CONCURRENT_CALLS` |
 | History turns sent per turn | 20 | `EIDOLON_HISTORY_TURNS` |
 
-- **How it counts**: Per user, whichever sign-in method or device they use. Turns that fail because a service erred, and calls that never connected, don't count; ones the user leaves midway still count. Photos are counted across text turns and calls alike, by whose money each one costs: photos not sent don't count, nor ones on the user's own image generation; a photo on the deployer's image generation counts even in a turn on the user's own LLM.
-- **Exempting keys**: The deployer picks some of the LLM, speech synthesis and speech recognition. A call that brings the user's own keys for every service picked doesn't count; the deployer pays for the rest, and bringing more keys still doesn't count. Text turns ignore this setting: a turn on the user's own LLM doesn't count. Image generation can't be picked. Users without their own keys can still start turns and calls; those count.
+- **How it counts**: Per user, whichever sign-in method or device they use. Turns that fail because a service erred, and calls that never connected, don't count; ones the user leaves midway still count. Photos are counted across text turns and calls alike, by whose money each one costs: photos not sent don't count, nor ones on the user's own image generation; a photo on the deployer's image generation counts even in a turn on the user's own LLM. A visit counts once when she walks in; retries don't count again, and a visit whose first call fails before a single line is written doesn't count.
+- **Exempting keys**: The deployer picks some of the LLM, speech synthesis and speech recognition. A call that brings the user's own keys for every service picked doesn't count; the deployer pays for the rest, and bringing more keys still doesn't count. Text turns and visits ignore this setting: one on the user's own LLM doesn't count. Image generation can't be picked. Users without their own keys can still start turns and calls; those count.
   - **`.env`**: `EIDOLON_EXEMPTING_LLM`, `EIDOLON_EXEMPTING_TTS` and `EIDOLON_EXEMPTING_STT`, one per service. Unset or `1` picks it, `0` doesn't, and any other value fails at startup. All three are picked by default, so only calls bringing all three don't count.
   - **At least one**: All three set to `0` fails at startup, and the admin console won't turn off the last one. To lift the limits, set the turns and calls per hour to unlimited instead.
   - **Admin console**: Three switches in the 「限额」 (Usage limits) card on the config page, which take precedence over `.env`. They take effect from the next turn and call; a call in progress keeps the rule it started with.
@@ -499,12 +518,12 @@ By default, the deployer pays for everything. Users can enter their own keys on 
 
 | Service | What to enter | Used for |
 |---|---|---|
-| LLM | Protocol, base_url, key, model name | Playing the character (text and calls), extracting memories |
+| LLM | Protocol, base_url, key, model name | Playing the character (text, calls and bar visits), extracting memories |
 | Speech synthesis (Fish Audio) | Key | Her voice in calls; the voice still comes from the character configuration |
 | Speech recognition (Soniox or Alibaba Cloud Model Studio) | Provider and key | Hearing the user in calls; independent of the deployer's choice |
 | Image generation | Format, address, key, model | The photos she sends (text and calls), not counted toward photos per hour; the deployer's art style still applies, one picture at a time |
 
-- **Kept only in the browser**: Keys are stored only in the user's browser (separately for each account). They are sent to the server with each turn or call, stay in its memory only while it is handled, and are never written to the database, logs or backups ([ADR-0017](adr/0017-own-api-keys-stay-in-the-browser.md)). After switching devices or clearing browser data, they must be entered again.
+- **Kept only in the browser**: Keys are stored only in the user's browser (separately for each account). They are sent to the server with each turn, call or visit, stay in its memory only while it is handled (for a visit, until the visit ends), and are never written to the database, logs or backups ([ADR-0017](adr/0017-own-api-keys-stay-in-the-browser.md)). After switching devices or clearing browser data, they must be entered again.
 - **Tried first**: Each key is tried once when entered, and not stored if the try fails. The LLM must also support streaming and tool calling; image generation generates one real picture, on the user's own credit, not counted in usage. In a public deployment, base_url (for image generation, the address and any `url` a picture comes from) must be an HTTPS public address, checked again on every connection.
 - **No fallback on failure**: When an own key fails (out of credit, revoked, etc.), that turn or call fails, saying which key had the problem. It **never falls back to the deployer's keys**. Image generation is the exception: the turn goes on, only that photo isn't sent, because the user's own image generation key didn't work.
 - **Always on the deployer**: Embedding, reranking and the judge.
@@ -562,13 +581,13 @@ List the admins' sign-in method identifiers in `EIDOLON_ADMINS` in `.env` (like 
 
 | Page | What it does |
 |---|---|
-| Dashboard (`/admin`) | Calls, error rate and latency per service; active users, the number and trend of turns and calls, usage per character, calls in progress; with affinity on, totals of judgements and cooldowns, plus per character the shares raised and lowered, cooldowns, and the calls she hung up or conversations she ended, as well as 「成就」 (Achievements): how many achievement stages were unlocked, and the draws and reset cards they gave; with schedules on, the number of users with a schedule this week; with reach-outs on, how many there were, how many failed and the share answered; the deployer's cost estimated from unit prices |
-| Config (`/admin/config`) | Change the LLMs for playing the character and extracting memories, speech synthesis, speech recognition, image generation, the judge, rerank thresholds, usage limits, exempting keys, per-call caps, history turns, the affinity and gifts switch (and granting every user a reset card), the schedules switch, the reach-outs switch and daily limit, the proxy, the service status and unit prices |
+| Dashboard (`/admin`) | Calls, error rate and latency per service; active users, the number and trend of turns and calls, usage per character, calls in progress; with affinity on, totals of judgements and cooldowns, plus per character the shares raised and lowered, cooldowns, and the calls she hung up or conversations she ended, as well as 「成就」 (Achievements): how many achievement stages were unlocked, and the draws and reset cards they gave; with schedules on, the number of users with a schedule this week; with reach-outs on, how many there were, how many failed and the share answered; with the bar on, how many visits there were, how many finished and how many failed; the deployer's cost estimated from unit prices |
+| Config (`/admin/config`) | Change the LLMs for playing the character and extracting memories, speech synthesis, speech recognition, image generation, the judge, rerank thresholds, usage limits, exempting keys, per-call caps, history turns, the affinity and gifts switch (and granting every user a reset card), the schedules switch, the reach-outs switch and daily limit, the bar switch, the proxy, the service status and unit prices |
 | Users (`/admin/users`) | Search users, see their sign-in methods and recent usage; ban, unban, set an individual usage limit, delete |
 
 - **Overrides `.env`**: Items changed in the admin console are stored in the database and take precedence over `.env`, with no restart needed. Each change is tried before saving and not saved if the try fails. A call in progress finishes on the configuration it connected with.
 - **Only changeable in `.env`**: The admin list, `EIDOLON_SECRET_KEY`, OAuth, the domain, WebRTC/TURN, backups, paths and embedding.
-- **Not visible**: The admin console shows no one's conversations, memories, producer profile, affinity, gifts, draws, achievements or schedules; the dashboard only has totals across all users. The dashboard's numbers come from activity records (which hold no conversation content), kept for 90 days.
+- **Not visible**: The admin console shows no one's conversations, memories, producer profile, affinity, gifts, draws, achievements, schedules or visit records; the dashboard only has totals across all users. The dashboard's numbers come from activity records (which hold no conversation content), kept for 90 days.
 
 For how to turn it on and what to do when you can't get into the admin console, see "后台" in [`deploy.md`](deploy.md) (Chinese).
 

@@ -52,18 +52,22 @@ export type UserSort = (typeof USER_SORTS)[number];
  * the deployment's. */
 export type UserLimit = number | "unlimited" | null;
 
-/** The limits an admin set for the user, each apart, with a note for the admins: turns, calls and
- * the photos she sends them (GLOSSARY.md「照片」). */
+/** The limits an admin set for the user, each apart, with a note for the admins: turns, calls,
+ * the photos she sends them (GLOSSARY.md「照片」) and visits to the bar (GLOSSARY.md「光顾」). */
 export type AdminUserLimits = {
   turns_per_hour: UserLimit;
   calls_per_hour: UserLimit;
   photos_per_hour: UserLimit;
+  visits_per_hour: UserLimit;
   note: string | null;
   updated_at: string;
 };
 
 /** What the editor saves: the limits. */
-export type UserLimitsInput = Pick<AdminUserLimits, "turns_per_hour" | "calls_per_hour" | "photos_per_hour">;
+export type UserLimitsInput = Pick<
+  AdminUserLimits,
+  "turns_per_hour" | "calls_per_hour" | "photos_per_hour" | "visits_per_hour"
+>;
 
 /** One limit as the editor holds it: which kind, and the number typed for "number". */
 /** A limit as the editor holds it: follow the deployment, a number of times (1 and up),
@@ -98,12 +102,14 @@ export function describeLimit(limit: UserLimit, photos = false): string {
   return photos ? t.photosPerHour(limit) : t.perHour(limit);
 }
 
-/** The user's own limits in a line: turns and calls, and the photos if set apart. */
+/** The user's own limits in a line: turns and calls, then the photos and the visits if set apart. */
 export function describeLimits(limits: AdminUserLimits): string {
   const t = copy.admin.users.limits;
-  const line = t.summary(describeLimit(limits.turns_per_hour), describeLimit(limits.calls_per_hour));
+  let line = t.summary(describeLimit(limits.turns_per_hour), describeLimit(limits.calls_per_hour));
   const photos = limits.photos_per_hour ?? null;
-  return photos === null ? line : t.withPhotos(line, describeLimit(photos, true));
+  if (photos !== null) line = t.withPhotos(line, describeLimit(photos, true));
+  const visits = limits.visits_per_hour ?? null;
+  return visits === null ? line : t.withVisits(line, describeLimit(visits));
 }
 
 /** The editor's starting point for a limit the user has. */
@@ -117,13 +123,14 @@ export function limitDraft(limit: UserLimit): LimitDraft {
 /** What keeps the limits from being saved: a number chosen but none from 1 up given
  * (`count`), or all following the deployment, which is no limit of the user's own
  * (`needsOne`, put on the turns). */
-export type LimitProblem = { field: "turns" | "calls" | "photos"; reason: "count" | "needsOne" };
+export type LimitProblem = { field: "turns" | "calls" | "photos" | "visits"; reason: "count" | "needsOne" };
 
 /** The limits to save from the editor, or every problem that keeps them from being saved. */
 export function limitsInput(
   turns: LimitDraft,
   calls: LimitDraft,
   photos: LimitDraft,
+  visits: LimitDraft,
 ): { input: UserLimitsInput } | { problems: LimitProblem[] } {
   const limit = (draft: LimitDraft): UserLimit | undefined => {
     if (draft.choice === "default") return null;
@@ -131,18 +138,37 @@ export function limitsInput(
     if (draft.choice === "own_keys") return 0;
     return draft.count !== null && draft.count >= 1 ? draft.count : undefined;
   };
-  const [turnsPerHour, callsPerHour, photosPerHour] = [limit(turns), limit(calls), limit(photos)];
+  const [turnsPerHour, callsPerHour, photosPerHour, visitsPerHour] = [
+    limit(turns),
+    limit(calls),
+    limit(photos),
+    limit(visits),
+  ];
   const problems: LimitProblem[] = [];
-  if (turnsPerHour === null && callsPerHour === null && photosPerHour === null) {
+  if (turnsPerHour === null && callsPerHour === null && photosPerHour === null && visitsPerHour === null) {
     problems.push({ field: "turns", reason: "needsOne" });
   }
   if (turnsPerHour === undefined) problems.push({ field: "turns", reason: "count" });
   if (callsPerHour === undefined) problems.push({ field: "calls", reason: "count" });
   if (photosPerHour === undefined) problems.push({ field: "photos", reason: "count" });
-  if (problems.length > 0 || turnsPerHour === undefined || callsPerHour === undefined || photosPerHour === undefined) {
+  if (visitsPerHour === undefined) problems.push({ field: "visits", reason: "count" });
+  if (
+    problems.length > 0 ||
+    turnsPerHour === undefined ||
+    callsPerHour === undefined ||
+    photosPerHour === undefined ||
+    visitsPerHour === undefined
+  ) {
     return { problems };
   }
-  return { input: { turns_per_hour: turnsPerHour, calls_per_hour: callsPerHour, photos_per_hour: photosPerHour } };
+  return {
+    input: {
+      turns_per_hour: turnsPerHour,
+      calls_per_hour: callsPerHour,
+      photos_per_hour: photosPerHour,
+      visits_per_hour: visitsPerHour,
+    },
+  };
 }
 
 /** The list's sort once a usage column's header is clicked: by that column, most first (the

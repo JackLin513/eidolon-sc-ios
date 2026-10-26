@@ -1,10 +1,11 @@
-"""Activity records (GLOSSARY.md「运行记录」): one for each turn, each call and each
-reach-out (GLOSSARY.md「搭话」), saying how it turned out, and one for each call to an
-outside service, saying which service, whose key, whether it failed and how, how long it
-took and what it was billed for; an LLM's, also how much of its input hit the provider's
-prompt cache, how soon its first word came and the reasoning effort it was asked for. They
-hold nothing anyone said. Only the admin console reads them: its dashboard (`dashboard`), and its users page, for each user's
-recent usage (`admin_users_api`).
+"""Activity records (GLOSSARY.md「运行记录」): one for each turn, each call, each reach-out
+(GLOSSARY.md「搭话」) and each visit to the bar (GLOSSARY.md「光顾」), saying how it turned out, and
+one for each call to an outside service, saying which service, whose key, whether it failed
+and how, how long it took and what it was billed for; an LLM's, also how much of its input
+hit the provider's prompt cache, how soon its first word came and the reasoning effort it
+was asked for. They hold nothing anyone said. Only the admin console reads them: its
+dashboard (`dashboard`), and its users page, for each user's recent usage
+(`admin_users_api`).
 
 A turn's record is open while the turn runs (`ActivityLog.begin`, then `current`), and the
 service calls made meanwhile, in the turn's context, are recorded under it; its outcome
@@ -17,6 +18,13 @@ A call's record is told its outcome as the call's use of the limit is (`call_out
 with how long it lasted and why it ended. The turns taken in it each have a record of
 their own under the call's (`Recording.turn`), written with it; its speech recognition,
 synthesis and emotion judging are recorded under the call (`Recording.add`), not a turn.
+
+A visit's record is open while the visit is under way, over as many requests as it has
+calls: the service calls of each, and of rewriting her order, are recorded under it
+(`Recording.current`, in each). It is written as the visit is over, as its use of the limit
+is settled (`admission`): done, left or done away with, failed, or rejected over the limit.
+It keeps whether the LLM that wrote it was the user's own, as a turn's does; never what was
+said, nor how each drink was judged.
 
 A reach-out's record says whether the user answered it: had a turn, or a call that connected,
 in its conversation after it and before the next. The store marks it so as it records the
@@ -114,14 +122,19 @@ LLM_SERVICES: tuple[ServiceName, ...] = ("chat_llm", "memory_llm")
 """The LLMs among them (`llm_origin`): a user's own is recorded as `OWN`, and each call
 says how soon its first word came and at which reasoning effort."""
 
-RecordKind = Literal["turn", "call", "reach_out", "achievement"]
+RecordKind = Literal["turn", "call", "reach_out", "achievement", "visit"]
 """A reach-out is neither a turn nor a call, nor counted as one anywhere; it is always on the
 deployer's keys. Nor is an achievement's stage unlocked or a character complete, which has no
-service calls."""
+service calls; nor a visit to the bar."""
+OWN_LLM_KINDS: frozenset[RecordKind] = frozenset({"turn", "visit"})
+"""The kinds whose record keeps, as being on the user's own keys, whether its LLM was the
+user's own; the others keep whether they were exempt."""
 Result = Literal["success", "failed", "rejected", "left", "not_connected"]
 """How a turn or call turned out (GLOSSARY.md「回合」「接通」): a turn succeeded, failed on
 a service, was rejected (over the limit, or its input), or the user left before it was
-done; a call also may never have connected. A reach-out succeeds or fails. An achievement's
+done; a call also may never have connected. A reach-out succeeds or fails. A visit is done
+(success), failed on the call it was over at, was rejected over the limit, or else was
+left. An achievement's
 record has which stage of which instead (`stage_unlocked`), or `COMPLETE`."""
 RESULTS: tuple[Result, ...] = ("success", "failed", "rejected", "left", "not_connected")
 
@@ -152,7 +165,7 @@ these, and sorts the users by them (`Store.find_users`)."""
 
 TURNS_AND_CALLS = "kind IN ('turn', 'call')"
 """Which records, in SQL over `activity_records`, are of turns and calls: not of reach-outs,
-which the user did not take, nor of achievements."""
+which the user did not take, nor of achievements, nor of visits."""
 
 JUDGEMENT_COLUMNS = ("affinity_level", "out_of_line", "manipulation", "cooled")
 """What a turn's record keeps of how the judge model judged it, as its columns are named."""
@@ -165,8 +178,8 @@ _SCHEMA = """
 -- NULL once the user is deleted, and `anonymous_id` then tells their records apart from
 -- other users' without saying whose they were. `call_id`, `duration_s` and `end_reason`
 -- are for calls: a call's turns name its record in `call_id`, and a call has the other two.
--- `own_keys` is, for a turn, whether its LLM was the user's own; for a call, whether all
--- of its LLM, speech recognition and synthesis were (GLOSSARY.md「运行记录」). The last four
+-- `own_keys` is, for a turn or a visit, whether its LLM was the user's own; for a call,
+-- whether all of its LLM, speech recognition and synthesis were (GLOSSARY.md「运行记录」). The last four
 -- are what the judge model made of a turn recorded (GLOSSARY.md「好感度」): its level, 0–4,
 -- whether out of line, whether it tried to dictate her affinity, and whether the turn began
 -- a cooldown; all NULL for a turn not judged, or not recorded. `ended_conversation` is why
@@ -402,8 +415,8 @@ class RecordRow:
     started_at: datetime
     result: Result
     own_llm: bool | None
-    """For a turn (one in a call too), whether the character's LLM was the user's own;
-    None for a call (GLOSSARY.md「运行记录」)."""
+    """For a turn (one in a call too) or a visit, whether the character's LLM was the user's
+    own; None for a call (GLOSSARY.md「运行记录」)."""
     exempt: bool | None
     """For a call, whether it brought the user's own keys for every one of the exempting
     keys (GLOSSARY.md「免限额密钥」), so that it counted towards no limit; None for a turn
@@ -429,8 +442,8 @@ class RecordRow:
     @property
     def own_keys(self) -> bool:
         """Whether the record counts as on the user's own keys, as the dashboard and the
-        admin's users page show it: a turn's own LLM, a call's being exempt."""
-        return bool(self.own_llm if self.kind == "turn" else self.exempt)
+        admin's users page show it: a turn's or visit's own LLM, a call's being exempt."""
+        return bool(self.own_llm if self.kind in OWN_LLM_KINDS else self.exempt)
 
 
 @dataclass(frozen=True)
@@ -481,7 +494,8 @@ class RecordGroup:
     result: Result | str
     """How it turned out; for an achievement, which stage, or `COMPLETE`."""
     own_keys: bool
-    """`RecordRow.own_keys`: for a turn, its own LLM; for a call, its being exempt."""
+    """`RecordRow.own_keys`: for a turn or visit, its own LLM; for a call, its being
+    exempt."""
     in_call: bool
     end_reason: CallEndReason | None
     judged: Judged | None
@@ -1445,9 +1459,9 @@ def _time(epoch: float) -> datetime:
 
 
 def _writing_own_keys(recording: Recording) -> bool:
-    """What is written to the `own_keys` column of a record, by its kind: a turn's own
-    LLM, a call's being exempt."""
-    if recording.kind == "turn":
+    """What is written to the `own_keys` column of a record, by its kind: a turn's or
+    visit's own LLM, a call's being exempt."""
+    if recording.kind in OWN_LLM_KINDS:
         return recording.own_llm
     assert recording.exempt is not None
     return recording.exempt
@@ -1456,7 +1470,7 @@ def _writing_own_keys(recording: Recording) -> bool:
 def _reading_own_keys(kind: RecordKind, kept: int) -> tuple[bool | None, bool | None]:
     """`RecordRow.own_llm` and `RecordRow.exempt`, from what is read of the `own_keys`
     column of a record of `kind`."""
-    return (bool(kept), None) if kind == "turn" else (None, bool(kept))
+    return (bool(kept), None) if kind in OWN_LLM_KINDS else (None, bool(kept))
 
 
 def _writing_judgement(recording: Recording) -> tuple[int | None, ...]:

@@ -5,7 +5,8 @@ characters and the world setting and gift catalog beside them, the identity prov
 the services users bring their own keys to, retrieval, memory, the conversation engine,
 usage limits, voice calls and reach-outs. It decides what is on. Retrieval needs the judge
 model, the embedder and the reranker all at hand, and memory is on only with retrieval, since only
-retrieval finds memories again; judging her emotion during calls needs only the judge
+retrieval finds memories again; the bar looks up her facts with the embedder and the
+reranker alone; judging her emotion during calls needs only the judge
 model, the same one; the
 background model is always at hand, being the chat model unless configured apart.
 
@@ -36,8 +37,13 @@ from eidolon.admission import Admissions
 from eidolon.affinity import Affinities
 from eidolon.announcements import Announcements
 from eidolon.backup import Backups
+from eidolon.bar import Bar
+from eidolon.bar_facts import BarFacts
+from eidolon.bar_lines import bar_lines_path, check_bar_lines, load_bar_lines
+from eidolon.bar_visits import bar_visits_path, check_bar_visits, load_bar_visits
 from eidolon.call import Calls, Speech, SpeechServices
 from eidolon.characters import Character, load_characters
+from eidolon.drink_catalog import check_bar_tastes, drinks_path, load_drink_catalog
 from eidolon.gift_catalog import Gift, check_liked_gifts, gifts_path, load_gift_catalog
 from eidolon.gifts import Gifts
 from eidolon.happenings import Happenings
@@ -54,6 +60,7 @@ from eidolon.cycles import Cycles
 from eidolon.data_access import Database
 from eidolon.data_package import DataPackages
 from eidolon.embedding import EMBEDDING_TIMEOUT, Embedder, open_embedder
+from eidolon.facts import CharacterFacts
 from eidolon.engine import ConversationEngine
 from eidolon.identity import IdentityProvider, ProviderName, open_identity_providers
 from eidolon.image_generation import GENERATION_TIMEOUT
@@ -106,6 +113,8 @@ class Backend:
     characters: dict[str, Character]
     gift_catalog: dict[str, Gift]
     """The gift catalog, by identifier."""
+    bar: Bar
+    """The bar, and every user's visit under way (GLOSSARY.md「酒吧」「光顾」)."""
     memories: Memories
     titles: Titles
     """Names conversations after their third turn."""
@@ -159,6 +168,7 @@ class Backend:
     _keeping_fresh: asyncio.Task[None] | None = field(default=None, repr=False)
     _probing: asyncio.Task[None] | None = field(default=None, repr=False)
     _reaching_out: asyncio.Task[None] | None = field(default=None, repr=False)
+    _sweeping: asyncio.Task[None] | None = field(default=None, repr=False)
     _tidying: asyncio.Task[None] | None = field(default=None, repr=False)
     _watching: asyncio.Task[None] | None = field(default=None, repr=False)
     _loading_stories: asyncio.Task[None] | None = field(default=None, repr=False)
@@ -167,9 +177,10 @@ class Backend:
         """What is done as the server starts, on its event loop: try the overrides of the
         configuration, falling back to `.env` where one fails; keep the price catalogs
         fresh from now on, fetching them in the background, try the services without
-        calls for their status, have characters reach out once their time comes, delete
-        what ages out (`housekeeping`), watch how far behind the loop runs (`loop_lag`),
-        and load the story corpus's vectors to search in the background."""
+        calls for their status, have characters reach out once their time comes, do away
+        with visits to the bar left untouched, delete what ages out (`housekeeping`), watch
+        how far behind the loop runs (`loop_lag`), and load the story corpus's vectors to
+        search in the background."""
         asyncio.get_running_loop().set_default_executor(
             ThreadPoolExecutor(THREADS, thread_name_prefix="eidolon")
         )
@@ -177,6 +188,7 @@ class Backend:
         self._keeping_fresh = asyncio.create_task(self.prices.catalog.keep_fresh())
         self._probing = asyncio.create_task(self.service_status.keep_probing())
         self._reaching_out = asyncio.create_task(self.reach_outs.keep_reaching_out())
+        self._sweeping = asyncio.create_task(self.bar.keep_sweeping())
         self._tidying = asyncio.create_task(keep_tidy(self.usage.forget_old, self.activity.forget_old))
         self._watching = asyncio.create_task(watch_the_loop(lambda: self.calls.in_progress))
         if self.corpus is not None:
@@ -187,8 +199,8 @@ class Backend:
         tasks = [
             task
             for task in (
-                self._keeping_fresh, self._probing, self._reaching_out, self._tidying,
-                self._watching, self._loading_stories,
+                self._keeping_fresh, self._probing, self._reaching_out, self._sweeping,
+                self._tidying, self._watching, self._loading_stories,
             )
             if task is not None
         ]
@@ -219,13 +231,19 @@ def build(
 ) -> Backend:
     """The backend `settings` describe, with any of the outside services passed in
     used instead of made. Raises RuntimeError, having opened nothing, if the character
-    configuration (her liked gifts and all), the world setting, the gift catalog or the job
-    list is broken,
-    or a character is none of its idols and none of its staff."""
+    configuration (her liked gifts, her bar tastes and all), the world setting, the gift
+    catalog, the job list, the drink catalog or the bar's reasons and topics or its fixed lines
+    is broken, or a character is none of its idols and none of its staff."""
     characters = load_characters(settings.characters_path)
     gift_catalog = load_gift_catalog(gifts_path(settings.characters_path))
     check_liked_gifts(characters, gift_catalog)
     job_list = load_job_list(jobs_path(settings.characters_path))
+    drink_catalog = load_drink_catalog(drinks_path(settings.characters_path))
+    check_bar_tastes(characters, drink_catalog)
+    bar_visits = load_bar_visits(bar_visits_path(settings.characters_path))
+    check_bar_visits(characters, bar_visits)
+    bar_lines = load_bar_lines(bar_lines_path(settings.characters_path))
+    check_bar_lines(bar_lines, drink_catalog)
     world = load_world(path := world_path(settings.characters_path))
     if world is None:
         log.info(
@@ -329,9 +347,11 @@ def build(
 
     retrieval = None
     corpus = None
+    character_facts = None
     if retrieval_judge is not None and embedder is not None and reranker is not None:
         references = open_reference_sources(database, embedder, characters.values(), world)
         corpus = references.corpus
+        character_facts = references.facts
         closers.append(corpus.aclose)  # closed before the database, loading from it
         retrieval = Retrieval(
             retrieval_judge,
@@ -395,6 +415,19 @@ def build(
         usage, activity, own_keys, cooldown_until=affinities.cooldown_until
     )
     closers.append(admissions.aclose)  # closed after the calls, which may leave some to settle
+    # The bar looks in her facts with the text turns' own, if they have them, needing no
+    # judge model.
+    bar_facts = None
+    if embedder is not None and reranker is not None:
+        if character_facts is None:
+            character_facts = CharacterFacts(database, embedder, characters.values())
+        bar_facts = BarFacts(character_facts, embedder, reranker)
+    bar = Bar(
+        database, clock, characters, drink_catalog, bar_visits, bar_lines, admissions,
+        lambda: config.bar_on, random or secure_random, world=world, affinities=affinities,
+        gifts=gifts, schedules=schedules, facts=bar_facts,
+    )
+    closers.append(bar.aclose)  # closed before the database, so each visit over is recorded
     calls = Calls(
         settings, engine, admissions, own_keys, lambda: config.usage_limits, speech, clock, store,
         happenings,
@@ -413,6 +446,7 @@ def build(
         store=store,
         characters=characters,
         gift_catalog=gift_catalog,
+        bar=bar,
         memories=memories,
         titles=titles,
         engine=engine,

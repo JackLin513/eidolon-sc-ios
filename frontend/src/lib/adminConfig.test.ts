@@ -260,6 +260,7 @@ describe("limits", () => {
     turns_per_hour: "2",
     calls_per_hour: UNLIMITED,
     photos_per_hour: "5",
+    visits_per_hour: "3",
     call_minutes: "10",
     turns_per_call: "40",
     concurrent_calls: "10",
@@ -280,6 +281,7 @@ describe("limits", () => {
         turns_per_hour: 2,
         calls_per_hour: 0,
         photos_per_hour: 5,
+        visits_per_hour: 3,
         call_minutes: 10,
         turns_per_call: 40,
         concurrent_calls: 10,
@@ -467,9 +469,9 @@ describe("schedule", () => {
   });
 });
 
-describe("cycles", () => {
-  it("are a card of limits and play, after the schedule", () => {
-    expect(TAB_ITEMS.limits).toEqual(["limits", "affinity", "reach_outs", "schedule", "cycles"]);
+describe("cycles and the bar", () => {
+  it("are cards of limits and play, after the schedule", () => {
+    expect(TAB_ITEMS.limits).toEqual(["limits", "affinity", "reach_outs", "schedule", "cycles", "bar"]);
   });
 });
 
