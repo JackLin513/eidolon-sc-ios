@@ -59,11 +59,11 @@ _WRITING = """\
 # 一次光顾怎么写
 你来写你和制作人的台词，制作人是酒保。每次只写最后一条消息要你写的那几段，写完就停，等制作人下一步。
 - 进门：4 到 6 句。按你来过几次打招呼，用来意定下心情，来意可以先只露一半；今天是谁的生日、是节日的话，在这里提一句。
-- 点单：先铺垫 1 到 2 句，然后照点单卡说出你要什么。说出点单的那一两句标上 order="true"，放在这次输出的最后。
+- 点单：先铺垫 1 到 2 句，然后照点单卡说出你要什么。说出点单的那一两句标上 order="true"，放在这次输出的最后；要什么只在这一两句里说，铺垫里不先说这一杯想喝什么。点单卡上的条件一个不漏，没有的一个不加：卡上没写的，就不说加冰、大杯、什么口味或不要酒精。
 - 上酒后的反应：2 到 4 句，照给你的判定写；上得对不对由判定说了算，不要自己判断。上错了抱怨几句就照常往下聊，不要求重做。
-- 闲聊：6 到 10 句，围着话题聊，来意也往深里说一点。
+- 闲聊：6 到 10 句，围着话题聊，来意也往深里说一点；最后一杯后的闲聊短一些，3 到 5 句。
 - 告别：2 到 4 句，收住来意，心情比进门时有了变化，用一句话带出这次喝得怎么样，可以说下次再来。
-- 句数是你和制作人合计的。制作人每段最多一两句，只是接你的话，不抢戏，只说中文。
+- 句数是你和制作人合计的。制作人每段最多一两句，只是接你的话，不抢戏，不替你挑饮品、不提议你点什么，只说中文。
 - 不写选项，不替制作人做决定，也不写制作人调酒、上酒：那由制作人自己来。"""
 
 _FORMAT = """\
@@ -73,7 +73,9 @@ _FORMAT = """\
 <producer>制作人的台词</producer>
 <her emotion="calm" order="true"><ja>点单的那句</ja><zh>它的中文字幕</zh></her>
 - 表情只能是 calm、happy、shy、surprised、sad、angry、thinking 之一。
+- 中文字幕照日语台词完整译出，不增不减；日语台词里不夹英文。
 - 饮品的名字在日语台词里用日文名，在中文字幕里用英文原名，不要翻译。
+- 制作人的台词不加引号。
 - 除了这些标签和标签里的内容，不要输出任何其他文字，也不要写动作和旁白。"""
 
 
@@ -146,7 +148,9 @@ def farewell_ask(
     she has, `drunk` or not: her reaction, a short talk and her farewell, drunk after her
     reaction if she is."""
     each = "；".join(f"第 {i} 杯{_TIERS[s.tier]}" for i, s in enumerate(servings, 1))
-    parts = [_served(serving, enjoy), "这次写：这杯的反应、一小段闲聊，然后告别。不再点单。"]
+    parts = [
+        _served(serving, enjoy), "这次写：这杯的反应、一小段闲聊（3 到 5 句），然后告别。不再点单。"
+    ]
     if drunk:
         parts.append(
             "这杯的反应照常写；写完反应，从这一段起你醉了：闲聊和告别都是醉着的样子，"
@@ -233,6 +237,8 @@ def _served(serving: Serving, enjoy: str) -> str:
     ]
     if serving.wrong is not None:
         lines.append(_wrong(serving.wrong, served))
+    elif served.drink.id != serving.order.target.id:
+        lines.append("这杯不是点单卡上那款，但也合你的意：不要说这杯和你想的不一样。")
     return "\n".join(lines)
 
 
@@ -314,6 +320,9 @@ def _tastes(character: Character, catalog: DrinkCatalog) -> str:
         lines.append(f"讨厌的口味：{FLAVORS[character.bar_disliked_flavor]}。")
     if character.bar_tolerance:
         lines.append(f"酒量：{_TOLERANCES[character.bar_tolerance]}。")
-    lines.append("这些可以在闲聊里自己说出来，让制作人慢慢摸清。")
+    lines.append(
+        "这些可以在闲聊里偶尔自然地带出一点，让制作人慢慢摸清；不要一口气说出来，也不要用"
+        "「女性化」「宣传」这类菜单上的分类词说自己的口味。"
+    )
     return "\n".join(lines)
 
