@@ -4,12 +4,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-human（初稿已提交，等用户校对；用户改完再关票）
+**Status:** done
 
 - [x] 清单不分角色写，具体内容由模型拿她的人设和资料去填。说明里不点名角色，不写组合名；基调分布不偏到一种。
 - [x] 校验：id 唯一合法；基调在列表里；`not_for` 里的角色都存在；说明是单行；每位角色能用的来意和话题都至少 4 条（去重要避开最近 3 次，再加 1）。坏了报配置错误，并指出是哪一条。测试的 `CharacterConfig` 像拷 `jobs.toml` 一样拷一份。
 - [x] 测试（照 `test_job_list.py`）：真实清单通过校验；临时清单缺字段、基调拼错、`not_for` 写了不存在的角色、某位角色能用的不够各被拒。
-- [ ] 做完停下，不往下做别的票。Comments 里列出全部来意和话题，等用户校对，用户改完再关票。
+- [x] 做完停下，不往下做别的票。Comments 里列出全部来意和话题，等用户校对，用户改完再关票。
 
 ## Comments
 
@@ -37,7 +37,11 @@
   - `cant-sleep` 记的是 `tired`，也可以算 `down` 或 `calm`。
   - 有几条意思接近：`off-work` 和 `nearby` 都是顺路来的；`unwind`、`ordinary-day`、`day-off-tomorrow` 都偏放松、收尾。
 
-### 全部来意和话题（等用户校对）
+### 校对（票 03）
+
+2026-10-26 用户校对通过（看的是按配置生成的本地 HTML），没有改动；`big-job-tomorrow` 记烦躁、`cant-sleep` 记疲惫、意思接近的几条都照初稿保留。
+
+### 全部来意和话题（用户已校对）
 
 基调：开心 happy、烦躁 annoyed、疲惫 tired、低落 down、平静 calm。「不用」一列写的是 `not_for`。
 
