@@ -1,19 +1,112 @@
-"""The bar over HTTP (GLOSSARY.md「酒吧」), for users who agreed to the terms: `/api/bar`
-reads it, the drink catalog the bar counter and the recipe book are drawn from; or, while
-the bar is closed, only that."""
+"""The bar over HTTP (GLOSSARY.md「酒吧」「光顾」), for users who agreed to the terms:
+`/api/bar` reads it; `/api/bar/visits` begins a visit, each of whose drinks is served at
+`/api/bar/visits/{visit_id}/serves`, and which is left by deleting it. Beginning a visit and
+serving a drink answer with the call they set off, as server-sent events (`bar.BarEvent`).
 
-from fastapi import FastAPI
+Refused: coming in while the bar is closed (409 `bar_closed`); any visit but the user's
+under way (410 `visit_gone`); serving while she is not waiting for a drink (409
+`not_waiting`), or what is none of the drinks (422 `broken_drink`)."""
 
+import json
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import aclosing
+from typing import Literal
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, model_validator
+
+from eidolon.account_api import OwnKeysInput
 from eidolon.assembly import Backend
-from eidolon.sessions import UserId
+from eidolon.bar import BarClosed, BarEvent, BrokenDrink, NotWaiting, VisitGone
+from eidolon.drink_catalog import Mixture
+from eidolon.own_keys import BroughtKeys
+from eidolon.sessions import DeviceTimezone, UserId
+
+
+class VisitInput(BaseModel):
+    own_keys: OwnKeysInput | None = None
+    """The user's own keys, which their browser keeps, for the visit's calls to run on, as
+    text turns bring them; only the LLMs are used."""
+
+
+class ServeInput(BaseModel):
+    """What the bar counter holds as it is served: the parts of each ingredient, whether on
+    ice and aged, and how it was shaken; or, `method` being `bottle`, which bottled drink."""
+
+    method: Literal["mix", "blend", "bottle"]
+    bottle: str | None = None
+    adelhyde: int = 0
+    bronson_extract: int = 0
+    powdered_delta: int = 0
+    flanergide: int = 0
+    karmotrine: int = 0
+    ice: bool = False
+    aged: bool = False
+    own_keys: OwnKeysInput | None = None
+
+    @model_validator(mode="after")
+    def _bottle_or_not(self) -> "ServeInput":
+        if (self.method == "bottle") != (self.bottle is not None):
+            raise ValueError("瓶装的要说是哪一瓶，调制的不要说")
+        return self
+
+    def served(self) -> Mixture | str:
+        if self.method == "bottle":
+            assert self.bottle is not None
+            return self.bottle
+        return Mixture(
+            self.adelhyde, self.bronson_extract, self.powdered_delta, self.flanergide,
+            self.karmotrine, self.ice, self.aged, self.method,
+        )
 
 
 def add_bar_routes(app: FastAPI, backend: Backend) -> None:
-    config, drink_catalog = backend.config, backend.drink_catalog
+    bar = backend.bar
+
+    def refused(status: int, code: str):
+        async def handler(_: Request, e: Exception) -> JSONResponse:
+            return JSONResponse({"detail": str(e), "code": code}, status_code=status)
+        return handler
+
+    app.add_exception_handler(BarClosed, refused(409, "bar_closed"))
+    app.add_exception_handler(VisitGone, refused(410, "visit_gone"))
+    app.add_exception_handler(NotWaiting, refused(409, "not_waiting"))
+    app.add_exception_handler(BrokenDrink, refused(422, "broken_drink"))
 
     @app.get("/api/bar")
     async def read(_: UserId) -> dict:
         """Whether the bar is open and, if it is, its drinks in catalog order."""
-        if not config.bar_on:
-            return {"enabled": False}
-        return {"enabled": True, "drinks": drink_catalog.described()}
+        return bar.read()
+
+    @app.post("/api/bar/visits")
+    async def enter(
+        body: VisitInput, user_id: UserId, device_timezone: DeviceTimezone = None
+    ) -> StreamingResponse:
+        """A visit begun, any of the user's under way done away with."""
+        return _events(await bar.enter(user_id, _brought(body.own_keys), device_timezone))
+
+    @app.post("/api/bar/visits/{visit_id}/serves")
+    async def serve(visit_id: str, body: ServeInput, user_id: UserId) -> StreamingResponse:
+        """A drink served her."""
+        return _events(bar.serve(user_id, visit_id, body.served(), _brought(body.own_keys)))
+
+    @app.delete("/api/bar/visits/{visit_id}", status_code=204)
+    async def leave(visit_id: str, user_id: UserId) -> None:
+        bar.leave(user_id, visit_id)
+
+
+def _brought(own_keys: OwnKeysInput | None) -> BroughtKeys:
+    return own_keys.brought() if own_keys else BroughtKeys()
+
+
+def _events(events: AsyncGenerator[BarEvent, None]) -> StreamingResponse:
+    async def sent() -> AsyncIterator[str]:
+        async with aclosing(events):  # so that a call left part-way stops at once
+            async for event in events:
+                yield f"data: {json.dumps(event.shown(), ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        sent(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

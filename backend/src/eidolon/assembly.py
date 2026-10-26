@@ -36,11 +36,12 @@ from eidolon.admission import Admissions
 from eidolon.affinity import Affinities
 from eidolon.announcements import Announcements
 from eidolon.backup import Backups
+from eidolon.bar import Bar
 from eidolon.bar_lines import bar_lines_path, check_bar_lines, load_bar_lines
 from eidolon.bar_visits import bar_visits_path, check_bar_visits, load_bar_visits
 from eidolon.call import Calls, Speech, SpeechServices
 from eidolon.characters import Character, load_characters
-from eidolon.drink_catalog import DrinkCatalog, check_bar_tastes, drinks_path, load_drink_catalog
+from eidolon.drink_catalog import check_bar_tastes, drinks_path, load_drink_catalog
 from eidolon.gift_catalog import Gift, check_liked_gifts, gifts_path, load_gift_catalog
 from eidolon.gifts import Gifts
 from eidolon.happenings import Happenings
@@ -109,8 +110,8 @@ class Backend:
     characters: dict[str, Character]
     gift_catalog: dict[str, Gift]
     """The gift catalog, by identifier."""
-    drink_catalog: DrinkCatalog
-    """The bar's drinks (GLOSSARY.md「饮品」)."""
+    bar: Bar
+    """The bar, and every user's visit under way (GLOSSARY.md「酒吧」「光顾」)."""
     memories: Memories
     titles: Titles
     """Names conversations after their third turn."""
@@ -402,6 +403,11 @@ def build(
         own_llm_service, config, activity, speech, exempting=lambda: config.exempting_keys,
         image_service=own_images,
     )
+    bar = Bar(
+        database, clock, characters, drink_catalog, bar_visits, bar_lines, own_keys,
+        lambda: config.bar_on, random or secure_random, world=world, affinities=affinities,
+        schedules=schedules,
+    )
     admissions = Admissions(
         usage, activity, own_keys, cooldown_until=affinities.cooldown_until
     )
@@ -424,7 +430,7 @@ def build(
         store=store,
         characters=characters,
         gift_catalog=gift_catalog,
-        drink_catalog=drink_catalog,
+        bar=bar,
         memories=memories,
         titles=titles,
         engine=engine,
