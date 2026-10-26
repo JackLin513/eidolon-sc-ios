@@ -17,3 +17,8 @@
 - [ ] 文案少；不写票里没定的数字和行为。
 
 ## Comments
+
+### 票 02 交接
+
+- `docs/configuration.md`（三语）「角色」一节的字段说明里，在 `liked_gifts` 后面补上酒吧五列：`bar_flavors`（喜欢的口味，1–2 种）、`bar_kind`（喜欢的种类，可不填）、`bar_favorites`（爱喝的饮品，1–3 款，写 `characters/drinks.toml` 的 id）、`bar_disliked_flavor`（讨厌的口味，可不填，不能和喜欢的重合，爱喝的饮品也不能是这个口味）、`bar_tolerance`（酒量 `weak`、`medium`、`strong`）。每一条依据写在出处文件的「酒吧口味」一节。缺必填项或取值不对时，后端拒绝启动。示例配置那段也加上这几列。自己维护角色配置的部署者，升级以后要先补上这五列，否则后端起不来。
+

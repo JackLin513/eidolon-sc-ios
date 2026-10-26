@@ -15,20 +15,27 @@ them, but for Karmotrine where a recipe leaves it optional, is that drink; all o
 doubled is its big glass, unless it is big already. Anything else is broken, and cannot be
 served.
 
-Anything wrong in it keeps the backend from starting (`DrinkCatalogError`).
+Anything wrong in it keeps the backend from starting (`DrinkCatalogError`), as do bar tastes
+in the character configuration that are not right by it (`check_bar_tastes`).
 """
 
 import re
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, get_args
+
+from eidolon.characters import Character, CharacterConfigError
 
 Flavor = Literal["sweet", "bitter", "sour", "spicy", "bubbly"]
 """甜味、苦味、酸味、辛辣、发泡."""
 
 Kind = Literal["girly", "manly", "classic", "classy", "promo"]
 """女性化、男性化、经典、时尚、宣传, as the recipe book's menu names them."""
+
+Tolerance = Literal["weak", "medium", "strong"]
+"""How well a character holds her drink: 弱、中、强."""
 
 Method = Literal["mix", "blend"]
 """Shaken under 5 seconds, or 5 seconds and on."""
@@ -38,6 +45,12 @@ DRINKS_FILE = "drinks.toml"
 
 MAX_PARTS = 20
 """What the mixer holds, of the five ingredients together."""
+
+MAX_FLAVORS = 2
+"""The most flavors a character likes at the bar."""
+
+MAX_FAVORITES = 3
+"""The most drinks a character loves."""
 
 _VALID_ID = re.compile(r"[a-z0-9_-]+")
 
@@ -215,6 +228,58 @@ class DrinkCatalog:
             if glass.made_of(served):
                 return Served(glass.drink, glass.big, served.karmotrine)
         return None
+
+
+def check_bar_tastes(characters: Mapping[str, Character], catalog: DrinkCatalog) -> None:
+    """Raises CharacterConfigError unless every character likes one to `MAX_FLAVORS`
+    flavors, a kind or none, loves one to `MAX_FAVORITES` drinks in `catalog`, dislikes a
+    flavor she does not like or none, and holds her drink one of the ways there are; and
+    none of the drinks she loves is of the flavor she dislikes."""
+    for c in characters.values():
+        flavors, favorites = c.bar_flavors, c.bar_favorites
+        _some_of(c.id, "bar_flavors", "喜欢的口味", flavors, MAX_FLAVORS)
+        for flavor in flavors:
+            _named_one_of(c.id, "bar_flavors", flavor, Flavor)
+        if c.bar_kind is not None:
+            _named_one_of(c.id, "bar_kind", c.bar_kind, Kind)
+        _some_of(c.id, "bar_favorites", "爱喝的饮品", favorites, MAX_FAVORITES)
+        if unknown := [d for d in favorites if d not in catalog.drinks]:
+            raise CharacterConfigError(
+                f"角色 {c.id} 的 bar_favorites 里的 {'、'.join(unknown)} 不在饮品目录里"
+            )
+        if (disliked := c.bar_disliked_flavor) is not None:
+            _named_one_of(c.id, "bar_disliked_flavor", disliked, Flavor)
+            if disliked in flavors:
+                raise CharacterConfigError(
+                    f"角色 {c.id} 的 bar_disliked_flavor {disliked} 也在她喜欢的口味 bar_flavors 里"
+                )
+            if hated := [d for d in favorites if catalog.drinks[d].flavor == disliked]:
+                raise CharacterConfigError(
+                    f"角色 {c.id} 爱喝的 {'、'.join(hated)} 是她讨厌的口味 {disliked}"
+                )
+        if c.bar_tolerance is None:
+            raise CharacterConfigError(f"角色 {c.id} 没有配 bar_tolerance（酒量）")
+        _named_one_of(c.id, "bar_tolerance", c.bar_tolerance, Tolerance)
+
+
+def _some_of(id: str, field: str, what: str, names: tuple[str, ...], most: int) -> None:
+    """Raises CharacterConfigError unless character `id` has one to `most` `names` in
+    `field`, none twice."""
+    if not names:
+        raise CharacterConfigError(f"角色 {id} 没有配 {field}（{what}，1–{most} 个）")
+    if len(names) > most:
+        raise CharacterConfigError(f"角色 {id} 的 {field} 有 {len(names)} 个，最多 {most} 个")
+    if len(set(names)) < len(names):
+        raise CharacterConfigError(f"角色 {id} 的 {field} 里有重复的{what}")
+
+
+def _named_one_of(id: str, field: str, value: str, choices: object) -> None:
+    """Raises CharacterConfigError unless `value` in character `id`'s `field` is one of the
+    `Literal` `choices`."""
+    if value not in get_args(choices):
+        raise CharacterConfigError(
+            f"角色 {id} 的 {field} 里的 {value} 不在 {'、'.join(get_args(choices))} 之中"
+        )
 
 
 def drinks_path(characters_path: Path) -> Path:

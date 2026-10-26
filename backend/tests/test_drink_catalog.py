@@ -4,13 +4,15 @@ starts. What the bar counter holds as a drink is served is matched against it, e
 drink, big or not, with how many parts of Karmotrine are in it; or broken, not to be
 served."""
 
+import re
 from dataclasses import replace
 
 import pytest
 
-from eidolon.drink_catalog import DRINKS_FILE, Mixture, load_drink_catalog
+from eidolon.characters import load_characters
+from eidolon.drink_catalog import DRINKS_FILE, Mixture, check_bar_tastes, load_drink_catalog
 
-from tests.conftest import REPO_DRINKS, CharacterConfig, ClientFactory
+from tests.conftest import BAR_TASTE, REPO_DRINKS, CharacterConfig, ClientFactory
 from tests.fakes import FakeLLM
 
 CATALOG = load_drink_catalog(REPO_DRINKS)
@@ -165,7 +167,8 @@ def bottled(id: str, karmotrine: str = "6", extra: str = "") -> str:
 
 
 def test_a_small_catalog_of_its_own_is_loaded(make_client: ClientFactory, characters: CharacterConfig):
-    characters.write(DRINKS_FILE, mixed("sweet-one") + bottled("bottle"))
+    """With the drink the characters love in it."""
+    characters.write(DRINKS_FILE, mixed("sugar-rush") + bottled("bottle"))
 
     make_client(FakeLLM())
 
@@ -227,3 +230,66 @@ def test_a_missing_catalog_keeps_the_backend_from_starting(
 
     with pytest.raises(RuntimeError, match=DRINKS_FILE):
         make_client(FakeLLM())
+
+
+HIORI_SHEET = "# 人设\n你是風野灯織。"
+
+
+@pytest.mark.parametrize(
+    ("bar", "named"),
+    [
+        ({"bar_flavors": ["sweet"], "bar_tolerance": "weak"}, "bar_favorites"),
+        ({"bar_flavors": ["sweet"], "bar_favorites": ["sugar-rush"]}, "bar_tolerance"),
+    ],
+    ids=["favorites", "tolerance"],
+)
+def test_bar_tastes_missing_what_is_required_keep_the_backend_from_starting(
+    make_client: ClientFactory, characters: CharacterConfig, bar: dict[str, object], named: str
+):
+    characters.add("hiori", "風野灯織", HIORI_SHEET, bar=bar)
+
+    with pytest.raises(RuntimeError, match=f"hiori.*{named}"):
+        make_client(FakeLLM())
+
+
+@pytest.mark.parametrize(
+    ("wrong", "named"),
+    [
+        ({"bar_favorites": ["sugar-rush", "flaming-moai"]}, "flaming-moai"),
+        ({"bar_favorites": ["sugar-rush", "beer", "rum", "absinthe"]}, "最多 3 个"),
+        ({"bar_flavors": ["salty"]}, "salty"),
+        ({"bar_disliked_flavor": "sweet"}, "bar_disliked_flavor"),
+        ({"bar_favorites": ["sugar-rush", "rum"], "bar_disliked_flavor": "bitter"}, "rum"),
+        ({"bar_flavors": "sweet"}, "bar_flavors"),
+    ],
+    ids=[
+        "favorite-not-in-catalog", "too-many-favorites", "flavor-misspelt", "disliked-also-liked",
+        "favorite-disliked", "flavors-not-a-list",
+    ],
+)
+def test_bar_tastes_not_right_by_the_catalog_keep_the_backend_from_starting(
+    make_client: ClientFactory, characters: CharacterConfig, wrong: dict[str, object], named: str
+):
+    characters.add("hiori", "風野灯織", HIORI_SHEET, bar=BAR_TASTE | wrong)
+
+    with pytest.raises(RuntimeError, match=f"hiori.*{named}"):
+        make_client(FakeLLM())
+
+
+def test_repository_characters_each_have_bar_tastes_with_a_reason_for_each_in_her_sources():
+    """Her sources file's 「酒吧口味」 has a line for each flavor, kind, loved drink, disliked
+    flavor and tolerance she has, in the order `characters.toml` has them."""
+    characters = load_characters(REPO_DRINKS.parent / "characters.toml")
+
+    check_bar_tastes(characters, CATALOG)
+    for id, c in characters.items():
+        sources = (REPO_DRINKS.parent / "facts" / f"{id}.sources.md").read_text(encoding="utf-8")
+        section = sources.split("\n## 酒吧口味\n", 1)[1].split("\n## ", 1)[0]
+        reasons = re.findall(r"^- (口味|种类|爱喝|讨厌|酒量) ([a-z-]+)[（：]", section, re.M)
+        assert reasons == [
+            *(("口味", f) for f in c.bar_flavors),
+            *([("种类", c.bar_kind)] if c.bar_kind else []),
+            *(("爱喝", d) for d in c.bar_favorites),
+            *([("讨厌", c.bar_disliked_flavor)] if c.bar_disliked_flavor else []),
+            ("酒量", c.bar_tolerance),
+        ], id
