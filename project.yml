@@ -36,7 +36,16 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: "MFZ8WGP52J"
-        ENABLE_USER_SCRIPT_SANDBOXING: YES
+        # 立绘运行时在构建时从上游 checkout 拷进构建产物（ADR-0017），那个路径在
+        # SRCROOT 之外，脚本沙箱会挡住；下面的脚本只读那一个文件。
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    postBuildScripts:
+      - name: 同步 Spine 运行时
+        basedOnDependencyAnalysis: false
+        script: |
+          "${SRCROOT}/tools/sync_stand_runtime.sh" \
+            "${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}" \
+            "${EIDOLON_UPSTREAM:-${SRCROOT}/../eidolon-sc}"
 
 schemes:
   EidolonIOS:

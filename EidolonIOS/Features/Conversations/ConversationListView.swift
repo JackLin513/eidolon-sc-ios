@@ -26,7 +26,7 @@ struct ConversationListView: View {
             .task { await app.refresh() }
             .onAppear {
                 #if DEBUG
-                if app.debugShowsMemories || app.debugShowsTraces {
+                if app.debugShowsMemories || app.debugShowsTraces || app.debugShowsStandPreview {
                     showSettings = true
                 }
                 if path.isEmpty,
