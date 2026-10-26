@@ -107,7 +107,7 @@ How to write each field is in the comments at the top of the file. A few need ex
 - **`background`** (optional): The call screen's background image, kept in `characters/backgrounds/`. Without one, a gradient of her image color is used instead.
 - **Character sheet**: If a character sheet file is missing, the backend refuses to start and names the missing one. docker compose mounts `characters/` read-only into the backend container.
 - **`liked_gifts`**: The gifts she likes, by `id` in the gift catalog [`characters/gifts.toml`](../characters/gifts.toml): one to three, not all of them rare. Each needs its story source in the 「喜欢的礼物」 section of her sources file (`facts/<id>.sources.md`). If they are missing, not in the catalog, too many or all rare, the backend refuses to start.
-- **Bar tastes**: `bar_flavors` is the flavors she likes (one or two), `bar_kind` the kind she likes (optional), `bar_favorites` the drinks she loves (one to three, by `id` in the drink catalog [`characters/drinks.toml`](../characters/drinks.toml)), `bar_disliked_flavor` the flavor she dislikes (optional; it can't be one she likes, and none of her favorite drinks can have it), and `bar_tolerance` how well she holds her drink (`weak`, `medium`, `strong`). The reasoning for each is in the 「酒吧口味」 section of her sources file. If a required one is missing or a value is wrong, the backend refuses to start; if you maintain your own character config, add these before upgrading.
+- **Bar tastes**: `bar_flavors` is the flavors she likes (one or two), `bar_kind` the kind she likes (optional), `bar_favorites` the drinks she loves (one to three, by `id` in the drink catalog [`characters/drinks.toml`](../characters/drinks.toml)), `bar_disliked_flavor` the flavor she dislikes (optional; it can't be one she likes, and none of her favorite drinks can have it), and `bar_tolerance` how well she holds her drink (`weak`, `medium`, `strong`). The reasoning for each is in the 「酒吧口味」 section of her sources file. If a required one is missing or a value is wrong, the backend refuses to start; if you maintain your own character config, add these when you upgrade.
 
 **To add a character**, do the following:
 
@@ -517,12 +517,12 @@ By default, the deployer pays for everything. Users can enter their own keys on 
 
 | Service | What to enter | Used for |
 |---|---|---|
-| LLM | Protocol, base_url, key, model name | Playing the character (text and calls), extracting memories |
+| LLM | Protocol, base_url, key, model name | Playing the character (text, calls and bar visits), extracting memories |
 | Speech synthesis (Fish Audio) | Key | Her voice in calls; the voice still comes from the character configuration |
 | Speech recognition (Soniox or Alibaba Cloud Model Studio) | Provider and key | Hearing the user in calls; independent of the deployer's choice |
 | Image generation | Format, address, key, model | The photos she sends (text and calls), not counted toward photos per hour; the deployer's art style still applies, one picture at a time |
 
-- **Kept only in the browser**: Keys are stored only in the user's browser (separately for each account). They are sent to the server with each turn or call, stay in its memory only while it is handled, and are never written to the database, logs or backups ([ADR-0017](adr/0017-own-api-keys-stay-in-the-browser.md)). After switching devices or clearing browser data, they must be entered again.
+- **Kept only in the browser**: Keys are stored only in the user's browser (separately for each account). They are sent to the server with each turn, call or visit, stay in its memory only while it is handled (for a visit, until the visit ends), and are never written to the database, logs or backups ([ADR-0017](adr/0017-own-api-keys-stay-in-the-browser.md)). After switching devices or clearing browser data, they must be entered again.
 - **Tried first**: Each key is tried once when entered, and not stored if the try fails. The LLM must also support streaming and tool calling; image generation generates one real picture, on the user's own credit, not counted in usage. In a public deployment, base_url (for image generation, the address and any `url` a picture comes from) must be an HTTPS public address, checked again on every connection.
 - **No fallback on failure**: When an own key fails (out of credit, revoked, etc.), that turn or call fails, saying which key had the problem. It **never falls back to the deployer's keys**. Image generation is the exception: the turn goes on, only that photo isn't sent, because the user's own image generation key didn't work.
 - **Always on the deployer**: Embedding, reranking and the judge.
