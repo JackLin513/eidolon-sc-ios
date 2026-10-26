@@ -349,7 +349,7 @@ photo_tag = "higuchi madoka"
 photo_appearance = "brown hair, short hair, purple eyes"
 speakers = ["円香"]
 idol_id = 21
-default_outfit = "stand/1030210010"  # 【ダウト】
+default_outfit = "stand/1940210010"  # 【アイドルロード】
 greeting = "……どうも、樋口です。別に、期待はしてませんので"
 greeting_subtitle = "……你好，我是樋口。我可没抱什么期待。"
 
