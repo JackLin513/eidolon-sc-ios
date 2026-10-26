@@ -2071,6 +2071,20 @@ export const zh = {
     producer: "制作人",
     /** 侧边菜单上排点单备忘前的小字。 */
     memo: "点单",
+    /** 调酒台：开关、按钮上的字，和读屏读的材料份数。 */
+    counter: {
+      ice: "加冰",
+      aged: "陈化",
+      on: "，开着",
+      off: "，关着",
+      reset: "重做",
+      mix: "调制",
+      stop: "停止",
+      serve: "上酒",
+      parts: (name: string, n: number) => `${name}，${n} 份`,
+    },
+    /** 光顾没了（上酒得 410）时店门口写的。 */
+    visitGone: "这次光顾已经结束了",
   },
   /** 礼物子页（`/play/gifts`，GLOSSARY.md「礼物」「抽奖」，DESIGN.md「玩法页」）：抽奖台、重置卡条、我的礼物，和送礼面板、抽奖弹窗里的字。 */
   gifts: {

@@ -6,9 +6,10 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { loadPixelFont, measurePixelText } from "@/components/play/bar/PixelText";
 import type { BarSound } from "@/components/play/bar/useBarSound";
 import { copy } from "@/i18n";
-import { ApiError, type Character, enterBar, leaveBarVisit } from "@/lib/api";
+import { ApiError, type Character, enterBar, leaveBarVisit, serveBarDrink } from "@/lib/api";
+import { type BarMixerAction, garble, served } from "@/lib/barMixer";
 import { CHARS_PER_SECOND, paginate, typedOutAt } from "@/lib/barText";
-import { atTheDoor, barVisit, doorNotice } from "@/lib/barVisit";
+import { atTheDoor, barVisit, doorNotice, type VisitEvent } from "@/lib/barVisit";
 import { playHref } from "@/lib/playRoute";
 
 /** How often the box redraws while a page types out: once a character. */
@@ -21,6 +22,8 @@ const TYPING_TICK_MS = 1000 / CHARS_PER_SECOND;
  * 关着（409）回玩法页；离开、换页时关掉这次调用、`DELETE` 这次光顾；关页面、刷新时也尽量发出 `DELETE`。
  * 文本框里她的名字按 `visit` 推来的 `character_id` 在 `characters` 里找，每句来时找一次；角色读到之前店门口点了不进。
  * 进门那一下响门声、放曲目（useBarSound 要在这一下点击里开始）。
+ * 上酒（`serve`）：调 `POST …/serves`，上不了的只响 `buttonnoclick`；收下了响 `glassserve`，接着打它推来的句子，
+ * 拒了交给 lib/barVisit（422 故障瓶、410 回店门口、409 照旧）。
  */
 export function useBarVisit({
   userId,
@@ -36,10 +39,32 @@ export function useBarVisit({
   const [now, setNow] = useState(() => performance.now());
   const call = useRef<AbortController | null>(null);
   const visitId = useRef<string | null>(null);
+  const herId = useRef("");
   const roster = useRef(characters);
+  const latest = useRef(state);
   useEffect(() => {
     roster.current = characters;
+    latest.current = state;
   });
+
+  /** A call's events handed to lib/barVisit as they come, each line laid out in pages. */
+  const follow = useCallback(async (events: AsyncIterable<VisitEvent>) => {
+    for await (const event of events) {
+      if (event.type === "line") {
+        const { type: _, ...line } = event;
+        const her = roster.current?.find((c) => c.id === herId.current);
+        const names = { her: her ? (her.short_name ?? her.name) : "", producer: copy.bar.producer };
+        const pages = paginate(line, { names, measure: measurePixelText });
+        dispatch({ type: "line", line, pages, now: performance.now() });
+      } else {
+        if (event.type === "visit") {
+          visitId.current = event.visit_id;
+          herId.current = event.character_id;
+        }
+        dispatch({ type: "event", event });
+      }
+    }
+  }, []);
 
   /** The visit's call closed and the visit left, if one is under way. */
   const close = useCallback((leaving: { keepalive: boolean }) => {
@@ -57,25 +82,11 @@ export function useBarVisit({
     dispatch({ type: "enter" });
     const controller = new AbortController();
     call.current = controller;
-    let characterId = "";
+    herId.current = "";
     try {
       // 量字要用像素字：没载入就量，退回的字体宽度不一样，分页会错。
       await loadPixelFont().catch(() => {});
-      for await (const event of enterBar(userId, controller.signal)) {
-        if (event.type === "line") {
-          const { type: _, ...line } = event;
-          const her = roster.current?.find((c) => c.id === characterId);
-          const names = { her: her ? (her.short_name ?? her.name) : "", producer: copy.bar.producer };
-          const pages = paginate(line, { names, measure: measurePixelText });
-          dispatch({ type: "line", line, pages, now: performance.now() });
-        } else {
-          if (event.type === "visit") {
-            visitId.current = event.visit_id;
-            characterId = event.character_id;
-          }
-          dispatch({ type: "event", event });
-        }
-      }
+      await follow(enterBar(userId, controller.signal));
     } catch (e) {
       if (controller.signal.aborted) return;
       if (visitId.current) return; // 光顾中途断了：票 10。
@@ -85,7 +96,36 @@ export function useBarVisit({
       }
       dispatch({ type: "refused", notice: doorNotice(e instanceof ApiError ? e : null) });
     }
-  }, [userId, characters, state.stage, router, sound]);
+  }, [userId, characters, state.stage, router, sound, follow]);
+
+  const mix = useCallback((action: BarMixerAction) => dispatch({ type: "mix", action }), []);
+
+  const serve = useCallback(async () => {
+    const { isMixing, isServing, mixer } = latest.current;
+    const id = visitId.current;
+    const body = served(mixer);
+    if (!id || !body || !isMixing || isServing) {
+      sound.play("buttonnoclick");
+      return;
+    }
+    dispatch({ type: "serve" });
+    latest.current = { ...latest.current, isServing: true };
+    const controller = new AbortController();
+    call.current = controller;
+    let isTaken = false;
+    try {
+      const events = await serveBarDrink(id, body, controller.signal);
+      isTaken = true;
+      sound.play("glassserve");
+      dispatch({ type: "served" });
+      await follow(events);
+    } catch (e) {
+      if (controller.signal.aborted || isTaken) return; // 收下以后断了：票 10。
+      const status = e instanceof ApiError ? e.status : null;
+      if (status === 410) visitId.current = null;
+      dispatch({ type: "serveRefused", status, garble: garble() });
+    }
+  }, [sound, follow]);
 
   const tap = useCallback(() => dispatch({ type: "tap", now: performance.now() }), []);
 
@@ -126,5 +166,5 @@ export function useBarVisit({
     return () => window.clearInterval(id);
   }, [shown]);
 
-  return { state, now, enter, tap, leave };
+  return { state, now, enter, tap, leave, mix, serve };
 }

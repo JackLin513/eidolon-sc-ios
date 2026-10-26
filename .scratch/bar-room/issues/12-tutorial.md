@@ -61,3 +61,8 @@
 - 进门那一下：`useBarVisit` 的 `enter` 开头调 `sound.start()` 和 `sound.play("door")`（`useBarSound`）。教程的进门也要在点击里调这两样；`start()` 现在放默认曲单的第 1 首（正好是 22 Every Day is Night），但放完会接第 2 首。教程要单曲循环 22，得给 `start` 加参数（或用票 11 加的曲单 / 单曲循环口子），别靠默认曲单的顺序。
 - 打字音效不用管：`BarSubpage` 按 `typingVoice(state, now)`（`lib/barVisit`）循环，教程的文本框只要也给出同样形状的状态，或者在教程那边算出谁在打字，照样调 `sound.loop(…)`。
 - 「没有可用的音频」：看票 11 交接里加的 `audio` 状态（null 是还在读，空的是没有）。
+
+### 票 08 交接
+
+- 判两杯调成了什么：`lib/barMixer` 的 `matchDrink(drinks, mixture)`，`drinks` 是 `GET /api/bar` 的目录（`useBar()` 的 `bar.drinks`），`mixture` 是 `{ adelhyde, bronson_extract, powdered_delta, flanergide, karmotrine, ice, aged, method }`；回 `{ drink, big }`，调坏的回 null。调酒台停下时已经算好了，就在 `state.mixer.made`（`isFinished(state.mixer)` 时有效；null 是调坏的，调坏的本来就上不了）。
+- 调酒台的状态和动作在 `lib/barVisit` 里（`mixer`、`mix`、`serve`）。教程不调接口：上酒那一下不要走 `useBarVisit.serve`，自己拿 `state.mixer.made` 判，然后照教程往下走；`BarCounter`、`useBarCounter` 只认 `mixer`、`isCounterOpen`、`onMix`、`serve` 这几样，教程给自己的就行。

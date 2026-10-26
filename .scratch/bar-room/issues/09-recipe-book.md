@@ -31,3 +31,11 @@
 ### 票 07 交接
 
 - 放音效：`BarSubpage` 里的 `sound.play(name)`（`useBarSound`），名字照清单的 `name`：`mouse_hover`、`jukeselect`、`jukepick`、`jukechange`。没音频时什么都不做。悬停音效连着触发时每次都新起一个缓冲源，原版也是这样叠的，不用去重。
+
+### 票 08 交接
+
+- **瓶装从配方书拖进摇酒器**（用户在票 08 定的，规格「配方书」已改）：台上不放瓶装。拖的口子已经有了：`BarSubpage` 里的 `counter.drag`（`useShakerDrag`），在瓶装那一格上展开 `counter.drag.handlers({ bottle: drink })` 就能拖，跟着指针走的瓶子、摇酒器的悬停图、松手放进去、`addingredient` 都由调酒台画和处理；摇酒器不空时放不进去，响 `buttonnoclick`。`counter` 要从 `BarSubpage` 传给配方书。
+- 瓶装的图用 `drinkSprite(drink.id)`（`components/play/bar/drinkSprites.ts`），35×53、中心在 (17,26)。
+- 补上票 08 那条没做的 Playwright：瓶装拖进空的摇酒器、拖进去以后材料变灰、上酒的正文是 `{ method: "bottle", bottle: <id> }`；摇酒器里有东西时拖不进。
+- 调研笔记里打开配方书响 `boot_up`，票 08 没放，配方书打开时放。
+- 调酒台开没开：`state.isMixing`（`lib/barVisit`）；上酒请求在路上时 `state.isServing`。

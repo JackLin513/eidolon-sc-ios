@@ -9,9 +9,15 @@
 // - Once her order line is typed out (its last page) and she is `waiting`, the order memo shows
 //   and the bar counter opens; the two may come either way round.
 // - Her mood is that of the line of hers on the box; her mouth moves while it types out.
+// - While the counter is open the player mixes (lib/barMixer, empty as it opens) and serves: the
+//   counter locks while `POST …/serves` is under way; taken, it closes, poured out, and the next line (the
+//   producer's 「请慢用」) shows as soon as it comes; refused as broken (422), the shaker shows
+//   it broken; the visit gone (410), back at the door; anything else (409 for a double tap), as
+//   it was.
 
 import { copy } from "@/i18n";
 import type { ApiError } from "@/lib/api";
+import { type BarMixerAction, type BarMixerState, barMixer, canServe, emptyMixer } from "@/lib/barMixer";
 import { isTypedOut, shownRows, type TextPage, type TextRow, typedChars, type Typing } from "@/lib/barText";
 import type { Emotion } from "@/lib/standAnimations";
 
@@ -61,6 +67,10 @@ export type BarVisitState = {
   isMixing: boolean;
   /** Her mood: of the last line of hers on the box; calm as she comes in. */
   mood: Emotion;
+  /** The bar counter's shaker. */
+  mixer: BarMixerState;
+  /** What is in the shaker is being served (`POST …/serves` under way): the counter is locked. */
+  isServing: boolean;
 };
 
 export type BarVisitAction =
@@ -77,7 +87,16 @@ export type BarVisitAction =
   /** The page on the text box may have typed out (the screen ticks then). */
   | { type: "tick"; now: number }
   /** The visit left: back at the door, the visit gone. */
-  | { type: "left" };
+  | { type: "left" }
+  /** Something done at the open bar counter. */
+  | { type: "mix"; action: BarMixerAction }
+  /** What is in the shaker served: `POST …/serves` sent. */
+  | { type: "serve" }
+  /** The server took what was served: its call (her reaction) under way. */
+  | { type: "served" }
+  /** The server refused what was served, with this status (null: no answer at all); `garble` is
+   * what the slot says if it is broken. */
+  | { type: "serveRefused"; status: number | null; garble: string };
 
 export function atTheDoor(): BarVisitState {
   return {
@@ -93,6 +112,8 @@ export function atTheDoor(): BarVisitState {
     memo: null,
     isMixing: false,
     mood: "calm",
+    mixer: emptyMixer(),
+    isServing: false,
   };
 }
 
@@ -126,6 +147,25 @@ export function barVisit(state: BarVisitState, action: BarVisitAction): BarVisit
     }
     case "tick":
       return afterTyping(state, action.now);
+    case "mix": {
+      if (!state.isMixing || state.isServing) return state;
+      const mixer = barMixer(state.mixer, action.action);
+      return mixer === state.mixer ? state : { ...state, mixer };
+    }
+    case "serve":
+      return state.isMixing && !state.isServing && canServe(state.mixer) ? { ...state, isServing: true } : state;
+    case "served":
+      // 调酒时箭头不显示，玩家没理由去点：「请慢用」一到就顶掉点单句开始打。
+      return state.isServing
+        ? { ...state, isServing: false, isMixing: false, isAwaitingLine: true, mixer: emptyMixer() }
+        : state;
+    case "serveRefused":
+      if (!state.isServing) return state;
+      if (action.status === 410) return { ...atTheDoor(), notice: copy.bar.visitGone };
+      if (action.status === 422) {
+        return { ...state, isServing: false, mixer: barMixer(state.mixer, { type: "broken", garble: action.garble }) };
+      }
+      return { ...state, isServing: false };
   }
 }
 
@@ -163,7 +203,14 @@ function afterTyping(state: BarVisitState, now: number): BarVisitState {
 /** The bar counter opened, with her order memo, once her order is typed out and she waits. */
 function openCounter(state: BarVisitState): BarVisitState {
   if (!state.isOrderTyped || !state.isWaiting) return state;
-  return { ...state, isOrderTyped: false, isWaiting: false, isMixing: true, memo: state.pendingMemo ?? state.memo, pendingMemo: null };
+  return {
+    ...state,
+    isOrderTyped: false,
+    isWaiting: false,
+    isMixing: true,
+    memo: state.pendingMemo ?? state.memo,
+    pendingMemo: null,
+  };
 }
 
 /** The text box at `now`: whose line, its rows as far as typed, and whether it is typed out. */

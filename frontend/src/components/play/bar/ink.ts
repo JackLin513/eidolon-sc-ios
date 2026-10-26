@@ -17,4 +17,6 @@ export const BAR_INK = {
   /** The TV's 「ChN」. */
   channel: "#24ff00",
   black: "#000000",
+  /** The words on the bar counter's buttons (the prototype's). */
+  button: "#111111",
 } as const;

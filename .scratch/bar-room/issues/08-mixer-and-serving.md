@@ -28,14 +28,14 @@
 
 **Blocked by:** 07（音效的口子；店门口、说话和调酒状态在 06）
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `lib/barMixer`（vitest）：加到 20 份为止、减到 0 为止；冰、陈化开关；摇不到 5 秒 mix、满 5 秒 blend；每款匹配到自己；每款的大杯；本身大的没有翻倍版；可选 Karmotrine 加 0 份和加几份；差一样就调坏；Flaming Moai 的配方调坏；瓶装只能拖进空的摇酒器、之后不能加材料；调坏了不能上；上酒的正文；份数槽写什么。
-- [ ] `lib/barVisit` 补上上酒（vitest）：422 显示故障瓶、410 回店门口、409 不变。
-- [ ] Playwright（拦下的 SSE，两杯的光顾）：鼠标拖、触屏拖（`hasTouch` 的上下文）、点一下不加、键盘调；mix 和 blend；调坏的上不了；瓶装；上酒的请求体对；422 和 410。截图给用户看。
-- [ ] 接真后端和本机的对话模型，一杯杯上到告别。
-- [ ] 前端 typecheck、vitest 通过。
-- [ ] 收尾：Comments 写下 `lib/barMixer` 的匹配怎么调用，给票 12（教程用它判两杯）。
+- [x] `lib/barMixer`（vitest）：加到 20 份为止、减到 0 为止；冰、陈化开关；摇不到 5 秒 mix、满 5 秒 blend；每款匹配到自己；每款的大杯；本身大的没有翻倍版；可选 Karmotrine 加 0 份和加几份；差一样就调坏；Flaming Moai 的配方调坏；瓶装只能拖进空的摇酒器、之后不能加材料；调坏了不能上；上酒的正文；份数槽写什么。
+- [x] `lib/barVisit` 补上上酒（vitest）：422 显示故障瓶、410 回店门口、409 不变。
+- [x] Playwright（拦下的 SSE，两杯的光顾）：鼠标拖、触屏拖（`hasTouch` 的上下文）、点一下不加、键盘调；mix 和 blend；调坏的上不了；~~瓶装~~（改成从配方书拖，跟票 09 验）；上酒的请求体对；422 和 410。截图给用户看。
+- [x] 接真后端和本机的对话模型，一杯杯上到告别。
+- [x] 前端 typecheck、vitest 通过。
+- [x] 收尾：Comments 写下 `lib/barMixer` 的匹配怎么调用，给票 12（教程用它判两杯）。
 
 ## Comments
 
@@ -61,3 +61,19 @@
 
 - 放音效：`BarSubpage` 里的 `sound`（`useBarSound(audioBase)` 的返回）有 `sound.play("addingredient")` 这样的口子，名字是清单里音效的 `name`。传给调酒台组件就行；没有这个音效、没音频时什么都不做，不用判断。音效第一次用到时才下载，之后用缓冲区，连着点也不会重复下载。
 - 要循环的（比如摇酒的声音，如果有）用 `sound.loop(name)`，`sound.loop(null)` 停；同一时间只有一个循环，和打字音效共用。真要同时循环两样，得把 `loop` 改成按名字分开管。
+
+### 实现说明（票 08）
+
+- **`lib/barMixer`**（新）：`BarMixerState` 和归约 `barMixer(state, action)`，动作 `add`、`remove`、`ice`、`aged`、`shake { now }`、`stop { now, drinks, garble }`、`bottle { drink }`、`reset`、`broken { garble }`（服务器 422）。做不了的动作原样返回同一个对象，组件据此响 `buttonnoclick`。派生：`shakeStage`（still / slow / fast / stopped，按 `shakenAt` 和现在算）、`canServe`、`served`（`POST …/serves` 的正文）、`slotText`、`isTakingIngredients`、`isEmpty`、`isFinished`、`totalParts`；`garble()` 生成乱码。匹配是 `matchDrink(drinks, mixture)`，和后端 `DrinkCatalog.match` 同一套规则。测试读真的 `characters/drinks.toml`（运行时读，同 `barAudio.test.ts`），24 款每款都测到。
+- **`lib/barVisit`**：状态多了 `mixer` 和 `isServing`；动作多了 `mix { action }`（调酒台开着、没在上酒时才转给 lib/barMixer）、`serve`（锁住调酒台）、`served`（服务器收下：调酒台收起、倒空，`isAwaitingLine` 设成 true，「请慢用」一到就打）、`serveRefused { status, garble }`（422 故障瓶、410 回店门口写 `copy.bar.visitGone`、其余照旧）。
+- **`lib/api`**：`serveBarDrink(visitId, body, signal)`：先等回答，拒了照 `json` 抛 `ApiError`，收下了才返回事件流，所以「收下」和「拒了」分得开。
+- **组件**：`BarCounter.tsx` 是调酒台的画面加 `useBarCounter`（音效、光圈、飘字、键盘、拖）；`useShakerDrag.ts` 是拖进摇酒器（pointer 事件，松手在摇酒器上才放进去）；`drinkSprites.ts` 是目录 id 到饮品图的对照。`BarScreen` 加了原版手套鼠标（细指针才有，按缩放取 1/2/3 倍，`--cur`、`--cur-open`、`--cur-closed`、`--cur-next-0…3`），`HitArea` 多一个 `cursor`；`BarTextBox` 停上去是会动的 NEXT 气泡。
+- **几处判断**：
+  - 瓶装不放在台上，改成从配方书拖（用户当场定的，规格已改）。票 08 只做了 lib 和拖的落点。
+  - Frothy Water 借 Beer 的图（规格已记）。
+  - 按钮上写原版的「重做」（原型定稿和调研笔记都是这两个字），不是票里说的「重来」。
+  - `glassserve` 等服务器收下才响，免得前端和服务器判得不一样时（422）先响成功、再出故障瓶。
+  - 键盘加减照原版不出声，加不进去时也不出声；点、拖做不了的动作响 `buttonnoclick`。
+  - 「重做」按下时换 `reset_hover`、沉 1px（CSS `:active`）。调研笔记里松手时那圈白光没做：票 01 没提取 `shakerpulse_white`。
+  - 上酒除了 409、410、422 以外的错误（500、断网）也照旧、可以再上；收下以后事件流断了，留给票 10。
+- **审查后没改的**（判断题）：`shake`、`shakenAt`、`method`、`made`、`garble` 可以并成一个按阶段分的联合类型，现在是平铺的几个字段，`served` 里有一个 `method!`；`Made` 这个名字偏泛。

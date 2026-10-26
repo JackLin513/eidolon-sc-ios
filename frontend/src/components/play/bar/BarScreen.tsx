@@ -1,10 +1,10 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, type CSSProperties, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { BAR_INK } from "@/components/play/bar/ink";
 import { measurePixelText, PixelText } from "@/components/play/bar/PixelText";
-import { Sprite } from "@/components/play/bar/Sprite";
+import { barImage, Sprite } from "@/components/play/bar/Sprite";
 import { copy } from "@/i18n";
 import { wrapText } from "@/lib/barText";
 import { BAR_HEIGHT, BAR_WIDTH, type BarPointer, type BarPlacement, barScreen } from "@/lib/barScreen";
@@ -36,6 +36,28 @@ function usePointer(): BarPointer {
   return pointer;
 }
 
+/** Where each of the original's gloves points (its hot spot), at 1×. */
+const HOT_SPOTS = { spr: [4, 0], clicked: [4, 0], open: [4, 0], closed: [9, 0], next: [4, 0] } as const;
+
+/**
+ * 原版的鼠标（cursor_obj，照原型的 `cursorVars`）：平时白手套、按下时「按下」，停在材料上张开（`--cur-open`）、拖着时握拳
+ * （`--cur-closed`），停在文本框上是会动的 NEXT 气泡（`--cur-next-0`…`3`）。原版鼠标跟着画面放大，这里按缩放取整选
+ * 1/2/3 倍的图，热点也跟着乘。画面里的按钮继承画面的鼠标，要换的地方自己写 `cursor: var(--cur-…)`。
+ */
+function gloveCursors(scale: number, isPressed: boolean): CSSProperties {
+  const k = Math.min(3, Math.max(1, Math.round(scale)));
+  const glove = (name: string, spot: keyof typeof HOT_SPOTS) =>
+    `url(${barImage(`cur_${name}@${k}`)}) ${HOT_SPOTS[spot][0] * k} ${HOT_SPOTS[spot][1] * k}, auto`;
+  const vars: Record<string, string> = {
+    cursor: "var(--cur)",
+    "--cur": isPressed ? glove("clicked", "clicked") : glove("spr", "spr"),
+    "--cur-open": glove("open", "open"),
+    "--cur-closed": glove("closed", "closed"),
+  };
+  for (let i = 0; i < 4; i++) vars[`--cur-next-${i}`] = glove(`next_${i}`, "next");
+  return vars as CSSProperties;
+}
+
 /** The safe-area insets, read off an element padded by them. */
 function insetsOf(probe: HTMLElement) {
   const style = getComputedStyle(probe);
@@ -54,6 +76,7 @@ function insetsOf(probe: HTMLElement) {
  * （扣掉安全区和通话条，通话条出现、消失时重新算）。画面里的东西都按逻辑像素摆，分五层，从下往上：
  * 吧台背景（`room`）、客人立绘（`guest`）、调酒时盖住客人的配方书（`book`）、整张不透明的外框（挖出 L 形的客人窗和文本框），
  * 最上面是按钮和文字（`children`）。手机竖着时整层盖上「请横过来」（`portrait`），下面的画面照旧在。
+ * 电脑（细指针）上鼠标是原版的手套（`gloveCursors`），手机上没有。
  */
 export function BarScreen({
   room,
@@ -72,6 +95,17 @@ export function BarScreen({
   const probe = useRef<HTMLDivElement>(null);
   const pointer = usePointer();
   const [placed, setPlaced] = useState<BarPlacement | null>(null);
+  const [isPressed, setPressed] = useState(false);
+  useEffect(() => {
+    if (!isPressed) return;
+    const release = () => setPressed(false);
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    return () => {
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+    };
+  }, [isPressed]);
 
   useEffect(() => {
     const el = layer.current;
@@ -111,7 +145,9 @@ export function BarScreen({
               height: BAR_HEIGHT,
               transform: `scale(${placed.scale})`,
               transformOrigin: "0 0",
+              ...(pointer === "fine" ? gloveCursors(placed.scale, isPressed) : {}),
             }}
+            onPointerDown={() => setPressed(true)}
           >
             {room}
             {guest}
@@ -134,6 +170,7 @@ export function HitArea({
   width,
   height,
   label,
+  cursor,
   onClick,
 }: {
   x: number;
@@ -141,10 +178,18 @@ export function HitArea({
   width: number;
   height: number;
   label: string;
+  /** Its own pointer, over the screen's (a `var(--cur-…)` glove). */
+  cursor?: string;
   onClick: () => void;
 }) {
   return (
-    <button type="button" aria-label={label} className="bar-hit absolute" style={{ left: x, top: y, width, height }} onClick={onClick} />
+    <button
+      type="button"
+      aria-label={label}
+      className="bar-hit absolute"
+      style={{ left: x, top: y, width, height, cursor }}
+      onClick={onClick}
+    />
   );
 }
 

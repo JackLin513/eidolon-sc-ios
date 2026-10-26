@@ -41,3 +41,8 @@
 
 - `retrying` 要「从这次调用开始前的那一页接着」、`failed` 后重试要「先清掉出错这次调用推来的句子」：`LinePage` 现在不知道自己是哪次调用推来的，得加一个调用的标记（比如每次 `enter`、`serves`、`retry` 开头记一个调用序号，`line` 动作带上），再按它从 `queue` 和 `shown` 里清。
 - 光顾中途调用断了（`for await` 抛错、流提前结束）回店门口写一句，在 `useBarVisit` 的 `enter` 的 `catch` 里那个「票 10」注释处接。
+
+### 票 08 交接
+
+- 上酒在 `useBarVisit.serve`：服务器收下以后（`served`）事件流断了现在直接忽略（`catch` 里 `isTaken` 就 return），归票 10 的「网络断了回店门口」。
+- 上酒得 410 已经回店门口、写「这次光顾已经结束了」（`copy.bar.visitGone`，`serveRefused`）；票 10 做其余请求的 410 时可以共用这句。

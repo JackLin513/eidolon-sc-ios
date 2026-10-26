@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { ApiError } from "@/lib/api";
+import { ApiError, type Drink } from "@/lib/api";
+import { type BarMixerAction, emptyMixer } from "@/lib/barMixer";
 import { paginate } from "@/lib/barText";
 import {
   type BarVisitAction,
@@ -212,5 +213,93 @@ describe("点单", () => {
 
   it("不是点单的句子打完，waiting 到了也不开", () => {
     expect(run(ENTER, VISIT, line(HELLO, 0), WAITING, { type: "tick", now: 9000 })).toMatchObject({ isMixing: false });
+  });
+});
+
+describe("调酒和上酒", () => {
+  const SUGAR_RUSH: Drink = {
+    id: "sugar-rush",
+    name: "Sugar Rush",
+    short_name: "Sugar Rush",
+    flavor: "sweet",
+    kind: "girly",
+    method: "mix",
+    adelhyde: 2,
+    bronson_extract: 0,
+    powdered_delta: 1,
+    flanergide: 0,
+    karmotrine: "optional",
+    ice: false,
+    aged: false,
+    big: false,
+    page: 21,
+  };
+  const DRINKS = [SUGAR_RUSH];
+  const mix = (action: BarMixerAction): BarVisitAction => ({ type: "mix", action });
+  const mixing = run(
+    ENTER,
+    VISIT,
+    line(ORDER, 0),
+    { type: "event", event: { type: "memo", text: "她要 Sugar Rush。" } },
+    { type: "event", event: { type: "waiting" } },
+    { type: "tick", now: 9000 },
+  );
+  const made = [
+    mix({ type: "add", ingredient: "adelhyde" }),
+    mix({ type: "add", ingredient: "adelhyde" }),
+    mix({ type: "add", ingredient: "powdered_delta" }),
+    mix({ type: "shake", now: 10_000 }),
+    mix({ type: "stop", now: 11_000, drinks: DRINKS, garble: "##" }),
+  ];
+  const ready = made.reduce(barVisit, mixing);
+
+  it("调酒台开着时才能调；打开时摇酒器是空的", () => {
+    expect(mixing.mixer).toEqual(emptyMixer());
+    const talking = run(ENTER, VISIT, line(HELLO, 0));
+    expect(barVisit(talking, mix({ type: "add", ingredient: "adelhyde" }))).toBe(talking);
+  });
+
+  it("上酒：送出去时调酒台锁住，再按没用（双击）", () => {
+    const serving = barVisit(ready, { type: "serve" });
+
+    expect(serving).toMatchObject({ isServing: true, isMixing: true });
+    expect(barVisit(serving, { type: "serve" })).toBe(serving);
+    expect(barVisit(serving, mix({ type: "reset" }))).toBe(serving);
+  });
+
+  it("没停、调坏的上不了", () => {
+    const shaking = made.slice(0, 4).reduce(barVisit, mixing);
+    expect(barVisit(shaking, { type: "serve" })).toBe(shaking);
+    const broken = barVisit(barVisit(ready, mix({ type: "reset" })), mix({ type: "add", ingredient: "flanergide" }));
+    const stopped = [mix({ type: "shake", now: 0 }), mix({ type: "stop", now: 10, drinks: DRINKS, garble: "##" })].reduce(barVisit, broken);
+    expect(barVisit(stopped, { type: "serve" })).toBe(stopped);
+  });
+
+  it("服务器收下了：调酒台收起，「请慢用」一到马上打", () => {
+    const served = barVisit(barVisit(ready, { type: "serve" }), { type: "served" });
+
+    expect(served).toMatchObject({ isServing: false, isMixing: false, isAwaitingLine: true, memo: "她要 Sugar Rush。" });
+    expect(served.mixer).toEqual(emptyMixer());
+    const enjoy = barVisit(served, line({ speaker: "producer", zh: "请慢用" }, 20_000));
+    expect(shownText(enjoy, 20_000)?.line).toEqual({ speaker: "producer", zh: "请慢用" });
+  });
+
+  it("422：照服务器的显示故障瓶，别的什么都不发生", () => {
+    const refused = barVisit(barVisit(ready, { type: "serve" }), { type: "serveRefused", status: 422, garble: "%%!!" });
+
+    expect(refused).toMatchObject({ isServing: false, isMixing: true, stage: "visit" });
+    expect([refused.mixer.made, refused.mixer.garble]).toEqual([null, "%%!!"]);
+  });
+
+  it("410：回店门口，写这次光顾已经结束了", () => {
+    const gone = barVisit(barVisit(ready, { type: "serve" }), { type: "serveRefused", status: 410, garble: "" });
+
+    expect(gone).toEqual({ ...atTheDoor(), notice: "这次光顾已经结束了" });
+  });
+
+  it("409（双击）和别的错误：照旧，可以再上", () => {
+    const refused = barVisit(barVisit(ready, { type: "serve" }), { type: "serveRefused", status: 409, garble: "" });
+
+    expect(refused).toEqual(ready);
   });
 });

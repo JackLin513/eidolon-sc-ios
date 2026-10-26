@@ -17,27 +17,34 @@ const INSET = { x: 6, y: 3 };
 const ARROW_FRAMES = 4;
 const ARROW_FRAME_MS = 111;
 
+/** The glove's NEXT bubble over the text box: four frames, as quick as the arrow. */
+const NEXT_FRAMES = 4;
+
 /**
  * 文本框（.scratch/bar-room spec「文本框和打字」）：一页台词，名字按角色上色、接冒号（她用官方色，制作人用原型的「我」色），
  * 正文白色，她的中文字幕灰色。打完右下角 `arrow_text_2` 上下跳。点哪都算：交给 lib/barVisit，先打完、再翻页。
+ * 电脑上鼠标停在文本框上是会动的 NEXT 气泡（`isNextCursor`：点了有用的时候）。
  */
 export function BarTextBox({
   text,
   herColor,
   isArrowShown,
+  isNextCursor,
   onTap,
 }: {
   text: { line: VisitLine; rows: TextRow[] } | null;
   herColor: string;
   isArrowShown: boolean;
+  isNextCursor: boolean;
   onTap: () => void;
 }) {
   const [frame, setFrame] = useState(0);
+  const isMoving = isArrowShown || isNextCursor;
   useEffect(() => {
-    if (!isArrowShown) return;
-    const id = window.setInterval(() => setFrame((n) => (n + 1) % ARROW_FRAMES), ARROW_FRAME_MS);
+    if (!isMoving) return;
+    const id = window.setInterval(() => setFrame((n) => n + 1), ARROW_FRAME_MS);
     return () => window.clearInterval(id);
-  }, [isArrowShown]);
+  }, [isMoving]);
 
   const runs: PixelRun[] = [];
   text?.rows.forEach((row, i) => {
@@ -48,8 +55,13 @@ export function BarTextBox({
   return (
     <>
       {text && <PixelText x={BOX.x + INSET.x} y={BOX.y + INSET.y} runs={runs} />}
-      {isArrowShown && <Sprite name={`arrow_${frame}`} x={BOX.x + BOX.width - 16} y={BOX.y + BOX.height - 13} width={8} height={8} />}
-      <HitArea {...BOX} label={copy.bar.next} onClick={onTap} />
+      {isArrowShown && <Sprite name={`arrow_${frame % ARROW_FRAMES}`} x={BOX.x + BOX.width - 16} y={BOX.y + BOX.height - 13} width={8} height={8} />}
+      <HitArea
+        {...BOX}
+        label={copy.bar.next}
+        cursor={isNextCursor ? `var(--cur-next-${frame % NEXT_FRAMES})` : undefined}
+        onClick={onTap}
+      />
     </>
   );
 }

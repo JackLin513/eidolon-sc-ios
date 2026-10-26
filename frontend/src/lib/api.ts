@@ -14,6 +14,7 @@ import {
 } from "@/lib/localOwnKeys";
 import type { LLMOffer, LLMProvider } from "@/lib/llmProviders";
 import type { EffortHint } from "@/lib/reasoningEffort";
+import type { ServedBody } from "@/lib/barMixer";
 import type { VisitEvent } from "@/lib/barVisit";
 import type { Rewarded } from "@/lib/rewards";
 import { detectTimezone } from "@/lib/timezone";
@@ -706,6 +707,25 @@ export async function* enterBar(userId: string, signal?: AbortSignal): AsyncGene
     signal,
   });
   yield* serverSentEvents<VisitEvent>(res);
+}
+
+/** Serves her what the bar counter holds (lib/barMixer `served`). Once the server took it, the
+ * call it set off, to be followed as it comes: the producer's 「请慢用」, her reaction, and her next
+ * order or her goodbye. Refused if it is none of the drinks (422 `broken_drink`), while she is not
+ * waiting for one (409, a double tap), or with the visit gone (410 `visit_gone`). */
+export async function serveBarDrink(
+  visitId: string,
+  served: ServedBody,
+  signal?: AbortSignal,
+): Promise<AsyncGenerator<VisitEvent>> {
+  const res = await api(`/api/bar/visits/${encodeURIComponent(visitId)}/serves`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(served),
+    signal,
+  });
+  if (!res.ok) await json(res);
+  return serverSentEvents<VisitEvent>(res);
 }
 
 /** Leaves the visit: over, not to be come back to. `keepalive` as the page goes away. */
