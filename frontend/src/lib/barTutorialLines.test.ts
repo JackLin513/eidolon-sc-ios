@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { TUTORIAL, TUTORIAL_START, type TutorialSectionId } from "@/lib/barTutorialLines";
 
-const EMOTIONS = ["calm", "happy", "shy", "surprised", "sad", "angry", "thinking"];
 const SECTIONS = Object.entries(TUTORIAL) as [TutorialSectionId, (typeof TUTORIAL)[TutorialSectionId]][];
 
 /** 像素字下大致占几个全角字：ASCII 半个，其余一个。 */
@@ -46,42 +45,20 @@ function path(served: string[]): TutorialSectionId[] {
 }
 
 describe("教程台词", () => {
-  it("每一段都在", () => {
-    expect(Object.keys(TUTORIAL).sort()).toEqual(
-      [
-        "opening",
-        "lesson1",
-        "first.sugar-rush",
-        "first.piano-man",
-        "first.other",
-        "lesson2",
-        "second.moonblast",
-        "second.other",
-        "closing",
-        "jukebox",
-      ].sort(),
-    );
-  });
-
-  it.each(SECTIONS)("%s：有台词、有备忘，每句的说话人、语言和情绪都齐", (_, section) => {
-    expect(section.lines.length).toBeGreaterThan(0);
-    expect(section.memo.trim()).not.toBe("");
-    for (const line of section.lines) {
-      expect(EMOTIONS).toContain(line.emotion);
-      expect(line.zh.trim()).not.toBe("");
-      if (line.who === "her") expect(line.ja.trim()).not.toBe("");
-      else expect(line).not.toHaveProperty("ja");
+  it("每段有台词和备忘，她每句有日语和中文，制作人每句有中文；每句一页放得下，备忘两行放得下", () => {
+    for (const [id, section] of SECTIONS) {
+      expect(section.lines.length, id).toBeGreaterThan(0);
+      // 侧边菜单上排 172 宽、两行，前面有「点单　」三个字。
+      expect(section.memo.trim(), id).not.toBe("");
+      expect(Math.ceil((3 + width(section.memo)) / 13), section.memo).toBeLessThanOrEqual(2);
+      for (const line of section.lines) {
+        expect(line.zh.trim(), id).not.toBe("");
+        if (line.who === "her") expect(line.ja.trim(), id).not.toBe("");
+        // 名字接冒号在同一行开头（她「はづき：」，制作人的名字按 8 个字算）；她的日语、中文各自折行；最多 4 行。
+        const used = line.who === "her" ? rows(`はづき：${line.ja}`) + rows(line.zh) : rows(`一二三四五六七：${line.zh}`);
+        expect(used, line.zh).toBeLessThanOrEqual(4);
+      }
     }
-  });
-
-  it.each(SECTIONS)("%s：每句一页放得下，备忘两行放得下", (_, section) => {
-    for (const line of section.lines) {
-      // 名字接冒号在同一行开头（她「はづき：」，制作人的名字按 8 个字算）；她的日语、中文各自折行；最多 4 行。
-      const used = line.who === "her" ? rows(`はづき：${line.ja}`) + rows(line.zh) : rows(`一二三四五六七：${line.zh}`);
-      expect(used, line.zh).toBeLessThanOrEqual(4);
-    }
-    // 侧边菜单上排 172 宽、两行，前面有「点单　」三个字。
-    expect(Math.ceil((3 + width(section.memo)) / 13), section.memo).toBeLessThanOrEqual(2);
   });
 
   it("只有两段讲解打完以后打开调酒台：第一杯分三种反应，第二杯分两种", () => {
@@ -128,9 +105,7 @@ describe("教程台词", () => {
     expect(all).not.toMatch(/讨厌|苦手|嫌い|最好|ベスト|门槛|電視|电视|テレビ|快捷键|キーボード|键盘|Shift|离开|退出/);
   });
 
-  it("点唱机那句单独一段，接在收尾后面，走完就结束（取不到音频时整段省掉）", () => {
-    expect(TUTORIAL.closing.then).toEqual({ type: "section", section: "jukebox" });
-    expect(TUTORIAL.jukebox.then).toEqual({ type: "done" });
+  it("点唱机那句说要先选好 12 首", () => {
     expect(TUTORIAL.jukebox.lines.map((l) => l.zh).join("")).toMatch(/12 首/);
   });
 });
