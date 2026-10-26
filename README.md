@@ -47,7 +47,8 @@ GLOSSARY.md             # 领域词汇
    ```sh
    cd ../eidolon-sc/backend
    uv run --env-file=../.env python ../../eidolon-sc-ios/tools/export_content_bundle.py \
-     --db data/eidolon.db --characters ../characters --out ../../eidolon-sc-ios/build/eidolon-content.eidolonpkg
+     --upstream .. --db data/eidolon.db --characters ../characters \
+     --out ../../eidolon-sc-ios/build/eidolon-content.eidolonpkg
    ```
 
    要带上她的立绘，先用上游的 `eidolon stand fetch` 和 `eidolon stand outfits` 把素材整理到
@@ -56,7 +57,8 @@ GLOSSARY.md             # 领域词汇
    ```sh
    # 默认衣装 + 清单里的前 3 张卡；--stand-all-outfits 打全部，--stand-cards 0 只打默认衣装
    uv run --env-file=../.env python ../../eidolon-sc-ios/tools/export_content_bundle.py \
-     --db data/eidolon.db --characters ../characters --stand ../../eidolon-sc-ios/build/stand \
+     --upstream .. --db data/eidolon.db --characters ../characters \
+     --stand ../../eidolon-sc-ios/build/stand \
      --stand-cards 3 --out ../../eidolon-sc-ios/build/eidolon-content.eidolonpkg
    ```
 
