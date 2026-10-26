@@ -80,7 +80,7 @@
 ### 票 11 交接
 
 - **打开选曲界面**：`BarSubpage` 里的 `isChoosing`（`useState(true)`）。为真、`jukebox.isAvailable`、`jukebox.jukebox` 读出来了时盖上 `BarJukeboxSetup`；Ready! 调 `jukebox.choose(slots)` 存下、`setChoosing(false)` 到店门口。教程第一次进来要跳过选曲界面：初值改成「看过教程」；收尾那句之后 `setChoosing(true)` 就弹出来（槽填的是 `jukebox.jukebox.slots`，第一次就是默认 12 首）。「填好默认 12 首」要是指不管存过什么都用默认的，用 `defaultSlots(audio)` 传给 `slots`。
-- **没有音频**：`jukebox.isAvailable` 为假（`sound.audio` 是空的）；`sound.audio === null` 是 manifest 还在读，这时 `BarSubpage` 盖一层黑的。
+- **没有音频**：看 `sound.audio`：`null` 是 manifest 还在读（这时 `BarSubpage` 盖一层黑的），曲目是空的是没有音频。`jukebox.isAvailable` 在读的时候也是假的，判「省掉点唱机那句」要等读完。
 - **侧边菜单那一格**：`SideMenu` 的 `jukebox` 属性（`JukeboxCell`，`BarScreen.tsx`）：`{ state: "open" | "closed" | "none", onToggle }`，null 是不画。「跳过」要换掉它：给 `SideMenu` 加一种写法（例如 `jukebox` 换成一个更通用的 `{ label, color, onClick }` 格子），位置 (445,312) 72×20，字在 (450,313)。
 - **曲目**：`useBarJukebox.start()` 开始过就不再动（`isStarted`），从选的第 1 首放。教程要循环放 Every Day is Night（22）：现在没有「放指定的一首」的口子，要给 `useBarJukebox` 加一个（同一个 `<audio>`，`loop = true`），并且教程结束后真正的第一次光顾进门时 `start()` 还能从第 1 首放起（把 `isStarted` 复位，或教程那首不算开始）。注意 `preview` / `stopPreview` 也用这个 `<audio>`：教程完了弹选曲界面时一试听就会停掉教程那首，`stopPreview` 只停 `loop` 的，教程那首也是 `loop` 的话会一起停（也正好：选曲界面上本来就安静）。
 

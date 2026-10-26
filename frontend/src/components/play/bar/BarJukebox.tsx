@@ -2,7 +2,7 @@
 
 import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 
-import { primaryPointer } from "@/components/play/bar/BarScreen";
+import { HitArea, usePointer } from "@/components/play/bar/BarScreen";
 import { BAR_INK } from "@/components/play/bar/ink";
 import { measurePixelText, PixelText } from "@/components/play/bar/PixelText";
 import { Sprite } from "@/components/play/bar/Sprite";
@@ -68,7 +68,7 @@ export function BarJukeboxSetup({
   /** The name waited on to preview, its wait shown. */
   const [waiting, setWaiting] = useState<number | null>(null);
   const [frame, setFrame] = useState(0);
-  const [isCoarse, setCoarse] = useState(false);
+  const isCoarse = usePointer() === "coarse";
   const timers = useRef<number[]>([]);
   /** A long press just ended: the click that follows it is not a tap. */
   const isLongPress = useRef(false);
@@ -76,7 +76,6 @@ export function BarJukeboxSetup({
   const titleOf = (id: number | null) => tracks.find((track) => track.id === id)?.title ?? null;
 
   useEffect(() => {
-    setCoarse(primaryPointer() === "coarse");
     const id = window.setTimeout(() => {
       setBooted(true);
       play("boot_up");
@@ -94,20 +93,20 @@ export function BarJukeboxSetup({
     timers.current.forEach((id) => window.clearTimeout(id));
     timers.current = [];
   };
-  const later = (ms: number, then: () => void) => timers.current.push(window.setTimeout(then, ms));
+  const after = (ms: number, then: () => void) => timers.current.push(window.setTimeout(then, ms));
   /** Waits on `id`, then previews it. */
-  const waitToPreview = (id: number, after: number) =>
-    later(PREVIEW_MS - after, () => {
+  const waitToPreview = (id: number, waited: number) =>
+    after(PREVIEW_MS - waited, () => {
       setWaiting(null);
       preview(id);
     });
 
   const add = (id: number) => {
-    const at = slots.indexOf(null);
-    if (at < 0) return play("buttonnoclick");
+    if (isReady(slots)) return play("buttonnoclick");
     play("jukeselect");
     setSlots(pickTrack(slots, id));
-    setHalo({ slot: at, n: (halo?.n ?? 0) + 1 });
+    const slot = slots.indexOf(null);
+    setHalo((h) => ({ slot, n: (h?.n ?? 0) + 1 }));
   };
   const tapSlot = (i: number) => {
     if (slots[i] === null) return;
@@ -145,7 +144,7 @@ export function BarJukeboxSetup({
       isLongPress.current = false;
       clearTimers();
       onDown();
-      later(LONG_PRESS_MS, () => {
+      after(LONG_PRESS_MS, () => {
         isLongPress.current = true;
         onLong();
       });
@@ -318,18 +317,17 @@ export function BarJukeboxPlayer({ jukebox, sound }: { jukebox: BarJukebox; soun
   if (!state) return null;
   const p = t.player;
   const button = (label: string, at: (typeof PLAYER_BUTTONS)[keyof typeof PLAYER_BUTTONS], onClick: () => void, pressed?: boolean) => (
-    <button
-      type="button"
-      aria-label={label}
-      aria-pressed={pressed}
-      className="bar-hit absolute"
-      style={{ left: at.x, top: at.y, width: at.width, height: at.height }}
+    <HitArea
+      {...at}
+      label={label}
+      pressed={pressed}
       onClick={() => {
         sound.play("buttonclick");
         onClick();
       }}
     />
   );
+  const flashOn = (which: "back" | "next") => setFlash((f) => ({ which, n: (f?.n ?? 0) + 1 }));
   return (
     <div className="bar-juke-open absolute inset-0" style={{ transformOrigin: "0 27px", pointerEvents: "none" }}>
       <div style={{ pointerEvents: "auto" }}>
@@ -340,12 +338,12 @@ export function BarJukeboxPlayer({ jukebox, sound }: { jukebox: BarJukebox; soun
         <PixelText x={442} y={70} runs={jukebox.title} color={BAR_INK.off} mono label="" />
         <PixelText x={442} y={69} runs={jukebox.title} mono />
         {button(p.previous, PLAYER_BUTTONS.previous, () => {
-          setFlash({ which: "back", n: (flash?.n ?? 0) + 1 });
+          flashOn("back");
           jukebox.previous();
         })}
         {button(state.isPaused ? p.play : p.pause, PLAYER_BUTTONS.pause, jukebox.togglePause)}
         {button(p.next, PLAYER_BUTTONS.next, () => {
-          setFlash({ which: "next", n: (flash?.n ?? 0) + 1 });
+          flashOn("next");
           jukebox.next();
         })}
         {button(p.shuffle, PLAYER_BUTTONS.shuffle, () => jukebox.changeMode("shuffle"), state.mode === "shuffle")}

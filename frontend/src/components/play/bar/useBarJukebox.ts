@@ -30,13 +30,15 @@ import {
 export function useBarJukebox({ userId, audio, base }: { userId: string | null; audio: BarAudio | null; base: string | null }) {
   const isAvailable = audio !== null && hasJukebox(audio);
   const [jukebox, setJukebox] = useState<Jukebox | null>(null);
-  const [at, setAt] = useState(0);
+  const [playing, setPlaying] = useState(0);
   const [isOpen, setOpen] = useState(false);
   const [previewing, setPreviewing] = useState<number | null>(null);
   const latest = useRef<Jukebox | null>(null);
-  const atRef = useRef(0);
+  /** The slot playing (or to play once unpaused). */
+  const playingRef = useRef(0);
   const element = useRef<HTMLAudioElement | null>(null);
   const isStarted = useRef(false);
+  const modeNow = () => latest.current?.mode ?? "order";
 
   useEffect(() => {
     if (!userId || !audio || !hasJukebox(audio)) return;
@@ -58,26 +60,28 @@ export function useBarJukebox({ userId, audio, base }: { userId: string | null; 
     [userId],
   );
 
+  /** The one `<audio>`, made the first time: a track ended plays the next by the mode (a preview loops, never ends). */
+  const audioElement = useCallback((): HTMLAudioElement => {
+    if (!element.current) {
+      const a = new Audio();
+      a.addEventListener("ended", () => playSlotRef.current(slotAfter(latest.current?.mode ?? "order", playingRef.current)));
+      element.current = a;
+    }
+    return element.current;
+  }, []);
+
   const playSlot = useCallback(
     (slot: number) => {
       const id = latest.current?.slots[slot];
       if (id === null || id === undefined) return;
-      let a = element.current;
-      if (!a) {
-        a = new Audio();
-        a.addEventListener("ended", () => {
-          const mode = latest.current?.mode ?? "order";
-          playSlotRef.current(slotAfter(mode, atRef.current));
-        });
-        element.current = a;
-      }
+      const a = audioElement();
       a.loop = false;
       a.src = `${base}/music/${id}.ogg`;
-      atRef.current = slot;
-      setAt(slot);
+      playingRef.current = slot;
+      setPlaying(slot);
       void a.play().catch(() => {});
     },
-    [base],
+    [base, audioElement],
   );
   const playSlotRef = useRef(playSlot);
   useEffect(() => {
@@ -87,11 +91,7 @@ export function useBarJukebox({ userId, audio, base }: { userId: string | null; 
   // 离开这一页时停。
   useEffect(
     () => () => {
-      const a = element.current;
-      if (!a) return;
-      a.pause();
-      a.removeAttribute("src");
-      a.load();
+      if (element.current) silence(element.current);
     },
     [],
   );
@@ -109,7 +109,7 @@ export function useBarJukebox({ userId, audio, base }: { userId: string | null; 
     if (current.isPaused) {
       keep({ isPaused: false });
       if (a?.getAttribute("src") && !a.loop) void a.play().catch(() => {});
-      else playSlot(atRef.current);
+      else playSlot(playingRef.current);
     } else {
       keep({ isPaused: true });
       a?.pause();
@@ -123,31 +123,29 @@ export function useBarJukebox({ userId, audio, base }: { userId: string | null; 
     },
     [keep, playSlot],
   );
-  const next = useCallback(() => skipTo(nextSlot(latest.current?.mode ?? "order", atRef.current)), [skipTo]);
-  const previous = useCallback(() => skipTo(previousSlot(atRef.current)), [skipTo]);
+  const next = useCallback(() => skipTo(nextSlot(modeNow(), playingRef.current)), [skipTo]);
+  const previous = useCallback(() => skipTo(previousSlot(playingRef.current)), [skipTo]);
   const changeMode = useCallback(
-    (which: Exclude<JukeboxMode, "order">) => keep({ mode: toggleMode(latest.current?.mode ?? "order", which) }),
+    (which: Exclude<JukeboxMode, "order">) => keep({ mode: toggleMode(modeNow(), which) }),
     [keep],
   );
 
   const preview = useCallback(
     (id: number) => {
-      const a = (element.current ??= new Audio());
+      const a = audioElement();
       a.loop = true;
       a.src = `${base}/music/${id}.ogg`;
       setPreviewing(id);
       void a.play().catch(() => {});
     },
-    [base],
+    [base, audioElement],
   );
   const stopPreview = useCallback(() => {
     const a = element.current;
     setPreviewing(null);
     if (!a?.loop) return;
-    a.pause();
     a.loop = false;
-    a.removeAttribute("src");
-    a.load();
+    silence(a);
   }, []);
 
   const choose = useCallback(
@@ -158,7 +156,7 @@ export function useBarJukebox({ userId, audio, base }: { userId: string | null; 
     [stopPreview, keep],
   );
 
-  const id = jukebox?.slots[at];
+  const id = jukebox?.slots[playing];
   const title = audio?.tracks.find((t) => t.id === id)?.title ?? "";
   return useMemo(
     () => ({
@@ -182,3 +180,10 @@ export function useBarJukebox({ userId, audio, base }: { userId: string | null; 
 }
 
 export type BarJukebox = ReturnType<typeof useBarJukebox>;
+
+/** Stops an `<audio>` and lets go of what it downloaded. */
+function silence(a: HTMLAudioElement) {
+  a.pause();
+  a.removeAttribute("src");
+  a.load();
+}

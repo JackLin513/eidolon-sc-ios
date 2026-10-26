@@ -24,7 +24,7 @@ export function primaryPointer(): BarPointer {
 }
 
 /** The primary pointer, followed as it changes (a tablet's keyboard put on or taken off). */
-function usePointer(): BarPointer {
+export function usePointer(): BarPointer {
   const [pointer, setPointer] = useState<BarPointer>("fine");
   useEffect(() => {
     const coarse = matchMedia(COARSE);
