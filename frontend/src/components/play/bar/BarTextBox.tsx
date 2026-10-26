@@ -24,11 +24,15 @@ const NEXT_FRAMES = 4;
 /** 「再试一次」 at the box's lower right; the message wraps short of it. */
 const RETRY = { x: BOX.x + BOX.width - 6 - BAR_BUTTON.width, y: BOX.y + BOX.height - 5 - BAR_BUTTON.height };
 const FAILURE_WIDTH = TEXT_WIDTH - BAR_BUTTON.width - 8;
+/** The most rows the box holds. */
+const MAX_ROWS = 4;
 
 /**
  * 文本框（.scratch/bar-room spec「文本框和打字」）：一页台词，名字按角色上色、接冒号（她用官方色，制作人用原型的「我」色），
  * 正文白色，她的中文字幕灰色。打完右下角 `arrow_text_2` 上下跳。点哪都算：交给 lib/barVisit，先打完、再翻页。
  * 电脑上鼠标停在文本框上是会动的 NEXT 气泡（`isNextCursor`：点了有用的时候）。
+ * 调酒时（`memo`）台词收起，写这一单的备忘：制作人第一人称的心里话，白字、不带名字，一下子整句出来，最多 4 行
+ * （放不下的截成「…」，读屏读全文），没有倒三角，点了没反应（票 14，照原版主角在文本框里复述点单）。
  * 模型出错（`failure`）时台词收起，写出错的话，右下角「再试一次」；请求在路上时（`isRetrying`）按钮收起。
  */
 export function BarTextBox({
@@ -37,9 +41,11 @@ export function BarTextBox({
   isArrowShown,
   isNextCursor,
   onTap,
+  memo,
   failure,
 }: {
   text: { line: VisitLine; rows: TextRow[] } | null;
+  memo: string | null;
   herColor: string;
   isArrowShown: boolean;
   isNextCursor: boolean;
@@ -60,8 +66,13 @@ export function BarTextBox({
     if (row.name) runs.push({ text: row.name, color: text.line.speaker === "her" ? herColor : BAR_INK.producer });
     runs.push({ text: row.text, color: row.subtitle ? BAR_INK.sub : BAR_INK.text });
   });
+  if (memo !== null && !failure) {
+    const rows = wrapText(memo, TEXT_WIDTH, measurePixelText);
+    if (rows.length > MAX_ROWS) rows.splice(MAX_ROWS - 1, Infinity, `${rows[MAX_ROWS - 1].slice(0, -1)}…`);
+    return <PixelText x={BOX.x + INSET.x} y={BOX.y + INSET.y} runs={rows.join("\n")} label={memo} />;
+  }
   if (failure) {
-    const rows = wrapText(failure.message, FAILURE_WIDTH, measurePixelText).slice(0, 4);
+    const rows = wrapText(failure.message, FAILURE_WIDTH, measurePixelText).slice(0, MAX_ROWS);
     return (
       <>
         <PixelText x={BOX.x + INSET.x} y={BOX.y + INSET.y} runs={rows.join("\n")} />

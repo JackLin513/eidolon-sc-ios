@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { primaryPointer } from "@/components/play/bar/BarScreen";
 import { BAR_INK } from "@/components/play/bar/ink";
 import { PixelText } from "@/components/play/bar/PixelText";
+import { goFullscreen } from "@/components/play/bar/useBarFullscreen";
 import { copy } from "@/i18n";
 import { hasFullscreenButton } from "@/lib/barScreen";
 
@@ -24,19 +25,8 @@ function canGoFullscreenLandscape(): boolean {
   });
 }
 
-/** Full screen first, then locked in landscape (the lock is refused out of full screen); left as
- * it is when either fails. */
-export async function goFullscreenLandscape(): Promise<void> {
-  try {
-    await document.documentElement.requestFullscreen();
-    await (screen.orientation as ScreenOrientation & { lock: (to: string) => Promise<void> }).lock("landscape");
-  } catch {
-    // 不行就留在提醒上，自己转过来。
-  }
-}
-
 /** Whether to offer 「全屏横过来」 here: known once mounted (the server has no screen). */
-export function useFullscreenButton(): boolean {
+function useFullscreenButton(): boolean {
   const [isOffered, setOffered] = useState(false);
   useEffect(() => setOffered(canGoFullscreenLandscape()), []);
   return isOffered;
@@ -66,7 +56,7 @@ export function PortraitGuard() {
           aria-label={t.fullscreen}
           className="bar-hit relative"
           style={{ width: 96 * SCALE, height: 22 * SCALE, border: `${SCALE}px solid ${BAR_INK.pink}` }}
-          onClick={() => void goFullscreenLandscape()}
+          onClick={() => void goFullscreen()}
         >
           <span className="absolute top-0 left-0" style={{ transform: `scale(${SCALE})`, transformOrigin: "0 0" }}>
             <PixelText x={-1} y={2} width={96} align="center" runs={t.fullscreen} color={BAR_INK.pink} label="" />

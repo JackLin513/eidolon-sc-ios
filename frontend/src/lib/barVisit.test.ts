@@ -14,6 +14,7 @@ import {
   endCard,
   isArrowShown,
   isSpeaking,
+  mixingMemo,
   shownText,
   typingVoice,
 } from "@/lib/barVisit";
@@ -207,6 +208,14 @@ describe("点单", () => {
 
     expect(typed).toMatchObject({ isMixing: false, memo: null });
     expect(barVisit(typed, WAITING)).toMatchObject({ isMixing: true, memo: "她要 Sugar Rush。" });
+  });
+
+  it("调酒台开着时文本框写备忘，上了酒就不写了", () => {
+    const open = run(...ordered, MEMO, WAITING, { type: "tick", now: 9000 });
+    expect(mixingMemo(run(...ordered, MEMO, WAITING))).toBeNull();
+    expect(mixingMemo(open)).toBe("她要 Sugar Rush。");
+    expect(mixingMemo({ ...open, isServing: true })).toBe("她要 Sugar Rush。");
+    expect(mixingMemo({ ...open, isMixing: false })).toBeNull();
   });
 
   it("点单句还没打完时，tick 不开调酒台", () => {

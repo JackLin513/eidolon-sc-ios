@@ -12,17 +12,21 @@ import { BarJukeboxPlayer, BarJukeboxSetup } from "@/components/play/bar/BarJuke
 import { BarRecipeBook } from "@/components/play/bar/BarRecipeBook";
 import { BarRoom } from "@/components/play/bar/BarRoom";
 import { BarScreen, jukeboxCell, SideMenu } from "@/components/play/bar/BarScreen";
+import { BarSettingsBox } from "@/components/play/bar/BarSettingsBox";
 import { BarTextBox } from "@/components/play/bar/BarTextBox";
 import { BAR_INK } from "@/components/play/bar/ink";
 import { PortraitGuard } from "@/components/play/bar/PortraitGuard";
-import { useBarJukebox } from "@/components/play/bar/useBarJukebox";
+import { useBarFullscreen } from "@/components/play/bar/useBarFullscreen";
+import { canSetMusicVolume, useBarJukebox } from "@/components/play/bar/useBarJukebox";
+import { useBarSettings } from "@/components/play/bar/useBarSettings";
 import { useBarSound } from "@/components/play/bar/useBarSound";
 import { useBarTutorial } from "@/components/play/bar/useBarTutorial";
 import { useBarVisit } from "@/components/play/bar/useBarVisit";
 import { useBar } from "@/components/play/useBar";
 import { copy } from "@/i18n";
-import { type TutorialEnd, tutorialMemo } from "@/lib/barTutorial";
-import { endCard, isArrowShown, isSpeaking, shownText, typingVoice } from "@/lib/barVisit";
+import { gainOf } from "@/lib/barSettings";
+import type { TutorialEnd } from "@/lib/barTutorial";
+import { endCard, isArrowShown, isSpeaking, mixingMemo, shownText, typingVoice } from "@/lib/barVisit";
 import { getGiftState } from "@/lib/gifts";
 import { playHref } from "@/lib/playRoute";
 
@@ -33,7 +37,7 @@ const TYPING_SOUND = { her: "bleep_high", producer: "bleep_low" } as const;
  * 酒吧（`/play/bar`，.scratch/bar-room spec「入口、路由和外壳」「一次营业的流程」）：在导航外壳里（通话不挂断，ADR-0018），
  * 画面盖住导航栏和 dock，正在通话时通话条照旧在最上面。先读 `GET /api/bar`：读到关着时当作没有这一页（not-found）；
  * 读到之前只有一层底色；读不到时照样画画面，「离开」能用。
- * 进来先到店门口，点一下进门，她进来和制作人说话，点单后备忘出来、调酒台打开（useBarVisit、lib/barVisit），
+ * 进来先到店门口，点一下进门，她进来和制作人说话，点单后调酒台打开、文本框写这一单的备忘（useBarVisit、lib/barVisit），
  * 照原版调好上酒（BarCounter、lib/barMixer），调酒时配方书盖住她（BarRecipeBook），她接着反应、点下一单。
  * 她告别、最后一页点过以后出结束卡（BarEndCard），「再营业」直接迎下一位；模型出错时文本框写出错的话和「再试一次」。
  * 得了抽奖时重读一次礼物状态告诉外壳，导航「玩法」上的点随之亮起（离开玩法页以后看得到）。
@@ -43,8 +47,10 @@ const TYPING_SOUND = { her: "bleep_high", producer: "bleep_low" } as const;
  * 点唱机（useBarJukebox）：manifest 读完以后先过选曲界面（BarJukeboxSetup，填好上次的），Ready! 到店门口；进门从第 1 首放起，
  * 一直放到离开。店里侧边菜单「点唱机」开关右上角的小播放器（BarJukeboxPlayer）。没有曲目时跳过选曲界面，「点唱机」是灰的。
  * 教程（useBarTutorial、lib/barTutorial）：这台设备上没看过时跳过选曲界面，店门口点进去是教程，不是光顾；店门口的「教程」
- * 也从头走一遍。教程里文本框、立绘、调酒台、配方书都照光顾画，侧边菜单的备忘是这一步的要点，「点唱机」那一格换成「跳过」。
+ * 也从头走一遍。教程里文本框、立绘、调酒台、配方书都照光顾画，调酒时文本框写这一杯的要点，「点唱机」那一格换成「跳过」。
  * 走完或跳过去选曲界面（没有曲目时回店门口），Ready! 到店门口，再进门是真的光顾。
+ * 侧边菜单（票 14）：店里上排是「设置」（BarSettingsBox：两个音量、扫描线，useBarSettings 记在这台设备上）和「全屏」
+ * （useBarFullscreen，进不了全屏的浏览器没有），下排是「点唱机」（或「跳过」）和「离开」；店门口只有「离开」。
  */
 export function BarSubpage({ audioBase }: { audioBase: string | null }) {
   const router = useRouter();
@@ -52,6 +58,16 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
   const { account, characters, giftsRead } = useDirectory();
   const sound = useBarSound(audioBase);
   const jukebox = useBarJukebox({ userId: account?.id ?? null, audio: sound.audio, base: audioBase });
+  const { settings, change: changeSettings } = useBarSettings(account?.id ?? null);
+  const [isSettingsOpen, setSettingsOpen] = useState(false);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const [canSetMusic, setCanSetMusic] = useState(true);
+  useEffect(() => setCanSetMusic(canSetMusicVolume()), []);
+  const fullscreen = useBarFullscreen();
+  const { setVolume: setSfxVolume } = sound;
+  const { setVolume: setMusicVolume } = jukebox;
+  useEffect(() => setSfxVolume(gainOf(settings.sfx)), [settings.sfx, setSfxVolume]);
+  useEffect(() => setMusicVolume(gainOf(settings.music)), [settings.music, setMusicVolume]);
   /** The jukebox setup shown (null: as the tutorial seen says, shown once seen, skipped the first time). */
   const [choosing, setChoosing] = useState<boolean | null>(null);
   const { start: startSound, play } = sound;
@@ -95,7 +111,8 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
   const drinks = bar?.enabled ? bar.drinks : [];
   const counter = useBarCounter({
     mixer: scene.mixer,
-    isCounterOpen,
+    // 设置框开着时调酒台的键盘不起作用（点击有框外那一层挡着）。
+    isCounterOpen: isCounterOpen && !isSettingsOpen,
     drinks,
     sound,
     onMix: tutorialState ? tutorial.mix : mix,
@@ -115,6 +132,7 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
   const isReading = sound.audio === null || (jukebox.isAvailable && !jukebox.jukebox) || tutorial.isSeen === null;
   const isChoosing = choosing ?? tutorial.isSeen === true;
   const isInside = tutorialState !== null || state.stage === "visit" || state.stage === "next";
+  const isSettingsShown = isSettingsOpen && isInside;
   const her = characters?.find((c) => c.id === scene.visit?.characterId) ?? null;
   const card = endCard(state);
   const leaveBar = () => {
@@ -130,6 +148,7 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
         scene.isMixing && <BarRecipeBook drinks={drinks} isCounterOpen={isCounterOpen} counter={counter} sound={sound} />
       }
       portrait={<PortraitGuard />}
+      scanlines={settings.scanlines}
     >
       {isInside ? (
         <>
@@ -140,6 +159,7 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
             isArrowShown={isArrowShown(scene, sceneNow)}
             isNextCursor={scene.shown !== null && !scene.isMixing}
             onTap={tutorialState ? tutorial.tap : tap}
+            memo={mixingMemo(scene)}
             failure={scene.failure === null ? null : { message: scene.failure, isRetrying: scene.isRetrying, onRetry: () => void retry() }}
           />
         </>
@@ -152,8 +172,25 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
         />
       )}
       <SideMenu
-        memo={tutorialState ? tutorialMemo(tutorialState) : state.memo}
-        memoLabel={tutorialState ? copy.bar.tutorialMemo : undefined}
+        settings={
+          isInside
+            ? {
+                label: copy.bar.settings.name,
+                color: BAR_INK.text,
+                pressed: isSettingsShown,
+                onClick: () => setSettingsOpen((open) => !open),
+              }
+            : null
+        }
+        fullscreen={
+          isInside && fullscreen.canFullscreen
+            ? {
+                label: fullscreen.isFullscreen ? copy.bar.screen.window : copy.bar.screen.full,
+                color: BAR_INK.text,
+                onClick: fullscreen.toggle,
+              }
+            : null
+        }
         cell={
           tutorialState
             ? { label: copy.bar.skip, color: BAR_INK.text, onClick: tutorial.skip }
@@ -168,6 +205,16 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
         onLeave={leaveBar}
       />
       {isInside && !tutorialState && jukebox.isOpen && <BarJukeboxPlayer jukebox={jukebox} sound={sound} />}
+      {isSettingsShown && (
+        <BarSettingsBox
+          settings={settings}
+          hasAudio={jukebox.isAvailable}
+          canSetMusic={canSetMusic}
+          sound={sound}
+          onChange={changeSettings}
+          onClose={closeSettings}
+        />
+      )}
       {card && (
         <BarEndCard
           {...card}

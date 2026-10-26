@@ -3,10 +3,9 @@
 import { createContext, type CSSProperties, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { BAR_INK } from "@/components/play/bar/ink";
-import { measurePixelText, PixelText } from "@/components/play/bar/PixelText";
+import { PixelText } from "@/components/play/bar/PixelText";
 import { barImage, Sprite } from "@/components/play/bar/Sprite";
 import { copy } from "@/i18n";
-import { wrapText } from "@/lib/barText";
 import { BAR_HEIGHT, BAR_WIDTH, type BarPointer, type BarPlacement, barScreen } from "@/lib/barScreen";
 
 const BarScaleContext = createContext(1);
@@ -75,7 +74,8 @@ function insetsOf(probe: HTMLElement) {
  * lib/navShell 的 `showsNav`），不滚动；里面一块 640×360 的逻辑画面，照 lib/barScreen 放大、摆在中间
  * （扣掉安全区和通话条，通话条出现、消失时重新算）。画面里的东西都按逻辑像素摆，分五层，从下往上：
  * 吧台背景（`room`）、客人立绘（`guest`）、调酒时盖住客人的配方书（`book`）、整张不透明的外框（挖出 L 形的客人窗和文本框），
- * 最上面是按钮和文字（`children`）。手机竖着时整层盖上「请横过来」（`portrait`），下面的画面照旧在。
+ * 再上面是按钮和文字（`children`），开着扫描线时（`scanlines`，设置里的）整块画面最上面盖原版的扫描线（隔一行压暗）。
+ * 手机竖着时整层盖上「请横过来」（`portrait`），下面的画面照旧在。
  * 电脑（细指针）上鼠标是原版的手套（`gloveCursors`），手机上没有。
  */
 export function BarScreen({
@@ -83,12 +83,14 @@ export function BarScreen({
   guest,
   book,
   portrait,
+  scanlines,
   children,
 }: {
   room: ReactNode;
   guest?: ReactNode;
   book?: ReactNode;
   portrait: ReactNode;
+  scanlines: boolean;
   children: ReactNode;
 }) {
   const layer = useRef<HTMLDivElement>(null);
@@ -154,6 +156,7 @@ export function BarScreen({
             {book}
             <Sprite name="frame" x={0} y={0} width={BAR_WIDTH} height={BAR_HEIGHT} />
             {children}
+            {scanlines && <Sprite name="scanlines" x={0} y={0} width={BAR_WIDTH} height={BAR_HEIGHT} />}
           </div>
         </BarScaleContext.Provider>
       )}
@@ -197,14 +200,14 @@ export function HitArea({
   );
 }
 
-/** The order memo's room in the side menu's upper row: two rows of 16 from (445,279), up to 「点唱机」. */
-const MEMO = { x: 445, y: 279, width: 172 };
-const MEMO_ROWS = 2;
+/** The side menu's four cells, as the original's: 「设置」 and 「读取」 above, 「点唱机」 and 「退出」 below,
+ * each 72×20, the word 5 px in. */
+const CELLS = { settings: [445, 279], fullscreen: [543, 279], cell: [445, 312], leave: [543, 312] } as const;
+const CELL = { width: 72, height: 20 };
 
-/** The side menu's lower left cell, at (445,312): 「点唱机」 (lit while the small player is open,
- * grey and no click with no audio: `onClick` null), or 「跳过」 through the tutorial; not there at all
- * at the door (null). */
-export type MenuCell = { label: string; color: string; pressed?: boolean; onClick: (() => void) | null } | null;
+/** A cell of the side menu: its word and color, whether it is on (a switch, for screen readers), and
+ * what a tap does (null: grey, no tap). */
+export type MenuCell = { label: string; color: string; pressed?: boolean; onClick: (() => void) | null };
 
 const JUKEBOX_INK = { open: BAR_INK.lit, closed: BAR_INK.text, none: BAR_INK.off } as const;
 
@@ -218,48 +221,39 @@ export function jukeboxCell(state: "open" | "closed" | "none", onToggle: () => v
   };
 }
 
-/** The original's side menu, under the bar counter: its upper row (the original's 「设置」 and 「读取」)
- * holds the order memo, the label grey before it, as long as there is one; its lower row a cell at
- * (445,312) (`cell`: 「点唱机」 or 「跳过」) and 「离开」 at the original's 「退出」, (543,312), each 72×20, the word 5 px in.
- * No hover. */
+function MenuItem({ at, cell }: { at: readonly [number, number]; cell: MenuCell }) {
+  const [x, y] = at;
+  return (
+    <>
+      <PixelText x={x + 5} y={y + 1} runs={cell.label} color={cell.color} label={cell.onClick ? "" : cell.label} />
+      {cell.onClick && <HitArea x={x} y={y} {...CELL} label={cell.label} pressed={cell.pressed} onClick={cell.onClick} />}
+    </>
+  );
+}
+
+/** The original's side menu, under the bar counter, in the original's places (.scratch/bar-room 票 14):
+ * 「设置」 (`settings`) and 「全屏」 or 「窗口」 (`fullscreen`, where the original has 「读取」) above,
+ * a cell (`cell`: 「点唱机」, or 「跳过」 through the tutorial) and 「离开」 below; any but 「离开」 not
+ * there at all when null (at the door; 「全屏」 where the browser cannot go full screen). No hover. */
 export function SideMenu({
-  memo,
-  memoLabel = copy.bar.memo,
+  settings,
+  fullscreen,
   cell,
   leave,
   onLeave,
 }: {
-  memo: string | null;
-  /** The grey label before the memo: 「点单」, or the tutorial's 「备忘」. */
-  memoLabel?: string;
-  cell: MenuCell;
+  settings: MenuCell | null;
+  fullscreen: MenuCell | null;
+  cell: MenuCell | null;
   leave: string;
   onLeave: () => void;
 }) {
-  const label = `${memoLabel}　`;
-  const rows = memo === null ? [] : wrapText(memo, MEMO.width, measurePixelText, measurePixelText(label));
-  // 只有两行的地方，再往下就压到「点唱机」「离开」上了：放不下的截掉，读屏读全文。
-  if (rows.length > MEMO_ROWS) rows.splice(MEMO_ROWS - 1, Infinity, `${rows[MEMO_ROWS - 1].slice(0, -1)}…`);
   return (
     <>
-      {memo !== null && (
-        <PixelText
-          x={MEMO.x}
-          y={MEMO.y}
-          runs={[{ text: label, color: BAR_INK.sub }, { text: rows.join("\n") }]}
-          label={`${label}${memo}`}
-        />
-      )}
-      {cell && (
-        <>
-          <PixelText x={450} y={313} runs={cell.label} color={cell.color} label={cell.onClick ? "" : cell.label} />
-          {cell.onClick && (
-            <HitArea x={445} y={312} width={72} height={20} label={cell.label} pressed={cell.pressed} onClick={cell.onClick} />
-          )}
-        </>
-      )}
-      <PixelText x={548} y={313} runs={leave} color={BAR_INK.text} label="" />
-      <HitArea x={543} y={312} width={72} height={20} label={leave} onClick={onLeave} />
+      {settings && <MenuItem at={CELLS.settings} cell={settings} />}
+      {fullscreen && <MenuItem at={CELLS.fullscreen} cell={fullscreen} />}
+      {cell && <MenuItem at={CELLS.cell} cell={cell} />}
+      <MenuItem at={CELLS.leave} cell={{ label: leave, color: BAR_INK.text, onClick: onLeave }} />
     </>
   );
 }

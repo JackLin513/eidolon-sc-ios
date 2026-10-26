@@ -6,7 +6,7 @@
 // - The text box, her mood and the bar counter are lib/barVisit's, fed the tutorial's lines a
 //   section at a time: a section's lines all tapped past, the next section's follow.
 // - A section that opens the bar counter opens it once its last page is typed out (the lesson
-//   told), as her order line does in a visit.
+//   told), as her order line does in a visit, with the lesson's memo for the text box to say.
 // - Served, what the shaker made (lib/barMixer's match, made as it stopped) picks her reaction: the
 //   drink by its id, or the section's `other`; then on, whatever was served. A broken one cannot
 //   be served, as in a visit.
@@ -136,14 +136,10 @@ function onward(state: BarTutorialState, now: number): BarTutorialState {
 function openCounter(state: BarTutorialState, now: number): BarTutorialState {
   const { visit } = state;
   const { shown } = visit;
-  if (TUTORIAL[state.section].then.type !== "mixer" || visit.isMixing || visit.queue.length > 0) return state;
+  const then = TUTORIAL[state.section].then;
+  if (then.type !== "mixer" || visit.isMixing || visit.queue.length > 0) return state;
   if (!shown || !shown.isLast || !isTypedOut(shown.page, shown.typing, now)) return state;
-  return { ...state, visit: { ...visit, isMixing: true, mixer: emptyMixer() } };
-}
-
-/** The memo on the side menu's upper row: the point of the section on the box. */
-export function tutorialMemo(state: BarTutorialState): string {
-  return TUTORIAL[state.section].memo;
+  return { ...state, visit: { ...visit, isMixing: true, mixer: emptyMixer(), memo: then.memo } };
 }
 
 function seenKey(userId: string): string {

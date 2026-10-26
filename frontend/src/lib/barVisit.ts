@@ -6,8 +6,9 @@
 //   (lib/barText). A page types out at 30 characters a second, a tap types it out at once; a
 //   tap on a page typed out turns to the next. With no page left while the call is still going,
 //   the box waits, and the next line shows as soon as it comes.
-// - Once her order line is typed out (its last page) and she is `waiting`, the order memo shows
-//   and the bar counter opens; the two may come either way round.
+// - Once her order line is typed out (its last page) and she is `waiting`, the bar counter opens
+//   and the text box says the order memo instead of her line (the original's bartender thinking
+//   the order over); the two may come either way round.
 // - Her mood is that of the line of hers on the box; her mouth moves while it types out.
 // - While the counter is open the player mixes (lib/barMixer, empty as it opens) and serves: the
 //   counter locks while `POST …/serves` is under way; taken, it closes, poured out, and the next line (the
@@ -84,7 +85,7 @@ export type BarVisitState = {
   isWaiting: boolean;
   /** The order memo come with her order, shown once the bar counter opens. */
   pendingMemo: string | null;
-  /** The order memo on the side menu; stays till the next. */
+  /** The order memo of the drink being mixed: the text box says it while the counter is open. */
   memo: string | null;
   /** The bar counter is open (mixing her drink): she waits for it. */
   isMixing: boolean;
@@ -314,6 +315,12 @@ export function shownText(
     rows: shownRows(shown.page, typedChars(shown.page, shown.typing, now)),
     isTypedOut: isTypedOut(shown.page, shown.typing, now),
   };
+}
+
+/** What the text box says while the bar counter is open (her drink being mixed): the order memo,
+ * the producer's note to self, whole at once; null otherwise, or with no memo come. */
+export function mixingMemo(state: BarVisitState): string | null {
+  return state.isMixing ? state.memo : null;
 }
 
 /** Whose line is typing out on the box (its typing sound plays meanwhile); null for none. */

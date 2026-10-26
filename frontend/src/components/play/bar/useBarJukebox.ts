@@ -27,6 +27,8 @@ import {
  * - `preview(id)` 循环放一首试听，`stopPreview()` 停掉。
  * - `loopTrack(id)` 循环放一首（教程的 Every Day is Night），顶掉正在放的；不是试听，也不算开始过：之后进门的 `start()`
  *   照样从第 1 首放起；`stopPreview()` 一样停掉它。没有这一首时什么都不放（正在放的也停）。
+ * - `setVolume(gain)`：背景音乐的音量（设置里的，0–1），曲目和试听都是。iPhone 的 Safari 改不了 `<audio>` 的音量
+ *   （`canSetMusicVolume()` 为假），跟着系统走。
  * - 没有可用的曲目时（`audio` 是空的）`isAvailable` 为假，什么都不放。离开这一页（卸载）时停。
  */
 export function useBarJukebox({ userId, audio, base }: { userId: string | null; audio: BarAudio | null; base: string | null }) {
@@ -40,6 +42,7 @@ export function useBarJukebox({ userId, audio, base }: { userId: string | null; 
   const playingRef = useRef(0);
   const element = useRef<HTMLAudioElement | null>(null);
   const isStarted = useRef(false);
+  const volume = useRef(1);
   const modeNow = () => latest.current?.mode ?? "order";
 
   useEffect(() => {
@@ -66,6 +69,7 @@ export function useBarJukebox({ userId, audio, base }: { userId: string | null; 
   const audioElement = useCallback((): HTMLAudioElement => {
     if (!element.current) {
       const a = new Audio();
+      a.volume = volume.current;
       a.addEventListener("ended", () => playSlotRef.current(slotAfter(latest.current?.mode ?? "order", playingRef.current)));
       element.current = a;
     }
@@ -165,6 +169,11 @@ export function useBarJukebox({ userId, audio, base }: { userId: string | null; 
     silence(a);
   }, []);
 
+  const setVolume = useCallback((gain: number) => {
+    volume.current = gain;
+    if (element.current) element.current.volume = gain;
+  }, []);
+
   const choose = useCallback(
     (slots: JukeboxSlots) => {
       stopPreview();
@@ -192,12 +201,37 @@ export function useBarJukebox({ userId, audio, base }: { userId: string | null; 
       preview,
       stopPreview,
       loopTrack,
+      setVolume,
     }),
-    [isAvailable, jukebox, title, isOpen, start, choose, togglePause, next, previous, changeMode, previewing, preview, stopPreview, loopTrack],
+    [
+      isAvailable,
+      jukebox,
+      title,
+      isOpen,
+      start,
+      choose,
+      togglePause,
+      next,
+      previous,
+      changeMode,
+      previewing,
+      preview,
+      stopPreview,
+      loopTrack,
+      setVolume,
+    ],
   );
 }
 
 export type BarJukebox = ReturnType<typeof useBarJukebox>;
+
+/** Whether this browser lets a page set an `<audio>`'s volume: iPhone's Safari keeps it at 1 (the
+ * buttons on the side are all there is). */
+export function canSetMusicVolume(): boolean {
+  const a = new Audio();
+  a.volume = 0.5;
+  return a.volume === 0.5;
+}
 
 /** Stops an `<audio>` and lets go of what it downloaded. */
 function silence(a: HTMLAudioElement) {

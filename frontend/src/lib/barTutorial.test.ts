@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { barCatalog } from "@/lib/barCatalogFixture";
 import type { BarMixerAction, Ingredient } from "@/lib/barMixer";
 import type { TextPage } from "@/lib/barText";
-import { type BarTutorialState, barTutorial, beginTutorial, hasSeenTutorial, keepTutorialSeen, tutorialMemo } from "@/lib/barTutorial";
+import { type BarTutorialState, barTutorial, beginTutorial, hasSeenTutorial, keepTutorialSeen } from "@/lib/barTutorial";
 import { TUTORIAL } from "@/lib/barTutorialLines";
 import type { VisitLine } from "@/lib/barVisit";
 
@@ -55,23 +55,31 @@ function serve(state: BarTutorialState, recipe: Recipe): BarTutorialState {
   return barTutorial(mix(state, recipe), { type: "serve", now: later() });
 }
 
+/** The memo a lesson's bar counter opens with, for the text box. */
+function memoOf(id: "lesson1" | "lesson2"): string {
+  const then = TUTORIAL[id].then;
+  if (then.type !== "mixer") throw new Error(`${id} opens no counter`);
+  return then.memo;
+}
+
 describe("the tutorial", () => {
-  it("opens on her first line, with the opening's memo", () => {
+  it("opens on her first line, no memo", () => {
     const state = begin();
     expect(state.visit.stage).toBe("visit");
     expect(state.visit.visit?.characterId).toBe("hazuki");
     expect(onBox(state)).toBe(TUTORIAL.opening.lines[0].zh);
-    expect(tutorialMemo(state)).toBe(TUTORIAL.opening.memo);
+    expect(state.visit.memo).toBeNull();
   });
 
-  it("opens the bar counter only once the first lesson is told, with its memo", () => {
+  it("opens the bar counter only once the first lesson is told, with its memo for the text box", () => {
     let state = begin();
     for (let i = 0; i < 5; i++) state = barTutorial(state, { type: "tap", now: later() });
     expect(state.visit.isMixing).toBe(false);
+    expect(state.visit.memo).toBeNull();
     state = talkThrough(state);
     expect(state.visit.isMixing).toBe(true);
     expect(onBox(state)).toBe(TUTORIAL.lesson1.lines.at(-1)!.zh);
-    expect(tutorialMemo(state)).toBe(TUTORIAL.lesson1.memo);
+    expect(state.visit.memo).toBe(memoOf("lesson1"));
   });
 });
 
@@ -81,11 +89,10 @@ describe("serving in the tutorial", () => {
     expect(state.visit.isMixing).toBe(false);
     expect(state.section).toBe("first.sugar-rush");
     expect(onBox(state)).toBe(TUTORIAL["first.sugar-rush"].lines[0].zh);
-    expect(tutorialMemo(state)).toBe(TUTORIAL["first.sugar-rush"].memo);
     state = talkThrough(state);
     expect(state.section).toBe("lesson2");
     expect(state.visit.isMixing).toBe(true);
-    expect(tutorialMemo(state)).toBe(TUTORIAL.lesson2.memo);
+    expect(state.visit.memo).toBe(memoOf("lesson2"));
   });
 
   it("goes on to her reaction to something else, then the second lesson all the same", () => {
@@ -134,27 +141,22 @@ describe("serving in the tutorial", () => {
 });
 
 describe("the tutorial's end", () => {
-  /** 从头走到底，每一步记下备忘。 */
+  /** 从头走到底，记下走过的段落。 */
   function walk(hasJukebox: boolean) {
     let state = talkThrough(begin(hasJukebox));
     state = talkThrough(serve(state, SUGAR_RUSH));
-    const memos: string[] = [];
     const sections: string[] = [];
     state = serve(state, MOONBLAST);
     while (state.end === null) {
-      if (sections.at(-1) !== state.section) {
-        sections.push(state.section);
-        memos.push(tutorialMemo(state));
-      }
+      if (sections.at(-1) !== state.section) sections.push(state.section);
       state = barTutorial(state, { type: "tap", now: later() });
     }
-    return { state, sections, memos };
+    return { state, sections };
   }
 
   it("goes on to her reaction to Moonblast made right, then the jukebox section, to the jukebox setup", () => {
-    const { state, sections, memos } = walk(true);
+    const { state, sections } = walk(true);
     expect(sections).toEqual(["second.moonblast", "closing", "jukebox"]);
-    expect(memos).toEqual([TUTORIAL["second.moonblast"].memo, TUTORIAL.closing.memo, TUTORIAL.jukebox.memo]);
     expect(state.end).toBe("jukebox");
   });
 

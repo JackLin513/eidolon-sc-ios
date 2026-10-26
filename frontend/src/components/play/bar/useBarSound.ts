@@ -15,6 +15,7 @@ const NO_AUDIO: BarAudio = { tracks: [], playlist: [], sfx: [] };
  *   第一次放音效时也会建。
  * - `play(name)` 放一次音效；`loop(name)` 无缝循环一个音效（Web Audio 的循环缓冲，`<audio>` 的 loop 有空隙），换一个或
  *   `loop(null)` 立刻停。音效第一次用到时才下载、解码，之后用缓冲区；manifest 还没读完时等它读完再放。
+ * - `setVolume(gain)`：音效的音量（设置里的，0–1），所有音效和打字音都过这一个增益。
  * - 离开这一页（卸载）时全停。不放进 Service Worker 缓存，靠浏览器的 HTTP 缓存。
  */
 export function useBarSound(base: string | null) {
@@ -24,6 +25,9 @@ export function useBarSound(base: string | null) {
   /** Settles once the manifest is read, or could not be. */
   const isRead = useRef<Promise<unknown>>(Promise.resolve());
   const context = useRef<AudioContext | null>(null);
+  /** Every sound goes out through this, set to the volume. */
+  const output = useRef<GainNode | null>(null);
+  const volume = useRef(1);
   const buffers = useRef(new Map<string, Promise<AudioBuffer | null>>());
   const looping = useRef<{ name: string | null; source: AudioBufferSourceNode | null }>({ name: null, source: null });
 
@@ -52,13 +56,26 @@ export function useBarSound(base: string | null) {
       looping.current = { name: null, source: null };
       void context.current?.close().catch(() => {});
       context.current = null;
+      output.current = null;
       bufferCache.clear();
     };
   }, []);
 
   const start = useCallback(() => {
-    if (!context.current) context.current = new AudioContext();
+    if (!context.current) {
+      const ctx = new AudioContext();
+      const gain = ctx.createGain();
+      gain.gain.value = volume.current;
+      gain.connect(ctx.destination);
+      context.current = ctx;
+      output.current = gain;
+    }
     void context.current.resume().catch(() => {});
+  }, []);
+
+  const setVolume = useCallback((gain: number) => {
+    volume.current = gain;
+    if (output.current) output.current.gain.value = gain;
   }, []);
 
   /** 音效的缓冲区：第一次用到时下载、解码；没有这个音效、下载或解码失败时是 null（失败的下次再试）。 */
@@ -90,7 +107,7 @@ export function useBarSound(base: string | null) {
     const source = ctx.createBufferSource();
     source.buffer = data;
     source.loop = isLooping;
-    source.connect(ctx.destination);
+    source.connect(output.current ?? ctx.destination);
     source.start();
     return source;
   };
@@ -121,7 +138,7 @@ export function useBarSound(base: string | null) {
     [buffer],
   );
 
-  return useMemo(() => ({ audio, start, play, loop }), [audio, start, play, loop]);
+  return useMemo(() => ({ audio, start, play, loop, setVolume }), [audio, start, play, loop, setVolume]);
 }
 
 export type BarSound = ReturnType<typeof useBarSound>;

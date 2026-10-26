@@ -45,12 +45,9 @@ function path(served: string[]): TutorialSectionId[] {
 }
 
 describe("教程台词", () => {
-  it("每段有台词和备忘，她每句有日语和中文，制作人每句有中文；每句一页放得下，备忘两行放得下", () => {
+  it("每段有台词，她每句有日语和中文，制作人每句有中文；每句一页放得下", () => {
     for (const [id, section] of SECTIONS) {
       expect(section.lines.length, id).toBeGreaterThan(0);
-      // 侧边菜单上排 172 宽、两行，前面有「点单　」三个字。
-      expect(section.memo.trim(), id).not.toBe("");
-      expect(Math.ceil((3 + width(section.memo)) / 13), section.memo).toBeLessThanOrEqual(2);
       for (const line of section.lines) {
         expect(line.zh.trim(), id).not.toBe("");
         if (line.who === "her") expect(line.ja.trim(), id).not.toBe("");
@@ -64,9 +61,25 @@ describe("教程台词", () => {
   it("只有两段讲解打完以后打开调酒台：第一杯分三种反应，第二杯分两种", () => {
     const mixers = SECTIONS.filter(([, s]) => s.then.type === "mixer").map(([id, s]) => [id, s.then]);
     expect(mixers).toEqual([
-      ["lesson1", { type: "mixer", reactions: { "sugar-rush": "first.sugar-rush", "piano-man": "first.piano-man", other: "first.other" } }],
-      ["lesson2", { type: "mixer", reactions: { moonblast: "second.moonblast", other: "second.other" } }],
+      [
+        "lesson1",
+        {
+          type: "mixer",
+          memo: expect.any(String),
+          reactions: { "sugar-rush": "first.sugar-rush", "piano-man": "first.piano-man", other: "first.other" },
+        },
+      ],
+      ["lesson2", { type: "mixer", memo: expect.any(String), reactions: { moonblast: "second.moonblast", other: "second.other" } }],
     ]);
+  });
+
+  it("两课的备忘是制作人的心里话，说这一杯是什么，调酒时文本框里不带名字放得下", () => {
+    for (const [id, drink] of [["lesson1", "Sugar Rush"], ["lesson2", "Moonblast"]] as const) {
+      const then = TUTORIAL[id].then;
+      if (then.type !== "mixer") throw new Error(id);
+      expect(then.memo, id).toContain(drink);
+      expect(rows(then.memo), then.memo).toBeLessThanOrEqual(4);
+    }
   });
 
   it("每一段都走得到，每条路都接上收尾和点唱机那句", () => {
@@ -101,7 +114,7 @@ describe("教程台词", () => {
   });
 
   it("不讲讨厌的口味、上得最好、醉的门槛、电视、快捷键、离开", () => {
-    const all = SECTIONS.flatMap(([, s]) => [s.memo, ...s.lines.flatMap((l) => (l.who === "her" ? [l.ja, l.zh] : [l.zh]))]).join("\n");
+    const all = SECTIONS.flatMap(([, s]) => [s.then.type === "mixer" ? s.then.memo : "", ...s.lines.flatMap((l) => (l.who === "her" ? [l.ja, l.zh] : [l.zh]))]).join("\n");
     expect(all).not.toMatch(/讨厌|苦手|嫌い|最好|ベスト|门槛|電視|电视|テレビ|快捷键|キーボード|键盘|Shift|离开|退出/);
   });
 

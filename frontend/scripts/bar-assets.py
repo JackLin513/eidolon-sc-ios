@@ -134,6 +134,18 @@ COPY: dict[str, str] = {
     "702_ready_green.png": "juke_ready_green",
     "691_small_jukebox_spr.png": "juke_small_paused",
     "697_small_jukebox_pause_spr.png": "juke_small_playing",
+    # 设置框（票 14）：框本身由 settings_frame 裁；背景音乐、音效的字和滑条（两头带 −/+），滑块，扫描线 On/Off 的平时和
+    # 悬停（悬停是黑字，叠在白条上）
+    "719_bgm_txt_sprcn.png": "set_bgm",
+    "721_sfx_txt_sprcn.png": "set_sfx",
+    "722_bgm_slide_spr.png": "set_bgm_slide",
+    "723_sfx_slide_spr.png": "set_sfx_slide",
+    "749_slide_slider_spr.png": "set_knob",
+    "729_scanlinebutton_spr.png": "set_hover",
+    "739_filteron_idlecn.png": "set_scan_on",
+    "742_filteron_hovercn.png": "set_scan_on_hover",
+    "745_filteroff_idlecn.png": "set_scan_off",
+    "748_filteroff_hovercn.png": "set_scan_off_hover",
 }
 for i in range(4):
     COPY[f"717_previewload_spr_{i:02d}.png"] = f"juke_preview_{i}"
@@ -183,6 +195,25 @@ def frame(src: Path) -> Image.Image:
     return img
 
 
+# 原版中文的设置框 258x250：「声音」「图像」两个标题烤在框里，「图像」下面是「全屏」「窗口化」「扫描线 Off」三行。
+# 「全屏」「窗口化」不做（票 14）：切掉这两行（第 156–205 行），「扫描线」那一行往上挪到「全屏」的位置，
+# 它的字（原版另外叠一张 On/Off 的图）抹成黑底，由前端叠 `set_scan_on`/`set_scan_off`。
+SETTINGS_CUT = (156, 206)
+SETTINGS_SCAN_TEXT = (30, 210, 230, 228)
+
+
+def settings_frame(src: Path) -> Image.Image:
+    img = Image.open(src).convert("RGBA")
+    w, h = img.size
+    left, top, right, bottom = SETTINGS_SCAN_TEXT
+    img.paste((0, 0, 0, 255), (left, top, right, bottom))
+    cut, rest = SETTINGS_CUT
+    out = Image.new("RGBA", (w, h - (rest - cut)), (0, 0, 0, 0))
+    out.paste(img.crop((0, 0, w, cut)), (0, 0))
+    out.paste(img.crop((0, rest, w, h)), (0, cut))
+    return out
+
+
 def main() -> None:
     sys.stderr.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     if len(sys.argv) != 2:
@@ -201,6 +232,7 @@ def main() -> None:
         written.add(f"{name}.png")
 
     save(frame(sprites / "000_frame_sprite.png"), "frame")
+    save(settings_frame(sprites / "726_configframe_spr_cn.png"), "set_frame")
     for file, (name, w, h, x, y) in PAD.items():
         save(pad(sprites / file, w, h, x, y), name)
     for file, name in COPY.items():

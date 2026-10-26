@@ -3,7 +3,7 @@
 // 由 `lib/barTutorial` 照着走。
 //
 // - 她的一句是日语加中文字幕（ADR-0001），制作人的一句只有中文；每句带一个情绪，驱动她的立绘。
-// - 每段带一句备忘：这一段（和它打开的那杯）的要点，显示在侧边菜单上排。
+// - 打开调酒台的两段（两课）带一句备忘：这一杯的要点，制作人第一人称的心里话，调酒时写在文本框里（票 14）。
 // - 饮品名：她的日语用目录的日文名，中文字幕用英文原名（同 `characters/bar_lines.toml`）；材料名两边都用瓶上的英文名。
 // - 不讲讨厌的口味、「上得最好」、醉的门槛、电视、键盘快捷键、「离开」（规格的 Out of Scope）。
 
@@ -29,14 +29,13 @@ export type TutorialSectionId =
 export type TutorialThen =
   /** 接着打这一段。 */
   | { type: "section"; section: TutorialSectionId }
-  /** 打开调酒台；上酒时按上的饮品 id 接一段反应，不在里面的（调成别的）接 `other`。调坏的上不了，不判。 */
-  | { type: "mixer"; reactions: { [drinkId: string]: TutorialSectionId; other: TutorialSectionId } }
+  /** 打开调酒台，文本框写 `memo`（这一杯的要点）；上酒时按上的饮品 id 接一段反应，不在里面的（调成别的）接 `other`。
+   * 调坏的上不了，不判。 */
+  | { type: "mixer"; memo: string; reactions: { [drinkId: string]: TutorialSectionId; other: TutorialSectionId } }
   /** 教程的台词完了：弹出选曲界面（取不到音频时没有点唱机那段，收尾完了就回店门口）。 */
   | { type: "done" };
 
 export type TutorialSection = {
-  /** 侧边菜单上排的备忘：这一步的要点。 */
-  memo: string;
   lines: readonly TutorialLine[];
   then: TutorialThen;
 };
@@ -49,7 +48,6 @@ export const TUTORIAL_START: TutorialSectionId = "opening";
 
 export const TUTORIAL: Record<TutorialSectionId, TutorialSection> = {
   opening: {
-    memo: "第一天开店，はづき 来帮忙。",
     lines: [
       her("happy", "こんばんは～、プロデューサーさん。お店、開いてますか～？", "晚上好～制作人。店开着吗～？"),
       producer("surprised", "欢迎光临……咦，你怎么来了？"),
@@ -64,7 +62,6 @@ export const TUTORIAL: Record<TutorialSectionId, TutorialSection> = {
   },
 
   lesson1: {
-    memo: "要 Sugar Rush。配方查配方书，调坏了点重来。",
     lines: [
       her("calm", "じゃあ最初は、シュガーラッシュをお願いします～", "那第一杯，请给我一杯 Sugar Rush～"),
       her("thinking", "作り方は、左上に出るレシピブックに載ってますよ", "做法在配方书里，调酒时会出现在左上方。"),
@@ -79,12 +76,12 @@ export const TUTORIAL: Record<TutorialSectionId, TutorialSection> = {
     ],
     then: {
       type: "mixer",
+      memo: "她要 Sugar Rush。配方在配方书里查，调坏了就点重做。",
       reactions: { "sugar-rush": "first.sugar-rush", "piano-man": "first.piano-man", other: "first.other" },
     },
   },
 
   "first.sugar-rush": {
-    memo: "第一杯 Sugar Rush 上好了。",
     lines: [
       her("happy", "……ん、甘くておいしいです～。ちゃんとシュガーラッシュですね", "……嗯，甜甜的，很好喝～。是 Sugar Rush 没错。"),
       her("happy", "初めてにしては上出来ですよ、プロデューサーさん", "第一次就调成这样，很不错哦，制作人。"),
@@ -94,7 +91,6 @@ export const TUTORIAL: Record<TutorialSectionId, TutorialSection> = {
   },
 
   "first.piano-man": {
-    memo: "调出了 Piano Man，第二杯免了。",
     lines: [
       her("surprised", "あら～……これ、ピアノ マンじゃないですか", "哎呀～……这不是 Piano Man 吗。"),
       her("happy", "ふふ、私が教えることなんて、あんまりなさそうですね～", "呵呵，看来没什么需要我教的了～"),
@@ -104,7 +100,6 @@ export const TUTORIAL: Record<TutorialSectionId, TutorialSection> = {
   },
 
   "first.other": {
-    memo: "上错了也不用重做。",
     lines: [
       her("thinking", "ん～……これ、シュガーラッシュではないですね～", "嗯～……这个不是 Sugar Rush 呢～"),
       her("calm", "でも、出していただいたものは、ありがたくいただきますね", "不过上了的，我就心怀感激地喝啦。"),
@@ -114,7 +109,6 @@ export const TUTORIAL: Record<TutorialSectionId, TutorialSection> = {
   },
 
   lesson2: {
-    memo: "要 Moonblast。点调制后等满 5 秒再停，要加冰。",
     lines: [
       her("calm", "次は、ムーンブラストをお願いします～", "下一杯，请给我 Moonblast～"),
       her("thinking", "これは『ブレンド』して作るお酒なんです", "这一款要「调和」。"),
@@ -124,11 +118,14 @@ export const TUTORIAL: Record<TutorialSectionId, TutorialSection> = {
       her("calm", "ムーンブラストは、氷入りです～", "Moonblast 是要加冰的～"),
       producer("calm", "等满 5 秒，加冰。记住了。"),
     ],
-    then: { type: "mixer", reactions: { moonblast: "second.moonblast", other: "second.other" } },
+    then: {
+      type: "mixer",
+      memo: "她要 Moonblast。按了调制，等满 5 秒再停，还要加冰。",
+      reactions: { moonblast: "second.moonblast", other: "second.other" },
+    },
   },
 
   "second.moonblast": {
-    memo: "第二杯 Moonblast 上好了。",
     lines: [
       her("happy", "……ふふ、冷たくて甘いです～。ちゃんとムーンブラストですね", "……呵呵，冰冰甜甜的～。是 Moonblast 没错。"),
       her("happy", "これなら、安心してお店をお任せできますね", "这样我就放心把店交给你了。"),
@@ -137,7 +134,6 @@ export const TUTORIAL: Record<TutorialSectionId, TutorialSection> = {
   },
 
   "second.other": {
-    memo: "上错了也不用重做。",
     lines: [
       her("thinking", "ん～……ムーンブラスト、ではないですね～", "嗯～……这不是 Moonblast 呢～"),
       her("happy", "大丈夫です。ブレンドは慣れですから～", "没关系，调和多做几次就熟了～"),
@@ -146,7 +142,6 @@ export const TUTORIAL: Record<TutorialSectionId, TutorialSection> = {
   },
 
   closing: {
-    memo: "客人不一定说名字，点的单会记在这里。",
     lines: [
       her("calm", "あとは、いくつか覚えておいてほしいことを～", "最后，有几件事想让你记住～"),
       her("calm", "『大きいので』と頼まれたら、材料を全部倍にしてください", "客人要大杯，就把材料全部加倍。"),
@@ -160,7 +155,7 @@ export const TUTORIAL: Record<TutorialSectionId, TutorialSection> = {
       her("calm", "『甘いの』とか『おしゃれなの』とか、味や種類だったり", "可能说「甜的」「时尚的」，按口味或种类点；"),
       her("thinking", "いくつか条件をつけたり、何かにたとえたり……", "也可能提几个条件，或者打个比方……"),
       her("happy", "『おまかせで』なんて言われることもありますよ～", "还可能说「你来定吧」～"),
-      her("calm", "注文はそこのメモに残りますから、忘れても大丈夫です", "点的单会记在那边的备忘里，忘了也不要紧。"),
+      her("calm", "作っている間は、注文が下に出ますから、忘れても大丈夫です", "调酒的时候，下面会写着点了什么，忘了也不要紧。"),
       her("thinking", "違うものを出すと、ちょっと文句を言われちゃうかもですけど", "上得不对，可能会被抱怨几句，"),
       her("happy", "作り直しはなしですから、気楽にいきましょう～", "不过不用重做，放轻松～"),
       producer("happy", "知道了。谢谢，帮大忙了。"),
@@ -170,7 +165,6 @@ export const TUTORIAL: Record<TutorialSectionId, TutorialSection> = {
   },
 
   jukebox: {
-    memo: "点唱机要先选好 12 首。",
     lines: [
       her("surprised", "あ、そうそう、もうひとつだけ～", "啊对了，还有一件事～"),
       her("calm", "このジュークボックス、先に12曲選ばないと鳴らないんです", "这台点唱机要先选好 12 首才会放。"),

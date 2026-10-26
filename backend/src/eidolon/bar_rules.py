@@ -124,7 +124,7 @@ _EXTRAS_SAID: dict[Condition, tuple[str, str]] = {
 """Each condition but the flavor and kind as she says it, in Chinese and in Japanese."""
 
 _MEMOS: dict[Phrasing, str] = {
-    "my_favorite": "她要她喜欢的", "your_call": "她让你拿主意", "usual": "她要上次那款",
+    "my_favorite": "她要她喜欢的", "your_call": "她让我拿主意", "usual": "她要上次那款",
 }
 
 
@@ -172,10 +172,11 @@ class Order:
         return [_word(c, self.target, ja) for c in self.mentioned]
 
     def memo(self, subtitle: str) -> str:
-        """The order memo, the producer's note of what she wants; for an analogy, her order's
-        `subtitle` itself."""
+        """The order memo, the producer's note to self of what she wants (the text box shows it
+        while the drink is mixed, as the original's bartender thinks it over); for an analogy,
+        her order's `subtitle`, as she said it."""
         if self.phrasing == "analogy":
-            return subtitle
+            return f"她说：「{subtitle}」"
         if self.phrasing in ("flavor", "kind", "conditions"):
             return f"她要{'，'.join(self.words())}。"
         head = _MEMOS.get(self.phrasing, f"她要 {self.target.name}")
