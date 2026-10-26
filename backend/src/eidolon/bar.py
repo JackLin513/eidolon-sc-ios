@@ -19,12 +19,13 @@ wanted the last time.
 
 **Calls.** A visit is written in as many calls as she has drinks, and one more: her coming in
 and first order; after each drink served, her reaction, the talk and her next order; after
-the last, or the one that leaves her drunk (`bar_rules.drunk`), which is the last she has,
-her reaction, a short talk and her farewell, drunk if she is (`bar_prompt`). Each streams her
-lines and the producer's as they close (`bar_reply`); the line she orders in is held back to the
-end of its call, with what follows it, and sent with the order memo once it names drinks as
-it should (`bar_rules.names_rightly`): if it does not, the call is made again for it alone,
-told so, and if that does not either, she says one of the fixed lines instead
+the last she has, her reaction, a short talk and her farewell (`bar_prompt`). The last she
+has is the last planned, or the one that leaves her drunk (`bar_rules.drunk`), who then
+talks and says goodbye drunk. Each streams her lines and the producer's as they close
+(`bar_reply`); the line she orders in is held back to the end of its call, with what follows
+it, and sent with the order memo once it names drinks as it should
+(`bar_rules.names_rightly`): if it does not, the call is made again for it alone, told so,
+and if that does not either, she says one of the fixed lines instead
 (`bar_rules.fixed_order`). A call with no line at all, or failing, ends the visit for now.
 
 **Serving.** What the bar counter holds is matched against the recipes (`DrinkCatalog.match`):

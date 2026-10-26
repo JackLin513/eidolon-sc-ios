@@ -32,3 +32,7 @@
 - 点单那次调用重试时不重抽：说法、条件、「老样子」认哪一款都在 `visit.orders[-1]` 里。但名字检查不过换成模板句时，`bar._named` 会改 `visit.orders[-1]`（打比方改成 `conditions`），这只发生在这次调用已经写完以后，不影响重试。
 - 重写那次调用出错时，`_rewritten` 自己接住、记日志，直接换模板句，不算这次调用失败，也不触发重试。
 - 换模板句和接 `no_alcohol` 那句时会问随机源，重试的测试里 `FakeRandom` 要算上。
+
+### 票 07 交接
+
+- 醉没醉在 `visit.drunk`（上酒时就算好了）。告别那次调用两次失败时，兜底的告别用 `bar_lines.farewells["drunk" if visit.drunk else "sober"]`。醉了提早告别的那次调用也是告别调用：判断方法不是只看 `len(visit.servings) < visit.cups`，还要看 `not visit.drunk`，和 `Bar.serve` 一致。

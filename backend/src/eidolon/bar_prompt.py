@@ -146,18 +146,14 @@ def farewell_ask(
     she has, `drunk` or not: her reaction, a short talk and her farewell, drunk after her
     reaction if she is."""
     each = "；".join(f"第 {i} 杯{_TIERS[s.tier]}" for i, s in enumerate(servings, 1))
-    if not drunk:
-        return "\n\n".join([
-            _served(serving, enjoy),
-            "这次写：这杯的反应、一小段闲聊，然后告别。不再点单。",
-            f"这次的每一杯：{each}。你今晚没有喝醉。",
-        ])
-    return "\n\n".join([
-        _served(serving, enjoy),
-        "这次写：这杯的反应、一小段闲聊，然后告别。你喝醉了，今晚不再点单。",
-        "这杯的反应照常写；写完反应，从这一段起你醉了：闲聊和告别都是醉着的样子，话多、犯困、情绪起伏，会说说心里话。",
-        f"这次的每一杯：{each}。你今晚喝醉了。",
-    ])
+    parts = [_served(serving, enjoy), "这次写：这杯的反应、一小段闲聊，然后告别。不再点单。"]
+    if drunk:
+        parts.append(
+            "这杯的反应照常写；写完反应，从这一段起你醉了：闲聊和告别都是醉着的样子，"
+            "话多、犯困、情绪起伏，会说说心里话。"
+        )
+    parts.append(f"这次的每一杯：{each}。你今晚{'喝醉了' if drunk else '没有喝醉'}。")
+    return "\n\n".join(parts)
 
 
 _PHRASINGS: dict[Phrasing, str] = {

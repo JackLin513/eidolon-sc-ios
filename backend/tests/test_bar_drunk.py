@@ -32,7 +32,8 @@ from tests.test_bar_visit import (
     serve,
 )
 
-DRUNK = "从这一段起你醉了"
+DRUNK_FROM_HERE = "从这一段起你醉了"
+"""What a call is told where she is drunk after her reaction."""
 
 
 @pytest.fixture
@@ -87,12 +88,12 @@ async def test_she_is_drunk_once_she_has_had_as_much_as_she_holds(
     assert kinds(served[1])[-1] == "done"  # a drink before the three planned
     assert len(llm.prompts) == 3
     last = asked(llm)
-    assert DRUNK in last and "告别" in last
+    assert DRUNK_FROM_HERE in last and "告别" in last
     assert "判定：上对了" in last  # as much Karmotrine as she likes in it, it is what she asked
     assert "点单卡" not in last
     assert "你今晚没有喝醉" not in last
     for evented in (came, *served):
-        assert all("drunk" not in json.dumps(e) and "醉" not in json.dumps(e) for e in evented)
+        assert all("drunk" not in json.dumps(e) and "醉" not in json.dumps(e) for e in evented), evented
     [row] = visit_rows(settings.database_path)
     assert row["drunk"] == 1
 
@@ -116,24 +117,11 @@ async def test_a_part_short_of_what_she_holds_she_is_not_drunk(
 
     assert kinds(second_served)[-1] == "waiting"
     assert "Blue Fairy" in asked(llm)  # her third order
-    assert all(DRUNK not in prompt[-1].content for prompt in llm.prompts)
+    assert all(DRUNK_FROM_HERE not in prompt[-1].content for prompt in llm.prompts)
 
 
-@pytest.mark.parametrize("tolerance", ["weak"])
-async def test_a_doubled_glass_has_its_karmotrine_doubled(make_client: ClientFactory):
-    llm = FakeLLM(COMING_IN, PARTING)
-    client = make_client(llm, random=FakeRandom(*entering("weak"), 0))
-
-    visit_id = (await enter(client))[0]["visit_id"]
-    served = events(await serve(client, visit_id, mixed("beer", big=True)))  # 4 parts, doubled
-
-    assert kinds(served)[-1] == "done"
-    assert len(llm.prompts) == 2
-    assert DRUNK in asked(llm)
-
-
-@pytest.mark.parametrize("tolerance", ["weak"])
-async def test_a_bottle_has_the_karmotrine_the_catalog_says_and_she_remembers_being_drunk(
+@pytest.mark.parametrize("tolerance", ["medium"])
+async def test_each_glass_counts_as_served_and_she_remembers_being_drunk(
     make_client: ClientFactory, settings: Settings
 ):
     llm = FakeLLM(
@@ -143,7 +131,7 @@ async def test_a_bottle_has_the_karmotrine_the_catalog_says_and_she_remembers_be
     # The second visit: the only character, then her first reason and topic, one drink, the
     # first she likes but for what she wanted the last time, by name, with alcohol.
     client = make_client(llm, random=FakeRandom(
-        *entering("weak"), *ordering_next("weak"), *ordering_next("weak"), 0,
+        *entering("medium"), *ordering_next("medium"), *ordering_next("medium"), 0,
         0, 0, 0, 0, 0, 0, 0, 99,
     ))
 
@@ -151,15 +139,15 @@ async def test_a_bottle_has_the_karmotrine_the_catalog_says_and_she_remembers_be
     absinthe = events(await serve(client, visit_id, bottle("absinthe")))  # 6
     mulan_tea = events(await serve(client, visit_id, bottle("mulan-tea")))  # none
     asked_after_mulan_tea = asked(llm)
-    last = events(await serve(client, visit_id, mixed("blue-fairy", karmotrine=2)))
-    asked_after_last = asked(llm)
+    beer = events(await serve(client, visit_id, mixed("beer", big=True)))  # 4, doubled: 14
+    asked_after_beer = asked(llm)
     await enter(client)
 
     assert kinds(absinthe)[-1] == "waiting" and kinds(mulan_tea)[-1] == "waiting"
-    assert DRUNK not in asked_after_mulan_tea
-    assert kinds(last)[-1] == "done"
-    assert DRUNK in asked_after_last  # the last she was to have, and drunk on it
-    assert "你今晚喝醉了" in asked_after_last
+    assert DRUNK_FROM_HERE not in asked_after_mulan_tea
+    assert kinds(beer)[-1] == "done"
+    assert DRUNK_FROM_HERE in asked_after_beer  # the last she was to have, and drunk on it
+    assert "你今晚喝醉了" in asked_after_beer
     [row] = visit_rows(settings.database_path)
     assert row["drunk"] == 1
     assert "上次喝醉了" in remembered(llm.prompts[-1])
