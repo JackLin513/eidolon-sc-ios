@@ -27,3 +27,8 @@
 
 - `Bar` 现在要一个 `Admissions`（代替原来的 `OwnKeys`）：`Admissions(UsageLimiter(db, UsageLimits(visits_per_hour=None), clock), ActivityLog(db, clock), own_keys, cooldown_until=...)`。`cooldown_until` 光顾不问，给一个返回 `None` 的就行。每次调用的用量和用时在临时库的 `service_calls` 里，按 `record_id` 挂在这次光顾的 `activity_records` 下面，脚本可以直接从这里读出来打印。
 - `Bar.enter`、`Bar.serve` 返回 `BarCall`：用 `async for` 读，读完调 `aclose()`；`Bar.leave` 是 async。脚本最后调 `bar.aclose()`，让运行记录写完。
+
+### 票 10 交接
+
+- `Bar.serve` 和 `Bar.retry` 现在是 `async`，要 `await` 后才拿到 `BarCall`。新事件 `Retrying`（`retrying`）和 `VisitFailed`（`failed`）；`failed` 以后光顾停住，`Bar.retry` 接着走同一单。
+- 「兜底句一次」：告别那次调用要连着失败两次（`bar.ATTEMPTS`）才会换兜底句，比如给模型包一层，在告别调用时连抛两次 `LLMError`。兜底的反应按这一杯的档位，告别按醉没醉，都从 `bar_lines.toml` 随机挑。

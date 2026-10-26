@@ -181,11 +181,13 @@ async def streamed(
     *,
     until: str,
     gone: asyncio.Event | None = None,
+    held: asyncio.Event | None = None,
 ) -> tuple[list[dict], asyncio.Task[None]]:
     """Post `body` to `path` and read its events as they come, until one of type `until`:
     those that came by then, which goes on growing, and the request going on, the page gone
-    once `gone` is set. Driven as uvicorn drives the app, since httpx's ASGITransport would
-    run it to the end first."""
+    once `gone` is set, and the app held up sending that one till `held` is, if given.
+    Driven as uvicorn drives the app, since httpx's ASGITransport would run it to the end
+    first."""
     request = client.build_request("POST", path, json=body)
     scope = {
         "type": "http", "asgi": {"version": "3.0", "spec_version": "2.3"},
@@ -212,6 +214,8 @@ async def streamed(
                 came.append(json.loads(line.removeprefix("data: ")))
                 if came[-1]["type"] == until:
                     arrived.set()
+                    if held is not None:
+                        await held.wait()
 
     app = client._transport.app  # pyright: ignore[reportAttributeAccessIssue]
     task = asyncio.create_task(app(scope, receive, send))

@@ -9,8 +9,8 @@ only carries it over HTTP.
 
 **A visit.** Each user has at most one at a time, kept in memory and named by an id made up
 for it; coming in again does away with the one before, and one untouched for `IDLE` is done
-away with as it is next touched, or swept away (`keep_sweeping`). As she comes in, the server draws
-who she is: the user's character of the day (Beijing's, `affinity.day_of`), by the user and
+away with as it is next touched, or swept away (`keep_sweeping`). As she comes in, the server
+draws who she is: the user's character of the day (Beijing's, `affinity.day_of`), by the user and
 the day alone, until they have a visit done that day, and from then on anyone, each as
 likely; whether she is in a cooldown or not. Then her reason for coming: half the time the
 job of hers the producer scheduled today and she has done, if there is one, else one of the
@@ -322,9 +322,13 @@ class _Visit:
     step: Step = "writing"
     asking: str = ""
     """What the call it is at asks for, to try it again should it fail."""
-    touched: datetime | None = None
-    """When it was last touched: come in, served, tried again, or a call of it over; None
-    till then, for as it came in."""
+    touched: datetime = field(init=False)
+    """When it was last touched: come in, served, tried again, or a call of it over."""
+    calls: int = 0
+    """How many calls of it were made: the latest is the one its step is of."""
+
+    def __post_init__(self) -> None:
+        self.touched = self.entered_at
 
 
 @dataclass(frozen=True)
@@ -432,7 +436,7 @@ class Bar:
         replaced = self._visits.get(user_id)
         self._visits[user_id] = visit
         if replaced is not None:
-            await self._over(replaced, _ending(replaced))
+            await self._cut_short(replaced)
         return self._called(
             visit, opening_ask(visit.orders[0]), VisitBegan(visit.id, character.id)
         )
@@ -526,13 +530,13 @@ class Bar:
         """The user leaves their visit `visit_id`, which is over. Raises VisitGone unless it is
         theirs under way."""
         visit = await self._under_way(user_id, visit_id)
-        await self._over(visit, _ending(visit))
+        await self._cut_short(visit)
 
     async def sweep(self) -> None:
         """Every visit untouched for `IDLE` done away with."""
         for visit in list(self._visits.values()):
             if self._idle(visit):
-                await self._over(visit, _ending(visit))
+                await self._cut_short(visit)
 
     async def keep_sweeping(self) -> None:
         """`sweep` at every `SWEEP`, until cancelled."""
@@ -565,13 +569,13 @@ class Bar:
         if visit is None or visit.id != visit_id:
             raise VisitGone()
         if self._idle(visit):
-            await self._over(visit, _ending(visit))
+            await self._cut_short(visit)
             raise VisitGone()
         return visit
 
     def _idle(self, visit: _Visit) -> bool:
         """Whether the visit was untouched for `IDLE`."""
-        return self._clock() - (visit.touched or visit.entered_at) >= IDLE
+        return self._clock() - visit.touched >= IDLE
 
     def _end(self, visit: _Visit) -> bool:
         """The visit is no longer under way: whether it was until now."""
@@ -588,10 +592,15 @@ class Bar:
             self._settling(visit.admission, result, given_back=_given_back(visit, result))
         )
 
-    def _left_off(self, visit: _Visit) -> None:
-        """The visit is left if its call stops while her lines are still being written, the
-        page gone, and it is still under way: settled where that cannot be waited for."""
-        if visit.step == "writing" and self._end(visit):
+    async def _cut_short(self, visit: _Visit) -> None:
+        """The visit is over short of done (`_ending`)."""
+        await self._over(visit, _ending(visit))
+
+    def _left_off(self, visit: _Visit, call: int) -> None:
+        """The visit is left if its call `call` stops while her lines are still being written,
+        the page gone, and it is still under way: settled where that cannot be waited for. A
+        call stopping once another is made, as it closes, leaves it be."""
+        if visit.calls == call and visit.step == "writing" and self._end(visit):
             self._settling(visit.admission, "left", given_back=_given_back(visit, "left"))
 
     def _settling(
@@ -601,21 +610,24 @@ class Bar:
         or not: before the bar is closed."""
         return self._kept(admission.settle(result, given_back=given_back))
 
-    def _kept(self, settling: Coroutine[Any, Any, T]) -> "asyncio.Future[T]":
-        """`settling` run whether anyone waits for it or not: before the bar is closed."""
-        kept = asyncio.ensure_future(settling)
+    def _kept(self, work: Coroutine[Any, Any, T]) -> "asyncio.Future[T]":
+        """`work` on a visit over, settling or writing it down, run whether anyone waits for
+        it or not: before the bar is closed."""
+        kept = asyncio.ensure_future(work)
         self._settles.add(kept)
         kept.add_done_callback(self._settled)
         return kept
 
-    def _settled(self, settling: "asyncio.Future[Any]") -> None:
-        self._settles.discard(settling)
-        if not settling.cancelled() and (error := settling.exception()) is not None:
-            log.error("settling a visit failed", exc_info=error)
+    def _settled(self, kept: "asyncio.Future[Any]") -> None:
+        self._settles.discard(kept)
+        if not kept.cancelled() and (error := kept.exception()) is not None:
+            log.error("settling or writing down a visit failed", exc_info=error)
 
     def _called(self, visit: _Visit, ask: str, first: BarEvent | None) -> "BarCall":
         visit.asking = ask
-        return BarCall(self._call(visit, ask, first), lambda: self._left_off(visit))
+        visit.calls += 1
+        call = visit.calls
+        return BarCall(self._call(visit, ask, first, call), lambda: self._left_off(visit, call))
 
     def _reason(self, character: Character, job: Job | None, recent: frozenset[str]) -> Reason:
         """Her reason for coming: half the time `job`, if any; else one of the list's for her,
@@ -638,9 +650,9 @@ class Bar:
         return fresh[self._random(len(fresh))]
 
     async def _call(
-        self, visit: _Visit, ask: str, first: BarEvent | None
+        self, visit: _Visit, ask: str, first: BarEvent | None, call: int
     ) -> AsyncGenerator[BarEvent, None]:
-        """A call of `visit`, asking for `ask`, sending `first` before it if any: its lines as
+        """A call of `visit`, its `call`th, asking for `ask`, sending `first` before it if any: its lines as
         they close, held back from the line she orders in on, if she is to order; then the
         memo and that she waits, or that the visit is done. Failing, it is made again once
         (`ATTEMPTS`), after telling the browser to clear what it sent; failing again, the
@@ -700,7 +712,7 @@ class Bar:
                 return
             yield VisitDone(rewarded)
         finally:
-            self._left_off(visit)
+            self._left_off(visit, call)
 
     async def _done(self, visit: _Visit) -> Rewarded | None:
         """The visit done: written down, rewarded if it is to be (`_write_down`), and settled

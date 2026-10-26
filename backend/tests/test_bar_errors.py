@@ -214,3 +214,28 @@ async def test_her_farewell_left_part_way_is_not_done(
     assert [r[0] for r in visit_records(settings.database_path)] == ["left"]
     assert visit_rows(settings.database_path) == []
     refused(afterwards, 410, "visit_gone")
+
+
+async def test_trying_again_as_the_call_that_failed_is_still_closing_goes_on(
+    make_client: ClientFactory,
+):
+    written = asyncio.Event()
+    llm = FakeLLM(
+        TIMED_OUT, TIMED_OUT, [*COMING_IN[:2], her("ふふ。"), written, COMING_IN[2]]
+    )  # sent up to her latest line, which may be her order, as it is written
+    client = make_client(llm, random=FakeRandom(*DRAWS))
+
+    closing = asyncio.Event()
+
+    came, entering = await streamed(client, VISITS, {}, until="failed", held=closing)
+    tried, trying = await streamed(
+        client, f"{VISITS}/{came[0]['visit_id']}/retry", {}, until="line"
+    )
+    closing.set()
+    await asyncio.wait_for(entering, timeout=5)  # the call that failed closed by now
+    written.set()
+    await asyncio.wait_for(trying, timeout=5)
+
+    assert kinds(tried) == [
+        "line:her", "line:producer", "line:her", "line:her", "memo", "waiting",
+    ]
