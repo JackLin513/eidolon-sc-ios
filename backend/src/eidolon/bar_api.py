@@ -93,6 +93,7 @@ def add_bar_routes(app: FastAPI, backend: Backend) -> None:
 
     @app.delete("/api/bar/visits/{visit_id}", status_code=204)
     async def leave(visit_id: str, user_id: UserId) -> None:
+        """The visit left: over, and not to be come back to."""
         bar.leave(user_id, visit_id)
 
 

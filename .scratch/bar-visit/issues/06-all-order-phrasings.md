@@ -32,3 +32,10 @@
 - 填进去的词要是名词性的说法，模板句是照这个写的（`bar_lines.toml` 开头有说明）：`{flavor}` 中文如「甜的」、日语如「甘いの」；`{kind}` 中文如「时尚的」、日语如「おしゃれなの」；`{conditions}` 是这一单要提的条件用「、」连成一串，如「甜的、加冰、不要酒精」「甘いの、氷入り、アルコール抜き」。打比方的模板句也用 `{conditions}`，填目标的口味和种类（为什么不照描述打比方，见票 04 的 Comments）。
 - **打比方换成模板句以后**（用户 2026-10-26 定）：这一单改按「几个条件叠加」处理，条件是目标的口味加种类。算对的范围、「上得最好」、备忘都照条件叠加，光顾记录里的说法也记成 `conditions`。补一个测试：打比方的名字检查两次不过，换成模板句，上一款口味和种类都对、但不是目标的饮品，算上对。规格「名字检查」已经补上这一句。日语的口味、种类说法现在还没有，这张票定，放在代码里或者 `bar_lines.toml` 都行。
 - 酒量补的「不要酒精」：换成模板句时，如果这一单补了不要酒精、说法又不是几个条件叠加，就在模板句后面接一句 `bar_lines.no_alcohol`；几个条件叠加的把不要酒精放进 `{conditions}`。
+
+### 票 05 交接
+
+- 点单在 `bar_rules.py`：`draw_order(character, catalog, random, ordered, had)` 现在只抽目标饮品、返回 `Order(target)`，说法恒为 `"name"`；说法在这之后抽，注意 `FakeRandom` 的顺序跟着变（`test_bar_visit`、`test_bar_draws`、`test_bar_records` 里的序列都要补上说法那一个数）。判定是 `judged(order, served, character) -> Serving(order, served, tier, wrong)`，`Wrong` 现在只有 `disliked`、`flavor_only`、`kind_only`、`off`，先后照规格补 `alcohol`、`not_usual`。备忘是 `Order.memo`。
+- 点单卡是 `bar_prompt.order_card(order)`，错在哪的文字在 `bar_prompt._WRONGS` 和 `_wrong`；口味、种类的中文名在 `FLAVORS`、`KINDS`。
+- 点单句扣在 `bar._call`：`_holding` 扣着她最后一句和标了 `order` 的那句起的全部，调用写完以后在 `if ordering:` 那一段补标 `order`、推出去、再推备忘。名字检查和重写放在推出去之前。
+- 「老样子」用的 `Had.wanted` 已经有了（上对、上得最好是上的那款，上错是目标）；`bar._hers` 读的是这位角色最近 3 次的记录和次数。「新手」要这位用户所有角色玩完的次数，现在还没读，加进 `_before` 就行。

@@ -133,7 +133,10 @@ def _unclosed(text: str, close: str) -> str:
     end = text.find(close)
     if end >= 0:
         return text[:end]
-    return text[:_start_of(text, (close,))]
+    for size in range(min(len(text), len(close) - 1), 0, -1):
+        if close.startswith(text[-size:]):
+            return text[:-size]
+    return text
 
 
 def _without_tags(text: str) -> str:
@@ -149,9 +152,3 @@ def _start_of_tag(text: str) -> int:
             return opens
     return len(text)
 
-
-def _start_of(text: str, tags: tuple[str, ...]) -> int:
-    for size in range(min(len(text), max(len(t) for t in tags) - 1), 0, -1):
-        if any(t.startswith(text[-size:]) for t in tags):
-            return len(text) - size
-    return len(text)

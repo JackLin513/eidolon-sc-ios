@@ -15,3 +15,8 @@
 - [ ] 把 GLOSSARY「醉」和实现对一遍。pyright、ruff 通过；提交前跑 affected-tests。
 
 ## Comments
+
+### 票 05 交接
+
+- 每杯的酒精份数在 `Serving.served.karmotrine`（大杯已经翻倍，瓶装是目录里的份数）。告别调用由 `Bar.serve` 里的 `len(visit.servings) < visit.cups` 定，醉了的那一杯要走 `farewell_ask` 那条路。
+- `bar_prompt.farewell_ask` 现在写死「你今晚没有喝醉」；`_write_down` 写 `drunk` 恒为 0。下一次的提示词已经照 `Remembered.last_drunk` 写「上次喝醉了……」，只是现在走不到。

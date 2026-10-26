@@ -13,15 +13,15 @@ import zipfile
 from dataclasses import replace
 from pathlib import Path
 
-import httpx
 import pytest
 
 from eidolon import data_package
+from eidolon.bar_visits import BAR_VISITS_FILE, load_bar_visits
 from eidolon.config import Settings
 from tests.conftest import CharacterConfig, ClientFactory
 from tests.fakes import FakeClock, FakeLLM, FakeRandom
 from tests.test_bar_draws import ONE_DRINK, about, visit_done, visit_rows
-from tests.test_bar_visit import COMING_IN, PARTING, REACTING, enter, mano_alone, mixed
+from tests.test_bar_visit import COMING_IN, PARTING, REACTING, enter, mano_alone, mixed, serve
 from tests.test_data_package import export, import_package
 from tests.test_delete_account import user_id
 from tests.test_text_turn import send_turn, start_conversation
@@ -37,18 +37,25 @@ def remembered(prompt: list) -> str:
     return about(prompt).split("# 你在 VA-283 的记录\n")[1].split("\n\n")[0]
 
 
-async def test_a_visit_done_is_written_down_without_a_word_of_what_was_said(
+async def test_a_visit_done_is_written_down_and_remembered_next_time_without_a_word_said(
     make_client: ClientFactory, settings: Settings
 ):
     clock = FakeClock()
-    llm = FakeLLM(COMING_IN, REACTING, PARTING, COMING_IN)
-    client = make_client(llm, clock=clock, random=FakeRandom(0, 0, 20, 0, 0, 0, 45, 0, 0, 0, *ONE_DRINK))
+    llm = FakeLLM(COMING_IN, REACTING, PARTING, COMING_IN, COMING_IN)
+    # Sugar Rush, then Sparkle Star; a visit left; three days on, her of the day again.
+    client = make_client(
+        llm, clock=clock,
+        random=FakeRandom(0, 0, 20, 0, 0, 0, 45, 0, 0, 0, *ONE_DRINK, *ONE_DRINK),
+    )
 
     came = await enter(client)
     clock.advance(minutes=5)
-    await visit_done_from(client, came, mixed("sugar-rush", big=True), mixed("blue-fairy"))
+    for drink in (mixed("sugar-rush", big=True), mixed("blue-fairy")):
+        await serve(client, came[0]["visit_id"], drink)
     left = await enter(client)
     await client.delete(f"/api/bar/visits/{left[0]['visit_id']}")
+    clock.advance(days=3)
+    await enter(client)
 
     [row] = visit_rows(settings.database_path)
     assert row == {
@@ -62,31 +69,6 @@ async def test_a_visit_done_is_written_down_without_a_word_of_what_was_said(
         dumped = "\n".join(db.iterdump())
     db.close()
     assert "こんばんは" not in dumped and "晚上好" not in dumped
-
-
-async def visit_done_from(client: httpx.AsyncClient, came: list[dict], *drinks: dict) -> None:
-    for drink in drinks:
-        res = await client.post(f"/api/bar/visits/{came[0]['visit_id']}/serves", json=drink)
-        assert res.status_code == 200, res.text
-
-
-async def test_next_time_she_remembers_what_she_had_and_how_well_it_was_served(
-    make_client: ClientFactory,
-):
-    clock = FakeClock()
-    llm = FakeLLM(COMING_IN, REACTING, PARTING, COMING_IN, COMING_IN)
-    # Sugar Rush, then Sparkle Star; a visit left; three days on, her of the day again.
-    client = make_client(
-        llm, clock=clock,
-        random=FakeRandom(0, 0, 20, 0, 0, 0, 45, 0, 0, 0, *ONE_DRINK, *ONE_DRINK),
-    )
-
-    await visit_done(client, mixed("sugar-rush", big=True), mixed("blue-fairy"))
-    left = await enter(client)
-    await client.delete(f"/api/bar/visits/{left[0]['visit_id']}")
-    clock.advance(days=3)
-    await enter(client)
-
     assert remembered(llm.prompts[0]) == "这是你第一次来 VA-283。"
     assert remembered(llm.prompts[4]) == "\n".join([
         "你来过 1 次了。",
@@ -98,12 +80,14 @@ async def test_next_time_she_remembers_what_she_had_and_how_well_it_was_served(
     ])
 
 
-async def test_five_visits_make_her_a_regular_and_over_two_weeks_is_a_long_time(
-    make_client: ClientFactory,
+async def test_five_visits_draw_no_reason_or_topic_of_the_last_three_and_make_her_a_regular(
+    make_client: ClientFactory, settings: Settings
 ):
+    listed = load_bar_visits(settings.characters_path.parent / BAR_VISITS_FILE)
     clock = FakeClock()
     llm = FakeLLM(*[COMING_IN, PARTING] * 5, COMING_IN, COMING_IN)
-    # Five visits that day, of one drink each, she by chance from the second on.
+    # Five visits that day, of one drink each, the first of what is left each time, she by
+    # chance from the second on; two weeks on, and a minute more.
     client = make_client(
         llm, clock=clock,
         random=FakeRandom(*ONE_DRINK, 0, *[0, *ONE_DRINK, 0] * 4, *ONE_DRINK, *ONE_DRINK),
@@ -117,6 +101,12 @@ async def test_five_visits_make_her_a_regular_and_over_two_weeks_is_a_long_time(
     clock.advance(minutes=1)
     await enter(client)
 
+    drawn = [(r["reason"], r["topic"]) for r in visit_rows(settings.database_path)]
+    reasons, topics = listed.reasons, listed.topics
+    assert drawn == [(reasons[i].id, topics[i].id) for i in (0, 1, 2, 3, 0)]
+    for (reason, topic), prompt in zip(drawn, llm.prompts[::2]):
+        assert next(r.note for r in reasons if r.id == reason) in about(prompt)
+        assert next(t.note for t in topics if t.id == topic) in about(prompt)
     fifth, then, later = (remembered(llm.prompts[i]) for i in (8, 10, 11))
     assert fifth.startswith("你来过 4 次了。\n上次来是今天早些时候。\n")
     assert then.startswith("你是这里的常客，已经来过 5 次了。\n上次来是 14 天前。\n上次点的")
@@ -157,7 +147,9 @@ async def test_neither_exported_nor_imported(
 ):
     here = make_client(FakeLLM(COMING_IN, PARTING), random=FakeRandom(*ONE_DRINK, 0))
     there_settings = replace(settings, database_path=tmp_path / "other.db")
-    there = make_client(FakeLLM(COMING_IN, PARTING), settings=there_settings, random=FakeRandom(*ONE_DRINK, 0))
+    there = make_client(
+        FakeLLM(COMING_IN, PARTING), settings=there_settings, random=FakeRandom(*ONE_DRINK, 0)
+    )
     await visit_done(here, mixed("sugar-rush"))
     await visit_done(there, mixed("sparkle-star"))
     [row] = visit_rows(settings.database_path)

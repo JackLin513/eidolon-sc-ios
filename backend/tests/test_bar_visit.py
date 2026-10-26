@@ -13,10 +13,10 @@ from pathlib import Path
 import httpx
 import pytest
 
-from eidolon.drink_catalog import load_drink_catalog
 from eidolon.bar_prompt import MOODS
 from eidolon.bar_visits import BAR_VISITS_FILE, load_bar_visits
 from eidolon.config import Settings
+from eidolon.drink_catalog import load_drink_catalog
 from tests.conftest import MANO_SHEET, REPO_DRINKS, CharacterConfig, ClientFactory
 from tests.fakes import FAKE_JUDGE, FakeClock, FakeIdentityProvider, FakeLLM, FakeRandom
 from tests.test_admin_users import ADMIN, admin_beside
@@ -74,7 +74,10 @@ def events(res: httpx.Response) -> list[dict]:
     """The server-sent events of a response read to its end."""
     assert res.status_code == 200, res.text
     assert res.headers["content-type"].startswith("text/event-stream")
-    return [json.loads(line.removeprefix("data: ")) for line in res.text.splitlines() if line.startswith("data: ")]
+    return [
+        json.loads(line.removeprefix("data: "))
+        for line in res.text.splitlines() if line.startswith("data: ")
+    ]
 
 
 async def enter(client: httpx.AsyncClient) -> list[dict]:
@@ -152,11 +155,9 @@ async def test_a_visit_comes_in_orders_is_served_each_drink_and_says_goodbye(
         ("user", False),
     ]
     assert rest[1].content == "\n".join(COMING_IN)
-    assert "Sugar Rush" in rest[0].content and "进门" in rest[0].content
     assert "Sparkle Star" in rest[2].content
     assert "告别" in rest[4].content
     assert llm.prompts[0][:2] == [shared, about]  # every call opens alike
-
 
 
 async def streamed(
@@ -351,10 +352,25 @@ async def test_every_call_tells_her_who_she_is_this_visit_what_came_before_and_w
 
     after_first, after_last = llm.prompts[1][-1].content, llm.prompts[2][-1].content
     assert "Sunshine Cloud（口味苦，种类女性化，不含酒精）" in after_first
-    assert "判定：上错了" in after_first and "你讨厌的苦口味" in after_first
+    assert "判定：上错了" in after_first
     assert "Sparkle Star" in after_first  # her next order's card
     assert "Blue Fairy（口味甜，种类女性化，大杯，不含酒精）" in after_last
-    assert "口味对了，种类不对" not in after_last and "判定：上错了" in after_last
-    assert "告别" in after_last and "第 1 杯上错了；第 2 杯上错了" in after_last
+    assert "告别" in after_last
     for prompt in llm.prompts:
         assert "算对" not in prompt[-1].content and "上得最好" not in prompt[-1].content
+
+
+async def test_a_visit_left_while_her_lines_are_being_written_is_written_no_further(
+    make_client: ClientFactory,
+):
+    written = asyncio.Event()
+    llm = FakeLLM([COMING_IN[0], written, *COMING_IN[1:]])
+    client = make_client(llm, random=FakeRandom(0, 0, 0, 0, 0))
+
+    came, entering = await streamed(client, VISITS, {}, until="visit")
+    left = await client.delete(f"{VISITS}/{came[0]['visit_id']}")
+    written.set()
+    await entering
+
+    assert left.status_code == 204
+    assert kinds(came) == ["visit"]

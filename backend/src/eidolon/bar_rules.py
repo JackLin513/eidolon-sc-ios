@@ -27,7 +27,8 @@ from eidolon.drink_catalog import Drink, DrinkCatalog, Served
 from eidolon.randomness import Random
 
 Bucket = Literal["favorite", "liking", "whim"]
-"""爱喝的、合口味的、心血来潮."""
+"""Where her order is drawn from: the drinks she loves (爱喝的), those to her liking (合口味的),
+any at all (心血来潮)."""
 
 BUCKETS: tuple[tuple[Bucket, int], ...] = (("favorite", 45), ("liking", 35), ("whim", 20))
 """Each bucket her order is drawn from, in the order an empty one falls to the next, and how

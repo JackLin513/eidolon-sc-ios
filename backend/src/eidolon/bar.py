@@ -230,7 +230,7 @@ class Bar:
         clock: Clock,
         characters: dict[str, Character],
         catalog: DrinkCatalog,
-        visits: BarVisits,
+        listed: BarVisits,
         lines: BarLines,
         own_keys: OwnKeys,
         is_on: Callable[[], bool],
@@ -242,12 +242,13 @@ class Bar:
     ) -> None:
         """`is_on` tells whether the bar is open now (the live configuration's switch). Without
         `world`, she has no world setting; without `affinities`, no affinity; without
-        `schedules`, no job of hers for a reason."""
+        `schedules`, no job of hers for a reason. Her reasons for coming and topics are drawn
+        from `listed`."""
         self._db = db
         self._clock = clock
         self._characters = characters
         self._catalog = catalog
-        self._reasons_and_topics = visits
+        self._listed = listed
         self._lines = lines
         self._own_keys = own_keys
         self._is_on = is_on
@@ -286,28 +287,28 @@ class Bar:
             if self._schedules is not None else None
         )
         hers = await self._db.read(_hers, user_id, character.id)
-        reason = self._reason(character, _done_today(her_jobs), hers.reasons)
-        topic = self._topic(character, hers.topics)
-        visit = _Visit(
-            secrets.token_urlsafe(16), user_id, character, now, today, reason, topic,
-            cups(self._random),
-            shared_prompt(character, self._world.prompt(character.name, today) if self._world else None),
-            "",
-        )
-        had = frozenset(h.wanted for h in hers.remembered.last_orders)
-        visit.orders.append(draw_order(character, self._catalog, self._random, [], had))
         status = (
             await self._affinities.status(user_id, character.id)
             if self._affinities is not None else None
         )
-        visit.about = visit_prompt(
-            hers.about_producer, reason, topic, visit.cups,
-            affinity_prompt(status.tier, None) if status is not None else [],
-            today_lines(
-                now, character, everyone, "apart",
-                self._world.lives_of(character.name) if self._world else (),
+        reason = self._reason(character, _done_today(her_jobs), hers.reasons)
+        topic = self._topic(character, hers.topics)
+        drinks = cups(self._random)
+        had = frozenset(h.wanted for h in hers.remembered.last_orders)
+        first = draw_order(character, self._catalog, self._random, [], had)
+        world = self._world
+        visit = _Visit(
+            secrets.token_urlsafe(16), user_id, character, now, today, reason, topic, drinks,
+            shared_prompt(character, world.prompt(character.name, today) if world else None),
+            visit_prompt(
+                hers.about_producer, reason, topic, drinks,
+                affinity_prompt(status.tier, None) if status is not None else [],
+                today_lines(
+                    now, character, everyone, "apart", world.lives_of(character.name) if world else ()
+                ),
+                hers.remembered, now, character, self._catalog,
             ),
-            hers.remembered, now, character, self._catalog,
+            [first],
         )
         self._visits[user_id] = visit
         return self._call(
@@ -362,13 +363,13 @@ class Bar:
         if job is not None and self._random(2) == 0:
             return Reason(job.name, job.note, None, job=True)
         listed = self._fresh(
-            [r for r in self._reasons_and_topics.reasons if character.id not in r.not_for], recent
+            [r for r in self._listed.reasons if character.id not in r.not_for], recent
         )
         return Reason(listed.id, listed.note, listed.mood)
 
     def _topic(self, character: Character, recent: frozenset[str]) -> Topic:
         return self._fresh(
-            [t for t in self._reasons_and_topics.topics if character.id not in t.not_for], recent
+            [t for t in self._listed.topics if character.id not in t.not_for], recent
         )
 
     def _fresh(self, entries: Sequence[_Listed], recent: frozenset[str]) -> _Listed:
@@ -381,7 +382,8 @@ class Bar:
     ) -> AsyncGenerator[BarEvent, None]:
         """A call of `visit`, asking for `ask`, sending `first` before it: its lines as they
         close, held back from the line she orders in on, if she is to order; then the memo
-        and that she waits, or that the visit is done."""
+        and that she waits, or that the visit is done. A visit left or done away with
+        meanwhile is written no further, and the call ends there."""
         yield first
         ordering = len(visit.orders) > len(visit.servings)
         keys = self._own_keys.for_turn(brought)
@@ -395,6 +397,8 @@ class Bar:
                 async for chunk in stream:
                     if not isinstance(chunk, str):
                         continue
+                    if self._visits.get(visit.user_id) is not visit:
+                        return  # left, or done away with by another: written no further
                     for line in parser.feed(chunk):
                         for shown in _holding(line, held, ordering):
                             said.append(shown)
@@ -417,7 +421,7 @@ class Bar:
             if not said:
                 raise _Unwritten("nothing was written")
             if self._visits.get(visit.user_id) is not visit:
-                return  # done away with meanwhile
+                return
             visit.written.append((ask, said))
             if ordering:
                 visit.step = "waiting"

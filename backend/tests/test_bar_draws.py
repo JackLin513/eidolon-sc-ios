@@ -142,28 +142,6 @@ async def test_she_comes_in_a_cooldown_cold_with_the_producer(
     assert "态度很冷" in about(llm.prompts[0])
 
 
-async def test_her_latest_three_visits_reasons_and_topics_are_not_drawn_again(
-    make_client: ClientFactory, settings: Settings, tmp_path: Path
-):
-    settings = only_mano(settings, tmp_path)
-    listed = load_bar_visits(settings.characters_path.parent / BAR_VISITS_FILE)
-    llm = FakeLLM(*[COMING_IN, PARTING] * 5)
-    # The first of what is left each time; Mano by chance from the second visit on.
-    client = make_client(
-        llm, settings=settings, random=FakeRandom(*ONE_DRINK, 0, *[0, *ONE_DRINK, 0] * 4)
-    )
-
-    for _ in range(5):
-        await visit_done(client, mixed("sugar-rush"))
-
-    drawn = [(r["reason"], r["topic"]) for r in visit_rows(settings.database_path)]
-    reasons, topics = listed.reasons, listed.topics
-    assert drawn == [(reasons[i].id, topics[i].id) for i in (0, 1, 2, 3, 0)]
-    for (reason, topic), prompt in zip(drawn, llm.prompts[::2]):
-        assert next(r.note for r in reasons if r.id == reason) in about(prompt)
-        assert next(t.note for t in topics if t.id == topic) in about(prompt)
-
-
 async def test_her_job_done_today_is_her_reason_half_the_time(
     make_client: ClientFactory, settings: Settings, tmp_path: Path
 ):
@@ -172,7 +150,8 @@ async def test_her_job_done_today_is_her_reason_half_the_time(
     llm = FakeLLM(COMING_IN, COMING_IN, COMING_IN)
     # Before it is done, no chance is taken on it; done, heads it is her reason, then tails.
     client = make_client(
-        llm, settings=settings, clock=clock, random=FakeRandom(*ONE_DRINK, 0, *ONE_DRINK[1:], 1, *ONE_DRINK)
+        llm, settings=settings, clock=clock,
+        random=FakeRandom(*ONE_DRINK, 0, *ONE_DRINK[1:], 1, *ONE_DRINK),
     )
     publish(settings.database_path, WEEK, ("声乐课", 1, None), ("拍摄广告", 1, None))
     await save(client, WEEK, placed("声乐课", 0, 0), placed("拍摄广告", 1, 0))  # Monday, Tuesday
@@ -224,7 +203,8 @@ async def test_reasons_and_topics_not_for_her_are_never_drawn(
     config.add("hazuki", "七草はづき", "# 人设\n你是七草はづき。", bar=MANO_TASTES)
     llm = FakeLLM(COMING_IN)
     client = make_client(
-        llm, settings=replace(settings, characters_path=config.path), random=FakeRandom(*ONE_DRINK)
+        llm, settings=replace(settings, characters_path=config.path),
+        random=FakeRandom(*ONE_DRINK),
     )
 
     await enter(client)
@@ -301,16 +281,16 @@ async def test_ordered_by_name_only_that_drink_is_right_in_any_glass(
     )
 
     orders = [json.loads(r["orders"]) for r in visit_rows(settings.database_path)]
+    def by_name(target: str, served: str, tier: str, big: bool = False) -> dict:
+        return {"target": target, "phrasing": "name", "served": served, "big": big, "tier": tier}
+
     assert orders == [
         [
-            {"target": "sugar-rush", "phrasing": "name", "served": "sugar-rush", "big": True, "tier": "right"},
-            {"target": "sparkle-star", "phrasing": "name", "served": "brandtini", "big": False, "tier": "wrong"},
-            {"target": "blue-fairy", "phrasing": "name", "served": "fluffy-dream", "big": False, "tier": "wrong"},
+            by_name("sugar-rush", "sugar-rush", "right", big=True),
+            by_name("sparkle-star", "brandtini", "wrong"),
+            by_name("blue-fairy", "fluffy-dream", "wrong"),
         ],
-        [
-            {"target": "fluffy-dream", "phrasing": "name", "served": "gut-punch", "big": False, "tier": "wrong"},
-            {"target": "sugar-rush", "phrasing": "name", "served": "piano-man", "big": False, "tier": "wrong"},
-        ],
+        [by_name("fluffy-dream", "gut-punch", "wrong"), by_name("sugar-rush", "piano-man", "wrong")],
     ]
     told = [p[-1].content for p in llm.prompts[1:4] + llm.prompts[5:]]
     assert "判定：上对了" in told[0]

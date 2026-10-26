@@ -20,3 +20,9 @@
 ### 票 04 交接
 
 - 兜底的反应在 `bar_lines.reactions[tier]`（`best`、`right`、`wrong`），兜底的告别在 `bar_lines.farewells["sober" | "drunk"]`。每句是 `Line(ja, zh, emotion)`，表情已经标好，推 `line` 时带上；都不含占位，也不提饮品名，哪一杯都能用。
+
+### 票 05 交接
+
+- 现在调用失败（`LLMError` 等任何异常、`OwnKeyFailed`、`_Unwritten` 即一句都没写出来或点单调用里她一句都没说）都推 `failed`（`message` 是 `bar.FAILED` 或自带 LLM 的出错说明）并结束这次光顾，之后 410。这里要改成停在这次调用之前；重试要用的提示词就是 `visit.written` 加这次的 `ask`，点单卡在 `visit.orders[-1]`，不重抽。
+- 断开：`bar_api._events` 用 `aclosing` 关掉调用的生成器，`_call` 的 `finally` 在没写完时结束这次光顾（`over`）。但正文还没开始读就断开的话生成器根本没启动，`serve` 已经把 `step` 设成 `writing`，这次光顾会一直卡在「正在写」，要靠 `IDLE` 作废兜住。
+- 离开、被顶掉时，正在写的调用收到下一块就停，不推任何事件；要不要推点什么给旧的标签页，这里定。

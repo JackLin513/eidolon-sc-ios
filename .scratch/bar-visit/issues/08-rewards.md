@@ -24,3 +24,8 @@
 - [ ] 把 GLOSSARY「光顾」「抽奖」「好感度」和实现对一遍。pyright、ruff 通过；提交前跑 affected-tests，并 grep 断言礼物状态返回的测试一起跑（比如 `"max_draws"`）。
 
 ## Comments
+
+### 票 05 交接
+
+- 玩完时在 `bar._call` 里 `await self._db.write(_write_down, visit, now)`，奖励放进同一个写事务（`_write_down` 里），`rewarded` 列现在写 0。`VisitDone.shown()` 现在恒推 `"rewarded": null`。
+- 「这一天有没有玩完过」是 `bar._before`（按 `entered_on` 查），`reward_today` 可以复用；`GET /api/bar` 的返回在 `Bar.read()`。
