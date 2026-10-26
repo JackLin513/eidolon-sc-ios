@@ -17,6 +17,8 @@ export const BAR_INK = {
   /** The TV's 「ChN」. */
   channel: "#24ff00",
   black: "#000000",
+  /** The veil over the screen under the end card (the prototype's). */
+  veil: "rgba(0, 0, 0, 0.6)",
   /** The words on the bar counter's buttons (the prototype's). */
   button: "#111111",
   /** The recipe book's white frame and its tabs. */

@@ -6,14 +6,17 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { loadPixelFont, measurePixelText } from "@/components/play/bar/PixelText";
 import type { BarSound } from "@/components/play/bar/useBarSound";
 import { copy } from "@/i18n";
-import { ApiError, type Character, enterBar, leaveBarVisit, serveBarDrink } from "@/lib/api";
+import { ApiError, type Character, enterBar, leaveBarVisit, retryBarVisit, serveBarDrink } from "@/lib/api";
 import { type BarMixerAction, garble, served } from "@/lib/barMixer";
 import { CHARS_PER_SECOND, paginate, typedOutAt } from "@/lib/barText";
-import { atTheDoor, barVisit, doorNotice, type VisitEvent } from "@/lib/barVisit";
+import { atTheDoor, barVisit, doorNotice, endCard, type VisitEvent } from "@/lib/barVisit";
 import { playHref } from "@/lib/playRoute";
 
 /** How often the box redraws while a page types out: once a character. */
 const TYPING_TICK_MS = 1000 / CHARS_PER_SECOND;
+
+/** The events a call ends on: one ended before them was cut off. */
+const LAST_EVENTS: ReadonlySet<VisitEvent["type"]> = new Set(["waiting", "failed", "done"]);
 
 /**
  * 一次光顾（.scratch/bar-room spec「一次营业的流程」「接光顾的接口」）：lib/barVisit 的状态，加上计时和接口。
@@ -24,15 +27,21 @@ const TYPING_TICK_MS = 1000 / CHARS_PER_SECOND;
  * 进门那一下响门声、放曲目（useBarSound 要在这一下点击里开始）。
  * 上酒（`serve`）：调 `POST …/serves`，上不了的只响 `buttonnoclick`；收下了响 `glassserve`，接着打它推来的句子，
  * 拒了交给 lib/barVisit（422 故障瓶、410 回店门口、409 照旧）。
+ * 出错（`failed`）后「再试一次」（`retry`）调 `POST …/retry`，同样交给 lib/barVisit（409 照旧、410 回店门口）。
+ * 结束卡上「再营业」（`again`）不回店门口、不重新放曲目，只响门声，下一位接着进门；这一次得了抽奖（`done` 的
+ * `rewarded.draws`）时告诉一声（`onDraws`）。光顾中途调用断了（抛错、或者没等到 `waiting`、`failed`、`done` 就完了）
+ * 回店门口：服务器那边这次光顾也随之没了。
  */
 export function useBarVisit({
   userId,
   characters,
   sound,
+  onDraws,
 }: {
   userId: string | null;
   characters: Character[] | null;
   sound: Pick<BarSound, "start" | "play">;
+  onDraws: () => void;
 }) {
   const router = useRouter();
   const [state, dispatch] = useReducer(barVisit, undefined, atTheDoor);
@@ -42,14 +51,19 @@ export function useBarVisit({
   const herId = useRef("");
   const roster = useRef(characters);
   const latest = useRef(state);
+  const onDrawsRef = useRef(onDraws);
   useEffect(() => {
     roster.current = characters;
     latest.current = state;
+    onDrawsRef.current = onDraws;
   });
 
-  /** A call's events handed to lib/barVisit as they come, each line laid out in pages. */
+  /** A call's events handed to lib/barVisit as they come, each line laid out in pages; throws if
+   * the call ends cut off. */
   const follow = useCallback(async (events: AsyncIterable<VisitEvent>) => {
+    let isEnded = false;
     for await (const event of events) {
+      isEnded = LAST_EVENTS.has(event.type);
       if (event.type === "line") {
         const { type: _, ...line } = event;
         const her = roster.current?.find((c) => c.id === herId.current);
@@ -61,9 +75,21 @@ export function useBarVisit({
           visitId.current = event.visit_id;
           herId.current = event.character_id;
         }
+        if (event.type === "done") {
+          visitId.current = null; // 光顾已经结束，离开时不用再 DELETE。
+          if ((event.rewarded?.draws ?? 0) > 0) onDrawsRef.current();
+        }
         dispatch({ type: "event", event });
       }
     }
+    if (!isEnded) throw new Error("the visit's call was cut off");
+  }, []);
+
+  /** The visit's call cut off part-way: back at the door, the visit gone with it. */
+  const cutOff = useCallback(() => {
+    call.current = null;
+    visitId.current = null;
+    dispatch({ type: "gone" });
   }, []);
 
   /** The visit's call closed and the visit left, if one is under way. */
@@ -75,28 +101,47 @@ export function useBarVisit({
     if (id) void leaveBarVisit(id, leaving).catch(() => {});
   }, []);
 
+  /** `POST /api/bar/visits` and its call followed: from the door, or for the next guest. */
+  const startVisit = useCallback(
+    async (userId: string) => {
+      call.current?.abort(); // 上一位告别的那次调用还开着的话，关掉，免得它晚到的错误把这一位送回店门口。
+      const controller = new AbortController();
+      call.current = controller;
+      visitId.current = null;
+      herId.current = "";
+      try {
+        // 量字要用像素字：没载入就量，退回的字体宽度不一样，分页会错。
+        await loadPixelFont().catch(() => {});
+        await follow(enterBar(userId, controller.signal));
+      } catch (e) {
+        if (controller.signal.aborted || call.current !== controller) return;
+        if (visitId.current) return cutOff();
+        if (e instanceof ApiError && e.status === 409) {
+          router.push(playHref());
+          return;
+        }
+        dispatch({ type: "refused", notice: doorNotice(e instanceof ApiError ? e : null) });
+      }
+    },
+    [router, follow, cutOff],
+  );
+
   const enter = useCallback(async () => {
     if (!userId || !characters || state.stage !== "door") return;
     sound.start();
     sound.play("door");
     dispatch({ type: "enter" });
-    const controller = new AbortController();
-    call.current = controller;
-    herId.current = "";
-    try {
-      // 量字要用像素字：没载入就量，退回的字体宽度不一样，分页会错。
-      await loadPixelFont().catch(() => {});
-      await follow(enterBar(userId, controller.signal));
-    } catch (e) {
-      if (controller.signal.aborted) return;
-      if (visitId.current) return; // 光顾中途断了：票 10。
-      if (e instanceof ApiError && e.status === 409) {
-        router.push(playHref());
-        return;
-      }
-      dispatch({ type: "refused", notice: doorNotice(e instanceof ApiError ? e : null) });
-    }
-  }, [userId, characters, state.stage, router, sound, follow]);
+    await startVisit(userId);
+  }, [userId, characters, state.stage, sound, startVisit]);
+
+  /** 「再营业」：曲目接着放，下一位进门。 */
+  const again = useCallback(async () => {
+    if (!userId || !endCard(latest.current)) return;
+    sound.play("door");
+    dispatch({ type: "again" });
+    latest.current = { ...latest.current, done: null };
+    await startVisit(userId);
+  }, [userId, sound, startVisit]);
 
   const mix = useCallback((action: BarMixerAction) => dispatch({ type: "mix", action }), []);
 
@@ -120,12 +165,37 @@ export function useBarVisit({
       dispatch({ type: "served" });
       await follow(events);
     } catch (e) {
-      if (controller.signal.aborted || isTaken) return; // 收下以后断了：票 10。
+      if (controller.signal.aborted || call.current !== controller) return;
+      if (isTaken) return cutOff();
       const status = e instanceof ApiError ? e.status : null;
       if (status === 410) visitId.current = null;
       dispatch({ type: "serveRefused", status, garble: garble() });
     }
-  }, [sound, follow]);
+  }, [sound, follow, cutOff]);
+
+  /** 「再试一次」：出错的那次调用再来一遍。 */
+  const retry = useCallback(async () => {
+    const { failure, isRetrying } = latest.current;
+    const id = visitId.current;
+    if (!id || failure === null || isRetrying) return;
+    dispatch({ type: "retry" });
+    latest.current = { ...latest.current, isRetrying: true };
+    const controller = new AbortController();
+    call.current = controller;
+    let isTaken = false;
+    try {
+      const events = await retryBarVisit(id, controller.signal);
+      isTaken = true;
+      dispatch({ type: "retried" });
+      await follow(events);
+    } catch (e) {
+      if (controller.signal.aborted || call.current !== controller) return;
+      if (isTaken) return cutOff();
+      const status = e instanceof ApiError ? e.status : null;
+      if (status === 410) visitId.current = null;
+      dispatch({ type: "retryRefused", status });
+    }
+  }, [follow, cutOff]);
 
   const tap = useCallback(() => dispatch({ type: "tap", now: performance.now() }), []);
 
@@ -166,5 +236,5 @@ export function useBarVisit({
     return () => window.clearInterval(id);
   }, [shown]);
 
-  return { state, now, enter, tap, leave, mix, serve };
+  return { state, now, enter, again, tap, leave, mix, serve, retry };
 }

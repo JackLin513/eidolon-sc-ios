@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 
+import { BAR_BUTTON, BarButton } from "@/components/play/bar/BarButton";
 import { HitArea } from "@/components/play/bar/BarScreen";
 import { BAR_INK } from "@/components/play/bar/ink";
-import { PixelText, type PixelRun } from "@/components/play/bar/PixelText";
+import { measurePixelText, PixelText, type PixelRun } from "@/components/play/bar/PixelText";
 import { Sprite } from "@/components/play/bar/Sprite";
 import { copy } from "@/i18n";
-import type { TextRow } from "@/lib/barText";
+import { TEXT_WIDTH, type TextRow, wrapText } from "@/lib/barText";
 import type { VisitLine } from "@/lib/barVisit";
 
 /** The original's text box, under the guest's window, and where the text starts in it. */
@@ -20,10 +21,15 @@ const ARROW_FRAME_MS = 111;
 /** The glove's NEXT bubble over the text box: four frames, as quick as the arrow. */
 const NEXT_FRAMES = 4;
 
+/** 「再试一次」 at the box's lower right; the message wraps short of it. */
+const RETRY = { x: BOX.x + BOX.width - 6 - BAR_BUTTON.width, y: BOX.y + BOX.height - 5 - BAR_BUTTON.height };
+const FAILURE_WIDTH = TEXT_WIDTH - BAR_BUTTON.width - 8;
+
 /**
  * 文本框（.scratch/bar-room spec「文本框和打字」）：一页台词，名字按角色上色、接冒号（她用官方色，制作人用原型的「我」色），
  * 正文白色，她的中文字幕灰色。打完右下角 `arrow_text_2` 上下跳。点哪都算：交给 lib/barVisit，先打完、再翻页。
  * 电脑上鼠标停在文本框上是会动的 NEXT 气泡（`isNextCursor`：点了有用的时候）。
+ * 模型出错（`failure`）时台词收起，写出错的话，右下角「再试一次」；请求在路上时（`isRetrying`）按钮收起。
  */
 export function BarTextBox({
   text,
@@ -31,12 +37,14 @@ export function BarTextBox({
   isArrowShown,
   isNextCursor,
   onTap,
+  failure,
 }: {
   text: { line: VisitLine; rows: TextRow[] } | null;
   herColor: string;
   isArrowShown: boolean;
   isNextCursor: boolean;
   onTap: () => void;
+  failure: { message: string; isRetrying: boolean; onRetry: () => void } | null;
 }) {
   const [frame, setFrame] = useState(0);
   const isMoving = isArrowShown || isNextCursor;
@@ -52,6 +60,15 @@ export function BarTextBox({
     if (row.name) runs.push({ text: row.name, color: text.line.speaker === "her" ? herColor : BAR_INK.producer });
     runs.push({ text: row.text, color: row.subtitle ? BAR_INK.sub : BAR_INK.text });
   });
+  if (failure) {
+    const rows = wrapText(failure.message, FAILURE_WIDTH, measurePixelText).slice(0, 4);
+    return (
+      <>
+        <PixelText x={BOX.x + INSET.x} y={BOX.y + INSET.y} runs={rows.join("\n")} />
+        {!failure.isRetrying && <BarButton {...RETRY} label={copy.bar.retry} onClick={failure.onRetry} />}
+      </>
+    );
+  }
   return (
     <>
       {text && <PixelText x={BOX.x + INSET.x} y={BOX.y + INSET.y} runs={runs} />}

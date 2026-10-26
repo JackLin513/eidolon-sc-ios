@@ -49,3 +49,8 @@
   - 曲单换成本机存的选择：让 `start` 或一个新的 `setPlaylist` 接曲单，`ended` 读它；单曲循环、随机在 `ended` 里分（`nextTrack` 旁边加纯函数，测在 `lib/barJukebox`）；暂停、上一首、下一首直接操作那个 `<audio>`。
   - 「没有音频」：hook 现在不往外给状态（审查时删了没人用的那个）。选曲界面要分「manifest 还在读」和「没有音频」，加一个 `audio: BarAudio | null`（null 是还在读），在 manifest 的 `then` 里 set；读不到时是全空的 `BarAudio`。
   - 试听：规格说曲目和试听共用一个 `<audio>`。选曲界面在进门之前，那时 `AudioContext` 还没建，但 `<audio>` 的试听是悬停 / 长按触发的，浏览器要有过点击才放行；电脑上悬停之前没点过的话放不出来，要验一下。
+
+### 票 10 交接
+
+- 结束卡上「再营业」（`useBarVisit.again`）只响 `door`，不调 `sound.start()`：曲目接着放是靠这个。点唱机接管播放以后，再营业时同样不能从第 1 首重放。
+- 结束卡盖着整个画面（`BarEndCard` 的遮罩会挡住侧边菜单），点唱机按钮在结束卡出着时点不到。

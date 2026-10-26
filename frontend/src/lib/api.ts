@@ -728,6 +728,16 @@ export async function serveBarDrink(
   return serverSentEvents<VisitEvent>(res);
 }
 
+/** Tries again the call the visit stopped before, failing (a `failed` event). Once the server took
+ * it, the call to be followed as it comes, from its first line on, without the producer's 「请慢用」
+ * of a drink served. Refused while no call failed (409 `not_failed`), or with the visit gone (410
+ * `visit_gone`, as after her farewell failed to be written down). */
+export async function retryBarVisit(visitId: string, signal?: AbortSignal): Promise<AsyncGenerator<VisitEvent>> {
+  const res = await api(`/api/bar/visits/${encodeURIComponent(visitId)}/retry`, { method: "POST", signal });
+  if (!res.ok) await json(res);
+  return serverSentEvents<VisitEvent>(res);
+}
+
 /** Leaves the visit: over, not to be come back to. `keepalive` as the page goes away. */
 export async function leaveBarVisit(visitId: string, { keepalive = false } = {}): Promise<void> {
   const path = `/api/bar/visits/${encodeURIComponent(visitId)}`;

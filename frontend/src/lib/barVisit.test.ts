@@ -7,9 +7,11 @@ import {
   type BarVisitAction,
   type BarVisitState,
   type VisitLine,
+  type VisitRewarded,
   atTheDoor,
   barVisit,
   doorNotice,
+  endCard,
   isArrowShown,
   isSpeaking,
   shownText,
@@ -301,5 +303,192 @@ describe("调酒和上酒", () => {
     const refused = barVisit(barVisit(ready, { type: "serve" }), { type: "serveRefused", status: 409, garble: "" });
 
     expect(refused).toEqual(ready);
+  });
+});
+
+describe("结束卡", () => {
+  const FAREWELL: VisitLine = { speaker: "her", emotion: "happy", ja: "またね", zh: "再见" };
+  const done = (rewarded: VisitRewarded): BarVisitAction => ({ type: "event", event: { type: "done", rewarded } });
+  const saidGoodbye = [ENTER, VISIT, line(FAREWELL, 0)];
+
+  it("done 到了，最后一句打完、点过了才出", () => {
+    const state = run(...saidGoodbye, done(null));
+
+    expect(endCard(state)).toBeNull();
+    expect(endCard(barVisit(state, { type: "tick", now: 9000 }))).toBeNull();
+    expect(endCard(barVisit(state, { type: "tap", now: 9000 }))).toEqual({ draws: false, affinityUp: false });
+  });
+
+  it("最后一句先点过了，done 一到就出", () => {
+    const tapped = run(...saidGoodbye, { type: "tap", now: 9000 });
+
+    expect(endCard(tapped)).toBeNull();
+    expect(endCard(barVisit(tapped, done(null)))).not.toBeNull();
+  });
+
+  it("后面还有没翻的页时不出", () => {
+    const state = run(...saidGoodbye, line(WELCOME, 0), done(null), { type: "tap", now: 9000 });
+
+    expect(endCard(state)).toBeNull();
+    expect(endCard(barVisit(state, { type: "tap", now: 9000 }))).toBeNull();
+    expect(endCard(barVisit(barVisit(state, { type: "tap", now: 20_000 }), { type: "tap", now: 20_000 }))).not.toBeNull();
+  });
+
+  it("三种写法：抽奖和好感度、只有其中一样、什么都没有", () => {
+    const card = (rewarded: VisitRewarded) => endCard(run(...saidGoodbye, done(rewarded), { type: "tap", now: 9000 }));
+
+    expect(card({ draws: 1, affinity_up: true })).toEqual({ draws: true, affinityUp: true });
+    expect(card({ draws: 0, affinity_up: true })).toEqual({ draws: false, affinityUp: true });
+    expect(card({ draws: 0, affinity_up: false })).toEqual({ draws: false, affinityUp: false });
+    expect(card(null)).toEqual({ draws: false, affinityUp: false });
+  });
+
+  it("再营业：不回店门口，等下一位进门", () => {
+    const ended = run(...saidGoodbye, done(null), { type: "tap", now: 9000 });
+    const again = barVisit(ended, { type: "again" });
+
+    expect(again).toMatchObject({ stage: "next", visit: null, shown: null, notice: null });
+    expect(endCard(again)).toBeNull();
+    expect(barVisit(again, VISIT)).toMatchObject({ stage: "visit", visit: { id: "v1" } });
+    expect(barVisit(again, { type: "refused", notice: "进不了门" })).toMatchObject({ stage: "door", notice: "进不了门" });
+  });
+
+  it("结束卡出来之前，再营业没用", () => {
+    const state = run(...saidGoodbye, done(null));
+
+    expect(barVisit(state, { type: "again" })).toBe(state);
+  });
+});
+
+/** A visit at her first drink served (taken), the producer's 「请慢用」 not come yet. */
+function servedVisit(): BarVisitState {
+  const mixing = run(
+    ENTER,
+    VISIT,
+    line(ORDER, 0),
+    { type: "event", event: { type: "memo", text: "她要 Bad Touch。" } },
+    { type: "event", event: { type: "waiting" } },
+    { type: "tick", now: 9000 },
+  );
+  const beer: Drink = {
+    id: "beer",
+    name: "Beer",
+    short_name: "Beer",
+    flavor: "bubbly",
+    kind: "classic",
+    method: "bottle",
+    description: "",
+    karmotrine: 1,
+  };
+  const bottled = barVisit(mixing, { type: "mix", action: { type: "bottle", drink: beer } });
+  return barVisit(barVisit(bottled, { type: "serve" }), { type: "served" });
+}
+
+const ENJOY: VisitLine = { speaker: "producer", zh: "请慢用" };
+const REACTION: VisitLine = { speaker: "her", emotion: "happy", ja: "おいしい", zh: "好喝" };
+const RETRYING: BarVisitAction = { type: "event", event: { type: "retrying" } };
+
+describe("retrying", () => {
+  it("清掉这次调用推来的句子，打过的和没打的都清；下一句一到就打", () => {
+    const state = run(ENTER, VISIT, line(HELLO, 0), line(WELCOME, 0), RETRYING);
+
+    expect(state).toMatchObject({ shown: null, queue: [] });
+    expect(shownText(barVisit(state, line(WELCOME, 100)), 100)?.line).toEqual(WELCOME);
+  });
+
+  it("上酒那次：「请慢用」留着，从它接着", () => {
+    const reacted = [line(ENJOY, 20_000), line(REACTION, 20_000), { type: "tap", now: 30_000 } as const];
+    const state = [...reacted, RETRYING].reduce(barVisit, servedVisit());
+
+    expect(state.queue).toEqual([]);
+    expect(shownText(state, 30_000)).toMatchObject({ line: ENJOY, isTypedOut: true });
+    expect(isArrowShown(state, 30_000)).toBe(false);
+    expect(shownText(barVisit(state, line(REACTION, 30_500)), 30_500)).toMatchObject({ line: REACTION, isTypedOut: false });
+  });
+
+  it("她的情绪也回到这次调用之前", () => {
+    expect(run(ENTER, VISIT, line(HELLO, 0), RETRYING).mood).toBe("calm");
+    const state = [line(ENJOY, 20_000), line(REACTION, 20_000), { type: "tap", now: 30_000 } as const, RETRYING].reduce(
+      barVisit,
+      servedVisit(),
+    );
+    expect(state.mood).toBe("thinking");
+  });
+
+  it("「请慢用」还在框上时，只清排着的", () => {
+    const state = [line(ENJOY, 20_000), line(REACTION, 20_000), RETRYING].reduce(barVisit, servedVisit());
+
+    expect(state.queue).toEqual([]);
+    expect(shownText(state, 20_000)?.line).toEqual(ENJOY);
+  });
+});
+
+describe("failed 和再试一次", () => {
+  const FAILED: BarVisitAction = { type: "event", event: { type: "failed", message: "模型没有回应，再试一次吧" } };
+  const failed = [line(ENJOY, 20_000), line(REACTION, 20_000), { type: "tap", now: 30_000 } as const, FAILED].reduce(
+    barVisit,
+    servedVisit(),
+  );
+
+  it("文本框写出错的话；点文本框没用，箭头不出、不开口", () => {
+    expect(failed.failure).toBe("模型没有回应，再试一次吧");
+    expect(barVisit(failed, { type: "tap", now: 40_000 })).toBe(failed);
+    expect(isArrowShown(failed, 40_000)).toBe(false);
+    expect(isSpeaking(failed, 30_010)).toBe(false);
+  });
+
+  it("再试一次：请求在路上时再点没用；服务器接了，清掉出错这次的句子，「请慢用」留着", () => {
+    const retrying = barVisit(failed, { type: "retry" });
+    expect(retrying.isRetrying).toBe(true);
+    expect(barVisit(retrying, { type: "retry" })).toBe(retrying);
+
+    const retried = barVisit(retrying, { type: "retried" });
+    expect(retried).toMatchObject({ failure: null, isRetrying: false, queue: [] });
+    expect(shownText(retried, 40_000)?.line).toEqual(ENJOY);
+    expect(shownText(barVisit(retried, line(REACTION, 40_000)), 40_000)?.line).toEqual(REACTION);
+  });
+
+  it("没出错时再试一次没用", () => {
+    const talking = run(ENTER, VISIT, line(HELLO, 0));
+
+    expect(barVisit(talking, { type: "retry" })).toBe(talking);
+  });
+
+  it("409（not_failed）忽略，照旧可以再点", () => {
+    expect(barVisit(barVisit(failed, { type: "retry" }), { type: "retryRefused", status: 409 })).toEqual(failed);
+  });
+
+  it("410 回店门口，写这次光顾已经结束了", () => {
+    const gone = barVisit(barVisit(failed, { type: "retry" }), { type: "retryRefused", status: 410 });
+
+    expect(gone).toEqual({ ...atTheDoor(), notice: "这次光顾已经结束了" });
+  });
+
+  it("告别两次都失败：清掉推过的，兜底的告别照常打完、出结束卡", () => {
+    const FIXED: VisitLine = { speaker: "her", emotion: "calm", ja: "じゃあね", zh: "那我走了" };
+    const state = [
+      line(ENJOY, 20_000),
+      line(REACTION, 20_000),
+      RETRYING,
+      line(FIXED, 21_000),
+      { type: "event", event: { type: "done", rewarded: { draws: 1, affinity_up: true } } } as const,
+    ].reduce(barVisit, servedVisit());
+
+    const lines: VisitLine[] = [];
+    let at = state;
+    for (let now = 30_000; !endCard(at); now += 10_000) {
+      lines.push(at.shown!.line);
+      at = barVisit(at, { type: "tap", now });
+    }
+    expect(lines).toEqual([ENJOY, FIXED]);
+    expect(endCard(at)).toEqual({ draws: true, affinityUp: true });
+  });
+});
+
+describe("这次光顾没了", () => {
+  it("调用断了、请求得 410：回店门口，写这次光顾已经结束了", () => {
+    const state = run(ENTER, VISIT, line(HELLO, 0));
+
+    expect(barVisit(state, { type: "gone" })).toEqual({ ...atTheDoor(), notice: "这次光顾已经结束了" });
   });
 });

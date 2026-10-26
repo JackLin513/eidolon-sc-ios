@@ -71,3 +71,8 @@
 
 - 配方书是 `components/play/bar/BarRecipeBook.tsx`，放进 `BarScreen` 的 `book` 插槽：`<BarRecipeBook drinks isCounterOpen counter sound />`，`counter` 是 `useBarCounter` 的返回（瓶装从书里拖进摇酒器靠它的 `drag`）。教程照 `BarSubpage` 的写法，调酒台开着时挂上、收起时卸下；挂上时响 `boot_up`、刷开，每次挂上都从封面开始。
 - 书里翻到哪一页是组件自己的状态（`lib/barRecipeBook` 的 `recipeBook`、`COVER`），外面读不到。教程只靠台词和备忘提示，用不着；真要按书的状态往下走，得把 `book` 状态提到外面。
+
+### 票 10 交接
+
+- 白框按钮有共用件 `BarButton`（`components/play/bar/BarButton.tsx`，72×22，原型 `EndPanel` 的样子），教程要按钮时可以用。
+- 结束卡是 `BarEndCard`，按 `lib/barVisit` 的 `endCard(state)` 出；教程不调模型、什么都不给，要结束卡的话是「她走了」那种写法。

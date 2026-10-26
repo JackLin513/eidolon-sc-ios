@@ -1,11 +1,12 @@
 "use client";
 
 import { notFound, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 
 import { useDirectory } from "@/components/conversations/ConversationDirectory";
 import { BarCounter, useBarCounter } from "@/components/play/bar/BarCounter";
 import { BarDoor } from "@/components/play/bar/BarDoor";
+import { BarEndCard } from "@/components/play/bar/BarEndCard";
 import { BarGuest } from "@/components/play/bar/BarGuest";
 import { BarRecipeBook } from "@/components/play/bar/BarRecipeBook";
 import { BarRoom } from "@/components/play/bar/BarRoom";
@@ -17,7 +18,8 @@ import { useBarSound } from "@/components/play/bar/useBarSound";
 import { useBarVisit } from "@/components/play/bar/useBarVisit";
 import { useBar } from "@/components/play/useBar";
 import { copy } from "@/i18n";
-import { isArrowShown, isSpeaking, shownText, typingVoice } from "@/lib/barVisit";
+import { endCard, isArrowShown, isSpeaking, shownText, typingVoice } from "@/lib/barVisit";
+import { getGiftState } from "@/lib/gifts";
 import { playHref } from "@/lib/playRoute";
 
 /** 句子打字时循环的打字音效。 */
@@ -29,6 +31,8 @@ const TYPING_SOUND = { her: "bleep_high", producer: "bleep_low" } as const;
  * 读到之前只有一层底色；读不到时照样画画面，「离开」能用。
  * 进来先到店门口，点一下进门，她进来和制作人说话，点单后备忘出来、调酒台打开（useBarVisit、lib/barVisit），
  * 照原版调好上酒（BarCounter、lib/barMixer），调酒时配方书盖住她（BarRecipeBook），她接着反应、点下一单。
+ * 她告别、最后一页点过以后出结束卡（BarEndCard），「再营业」直接迎下一位；模型出错时文本框写出错的话和「再试一次」。
+ * 得了抽奖时重读一次礼物状态告诉外壳，导航「玩法」上的点随之亮起（离开玩法页以后看得到）。
  * 「离开」离开这次光顾、回玩法页，浏览器返回也是（从玩法页的卡进来）。界面上哪里都不写她的口味、醉意和档位。
  * 声音（useBarSound）：`audioBase` 是存储桶里 `bar/` 的地址，部署没给就是 null，一声不出。进门响门声、放曲目，一直放到离开；
  * 句子打字时循环打字音效，她是 `bleep_high`，制作人是 `bleep_low`。
@@ -36,9 +40,17 @@ const TYPING_SOUND = { her: "bleep_high", producer: "bleep_low" } as const;
 export function BarSubpage({ audioBase }: { audioBase: string | null }) {
   const router = useRouter();
   const { bar, failed } = useBar();
-  const { account, characters } = useDirectory();
+  const { account, characters, giftsRead } = useDirectory();
   const sound = useBarSound(audioBase);
-  const { state, now, enter, tap, leave, mix, serve } = useBarVisit({ userId: account?.id ?? null, characters, sound });
+  const onDraws = useCallback(() => {
+    getGiftState().then(giftsRead, () => {});
+  }, [giftsRead]);
+  const { state, now, enter, again, tap, leave, mix, serve, retry } = useBarVisit({
+    userId: account?.id ?? null,
+    characters,
+    sound,
+    onDraws,
+  });
   const isCounterOpen = state.isMixing && !state.isServing;
   const drinks = bar?.enabled ? bar.drinks : [];
   const counter = useBarCounter({
@@ -59,6 +71,11 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
   if (bar && !bar.enabled) notFound();
   if (!bar && !failed) return <div className="bar-layer absolute inset-0" style={{ background: BAR_INK.ground }} />;
   const her = characters?.find((c) => c.id === state.visit?.characterId) ?? null;
+  const card = endCard(state);
+  const leaveBar = () => {
+    leave();
+    router.push(playHref());
+  };
   return (
     <BarScreen
       room={<BarRoom />}
@@ -69,7 +86,7 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
       }
       portrait={<PortraitGuard />}
     >
-      {state.stage === "visit" ? (
+      {state.stage === "visit" || state.stage === "next" ? (
         <>
           <BarCounter mixer={state.mixer} isCounterOpen={isCounterOpen} counter={counter} />
           <BarTextBox
@@ -78,6 +95,7 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
             isArrowShown={isArrowShown(state, now)}
             isNextCursor={state.shown !== null && !state.isMixing}
             onTap={tap}
+            failure={state.failure === null ? null : { message: state.failure, isRetrying: state.isRetrying, onRetry: () => void retry() }}
           />
         </>
       ) : (
@@ -86,11 +104,17 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
       <SideMenu
         memo={state.memo}
         leave={copy.bar.leave}
-        onLeave={() => {
-          leave();
-          router.push(playHref());
-        }}
+        onLeave={leaveBar}
       />
+      {card && (
+        <BarEndCard
+          {...card}
+          herName={her && (her.short_name ?? her.name)}
+          herColor={her?.color ?? BAR_INK.text}
+          onAgain={() => void again()}
+          onLeave={leaveBar}
+        />
+      )}
     </BarScreen>
   );
 }

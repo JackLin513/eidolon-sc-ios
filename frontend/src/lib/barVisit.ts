@@ -14,6 +14,15 @@
 //   producer's 「请慢用」) shows as soon as it comes; refused as broken (422), the shaker shows
 //   it broken; the visit gone (410), back at the door; anything else (409 for a double tap), as
 //   it was.
+// - Each line is marked with the call that sent it. A call made again (`retrying`), or tried
+//   again after `failed` once the server took it, has its lines cleared, typed or not, and the box
+//   goes back to the page before them: the producer's 「请慢用」 of a drink served is sent before
+//   its call is written, so it stays.
+// - Failed, the box says the event's message and 「再试一次」; while `POST …/retry` is under way it
+//   is locked; refused as gone (410), back at the door; anything else (409 `not_failed`), as it was.
+// - Done (`done`), the end card shows once her last page is tapped past: 「再营业」 awaits the next
+//   guest inside (`next`), not at the door.
+// - The visit gone (a call cut off part-way), back at the door, saying so.
 
 import { copy } from "@/i18n";
 import type { ApiError } from "@/lib/api";
@@ -39,22 +48,36 @@ export type VisitEvent =
   | { type: "failed"; message: string }
   | { type: "done"; rewarded: VisitRewarded };
 
-/** A page of a line queued for the text box, and whether it is the line's last. */
-type LinePage = { line: VisitLine; page: TextPage; isLast: boolean };
+/** A page of a line queued for the text box, whether it is the line's last, and which of the
+ * visit's calls sent it (`BarVisitState.call`). */
+type LinePage = { line: VisitLine; page: TextPage; isLast: boolean; call: number };
+
+/** A page on the text box, and how far it has typed. */
+type ShownPage = LinePage & { typing: Typing };
 
 export type BarVisitState = {
-  /** Outside (`door`), coming in while `POST /api/bar/visits` is under way (`entering`), or in. */
-  stage: "door" | "entering" | "visit";
+  /** Outside (`door`), coming in while `POST /api/bar/visits` is under way (`entering`), or in;
+   * `next`: in, the next guest awaited after 「再营业」 (`POST /api/bar/visits` under way). */
+  stage: "door" | "entering" | "next" | "visit";
   /** At the door: why the last try to come in did not get in. */
   notice: string | null;
   /** The visit under way: its id, and who came in. */
   visit: { id: string; characterId: string } | null;
   /** The page on the text box, and how far it has typed. */
-  shown: (LinePage & { typing: Typing }) | null;
+  shown: ShownPage | null;
   /** Pages come and not yet shown, in order. */
   queue: LinePage[];
   /** The player tapped past the last page: the next to come shows at once. */
   isAwaitingLine: boolean;
+  /** The call under way, counted from the visit's first: its lines are cleared when it is made
+   * again (`retrying`, or tried again after `failed`). */
+  call: number;
+  /** The next line is the producer's 「请慢用」 a drink taken begins its call with: sent once, before
+   * the call is written, so not cleared with it. */
+  isEnjoyNext: boolean;
+  /** The last page shown before the call under way's, and her mood then: the box and her mood go
+   * back to them as the call's lines are cleared. */
+  resume: { shown: ShownPage; mood: Emotion } | null;
   /** Her order line is typed out, the bar counter waiting for `waiting` to open. */
   isOrderTyped: boolean;
   /** She is waiting for her drink, the bar counter waiting for her order line to be typed out. */
@@ -71,6 +94,13 @@ export type BarVisitState = {
   mixer: BarMixerState;
   /** What is in the shaker is being served (`POST …/serves` under way): the counter is locked. */
   isServing: boolean;
+  /** The call under way failed (`failed`): what the text box says instead, with 「再试一次」. */
+  failure: string | null;
+  /** 「再试一次」 tapped: `POST …/retry` under way. */
+  isRetrying: boolean;
+  /** She said goodbye (`done`): what the visit was rewarded with; the end card shows once her
+   * last page is tapped past. */
+  done: { rewarded: VisitRewarded } | null;
 };
 
 export type BarVisitAction =
@@ -88,6 +118,16 @@ export type BarVisitAction =
   | { type: "tick"; now: number }
   /** The visit left: back at the door, the visit gone. */
   | { type: "left" }
+  /** 「再营业」 on the end card: `POST /api/bar/visits` sent for the next guest. */
+  | { type: "again" }
+  /** 「再试一次」 tapped: `POST …/retry` sent. */
+  | { type: "retry" }
+  /** The server took the retry: the failed call made again from its first line. */
+  | { type: "retried" }
+  /** The server refused the retry, with this status (null: no answer at all). */
+  | { type: "retryRefused"; status: number | null }
+  /** The visit is gone: a call refused as gone (410), or cut off part-way. */
+  | { type: "gone" }
   /** Something done at the open bar counter. */
   | { type: "mix"; action: BarMixerAction }
   /** What is in the shaker served: `POST …/serves` sent. */
@@ -106,6 +146,9 @@ export function atTheDoor(): BarVisitState {
     shown: null,
     queue: [],
     isAwaitingLine: false,
+    call: 0,
+    isEnjoyNext: false,
+    resume: null,
     isOrderTyped: false,
     isWaiting: false,
     pendingMemo: null,
@@ -114,31 +157,52 @@ export function atTheDoor(): BarVisitState {
     mood: "calm",
     mixer: emptyMixer(),
     isServing: false,
+    failure: null,
+    isRetrying: false,
+    done: null,
   };
+}
+
+/** Back at the door, saying the visit is gone. */
+function visitGone(): BarVisitState {
+  return { ...atTheDoor(), notice: copy.bar.visitGone };
 }
 
 export function barVisit(state: BarVisitState, action: BarVisitAction): BarVisitState {
   switch (action.type) {
     case "enter":
       return state.stage === "door" ? { ...atTheDoor(), stage: "entering" } : state;
+    case "again":
+      return endCard(state) ? { ...atTheDoor(), stage: "next" } : state;
     case "refused":
       return { ...atTheDoor(), notice: action.notice };
     case "left":
       return atTheDoor();
+    case "gone":
+      return visitGone();
+    case "retry":
+      return state.failure !== null && !state.isRetrying ? { ...state, isRetrying: true } : state;
+    case "retried":
+      return state.isRetrying ? { ...clearCall(state), failure: null, isRetrying: false } : state;
+    case "retryRefused":
+      if (!state.isRetrying) return state;
+      return action.status === 410 ? visitGone() : { ...state, isRetrying: false };
     case "line": {
       const pages: LinePage[] = action.pages.map((page, i) => ({
         line: action.line,
         page,
         isLast: i === action.pages.length - 1,
+        call: state.call,
       }));
-      const queued = { ...state, queue: [...state.queue, ...pages] };
+      const call = state.isEnjoyNext ? state.call + 1 : state.call;
+      const queued = { ...state, queue: [...state.queue, ...pages], call, isEnjoyNext: false };
       return state.shown === null || state.isAwaitingLine ? showNext(queued, action.now) : queued;
     }
     case "event":
       return onEvent(state, action.event);
     case "tap": {
       const { shown } = state;
-      if (!shown) return state;
+      if (!shown || state.failure !== null) return state;
       if (!isTypedOut(shown.page, shown.typing, action.now)) {
         return afterTyping({ ...state, shown: { ...shown, typing: { ...shown.typing, finished: true } } }, action.now);
       }
@@ -157,11 +221,11 @@ export function barVisit(state: BarVisitState, action: BarVisitAction): BarVisit
     case "served":
       // 调酒时箭头不显示，玩家没理由去点：「请慢用」一到就顶掉点单句开始打。
       return state.isServing
-        ? { ...state, isServing: false, isMixing: false, isAwaitingLine: true, mixer: emptyMixer() }
+        ? { ...state, isServing: false, isMixing: false, isAwaitingLine: true, isEnjoyNext: true, mixer: emptyMixer() }
         : state;
     case "serveRefused":
       if (!state.isServing) return state;
-      if (action.status === 410) return { ...atTheDoor(), notice: copy.bar.visitGone };
+      if (action.status === 410) return visitGone();
       if (action.status === 422) {
         return { ...state, isServing: false, mixer: barMixer(state.mixer, { type: "broken", garble: action.garble }) };
       }
@@ -177,8 +241,13 @@ function onEvent(state: BarVisitState, event: Exclude<VisitEvent, { type: "line"
       return { ...state, pendingMemo: event.text };
     case "waiting":
       return openCounter({ ...state, isWaiting: true });
+    case "retrying":
+      return clearCall(state);
+    case "failed":
+      return { ...state, failure: event.message };
+    case "done":
+      return { ...state, done: { rewarded: event.rewarded } };
     default:
-      // retrying、failed、done：票 10。
       return state;
   }
 }
@@ -187,8 +256,28 @@ function onEvent(state: BarVisitState, event: Exclude<VisitEvent, { type: "line"
 function showNext(state: BarVisitState, now: number): BarVisitState {
   const [next, ...queue] = state.queue;
   if (!next) return state;
+  const { shown } = state;
+  const resume = shown && shown.call !== state.call ? { shown, mood: state.mood } : state.resume;
   const mood = next.line.speaker === "her" ? next.line.emotion : state.mood;
-  return afterTyping({ ...state, shown: { ...next, typing: { startedAt: now, finished: false } }, queue, isAwaitingLine: false, mood }, now);
+  return afterTyping(
+    { ...state, shown: { ...next, typing: { startedAt: now, finished: false } }, queue, isAwaitingLine: false, mood, resume },
+    now,
+  );
+}
+
+/** The lines the call under way sent cleared, typed or not: the box back on the page before them,
+ * typed out, the next line to come shown at once. */
+function clearCall(state: BarVisitState): BarVisitState {
+  const queue = state.queue.filter((p) => p.call !== state.call);
+  if (state.shown?.call !== state.call) return { ...state, queue };
+  const { resume } = state;
+  return {
+    ...state,
+    queue,
+    shown: resume && { ...resume.shown, typing: { ...resume.shown.typing, finished: true } },
+    mood: resume?.mood ?? "calm",
+    isAwaitingLine: true,
+  };
 }
 
 /** What follows from the page on the box having typed out by `now`. */
@@ -230,7 +319,8 @@ export function shownText(
 /** Whose line is typing out on the box (its typing sound plays meanwhile); null for none. */
 export function typingVoice(state: BarVisitState, now: number): VisitLine["speaker"] | null {
   const { shown } = state;
-  return shown !== null && !isTypedOut(shown.page, shown.typing, now) ? shown.line.speaker : null;
+  if (!shown || state.failure !== null || isTypedOut(shown.page, shown.typing, now)) return null;
+  return shown.line.speaker;
 }
 
 /** Her mouth moves: a line of hers is typing out on the box. */
@@ -242,7 +332,16 @@ export function isSpeaking(state: BarVisitState, now: number): boolean {
  * while the box waits for the next line, nor while she waits for her drink. */
 export function isArrowShown(state: BarVisitState, now: number): boolean {
   const { shown } = state;
-  return shown !== null && isTypedOut(shown.page, shown.typing, now) && !state.isAwaitingLine && !state.isMixing;
+  if (!shown || state.isAwaitingLine || state.isMixing || state.failure !== null) return false;
+  return isTypedOut(shown.page, shown.typing, now);
+}
+
+/** The end card, once she said goodbye and her last page is tapped past: whether it says a draw
+ * chance came (the day's first visit done) and her affinity rose; neither, it says she left. */
+export function endCard(state: BarVisitState): { draws: boolean; affinityUp: boolean } | null {
+  const { done } = state;
+  if (!done || state.queue.length > 0 || (state.shown !== null && !state.isAwaitingLine)) return null;
+  return { draws: (done.rewarded?.draws ?? 0) > 0, affinityUp: done.rewarded?.affinity_up ?? false };
 }
 
 /** What the door says when coming in was refused (other than the bar being closed, which goes
