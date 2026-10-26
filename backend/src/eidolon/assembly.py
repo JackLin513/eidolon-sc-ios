@@ -406,7 +406,7 @@ def build(
     bar = Bar(
         database, clock, characters, drink_catalog, bar_visits, bar_lines, own_keys,
         lambda: config.bar_on, random or secure_random, world=world, affinities=affinities,
-        schedules=schedules,
+        gifts=gifts, schedules=schedules,
     )
     admissions = Admissions(
         usage, activity, own_keys, cooldown_until=affinities.cooldown_until

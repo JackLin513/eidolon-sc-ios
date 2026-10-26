@@ -19,7 +19,8 @@ A user is rewarded for what they do (`reward`), as achievements' stages are unlo
 (`happenings`): each reward given once by its key, its draw chances over and
 above the most kept of those given each day, and its reset cards, never anything of her
 affinity. As the achievements launch, everyone is rewarded for what they did before, open
-or not (`reward_everyone`).
+or not (`reward_everyone`). The day's first visit to the bar done gives a draw chance too, but
+held to the most kept (`reward_draw`).
 
 An admin may give every user there is a reset card at once (`grant_reset_cards`), banned
 ones and admins too, but no one user anything on their own. Each grant is kept, when and
@@ -199,7 +200,7 @@ class GiftState:
     """Each character's affinity with the user, for choosing whom to give to and telling
     whom a reset card would bring back: none while closed, as affinity shows nothing then."""
     rewarded_at: datetime | None
-    """When the user was last rewarded (`Gifts.reward`); None if never."""
+    """When the user was last rewarded (`Gifts.reward`, `Gifts.reward_draw`); None if never."""
 
     def shown(self) -> dict:
         """As the browser is told it."""
@@ -421,6 +422,20 @@ class Gifts:
         _give(db, user_id, day_of(now))
         given = [r for r in rewards if _credit(db, user_id, r, now)]
         return given, now
+
+    def reward_draw(self, db: sqlite3.Connection, user_id: str, key: str) -> bool:
+        """Give the user a draw chance for something they did, once by its `key`, having been
+        given the draw chances due today, unless that leaves them more than the most kept:
+        unlike `reward`'s, held to it, as the day's are. Recorded as a reward only if given, so
+        that only then is the user told of one. Gifts are to be open, as for `reward`; through
+        `db`, in the transaction what they are rewarded for is kept in. Whether given."""
+        self._notice(db, True)
+        now = self._clock()
+        _give(db, user_id, day_of(now))
+        (draws,) = db.execute(
+            "SELECT draws FROM gift_balances WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        return draws < MAX_DRAWS and _credit(db, user_id, Reward(key, 1), now)
 
     def reward_everyone(
         self,

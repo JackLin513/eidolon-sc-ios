@@ -36,3 +36,7 @@
 ### 票 07 交接
 
 - 醉没醉在 `visit.drunk`（上酒时就算好了）。告别那次调用两次失败时，兜底的告别用 `bar_lines.farewells["drunk" if visit.drunk else "sober"]`。醉了提早告别的那次调用也是告别调用：判断方法不是只看 `len(visit.servings) < visit.cups`，还要看 `not visit.drunk`，和 `Bar.serve` 一致。
+
+### 票 08 交接
+
+- 奖励在 `Bar._write_down` 里发，和写记录在同一个写事务里；`_call` 走到 `await self._db.write(self._write_down, visit, self._clock(), self._rewarding)` 就会发，然后推 `VisitDone(rewarded)`。告别兜底只要也走这一句，「照样发奖励」就自动成立。测试可以照 `test_bar_rewards.py` 断言 `done` 的 `rewarded` 不是 `null`（要用 `FAKE_JUDGE` 和 `affinity_and_gifts=True`）。

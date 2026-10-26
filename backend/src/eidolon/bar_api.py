@@ -75,9 +75,10 @@ def add_bar_routes(app: FastAPI, backend: Backend) -> None:
     app.add_exception_handler(BrokenDrink, refused(422, "broken_drink"))
 
     @app.get("/api/bar")
-    async def read(_: UserId) -> dict:
-        """Whether the bar is open and, if it is, its drinks in catalog order."""
-        return bar.read()
+    async def read(user_id: UserId) -> dict:
+        """Whether the bar is open and, if it is, its drinks in catalog order, and whether a
+        visit done today would be rewarded."""
+        return await bar.read(user_id)
 
     @app.post("/api/bar/visits")
     async def enter(

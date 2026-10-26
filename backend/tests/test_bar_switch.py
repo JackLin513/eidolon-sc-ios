@@ -36,8 +36,9 @@ async def test_on_reading_gives_the_drink_catalog_without_what_only_the_model_is
 
     assert res.status_code == 200
     bar = res.json()
-    assert set(bar) == {"enabled", "drinks"}
+    assert set(bar) == {"enabled", "drinks", "reward_today"}
     assert bar["enabled"] is True
+    assert bar["reward_today"] is False  # without the judge model, affinity and gifts are off
     drinks = {d["id"]: d for d in bar["drinks"]}
     assert len(drinks) == 28
     assert drinks["sugar-rush"] == {

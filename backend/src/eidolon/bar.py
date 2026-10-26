@@ -1,9 +1,10 @@
 """The bar (GLOSSARY.md「酒吧」「光顾」): characters come to VA-283, order, and the producer
 serves them; the chat model writes what is said, the server decides everything else.
 
-`Bar` is all there is to it from outside: reading it (whether it is open, its drinks), a
-user coming in, serving a drink, and leaving. Everything a visit draws, judges and writes
-down is done in here; the API only carries it over HTTP.
+`Bar` is all there is to it from outside: reading it (whether it is open, its drinks, whether
+a visit done today would be rewarded), a user coming in, serving a drink, and leaving.
+Everything a visit draws, judges, writes down and is rewarded with is done in here; the API
+only carries it over HTTP.
 
 **A visit.** Each user has at most one at a time, kept in memory and named by an id made up
 for it; coming in again does away with the one before. As she comes in, the server draws
@@ -37,6 +38,13 @@ broken, it is refused and nothing changes; anything else is served her and judge
 each order, whether she got drunk; nothing of what was said. Her visits with the user done
 are what she remembers of the bar, next time; a visit left before it is done is not.
 
+**Rewarded.** The user's first visit done of the day she came in on, while affinity and gifts
+are on (`LiveConfig.affinity_on`), is rewarded as it is written down, in the same transaction:
+a draw chance, held to the most kept (`Gifts.reward_draw`), keyed by the day; and her affinity
+raised by how well each drink was served (`Affinities.visit_done`), whether there was a best
+for its order or not (`bar_rules.has_best`). Told of as the visit is done; no conversation
+event, nothing in the conversations. Later visits that day give nothing.
+
 Nothing of the bar is told to the conversations, nor written in them or in memory.
 """
 
@@ -46,11 +54,11 @@ import logging
 import secrets
 import sqlite3
 from collections.abc import AsyncGenerator, Callable, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime
 from typing import Literal, TypeVar
 
-from eidolon.affinity import Affinities, affinity_prompt, day_of
+from eidolon.affinity import Affinities, DrinkServed, affinity_prompt, day_of
 from eidolon.bar_lines import BarLines
 from eidolon.bar_prompt import (
     Remembered,
@@ -74,6 +82,7 @@ from eidolon.bar_rules import (
     draw_order,
     drunk,
     fixed_order,
+    has_best,
     judged,
     names_rightly,
 )
@@ -83,6 +92,7 @@ from eidolon.characters import Character
 from eidolon.clock import Clock
 from eidolon.data_access import Database
 from eidolon.drink_catalog import DrinkCatalog, Mixture
+from eidolon.gifts import Gifts
 from eidolon.llm import ChatLLM
 from eidolon.own_keys import BroughtKeys, OwnKeyFailed, OwnKeys
 from eidolon.producer import producer_prompt
@@ -177,11 +187,23 @@ class Waiting:
 
 
 @dataclass(frozen=True)
+class Rewarded:
+    """What a visit done was rewarded with: draw chances (none if the user had the most kept
+    already), and whether her affinity rose."""
+
+    draws: int
+    affinity_up: bool
+
+
+@dataclass(frozen=True)
 class VisitDone:
-    """Her farewell is written: the visit is done."""
+    """Her farewell is written: the visit is done, rewarded or not (None)."""
+
+    rewarded: Rewarded | None = None
 
     def shown(self) -> dict:
-        return {"type": "done", "rewarded": None}
+        rewarded = self.rewarded
+        return {"type": "done", "rewarded": rewarded and asdict(rewarded)}
 
 
 @dataclass(frozen=True)
@@ -264,12 +286,13 @@ class Bar:
         *,
         world: World | None = None,
         affinities: Affinities | None = None,
+        gifts: Gifts | None = None,
         schedules: Schedules | None = None,
     ) -> None:
         """`is_on` tells whether the bar is open now (the live configuration's switch). Without
-        `world`, she has no world setting; without `affinities`, no affinity; without
-        `schedules`, no job of hers for a reason. Her reasons for coming and topics are drawn
-        from `listed`."""
+        `world`, she has no world setting; without `affinities`, no affinity; without `gifts`
+        too, no reward; without `schedules`, no job of hers for a reason. Her reasons for
+        coming and topics are drawn from `listed`."""
         self._db = db
         self._clock = clock
         self._characters = characters
@@ -281,16 +304,21 @@ class Bar:
         self._random = random
         self._world = world
         self._affinities = affinities
+        self._gifts = gifts
         self._schedules = schedules
         self._visits: dict[str, _Visit] = {}
         """Each user's visit under way, by user."""
         db.prepare(_open)
 
-    def read(self) -> dict:
-        """Whether the bar is open and, if it is, its drinks in catalog order."""
+    async def read(self, user_id: str) -> dict:
+        """Whether the bar is open and, if it is, its drinks in catalog order, and whether the
+        user would be rewarded for a visit done today: none done yet, and rewards given."""
         if not self._is_on():
             return {"enabled": False}
-        return {"enabled": True, "drinks": self._catalog.described()}
+        reward_today = self._rewarding and not await self._db.read(
+            _done_on, user_id, day_of(self._clock())
+        )
+        return {"enabled": True, "drinks": self._catalog.described(), "reward_today": reward_today}
 
     async def enter(
         self, user_id: str, brought: BroughtKeys, device_timezone: str | None = None
@@ -378,6 +406,12 @@ class Bar:
         theirs under way."""
         self._end(self._under_way(user_id, visit_id))
 
+    @property
+    def _rewarding(self) -> bool:
+        """Whether visits done are rewarded now: affinity and gifts are on. Told on the event
+        loop, as affinity is."""
+        return self._affinities is not None and self._gifts is not None and self._affinities.on
+
     def _under_way(self, user_id: str, visit_id: str) -> _Visit:
         visit = self._visits.get(user_id)
         if visit is None or visit.id != visit_id:
@@ -463,8 +497,10 @@ class Bar:
                 yield Memo(visit.orders[-1].memo("".join(line.zh for line in held if line.order)))
                 yield Waiting()
                 return
-            await self._db.write(_write_down, visit, self._clock())
-            yield VisitDone()
+            rewarded = await self._db.write(
+                self._write_down, visit, self._clock(), self._rewarding
+            )
+            yield VisitDone(rewarded)
         except OwnKeyFailed as e:  # theirs to fix, so they are told what went wrong
             log.warning("a visit's call failed on the user's own key: %s", e.service)
             yield VisitFailed(e.message)
@@ -514,6 +550,43 @@ class Bar:
         hers = [line for line in lines if line.speaker == "her"]
         return [line for line in hers if line.order] or [replace(h, order=True) for h in hers[-1:]]
 
+    def _write_down(
+        self, db: sqlite3.Connection, visit: _Visit, now: datetime, rewarding: bool
+    ) -> Rewarded | None:
+        """Write the visit down, done `now`, rewarding it if `rewarding` and it is the user's
+        first done of the day it came in on: what it was rewarded with; None if nothing."""
+        rewarded = None
+        if rewarding and not _done_on(db, visit.user_id, visit.entered_on):
+            assert self._gifts is not None and self._affinities is not None
+            her = visit.character
+            rewarded = Rewarded(
+                int(self._gifts.reward_draw(db, visit.user_id, f"bar:{visit.entered_on}")),
+                self._affinities.visit_done(
+                    db, visit.user_id, her.id,
+                    [
+                        DrinkServed(s.tier, has_best(s.order, her, self._catalog))
+                        for s in visit.servings
+                    ],
+                ),
+            )
+        orders = [
+            {
+                "target": s.order.target.id, "phrasing": s.order.phrasing,
+                "served": s.served.drink.id, "big": s.served.big, "tier": s.tier,
+            }
+            for s in visit.servings
+        ]
+        db.execute(
+            "INSERT INTO visit_records (user_id, character_id, entered_at, left_at, entered_on,"
+            " reason, topic, orders, drunk, rewarded) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                visit.user_id, visit.character.id, visit.entered_at.isoformat(), now.isoformat(),
+                visit.entered_on.isoformat(), visit.reason.id, visit.topic.id,
+                json.dumps(orders), int(visit.drunk), int(rewarded is not None),
+            ),
+        )
+        return rewarded
+
 
 class _Unwritten(RuntimeError):
     """The model wrote no line a call needs."""
@@ -562,15 +635,20 @@ def _open(db: sqlite3.Connection) -> None:
     db.executescript(_SCHEMA)
 
 
-def _before(db: sqlite3.Connection, user_id: str, today: date) -> _Before:
+def _done_on(db: sqlite3.Connection, user_id: str, day: date) -> bool:
+    """Whether the user has a visit done that came in on `day`."""
     found = db.execute(
         "SELECT 1 FROM visit_records WHERE user_id = ? AND entered_on = ? LIMIT 1",
-        (user_id, today.isoformat()),
+        (user_id, day.isoformat()),
     ).fetchone()
+    return found is not None
+
+
+def _before(db: sqlite3.Connection, user_id: str, today: date) -> _Before:
     (done,) = db.execute(
         "SELECT COUNT(*) FROM visit_records WHERE user_id = ?", (user_id,)
     ).fetchone()
-    return _Before(found is not None, done)
+    return _Before(_done_on(db, user_id, today), done)
 
 
 def _hers(db: sqlite3.Connection, user_id: str, character_id: str) -> _Hers:
@@ -593,23 +671,4 @@ def _hers(db: sqlite3.Connection, user_id: str, character_id: str) -> _Hers:
     return _Hers(
         remembered, frozenset(r[1] for r in rows), frozenset(r[2] for r in rows),
         producer_prompt(read_profile(db, user_id)),
-    )
-
-
-def _write_down(db: sqlite3.Connection, visit: _Visit, now: datetime) -> None:
-    orders = [
-        {
-            "target": s.order.target.id, "phrasing": s.order.phrasing,
-            "served": s.served.drink.id, "big": s.served.big, "tier": s.tier,
-        }
-        for s in visit.servings
-    ]
-    db.execute(
-        "INSERT INTO visit_records (user_id, character_id, entered_at, left_at, entered_on,"
-        " reason, topic, orders, drunk, rewarded) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
-        (
-            visit.user_id, visit.character.id, visit.entered_at.isoformat(), now.isoformat(),
-            visit.entered_on.isoformat(), visit.reason.id, visit.topic.id,
-            json.dumps(orders), int(visit.drunk),
-        ),
     )

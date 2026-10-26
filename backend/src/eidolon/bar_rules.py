@@ -24,6 +24,7 @@ are never told her: what she says of it (`Order.said`) a drink must all be, and
 - the usual, any she wanted the last time;
 - her favorite, any she loves, or of a flavor she likes or of her kind; best one she loves;
 - else, any, best one she loves.
+An order none would answer best, where none she loves is right, has no best (`has_best`).
 None of the flavor she dislikes is ever right. A drink served wrong is wrong in the first of
 these ways that is so: of the flavor she dislikes; with alcohol, wanted without; not the
 usual; of the flavor of the drink she meant but not its kind, or of the kind but not the
@@ -39,7 +40,7 @@ rewritten, she says one of the fixed lines for it instead (`fixed_order`). The o
 the producer's note of what she wants (`Order.memo`).
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import timedelta
 from typing import Literal
@@ -276,6 +277,12 @@ def judged(order: Order, served: Served, character: Character) -> Serving:
     return Serving(order, served, "best" if _best(order, served, character) else "right")
 
 
+def has_best(order: Order, character: Character, catalog: DrinkCatalog) -> bool:
+    """Whether any of the drinks, served in any glass, would be best for `order`: never by
+    name but big, by an analogy or for the usual; else where one she loves is right for it."""
+    return any(judged(order, served, character).tier == "best" for served in _servable(catalog))
+
+
 def drunk(character: Character, servings: Sequence[Serving]) -> bool:
     """Whether she is drunk, having been served `servings` in a visit: as many parts of
     Karmotrine in them as she holds (`DRUNK_AT`), or more."""
@@ -357,6 +364,19 @@ def _target(
 def _doubles(drink: Drink) -> bool:
     """Whether `drink` has a doubled glass: mixed, and not big already."""
     return drink.recipe is not None and not drink.recipe.big
+
+
+def _servable(catalog: DrinkCatalog) -> Iterator[Served]:
+    """Each drink as it can be served: bottled; else in its own glass and doubled, if it has
+    a doubled one, with alcohol and, where it may be made without, without."""
+    for drink in catalog.drinks.values():
+        recipe = drink.recipe
+        if recipe is None:
+            yield Served(drink, False, drink.bottled_karmotrine)
+            continue
+        for big in (False, True) if _doubles(drink) else (False,):
+            for karmotrine in (0, 1) if recipe.karmotrine is None else (recipe.karmotrine,):
+                yield Served(drink, big, karmotrine * (2 if big else 1))
 
 
 def _extras(drink: Drink) -> tuple[Condition, ...]:
