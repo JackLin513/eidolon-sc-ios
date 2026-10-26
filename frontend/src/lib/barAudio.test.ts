@@ -1,6 +1,13 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
-import audio from "../../../characters/bar_audio.json";
+// 运行时读，不 import：前端的 Docker 构建拿不到 characters/，而 next build 也给测试做类型检查。
+const audio = JSON.parse(readFileSync(new URL("../../../characters/bar_audio.json", import.meta.url), "utf-8")) as {
+  tracks: { id: number; file: string; title: string }[];
+  default_playlist: number[];
+  sfx: { name: string; file: string }[];
+};
 
 describe("characters/bar_audio.json", () => {
   it("原版点唱机的 59 首，编号唯一、都有显示名，照原版的顺序", () => {
