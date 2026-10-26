@@ -14,11 +14,11 @@ export const RECIPE_TABS = ["name", "flavor", "kind", "bottle"] as const;
 export type RecipeTab = (typeof RECIPE_TABS)[number];
 
 /** The menu's flavors and kinds, in its order. */
-export const FLAVORS: DrinkFlavor[] = ["sweet", "bitter", "sour", "spicy", "bubbly"];
-export const KINDS: DrinkKind[] = ["girly", "manly", "classic", "classy", "promo"];
+const FLAVORS: DrinkFlavor[] = ["sweet", "bitter", "sour", "spicy", "bubbly"];
+const KINDS: DrinkKind[] = ["girly", "manly", "classic", "classy", "promo"];
 
 /** The most drinks a category lists. */
-export const PER_CATEGORY = 6;
+const PER_CATEGORY = 6;
 
 type CardDrink = Exclude<Drink, { method: "bottle" }> & { page: number };
 
@@ -41,7 +41,7 @@ export type RecipeBookAction =
 export const COVER: RecipeBookState = { tab: null, category: null, drink: null };
 
 /** The drinks with a recipe card, in their pages' order. */
-export function cards(drinks: Drink[]): CardDrink[] {
+function cards(drinks: Drink[]): CardDrink[] {
   return drinks
     .filter((d): d is CardDrink => d.method !== "bottle" && d.page !== null)
     .sort((a, b) => a.page - b.page);

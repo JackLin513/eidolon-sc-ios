@@ -51,10 +51,6 @@ describe("drinksIn", () => {
 describe("recipeBook", () => {
   const click = (...actions: RecipeBookAction[]) => actions.reduce((s, a) => recipeBook(s, a, DRINKS), COVER);
 
-  it("opens on the cover, and a tab lists its categories", () => {
-    expect(COVER.tab).toBeNull();
-    expect(click({ type: "tab", tab: "flavor" })).toEqual({ tab: "flavor", category: null, drink: null });
-  });
 
   it("goes tab, category, drink", () => {
     const state = click({ type: "tab", tab: "kind" }, { type: "category", category: "promo" }, { type: "drink", id: "zen-star" });
@@ -62,17 +58,14 @@ describe("recipeBook", () => {
     expect(pageOf(state, DRINKS)).toEqual({ n: 24, of: 24 });
   });
 
-  it("a tab clicked again goes back to its categories; already there, nothing changes", () => {
+  it("a tab, clicked from anywhere, opens on its categories; already there, nothing changes", () => {
     const open = click({ type: "tab", tab: "name" }, { type: "category", category: "S" }, { type: "drink", id: "suplex" });
+    expect(recipeBook(open, { type: "tab", tab: "flavor" }, DRINKS)).toEqual({ tab: "flavor", category: null, drink: null });
     const back = recipeBook(open, { type: "tab", tab: "name" }, DRINKS);
     expect(back).toEqual({ tab: "name", category: null, drink: null });
     expect(recipeBook(back, { type: "tab", tab: "name" }, DRINKS)).toBe(back);
   });
 
-  it("another tab starts from its categories", () => {
-    const open = click({ type: "tab", tab: "name" }, { type: "category", category: "S" });
-    expect(recipeBook(open, { type: "tab", tab: "flavor" }, DRINKS)).toEqual({ tab: "flavor", category: null, drink: null });
-  });
 
   it("turns the cards in their pages' order, whatever the category", () => {
     const sugar = click({ type: "tab", tab: "flavor" }, { type: "category", category: "sweet" }, { type: "drink", id: "sugar-rush" });

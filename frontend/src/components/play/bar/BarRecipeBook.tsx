@@ -30,9 +30,16 @@ const PAGE = { x: 9, y: 25, width: 315, height: 214 };
 const TAB_BOX: Record<RecipeTab, [number, number]> = { name: [9, 62], flavor: [79, 62], kind: [139, 62], bottle: [211, 72] };
 /** The page-turning arrows and 「n/24」 under the card. */
 const ARROW = { y: 209, width: 23, height: 24, prev: 22, next: 290 };
-/** How wide an item of a list takes clicks; by name, a column of letters is this far from the next. */
-const ITEM_WIDTH = 200;
-const LETTER_COLUMN = 92;
+/** 「n/24」 between the arrows. */
+const PAGE_NUMBER = { x: 142, y: ARROW.y + 5, width: 60 };
+/** On the page: the title, the categories (and the bottled) under it, a category's drinks a little
+ * closer; how wide an item takes clicks, and by name how far a column of letters is from the next. */
+const TITLE = { x: 18, y: 20 };
+const LIST = { x: 39, y: 58, step: 30, width: 200, letterColumn: 92, lettersPerColumn: 4 };
+const DRINK_LIST = { y: 52, step: 26 };
+/** A bottled drink's picture (35×53, as on the bar counter) and its line beside it. */
+const BOTTLE = { x: 39, y: 56, width: 35, height: 53 };
+const NOTE = { x: 90, y: 75 };
 
 const t = copy.bar.book;
 
@@ -41,11 +48,6 @@ function categoryName(tab: RecipeTab, key: string): string {
   if (tab === "flavor") return t.category(t.flavors[key as keyof typeof t.flavors]);
   if (tab === "kind") return t.category(t.kinds[key as keyof typeof t.kinds]);
   return key;
-}
-
-/** Only a mouse coming over something sounds: a finger has no hover. */
-function isMouse(e: PointerEvent<Element>): boolean {
-  return e.pointerType === "mouse";
 }
 
 /**
@@ -85,8 +87,15 @@ export function BarRecipeBook({
     setHover(null);
   };
 
+  /** Sounds `mouse_hover` as a mouse comes over (a finger has no hover), and does `then`. */
+  const hovered = (then?: () => void) => (e: PointerEvent<Element>) => {
+    if (e.pointerType !== "mouse") return;
+    play("mouse_hover");
+    then?.();
+  };
+
   /** One grey item of a list, white under the pointer; coordinates on the page. */
-  const item = (id: string, text: string, x: number, y: number, onClick: () => void, width = ITEM_WIDTH) => (
+  const item = (id: string, text: string, x: number, y: number, onClick: () => void, width: number = LIST.width) => (
     <div key={id}>
       <PixelText x={x} y={y} runs={text} color={hover === id ? BAR_INK.text : BAR_INK.bookGrey} label="" />
       <button
@@ -94,11 +103,7 @@ export function BarRecipeBook({
         aria-label={text}
         className="bar-hit absolute"
         style={{ left: x - 4, top: y - 3, width, height: 22 }}
-        onPointerEnter={(e) => {
-          if (!isMouse(e)) return;
-          play("mouse_hover");
-          setHover(id);
-        }}
+        onPointerEnter={hovered(() => setHover(id))}
         onPointerLeave={() => setHover((h) => (h === id ? null : h))}
         onClick={onClick}
       />
@@ -115,23 +120,23 @@ export function BarRecipeBook({
     const isDragged = counter.drag.isDragging(bottle);
     body = (
       <>
-        <PixelText x={18} y={20} runs={open.name} />
-        {!isDragged && <Sprite name={drinkSprite(open.id)} x={39} y={56} width={35} height={53} />}
+        <PixelText {...TITLE} runs={open.name} />
+        {!isDragged && <Sprite name={drinkSprite(open.id)} {...BOTTLE} />}
         <div
           role="img"
           aria-label={t.bottle(open.name)}
           className="absolute"
           style={{
-            left: 39,
-            top: 56,
-            width: 35,
-            height: 53,
+            left: BOTTLE.x,
+            top: BOTTLE.y,
+            width: BOTTLE.width,
+            height: BOTTLE.height,
             touchAction: "none",
             cursor: !isCounterOpen ? undefined : isDragged ? "var(--cur-closed)" : "var(--cur-open)",
           }}
           {...(isCounterOpen ? counter.drag.handlers(bottle) : {})}
         />
-        <PixelText x={90} y={75} runs={open.description} color={BAR_INK.bookGrey} />
+        <PixelText {...NOTE} runs={open.description} color={BAR_INK.bookGrey} />
       </>
     );
   } else if (book.tab === null) {
@@ -139,9 +144,9 @@ export function BarRecipeBook({
   } else if (book.tab === "bottle") {
     body = (
       <>
-        <PixelText x={18} y={20} runs={t.search.bottle} />
+        <PixelText {...TITLE} runs={t.search.bottle} />
         {drinksIn("bottle", null, drinks).map((d, i) =>
-          item(d.id, d.name, 39, 58 + i * 30, () => act({ type: "drink", id: d.id }, "jukechange")),
+          item(d.id, d.name, LIST.x, LIST.y + i * LIST.step, () => act({ type: "drink", id: d.id }, "jukechange")),
         )}
       </>
     );
@@ -149,16 +154,16 @@ export function BarRecipeBook({
     const tab = book.tab;
     body = (
       <>
-        <PixelText x={18} y={20} runs={t.search[tab]} />
+        <PixelText {...TITLE} runs={t.search[tab]} />
         {categories(tab, drinks).map((key, i) =>
           item(
             key,
             categoryName(tab, key),
             // 按名称两列，每列四个字母；口味、种类一列。
-            tab === "name" ? 39 + Math.floor(i / 4) * LETTER_COLUMN : 39,
-            58 + (tab === "name" ? i % 4 : i) * 30,
+            tab === "name" ? LIST.x + Math.floor(i / LIST.lettersPerColumn) * LIST.letterColumn : LIST.x,
+            LIST.y + (tab === "name" ? i % LIST.lettersPerColumn : i) * LIST.step,
             () => act({ type: "category", category: key }, "jukepick"),
-            tab === "name" ? LETTER_COLUMN : ITEM_WIDTH,
+            tab === "name" ? LIST.letterColumn : LIST.width,
           ),
         )}
       </>
@@ -166,9 +171,9 @@ export function BarRecipeBook({
   } else {
     body = (
       <>
-        <PixelText x={18} y={20} runs={categoryName(book.tab, book.category)} />
+        <PixelText {...TITLE} runs={categoryName(book.tab, book.category)} />
         {drinksIn(book.tab, book.category, drinks).map((d, i) =>
-          item(d.id, d.name, 39, 52 + i * 26, () => act({ type: "drink", id: d.id }, "jukechange")),
+          item(d.id, d.name, LIST.x, DRINK_LIST.y + i * DRINK_LIST.step, () => act({ type: "drink", id: d.id }, "jukechange")),
         )}
       </>
     );
@@ -191,7 +196,7 @@ export function BarRecipeBook({
               aria-pressed={isActive}
               className="bar-hit absolute"
               style={{ left: x, top: PAPER.y, width, height: 16 }}
-              onPointerEnter={(e) => isMouse(e) && play("mouse_hover")}
+              onPointerEnter={hovered()}
               onClick={() => act({ type: "tab", tab }, book.tab === tab ? null : "jukeselect")}
             />
           </div>
@@ -217,7 +222,7 @@ export function BarRecipeBook({
               aria-label={label}
               className="bar-hit absolute"
               style={{ left: x, top: ARROW.y, width: ARROW.width, height: ARROW.height }}
-              onPointerEnter={(e) => isMouse(e) && play("mouse_hover")}
+              onPointerEnter={hovered()}
               onClick={() => act({ type: "page", step }, "jukepick", "jukechange")}
             >
               <Sprite
@@ -230,7 +235,7 @@ export function BarRecipeBook({
               />
             </button>
           ))}
-          <PixelText x={142} y={214} width={60} align="center" runs={`${page.n}/${page.of}`} />
+          <PixelText {...PAGE_NUMBER} align="center" runs={`${page.n}/${page.of}`} />
         </>
       )}
     </div>

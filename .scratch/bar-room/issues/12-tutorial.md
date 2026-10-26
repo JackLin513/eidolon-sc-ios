@@ -66,3 +66,8 @@
 
 - 判两杯调成了什么：`lib/barMixer` 的 `matchDrink(drinks, mixture)`，`drinks` 是 `GET /api/bar` 的目录（`useBar()` 的 `bar.drinks`），`mixture` 是 `{ adelhyde, bronson_extract, powdered_delta, flanergide, karmotrine, ice, aged, method }`；回 `{ drink, big }`，调坏的回 null。调酒台停下时已经算好了，就在 `state.mixer.made`（`isFinished(state.mixer)` 时有效；null 是调坏的，调坏的本来就上不了）。
 - 调酒台的状态和动作在 `lib/barVisit` 里（`mixer`、`mix`、`serve`）。教程不调接口：上酒那一下不要走 `useBarVisit.serve`，自己拿 `state.mixer.made` 判，然后照教程往下走；`BarCounter`、`useBarCounter` 只认 `mixer`、`isCounterOpen`、`onMix`、`serve` 这几样，教程给自己的就行。
+
+### 票 09 交接
+
+- 配方书是 `components/play/bar/BarRecipeBook.tsx`，放进 `BarScreen` 的 `book` 插槽：`<BarRecipeBook drinks isCounterOpen counter sound />`，`counter` 是 `useBarCounter` 的返回（瓶装从书里拖进摇酒器靠它的 `drag`）。教程照 `BarSubpage` 的写法，调酒台开着时挂上、收起时卸下；挂上时响 `boot_up`、刷开，每次挂上都从封面开始。
+- 书里翻到哪一页是组件自己的状态（`lib/barRecipeBook` 的 `recipeBook`、`COVER`），外面读不到。教程只靠台词和备忘提示，用不着；真要按书的状态往下走，得把 `book` 状态提到外面。
