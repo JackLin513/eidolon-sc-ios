@@ -25,6 +25,8 @@ import {
  *   暂停着的不放；已经开始过就不动（「再营业」、回店门口再进门都不从头放）。
  * - 小播放器：`previous`、`next` 换一首放（暂停着的也放起来），`togglePause`、`toggleMode` 改了就记下。
  * - `preview(id)` 循环放一首试听，`stopPreview()` 停掉。
+ * - `loopTrack(id)` 循环放一首（教程的 Every Day is Night），顶掉正在放的；不是试听，也不算开始过：之后进门的 `start()`
+ *   照样从第 1 首放起；`stopPreview()` 一样停掉它。没有这一首时什么都不放（正在放的也停）。
  * - 没有可用的曲目时（`audio` 是空的）`isAvailable` 为假，什么都不放。离开这一页（卸载）时停。
  */
 export function useBarJukebox({ userId, audio, base }: { userId: string | null; audio: BarAudio | null; base: string | null }) {
@@ -130,15 +132,30 @@ export function useBarJukebox({ userId, audio, base }: { userId: string | null; 
     [keep],
   );
 
-  const preview = useCallback(
+  /** 循环放一首，顶掉正在放的。 */
+  const playLooped = useCallback(
     (id: number) => {
       const a = audioElement();
       a.loop = true;
       a.src = `${base}/music/${id}.ogg`;
-      setPreviewing(id);
       void a.play().catch(() => {});
     },
     [base, audioElement],
+  );
+  const preview = useCallback(
+    (id: number) => {
+      setPreviewing(id);
+      playLooped(id);
+    },
+    [playLooped],
+  );
+  const loopTrack = useCallback(
+    (id: number) => {
+      isStarted.current = false;
+      if (audio?.tracks.some((t) => t.id === id)) playLooped(id);
+      else if (element.current) silence(element.current); // 没有这一首：静音，曲单也不接着放。
+    },
+    [audio, playLooped],
   );
   const stopPreview = useCallback(() => {
     const a = element.current;
@@ -174,8 +191,9 @@ export function useBarJukebox({ userId, audio, base }: { userId: string | null; 
       previewing,
       preview,
       stopPreview,
+      loopTrack,
     }),
-    [isAvailable, jukebox, title, isOpen, start, choose, togglePause, next, previous, changeMode, previewing, preview, stopPreview],
+    [isAvailable, jukebox, title, isOpen, start, choose, togglePause, next, previous, changeMode, previewing, preview, stopPreview, loopTrack],
   );
 }
 

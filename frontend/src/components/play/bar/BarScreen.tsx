@@ -201,32 +201,45 @@ export function HitArea({
 const MEMO = { x: 445, y: 279, width: 172 };
 const MEMO_ROWS = 2;
 
-/** How 「点唱机」 in the side menu is: lit while the small player is open, grey with no audio (no
- * click), not there at all (at the door). */
-export type JukeboxCell = { state: "open" | "closed" | "none"; onToggle: () => void } | null;
+/** The side menu's lower left cell, at (445,312): 「点唱机」 (lit while the small player is open,
+ * grey and no click with no audio: `onClick` null), or 「跳过」 through the tutorial; not there at all
+ * at the door (null). */
+export type MenuCell = { label: string; color: string; pressed?: boolean; onClick: (() => void) | null } | null;
 
 const JUKEBOX_INK = { open: BAR_INK.lit, closed: BAR_INK.text, none: BAR_INK.off } as const;
 
+/** 「点唱机」 in the side menu: lit while the small player is open, grey with no audio. */
+export function jukeboxCell(state: "open" | "closed" | "none", onToggle: () => void): MenuCell {
+  return {
+    label: copy.bar.jukebox.name,
+    color: JUKEBOX_INK[state],
+    pressed: state === "open",
+    onClick: state === "none" ? null : onToggle,
+  };
+}
+
 /** The original's side menu, under the bar counter: its upper row (the original's 「设置」 and 「读取」)
- * holds the order memo, the label grey before it, as long as there is one; its lower row 「点唱机」 at
- * (445,312) (`jukebox`) and 「离开」 at the original's 「退出」, (543,312), each 72×20, the word 5 px in.
+ * holds the order memo, the label grey before it, as long as there is one; its lower row a cell at
+ * (445,312) (`cell`: 「点唱机」 or 「跳过」) and 「离开」 at the original's 「退出」, (543,312), each 72×20, the word 5 px in.
  * No hover. */
 export function SideMenu({
   memo,
-  jukebox,
+  memoLabel = copy.bar.memo,
+  cell,
   leave,
   onLeave,
 }: {
   memo: string | null;
-  jukebox: JukeboxCell;
+  /** The grey label before the memo: 「点单」, or the tutorial's 「备忘」. */
+  memoLabel?: string;
+  cell: MenuCell;
   leave: string;
   onLeave: () => void;
 }) {
-  const label = `${copy.bar.memo}　`;
+  const label = `${memoLabel}　`;
   const rows = memo === null ? [] : wrapText(memo, MEMO.width, measurePixelText, measurePixelText(label));
   // 只有两行的地方，再往下就压到「点唱机」「离开」上了：放不下的截掉，读屏读全文。
   if (rows.length > MEMO_ROWS) rows.splice(MEMO_ROWS - 1, Infinity, `${rows[MEMO_ROWS - 1].slice(0, -1)}…`);
-  const juke = copy.bar.jukebox.name;
   return (
     <>
       {memo !== null && (
@@ -237,11 +250,11 @@ export function SideMenu({
           label={`${label}${memo}`}
         />
       )}
-      {jukebox && (
+      {cell && (
         <>
-          <PixelText x={450} y={313} runs={juke} color={JUKEBOX_INK[jukebox.state]} label={jukebox.state === "none" ? juke : ""} />
-          {jukebox.state !== "none" && (
-            <HitArea x={445} y={312} width={72} height={20} label={juke} pressed={jukebox.state === "open"} onClick={jukebox.onToggle} />
+          <PixelText x={450} y={313} runs={cell.label} color={cell.color} label={cell.onClick ? "" : cell.label} />
+          {cell.onClick && (
+            <HitArea x={445} y={312} width={72} height={20} label={cell.label} pressed={cell.pressed} onClick={cell.onClick} />
           )}
         </>
       )}

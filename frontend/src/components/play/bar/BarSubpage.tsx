@@ -11,15 +11,17 @@ import { BarGuest } from "@/components/play/bar/BarGuest";
 import { BarJukeboxPlayer, BarJukeboxSetup } from "@/components/play/bar/BarJukebox";
 import { BarRecipeBook } from "@/components/play/bar/BarRecipeBook";
 import { BarRoom } from "@/components/play/bar/BarRoom";
-import { BarScreen, SideMenu } from "@/components/play/bar/BarScreen";
+import { BarScreen, jukeboxCell, SideMenu } from "@/components/play/bar/BarScreen";
 import { BarTextBox } from "@/components/play/bar/BarTextBox";
 import { BAR_INK } from "@/components/play/bar/ink";
 import { PortraitGuard } from "@/components/play/bar/PortraitGuard";
 import { useBarJukebox } from "@/components/play/bar/useBarJukebox";
 import { useBarSound } from "@/components/play/bar/useBarSound";
+import { useBarTutorial } from "@/components/play/bar/useBarTutorial";
 import { useBarVisit } from "@/components/play/bar/useBarVisit";
 import { useBar } from "@/components/play/useBar";
 import { copy } from "@/i18n";
+import { type TutorialEnd, tutorialMemo } from "@/lib/barTutorial";
 import { endCard, isArrowShown, isSpeaking, shownText, typingVoice } from "@/lib/barVisit";
 import { getGiftState } from "@/lib/gifts";
 import { playHref } from "@/lib/playRoute";
@@ -40,6 +42,9 @@ const TYPING_SOUND = { her: "bleep_high", producer: "bleep_low" } as const;
  * 句子打字时循环打字音效，她是 `bleep_high`，制作人是 `bleep_low`。
  * 点唱机（useBarJukebox）：manifest 读完以后先过选曲界面（BarJukeboxSetup，填好上次的），Ready! 到店门口；进门从第 1 首放起，
  * 一直放到离开。店里侧边菜单「点唱机」开关右上角的小播放器（BarJukeboxPlayer）。没有曲目时跳过选曲界面，「点唱机」是灰的。
+ * 教程（useBarTutorial、lib/barTutorial）：这台设备上没看过时跳过选曲界面，店门口点进去是教程，不是光顾；店门口的「教程」
+ * 也从头走一遍。教程里文本框、立绘、调酒台、配方书都照光顾画，侧边菜单的备忘是这一步的要点，「点唱机」那一格换成「跳过」。
+ * 走完或跳过去选曲界面（没有曲目时回店门口），Ready! 到店门口，再进门是真的光顾。
  */
 export function BarSubpage({ audioBase }: { audioBase: string | null }) {
   const router = useRouter();
@@ -47,7 +52,8 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
   const { account, characters, giftsRead } = useDirectory();
   const sound = useBarSound(audioBase);
   const jukebox = useBarJukebox({ userId: account?.id ?? null, audio: sound.audio, base: audioBase });
-  const [isChoosing, setChoosing] = useState(true);
+  /** The jukebox setup shown (null: as the tutorial seen says, shown once seen, skipped the first time). */
+  const [choosing, setChoosing] = useState<boolean | null>(null);
   const { start: startSound, play } = sound;
   const { start: startMusic } = jukebox;
   // 进门那一下：建 AudioContext，点唱机从第 1 首放起。
@@ -70,18 +76,33 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
     sound: visitSound,
     onDraws,
   });
-  const isCounterOpen = state.isMixing && !state.isServing;
+  const onTutorialEnd = useCallback((end: TutorialEnd) => {
+    if (end === "jukebox") setChoosing(true);
+  }, []);
+  const tutorial = useBarTutorial({
+    userId: account?.id ?? null,
+    characters,
+    hasJukebox: jukebox.isAvailable,
+    sound,
+    music: jukebox,
+    onEnd: onTutorialEnd,
+  });
+  const tutorialState = tutorial.state;
+  /** What the screen shows: the tutorial's text box and counter through it, the visit's otherwise. */
+  const scene = tutorialState?.visit ?? state;
+  const sceneNow = tutorialState ? tutorial.now : now;
+  const isCounterOpen = scene.isMixing && !scene.isServing;
   const drinks = bar?.enabled ? bar.drinks : [];
   const counter = useBarCounter({
-    mixer: state.mixer,
+    mixer: scene.mixer,
     isCounterOpen,
     drinks,
     sound,
-    onMix: mix,
-    serve: () => void serve(),
+    onMix: tutorialState ? tutorial.mix : mix,
+    serve: tutorialState ? tutorial.serve : () => void serve(),
   });
 
-  const voice = typingVoice(state, now);
+  const voice = typingVoice(scene, sceneNow);
   const { loop } = sound;
   useEffect(() => {
     loop(voice && TYPING_SOUND[voice]);
@@ -90,9 +111,11 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
   if (bar && !bar.enabled) notFound();
   if (!bar && !failed) return <div className="bar-layer absolute inset-0" style={{ background: BAR_INK.ground }} />;
   // manifest 还在读、或者有曲目但还不知道是谁（记着的选择按用户分开）时，先盖一层黑的，不让店门口闪一下又换成选曲界面。
-  const isReading = sound.audio === null || (jukebox.isAvailable && !jukebox.jukebox);
-  const isInside = state.stage === "visit" || state.stage === "next";
-  const her = characters?.find((c) => c.id === state.visit?.characterId) ?? null;
+  // 这台设备上看没看过教程还没读出来时也一样（第一次进来跳过选曲界面）。
+  const isReading = sound.audio === null || (jukebox.isAvailable && !jukebox.jukebox) || tutorial.isSeen === null;
+  const isChoosing = choosing ?? tutorial.isSeen === true;
+  const isInside = tutorialState !== null || state.stage === "visit" || state.stage === "next";
+  const her = characters?.find((c) => c.id === scene.visit?.characterId) ?? null;
   const card = endCard(state);
   const leaveBar = () => {
     leave();
@@ -101,45 +124,50 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
   return (
     <BarScreen
       room={<BarRoom />}
-      guest={her && <BarGuest key={state.visit?.id} character={her} mood={state.mood} speaking={isSpeaking(state, now)} />}
+      guest={her && <BarGuest key={scene.visit?.id} character={her} mood={scene.mood} speaking={isSpeaking(scene, sceneNow)} />}
       book={
-        state.stage === "visit" &&
-        state.isMixing && <BarRecipeBook drinks={drinks} isCounterOpen={isCounterOpen} counter={counter} sound={sound} />
+        scene.stage === "visit" &&
+        scene.isMixing && <BarRecipeBook drinks={drinks} isCounterOpen={isCounterOpen} counter={counter} sound={sound} />
       }
       portrait={<PortraitGuard />}
     >
       {isInside ? (
         <>
-          <BarCounter mixer={state.mixer} isCounterOpen={isCounterOpen} counter={counter} />
+          <BarCounter mixer={scene.mixer} isCounterOpen={isCounterOpen} counter={counter} />
           <BarTextBox
-            text={shownText(state, now)}
+            text={shownText(scene, sceneNow)}
             herColor={her?.color ?? BAR_INK.text}
-            isArrowShown={isArrowShown(state, now)}
-            isNextCursor={state.shown !== null && !state.isMixing}
-            onTap={tap}
-            failure={state.failure === null ? null : { message: state.failure, isRetrying: state.isRetrying, onRetry: () => void retry() }}
+            isArrowShown={isArrowShown(scene, sceneNow)}
+            isNextCursor={scene.shown !== null && !scene.isMixing}
+            onTap={tutorialState ? tutorial.tap : tap}
+            failure={scene.failure === null ? null : { message: scene.failure, isRetrying: scene.isRetrying, onRetry: () => void retry() }}
           />
         </>
       ) : (
-        <BarDoor notice={state.notice} isEntering={state.stage === "entering"} onEnter={() => void enter()} />
+        <BarDoor
+          notice={state.notice}
+          isEntering={state.stage === "entering"}
+          onEnter={() => void (tutorial.isSeen === false ? tutorial.begin() : enter())}
+          onTutorial={tutorial.canBegin ? () => void tutorial.begin() : null}
+        />
       )}
       <SideMenu
-        memo={state.memo}
-        jukebox={
-          isInside
-            ? {
-                state: !jukebox.isAvailable ? "none" : jukebox.isOpen ? "open" : "closed",
-                onToggle: () => {
+        memo={tutorialState ? tutorialMemo(tutorialState) : state.memo}
+        memoLabel={tutorialState ? copy.bar.tutorialMemo : undefined}
+        cell={
+          tutorialState
+            ? { label: copy.bar.skip, color: BAR_INK.text, onClick: tutorial.skip }
+            : isInside
+              ? jukeboxCell(!jukebox.isAvailable ? "none" : jukebox.isOpen ? "open" : "closed", () => {
                   play(jukebox.isOpen ? "buttonnoclick" : "mixdone");
                   jukebox.toggleOpen();
-                },
-              }
-            : null
+                })
+              : null
         }
         leave={copy.bar.leave}
         onLeave={leaveBar}
       />
-      {isInside && jukebox.isOpen && <BarJukeboxPlayer jukebox={jukebox} sound={sound} />}
+      {isInside && !tutorialState && jukebox.isOpen && <BarJukeboxPlayer jukebox={jukebox} sound={sound} />}
       {card && (
         <BarEndCard
           {...card}

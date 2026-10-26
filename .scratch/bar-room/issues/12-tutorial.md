@@ -22,11 +22,11 @@
 
 **Blocked by:** 02（台词，用户校对过）、08（调酒台和匹配）、09（第一课教配方书）、11（选曲界面和「点唱机」那一格）
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `lib/barTutorial`（vitest）：两杯的流程；三种反应、两种反应各接得上；Piano Man 跳过第二课；调坏的不判；跳过去选曲；没有音频时省掉点唱机那句；每一步的备忘；「看过」的存取（走完和跳过记、中途不记、按用户分开）。
-- [ ] Playwright：清掉 localStorage 后进来是店门口，进门是はづき；照讲解调对两杯，走完到选曲，Ready! 回店门口，再进门发了 `POST /api/bar/visits`；Piano Man 分支；调成别的也往下走；中途「跳过」去选曲；刷新后教程重来；看过以后进来是选曲界面；店门口点「教程」重看。整个教程期间没有发出 `/api/bar/visits*` 请求。截图给用户看。
-- [ ] 前端 typecheck、vitest 通过。
+- [x] `lib/barTutorial`（vitest）：两杯的流程；三种反应、两种反应各接得上；Piano Man 跳过第二课；调坏的不判；跳过去选曲；没有音频时省掉点唱机那句；每一步的备忘；「看过」的存取（走完和跳过记、中途不记、按用户分开）。
+- [x] Playwright：清掉 localStorage 后进来是店门口，进门是はづき；照讲解调对两杯，走完到选曲，Ready! 回店门口，再进门发了 `POST /api/bar/visits`；Piano Man 分支；调成别的也往下走；中途「跳过」去选曲；刷新后教程重来；看过以后进来是选曲界面；店门口点「教程」重看。整个教程期间没有发出 `/api/bar/visits*` 请求。截图给用户看。
+- [x] 前端 typecheck、vitest 通过。
 
 ## Comments
 
@@ -83,4 +83,34 @@
 - **没有音频**：看 `sound.audio`：`null` 是 manifest 还在读（这时 `BarSubpage` 盖一层黑的），曲目是空的是没有音频。`jukebox.isAvailable` 在读的时候也是假的，判「省掉点唱机那句」要等读完。
 - **侧边菜单那一格**：`SideMenu` 的 `jukebox` 属性（`JukeboxCell`，`BarScreen.tsx`）：`{ state: "open" | "closed" | "none", onToggle }`，null 是不画。「跳过」要换掉它：给 `SideMenu` 加一种写法（例如 `jukebox` 换成一个更通用的 `{ label, color, onClick }` 格子），位置 (445,312) 72×20，字在 (450,313)。
 - **曲目**：`useBarJukebox.start()` 开始过就不再动（`isStarted`），从选的第 1 首放。教程要循环放 Every Day is Night（22）：现在没有「放指定的一首」的口子，要给 `useBarJukebox` 加一个（同一个 `<audio>`，`loop = true`），并且教程结束后真正的第一次光顾进门时 `start()` 还能从第 1 首放起（把 `isStarted` 复位，或教程那首不算开始）。注意 `preview` / `stopPreview` 也用这个 `<audio>`：教程完了弹选曲界面时一试听就会停掉教程那首，`stopPreview` 只停 `loop` 的，教程那首也是 `loop` 的话会一起停（也正好：选曲界面上本来就安静）。
+
+### 实现说明（票 12）
+
+- `lib/barTutorial`（新）：`beginTutorial({ characterId, hasJukebox, layout, now })` 和 reducer `barTutorial(state, action)`，动作 `tap`、`tick`、`mix`、`serve`、`skip`。文本框、立绘情绪、调酒台都借 `lib/barVisit` 的状态（`state.visit`）：一段的台词一次排进队，最后一页点过以后接下一段；`then: mixer` 的那段最后一页打完就开调酒台（不借 `order` / `waiting`，制作人那句也能收尾）。上酒按 `mixer.made.drink.id` 查 `reactions`，查不到接 `other`；调坏的 `canServe` 为假，原样返回。结束时 `end` 是 `"jukebox"` 或 `"door"`（没有音频时省掉 `jukebox` 段、跳过也回店门口）。`tutorialMemo(state)` 是框上那段的备忘。「看过」：`hasSeenTutorial(userId)`、`keepTutorialSeen(userId, state)`（没结束不记），键 `eidolon.barTutorialSeen.<用户 ID>`，照 `lib/seenOnDevice` 存时刻。
+- `useBarTutorial`（新）：reducer 加计时、声音、「看过」。`begin()` 在点击里响门声、建 AudioContext、`jukebox.loopTrack(22)`，等像素字载入后开始（期间再点不会开始第二次）。结束时记看过、停掉那首、调 `onEnd`。`isSeen` 在本机记录和角色列表读到之前是 null；没有 はづき 时没有教程，当作看过、店门口不出「教程」。
+- `useTypingClock`（新文件，从 `useBarVisit` 抽出）：光顾和教程共用的打字计时。
+- `useBarJukebox`：加 `loopTrack(id)`，循环放一首、顶掉正在放的、不算开始过（之后进门 `start()` 照样从第 1 首放）；没有这一首时静音。`stopPreview()` 一样停掉它。
+- `SideMenu`：`jukebox: JukeboxCell` 换成通用的 `cell: MenuCell`（`{ label, color, pressed?, onClick | null }`），`jukeboxCell(state, onToggle)` 造「点唱机」那一格；加 `memoLabel`，教程里备忘前写「备忘」（`copy.bar.tutorialMemo`），不写「点单」。
+- `BarDoor`：加 `onTutorial`，小像素按钮「教程」在「全屏」左边，没有「全屏」时占它的位置。
+- `BarSubpage`：选曲界面的开关 `choosing: boolean | null`，null 时跟着「看过」走（看过才弹，第一次跳过）；看没看过读出来之前也盖一层黑的。教程进行时文本框、立绘、调酒台、配方书都画教程的状态，小播放器不出。
+- 判断：
+  - 收尾弹出的选曲界面填的是存着的选择（第一次就是默认 12 首），不是硬塞默认的：重看教程时不冲掉用户选好的曲目。
+  - 教程不加「请慢用」：上酒后直接接她的反应。
+  - 重看教程会顶掉点唱机正在放的曲目，教程结束后店门口是安静的，再进门才从第 1 首放。
+
+### 验收（票 12）
+
+本地构建版、Playwright（存储桶 `bar/*` 拦到本机提取目录，`/api/bar/visits*` 拦下记数并回 429）38 项全过：清掉 localStorage 后进来是店门口、进门是はづき 和开场第一句、备忘、「跳过」那一格、请求了 22 号曲目；第一课讲完开调酒台；调对 Sugar Rush、Piano Man、调成别的（Bad Touch）、调对 Moonblast 各接对的反应；Piano Man 不说第二课；走完说了点唱机那句、到选曲界面、记下看过；Ready! 回店门口、再进门发了 `POST /api/bar/visits`；看过以后进来是选曲界面；中途刷新回店门口、不记看过、再进门从开场来；中途「跳过」去选曲并记下；店门口「教程」重看、重看时也能跳过；manifest 404 时连点两下进门是开场、走完不说点唱机那句直接回店门口；所有教程期间都没有 `/api/bar/visits*` 请求。安卓（Pixel 7 横屏模拟）店门口「教程」和「全屏」并排。
+
+### 审查（票 12）
+
+修了的：manifest 里没有 22 号时 `loopTrack` 不停正在放的曲目（重看教程会接着放曲单）；等像素字时连点进门会开始两次；角色列表没读到时点门没反应（现在算「还在读」，盖黑层）；`useTypingClock` 挪进自己的文件；`loopTrack` 和 `preview` 抽出 `playLooped`；`keepTutorialSeen` 去掉没用的 `at`；`TUTORIAL_VISIT_ID` 不导出；`BarSubpage` 里 `shown` 改名 `scene`、`lesson` 改名 `tutorialState`；hook 文档注释对上实际的名字；删掉一段和 `walk` 重复的测试前缀。
+
+只报告、没改（判断题）：
+
+- 收尾的选曲界面填存着的选择，不是「不管存过什么都用默认」（见上面的判断）。
+- 教程里备忘前的小字改成「备忘」，是新加的文案；不要的话删掉 `memoLabel`，就照旧写「点单」。
+- `BarSubpage` 里「教程还是光顾」的分支有六七处，可以让两个 hook 返回同一种形状一次选好；现在没做。
+- 停教程那首用的是 `stopPreview()`，名字说的是试听。
+- `choosing: boolean | null` 用 null 表示「跟着看过走」，靠注释读懂。
 

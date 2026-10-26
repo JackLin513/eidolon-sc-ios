@@ -1,19 +1,17 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 
 import { loadPixelFont, measurePixelText } from "@/components/play/bar/PixelText";
 import type { BarSound } from "@/components/play/bar/useBarSound";
+import { useTypingClock } from "@/components/play/bar/useTypingClock";
 import { copy } from "@/i18n";
 import { ApiError, type Character, enterBar, leaveBarVisit, retryBarVisit, serveBarDrink } from "@/lib/api";
 import { type BarMixerAction, garble, served } from "@/lib/barMixer";
-import { CHARS_PER_SECOND, paginate, typedOutAt } from "@/lib/barText";
+import { paginate } from "@/lib/barText";
 import { atTheDoor, barVisit, doorNotice, endCard, type VisitEvent } from "@/lib/barVisit";
 import { playHref } from "@/lib/playRoute";
-
-/** How often the box redraws while a page types out: once a character. */
-const TYPING_TICK_MS = 1000 / CHARS_PER_SECOND;
 
 /** The events a call ends on: one ended before them was cut off. */
 const LAST_EVENTS: ReadonlySet<VisitEvent["type"]> = new Set(["waiting", "failed", "done"]);
@@ -45,7 +43,6 @@ export function useBarVisit({
 }) {
   const router = useRouter();
   const [state, dispatch] = useReducer(barVisit, undefined, atTheDoor);
-  const [now, setNow] = useState(() => performance.now());
   const call = useRef<AbortController | null>(null);
   const visitId = useRef<string | null>(null);
   const herId = useRef("");
@@ -215,26 +212,9 @@ export function useBarVisit({
     };
   }, [close]);
 
-  // 一页在打字时每个字重画一次；打完时告诉 lib/barVisit。
-  const { shown } = state;
-  useEffect(() => {
-    if (!shown) return;
-    const end = typedOutAt(shown.page, shown.typing);
-    if (shown.typing.finished || performance.now() >= end) {
-      setNow(performance.now());
-      dispatch({ type: "tick", now: performance.now() });
-      return;
-    }
-    const id = window.setInterval(() => {
-      const at = performance.now();
-      setNow(at);
-      if (at >= end) {
-        window.clearInterval(id);
-        dispatch({ type: "tick", now: at });
-      }
-    }, TYPING_TICK_MS);
-    return () => window.clearInterval(id);
-  }, [shown]);
+  const tick = useCallback((at: number) => dispatch({ type: "tick", now: at }), []);
+  const now = useTypingClock(state.shown, tick);
 
   return { state, now, enter, again, tap, leave, mix, serve, retry };
 }
+

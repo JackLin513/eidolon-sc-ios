@@ -38,3 +38,10 @@
 
 - 来自票 04：`frontend/scripts/bar-logo.png`（外框右上角的「VA-283」logo）不在 `frontend/public/bar/` 下，但含原版外框的像素（小字「Cyberpunk Bartender Action」和大字「VA-」照搬原版，「283」照原版字形手画）。LICENSING.md 写原版素材时把它一起列进非 AGPL 素材，注明是取自 Sukeban Games 原版外框的衍生图。
 - 来自票 05：酒吧的颜色是自己的 hex（`components/play/bar/ink.ts` 的 `BAR_INK`，和 `bar.css`、inline style），不走 `frontend/AGENTS.md` 的「只用具名主题变量」。`DESIGN.md` 的「酒吧」一节要写明这个例外（像落地页那样另立视觉世界，颜色、字体都不用应用的），审查时提过。
+
+### 票 12 交接
+
+- 教程看没看过存在 `localStorage` 的 `eidolon.barTutorialSeen.<用户 ID>`（`lib/barTutorial`），按规格不写进隐私政策。整份验收要重走教程时，先清掉这个键（或整个 localStorage）。
+- 票 12 的验收脚本的写法可以照搬：`/api/bar/visits*` 拦下记数；调酒用键盘（Q W E R T 加材料、A 加冰、空格调制 / 停止 / 上酒，Moonblast 要等满 5 秒）；框上的字从 `role="img"` 的 `aria-label` 读。选曲界面有约 1 秒的刷开动画，等 Ready! 出现再判断。
+- 教程里备忘前的小字是「备忘」（`copy.bar.tutorialMemo`），用户还没确认；截图写 README 时如果拍到教程，留意这一点。
+

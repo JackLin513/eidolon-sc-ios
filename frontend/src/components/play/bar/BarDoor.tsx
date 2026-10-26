@@ -15,19 +15,32 @@ const t = copy.bar.door;
 const SIGN = { x: 290, y: 30, width: 56, height: 24 };
 /** Android's 「全屏」 at the door, beside 「离开」 (the prototype's place). */
 const FULLSCREEN = { x: 552, y: 324, width: 50, height: 24 };
+/** 「教程」, left of 「全屏」 (in its place where there is none). */
+const TUTORIAL = { y: 324, width: 50, height: 24 };
 
 /**
  * 店门口（.scratch/bar-room spec「一次营业的流程」，照原型的 `Door`）：原版 barintro 三帧霓虹闪，招牌写 VA-283；
  * 点一下进门；等接口回来时（`isEntering`）下面的提示先收起。进不了时下面写为什么（`notice`），可以再点。
- * 安卓多一个「全屏」（同竖屏提醒的按钮）。
+ * 安卓多一个「全屏」（同竖屏提醒的按钮）；旁边是「教程」（`onTutorial`，没有教程时是 null），点了从头再看一遍。
  */
-export function BarDoor({ notice, isEntering, onEnter }: { notice: string | null; isEntering: boolean; onEnter: () => void }) {
+export function BarDoor({
+  notice,
+  isEntering,
+  onEnter,
+  onTutorial,
+}: {
+  notice: string | null;
+  isEntering: boolean;
+  onEnter: () => void;
+  onTutorial: (() => void) | null;
+}) {
   const [frame, setFrame] = useState(0);
   useEffect(() => {
     const id = window.setInterval(() => setFrame((n) => (Math.random() < 0.15 ? (n + 1) % 3 : 0)), 120);
     return () => window.clearInterval(id);
   }, []);
   const isFullscreenOffered = useFullscreenButton();
+  const tutorialX = isFullscreenOffered ? FULLSCREEN.x - TUTORIAL.width : FULLSCREEN.x;
   return (
     <>
       <div className="absolute inset-0" style={{ background: BAR_INK.black }} />
@@ -38,6 +51,12 @@ export function BarDoor({ notice, isEntering, onEnter }: { notice: string | null
         <PixelText x={0} y={290} width={640} align="center" runs={notice ?? t.enter} color={notice ? BAR_INK.text : BAR_INK.sub} />
       )}
       <HitArea x={0} y={0} width={640} height={360} label={t.enter} onClick={onEnter} />
+      {onTutorial && !isEntering && (
+        <>
+          <PixelText x={tutorialX + 8} y={TUTORIAL.y + 4} runs={t.tutorial} label="" />
+          <HitArea x={tutorialX} {...TUTORIAL} label={t.tutorial} onClick={onTutorial} />
+        </>
+      )}
       {isFullscreenOffered && (
         <>
           <PixelText x={FULLSCREEN.x + 8} y={FULLSCREEN.y + 4} runs={t.fullscreen} label="" />
