@@ -29,3 +29,11 @@
 - [ ] Playwright（存储桶请求拦到本机音频）：进来是选曲界面，槽已经填好；放进、对调、右键清掉、Ready!；悬停满 2.5 秒才请求试听的那一首，移开就停；手机上下文里长按试听、长按清掉；进门放的是选的第 1 首；小播放器各个按钮；暂停后刷新再进不放；manifest 404 时直接到店门口，「点唱机」是灰的。截图给用户看。
 - [ ] 前端 typecheck、vitest 通过。
 - [ ] 收尾：Comments 写下怎么打开选曲界面、怎么换掉侧边菜单「点唱机」那一格，给票 12。
+
+## Comments
+
+### 票 03 交接
+
+- 清单：`characters/bar_audio.json`，形如 `{"tracks": [{"id": 22, "file": "022_every_day_is_night.ogg", "title": "Every Day is Night"}, …], "default_playlist": [22, 21, 38, …], "sfx": [{"name": "door", "file": "095_door.ogg"}, …]}`。曲目的 `id` 是原版的声音编号，不是在点唱机里的位置；`tracks` 的顺序才是点唱机的顺序。音效 16 个，名字是文件名去掉编号前缀：`addingredient`、`iceadd`、`ageadd`、`mixdone`、`glassserve`、`buttonclick`、`buttonnoclick`、`bleep_high`、`bleep_low`、`boot_up`、`jukeselect`、`jukechange`、`jukepick`、`mouse_hover`、`prompt`、`door`。
+- 存储桶（`EIDOLON_STAND_ASSETS_URL` 下）的键：曲目 `bar/music/<id>.ogg`，音效 `bar/sfx/<name>.ogg`，都是 `audio/ogg`、长期缓存；`bar/manifest.json` 是 `{"tracks": [id…], "sfx": [name…]}`（按清单的顺序，只列桶里有的），`no-cache`。
+- 本机 `.env` 的存储桶是线上的，里面还没有 `bar/`：验收时把 `bar/*` 请求拦到本机提取目录（`E:\Download\others\VA11_extract\audio`，文件名见清单的 `file`），或给一份假 manifest。

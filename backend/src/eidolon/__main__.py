@@ -37,6 +37,11 @@
     eidolon stand upload             upload the outfits the lists name, their thumbnails and
                                      the lists to the S3-compatible bucket, skipping what it
                                      has as it is; exits 2 if the bucket failed
+    eidolon bar upload <audio dir>   upload the original game's tracks and sound effects
+                                     the bar's audio list names, from the deployer's
+                                     extracted audio directory, to the stands' bucket, and
+                                     last the manifest of what it has; exits 2 if the
+                                     bucket failed, 3 if some files were missing
     eidolon reading draft            draft the readings file beside the character
                                      configuration from the characters' sheets and the
                                      world setting, or fill in the phonemes it lacks and
@@ -122,6 +127,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _stand_outfits(args)
     if args.command == "stand":
         return asyncio.run(_stand_upload(args))
+    if args.command == "bar":
+        return asyncio.run(_bar_upload(args))
     if args.command == "reading":
         return _draft_readings(args)
     if args.command == "greeting":
@@ -496,6 +503,40 @@ async def _stand_upload(args: argparse.Namespace) -> int:
         f"上传 {report.uploaded} 个文件（{report.uploaded_bytes / 1_000_000:.1f} MB），"
         f"{report.unchanged} 个存储桶里已有、内容没变，没有上传；用时 {time.monotonic() - started:.0f} 秒"
     )
+    return 0
+
+
+async def _bar_upload(args: argparse.Namespace) -> int:
+    from eidolon.bar_upload import bar_audio_path, load_bar_audio, upload_bar_audio
+    from eidolon.s3 import Bucket, S3Error, S3Settings
+
+    try:
+        catalog = load_bar_audio(bar_audio_path(args.characters or characters_path_from_env()))
+        settings = S3Settings.from_env(purpose="上传酒吧的音频")
+    except RuntimeError as e:  # a broken list, settings missing
+        print(e, file=sys.stderr)
+        return 1
+    if not args.audio.is_dir():
+        print(f"找不到原版提取目录里的音频目录 {args.audio}", file=sys.stderr)
+        return 1
+    bucket = Bucket(settings)
+    try:
+        report = await upload_bar_audio(args.audio, catalog, bucket)
+    except S3Error as e:
+        print(f"上传中断，没有写 manifest（已上传的不会重复上传，重新运行即可继续）：{e}", file=sys.stderr)
+        return 2
+    finally:
+        await bucket.aclose()
+    print(
+        f"上传 {report.uploaded} 个文件（{report.uploaded_bytes / 1_000_000:.1f} MB），"
+        f"{report.unchanged} 个存储桶里已有、内容没变，没有上传；写好了 bar/manifest.json"
+    )
+    if report.missing:
+        print(
+            f"{len(report.missing)} 个文件在 {args.audio} 里找不到，没有上传：{'、'.join(report.missing)}",
+            file=sys.stderr,
+        )
+        return 3
     return 0
 
 
@@ -1114,6 +1155,22 @@ def _parser() -> argparse.ArgumentParser:
             help="拉取的立绘、衣装清单和缩略图的整理目录（默认取环境变量 EIDOLON_STAND_BUILD_PATH，没有时是 ../corpus/stand），"
             "不要放进仓库",
         )
+
+    bar = commands.add_parser("bar", help="管理酒吧的音频").add_subparsers(
+        dest="action", required=True, metavar="操作"
+    )
+    bar_upload = bar.add_parser(
+        "upload",
+        help="按角色配置旁边的 bar_audio.json，把原版的曲目和音效从本机的原版提取目录上传到立绘的存储桶"
+        "（EIDOLON_STAND_S3_*）的 bar/ 下，内容没变的不重复上传，最后写 bar/manifest.json"
+        "（可重复执行；存储桶出错时退出码为 2，有找不到的文件时为 3）",
+    )
+    bar_upload.add_argument("audio", type=Path, help="本机原版提取目录里的 audio/，不要放进仓库")
+    bar_upload.add_argument(
+        "--characters",
+        type=Path,
+        help="角色配置文件（默认取环境变量 EIDOLON_CHARACTERS_PATH），曲目表和音效清单在它旁边",
+    )
 
     reading = commands.add_parser("reading", help="管理读音").add_subparsers(
         dest="action", required=True, metavar="操作"
