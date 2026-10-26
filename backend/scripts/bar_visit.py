@@ -27,11 +27,13 @@
 
 import argparse
 import asyncio
+import json
 import logging
 import sqlite3
 import sys
 import tempfile
 import time
+from itertools import zip_longest
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
@@ -42,7 +44,6 @@ from typing import get_args
 import eidolon.bar as bar_module
 from eidolon.assembly import build
 from eidolon.bar import (
-    ATTEMPTS,
     Bar,
     BarCall,
     BarEvent,
@@ -81,6 +82,9 @@ _TIERS_SAID: dict[Tier, str] = {"best": "上得最好", "right": "上对", "wron
 REDRAWS = 5000
 """抽多少次点单还抽不到合要求的，就算这一杯要不到。"""
 
+RETRIES = 2
+"""一次调用失败停住以后，脚本替制作人「再试一次」最多几次。"""
+
 
 @dataclass(frozen=True)
 class Cup:
@@ -116,7 +120,8 @@ class Tally:
     calls: list[CallLog] = field(default_factory=list)
 
     @property
-    def now(self) -> CallLog:
+    def current(self) -> CallLog:
+        """正在读的这次调用的。"""
         return self.calls[-1]
 
 
@@ -132,7 +137,7 @@ class DevBar(Bar):
         return self._visits.get(user_id)
 
     async def _rewritten(self, visit, chat: ChatLLM, ask: str) -> list[BarLine]:
-        self.tally.now.rewrites += 1
+        self.tally.current.rewrites += 1
         return await super()._rewritten(visit, chat, ask)
 
     async def _attempt(self, visit, ask: str, ordering: bool, said: list[BarLine]):
@@ -167,7 +172,7 @@ def glasses(catalog: DrinkCatalog, drunk: bool) -> list[tuple[Served, Mixture | 
     return out
 
 
-def fitting(
+def servings_for(
     order: Order, cup: Cup, character: Character, catalog: DrinkCatalog, drunk: bool
 ) -> list[tuple[Serving, Mixture | str]]:
     """能上给这一单、又合 `cup` 档位要求的每一杯，和怎么调。"""
@@ -182,18 +187,30 @@ def fitting(
     return out
 
 
-def fits(order: Order, cup: Cup, character: Character, catalog: DrinkCatalog, plan: Plan) -> bool:
+def order_fits(
+    order: Order, cup: Cup, character: Character, catalog: DrinkCatalog, plan: Plan
+) -> bool:
     """这一单合不合 `cup` 的要求：说法对，有合档位的一杯能上；要醉的话不是不要酒精的，
     不醉的话有一杯上了她还不醉。"""
     if cup.phrasing is not None and order.phrasing != cup.phrasing:
         return False
     if plan.drunk and "no_alcohol" in order.said and cup.wrong != "alcohol":
         return False
-    candidates = fitting(order, cup, character, catalog, plan.drunk)
-    at = DRUNK_AT.get(character.bar_tolerance or "")
-    if not plan.drunk and at is not None:
-        return any(plan.had + s.served.karmotrine < at for s, _ in candidates)
+    candidates = servings_for(order, cup, character, catalog, plan.drunk)
+    if not plan.drunk:
+        return any(_keeps_sober(character, plan.had, s) for s, _ in candidates)
     return bool(candidates)
+
+
+def _drunk_at(her: Character) -> int | None:
+    """她喝到几份 Karmotrine 就醉；没写酒量的不醉。"""
+    return DRUNK_AT.get(her.bar_tolerance or "")
+
+
+def _keeps_sober(her: Character, had: int, serving: Serving) -> bool:
+    """已经喝了 `had` 份，再上这一杯她还不醉。"""
+    at = _drunk_at(her)
+    return at is None or had + serving.served.karmotrine < at
 
 
 def steer(plan: Plan, cups: int | None, character_index: int) -> None:
@@ -208,7 +225,7 @@ def steer(plan: Plan, cups: int | None, character_index: int) -> None:
         cup = plan.of(len(ordered))
         for _ in range(REDRAWS):
             order = drawing(character, catalog, random, ordered, known)
-            if fits(order, cup, character, catalog, plan):
+            if order_fits(order, cup, character, catalog, plan):
                 return order
         raise SystemExit(f"第 {len(ordered) + 1} 杯抽了 {REDRAWS} 次也抽不到合要求的点单：{cup}")
 
@@ -223,11 +240,11 @@ def count_fixed(tally: Tally) -> None:
     fixed_farewell = bar_module.fixed_farewell
 
     def order(order: Order, lines: BarLines, random: Random):
-        tally.now.fixed_order = True
+        tally.current.fixed_order = True
         return fixed_order(order, lines, random)
 
     def farewell(serving: Serving, drunk: bool, lines: BarLines, random: Random):
-        tally.now.fixed_farewell = True
+        tally.current.fixed_farewell = True
         return fixed_farewell(serving, drunk, lines, random)
 
     bar_module.fixed_order = order
@@ -238,9 +255,8 @@ def seed_history(
     db: sqlite3.Connection, user_id: str, her: Character, visits: int, usual: str, now: datetime
 ) -> None:
     """她和制作人以前来过 `visits` 次，最后一次是三天前，每次点的都是 `usual` 这一款、上对了。"""
-    orders = (
-        f'[{{"target": "{usual}", "phrasing": "name", "served": "{usual}", "big": false,'
-        ' "tier": "right"}]'
+    orders = json.dumps(
+        [{"target": usual, "phrasing": "name", "served": usual, "big": False, "tier": "right"}]
     )
     for i in range(visits):
         at = now - timedelta(days=3 + 7 * (visits - 1 - i))
@@ -301,7 +317,7 @@ async def show(call: BarCall, tally: Tally, label: str) -> BarEvent | None:
                     print(f"  【失败】{event.message}")
     finally:
         await call.aclose()
-    log = tally.now
+    log = tally.current
     notes = [f"用时 {time.monotonic() - started:.1f} 秒"]
     if log.rewrites:
         notes.append(f"名字检查重写 {log.rewrites} 次")
@@ -314,16 +330,17 @@ async def show(call: BarCall, tally: Tally, label: str) -> BarEvent | None:
 
 
 async def drive(args: argparse.Namespace) -> int:
-    plan = Plan(
-        [
-            Cup(p, t, w) for p, t, w in _zipped(
-                _listed(args.phrasing, PHRASINGS, "说法"), _listed(args.tier, TIERS, "档位"),
-                _listed(args.wrong, WRONGS, "错法"),
-            )
-        ],
-        args.drunk,
-    )
-    plan.cups = [replace(c, tier="wrong") if c.wrong and c.tier is None else c for c in plan.cups]
+    cups_asked = []
+    for i, (p, t, w) in enumerate(zip_longest(
+        _listed(args.phrasing, PHRASINGS, "说法"), _listed(args.tier, TIERS, "档位"),
+        _listed(args.wrong, WRONGS, "错法"),
+    ), 1):
+        if w is not None and t not in (None, "wrong"):
+            raise SystemExit(f"第 {i} 杯写了错法 {w}，档位就只能是 wrong，不能是 {t}")
+        cups_asked.append(Cup(p, "wrong" if w is not None else t, w))
+    if len(cups_asked) > 3:
+        raise SystemExit("一次光顾最多 3 杯")
+    plan = Plan(cups_asked, args.drunk)
     cups = args.cups or (len(plan.cups) if plan.cups else 3 if args.drunk else None)
     seed = args.seed if args.seed is not None else Seeded().randrange(10**6)
     rng = Seeded(seed)
@@ -357,13 +374,15 @@ async def drive(args: argparse.Namespace) -> int:
             print(f"种子 {seed}｜模型 {settings.chat_llm.model}（{settings.chat_llm.base_url}）")
             print(
                 f"角色 {her.name}（{her.id}）｜酒量 {her.bar_tolerance}"
-                f"（醉的门槛 {DRUNK_AT.get(her.bar_tolerance or '')} 份）｜讨厌 "
+                f"（醉的门槛 {_drunk_at(her)} 份）｜讨厌 "
                 f"{FLAVORS.get(her.bar_disliked_flavor or '', '无')}｜爱喝 "
                 f"{'、'.join(her.bar_favorites)}｜以前来过 {args.visits} 次"
             )
 
-            await _visit(bar, user.id, her, catalog, plan, tally, rng)
-            await bar.aclose()
+            try:
+                await _visit(bar, user.id, her, catalog, plan, tally, rng)
+            finally:
+                await bar.aclose()  # 运行记录和每次调用写完
             await _show_usage(backend.database.read, user.id)
         finally:
             await backend.aclose()
@@ -384,7 +403,9 @@ async def _visit(
     last = await show(call, tally, "进门，点第一杯")
     while True:
         tries = 0
-        while isinstance(last, VisitFailed) and tries < ATTEMPTS:
+        while isinstance(last, VisitFailed) and tries < RETRIES:
+            if bar.under_way(user_id) is None:  # 玩完了却没写进库：没有可再试的
+                return
             tries += 1
             last = await show(await bar.retry(user_id, visit_id), tally, "再试一次")
         if not isinstance(last, Waiting):
@@ -404,7 +425,7 @@ async def _visit(
             f"\n【上酒】{described(served.drink)}{'，大杯' if served.big else ''}，"
             f"Karmotrine {served.karmotrine} 份 → {_TIERS_SAID[serving.tier]}"
             f"{f'（{serving.wrong}）' if serving.wrong else ''}"
-            f"｜累计 {plan.had}/{DRUNK_AT.get(her.bar_tolerance or '')} 份"
+            f"｜累计 {plan.had}/{_drunk_at(her)} 份"
         )
         call = await bar.serve(user_id, visit_id, made)
         label = "反应、闲聊，点下一杯"
@@ -430,7 +451,7 @@ def _chosen(
     rng: Seeded,
 ) -> tuple[Serving, Mixture | str]:
     """替制作人挑一杯：合档位要求；醉的话 Karmotrine 最多；不醉的话尽量不让她醉。"""
-    candidates = fitting(order, cup, her, catalog, drunk)
+    candidates = servings_for(order, cup, her, catalog, drunk)
     if cup.tier is None:
         tiers = sorted({s.tier for s, _ in candidates})
         tier = tiers[rng.randrange(len(tiers))]
@@ -439,8 +460,7 @@ def _chosen(
         most = max(s.served.karmotrine for s, _ in candidates)
         candidates = [c for c in candidates if c[0].served.karmotrine == most]
     else:
-        at = DRUNK_AT.get(her.bar_tolerance or "")
-        sober = [c for c in candidates if at is None or had + c[0].served.karmotrine < at]
+        sober = [c for c in candidates if _keeps_sober(her, had, c[0])]
         candidates = sober or candidates
     return candidates[rng.randrange(len(candidates))]
 
@@ -480,11 +500,6 @@ def _listed(text: str | None, allowed: tuple[str, ...], what: str) -> list:
         else:
             raise SystemExit(f"没有这种{what}：{item}（有 {', '.join(allowed)}）")
     return out
-
-
-def _zipped(*lists: list) -> list[tuple]:
-    size = max((len(each) for each in lists), default=0)
-    return [tuple(each[i] if i < len(each) else None for each in lists) for i in range(size)]
 
 
 def main() -> int:
