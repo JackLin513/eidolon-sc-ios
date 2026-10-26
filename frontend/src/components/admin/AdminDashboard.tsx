@@ -36,6 +36,7 @@ import {
   type AffinityRow,
   type AffinitySection,
   affinityRows,
+  barTiles,
   cycleTiles,
   CALL_END_REASONS,
   CALL_RESULTS,
@@ -436,6 +437,7 @@ function DashboardBody({
             <CharactersTable board={board} />
           </DashboardCard>
           <ReachOutTiles board={board} />
+          <BarTiles board={board} />
         </DashboardGroup>
       </TabsContent>
 
@@ -759,6 +761,19 @@ function ReachOutTiles({ board }: { board: Dashboard }) {
   if (tiles.length === 0) return null;
   return (
     <TileGroup caption={t.reachOuts.title} grid="grid-cols-2 md:grid-cols-3">
+      {tiles.map((tile) => (
+        <StatTile key={tile.id} label={tile.label} value={tile.value} />
+      ))}
+    </TileGroup>
+  );
+}
+
+/** 「用量」里的「酒吧」一小节：光顾、玩完、失败三张数字卡；为空时（酒吧关着、范围内也没有光顾）不显示。 */
+function BarTiles({ board }: { board: Dashboard }) {
+  const tiles = barTiles(board.bar);
+  if (tiles.length === 0) return null;
+  return (
+    <TileGroup caption={t.bar.title} grid="grid-cols-2 md:grid-cols-3">
       {tiles.map((tile) => (
         <StatTile key={tile.id} label={tile.label} value={tile.value} />
       ))}

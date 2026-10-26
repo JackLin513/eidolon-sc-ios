@@ -228,6 +228,7 @@ DEFAULT_CALL_MINUTES = 10
 DEFAULT_TURNS_PER_CALL = 40
 """About what ten minutes of talking takes; a cap on typing turns in quickly during a call."""
 DEFAULT_PHOTOS_PER_HOUR = 5
+DEFAULT_VISITS_PER_HOUR = 5
 DEFAULT_CONCURRENT_CALLS = 10
 """What one process on the deployment's two cores carries, every call's audio on the one
 event loop."""
@@ -1088,10 +1089,11 @@ time limit (`EIDOLON_CALL_MINUTES=0`)."""
 
 @dataclass(frozen=True)
 class UsageLimits:
-    """How many text turns and voice calls each user may start in any hour, and how many
-    photos she may send them (GLOSSARY.md「照片」), counted across all their devices and
-    sign-in methods, how long and how many turns one call may last, and how many calls
-    there may be at once, all users' together, exempt ones too; None is no limit."""
+    """How many text turns, voice calls and visits to the bar (GLOSSARY.md「光顾」) each user
+    may start in any hour, and how many photos she may send them (GLOSSARY.md「照片」),
+    counted across all their devices and sign-in methods, how long and how many turns one
+    call may last, and how many calls there may be at once, all users' together, exempt ones
+    too; None is no limit."""
 
     turns_per_hour: int | None = DEFAULT_TURNS_PER_HOUR
     calls_per_hour: int | None = DEFAULT_CALLS_PER_HOUR
@@ -1099,6 +1101,7 @@ class UsageLimits:
     turns_per_call: int | None = DEFAULT_TURNS_PER_CALL
     photos_per_hour: int | None = DEFAULT_PHOTOS_PER_HOUR
     concurrent_calls: int | None = DEFAULT_CONCURRENT_CALLS
+    visits_per_hour: int | None = DEFAULT_VISITS_PER_HOUR
 
     @classmethod
     def from_env(cls) -> "UsageLimits":
@@ -1109,6 +1112,7 @@ class UsageLimits:
             turns_per_call=_limit("EIDOLON_TURNS_PER_CALL", DEFAULT_TURNS_PER_CALL),
             photos_per_hour=_limit("EIDOLON_PHOTOS_PER_HOUR", DEFAULT_PHOTOS_PER_HOUR),
             concurrent_calls=_limit("EIDOLON_CONCURRENT_CALLS", DEFAULT_CONCURRENT_CALLS),
+            visits_per_hour=_limit("EIDOLON_VISITS_PER_HOUR", DEFAULT_VISITS_PER_HOUR),
         )
 
 

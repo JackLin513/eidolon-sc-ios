@@ -250,6 +250,9 @@ export type Dashboard = {
   affinity: AffinitySection | null;
   /** Her reach-outs (GLOSSARY「搭话」); null where they are off and none were made in the range. */
   reach_outs: ReachOutsSection | null;
+  /** Visits to the bar (GLOSSARY「光顾」); null where the bar is closed and none were made in the
+   * range. */
+  bar: BarSection | null;
   /** The achievements' stages unlocked and what they gave (GLOSSARY「成就」); null where affinity is
    * off and none were unlocked in the range. */
   achievements: AchievementsSection | null;
@@ -279,6 +282,21 @@ export function reachOutTiles(section: ReachOutsSection | null): { id: string; l
       label: words.answered,
       value: section.answered_share === null ? NONE : formatPercent(section.answered_share),
     },
+  ];
+}
+
+/** The dashboard's「酒吧」section: how many visits were begun (not those rejected over the
+ * limit), how many were done, and how many failed. */
+export type BarSection = { visits: number; done: number; failed: number };
+
+/** The section's tiles, as the page shows them; none where it is empty. */
+export function barTiles(section: BarSection | null): { id: string; label: string; value: string }[] {
+  if (section === null) return [];
+  const words = copy.admin.dashboard.bar.tiles;
+  return [
+    { id: "visits", label: words.visits, value: formatCount(section.visits) },
+    { id: "done", label: words.done, value: formatCount(section.done) },
+    { id: "failed", label: words.failed, value: formatCount(section.failed) },
   ];
 }
 

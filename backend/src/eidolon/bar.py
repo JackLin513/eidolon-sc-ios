@@ -29,6 +29,14 @@ it, and sent with the order memo once it names drinks as it should
 and if that does not either, she says one of the fixed lines instead
 (`bar_rules.fixed_order`). A call with no line at all, or failing, ends the visit for now.
 
+**Let in.** Who she is drawn, the visit is let in as a text turn is (`Admissions.visit`), in a
+cooldown or not: the keys it runs on, the user's own LLM if they bring one, its activity
+record, and its use of the limit, refused over it (`OverLimit`). Every call of the visit,
+and rewriting her order, runs on those keys, its service calls recorded under that record;
+the keys are held until the visit is over, as a call holds them. As it is over it is
+settled, once: done; left, done away with by another, or the page gone while a call is being
+written; or failed. One failed with nothing yet written is given back.
+
 **Serving.** What the bar counter holds is matched against the recipes (`DrinkCatalog.match`):
 broken, it is refused and nothing changes; anything else is served her and judged
 (`bar_rules.judged`), the producer saying one of the fixed lines as he does.
@@ -48,6 +56,7 @@ event, nothing in the conversations. Later visits that day give nothing.
 Nothing of the bar is told to the conversations, nor written in them or in memory.
 """
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -56,8 +65,10 @@ import sqlite3
 from collections.abc import AsyncGenerator, Callable, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime
-from typing import Literal, TypeVar
+from typing import Any, Literal, TypeVar
 
+from eidolon.activity import Result
+from eidolon.admission import Admission, Admissions
 from eidolon.affinity import Affinities, DrinkServed, affinity_prompt, day_of
 from eidolon.bar_lines import BarLines
 from eidolon.bar_prompt import (
@@ -94,7 +105,7 @@ from eidolon.data_access import Database
 from eidolon.drink_catalog import DrinkCatalog, Mixture
 from eidolon.gifts import Gifts
 from eidolon.llm import ChatLLM
-from eidolon.own_keys import BroughtKeys, OwnKeyFailed, OwnKeys
+from eidolon.own_keys import BroughtKeys, OwnKeyFailed, TurnKeys
 from eidolon.producer import producer_prompt
 from eidolon.randomness import Random
 from eidolon.schedule import HerSchedule, Job, Schedules
@@ -240,6 +251,8 @@ class _Visit:
     """The first part of every call's prompt (`bar_prompt.shared_prompt`)."""
     about: str
     """The second (`bar_prompt.visit_prompt`)."""
+    admission: Admission[TurnKeys]
+    """How it was let in: the keys its calls run on, its record and its use of the limit."""
     orders: list[Order] = field(default_factory=list)
     servings: list[Serving] = field(default_factory=list)
     written: list[tuple[str, list[BarLine]]] = field(default_factory=list)
@@ -280,7 +293,7 @@ class Bar:
         catalog: DrinkCatalog,
         listed: BarVisits,
         lines: BarLines,
-        own_keys: OwnKeys,
+        admissions: Admissions,
         is_on: Callable[[], bool],
         random: Random,
         *,
@@ -292,14 +305,14 @@ class Bar:
         """`is_on` tells whether the bar is open now (the live configuration's switch). Without
         `world`, she has no world setting; without `affinities`, no affinity; without `gifts`
         too, no reward; without `schedules`, no job of hers for a reason. Her reasons for
-        coming and topics are drawn from `listed`."""
+        coming and topics are drawn from `listed`. Visits are let in by `admissions`."""
         self._db = db
         self._clock = clock
         self._characters = characters
         self._catalog = catalog
         self._listed = listed
         self._lines = lines
-        self._own_keys = own_keys
+        self._admissions = admissions
         self._is_on = is_on
         self._random = random
         self._world = world
@@ -308,6 +321,8 @@ class Bar:
         self._schedules = schedules
         self._visits: dict[str, _Visit] = {}
         """Each user's visit under way, by user."""
+        self._settling: set[asyncio.Future[Any]] = set()
+        """Visits over as no one waited for them any more, till they are settled."""
         db.prepare(_open)
 
     async def read(self, user_id: str) -> dict:
@@ -325,7 +340,8 @@ class Bar:
     ) -> AsyncGenerator[BarEvent, None]:
         """A visit begun for the user, bringing `brought`, their device in `device_timezone`,
         doing away with any of theirs under way: its first call's events, from the visit's
-        id and who she is on. Raises BarClosed while the bar is off."""
+        id and who she is on. Raises BarClosed while the bar is off; OverLimit, once who she
+        is is drawn, if the user has no visits left this hour."""
         if not self._is_on():
             raise BarClosed()
         now = self._clock()
@@ -336,6 +352,36 @@ class Bar:
             character = everyone[self._random(len(everyone))]
         else:
             character = everyone[_of_the_day(user_id, today, len(everyone))]
+        admissions = self._admissions
+        admission = await admissions.admitted(
+            admissions.visit(user_id, character.id, brought), lambda let_in: let_in.settle("left")
+        )
+        try:
+            visit = await self._drawn(
+                user_id, character, now, before, device_timezone, admission
+            )
+        except BaseException:
+            await admission.settle("failed", given_back=True)
+            raise
+        replaced = self._visits.get(user_id)
+        self._visits[user_id] = visit
+        if replaced is not None:
+            await self._over(replaced, "left")
+        return self._call(visit, opening_ask(visit.orders[0]), VisitBegan(visit.id, character.id))
+
+    async def _drawn(
+        self,
+        user_id: str,
+        character: Character,
+        now: datetime,
+        before: "_Before",
+        device_timezone: str | None,
+        admission: Admission[TurnKeys],
+    ) -> "_Visit":
+        """The user's visit by `character`, coming in `now`, let in as `admission`: all the
+        rest of it drawn."""
+        today = day_of(now)
+        everyone = list(self._characters.values())
         her_jobs = (
             await self._schedules.hers(user_id, character.id, device_timezone)
             if self._schedules is not None else None
@@ -366,19 +412,17 @@ class Bar:
                 ),
                 hers.remembered, now, character, self._catalog,
             ),
+            admission,
             [first],
         )
-        self._visits[user_id] = visit
-        return self._call(
-            visit, brought, opening_ask(visit.orders[0]), VisitBegan(visit.id, character.id)
-        )
+        return visit
 
     def serve(
-        self, user_id: str, visit_id: str, served: Mixture | str, brought: BroughtKeys
+        self, user_id: str, visit_id: str, served: Mixture | str
     ) -> AsyncGenerator[BarEvent, None]:
         """Serve her what the bar counter holds, or a bottled drink by its identifier, in the
-        user's visit `visit_id`, bringing `brought`: the events of the call after it, from the
-        producer saying one of the fixed lines on. Raises VisitGone unless it is the user's
+        user's visit `visit_id`: the events of the call after it, on the keys the visit came
+        in with, from the producer saying one of the fixed lines on. Raises VisitGone unless it is the user's
         visit under way; NotWaiting unless she waits for a drink; BrokenDrink, changing
         nothing, if what is served is none of the drinks."""
         visit = self._under_way(user_id, visit_id)
@@ -399,12 +443,17 @@ class Bar:
             ask = serving_ask(serving, enjoy, order)
         else:
             ask = farewell_ask(serving, enjoy, visit.servings, drunk=visit.drunk)
-        return self._call(visit, brought, ask, BarLine("producer", enjoy))
+        return self._call(visit, ask, BarLine("producer", enjoy))
 
-    def leave(self, user_id: str, visit_id: str) -> None:
+    async def leave(self, user_id: str, visit_id: str) -> None:
         """The user leaves their visit `visit_id`, which is over. Raises VisitGone unless it is
         theirs under way."""
-        self._end(self._under_way(user_id, visit_id))
+        await self._over(self._under_way(user_id, visit_id), "left")
+
+    async def aclose(self) -> None:
+        """Wait for the visits over as no one waited for them any more to be settled."""
+        while self._settling:
+            await asyncio.gather(*self._settling, return_exceptions=True)
 
     @property
     def _rewarding(self) -> bool:
@@ -418,9 +467,32 @@ class Bar:
             raise VisitGone()
         return visit
 
-    def _end(self, visit: _Visit) -> None:
-        if self._visits.get(visit.user_id) is visit:
-            del self._visits[visit.user_id]
+    def _end(self, visit: _Visit) -> bool:
+        """The visit is no longer under way: whether it was until now."""
+        if self._visits.get(visit.user_id) is not visit:
+            return False
+        del self._visits[visit.user_id]
+        return True
+
+    async def _over(self, visit: _Visit, result: Result) -> None:
+        """The visit is over as `result`: no longer under way, and settled, given back if it
+        failed with nothing written yet. Only the first time."""
+        self._end(visit)
+        await visit.admission.settle(result, given_back=result == "failed" and not visit.written)
+
+    def _left_off(self, visit: _Visit) -> None:
+        """The visit, if it is still under way, is left as its call stops part-way, the page
+        gone: settled where that cannot be waited for, before the bar is closed."""
+        if not self._end(visit):
+            return  # over already: left, done away with, done or failed
+        settling = asyncio.ensure_future(self._over(visit, "left"))
+        self._settling.add(settling)
+        settling.add_done_callback(self._settled)
+
+    def _settled(self, settling: "asyncio.Future[Any]") -> None:
+        self._settling.discard(settling)
+        if not settling.cancelled() and (error := settling.exception()) is not None:
+            log.error("settling a visit left failed", exc_info=error)
 
     def _reason(self, character: Character, job: Job | None, recent: frozenset[str]) -> Reason:
         """Her reason for coming: half the time `job`, if any; else one of the list's for her,
@@ -443,49 +515,51 @@ class Bar:
         return fresh[self._random(len(fresh))]
 
     async def _call(
-        self, visit: _Visit, brought: BroughtKeys, ask: str, first: BarEvent
+        self, visit: _Visit, ask: str, first: BarEvent
     ) -> AsyncGenerator[BarEvent, None]:
         """A call of `visit`, asking for `ask`, sending `first` before it: its lines as they
         close, held back from the line she orders in on, if she is to order; then the memo
         and that she waits, or that the visit is done. A visit left or done away with
-        meanwhile is written no further, and the call ends there."""
+        meanwhile is written no further, and the call ends there; one whose page is gone
+        part-way is left. On the visit's keys, its service calls recorded under its record."""
         yield first
         ordering = len(visit.orders) > len(visit.servings)
-        keys = self._own_keys.for_turn(brought)
-        over = True
+        chat = visit.admission.llms.chat
+        going_on = False
         try:
-            said: list[BarLine] = []
-            held: list[BarLine] = []
-            parser = BarParser()
-            stream = keys.llms.chat.stream(prompt(visit.shared, visit.about, visit.written, ask))
-            try:
-                async for chunk in stream:
-                    if not isinstance(chunk, str):
-                        continue
-                    if self._visits.get(visit.user_id) is not visit:
-                        return  # left, or done away with by another: written no further
-                    for line in parser.feed(chunk):
+            with visit.admission.recording.current():
+                said: list[BarLine] = []
+                held: list[BarLine] = []
+                parser = BarParser()
+                stream = chat.stream(prompt(visit.shared, visit.about, visit.written, ask))
+                try:
+                    async for chunk in stream:
+                        if not isinstance(chunk, str):
+                            continue
+                        if self._visits.get(visit.user_id) is not visit:
+                            return  # left, or done away with by another: written no further
+                        for line in parser.feed(chunk):
+                            for shown in _holding(line, held, ordering):
+                                said.append(shown)
+                                yield shown
+                    for line in parser.finish():
                         for shown in _holding(line, held, ordering):
                             said.append(shown)
                             yield shown
-                for line in parser.finish():
-                    for shown in _holding(line, held, ordering):
-                        said.append(shown)
-                        yield shown
-            finally:
-                if (close := getattr(stream, "aclose", None)) is not None:
-                    await close()
-            if ordering:
-                if not held:
-                    raise _Unwritten("she did not order")
-                if not any(line.order for line in held):
-                    held[0] = replace(held[0], order=True)
-                held = await self._named(visit, keys.llms.chat, ask, said, held)
-                if self._visits.get(visit.user_id) is not visit:
-                    return
-                said += held
-                for line in held:
-                    yield line
+                finally:
+                    if (close := getattr(stream, "aclose", None)) is not None:
+                        await close()
+                if ordering:
+                    if not held:
+                        raise _Unwritten("she did not order")
+                    if not any(line.order for line in held):
+                        held[0] = replace(held[0], order=True)
+                    held = await self._named(visit, chat, ask, said, held)
+                    if self._visits.get(visit.user_id) is not visit:
+                        return
+                    said += held
+                    for line in held:
+                        yield line
             if not said:
                 raise _Unwritten("nothing was written")
             if self._visits.get(visit.user_id) is not visit:
@@ -493,25 +567,26 @@ class Bar:
             visit.written.append((ask, said))
             if ordering:
                 visit.step = "waiting"
-                over = False
+                going_on = True
                 yield Memo(visit.orders[-1].memo("".join(line.zh for line in held if line.order)))
                 yield Waiting()
                 return
             rewarded = await self._db.write(
                 self._write_down, visit, self._clock(), self._rewarding
             )
+            await self._over(visit, "success")
             yield VisitDone(rewarded)
         except OwnKeyFailed as e:  # theirs to fix, so they are told what went wrong
             log.warning("a visit's call failed on the user's own key: %s", e.service)
+            await self._over(visit, "failed")
             yield VisitFailed(e.message)
         except Exception:
             log.exception("a visit's call failed")
+            await self._over(visit, "failed")
             yield VisitFailed(FAILED)
         finally:
-            keys.release()
-            if over:
-                self._end(visit)
-
+            if not going_on:
+                self._left_off(visit)
 
     async def _named(
         self, visit: _Visit, chat: ChatLLM, ask: str, said: list[BarLine], held: list[BarLine]

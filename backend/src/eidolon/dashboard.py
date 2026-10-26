@@ -21,6 +21,8 @@ written down any period of any character (GLOSSARY.md「周期」, `recorded_cyc
 likewise, where the deployer has cycles on. How many times characters
 reached out (GLOSSARY.md「搭话」), how many times that failed, and the share answered
 (`reach_outs`), where the deployer has them on or any were recorded in the range. How many
+visits to the bar were begun, done and failed (GLOSSARY.md「光顾」, `bar`), where the bar is
+open or any were recorded in the range. How many
 achievements' stages were unlocked, the draw chances they gave and the reset cards characters
 complete gave (GLOSSARY.md「成就」, `achievements`), where affinity is on or any were unlocked
 in the range. Nothing anyone said is in it, nor whose any of it was.
@@ -107,10 +109,11 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
         start = range_start(now - span.length)
         starts = stretches(now, span, _zone(timezone))
         tally = await backend.activity.tally(start, starts)
-        # Reach-outs and achievements are no turns nor calls, and taken by no user; the
-        # reach-outs' service calls count.
+        # Reach-outs, achievements and visits are no turns nor calls, nor counted as taken
+        # by any user; the reach-outs' and visits' service calls count.
         records = [r for r in tally.records if r.kind in ("turn", "call")]
         reach_out_records = [r for r in tally.records if r.kind == "reach_out"]
+        visit_records = [r for r in tally.records if r.kind == "visit"]
         achievement_records = [r for r in tally.records if r.kind == "achievement"]
         names = {id: c.name for id, c in backend.characters.items()}
         spent = cost(tally.calls, pricing, starts)
@@ -141,6 +144,7 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
                 reach_outs(reach_out_records)
                 if backend.config.reach_outs.enabled or reach_out_records else None
             ),
+            "bar": bar(visit_records) if backend.config.bar_on or visit_records else None,
             "achievements": (
                 achievements(achievement_records)
                 if backend.config.affinity_on or achievement_records else None
@@ -392,6 +396,16 @@ def reach_outs(records: Sequence[RecordGroup]) -> dict:
         "answered_share": (
             _count(r for r in succeeded if r.answered) / _count(succeeded) if succeeded else None
         ),
+    }
+
+
+def bar(records: Sequence[RecordGroup]) -> dict[str, int]:
+    """How many visits to the bar were begun (not those rejected over the limit), how many
+    were done, and how many failed; not by character."""
+    return {
+        "visits": _count(r for r in records if r.result != "rejected"),
+        "done": _count(r for r in records if r.result == "success"),
+        "failed": _count(r for r in records if r.result == "failed"),
     }
 
 

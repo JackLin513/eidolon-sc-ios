@@ -1,10 +1,10 @@
-"""Letting a turn or call begin, and settling it once it is over (GLOSSARY.md「限额」
-「运行记录」): whose keys it runs on, its activity record, its use of the limit and the
-deployer's keys it holds, all in one place.
+"""Letting a turn, call or visit to the bar begin, and settling it once it is over
+(GLOSSARY.md「限额」「运行记录」「光顾」): whose keys it runs on, its activity record, its use
+of the limit and the deployer's keys it holds, all in one place.
 
-`Admissions` lets each begin, in order: it refuses one with a character who is in a
-cooldown (`CoolingDown`, GLOSSARY.md「冷却」) before anything else is asked, recording
-nothing; it takes the keys (`OwnKeys`), from those the turn or call brings, whose
+`Admissions` lets each begin, in order: it refuses a turn or call with a character who is in
+a cooldown (`CoolingDown`, GLOSSARY.md「冷却」) before anything else is asked, recording
+nothing, though she comes to the bar all the same; it takes the keys (`OwnKeys`), from those the turn or call brings, whose
 models record each request as a service call to the model they are, opens the activity
 record, and only then takes a use of the limit, so that nothing failing before it is
 counted. One refused over the limit is recorded rejected; whatever else fails on the way
@@ -13,7 +13,9 @@ before it is raised. Before a call is placed, it is only asked whether the call 
 count.
 
 The `Admission` it hands out settles it, once: given back unless its result counts
-(`_COUNTED`), the record written, the deployer's keys let go.
+(`_COUNTED`), or it is told to, the record written, the deployer's keys let go. A visit
+holds its keys from coming in until it is over, as a call does: its every call runs on
+them.
 """
 
 import asyncio
@@ -29,17 +31,19 @@ from eidolon.usage import OverLimit, UsageLimiter, Use
 
 log = logging.getLogger(__name__)
 
-Admitted = Literal["turn", "call"]
-"""What is let begin: a turn or a call, which the user takes; never a reach-out."""
+Admitted = Literal["turn", "call", "visit"]
+"""What is let begin: a turn, a call or a visit, which the user takes; never a reach-out."""
 
 _COUNTED: dict[Admitted, frozenset[Result]] = {
     "turn": frozenset({"success", "left"}),
     "call": frozenset({"success", "failed"}),
+    "visit": frozenset({"success", "left", "failed"}),
 }
 """The results that count towards the user's limit, by kind; any other is given back. A
-turn counts once it was taken, done or left; a call once it connected."""
+turn counts once it was taken, done or left; a call once it connected; a visit once she came
+in, unless it is given back all the same (`Admission.settle`)."""
 
-_FAILED: dict[Admitted, Result] = {"turn": "failed", "call": "not_connected"}
+_FAILED: dict[Admitted, Result] = {"turn": "failed", "call": "not_connected", "visit": "failed"}
 """How a turn or call is recorded that failed before it began: a call never connected."""
 
 K = TypeVar("K", TurnKeys, CallKeys)
@@ -55,7 +59,7 @@ class CoolingDown(Exception):
 
 
 class Admission(Generic[K]):
-    """One turn or call let begin, held until it is settled."""
+    """One turn, call or visit let begin, held until it is settled."""
 
     def __init__(self, kind: Admitted, keys: K, recording: Recording, use: Use) -> None:
         self._counted = _COUNTED[kind]
@@ -90,15 +94,18 @@ class Admission(Generic[K]):
         result: Result,
         duration: float | None = None,
         end_reason: CallEndReason | None = None,
+        *,
+        given_back: bool = False,
     ) -> None:
         """It is over as `result` (a call's with how long it lasted and why it ended):
-        its use given back unless that counts, its record written, the deployer's keys
-        let go, each whatever became of the one before. Only the first time."""
+        its use given back unless that counts, or if `given_back`, its record written, the
+        deployer's keys let go, each whatever became of the one before. Only the first
+        time."""
         if self._settled:
             return
         self._settled = True
         try:
-            if result not in self._counted:
+            if given_back or result not in self._counted:
                 await self._use.give_back()  # an exempt use is kept for the admin to see
         finally:
             try:
@@ -108,7 +115,7 @@ class Admission(Generic[K]):
 
 
 class Admissions:
-    """Lets the users' turns and calls begin, on the limits and keys of the moment."""
+    """Lets the users' turns, calls and visits begin, on the limits and keys of the moment."""
 
     def __init__(
         self,
@@ -154,12 +161,21 @@ class Admissions:
         await self.refuse_while_cooling(user_id, character_id)
         return await self._admit("call", user_id, character_id, self._own_keys.for_call(brought))
 
+    async def visit(
+        self, user_id: str, character_id: str, brought: BroughtKeys
+    ) -> Admission[TurnKeys]:
+        """Let the user's next visit to the bar, by `character_id`, bringing `brought`, begin,
+        on keys as a text turn's are, whether she is in a cooldown with them or not. Raises
+        OverLimit when they have no visits left this hour; then, and whatever else fails
+        before it begins, it is recorded and takes no use of the limit."""
+        return await self._admit("visit", user_id, character_id, self._own_keys.for_turn(brought))
+
     async def admitted(
         self,
         admitting: Awaitable[Admission[K]],
         never_began: Callable[[Admission[K]], Awaitable[None]],
     ) -> Admission[K]:
-        """What `admitting` (`turn`, `call`) lets begin. Should the wait be cancelled,
+        """What `admitting` (`turn`, `call`, `visit`) lets begin. Should the wait be cancelled,
         admitting goes on all the same, as what it writes would be written all the same
         (ADR-0028): what it lets begin then never does, and is settled by `never_began`."""
         task = asyncio.ensure_future(admitting)

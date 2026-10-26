@@ -403,15 +403,16 @@ def build(
         own_llm_service, config, activity, speech, exempting=lambda: config.exempting_keys,
         image_service=own_images,
     )
-    bar = Bar(
-        database, clock, characters, drink_catalog, bar_visits, bar_lines, own_keys,
-        lambda: config.bar_on, random or secure_random, world=world, affinities=affinities,
-        gifts=gifts, schedules=schedules,
-    )
     admissions = Admissions(
         usage, activity, own_keys, cooldown_until=affinities.cooldown_until
     )
     closers.append(admissions.aclose)  # closed after the calls, which may leave some to settle
+    bar = Bar(
+        database, clock, characters, drink_catalog, bar_visits, bar_lines, admissions,
+        lambda: config.bar_on, random or secure_random, world=world, affinities=affinities,
+        gifts=gifts, schedules=schedules,
+    )
+    closers.append(bar.aclose)  # closed before the database, so each visit over is recorded
     calls = Calls(
         settings, engine, admissions, own_keys, lambda: config.usage_limits, speech, clock, store,
         happenings,

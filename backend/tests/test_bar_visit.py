@@ -94,8 +94,8 @@ def events(res: httpx.Response) -> list[dict]:
     ]
 
 
-async def enter(client: httpx.AsyncClient) -> list[dict]:
-    return events(await client.post(VISITS, json={}))
+async def enter(client: httpx.AsyncClient, **body: object) -> list[dict]:
+    return events(await client.post(VISITS, json=body))
 
 
 def mixed(drink_id: str, *, big: bool = False, karmotrine: int = 0) -> dict:

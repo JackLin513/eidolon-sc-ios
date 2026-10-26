@@ -22,7 +22,7 @@ import pytest
 
 from eidolon.bar_lines import Phrasing, load_bar_lines
 from eidolon.bar_rules import FLAVORS, KINDS, NAMING, PHRASINGS
-from eidolon.config import Settings
+from eidolon.config import Settings, UsageLimits
 from eidolon.llm import LLMError
 from tests.conftest import MANO_SHEET, REPO_BAR_LINES, CharacterConfig, ClientFactory
 from tests.fakes import FakeLLM, FakeRandom
@@ -171,7 +171,8 @@ async def test_she_says_her_order_only_the_ways_she_can_for_it(
         *(n for p in can for n in entering(bucket, index, says(p, can), *DRAWS.get(p, ()))),
         *entering(bucket, index, sum(dict(PHRASINGS)[p] for p in can) - 1, *DRAWS.get(can[-1], ())),
     ]
-    client = make_client(llm, random=FakeRandom(*numbers))
+    unlimited = replace(settings, usage_limits=UsageLimits(visits_per_hour=None))
+    client = make_client(llm, settings=unlimited, random=FakeRandom(*numbers))
     for character, (times, orders) in history.items():
         had_visits(settings, character, times, orders)
 

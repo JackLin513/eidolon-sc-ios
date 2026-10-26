@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   achievementTiles,
+  barTiles,
   affinityRows,
   countTicks,
   durationRange,
@@ -301,6 +302,20 @@ describe("reachOutTiles", () => {
       ["被回了", "25%"],
     ]);
     expect(reachOutTiles({ succeeded: 0, failed: 2, answered_share: null })[2].value).toBe("—");
+  });
+});
+
+describe("barTiles", () => {
+  it("are none where the section is empty", () => {
+    expect(barTiles(null)).toEqual([]);
+  });
+
+  it("count the visits begun, done and failed", () => {
+    expect(barTiles({ visits: 1200, done: 800, failed: 3 }).map((tile) => [tile.label, tile.value])).toEqual([
+      ["光顾", "1,200"],
+      ["玩完", "800"],
+      ["失败", "3"],
+    ]);
   });
 });
 

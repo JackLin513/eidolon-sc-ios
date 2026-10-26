@@ -1,8 +1,9 @@
 """Per-user rate limits, so one user cannot use up the API credit everyone shares: on text
-turns, voice calls, and the photos she sends (GLOSSARY.md「照片」), each apart.
+turns, voice calls, the photos she sends (GLOSSARY.md「照片」) and visits to the bar
+(GLOSSARY.md「光顾」), each apart.
 
-A turn or call exempt on the user's own keys (GLOSSARY.md「免限额密钥」) is recorded all the
-same, for the admin to see, but does not count towards the limit. An admin may set a user's
+A turn, call or visit exempt on the user's own keys (GLOSSARY.md「免限额密钥」) is recorded
+all the same, for the admin to see, but does not count towards the limit. An admin may set a user's
 own limits, apart from the deployment's: a number, unlimited, or 0, which leaves them the
 exempt ones only.
 Each use is kept in the database, next to the
@@ -20,7 +21,7 @@ from eidolon.config import UsageLimits
 from eidolon.data_access import Database
 from eidolon.housekeeping import in_batches
 
-UsageKind = Literal["turn", "call", "photo"]
+UsageKind = Literal["turn", "call", "photo", "visit"]
 
 UserLimit = int | Literal["unlimited"] | None
 """A user's own limit on a kind of use an hour: a number (0: on their own keys only),
@@ -31,7 +32,9 @@ WINDOW = timedelta(hours=1)
 KEPT = timedelta(hours=24)
 """How long each use is kept: an hour for the limits, a day for the admin to look over."""
 
-_NAMES: dict[UsageKind, str] = {"turn": "文字对话", "call": "语音通话", "photo": "照片"}
+_NAMES: dict[UsageKind, str] = {
+    "turn": "文字对话", "call": "语音通话", "photo": "照片", "visit": "光顾",
+}
 
 _SCHEMA = """
 -- `at` is epoch seconds rather than ISO text, so that the window is a plain range query.
@@ -53,13 +56,15 @@ CREATE TABLE IF NOT EXISTS user_limits (
     calls_per_hour INTEGER,
     note TEXT,
     updated_at TEXT NOT NULL,
-    photos_per_hour INTEGER
+    photos_per_hour INTEGER,
+    visits_per_hour INTEGER
 );
 """
 
 _UNLIMITED_ROW = -1
 _COLUMNS: dict[UsageKind, str] = {
     "turn": "turns_per_hour", "call": "calls_per_hour", "photo": "photos_per_hour",
+    "visit": "visits_per_hour",
 }
 
 
@@ -88,6 +93,7 @@ class UserLimits:
     note: str | None = None
     updated_at: str = ""
     photos_per_hour: UserLimit = None
+    visits_per_hour: UserLimit = None
 
 
 @dataclass(frozen=True)
@@ -122,8 +128,8 @@ class Use:
 
 
 class UsageLimiter:
-    """Counts each user's text turns, voice calls and photos over the last hour, whichever
-    device or sign-in method they come with."""
+    """Counts each user's text turns, voice calls, photos and visits over the last hour,
+    whichever device or sign-in method they come with."""
 
     def __init__(
         self, db: Database, limits: UsageLimits | Callable[[], UsageLimits], clock: Clock
@@ -196,15 +202,16 @@ class UsageLimiter:
 def read_user_limits(db: sqlite3.Connection, user_id: str) -> UserLimits | None:
     """The user's own limits, read through `db`; None if an admin set none."""
     row = db.execute(
-        "SELECT turns_per_hour, calls_per_hour, photos_per_hour, note, updated_at"
-        " FROM user_limits WHERE user_id = ?",
+        "SELECT turns_per_hour, calls_per_hour, photos_per_hour, visits_per_hour, note,"
+        " updated_at FROM user_limits WHERE user_id = ?",
         (user_id,),
     ).fetchone()
     if row is None:
         return None
-    turns, calls, photos, note, updated_at = row
+    turns, calls, photos, visits, note, updated_at = row
     return UserLimits(
-        _from_row(turns), _from_row(calls), note, updated_at, photos_per_hour=_from_row(photos)
+        _from_row(turns), _from_row(calls), note, updated_at, photos_per_hour=_from_row(photos),
+        visits_per_hour=_from_row(visits),
     )
 
 
@@ -220,8 +227,9 @@ def _open(db: sqlite3.Connection) -> None:
     # own, which no longer is a rule.
     if "deployer_llm_allowed" in columns:
         db.execute("ALTER TABLE user_limits DROP COLUMN deployer_llm_allowed")
-    if "photos_per_hour" not in columns:
-        db.execute("ALTER TABLE user_limits ADD COLUMN photos_per_hour INTEGER")
+    for column in ("photos_per_hour", "visits_per_hour"):
+        if column not in columns:
+            db.execute(f"ALTER TABLE user_limits ADD COLUMN {column} INTEGER")
 
 
 def _take(
@@ -252,6 +260,7 @@ def _refuse_over(
         "turn": limits.turns_per_hour,
         "call": limits.calls_per_hour,
         "photo": limits.photos_per_hour,
+        "visit": limits.visits_per_hour,
     }[kind]
     own = _own_limit(db, user_id, kind)
     limit = deployment if own is None else None if own == "unlimited" else own
@@ -288,10 +297,11 @@ def _set_user_limits(
         return
     db.execute(
         "INSERT OR REPLACE INTO user_limits"
-        " (user_id, turns_per_hour, calls_per_hour, photos_per_hour, note, updated_at)"
-        " VALUES (?, ?, ?, ?, ?, ?)",
+        " (user_id, turns_per_hour, calls_per_hour, photos_per_hour, visits_per_hour, note,"
+        " updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (user_id, _to_row(limits.turns_per_hour), _to_row(limits.calls_per_hour),
-         _to_row(limits.photos_per_hour), limits.note, now.isoformat()),
+         _to_row(limits.photos_per_hour), _to_row(limits.visits_per_hour), limits.note,
+         now.isoformat()),
     )
 
 

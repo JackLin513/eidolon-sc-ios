@@ -13,8 +13,8 @@ polling (`call.USER_CHECK_INTERVAL`), and they cannot sign in until unbanned. No
 can be banned here, oneself included, so that no admin locks the others, or themselves,
 out; the deployer can still on the command line.
 
-An admin may also set a user's own limits on turns and calls an hour, each apart, or take
-them off; the length of a call is the same for everyone.
+An admin may also set a user's own limits on turns, calls, photos and visits to the bar an
+hour, each apart, or take them off; the length of a call is the same for everyone.
 
 How much a user has used the deployment lately is from the activity records (not the
 `usage` table, the limit's sliding hour): the list shows how many turns and calls each
@@ -69,15 +69,19 @@ class LimitsInput(BaseModel):
     turns_per_hour: Limit = None
     calls_per_hour: Limit = None
     photos_per_hour: Limit = None
+    visits_per_hour: Limit = None
     note: str | None = Field(None, max_length=500)
     """Why, for the admins only."""
 
     @model_validator(mode="after")
     def _any(self) -> "LimitsInput":
-        if self.turns_per_hour is None and self.calls_per_hour is None and (
-            self.photos_per_hour is None
+        if all(
+            limit is None for limit in (
+                self.turns_per_hour, self.calls_per_hour, self.photos_per_hour,
+                self.visits_per_hour,
+            )
         ):
-            raise ValueError("至少要单独设定回合数、通话次数或照片数中的一项")
+            raise ValueError("至少要单独设定回合数、通话次数、照片数或光顾次数中的一项")
         return self
 
 
@@ -199,7 +203,7 @@ def add_admin_user_routes(app: FastAPI, backend: Backend) -> None:
         await details(user_id)
         await limiter.set_user_limits(user_id, UserLimits(
             body.turns_per_hour, body.calls_per_hour, (body.note or "").strip() or None,
-            photos_per_hour=body.photos_per_hour,
+            photos_per_hour=body.photos_per_hour, visits_per_hour=body.visits_per_hour,
         ))
         return await details(user_id)
 

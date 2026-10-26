@@ -1108,6 +1108,11 @@ export const zh = {
         title: "搭话",
         tiles: { succeeded: "成功", failed: "失败", answered: "被回了" },
       },
+      /** 「用量」里的「酒吧」一小节：范围内光顾了几次（不算被拒的）、玩完几次、失败几次。 */
+      bar: {
+        title: "酒吧",
+        tiles: { visits: "光顾", done: "玩完", failed: "失败" },
+      },
       /** 「好感度」里的「日程」一小节：本周（北京时间）排了日程的人数，不跟时间范围走。 */
       schedule: {
         title: "日程",
@@ -1280,6 +1285,8 @@ export const zh = {
         summary: (turns: string, calls: string) => `回合 ${turns} · 通话 ${calls}`,
         /** 单独设了照片数时接在后面。 */
         withPhotos: (summary: string, photos: string) => `${summary} · 照片 ${photos}`,
+        /** 单独设了光顾次数时接在后面（在照片之后）。 */
+        withVisits: (summary: string, visits: string) => `${summary} · 光顾 ${visits}`,
         updatedAt: "设定于",
         set: "设定单独限额",
         edit: "修改单独限额",
@@ -1287,10 +1294,11 @@ export const zh = {
       },
       limitsDialog: {
         title: (name: string) => `${name} 的单独限额`,
-        hint: "只对这位用户生效，保存后从他的下一个回合、下一次通话起按这里的数字计算；没有单独设定的一项跟随全站。不计入限额的回合和通话照常放行。单次通话的时长和回合上限对所有人都一样，不能单独设。",
+        hint: "只对这位用户生效，保存后从他的下一个回合、下一次通话或光顾起按这里的数字计算；没有单独设定的一项跟随全站。不计入限额的回合、通话和光顾照常放行。单次通话的时长和回合上限对所有人都一样，不能单独设。",
         turns: "每小时的回合数",
         calls: "每小时的通话次数",
         photos: "每小时的照片数",
+        visits: "每小时的光顾次数",
         choices: { default: "跟随全站", number: "设定次数", unlimited: "不限", ownKeys: "只能用自带密钥" },
         /** 「只能用自带密钥」是什么意思：只放行不计入限额的（GLOSSARY.md「免限额密钥」）。通话的按配置页「限额」
          * 里现在的免限额密钥点名，经 `sayServices` 拼上服务名；读不到配置时用 `callsOwnKeysHintUnknown`。 */
@@ -1298,6 +1306,7 @@ export const zh = {
         callsOwnKeysHint: (services: string) => `只放行带上自己的${services}的通话；全站的免限额密钥改了，这里跟着变。`,
         callsOwnKeysHintUnknown: "只放行不计入限额的通话。",
         photosOwnKeysHint: "只发用自带生图生成的照片。",
+        visitsOwnKeysHint: "只放行用自带 LLM 的光顾。",
         /** 「跟随全站」带上全站现在的数字，不用去配置页查：「跟随全站（60 次）」。 */
         defaultIs: (site: string) => `跟随全站（${site}）`,
         siteCount: (n: number) => (n === 0 ? "不限" : `${n} 次`),
@@ -1443,6 +1452,7 @@ export const zh = {
         turns_per_hour: "每小时回合数",
         calls_per_hour: "每小时通话次数",
         photos_per_hour: "每小时照片数",
+        visits_per_hour: "每小时光顾次数",
         call_minutes: "单次通话的时长上限（分钟）",
         turns_per_call: "单次通话的回合上限",
         concurrent_calls: "同时进行的通话数上限",

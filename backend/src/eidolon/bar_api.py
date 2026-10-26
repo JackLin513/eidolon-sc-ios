@@ -1,11 +1,13 @@
 """The bar over HTTP (GLOSSARY.md「酒吧」「光顾」), for users who agreed to the terms:
 `/api/bar` reads it; `/api/bar/visits` begins a visit, each of whose drinks is served at
-`/api/bar/visits/{visit_id}/serves`, and which is left by deleting it. Beginning a visit and
-serving a drink answer with the call they set off, as server-sent events (`bar.BarEvent`).
+`/api/bar/visits/{visit_id}/serves`, on the keys it came in with, and which is left by
+deleting it. Beginning a visit and serving a drink answer with the call they set off, as
+server-sent events (`bar.BarEvent`).
 
-Refused: coming in while the bar is closed (409 `bar_closed`); any visit but the user's
-under way (410 `visit_gone`); serving while she is not waiting for a drink (409
-`not_waiting`), or what is none of the drinks (422 `broken_drink`)."""
+Refused: coming in while the bar is closed (409 `bar_closed`), or over the limit (429, as any
+use is); any visit but the user's under way (410 `visit_gone`); serving while she is not
+waiting for a drink (409 `not_waiting`), or what is none of the drinks (422
+`broken_drink`)."""
 
 import json
 from collections.abc import AsyncGenerator, AsyncIterator
@@ -27,7 +29,7 @@ from eidolon.sessions import DeviceTimezone, UserId
 class VisitInput(BaseModel):
     own_keys: OwnKeysInput | None = None
     """The user's own keys, which their browser keeps, for the visit's calls to run on, as
-    text turns bring them; only the LLMs are used."""
+    text turns bring them; only the LLMs are used, held until the visit is over."""
 
 
 class ServeInput(BaseModel):
@@ -43,7 +45,6 @@ class ServeInput(BaseModel):
     karmotrine: int = 0
     ice: bool = False
     aged: bool = False
-    own_keys: OwnKeysInput | None = None
 
     @model_validator(mode="after")
     def _bottle_or_not(self) -> "ServeInput":
@@ -90,12 +91,12 @@ def add_bar_routes(app: FastAPI, backend: Backend) -> None:
     @app.post("/api/bar/visits/{visit_id}/serves")
     async def serve(visit_id: str, body: ServeInput, user_id: UserId) -> StreamingResponse:
         """A drink served her."""
-        return _events(bar.serve(user_id, visit_id, body.served(), _brought(body.own_keys)))
+        return _events(bar.serve(user_id, visit_id, body.served()))
 
     @app.delete("/api/bar/visits/{visit_id}", status_code=204)
     async def leave(visit_id: str, user_id: UserId) -> None:
         """The visit left: over, and not to be come back to."""
-        bar.leave(user_id, visit_id)
+        await bar.leave(user_id, visit_id)
 
 
 def _brought(own_keys: OwnKeysInput | None) -> BroughtKeys:
