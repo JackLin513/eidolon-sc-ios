@@ -229,6 +229,12 @@ class ReferenceSources:
         query_vector = await self.embedder.embed_query(text)
         return await self.rerank(reranker, text, await self.candidates(query_vector, character))
 
+    @property
+    def facts(self) -> CharacterFacts | None:
+        """The characters' facts among the sources, if they are, for the bar to look in
+        (`bar_facts`) without keeping their vectors twice."""
+        return next((s for s in self._sources if isinstance(s, CharacterFacts)), None)
+
     def embedded(self) -> list[Reembeddable]:
         """Every source, for `eidolon reembed`, the unsearched among them."""
         return [*self._sources, *self._unsearched]

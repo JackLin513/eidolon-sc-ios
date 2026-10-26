@@ -15,8 +15,9 @@ the day alone, until they have a visit done that day, and from then on anyone, e
 likely; whether she is in a cooldown or not. Then her reason for coming: half the time the
 job of hers the producer scheduled today and she has done, if there is one, else one of the
 list's not for leaving her out (`not_for`) and none of her `bar_visits.RECENT_VISITS` latest
-visits with the user, unless that leaves none; the topic likewise; and how many drinks she
-has (`bar_rules.CUPS`). Each of her orders is drawn just before the call that has her order
+visits with the user, unless that leaves none; the topic likewise, and her facts it finds
+(`bar_facts`), looked up under the visit's record; and how many drinks she has
+(`bar_rules.CUPS`). Each of her orders is drawn just before the call that has her order
 it (`bar_rules.draw_order`), knowing whether the user is a novice at the bar and what she
 wanted the last time.
 
@@ -82,6 +83,7 @@ from typing import Any, Literal, TypeVar
 from eidolon.activity import Result
 from eidolon.admission import Admission, Admissions
 from eidolon.affinity import Affinities, DrinkServed, affinity_prompt, day_of
+from eidolon.bar_facts import BarFacts
 from eidolon.bar_lines import BarLines
 from eidolon.bar_prompt import (
     Remembered,
@@ -370,10 +372,12 @@ class Bar:
         affinities: Affinities | None = None,
         gifts: Gifts | None = None,
         schedules: Schedules | None = None,
+        facts: BarFacts | None = None,
     ) -> None:
         """`is_on` tells whether the bar is open now (the live configuration's switch). Without
         `world`, she has no world setting; without `affinities`, no affinity; without `gifts`
-        too, no reward; without `schedules`, no job of hers for a reason. Her reasons for
+        too, no reward; without `schedules`, no job of hers for a reason; without `facts`, none
+        of her facts are looked up. Her reasons for
         coming and topics are drawn from `listed`. Visits are let in by `admissions`."""
         self._db = db
         self._clock = clock
@@ -388,6 +392,7 @@ class Bar:
         self._affinities = affinities
         self._gifts = gifts
         self._schedules = schedules
+        self._facts = facts
         self._visits: dict[str, _Visit] = {}
         """Each user's visit under way, by user."""
         self._settles: set[asyncio.Future[Any]] = set()
@@ -465,6 +470,8 @@ class Bar:
         )
         reason = self._reason(character, _done_today(her_jobs), hers.reasons)
         topic = self._topic(character, hers.topics)
+        with admission.recording.current():
+            facts = await self._facts.about(character, topic) if self._facts is not None else []
         drinks = cups(self._random)
         known = Known(
             before.visits_done < NOVICE_VISITS,
@@ -482,7 +489,7 @@ class Bar:
                 today_lines(
                     now, character, everyone, "apart", world.lives_of(character.name) if world else ()
                 ),
-                hers.remembered, now, character, self._catalog,
+                hers.remembered, now, character, self._catalog, facts,
             ),
             admission,
             [first],

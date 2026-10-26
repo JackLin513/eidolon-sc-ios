@@ -6,15 +6,16 @@ in every call of a visit:
    IF the bar is in and what it keeps to, how a visit goes and the output format;
 2. this visit, the same for each of its calls: who the producer is, why she came and what
    she is to talk about, how many drinks she has, her affinity, what day it is, what she
-   remembers of her visits with the producer before and her tastes at the bar;
+   remembers of her visits with the producer before, her tastes at the bar and those of her
+   character facts the topic finds (`bar_facts`);
 3. what each call before asked for and what was written, the last marked for the service to
    cache;
 4. what this call is to write: her coming in and ordering, her reaction to a drink and her
    next order, or her reaction to the last and her farewell, drunk from after the reaction
    on if that drink left her so; with her order card, and the drink served and how well.
 
-No tool is offered, nothing is retrieved; neither the conversations nor her memories are
-told of. Nor is she told what else would have been right for an order.
+No tool is offered, nothing is retrieved but her facts; neither the conversations nor her
+memories are told of. Nor is she told what else would have been right for an order.
 """
 
 from collections.abc import Sequence
@@ -39,6 +40,7 @@ from eidolon.bar_rules import (
 from eidolon.bar_visits import Mood, Topic
 from eidolon.characters import Character
 from eidolon.drink_catalog import Drink, DrinkCatalog, Served
+from eidolon.facts import CharacterFacts
 from eidolon.llm import ChatMessage
 from eidolon.today import her_birthday
 
@@ -64,7 +66,8 @@ _WRITING = """\
 - 闲聊：6 到 10 句，围着话题聊，来意也往深里说一点；最后一杯后的闲聊短一些，3 到 5 句。
 - 告别：2 到 4 句，收住来意，心情比进门时有了变化，用一句话带出这次喝得怎么样，可以说下次再来。
 - 句数是你和制作人合计的。制作人每段最多一两句，只是接你的话，不抢戏，不替你挑饮品、不提议你点什么，只说中文。
-- 不写选项，不替制作人做决定，也不写制作人调酒、上酒：那由制作人自己来。"""
+- 不写选项，不替制作人做决定，也不写制作人调酒、上酒：那由制作人自己来。
+- 今天、今晚的小事和心情可以即兴；过去的经历，家人、组合伙伴和别的偶像的名字、关系和设定，只用人设和「角色资料」里有的，没有的就说得笼统些，不编具体的名字和事件。"""
 
 _FORMAT = """\
 # 输出格式
@@ -108,8 +111,10 @@ def visit_prompt(
     now: datetime,
     character: Character,
     catalog: DrinkCatalog,
+    facts: Sequence[str] = (),
 ) -> str:
-    """The second part: this visit, as it is at `now`, as she comes in."""
+    """The second part: this visit, as it is at `now`, as she comes in, with those of her
+    `facts` the topic found, best first."""
     if reason.job:
         why = (
             f"你今天完成了制作人排给你的工作「{reason.id}」（{reason.note}），"
@@ -122,10 +127,13 @@ def visit_prompt(
         "# 这次光顾", why, f"闲聊的话题：{topic.note}", f"你今晚打算喝 {cups} 杯，喝完就告别。",
         *affinity_lines, *today,
     ]
-    return "\n\n".join([
+    parts = [
         about_producer, "\n".join(visit), _remembered(remembered, now, catalog),
         _tastes(character, catalog),
-    ])
+    ]
+    if facts:
+        parts.append(_facts(facts))
+    return "\n\n".join(parts)
 
 
 def opening_ask(order: Order) -> str:
@@ -327,3 +335,13 @@ def _tastes(character: Character, catalog: DrinkCatalog) -> str:
     )
     return "\n".join(lines)
 
+
+
+def _facts(facts: Sequence[str]) -> str:
+    lines = [
+        f"# {CharacterFacts.heading}",
+        f"{CharacterFacts.guide}下面几条和这次的话题可能有关，聊到时照这些说，用不上的可以不提。",
+    ]
+    for fact in facts:
+        lines += ["", fact]
+    return "\n".join(lines)

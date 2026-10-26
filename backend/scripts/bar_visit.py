@@ -4,7 +4,8 @@
 酒吧是脚本自己造的，不带好感度和礼物，所以不发奖励。服务器照常抽来意、话题、点单，脚本只在
 这几处插手：
 
-- 谁来（`--character`，默认随机）、几杯（`--cups`，默认照常抽；`--drunk` 时默认 3 杯）；
+- 谁来（`--character`，默认随机）、聊什么（`--topic`，话题的 id，默认照常抽）、几杯（`--cups`，
+  默认照常抽；`--drunk` 时默认 3 杯）；
 - 每一单的说法、上成哪一档、上错时错在哪（`--phrasing`、`--tier`、`--wrong`，逗号分开，按杯排，
   `any` 是这一杯随机）：服务器照常抽点单，抽到不合要求的就重抽；
 - 制作人上什么：脚本替他挑一款判定合要求的，`--drunk` 时挑 Karmotrine 最多的，能选
@@ -12,6 +13,9 @@
 - 以前来过几次（`--visits`，默认 3 次，最后一次是三天前，喝的是合她口味、不是她爱喝的一款）：0 次是新手，
   不会有几个条件叠加、打比方、「来杯我喜欢的」和「老样子」；
 - `--break-farewell` 让告别那次调用连着失败，换成写死的兜底句。
+
+`.env` 里配了向量化和重排时，进门照常按话题查她的资料：临时库里还没有向量，第一次查时把她的资料
+向量化一遍。查到的几条在进门前打印出来。
 
 打印每句台词（说话人、情绪、日语、中文）、点单备忘、每单名字检查重写了几次、有没有换成写死的
 点单句，最后列出每次调用的用量和用时。
@@ -57,7 +61,7 @@ from eidolon.bar import (
 from eidolon.bar_lines import BarLines, Phrasing, Tier, bar_lines_path, load_bar_lines
 from eidolon.bar_reply import BarLine
 from eidolon.bar_rules import DRUNK_AT, FLAVORS, KINDS, Known, Order, Serving, Wrong, judged
-from eidolon.bar_visits import bar_visits_path, load_bar_visits
+from eidolon.bar_visits import Topic, bar_visits_path, load_bar_visits
 from eidolon.characters import Character
 from eidolon.config import Settings
 from eidolon.drink_catalog import (
@@ -126,15 +130,23 @@ class Tally:
 
 
 class DevBar(Bar):
-    """酒吧，多出数重写次数、故意弄坏告别调用、看正在进行的光顾这几样。"""
+    """酒吧，多出数重写次数、故意弄坏告别调用、指定话题、看正在进行的光顾这几样。"""
 
-    def __init__(self, *args, tally: Tally, break_farewell: bool, **kwargs) -> None:
+    def __init__(
+        self, *args, tally: Tally, break_farewell: bool, topic: str | None, **kwargs
+    ) -> None:
         super().__init__(*args, **kwargs)
         self.tally = tally
         self.break_farewell = break_farewell
+        self.topic = topic
 
     def under_way(self, user_id: str):
         return self._visits.get(user_id)
+
+    def _topic(self, character: Character, recent: frozenset[str]) -> Topic:
+        if self.topic is None:
+            return super()._topic(character, recent)
+        return next(t for t in self._listed.topics if t.id == self.topic)
 
     async def _rewritten(self, visit, chat: ChatLLM, ask: str) -> list[BarLine]:
         self.tally.current.rewrites += 1
@@ -357,21 +369,29 @@ async def drive(args: argparse.Namespace) -> int:
                 return 2
             her = characters[her_id]
             catalog = load_drink_catalog(drinks_path(settings.characters_path))
+            listed = load_bar_visits(bar_visits_path(settings.characters_path))
+            topics = [t.id for t in listed.topics if her_id not in t.not_for]
+            if args.topic is not None and args.topic not in topics:
+                print(f"{her_id} 没有这个话题：{args.topic}（有 {', '.join(topics)}）",
+                      file=sys.stderr)
+                return 2
             tally = Tally()
             steer(plan, cups, ids.index(her_id))
             count_fixed(tally)
             bar = DevBar(
                 backend.database, backend.clock, characters, catalog,
-                load_bar_visits(bar_visits_path(settings.characters_path)),
-                load_bar_lines(bar_lines_path(settings.characters_path)),
+                listed, load_bar_lines(bar_lines_path(settings.characters_path)),
                 backend.admissions, lambda: True, rng.randrange, world=backend.world,
-                tally=tally, break_farewell=args.break_farewell,
+                facts=backend.bar._facts, tally=tally, break_farewell=args.break_farewell,
+                topic=args.topic,
             )
             user = await backend.store.create_user("制作人")
             await backend.database.write(
                 seed_history, user.id, her, args.visits, _usual(her, catalog), backend.clock()
             )
             print(f"种子 {seed}｜模型 {settings.chat_llm.model}（{settings.chat_llm.base_url}）")
+            if backend.bar._facts is None:
+                print("（没配向量化和重排：不查她的资料）")
             print(
                 f"角色 {her.name}（{her.id}）｜酒量 {her.bar_tolerance}"
                 f"（醉的门槛 {_drunk_at(her)} 份）｜讨厌 "
@@ -399,6 +419,11 @@ async def _visit(
     visit_id = visit.id
     print(f"来意 {visit.reason.id}：{visit.reason.note}")
     print(f"话题 {visit.topic.id}：{visit.topic.note}｜打算喝 {visit.cups} 杯")
+    heading = "# 角色资料"
+    if heading in visit.about:
+        print(f"\n【查到的资料】\n{visit.about[visit.about.index(heading):]}")
+    else:
+        print("\n【查到的资料】无")
     show_order(1, visit.orders[0])
     last = await show(call, tally, "进门，点第一杯")
     while True:
@@ -505,6 +530,7 @@ def _listed(text: str | None, allowed: tuple[str, ...], what: str) -> list:
 def main() -> int:
     parser = argparse.ArgumentParser(description="用部署者的对话模型走一次光顾，看措辞")
     parser.add_argument("--character", help="角色 id，默认随机")
+    parser.add_argument("--topic", help="话题的 id（characters/bar_visits.toml），默认照常抽")
     parser.add_argument("--cups", type=int, choices=(1, 2, 3), help="几杯，默认照常抽")
     parser.add_argument("--phrasing", help=f"每杯的说法，逗号分开，any 是随机：{', '.join(PHRASINGS)}")
     parser.add_argument("--tier", help=f"每杯上成哪一档：{', '.join(TIERS)}")

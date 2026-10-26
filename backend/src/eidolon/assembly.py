@@ -5,7 +5,8 @@ characters and the world setting and gift catalog beside them, the identity prov
 the services users bring their own keys to, retrieval, memory, the conversation engine,
 usage limits, voice calls and reach-outs. It decides what is on. Retrieval needs the judge
 model, the embedder and the reranker all at hand, and memory is on only with retrieval, since only
-retrieval finds memories again; judging her emotion during calls needs only the judge
+retrieval finds memories again; the bar looks up her facts with the embedder and the
+reranker alone; judging her emotion during calls needs only the judge
 model, the same one; the
 background model is always at hand, being the chat model unless configured apart.
 
@@ -37,6 +38,7 @@ from eidolon.affinity import Affinities
 from eidolon.announcements import Announcements
 from eidolon.backup import Backups
 from eidolon.bar import Bar
+from eidolon.bar_facts import BarFacts
 from eidolon.bar_lines import bar_lines_path, check_bar_lines, load_bar_lines
 from eidolon.bar_visits import bar_visits_path, check_bar_visits, load_bar_visits
 from eidolon.call import Calls, Speech, SpeechServices
@@ -58,6 +60,7 @@ from eidolon.cycles import Cycles
 from eidolon.data_access import Database
 from eidolon.data_package import DataPackages
 from eidolon.embedding import EMBEDDING_TIMEOUT, Embedder, open_embedder
+from eidolon.facts import CharacterFacts
 from eidolon.engine import ConversationEngine
 from eidolon.identity import IdentityProvider, ProviderName, open_identity_providers
 from eidolon.image_generation import GENERATION_TIMEOUT
@@ -344,9 +347,11 @@ def build(
 
     retrieval = None
     corpus = None
+    character_facts = None
     if retrieval_judge is not None and embedder is not None and reranker is not None:
         references = open_reference_sources(database, embedder, characters.values(), world)
         corpus = references.corpus
+        character_facts = references.facts
         closers.append(corpus.aclose)  # closed before the database, loading from it
         retrieval = Retrieval(
             retrieval_judge,
@@ -410,10 +415,17 @@ def build(
         usage, activity, own_keys, cooldown_until=affinities.cooldown_until
     )
     closers.append(admissions.aclose)  # closed after the calls, which may leave some to settle
+    # The bar looks in her facts with the text turns' own, if they have them, needing no
+    # judge model.
+    bar_facts = None
+    if embedder is not None and reranker is not None:
+        if character_facts is None:
+            character_facts = CharacterFacts(database, embedder, characters.values())
+        bar_facts = BarFacts(character_facts, embedder, reranker)
     bar = Bar(
         database, clock, characters, drink_catalog, bar_visits, bar_lines, admissions,
         lambda: config.bar_on, random or secure_random, world=world, affinities=affinities,
-        gifts=gifts, schedules=schedules,
+        gifts=gifts, schedules=schedules, facts=bar_facts,
     )
     closers.append(bar.aclose)  # closed before the database, so each visit over is recorded
     calls = Calls(
