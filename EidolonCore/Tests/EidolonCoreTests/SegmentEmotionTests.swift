@@ -238,7 +238,7 @@ final class SegmentEmotionTests: XCTestCase {
                 try await Task.sleep(for: .seconds(5))
                 return (body, http(200))
             },
-            timeout: 0.05
+            timeout: 0.1
         )
         let clock = ContinuousClock()
         let start = clock.now
@@ -249,6 +249,54 @@ final class SegmentEmotionTests: XCTestCase {
             .seconds(1),
             "the wait is cut at the timeout, not the service's own 5 seconds"
         )
+    }
+
+    /// A timeout `Task.sleep` cannot take — not a number, infinite, or far outside what a
+    /// segment could take — is the default 1.5 s, not a trap.
+    func testAnUnusableTimeoutFallsBackToTheDefault() async throws {
+        let body = try systemOneBody(answers(
+            emotion: ["平静": 0.1, "开心": 0.9],
+            nod: ["同意": 0.9]
+        ))
+        for timeout in [1e30, .infinity, -.infinity, .nan, 0, -1, 0.01, 11] {
+            let recorder = RequestRecorder()
+            let judge = SystemOneSegmentEmotionJudge(
+                config: config("typesafe/jev-1.13"),
+                transport: StubJudgeTransport { request in
+                    await recorder.record(request)
+                    return (body, http(200))
+                },
+                timeout: timeout
+            )
+            let emotion = await judge.emotion(in: segment)
+            XCTAssertNotNil(emotion, "\(timeout)")
+
+            let recorded = await recorder.only()
+            let request = try XCTUnwrap(recorded)
+            XCTAssertEqual(request.timeoutInterval, 1.5, "\(timeout)")
+        }
+    }
+
+    /// A timeout inside the range is used as it is.
+    func testAUsableTimeoutIsKept() async throws {
+        let body = try systemOneBody(answers(
+            emotion: ["平静": 0.9],
+            nod: ["都不是": 0.9]
+        ))
+        let recorder = RequestRecorder()
+        let judge = SystemOneSegmentEmotionJudge(
+            config: config("typesafe/jev-1.13"),
+            transport: StubJudgeTransport { request in
+                await recorder.record(request)
+                return (body, http(200))
+            },
+            timeout: 0.1
+        )
+        _ = await judge.emotion(in: segment)
+
+        let recorded = await recorder.only()
+        let request = try XCTUnwrap(recorded)
+        XCTAssertEqual(request.timeoutInterval, 0.1, accuracy: 1e-9)
     }
 
     /// A timeout, a dropped connection or a refused key leaves the segment unjudged.
