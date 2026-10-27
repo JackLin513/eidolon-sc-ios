@@ -211,7 +211,7 @@ struct CallView: View {
             failure = nil
         case let .segment(_, _, ja, zh):
             line = HerLine(ja: ja, zh: zh)
-        case .segmentStarted, .segmentStopped:
+        case .segmentStarted, .segmentStopped, .emotion:
             break
         case let .failed(message):
             failure = message

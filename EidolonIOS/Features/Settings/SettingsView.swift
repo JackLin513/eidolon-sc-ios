@@ -26,6 +26,10 @@ struct SettingsView: View {
     @State private var cloudflareAccountID = ""
     @State private var cloudflareModel = CloudflareJudgeConfig.defaultModel
     @State private var cloudflareAPIKey = ""
+    /// The judge's minimum probability, blank for the model family's own; and how long a
+    /// segment's emotion may take, in seconds (spec「情绪判断」).
+    @State private var emotionMinProbability = ""
+    @State private var emotionTimeout = "1.5"
     @State private var isTestingJudge = false
     @State private var judgeCheck: JudgeCheck?
     @State private var judgeCheckError: String?
@@ -141,6 +145,15 @@ struct SettingsView: View {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .font(.footnote.monospaced())
+                    }
+                    if judgeService != .chat {
+                        TextField("最低概率（0–1，留空按模型阈值）", text: $emotionMinProbability)
+                            .keyboardType(.decimalPad)
+                        TextField("超时（秒，默认 1.5）", text: $emotionTimeout)
+                            .keyboardType(.decimalPad)
+                        Text("她每说完一段，用同一个服务判断这一段的表情和点头；概率低于阈值时按平静演，超时或失败就不判断。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
                     if let note = judgeUncalibratedNote {
                         Text(note)
@@ -409,6 +422,8 @@ struct SettingsView: View {
         cloudflareAccountID = settings.cloudflareAccountID
         cloudflareModel = settings.cloudflareModel
         cloudflareAPIKey = settings.cloudflareAPIKey
+        emotionMinProbability = settings.emotionMinProbability.map(Self.numberText) ?? ""
+        emotionTimeout = Self.numberText(settings.emotionTimeout)
         retrievalBaseURL = settings.retrievalBaseURL
         embeddingModel = settings.embeddingModel
         rerankModel = settings.rerankModel
@@ -468,12 +483,27 @@ struct SettingsView: View {
             jevAPIKey: jevAPIKey,
             cloudflareAccountID: cloudflareAccountID,
             cloudflareModel: cloudflareModel,
-            cloudflareAPIKey: cloudflareAPIKey
+            cloudflareAPIKey: cloudflareAPIKey,
+            emotionMinProbability: Self.number(emotionMinProbability),
+            emotionTimeout: Self.number(emotionTimeout) ?? 1.5
         )
     }
 
     private func save() async {
         let settings = draft
+        if judgeService != .chat {
+            let probability = emotionMinProbability.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !probability.isEmpty,
+               !(Self.number(probability).map { (0...1).contains($0) } ?? false) {
+                saveError = "最低概率需要是 0 到 1 之间的数"
+                return
+            }
+            let timeout = emotionTimeout.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !timeout.isEmpty, !(Self.number(timeout).map { $0 > 0 } ?? false) {
+                saveError = "超时需要是正数（秒）"
+                return
+            }
+        }
         do {
             try app.saveChatSettings(settings)
             let zone = profileTimezone.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -567,6 +597,22 @@ struct SettingsView: View {
         Binding(
             get: { app.errorMessage != nil },
             set: { if !$0 { app.errorMessage = nil } }
+        )
+    }
+
+    /// A numeric field's text as a number; blank is nil, and so is anything unreadable.
+    private static func number(_ text: String) -> Double? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return Double(trimmed)
+    }
+
+    /// A number as its field shows it: `1.5`, `0.4`, `1`, never `1.500000`.
+    private static func numberText(_ value: Double) -> String {
+        String(
+            format: "%g",
+            locale: Locale(identifier: "en_US_POSIX"),
+            arguments: [value]
         )
     }
 }

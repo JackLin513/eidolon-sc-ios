@@ -71,6 +71,29 @@ final class AppModel {
         }
     }
 
+    /// Judges each segment's emotion for her stand during a call, on the same System One
+    /// service that judges turns: only it answers with probabilities. The chat judge has
+    /// none, so a call with it has no emotion judged (spec「情绪判断」).
+    var emotionJudgeProvider: (any SegmentEmotionJudge)? {
+        emotionJudgeProvider(for: chatSettings)
+    }
+
+    func emotionJudgeProvider(for settings: ChatSettings) -> (any SegmentEmotionJudge)? {
+        let config: SystemOneConfig?
+        switch settings.judgeService {
+        case .bailian: config = settings.bailianJudgeConfig
+        case .jev: config = settings.jevJudgeConfig
+        case .cloudflare: config = settings.cloudflareJudgeConfig
+        case .chat: config = nil
+        }
+        guard let config else { return nil }
+        return SystemOneSegmentEmotionJudge(
+            config: config,
+            minProbability: settings.emotionMinProbability,
+            timeout: settings.emotionTimeout
+        )
+    }
+
     /// Writing down what the producer said is cut short when the app is closed; those
     /// jobs run again here, before anything else is said.
     private func resumeMemoryJobs() {
@@ -132,6 +155,7 @@ final class AppModel {
         }
         let hotWords = (try? await core.callHotWords()) ?? []
         let (capture, recognition) = callAudio(hotWords: hotWords)
+        let judge = judgeProvider
         let setup = CallSetup(
             capture: capture,
             playback: SpeechPlayback(),
@@ -139,7 +163,8 @@ final class AppModel {
             synthesis: speechSynthesis(),
             voiceModel: chatSettings.fishModel,
             provider: provider,
-            judge: judgeProvider,
+            judge: judge,
+            emotionJudge: judge == nil ? nil : emotionJudgeProvider,
             embedder: embeddingProvider,
             reranker: rerankProvider,
             tracing: tracing,

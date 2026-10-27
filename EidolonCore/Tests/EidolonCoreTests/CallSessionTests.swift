@@ -290,8 +290,46 @@ final class ReplyScriptProvider: ChatProvider, @unchecked Sendable {
     }
 }
 
-final class EventLog: @unchecked Sendable {
-    private let lock = NSLock()
+/// A segment emotion judge answering each call's segments from a script, and noting what
+/// it was asked.
+actor ScriptedEmotionJudge: SegmentEmotionJudge {
+    private var answers: [SegmentEmotion?]
+    private(set) var asked: [SegmentToJudge] = []
+
+    init(_ answers: [SegmentEmotion?]) {
+        self.answers = answers
+    }
+
+    func emotion(in segment: SegmentToJudge) async -> SegmentEmotion? {
+        asked.append(segment)
+        return answers.isEmpty ? nil : answers.removeFirst()
+    }
+
+    func askedSegments() -> [SegmentToJudge] { asked }
+}
+
+/// A segment emotion judge that takes long enough for the call to end first, and says
+/// whether its work was cancelled.
+actor SlowEmotionJudge: SegmentEmotionJudge {
+    private var asked = 0
+    private var cancelled = false
+
+    var askedCount: Int { asked }
+    var wasCancelled: Bool { cancelled }
+
+    func emotion(in segment: SegmentToJudge) async -> SegmentEmotion? {
+        asked += 1
+        do {
+            try await Task.sleep(for: .seconds(10))
+        } catch {
+            cancelled = true
+            return nil
+        }
+        return SegmentEmotion(emotion: .happy)
+    }
+}
+
+final class EventLog: @unchecked Sendable {    private let lock = NSLock()
     private var events: [CallEvent] = []
 
     func append(_ event: CallEvent) {
@@ -315,17 +353,17 @@ final class EventLog: @unchecked Sendable {
 
 /// One of her segments as the call reported it: which reply, which segment, and the two
 /// subtitles.
-private struct SaidSegment {
+private struct ShownSegment {
     var reply: Int
     var segment: Int
     var ja: String
     var zh: String
 }
 
-private func segments(of log: EventLog) -> [SaidSegment] {
+private func segments(of log: EventLog) -> [ShownSegment] {
     log.all.compactMap { event in
         guard case let .segment(reply, segment, ja, zh) = event else { return nil }
-        return SaidSegment(reply: reply, segment: segment, ja: ja, zh: zh)
+        return ShownSegment(reply: reply, segment: segment, ja: ja, zh: zh)
     }
 }
 
@@ -337,6 +375,16 @@ private func played(of log: EventLog) -> [String] {
         case let .segmentStopped(reply, segment): return "stop:\(reply):\(segment)"
         default: return nil
         }
+    }
+}
+
+/// Her segments' judged emotions, as the call reported them, in order.
+private func emotions(
+    of log: EventLog
+) -> [(reply: Int, segment: Int, emotion: StandEmotion, nod: StandNod.Kind?)] {
+    log.all.compactMap { event in
+        guard case let .emotion(reply, segment, emotion, nod) = event else { return nil }
+        return (reply, segment, emotion, nod)
     }
 }
 
@@ -368,6 +416,7 @@ final class CallSessionTests: XCTestCase {
         synthesis: FakeSynthesis = FakeSynthesis(),
         playback: FakePlayback = FakePlayback(),
         judge: (any JudgeProvider)? = nil,
+        emotionJudge: (any SegmentEmotionJudge)? = nil,
         limits: CallLimits = .standard
     ) async throws -> (CallSession, EventLog, FakeCapture) {
         let capture = FakeCapture()
@@ -379,6 +428,7 @@ final class CallSessionTests: XCTestCase {
             voiceModel: "s2.1-pro-free",
             provider: provider,
             judge: judge,
+            emotionJudge: emotionJudge,
             limits: limits,
             reconnectDelay: .milliseconds(10)
         )
@@ -521,6 +571,151 @@ final class CallSessionTests: XCTestCase {
             if case .segmentStarted = event { return true } else { return false }
         })
         XCTAssertLessThan(subtitle, start, "her subtitle is shown before her voice starts")
+        await session.hangUp()
+    }
+
+    /// Each complete segment is judged on its own, the moment its Japanese and subtitle are
+    /// in — not after its voice has played — and the result is reported for her stand with
+    /// the reply and segment it is of (spec「情绪判断」).
+    func testEachCompleteSegmentIsJudgedBeforeItsVoiceIsDone() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>一つ目</ja><zh>第一句</zh>", "<ja>二つ目</ja><zh>第二句</zh>"],
+        ])
+        let judge = ScriptedEmotionJudge([
+            SegmentEmotion(emotion: .happy, nod: .yes),
+            SegmentEmotion(emotion: .shy),
+        ])
+        let playback = FakePlayback()
+        playback.delay = .milliseconds(300)
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            playback: playback,
+            emotionJudge: judge
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("both segments judged") { emotions(of: log).count == 2 }
+        try await waitFor("both segments played") { played(of: log).count == 4 }
+
+        XCTAssertEqual(
+            emotions(of: log).map(\.segment),
+            [0, 1]
+        )
+        XCTAssertEqual(emotions(of: log).map(\.reply), [0, 0])
+        XCTAssertEqual(emotions(of: log).map(\.emotion), [.happy, .shy])
+        XCTAssertEqual(emotions(of: log).map(\.nod), [.yes, nil])
+
+        // What the judge was told: the producer's words, the segments before it, and the
+        // segment itself — Japanese with its cues, subtitle in Chinese.
+        let asked = await judge.askedSegments()
+        XCTAssertEqual(asked.count, 2)
+        XCTAssertEqual(asked[0].characterName, "櫻木真乃")
+        XCTAssertEqual(asked[0].said, "ねえ")
+        XCTAssertTrue(asked[0].before.isEmpty)
+        XCTAssertEqual(asked[0].segment, SaidSegment(ja: "一つ目", zh: "第一句"))
+        XCTAssertEqual(asked[1].before, [SaidSegment(ja: "一つ目", zh: "第一句")])
+        XCTAssertEqual(asked[1].segment, SaidSegment(ja: "二つ目", zh: "第二句"))
+
+        // Judged while the voice is still playing: the emotion is reported before the
+        // first segment stops.
+        let events = log.all
+        let firstEmotion = try XCTUnwrap(events.firstIndex { event in
+            if case .emotion = event { return true } else { return false }
+        })
+        let firstStop = try XCTUnwrap(events.firstIndex { event in
+            if case .segmentStopped = event { return true } else { return false }
+        })
+        XCTAssertLessThan(firstEmotion, firstStop, "judging does not wait for the voice")
+        await session.hangUp()
+    }
+
+    /// A judgement that fails or takes too long leaves no emotion at all, and the call
+    /// goes on as if nothing had happened: same state, same conversation.
+    func testAFailedJudgementLeavesTheCallAsItWas() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([["<ja>あ</ja><zh>啊</zh>"]])
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            emotionJudge: ScriptedEmotionJudge([nil])
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("her answer") { segments(of: log).count == 1 }
+        try await waitFor("the answer played") {
+            log.all.contains { event in
+                if case .segmentStopped = event { return true } else { return false }
+            }
+        }
+        try await waitFor("listening again") { await session.currentState() == .listening }
+
+        XCTAssertEqual(emotions(of: log).count, 0, "no emotion is invented")
+        XCTAssertFalse(log.all.contains { event in
+            if case .failed = event { return true } else { return false }
+        })
+        let conversation = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertEqual(conversation?.messages.count, 2, "the judgement is not a message")
+        await session.hangUp()
+    }
+
+    /// Hanging up cancels the judgements still out: nothing is reported after the end.
+    func testHangingUpCancelsUnfinishedJudgements() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([["<ja>あ</ja><zh>啊</zh>"]])
+        let judge = SlowEmotionJudge()
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            emotionJudge: judge
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("the judgement started") { await judge.askedCount == 1 }
+        await session.hangUp()
+        try await waitFor("ended") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+        try await waitFor("the judgement cancelled") { await judge.wasCancelled }
+        XCTAssertEqual(emotions(of: log).count, 0)
+    }
+
+    /// The judgement stays out of the conversation and out of the turn's trace: only her
+    /// stand hears of it.
+    func testAJudgedEmotionStaysOutOfTheConversationAndTheTrace() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([["<ja>あ</ja><zh>啊</zh>"]])
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            emotionJudge: ScriptedEmotionJudge([SegmentEmotion(emotion: .surprised, nod: .no)])
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("the emotion reported") { emotions(of: log).count == 1 }
+
+        let conversation = try await eidolon.currentConversation(characterID: "mano")
+        let conversationID = try XCTUnwrap(conversation?.id)
+        XCTAssertEqual(conversation?.messages.count, 2)
+        XCTAssertFalse(
+            conversation?.messages.contains { ($0.text ?? "").contains("surprised") } ?? true
+        )
+        let timeline = try await eidolon.timeline(conversationID: conversationID)
+        XCTAssertFalse(timeline.contains { ($0.text ?? "").contains("surprised") })
         await session.hangUp()
     }
 

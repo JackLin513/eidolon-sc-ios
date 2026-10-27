@@ -14,6 +14,9 @@ public struct JudgeThresholds: Sendable, Hashable {
     public var needsRetrieval: Double
     public var recall: Double
     public var aboutProducer: Double
+    /// The likeliest emotion's probability at or above which she shows it, and the
+    /// likeliest nod's at or above which she nods or shakes her head (spec「情绪判断」).
+    public var emotion: Double
     public var outOfLine: Double
     public var manipulation: Double
 
@@ -21,12 +24,14 @@ public struct JudgeThresholds: Sendable, Hashable {
         needsRetrieval: Double,
         recall: Double,
         aboutProducer: Double,
+        emotion: Double,
         outOfLine: Double,
         manipulation: Double
     ) {
         self.needsRetrieval = needsRetrieval
         self.recall = recall
         self.aboutProducer = aboutProducer
+        self.emotion = emotion
         self.outOfLine = outOfLine
         self.manipulation = manipulation
     }
@@ -53,22 +58,22 @@ public enum JudgeFamilies {
         case .jev:
             return JudgeThresholds(
                 needsRetrieval: 0.5, recall: 0.5, aboutProducer: 0.5,
-                outOfLine: 0.7, manipulation: 0.4
+                emotion: 0.5, outOfLine: 0.7, manipulation: 0.4
             )
         case .clef:
             return JudgeThresholds(
                 needsRetrieval: 0.5, recall: 0.8, aboutProducer: 0.1,
-                outOfLine: 0.5, manipulation: 0.5
+                emotion: 0.4, outOfLine: 0.5, manipulation: 0.5
             )
         case .clefFlash:
             return JudgeThresholds(
                 needsRetrieval: 0.5, recall: 0.7, aboutProducer: 0.3,
-                outOfLine: 0.6, manipulation: 0.6
+                emotion: 0.4, outOfLine: 0.6, manipulation: 0.6
             )
         case .decisionModel:
             return JudgeThresholds(
                 needsRetrieval: 0.06, recall: 0.8, aboutProducer: 0.1,
-                outOfLine: 0.3, manipulation: 0.4
+                emotion: 0.4, outOfLine: 0.3, manipulation: 0.4
             )
         }
     }
@@ -432,6 +437,17 @@ public struct SystemOneJudgeProvider: TracingJudgeProvider {
             raw: reply.raw,
             inputTokens: reply.inputTokens
         )
+    }
+
+    /// One System One request with one's own questions, its answers unwrapped. A caller
+    /// with questions of its own — the segment emotion judge — asks them through the same
+    /// service and error handling as a turn's.
+    func ask(state: [String: Any], questions: [String: Any]) async throws -> [String: Any] {
+        try await send([
+            "model": config.model,
+            "state": state,
+            "questions": questions,
+        ]).answers
     }
 
     /// Asks the service one yes-or-no question about a test state — the least of requests
