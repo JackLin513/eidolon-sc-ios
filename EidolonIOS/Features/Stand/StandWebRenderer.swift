@@ -106,6 +106,24 @@ final class StandWebRenderer: NSObject, StandRenderer {
         sendCamera()
     }
 
+    /// A picture of the page as it is drawn now: the outfit preview's thumbnails are made
+    /// with it (spec「通话页」). nil when the page cannot draw.
+    func snapshot() async -> UIImage? {
+        guard !failed else { return nil }
+        let configuration = WKSnapshotConfiguration()
+        configuration.afterScreenUpdates = true
+        return await withCheckedContinuation { continuation in
+            webView.takeSnapshot(with: configuration) { image, error in
+                if let error {
+                    Self.log.error(
+                        "立绘截图失败：\(error.localizedDescription, privacy: .public)"
+                    )
+                }
+                continuation.resume(returning: image)
+            }
+        }
+    }
+
     // MARK: - Messages from the page
 
     fileprivate func received(_ body: Any) {
