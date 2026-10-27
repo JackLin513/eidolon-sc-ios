@@ -54,6 +54,8 @@ public struct SonioxConfiguration: Sendable {
 public struct SonioxTranscript: Sendable {
     /// The tokens Soniox marks the end of a turn with.
     static let endTokens: Set<String> = ["<end>", "<fin>"]
+    /// The token Soniox auto-finalizes with, alone in a message of its own.
+    static let finalizedToken = "<fin>"
 
     private var finals: [String] = []
 
@@ -91,8 +93,12 @@ public struct SonioxTranscript: Sendable {
 
         var updates: [SpeechUpdate] = []
         let tokens = message.tokens ?? []
+        // Soniox's auto-finalize may send a message holding nothing but `<fin>`: it is not
+        // the producer stopping, so what was said stays open (upstream's pipecat service
+        // skips the finalized token, "prevent auto-finalize cycling").
+        let autoFinalized = tokens.count == 1 && tokens[0].text == Self.finalizedToken
         var open = ""
-        for token in tokens {
+        for token in tokens where !autoFinalized {
             if Self.endTokens.contains(token.text) {
                 if token.isFinal == true {
                     let said = finals.joined()
@@ -108,7 +114,7 @@ public struct SonioxTranscript: Sendable {
             }
         }
         let shown = finals.joined() + open
-        if !shown.isEmpty, !tokens.isEmpty {
+        if !autoFinalized, !shown.isEmpty, !tokens.isEmpty {
             updates.append(.partial(shown))
         }
         if message.finished == true {

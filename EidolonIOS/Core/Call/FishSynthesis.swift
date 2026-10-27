@@ -38,6 +38,30 @@ struct FishSynthesis: SpeechSynthesis {
             .notice("synthesized \(text.count) chars -> \(data.count) bytes on \(voice.model)")
         return data
     }
+
+    /// Whether Fish Audio itself cannot speak for this call: a key missing or refused, an
+    /// account out of credit, a voice or model it does not serve, or audio it did not make.
+    /// Retrying another segment will not help, so the call ends as upstream's does when its
+    /// voice service is unusable. A timeout, a dropped connection or a 5xx is only this
+    /// segment lost; the reply goes on (ADR-0011).
+    func failure(_ error: any Error) -> VoiceServiceFailure? {
+        switch error {
+        case FishSynthesisError.missingKey:
+            return VoiceServiceFailure(service: "Fish Audio", detail: "还没有填密钥")
+        case FishSynthesisError.empty:
+            return VoiceServiceFailure(service: "Fish Audio", detail: "返回的音频是空的")
+        case let FishSynthesisError.status(code, detail):
+            guard Self.refused.contains(code) else { return nil }
+            return VoiceServiceFailure(service: "Fish Audio", detail: "\(code) \(detail)")
+        default:
+            return nil
+        }
+    }
+
+    /// The statuses meaning the service will not work for this call at all: no key or a
+    /// refused one, no credit, a voice or model it does not serve, a request it refuses.
+    /// 408, 429 and 5xx are left for the next segment to try again.
+    private static let refused: Set<Int> = [400, 401, 402, 403, 404, 422]
 }
 
 enum FishSynthesisError: LocalizedError {

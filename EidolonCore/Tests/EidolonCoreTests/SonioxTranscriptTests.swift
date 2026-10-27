@@ -83,6 +83,18 @@ final class SonioxTranscriptTests: XCTestCase {
         XCTAssertEqual(end, [])
     }
 
+    /// Soniox's auto-finalize may send a message holding nothing but `<fin>`; upstream
+    /// ignores that message rather than taking it for the producer stopping (pipecat's
+    /// `stt.py` skips the finalized token). What was said stays open until `<end>`.
+    func testALoneFinDoesNotEndTheSentence() throws {
+        var transcript = SonioxTranscript()
+        _ = try feed(#"{"tokens": [{"text": "またね", "is_final": true}]}"#, into: &transcript)
+        let fin = try feed(#"{"tokens": [{"text": "<fin>", "is_final": true}]}"#, into: &transcript)
+        XCTAssertEqual(fin, [], "a lone <fin> is not the end of what was said")
+        let end = try feed(#"{"tokens": [{"text": "<end>", "is_final": true}]}"#, into: &transcript)
+        XCTAssertEqual(end, [.final("またね")])
+    }
+
     func testFinishedFlushesWhatWasSaid() throws {
         var transcript = SonioxTranscript()
         _ = try feed(#"{"tokens": [{"text": "またね", "is_final": true}]}"#, into: &transcript)
