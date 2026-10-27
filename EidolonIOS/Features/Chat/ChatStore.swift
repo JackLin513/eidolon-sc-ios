@@ -13,7 +13,7 @@ final class ChatStore {
     private(set) var messages: [ChatMessageRecord] = []
     /// The conversation in the database's order: turns, her reach-outs and what happened
     /// around them (GLOSSARY.md「对话事件」). Nothing here is reordered.
-    private(set) var lines: [ChatLine] = []
+    private(set) var lines: [ConversationLine] = []
     private(set) var streaming: [ReplySegment] = []
     /// The line being answered; recorded only when the turn finishes, but shown at once.
     private(set) var pendingUser: String?
@@ -39,7 +39,7 @@ final class ChatStore {
     var readOnly: Bool { isPast || ended }
 
     /// The conversation in order: turns and what happened around them.
-    var transcript: [ChatLine] { lines }
+    var transcript: [ConversationLine] { lines }
 
     func load() async {
         do {

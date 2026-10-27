@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 @testable import EidolonCore
 
-/// The outfit thumbnails' cache and the wait for a slow one (spec「通话页」).
+/// The outfit thumbnails' cache and the wait for a slow one (spec「通话层」).
 final class OutfitThumbnailTests: XCTestCase {
     /// A thumbnail belongs to the outfit *and* the content bundle it was drawn from: a new
     /// bundle shows new art instead of the old picture at the same outfit number.

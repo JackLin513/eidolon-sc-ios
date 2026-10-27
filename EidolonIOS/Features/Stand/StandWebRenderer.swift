@@ -107,7 +107,7 @@ final class StandWebRenderer: NSObject, StandRenderer {
     }
 
     /// A picture of the page as it is drawn now: the outfit preview's thumbnails are made
-    /// with it (spec「通话页」). nil when the page cannot draw.
+    /// with it (spec「通话层」). nil when the page cannot draw.
     func snapshot() async -> UIImage? {
         guard !failed else { return nil }
         let configuration = WKSnapshotConfiguration()

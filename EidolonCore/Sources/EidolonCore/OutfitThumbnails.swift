@@ -1,7 +1,7 @@
 import Foundation
 
 /// Where an outfit thumbnail is cached: her outfit number together with the content bundle
-/// it was drawn from (spec「通话页」). The same number in a new bundle is a new picture, so
+/// it was drawn from (spec「通话层」). The same number in a new bundle is a new picture, so
 /// it is never served the old artwork.
 public enum OutfitThumbnailKey {
     /// The file name, safe on disk: `stand/1030010010.png` under bundle version

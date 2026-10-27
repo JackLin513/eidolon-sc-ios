@@ -10,6 +10,14 @@ final class SonioxRecognition: SpeechRecognition, @unchecked Sendable {
     /// The names said in a call that the recognizer should write as the story does.
     private let terms: [String]
     private let url = URL(string: "wss://stt-rt.soniox.com/transcribe-websocket")!
+    /// How long making the connection may take: a socket that never opens must not sit in
+    /// `send` forever. This bounds each attempt, reconnections included; the first
+    /// connection is also bounded by the call's own watchdog.
+    private static let connectTimeout: Duration = .seconds(10)
+    /// How long the connection may carry nothing down. It is idle for as long as her voice
+    /// keeps the microphone closed, which is not a dead connection (pipecat keeps the same
+    /// socket open with its own keepalive, `soniox/stt.py`).
+    private static let idleTimeout: TimeInterval = 60 * 60 * 24 * 365
 
     init(apiKey: String, model: String, terms: [String] = []) {
         self.apiKey = apiKey
@@ -33,6 +41,22 @@ final class SonioxRecognition: SpeechRecognition, @unchecked Sendable {
         return VoiceServiceFailure(service: "Soniox", detail: detail)
     }
 
+    /// Makes the connection, failing if it cannot be made in `connectTimeout`. Once it is
+    /// made, nothing else times the socket out: an idle connection stays up.
+    private static func withConnectTimeout(
+        _ connect: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask { try await connect() }
+            group.addTask {
+                try await Task.sleep(for: connectTimeout)
+                throw URLError(.timedOut)
+            }
+            defer { group.cancelAll() }
+            try await group.next()
+        }
+    }
+
     private func run(
         audio: AsyncThrowingStream<Data, Error>,
         emit: AsyncThrowingStream<SpeechEvent, Error>.Continuation
@@ -42,9 +66,12 @@ final class SonioxRecognition: SpeechRecognition, @unchecked Sendable {
             return
         }
         let configuration = URLSessionConfiguration.default
-        // A connection that never opens must not sit in `send` forever: the call's own
-        // connect timeout ends it, but this lets the attempt fail cleanly sooner.
-        configuration.timeoutIntervalForRequest = 10
+        // Her voice closes the microphone while a segment plays, and no audio goes up; the
+        // recognizer may send nothing down for as long as she is speaking. URLSession's
+        // request timeout (60 seconds by default) would take that for a dead connection and
+        // drop the call in the middle of a reply, so it is set out of the way: the
+        // connection is kept by `SonioxKeepalive`, and bounded when it is made below.
+        configuration.timeoutIntervalForRequest = Self.idleTimeout
         let session = URLSession(configuration: configuration)
         let socket = session.webSocketTask(with: url)
         socket.resume()
@@ -53,13 +80,19 @@ final class SonioxRecognition: SpeechRecognition, @unchecked Sendable {
             session.invalidateAndCancel()
         }
 
+        let writer = SocketWriter(socket)
         do {
             let configuration = SonioxConfiguration(
                 apiKey: apiKey,
                 model: model,
                 terms: terms
             )
-            try await socket.send(.string(try configuration.message()))
+            // Connecting is bounded once for each attempt; receiving is not, so an idle
+            // connection is not mistaken for one that never opened.
+            let message = try configuration.message()
+            try await Self.withConnectTimeout {
+                try await writer.sendText(message)
+            }
         } catch {
             emit.finish(throwing: error)
             return
@@ -68,7 +101,6 @@ final class SonioxRecognition: SpeechRecognition, @unchecked Sendable {
         // is connected (spec「接通」).
         emit.yield(.connected)
 
-        let writer = SocketWriter(socket)
         let lastAudio = LastAudio()
         let pump = Task {
             do {

@@ -640,7 +640,11 @@ extension Eidolon {
         for line in try conversationRecord(conversationID: conversationID) {
             switch line {
             case let .event(event):
-                if let said = Self.narration(of: event.kind) { pending.append(said) }
+                // Upstream `_narration_line` ends every line with a newline and joins
+                // them with nothing between: two events in a row read as two lines.
+                if let said = ConversationEventKind(stored: event.kind).narration {
+                    pending.append(said + "\n")
+                }
             case let .message(message):
                 let stored = StoredMessage(
                     id: message.id,
@@ -651,7 +655,7 @@ extension Eidolon {
                 )
                 if message.isReachOut {
                     if let said = Self.reachOutNarration(message, in: timeZone) {
-                        pending.append(said)
+                        pending.append(said + "\n")
                     }
                     answering.append(stored)
                 } else {
@@ -668,16 +672,6 @@ extension Eidolon {
         record.judgingHistory = Self.latestTurns(record.allMessages, turns: turns) + answering
         record.trailingNarration = pending.joined()
         return record
-    }
-
-    /// What she is told of an event, as it was (upstream `engine._narration`). Only the
-    /// event kinds this app records have a narration.
-    static func narration(of kind: String) -> String? {
-        switch kind {
-        case "hung_up": "（你挂断了制作人的电话。）"
-        case "ended": "（你结束了和制作人的对话。）"
-        default: nil
-        }
     }
 
     /// What she is told of her own reach-out: when, then her words as her replies are

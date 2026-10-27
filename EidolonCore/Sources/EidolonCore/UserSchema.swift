@@ -4,7 +4,7 @@ import GRDB
 /// The writable user library (ADR-0002). Its schema evolves with the app, not
 /// with the content bundle, and is therefore managed by GRDB migrations.
 enum UserSchema {
-    static let version = 6
+    static let version = 7
 
     static func migrate(_ dbQueue: DatabaseQueue) throws {
         var migrator = DatabaseMigrator()
@@ -165,6 +165,19 @@ enum UserSchema {
                 CREATE INDEX call_ends_by_character
                     ON call_ends(character_id, ended_at);
                 """)
+        }
+        migrator.registerMigration("v7") { db in
+            // Older builds wrote every call ending into the conversation, the producer's
+            // own hang-up as `hung_up` and hers as `she_hung_up`; now only her hang-up is
+            // kept, and `hung_up` means that (upstream records only hers). The old
+            // `hung_up` has to go before `she_hung_up` takes its name, or it would be
+            // read as her hanging up. The call_* kinds were the other endings upstream
+            // only traces; they are dropped.
+            try db.execute(sql: "DELETE FROM conversation_events WHERE kind = 'hung_up'")
+            try db.execute(sql: "DELETE FROM conversation_events WHERE kind GLOB 'call_*'")
+            try db.execute(
+                sql: "UPDATE conversation_events SET kind = 'hung_up' WHERE kind = 'she_hung_up'"
+            )
         }
         try migrator.migrate(dbQueue)
         try dbQueue.write { db in

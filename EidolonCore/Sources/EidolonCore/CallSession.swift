@@ -190,12 +190,10 @@ public enum CallEnd: Sendable, Hashable {
 
     /// Minutes as Python's `{minutes:g}` writes them: `10`, `1.5`, no trailing zeros.
     public static func minutes(_ duration: Duration) -> String {
-        let components = duration.components
-        let seconds = Double(components.seconds) + Double(components.attoseconds) / 1e18
         return String(
             format: "%g",
             locale: Locale(identifier: "en_US_POSIX"),
-            arguments: [seconds / 60]
+            arguments: [duration.inSeconds / 60]
         )
     }
 
@@ -870,7 +868,7 @@ public actor CallSession {
         }
         try? eidolon.recordConversationEvent(
             conversationID: conversationID,
-            kind: "hung_up",
+            kind: ConversationEventKind.hungUp.rawValue,
             at: setup.now()
         )
     }

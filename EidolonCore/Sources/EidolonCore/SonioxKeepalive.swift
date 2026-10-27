@@ -15,11 +15,6 @@ public enum SonioxKeepalive {
 
     /// Whether the connection should be kept alive now: it has gone `idle` without audio.
     public static func isDue(now: Date, lastAudio: Date) -> Bool {
-        now.timeIntervalSince(lastAudio) >= seconds(idle)
-    }
-
-    private static func seconds(_ duration: Duration) -> Double {
-        let parts = duration.components
-        return Double(parts.seconds) + Double(parts.attoseconds) / 1e18
+        now.timeIntervalSince(lastAudio) >= idle.inSeconds
     }
 }
