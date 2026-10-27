@@ -64,7 +64,11 @@ struct ChatView: View {
                 }
             }
         }
-        .fullScreenCover(isPresented: $showCall) {
+        .fullScreenCover(isPresented: $showCall, onDismiss: {
+            // What the call wrote is shown at once: its turns, her hang-up, the affinity and
+            // any cooldown (spec「返回刷新」).
+            Task { await store?.load() }
+        }) {
             CallView(character: character)
                 .environment(app)
         }
@@ -186,6 +190,8 @@ struct ChatView: View {
 
     private func eventIcon(_ kind: String) -> String {
         switch kind {
+        case "ended":
+            "moon.zzz"
         case "call_failed", "call_unconnected", "call_dropped":
             "phone.down.circle"
         default:
@@ -195,11 +201,12 @@ struct ChatView: View {
 
     private func eventText(_ kind: String) -> String {
         switch kind {
+        case "ended": "她结束了对话"
+        case "hung_up", "she_hung_up": "她挂断了电话"
         case "call_failed", "call_dropped": "通话中断"
         case "call_unconnected": "通话没能接通"
         case "call_duration_limit": "通话到了时限"
         case "call_turn_limit": "通话到了回合上限"
-        case "she_hung_up": "她挂断了电话"
         default: "通话结束"
         }
     }

@@ -219,7 +219,7 @@ extension Eidolon {
     }
 
     static func day(_ stamp: String, in timeZone: TimeZone) -> String {
-        guard let date = ISO8601DateFormatter().date(from: stamp) else { return stamp }
+        guard let date = Eidolon.parseTimestamp(stamp) else { return stamp }
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         let parts = calendar.dateComponents([.year, .month, .day], from: date)

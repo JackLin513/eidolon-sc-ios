@@ -107,7 +107,7 @@ struct ConversationHistoryView: View {
     }
 
     private static func day(_ stamp: String) -> String {
-        guard let date = ISO8601DateFormatter().date(from: stamp) else { return stamp }
+        guard let date = Eidolon.parseTimestamp(stamp) else { return stamp }
         return date.formatted(date: .abbreviated, time: .shortened)
     }
 }

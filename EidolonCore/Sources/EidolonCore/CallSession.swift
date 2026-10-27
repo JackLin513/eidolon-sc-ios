@@ -719,28 +719,20 @@ public actor CallSession {
         continuation.finish()
     }
 
-    /// The call is kept in the conversation's record (GLOSSARY.md「对话事件」): it is not
-    /// a turn, and she is not told of it.
+    /// A call she hung up is kept in the conversation's record (GLOSSARY.md「对话事件」); it
+    /// is not a turn, and she is not told of it. No other ending is written there: the
+    /// producer's own hang-up, a limit, a dropped line or a call that never connected are
+    /// only traced, as upstream records them (upstream `call.py`, `store.py`).
     private func record(_ reason: CallEnd) {
+        guard case .sheHungUp = reason else { return }
         guard let conversationID = (try? eidolon.currentConversationIDNow(characterID)) ?? nil else {
             return
         }
         try? eidolon.recordConversationEvent(
             conversationID: conversationID,
-            kind: Self.eventKind(reason),
+            kind: "hung_up",
             at: setup.now()
         )
-    }
-
-    private static func eventKind(_ reason: CallEnd) -> String {
-        switch reason {
-        case .hungUpByProducer: "hung_up"
-        case .sheHungUp: "she_hung_up"
-        case .notConnected: "call_unconnected"
-        case .dropped: "call_dropped"
-        case .durationLimit: "call_duration_limit"
-        case .turnLimit: "call_turn_limit"
-        }
     }
 
     /// How the call ended is kept in the traces too (ADR-0012): the reason, and what else

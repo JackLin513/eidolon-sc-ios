@@ -16,11 +16,144 @@ public struct ConversationSummary: Sendable, Hashable, Identifiable {
 }
 
 /// Something that happened in a conversation that is not a turn (GLOSSARY.md「对话事件」):
-/// a call that was hung up, or one that failed.
+/// her hanging up the phone, or her ending the conversation.
 public struct ConversationEventRecord: Sendable, Hashable, Identifiable {
     public var id: Int64
     public var kind: String
     public var createdAt: String
+}
+
+/// One row of a conversation as it is shown: a turn, her reach-out, or something that
+/// happened besides them. Its order is the database's, never the app's.
+public enum ConversationLine: Sendable, Hashable, Identifiable {
+    case message(ChatMessageRecord)
+    case event(ConversationEventRecord)
+
+    public var id: String {
+        switch self {
+        case let .message(message): "message-\(message.id)"
+        case let .event(event): "event-\(event.id)"
+        }
+    }
+
+    public var createdAt: String {
+        switch self {
+        case let .message(message): message.createdAt
+        case let .event(event): event.createdAt
+        }
+    }
+}
+
+extension Eidolon {
+    /// The conversation as it reads: the messages and her reach-outs in the order they were
+    /// written, with an event where it happened — before a turn only when it is stamped
+    /// strictly earlier than that turn's question, so one written while a turn was under
+    /// way comes after it (upstream `read_record`).
+    public func conversationRecord(conversationID: String) throws -> [ConversationLine] {
+        try userQueue.read { db in
+            struct Pending {
+                var at: Date
+                var reachOut: Bool
+                var written: Int64
+                var line: ConversationLine
+            }
+
+            struct Placed {
+                var at: Date
+                var written: Int64
+                var line: ConversationLine
+            }
+
+            let messages = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT rowid, id, role, text, segments, created_at FROM messages
+                    WHERE conversation_id = ?
+                    """,
+                arguments: [conversationID]
+            ).map { row -> Placed in
+                let createdAt: String = row["created_at"]
+                return Placed(
+                    at: Self.parseTimestamp(createdAt) ?? .distantPast,
+                    written: row["rowid"],
+                    line: .message(ChatMessageRecord(
+                        id: row["id"],
+                        role: row["role"],
+                        text: row["text"],
+                        segments: Self.decodeSegments(row["segments"]),
+                        createdAt: createdAt
+                    ))
+                )
+            }.sorted { left, right in
+                if left.at != right.at { return left.at < right.at }
+                return left.written < right.written
+            }
+
+            let events = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT id, kind, created_at FROM conversation_events
+                    WHERE conversation_id = ?
+                    """,
+                arguments: [conversationID]
+            ).map { row -> Pending in
+                let createdAt: String = row["created_at"]
+                return Pending(
+                    at: Self.parseTimestamp(createdAt) ?? .distantPast,
+                    reachOut: false,
+                    written: row["id"],
+                    line: .event(ConversationEventRecord(
+                        id: row["id"],
+                        kind: row["kind"],
+                        createdAt: createdAt
+                    ))
+                )
+            }
+
+            let reached = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT rowid, id, segments, created_at FROM reach_outs
+                    WHERE conversation_id = ?
+                    """,
+                arguments: [conversationID]
+            ).map { row -> Pending in
+                let createdAt: String = row["created_at"]
+                return Pending(
+                    at: Self.parseTimestamp(createdAt) ?? .distantPast,
+                    reachOut: true,
+                    written: row["rowid"],
+                    line: .message(ChatMessageRecord(
+                        id: "reach:\(row["id"] as String)",
+                        role: "character",
+                        text: nil,
+                        segments: Self.decodeSegments(row["segments"]),
+                        createdAt: createdAt
+                    ))
+                )
+            }
+
+            let pending = (events + reached).sorted { left, right in
+                if left.at != right.at { return left.at < right.at }
+                if left.reachOut != right.reachOut { return !left.reachOut }
+                return left.written < right.written
+            }
+
+            var merged: [ConversationLine] = []
+            var next = 0
+            for message in messages {
+                if case let .message(record) = message.line, record.role == "user" {
+                    while next < pending.count, pending[next].at < message.at {
+                        merged.append(pending[next].line)
+                        next += 1
+                    }
+                }
+                merged.append(message.line)
+            }
+            merged.append(contentsOf: pending[next...].map(\.line))
+            return merged
+        }
+    }
 }
 
 extension Eidolon {
