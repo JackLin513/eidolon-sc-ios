@@ -46,7 +46,7 @@
 - 通话里的打断与补充（barge-in）：她说话时麦克风是合上的，这段时间你说的话会丢掉；上游靠浏览器回声消除一直开麦。下一步把播放并进同一个 `AVAudioEngine`（voice processing）后再做
 - 照片、礼物、每日任务、成就、统计、数据包、酒吧
 - 她的日程与生理周期：端上没有日程表，也没有周期，上游据此换搭话由头、换「这几天不太舒服」的礼物反应，这些台词都不做
-- 聊天与通话还没有做过系统的上游对齐与审查：发现的问题汇总在 [#35](https://github.com/JackLin513/eidolon-sc-ios/issues/35)，修法见 [#36](https://github.com/JackLin513/eidolon-sc-ios/issues/36)
+- 聊天与通话已按上游做过一次系统对齐与修复（[#35](https://github.com/JackLin513/eidolon-sc-ios/issues/35) 汇总、[#36](https://github.com/JackLin513/eidolon-sc-ios/issues/36) 拆成 #37–#42 落地，均已合并）。上游再有变化需要重新比一次
 - 一次 5 分钟以上的真机长通话验收（#18）：App 已装到 iPhone Air，短通话已跑过；这一项要人来听，不做自动结论
 
 ## 结构
@@ -66,7 +66,7 @@ tools/
 ├── sync_stand_runtime.sh      # 构建后从上游 checkout 取 Spine 运行时（不进仓库）
 ├── tests/                     # 导出工具的标准库 unittest
 └── oracle/                    # 上游提示词对照组
-docs/adr/                 # 架构决策（0001–0018）
+docs/adr/                 # 架构决策（0001–0019）
 docs/agents/              # issue 跟踪、分类标签、领域文档约定
 GLOSSARY.md               # 领域词汇（从上游复制）
 ```
