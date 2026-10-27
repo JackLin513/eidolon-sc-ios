@@ -4,9 +4,12 @@ import OSLog
 
 /// Her voice, made by Fish Audio over HTTP: one request per segment, MP3 back. The voice
 /// is the character's `voice_id` from the content bundle; the model is the one chosen in
-/// settings (`drama-3` is the only one that reads delivery cues).
+/// settings (`drama-3` is the only one that reads delivery cues). Every request carries the
+/// bundle's readings as its pronunciation dictionary, so names are said as written
+/// (upstream `call.FishTTS`).
 struct FishSynthesis: SpeechSynthesis {
     var apiKey: String
+    var readings: Readings = Readings()
     var endpoint = URL(string: "https://api.fish.audio/v1/tts")!
 
     func synthesize(_ text: String, voice: CallVoice) async throws -> Data {
@@ -17,12 +20,9 @@ struct FishSynthesis: SpeechSynthesis {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(voice.model, forHTTPHeaderField: "model")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "text": text,
-            "reference_id": voice.id,
-            "format": "mp3",
-            "normalize": true,
-        ])
+        request.httpBody = try JSONEncoder().encode(
+            FishSpeechRequest(text: text, referenceID: voice.id, readings: readings)
+        )
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw FishSynthesisError.noResponse

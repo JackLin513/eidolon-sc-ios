@@ -45,6 +45,8 @@ enum Fixture {
         var facts = false
         /// Adds an episode in mano's card source that only hiori is cast in.
         var siblingEpisode = false
+        /// Writes `characters/readings.json` with the fixture's names.
+        var includeReadings = false
     }
 
     static func makeBundle(in parent: URL, options: Options = Options()) throws -> URL {
@@ -128,6 +130,37 @@ enum Fixture {
         if options.includeHolidays {
             let holidays = try JSONEncoder().encode(Fixture.holidays)
             try holidays.write(to: databaseDirectory.appendingPathComponent("holidays.json"))
+        }
+        if options.includeReadings {
+            let readings: [JSONValue] = [
+                .object([
+                    "written": .string("櫻木真乃"),
+                    "kana": .string("さくらぎ まの"),
+                    "phonemes": .string("sa0ku1ra1gi0ma1no0"),
+                ]),
+                .object([
+                    "written": .string("櫻木"),
+                    "kana": .string("さくらぎ"),
+                    "phonemes": .string("sa0ku1ra1gi0"),
+                ]),
+                .object([
+                    "written": .string("真乃"),
+                    "kana": .string("まの"),
+                    "phonemes": .string("ma1no0"),
+                ]),
+                .object([
+                    "written": .string("風野灯織"),
+                    "kana": .string("かざの ひおり"),
+                    "phonemes": .string("kazano0hio0ri1"),
+                ]),
+                .object([
+                    "written": .string("風野"),
+                    "kana": .string("かざの"),
+                    "phonemes": .string("kazano0"),
+                ]),
+            ]
+            try JSONEncoder().encode(JSONValue.object(["readings": .array(readings)]))
+                .write(to: charactersDirectory.appendingPathComponent("readings.json"))
         }
         try "# 真乃\n".write(
             to: sheetsDirectory.appendingPathComponent("mano.md"),

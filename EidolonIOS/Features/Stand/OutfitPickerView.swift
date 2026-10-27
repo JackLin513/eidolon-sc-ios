@@ -12,6 +12,8 @@ struct OutfitPickerView: View {
     let character: CharacterConfig
     let stand: CharacterStand
     let contentRoot: URL
+    /// Which content bundle the thumbnails belong to: a new bundle draws them again.
+    let contentVersion: String
     /// Put it on her in the call that is going on; the call itself is not interrupted.
     let onWear: (StandOutfit) -> Void
     /// Close the sheet. The caller closes it by name: inside nested covers the environment's
@@ -44,12 +46,14 @@ struct OutfitPickerView: View {
         character: CharacterConfig,
         stand: CharacterStand,
         contentRoot: URL,
+        contentVersion: String,
         onWear: @escaping (StandOutfit) -> Void,
         onClose: @escaping () -> Void
     ) {
         self.character = character
         self.stand = stand
         self.contentRoot = contentRoot
+        self.contentVersion = contentVersion
         self.onWear = onWear
         self.onClose = onClose
         let worn = stand.worn(choice: StandOutfitChoiceStore().choice(for: character.id))
@@ -270,6 +274,7 @@ struct OutfitPickerView: View {
                     card: card,
                     pickedID: pickedID,
                     contentRoot: contentRoot,
+                    contentVersion: contentVersion,
                     herColor: herColor
                 ) { outfitID in
                     pickedID = outfitID
@@ -334,6 +339,7 @@ private struct OutfitCardTile: View {
     let card: OutfitCard
     let pickedID: String
     let contentRoot: URL
+    let contentVersion: String
     let herColor: Color
     let onPick: (String) -> Void
 
@@ -343,12 +349,14 @@ private struct OutfitCardTile: View {
         card: OutfitCard,
         pickedID: String,
         contentRoot: URL,
+        contentVersion: String,
         herColor: Color,
         onPick: @escaping (String) -> Void
     ) {
         self.card = card
         self.pickedID = pickedID
         self.contentRoot = contentRoot
+        self.contentVersion = contentVersion
         self.herColor = herColor
         self.onPick = onPick
         _chosen = State(initialValue: card.looks.first ?? .everyday)
@@ -371,7 +379,11 @@ private struct OutfitCardTile: View {
                 ZStack {
                     Color.white.opacity(0.07)
                     if let outfit {
-                        OutfitThumbnailView(outfit: outfit, contentRoot: contentRoot)
+                        OutfitThumbnailView(
+                            outfit: outfit,
+                            contentRoot: contentRoot,
+                            contentVersion: contentVersion
+                        )
                     }
                 }
                 .aspectRatio(4.0 / 5.0, contentMode: .fit)
@@ -449,6 +461,7 @@ private struct OutfitCardTile: View {
 private struct OutfitThumbnailView: View {
     let outfit: StandOutfit
     let contentRoot: URL
+    let contentVersion: String
 
     @State private var image: UIImage?
 
@@ -469,7 +482,8 @@ private struct OutfitThumbnailView: View {
             image = nil
             image = await OutfitThumbnailStore.shared.thumbnail(
                 for: outfit,
-                contentRoot: contentRoot
+                contentRoot: contentRoot,
+                contentVersion: contentVersion
             )
         }
     }

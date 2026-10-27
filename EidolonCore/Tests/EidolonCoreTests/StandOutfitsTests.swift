@@ -97,10 +97,36 @@ final class StandOutfitsTests: XCTestCase {
         XCTAssertEqual(worn, stand().defaultOutfit)
     }
 
-    func testWithoutAListTheDefaultIsWorn() {
+    func testWithoutAListTheRememberedOutfitIsStillTriedFirst() {
+        // The list cannot be read (a call dialled early, or a broken file): the outfit she
+        // was wearing is still tried where the bucket keeps it, before her default
+        // (upstream `wornOutfit` with no cards).
         let worn = stand(withList: false).worn(choice: "stand_costume/1030010010")
 
-        XCTAssertEqual(worn, stand().defaultOutfit)
+        XCTAssertEqual(worn.id, "stand_costume/1030010010")
+        XCTAssertEqual(
+            worn.directory.standardizedFileURL.path,
+            "/content/stand/idols/stand_costume/1030010010"
+        )
+    }
+
+    func testWithoutAListAChoiceThatCannotBeAnOutfitFallsBackToTheDefault() {
+        for choice in ["stand/../escape", "nonsense", "stand/", "stand_costume/abc", "other/123"] {
+            XCTAssertEqual(
+                stand(withList: false).worn(choice: choice),
+                stand().defaultOutfit,
+                "\(choice) is not an outfit"
+            )
+        }
+    }
+
+    func testWithoutAListACallTriesTheRememberedOutfitThenTheDefault() {
+        XCTAssertEqual(
+            stand(withList: false)
+                .outfitsToTry(choice: "stand_costume/1030010010")
+                .map(\.id),
+            ["stand_costume/1030010010", "stand/1030010010"]
+        )
     }
 
     func testACallTriesTheWornOutfitThenTheDefault() {
