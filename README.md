@@ -2,9 +2,11 @@
 
 [Eidolon-SC](https://github.com/Sallyn0225/eidolon-sc) 的 iOS 原生客户端，自用，不上架。
 
-手机独立运行：剧情、对话引擎、记忆和好感都在 iPhone 上，运行时只调用外部模型 API（对话 LLM、向量化/重排、TTS、STT），不依赖 FastAPI / Next.js / WebRTC。上游仓库只作为参考实现和离线数据准备工具。
+手机独立运行：剧情、对话引擎、记忆、好感、立绘和通话都在 iPhone 上，运行时只调用外部模型 API（对话 LLM、判断模型、向量化/重排、TTS、STT），不依赖 FastAPI / Next.js / WebRTC。上游仓库只作为参考实现和离线数据准备工具，不随 App 运行。
 
 ## 现在能做什么
+
+**对话**
 
 - 首次启动导入内容包（`.eidolonpkg`），角色列表带搜索、最新消息预览和未读搭话标记
 - 流式文字对话：日语原文 + 中文字幕，逐段到达；可中途停下
@@ -16,28 +18,55 @@
 - 对话标题：第 3 回合后自动生成；历史对话可翻看、可删
 - 制作人档案：称呼、性别、时区、生日，改完下一回合生效
 - 回合追踪：提示词、判断原文、检索候选与分数、降级原因，本地查看与导出
-- 通话（v1 里程碑 2）：静默接通、Soniox 实时识别（角色名作为热词随连接发出，与上游一致）、同一套回合引擎按「通话模式」作答、Fish Audio 逐段合成并在上一段播放时预取下一段；识别断线显示「重连中」并自动恢复，语音服务本身出故障时区分「没能接通」和「中断」；回合失败提示「她那边没声音」但通话继续；每回合与计时到点按「她挂断 → 时长 → 回合」判定结束，先把已排队的语音播完再给说明、写对话事件与追踪；时长与回合上限在设置里改，默认 10 分钟 / 40 回合，可配置，0 为不限
-- 设置里配置对话模型、判断模型（百炼 / Jev / Cloudflare / 对话模型）、向量化/重排、Soniox 与 Fish Audio、搭话间隔、追踪
 
-## 还没做
+**通话**
 
-- 通话里的打断与补充（barge-in）：现在她说话时麦克风是合上的，这段时间你说的话会丢掉；上游靠浏览器回声消除一直开麦，可以插话。下一步把播放并进同一个 `AVAudioEngine`（voice processing）后再提前做
-- 立绘、照片、礼物、每日任务、成就、统计、数据包
-- 一次 5 分钟以上的真机长通话验收（App 已装到 iPhone Air，短通话已跑过）
+- 静默接通，Soniox 实时识别（角色名作为热词随连接发出），同一套回合引擎按「通话模式」作答
+- Fish Audio 逐段合成，上一段播放时预取下一段；`drama-3` 读朗读标记
+- 识别断线显示「重连中」并自动恢复；语音服务出故障时区分「没能接通」和「中断」；回合失败提示「她那边没声音」但通话继续
+- 每回合与计时到点按「她挂断 → 时长 → 回合」判定结束，先把已排队的语音播完再给说明、写对话事件与追踪
+- 时长与回合上限在设置里改，默认 10 分钟 / 40 回合，0 为不限
+- 通话页照上游布局：模糊头像背景与渐变、她的名字与计时、字幕卡只显示当前一句、红色挂断键
+
+**立绘**
+
+- 官方 Spine 3.6 素材随内容包分发，在本地不联网的 `WKWebView` 里由改编自上游的播放器绘制（ADR-0017、ADR-0018）
+- 说话时张嘴、我说话时看镜头、说完点头；每段台词说完判断一次情绪与点头，按情绪换表情与动作，判断超时或失败按平静演
+- 取景按宽度：紧凑宽度到膝盖，常规宽度到腰；拨通时从下方升起淡入，挂断后 40% 透明
+- 换衣装：通话页右上角打开面板，大预览 + 卡片网格（私服 / 演出），缩略图在端上渲染并缓存；每个角色记住一套，载入失败回退默认衣装
+- 没有立绘的角色（或运行时/素材缺失）只显示背景与字幕，通话照常
+
+**通用**
+
+- 设置里配置对话模型、判断模型（百炼 / Jev / Cloudflare / 对话模型）、向量化/重排、Soniox 与 Fish Audio、搭话间隔、通话上限、情绪判断的阈值与超时、追踪
+- 密钥存钥匙串；没有登录、没有后台
+
+## 还没做 / 已知
+
+- 通话里的打断与补充（barge-in）：她说话时麦克风是合上的，这段时间你说的话会丢掉；上游靠浏览器回声消除一直开麦。下一步把播放并进同一个 `AVAudioEngine`（voice processing）后再做
+- 照片、礼物、每日任务、成就、统计、数据包、酒吧
+- 聊天与通话还没有做过系统的上游对齐与审查：发现的问题汇总在 [#35](https://github.com/JackLin513/eidolon-sc-ios/issues/35)，修法见 [#36](https://github.com/JackLin513/eidolon-sc-ios/issues/36)
+- 一次 5 分钟以上的真机长通话验收（#18）：App 已装到 iPhone Air，短通话已跑过；这一项要人来听，不做自动结论
 
 ## 结构
 
 ```text
-EidolonCore/            # 端上引擎（SPM 包，GRDB + ZIPFoundation）
-├── Sources/EidolonCore # 内容包、回合、判断、检索、记忆、搭话、标题、追踪
-├── Sources/PromptOracle# 与上游逐字对照提示词的可执行目标
+EidolonCore/              # 端上引擎（SPM 包，GRDB + ZIPFoundation）
+├── Sources/EidolonCore   # 内容包、回合、判断、检索、记忆、搭话、标题、通话、立绘指令、追踪
+├── Sources/PromptOracle  # 与上游逐字对照提示词的可执行目标
 └── Tests/EidolonCoreTests
-EidolonIOS/             # SwiftUI 客户端（xcodegen 生成工程）
+EidolonIOS/               # SwiftUI 客户端（xcodegen 生成工程）
+├── App/                  # 入口、AppModel
+├── Core/                 # 设置、钥匙串、通话音频
+└── Features/             # 对话、通话、立绘、设置、记忆、追踪、导入
 tools/
-├── export_content_bundle.py  # Mac 上把上游数据导出成 .eidolonpkg
-└── oracle/                   # 上游提示词对照组
-docs/adr/               # 架构决策
-GLOSSARY.md             # 领域词汇
+├── export_content_bundle.py   # Mac 上把上游数据与立绘导出成 .eidolonpkg
+├── sync_stand_runtime.sh      # 构建后从上游 checkout 取 Spine 运行时（不进仓库）
+├── tests/                     # 导出工具的标准库 unittest
+└── oracle/                    # 上游提示词对照组
+docs/adr/                 # 架构决策（0001–0018）
+docs/agents/              # issue 跟踪、分类标签、领域文档约定
+GLOSSARY.md               # 领域词汇（从上游复制）
 ```
 
 ## 跑起来
@@ -62,7 +91,9 @@ GLOSSARY.md             # 领域词汇
      --stand-cards 3 --out ../../eidolon-sc-ios/build/eidolon-content.eidolonpkg
    ```
 
-   没有偶像编号、默认衣装或素材的角色跳过（同步还没跑完也能导出）。
+   没有偶像编号、默认衣装或素材的角色跳过（同步还没跑完也能导出）。素材同步是一次一个请求、每秒一个，
+   全量要一两个小时；中断后重跑会接着拉。macOS 的系统代理会影响 Python 的 `urllib`，必要时用
+   `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy NO_PROXY='*' no_proxy='*'` 绕开。
 
 2. **生成并打开工程**：
 
@@ -74,9 +105,27 @@ GLOSSARY.md             # 领域词汇
 
    构建时 `tools/sync_stand_runtime.sh` 从上游 checkout（默认 `../eidolon-sc`，可用 `EIDOLON_UPSTREAM` 指定）把 `spine-webgl.js` 拷进 App 资源。运行时是第三方代码，不进仓库；没有 checkout 或运行时缺失时脚本只打印一条警告，App 照常编译，只是立绘显示「没有立绘」。
 
-3. 选一个 iPhone 模拟器运行，首次启动点「选择内容包」导入；然后在设置里填对话模型、向量化/重排，以及通话用的 Soniox 与 Fish Audio 密钥（密钥存钥匙串）。
+3. **运行**：选一个 iPhone 模拟器，首次启动点「选择内容包」导入；然后在设置里填对话模型、向量化/重排，以及通话用的 Soniox 与 Fish Audio 密钥（密钥存钥匙串）。
 
-4. 通话：在角色聊天页右上角点电话按钮（模拟器第一次用麦克风时，Mac 会要求给 **Simulator** 麦克风权限：系统设置 → 隐私与安全性 → 麦克风；另外确认 Simulator 菜单 I/O → Audio Input 选的是内置麦克风而不是 None）。接通是静默的——她不会先说话；对着麦克风说一句（中文或日文都行，识别同时提示 zh/ja，她用日语回答并配中文字幕），停一下等句末判定，她就按回合回答。首次通话会请求麦克风权限。设置里的「通话」一节：Soniox 密钥与识别模型（默认 `stt-rt-v5`）、Fish Audio 密钥与语音模型（默认免费档 `s2.1-pro-free`；只有 `drama-3` 会读朗读标记）。没有 Fish 密钥时她的话只显示字幕，通话流程不变。
+4. **上真机（可选）**：
+
+   ```sh
+   xcodebuild -project EidolonIOS.xcodeproj -scheme EidolonIOS -configuration Debug \
+     -destination 'platform=iOS,id=<UDID>' -derivedDataPath build/DerivedData \
+     -clonedSourcePackagesDirPath build/DerivedData/SourcePackages \
+     -onlyUsePackageVersionsFromResolvedFile build
+   xcrun devicectl device install app --device <UDID> \
+     build/DerivedData/Build/Products/Debug-iphoneos/Eidolon.app
+   xcrun devicectl device copy to --device <UDID> --domain-type appDataContainer \
+     --domain-identifier com.jacklin.eidolon --destination Documents/你的包.eidolonpkg \
+     --source build/eidolon-content.eidolonpkg
+   xcrun devicectl device process launch --device <UDID> \
+     -e '{"EIDOLON_IMPORT_BUNDLE":"你的包.eidolonpkg"}' com.jacklin.eidolon
+   ```
+
+   自动签名要求 Xcode 里登录了开发者账号；没有账号时可以先无签名构建、再用设备上已有的描述文件手工 `codesign`。
+
+5. **通话**：在角色聊天页右上角点电话按钮（模拟器第一次用麦克风时，Mac 会要求给 **Simulator** 麦克风权限：系统设置 → 隐私与安全性 → 麦克风；另外确认 Simulator 菜单 I/O → Audio Input 选的是内置麦克风而不是 None）。接通是静默的——她不会先说话；对着麦克风说一句（中文或日文都行），停一下等句末判定，她就按回合回答。首次通话会请求麦克风权限。
 
 ### 判断模型
 
@@ -91,19 +140,22 @@ GLOSSARY.md             # 领域词汇
 
 「测试判断模型」用屏幕上当前的配置发一次只含一道是非题的请求：成功显示服务、模型与阈值族；失败分开说清业务空间 / 地域不匹配、密钥无效、模型名不对、账号不对、当天额度用完，其余原样显示服务返回的错误。测试不保存配置，改完记得点「保存」。
 
-从旧版本升级时，如果以前已经把「对话模型」判断的地址、模型或密钥填过，第一次打开会继续用它，不会默认切到百炼。
+情绪判断只在 System One 类判断器（百炼 / Jev / Cloudflare）上启用，聊天模型判断器不判断情绪。设置里最低概率留空用家族阈值（jev 0.5，其余 0.4），超时默认 1.5 秒。
 
 ## 测试
 
 ```sh
-swift test --package-path EidolonCore
+swift test --package-path EidolonCore       # 不联网
+python3 -m unittest discover -s tools/tests  # 导出工具
+tools/oracle/run.sh                          # 与上游逐字对照提示词（需要上游 checkout 与内容包）
 ```
 
-`swift test` 不联网。真实内容包冒烟测试需要环境变量开启。
+真实内容包冒烟测试需要环境变量开启（`EIDOLON_TEST_BUNDLE`）。
 
 模拟器里的调试验证可以用环境变量（仅 DEBUG 构建）注入识别与操作：
 
-- `EIDOLON_CALL_FAKE_SPEECH='一行|另一行'`：不打开麦克风，按行注入识别结果（用 `|` 分隔多行）
+- `EIDOLON_IMPORT_BUNDLE`：导入这个内容包（裸文件名会在 Documents 里找），真机也能用
+- `EIDOLON_CALL_FAKE_SPEECH='一行|另一行'`：不打开麦克风，按行注入识别结果
 - `EIDOLON_CALL_SPEECH_INTERVAL_MS`：注入的句子按间隔重复，用来排练长通话
 - `EIDOLON_CALL_DROP_ONCE=1`、`EIDOLON_CALL_RECONNECT_MS`：让首次识别连接断开、放慢重连
 - `EIDOLON_CALL_HANGUP_MS`：到点自动挂断
@@ -113,10 +165,9 @@ swift test --package-path EidolonCore
 
 这些值和真实密钥一样只用于本地验证，不要提交。
 
-## 上游对照
+## 上游与许可
 
-```sh
-tools/oracle/run.sh
-```
-
-同一场景分别交给上游 Python 引擎和 `EidolonCore` 组装提示词，逐字比较，指出第一个差异的位置与上下文（ADR-0012）。需要上游 checkout 和从它导出的内容包。
+- 上游 [Sallyn0225/eidolon-sc](https://github.com/Sallyn0225/eidolon-sc) 是 AGPL-3.0；本仓库是它的 iOS 移植，供自己使用。
+- 上游 checkout 只读。Spine 运行时与立绘素材都有第三方版权，**都不进仓库**：素材由导出工具打进内容包，运行时由构建脚本从上游 checkout 同步到构建产物。
+- 本地验证用的密钥只从 `../eidolon-sc/.env` 读取，不写进仓库、提交或 issue。
+- App 图标里的听筒轮廓取自 Google Material Icons 的 `call`（Apache-2.0），其余为自制。
