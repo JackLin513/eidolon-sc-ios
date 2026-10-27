@@ -363,6 +363,21 @@ async def test_visiting_the_bar_she_is_told_only_how_she_feels_and_the_day_in_to
     assert visiting == [*FEELS, HOLIDAY]
 
 
+async def test_visiting_the_bar_her_cycle_is_not_read_as_it_is_not_told(
+    make_client: ClientFactory, settings: Settings
+):
+    """In her period, typing she is where her cycle has her; reading for a visit, nowhere."""
+    client = await in_her_period(make_client, settings, ("声乐课", 1, 2, 0))
+    backend = backend_of(client)
+    producer = user_id(settings.database_path, "producer")
+
+    typing = await backend.her_now.read(producer, "mano", SHANGHAI, "typing")
+    visiting = await backend.her_now.read(producer, "mano", SHANGHAI, "visit")
+
+    assert typing.her_days(MONDAY_AFTERNOON, SHANGHAI) is not None
+    assert visiting.her_days(MONDAY_AFTERNOON, SHANGHAI) is None
+
+
 async def test_jobs_done_are_counted_before_her_affinity_is_read_after_the_first_step(
     make_client: ClientFactory, settings: Settings
 ):

@@ -55,12 +55,13 @@ every occasion."""
 
 
 @dataclass(frozen=True)
-class Known:
-    """What the first step read, for the user's `character`: her jobs of their week and the
-    next, those done counted (None while schedules are off); where her cycle has her at any
-    time (neither, whenever, while cycles are off); her job done today, the latest if more
-    than one (None without); and, for a visit, her affinity, read after her jobs (None
-    otherwise, or while affinity is off)."""
+class KnownNow:
+    """What the first step read of now (GLOSSARY.md「此刻」), for the user's `character`: her
+    jobs of their week and the next, those done counted (None while schedules are off); where
+    her cycle has her at any time (neither, whenever, while cycles are off, or on an occasion
+    that does not tell her of it); her job done today, the latest if more than one (None
+    without); and, for a visit, her affinity, read after her jobs (None otherwise, or while
+    affinity is off)."""
 
     character: Character
     her_jobs: HerSchedule | None
@@ -89,10 +90,10 @@ class HerNow:
 
     async def read(
         self, user_id: str, character_id: str, device_timezone: str | None, occasion: Occasion
-    ) -> Known:
+    ) -> KnownNow:
         """The first step, for the user's character on `occasion`, their device in
         `device_timezone` (None reaching out): her jobs read, those done counted towards her
-        affinity, her cycle, her job done today, and for a visit her affinity. Whoever reads
+        affinity, her cycle where the occasion tells her of it, her job done today, and for a visit her affinity. Whoever reads
         her affinity otherwise is to read it after this, so that it has her jobs done
         counted."""
         her_jobs = (
@@ -101,20 +102,20 @@ class HerNow:
         )
         her_days = (
             await self._cycles.her_days(user_id, character_id)
-            if self._cycles is not None else always_neither
+            if CARRIES[occasion].cycle and self._cycles is not None else always_neither
         )
         affinity = (
             await self._affinities.status(user_id, character_id)
             if occasion == "visit" and self._affinities is not None else None
         )
-        return Known(
+        return KnownNow(
             self._characters[character_id], her_jobs, her_days,
             her_jobs.done_today() if her_jobs is not None else None, affinity,
         )
 
     def lines(
         self,
-        known: Known,
+        known: KnownNow,
         occasion: Occasion,
         now: datetime,
         timezone: str,

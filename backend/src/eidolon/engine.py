@@ -118,6 +118,7 @@ from eidolon.affinity import (
     affinity_prompt,
     ends,
     hurt,
+    tier_prompt,
     warns,
 )
 from eidolon.affinity_judge import AffinityJudge
@@ -129,7 +130,7 @@ from eidolon.data_access import Database
 from eidolon.gift_catalog import Gift
 from eidolon.happenings import Happenings, Rewarded
 from eidolon.her_cycle import HerDay, Period, Premenstrual
-from eidolon.her_now import HerNow, Occasion
+from eidolon.her_now import HerNow, KnownNow, Occasion
 from eidolon.judge import JudgeError
 from eidolon.llm import ChatLLM, ChatMessage, Reasoning, Tool, ToolCall, TurnLLMs
 from eidolon.memory import Memories, last_turn_query
@@ -763,9 +764,9 @@ class ConversationEngine:
             chat_history(messages, turns),
             narrations(record, self._gift_catalog, timezone, her_days),
             [
-                "\n".join(self._her_now.lines(
+                self._now_section(
                     known, occasion, now, timezone, profile, last_contact, affinity_lines
-                )),
+                ),
                 *([about_photo] if about_photo else []),
             ],
             [p for p in (retrieved.memories_prompt, retrieved.prompt) if p],
@@ -907,10 +908,9 @@ class ConversationEngine:
             character, world_prompt, producer_prompt(profile),
             chat_history(messages, self._history_turns()), told,
             [
-                "\n".join(self._her_now.lines(
-                    known, "apart", now, timezone, profile, last_contact,
-                    affinity_prompt(affinity.tier, None) if affinity is not None else [],
-                )),
+                self._now_section(
+                    known, "apart", now, timezone, profile, last_contact, tier_prompt(affinity)
+                ),
             ],
             [*([memories] if memories else []), REACH_OUT_RULES],
             WANTS_TO_REACH_OUT, None,
@@ -1119,6 +1119,21 @@ class ConversationEngine:
         if not isinstance(query, str) or not query.strip():
             return "调用参数有误：需要 query（要回顾的事，一句概括）。"
         return await self._retrieval.recall_story(character, query.strip())
+
+    def _now_section(
+        self,
+        known: KnownNow,
+        occasion: Occasion,
+        now: datetime,
+        timezone: str,
+        profile: ProducerProfile,
+        last_contact: datetime | None,
+        affinity_lines: Sequence[str],
+    ) -> str:
+        """The prompt section of what she knows of now on `occasion` (`HerNow.lines`)."""
+        return "\n".join(self._her_now.lines(
+            known, occasion, now, timezone, profile, last_contact, affinity_lines
+        ))
 
     def _prompt(
         self,

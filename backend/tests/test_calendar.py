@@ -65,17 +65,17 @@ async def told_now(client: httpx.AsyncClient, llm: FakeLLM, character: str = "ma
     return context_of(llm.prompts[-1])
 
 
-async def test_on_a_holiday_she_is_told_which_right_after_now_in_its_section(
+async def test_typing_she_is_told_what_the_day_is_in_what_she_knows_of_now(
     make_client: ClientFactory,
 ):
+    """On 文化の日."""
     llm = FakeLLM(REPLY)
     client = make_client(llm, clock=lambda: datetime(2026, 11, 3, 3, tzinfo=UTC))
 
     told = await told_now(client, llm)
 
-    now, *_ = told.split("\n\n")
-    assert now.startswith("# 此刻\n")
-    assert now.endswith("今天是日本的节假日：文化の日。制作人提起再说，不用主动提。")
+    [now] = [part for part in told.split("\n\n") if part.startswith("# 此刻\n")]
+    assert "今天是日本的节假日：文化の日。" in now
 
 
 async def test_in_a_call_she_is_told_what_the_day_is_too(

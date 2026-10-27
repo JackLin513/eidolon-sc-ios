@@ -382,9 +382,9 @@ async def drive(args: argparse.Namespace) -> int:
             bar = DevBar(
                 backend.database, backend.clock, characters, catalog,
                 listed, load_bar_lines(bar_lines_path(settings.characters_path)),
-                backend.admissions, lambda: True, rng.randrange, world=backend.world,
-                facts=backend.bar._facts, tally=tally, break_farewell=args.break_farewell,
-                topic=args.topic,
+                backend.admissions, lambda: True, rng.randrange, backend.her_now,
+                world=backend.world, facts=backend.bar._facts, tally=tally,
+                break_farewell=args.break_farewell, topic=args.topic,
             )
             user = await backend.store.create_user("制作人")
             await backend.database.write(

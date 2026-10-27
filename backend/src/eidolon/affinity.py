@@ -450,6 +450,12 @@ class Judged:
         return felt
 
 
+def tier_prompt(status: Status | None) -> list[str]:
+    """What the prompt says of her affinity in `status`'s tier, nothing judged
+    (`affinity_prompt`); nothing without a status, as while affinity is off."""
+    return affinity_prompt(status.tier, None) if status is not None else []
+
+
 def affinity_prompt(
     tier: Tier,
     judged: Judged | None,

@@ -82,7 +82,7 @@ from typing import Any, Literal, TypeVar
 
 from eidolon.activity import Result
 from eidolon.admission import Admission, Admissions
-from eidolon.affinity import Affinities, DrinkServed, affinity_prompt, day_of
+from eidolon.affinity import Affinities, DrinkServed, day_of, tier_prompt
 from eidolon.bar_facts import BarFacts
 from eidolon.bar_lines import BarLines
 from eidolon.bar_prompt import (
@@ -119,8 +119,7 @@ from eidolon.clock import Clock
 from eidolon.data_access import Database
 from eidolon.drink_catalog import DrinkCatalog, Mixture
 from eidolon.gifts import Gifts
-from eidolon.her_now import HerNow
-from eidolon.her_now import Known as KnownNow
+from eidolon.her_now import HerNow, KnownNow
 from eidolon.llm import ChatLLM
 from eidolon.own_keys import BroughtKeys, OwnKeyFailed, TurnKeys
 from eidolon.producer import ProducerProfile, producer_prompt
@@ -368,17 +367,17 @@ class Bar:
         admissions: Admissions,
         is_on: Callable[[], bool],
         random: Random,
+        her_now: HerNow,
         *,
         world: World | None = None,
         affinities: Affinities | None = None,
         gifts: Gifts | None = None,
-        her_now: HerNow | None = None,
         facts: BarFacts | None = None,
     ) -> None:
         """`is_on` tells whether the bar is open now (the live configuration's switch). Without
-        `world`, she has no world setting; without `affinities` or `gifts`, no reward; without
-        `her_now`, she knows nothing of now (how she feels among it), nor has a job of hers for
-        a reason; without `facts`, none of her facts are looked up. Her reasons for coming and
+        `world`, she has no world setting; without `affinities` or `gifts`, no reward. `her_now`
+        gives what she knows of now coming in, her job done today for a reason among it.
+        Without `facts`, none of her facts are looked up. Her reasons for coming and
         topics are drawn from `listed`. Visits are let in by `admissions`."""
         self._db = db
         self._clock = clock
@@ -459,15 +458,9 @@ class Bar:
         """The user's visit by `character`, coming in `now`, let in as `admission`: all the
         rest of it drawn."""
         today = day_of(now)
-        her_now = self._her_now
-        now_known = (
-            await her_now.read(user_id, character.id, device_timezone, "visit")
-            if her_now is not None else None
-        )
+        now_known = await self._her_now.read(user_id, character.id, device_timezone, "visit")
         hers = await self._db.read(_hers, user_id, character.id)
-        reason = self._reason(
-            character, now_known.done_today if now_known is not None else None, hers.reasons
-        )
+        reason = self._reason(character, now_known.done_today, hers.reasons)
         topic = self._topic(character, hers.topics)
         with admission.recording.current():
             facts = await self._facts.about(character, topic) if self._facts is not None else []
@@ -484,7 +477,7 @@ class Bar:
             shared_prompt(character, world.prompt(character.name, today) if world else None),
             visit_prompt(
                 hers.about_producer, reason, topic, drinks,
-                _now_lines(her_now, now_known, now),
+                _now_lines(self._her_now, now_known, now),
                 hers.remembered, now, character, self._catalog, facts,
             ),
             admission,
@@ -908,14 +901,13 @@ def _before(db: sqlite3.Connection, user_id: str, today: date) -> _Before:
     return _Before(_done_on(db, user_id, today), done)
 
 
-def _now_lines(her_now: HerNow | None, known: KnownNow | None, now: datetime) -> list[str]:
+def _now_lines(her_now: HerNow, known: KnownNow, now: datetime) -> list[str]:
     """What she is told of now coming in at `now`, as `known`: how she feels toward the
     producer, then the day in Tokyo. A visit tells her neither the time nor anything of the
     producer's (`her_now.CARRIES`), so no time zone, profile or last contact is needed."""
-    if her_now is None or known is None:
-        return []
-    felt = affinity_prompt(known.affinity.tier, None) if known.affinity is not None else []
-    return her_now.lines(known, "visit", now, "Asia/Tokyo", ProducerProfile(), None, felt)
+    return her_now.lines(
+        known, "visit", now, "Asia/Tokyo", ProducerProfile(), None, tier_prompt(known.affinity)
+    )
 
 
 def _hers(db: sqlite3.Connection, user_id: str, character_id: str) -> _Hers:

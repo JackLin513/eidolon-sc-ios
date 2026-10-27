@@ -428,8 +428,8 @@ def build(
         bar_facts = BarFacts(character_facts, embedder, reranker)
     bar = Bar(
         database, clock, characters, drink_catalog, bar_visits, bar_lines, admissions,
-        lambda: config.bar_on, random or secure_random, world=world, affinities=affinities,
-        gifts=gifts, her_now=her_now, facts=bar_facts,
+        lambda: config.bar_on, random or secure_random, her_now, world=world,
+        affinities=affinities, gifts=gifts, facts=bar_facts,
     )
     closers.append(bar.aclose)  # closed before the database, so each visit over is recorded
     calls = Calls(

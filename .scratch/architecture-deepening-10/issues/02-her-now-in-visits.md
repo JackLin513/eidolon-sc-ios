@@ -59,3 +59,22 @@
 
 - 光顾不带时间、制作人的事和周期，`HerNow.lines` 的 `timezone`、`profile`、`last_contact` 用不上；没改它的签名，`_now_lines` 里传 `"Asia/Tokyo"`、`ProducerProfile()`、`None` 占位，docstring 写明原因。
 - 没有 `her_now` 时（只在不经 assembly 直接建 `Bar` 时）「此刻」几行全无，原来没有日程时仍有「今天」几行；assembly 总会传，线上没有区别。
+
+### 审查修复
+
+code-review（`8b323e7c...8f66dc85`）提的几条，修了这些：
+
+- 测试重复：`test_calendar.py` 里节假日那条改成打字时唯一一条走 HTTP 的测试（`test_typing_she_is_told_what_the_day_is_in_what_she_knows_of_now`），只查节假日那行进了「此刻」一节；节假日放在哪一行由 `test_her_now.py` 守。
+- 测试重复：`test_bar_draws.py` 光顾那条改名为 `..._in_this_visit`，确认「这次光顾」一节有档位那行、以今天那行收尾。规格 Testing Decisions 要求这条 HTTP 测试确认「没有时间、日程和周期」，所以留了最简的「没有」断言（只查这三样）；制作人生日那项去掉了，场合表各列带不带哪几样由 `test_her_now.py` 守。
+- 重复代码：engine 里两处 `"\n".join(self._her_now.lines(...))` 收进 `ConversationEngine._now_section`；`affinity_prompt(x.tier, None) if x is not None else []` 收成 `affinity.tier_prompt(status)`，engine 搭话和 `bar._now_lines` 都用它。
+- 改名：`her_now.Known` 改成 `KnownNow`（对上 GLOSSARY「此刻 (Now)」，也不再和 `bar_rules.Known` 撞名），bar.py 不用再 `as`。上面实现说明和票 01 里写的 `Known` 即现在的 `KnownNow`。
+- 光顾不读周期：`HerNow.read` 只在场合表里该场合带周期时才读，否则 `her_days` 是 `always_neither`。新加 `test_her_now.py::test_visiting_the_bar_her_cycle_is_not_read_as_it_is_not_told`（先红后绿）。
+- `Bar` 的 `her_now` 改成必填（位置参数，紧跟 `random`），`_now_lines` 不再有空的分支；assembly 和 `scripts/bar_visit.py` 的 `DevBar` 都传 `backend.her_now`。测试里没有直接建 `Bar` 的地方。
+
+没改的：
+
+- `HerNow.lines` 的 `timezone`、`profile`、`last_contact` 参数：规格定的第二步 interface，打字、通话、搭话都要用；光顾传占位值，`_now_lines` 的 docstring 写明了原因。
+- 场合表 `CARRIES` 的形状：规格定的，一处说清每种场合带哪几样。
+- 两步 interface，以及 `KnownNow.affinity` 只在光顾时读：规格定的。打字、通话、搭话由 engine 自己在第一步之后读好感度（判断、冷却要用完整的状态），光顾只要档位。
+
+跑过：ruff、pyright；`test_her_now.py`、`test_calendar.py`、`test_bar_draws.py`（38 passed）；`sh scripts/affected-tests.sh 8f66dc85`（345 passed）。

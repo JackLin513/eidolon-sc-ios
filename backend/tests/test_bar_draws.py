@@ -319,11 +319,12 @@ async def test_ordered_by_name_only_that_drink_is_right_in_any_glass(
     assert "第 1 杯上对了；第 2 杯上错了；第 3 杯上错了" in told[2]
 
 
-async def test_coming_in_she_is_told_how_she_feels_and_the_day_in_tokyo_and_no_more_of_now(
+async def test_coming_in_she_is_told_how_she_feels_and_the_day_in_tokyo_in_this_visit(
     make_client: ClientFactory, settings: Settings, tmp_path: Path
 ):
-    """On the producer's birthday, a holiday in Japan, in her period, a job of hers to come
-    this week: of all that, she is told at the bar only the holiday, with her tier."""
+    """On a holiday in Japan, in her period, a job of hers to come this week: her tier and
+    the holiday are in this visit's section, and the time, her jobs and her cycle nowhere.
+    What each occasion tells her of now, `test_her_now` has."""
     settings = replace(only_mano(settings, tmp_path), judge=FAKE_JUDGE)
     make_client(FakeLLM(), settings=settings)  # the producer, signed up
     cycling = replace(settings, cycles=True)
@@ -333,7 +334,6 @@ async def test_coming_in_she_is_told_how_she_feels_and_the_day_in_tokyo_and_no_m
     clock = FakeClock(EARLY_MONDAY)
     llm = FakeLLM(COMING_IN)
     client = make_client(llm, settings=keyed, clock=clock, random=FakeRandom(*ONE_DRINK))
-    await client.put("/api/profile", json={"birthday": {"month": 9, "day": 21}})
     publish(settings.database_path, WEEK, ("声乐课", 1, None))
     await save(client, WEEK, placed("声乐课", 2, 0))  # Wednesday
     clock.now = MONDAY_AFTERNOON
@@ -344,5 +344,5 @@ async def test_coming_in_she_is_told_how_she_feels_and_the_day_in_tokyo_and_no_m
     [visit] = [part for part in about(llm.prompts[0]).split("\n\n") if part.startswith("# 这次光顾")]
     assert "和制作人比平时更近" in visit  # her tier
     assert visit.endswith(HOLIDAY)
-    for not_told in ("现在是", "今天是制作人的生日", HER_JOBS, "声乐课", PERIOD_EARLY):
+    for not_told in ("现在是", HER_JOBS, PERIOD_EARLY):
         assert not_told not in about(llm.prompts[0])
