@@ -311,6 +311,35 @@ final class EventLog: @unchecked Sendable {
     }
 }
 
+// MARK: - Reading the call's segments
+
+/// One of her segments as the call reported it: which reply, which segment, and the two
+/// subtitles.
+private struct SaidSegment {
+    var reply: Int
+    var segment: Int
+    var ja: String
+    var zh: String
+}
+
+private func segments(of log: EventLog) -> [SaidSegment] {
+    log.all.compactMap { event in
+        guard case let .segment(reply, segment, ja, zh) = event else { return nil }
+        return SaidSegment(reply: reply, segment: segment, ja: ja, zh: zh)
+    }
+}
+
+/// Her segments' voice starting and stopping, as the call reported them, in order.
+private func played(of log: EventLog) -> [String] {
+    log.all.compactMap { event in
+        switch event {
+        case let .segmentStarted(reply, segment): return "start:\(reply):\(segment)"
+        case let .segmentStopped(reply, segment): return "stop:\(reply):\(segment)"
+        default: return nil
+        }
+    }
+}
+
 // MARK: - Tests
 
 final class CallSessionTests: XCTestCase {
@@ -377,7 +406,6 @@ final class CallSessionTests: XCTestCase {
     }
 
     private func states(_ log: EventLog) -> [CallState] { log.states() }
-
     func testACallAnswersWhatItHears() async throws {
         let eidolon = try await installedEidolon()
         let recognition = FakeRecognition([.hang])
@@ -406,12 +434,14 @@ final class CallSessionTests: XCTestCase {
             return state == .listening
         }
 
-        let segments = log.all.compactMap { event -> (Int, String, String)? in
-            if case let .segment(index, ja, zh) = event { return (index, ja, zh) }
+        let segments = log.all.compactMap { event -> (Int, Int, String, String)? in
+            if case let .segment(reply, index, ja, zh) = event {
+                return (reply, index, ja, zh)
+            }
             return nil
         }
-        XCTAssertEqual(segments.map(\.1), ["もしもし", "聞こえてる"])
-        XCTAssertEqual(segments.map(\.2), ["喂", "听得见"])
+        XCTAssertEqual(segments.map(\.2), ["もしもし", "聞こえてる"])
+        XCTAssertEqual(segments.map(\.3), ["喂", "听得见"])
         XCTAssertEqual(synthesis.texts, ["もしもし", "聞こえてる"])
 
         let conversation = try await eidolon.currentConversation(characterID: "mano")
@@ -425,6 +455,99 @@ final class CallSessionTests: XCTestCase {
         }
         let reason = await session.currentStateIfEnded
         XCTAssertEqual(reason, .hungUpByProducer)
+    }
+
+    /// A segment's number is the reply it is said in (spec「通话事件」): every answer she
+    /// gives is one reply, from 0, and its segments are numbered from 0 inside it.
+    func testSegmentsCarryTheReplyTheyAreSaidIn() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>一つ目</ja><zh>第一句</zh>", "<ja>二つ目</ja><zh>第二句</zh>"],
+            ["<ja>三つ目</ja><zh>第三句</zh>"],
+        ])
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("一度目")
+        try await waitFor("her first reply") { segments(of: log).count == 2 }
+        try await waitFor("listening after the first reply") {
+            await session.currentState() == .listening
+        }
+        recognition.say("二度目")
+        try await waitFor("her second reply") { segments(of: log).count == 3 }
+
+        let said = segments(of: log)
+        XCTAssertEqual(said.map(\.reply), [0, 0, 1])
+        XCTAssertEqual(said.map(\.segment), [0, 1, 0])
+        XCTAssertEqual(said.map(\.ja), ["一つ目", "二つ目", "三つ目"])
+        await session.hangUp()
+    }
+
+    /// Each segment's voice says when it starts and stops playing, so her mouth moves with
+    /// it (spec「通话事件」「立绘指令」). A segment starts after its subtitle is shown.
+    func testSegmentsSayWhenTheirVoiceStartsAndStops() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>一つ目</ja><zh>第一句</zh>", "<ja>二つ目</ja><zh>第二句</zh>"],
+        ])
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("both segments said") { segments(of: log).count == 2 }
+        try await waitFor("both segments played") {
+            played(of: log).count == 4
+        }
+
+        XCTAssertEqual(
+            played(of: log),
+            ["start:0:0", "stop:0:0", "start:0:1", "stop:0:1"]
+        )
+        let events = log.all
+        let subtitle = try XCTUnwrap(events.firstIndex { event in
+            if case .segment = event { return true } else { return false }
+        })
+        let start = try XCTUnwrap(events.firstIndex { event in
+            if case .segmentStarted = event { return true } else { return false }
+        })
+        XCTAssertLessThan(subtitle, start, "her subtitle is shown before her voice starts")
+        await session.hangUp()
+    }
+
+    /// Her stand hears the call end, so the next call starts from scratch (spec「通话事件」):
+    /// the call's last event is the ended state, after whatever was being said.
+    func testTheCallSaysWhenItIsOver() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([["<ja>あ</ja><zh>啊</zh>"]]),
+            recognition: recognition
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        await session.hangUp()
+        try await waitFor("ended") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+        try await waitFor("the ended event reaches the stream") {
+            log.all.contains { event in
+                if case .state(.ended(.hungUpByProducer)) = event { return true }
+                return false
+            }
+        }
+        XCTAssertEqual(log.all.last, .state(.ended(.hungUpByProducer)))
     }
 
     /// The second out-of-line turn of one call is the one she hangs up on (upstream
@@ -1076,7 +1199,7 @@ final class CallSessionTests: XCTestCase {
         try await waitFor("the good segment played") { playback.audio.count == 1 }
         XCTAssertEqual(playback.audio.first, Data("だいじょうぶ".utf8))
         let captions = log.all.compactMap { event -> String? in
-            if case let .segment(_, ja, _) = event { return ja }
+            if case let .segment(_, _, ja, _) = event { return ja }
             return nil
         }
         XCTAssertEqual(captions, ["だめ", "だいじょうぶ"])
@@ -1186,7 +1309,7 @@ final class CallSessionTests: XCTestCase {
         try await waitFor("voiced") { !synthesis.texts.isEmpty }
         XCTAssertEqual(synthesis.texts, ["[shyly] あのね"])
         let captions = log.all.compactMap { event -> String? in
-            if case let .segment(_, ja, _) = event { return ja }
+            if case let .segment(_, _, ja, _) = event { return ja }
             return nil
         }
         XCTAssertEqual(captions, ["あのね"])

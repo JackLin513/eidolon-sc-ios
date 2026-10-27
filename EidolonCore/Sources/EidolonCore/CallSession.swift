@@ -199,8 +199,14 @@ public enum CallEvent: Sendable, Hashable {
     case hearing(String)
     /// What the producer said, when the recognizer found the end of it.
     case recognized(String)
-    /// One of her segments, for the subtitle. Delivery cues are stripped.
-    case segment(index: Int, ja: String, zh: String)
+    /// One of her segments, for the subtitle. Delivery cues are stripped. `reply` numbers
+    /// her replies in the call from 0 (each answer she gives is one); `segment` numbers its
+    /// segments from 0.
+    case segment(reply: Int, segment: Int, ja: String, zh: String)
+    /// A segment's voice started playing: her mouth moves from here until it stops.
+    case segmentStarted(reply: Int, segment: Int)
+    /// A segment's voice stopped playing.
+    case segmentStopped(reply: Int, segment: Int)
     /// The turn could not be answered; the call goes on.
     case failed(String)
 }
@@ -281,7 +287,10 @@ public actor CallSession {
     /// Her segments as shown, by segment, for the subtitle.
     private var captions: [Int: (ja: String, zh: String)] = [:]
     private var lastFinalized = -1
-    private var queue: [(index: Int, speech: String)] = []
+    /// Which of her replies the segments being said belong to, from 0: every answer she
+    /// gives in the call is one reply (spec「通话事件」).
+    private var reply = -1
+    private var queue: [(reply: Int, index: Int, speech: String)] = []
     /// The segment after the one playing, being made while it plays.
     private var prefetch: (index: Int, task: Task<Data, Error>)?
     /// The segment whose audio is playing, if any.
@@ -430,6 +439,7 @@ public actor CallSession {
         }
         setState(.thinking)
         emit(.recognized(text))
+        reply += 1
         speech.removeAll()
         captions.removeAll()
         lastFinalized = -1
@@ -509,13 +519,14 @@ public actor CallSession {
             let caption = captions[index] ?? (ja: "", zh: "")
             guard !(caption.ja.isEmpty && caption.zh.isEmpty) else { continue }
             emit(.segment(
-                index: index,
+                reply: reply,
+                segment: index,
                 ja: caption.ja.trimmingCharacters(in: .whitespacesAndNewlines),
                 zh: caption.zh.trimmingCharacters(in: .whitespacesAndNewlines)
             ))
             let spoken = speech[index] ?? ""
             if !spoken.isEmpty {
-                queue.append((index: index, speech: spoken))
+                queue.append((reply: reply, index: index, speech: spoken))
                 ensureSpeaking()
                 startPrefetch()
             }
@@ -547,7 +558,9 @@ public actor CallSession {
                 if finished || Task.isCancelled { break }
                 speakingIndex = item.index
                 startPrefetch()
+                emit(.segmentStarted(reply: item.reply, segment: item.index))
                 await playWhileDeaf(audio)
+                emit(.segmentStopped(reply: item.reply, segment: item.index))
             } catch is CancellationError {
                 break
             } catch {
