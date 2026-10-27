@@ -448,7 +448,8 @@ final class CallSessionTests: XCTestCase {
         judge: (any JudgeProvider)? = nil,
         emotionJudge: (any SegmentEmotionJudge)? = nil,
         limits: CallLimits = .standard,
-        historyTurns: Int = 20
+        historyTurns: Int = 20,
+        voiceModel: String = "s2.1-pro-free"
     ) async throws -> (CallSession, EventLog, FakeCapture) {
         let capture = FakeCapture()
         let setup = CallSetup(
@@ -456,7 +457,7 @@ final class CallSessionTests: XCTestCase {
             playback: playback,
             recognition: recognition,
             synthesis: synthesis,
-            voiceModel: "s2.1-pro-free",
+            voiceModel: voiceModel,
             provider: provider,
             judge: judge,
             emotionJudge: emotionJudge,
@@ -551,6 +552,39 @@ final class CallSessionTests: XCTestCase {
         }
         let reason = await session.currentStateIfEnded
         XCTAssertEqual(reason, .hungUpByProducer)
+    }
+
+    /// The voice is given the words with her delivery cues, and paired tags only on the
+    /// model that reads them (upstream `spoken_by`); what people see has no cues at all.
+    func testTheVoiceGetsItsCuesAsTheModelReadsThem() async throws {
+        let line = "[shyly] これは<whisper>内緒</whisper>だよ"
+        for (model, spoken) in [
+            ("s2.1-pro-free", "[shyly]これは内緒だよ"),
+            ("drama-3", "[shyly]これは<whisper>内緒</whisper>だよ"),
+        ] {
+            let eidolon = try await installedEidolon()
+            let recognition = FakeRecognition([.hang])
+            let provider = ReplyScriptProvider([["<ja>\(line)</ja><zh>这个要保密</zh>"]])
+            let synthesis = FakeSynthesis()
+            let (session, log, _) = try await begin(
+                on: eidolon,
+                provider: provider,
+                recognition: recognition,
+                synthesis: synthesis,
+                voiceModel: model
+            )
+            try await waitFor("listening") { await session.currentState() == .listening }
+            recognition.say("ねえ")
+            try await waitFor("the segment spoken") { synthesis.texts.count == 1 }
+            XCTAssertEqual(synthesis.texts, [spoken], "voiced with \(model)")
+
+            let captions = log.all.compactMap { event -> String? in
+                if case let .segment(_, _, ja, _) = event { return ja }
+                return nil
+            }
+            XCTAssertEqual(captions, ["これは内緒だよ"], "the caption has no cues")
+            await session.hangUp()
+        }
     }
 
     /// A segment's number is the reply it is said in (spec「通话事件」): every answer she
@@ -1760,7 +1794,8 @@ final class CallSessionTests: XCTestCase {
         try await waitFor("listening") { await session.currentState() == .listening }
         recognition.say("ねえ")
         try await waitFor("voiced") { !synthesis.texts.isEmpty }
-        XCTAssertEqual(synthesis.texts, ["[shyly] あのね"])
+        // As upstream `voiced` has it: the cue stays, the whitespace after it does not.
+        XCTAssertEqual(synthesis.texts, ["[shyly]あのね"])
         let captions = log.all.compactMap { event -> String? in
             if case let .segment(_, _, ja, _) = event { return ja }
             return nil

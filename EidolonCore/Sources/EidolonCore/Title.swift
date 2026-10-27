@@ -21,34 +21,62 @@ enum ConversationTitles {
         只输出标题本身，不要别的内容。
         """
 
-    /// The record up to the third turn, with what came after it before the next.
-    static func firstTurns(_ timeline: [StoredMessage]) -> [StoredMessage] {
-        let said = timeline.filter { !$0.id.hasPrefix("reach:") }
+    /// The record up to the third turn, with what came after it before the next, and
+    /// without her reach-outs, which are no part of what the conversation was about
+    /// (upstream `_first_turns`).
+    static func firstTurns(_ record: [ConversationLine]) -> [ConversationLine] {
+        let said = record.filter { line in
+            switch line {
+            case let .message(message): !message.id.hasPrefix("reach:")
+            case .event: true
+            }
+        }
         var turns = 0
-        for (index, message) in said.enumerated() {
-            if message.role == "user" {
-                turns += 1
-                if turns > titledAt {
-                    return Array(said[..<index])
-                }
+        for (index, line) in said.enumerated() {
+            guard case let .message(message) = line, message.role == "user" else { continue }
+            turns += 1
+            if turns > titledAt {
+                return Array(said[..<index])
             }
         }
         return said
     }
 
-    static func prompt(characterName: String, timeline: [StoredMessage]) -> [PromptMessage] {
+    static func prompt(characterName: String, record: [ConversationLine]) -> [PromptMessage] {
         var lines = ["# 制作人和\(characterName)的对话"]
-        for message in firstTurns(timeline) {
-            if message.role == "user" {
-                lines.append("制作人：\(cut(message.text ?? ""))")
-            } else {
-                lines.append("\(characterName)：\(cut(MemoryExtraction.shownText(message)))")
+        for line in firstTurns(record) {
+            switch line {
+            case let .message(message):
+                if message.role == "user" {
+                    lines.append("制作人：\(cut(message.text ?? ""))")
+                } else {
+                    lines.append("\(characterName)：\(cut(shown(message)))")
+                }
+            case let .event(event):
+                if let said = eventLine(event, characterName: characterName) {
+                    lines.append(said)
+                }
             }
         }
         return [
             PromptMessage(.system, instructions),
             PromptMessage(.user, lines.joined(separator: "\n")),
         ]
+    }
+
+    /// What happened, as upstream `_event_line` writes it for the title's input.
+    static func eventLine(_ event: ConversationEventRecord, characterName: String) -> String? {
+        switch event.kind {
+        case "hung_up", "she_hung_up": "（\(characterName)挂断了电话）"
+        case "ended": "（\(characterName)结束了对话）"
+        default: nil
+        }
+    }
+
+    private static func shown(_ message: ChatMessageRecord) -> String {
+        let zh = ReplyCues.shown(message.chinese)
+        if !zh.isEmpty { return zh }
+        return ReplyCues.shown(message.japanese)
     }
 
     private static func cut(_ said: String) -> String {
@@ -78,16 +106,17 @@ enum ConversationTitles {
 }
 
 extension Eidolon {
-    /// Names the conversation once its third turn is recorded, and only if it has no title.
-    func nameConversationIfDue(conversationID: String, characterID: String, provider: any ChatProvider) {
-        let turns = (try? userQueue.read { db in
-            try Int.fetchOne(
-                db,
-                sql: "SELECT COUNT(*) FROM messages WHERE conversation_id = ? AND role = 'user'",
-                arguments: [conversationID]
-            ) ?? 0
-        }) ?? 0
-        guard turns >= ConversationTitles.titledAt, (try? title(conversationID: conversationID)) == nil
+    /// Names the conversation when its third turn is recorded, and only then: a
+    /// conversation the model failed to name is never named again (upstream
+    /// `Titles.after_turn`).
+    func nameConversationIfDue(
+        conversationID: String,
+        characterID: String,
+        turn: Int,
+        provider: any ChatProvider
+    ) {
+        guard turn == ConversationTitles.titledAt,
+              (try? title(conversationID: conversationID)) == nil
         else { return }
         let task = Task { await self.nameConversation(conversationID: conversationID, characterID: characterID, provider: provider) }
         titleJobs[conversationID] = task
@@ -99,11 +128,11 @@ extension Eidolon {
         defer { titleJobs[conversationID] = nil }
         guard (try? title(conversationID: conversationID)) == nil,
               let character = (try? characters())?.first(where: { $0.id == characterID }),
-              let timeline = try? timeline(conversationID: conversationID)
+              let record = try? conversationRecord(conversationID: conversationID)
         else { return }
         let prompt = ConversationTitles.prompt(
             characterName: character.name,
-            timeline: timeline
+            record: record
         )
         var answer = ""
         do {
@@ -118,31 +147,6 @@ extension Eidolon {
             try db.execute(
                 sql: "UPDATE conversations SET title = ? WHERE id = ? AND title IS NULL",
                 arguments: [title, conversationID]
-            )
-        }
-    }
-
-    /// Conversations that were cut short before they could be named get named now: at
-    /// launch, once their third turn is behind them.
-    public func nameUntitledConversations(provider: any ChatProvider) async {
-        let untitled: [(id: String, character: String)] = (try? await userQueue.read { db in
-            try Row.fetchAll(
-                db,
-                sql: """
-                    SELECT c.id, c.character_id FROM conversations c
-                    WHERE c.title IS NULL AND (
-                        SELECT COUNT(*) FROM messages m
-                        WHERE m.conversation_id = c.id AND m.role = 'user'
-                    ) >= ?
-                    """,
-                arguments: [ConversationTitles.titledAt]
-            ).map { ($0["id"], $0["character_id"]) }
-        }) ?? []
-        for conversation in untitled {
-            await nameConversation(
-                conversationID: conversation.id,
-                characterID: conversation.character,
-                provider: provider
             )
         }
     }

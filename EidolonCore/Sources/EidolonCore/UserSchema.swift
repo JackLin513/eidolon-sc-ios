@@ -4,7 +4,7 @@ import GRDB
 /// The writable user library (ADR-0002). Its schema evolves with the app, not
 /// with the content bundle, and is therefore managed by GRDB migrations.
 enum UserSchema {
-    static let version = 4
+    static let version = 5
 
     static func migrate(_ dbQueue: DatabaseQueue) throws {
         var migrator = DatabaseMigrator()
@@ -140,6 +140,17 @@ enum UserSchema {
             // turns; what was written before this is read as a typed turn (upstream
             // records the distinction as `hurt IS NOT NULL`).
             try db.execute(sql: "ALTER TABLE messages ADD COLUMN typed INTEGER NOT NULL DEFAULT 1")
+        }
+        migrator.registerMigration("v5") { db in
+            // An affinity row carried over from v1 has no timestamp: reading it as "now"
+            // swallowed the recovery it was owed and moved a cooldown's start. The upgrade
+            // is the earliest moment it can be said to have been true, so recovery goes on
+            // from there.
+            let now = Eidolon.timestamp(Date())
+            try db.execute(
+                sql: "UPDATE affinities SET updated_at = ? WHERE updated_at IS NULL OR updated_at = ''",
+                arguments: [now]
+            )
         }
         try migrator.migrate(dbQueue)
         try dbQueue.write { db in

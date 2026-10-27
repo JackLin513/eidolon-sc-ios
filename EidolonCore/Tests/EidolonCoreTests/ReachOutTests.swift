@@ -48,7 +48,7 @@ final class KindChatProvider: ChatProvider, @unchecked Sendable {
 
 final class ReachOutTests: XCTestCase {
     private var root: URL!
-    private let start = Date(timeIntervalSince1970: 1_760_000_000) // 2025-10-09T08:53:20Z
+    private let start = Date(timeIntervalSince1970: 1_759_968_000) // 2025-10-09T00:00:00Z, 09:00 JST
 
     override func setUpWithError() throws {
         root = FileManager.default.temporaryDirectory
@@ -128,10 +128,73 @@ final class ReachOutTests: XCTestCase {
 
         // Saying something starts a new stretch of absence.
         try await say("ただいま", at: start.addingTimeInterval(10 * 3600), on: eidolon)
-        let r5 = try await reachOut(at: start.addingTimeInterval(13 * 3600), on: eidolon)
+        let r5 = try await reachOut(at: start.addingTimeInterval(12 * 3600), on: eidolon)
         XCTAssertNil(r5)
-        let r6 = try await reachOut(at: start.addingTimeInterval(17 * 3600), on: eidolon)
+        let r6 = try await reachOut(at: start.addingTimeInterval(23 * 3600), on: eidolon)
         XCTAssertNotNil(r6)
+    }
+
+    /// She does not reach out to someone she is cold with or distant from, however long
+    /// they have been apart (upstream `_tier`: only trust, close and intimate have a time).
+    func testSheDoesNotReachOutWhenSheIsColdOrDistant() async throws {
+        for (value, tier) in [(10.0, AffinityTier.cold), (30.0, AffinityTier.distant)] {
+            let eidolon = try await installedEidolon()
+            try await say("おはよう", at: start, on: eidolon)
+            let stamp = Eidolon.timestamp(start)
+            try await eidolon.userQueue.write { db in
+                try db.execute(
+                    sql: """
+                        INSERT INTO affinities(character_id, value, cooling, updated_at)
+                        VALUES ('mano', ?, 0, ?)
+                        ON CONFLICT(character_id) DO UPDATE SET
+                            value = excluded.value, cooling = 0, updated_at = excluded.updated_at
+                        """,
+                    arguments: [value, stamp]
+                )
+            }
+            let status = try await eidolon.affinityStatus(characterID: "mano", now: start)
+            XCTAssertEqual(status.tier, tier)
+
+            let reached = try await reachOut(at: start.addingTimeInterval(7 * 3600), on: eidolon)
+            XCTAssertNil(reached, "\(tier)")
+        }
+    }
+
+    /// She reaches out only in the week after they were last in touch, and not after it
+    /// (upstream `WINDOW`).
+    func testSheStopsReachingOutAWeekAfterTheLastContact() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("おはよう", at: start, on: eidolon)
+
+        let pastTheEdge = try await reachOut(
+            at: start.addingTimeInterval(7 * 86_400 + 1),
+            on: eidolon
+        )
+        XCTAssertNil(pastTheEdge)
+
+        // Exactly a week is still within the window (upstream `now - contact > WINDOW`).
+        let atTheEdge = try await reachOut(
+            at: start.addingTimeInterval(7 * 86_400),
+            on: eidolon
+        )
+        XCTAssertNotNil(atTheEdge)
+    }
+
+    /// From 22:00 to 08:00 in the producer's day she says nothing: her time is put off to
+    /// the morning (upstream `NIGHT` / `MORNING`).
+    func testSheWaitsForTheMorningWhenItIsNight() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("おはよう", at: start, on: eidolon)
+
+        let atNight = try await reachOut(at: start.addingTimeInterval(13 * 3600), on: eidolon)
+        XCTAssertNil(atNight)
+        let justBeforeMorning = try await reachOut(
+            at: start.addingTimeInterval(23 * 3600 - 1),
+            on: eidolon
+        )
+        XCTAssertNil(justBeforeMorning)
+        let morning = try await reachOut(at: start.addingTimeInterval(23 * 3600), on: eidolon)
+        XCTAssertNotNil(morning)
     }
 
     func testAnEndedConversationIsNotReachedOutIn() async throws {
@@ -191,6 +254,7 @@ final class ReachOutTests: XCTestCase {
             # 先开口
             制作人这会儿没在和你说话，你想先给他发几句。
             - 由头你自己挑：先接着你们最近聊过的事，或者他最近的近况；其次是你这周的工作（如果有）；再其次才是现在的时间、他的生日。
+            - 别人的生日、节假日、往年今天的演出不拿来当由头；组合伙伴的生日可以顺口提一句。
             - 不要只发一句空的问候，比如「早安」「在吗」「想你了」，要有具体想说的事。
             - 写一到两段。
             - 别和你前几次先开口时用一样的开头、一样的由头。
@@ -247,6 +311,85 @@ final class ReachOutTests: XCTestCase {
         await eidolon.settleTitles()
         title = try await eidolon.title(conversationID: conversation.id)
         XCTAssertEqual(title, "猫の話と名前")
+    }
+
+    /// Naming is tried once, on the third turn: a conversation the model failed to name is
+    /// never named again, and no later turn asks (upstream `Titles.after_turn`).
+    func testANameThatFailedIsNotTriedAgain() async throws {
+        let eidolon = try await installedEidolon()
+        let provider = KindChatProvider()
+        provider.chat = "<ja>うん</ja><zh>嗯</zh>"
+        provider.title = nil // says nothing
+
+        for turn in 1...4 {
+            for try await _ in eidolon.sendTurn(
+                characterID: "mano",
+                text: "話\(turn)",
+                provider: provider,
+                now: start.addingTimeInterval(Double(turn) * 60),
+                timeZone: TimeZone(identifier: "Asia/Tokyo")!
+            ) {}
+            await eidolon.settleTitles()
+        }
+
+        let naming = provider.prompts.filter { $0.first?.content.contains("你负责给") == true }
+        XCTAssertEqual(naming.count, 1, "the third turn asks once; the fourth does not")
+        let current = try await eidolon.currentConversation(characterID: "mano")
+        let conversation = try XCTUnwrap(current)
+        let title = try await eidolon.title(conversationID: conversation.id)
+        XCTAssertNil(title)
+    }
+
+    /// What happened in the conversation is part of what the title is about; her
+    /// reach-outs are not (upstream `Titles._name`).
+    func testConversationEventsArePartOfTheTitleInput() async throws {
+        let eidolon = try await installedEidolon()
+        let provider = KindChatProvider()
+        provider.chat = "<ja>うん</ja><zh>嗯</zh>"
+        provider.title = "電話の話"
+        for turn in 1...2 {
+            for try await _ in eidolon.sendTurn(
+                characterID: "mano",
+                text: "話\(turn)",
+                provider: provider,
+                now: start.addingTimeInterval(Double(turn) * 60),
+                timeZone: TimeZone(identifier: "Asia/Tokyo")!
+            ) {}
+            await eidolon.settleTitles()
+        }
+        let current = try await eidolon.currentConversation(characterID: "mano")
+        let conversation = try XCTUnwrap(current)
+        let stamp = Eidolon.timestamp(start.addingTimeInterval(90))
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO conversation_events(conversation_id, kind, created_at)
+                    VALUES (?, 'hung_up', ?)
+                    """,
+                arguments: [conversation.id, stamp]
+            )
+            try db.execute(
+                sql: """
+                    INSERT INTO reach_outs(id, conversation_id, ja, zh, segments, seen, created_at)
+                    VALUES ('reach-1', ?, 'ねえ', '喂', '[{"ja":"ねえ","zh":"喂"}]', 1, ?)
+                    """,
+                arguments: [conversation.id, stamp]
+            )
+        }
+
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano",
+            text: "三回目",
+            provider: provider,
+            now: start.addingTimeInterval(120),
+            timeZone: TimeZone(identifier: "Asia/Tokyo")!
+        ) {}
+        await eidolon.settleTitles()
+
+        let naming = try XCTUnwrap(provider.prompts.first { $0.first?.content.contains("你负责给") == true })
+        let body = try XCTUnwrap(naming.last?.content)
+        XCTAssertTrue(body.contains("（櫻木真乃挂断了电话）"))
+        XCTAssertFalse(body.contains("ねえ"), "her reach-out is not what the conversation was about")
     }
 
     func testTitleFromCutsWhatTheModelWrites() {

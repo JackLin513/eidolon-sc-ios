@@ -133,23 +133,49 @@ extension CharacterConfig {
     }
 }
 
-/// What the character list shows under her name: the latest message and whether
-/// she has an unseen reach-out.
+/// What the character list shows under her name: the latest message, what happened in the
+/// conversation if that was later, and whether she has an unseen reach-out.
 public struct LatestActivity: Sendable, Hashable {
     public var lastMessagePreview: String?
     public var lastMessageRole: String?
     public var lastMessageAt: String?
+    /// The kind of the latest conversation event, when that is the latest thing rather
+    /// than something said (GLOSSARY.md「对话事件」).
+    public var lastEventKind: String?
     public var unseenReachOut: Bool
 
     public init(
         lastMessagePreview: String? = nil,
         lastMessageRole: String? = nil,
         lastMessageAt: String? = nil,
+        lastEventKind: String? = nil,
         unseenReachOut: Bool = false
     ) {
         self.lastMessagePreview = lastMessagePreview
         self.lastMessageRole = lastMessageRole
         self.lastMessageAt = lastMessageAt
+        self.lastEventKind = lastEventKind
         self.unseenReachOut = unseenReachOut
+    }
+}
+
+/// How the roster is ordered (upstream `arrange`).
+public enum ConversationOrder {
+    /// Most recent activity first — a message, her reach-out, or a conversation event —
+    /// with ties and characters never talked to in the content's own order.
+    public static func byRecency(
+        _ characters: [CharacterConfig],
+        latest: [String: LatestActivity]
+    ) -> [CharacterConfig] {
+        characters.enumerated().sorted { left, right in
+            let leftAt = moment(latest[left.element.id]?.lastMessageAt)
+            let rightAt = moment(latest[right.element.id]?.lastMessageAt)
+            if leftAt != rightAt { return leftAt > rightAt }
+            return left.offset < right.offset
+        }.map(\.element)
+    }
+
+    private static func moment(_ stamp: String?) -> Date {
+        stamp.flatMap(Eidolon.parseTimestamp) ?? .distantPast
     }
 }
