@@ -95,11 +95,13 @@ public struct OutfitList: Sendable, Hashable {
         let base = listURL.deletingLastPathComponent()
         var decoded: [OutfitCard] = []
         for card in cards {
+            // One unreadable card is left out, the rest still listed (upstream
+            // `readOutfitList`): a bad entry must not cost her the whole picker.
             guard let object = card.objectValue,
                   let id = object["id"]?.stringValue,
                   let name = object["name"]?.stringValue,
                   let type = object["type"]?.stringValue
-            else { return nil }
+            else { continue }
             decoded.append(
                 OutfitCard(
                     id: id,

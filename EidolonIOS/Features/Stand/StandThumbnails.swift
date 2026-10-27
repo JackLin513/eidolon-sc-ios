@@ -44,9 +44,13 @@ final class OutfitThumbnailStore {
         if let cached = cached(outfit) { return cached }
         await lock()
         defer { unlock() }
+        // The lock may have been waited on after the card scrolled away: then nothing is
+        // drawn and nothing is cached (the card's `.task` cancels when it leaves).
+        guard !Task.isCancelled else { return nil }
         if let cached = cached(outfit) { return cached }
-        await waitForBench()
+        guard await waitForBench() else { return nil }
         guard let image = await draw(outfit, contentRoot: contentRoot) else { return nil }
+        guard !Task.isCancelled else { return nil }
         memory.setObject(image, forKey: outfit.id as NSString)
         if let data = image.pngData() {
             try? data.write(to: file(for: outfit), options: .atomic)
@@ -64,6 +68,9 @@ final class OutfitThumbnailStore {
     private func draw(_ outfit: StandOutfit, contentRoot: URL) async -> UIImage? {
         let renderer = renderer(for: contentRoot)
         renderer.setPaused(false)
+        // Any early exit below, cancellation included, leaves the off-screen renderer
+        // paused instead of drawing for a card that is gone.
+        defer { renderer.setPaused(true) }
         renderer.setViewportSize(Self.size)
         renderer.direct(.calm)
         guard await load(outfit, into: renderer) else {
@@ -72,14 +79,22 @@ final class OutfitThumbnailStore {
             discardWorker()
             return nil
         }
+        guard !Task.isCancelled else { return nil }
         // The camera is sent after the load report and the first frame lands on the next
-        // display link: give them a moment before taking the picture.
-        try? await Task.sleep(for: .milliseconds(400))
+        // display link: give them a moment before taking the picture. A cancelled sleep
+        // means the card went away: take no picture at all.
+        do {
+            try await Task.sleep(for: .milliseconds(400))
+        } catch {
+            return nil
+        }
+        guard !Task.isCancelled else { return nil }
         renderer.setPaused(true)
         guard let image = await renderer.snapshot() else {
             discardWorker()
             return nil
         }
+        guard !Task.isCancelled else { return nil }
         return image
     }
 
@@ -111,11 +126,17 @@ final class OutfitThumbnailStore {
     }
 
     /// The bench has to be in a window for WebKit to paint; the picker's view is laid out
-    /// a moment after the first thumbnail is asked for.
-    private func waitForBench() async {
+    /// a moment after the first thumbnail is asked for. False when the card went away
+    /// while waiting, so the wait ends there instead of drawing for nobody.
+    private func waitForBench() async -> Bool {
         for _ in 0..<40 where bench.window == nil {
-            try? await Task.sleep(for: .milliseconds(50))
+            do {
+                try await Task.sleep(for: .milliseconds(50))
+            } catch {
+                return false
+            }
         }
+        return !Task.isCancelled
     }
 
     // MARK: - The cache
