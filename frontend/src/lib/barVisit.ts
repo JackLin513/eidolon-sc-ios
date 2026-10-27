@@ -2,41 +2,34 @@
 // events of the visit (`POST /api/bar/visits` and the calls after it) and the player's taps,
 // reduced to what is on the screen. Pure: the screen draws it and keeps the time (`now`, in ms).
 //
-// - Her lines and the producer's are queued in the order they come, each laid out in pages
-//   (lib/barText). A page types out at 30 characters a second, a tap types it out at once; a
-//   tap on a page typed out turns to the next. With no page left while the call is still going,
-//   the box waits, and the next line shows as soon as it comes.
-// - Once her order line (its last page) is tapped past, typed out, and she is `waiting`, the bar
-//   counter opens and the text box says the order memo instead of her line (the original's
-//   bartender thinking the order over); the two may come either way round. Typed out, her order
-//   stays on the box, the arrow bobbing, till the player has read it and taps, as in the original
-//   (the bartender's own line comes between her order and the mixing).
-// - Her mood is that of the line of hers on the box; her mouth moves while it types out.
-// - While the counter is open the player mixes (lib/barMixer, empty as it opens) and serves: the
-//   counter locks while `POST …/serves` is under way; taken, it closes, poured out, and the next line (the
-//   producer's 「请慢用」) shows as soon as it comes; refused as broken (422), the shaker shows
-//   it broken; the visit gone (410), back at the door; anything else (409 for a double tap), as
-//   it was.
+// - The text box, her mood and the bar counter are the scene's (lib/barScene), fed the visit's
+//   lines as they come; what is the visit's own is kept here.
+// - Her order line opens the bar counter once tapped past and she is `waiting`, with the order
+//   memo come with her order (the original's bartender thinking the order over).
+// - While the counter is open the player mixes and serves: the counter locks while `POST …/serves`
+//   is under way; taken, the scene stows it and the next line (the producer's 「请慢用」) shows as
+//   soon as it comes; refused as broken (422), the shaker shows it broken; the visit gone (410),
+//   back at the door; anything else (409 for a double tap), as it was.
 // - Each line is marked with the call that sent it. A call made again (`retrying`), or tried
-//   again after `failed` once the server took it, has its lines cleared, typed or not, and the box
-//   goes back to the page before them: the producer's 「请慢用」 of a drink served is sent before
-//   its call is written, so it stays.
-// - Failed, the box says the event's message and 「再试一次」; while `POST …/retry` is under way it
-//   is locked; refused as gone (410), back at the door; anything else (409 `not_failed`), as it was.
+//   again after `failed` once the server took it, has its lines cleared from the scene: the
+//   producer's 「请慢用」 of a drink served is sent before its call is written, so it stays.
+// - Failed, the box says the event's message and 「再试一次」, a tap on it doing nothing; while
+//   `POST …/retry` is under way it is locked; refused as gone (410), back at the door; anything
+//   else (409 `not_failed`), as it was.
 // - Done (`done`), the end card shows once her last page is tapped past: 「再营业」 awaits the next
 //   guest inside (`next`), not at the door.
 // - The visit gone (a call cut off part-way), back at the door, saying so.
 
 import { copy } from "@/i18n";
 import type { ApiError } from "@/lib/api";
-import { type BarMixerAction, type BarMixerState, barMixer, canServe, emptyMixer } from "@/lib/barMixer";
-import { isTypedOut, shownRows, type TextPage, type TextRow, typedChars, type Typing } from "@/lib/barText";
-import type { Emotion } from "@/lib/standAnimations";
+import { type BarMixerAction, canServe } from "@/lib/barMixer";
+import { awaitsLine, type BarSceneState, barScene, emptyScene, isCounterOpen, type SceneLine } from "@/lib/barScene";
+import type { TextPage } from "@/lib/barText";
 
-/** One line of a visit, as a `line` event brings it. */
+/** One line of a visit, as a `line` event brings it: hers may be her order. */
 export type VisitLine =
-  | { speaker: "her"; emotion: Emotion; ja: string; zh: string; order?: true }
-  | { speaker: "producer"; zh: string };
+  | (Extract<SceneLine, { speaker: "her" }> & { order?: true })
+  | Extract<SceneLine, { speaker: "producer" }>;
 
 /** What a visit done was rewarded with (null for nothing). */
 export type VisitRewarded = { draws: number; affinity_up: boolean } | null;
@@ -51,13 +44,6 @@ export type VisitEvent =
   | { type: "failed"; message: string }
   | { type: "done"; rewarded: VisitRewarded };
 
-/** A page of a line queued for the text box, whether it is the line's last, and which of the
- * visit's calls sent it (`BarVisitState.call`). */
-type LinePage = { line: VisitLine; page: TextPage; isLast: boolean; call: number };
-
-/** A page on the text box, and how far it has typed. */
-type ShownPage = LinePage & { typing: Typing };
-
 export type BarVisitState = {
   /** Outside (`door`), coming in while `POST /api/bar/visits` is under way (`entering`), or in;
    * `next`: in, the next guest awaited after 「再营业」 (`POST /api/bar/visits` under way). */
@@ -66,35 +52,16 @@ export type BarVisitState = {
   notice: string | null;
   /** The visit under way: its id, and who came in. */
   visit: { id: string; characterId: string } | null;
-  /** The page on the text box, and how far it has typed. */
-  shown: ShownPage | null;
-  /** Pages come and not yet shown, in order. */
-  queue: LinePage[];
-  /** The player tapped past the last page: the next to come shows at once. */
-  isAwaitingLine: boolean;
-  /** The call under way, counted from the visit's first: its lines are cleared when it is made
-   * again (`retrying`, or tried again after `failed`). */
+  /** The text box, her mood and the bar counter. */
+  scene: BarSceneState;
+  /** The call under way, counted from the visit's first: it marks the lines it sends, cleared
+   * when it is made again (`retrying`, or tried again after `failed`). */
   call: number;
   /** The next line is the producer's 「请慢用」 a drink taken begins its call with: sent once, before
    * the call is written, so not cleared with it. */
   isEnjoyNext: boolean;
-  /** The last page shown before the call under way's, and her mood then: the box and her mood go
-   * back to them as the call's lines are cleared. */
-  resume: { shown: ShownPage; mood: Emotion } | null;
-  /** Her order line is tapped past, the bar counter waiting for `waiting` to open. */
-  isOrderRead: boolean;
-  /** She is waiting for her drink, the bar counter waiting for her order line to be tapped past. */
-  isWaiting: boolean;
-  /** The order memo come with her order, shown once the bar counter opens. */
+  /** The order memo come with her order, given the scene as she waits. */
   pendingMemo: string | null;
-  /** The order memo of the drink being mixed: the text box says it while the counter is open. */
-  memo: string | null;
-  /** The bar counter is open (mixing her drink): she waits for it. */
-  isMixing: boolean;
-  /** Her mood: of the last line of hers on the box; calm as she comes in. */
-  mood: Emotion;
-  /** The bar counter's shaker. */
-  mixer: BarMixerState;
   /** What is in the shaker is being served (`POST …/serves` under way): the counter is locked. */
   isServing: boolean;
   /** The call under way failed (`failed`): what the text box says instead, with 「再试一次」. */
@@ -144,19 +111,10 @@ export function atTheDoor(): BarVisitState {
     stage: "door",
     notice: null,
     visit: null,
-    shown: null,
-    queue: [],
-    isAwaitingLine: false,
+    scene: emptyScene(),
     call: 0,
     isEnjoyNext: false,
-    resume: null,
-    isOrderRead: false,
-    isWaiting: false,
     pendingMemo: null,
-    memo: null,
-    isMixing: false,
-    mood: "calm",
-    mixer: emptyMixer(),
     isServing: false,
     failure: null,
     isRetrying: false,
@@ -189,49 +147,33 @@ export function barVisit(state: BarVisitState, action: BarVisitAction): BarVisit
       if (!state.isRetrying) return state;
       return action.status === 410 ? visitGone() : { ...state, isRetrying: false };
     case "line": {
-      const pages: LinePage[] = action.pages.map((page, i) => ({
-        line: action.line,
-        page,
-        isLast: i === action.pages.length - 1,
-        call: state.call,
-      }));
+      const { line, pages, now } = action;
+      const opensCounter = line.speaker === "her" && line.order === true;
+      const scene = barScene(state.scene, { type: "line", line, pages, now, mark: state.call, opensCounter });
       const call = state.isEnjoyNext ? state.call + 1 : state.call;
-      const queued = { ...state, queue: [...state.queue, ...pages], call, isEnjoyNext: false };
-      return state.shown === null || state.isAwaitingLine ? showNext(queued, action.now) : queued;
+      return { ...state, scene, call, isEnjoyNext: false };
     }
     case "event":
       return onEvent(state, action.event);
-    case "tap": {
-      const { shown } = state;
-      if (!shown || state.failure !== null) return state;
-      if (!isTypedOut(shown.page, shown.typing, action.now)) {
-        return { ...state, shown: { ...shown, typing: { ...shown.typing, finished: true } } };
-      }
-      const next =
-        state.queue.length > 0 ? showNext(state, action.now) : state.isAwaitingLine ? state : { ...state, isAwaitingLine: true };
-      // 她的点单句读完、点过去了：等 `waiting` 一到（或者已经到了）就开调酒台。上过酒以后框上还是那句，再点不算。
-      const isRead = isOrderPage(shown) && !state.isMixing && !state.isEnjoyNext;
-      return isRead ? openCounter({ ...next, isOrderRead: true }) : next;
+    case "tap":
+      return state.failure !== null ? state : withScene(state, barScene(state.scene, action));
+    case "mix":
+      return state.isServing ? state : withScene(state, barScene(state.scene, action));
+    case "serve": {
+      const { scene } = state;
+      return isCounterOpen(scene) && !state.isServing && canServe(scene.mixer) ? { ...state, isServing: true } : state;
     }
-    case "mix": {
-      if (!state.isMixing || state.isServing) return state;
-      const mixer = barMixer(state.mixer, action.action);
-      return mixer === state.mixer ? state : { ...state, mixer };
-    }
-    case "serve":
-      return state.isMixing && !state.isServing && canServe(state.mixer) ? { ...state, isServing: true } : state;
     case "served":
-      // 调酒时箭头不显示，玩家没理由去点：「请慢用」一到就顶掉点单句开始打。
       return state.isServing
-        ? { ...state, isServing: false, isMixing: false, isAwaitingLine: true, isEnjoyNext: true, mixer: emptyMixer() }
+        ? { ...state, isServing: false, isEnjoyNext: true, scene: barScene(state.scene, { type: "stow" }) }
         : state;
-    case "serveRefused":
+    case "serveRefused": {
       if (!state.isServing) return state;
       if (action.status === 410) return visitGone();
-      if (action.status === 422) {
-        return { ...state, isServing: false, mixer: barMixer(state.mixer, { type: "broken", garble: action.garble }) };
-      }
-      return { ...state, isServing: false };
+      if (action.status !== 422) return { ...state, isServing: false };
+      const scene = barScene(state.scene, { type: "mix", action: { type: "broken", garble: action.garble } });
+      return { ...state, isServing: false, scene };
+    }
   }
 }
 
@@ -242,7 +184,7 @@ function onEvent(state: BarVisitState, event: Exclude<VisitEvent, { type: "line"
     case "memo":
       return { ...state, pendingMemo: event.text };
     case "waiting":
-      return openCounter({ ...state, isWaiting: true });
+      return { ...state, pendingMemo: null, scene: barScene(state.scene, { type: "counterReady", memo: state.pendingMemo }) };
     case "retrying":
       return clearCall(state);
     case "failed":
@@ -254,102 +196,21 @@ function onEvent(state: BarVisitState, event: Exclude<VisitEvent, { type: "line"
   }
 }
 
-/** The next page queued put on the box, typing from `now`. */
-function showNext(state: BarVisitState, now: number): BarVisitState {
-  const [next, ...queue] = state.queue;
-  if (!next) return state;
-  const { shown } = state;
-  const resume = shown && shown.call !== state.call ? { shown, mood: state.mood } : state.resume;
-  const mood = next.line.speaker === "her" ? next.line.emotion : state.mood;
-  return {
-    ...state,
-    shown: { ...next, typing: { startedAt: now, finished: false } },
-    queue,
-    isAwaitingLine: false,
-    isOrderRead: false,
-    mood,
-    resume,
-  };
+/** The state with `scene`: itself if the scene did not change. */
+function withScene(state: BarVisitState, scene: BarSceneState): BarVisitState {
+  return scene === state.scene ? state : { ...state, scene };
 }
 
-/** The lines the call under way sent cleared, typed or not: the box back on the page before them,
- * typed out, the next line to come shown at once. */
+/** The lines the call under way sent cleared from the scene. */
 function clearCall(state: BarVisitState): BarVisitState {
-  const queue = state.queue.filter((p) => p.call !== state.call);
-  if (state.shown?.call !== state.call) return { ...state, queue };
-  const { resume } = state;
-  return {
-    ...state,
-    queue,
-    shown: resume && { ...resume.shown, typing: { ...resume.shown.typing, finished: true } },
-    mood: resume?.mood ?? "calm",
-    isAwaitingLine: true,
-  };
-}
-
-/** The last page of her order line. */
-function isOrderPage(page: LinePage): boolean {
-  return page.line.speaker === "her" && page.line.order === true && page.isLast;
-}
-
-/** The bar counter opened, with her order memo, once her order is tapped past and she waits. */
-function openCounter(state: BarVisitState): BarVisitState {
-  if (!state.isOrderRead || !state.isWaiting) return state;
-  return {
-    ...state,
-    isOrderRead: false,
-    isWaiting: false,
-    isMixing: true,
-    memo: state.pendingMemo ?? state.memo,
-    pendingMemo: null,
-  };
-}
-
-/** The text box at `now`: whose line, its rows as far as typed, and whether it is typed out. */
-export function shownText(
-  state: BarVisitState,
-  now: number,
-): { line: VisitLine; rows: TextRow[]; isTypedOut: boolean } | null {
-  const { shown } = state;
-  if (!shown) return null;
-  return {
-    line: shown.line,
-    rows: shownRows(shown.page, typedChars(shown.page, shown.typing, now)),
-    isTypedOut: isTypedOut(shown.page, shown.typing, now),
-  };
-}
-
-/** What the text box says while the bar counter is open (her drink being mixed): the order memo,
- * the producer's note to self, whole at once; null otherwise, or with no memo come. */
-export function mixingMemo(state: BarVisitState): string | null {
-  return state.isMixing ? state.memo : null;
-}
-
-/** Whose line is typing out on the box (its typing sound plays meanwhile); null for none. */
-export function typingVoice(state: BarVisitState, now: number): VisitLine["speaker"] | null {
-  const { shown } = state;
-  if (!shown || state.failure !== null || isTypedOut(shown.page, shown.typing, now)) return null;
-  return shown.line.speaker;
-}
-
-/** Her mouth moves: a line of hers is typing out on the box. */
-export function isSpeaking(state: BarVisitState, now: number): boolean {
-  return typingVoice(state, now) === "her";
-}
-
-/** The arrow at the box's corner bobs: the page is typed out and a tap turns to something, not
- * while the box waits for the next line, nor while she waits for her drink. */
-export function isArrowShown(state: BarVisitState, now: number): boolean {
-  const { shown } = state;
-  if (!shown || state.isAwaitingLine || state.isMixing || state.failure !== null) return false;
-  return isTypedOut(shown.page, shown.typing, now);
+  return { ...state, scene: barScene(state.scene, { type: "clear", mark: state.call }) };
 }
 
 /** The end card, once she said goodbye and her last page is tapped past: whether it says a draw
  * chance came (the day's first visit done) and her affinity rose; neither, it says she left. */
 export function endCard(state: BarVisitState): { draws: boolean; affinityUp: boolean } | null {
   const { done } = state;
-  if (!done || state.queue.length > 0 || (state.shown !== null && !state.isAwaitingLine)) return null;
+  if (!done || !awaitsLine(state.scene)) return null;
   return { draws: (done.rewarded?.draws ?? 0) > 0, affinityUp: done.rewarded?.affinity_up ?? false };
 }
 

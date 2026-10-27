@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { CHARS_PER_SECOND, typedOutAt } from "@/lib/barText";
-import type { BarVisitState } from "@/lib/barVisit";
+import type { BarSceneState } from "@/lib/barScene";
 
 /** How often the box redraws while a page types out: once a character. */
 const TYPING_TICK_MS = 1000 / CHARS_PER_SECOND;
@@ -11,7 +11,7 @@ const TYPING_TICK_MS = 1000 / CHARS_PER_SECOND;
 /**
  * 文本框的时钟：`shown` 那一页在打字时每个字重画一次（返回现在的时刻），打完再重画一次（倒三角出来、打字音效停）。
  */
-export function useTypingClock(shown: BarVisitState["shown"]): number {
+export function useTypingClock(shown: BarSceneState["shown"]): number {
   const [now, setNow] = useState(() => performance.now());
   useEffect(() => {
     if (!shown) return;

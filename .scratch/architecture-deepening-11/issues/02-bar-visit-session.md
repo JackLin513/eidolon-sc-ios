@@ -79,3 +79,12 @@
   - 「再营业」时让上一位那次调用晚一点报错；
   - 进门被拒 429、409（回玩法页）。
 - [ ] 本机跑类型检查和受影响的测试，推分支，看 CI。
+
+## Comments
+
+### 票 01 交接
+
+- 光顾的状态已经带 `scene`（lib/barScene），场景的查询都对 `state.scene` 调。`useBarVisit` 交出 `current: CurrentScene`（`components/play/bar/sceneOnScreen.ts`），画面那层只挑一次 `tutorial.current ?? visit.current`；会话的快照接过来时保持这个形状。
+- `useBarVisit` 多了一个 ref `pagesFor`：进门时 `await loadSceneLayout()` 存下分页函数，`follow` 每句来时用它。搬进会话时，分页那一项（角色列表加量字）照规格从外面传进来，可以把它换掉。
+- 画面那一层直接读光顾的 `state.isServing`（锁台）和 `state.failure`（出错时她不开口、不响打字音效）。code-review 建议这两样交给 hook 或会话的快照，瘦身时可以一起做。
+

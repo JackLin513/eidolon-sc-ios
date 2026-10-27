@@ -17,7 +17,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
 ## 已定的设计（2026-10-27 grilling，详见 spec）
 
@@ -39,16 +39,34 @@
 
 ## 验收
 
-- [ ] 新的 `barScene` 照上面的设计写好，开台的规则只出现在这里。
-- [ ] `barVisit`、`barTutorial` 都建在 `barScene` 上面；教程不再带光顾的状态，也不再直接改场景的字段。
-- [ ] 两个 hook 改用共用的分页小函数。
-- [ ] 画面那一层只挑一次「当前场景」。
-- [ ] 测试：
+- [x] 新的 `barScene` 照上面的设计写好，开台的规则只出现在这里。
+- [x] `barVisit`、`barTutorial` 都建在 `barScene` 上面；教程不再带光顾的状态，也不再直接改场景的字段。
+- [x] 两个 hook 改用共用的分页小函数。
+- [x] 画面那一层只挑一次「当前场景」。
+- [x] 测试：
   - `barScene` 直接测：打字、翻页；等下一句时新来的马上显示；表情；开台的两个条件，两种先后都要测；调酒台没开时调酒不起作用；上酒后收起；清掉某个标记的台词以后回到之前那一页和之前的表情；各个查询。
   - `barVisit` 的测试只留光顾特有的部分；点单句经场景开台的情况只留一条，证明两者接上了。
   - `barTutorial` 的测试只看公开的查询：备忘、箭头、文本框、走完去哪。不再断言内部字段。
-- [ ] 在本地构建版上用 Playwright 验收（`docs/agents/local-acceptance.md`「酒吧」一节）：
+- [x] 在本地构建版上用 Playwright 验收（`docs/agents/local-acceptance.md`「酒吧」一节）：
   - 走完整个教程：开台、上酒、她的反应、去选曲界面；
   - 再走一次光顾，走到上酒、「请慢用」开始打；
   - 和改之前对照，画面一样。
 - [ ] 本机跑类型检查和受影响的测试，推分支，开 draft PR，看 CI。
+
+## Comments
+
+### 实现说明（票 01）
+
+- 新 `lib/barScene.ts`：纯状态加转移，动作有 `line`（可带 `mark` 和 `opensCounter`）、`tap`、`counterReady`（带备忘，null 时沿用上一单的备忘，和原来的退回一样）、`mix`、`stow`（上酒后收起）、`clear`（清掉某个标记）。查询有 `shownText`、`mixingMemo`、`typingVoice`、`isSpeaking`、`isArrowShown`、`isCounterOpen`、`awaitsLine`（框在等下一句；光顾的结束卡和教程往下走都用它）。开台的规则只在 `tap` 和 `counterReady` 这一处。
+- 「上过酒以后再点框上那句点单不再开台」原来靠光顾的 `isEnjoyNext` 挡，现在由场景挡：只有第一次把那句点过去才算读完。收起时框在等下一句，所以再点不算。
+- 「回到之前那一页」原来按「当前调用」比较，现在改成显示新一页时标记变了就记下上一页，清的总是最新的标记，结果一样。
+- `barVisit` 的状态里带 `scene`。memo 先存着，waiting 到时连同 `counterReady` 一起交给场景。后端总是先发 memo 再发 waiting（`bar.py`），所以和原来「开台时才取备忘」等价。`endCard`、`doorNotice` 留在光顾这边。
+- `barTutorial` 带 `scene` 和 `characterId`，不再有假的光顾。教调酒那一节送台词时，最后一句标「点过去就开台」，同时给 `counterReady`。上酒时先 `stow`，再送反应。
+- 共用的分页和「当前场景」的类型放在 `components/play/bar/sceneOnScreen.ts`（`loadSceneLayout`、`CurrentScene`）。分页要用 PixelText 量字，lib 不引组件，所以放在组件目录，没放 lib。`CurrentScene` 比规格多一项 `guest`（立绘的 key 和她是谁），因为画面挑一次以后还得知道画谁。教程的 key 照旧是 `"tutorial"`。
+- 画面那一层（BarSubpage）挑一次 `tutorial.current ?? visit.current`。上酒锁台（`state.isServing`）和出错（`state.failure`）是光顾的事：教程进行时光顾停在店门口，这两样都是空的，所以画面直接读光顾的状态，不用分教程和光顾。出错时她不开口、不响打字音效，这一条也挡在画面这层（原来写在 barVisit 的选择器里）。
+- 验收：在本地构建版上用 Playwright 走完了教程（两课开台、上酒、反应、去选曲界面）和一次光顾（点单、开台、上酒、「请慢用」没点就上框）。基点 3df0a2ba 的构建版也跑了同一脚本，两边截图除了立绘的呼吸眨眼和配方书滑入的进度以外没有差别。
+- code-review 里只报告、没修的判断题：
+  - 查询 `isCounterOpen`（调酒台开着）和 BarCounter、BarRecipeBook 的同名 prop（开着并且没在上酒）意思不同，画面那层用 `isCounterUnlocked` 接上。
+  - 教程的 `mix` 手写了一遍「场景没变就返回原状态」，光顾那边有 `withScene`。
+  - 画面那一层自己用光顾的 `isServing`、`failure` 拼锁台和出错静音，可以考虑交给 `useBarVisit`，票 02 瘦身时顺手看看。
+  - 测试里还读 `scene.mixer`、`scene.mood`，画面也直接读这两样，算半公开字段。

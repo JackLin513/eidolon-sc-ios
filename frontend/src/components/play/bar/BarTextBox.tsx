@@ -9,7 +9,7 @@ import { measurePixelText, PixelText, type PixelRun } from "@/components/play/ba
 import { Sprite } from "@/components/play/bar/Sprite";
 import { copy } from "@/i18n";
 import { TEXT_WIDTH, type TextRow, wrapText } from "@/lib/barText";
-import type { VisitLine } from "@/lib/barVisit";
+import type { SceneLine } from "@/lib/barScene";
 
 /** The original's text box, under the guest's window, and where the text starts in it. */
 const BOX = { x: 17, y: 276, width: 412, height: 65 };
@@ -36,7 +36,7 @@ function fitted(text: string, width: number): string {
 
 /**
  * 文本框（.scratch/bar-room spec「文本框和打字」）：一页台词，名字按角色上色、接冒号（她用官方色，制作人用原型的「我」色），
- * 正文白色，她的中文字幕灰色。打完右下角 `arrow_text_2` 上下跳。点哪都算：交给 lib/barVisit，先打完、再翻页。
+ * 正文白色，她的中文字幕灰色。打完右下角 `arrow_text_2` 上下跳。点哪都算：交给 lib/barScene，先打完、再翻页。
  * 电脑上鼠标停在文本框上是会动的 NEXT 气泡（`isNextCursor`：点了有用的时候）。
  * 调酒时（`memo`）台词收起，写这一单的备忘：制作人第一人称的心里话，白字、不带名字，一下子整句出来，最多 4 行
  * （放不下的截成「…」，读屏读全文），没有倒三角，点了没反应（票 14，照原版主角在文本框里复述点单）。
@@ -51,7 +51,7 @@ export function BarTextBox({
   memo,
   failure,
 }: {
-  text: { line: VisitLine; rows: TextRow[] } | null;
+  text: { line: SceneLine; rows: TextRow[] } | null;
   memo: string | null;
   herColor: string;
   isArrowShown: boolean;
