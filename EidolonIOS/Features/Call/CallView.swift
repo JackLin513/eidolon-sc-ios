@@ -37,6 +37,14 @@ struct CallView: View {
     @State private var animations: [String: Double] = [:]
     @State private var standLoaded = false
     @State private var standFailed = false
+    /// Her stand read from the bundle: the default outfit and, when it reads, her list.
+    @State private var stand: CharacterStand?
+    /// The outfits still to try if the one being loaded turns out to be unreadable: her
+    /// default after the one she wears, so a broken outfit never leaves her without a stand.
+    @State private var fallbackOutfits: [StandOutfit] = []
+    /// The size the stand is laid out at, so a renderer made mid-call frames her the same.
+    @State private var standViewport = CGSize.zero
+    @State private var showsOutfits = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -54,6 +62,21 @@ struct CallView: View {
         .background(Color.black)
         .preferredColorScheme(.dark)
         .task { await start() }
+        .fullScreenCover(isPresented: $showsOutfits) {
+            if let stand {
+                OutfitPickerView(
+                    character: character,
+                    stand: stand,
+                    contentRoot: app.core.location.contentDirectory,
+                    onWear: { outfit in
+                        outfitChosen(outfit)
+                    },
+                    onClose: {
+                        showsOutfits = false
+                    }
+                )
+            }
+        }
         .interactiveDismissDisabled(session != nil && !isEnded)
         .onChange(of: scenePhase) { _, phase in
             renderer?.setPaused(phase != .active)
@@ -74,10 +97,12 @@ struct CallView: View {
         guard !started else { return }
         started = true
         loadBackdrop()
+        // Her stand does not wait on the call: it is there even when the call cannot be
+        // made (no keys yet), and her outfit can still be looked at.
+        await loadStand()
         do {
             let call = try await app.beginCall(for: character)
             session = call
-            await loadStand()
             let events = call.events()
             await call.start()
             autoHangUpIfRequested(call)
@@ -98,25 +123,60 @@ struct CallView: View {
 
     /// A fresh renderer each call: one that failed last time gets another try now (spec
     /// 「退化」). No stand in the bundle means no renderer, and the call runs as it always did.
+    /// She is put in the outfit remembered for her, or her default when that outfit is gone
+    /// (spec「衣装与换衣装」); a fresh renderer is also the retry after a failure.
     private func loadStand() async {
-        guard renderer == nil, let stand = await app.core.stand(for: character.id) else { return }
+        guard renderer == nil, let found = await app.core.stand(for: character.id) else { return }
+        stand = found
+        let outfits = found.outfitsToTry(
+            choice: StandOutfitChoiceStore().choice(for: character.id)
+        )
+        guard let worn = outfits.first else { return }
+        showStand(worn, fallback: Array(outfits.dropFirst()))
+    }
+
+    /// Put one outfit on her. A broken outfit falls back to the next one (her default); a
+    /// page or runtime that cannot draw ends her stand for this call.
+    private func showStand(_ outfit: StandOutfit, fallback: [StandOutfit]) {
+        let previous = renderer
+        previous?.setPaused(true)
         let renderer = StandWebRenderer(
             contentRoot: app.core.location.contentDirectory,
             framing: StandFraming(compactWidth: isCompactWidth)
         )
+        fallbackOutfits = fallback
         renderer.onLoaded = { report in
             animations = report.animations
             standLoaded = true
             renderPose()
         }
-        renderer.onFailure = { _ in
+        renderer.onFailure = { failure in
             // The renderer logs why; losing her is never fatal, the call goes on.
+            if case .outfit = failure, let next = fallbackOutfits.first {
+                showStand(next, fallback: Array(fallbackOutfits.dropFirst()))
+                return
+            }
             standLoaded = false
             standFailed = true
         }
         renderer.setPaused(scenePhase != .active)
-        renderer.load(stand.defaultOutfit)
+        if standViewport != .zero {
+            renderer.setViewportSize(standViewport)
+        }
         self.renderer = renderer
+        renderer.load(outfit)
+    }
+
+    /// Put the outfit she just chose on her: the same renderer loads it in place, so the
+    /// camera, her direction and the call all stay; if this one cannot load, her default
+    /// takes over. The choice stays remembered either way.
+    private func outfitChosen(_ outfit: StandOutfit) {
+        guard let renderer, !standFailed else { return }
+        let fallback = outfit.id == stand?.defaultOutfit.id
+            ? []
+            : [stand?.defaultOutfit].compactMap { $0 }
+        fallbackOutfits = fallback
+        renderer.load(outfit)
     }
 
     /// Development aid: `SIMCTL_CHILD_EIDOLON_CALL_HANGUP_MS` ends the call by itself,
@@ -214,14 +274,23 @@ struct CallView: View {
         let viewport = CGSize(width: size.width, height: height)
         return VStack(spacing: 0) {
             Spacer(minLength: 0)
-            StandHost(renderer: renderer)
+            StandHostView(renderer: renderer)
+                // A fallback replaces the renderer with a new view; without this SwiftUI
+                // would keep the failed one on screen.
+                .id(ObjectIdentifier(renderer as AnyObject))
                 .frame(width: viewport.width, height: viewport.height)
                 .opacity(standLoaded ? 1 : 0)
                 .animation(.linear(duration: 0.3), value: standLoaded)
                 .offset(y: riseOffset(height: height))
                 .animation(riseAnimation, value: standLoaded)
-                .onAppear { renderer.setViewportSize(viewport) }
-                .onChange(of: viewport) { _, next in renderer.setViewportSize(next) }
+                .onAppear {
+                    standViewport = viewport
+                    renderer.setViewportSize(viewport)
+                }
+                .onChange(of: viewport) { _, next in
+                    standViewport = next
+                    renderer.setViewportSize(next)
+                }
         }
         .frame(width: size.width, height: size.height, alignment: .bottom)
         .opacity(isEnded ? 0.4 : 1)
@@ -309,15 +378,38 @@ struct CallView: View {
     }
 
     private var header: some View {
-        VStack(spacing: 2) {
-            Text(character.name)
-                .font(.system(size: 26, weight: .bold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-            status
+        ZStack {
+            VStack(spacing: 2) {
+                Text(character.name)
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                status
+            }
+            .frame(maxWidth: .infinity)
+            HStack {
+                Spacer()
+                if showsOutfitButton {
+                    Button {
+                        showsOutfits = true
+                    } label: {
+                        Image(systemName: "tshirt.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 38, height: 38)
+                            .background(.white.opacity(0.16), in: Circle())
+                    }
+                    .accessibilityLabel("换衣装")
+                }
+            }
         }
-        .frame(maxWidth: .infinity)
         .padding(.horizontal, 20)
+    }
+
+    /// Only a character whose bundle carries a stand, and whose stand can draw, can be
+    /// changed: otherwise there is nothing to preview or put on her (spec「退化」).
+    private var showsOutfitButton: Bool {
+        stand != nil && renderer != nil && !standFailed
     }
 
     /// Upstream's `Status`: calling while it connects, how long it has lasted once connected,
@@ -483,15 +575,4 @@ private struct DialingDots: View {
             }
         }
     }
-}
-
-/// Hosts whichever stand renderer the call screen was given; it never sees WebKit.
-private struct StandHost: UIViewRepresentable {
-    let renderer: any StandRenderer
-
-    func makeUIView(context: Context) -> UIView {
-        renderer.view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {}
 }

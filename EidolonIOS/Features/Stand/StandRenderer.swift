@@ -1,4 +1,5 @@
 import EidolonCore
+import SwiftUI
 import UIKit
 
 /// The one way the app draws her (ADR-0017): the call screen and the outfit preview know
@@ -34,4 +35,15 @@ enum StandRenderFailure: Error, Equatable {
     case runtime(String)
     /// Her outfit's files are missing or unreadable.
     case outfit(String)
+}
+
+/// Hosts whichever stand renderer a view was given; the interface never sees WebKit.
+struct StandHostView: UIViewRepresentable {
+    let renderer: any StandRenderer
+
+    func makeUIView(context: Context) -> UIView {
+        renderer.view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
 }
