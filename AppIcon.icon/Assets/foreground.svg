@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- 听筒轮廓取自 Google Material Icons 的 call（Apache-2.0），放大后居中。 -->
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+    <path id="handset" d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+  </defs>
+  <g transform="translate(524 500) scale(26.5) translate(-12 -12)">
+    <use href="#handset" fill="#FFFFFF" filter="url(#soft)" opacity="0.32"/>
+    <use href="#handset" fill="#FFFFFF"/>
+  </g>
+  <path d="M 742 248 L 754 280 L 786 292 L 754 304 L 742 336 L 730 304 L 698 292 L 730 280 Z"
+        fill="#FFFFFF" opacity="0.90"/>
+</svg>
