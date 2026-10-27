@@ -118,30 +118,25 @@ from eidolon.affinity import (
     affinity_prompt,
     ends,
     hurt,
+    tier_prompt,
     warns,
 )
 from eidolon.affinity_judge import AffinityJudge
 from eidolon.characters import Character
 from eidolon.clock import Clock
 from eidolon.config import FishAudioModel, ImageSettings
-from eidolon.cycles import Cycles, HerDays, always_neither, cycle_lines
+from eidolon.cycles import HerDays
 from eidolon.data_access import Database
 from eidolon.gift_catalog import Gift
 from eidolon.happenings import Happenings, Rewarded
 from eidolon.her_cycle import HerDay, Period, Premenstrual
+from eidolon.her_now import HerNow, KnownNow, Occasion
 from eidolon.judge import JudgeError
 from eidolon.llm import ChatLLM, ChatMessage, Reasoning, Tool, ToolCall, TurnLLMs
 from eidolon.memory import Memories, last_turn_query
 from eidolon.own_keys import OwnKeyFailed
 from eidolon.photos import CANNOT_SEND, NOT_RECEIVED, Eligibility, Photos, photo_turn
-from eidolon.producer import (
-    ProducerProfile,
-    Talking,
-    effective_timezone,
-    local_date,
-    now_prompt,
-    producer_prompt,
-)
+from eidolon.producer import ProducerProfile, effective_timezone, local_date, producer_prompt
 from eidolon.reply_format import (
     format_instructions,
     PhotoTagged,
@@ -153,7 +148,6 @@ from eidolon.reply_format import (
     format_reply,
 )
 from eidolon.retrieval import RECALL_STORY_TOOL, Retrieval, Retrieved
-from eidolon.schedule import HerSchedule, Schedules, schedule_lines
 from eidolon.store import (
     Conversation,
     ConversationEnded,
@@ -175,7 +169,7 @@ from eidolon.store import (
     told_her,
 )
 from eidolon.titles import Titles
-from eidolon.today import her_birthday, today_lines
+from eidolon.today import always_known
 from eidolon.world import World
 
 MAX_INPUT_LENGTH = 2000
@@ -577,6 +571,7 @@ class ConversationEngine:
         memory: Memories,
         titles: Titles,
         clock: Clock,
+        her_now: HerNow,
         retrieval: Retrieval | None = None,
         history_turns: Callable[[], int | None] = lambda: None,
         world: World | None = None,
@@ -584,8 +579,6 @@ class ConversationEngine:
         affinity_judge: AffinityJudge | None = None,
         photos: Photos | None = None,
         happenings: Happenings | None = None,
-        schedules: Schedules | None = None,
-        cycles: Cycles | None = None,
     ) -> None:
         """Without `retrieval`, turns carry no story or character facts and find no
         memories. Each turn reads only the conversation's latest turns, as many as
@@ -595,9 +588,9 @@ class ConversationEngine:
         retrieval's judge judges what turns do to it, or without retrieval
         `affinity_judge`, which judges whether turns ask for a photo too. Without `photos`,
         or without the judge model, no turn has a photo. Each turn recorded is told to
-        `happenings`, if any. With `schedules`, she is told her jobs the user saved, in
-        turns and reaching out alike; with `cycles`, how she feels where her cycle has her,
-        likewise."""
+        `happenings`, if any. What she knows of now, in turns and reaching out alike,
+        `her_now` gives; where her cycle has her it reads too, for what she is judged by
+        and told of gifts."""
         self._db = db
         self._store = store
         self._characters = characters
@@ -612,8 +605,7 @@ class ConversationEngine:
         self._affinity_judge = affinity_judge
         self._photos = photos
         self._happenings = happenings
-        self._schedules = schedules
-        self._cycles = cycles
+        self._her_now = her_now
         self._ended_listeners: list[Callable[[str, EndsFor], None]] = []
         self._cooled_listeners: list[Callable[[str, str, datetime], None]] = []
 
@@ -683,8 +675,11 @@ class ConversationEngine:
     ) -> AsyncIterator[TurnEvent]:
         # The database is read and written on threads all through the turn: waiting on it
         # on the event loop would keep everyone's calls on it from going on meanwhile.
-        # Her jobs first, so that her affinity is read with those done counted.
-        her_jobs = await self._her_jobs(conversation, device_timezone)
+        occasion: Occasion = "typing" if in_call is None else "in_call"
+        # Before her affinity is read, so that it is read with her jobs done counted.
+        known = await self._her_now.read(
+            conversation.user_id, conversation.character_id, device_timezone, occasion
+        )
         read = await self._db.read(
             self._before_turn, conversation, in_call is not None, photo.own, self._affinity_on
         )
@@ -704,8 +699,9 @@ class ConversationEngine:
         history = [*latest_turns(messages, turns), *_answering(record)]
         timezone = effective_timezone(profile, device_timezone)
         # Before she is judged, as where she is has her judged by these days' numbers; the
-        # same for what she is told and her being unwell.
-        her_days = await self._her_days(conversation)
+        # same for her being unwell. What she is told of now has her where she is as the
+        # prompt is laid out, a day off only should midnight fall in between.
+        her_days = known.her_days
         her_day = her_days(self._clock(), timezone)
         days = _days(her_day)
         judging = affinity is not None and not affinity.cooling
@@ -768,10 +764,8 @@ class ConversationEngine:
             chat_history(messages, turns),
             narrations(record, self._gift_catalog, timezone, her_days),
             [
-                self._now_prompt(
-                    character, profile, now, timezone,
-                    "in_call" if in_call is not None else "typing", affinity_lines, last_contact,
-                    her_jobs, her_day,
+                self._now_section(
+                    known, occasion, now, timezone, profile, last_contact, affinity_lines
                 ),
                 *([about_photo] if about_photo else []),
             ],
@@ -891,7 +885,9 @@ class ConversationEngine:
         to say something first. Nothing else is retrieved, no tool offered, nothing judged.
         Raises EmptyReply if the model says nothing she could say, and whatever the model
         raises."""
-        her_jobs = await self._her_jobs(conversation, None)
+        known = await self._her_now.read(
+            conversation.user_id, conversation.character_id, None, "apart"
+        )
         read = await self._db.read(self._before_reaching_out, conversation, self._affinity_on)
         character, record, affinity, last_contact, profile = (
             read.character, read.record, read.affinity, read.last_contact, read.profile
@@ -902,7 +898,7 @@ class ConversationEngine:
         world_prompt = (
             self._world.prompt(character.name, local_date(now, timezone)) if self._world else None
         )
-        her_days = await self._her_days(conversation)
+        her_days = known.her_days
         told = narrations(record, self._gift_catalog, timezone, her_days)
         told[None] = _since_last_turn(record, self._gift_catalog, timezone, her_days)
         memories = await self._memory.for_reaching_out(
@@ -912,10 +908,8 @@ class ConversationEngine:
             character, world_prompt, producer_prompt(profile),
             chat_history(messages, self._history_turns()), told,
             [
-                self._now_prompt(
-                    character, profile, now, timezone, "apart",
-                    affinity_prompt(affinity.tier, None) if affinity is not None else [],
-                    last_contact, her_jobs, her_days(now, timezone),
+                self._now_section(
+                    known, "apart", now, timezone, profile, last_contact, tier_prompt(affinity)
                 ),
             ],
             [*([memories] if memories else []), REACH_OUT_RULES],
@@ -1126,49 +1120,20 @@ class ConversationEngine:
             return "调用参数有误：需要 query（要回顾的事，一句概括）。"
         return await self._retrieval.recall_story(character, query.strip())
 
-    def _now_prompt(
+    def _now_section(
         self,
-        character: Character,
-        profile: ProducerProfile,
+        known: KnownNow,
+        occasion: Occasion,
         now: datetime,
         timezone: str,
-        talking: Talking,
-        affinity_lines: Sequence[str],
+        profile: ProducerProfile,
         last_contact: datetime | None,
-        her_jobs: HerSchedule | None,
-        her_day: HerDay,
+        affinity_lines: Sequence[str],
     ) -> str:
-        """The prompt section about now (`now_prompt`), what she is told of the day it is in
-        Tokyo (`today_lines`) right after it, then of `her_jobs` the user saved, if any
-        (`schedule_lines`), then of where her cycle has her (`cycle_lines`)."""
-        return "\n".join([
-            now_prompt(profile, now, timezone, talking, affinity_lines, last_contact),
-            *today_lines(
-                now, character, self._characters.values(), talking,
-                self._world.lives_of(character.name) if self._world else (),
-                self._world.unit_mates(character.name) if self._world else (),
-            ),
-            *(schedule_lines(her_jobs) if her_jobs is not None else []),
-            *cycle_lines(her_day),
-        ])
-
-    async def _her_days(self, conversation: Conversation) -> HerDays:
-        """Where her cycle has her at any time, the switches read now; neither without
-        cycles."""
-        if self._cycles is None:
-            return always_neither
-        return await self._cycles.her_days(conversation.user_id, conversation.character_id)
-
-    async def _her_jobs(
-        self, conversation: Conversation, device_timezone: str | None
-    ) -> HerSchedule | None:
-        """Her jobs the user saved, the user's device in `device_timezone` (None reaching
-        out), those done counted; None without schedules, or while they are off."""
-        if self._schedules is None:
-            return None
-        return await self._schedules.hers(
-            conversation.user_id, conversation.character_id, device_timezone
-        )
+        """The prompt section of what she knows of now on `occasion` (`HerNow.lines`)."""
+        return "\n".join(self._her_now.lines(
+            known, occasion, now, timezone, profile, last_contact, affinity_lines
+        ))
 
     def _prompt(
         self,
@@ -1186,10 +1151,7 @@ class ConversationEngine:
         should any photo of the history not have been sent, what that means, then `closing`:
         what retrieval found, or how she is to reach out."""
         # What every user's turns with her that day open with, apart, for a service to cache.
-        shared = [character.sheet, her_birthday(character)]
-        if world_prompt:
-            shared.append(world_prompt)
-        shared.append(format_instructions(voiced_by))
+        shared = [*always_known(character, world_prompt), format_instructions(voiced_by)]
         prompt = [
             ChatMessage("system", "\n\n".join(shared), cache_breakpoint=True),
             ChatMessage("system", about_producer),

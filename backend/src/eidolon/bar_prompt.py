@@ -42,7 +42,7 @@ from eidolon.characters import Character
 from eidolon.drink_catalog import Drink, DrinkCatalog, Served
 from eidolon.facts import CharacterFacts
 from eidolon.llm import ChatMessage
-from eidolon.today import her_birthday
+from eidolon.today import always_known
 
 _TOLERANCES = {"weak": "不太能喝", "medium": "一般", "strong": "很能喝"}
 MOODS: dict[Mood, str] = {
@@ -94,10 +94,7 @@ class Remembered:
 
 def shared_prompt(character: Character, world_prompt: str | None) -> str:
     """The first part: what every user's visits with her open with that day."""
-    parts = [character.sheet, her_birthday(character)]
-    if world_prompt:
-        parts.append(world_prompt)
-    return "\n\n".join([*parts, _IF, _WRITING, _FORMAT])
+    return "\n\n".join([*always_known(character, world_prompt), _IF, _WRITING, _FORMAT])
 
 
 def visit_prompt(
@@ -105,16 +102,16 @@ def visit_prompt(
     reason: Reason,
     topic: Topic,
     cups: int,
-    affinity_lines: Sequence[str],
-    today: Sequence[str],
+    now_lines: Sequence[str],
     remembered: Remembered,
     now: datetime,
     character: Character,
     catalog: DrinkCatalog,
     facts: Sequence[str],
 ) -> str:
-    """The second part: this visit, as it is at `now`, as she comes in, with those of her
-    `facts` the topic found, best first."""
+    """The second part: this visit, as it is at `now`, as she comes in, what she knows of
+    now (`now_lines`, `her_now.HerNow`) in it, with those of her `facts` the topic found, best
+    first."""
     if reason.job:
         why = (
             f"你今天完成了制作人排给你的工作「{reason.id}」（{reason.note}），"
@@ -125,7 +122,7 @@ def visit_prompt(
         why = f"你今晚来的缘由：{reason.note}进门时的心情：{MOODS[reason.mood]}。"
     visit = [
         "# 这次光顾", why, f"闲聊的话题：{topic.note}", f"你今晚打算喝 {cups} 杯，喝完就告别。",
-        *affinity_lines, *today,
+        *now_lines,
     ]
     parts = [
         about_producer, "\n".join(visit), _remembered(remembered, now, catalog),

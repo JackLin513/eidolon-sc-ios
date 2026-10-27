@@ -240,6 +240,19 @@ class HerSchedule:
         """Whether the slot of `week`'s day is past, under way or to come (`time_of`)."""
         return time_of(self.local, self.this_week, week, day, slot)
 
+    def done(self, her: HerJob) -> bool:
+        """Whether `her` job is done (`is_done`)."""
+        return is_done(self.local, self.this_week, her.week, her.day, her.slot, her.job.length)
+
+    def done_today(self) -> Job | None:
+        """Her job the producer scheduled today where they are and she has done, the latest
+        if more than one; None without."""
+        done = [
+            her for her in self.jobs
+            if her.week == self.this_week and her.day == self.local.weekday() and self.done(her)
+        ]
+        return done[-1].job if done else None
+
 
 @dataclass(frozen=True)
 class Saved:
@@ -340,6 +353,16 @@ def time_of(local: datetime, this_week: date, week: date, day: int, slot: int) -
     return "past" if slot < current else "now" if slot == current else "future"
 
 
+def is_done(
+    local: datetime, this_week: date, week: date, day: int, slot: int, length: int
+) -> bool:
+    """Whether a job `length` slots long, starting at the slot of `week`'s day, is done: its
+    last slot past, it being `local` where the producer is, in their `this_week`. The one
+    place a job is told done: for raising her affinity, telling her her jobs, and her coming
+    to the bar after one."""
+    return time_of(local, this_week, week, day, slot + length - 1) == "past"
+
+
 def why_not(
     job: Job,
     day: int,
@@ -386,7 +409,7 @@ def schedule_lines(schedule: HerSchedule) -> list[str]:
                 f"{SLOT_HOURS * (current + 2)} 点）你正在{job.name}：{job.note}。{_UNDER_WAY}"
             )
             continue
-        done = "（做完了）" if whens[-1] == "past" else ""
+        done = "（做完了）" if schedule.done(her) else ""
         listed.append(
             f"{_day_named(schedule, her.week, her.day)}{_slots_named(her.slot, job.length)}："
             f"{job.name}——{job.note}{done}"
@@ -574,8 +597,7 @@ class Schedules:
         done = [
             (week, job_id, character_id)
             for week, job_id, day, slot, character_id, length in rows
-            if time_of(local, this_week, date.fromisoformat(week), day, slot + length - 1)
-            == "past"
+            if is_done(local, this_week, date.fromisoformat(week), day, slot, length)
         ]
         if not done:
             return True

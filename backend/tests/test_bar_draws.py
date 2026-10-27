@@ -36,8 +36,10 @@ from tests.test_bar_visit import (
     reacting,
     serve,
 )
+from tests.test_her_days import PERIOD_EARLY, a_key_when, in_period
+from tests.test_her_now import HOLIDAY, MONDAY_AFTERNOON
 from tests.test_schedule_saving import WEEK, placed, publish, save
-from tests.test_schedule_she_knows import EARLY_MONDAY
+from tests.test_schedule_she_knows import EARLY_MONDAY, HER_JOBS
 
 ONE_DRINK = [0, 0, 0, 0, 0, 0]
 """Coming in to a user's character of the day: her first reason and topic, one drink, her
@@ -315,3 +317,32 @@ async def test_ordered_by_name_only_that_drink_is_right_in_any_glass(
     assert "你讨厌的苦口味" in told[3]
     assert "完全不对" in told[4]
     assert "第 1 杯上对了；第 2 杯上错了；第 3 杯上错了" in told[2]
+
+
+async def test_coming_in_she_is_told_how_she_feels_and_the_day_in_tokyo_in_this_visit(
+    make_client: ClientFactory, settings: Settings, tmp_path: Path
+):
+    """On a holiday in Japan, in her period, a job of hers to come this week: her tier and
+    the holiday are in this visit's section, and the time, her jobs and her cycle nowhere.
+    What each occasion tells her of now, `test_her_now` has."""
+    settings = replace(only_mano(settings, tmp_path), judge=FAKE_JUDGE)
+    make_client(FakeLLM(), settings=settings)  # the producer, signed up
+    cycling = replace(settings, cycles=True)
+    keyed = replace(
+        cycling, secret_key=a_key_when(cycling, MONDAY_AFTERNOON, in_period(early=True))
+    )
+    clock = FakeClock(EARLY_MONDAY)
+    llm = FakeLLM(COMING_IN)
+    client = make_client(llm, settings=keyed, clock=clock, random=FakeRandom(*ONE_DRINK))
+    publish(settings.database_path, WEEK, ("声乐课", 1, None))
+    await save(client, WEEK, placed("声乐课", 2, 0))  # Wednesday
+    clock.now = MONDAY_AFTERNOON
+    keep(settings.database_path, "producer", 70, clock())  # close
+
+    await enter(client)
+
+    [visit] = [part for part in about(llm.prompts[0]).split("\n\n") if part.startswith("# 这次光顾")]
+    assert "和制作人比平时更近" in visit  # her tier
+    assert visit.endswith(HOLIDAY)
+    for not_told in ("现在是", HER_JOBS, PERIOD_EARLY):
+        assert not_told not in about(llm.prompts[0])

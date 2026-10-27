@@ -1,9 +1,6 @@
-"""What she knows of her schedule (GLOSSARY.md「日程」): in what she is told of now (「此刻」), her
-jobs the producer saved of their week and the next, each by its day as from today where the
-producer is, its slots, and whether done; the one under way apart, none before 6 in the
-morning; and how to go by them. Nothing of the others' jobs, nor of last week's; nothing
-without any saved, or while schedules are off. Typing, in a call or reaching out alike, and
-reaching out she may take her week's jobs to reach out about.
+"""What she knows of her schedule (GLOSSARY.md「日程」) reaching out: her jobs, in what she is
+told of now (「此刻」), and that she may take her week's jobs to reach out about. What she is
+told of her jobs, line by line, `test_her_now` has.
 
 Driven through the backend's external API, the week's jobs kept beforehand in the database
 (`publish`), saved through the API before the clock is moved on."""
@@ -14,11 +11,10 @@ from datetime import UTC, datetime, timedelta
 from eidolon.config import Settings
 from tests.conftest import ClientFactory
 from tests.fakes import FakeClock, FakeLLM, FakeRandom, context_of
-from tests.test_calendar import REPLY, told_now
-from tests.test_call_turns import MANO_REPLY, CallUnderTest, spoken
+from tests.test_calendar import REPLY
 from tests.test_reach_outs import backend_of, last_contact
 from tests.test_schedule_saving import WEEK, placed, publish, save
-from tests.test_schedule_weeks import MONDAY, live_in
+from tests.test_schedule_weeks import MONDAY
 from tests.test_text_turn import send_turn, start_conversation
 
 HER_JOBS = "制作人给你排了这些工作（日程定了就不会再变；制作人在对话里说取消或改期，你还是按日程上的来）："
@@ -31,169 +27,6 @@ ABOUT_THEM = (
 UNDER_WAY = "说话可以带着这个状态（抽空回、在休息），不用每句都提，说过就不再反复说。"
 EARLY_MONDAY = MONDAY + timedelta(hours=1)
 """Monday 01:00 in Shanghai: the whole week still to come."""
-
-
-async def test_she_is_told_her_jobs_by_day_from_today_the_one_under_way_apart(
-    make_client: ClientFactory, settings: Settings
-):
-    llm = FakeLLM(REPLY)
-    clock = FakeClock(EARLY_MONDAY)
-    client = make_client(llm, clock=clock)
-    publish(
-        settings.database_path, WEEK,
-        ("声乐课", 1, None), ("拍摄广告", 2, None), ("开会", 1, None), ("外景", 3, None),
-        ("访谈", 1, None), ("晚饭", 1, ["evening"]),
-    )
-    publish(settings.database_path, WEEK, ("组合排练", 1, None), character="kogane")
-    res = await save(
-        client, WEEK,
-        placed("声乐课", 0, 0), placed("拍摄广告", 1, 0), placed("开会", 2, 1),
-        placed("外景", 3, 0), placed("访谈", 4, 1), placed("晚饭", 6, 2),
-        placed("组合排练", 4, 0),
-    )
-    assert len(res.json()["saved"]) == 7
-    clock.advance(days=2, hours=13)  # Wednesday 14:00
-
-    told = await told_now(client, llm)
-
-    now, *_ = told.split("\n\n")
-    assert now.startswith("# 此刻\n")
-    assert now.endswith("\n".join([
-        HER_JOBS,
-        "周一（前天）上午：声乐课——说明（做完了）",
-        "周二（昨天）上午到下午：拍摄广告——说明（做完了）",
-        "周四（明天）一整天：外景——说明",
-        "周五（后天）下午：访谈——说明",
-        "周日晚上：晚饭——说明",
-        f"现在（下午 12–18 点）你正在开会：说明。{UNDER_WAY}",
-        ABOUT_THEM,
-    ]))
-    assert "组合排练" not in told
-
-
-async def test_west_of_beijing_she_knows_next_week_saved_already_on_their_sunday(
-    make_client: ClientFactory, settings: Settings
-):
-    """Beijing's Monday 01:00 is Los Angeles' Sunday 10:00: this week there is the one
-    before Beijing's."""
-    llm = FakeLLM(REPLY)
-    clock = FakeClock(EARLY_MONDAY)
-    client = make_client(llm, clock=clock)
-    await live_in(client, "America/Los_Angeles")
-    publish(settings.database_path, WEEK, ("声乐课", 1, None), ("晚饭", 1, None))
-    await save(client, WEEK, placed("声乐课", 4, 0), placed("晚饭", 6, 2))
-    clock.advance(days=7)
-    publish(settings.database_path, "2026-09-28", ("录音", 1, None), ("访谈", 1, None))
-    await save(client, "2026-09-28", placed("录音", 0, 2), placed("访谈", 3, 1))
-
-    told = await told_now(client, llm)
-
-    assert "\n".join([
-        HER_JOBS,
-        "周五（前天）上午：声乐课——说明（做完了）",
-        "周日（今天）晚上：晚饭——说明",
-        "下周一（明天）晚上：录音——说明",
-        "下周四下午：访谈——说明",
-        ABOUT_THEM,
-    ]) in told
-
-
-async def test_before_6_in_the_morning_no_job_is_under_way(
-    make_client: ClientFactory, settings: Settings
-):
-    llm = FakeLLM(REPLY)
-    clock = FakeClock(EARLY_MONDAY)
-    client = make_client(llm, clock=clock)
-    publish(settings.database_path, WEEK, ("拍摄广告", 1, None), ("声乐课", 1, None))
-    await save(client, WEEK, placed("拍摄广告", 1, 2), placed("声乐课", 2, 0))
-    clock.advance(days=2, hours=2)  # Wednesday 03:00
-
-    told = await told_now(client, llm)
-
-    assert "\n".join([
-        HER_JOBS,
-        "周二（昨天）晚上：拍摄广告——说明（做完了）",
-        "周三（今天）上午：声乐课——说明",
-        ABOUT_THEM,
-    ]) in told
-    assert "现在（" not in told
-
-
-async def test_with_only_the_one_under_way_she_is_told_it_stands_all_the_same(
-    make_client: ClientFactory, settings: Settings
-):
-    llm = FakeLLM(REPLY)
-    clock = FakeClock(EARLY_MONDAY)
-    client = make_client(llm, clock=clock)
-    publish(settings.database_path, WEEK, ("拍摄广告", 2, None))
-    await save(client, WEEK, placed("拍摄广告", 0, 1))
-    clock.advance(hours=18)  # Monday 19:00, its second slot
-
-    told = await told_now(client, llm)
-
-    assert "\n".join([
-        HER_JOBS, f"现在（晚上 18–24 点）你正在拍摄广告：说明。{UNDER_WAY}", ABOUT_THEM,
-    ]) in told
-
-
-async def test_with_none_of_hers_saved_she_is_told_nothing_of_a_schedule(
-    make_client: ClientFactory, settings: Settings
-):
-    llm = FakeLLM(REPLY)
-    clock = FakeClock(EARLY_MONDAY)
-    client = make_client(llm, clock=clock)
-    publish(settings.database_path, WEEK, ("组合排练", 1, None), character="kogane")
-    await save(client, WEEK, placed("组合排练", 0, 1))
-    clock.advance(hours=12)  # Monday 13:00, Kogane's job under way
-
-    told = await told_now(client, llm)
-
-    assert "工作" not in told and "组合排练" not in told and "现在（" not in told
-
-
-async def test_last_weeks_jobs_are_not_told(make_client: ClientFactory, settings: Settings):
-    llm = FakeLLM(REPLY)
-    clock = FakeClock(EARLY_MONDAY)
-    client = make_client(llm, clock=clock)
-    publish(settings.database_path, WEEK, ("晚饭", 1, None))
-    await save(client, WEEK, placed("晚饭", 6, 2))
-    clock.advance(days=7)
-
-    told = await told_now(client, llm)
-
-    assert HER_JOBS not in told and "晚饭" not in told
-
-
-async def test_off_she_is_told_nothing_of_what_was_saved(
-    make_client: ClientFactory, settings: Settings
-):
-    clock = FakeClock(EARLY_MONDAY)
-    on = make_client(FakeLLM(), clock=clock)
-    publish(settings.database_path, WEEK, ("声乐课", 1, None))
-    await save(on, WEEK, placed("声乐课", 0, 2))
-    clock.advance(hours=12)
-    llm = FakeLLM(REPLY)
-    off = make_client(llm, clock=clock, settings=replace(settings, schedule=False))
-
-    told = await told_now(off, llm)
-
-    assert HER_JOBS not in told and "声乐课" not in told
-
-
-async def test_in_a_call_she_is_told_her_jobs_too(make_client: ClientFactory, settings: Settings):
-    """The call is on Friday 20:30 in Shanghai (`test_call_turns.NOW`)."""
-    client = make_client(FakeLLM(), clock=FakeClock(EARLY_MONDAY))
-    publish(settings.database_path, WEEK, ("声乐课", 1, None), ("晚饭", 1, None))
-    await save(client, WEEK, placed("声乐课", 4, 0), placed("晚饭", 4, 2))
-    conversation = await start_conversation(client)
-    call = await CallUnderTest.of(settings, client, conversation)
-    call_llm = FakeLLM(MANO_REPLY)
-
-    await call.run(call_llm, [spoken("早上好")])
-
-    told = context_of(call_llm.prompts[-1])
-    assert f"{HER_JOBS}\n周五（今天）上午：声乐课——说明（做完了）\n" in told
-    assert f"现在（晚上 18–24 点）你正在晚饭：说明。{UNDER_WAY}\n{ABOUT_THEM}" in told
 
 
 async def test_reaching_out_she_is_told_her_jobs_and_may_reach_out_about_them(
