@@ -59,6 +59,7 @@ EidolonIOS/               # SwiftUI 客户端（xcodegen 生成工程）
 ├── App/                  # 入口、AppModel
 ├── Core/                 # 设置、钥匙串、通话音频
 └── Features/             # 对话、通话、立绘、设置、记忆、追踪、导入
+AppIcon.icon/             # 图标工程（Icon Composer，Liquid Glass 分层与外观）
 tools/
 ├── export_content_bundle.py   # Mac 上把上游数据与立绘导出成 .eidolonpkg
 ├── sync_stand_runtime.sh      # 构建后从上游 checkout 取 Spine 运行时（不进仓库）
@@ -170,4 +171,4 @@ tools/oracle/run.sh                          # 与上游逐字对照提示词（
 - 上游 [Sallyn0225/eidolon-sc](https://github.com/Sallyn0225/eidolon-sc) 是 AGPL-3.0；本仓库是它的 iOS 移植，供自己使用。
 - 上游 checkout 只读。Spine 运行时与立绘素材都有第三方版权，**都不进仓库**：素材由导出工具打进内容包，运行时由构建脚本从上游 checkout 同步到构建产物。
 - 本地验证用的密钥只从 `../eidolon-sc/.env` 读取，不写进仓库、提交或 issue。
-- App 图标里的听筒轮廓取自 Google Material Icons 的 `call`（Apache-2.0），其余为自制。
+- App 图标是 Icon Composer 工程（`AppIcon.icon`，前景/背景两层 SVG）：听筒轮廓取自 Google Material Icons 的 `call`（Apache-2.0），其余为自制。底色（fill）指定为深夜蓝 `#1B1F3A`——留默认的蓝色自动渐变时，深色外观会把听筒染成蓝色。

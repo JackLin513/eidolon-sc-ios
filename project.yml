@@ -27,6 +27,7 @@ targets:
       - path: EidolonIOS
         excludes:
           - Info.plist
+      - path: AppIcon.icon
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jacklin.eidolon
