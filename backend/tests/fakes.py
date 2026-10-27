@@ -13,6 +13,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 import zipfile
+import zlib
 from http import HTTPStatus
 from urllib.parse import quote, unquote, urlencode
 
@@ -65,6 +66,7 @@ from eidolon.llm import (
     ToolCall,
 )
 from eidolon.llm.providers import check_chat_models
+from eidolon import official_cdn
 from eidolon.mirror import Mirror
 from eidolon.own_keys import OwnKeyRejected
 from eidolon.affinity_judge import LEVEL as AFFINITY_LEVEL
@@ -1180,13 +1182,42 @@ class KeywordReranker:
         return sorted(scored, key=lambda r: -r[1])[:top_n]
 
 
+class FakeEnzaAssets:
+    """Stands in for the game's own asset server: the files it is given, under the hash
+    of their path, JSON and atlases encrypted as it sends them, and the game's page, as
+    HTML, for a path it has no file for. Records the paths it sent. Set `down` to have it
+    unreachable, or `maintenance` to have it answer everything with the game's page."""
+
+    def __init__(self) -> None:
+        self.files: dict[str, bytes] = {}
+        self.sent: list[str] = []
+        self.down = False
+        self.maintenance = False
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        if self.down:
+            raise httpx.ConnectError("connection refused", request=request)
+        path = next((path for path in self.files if official_cdn.asset_url(path) == str(request.url)), None)
+        if path is None or self.maintenance:
+            return httpx.Response(200, text="<!DOCTYPE html><title>シャニマス</title>",
+                                  headers={"Content-Type": "text/html; charset=utf-8"})
+        self.sent.append(path)
+        content = self.files[path]
+        if path.endswith((".json", ".atlas")):  # gzipped up to a flush, never finished
+            gzipper = zlib.compressobj(wbits=zlib.MAX_WBITS | 16)
+            content = official_cdn.xor(gzipper.compress(content) + gzipper.flush(zlib.Z_SYNC_FLUSH))
+        return httpx.Response(200, content=content, headers={"ETag": f'W/"{hashlib.md5(content).hexdigest()}"'})
+
+
 class FakeShinyColorsDB:
     """Stands in for the ShinyColorsDB API, the viewer that mirrors the game's scripts and
     the idols' albums, answering as they do: idols and their cards, each card's episodes,
     albums, and scripts; scripts and albums with an ETag, 304 to a request for a copy that
     is still current and 404 for one it does not have. Records every request, and which
     scripts (and albums, as `album/NN`) it sent in full. Set `down`
-    to have it unreachable, or `down_after` to have it go down after that many requests."""
+    to have it unreachable, or `down_after` to have it go down after that many requests;
+    `viewer_down` to have only the viewer unreachable. Behind it, the game's asset server
+    (`official`), which has nothing unless given it."""
 
     def __init__(self) -> None:
         self.idols: dict[int, list[dict]] = {}
@@ -1197,6 +1228,8 @@ class FakeShinyColorsDB:
         self.sent: list[str] = []
         self.down = False
         self.down_after: int | None = None
+        self.viewer_down = False
+        self.official = FakeEnzaAssets()
 
     def add_card(
         self, idol: int, uuid: str, name: str, type: str, episodes: Sequence[tuple[int, str]] = ()
@@ -1237,6 +1270,8 @@ class FakeShinyColorsDB:
         return Mirror(httpx.AsyncClient(transport=httpx.MockTransport(self._handle)), interval=0)
 
     def _handle(self, request: httpx.Request) -> httpx.Response:
+        if request.url.host == "shinycolors.enza.fun":
+            return self.official.handle(request)
         self.requests.append(request)
         if self.down or (self.down_after is not None and len(self.requests) > self.down_after):
             raise httpx.ConnectError("connection refused")
@@ -1251,10 +1286,14 @@ class FakeShinyColorsDB:
                 return httpx.Response(200, json={key: self.events[params["cardId"]]})
             return httpx.Response(404)
         if request.url.host == "cf-static.shinycolors.moe":
+            if not path.startswith("/albums/"):  # the stands, which are another fake's
+                return httpx.Response(404, text="<html>Not Found</html>")
             idol = int(path.removeprefix("/albums/album/").removesuffix(".json"))
             album = self.albums.get(idol)
             body = None if album is None else json.dumps(album, ensure_ascii=False).encode()
             return self._send(request, f"album/{idol:02d}", body)
+        if self.viewer_down:
+            raise httpx.ConnectError("connection refused")
         script = path.removeprefix("/json/").removesuffix(".json")
         return self._send(request, script, self.scripts.get(script))
 

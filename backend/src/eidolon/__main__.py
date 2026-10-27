@@ -330,7 +330,7 @@ async def _sync_story(args: argparse.Namespace) -> int:
 
     progress = logging.StreamHandler()  # the first sync takes an hour or two
     progress.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%H:%M:%S"))
-    for name in ("eidolon.story_sync", "eidolon.story_import"):
+    for name in ("eidolon.story_sync", "eidolon.story_import", "eidolon.mirror"):
         logging.getLogger(name).addHandler(progress)
         logging.getLogger(name).setLevel(logging.INFO)
     embedder = open_embedder(settings)
@@ -369,9 +369,9 @@ async def _sync_story(args: argparse.Namespace) -> int:
         f"本次检查的卡牌和相册中有 {report.translations_kept} 段已有汉化版，保留汉化版"
     )
     if report.missing:
-        print(f"卡牌列出的剧本中有 {report.missing} 个镜像上还没有，下次同步再试")
+        print(f"卡牌列出的剧本中有 {report.missing} 个镜像和官方 CDN 上都还没有，下次同步再试")
     if report.album_missing:
-        print(f"相册列出的剧本中有 {report.album_missing} 个镜像上没有，相册有变化时再试")
+        print(f"相册列出的剧本中有 {report.album_missing} 个镜像和官方 CDN 上都没有，相册有变化时再试")
     if report.unnamed_events:
         events = "、".join(f"{event:03d}" for event in report.unnamed_events)
         print(f"活动名对照表里还没有这些活动，暂用「活动剧情 NNN」：{events}")
@@ -419,8 +419,9 @@ async def _stand_fetch(args: argparse.Namespace) -> int:
 
     progress = logging.StreamHandler()  # the first fetch takes a quarter of an hour or so
     progress.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%H:%M:%S"))
-    logging.getLogger("eidolon.stand_fetch").addHandler(progress)
-    logging.getLogger("eidolon.stand_fetch").setLevel(logging.INFO)
+    for name in ("eidolon.stand_fetch", "eidolon.mirror"):
+        logging.getLogger(name).addHandler(progress)
+        logging.getLogger(name).setLevel(logging.INFO)
     mirror = Mirror()
     try:
         characters = load_characters(
