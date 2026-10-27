@@ -21,6 +21,10 @@ public enum EidolonError: LocalizedError, Equatable {
     case blankInput
     /// The producer's line is longer than `TurnInput.maxLength` (upstream `TOO_LONG`).
     case inputTooLong(Int)
+    /// The turn could not be answered: the model failed or said nothing she could say.
+    /// What the producer reads is all of it, as upstream's `FAILED` (the details stay in
+    /// the trace).
+    case turnFailed
 
     /// Whether the turn refused the producer's line itself, rather than failing to
     /// answer it: what it says is already the message to show.
@@ -51,6 +55,9 @@ public enum EidolonError: LocalizedError, Equatable {
             return "没有收到要说的话。"
         case .inputTooLong(let limit):
             return "这句话太长了，最多 \(limit) 字。"
+        case .turnFailed:
+            // Upstream `engine.FAILED`, word for word.
+            return "角色暂时无法回复，请稍后再试。"
         case .coolingDown(let until):
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "zh_CN")

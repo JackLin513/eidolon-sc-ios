@@ -135,19 +135,23 @@ public struct ReplyParser: Sendable {
         case .ja: segments[index].ja += text
         case .zh: segments[index].zh += text
         }
-        if language == .ja, !text.isEmpty {
-            events.append(.speechDelta(segment: index, text: text))
-        }
-        let shown = filter.feed(text)
+        let (shown, voiced) = filter.feed(text)
         if !shown.isEmpty {
             events.append(.delta(segment: index, language: language, text: shown))
+        }
+        // Only her Japanese is voiced, with its cues as the voice model reads them.
+        if language == .ja, !voiced.isEmpty {
+            events.append(.speechDelta(segment: index, text: voiced))
         }
     }
 
     private mutating func endLine(_ language: ReplyLanguage, _ events: inout [ReplyParserEvent]) {
-        let shown = filter.finish()
+        let (shown, voiced) = filter.finish()
         if !shown.isEmpty, !segments.isEmpty {
             events.append(.delta(segment: segments.count - 1, language: language, text: shown))
+        }
+        if language == .ja, !voiced.isEmpty, !segments.isEmpty {
+            events.append(.speechDelta(segment: segments.count - 1, text: voiced))
         }
         filter = CueFilter()
     }

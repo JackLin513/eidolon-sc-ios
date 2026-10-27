@@ -123,25 +123,27 @@ final class AppModel {
             hours = value
         }
         #endif
+        // Every character whose time has come is asked at once: six characters are not six
+        // model calls one after another before the list shows one of them.
         var reached = false
-        for character in characters {
-            let record = try? await core.reachOutIfDue(
-                characterID: character.id,
-                provider: provider,
-                embedder: embedder,
-                reranker: reranker,
-                hours: hours
-            )
-            if record != nil { reached = true }
+        await withTaskGroup(of: Bool.self) { group in
+            for character in characters {
+                group.addTask { [core] in
+                    let record = try? await core.reachOutIfDue(
+                        characterID: character.id,
+                        provider: provider,
+                        embedder: embedder,
+                        reranker: reranker,
+                        hours: hours
+                    )
+                    return record != nil
+                }
+            }
+            for await didReach in group {
+                if didReach { reached = true }
+            }
         }
         if reached { await refresh() }
-    }
-
-    private func nameUntitledConversations() {
-        guard let provider = chatProvider else { return }
-        Task { [core] in
-            await core.nameUntitledConversations(provider: provider)
-        }
     }
 
     /// A call with her, on the services the settings name. The microphone and the
@@ -217,6 +219,18 @@ final class AppModel {
         memories = (try? await core.memories()) ?? []
     }
 
+    /// Forgets one of the producer's memories; the list is reloaded from what is kept.
+    func deleteMemory(id: String) async throws {
+        _ = try await core.deleteMemory(id: id)
+        await loadMemories()
+    }
+
+    /// Forgets every memory, including what earlier turns are still writing down.
+    func clearMemories() async throws {
+        try await core.clearMemories()
+        await loadMemories()
+    }
+
     func saveChatSettings(_ settings: ChatSettings) throws {
         try settings.save()
         chatSettings = settings
@@ -243,7 +257,6 @@ final class AppModel {
                 try await load()
                 phase = .ready
                 resumeMemoryJobs()
-                nameUntitledConversations()
                 await catchUpReachOuts()
             } else {
                 // A bundle from another format or content schema is not run: the app asks

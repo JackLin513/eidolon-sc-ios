@@ -66,9 +66,11 @@ struct ConversationListView: View {
     }
 
     private var filtered: [CharacterConfig] {
+        // Most recent activity first; ties keep the content's own order (upstream `arrange`).
+        let ordered = ConversationOrder.byRecency(app.characters, latest: app.latest)
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !needle.isEmpty else { return app.characters }
-        return app.characters.filter { $0.matches(needle) }
+        guard !needle.isEmpty else { return ordered }
+        return ordered.filter { $0.matches(needle) }
     }
 
     private func row(_ character: CharacterConfig) -> some View {
@@ -122,7 +124,21 @@ struct ConversationListView: View {
 
     private func preview(_ character: CharacterConfig) -> String {
         guard let activity = app.latest[character.id] else { return character.intro ?? "" }
+        // The last thing in the conversation may be something that happened, not said.
+        if let kind = activity.lastEventKind { return Self.eventPreview(kind) }
         return activity.lastMessagePreview ?? "还没聊过"
+    }
+
+    private static func eventPreview(_ kind: String) -> String {
+        switch kind {
+        case "ended": "她结束了对话"
+        case "hung_up", "she_hung_up": "她挂断了电话"
+        case "call_failed", "call_dropped": "通话中断"
+        case "call_unconnected": "通话没能接通"
+        case "call_duration_limit": "通话到了时限"
+        case "call_turn_limit": "通话到了回合上限"
+        default: "通话结束"
+        }
     }
 
     private var errorBinding: Binding<Bool> {

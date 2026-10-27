@@ -216,6 +216,14 @@ public struct WorldSetting: Codable, Sendable {
         }
     }
 
+    /// The others in her unit, by name; none if she is in none (upstream `unit_mates`).
+    func unitMates(of name: String) -> Set<String> {
+        guard let unitName = officeUnit(of: name),
+              let unit = units.first(where: { $0.name == unitName })
+        else { return [] }
+        return Set(unit.members.filter { $0 != name })
+    }
+
     /// `2026-10-21` as upstream's `_day` writes it: `2026年10月21日`.
     static func formatDay(_ iso: String) -> String {
         let parts = iso.split(separator: "-")

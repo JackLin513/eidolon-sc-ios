@@ -296,6 +296,11 @@ extension Eidolon {
                 sql: "DELETE FROM pending_jobs WHERE conversation_id = ?",
                 arguments: [id]
             )
+            // What the turn traces hold is the conversation's prompts, which go with it.
+            try db.execute(
+                sql: "DELETE FROM turn_traces WHERE conversation_id = ?",
+                arguments: [id]
+            )
             try db.execute(sql: "DELETE FROM reach_outs WHERE conversation_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM conversation_events WHERE conversation_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM messages WHERE conversation_id = ?", arguments: [id])

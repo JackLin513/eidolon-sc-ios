@@ -59,6 +59,73 @@ final class ConversationRecordTests: XCTestCase {
         return try XCTUnwrap(snapshot?.id)
     }
 
+    /// The roster's preview can be something that happened, not only something said: after
+    /// a call that ended there, the last thing in the conversation is the event (upstream
+    /// `previewOfOne`).
+    func testTheLatestActivityCanBeAnEvent() async throws {
+        let eidolon = try await installedEidolon()
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: "INSERT INTO conversations(id, character_id, created_at) VALUES ('c1', 'mano', ?)",
+                arguments: ["2026-10-27T12:00:00.000000Z"]
+            )
+            try db.execute(
+                sql: """
+                    INSERT INTO messages(id, conversation_id, role, ja, zh, segments, created_at)
+                    VALUES ('r', 'c1', 'character', 'うん', '嗯', '[{"ja":"うん","zh":"嗯"}]', ?)
+                    """,
+                arguments: ["2026-10-27T12:00:01.000000Z"]
+            )
+            try db.execute(
+                sql: """
+                    INSERT INTO conversation_events(conversation_id, kind, created_at)
+                    VALUES ('c1', 'hung_up', '2026-10-27T12:00:02.000000Z')
+                    """
+            )
+        }
+
+        let activity = try await eidolon.latestActivities()["mano"]
+        XCTAssertEqual(activity?.lastMessageRole, "event")
+        XCTAssertEqual(activity?.lastEventKind, "hung_up")
+        XCTAssertEqual(activity?.lastMessageAt, "2026-10-27T12:00:02.000000Z")
+        XCTAssertNil(activity?.lastMessagePreview)
+    }
+
+    /// The roster is ordered by the latest activity, from the newest; ties and characters
+    /// never talked to keep the content's own order (upstream `arrange`).
+    func testTheRosterIsOrderedByTheLatestActivity() {
+        let mano = CharacterConfig(id: "mano", name: "櫻木真乃")
+        let hiori = CharacterConfig(id: "hiori", name: "風野灯織")
+        let latest = [
+            "mano": LatestActivity(
+                lastMessagePreview: "嗯",
+                lastMessageRole: "character",
+                lastMessageAt: "2026-10-27T12:00:00.000000Z"
+            ),
+            "hiori": LatestActivity(
+                lastMessagePreview: "这样啊",
+                lastMessageRole: "character",
+                lastMessageAt: "2026-10-27T13:00:00.000000Z"
+            ),
+        ]
+        XCTAssertEqual(
+            ConversationOrder.byRecency([mano, hiori], latest: latest).map(\.id),
+            ["hiori", "mano"]
+        )
+        XCTAssertEqual(
+            ConversationOrder.byRecency([mano, hiori], latest: [:]).map(\.id),
+            ["mano", "hiori"]
+        )
+        let sameTime = [
+            "mano": LatestActivity(lastMessageAt: "2026-10-27T12:00:00.000000Z"),
+            "hiori": LatestActivity(lastMessageAt: "2026-10-27T12:00:00.000000Z"),
+        ]
+        XCTAssertEqual(
+            ConversationOrder.byRecency([mano, hiori], latest: sameTime).map(\.id),
+            ["mano", "hiori"]
+        )
+    }
+
     // MARK: - Sub-second stamps and write order
 
     func testHerReplyIsStampedBelowTheSecondAndFollowsTheQuestion() async throws {
