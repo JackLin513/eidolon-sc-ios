@@ -110,3 +110,4 @@
   - hook 里还有一个 `latestProps` ref，用来同步最新的 props（角色列表、声音、`onDraws`、router），好让只建一次的会话拿到它们。它不是状态的副本。
   - `lib/api` 里三个函数都写着 `if (!res.ok) await json(res); return serverSentEvents(res)`，可以抽成一个小函数，这次没动。
   - 票 01 交接里提到「锁台、出错静音交给快照」：现在画面读的 `state` 就是会话的快照，没再另外加查询。
+- **CI**：43071015 的 run 40469273210 全绿。
