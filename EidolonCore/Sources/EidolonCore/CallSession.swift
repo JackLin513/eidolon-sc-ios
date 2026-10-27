@@ -72,7 +72,24 @@ extension SpeechRecognition {
 
 /// Text to speech: one segment's Japanese (delivery cues included) to audio the call plays.
 public protocol SpeechSynthesis: Sendable {
+    /// Whether her segments are voiced at all. A voiced call moves its line card as each
+    /// segment's voice starts, so a segment it could not make does not turn the card; a
+    /// synthesizer with no voice (no key filled in) shows every caption as it arrives.
+    var providesVoice: Bool { get }
     func synthesize(_ text: String, voice: CallVoice) async throws -> Data
+    /// Why the error is the voice service itself failing — a key missing or refused, an
+    /// account out of credit, a model it does not serve, audio it could not make — if it
+    /// is; nil for a segment that merely could not be made, which the call skips as it goes
+    /// on (upstream `service_failed`, ADR-0011).
+    func failure(_ error: any Error) -> VoiceServiceFailure?
+}
+
+extension SpeechSynthesis {
+    public var providesVoice: Bool { true }
+
+    /// A synthesizer that cannot tell a service failure from a segment that was lost skips
+    /// the segment, as the call always did.
+    public func failure(_ error: any Error) -> VoiceServiceFailure? { nil }
 }
 
 public enum CallState: Sendable, Hashable {
@@ -85,13 +102,18 @@ public enum CallState: Sendable, Hashable {
     case ended(CallEnd)
 }
 
-/// Why a call ended: the backend's reasons and its own words (upstream
-/// `call_outcome.py`).
+/// Why a call ended: the backend's reasons and its own words, and the one ending told apart
+/// on the device — a microphone that would not open (upstream `call_outcome.py`,
+/// `callEnd.ts`).
 public enum CallEnd: Sendable, Hashable {
     /// The voice service failed before a turn was recorded: the call never connected.
     case notConnected(service: String, detail: String)
     /// The voice service failed after at least one turn: the call broke off.
     case dropped(service: String, detail: String)
+    /// The microphone could not be opened — no permission, no input, a route it cannot use.
+    /// It is told apart from a voice service failing, which is not the producer's to fix
+    /// (upstream `mic_denied`).
+    case micDenied(detail: String)
     /// It has lasted `limit`.
     case durationLimit(limit: Duration)
     /// It has taken `turns` of her turns.
@@ -107,6 +129,7 @@ public enum CallEnd: Sendable, Hashable {
         switch self {
         case .notConnected: "not_connected"
         case .dropped: "dropped"
+        case .micDenied: "mic_denied"
         case .durationLimit: "duration_limit"
         case .turnLimit: "turn_limit"
         case let .sheHungUp(cooldownUntil): cooldownUntil == nil ? "she_hung_up" : "cooldown"
@@ -121,6 +144,8 @@ public enum CallEnd: Sendable, Hashable {
             "语音服务出了故障，通话没能接通"
         case .dropped:
             "语音服务出了故障，通话中断了"
+        case .micDenied:
+            "用不了麦克风。没有允许使用麦克风，或者找不到麦克风。在系统设置里允许后，再拨一次。"
         case let .durationLimit(limit):
             "这次通话已经满 \(Self.minutes(limit)) 分钟了，先挂断啦。想接着聊可以重新拨打。"
         case let .turnLimit(turns):
@@ -138,6 +163,8 @@ public enum CallEnd: Sendable, Hashable {
         switch self {
         case let .notConnected(service, detail), let .dropped(service, detail):
             "\(service)：\(detail)"
+        case let .micDenied(detail):
+            "麦克风：\(detail)"
         case let .durationLimit(limit):
             "时长上限 \(Self.minutes(limit)) 分钟"
         case let .turnLimit(turns):
@@ -199,9 +226,11 @@ public enum CallEvent: Sendable, Hashable {
     case hearing(String)
     /// What the producer said, when the recognizer found the end of it.
     case recognized(String)
-    /// One of her segments, for the subtitle. Delivery cues are stripped. `reply` numbers
-    /// her replies in the call from 0 (each answer she gives is one); `segment` numbers its
-    /// segments from 0.
+    /// One of her segments, for the line card and the subtitle. Delivery cues are stripped.
+    /// `reply` numbers her replies in the call from 0 (each answer she gives is one);
+    /// `segment` numbers its segments from 0. In a voiced call it comes as that segment's
+    /// voice starts, so the card follows what is heard and never shows a segment whose voice
+    /// was skipped; with no voice at all it comes as the text does.
     case segment(reply: Int, segment: Int, ja: String, zh: String)
     /// A segment's voice started playing: her mouth moves from here until it stops.
     case segmentStarted(reply: Int, segment: Int)
@@ -362,7 +391,7 @@ public actor CallSession {
         do {
             try await setup.capture.start()
         } catch {
-            await finish(.notConnected(service: "麦克风", detail: error.localizedDescription))
+            await finish(.micDenied(detail: error.localizedDescription))
             return
         }
         setState(.listening)
@@ -544,7 +573,10 @@ public actor CallSession {
     }
 
     /// Segments below `segment` have all they will get: their captions go out, and their
-    /// Japanese joins the queue to be voiced.
+    /// Japanese joins the queue to be voiced. A voiced segment's caption goes out with its
+    /// voice (see `drain`), so the line card never runs ahead of what is heard, and a segment
+    /// whose voice could not be made leaves the card where it was; a call with no voice at
+    /// all shows each caption as it arrives.
     private func finalize(from: Int, before segment: Int) {
         // Only segments that were actually heard of: `segment` is Int.max at the end.
         let indices = Set(captions.keys).union(speech.keys).sorted()
@@ -552,20 +584,28 @@ public actor CallSession {
             lastFinalized = index
             let caption = captions[index] ?? (ja: "", zh: "")
             guard !(caption.ja.isEmpty && caption.zh.isEmpty) else { continue }
-            emit(.segment(
-                reply: reply,
-                segment: index,
-                ja: caption.ja.trimmingCharacters(in: .whitespacesAndNewlines),
-                zh: caption.zh.trimmingCharacters(in: .whitespacesAndNewlines)
-            ))
             judgeEmotion(segment: index)
             let spoken = ReplyCues.spoken(speech[index] ?? "", by: setup.voiceModel)
             if !spoken.isEmpty {
                 queue.append((reply: reply, index: index, speech: spoken))
+                if !setup.synthesis.providesVoice { showSegment(reply: reply, index: index) }
                 ensureSpeaking()
                 startPrefetch()
+            } else {
+                showSegment(reply: reply, index: index)
             }
         }
+    }
+
+    /// Her caption for one segment, as the line card shows it.
+    private func showSegment(reply: Int, index: Int) {
+        let caption = captions[index] ?? (ja: "", zh: "")
+        emit(.segment(
+            reply: reply,
+            segment: index,
+            ja: caption.ja.trimmingCharacters(in: .whitespacesAndNewlines),
+            zh: caption.zh.trimmingCharacters(in: .whitespacesAndNewlines)
+        ))
     }
 
     // MARK: - Her segments' emotions
@@ -633,21 +673,37 @@ public actor CallSession {
             do {
                 let audio: Data
                 if let held = prefetch, held.index == item.index {
+                    // The held segment is this one, so it is no longer a prefetch either
+                    // way: a failed one must not block the next segment from being made
+                    // while this one plays (ADR-0011).
+                    prefetch = nil
                     audio = try await held.task.value
-                    if prefetch?.index == held.index { prefetch = nil }
                 } else {
                     audio = try await setup.synthesis.synthesize(item.speech, voice: voice)
                 }
                 if finished || Task.isCancelled { break }
                 speakingIndex = item.index
                 startPrefetch()
+                // Her line card moves as her voice starts on the segment (upstream
+                // `linePacing.ts`): a segment skipped above never gets here, so the card
+                // does not turn for what was not said.
+                if setup.synthesis.providesVoice {
+                    showSegment(reply: item.reply, index: item.index)
+                }
                 emit(.segmentStarted(reply: item.reply, segment: item.index))
                 await playWhileDeaf(audio)
                 emit(.segmentStopped(reply: item.reply, segment: item.index))
             } catch is CancellationError {
                 break
             } catch {
-                // This segment is lost; the reply goes on.
+                // A voice service that failed as a service — a refused key, no credit, a
+                // model it does not serve — ends the call as the recognizer's failure does,
+                // before the producer is left talking into silence. A segment that merely
+                // could not be made is lost; the reply goes on (ADR-0011).
+                if let failure = setup.synthesis.failure(error) {
+                    await serviceFailed(failure)
+                    break
+                }
             }
             speakingIndex = nil
         }
@@ -715,6 +771,9 @@ public actor CallSession {
         guard !finished else { return }
         finished = true
         pending.removeAll()
+        // Her voice stops first, cutting the segment playing now, and the microphone closes
+        // after it: hanging up must not leave her talking out of a call that is over.
+        await setup.playback.stop()
         for task in tasks { task.cancel() }
         turnTask?.cancel()
         speaking?.cancel()
@@ -723,7 +782,6 @@ public actor CallSession {
         for task in emotionTasks.values { task.cancel() }
         emotionTasks.removeAll()
         await setup.capture.stop()
-        await setup.playback.stop()
         record(reason)
         recordCallEnd(reason)
         await trace(reason)
@@ -751,7 +809,10 @@ public actor CallSession {
     /// When a call that connected ended: "when did we last talk" counts it, as upstream's
     /// `calls` table does. A call that never connected was no contact.
     private func recordCallEnd(_ reason: CallEnd) {
-        if case .notConnected = reason { return }
+        switch reason {
+        case .notConnected, .micDenied: return
+        default: break
+        }
         guard let conversationID = (try? eidolon.currentConversationIDNow(characterID)) ?? nil else {
             return
         }
