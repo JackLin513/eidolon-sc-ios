@@ -64,8 +64,21 @@ public struct SystemOneSegmentEmotionJudge: SegmentEmotionJudge {
     /// `EmotionSettings.min_probability`).
     private let minProbability: Double?
     /// How long the segment may take to be judged before it goes unjudged (upstream
-    /// `EmotionSettings.timeout`).
+    /// `EmotionSettings.timeout`), kept inside `timeoutRange`.
     private let timeout: TimeInterval
+
+    /// A segment's wait is long enough to reach the service and short enough to still be
+    /// part of the reply. The settings check their field against the same range.
+    public static let timeoutRange: ClosedRange<TimeInterval> = 0.1...10
+    /// What an unusable timeout becomes.
+    public static let defaultTimeout: TimeInterval = 1.5
+
+    /// The timeout, or the default when it is not a finite number inside `timeoutRange`.
+    /// `Task.sleep` traps on what a pasted field can hold (`1e30`), so it never gets one
+    /// of those: this is the second line of defence behind the settings' validation.
+    static func usableTimeout(_ timeout: TimeInterval) -> TimeInterval {
+        timeout.isFinite && timeoutRange.contains(timeout) ? timeout : defaultTimeout
+    }
 
     public init(
         config: SystemOneConfig,
@@ -76,7 +89,7 @@ public struct SystemOneSegmentEmotionJudge: SegmentEmotionJudge {
         self.config = config
         self.transport = transport
         self.minProbability = minProbability
-        self.timeout = timeout
+        self.timeout = Self.usableTimeout(timeout)
     }
 
     public func emotion(in segment: SegmentToJudge) async -> SegmentEmotion? {

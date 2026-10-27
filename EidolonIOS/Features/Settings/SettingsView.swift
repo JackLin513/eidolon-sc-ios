@@ -499,8 +499,9 @@ struct SettingsView: View {
                 return
             }
             let timeout = emotionTimeout.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !timeout.isEmpty, !(Self.number(timeout).map { $0 > 0 } ?? false) {
-                saveError = "超时需要是正数（秒）"
+            if !timeout.isEmpty,
+               !(Self.number(timeout).map { SystemOneSegmentEmotionJudge.timeoutRange.contains($0) } ?? false) {
+                saveError = "超时需要是 0.1 到 10 之间的数（秒）"
                 return
             }
         }
