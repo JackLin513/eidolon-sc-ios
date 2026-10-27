@@ -352,6 +352,7 @@ async def test_every_call_tells_her_who_she_is_this_visit_what_came_before_and_w
     assert MANO_SHEET in shared and "你的生日是4月25日。" in shared
     assert "illumination STARS" in shared  # the world setting
     assert "VA-283" in shared and "具体年龄" in shared and "不往暧昧和色情的方向走" in shared
+    assert "别人的生日和节日不用特意提" in shared
     assert "order=\"true\"" in shared and "制作人每段最多一两句" in shared
     assert "小林" in about
     reason, topic = listed.reasons[0], listed.topics[0]

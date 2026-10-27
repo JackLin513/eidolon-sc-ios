@@ -99,7 +99,7 @@ async def test_on_others_birthdays_she_is_told_whose_herself_not_among_them(
     with_mano = await told_now(client, llm, "mano")
     with_kogane = await told_now(client, llm, "kogane")
 
-    others = "今天是八宮めぐる、七草はづき、月岡恋鐘的生日。可以顺口提一句，不要替她们向制作人要祝福，也不要催制作人做什么。"
+    others = "今天是八宮めぐる、七草はづき、月岡恋鐘的生日。你知道这件事，制作人提起时能接上；不用主动提。"
     assert others in with_mano and HER_BIRTHDAY not in with_mano
     assert "今天是八宮めぐる、七草はづき的生日。" in with_kogane and HER_BIRTHDAY in with_kogane
 
@@ -114,7 +114,22 @@ async def test_on_a_holiday_she_is_told_which_right_after_now_in_its_section(
 
     now, *_ = told.split("\n\n")
     assert now.startswith("# 此刻\n")
-    assert now.endswith("今天是日本的节假日：文化の日。可以自然地提到，不必每句都说。")
+    assert now.endswith("今天是日本的节假日：文化の日。制作人提起再说，不用主动提。")
+
+
+async def test_on_her_unit_mates_birthday_she_may_bring_it_up_on_the_others_only_know_of_it(
+    make_client: ClientFactory, characters: CharacterConfig
+):
+    """Hiori is in Mano's unit, Kogane (02-25, the fixture's) in another (`write_world`)."""
+    write_world(characters)
+    characters.add("hiori", "風野灯織", "sheet", idol_id=2, birthday="02-25")
+    llm = FakeLLM(REPLY)
+    client = make_client(llm, clock=lambda: datetime(2026, 2, 25, 3, tzinfo=UTC))
+
+    told = await told_now(client, llm)
+
+    assert "今天是你的组合伙伴風野灯織的生日。可以顺口提一句" in told
+    assert "今天是月岡恋鐘的生日。你知道这件事，制作人提起时能接上；不用主动提。" in told
 
 
 async def test_on_a_day_that_is_nothing_she_is_told_nothing_of_it(make_client: ClientFactory):

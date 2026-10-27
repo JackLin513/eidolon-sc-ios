@@ -1,11 +1,11 @@
 """What she is told of the day it is in Tokyo, where she lives (GLOSSARY.md「日历」): whether
-it is her birthday, whose of the others' it is, which of Japan's holidays it is, and which
+it is her birthday, whose of the others' it is (to bring up only her unit mates'), which of Japan's holidays it is, and which
 of the live days she stood on fell on it in years before, told as past. Each
 line is told only on its day, after what she is told of now (`producer.now_prompt`), in the
 same section, in a typed turn, a call or a reach-out alike; none on a day that is none of
 them. The producer's own birthday goes by their day, and is told by `now_prompt`."""
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
@@ -32,11 +32,14 @@ def today_lines(
     characters: Iterable[Character],
     talking: Talking,
     her_lives: Sequence[tuple[Live, Sequence[LiveDay]]],
+    unit_mates: Collection[str],
 ) -> list[str]:
     """What `character` is told of the day it is in Tokyo at `now`, `talking` with the
     producer as she is (alike for now in each way): her birthday, the birthdays of the others
-    among `characters`, in idol order, the holiday, each if it is the day; then each of the
-    days of `her_lives` (`World.lives_of`) on this day in a year before, earliest first."""
+    among `characters`, in idol order, those of her `unit_mates` (`World.unit_mates`) apart
+    from the rest, which she is only to know of, the holiday, each if it is the day; then each
+    of the days of `her_lives` (`World.lives_of`) on this day in a year before, earliest
+    first."""
     today = tokyo_date(now)
     lines: list[str] = []
     if is_birthday(character.birthday, today):
@@ -45,13 +48,17 @@ def today_lines(
         c.name for c in in_idol_order(characters)
         if c.id != character.id and is_birthday(c.birthday, today)
     ]
-    if others:
+    if mates := [name for name in others if name in unit_mates]:
         lines.append(
-            f"今天是{'、'.join(others)}的生日。可以顺口提一句，不要替她们向制作人要祝福，"
+            f"今天是你的组合伙伴{'、'.join(mates)}的生日。可以顺口提一句，不要替她们向制作人要祝福，"
             "也不要催制作人做什么。"
         )
+    if rest := [name for name in others if name not in unit_mates]:
+        lines.append(
+            f"今天是{'、'.join(rest)}的生日。你知道这件事，制作人提起时能接上；不用主动提。"
+        )
     if holiday := holiday_on(today):
-        lines.append(f"今天是日本的节假日：{holiday}。可以自然地提到，不必每句都说。")
+        lines.append(f"今天是日本的节假日：{holiday}。制作人提起再说，不用主动提。")
     lines += _lives_on_this_day(today, her_lives)
     return lines
 

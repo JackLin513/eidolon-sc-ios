@@ -487,7 +487,9 @@ class Bar:
                 hers.about_producer, reason, topic, drinks,
                 affinity_prompt(status.tier, None) if status is not None else [],
                 today_lines(
-                    now, character, everyone, "apart", world.lives_of(character.name) if world else ()
+                    now, character, everyone, "apart",
+                    world.lives_of(character.name) if world else (),
+                    world.unit_mates(character.name) if world else (),
                 ),
                 hers.remembered, now, character, self._catalog, facts,
             ),

@@ -189,6 +189,12 @@ class World:
             return None
         return idol.unit, names.index(idol.unit)
 
+    def unit_mates(self, name: str) -> list[str]:
+        """The others in her unit, by name; none if she is in none."""
+        idol = self.idol(name)
+        unit = next((u for u in self.units if idol and u.name == idol.unit), None)
+        return [m for m in unit.members if m != name] if unit else []
+
     def songs_of(self, name: str) -> list[Song]:
         """Her songs: those she sings alone and those her whole unit sings, no one else
         joining in. A special unit's song is none of them, whoever is in it."""

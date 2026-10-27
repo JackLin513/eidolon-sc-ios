@@ -525,6 +525,7 @@ def narrations(
 REACH_OUT_RULES = """# 先开口
 制作人这会儿没在和你说话，你想先给他发几句。
 - 由头你自己挑：先接着你们最近聊过的事，或者他最近的近况；其次是你这周的工作（如果有）；再其次才是现在的时间、他的生日。
+- 别人的生日、节假日、往年今天的演出不拿来当由头；组合伙伴的生日可以顺口提一句。
 - 不要只发一句空的问候，比如「早安」「在吗」「想你了」，要有具体想说的事。
 - 写一到两段。
 - 别和你前几次先开口时用一样的开头、一样的由头。
@@ -1145,6 +1146,7 @@ class ConversationEngine:
             *today_lines(
                 now, character, self._characters.values(), talking,
                 self._world.lives_of(character.name) if self._world else (),
+                self._world.unit_mates(character.name) if self._world else (),
             ),
             *(schedule_lines(her_jobs) if her_jobs is not None else []),
             *cycle_lines(her_day),
