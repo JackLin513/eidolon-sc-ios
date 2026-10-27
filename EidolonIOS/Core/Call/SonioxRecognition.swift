@@ -41,7 +41,11 @@ final class SonioxRecognition: SpeechRecognition, @unchecked Sendable {
             emit.finish(throwing: SonioxError.service("", "还没有填 Soniox 的密钥"))
             return
         }
-        let session = URLSession(configuration: .default)
+        let configuration = URLSessionConfiguration.default
+        // A connection that never opens must not sit in `send` forever: the call's own
+        // connect timeout ends it, but this lets the attempt fail cleanly sooner.
+        configuration.timeoutIntervalForRequest = 10
+        let session = URLSession(configuration: configuration)
         let socket = session.webSocketTask(with: url)
         socket.resume()
         defer {
@@ -60,19 +64,48 @@ final class SonioxRecognition: SpeechRecognition, @unchecked Sendable {
             emit.finish(throwing: error)
             return
         }
+        // The configuration is accepted: the recognizer can hear from here on, and the call
+        // is connected (spec「接通」).
+        emit.yield(.connected)
 
+        let writer = SocketWriter(socket)
+        let lastAudio = LastAudio()
         let pump = Task {
             do {
                 for try await chunk in audio {
                     if Task.isCancelled { break }
-                    try await socket.send(.data(chunk))
+                    try await writer.sendData(chunk)
+                    lastAudio.mark()
                 }
             } catch {
                 // The microphone ended or failed; the receive loop ends too.
             }
             socket.cancel(with: .normalClosure, reason: nil)
         }
-        defer { pump.cancel() }
+        // Her voice closes the microphone for as long as a segment plays; without this the
+        // connection would see no traffic and Soniox would close it (pipecat's keepalive).
+        let keepalive = Task {
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: SonioxKeepalive.interval)
+                } catch {
+                    break
+                }
+                guard SonioxKeepalive.isDue(now: Date(), lastAudio: lastAudio.value) else {
+                    continue
+                }
+                do {
+                    try await writer.sendText(SonioxKeepalive.message)
+                    lastAudio.mark()
+                } catch {
+                    break
+                }
+            }
+        }
+        defer {
+            pump.cancel()
+            keepalive.cancel()
+        }
 
         var transcript = SonioxTranscript()
         do {
@@ -103,6 +136,42 @@ final class SonioxRecognition: SpeechRecognition, @unchecked Sendable {
         } catch {
             emit.finish(throwing: error)
         }
+    }
+}
+
+/// Sends over one websocket one message at a time: the audio pump and the keepalive would
+/// otherwise interleave sends on the same connection.
+private actor SocketWriter {
+    private let socket: URLSessionWebSocketTask
+
+    init(_ socket: URLSessionWebSocketTask) {
+        self.socket = socket
+    }
+
+    func sendData(_ data: Data) async throws {
+        try await socket.send(.data(data))
+    }
+
+    func sendText(_ text: String) async throws {
+        try await socket.send(.string(text))
+    }
+}
+
+/// When audio last went up, shared by the pump that sends it and the keepalive that asks.
+private final class LastAudio: @unchecked Sendable {
+    private let lock = NSLock()
+    private var at = Date()
+
+    func mark() {
+        lock.lock()
+        at = Date()
+        lock.unlock()
+    }
+
+    var value: Date {
+        lock.lock()
+        defer { lock.unlock() }
+        return at
     }
 }
 

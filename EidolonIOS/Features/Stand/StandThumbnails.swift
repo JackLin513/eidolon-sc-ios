@@ -2,11 +2,12 @@ import EidolonCore
 import UIKit
 
 /// Draws the outfit thumbnails once (spec「通话页」): the same renderer the call uses, off
-/// screen and in `full` framing, snapshotted into `Caches` under her outfit number and kept
-/// in memory for the rest of the process. One renderer is reused and requests are served one
-/// at a time, so a grid of cards never opens a WebGL context per card. A thumbnail that
-/// cannot be drawn returns nil and the card keeps its placeholder; the next request gets a
-/// fresh context.
+/// screen and in `full` framing, snapshotted into `Caches` under her outfit number and the
+/// installed bundle's version, and kept in memory for the rest of the process. One renderer
+/// is reused and requests are served one at a time, so a grid of cards never opens a WebGL
+/// context per card. A thumbnail that cannot be drawn returns nil and the card keeps its
+/// placeholder; the next request gets a fresh context. A card scrolled away cancels its
+/// wait, so a slow load does not hold the next card for the whole timeout.
 @MainActor
 final class OutfitThumbnailStore {
     static let shared = OutfitThumbnailStore()
@@ -37,23 +38,32 @@ final class OutfitThumbnailStore {
         bench.isUserInteractionEnabled = false
     }
 
-    /// The cached thumbnail of an outfit, drawing it if this process has not drawn it yet.
-    /// Requests are serialized: the next outfit is loaded only after the previous picture
-    /// is taken, so there is never more than one off-screen renderer.
-    func thumbnail(for outfit: StandOutfit, contentRoot: URL) async -> UIImage? {
-        if let cached = cached(outfit) { return cached }
+    /// The cached thumbnail of an outfit, drawing it if this bundle's version has not been
+    /// drawn yet. Requests are serialized: the next outfit is loaded only after the previous
+    /// picture is taken, so there is never more than one off-screen renderer.
+    func thumbnail(
+        for outfit: StandOutfit,
+        contentRoot: URL,
+        contentVersion: String
+    ) async -> UIImage? {
+        let key = key(outfit, contentVersion: contentVersion)
+        if let cached = cached(key, outfit: outfit, contentVersion: contentVersion) {
+            return cached
+        }
         await lock()
         defer { unlock() }
         // The lock may have been waited on after the card scrolled away: then nothing is
         // drawn and nothing is cached (the card's `.task` cancels when it leaves).
         guard !Task.isCancelled else { return nil }
-        if let cached = cached(outfit) { return cached }
+        if let cached = cached(key, outfit: outfit, contentVersion: contentVersion) {
+            return cached
+        }
         guard await waitForBench() else { return nil }
         guard let image = await draw(outfit, contentRoot: contentRoot) else { return nil }
         guard !Task.isCancelled else { return nil }
-        memory.setObject(image, forKey: outfit.id as NSString)
+        memory.setObject(image, forKey: key)
         if let data = image.pngData() {
-            try? data.write(to: file(for: outfit), options: .atomic)
+            try? data.write(to: file(outfit, contentVersion: contentVersion), options: .atomic)
         }
         return image
     }
@@ -98,7 +108,8 @@ final class OutfitThumbnailStore {
         return image
     }
 
-    /// Load one outfit and wait for the page's report, or until it gives up.
+    /// Load one outfit and wait for the page's report, or until it gives up. The wait ends
+    /// at once if the card goes away, so a slow load cannot hold the next card.
     private func load(_ outfit: StandOutfit, into renderer: StandWebRenderer) async -> Bool {
         let waiter = LoadWaiter()
         renderer.onLoaded = { _ in waiter.finish(true) }
@@ -141,22 +152,27 @@ final class OutfitThumbnailStore {
 
     // MARK: - The cache
 
-    private func cached(_ outfit: StandOutfit) -> UIImage? {
-        if let image = memory.object(forKey: outfit.id as NSString) { return image }
-        guard let data = try? Data(contentsOf: file(for: outfit)),
+    private func key(_ outfit: StandOutfit, contentVersion: String) -> NSString {
+        OutfitThumbnailKey.fileName(outfitID: outfit.id, contentVersion: contentVersion) as NSString
+    }
+
+    private func cached(
+        _ key: NSString,
+        outfit: StandOutfit,
+        contentVersion: String
+    ) -> UIImage? {
+        if let image = memory.object(forKey: key) { return image }
+        guard let data = try? Data(contentsOf: file(outfit, contentVersion: contentVersion)),
               let image = UIImage(data: data)
         else { return nil }
-        memory.setObject(image, forKey: outfit.id as NSString)
+        memory.setObject(image, forKey: key)
         return image
     }
 
-    private func file(for outfit: StandOutfit) -> URL {
-        directory.appendingPathComponent(Self.fileName(for: outfit))
-    }
-
-    /// Her outfit number with the slash written as an underscore: `stand_1030010010.png`.
-    static func fileName(for outfit: StandOutfit) -> String {
-        outfit.id.replacingOccurrences(of: "/", with: "_") + ".png"
+    private func file(_ outfit: StandOutfit, contentVersion: String) -> URL {
+        directory.appendingPathComponent(
+            OutfitThumbnailKey.fileName(outfitID: outfit.id, contentVersion: contentVersion)
+        )
     }
 
     // MARK: - One at a time
@@ -175,34 +191,5 @@ final class OutfitThumbnailStore {
         } else {
             waiting.removeFirst().resume()
         }
-    }
-}
-
-/// Waits for one load to report, whether it loaded or not; a page that says nothing gives
-/// up after the timeout.
-@MainActor
-private final class LoadWaiter {
-    private var result: Bool?
-    private var continuation: CheckedContinuation<Bool, Never>?
-
-    func finish(_ loaded: Bool) {
-        guard result == nil else { return }
-        result = loaded
-        guard let continuation else { return }
-        self.continuation = nil
-        continuation.resume(returning: loaded)
-    }
-
-    func wait(timeout: Duration) async -> Bool {
-        if let result { return result }
-        let timeoutTask = Task { @MainActor in
-            try? await Task.sleep(for: timeout)
-            self.finish(false)
-        }
-        let loaded = await withCheckedContinuation { continuation in
-            self.continuation = continuation
-        }
-        timeoutTask.cancel()
-        return loaded
     }
 }

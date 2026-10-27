@@ -26,6 +26,7 @@ final class DebugRecognition: SpeechRecognition, @unchecked Sendable {
         let shouldDrop = markCall()
         return AsyncThrowingStream { continuation in
             let task = Task {
+                continuation.yield(.connected)
                 if shouldDrop {
                     if let first = said.first { continuation.yield(.partial(first)) }
                     try? await Task.sleep(for: .milliseconds(500))
