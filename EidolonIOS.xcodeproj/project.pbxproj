@@ -21,6 +21,7 @@
 		791DD675A29C48B88185FACE /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE21F722ED79A2089F060B7F /* Theme.swift */; };
 		8FDA81B5B65A7F24FDDE1659 /* ChatSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730259B31CD6DBF3CA44FC75 /* ChatSettings.swift */; };
 		9221A0F68F374BAAA5282CCE /* MemoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B94AA6A4C5655585B24D2400 /* MemoryListView.swift */; };
+		98592CFD694AC4170E1FFACD /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E783F65D602399E8DF3F7875 /* Assets.xcassets */; };
 		9C1DDAAE28F34ADE34D50C28 /* CallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A530040A28709F9772A80A94 /* CallView.swift */; };
 		9DE409627BE4363A227DD407 /* ConversationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40B7B5AA3042F29A949E938 /* ConversationListView.swift */; };
 		A1B405F9250C7DCD499A4A7E /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77736DA8D3A8B0B2407A626B /* ChatView.swift */; };
@@ -69,6 +70,7 @@
 		D48DCFB6F0FC0D93BD033FC6 /* TraceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceListView.swift; sourceTree = "<group>"; };
 		DC2610401DD1C29D8D7AB56C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxRecognition.swift; sourceTree = "<group>"; };
+		E783F65D602399E8DF3F7875 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F1FF6012F255268462E4A685 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		F51D53D2BDB3163C8344025C /* StandThumbnails.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandThumbnails.swift; sourceTree = "<group>"; };
 		F6567288D9C69EE4C18792B6 /* EidolonIOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EidolonIOSApp.swift; sourceTree = "<group>"; };
@@ -146,6 +148,7 @@
 		8428DAC951AA7D13E5248556 /* EidolonIOS */ = {
 			isa = PBXGroup;
 			children = (
+				E783F65D602399E8DF3F7875 /* Assets.xcassets */,
 				A03C8252AFD0E637325A2848 /* App */,
 				AB93147C4769FE640D212437 /* Core */,
 				689A5C957FC75EE927E77D7D /* Features */,
@@ -327,6 +330,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				98592CFD694AC4170E1FFACD /* Assets.xcassets in Resources */,
 				6ADC1F5313FCC7F5003E1676 /* stand-player.js in Resources */,
 				17CAADABE8FCFE23334C6C09 /* stand.html in Resources */,
 			);
