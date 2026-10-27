@@ -23,6 +23,10 @@ public actor Eidolon {
 
     let userQueue: DatabaseQueue
     private var content: ContentDatabase?
+    /// The world setting, parsed once per installed bundle: it is 1.3 MB, read on the main
+    /// path of every turn otherwise.
+    var cachedWorld: WorldSetting?
+    var worldCached = false
     /// What earlier turns are still writing down, per job, so the next turn can wait a
     /// while for it (ADR-0009).
     var memoryJobs: [Int64: Task<Void, Never>] = [:]
@@ -90,6 +94,9 @@ public actor Eidolon {
             )
         }
         content = try openContent()
+        // Another bundle's world is not this one's.
+        cachedWorld = nil
+        worldCached = false
         return info
     }
 
@@ -125,10 +132,11 @@ public actor Eidolon {
     public func latestActivities() throws -> [String: LatestActivity] {
         try userQueue.read { db in
             var result: [String: LatestActivity] = [:]
-            // The latest thing said, her reach-outs included: that is what the list shows.
+            // The latest thing said or done, her reach-outs and conversation events
+            // included: that is what the list shows.
             let latest = try Row.fetchAll(db, sql: """
-                SELECT character_id, role, preview, created_at FROM (
-                    SELECT character_id, role, preview, created_at,
+                SELECT character_id, role, preview, event_kind, created_at FROM (
+                    SELECT character_id, role, preview, event_kind, created_at,
                            ROW_NUMBER() OVER (
                                PARTITION BY character_id
                                ORDER BY created_at DESC, written DESC
@@ -137,6 +145,7 @@ public actor Eidolon {
                         SELECT c.character_id AS character_id,
                                m.role AS role,
                                COALESCE(NULLIF(m.zh, ''), NULLIF(m.ja, ''), NULLIF(m.text, '')) AS preview,
+                               NULL AS event_kind,
                                m.created_at AS created_at,
                                m.rowid AS written
                         FROM messages m
@@ -145,10 +154,20 @@ public actor Eidolon {
                         SELECT c.character_id,
                                'character',
                                COALESCE(NULLIF(r.zh, ''), NULLIF(r.ja, '')),
+                               NULL,
                                r.created_at,
                                r.rowid
                         FROM reach_outs r
                         JOIN conversations c ON c.id = r.conversation_id
+                        UNION ALL
+                        SELECT c.character_id,
+                               'event',
+                               NULL,
+                               e.kind,
+                               e.created_at,
+                               e.id
+                        FROM conversation_events e
+                        JOIN conversations c ON c.id = e.conversation_id
                     )
                 ) WHERE rn = 1
                 """)
@@ -158,6 +177,7 @@ public actor Eidolon {
                     lastMessagePreview: row["preview"],
                     lastMessageRole: row["role"],
                     lastMessageAt: row["created_at"],
+                    lastEventKind: row["event_kind"],
                     unseenReachOut: false
                 )
             }

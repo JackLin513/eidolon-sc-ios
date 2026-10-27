@@ -559,7 +559,7 @@ public actor CallSession {
                 zh: caption.zh.trimmingCharacters(in: .whitespacesAndNewlines)
             ))
             judgeEmotion(segment: index)
-            let spoken = speech[index] ?? ""
+            let spoken = ReplyCues.spoken(speech[index] ?? "", by: setup.voiceModel)
             if !spoken.isEmpty {
                 queue.append((reply: reply, index: index, speech: spoken))
                 ensureSpeaking()

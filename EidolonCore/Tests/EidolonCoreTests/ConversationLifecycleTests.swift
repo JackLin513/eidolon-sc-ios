@@ -152,6 +152,28 @@ final class ConversationLifecycleTests: XCTestCase {
         XCTAssertEqual(jobs, 0)
     }
 
+    /// Deleting a conversation takes its turn traces with it: what was deleted is really
+    /// gone, prompts and all (ADR-0012).
+    func testDeletingAPastConversationDropsItsTurnTraces() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("やあ", provider: reply(), on: eidolon)
+        let traces = try await eidolon.turnTraces()
+        let old = try XCTUnwrap(traces.first?.conversationID)
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO conversations(id, character_id, created_at)
+                    VALUES ('newer', 'mano', '2099-01-01T00:00:00.000000Z')
+                    """
+            )
+        }
+
+        try await eidolon.deleteConversation(id: old)
+
+        let left = try await eidolon.turnTraces()
+        XCTAssertFalse(left.contains { $0.conversationID == old })
+    }
+
     func testDeletingOneConversationLeavesOthersAlone() async throws {
         let eidolon = try await installedEidolon()
         try await say("やあ", to: "mano", provider: reply(), on: eidolon)

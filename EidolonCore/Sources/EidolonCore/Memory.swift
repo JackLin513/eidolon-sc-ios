@@ -99,9 +99,10 @@ enum MemoryExtraction {
         ]
     }
 
-    /// Her words as people see them: Chinese when the reply has it, Japanese otherwise.
+    /// Her words as people see them: Chinese when the reply has it, Japanese otherwise,
+    /// neither with delivery cues (upstream `Message.without_cues`).
     static func shownText(_ message: StoredMessage) -> String {
-        let zh = message.segments.map(\.zh).joined()
+        let zh = ReplyCues.shown(message.segments.map(\.zh).joined())
         if !zh.isEmpty { return zh }
         return ReplyCues.shown(message.segments.map(\.ja).joined())
     }
@@ -172,6 +173,34 @@ extension Eidolon {
                     supersededBy: row["superseded_by"]
                 )
             }
+        }
+    }
+
+    /// Forgets one of the producer's memories, and the vector that would find it; false
+    /// when there is no such memory (upstream `Memory.delete`).
+    @discardableResult
+    public func deleteMemory(id: String) async throws -> Bool {
+        // What earlier turns are still writing down is written before this, as upstream
+        // settles first, so it cannot bring the memory back afterwards.
+        await settleMemories()
+        return try await userQueue.write { db in
+            try db.execute(
+                sql: "DELETE FROM memory_vectors WHERE memory_id = ?",
+                arguments: [id]
+            )
+            try db.execute(sql: "DELETE FROM memories WHERE id = ?", arguments: [id])
+            return db.changesCount > 0
+        }
+    }
+
+    /// Forgets everything, including what turns so far are still writing down (upstream
+    /// `Memory.clear`): what was queued but not written is dropped with them.
+    public func clearMemories() async throws {
+        await settleMemories()
+        try await userQueue.write { db in
+            try db.execute(sql: "DELETE FROM memory_vectors")
+            try db.execute(sql: "DELETE FROM memories")
+            try db.execute(sql: "DELETE FROM pending_jobs WHERE kind = 'memory'")
         }
     }
 
