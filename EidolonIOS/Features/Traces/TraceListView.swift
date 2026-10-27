@@ -144,7 +144,7 @@ struct TraceListView: View {
     }
 
     private static func stamp(_ iso: String) -> String {
-        guard let date = ISO8601DateFormatter().date(from: iso) else { return iso }
+        guard let date = Eidolon.parseTimestamp(iso) else { return iso }
         return date.formatted(date: .abbreviated, time: .standard)
     }
 }
