@@ -119,8 +119,8 @@ public struct StandNod: Codable, Sendable, Hashable {
     }
 }
 
-/// How she should look right now, with no word of which animations do it. The call
-/// screen's directives (#31) build this from the call's events.
+/// How she should look right now, with no word of which animations do it. `StandDirector`
+/// builds this from the call's events.
 public struct StandDirection: Codable, Sendable, Hashable {
     /// Her emotion over the call so far.
     public var mood: StandEmotion
@@ -142,8 +142,8 @@ public struct StandDirection: Codable, Sendable, Hashable {
 }
 
 /// What to play on each of the player's five tracks, by animation name (ADR-0017:
-/// the animation table lives in Swift, the player only plays). The animation table
-/// (#31) will build these from a `StandDirection` and the animations an outfit has.
+/// the animation table lives in Swift, the player only plays). `StandAnimator` builds these
+/// from a `StandDirection` and the animations an outfit has.
 public struct StandPose: Codable, Sendable, Hashable {
     /// Track 0, looped.
     public var body: String
@@ -192,7 +192,7 @@ public struct StandPose: Codable, Sendable, Hashable {
     }
 
     /// What she looks like with nothing going on: the calm body and face, mouth shut.
-    /// Every outfit carries `wait` and `face_wait`; #31 will pick from what an outfit
+    /// Every outfit carries `wait` and `face_wait`; `StandAnimator` picks from what an outfit
     /// actually has.
     public static let calm = StandPose(body: "wait", face: "face_wait")
 
