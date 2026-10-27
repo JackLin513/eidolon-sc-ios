@@ -16,7 +16,7 @@ import Foundation
 /// - The call ending forgets the call; the next one starts calm.
 public struct CallStandDirector: Sendable {
     /// The upstream rules, kept up to date by the events translated here. Internal so the
-    /// tests can judge a segment before #33 carries the judgement in a call event.
+    /// tests can seed a judgement or a segment directly.
     public internal(set) var director: StandDirector
 
     /// The producer is being heard: a non-empty `hearing` started it and no stop has come.
@@ -61,6 +61,12 @@ public struct CallStandDirector: Sendable {
             director.apply(.botStartedSpeaking)
         case .segmentStopped:
             director.apply(.botStoppedSpeaking)
+        case let .emotion(reply, segment, emotion, nod):
+            director.apply(.segmentJudged(StandJudgement(
+                segment: StandSegment(reply: reply, segment: segment),
+                emotion: emotion,
+                nod: nod
+            )))
         case let .state(state):
             if case .ended = state {
                 director.apply(.callOver)

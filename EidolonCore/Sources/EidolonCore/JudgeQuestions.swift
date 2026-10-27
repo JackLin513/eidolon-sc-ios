@@ -2,14 +2,17 @@ import Foundation
 
 /// One question the judge model is asked, in the shape System One expects: a `score`
 /// question answers with a probability for each level, a `noul` question with the
-/// probability that the answer is yes (upstream's question kinds).
+/// probability that the answer is yes, and a `choice` question with a probability for
+/// each named option (upstream's question kinds).
 public enum JudgeQuestion: Sendable, Hashable {
     case score(instructions: String, criteria: [String])
     case noul(instructions: String, yes: String, no: String)
+    case choice(instructions: String, criteria: [String: String])
 
     public var instructions: String {
         switch self {
-        case let .score(instructions, _), let .noul(instructions, _, _):
+        case let .score(instructions, _), let .noul(instructions, _, _),
+             let .choice(instructions, _):
             instructions
         }
     }
@@ -24,6 +27,8 @@ public enum JudgeQuestion: Sendable, Hashable {
                 "instructions": instructions,
                 "criteria": ["true": yes, "false": no],
             ]
+        case let .choice(instructions, criteria):
+            return ["type": "choice", "instructions": instructions, "criteria": criteria]
         }
     }
 }
@@ -115,6 +120,62 @@ public enum JudgeQuestions {
         ("needs_retrieval", needsRetrieval),
         ("recall", recall),
         ("about_producer", aboutProducer),
+    ]
+
+    static func payload() -> [String: Any] {
+        Dictionary(uniqueKeysWithValues: asked.map { ($0.key, $0.question.json()) })
+    }
+}
+
+/// The two questions a segment's emotion is judged by, copied verbatim from upstream
+/// `emotion.py` (spec「情绪判断」, ADR-0016): the scene both are asked in, the options and
+/// what each means. This is prompt text, and every word is upstream's.
+enum EmotionQuestions {
+    /// Upstream `_SCENE`: the frame both questions are asked in.
+    static let scene = "角色扮演的通话中，角色是《偶像大师 闪耀色彩》283 事务所的偶像（或事务员），"
+        + "正在和制作人通话。"
+        + "`这一段台词` 是她此刻说出口的日语，方括号里的英文和 <whisper> 这类成对的标签是给配音的语气提示；"
+        + "`这一段的中文字幕` 是这段台词的意思。"
+
+    /// Upstream `_EMOTION_OPTIONS`, in the order it declares them: the option as the judge
+    /// names it, the emotion it stands for, and what it means.
+    static let emotionOptions: [
+        (name: String, emotion: StandEmotion, description: String)
+    ] = [
+        ("平静", .calm, "普通地回应、打招呼、交代或确认事情，没有明显情绪"),
+        ("开心", .happy, "高兴、兴奋、感激、期待"),
+        ("害羞", .shy, "难为情、脸红、被夸或被说到心事时的不好意思"),
+        ("惊讶", .surprised, "吃惊、意外、慌张"),
+        ("难过", .sad, "伤心、失落、寂寞、担心、不甘心"),
+        ("生气", .angry, "不满、责怪、赌气、不能原谅"),
+        ("思考", .thinking, "在想、犹豫、斟酌措辞"),
+    ]
+
+    /// Upstream `_NOD_OPTIONS`: nodding, shaking the head, and neither.
+    static let nodOptions: [
+        (name: String, nod: StandNod.Kind?, description: String)
+    ] = [
+        ("同意", .yes, "肯定、答应、附和制作人的话，会点头"),
+        ("否定", .no, "否认、拒绝、不同意制作人的话，会摇头"),
+        ("都不是", nil, "既不是同意也不是否定，例如陈述、提问、打招呼、说自己的事"),
+    ]
+
+    static let emotion = JudgeQuestion.choice(
+        instructions: scene + "说这一段时，她脸上最主要的情绪是哪一种？",
+        criteria: Dictionary(
+            uniqueKeysWithValues: emotionOptions.map { ($0.name, $0.description) }
+        )
+    )
+
+    static let nod = JudgeQuestion.choice(
+        instructions: scene + "说这一段时，她是在对制作人的话表示同意，表示否定，还是都不是？",
+        criteria: Dictionary(uniqueKeysWithValues: nodOptions.map { ($0.name, $0.description) })
+    )
+
+    /// Both, by the keys their answers come back under.
+    static let asked: [(key: String, question: JudgeQuestion)] = [
+        ("emotion", emotion),
+        ("nod", nod),
     ]
 
     static func payload() -> [String: Any] {
