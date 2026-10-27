@@ -207,6 +207,9 @@ public enum CallEvent: Sendable, Hashable {
     case segmentStarted(reply: Int, segment: Int)
     /// A segment's voice stopped playing.
     case segmentStopped(reply: Int, segment: Int)
+    /// A segment's emotion and nod, judged while the reply was being said. Only her stand
+    /// takes it: it is not part of the conversation, nor of the turn's trace.
+    case emotion(reply: Int, segment: Int, emotion: StandEmotion, nod: StandNod.Kind?)
     /// The turn could not be answered; the call goes on.
     case failed(String)
 }
@@ -222,6 +225,9 @@ public struct CallSetup: Sendable {
     public var voiceModel: String
     public var provider: any ChatProvider
     public var judge: (any JudgeProvider)?
+    /// Judges each segment's emotion for her stand; nil when the judge is the chat model,
+    /// which has no probabilities to read (spec「情绪判断」).
+    public var emotionJudge: (any SegmentEmotionJudge)?
     public var embedder: (any EmbeddingProvider)?
     public var reranker: (any RerankProvider)?
     public var tracing: TurnTracing
@@ -239,6 +245,7 @@ public struct CallSetup: Sendable {
         voiceModel: String,
         provider: any ChatProvider,
         judge: (any JudgeProvider)? = nil,
+        emotionJudge: (any SegmentEmotionJudge)? = nil,
         embedder: (any EmbeddingProvider)? = nil,
         reranker: (any RerankProvider)? = nil,
         tracing: TurnTracing = .on,
@@ -253,6 +260,7 @@ public struct CallSetup: Sendable {
         self.voiceModel = voiceModel
         self.provider = provider
         self.judge = judge
+        self.emotionJudge = emotionJudge
         self.embedder = embedder
         self.reranker = reranker
         self.tracing = tracing
@@ -269,6 +277,7 @@ public actor CallSession {
     public nonisolated let characterID: String
 
     private let eidolon: Eidolon
+    private let characterName: String
     private let setup: CallSetup
     private let voice: CallVoice
     private let stream: AsyncStream<CallEvent>
@@ -290,6 +299,12 @@ public actor CallSession {
     /// Which of her replies the segments being said belong to, from 0: every answer she
     /// gives in the call is one reply (spec「通话事件」).
     private var reply = -1
+    /// What the producer said for the reply being answered, which its segments' emotions
+    /// are judged with.
+    private var said = ""
+    /// The segments' emotions still being judged, by reply and segment, cancelled when the
+    /// call ends (spec「情绪判断」).
+    private var emotionTasks: [String: Task<Void, Never>] = [:]
     private var queue: [(reply: Int, index: Int, speech: String)] = []
     /// The segment after the one playing, being made while it plays.
     private var prefetch: (index: Int, task: Task<Data, Error>)?
@@ -310,9 +325,16 @@ public actor CallSession {
     private var pendingHangUp = false
     private var pendingCooldownUntil: Date?
 
-    init(eidolon: Eidolon, characterID: String, voice: CallVoice, setup: CallSetup) {
+    init(
+        eidolon: Eidolon,
+        characterID: String,
+        characterName: String,
+        voice: CallVoice,
+        setup: CallSetup
+    ) {
         self.eidolon = eidolon
         self.characterID = characterID
+        self.characterName = characterName
         self.voice = voice
         self.setup = setup
         (stream, continuation) = AsyncStream.makeStream(of: CallEvent.self)
@@ -440,6 +462,7 @@ public actor CallSession {
         setState(.thinking)
         emit(.recognized(text))
         reply += 1
+        said = text
         speech.removeAll()
         captions.removeAll()
         lastFinalized = -1
@@ -524,6 +547,7 @@ public actor CallSession {
                 ja: caption.ja.trimmingCharacters(in: .whitespacesAndNewlines),
                 zh: caption.zh.trimmingCharacters(in: .whitespacesAndNewlines)
             ))
+            judgeEmotion(segment: index)
             let spoken = speech[index] ?? ""
             if !spoken.isEmpty {
                 queue.append((reply: reply, index: index, speech: spoken))
@@ -531,6 +555,54 @@ public actor CallSession {
                 startPrefetch()
             }
         }
+    }
+
+    // MARK: - Her segments' emotions
+
+    /// Judges a complete segment's emotion in a task of its own, while it is voiced: the
+    /// answer is reported as soon as it comes, and a segment that cannot be judged is
+    /// simply left unjudged, never asked again (spec「情绪判断」).
+    private func judgeEmotion(segment: Int) {
+        guard let judge = setup.emotionJudge, !finished else { return }
+        let key = "\(reply):\(segment)"
+        guard emotionTasks[key] == nil else { return }
+        let caption = captions[segment] ?? (ja: "", zh: "")
+        let before = (0..<max(0, segment)).map { index in
+            SaidSegment(
+                ja: speech[index] ?? captions[index]?.ja ?? "",
+                zh: captions[index]?.zh ?? ""
+            )
+        }
+        let question = SegmentToJudge(
+            characterName: characterName,
+            said: said,
+            before: before,
+            segment: SaidSegment(ja: speech[segment] ?? caption.ja, zh: caption.zh)
+        )
+        let reply = reply
+        let task = Task { [weak self] in
+            let judged = await judge.emotion(in: question)
+            await self?.emotionJudged(judged, key: key, reply: reply, segment: segment)
+        }
+        emotionTasks[key] = task
+    }
+
+    /// Reports a segment's emotion for her stand, unless the call has ended or the
+    /// judgement was cancelled with it.
+    private func emotionJudged(
+        _ judged: SegmentEmotion?,
+        key: String,
+        reply: Int,
+        segment: Int
+    ) {
+        emotionTasks[key] = nil
+        guard let judged, !finished, !Task.isCancelled else { return }
+        emit(.emotion(
+            reply: reply,
+            segment: segment,
+            emotion: judged.emotion,
+            nod: judged.nod
+        ))
     }
 
     // MARK: - Voicing
@@ -637,6 +709,8 @@ public actor CallSession {
         speaking?.cancel()
         prefetch?.task.cancel()
         prefetch = nil
+        for task in emotionTasks.values { task.cancel() }
+        emotionTasks.removeAll()
         await setup.capture.stop()
         await setup.playback.stop()
         record(reason)
@@ -720,6 +794,7 @@ extension Eidolon {
         return CallSession(
             eidolon: self,
             characterID: characterID,
+            characterName: character.name,
             voice: CallVoice(id: voiceID, model: setup.voiceModel),
             setup: setup
         )
