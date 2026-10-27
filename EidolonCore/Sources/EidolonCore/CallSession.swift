@@ -725,15 +725,17 @@ public actor CallSession {
         await setup.capture.stop()
         await setup.playback.stop()
         record(reason)
+        recordCallEnd(reason)
         await trace(reason)
         setState(.ended(reason))
         continuation.finish()
     }
 
     /// A call she hung up is kept in the conversation's record (GLOSSARY.md「对话事件」); it
-    /// is not a turn, and she is not told of it. No other ending is written there: the
-    /// producer's own hang-up, a limit, a dropped line or a call that never connected are
-    /// only traced, as upstream records them (upstream `call.py`, `store.py`).
+    /// is not a turn, and she is told of it as narration from the next thing said. No other
+    /// ending is written there: the producer's own hang-up, a limit, a dropped line or a
+    /// call that never connected are only traced, as upstream records them (upstream
+    /// `call.py`, `store.py`).
     private func record(_ reason: CallEnd) {
         guard case .sheHungUp = reason else { return }
         guard let conversationID = (try? eidolon.currentConversationIDNow(characterID)) ?? nil else {
@@ -742,6 +744,20 @@ public actor CallSession {
         try? eidolon.recordConversationEvent(
             conversationID: conversationID,
             kind: "hung_up",
+            at: setup.now()
+        )
+    }
+
+    /// When a call that connected ended: "when did we last talk" counts it, as upstream's
+    /// `calls` table does. A call that never connected was no contact.
+    private func recordCallEnd(_ reason: CallEnd) {
+        if case .notConnected = reason { return }
+        guard let conversationID = (try? eidolon.currentConversationIDNow(characterID)) ?? nil else {
+            return
+        }
+        try? eidolon.recordCallEnd(
+            conversationID: conversationID,
+            characterID: characterID,
             at: setup.now()
         )
     }
@@ -830,6 +846,22 @@ extension Eidolon {
                     VALUES (?, ?, ?)
                     """,
                 arguments: [conversationID, kind, Self.timestamp(moment)]
+            )
+        }
+    }
+
+    nonisolated func recordCallEnd(
+        conversationID: String,
+        characterID: String,
+        at moment: Date
+    ) throws {
+        try userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO call_ends(conversation_id, character_id, ended_at)
+                    VALUES (?, ?, ?)
+                    """,
+                arguments: [conversationID, characterID, Self.timestamp(moment)]
             )
         }
     }

@@ -117,7 +117,27 @@ final class TodayPromptTests: XCTestCase {
             characters: characters,
             herLives: []
         )
-        XCTAssertEqual(lines, [herBirthdayLine, "今天是大崎甘奈、大崎甜花、七草はづき的生日。可以顺口提一句，不要替她们向制作人要祝福，也不要催制作人做什么。"])
+        XCTAssertEqual(lines, [herBirthdayLine, "今天是大崎甘奈、大崎甜花、七草はづき的生日。你知道这件事，制作人提起时能接上；不用主动提。"])
+    }
+
+    /// Her unit mates' birthdays are the ones she may bring up herself; the other idols'
+    /// she is only to know of (upstream `today.py`).
+    func testUnitMatesBirthdaysAreToldApartFromTheOthers() throws {
+        let mano = character("mano", "櫻木真乃", idolID: 1, birthday: "04-25")
+        let hiori = character("hiori", "風野灯織", idolID: 2, birthday: "12-25")
+        let amana = character("amana", "大崎甘奈", idolID: 14, birthday: "12-25")
+
+        let lines = TodayPrompt.lines(
+            now: try day("2026-12-25T12:00:00+09:00"),
+            character: mano,
+            characters: [mano, hiori, amana],
+            unitMates: ["風野灯織"],
+            herLives: []
+        )
+        XCTAssertEqual(lines, [
+            "今天是你的组合伙伴風野灯織的生日。可以顺口提一句，不要替她们向制作人要祝福，也不要催制作人做什么。",
+            "今天是大崎甘奈的生日。你知道这件事，制作人提起时能接上；不用主动提。",
+        ])
     }
 
     func testOthersWithoutAnIdolNumberComeFirstAsGiven() throws {
@@ -133,7 +153,7 @@ final class TodayPromptTests: XCTestCase {
             herLives: []
         )
         // Numbered idols come after those without a number, who keep the order given.
-        XCTAssertEqual(lines, ["今天是乙、甲、丙的生日。可以顺口提一句，不要替她们向制作人要祝福，也不要催制作人做什么。"])
+        XCTAssertEqual(lines, ["今天是乙、甲、丙的生日。你知道这件事，制作人提起时能接上；不用主动提。"])
     }
 
     // MARK: - Holidays
@@ -148,7 +168,7 @@ final class TodayPromptTests: XCTestCase {
             herLives: [],
             holidays: holidays
         )
-        XCTAssertEqual(lines, ["今天是日本的节假日：文化の日。可以自然地提到，不必每句都说。"])
+        XCTAssertEqual(lines, ["今天是日本的节假日：文化の日。制作人提起再说，不用主动提。"])
 
         let otherDay = TodayPrompt.lines(
             now: try day("2026-11-04T12:00:00+09:00"),
@@ -247,8 +267,8 @@ final class TodayPromptTests: XCTestCase {
         )
         XCTAssertEqual(lines.count, 4)
         XCTAssertEqual(lines[0], herBirthdayLine)
-        XCTAssertEqual(lines[1], "今天是風野灯織的生日。可以顺口提一句，不要替她们向制作人要祝福，也不要催制作人做什么。")
-        XCTAssertEqual(lines[2], "今天是日本的节假日：テストの日。可以自然地提到，不必每句都说。")
+        XCTAssertEqual(lines[1], "今天是風野灯織的生日。你知道这件事，制作人提起时能接上；不用主动提。")
+        XCTAssertEqual(lines[2], "今天是日本的节假日：テストの日。制作人提起再说，不用主动提。")
         XCTAssertTrue(lines[3].hasPrefix("今天是5年前你站上「TOUR」"))
     }
 
@@ -262,7 +282,7 @@ final class TodayPromptTests: XCTestCase {
             herLives: [],
             holidays: HolidayTable(names: ["2026-11-03": "文化の日"])
         )
-        XCTAssertEqual(lines, ["今天是日本的节假日：文化の日。可以自然地提到，不必每句都说。"])
+        XCTAssertEqual(lines, ["今天是日本的节假日：文化の日。制作人提起再说，不用主动提。"])
     }
 
     // MARK: - Where the lines sit in the prompt

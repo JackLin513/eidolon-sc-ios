@@ -361,7 +361,7 @@ final class SystemOneTests: XCTestCase {
 
     // MARK: - In a turn
 
-    func testAFailedJudgeLeavesTheTurnRunningWithNothingLookedUp() async throws {
+    func testAFailedJudgeLeavesTheTurnRunningAndLooksReferencesUp() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("EidolonSystemOne-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -402,6 +402,6 @@ final class SystemOneTests: XCTestCase {
         XCTAssertNil(trace.judge?.uncalibrated, "a calibrated model needs no note")
         XCTAssertEqual(trace.judge?.failure, "判断服务超时")
         XCTAssertNotNil(trace.judge?.latency)
-        XCTAssertEqual(trace.retrieval.need, "nothing")
+        XCTAssertEqual(trace.retrieval.need, "references")
     }
 }
