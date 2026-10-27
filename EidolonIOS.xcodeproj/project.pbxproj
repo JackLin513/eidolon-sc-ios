@@ -14,6 +14,7 @@
 		27EE9A61F1EA6DD131D5D03F /* EidolonIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6567288D9C69EE4C18792B6 /* EidolonIOSApp.swift */; };
 		28E1D1F65D00588EA9601DA3 /* TraceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D48DCFB6F0FC0D93BD033FC6 /* TraceListView.swift */; };
 		2CF24EECC30E051467FA4D35 /* MicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */; };
+		3B581C7316F3F7567E6CF0E1 /* StandThumbnails.swift in Sources */ = {isa = PBXBuildFile; fileRef = F51D53D2BDB3163C8344025C /* StandThumbnails.swift */; };
 		50FF16442DF243C8411FF741 /* SonioxRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */; };
 		598687CBC444DC728D0C1598 /* ChatLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5145F04AB4F12ED795C7DF1A /* ChatLine.swift */; };
 		6ADC1F5313FCC7F5003E1676 /* stand-player.js in Resources */ = {isa = PBXBuildFile; fileRef = 54B11631789B9A8BDAE83193 /* stand-player.js */; };
@@ -31,6 +32,7 @@
 		CABF61FA71D8DD24099824B3 /* ConversationHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */; };
 		CD54EB8286C493A259743A6D /* SpeechPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362E0BAAF16B958F406E1E08 /* SpeechPlayback.swift */; };
 		D080D9792F63EBF71440173B /* EidolonCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0BE53CDEEF5BB1E157A83EC1 /* EidolonCore */; };
+		D7B2DC33734343A4F40D315A /* OutfitPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD7263A570545913D16486F1 /* OutfitPickerView.swift */; };
 		D87D5EF9B85BB39DEBD561FB /* FishSynthesis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4472CA53E92E225069B1D652 /* FishSynthesis.swift */; };
 		E0F9B1FA2BA982860CDD2BC3 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A72BB12039666C937D7C04 /* RootView.swift */; };
 		EF42004562B67CC87DFCF565 /* StandWebRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1AD0F6ABD451EB0C733277C /* StandWebRenderer.swift */; };
@@ -58,6 +60,7 @@
 		B1AD0F6ABD451EB0C733277C /* StandWebRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandWebRenderer.swift; sourceTree = "<group>"; };
 		B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationHistoryView.swift; sourceTree = "<group>"; };
 		B94AA6A4C5655585B24D2400 /* MemoryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryListView.swift; sourceTree = "<group>"; };
+		BD7263A570545913D16486F1 /* OutfitPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutfitPickerView.swift; sourceTree = "<group>"; };
 		C3363DDA773D810C71B70EE3 /* stand.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = stand.html; sourceTree = "<group>"; };
 		C40B7B5AA3042F29A949E938 /* ConversationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationListView.swift; sourceTree = "<group>"; };
 		C5B65BE210B02CA6A488C94D /* StandRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandRenderer.swift; sourceTree = "<group>"; };
@@ -67,6 +70,7 @@
 		DC2610401DD1C29D8D7AB56C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxRecognition.swift; sourceTree = "<group>"; };
 		F1FF6012F255268462E4A685 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		F51D53D2BDB3163C8344025C /* StandThumbnails.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandThumbnails.swift; sourceTree = "<group>"; };
 		F6567288D9C69EE4C18792B6 /* EidolonIOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EidolonIOSApp.swift; sourceTree = "<group>"; };
 		FCD1CD149AFF0049C2EE0F58 /* DebugRecognition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugRecognition.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -201,9 +205,11 @@
 		B55329AEDA18D27997833A55 /* Stand */ = {
 			isa = PBXGroup;
 			children = (
+				BD7263A570545913D16486F1 /* OutfitPickerView.swift */,
 				78A39D03BFDD50261F07F298 /* StandPreviewView.swift */,
 				C5B65BE210B02CA6A488C94D /* StandRenderer.swift */,
 				74AACADEE8C7E3D7A4110BBE /* StandSchemeHandler.swift */,
+				F51D53D2BDB3163C8344025C /* StandThumbnails.swift */,
 				B1AD0F6ABD451EB0C733277C /* StandWebRenderer.swift */,
 			);
 			path = Stand;
@@ -371,6 +377,7 @@
 				C375B67690EAE8B5B255A1B3 /* Keychain.swift in Sources */,
 				9221A0F68F374BAAA5282CCE /* MemoryListView.swift in Sources */,
 				2CF24EECC30E051467FA4D35 /* MicrophoneCapture.swift in Sources */,
+				D7B2DC33734343A4F40D315A /* OutfitPickerView.swift in Sources */,
 				E0F9B1FA2BA982860CDD2BC3 /* RootView.swift in Sources */,
 				B2DF1A14F646EDBA6EAECF48 /* SettingsView.swift in Sources */,
 				50FF16442DF243C8411FF741 /* SonioxRecognition.swift in Sources */,
@@ -378,6 +385,7 @@
 				C5B1C51FBA6F57968A704048 /* StandPreviewView.swift in Sources */,
 				A84B266827D901F32D324DA5 /* StandRenderer.swift in Sources */,
 				FE5F343DF7059BBB3A98E62E /* StandSchemeHandler.swift in Sources */,
+				3B581C7316F3F7567E6CF0E1 /* StandThumbnails.swift in Sources */,
 				EF42004562B67CC87DFCF565 /* StandWebRenderer.swift in Sources */,
 				791DD675A29C48B88185FACE /* Theme.swift in Sources */,
 				28E1D1F65D00588EA9601DA3 /* TraceListView.swift in Sources */,
