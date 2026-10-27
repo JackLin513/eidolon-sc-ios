@@ -59,6 +59,77 @@ final class ContentBundleImportTests: XCTestCase {
         XCTAssertEqual(manoPassages, 2)
     }
 
+    // MARK: - Installed bundle versions
+
+    /// A bundle installed by an older app is kept but not read: the app asks for a new
+    /// import instead of running on a format it does not fully understand.
+    func testABundleFromAnotherFormatIsNotUsed() async throws {
+        let eidolon = try makeEidolon()
+        try await eidolon.install(bundleAt: try Fixture.makeBundle(in: root))
+        try await rewriteInstalledInfo(on: eidolon) { info in
+            info.formatVersion = ContentManifest.supportedFormatVersion - 1
+        }
+
+        let needsBundle = try await eidolon.needsContentBundle()
+        let usable = try await eidolon.usableContentInfo()
+        XCTAssertTrue(needsBundle, "an old bundle asks to be imported again")
+        XCTAssertNil(usable)
+        let kept = try await eidolon.installedContentInfo()
+        XCTAssertEqual(kept?.formatVersion, ContentManifest.supportedFormatVersion - 1)
+        do {
+            _ = try await eidolon.characters()
+            XCTFail("an old bundle's characters are not read")
+        } catch {
+            XCTAssertEqual(error as? EidolonError, .contentNotInstalled)
+        }
+    }
+
+    func testABundleFromAnotherContentSchemaIsNotUsed() async throws {
+        let eidolon = try makeEidolon()
+        try await eidolon.install(bundleAt: try Fixture.makeBundle(in: root))
+        try await rewriteInstalledInfo(on: eidolon) { info in
+            info.contentSchemaVersion = ContentSchema.version - 1
+        }
+
+        let needsBundle = try await eidolon.needsContentBundle()
+        let usable = try await eidolon.usableContentInfo()
+        XCTAssertTrue(needsBundle)
+        XCTAssertNil(usable)
+    }
+
+    func testTheInstalledBundlesVersionsAreTheOnesThisBuildReads() async throws {
+        let eidolon = try makeEidolon()
+        try await eidolon.install(bundleAt: try Fixture.makeBundle(in: root))
+
+        let needsBundle = try await eidolon.needsContentBundle()
+        let info = try await eidolon.usableContentInfo()
+        XCTAssertFalse(needsBundle)
+        XCTAssertEqual(info?.formatVersion, ContentManifest.supportedFormatVersion)
+        XCTAssertEqual(info?.contentSchemaVersion, ContentSchema.version)
+    }
+
+    /// Rewrites the installed record as an older app would have left it.
+    private func rewriteInstalledInfo(
+        on eidolon: Eidolon,
+        _ change: (inout ContentBundleInfo) -> Void
+    ) async throws {
+        let stored: String? = try await eidolon.userQueue.read { db in
+            try String.fetchOne(db, sql: "SELECT value FROM app_state WHERE key = 'content.bundle'")
+        }
+        var info = try JSONDecoder().decode(
+            ContentBundleInfo.self,
+            from: Data(try XCTUnwrap(stored).utf8)
+        )
+        change(&info)
+        let encoded = String(decoding: try JSONEncoder().encode(info), as: UTF8.self)
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: "UPDATE app_state SET value = ? WHERE key = 'content.bundle'",
+                arguments: [encoded]
+            )
+        }
+    }
+
     // MARK: - Birthdays
 
     func testDecodesFebruary29Birthday() throws {
@@ -135,6 +206,34 @@ final class ContentBundleImportTests: XCTestCase {
             }
             XCTAssertTrue(reason.contains("节假日"), reason)
         }
+    }
+
+    /// The world setting is read at install, so a bundle whose `world.json` cannot be
+    /// parsed is refused then rather than failing every turn afterwards.
+    func testRejectsUnparseableWorldSetting() async throws {
+        let eidolon = try makeEidolon()
+        var options = Fixture.Options()
+        options.world = .broken
+        let bundle = try Fixture.makeBundle(in: root, options: options)
+
+        await assertThrows(eidolon, bundle) { error in
+            guard let eidolonError = error as? EidolonError,
+                  case .invalidBundle(let reason) = eidolonError
+            else {
+                return XCTFail("expected invalidBundle, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("world.json"), reason)
+        }
+    }
+
+    func testInstallsWhenTheWorldSettingParses() async throws {
+        let eidolon = try makeEidolon()
+        var options = Fixture.Options()
+        options.world = .valid
+        let bundle = try Fixture.makeBundle(in: root, options: options)
+
+        let info = try await eidolon.install(bundleAt: bundle)
+        XCTAssertEqual(info.characterCount, 2)
     }
 
     func testRejectsMissingVectors() async throws {

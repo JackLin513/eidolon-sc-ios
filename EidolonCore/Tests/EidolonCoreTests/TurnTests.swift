@@ -199,6 +199,104 @@ final class TurnTests: XCTestCase {
         XCTAssertNil(snapshot)
     }
 
+    /// A line of nothing but whitespace is refused before the model is asked, as
+    /// upstream's `engine.turn` does.
+    func testABlankLineIsRejected() async throws {
+        let eidolon = try await installedEidolon()
+        let provider = RecordingChatProvider(chunks: ["<ja>うん</ja><zh>嗯</zh>"])
+
+        do {
+            for try await _ in eidolon.sendTurn(
+                characterID: "mano",
+                text: "  \n\t ",
+                provider: provider
+            ) {
+                XCTFail("a blank line is not answered")
+            }
+            XCTFail("expected the turn to be rejected")
+        } catch let error as EidolonError {
+            XCTAssertEqual(error, .blankInput)
+            XCTAssertEqual(error.localizedDescription, "没有收到要说的话。")
+        }
+
+        XCTAssertTrue(provider.prompts.isEmpty, "the model is not asked")
+        let snapshot = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertNil(snapshot)
+    }
+
+    /// More than 2000 characters is refused with the limit, as upstream's
+    /// `MAX_INPUT_LENGTH` does, and nothing is written or sent.
+    func testALineOverTheLimitIsRejectedWithTheLimit() async throws {
+        let eidolon = try await installedEidolon()
+        let provider = RecordingChatProvider(chunks: ["<ja>うん</ja><zh>嗯</zh>"])
+        let tooLong = String(repeating: "あ", count: 2001)
+
+        do {
+            for try await _ in eidolon.sendTurn(
+                characterID: "mano",
+                text: tooLong,
+                provider: provider
+            ) {
+                XCTFail("an over-long line is not answered")
+            }
+            XCTFail("expected the turn to be rejected")
+        } catch let error as EidolonError {
+            XCTAssertEqual(error, .inputTooLong(2000))
+            XCTAssertEqual(error.localizedDescription, "这句话太长了，最多 2000 字。")
+        }
+
+        XCTAssertTrue(provider.prompts.isEmpty, "the model is not asked")
+        let snapshot = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertNil(snapshot)
+    }
+
+    /// Exactly the limit is allowed.
+    func testALineOfExactlyTheLimitIsAccepted() async throws {
+        let eidolon = try await installedEidolon()
+        let provider = RecordingChatProvider(chunks: ["<ja>うん</ja><zh>嗯</zh>"])
+        let atLimit = String(repeating: "あ", count: 2000)
+
+        var finished = false
+        for try await event in eidolon.sendTurn(
+            characterID: "mano",
+            text: atLimit,
+            provider: provider
+        ) {
+            if case .finished = event { finished = true }
+        }
+        XCTAssertTrue(finished)
+        XCTAssertEqual(provider.prompts.count, 1)
+    }
+
+    /// The history the settings name: what she is told of the turns before this one.
+    func testHistoryTurnsLimitWhatSheIsTold() async throws {
+        let eidolon = try await installedEidolon()
+        for turn in 1...3 {
+            let earlier = RecordingChatProvider(
+                chunks: ["<ja>返事\(turn)</ja><zh>回复\(turn)</zh>"]
+            )
+            for try await _ in eidolon.sendTurn(
+                characterID: "mano",
+                text: "質問\(turn)",
+                provider: earlier
+            ) {}
+        }
+
+        let provider = RecordingChatProvider(chunks: ["<ja>うん</ja><zh>嗯</zh>"])
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano",
+            text: "もう一つ",
+            provider: provider,
+            historyTurns: 1
+        ) {}
+        let prompt = try XCTUnwrap(provider.prompts.first)
+        let history = Array(prompt.dropFirst(2).dropLast(2))
+        XCTAssertEqual(history, [
+            PromptMessage(.user, "質問3"),
+            PromptMessage(.assistant, "<ja>返事3</ja><zh>回复3</zh>"),
+        ])
+    }
+
     func testStoppingKeepsWhatSheAlreadySaid() async throws {
         let eidolon = try await installedEidolon()
         let provider = RecordingChatProvider(

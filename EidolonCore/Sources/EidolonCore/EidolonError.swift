@@ -17,6 +17,19 @@ public enum EidolonError: LocalizedError, Equatable {
     case conversationEnded
     /// The current conversation cannot be deleted; only past ones can.
     case conversationIsCurrent
+    /// The producer sent nothing to answer (upstream `BLANK`).
+    case blankInput
+    /// The producer's line is longer than `TurnInput.maxLength` (upstream `TOO_LONG`).
+    case inputTooLong(Int)
+
+    /// Whether the turn refused the producer's line itself, rather than failing to
+    /// answer it: what it says is already the message to show.
+    public var isInputRejection: Bool {
+        switch self {
+        case .blankInput, .inputTooLong: true
+        default: false
+        }
+    }
 
     public var errorDescription: String? {
         switch self {
@@ -34,6 +47,10 @@ public enum EidolonError: LocalizedError, Equatable {
             return "这段对话已经结束了，只能翻看；想接着聊就开一段新对话"
         case .conversationIsCurrent:
             return "当前对话不能删除，先开一段新对话"
+        case .blankInput:
+            return "没有收到要说的话。"
+        case .inputTooLong(let limit):
+            return "这句话太长了，最多 \(limit) 字。"
         case .coolingDown(let until):
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "zh_CN")

@@ -45,9 +45,17 @@ public actor Eidolon {
 
     // MARK: - Content bundle
 
-    /// True until a bundle has been installed successfully.
+    /// True until a bundle this build can read has been installed successfully.
     public func needsContentBundle() throws -> Bool {
-        try installedContentInfo() == nil
+        try usableContentInfo() == nil
+    }
+
+    /// The installed bundle's record, when this build reads it. A bundle installed by
+    /// another format or content schema stays on disk but is not used: the app asks for
+    /// a new import instead (ADR-0003).
+    public func usableContentInfo() throws -> ContentBundleInfo? {
+        guard let info = try installedContentInfo(), info.isCurrent else { return nil }
+        return info
     }
 
     public func installedContentInfo() throws -> ContentBundleInfo? {
@@ -205,7 +213,7 @@ public actor Eidolon {
     // MARK: - Plumbing
 
     private func requireContent() throws {
-        guard try installedContentInfo() != nil else {
+        guard try usableContentInfo() != nil else {
             throw EidolonError.contentNotInstalled
         }
     }

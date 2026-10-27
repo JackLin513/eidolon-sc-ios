@@ -100,4 +100,12 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
         characterCount = try container.decode(Int.self, forKey: .characterCount)
         standOutfitCount = try container.decodeIfPresent(Int.self, forKey: .standOutfitCount) ?? 0
     }
+
+    /// Whether this build reads what was installed. A bundle from another format or
+    /// content schema is imported again rather than run on half-understood (ADR-0003):
+    /// the app would otherwise fail later, or silently miss what the new format added.
+    public var isCurrent: Bool {
+        formatVersion == ContentManifest.supportedFormatVersion
+            && contentSchemaVersion == ContentSchema.version
+    }
 }
