@@ -62,6 +62,25 @@ final class CallStandDirectorTests: XCTestCase {
         XCTAssertTrue(stand.direction.speaking)
     }
 
+    /// The emotion judged for the segment she is saying moves her mood and nod at once; one
+    /// judged for a later segment waits until she says it (spec「情绪判断」).
+    func testAJudgedEmotionReachesHerStand() {
+        var stand = CallStandDirector()
+        stand.apply(started(0, 0))
+        stand.apply(.emotion(reply: 0, segment: 0, emotion: .happy, nod: .yes))
+        XCTAssertEqual(stand.direction.mood, .happy)
+        XCTAssertEqual(stand.direction.nod?.kind, .yes)
+
+        var later = CallStandDirector()
+        later.apply(started(0, 0))
+        later.apply(.emotion(reply: 0, segment: 1, emotion: .sad, nod: .no))
+        XCTAssertEqual(later.direction.mood, .calm, "not said yet")
+        XCTAssertNil(later.direction.nod)
+        later.apply(started(0, 1))
+        XCTAssertEqual(later.direction.mood, .sad)
+        XCTAssertEqual(later.direction.nod?.kind, .no)
+    }
+
     // MARK: - The producer
 
     func testSheLooksAtTheProducerWhileTheySpeakAndNodsOnceWhenTheHearingClears() {

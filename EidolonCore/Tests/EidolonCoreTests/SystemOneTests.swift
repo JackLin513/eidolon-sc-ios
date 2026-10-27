@@ -84,6 +84,16 @@ final class SystemOneTests: XCTestCase {
         XCTAssertNotNil(BailianJudgeConfig(workspaceID: "ws-123", apiKey: "key").systemOne)
     }
 
+    /// Upstream's `JUDGE_THRESHOLDS`: Jev is surer of the emotion it hears than Clef and
+    /// the decision model, and a model of no family is read as Jev (spec「情绪判断」).
+    func testEachFamilyHasItsOwnEmotionThreshold() {
+        XCTAssertEqual(JudgeFamilies.thresholds(of: .jev).emotion, 0.5)
+        XCTAssertEqual(JudgeFamilies.thresholds(of: .clef).emotion, 0.4)
+        XCTAssertEqual(JudgeFamilies.thresholds(of: .clefFlash).emotion, 0.4)
+        XCTAssertEqual(JudgeFamilies.thresholds(of: .decisionModel).emotion, 0.4)
+        XCTAssertEqual(JudgeFamilies.thresholds(for: "qwen-plus").emotion, 0.5)
+    }
+
     func testTheFamilyIsReadFromTheModelName() {
         XCTAssertEqual(JudgeFamilies.family(of: "decision-model-preview"), .decisionModel)
         XCTAssertEqual(JudgeFamilies.family(of: "decision-model"), .decisionModel)
