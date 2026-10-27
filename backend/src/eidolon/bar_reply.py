@@ -11,7 +11,9 @@ format has it but with who says each:
 The line she orders in is marked `order="true"`. The parser hands over each line as soon as
 it closes, so the first lines reach the browser before the rest is written. It forgives what
 it can: her line without a subtitle has its Japanese for one; one without Japanese is left
-out, as is the producer's without words; an emotion not of the seven is calm; whatever is
+out, as is the producer's without words or in Japanese (kana, but no Chinese naming her in kana), so the
+calls after it do not take after it; the producer's written with a subtitle as hers are is his
+subtitle alone; an emotion not of the seven is calm; whatever is
 written outside the lines is left out. A line left open as the stream ends is taken as
 closed there.
 """
@@ -27,6 +29,10 @@ Speaker = Literal["her", "producer"]
 _OPENING = re.compile(r"<(her|producer)\b([^>]*)>")
 _ATTRIBUTE = re.compile(r'(\w+)\s*=\s*"([^"]*)"')
 _STARTS = ("<her", "<producer")
+_KANA = re.compile(r"[ぁ-ゖァ-ヺ]")
+_QUOTED = re.compile(r"「[^」]*」")
+_CHINESE = re.compile(r"[了吗呢吧么这们你没说个还对时过让给为样什怎很晚]")
+"""Characters Chinese writes often and Japanese hardly ever."""
 
 
 @dataclass(frozen=True)
@@ -106,8 +112,8 @@ def _line(speaker: str, attributes: str, inside: str) -> BarLine | None:
     """The line written as `inside` between the tags opening with `attributes`; None if it
     has no words to say."""
     if speaker == "producer":
-        zh = _without_tags(inside)
-        return BarLine("producer", zh) if zh else None
+        zh = _within(inside, "zh") if "<zh>" in inside else _without_tags(inside)
+        return BarLine("producer", zh) if zh and not _japanese(zh) else None
     ja, zh = _within(inside, "ja"), _within(inside, "zh")
     if not ja:
         return None
@@ -118,6 +124,13 @@ def _line(speaker: str, attributes: str, inside: str) -> BarLine | None:
         emotion if emotion in get_args(Emotion) else "calm",  # pyright: ignore[reportArgumentType]
         named.get("order") == "true",
     )
+
+
+def _japanese(text: str) -> bool:
+    """Whether `text` is written in Japanese: has kana but in what it quotes in 「」, and none
+    of the characters only Chinese writes often, as a Chinese line naming her in kana has."""
+    unquoted = _QUOTED.sub("", text)
+    return _KANA.search(unquoted) is not None and _CHINESE.search(unquoted) is None
 
 
 def _within(text: str, tag: str) -> str:

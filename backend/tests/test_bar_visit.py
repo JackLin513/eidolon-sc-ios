@@ -311,7 +311,9 @@ async def test_her_lines_are_read_as_forgivingly_as_they_can_be(make_client: Cli
     written = [
         "好的，下面是这一段：\n<her emo", 'tion="smug"><ja>ふふ。</ja></her>',
         "<her><zh>只有字幕</zh></her>", "<produ", "cer>来了。</producer>（她笑了）",
-        her("シュガーラッシュで。", "就 Sugar Rush。"), "\n以上。",
+        "<producer><ja>どうぞ。</ja><zh>请。</zh></producer>", producer("それは光栄だ。"),
+        producer("「ちゃんぽん」好吃吗？"), producer("晚上好，はづきさん。"),
+        producer("書道、また本格的にやるの？"), her("シュガーラッシュで。", "就 Sugar Rush。"), "\n以上。",
     ]
 
     client = make_client(FakeLLM(written), random=FakeRandom(0, 0, 0, 0, 0, 0))
@@ -321,6 +323,9 @@ async def test_her_lines_are_read_as_forgivingly_as_they_can_be(make_client: Cli
     assert came[1:] == [
         {"type": "line", "speaker": "her", "emotion": "calm", "ja": "ふふ。", "zh": "ふふ。"},
         {"type": "line", "speaker": "producer", "zh": "来了。"},
+        {"type": "line", "speaker": "producer", "zh": "请。"},
+        {"type": "line", "speaker": "producer", "zh": "「ちゃんぽん」好吃吗？"},
+        {"type": "line", "speaker": "producer", "zh": "晚上好，はづきさん。"},
         {
             "type": "line", "speaker": "her", "emotion": "calm", "ja": "シュガーラッシュで。",
             "zh": "就 Sugar Rush。", "order": True,
@@ -353,7 +358,8 @@ async def test_every_call_tells_her_who_she_is_this_visit_what_came_before_and_w
     assert "illumination STARS" in shared  # the world setting
     assert "VA-283" in shared and "具体年龄" in shared and "不往暧昧和色情的方向走" in shared
     assert "别人的生日和节日不用特意提" in shared
-    assert "order=\"true\"" in shared and "制作人每段最多一两句" in shared
+    assert "order=\"true\"" in shared and "一来一回" in shared
+    assert "制作人的台词只用中文写" in shared
     assert "小林" in about
     reason, topic = listed.reasons[0], listed.topics[0]
     assert reason.note in about and topic.note in about
