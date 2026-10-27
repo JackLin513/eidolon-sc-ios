@@ -54,7 +54,7 @@ const GLASS = { x: 496, y: 190, width: 35, height: 53 };
  * - 键盘：Q W E R T 加一份、按住 Shift 减一份（原版不出声、不放光），A 冰、S 陈化，空格依次是调制、停止、上酒。
  *   通话层展开（页面 inert）时不响应。
  * - 按钮：冰、陈化打开响 `iceadd`、`ageadd`，关掉响 `buttonnoclick`；调制、停止响 `mixdone`，停下飘「成功」或「失败」；
- *   重做杯里有东西响 `buttonclick`；上酒交给 `serve`（服务器收下时 useBarVisit 响 `glassserve`）。
+ *   重做杯里有东西响 `buttonclick`；上酒交给 `serve`（服务器收下时 lib/barVisitSession 响 `glassserve`）。
  */
 export function useBarCounter({
   mixer,

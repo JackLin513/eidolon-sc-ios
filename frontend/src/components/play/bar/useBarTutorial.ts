@@ -1,14 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 
-import { loadPixelFont, measurePixelText } from "@/components/play/bar/PixelText";
+import { type CurrentScene, loadSceneLayout } from "@/components/play/bar/sceneOnScreen";
 import type { BarSound } from "@/components/play/bar/useBarSound";
 import { useTypingClock } from "@/components/play/bar/useTypingClock";
-import { copy } from "@/i18n";
 import type { Character } from "@/lib/api";
 import { type BarMixerAction, canServe } from "@/lib/barMixer";
-import { paginate } from "@/lib/barText";
+import { isCounterOpen } from "@/lib/barScene";
 import {
   type BarTutorialAction,
   type BarTutorialState,
@@ -39,7 +38,8 @@ function reducer(state: BarTutorialState | null, action: Action): BarTutorialSta
  *   没有 はづき 时没有教程（`canBegin` 为假），当作看过。
  * - `begin()` 要在点击里调（店门口进门、「教程」按钮）：响门声、建 AudioContext，循环放 Every Day is Night（取不到就静音），
  *   はづき 进来照台词往下走。等像素字载入的这一会儿再点不会再开始一次。
- * - `tap`、`mix`、`serve`、`skip` 交给 lib/barTutorial；上不了的酒响 `buttonnoclick`，上了响 `glassserve`。
+ * - 进行中交出当前场景（`current`，sceneOnScreen）：点、调、上交给 lib/barTutorial；上不了的酒响 `buttonnoclick`，上了响 `glassserve`。
+ *   `skip` 也交给它。
  * - 走完或跳过：记下看过，停掉那首，调 `onEnd`（去选曲界面、或回店门口），教程收起。中途离开、刷新不记。
  */
 export function useBarTutorial({
@@ -72,10 +72,8 @@ export function useBarTutorial({
     sound.start();
     sound.play("door");
     music.loopTrack(TUTORIAL_TRACK);
-    // 量字要用像素字：没载入就量，退回的字体宽度不一样，分页会错。
-    await loadPixelFont().catch(() => {});
-    const names = { her: teacher.short_name ?? teacher.name, producer: copy.bar.producer };
-    const layout = (line: Parameters<typeof paginate>[0]) => paginate(line, { names, measure: measurePixelText });
+    const pagesFor = await loadSceneLayout();
+    const layout = (line: Parameters<typeof pagesFor>[0]) => pagesFor(line, teacher);
     dispatch({
       type: "begin",
       state: beginTutorial({ characterId: teacher.id, hasJukebox, layout, now: performance.now() }),
@@ -96,14 +94,14 @@ export function useBarTutorial({
     onEnd(end);
   }, [state, end, userId, music, onEnd]);
 
-  const now = useTypingClock(state?.visit.shown ?? null);
+  const now = useTypingClock(state?.scene.shown ?? null);
 
   const tap = useCallback(() => dispatch({ type: "tap", now: performance.now() }), []);
   const mix = useCallback((action: BarMixerAction) => dispatch({ type: "mix", action }), []);
   const skip = useCallback(() => dispatch({ type: "skip" }), []);
   const serve = useCallback(() => {
-    const visit = state?.visit;
-    if (!visit?.isMixing || !canServe(visit.mixer)) {
+    const scene = state?.scene;
+    if (!scene || !isCounterOpen(scene) || !canServe(scene.mixer)) {
       sound.play("buttonnoclick");
       return;
     }
@@ -111,17 +109,27 @@ export function useBarTutorial({
     dispatch({ type: "serve", now: performance.now() });
   }, [state, sound]);
 
+  const current = useMemo<CurrentScene | null>(
+    () =>
+      state && {
+        scene: state.scene,
+        now,
+        guest: { key: "tutorial", characterId: state.characterId },
+        tap,
+        mix,
+        serve,
+      },
+    [state, now, tap, mix, serve],
+  );
+
   const isSeen = seen && seen.userId === userId ? seen.isSeen : null;
   return {
-    state,
-    now,
+    /** The tutorial's scene while it is under way (null otherwise). */
+    current,
     /** Seen on this device (null till read, and till the characters are); with no はづき there is none to see. */
     isSeen: characters === null ? null : teacher ? isSeen : true,
     canBegin: teacher !== null,
     begin,
-    tap,
-    mix,
-    serve,
     skip,
   };
 }

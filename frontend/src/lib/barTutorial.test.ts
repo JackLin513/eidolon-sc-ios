@@ -2,15 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { barCatalog } from "@/lib/barCatalogFixture";
 import type { BarMixerAction, Ingredient } from "@/lib/barMixer";
+import { isArrowShown, isCounterOpen, mixingMemo, type SceneLine, shownText } from "@/lib/barScene";
 import type { TextPage } from "@/lib/barText";
 import { type BarTutorialState, barTutorial, beginTutorial, hasSeenTutorial, keepTutorialSeen } from "@/lib/barTutorial";
-import { TUTORIAL } from "@/lib/barTutorialLines";
-import type { VisitLine } from "@/lib/barVisit";
+import { TUTORIAL, type TutorialSectionId } from "@/lib/barTutorialLines";
 
 const DRINKS = barCatalog();
 
 /** 一句一页：只看说到哪了，不管怎么折行。 */
-const layout = (line: VisitLine): TextPage[] => [{ rows: [{ name: null, text: line.zh, subtitle: false }] }];
+const layout = (line: SceneLine): TextPage[] => [{ rows: [{ name: null, text: line.zh, subtitle: false }] }];
 
 let clock = 0;
 const later = () => (clock += 10);
@@ -19,17 +19,34 @@ function begin(hasJukebox = true): BarTutorialState {
   return beginTutorial({ characterId: "hazuki", hasJukebox, layout, now: later() });
 }
 
+const tap = (state: BarTutorialState) => barTutorial(state, { type: "tap", now: later() });
+
 /** 一直点文本框，点到调酒台打开、或者教程走完。 */
 function talkThrough(state: BarTutorialState): BarTutorialState {
   for (let i = 0; i < 1000; i++) {
-    if (state.visit.isMixing || state.end !== null) return state;
-    state = barTutorial(state, { type: "tap", now: later() });
+    if (isCounterOpen(state.scene) || state.end !== null) return state;
+    state = tap(state);
   }
   throw new Error("the tutorial never stopped talking");
 }
 
 /** 框上那一句。 */
-const onBox = (state: BarTutorialState) => state.visit.shown?.line.zh;
+const onBox = (state: BarTutorialState) => shownText(state.scene, clock)?.line.zh;
+
+/** 一段的第一句、最后一句。 */
+const firstOf = (id: TutorialSectionId) => TUTORIAL[id].lines[0].zh;
+const lastOf = (id: TutorialSectionId) => TUTORIAL[id].lines.at(-1)!.zh;
+
+/** 点到教程走完，记下框上出现过的句子。 */
+function tapToEnd(state: BarTutorialState): { state: BarTutorialState; said: string[] } {
+  const said: string[] = [];
+  while (state.end === null) {
+    const line = onBox(state);
+    if (line !== undefined && said.at(-1) !== line) said.push(line);
+    state = tap(state);
+  }
+  return { state, said };
+}
 
 type Recipe = { parts: Partial<Record<Ingredient, number>>; ice?: true; blend?: true };
 const SUGAR_RUSH: Recipe = { parts: { adelhyde: 2, powdered_delta: 1 } };
@@ -65,82 +82,72 @@ function memoOf(id: "lesson1" | "lesson2"): string {
 describe("the tutorial", () => {
   it("opens on her first line, no memo", () => {
     const state = begin();
-    expect(state.visit.stage).toBe("visit");
-    expect(state.visit.visit?.characterId).toBe("hazuki");
-    expect(onBox(state)).toBe(TUTORIAL.opening.lines[0].zh);
-    expect(state.visit.memo).toBeNull();
+    expect(onBox(state)).toBe(firstOf("opening"));
+    expect(mixingMemo(state.scene)).toBeNull();
   });
 
   it("opens the bar counter only once the first lesson is told, with its memo for the text box", () => {
     let state = begin();
-    for (let i = 0; i < 5; i++) state = barTutorial(state, { type: "tap", now: later() });
-    expect(state.visit.isMixing).toBe(false);
-    expect(state.visit.memo).toBeNull();
+    for (let i = 0; i < 5; i++) state = tap(state);
+    expect(mixingMemo(state.scene)).toBeNull();
     state = talkThrough(state);
-    expect(state.visit.isMixing).toBe(true);
-    expect(onBox(state)).toBe(TUTORIAL.lesson1.lines.at(-1)!.zh);
-    expect(state.visit.memo).toBe(memoOf("lesson1"));
+    expect(onBox(state)).toBe(lastOf("lesson1"));
+    expect(mixingMemo(state.scene)).toBe(memoOf("lesson1"));
   });
 
-  it("keeps the lesson's last line on the box, typed out, till it is tapped past", () => {
+  it("keeps the lesson's last line on the box, typed out, the arrow bobbing, till it is tapped past", () => {
     let state = begin();
-    const last = TUTORIAL.lesson1.lines.at(-1)!.zh;
-    while (onBox(state) !== last) state = barTutorial(state, { type: "tap", now: later() });
+    while (onBox(state) !== lastOf("lesson1")) state = tap(state);
     // 早就打完了，没点也不开。
-    expect(state.visit.isMixing).toBe(false);
-    expect(barTutorial(state, { type: "tap", now: (clock += 60_000) }).visit.isMixing).toBe(true);
+    clock += 60_000;
+    expect(isArrowShown(state.scene, clock)).toBe(true);
+    expect(mixingMemo(state.scene)).toBeNull();
+    const open = tap(state);
+    expect(isArrowShown(open.scene, clock)).toBe(false);
+    expect(mixingMemo(open.scene)).toBe(memoOf("lesson1"));
   });
 });
 
 describe("serving in the tutorial", () => {
-  it("goes on to her reaction to Sugar Rush made right, then the second lesson", () => {
+  it("goes on to her reaction to Sugar Rush made right, the counter stowed, then the second lesson", () => {
     let state = serve(talkThrough(begin()), SUGAR_RUSH);
-    expect(state.visit.isMixing).toBe(false);
-    expect(state.section).toBe("first.sugar-rush");
-    expect(onBox(state)).toBe(TUTORIAL["first.sugar-rush"].lines[0].zh);
+    expect(mixingMemo(state.scene)).toBeNull();
+    expect(onBox(state)).toBe(firstOf("first.sugar-rush"));
+    expect(shownText(state.scene, clock)?.isTypedOut).toBe(false);
     state = talkThrough(state);
-    expect(state.section).toBe("lesson2");
-    expect(state.visit.isMixing).toBe(true);
-    expect(state.visit.memo).toBe(memoOf("lesson2"));
+    expect(onBox(state)).toBe(lastOf("lesson2"));
+    expect(mixingMemo(state.scene)).toBe(memoOf("lesson2"));
   });
 
   it("goes on to her reaction to something else, then the second lesson all the same", () => {
     let state = serve(talkThrough(begin()), BAD_TOUCH);
-    expect(state.section).toBe("first.other");
-    expect(onBox(state)).toBe(TUTORIAL["first.other"].lines[0].zh);
+    expect(onBox(state)).toBe(firstOf("first.other"));
     state = talkThrough(state);
-    expect(state.section).toBe("lesson2");
+    expect(mixingMemo(state.scene)).toBe(memoOf("lesson2"));
   });
 
   it("skips the second lesson for Piano Man, straight to the closing", () => {
-    let state = serve(talkThrough(begin()), PIANO_MAN);
-    expect(state.section).toBe("first.piano-man");
-    expect(onBox(state)).toBe(TUTORIAL["first.piano-man"].lines[0].zh);
-    const sections = new Set([state.section]);
-    while (state.end === null) {
-      state = barTutorial(state, { type: "tap", now: later() });
-      sections.add(state.section);
-    }
-    expect(sections).not.toContain("lesson2");
-    expect(sections).toContain("closing");
-    expect(state.end).toBe("jukebox");
+    const state = serve(talkThrough(begin()), PIANO_MAN);
+    expect(onBox(state)).toBe(firstOf("first.piano-man"));
+    const { state: ended, said } = tapToEnd(state);
+    expect(said).not.toContain(firstOf("lesson2"));
+    expect(said).toContain(firstOf("closing"));
+    expect(ended.end).toBe("jukebox");
   });
 
   it("goes on to her reaction to something else for the second, then the closing", () => {
     const other = serve(talkThrough(serve(talkThrough(begin()), SUGAR_RUSH)), SUGAR_RUSH);
-    expect(other.section).toBe("second.other");
-    const closing = talkThrough(barTutorial(other, { type: "tap", now: later() }));
-    expect(closing.end).toBe("jukebox");
+    expect(onBox(other)).toBe(firstOf("second.other"));
+    const { state, said } = tapToEnd(other);
+    expect(said).toContain(firstOf("closing"));
+    expect(state.end).toBe("jukebox");
   });
 
   it("does not take a broken drink: the counter stays open, nothing said", () => {
-    const open = talkThrough(begin());
-    const broken = mix(open, { parts: { karmotrine: 21 } });
-    expect(broken.visit.mixer.shake).toBe("stopped");
+    const broken = mix(talkThrough(begin()), { parts: { karmotrine: 21 } });
     const after = barTutorial(broken, { type: "serve", now: later() });
     expect(after).toBe(broken);
-    expect(after.visit.isMixing).toBe(true);
-    expect(after.section).toBe("lesson1");
+    expect(mixingMemo(after.scene)).toBe(memoOf("lesson1"));
   });
 
   it("does not serve before the counter opens", () => {
@@ -150,28 +157,24 @@ describe("serving in the tutorial", () => {
 });
 
 describe("the tutorial's end", () => {
-  /** 从头走到底，记下走过的段落。 */
+  /** 从头走到底，记下第二杯以后框上出现过的句子。 */
   function walk(hasJukebox: boolean) {
-    let state = talkThrough(begin(hasJukebox));
-    state = talkThrough(serve(state, SUGAR_RUSH));
-    const sections: string[] = [];
-    state = serve(state, MOONBLAST);
-    while (state.end === null) {
-      if (sections.at(-1) !== state.section) sections.push(state.section);
-      state = barTutorial(state, { type: "tap", now: later() });
-    }
-    return { state, sections };
+    const state = talkThrough(serve(talkThrough(begin(hasJukebox)), SUGAR_RUSH));
+    return tapToEnd(serve(state, MOONBLAST));
   }
 
   it("goes on to her reaction to Moonblast made right, then the jukebox section, to the jukebox setup", () => {
-    const { state, sections } = walk(true);
-    expect(sections).toEqual(["second.moonblast", "closing", "jukebox"]);
+    const { state, said } = walk(true);
+    expect(said[0]).toBe(firstOf("second.moonblast"));
+    expect(said).toContain(firstOf("closing"));
+    expect(said.at(-1)).toBe(lastOf("jukebox"));
     expect(state.end).toBe("jukebox");
   });
 
   it("leaves out the jukebox section with no audio, straight to the door", () => {
-    const { state, sections } = walk(false);
-    expect(sections).toEqual(["second.moonblast", "closing"]);
+    const { state, said } = walk(false);
+    expect(said).not.toContain(firstOf("jukebox"));
+    expect(said.at(-1)).toBe(lastOf("closing"));
     expect(state.end).toBe("door");
   });
 
@@ -183,7 +186,7 @@ describe("the tutorial's end", () => {
 
   it("takes nothing more once ended", () => {
     const ended = barTutorial(begin(), { type: "skip" });
-    expect(barTutorial(ended, { type: "tap", now: later() })).toBe(ended);
+    expect(tap(ended)).toBe(ended);
   });
 });
 
@@ -204,8 +207,7 @@ describe("the tutorial seen on this device", () => {
   });
 
   it("is seen done, per user", () => {
-    let state = serve(talkThrough(begin()), PIANO_MAN);
-    while (state.end === null) state = barTutorial(state, { type: "tap", now: later() });
+    const { state } = tapToEnd(serve(talkThrough(begin()), PIANO_MAN));
     keepTutorialSeen("u1", state);
     expect(hasSeenTutorial("u1")).toBe(true);
     expect(hasSeenTutorial("u2")).toBe(false);
