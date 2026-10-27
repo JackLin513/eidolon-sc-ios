@@ -11,8 +11,9 @@ final class ChatStore {
     private let core: Eidolon
 
     private(set) var messages: [ChatMessageRecord] = []
-    /// Calls hung up or failed in this conversation; shown between the turns.
-    private(set) var events: [ConversationEventRecord] = []
+    /// The conversation in the database's order: turns, her reach-outs and what happened
+    /// around them (GLOSSARY.md「对话事件」). Nothing here is reordered.
+    private(set) var lines: [ChatLine] = []
     private(set) var streaming: [ReplySegment] = []
     /// The line being answered; recorded only when the turn finishes, but shown at once.
     private(set) var pendingUser: String?
@@ -38,36 +39,35 @@ final class ChatStore {
     var readOnly: Bool { isPast || ended }
 
     /// The conversation in order: turns and what happened around them.
-    var transcript: [ChatLine] {
-        let lines = messages.map(ChatLine.message) + events.map(ChatLine.event)
-        return lines.sorted { left, right in
-            if left.createdAt == right.createdAt { return left.id < right.id }
-            return left.createdAt < right.createdAt
-        }
-    }
+    var transcript: [ChatLine] { lines }
 
     func load() async {
         do {
+            var shown: String?
             if let conversationID, let past = try await core.conversation(id: conversationID) {
                 messages = past.messages
                 ended = past.ended
                 isPast = true
-                events = try await core.conversationEvents(conversationID: conversationID)
+                shown = past.id
             } else if let current = try await core.currentConversation(characterID: character.id) {
                 messages = current.messages
                 ended = current.ended
                 isPast = false
-                events = try await core.conversationEvents(conversationID: current.id)
-                if !ended {
-                    try await core.markReachOutsSeen(conversationID: current.id)
-                }
+                shown = current.id
             } else {
                 messages = []
                 ended = false
                 isPast = false
-                events = []
+            }
+            if let shown {
+                lines = try await core.conversationRecord(conversationID: shown)
+            } else {
+                lines = []
             }
             affinity = try await core.affinityStatus(characterID: character.id)
+            if let shown, !isPast, !ended {
+                try await core.markReachOutsSeen(conversationID: shown)
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -176,6 +176,7 @@ final class ChatStore {
             if let snapshot = try? await core.currentConversation(characterID: character.id),
                snapshot.messages.count > count {
                 messages = snapshot.messages
+                lines = (try? await core.conversationRecord(conversationID: snapshot.id)) ?? lines
                 return
             }
             try? await Task.sleep(for: .milliseconds(50))

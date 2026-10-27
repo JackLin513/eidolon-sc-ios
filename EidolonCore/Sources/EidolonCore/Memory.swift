@@ -361,7 +361,7 @@ extension Eidolon {
                 history: Array(messages[..<index]),
                 text: text,
                 reply: reply.map(MemoryExtraction.shownText) ?? "",
-                now: ISO8601DateFormatter().date(from: messages[index].createdAt) ?? Date(),
+                now: Eidolon.parseTimestamp(messages[index].createdAt) ?? Date(),
                 timeZone: timeZone
             )
         }

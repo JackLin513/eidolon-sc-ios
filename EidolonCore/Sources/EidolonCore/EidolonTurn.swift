@@ -167,6 +167,7 @@ extension Eidolon {
         voicedBy model: String?,
         emit: (TurnEvent) -> Void
     ) async throws -> TurnRecord {
+        let turnStarted = Date()
         let characters = try characters()
         guard let character = characters.first(where: { $0.id == characterID }) else {
             throw EidolonError.invalidContent("找不到角色 \(characterID)")
@@ -436,6 +437,9 @@ extension Eidolon {
             recordTrace(existingConversation, error: "她说的话是空的")
             throw ChatProviderError.invalidResponse("她说的话是空的")
         }
+        // Her reply is stamped when it is written, as upstream's `_now()` does, measured
+        // from the turn's own moment so a turn simulated on an injected clock stays on it.
+        let replyAt = now.addingTimeInterval(Date().timeIntervalSince(turnStarted))
         let recorded = try recordTurn(
             conversationID: existingConversation,
             characterID: characterID,
@@ -444,7 +448,8 @@ extension Eidolon {
             judged: judged,
             ending: ending,
             typed: call == nil,
-            now: now
+            now: now,
+            replyAt: replyAt
         )
         recordTrace(recorded.conversationID, error: nil)
         // Memory is on with an embedder and a reranker (upstream `_services`): what the
@@ -504,7 +509,7 @@ extension Eidolon {
         ) else {
             return .fresh(at: now)
         }
-        let at = ISO8601DateFormatter().date(from: row["updated_at"]) ?? now
+        let at = Self.parseTimestamp(row["updated_at"]) ?? now
         return Affinity(
             value: row["value"],
             at: at,
@@ -565,64 +570,25 @@ extension Eidolon {
     }
 
     /// The conversation as it reads: the recorded messages and the reach-outs between
-    /// them, oldest first. Her reach-outs are no turns of their own, but she said them.
+    /// them, oldest first, in the database's order. Her reach-outs are no turns of their
+    /// own, but she said them; events stay out of the prompt.
     func timeline(conversationID: String) throws -> [StoredMessage] {
-        struct Entry {
-            var message: StoredMessage
-            var reachedOut: Bool
-            var rowid: Int64
-        }
-        return try userQueue.read { db in
-            let said = try Row.fetchAll(
-                db,
-                sql: """
-                    SELECT rowid, id, role, text, segments, created_at FROM messages
-                    WHERE conversation_id = ?
-                    """,
-                arguments: [conversationID]
-            ).map { row in
-                Entry(message: StoredMessage(row: row), reachedOut: false, rowid: row["rowid"])
-            }
-            let reached = try Row.fetchAll(
-                db,
-                sql: """
-                    SELECT rowid, id, segments, created_at FROM reach_outs
-                    WHERE conversation_id = ?
-                    """,
-                arguments: [conversationID]
-            ).map { row in
-                Entry(
-                    message: StoredMessage(
-                        id: "reach:\(row["id"] as String)",
-                        role: "character",
-                        text: nil,
-                        segments: Self.decodeSegments(row["segments"]),
-                        createdAt: row["created_at"]
-                    ),
-                    reachedOut: true,
-                    rowid: row["rowid"]
-                )
-            }
-            // A turn's two messages share one timestamp: the order they were written in.
-            return (said + reached).sorted { left, right in
-                if left.message.createdAt != right.message.createdAt {
-                    return left.message.createdAt < right.message.createdAt
-                }
-                if left.reachedOut != right.reachedOut { return !left.reachedOut }
-                return left.rowid < right.rowid
-            }.map(\.message)
-        }
-    }
-
-    func messages(conversationID: String) throws -> [ChatMessageRecord] {
-        try timeline(conversationID: conversationID).map { message in
-            ChatMessageRecord(
+        try conversationRecord(conversationID: conversationID).compactMap { line in
+            guard case let .message(message) = line else { return nil }
+            return StoredMessage(
                 id: message.id,
                 role: message.role,
                 text: message.text,
                 segments: message.segments,
                 createdAt: message.createdAt
             )
+        }
+    }
+
+    func messages(conversationID: String) throws -> [ChatMessageRecord] {
+        try conversationRecord(conversationID: conversationID).compactMap { line in
+            guard case let .message(message) = line else { return nil }
+            return message
         }
     }
 
@@ -657,7 +623,7 @@ extension Eidolon {
                 sql: "SELECT MAX(created_at) FROM messages WHERE conversation_id = ?",
                 arguments: [conversationID]
             ) else { return nil }
-            return ISO8601DateFormatter().date(from: stamp)
+            return Self.parseTimestamp(stamp)
         }
     }
 
@@ -675,9 +641,11 @@ extension Eidolon {
         judged: Judged?,
         ending: EndsReason?,
         typed: Bool,
-        now: Date
+        now: Date,
+        replyAt: Date
     ) throws -> RecordedTurn {
         let stamp = Self.timestamp(now)
+        let replyStamp = Self.timestamp(replyAt)
         let segmentsJSON = try Self.encodeSegments(segments)
         let userID = UUID().uuidString
         let replyID = UUID().uuidString
@@ -726,7 +694,7 @@ extension Eidolon {
                         gained_today = excluded.gained_today, gained_on = excluded.gained_on
                     """,
                 arguments: [
-                    characterID, after.value, after.cooling ? 1 : 0, stamp,
+                    characterID, after.value, after.cooling ? 1 : 0, replyStamp,
                     gainedToday, day,
                 ]
             )
@@ -746,7 +714,7 @@ extension Eidolon {
                     replyID, conversationID,
                     segments.map(\.ja).joined(),
                     segments.map(\.zh).joined(),
-                    segmentsJSON, stamp,
+                    segmentsJSON, replyStamp,
                     after.tier.rawValue,
                     hurt,
                     outOfLine ? 1 : 0,
@@ -755,16 +723,18 @@ extension Eidolon {
             )
 
             if typed, ending != nil {
+                // Written after the reply it ends, as upstream writes it (`_now()`).
+                let endedStamp = Self.timestamp(replyAt.addingTimeInterval(0.000001))
                 try db.execute(
                     sql: "UPDATE conversations SET ended_at = ? WHERE id = ?",
-                    arguments: [stamp, conversationID]
+                    arguments: [endedStamp, conversationID]
                 )
                 try db.execute(
                     sql: """
                         INSERT INTO conversation_events(conversation_id, kind, created_at)
                         VALUES (?, 'ended', ?)
                         """,
-                    arguments: [conversationID, stamp]
+                    arguments: [conversationID, endedStamp]
                 )
             }
             return RecordedTurn(conversationID: conversationID, affinity: after, userMessageID: userID)
@@ -796,10 +766,48 @@ extension Eidolon {
 
     // MARK: - Helpers
 
+    /// Now, as the store writes when things happened: UTC, to the microsecond as upstream's
+    /// `_now()` (`datetime.now(UTC).isoformat()`). Sub-second stamps keep a turn's two rows
+    /// and the events around them apart.
     static func timestamp(_ date: Date) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.string(from: date)
+        let total = (date.timeIntervalSince1970 * 1_000_000).rounded(.down)
+        var seconds = Int64(total) / 1_000_000
+        var fraction = Int64(total) % 1_000_000
+        if fraction < 0 {
+            seconds -= 1
+            fraction += 1_000_000
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .current
+        let parts = calendar.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second],
+            from: Date(timeIntervalSince1970: TimeInterval(seconds))
+        )
+        func padded(_ value: Int, _ width: Int) -> String {
+            let digits = String(value)
+            return digits.count >= width
+                ? digits
+                : String(repeating: "0", count: width - digits.count) + digits
+        }
+        return padded(parts.year ?? 1970, 4)
+            + "-" + padded(parts.month ?? 1, 2)
+            + "-" + padded(parts.day ?? 1, 2)
+            + "T" + padded(parts.hour ?? 0, 2)
+            + ":" + padded(parts.minute ?? 0, 2)
+            + ":" + padded(parts.second ?? 0, 2)
+            + "." + padded(Int(fraction), 6)
+            + "Z"
+    }
+
+    /// A stored timestamp as a moment: the stamps this app writes now carry microseconds,
+    /// and older ones do not.
+    public static func parseTimestamp(_ timestamp: String) -> Date? {
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = withFraction.date(from: timestamp) { return date }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        return plain.date(from: timestamp)
     }
 
     static func isoDay(_ date: Date, in timeZone: TimeZone) -> String {
