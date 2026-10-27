@@ -30,3 +30,14 @@
 - [ ] 测到「今天做完了一项工作，她因此来店里」时，好感度档位已经计入了这项工作（如果 HTTP 测试不便触发，就在 HerNow 上测，并写进实现说明）。
 - [ ] 现有的光顾测试照常通过，来意、话题、她的资料、醉、奖励都和原来一样。
 - [ ] 本机跑类型检查，以及 `scripts/affected-tests.sh` 找出的测试；推分支，看 CI。
+
+## Comments
+
+### 票 02 交接
+
+- `HerNow` 在 `backend/src/eidolon/her_now.py`，assembly 里已经建好（`her_now`），还没交给酒吧：给 `Bar` 加参数，在 assembly 里传进去。
+- 进门时调 `her_now.read(user_id, character.id, device_timezone, "visit")`：`Known.done_today` 是今天做完的那项（`Job | None`），`Known.affinity` 是好感度（`Status | None`，好感度关着时为空）。拿到以后酒吧里的 `self._schedules.hers(...)` 和 `self._affinities.status(...)` 两次读都可以删；`Bar` 的 `schedules` 参数可能就用不上了（assembly 里 `Bar(..., schedules=schedules, ...)` 一起删）。
+- 「这次光顾」一节：`her_now.lines(known, "visit", now, timezone, profile, None, affinity_prompt(status.tier, None))` 给出的就是 `[*好感度几行, *今天几行]`，顺序和现在 `visit_prompt` 里 `*affinity_lines, *today` 一样；`visit_prompt` 的这两个参数可以合成一个。光顾不带时间，`timezone`、`profile`、`last_contact` 在这个场合不会用到，传什么都行（`profile` 酒吧在 `_hers` 里已经读了 `about_producer`，没有现成的 `ProducerProfile`，可以传 `ProducerProfile()`，或者把第二步这几个参数改成可选，自己判断）。
+- 酒吧原来的 `_done_today` 已经在票 01 删了，现在调的是 `her_jobs.done_today()`；改成用 `known.done_today` 即可。
+- 「先后顺序」在 HerNow 上已经测过（`test_her_now.py::test_jobs_done_are_counted_before_her_affinity_is_read_after_the_first_step`，用的正是 `"visit"`），光顾的 HTTP 测试不便触发时可以引用这条。
+- 场合表里光顾那一列也已在 `test_her_now.py::test_visiting_the_bar_she_is_told_only_how_she_feels_and_the_day_in_tokyo` 测过。

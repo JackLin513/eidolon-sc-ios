@@ -42,7 +42,7 @@ from eidolon.characters import Character
 from eidolon.drink_catalog import Drink, DrinkCatalog, Served
 from eidolon.facts import CharacterFacts
 from eidolon.llm import ChatMessage
-from eidolon.today import her_birthday
+from eidolon.today import always_known
 
 _TOLERANCES = {"weak": "不太能喝", "medium": "一般", "strong": "很能喝"}
 MOODS: dict[Mood, str] = {
@@ -94,10 +94,7 @@ class Remembered:
 
 def shared_prompt(character: Character, world_prompt: str | None) -> str:
     """The first part: what every user's visits with her open with that day."""
-    parts = [character.sheet, her_birthday(character)]
-    if world_prompt:
-        parts.append(world_prompt)
-    return "\n\n".join([*parts, _IF, _WRITING, _FORMAT])
+    return "\n\n".join([*always_known(character, world_prompt), _IF, _WRITING, _FORMAT])
 
 
 def visit_prompt(

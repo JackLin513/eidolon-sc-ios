@@ -123,7 +123,7 @@ from eidolon.llm import ChatLLM
 from eidolon.own_keys import BroughtKeys, OwnKeyFailed, TurnKeys
 from eidolon.producer import producer_prompt
 from eidolon.randomness import Random
-from eidolon.schedule import HerSchedule, Job, Schedules
+from eidolon.schedule import Job, Schedules
 from eidolon.store import read_profile
 from eidolon.today import today_lines
 from eidolon.world import World
@@ -468,7 +468,9 @@ class Bar:
             await self._affinities.status(user_id, character.id)
             if self._affinities is not None else None
         )
-        reason = self._reason(character, _done_today(her_jobs), hers.reasons)
+        reason = self._reason(
+            character, her_jobs.done_today() if her_jobs is not None else None, hers.reasons
+        )
         topic = self._topic(character, hers.topics)
         with admission.recording.current():
             facts = await self._facts.about(character, topic) if self._facts is not None else []
@@ -486,11 +488,7 @@ class Bar:
             visit_prompt(
                 hers.about_producer, reason, topic, drinks,
                 affinity_prompt(status.tier, None) if status is not None else [],
-                today_lines(
-                    now, character, everyone, "apart",
-                    world.lives_of(character.name) if world else (),
-                    world.unit_mates(character.name) if world else (),
-                ),
+                today_lines(now, character, everyone, world),
                 hers.remembered, now, character, self._catalog, facts,
             ),
             admission,
@@ -892,20 +890,6 @@ def _of_the_day(user_id: str, today: date, characters: int) -> int:
     """Which character is the user's of the day `today`."""
     digest = hashlib.sha256(f"{user_id}/{today.isoformat()}".encode()).digest()
     return int.from_bytes(digest[:8], "big") % characters
-
-
-def _done_today(schedule: HerSchedule | None) -> Job | None:
-    """The job of hers the producer scheduled today where they are and she has done, the
-    latest if more than one; None without."""
-    if schedule is None:
-        return None
-    today = schedule.local.weekday()
-    done = [
-        j for j in schedule.jobs
-        if j.week == schedule.this_week and j.day == today
-        and schedule.time_of(j.week, j.day, j.slot + j.job.length - 1) == "past"
-    ]
-    return done[-1].job if done else None
 
 
 def _open(db: sqlite3.Connection) -> None:

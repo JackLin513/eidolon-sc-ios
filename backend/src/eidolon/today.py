@@ -1,18 +1,18 @@
 """What she is told of the day it is in Tokyo, where she lives (GLOSSARY.md「日历」): whether
 it is her birthday, whose of the others' it is (to bring up only her unit mates'), which of Japan's holidays it is, and which
 of the live days she stood on fell on it in years before, told as past. Each
-line is told only on its day, after what she is told of now (`producer.now_prompt`), in the
-same section, in a typed turn, a call or a reach-out alike; none on a day that is none of
-them. The producer's own birthday goes by their day, and is told by `now_prompt`."""
+line is told only on its day, in what she is told of now (GLOSSARY.md「此刻」, `HerNow`), on
+every occasion; none on a day that is none of them. The producer's own birthday goes by their
+day, and is told by `producer.now_prompt`."""
 
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Iterable, Sequence
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from eidolon.characters import Character, in_idol_order
 from eidolon.japan_holidays import holiday_on
-from eidolon.producer import Talking, is_birthday
-from eidolon.world import Live, LiveDay
+from eidolon.producer import is_birthday
+from eidolon.world import Live, LiveDay, World
 
 TOKYO = ZoneInfo("Asia/Tokyo")
 
@@ -27,20 +27,16 @@ def tokyo_date(now: datetime) -> date:
 
 
 def today_lines(
-    now: datetime,
-    character: Character,
-    characters: Iterable[Character],
-    talking: Talking,
-    her_lives: Sequence[tuple[Live, Sequence[LiveDay]]],
-    unit_mates: Collection[str],
+    now: datetime, character: Character, characters: Iterable[Character], world: World | None
 ) -> list[str]:
-    """What `character` is told of the day it is in Tokyo at `now`, `talking` with the
-    producer as she is (alike for now in each way): her birthday, the birthdays of the others
-    among `characters`, in idol order, those of her `unit_mates` (`World.unit_mates`) apart
-    from the rest, which she is only to know of, the holiday, each if it is the day; then each
-    of the days of `her_lives` (`World.lives_of`) on this day in a year before, earliest
-    first."""
+    """What `character` is told of the day it is in Tokyo at `now`: her birthday, the
+    birthdays of the others among `characters`, in idol order, those of her unit mates in
+    `world` apart from the rest, which she is only to know of, the holiday, each if it is the
+    day; then each of the days of the lives she stood on in `world` on this day in a year
+    before, earliest first. Without `world`, only the birthdays and the holiday."""
     today = tokyo_date(now)
+    unit_mates = world.unit_mates(character.name) if world else []
+    her_lives = world.lives_of(character.name) if world else []
     lines: list[str] = []
     if is_birthday(character.birthday, today):
         lines.append(_HER_BIRTHDAY)
@@ -87,3 +83,10 @@ def _lives_on_this_day(
 def her_birthday(character: Character) -> str:
     """Her birthday as she always knows it, the same for every user."""
     return f"你的生日是{character.birthday.month}月{character.birthday.day}日。"
+
+
+def always_known(character: Character, world_prompt: str | None) -> list[str]:
+    """What every prompt of hers opens with, the same for every user that day, for a service
+    to cache (ADR-0020): her character sheet, her birthday, then the world setting
+    (`World.prompt`), if any. The conversations and the bar each go on from it their own way."""
+    return [character.sheet, her_birthday(character), *([world_prompt] if world_prompt else [])]

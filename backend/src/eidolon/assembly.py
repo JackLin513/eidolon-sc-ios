@@ -47,6 +47,7 @@ from eidolon.drink_catalog import check_bar_tastes, drinks_path, load_drink_cata
 from eidolon.gift_catalog import Gift, check_liked_gifts, gifts_path, load_gift_catalog
 from eidolon.gifts import Gifts
 from eidolon.happenings import Happenings
+from eidolon.her_now import HerNow
 from eidolon.hot_words import hot_words
 from eidolon.job_list import jobs_path, load_job_list
 from eidolon.housekeeping import keep_tidy
@@ -158,6 +159,8 @@ class Backend:
     """Each week's jobs and every producer's schedule, where schedules are on."""
     cycles: Cycles
     """Where each user's each character's cycle has her, where cycles are on."""
+    her_now: HerNow
+    """What she knows of now, typing, in a call, reaching out or visiting the bar."""
     cycle_records: CycleRecords
     """The periods each user wrote down of each character, and what is estimated of her."""
     world: World | None = None
@@ -402,10 +405,11 @@ def build(
         database, clock, lambda: config.schedule_on, idols_of(characters, world), job_list,
         affinities,
     )
+    her_now = HerNow(characters, world, schedules, cycles, affinities)
     engine = ConversationEngine(
-        database, store, characters, gift_catalog, memories, titles, clock, retrieval,
+        database, store, characters, gift_catalog, memories, titles, clock, her_now, retrieval,
         lambda: config.history_turns, world, affinities, config.affinity_judge(), photos,
-        happenings, schedules, cycles,
+        happenings,
     )
     own_keys = OwnKeys(
         own_llm_service, config, activity, speech, exempting=lambda: config.exempting_keys,
@@ -473,6 +477,7 @@ def build(
         reach_outs=reach_outs,
         schedules=schedules,
         cycles=cycles,
+        her_now=her_now,
         cycle_records=CycleRecords(database, clock, characters, cycles),
         world=world,
         corpus=corpus,
