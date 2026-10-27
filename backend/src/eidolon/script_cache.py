@@ -70,6 +70,7 @@ class ScriptCache:
             # Sent in full all the same: asked of the game's asset server, or of the mirror
             # on the server's ETag. The ETag kept is the one it sent last.
             _keep_etag(etag_path, answer.etag)
+            missing_path.unlink(missing_ok=True)
             return "unchanged"
         partial = path.with_name(path.name + ".part")
         partial.write_bytes(answer.content)

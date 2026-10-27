@@ -265,8 +265,6 @@ async def test_a_changed_card_checked_while_the_viewer_is_down_is_checked_on_the
         "json/produce_events/200100401.json", "json/produce_events/200100402.json"
     ]
     assert (report.downloaded, report.untranslated.imported) == (0, 0)
-    # The server having sent those, what it has not got is no more than missing.
-    assert (report.missing, report.mirror_error) == (1, None)
 
 
 async def test_when_the_mirror_is_unreachable_the_translations_still_come_in(

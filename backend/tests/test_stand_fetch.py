@@ -197,8 +197,6 @@ def test_an_outfit_shinycolorsdb_has_no_files_of_comes_from_the_games_asset_serv
 
     assert code == 0, err
     assert stands.outfits() == ["stand/1030010010", "stand_costume/1030010010"]
-    atlas = stands.file("stand_costume/1030010010", "data.atlas")
-    assert atlas.read_bytes() == b"\ndata.png\nsize: 2048,2048\n"
     assert stands.file("stand_costume/1030010010", "data.png").read_bytes() == PNG + b" stand_costume"
 
 

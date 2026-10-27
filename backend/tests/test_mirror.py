@@ -61,13 +61,17 @@ async def test_a_script_the_mirror_has_is_not_asked_of_the_server(site: FakeShin
     assert site.official.sent == []
 
 
-async def test_a_script_comes_from_the_server_when_the_viewer_cannot_be_reached(site: FakeShinyColorsDB, mirror: Mirror):
+async def test_a_script_comes_from_the_server_when_the_viewer_cannot_be_reached(
+    site: FakeShinyColorsDB, mirror: Mirror
+):
     site.viewer_down = True
     site.official.files[f"json/{SCRIPT}.json"] = json.dumps(FRAMES).encode()
 
     answer = await mirror.script(SCRIPT, None)
 
     assert isinstance(answer, Script) and json.loads(answer.content) == FRAMES
+    # The server having sent one, its page for another is no maintenance page.
+    assert await mirror.script("produce_events/200100402", None) == "missing"
 
 
 async def test_a_server_with_no_such_script_while_the_viewer_cannot_be_reached_is_an_error(
@@ -83,14 +87,14 @@ async def test_a_server_with_no_such_script_while_the_viewer_cannot_be_reached_i
         await mirror.script(SCRIPT, None)
 
 
-async def test_once_the_server_has_sent_a_file_a_script_it_has_not_got_is_missing(
-    site: FakeShinyColorsDB, mirror: Mirror
-):
-    site.viewer_down = True
-    site.official.files[f"json/{SCRIPT}.json"] = json.dumps(FRAMES).encode()
-    await mirror.script(SCRIPT, None)
+async def test_a_script_the_mirror_lacks_is_missing_when_the_server_fails(site: FakeShinyColorsDB, mirror: Mirror):
+    # As before the server was asked: a sync goes on past it.
+    site.official.down = True
+    assert await mirror.script(SCRIPT, None) == "missing"
 
-    assert await mirror.script("produce_events/200100402", None) == "missing"
+    site.official.down = False
+    site.official.files[f"json/{SCRIPT}.json"] = b'{"not": "frames"}'
+    assert await mirror.script(SCRIPT, None) == "missing"
 
 
 async def test_when_both_cannot_be_reached_it_is_an_error(site: FakeShinyColorsDB, mirror: Mirror):
@@ -108,6 +112,15 @@ async def test_a_stand_file_the_cdn_lacks_comes_from_the_server_decrypted(site: 
     assert await mirror.stand_file(f"{STAND}data.atlas") == b"\ndata.png\nsize: 2048,2048\n"
     assert await mirror.stand_file(f"{STAND}data.png") == PNG
     assert await mirror.stand_file(f"{STAND}data.json") is None
+
+
+async def test_a_page_the_cdn_sends_for_a_stand_file_is_passed_over_for_the_servers_file(
+    site: FakeShinyColorsDB, mirror: Mirror
+):
+    site.cdn_pages = True
+    site.official.files[f"{STAND}data.png"] = PNG
+
+    assert await mirror.stand_file(f"{STAND}data.png") == PNG
 
 
 def test_a_file_from_the_server_cut_short_is_not_taken_for_whole():

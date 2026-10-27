@@ -24,7 +24,7 @@ import json
 import logging
 import re
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -114,7 +114,8 @@ class Dress:
 
 @dataclass(frozen=True)
 class Script:
-    """A game script as the viewer sent it: its frames, as JSON."""
+    """A game script as the viewer (or the game's asset server) sent it: its frames, as
+    JSON. The server's other files come in one too, with their ETag."""
 
     content: bytes
     etag: str | None
@@ -205,7 +206,8 @@ class Mirror:
 
     async def script(self, script: str, etag: str | None) -> Script | Literal["unchanged", "missing"]:
         """The script, unless the mirror says the copy matching `etag` is still current
-        (`unchanged`). A script the mirror does not have is `missing`, not an error."""
+        (`unchanged`). A script neither the mirror nor the game's asset server has is
+        `missing`, not an error."""
         headers = {"If-None-Match": etag} if etag else {}
         problem: MirrorError | None = None
         try:
@@ -214,14 +216,13 @@ class Mirror:
                 return "unchanged"
             if response.status_code != 404:
                 _check(response)
-                return Script(_frames(script, response.content, "镜像"), response.headers.get("ETag"))
+                try:
+                    return Script(_checked_script(response.content), response.headers.get("ETag"))
+                except ValueError as e:
+                    raise MirrorError(f"{script}：镜像返回的{e}") from e
         except MirrorError as e:
             problem = e
-        official = await self._official(f"json/{script}.json", problem)
-        if official is None:
-            return "missing"
-        content, official_etag = official
-        return Script(_frames(script, content, "官方 CDN "), official_etag)
+        return await self._official(f"json/{script}.json", problem, _checked_script) or "missing"
 
     async def dresses(self, idol_id: int) -> list[Dress]:
         dresses = await self._api("/spine/dresslist", idolId=idol_id)
@@ -253,36 +254,41 @@ class Mirror:
                 # An error page: the server's file if it has one, else the page, as before,
                 # for the caller to tell it is not one.
                 official = await self._official(path, None)
-                return response.content if official is None else official[0]
+                return response.content if official is None else official.content
         except MirrorError as e:
             problem = e
         official = await self._official(path, problem)
-        return None if official is None else official[0]
+        return None if official is None else official.content
 
-    async def _official(self, path: str, problem: "MirrorError | None") -> tuple[bytes, str | None] | None:
-        """The file at `path` from the game's asset server, with its ETag, now that the
-        mirror could not give it (`problem` says why, None if it does not have it); None
-        if the server does not have it either, and either the mirror said so too or the
-        server is known not to be down for maintenance. Raises MirrorError otherwise."""
+    async def _official(
+        self, path: str, problem: MirrorError | None, check: Callable[[bytes], bytes] | None = None
+    ) -> Script | None:
+        """The file at `path` from the game's asset server, decrypted and passed by
+        `check` (which raises ValueError for one that is not what it should be), now that
+        the mirror could not give it: `problem` says why, None if it does not have it.
+
+        When the mirror does not have it, the server is only a chance to find it: None if
+        the server does not have it either or fails, as before. When the mirror could not
+        be reached, the server not having it is believed only once it has sent a file
+        this time (see the module); otherwise, and when it fails, raises MirrorError."""
         if problem is not None:
             log.warning("%s；改从官方 CDN 拉取 %s", problem, path)
         try:
             response = await self._get(official_cdn.asset_url(path))
-            if response.status_code == 404 or response.headers.get("Content-Type", "").startswith("text/html"):
-                if problem is not None and not self._official_sent:
-                    raise problem
-                return None
-            _check(response)
-            content = official_cdn.decode(path, response.content)
-        except ValueError as e:
-            raise MirrorError(f"官方 CDN 的 {e}") from e
-        except MirrorError as e:
-            if problem is None or e is problem:
-                raise
-            raise MirrorError(f"{problem}；官方 CDN 也不行：{e}") from e
+            lacks = response.status_code == 404 or response.headers.get("Content-Type", "").startswith("text/html")
+            content = None if lacks else _official_file(path, response, check)
+        except MirrorError as failure:
+            if problem is not None:
+                raise MirrorError(f"{problem}；官方 CDN 也不行：{failure}") from failure
+            log.warning("镜像没有 %s，官方 CDN 也拉不到：%s", path, failure)
+            return None
+        if content is None:
+            if problem is not None and not self._official_sent:
+                raise MirrorError(f"{problem}；官方 CDN 也没有，可能在维护") from problem
+            return None
         self._official_sent = True
         log.info("镜像拿不到 %s，从官方 CDN 拉到了", path)
-        return content, response.headers.get("ETag")
+        return Script(content, response.headers.get("ETag"))
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -308,14 +314,24 @@ class Mirror:
             self._last_request = time.monotonic()
 
 
-def _frames(script: str, content: bytes, source: str) -> bytes:
-    """The script as sent, having checked it is one: an array of frames, as JSON."""
+def _official_file(path: str, response: httpx.Response, check: Callable[[bytes], bytes] | None) -> bytes:
+    _check(response)
+    try:
+        content = official_cdn.decode(path, response.content)
+        return content if check is None else check(content)
+    except ValueError as e:
+        raise MirrorError(f"官方 CDN 的 {path}：{e}") from e
+
+
+def _checked_script(content: bytes) -> bytes:
+    """The script as sent, having checked it is one: an array of frames, as JSON. Raises
+    ValueError if it is not."""
     try:
         frames = json.loads(content)
     except ValueError as e:
-        raise MirrorError(f"{script}：{source}返回的不是 JSON（{e}）") from e
+        raise ValueError(f"不是 JSON（{e}）") from e
     if not isinstance(frames, list):
-        raise MirrorError(f"{script}：{source}返回的不是剧本的帧数组")
+        raise ValueError("不是剧本的帧数组")
     return content
 
 

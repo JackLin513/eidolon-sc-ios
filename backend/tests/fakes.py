@@ -1216,7 +1216,8 @@ class FakeShinyColorsDB:
     is still current and 404 for one it does not have. Records every request, and which
     scripts (and albums, as `album/NN`) it sent in full. Set `down`
     to have it unreachable, or `down_after` to have it go down after that many requests;
-    `viewer_down` to have only the viewer unreachable. Behind it, the game's asset server
+    `viewer_down` to have only the viewer unreachable, `cdn_pages` to have the CDN answer
+    for a stand's file with an error page. Behind it, the game's asset server
     (`official`), which has nothing unless given it."""
 
     def __init__(self) -> None:
@@ -1229,6 +1230,7 @@ class FakeShinyColorsDB:
         self.down = False
         self.down_after: int | None = None
         self.viewer_down = False
+        self.cdn_pages = False
         self.official = FakeEnzaAssets()
 
     def add_card(
@@ -1287,7 +1289,7 @@ class FakeShinyColorsDB:
             return httpx.Response(404)
         if request.url.host == "cf-static.shinycolors.moe":
             if not path.startswith("/albums/"):  # the stands, which are another fake's
-                return httpx.Response(404, text="<html>Not Found</html>")
+                return httpx.Response(200 if self.cdn_pages else 404, text="<html>Not Found</html>")
             idol = int(path.removeprefix("/albums/album/").removesuffix(".json"))
             album = self.albums.get(idol)
             body = None if album is None else json.dumps(album, ensure_ascii=False).encode()
