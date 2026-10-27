@@ -11,6 +11,14 @@ enum Fixture {
         "2026-02-11": "建国記念の日",
     ]
 
+    /// What `characters/world.json` holds, when the bundle carries one.
+    enum WorldJSON {
+        case none
+        case valid
+        /// A truncated file, as a bad export leaves it.
+        case broken
+    }
+
     struct Options {
         var formatVersion = ContentManifest.supportedFormatVersion
         var schemaVersion = 1
@@ -32,6 +40,7 @@ enum Fixture {
         var unreadableOutfitList = false
         /// Extra `content` counts, e.g. a key that is not a database table.
         var extraContentCounts: [String: Int] = [:]
+        var world: WorldJSON = .none
     }
 
     static func makeBundle(in parent: URL, options: Options = Options()) throws -> URL {
@@ -87,6 +96,28 @@ enum Fixture {
         ]
         let charactersData = try JSONEncoder().encode(characters)
         try charactersData.write(to: charactersDirectory.appendingPathComponent("characters.json"))
+        switch options.world {
+        case .none:
+            break
+        case .valid:
+            let world: [String: JSONValue] = [
+                "as_of": .string("2026-01-01"),
+                "office": .object([
+                    "name": .string("283プロ"),
+                    "staff": .array([]),
+                ]),
+                "units": .array([]),
+                "idols": .array([]),
+                "releases": .array([]),
+                "songs": .array([]),
+                "lives": .array([]),
+            ]
+            try JSONEncoder().encode(world)
+                .write(to: charactersDirectory.appendingPathComponent("world.json"))
+        case .broken:
+            try Data("{".utf8)
+                .write(to: charactersDirectory.appendingPathComponent("world.json"))
+        }
         if options.includeHolidays {
             let holidays = try JSONEncoder().encode(Fixture.holidays)
             try holidays.write(to: databaseDirectory.appendingPathComponent("holidays.json"))

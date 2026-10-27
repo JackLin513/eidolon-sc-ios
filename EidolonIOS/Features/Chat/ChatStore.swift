@@ -92,10 +92,18 @@ final class ChatStore {
         judge: (any JudgeProvider)?,
         embedder: (any EmbeddingProvider)?,
         reranker: (any RerankProvider)?,
+        historyTurns: Int = 20,
         tracing: TurnTracing = .on
     ) async {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !affinity.cooling, !readOnly else { return }
+        // A line the turn refuses is refused before her current reply is cut off for it.
+        do {
+            _ = try TurnInput.checked(text)
+        } catch {
+            errorMessage = error.localizedDescription
+            return
+        }
 
         if isStreaming {
             let countBefore = messages.count
@@ -117,6 +125,7 @@ final class ChatStore {
             judge: judge,
             embedder: embedder,
             reranker: reranker,
+            historyTurns: historyTurns,
             tracing: tracing
         )
         let turn = Task { @MainActor [weak self] in

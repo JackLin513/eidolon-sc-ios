@@ -28,6 +28,7 @@ struct ContentBundleInstaller {
         try validateManifest(manifest)
         try validateFiles(manifest, in: staging)
         try validateHolidays(in: staging)
+        try validateWorld(in: staging)
         let characters = try readCharacters(in: staging)
         try validateCharacters(manifest, characters, in: staging)
 
@@ -141,6 +142,24 @@ struct ContentBundleInstaller {
         }
         guard !table.names.isEmpty else {
             throw EidolonError.invalidBundle("日本节假日表是空的")
+        }
+    }
+
+    /// The world setting is parsed here, at install, because every turn reads it: a
+    /// bundle whose `characters/world.json` cannot be parsed would make the chat fail
+    /// over and over. A bundle without one is fine, as it was before.
+    private func validateWorld(in directory: URL) throws {
+        let url = directory.appendingPathComponent("characters/world.json")
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        guard let data = try? Data(contentsOf: url) else {
+            throw EidolonError.invalidBundle("读不到 characters/world.json")
+        }
+        do {
+            _ = try WorldSetting(json: data)
+        } catch {
+            throw EidolonError.invalidBundle(
+                "世界设定 characters/world.json 无法解析：\(error.localizedDescription)"
+            )
         }
     }
 

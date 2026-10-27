@@ -233,6 +233,8 @@ public struct CallSetup: Sendable {
     public var tracing: TurnTracing
     /// How long the call may last and how many of her turns it may take.
     public var limits: CallLimits
+    /// How many turns of the conversation she is told before each one, from the settings.
+    public var historyTurns: Int
     /// How long to wait before listening again after the recognizer's connection dropped.
     public var reconnectDelay: Duration
     public var now: @Sendable () -> Date
@@ -250,6 +252,7 @@ public struct CallSetup: Sendable {
         reranker: (any RerankProvider)? = nil,
         tracing: TurnTracing = .on,
         limits: CallLimits = .standard,
+        historyTurns: Int = 20,
         reconnectDelay: Duration = .seconds(1),
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
@@ -265,6 +268,7 @@ public struct CallSetup: Sendable {
         self.reranker = reranker
         self.tracing = tracing
         self.limits = limits
+        self.historyTurns = historyTurns
         self.reconnectDelay = reconnectDelay
         self.now = now
     }
@@ -467,6 +471,7 @@ public actor CallSession {
         captions.removeAll()
         lastFinalized = -1
         var failure: String?
+        var rejection: String?
         do {
             for try await event in eidolon.sendTurn(
                 characterID: characterID,
@@ -475,6 +480,7 @@ public actor CallSession {
                 judge: setup.judge,
                 embedder: setup.embedder,
                 reranker: setup.reranker,
+                historyTurns: setup.historyTurns,
                 now: setup.now(),
                 tracing: setup.tracing,
                 talking: .inCall,
@@ -499,12 +505,17 @@ public actor CallSession {
             }
         } catch is CancellationError {
             // The call ended while she was answering.
+        } catch let error as EidolonError where error.isInputRejection {
+            // The turn was refused for what it heard; the message is the whole of it.
+            rejection = error.localizedDescription
         } catch {
             failure = error.localizedDescription
         }
         if !finished {
             finalize(from: 0, before: Int.max)
-            if let failure {
+            if let rejection {
+                emit(.failed(rejection))
+            } else if let failure {
                 emit(.failed("她那边没声音：\(failure)"))
             }
         }

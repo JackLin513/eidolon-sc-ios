@@ -112,6 +112,7 @@ struct ChatView: View {
                             judge: app.judgeProvider,
                             embedder: app.embeddingProvider,
                             reranker: app.rerankProvider,
+                            historyTurns: app.chatSettings.historyTurns,
                             tracing: app.tracing
                         ) }
         #endif
@@ -278,6 +279,7 @@ struct ChatView: View {
                             judge: app.judgeProvider,
                             embedder: app.embeddingProvider,
                             reranker: app.rerankProvider,
+                            historyTurns: app.chatSettings.historyTurns,
                             tracing: app.tracing
                         ) }
                     }
@@ -366,6 +368,7 @@ struct ChatView: View {
                             judge: app.judgeProvider,
                             embedder: app.embeddingProvider,
                             reranker: app.rerankProvider,
+                            historyTurns: app.chatSettings.historyTurns,
                             tracing: app.tracing
                         ) }
                 }
