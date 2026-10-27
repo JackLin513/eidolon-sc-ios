@@ -1,7 +1,7 @@
 import EidolonCore
 import UIKit
 
-/// Draws the outfit thumbnails once (spec「通话页」): the same renderer the call uses, off
+/// Draws the outfit thumbnails once (spec「通话层」): the same renderer the call uses, off
 /// screen and in `full` framing, snapshotted into `Caches` under her outfit number and the
 /// installed bundle's version, and kept in memory for the rest of the process. One renderer
 /// is reused and requests are served one at a time, so a grid of cards never opens a WebGL

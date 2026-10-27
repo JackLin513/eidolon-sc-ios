@@ -2,7 +2,7 @@ import EidolonCore
 import SwiftUI
 import UIKit
 
-/// The call screen, laid out as upstream's `CallLayer` (spec「通话页」): her blurred likeness
+/// The call screen, laid out as upstream's `CallLayer` (spec「通话层」): her blurred likeness
 /// behind, her stand standing on the bottom, her name and status on top, the one line she is
 /// saying in a card, and the hang-up key. It only shows what `CallSession` reports (ADR-0015)
 /// and drives her stand from the same events (`CallStandDirector`).
@@ -320,7 +320,7 @@ struct CallView: View {
     }
 
     /// Her stand on the bottom 80% of the screen, under the words and the keys and taking no
-    /// touches (spec「通话页」). It rises 12% and fades in when it arrives on a phone, only
+    /// touches (spec「通话层」). It rises 12% and fades in when it arrives on a phone, only
     /// fades on wider screens and with reduced motion, and stays at 40% once the call is over.
     private func standStage(_ renderer: any StandRenderer, size: CGSize) -> some View {
         let height = size.height * 0.8

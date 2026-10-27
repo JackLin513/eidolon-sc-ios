@@ -190,26 +190,11 @@ struct ChatView: View {
     }
 
     private func eventIcon(_ kind: String) -> String {
-        switch kind {
-        case "ended":
-            "moon.zzz"
-        case "call_failed", "call_unconnected", "call_dropped":
-            "phone.down.circle"
-        default:
-            "phone.down"
-        }
+        ConversationEventKind(stored: kind).icon
     }
 
     private func eventText(_ kind: String) -> String {
-        switch kind {
-        case "ended": "她结束了对话"
-        case "hung_up", "she_hung_up": "她挂断了电话"
-        case "call_failed", "call_dropped": "通话中断"
-        case "call_unconnected": "通话没能接通"
-        case "call_duration_limit": "通话到了时限"
-        case "call_turn_limit": "通话到了回合上限"
-        default: "通话结束"
-        }
+        ConversationEventKind(stored: kind).displayText
     }
 
     @ViewBuilder

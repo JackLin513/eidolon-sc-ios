@@ -11,6 +11,19 @@ struct FishSynthesis: SpeechSynthesis {
     var apiKey: String
     var readings: Readings = Readings()
     var endpoint = URL(string: "https://api.fish.audio/v1/tts")!
+    /// Whether this call's Fish Audio has made any segment yet: a 400/404/422 is the
+    /// service refusing the call only while it has not (ADR-0011, #35 no. 37).
+    private let made = MadeSegment()
+
+    init(
+        apiKey: String,
+        readings: Readings = Readings(),
+        endpoint: URL = URL(string: "https://api.fish.audio/v1/tts")!
+    ) {
+        self.apiKey = apiKey
+        self.readings = readings
+        self.endpoint = endpoint
+    }
 
     func synthesize(_ text: String, voice: CallVoice) async throws -> Data {
         guard !apiKey.isEmpty else { throw FishSynthesisError.missingKey }
@@ -34,52 +47,40 @@ struct FishSynthesis: SpeechSynthesis {
             )
         }
         guard !data.isEmpty else { throw FishSynthesisError.empty }
+        made.mark()
         Logger(subsystem: "com.jacklin.eidolon", category: "call")
             .notice("synthesized \(text.count) chars -> \(data.count) bytes on \(voice.model)")
         return data
     }
 
     /// Whether Fish Audio itself cannot speak for this call: a key missing or refused, an
-    /// account out of credit, a voice or model it does not serve, or audio it did not make.
-    /// Retrying another segment will not help, so the call ends as upstream's does when its
-    /// voice service is unusable. A timeout, a dropped connection or a 5xx is only this
-    /// segment lost; the reply goes on (ADR-0011).
+    /// account out of credit, an empty answer, or — while this call has not voiced
+    /// anything yet — a voice, model or request it does not serve. Retrying another
+    /// segment will not help then, so the call ends as upstream's does when its voice
+    /// service is unusable. A timeout, a dropped connection or a 5xx is only this segment
+    /// lost, and so is a refused request after one segment has been made; the reply goes
+    /// on (ADR-0011).
     func failure(_ error: any Error) -> VoiceServiceFailure? {
-        switch error {
-        case FishSynthesisError.missingKey:
-            return VoiceServiceFailure(service: "Fish Audio", detail: "还没有填密钥")
-        case FishSynthesisError.empty:
-            return VoiceServiceFailure(service: "Fish Audio", detail: "返回的音频是空的")
-        case let FishSynthesisError.status(code, detail):
-            guard Self.refused.contains(code) else { return nil }
-            return VoiceServiceFailure(service: "Fish Audio", detail: "\(code) \(detail)")
-        default:
-            return nil
-        }
+        guard let error = error as? FishSynthesisError else { return nil }
+        return error.serviceFailure(hasSynthesized: made.any)
     }
-
-    /// The statuses meaning the service will not work for this call at all: no key or a
-    /// refused one, no credit, a voice or model it does not serve, a request it refuses.
-    /// 408, 429 and 5xx are left for the next segment to try again.
-    private static let refused: Set<Int> = [400, 401, 402, 403, 404, 422]
 }
 
-enum FishSynthesisError: LocalizedError {
-    case missingKey
-    case noResponse
-    case empty
-    case status(Int, String)
+/// What one call's synthesizer has made, shared by the copies of the `FishSynthesis` value
+/// and the prefetch that runs beside the drain.
+private final class MadeSegment: @unchecked Sendable {
+    private let lock = NSLock()
+    private var made = false
 
-    var errorDescription: String? {
-        switch self {
-        case .missingKey:
-            "还没有填 Fish Audio 的密钥"
-        case .noResponse:
-            "Fish Audio 没有回应"
-        case .empty:
-            "Fish Audio 没有说话"
-        case let .status(code, detail):
-            "Fish Audio 出错（\(code)）：\(detail)"
-        }
+    func mark() {
+        lock.lock()
+        made = true
+        lock.unlock()
+    }
+
+    var any: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return made
     }
 }

@@ -20,7 +20,7 @@ public enum CallClock {
     public static func time(since: Date, limit: Duration?, now: Date) -> CallTime {
         let elapsed = max(0, Int(now.timeIntervalSince(since).rounded(.down)))
         if let limit {
-            let maximum = seconds(of: limit)
+            let maximum = Int(limit.inSeconds.rounded(.down))
             if maximum - elapsed < 60 {
                 return .remaining(seconds: max(0, maximum - elapsed))
             }
@@ -40,11 +40,5 @@ public enum CallClock {
         case let .elapsed(seconds): clock(seconds)
         case let .remaining(seconds): "还剩 \(clock(seconds))"
         }
-    }
-
-    private static func seconds(of duration: Duration) -> Int {
-        let parts = duration.components
-        let exact = Double(parts.seconds) + Double(parts.attoseconds) / 1e18
-        return Int(exact.rounded(.down))
     }
 }

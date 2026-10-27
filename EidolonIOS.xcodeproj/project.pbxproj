@@ -16,7 +16,6 @@
 		2CF24EECC30E051467FA4D35 /* MicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */; };
 		3B581C7316F3F7567E6CF0E1 /* StandThumbnails.swift in Sources */ = {isa = PBXBuildFile; fileRef = F51D53D2BDB3163C8344025C /* StandThumbnails.swift */; };
 		50FF16442DF243C8411FF741 /* SonioxRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */; };
-		598687CBC444DC728D0C1598 /* ChatLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5145F04AB4F12ED795C7DF1A /* ChatLine.swift */; };
 		6ADC1F5313FCC7F5003E1676 /* stand-player.js in Resources */ = {isa = PBXBuildFile; fileRef = 54B11631789B9A8BDAE83193 /* stand-player.js */; };
 		791DD675A29C48B88185FACE /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE21F722ED79A2089F060B7F /* Theme.swift */; };
 		8ABC906B631EDC9CC6BC2529 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 502579B7DFF941BAC28ADE49 /* AppIcon.icon */; };
@@ -49,7 +48,6 @@
 		38579B2A473B296EC588CBD6 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		4472CA53E92E225069B1D652 /* FishSynthesis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FishSynthesis.swift; sourceTree = "<group>"; };
 		502579B7DFF941BAC28ADE49 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
-		5145F04AB4F12ED795C7DF1A /* ChatLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatLine.swift; sourceTree = "<group>"; };
 		54B11631789B9A8BDAE83193 /* stand-player.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "stand-player.js"; sourceTree = "<group>"; };
 		6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallSettingsError.swift; sourceTree = "<group>"; };
 		6DA937E9DC437925E1DD0673 /* ChatStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStore.swift; sourceTree = "<group>"; };
@@ -160,7 +158,6 @@
 		8DD528FF0F49C56E429F79F4 /* Chat */ = {
 			isa = PBXGroup;
 			children = (
-				5145F04AB4F12ED795C7DF1A /* ChatLine.swift */,
 				6DA937E9DC437925E1DD0673 /* ChatStore.swift */,
 				77736DA8D3A8B0B2407A626B /* ChatView.swift */,
 				B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */,
@@ -368,7 +365,6 @@
 				10BA2565084D529C4152A890 /* AppModel.swift in Sources */,
 				BBCD2E47044DFC5DAB92ED57 /* CallSettingsError.swift in Sources */,
 				9C1DDAAE28F34ADE34D50C28 /* CallView.swift in Sources */,
-				598687CBC444DC728D0C1598 /* ChatLine.swift in Sources */,
 				8FDA81B5B65A7F24FDDE1659 /* ChatSettings.swift in Sources */,
 				FB74EA11C1B5E34D38ED3937 /* ChatStore.swift in Sources */,
 				A1B405F9250C7DCD499A4A7E /* ChatView.swift in Sources */,

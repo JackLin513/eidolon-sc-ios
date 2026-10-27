@@ -350,8 +350,8 @@ final class TurnTests: XCTestCase {
         return provider
     }
 
-    /// She is told of her own hang-up as narration, before what he says next (upstream
-    /// `engine._narration`).
+    /// She is told of her own hang-up as narration, before what he says next, on a line of
+    /// its own ending with a newline (upstream `engine._narration_line`).
     func testHerHangUpIsNarratedBeforeWhatHeSaysNext() async throws {
         let eidolon = try await installedEidolon()
         _ = try await say("おはよう", at: moment, on: eidolon)
@@ -366,7 +366,7 @@ final class TurnTests: XCTestCase {
         let provider = try await say("そうなんだ", at: moment.addingTimeInterval(120), on: eidolon)
         XCTAssertEqual(
             provider.prompts.first?.last,
-            PromptMessage(.user, "（你挂断了制作人的电话。）そうなんだ")
+            PromptMessage(.user, "（你挂断了制作人的电话。）\nそうなんだ")
         )
     }
 
@@ -395,12 +395,62 @@ final class TurnTests: XCTestCase {
             provider.prompts.first?.last,
             PromptMessage(
                 .user,
-                "（10月10日 09:53，你先给制作人发了：）<ja>ねえ</ja><zh>喂</zh>そうなんだ"
+                "（10月10日 09:53，你先给制作人发了：）<ja>ねえ</ja><zh>喂</zh>\nそうなんだ"
             )
         )
         XCTAssertFalse(
             provider.prompts.first?.contains(PromptMessage(.assistant, "<ja>ねえ</ja><zh>喂</zh>")) ?? true
         )
+    }
+
+    /// Each event is a line of its own, and the lines are joined with nothing between them
+    /// (upstream `engine._narration_line` writes the newline at the end of each line): two
+    /// events in a row are two lines before his words.
+    func testConsecutiveEventsAreNarratedAsSeparateLines() async throws {
+        let eidolon = try await installedEidolon()
+        _ = try await say("おはよう", at: moment, on: eidolon)
+        let current = try await eidolon.currentConversationID("mano")
+        let conversationID = try XCTUnwrap(current)
+        try eidolon.recordConversationEvent(
+            conversationID: conversationID,
+            kind: "hung_up",
+            at: moment.addingTimeInterval(30)
+        )
+        try eidolon.recordConversationEvent(
+            conversationID: conversationID,
+            kind: "hung_up",
+            at: moment.addingTimeInterval(60)
+        )
+
+        let provider = try await say("そうなんだ", at: moment.addingTimeInterval(120), on: eidolon)
+        XCTAssertEqual(
+            provider.prompts.first?.last,
+            PromptMessage(
+                .user,
+                "（你挂断了制作人的电话。）\n（你挂断了制作人的电话。）\nそうなんだ"
+            )
+        )
+    }
+
+    /// What happened after the last turn is told before what she says now, as the trailing
+    /// narration, with its newline too (upstream `engine._since_last_turn`).
+    func testAnEventAfterTheLastTurnIsTrailingNarration() async throws {
+        let eidolon = try await installedEidolon()
+        _ = try await say("おはよう", at: moment, on: eidolon)
+        let current = try await eidolon.currentConversationID("mano")
+        let conversationID = try XCTUnwrap(current)
+        try eidolon.recordConversationEvent(
+            conversationID: conversationID,
+            kind: "hung_up",
+            at: moment.addingTimeInterval(60)
+        )
+
+        let record = try await eidolon.promptRecord(
+            conversationID: conversationID,
+            turns: 20,
+            timeZone: tokyo
+        )
+        XCTAssertEqual(record.trailingNarration, "（你挂断了制作人的电话。）\n")
     }
 
     /// "Last time we talked" is across conversations, not only this one: a new conversation

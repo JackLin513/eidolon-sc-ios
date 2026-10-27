@@ -27,7 +27,7 @@ enum ConversationTitles {
     static func firstTurns(_ record: [ConversationLine]) -> [ConversationLine] {
         let said = record.filter { line in
             switch line {
-            case let .message(message): !message.id.hasPrefix("reach:")
+            case let .message(message): !message.isReachOut
             case .event: true
             }
         }
@@ -66,10 +66,10 @@ enum ConversationTitles {
 
     /// What happened, as upstream `_event_line` writes it for the title's input.
     static func eventLine(_ event: ConversationEventRecord, characterName: String) -> String? {
-        switch event.kind {
-        case "hung_up", "she_hung_up": "（\(characterName)挂断了电话）"
-        case "ended": "（\(characterName)结束了对话）"
-        default: nil
+        switch ConversationEventKind(stored: event.kind) {
+        case .hungUp: "（\(characterName)挂断了电话）"
+        case .ended: "（\(characterName)结束了对话）"
+        case .other: nil
         }
     }
 
