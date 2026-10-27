@@ -352,6 +352,17 @@ public actor CallSession {
     /// Her segments as shown, by segment, for the subtitle.
     private var captions: [Int: (ja: String, zh: String)] = [:]
     private var lastFinalized = -1
+    /// The last segment the line card has shown for the reply being answered: her voice and
+    /// the fallback below both move it, and it only ever moves forward (upstream `shownUpTo`).
+    private var shownThrough = -1
+    /// Whether her voice has started on the reply being answered.
+    private var voiceStarted = false
+    /// Counts the reply whose line card is being paced: a task for an earlier reply must not
+    /// put its words on the card after the next one has started.
+    private var linePacingReply = -1
+    /// Moves the line card at her pace while her voice does not come (upstream
+    /// `linePacing.ts`): a reply that cannot be voiced still has to be read.
+    private var lineFallback: Task<Void, Never>?
     /// Which of her replies the segments being said belong to, from 0: every answer she
     /// gives in the call is one reply (spec「通话事件」).
     private var reply = -1
@@ -564,6 +575,11 @@ public actor CallSession {
         speech.removeAll()
         captions.removeAll()
         lastFinalized = -1
+        shownThrough = -1
+        voiceStarted = false
+        lineFallback?.cancel()
+        lineFallback = nil
+        linePacingReply = reply
         var failure: String?
         var rejection: String?
         do {
@@ -607,6 +623,9 @@ public actor CallSession {
         }
         if !finished {
             finalize(from: 0, before: Int.max)
+            // A reply whose voice has not started a while after it was recorded is shown at
+            // her pace instead (upstream `linePacing.ts`, `VOICE_WAIT_MS`).
+            scheduleLineFallback()
             if let rejection {
                 emit(.failed(rejection))
             } else if let failure {
@@ -641,7 +660,8 @@ public actor CallSession {
     /// Japanese joins the queue to be voiced. A voiced segment's caption goes out with its
     /// voice (see `drain`), so the line card never runs ahead of what is heard, and a segment
     /// whose voice could not be made leaves the card where it was; a call with no voice at
-    /// all shows each caption as it arrives.
+    /// all shows each caption as it arrives. When a recorded reply's voice does not come,
+    /// `scheduleLineFallback` reads it at her pace instead of leaving the card blank.
     private func finalize(from: Int, before segment: Int) {
         // Only segments that were actually heard of: `segment` is Int.max at the end.
         let indices = Set(captions.keys).union(speech.keys).sorted()
@@ -662,8 +682,12 @@ public actor CallSession {
         }
     }
 
-    /// Her caption for one segment, as the line card shows it.
+    /// Her caption for one segment, as the line card shows it. The card only moves forward:
+    /// her voice and the fallback may both reach for the same segment, and the one that gets
+    /// there second must not turn it again (upstream `shownUpTo`).
     private func showSegment(reply: Int, index: Int) {
+        guard index > shownThrough else { return }
+        shownThrough = index
         let caption = captions[index] ?? (ja: "", zh: "")
         emit(.segment(
             reply: reply,
@@ -671,6 +695,67 @@ public actor CallSession {
             ja: caption.ja.trimmingCharacters(in: .whitespacesAndNewlines),
             zh: caption.zh.trimmingCharacters(in: .whitespacesAndNewlines)
         ))
+    }
+
+    // MARK: - The line card when her voice does not come
+
+    /// How long her voice may be missing before the card reads the reply at her pace: as long
+    /// as upstream waits after a reply is recorded, and after her voice falls quiet
+    /// (`VOICE_WAIT_MS`).
+    static let voiceWait = Duration.seconds(3)
+    /// Her pace: about five Japanese characters a second, with a line never shorter than this
+    /// (`CHARACTERS_PER_SECOND`, `SHORTEST_LINE_MS`).
+    static let shortestLineMilliseconds = 1500
+
+    /// Starts the card's fallback when a reply is recorded without her voice having started:
+    /// a voice that cannot be made (a refused key, a TLS or network failure, a timeout) must
+    /// not leave the producer with a blank card. Her voice starting cancels it; if the voice
+    /// starts later, the card jumps to it and stays there (upstream `linePacing.ts`).
+    private func scheduleLineFallback() {
+        guard !finished, lineFallback == nil else { return }
+        guard (Set(captions.keys).union(speech.keys)).contains(where: { $0 > shownThrough }) else {
+            return
+        }
+        let answer = reply
+        lineFallback = Task { [weak self] in
+            try? await Task.sleep(for: Self.voiceWait)
+            guard !Task.isCancelled else { return }
+            await self?.paceLineCard(reply: answer)
+        }
+    }
+
+    /// Moves the card through the segments of `answer` at her pace, one at a time, unless her
+    /// voice has started and is heard: her voice wins wherever it comes.
+    private func paceLineCard(reply answer: Int) async {
+        defer {
+            if linePacingReply == answer { lineFallback = nil }
+        }
+        guard !finished, !Task.isCancelled, reply == answer, linePacingReply == answer else {
+            return
+        }
+        for index in (Set(captions.keys).union(speech.keys)).sorted() where index > shownThrough {
+            if finished || Task.isCancelled || reply != answer { return }
+            // Her voice is being heard: the card follows it instead.
+            if voiceStarted, speaking != nil { return }
+            let caption = captions[index] ?? (ja: "", zh: "")
+            guard !(caption.ja.isEmpty && caption.zh.isEmpty) else { continue }
+            showSegment(reply: answer, index: index)
+            do {
+                try await Task.sleep(for: Self.lineTime(caption.ja))
+            } catch {
+                return
+            }
+        }
+    }
+
+    /// How long the card keeps one line when it plays out her words at her pace.
+    static func lineTime(_ japanese: String) -> Duration {
+        let characters = japanese.filter { !$0.isWhitespace }.count
+        let milliseconds = max(
+            Self.shortestLineMilliseconds,
+            Int((Double(characters) / 5 * 1000).rounded())
+        )
+        return .milliseconds(milliseconds)
     }
 
     // MARK: - Her segments' emotions
@@ -747,6 +832,9 @@ public actor CallSession {
                     audio = try await setup.synthesis.synthesize(item.speech, voice: voice)
                 }
                 if finished || Task.isCancelled { break }
+                voiceStarted = true
+                lineFallback?.cancel()
+                lineFallback = nil
                 speakingIndex = item.index
                 startPrefetch()
                 // Her line card moves as her voice starts on the segment (upstream
@@ -775,6 +863,11 @@ public actor CallSession {
         prefetch?.task.cancel()
         prefetch = nil
         speaking = nil
+        if !finished, !Task.isCancelled {
+            // Her voice stopped short of the reply, or never started: after a while the card
+            // goes on without it (upstream `linePacing.ts`).
+            scheduleLineFallback()
+        }
         if !finished, !Task.isCancelled {
             await checkEnding()
         }
@@ -844,6 +937,8 @@ public actor CallSession {
         connectTimeoutTask = nil
         turnTask?.cancel()
         speaking?.cancel()
+        lineFallback?.cancel()
+        lineFallback = nil
         prefetch?.task.cancel()
         prefetch = nil
         for task in emotionTasks.values { task.cancel() }

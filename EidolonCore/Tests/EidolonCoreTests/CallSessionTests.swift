@@ -2122,6 +2122,68 @@ final class CallSessionTests: XCTestCase {
         await session.hangUp()
     }
 
+    /// Her voice never comes — refused, timed out, or a connection that will not open — so
+    /// the reply is shown at her pace instead: a blank card while she is not heard is the one
+    /// thing the call must not do (upstream `linePacing.ts`, `VOICE_WAIT_MS`).
+    func testTheLineCardFallsBackToHerWordsWhenHerVoiceNeverComes() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>一つ目</ja><zh>第一句</zh>", "<ja>二つ目</ja><zh>第二句</zh>"],
+        ])
+        let synthesis = FakeSynthesis()
+        synthesis.failing = { _ in true }
+        let playback = FakePlayback()
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            synthesis: synthesis,
+            playback: playback
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("both lines shown", timeout: .seconds(8)) {
+            segments(of: log).count == 2
+        }
+        XCTAssertEqual(segments(of: log).map(\.ja), ["一つ目", "二つ目"])
+        XCTAssertTrue(playback.audio.isEmpty)
+        await session.hangUp()
+    }
+
+    /// A voice still being made (a slow network, a hanging TLS handshake) must not hold the
+    /// card on nothing: it shows her words while the voice is on its way, and jumps to the
+    /// voice if it does come.
+    func testTheLineCardShowsHerWordsWhileHerVoiceIsStillBeingMade() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>一つ目</ja><zh>第一句</zh>", "<ja>二つ目</ja><zh>第二句</zh>"],
+        ])
+        let synthesis = FakeSynthesis()
+        synthesis.delay = .seconds(10)
+        let playback = FakePlayback()
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            synthesis: synthesis,
+            playback: playback
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("the first line shown", timeout: .seconds(6)) {
+            !segments(of: log).isEmpty
+        }
+        XCTAssertEqual(segments(of: log).first?.ja, "一つ目")
+        XCTAssertTrue(playback.audio.isEmpty, "no voice has been made yet")
+        try await waitFor("the second line shown", timeout: .seconds(3)) {
+            segments(of: log).count == 2
+        }
+        XCTAssertEqual(segments(of: log).map(\.ja), ["一つ目", "二つ目"])
+        await session.hangUp()
+    }
+
     func testAFailedTurnKeepsTheCall() async throws {
         let eidolon = try await installedEidolon()
         let recognition = FakeRecognition([.hang])

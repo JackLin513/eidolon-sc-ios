@@ -36,21 +36,31 @@ struct FishSynthesis: SpeechSynthesis {
         request.httpBody = try JSONEncoder().encode(
             FishSpeechRequest(text: text, referenceID: voice.id, readings: readings)
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw FishSynthesisError.noResponse
-        }
-        guard http.statusCode == 200 else {
-            throw FishSynthesisError.status(
-                http.statusCode,
-                String(decoding: data.prefix(200), as: UTF8.self)
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw FishSynthesisError.noResponse
+            }
+            guard http.statusCode == 200 else {
+                throw FishSynthesisError.status(
+                    http.statusCode,
+                    String(decoding: data.prefix(200), as: UTF8.self)
+                )
+            }
+            guard !data.isEmpty else { throw FishSynthesisError.empty }
+            made.mark()
+            Logger(subsystem: "com.jacklin.eidolon", category: "call")
+                .notice("synthesized \(text.count) chars -> \(data.count) bytes on \(voice.model)")
+            return data
+        } catch {
+            // A TLS failure, a timeout, a refused key: the call's line card falls back to her
+            // words after a while (CallSession, upstream `linePacing.ts`), and this is what a
+            // report needs to tell those reasons apart.
+            Logger(subsystem: "com.jacklin.eidolon", category: "call").error(
+                "Fish Audio could not voice \(text.count) chars on \(voice.model): \(error.localizedDescription)"
             )
+            throw error
         }
-        guard !data.isEmpty else { throw FishSynthesisError.empty }
-        made.mark()
-        Logger(subsystem: "com.jacklin.eidolon", category: "call")
-            .notice("synthesized \(text.count) chars -> \(data.count) bytes on \(voice.model)")
-        return data
     }
 
     /// Whether Fish Audio itself cannot speak for this call: a key missing or refused, an
