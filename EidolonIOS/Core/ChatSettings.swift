@@ -137,7 +137,9 @@ struct ChatSettings {
                 ?? CloudflareJudgeConfig.defaultModel,
             cloudflareAPIKey: Keychain.string(account: JudgeService.cloudflare.keychainAccount) ?? "",
             emotionMinProbability: defaults.object(forKey: emotionMinProbabilityKey) as? Double,
-            emotionTimeout: defaults.object(forKey: emotionTimeoutKey) as? Double ?? 1.5
+            emotionTimeout: Self.reasonableTimeout(
+                defaults.object(forKey: emotionTimeoutKey) as? Double ?? 1.5
+            )
         )
     }
 
@@ -199,10 +201,13 @@ struct ChatSettings {
         defaults.set(Self.reasonableTimeout(emotionTimeout), forKey: Self.emotionTimeoutKey)
     }
 
-    /// A timeout short enough to be useful and long enough to reach the service; 0 would
-    /// leave it to URLSession's own, which is not what "unjudged in time" means.
+    /// A timeout short enough to be useful and long enough to reach the service: anything
+    /// that is not a finite number in the judge's range (`Task.sleep` traps on `1e30`)
+    /// becomes the default, so a stored value from an older build cannot crash a call.
     private static func reasonableTimeout(_ seconds: Double) -> Double {
-        seconds > 0 ? seconds : 1.5
+        SystemOneSegmentEmotionJudge.timeoutRange.contains(seconds)
+            ? seconds
+            : SystemOneSegmentEmotionJudge.defaultTimeout
     }
 
     /// The provider config, or nil while something still has to be filled in.

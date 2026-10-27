@@ -67,7 +67,7 @@
    * clip workaround has seen.
    */
   class Pose {
-    constructor(url, skeleton, data, state, animations, bounds) {
+    constructor(url, skeleton, data, state, animations, bounds, nod = null) {
       this.url = url;
       this.skeleton = skeleton;
       this.data = data;
@@ -77,7 +77,9 @@
       this.clips = new Map();
       // What each track plays now, so a track is only reset when what it should play
       // changes. The body's entry is the animation name; `mouth` also carries open/shut.
-      this.shown = { body: null, face: null, mouth: null, eye: null, nod: null };
+      // `nod` starts as the direction's current nod: a nod that happened before this
+      // outfit was drawn has already been seen and is not played again (upstream `shown`).
+      this.shown = { body: null, face: null, mouth: null, eye: null, nod };
     }
   }
 
@@ -228,7 +230,9 @@
       const animations = new Map(data.animations.map((animation) => [animation.name, animation.duration]));
       const bounds = { x: offset.x, y: offset.y, width: size.x, height: size.y };
       const state = new spine.AnimationState(stateData);
-      return new Pose(url, skeleton, data, state, animations, bounds);
+      // A nod that was directed before she appeared (or before this outfit finished
+      // loading) has already happened: seed it as shown so `follow` does not replay it.
+      return new Pose(url, skeleton, data, state, animations, bounds, this.direction?.nod?.id ?? null);
     }
 
     /**

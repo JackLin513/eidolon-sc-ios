@@ -329,7 +329,8 @@ actor SlowEmotionJudge: SegmentEmotionJudge {
     }
 }
 
-final class EventLog: @unchecked Sendable {    private let lock = NSLock()
+final class EventLog: @unchecked Sendable {
+    private let lock = NSLock()
     private var events: [CallEvent] = []
 
     func append(_ event: CallEvent) {

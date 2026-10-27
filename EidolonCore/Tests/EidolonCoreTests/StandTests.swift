@@ -76,6 +76,31 @@ final class StandTests: XCTestCase {
         XCTAssertNil(list.cards[1].stage)
     }
 
+    /// A card that cannot be read is left out; the cards after it are still listed
+    /// (upstream `readOutfitList`). One bad card must not cost her the whole picker.
+    func testACardThatCannotBeReadIsSkippedAndTheOthersKept() throws {
+        let json = """
+        {
+          "idol_id": 1,
+          "cards": [
+            {"name": "没有编号", "type": "P_SR"},
+            "not a card",
+            {"id": "1030010010", "name": "ナチュラルモード", "type": "P_SR"},
+            {"id": "1030010020", "name": "ぐうぜんBOOKS"}
+          ]
+        }
+        """
+        let list = try XCTUnwrap(
+            OutfitList(
+                data: Data(json.utf8),
+                at: root.appendingPathComponent("stand/outfits/1.json")
+            )
+        )
+
+        XCTAssertEqual(list.idolID, 1)
+        XCTAssertEqual(list.cards.map(\.id), ["1030010010"])
+    }
+
     func testUnreadableOutfitListMeansNoList() async throws {
         let eidolon = try await installedEidolon { $0.unreadableOutfitList = true }
         let found = await eidolon.stand(for: "mano")

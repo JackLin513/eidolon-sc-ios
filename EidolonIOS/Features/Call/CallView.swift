@@ -140,6 +140,9 @@ struct CallView: View {
     private func showStand(_ outfit: StandOutfit, fallback: [StandOutfit]) {
         let previous = renderer
         previous?.setPaused(true)
+        // The new renderer starts blank: keep her hidden until it reports, so a fallback
+        // in mid-call fades her back in instead of showing an empty stage at full opacity.
+        standLoaded = false
         let renderer = StandWebRenderer(
             contentRoot: app.core.location.contentDirectory,
             framing: StandFraming(compactWidth: isCompactWidth)
