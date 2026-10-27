@@ -49,6 +49,11 @@ struct ChatSettings {
     var cloudflareAccountID: String = ""
     var cloudflareModel: String = CloudflareJudgeConfig.defaultModel
     var cloudflareAPIKey: String = ""
+    /// How sure the judge must be of a segment's emotion before she shows it; nil uses the
+    /// judge model family's own threshold (spec「情绪判断」).
+    var emotionMinProbability: Double?
+    /// How long a segment may take to be judged before it goes unjudged, in seconds.
+    var emotionTimeout: Double = 1.5
 
     private static let baseURLKey = "chat.baseURL"
     private static let modelKey = "chat.model"
@@ -81,6 +86,8 @@ struct ChatSettings {
     private static let jevModelKey = "judge.jev.model"
     private static let cloudflareAccountKey = "judge.cloudflare.account"
     private static let cloudflareModelKey = "judge.cloudflare.model"
+    private static let emotionMinProbabilityKey = "judge.emotion.minProbability"
+    private static let emotionTimeoutKey = "judge.emotion.timeout"
 
     static func load() -> ChatSettings {
         let defaults = UserDefaults.standard
@@ -128,7 +135,9 @@ struct ChatSettings {
             cloudflareAccountID: defaults.string(forKey: cloudflareAccountKey) ?? "",
             cloudflareModel: defaults.string(forKey: cloudflareModelKey)
                 ?? CloudflareJudgeConfig.defaultModel,
-            cloudflareAPIKey: Keychain.string(account: JudgeService.cloudflare.keychainAccount) ?? ""
+            cloudflareAPIKey: Keychain.string(account: JudgeService.cloudflare.keychainAccount) ?? "",
+            emotionMinProbability: defaults.object(forKey: emotionMinProbabilityKey) as? Double,
+            emotionTimeout: defaults.object(forKey: emotionTimeoutKey) as? Double ?? 1.5
         )
     }
 
@@ -182,6 +191,18 @@ struct ChatSettings {
             forKey: Self.cloudflareModelKey
         )
         try Self.store(cloudflareAPIKey, account: JudgeService.cloudflare.keychainAccount)
+        if let emotionMinProbability {
+            defaults.set(emotionMinProbability, forKey: Self.emotionMinProbabilityKey)
+        } else {
+            defaults.removeObject(forKey: Self.emotionMinProbabilityKey)
+        }
+        defaults.set(Self.reasonableTimeout(emotionTimeout), forKey: Self.emotionTimeoutKey)
+    }
+
+    /// A timeout short enough to be useful and long enough to reach the service; 0 would
+    /// leave it to URLSession's own, which is not what "unjudged in time" means.
+    private static func reasonableTimeout(_ seconds: Double) -> Double {
+        seconds > 0 ? seconds : 1.5
     }
 
     /// The provider config, or nil while something still has to be filled in.
