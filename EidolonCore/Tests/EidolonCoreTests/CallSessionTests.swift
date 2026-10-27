@@ -11,12 +11,17 @@ final class FakeCapture: AudioCapture, @unchecked Sendable {
     private var hearing = true
     private(set) var started = false
     private(set) var stopped = false
+    /// What opening the microphone fails with: no permission, no input, a broken route.
+    var startError: Error?
+    var timeline: Timeline?
 
     func start() async throws {
+        if let startError { throw startError }
         markStarted()
     }
 
     func stop() async {
+        timeline?.add("mic-stop")
         markStopped()
     }
 
@@ -200,6 +205,12 @@ final class FakeSynthesis: SpeechSynthesis, @unchecked Sendable {
     private let lock = NSLock()
     private var spoken: [String] = []
     var failing: (String) -> Bool = { _ in false }
+    /// The voice service itself refusing to work for a segment, as Fish Audio does with a
+    /// refused key, an account out of credit, or a model it does not serve.
+    var serviceFailure: (String) -> VoiceServiceFailure? = { _ in nil }
+    /// Whether segments are voiced at all; false is the app's subtitles-only stand-in when
+    /// no voice key is filled in.
+    var providesVoice = true
     var delay: Duration?
     var timeline: Timeline?
 
@@ -211,19 +222,30 @@ final class FakeSynthesis: SpeechSynthesis, @unchecked Sendable {
 
     func synthesize(_ text: String, voice: CallVoice) async throws -> Data {
         timeline?.add("synth-start:\(text)")
-        let (fails, delay) = record(text)
+        let (fails, failure, delay) = record(text)
         if let delay { try await Task.sleep(for: delay) }
+        if let failure { throw FakeSynthesisFailure.service(failure) }
         if fails { throw URLError(.cannotConnectToHost) }
         timeline?.add("synth-end:\(text)")
         return Data(text.utf8)
     }
 
-    private func record(_ text: String) -> (Bool, Duration?) {
+    /// As the real Fish Audio adapter does: only an error of the service itself is one.
+    func failure(_ error: any Error) -> VoiceServiceFailure? {
+        guard case let FakeSynthesisFailure.service(failure) = error else { return nil }
+        return failure
+    }
+
+    private func record(_ text: String) -> (Bool, VoiceServiceFailure?, Duration?) {
         lock.lock()
         defer { lock.unlock() }
         spoken.append(text)
-        return (failing(text), delay)
+        return (failing(text), serviceFailure(text), delay)
     }
+}
+
+enum FakeSynthesisFailure: Error {
+    case service(VoiceServiceFailure)
 }
 
 final class FakePlayback: AudioPlayback, @unchecked Sendable {
@@ -248,6 +270,7 @@ final class FakePlayback: AudioPlayback, @unchecked Sendable {
     }
 
     func stop() async {
+        timeline?.add("playback-stop")
         markStopped()
     }
 
@@ -308,6 +331,24 @@ final class HeldReplyProvider: ChatProvider, @unchecked Sendable {
             lock.lock()
             said = true
             lock.unlock()
+            let task = Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
+    }
+}
+
+/// A chat provider that says two segments and then waits to be cancelled: her first segment
+/// is voiced while the turn is still being made, before it is recorded.
+final class HeldHalfReplyProvider: ChatProvider, @unchecked Sendable {
+    func stream(messages: [PromptMessage]) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield("<ja>一つ目</ja><zh>第一句</zh>")
+            continuation.yield("<ja>二つ目</ja><zh>第二句</zh>")
             let task = Task {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .milliseconds(10))
@@ -443,6 +484,7 @@ final class CallSessionTests: XCTestCase {
         on eidolon: Eidolon,
         provider: any ChatProvider,
         recognition: FakeRecognition,
+        capture: FakeCapture = FakeCapture(),
         synthesis: FakeSynthesis = FakeSynthesis(),
         playback: FakePlayback = FakePlayback(),
         judge: (any JudgeProvider)? = nil,
@@ -451,7 +493,6 @@ final class CallSessionTests: XCTestCase {
         historyTurns: Int = 20,
         voiceModel: String = "s2.1-pro-free"
     ) async throws -> (CallSession, EventLog, FakeCapture) {
-        let capture = FakeCapture()
         let setup = CallSetup(
             capture: capture,
             playback: playback,
@@ -1014,6 +1055,43 @@ final class CallSessionTests: XCTestCase {
         XCTAssertEqual(characters, ["mano"])
     }
 
+    /// Hanging up stops her voice before it closes the microphone, and the segment playing
+    /// stops where it is rather than finishing (upstream hangs up the pipeline, which stops
+    /// the speaker at once).
+    func testHangingUpStopsTheVoiceBeforeTheMicrophone() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([["<ja>あ</ja><zh>啊</zh>"]])
+        let timeline = Timeline()
+        let capture = FakeCapture()
+        capture.timeline = timeline
+        let playback = FakePlayback()
+        playback.delay = .seconds(5)
+        playback.timeline = timeline
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            capture: capture,
+            playback: playback
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("speaking") { await session.currentState() == .speaking }
+        await session.hangUp()
+        try await waitFor("ended") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+
+        let entries = timeline.all
+        let voiceStopped = try XCTUnwrap(entries.firstIndex(of: "playback-stop"))
+        let micClosed = try XCTUnwrap(entries.firstIndex(of: "mic-stop"))
+        XCTAssertLessThan(voiceStopped, micClosed, "the voice stops before the microphone closes")
+        XCTAssertTrue(playback.audio.isEmpty, "the segment playing is cut off, not finished")
+    }
+
     /// The settings' numbers become limits; 0 is no limit on that dimension, as upstream
     /// reads its environment (`config.py`'s `_limit`).
     func testZeroInTheSettingsMeansNoLimitOnThatDimension() {        XCTAssertEqual(
@@ -1068,6 +1146,48 @@ final class CallSessionTests: XCTestCase {
             try String.fetchAll(db, sql: "SELECT kind FROM conversation_events")
         }
         XCTAssertEqual(events, [], "the time limit is traced, not written into the conversation")
+    }
+
+    /// The microphone failing is its own ending, not a voice service's: the producer is told
+    /// they cannot use the microphone (upstream `mic_denied`), and the recognizer never runs.
+    func testAMicrophoneThatWillNotOpenIsItsOwnEnding() async throws {
+        let eidolon = try await installedEidolon()
+        let capture = FakeCapture()
+        capture.startError = NSError(
+            domain: "test",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "没有麦克风权限，请在系统设置里允许"]
+        )
+        let recognition = FakeRecognition([.hang])
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([]),
+            recognition: recognition,
+            capture: capture
+        )
+
+        try await waitFor("ended") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+        let reason = await session.currentStateIfEnded
+        XCTAssertEqual(reason, .micDenied(detail: "没有麦克风权限，请在系统设置里允许"))
+        XCTAssertEqual(reason?.reason, "mic_denied")
+        XCTAssertEqual(
+            reason?.message,
+            "用不了麦克风。没有允许使用麦克风，或者找不到麦克风。在系统设置里允许后，再拨一次。"
+        )
+        XCTAssertEqual(recognition.calls, 0, "the call never listens without a microphone")
+        let contacts = try await eidolon.userQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM call_ends") ?? 0
+        }
+        XCTAssertEqual(contacts, 0, "a call that never connected is no contact")
+
+        let traces = try await eidolon.turnTraces()
+        XCTAssertEqual(
+            traces.first?.trace.degradation,
+            ["通话结束：mic_denied", "麦克风：没有麦克风权限，请在系统设置里允许"]
+        )
     }
 
     func testAVoiceServiceThatFailsBeforeATurnNeverConnects() async throws {
@@ -1141,6 +1261,94 @@ final class CallSessionTests: XCTestCase {
         XCTAssertEqual(
             traces.first?.trace.degradation,
             ["通话结束：dropped", "Soniox：401 invalid api key"]
+        )
+    }
+
+    /// Fish Audio failing as a service ends the call as Soniox does: before her first turn
+    /// is recorded the call never connected (upstream `service_failed`), and the producer is
+    /// told so instead of a call that looks fine but has only subtitles.
+    func testFishAudioFailingBeforeHerFirstTurnNeverConnects() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let synthesis = FakeSynthesis()
+        synthesis.serviceFailure = { _ in
+            VoiceServiceFailure(service: "Fish Audio", detail: "401 unauthorized")
+        }
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: HeldHalfReplyProvider(),
+            recognition: recognition,
+            synthesis: synthesis
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("ended, never connected") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+        let reason = await session.currentStateIfEnded
+        XCTAssertEqual(
+            reason,
+            .notConnected(service: "Fish Audio", detail: "401 unauthorized")
+        )
+        XCTAssertEqual(reason?.message, "语音服务出了故障，通话没能接通")
+        let traces = try await eidolon.turnTraces()
+        XCTAssertEqual(
+            traces.first?.trace.degradation,
+            ["通话结束：not_connected", "Fish Audio：401 unauthorized"]
+        )
+        let conversation = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertNil(conversation, "the turn never finished, so nothing was written")
+    }
+
+    /// Once a turn is recorded the same failure breaks the call off instead, and nothing
+    /// more is voiced (upstream `dropped`).
+    func testFishAudioFailingMidCallBreaksItOff() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let synthesis = FakeSynthesis()
+        synthesis.serviceFailure = { text in
+            text.contains("だめ")
+                ? VoiceServiceFailure(service: "Fish Audio", detail: "402 insufficient credit")
+                : nil
+        }
+        let playback = FakePlayback()
+        let provider = ReplyScriptProvider([
+            ["<ja>あ</ja><zh>啊</zh>"],
+            ["<ja>だめ</ja><zh>不行</zh>", "<ja>まだ</ja><zh>还有</zh>"],
+        ])
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            synthesis: synthesis,
+            playback: playback
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("the first turn is said") { playback.audio.count == 1 }
+        recognition.say("もう一回")
+        try await waitFor("ended, broke off") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+        let reason = await session.currentStateIfEnded
+        XCTAssertEqual(
+            reason,
+            .dropped(service: "Fish Audio", detail: "402 insufficient credit")
+        )
+        XCTAssertEqual(reason?.message, "语音服务出了故障，通话中断了")
+        XCTAssertEqual(
+            playback.audio,
+            [Data("あ".utf8)],
+            "the segments after the failure are not voiced"
+        )
+        let traces = try await eidolon.turnTraces()
+        XCTAssertEqual(
+            traces.first?.trace.degradation,
+            ["通话结束：dropped", "Fish Audio：402 insufficient credit"]
         )
     }
 
@@ -1288,6 +1496,10 @@ final class CallSessionTests: XCTestCase {
             "语音服务出了故障，通话中断了"
         )
         XCTAssertEqual(
+            CallEnd.micDenied(detail: "没有权限").message,
+            "用不了麦克风。没有允许使用麦克风，或者找不到麦克风。在系统设置里允许后，再拨一次。"
+        )
+        XCTAssertEqual(
             CallEnd.durationLimit(limit: .seconds(600)).message,
             "这次通话已经满 10 分钟了，先挂断啦。想接着聊可以重新拨打。"
         )
@@ -1309,6 +1521,7 @@ final class CallSessionTests: XCTestCase {
             "not_connected"
         )
         XCTAssertEqual(CallEnd.dropped(service: "Soniox", detail: "").reason, "dropped")
+        XCTAssertEqual(CallEnd.micDenied(detail: "没有权限").reason, "mic_denied")
         XCTAssertEqual(CallEnd.durationLimit(limit: .seconds(600)).reason, "duration_limit")
         XCTAssertEqual(CallEnd.turnLimit(turns: 40).reason, "turn_limit")
         XCTAssertEqual(CallEnd.sheHungUp(cooldownUntil: nil).reason, "she_hung_up")
@@ -1397,6 +1610,73 @@ final class CallSessionTests: XCTestCase {
         await session.hangUp()
     }
 
+    /// Her line card moves with her voice, not with her text: the next segment's caption is
+    /// not shown until the segment before it has finished being said (upstream
+    /// `linePacing.ts`, spec「通话层的台词卡按她说话的节奏换段」).
+    func testTheLineCardFollowsTheVoice() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>一つ目</ja><zh>第一句</zh>", "<ja>二つ目</ja><zh>第二句</zh>"],
+        ])
+        let playback = FakePlayback()
+        playback.delay = .milliseconds(200)
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            playback: playback
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("both segments played") { playback.audio.count == 2 }
+
+        let events = log.all
+        let firstShown = try XCTUnwrap(events.firstIndex(of: .segment(
+            reply: 0, segment: 0, ja: "一つ目", zh: "第一句"
+        )))
+        let firstStarted = try XCTUnwrap(events.firstIndex(of: .segmentStarted(reply: 0, segment: 0)))
+        XCTAssertEqual(firstShown + 1, firstStarted, "the card turns as the voice starts")
+        let firstStopped = try XCTUnwrap(events.firstIndex(of: .segmentStopped(reply: 0, segment: 0)))
+        let secondShown = try XCTUnwrap(events.firstIndex(of: .segment(
+            reply: 0, segment: 1, ja: "二つ目", zh: "第二句"
+        )))
+        XCTAssertGreaterThan(
+            secondShown,
+            firstStopped,
+            "the second line is not shown before the first has finished being said"
+        )
+        await session.hangUp()
+    }
+
+    /// Without a voice at all (no key filled in) her words are subtitles as they come: every
+    /// segment shows, none is held back for a voice that will never play (ADR-0011).
+    func testASubtitlesOnlyCallShowsEverySegment() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>一つ目</ja><zh>第一句</zh>", "<ja>二つ目</ja><zh>第二句</zh>"],
+        ])
+        let synthesis = FakeSynthesis()
+        synthesis.providesVoice = false
+        synthesis.failing = { _ in true }
+        let playback = FakePlayback()
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            synthesis: synthesis,
+            playback: playback
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("both lines shown") { segments(of: log).count == 2 }
+        XCTAssertEqual(segments(of: log).map(\.ja), ["一つ目", "二つ目"])
+        XCTAssertTrue(playback.audio.isEmpty)
+        await session.hangUp()
+    }
+
     func testTheNextSegmentIsSynthesizedWhileTheCurrentOnePlays() async throws {
         let eidolon = try await installedEidolon()
         let recognition = FakeRecognition([.hang])
@@ -1428,6 +1708,54 @@ final class CallSessionTests: XCTestCase {
         XCTAssertGreaterThan(synthStart, playStart, "the next segment is prefetched while the first plays")
         XCTAssertLessThan(synthStart, playEnd, "the prefetch starts before the first segment finishes")
         XCTAssertEqual(playback.audio.map { String(decoding: $0, as: UTF8.self) }, ["一つ目", "二つ目"])
+        await session.hangUp()
+    }
+
+    /// A segment that could not be made does not stop the rest of the reply being prefetched:
+    /// the segment after it is made while it plays, so the gap between them stays short
+    /// (ADR-0011).
+    func testPrefetchResumesAfterASegmentFails() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            [
+                "<ja>一</ja><zh>一</zh>", "<ja>二</ja><zh>二</zh>",
+                "<ja>三</ja><zh>三</zh>", "<ja>四</ja><zh>四</zh>",
+            ],
+        ])
+        let timeline = Timeline()
+        let synthesis = FakeSynthesis()
+        synthesis.failing = { $0 == "二" }
+        synthesis.timeline = timeline
+        let playback = FakePlayback()
+        playback.delay = .milliseconds(300)
+        playback.timeline = timeline
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            synthesis: synthesis,
+            playback: playback
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("every segment that could be voiced played") {
+            playback.audio.count == 3
+        }
+
+        let entries = timeline.all
+        let fourthMade = try XCTUnwrap(entries.firstIndex(of: "synth-start:四"))
+        let thirdPlayed = try XCTUnwrap(entries.firstIndex(of: "play-end:三"))
+        XCTAssertLessThan(
+            fourthMade,
+            thirdPlayed,
+            "the segment after the failed one is still prefetched while the previous one plays"
+        )
+        XCTAssertEqual(
+            playback.audio.map { String(decoding: $0, as: UTF8.self) },
+            ["一", "三", "四"]
+        )
         await session.hangUp()
     }
 
@@ -1590,11 +1918,9 @@ final class CallSessionTests: XCTestCase {
         recognition.say("ねえ")
         try await waitFor("the good segment played") { playback.audio.count == 1 }
         XCTAssertEqual(playback.audio.first, Data("だいじょうぶ".utf8))
-        let captions = log.all.compactMap { event -> String? in
-            if case let .segment(_, _, ja, _) = event { return ja }
-            return nil
-        }
-        XCTAssertEqual(captions, ["だめ", "だいじょうぶ"])
+        // A segment whose voice could not be made does not turn the card: the line shown is
+        // the next one actually said (upstream `linePacing.ts` skips what it never plays).
+        XCTAssertEqual(segments(of: log).map(\.ja), ["だいじょうぶ"])
         await session.hangUp()
     }
 

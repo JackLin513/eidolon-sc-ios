@@ -106,9 +106,13 @@ final class SonioxRecognition: SpeechRecognition, @unchecked Sendable {
     }
 }
 
-/// Until #16 wires Fish Audio (ADR-0007), her words are subtitles only: each segment
-/// cannot be voiced, and the call shows it and goes on.
+/// Without a Fish Audio key her words are subtitles only (ADR-0011): each segment cannot be
+/// voiced, and the call shows every caption as it arrives.
 struct UnvoicedSynthesis: SpeechSynthesis {
+    /// No voice at all, so the line card follows her text rather than a voice that will
+    /// never play.
+    var providesVoice: Bool { false }
+
     func synthesize(_ text: String, voice: CallVoice) async throws -> Data {
         throw URLError(.unsupportedURL)
     }
