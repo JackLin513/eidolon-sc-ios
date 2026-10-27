@@ -2,19 +2,33 @@ import EidolonCore
 import SwiftUI
 import UIKit
 
-/// The debug entry (ticket #30): see one of her outfits on screen, idling. When there is
+/// The debug entry (tickets #30, #31): see one of her outfits on screen and drive her by
+/// hand. The buttons feed the call's events to the same `StandDirector` and animation table
+/// the call screen will use (#32), so what they show is what a call will show. When there is
 /// no runtime, the page fails or her files are missing, it says 「没有立绘」; opening the
 /// preview again retries.
 struct StandPreviewView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var characters: [CharacterConfig] = []
     @State private var selectedID: String?
     @State private var outfitID: String?
     @State private var renderer: (any StandRenderer)?
     @State private var phase = Phase.loading
+
+    /// The call's events as the buttons give them; her look comes out of it.
+    @State private var director = StandDirector()
+    /// What the loaded outfit can play, as the player reported it.
+    @State private var animations: [String: Double] = [:]
+    /// The segment the buttons are on; each new segment gets the next number.
+    @State private var segment = StandSegment(reply: 0, segment: 0)
+    /// This segment has been started and her voice has not stopped yet.
+    @State private var playing = false
+    /// The call is over: she fades, as the call screen will show her.
+    @State private var over = false
 
     private enum Phase: Equatable {
         case loading
@@ -26,6 +40,7 @@ struct StandPreviewView: View {
         VStack(spacing: 0) {
             stage
             caption
+            controls
         }
         .navigationTitle("立绘预览")
         .navigationBarTitleDisplayMode(.inline)
@@ -60,6 +75,7 @@ struct StandPreviewView: View {
                 if let renderer, !hasFailed {
                     StandView(renderer: renderer)
                         .id(ObjectIdentifier(renderer as AnyObject))
+                        .opacity(over ? 0.4 : 1)
                         .onAppear { renderer.setViewportSize(proxy.size) }
                         .onChange(of: proxy.size) { _, size in renderer.setViewportSize(size) }
                 }
@@ -86,11 +102,15 @@ struct StandPreviewView: View {
         if case .missing = phase { true } else { false }
     }
 
-    private var caption: some View {        VStack(spacing: 2) {
+    private var caption: some View {
+        VStack(spacing: 2) {
             if let character = characters.first(where: { $0.id == selectedID }) {
                 Text(character.name)
                     .font(.headline)
             }
+            Text(stateLine)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
             if let outfitID {
                 Text("默认衣装 \(outfitID)")
                     .font(.caption.monospaced())
@@ -98,9 +118,151 @@ struct StandPreviewView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
         .background(.bar)
     }
+
+    /// The direction the buttons have driven her to, as words, so the state is checkable
+    /// even where the stand cannot draw.
+    private var stateLine: String {
+        let direction = director.direction
+        var parts = [
+            "情绪 \(Self.moodName(direction.mood))",
+            direction.speaking ? "张嘴" : "闭嘴",
+            direction.looking ? "看镜头" : "不看",
+        ]
+        if let nod = direction.nod {
+            parts.append("\(nod.kind == .yes ? "点头" : "摇头") \(nod.id)")
+        }
+        if over { parts.append("通话结束") }
+        return parts.joined(separator: " · ")
+    }
+
+    /// The events of a call, by hand. Laid out in a grid; they are a debug tool, not a
+    /// design.
+    private var controls: some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], spacing: 8) {
+                Group {
+                    button("她开始说话") { sheStartsSpeaking() }
+                    button("她停止说话") { sheStopsSpeaking() }
+                    button("我开始说话") { iStartSpeaking() }
+                    button("我停止说话") { iStopSpeaking() }
+                }
+                ForEach(StandEmotion.allCases, id: \.self) { mood in
+                    button(Self.moodName(mood)) { feel(mood) }
+                }
+                button("点头") { nod(.yes) }
+                button("摇头") { nod(.no) }
+                button("通话结束") { endCall() }
+            }
+            .padding(12)
+        }
+        .frame(maxHeight: 240)
+        .background(.bar)
+    }
+
+    private func button(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+    }
+
+    private static func moodName(_ mood: StandEmotion) -> String {
+        switch mood {
+        case .calm: "平静"
+        case .happy: "开心"
+        case .shy: "害羞"
+        case .surprised: "惊讶"
+        case .sad: "难过"
+        case .angry: "生气"
+        case .thinking: "思考"
+        }
+    }
+
+    // MARK: - Driving her
+
+    private func sheStartsSpeaking() {
+        resume()
+        startSegmentIfNeeded()
+        director.apply(.botStartedSpeaking)
+        render()
+    }
+
+    private func sheStopsSpeaking() {
+        resume()
+        director.apply(.botStoppedSpeaking)
+        // Her voice stopped: this segment is said, so the next button starts the next one.
+        segment = StandSegment(reply: segment.reply, segment: segment.segment + 1)
+        playing = false
+        render()
+    }
+
+    private func iStartSpeaking() {
+        resume()
+        director.apply(.userStartedSpeaking)
+        render()
+    }
+
+    private func iStopSpeaking() {
+        resume()
+        director.apply(.userStoppedSpeaking)
+        render()
+    }
+
+    /// Give the segment she is on an emotion, judged as the call's judge would.
+    private func feel(_ mood: StandEmotion) {
+        resume()
+        startSegmentIfNeeded()
+        director.apply(.segmentJudged(StandJudgement(segment: segment, emotion: mood)))
+        render()
+    }
+
+    /// A nod or shake of the head, which the judge sends along with an emotion.
+    private func nod(_ kind: StandNod.Kind) {
+        resume()
+        startSegmentIfNeeded()
+        director.apply(
+            .segmentJudged(
+                StandJudgement(segment: segment, emotion: director.direction.mood, nod: kind)
+            )
+        )
+        render()
+    }
+
+    private func endCall() {
+        director.apply(.callOver)
+        segment = StandSegment(reply: 0, segment: 0)
+        playing = false
+        over = true
+        render()
+    }
+
+    /// Pressing any button after the call is over starts the next call.
+    private func resume() {
+        over = false
+    }
+
+    /// Nothing is playing: start this segment, so an emotion or nod has somewhere to go.
+    private func startSegmentIfNeeded() {
+        guard !playing else { return }
+        director.apply(.segmentStarted(segment))
+        playing = true
+    }
+
+    /// Ask the animation table what the current direction looks like on this outfit.
+    private func render() {
+        guard let renderer else { return }
+        renderer.direct(
+            StandAnimator.pose(
+                for: director.direction,
+                reducedMotion: reduceMotion,
+                animations: animations
+            )
+        )
+    }
+
+    // MARK: - Loading her
 
     private func start() async {
         characters = app.characters.filter { $0.stand != nil }
@@ -123,6 +285,11 @@ struct StandPreviewView: View {
         phase = .loading
         renderer?.setPaused(true)
         renderer = nil
+        animations = [:]
+        director = StandDirector()
+        segment = StandSegment(reply: 0, segment: 0)
+        playing = false
+        over = false
 
         guard let stand = await app.core.stand(for: id) else {
             phase = .missing("内容包里没有她的立绘")
@@ -134,16 +301,24 @@ struct StandPreviewView: View {
             contentRoot: app.core.location.contentDirectory,
             framing: StandFraming(compactWidth: sizeClass != .regular)
         )
-        renderer.onLoaded = { _ in
+        renderer.onLoaded = { report in
+            animations = report.animations
             phase = .shown
+            render()
         }
         renderer.onFailure = { failure in
             phase = .missing(Self.reason(failure))
         }
         renderer.setPaused(scenePhase != .active)
-        // Idling: the calm body and face, mouth shut. The call's directives (#31) will
-        // build poses like this from the call's events.
-        renderer.direct(.calm)
+        // What she can play is not known until the page reports it; the first pose is
+        // sent again as soon as it does.
+        renderer.direct(
+            StandAnimator.pose(
+                for: director.direction,
+                reducedMotion: reduceMotion,
+                animations: animations
+            )
+        )
         renderer.load(stand.defaultOutfit)
         self.renderer = renderer
     }
