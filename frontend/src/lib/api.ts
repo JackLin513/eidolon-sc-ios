@@ -695,18 +695,19 @@ export async function getBar(): Promise<BarState> {
   return json(await api("/api/bar"));
 }
 
-/** Comes into the bar, bringing the user's own LLM (as `own_keys`) as a text turn does, and yields
- * the visit's first call as it comes: `visit` first, then her lines up to her order. Refused while
- * the bar is closed (409), or over the limit (429, `retryAt` saying when). Aborting `signal` closes
- * the call, and the server leaves the visit. */
-export async function* enterBar(userId: string, signal?: AbortSignal): AsyncGenerator<VisitEvent> {
+/** Comes into the bar, bringing the user's own LLM (as `own_keys`) as a text turn does. Once the
+ * server took it, the visit's first call, to be followed as it comes: `visit` first, then her lines
+ * up to her order. Refused while the bar is closed (409), or over the limit (429, `retryAt` saying
+ * when). Aborting `signal` closes the call, and the server leaves the visit. */
+export async function enterBar(userId: string, signal?: AbortSignal): Promise<AsyncGenerator<VisitEvent>> {
   const res = await api("/api/bar/visits", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ own_keys: turnOwnKeys(userId) }),
     signal,
   });
-  yield* serverSentEvents<VisitEvent>(res);
+  if (!res.ok) await json(res);
+  return serverSentEvents<VisitEvent>(res);
 }
 
 /** Serves her what the bar counter holds (lib/barMixer `served`). Once the server took it, the

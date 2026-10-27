@@ -166,7 +166,7 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
             isNextCursor={scene.shown !== null && !isMixing}
             onTap={current.tap}
             memo={mixingMemo(scene)}
-            failure={state.failure === null ? null : { message: state.failure, isRetrying: state.isRetrying, onRetry: () => void retry() }}
+            failure={state.failure === null ? null : { message: state.failure, isRetrying: state.isRetrying, onRetry: retry }}
           />
         </>
       ) : (
@@ -226,7 +226,7 @@ export function BarSubpage({ audioBase }: { audioBase: string | null }) {
           {...card}
           herName={her && (her.short_name ?? her.name)}
           herColor={her?.color ?? BAR_INK.text}
-          onAgain={() => void again()}
+          onAgain={again}
           onLeave={leaveBar}
         />
       )}
