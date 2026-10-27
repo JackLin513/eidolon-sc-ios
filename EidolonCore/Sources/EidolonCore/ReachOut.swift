@@ -93,14 +93,14 @@ extension Eidolon {
             return nil
         }
         let world = try loadWorld()
-        let history = try loadHistory(conversationID: conversationID, turns: 20)
+        let reading = try promptRecord(conversationID: conversationID, turns: 20, timeZone: zone)
         let todayLines = TodayPrompt.lines(
             now: now,
             character: character,
             characters: characters,
+            unitMates: world?.unitMates(of: character.name) ?? [],
             herLives: world?.livesOf(character.name) ?? [],
-            holidays: try? holidayTable(),
-            unitMates: world?.unitMates(of: character.name) ?? []
+            holidays: try? holidayTable()
         )
         let nowText = NowPrompt.text(
             now: now,
@@ -113,7 +113,7 @@ extension Eidolon {
         )
         let memories = await reachingOutMemories(
             characterID: characterID,
-            query: Self.lastTurnQuery(history),
+            query: Self.lastTurnQuery(reading.allMessages),
             embedder: embedder,
             reranker: reranker,
             now: now,
@@ -128,10 +128,12 @@ extension Eidolon {
             world: world,
             producer: producer,
             today: Self.isoDay(now, in: zone),
-            nowSection: nowSection
+            nowSection: nowSection,
+            narration: reading.narration,
+            currentNarration: reading.trailingNarration
         )
         let prompt = try assembler.prompt(
-            history: history,
+            history: reading.chatHistory,
             text: ReachOutRules.wantsToReachOut
         )
 
@@ -218,7 +220,7 @@ extension Eidolon {
                    documents: candidates.map(\.text)
                ) {
                 found = ranked
-                    .filter { $0.score >= RetrievalRules.memoryMinRelevance }
+                    .filter { $0.score >= RetrievalRules.thresholds(for: reranker.model).memories }
                     .prefix(3)
                     .map { candidates[$0.index].record }
             }

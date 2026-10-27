@@ -172,7 +172,7 @@ final class TurnTraceTests: XCTestCase {
         XCTAssertTrue(trace.degradation.contains { $0.contains("判断模型失败") })
         XCTAssertNil(trace.judge?.raw)
         XCTAssertNotNil(trace.judge?.failure)
-        XCTAssertEqual(trace.retrieval.need, "nothing", "a failed judge looks nothing up")
+        XCTAssertEqual(trace.retrieval.need, "references", "a failed judge still looks references up")
         XCTAssertNil(trace.verdict)
     }
 
@@ -190,7 +190,7 @@ final class TurnTraceTests: XCTestCase {
         let trace = try XCTUnwrap(traces.first).trace
         XCTAssertEqual(trace.judge?.raw, "ごめんなさい")
         XCTAssertTrue(trace.degradation.contains { $0.contains("判断模型失败") })
-        XCTAssertEqual(trace.retrieval.need, "nothing")
+        XCTAssertEqual(trace.retrieval.need, "references")
         XCTAssertNil(trace.verdict)
     }
 

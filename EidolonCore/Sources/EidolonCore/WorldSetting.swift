@@ -54,11 +54,54 @@ public struct WorldSetting: Codable, Sendable {
         }
     }
 
+    public struct SetlistItem: Codable, Sendable, Hashable {
+        public var title: String
+        public var singers: [String]
+        public var dancers: [String]
+        public var brand: String?
+
+        enum CodingKeys: String, CodingKey {
+            case title, singers, dancers, brand
+        }
+
+        public init(title: String, singers: [String] = [], dancers: [String] = [], brand: String? = nil) {
+            self.title = title
+            self.singers = singers
+            self.dancers = dancers
+            self.brand = brand
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            title = try container.decode(String.self, forKey: .title)
+            singers = try container.decodeIfPresent([String].self, forKey: .singers) ?? []
+            dancers = try container.decodeIfPresent([String].self, forKey: .dancers) ?? []
+            brand = try container.decodeIfPresent(String.self, forKey: .brand)
+        }
+    }
+
     public struct LiveDay: Codable, Sendable, Hashable {
         public var date: String
         public var venue: String
         public var performers: [String]
         public var absent: [String]?
+        /// What was performed that day, in order; empty if it is not known (a day still
+        /// to come, or one of two shows). Upstream `LiveDay.setlist`.
+        public var setlist: [SetlistItem]?
+
+        public init(
+            date: String,
+            venue: String,
+            performers: [String],
+            absent: [String]? = nil,
+            setlist: [SetlistItem]? = nil
+        ) {
+            self.date = date
+            self.venue = venue
+            self.performers = performers
+            self.absent = absent
+            self.setlist = setlist
+        }
     }
 
     public struct Live: Codable, Sendable, Hashable {
@@ -100,6 +143,14 @@ public struct WorldSetting: Codable, Sendable {
 
     public func isStaff(_ name: String) -> Bool {
         idol(name) == nil && office.staff.contains { $0.name == name }
+    }
+
+    /// The others in her unit, by name; none if she is in none (upstream `unit_mates`).
+    public func unitMates(of name: String) -> [String] {
+        guard let idol = idol(name),
+              let unit = units.first(where: { $0.name == idol.unit })
+        else { return [] }
+        return unit.members.filter { $0 != name }
     }
 
     // MARK: - Prompt
@@ -216,14 +267,6 @@ public struct WorldSetting: Codable, Sendable {
         }
     }
 
-    /// The others in her unit, by name; none if she is in none (upstream `unit_mates`).
-    func unitMates(of name: String) -> Set<String> {
-        guard let unitName = officeUnit(of: name),
-              let unit = units.first(where: { $0.name == unitName })
-        else { return [] }
-        return Set(unit.members.filter { $0 != name })
-    }
-
     /// `2026-10-21` as upstream's `_day` writes it: `2026年10月21日`.
     static func formatDay(_ iso: String) -> String {
         let parts = iso.split(separator: "-")
@@ -266,13 +309,21 @@ extension WorldSetting {
         }
         for live in lives {
             for day in live.days {
+                let performers = day.performers.isEmpty
+                    ? "（资料里没有记录）"
+                    : day.performers.joined(separator: "、")
                 var lines = [
                     "演出「\(live.name)」",
                     "日期：\(WorldSetting.formatDay(day.date))",
                     "会场：\(day.venue)",
-                    "出演偶像：\(day.performers.isEmpty ? "（资料里没有记录）" : day.performers.joined(separator: "、"))",
+                    "出演偶像：\(performers)",
                 ]
-                if !lines.isEmpty { _ = lines }
+                if let setlist = day.setlist, !setlist.isEmpty {
+                    lines.append("曲目单（标着别的品牌的是翻唱，不是闪耀色彩的歌）：")
+                    lines += setlist.enumerated().map { index, item in
+                        "\(index + 1). \(setlistLine(item, day: day))"
+                    }
+                }
                 found.append(Entry(
                     kind: "live",
                     title: lines[0] + WorldSetting.formatDay(day.date),
@@ -281,6 +332,42 @@ extension WorldSetting {
             }
         }
         return found
+    }
+
+    /// One setlist item as upstream `_setlist_line` writes it: its title, the brand it
+    /// covers if it is one, and who sang or danced to it.
+    private func setlistLine(_ item: SetlistItem, day: LiveDay) -> String {
+        let line = item.title + (item.brand.map { "（\($0)的歌）" } ?? "")
+        var who: [String] = []
+        if !item.singers.isEmpty {
+            who.append("\(saidWho(item.singers, day: day))演唱")
+        }
+        if !item.dancers.isEmpty {
+            who.append("\(saidWho(item.dancers, day: day))伴舞，没有演唱")
+        }
+        return who.isEmpty
+            ? "\(line)：资料里没能确定是谁演唱"
+            : "\(line)：\(who.joined(separator: "；"))"
+    }
+
+    /// `idols` as briefly as they can be named (upstream `_who`): everyone on the day, one
+    /// or two whole units, everyone but one or two, or the whole units among them and then
+    /// the rest.
+    private func saidWho(_ idols: [String], day: LiveDay) -> String {
+        var rest = idols
+        var names: [String] = []
+        for unit in units where unit.members.count > 1 && Set(unit.members).isSubset(of: Set(rest)) {
+            names.append(unit.name)
+            rest.removeAll { unit.members.contains($0) }
+        }
+        let leftOut = day.performers.filter { !idols.contains($0) }
+        let severalOnStage = idols.count > 1 && Set(idols).isSubset(of: Set(day.performers))
+        if severalOnStage && leftOut.isEmpty { return "全体出演偶像" }
+        if rest.isEmpty && names.count <= 2 { return names.joined(separator: "、") }
+        if severalOnStage && leftOut.count < min(3, idols.count) {
+            return "除\(leftOut.joined(separator: "、"))以外的全体出演偶像"
+        }
+        return (names + rest).joined(separator: "、")
     }
 
     private func singers(_ song: Song) -> String {

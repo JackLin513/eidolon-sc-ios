@@ -143,7 +143,12 @@ extension Eidolon {
             var next = 0
             for message in messages {
                 if case let .message(record) = message.line, record.role == "user" {
-                    while next < pending.count, pending[next].at < message.at {
+                    // An event belongs before a turn only when it strictly preceded it, but her
+                    // reach-out at the same moment is what the producer is answering: it goes
+                    // first, so the turn reads as narrated (upstream's seconds are as coarse).
+                    while next < pending.count,
+                          pending[next].at < message.at
+                              || (pending[next].reachOut && pending[next].at == message.at) {
                         merged.append(pending[next].line)
                         next += 1
                     }
