@@ -117,6 +117,23 @@ public actor Eidolon {
         return try contentDatabase().episodeCount(characterID: characterID)
     }
 
+    /// The names as the story says them, for Fish Audio and the recognizer. A bundle with
+    /// no readings file has none, as upstream reads a missing `readings.toml`.
+    public func readings() throws -> Readings {
+        try requireContent()
+        let url = location.contentDirectory.appendingPathComponent("characters/readings.json")
+        guard FileManager.default.fileExists(atPath: url.path) else { return Readings() }
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            throw EidolonError.invalidBundle(
+                "读不到 characters/readings.json：\(error.localizedDescription)"
+            )
+        }
+        return try Readings(data: data)
+    }
+
     /// Japan's holidays, as the installed bundle exported them.
     public func holidayTable() throws -> HolidayTable {
         try requireContent()

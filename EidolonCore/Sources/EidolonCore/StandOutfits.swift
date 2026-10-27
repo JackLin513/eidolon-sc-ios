@@ -89,12 +89,35 @@ extension OutfitList {
 
 public extension CharacterStand {
     /// The outfit she wears: the one chosen for her when her list still has it, otherwise
-    /// her default outfit. A choice that cannot load is not forgotten — only not worn.
+    /// her default outfit. When the list cannot be read, the choice is still tried where the
+    /// bundle keeps outfits, so a call dialled early or with a broken list keeps the outfit
+    /// she was wearing (upstream `wornOutfit` with no cards). A choice that cannot load is
+    /// not forgotten — only not worn.
     func worn(choice: String?) -> StandOutfit {
-        guard let choice, let chosen = outfitList?.outfit(withID: choice) else {
-            return defaultOutfit
+        guard let choice else { return defaultOutfit }
+        if let chosen = outfitList?.outfit(withID: choice) {
+            return chosen
         }
-        return chosen
+        if outfitList == nil, let remembered = Self.rememberedOutfit(choice, beside: defaultOutfit) {
+            return remembered
+        }
+        return defaultOutfit
+    }
+
+    /// Where an outfit number sits beside her default outfit: `stand/<enza>` or
+    /// `stand_costume/<enza>`, under the same `idols` directory. An id that is not one of
+    /// those shapes is refused rather than turned into a path.
+    static func rememberedOutfit(_ id: String, beside defaultOutfit: StandOutfit) -> StandOutfit? {
+        let parts = id.split(separator: "/", omittingEmptySubsequences: false)
+        guard parts.count == 2,
+              parts[0] == "stand" || parts[0] == "stand_costume",
+              !parts[1].isEmpty,
+              parts[1].allSatisfy({ $0.isASCII && $0.isNumber })
+        else { return nil }
+        let idols = defaultOutfit.directory
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return StandOutfit(id: id, directory: idols.appendingPathComponent(id, isDirectory: true))
     }
 
     /// The outfits a call tries, in order: the one she wears, then her default outfit. One

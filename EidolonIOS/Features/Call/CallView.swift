@@ -39,6 +39,9 @@ struct CallView: View {
     @State private var standFailed = false
     /// Her stand read from the bundle: the default outfit and, when it reads, her list.
     @State private var stand: CharacterStand?
+    /// Whether the bundle has been asked for her stand yet: before that, the screen keeps
+    /// the stand layout so a character who has one never flashes the avatar version.
+    @State private var standChecked = false
     /// The outfits still to try if the one being loaded turns out to be unreadable: her
     /// default after the one she wears, so a broken outfit never leaves her without a stand.
     @State private var fallbackOutfits: [StandOutfit] = []
@@ -61,13 +64,23 @@ struct CallView: View {
         }
         .background(Color.black)
         .preferredColorScheme(.dark)
-        .task { await start() }
+        .task {
+            guard !started else { return }
+            started = true
+            loadBackdrop()
+            // Her stand does not wait on the call: it is there even when the call cannot be
+            // made (no keys yet), and her outfit can still be looked at.
+            await loadStand()
+            standChecked = true
+            await dial()
+        }
         .fullScreenCover(isPresented: $showsOutfits) {
             if let stand {
                 OutfitPickerView(
                     character: character,
                     stand: stand,
                     contentRoot: app.core.location.contentDirectory,
+                    contentVersion: app.bundleInfo?.installedAt ?? "current",
                     onWear: { outfit in
                         outfitChosen(outfit)
                     },
@@ -80,6 +93,11 @@ struct CallView: View {
         .interactiveDismissDisabled(session != nil && !isEnded)
         .onChange(of: scenePhase) { _, phase in
             renderer?.setPaused(phase != .active)
+            // Back from a phone call or the background: the system may have stopped the
+            // microphone, so ask it to open again (spec「通话健壮性」).
+            if phase == .active, session != nil {
+                Task { await session?.recoverAudio() }
+            }
         }
         .onDisappear { renderer?.setPaused(true) }
     }
@@ -89,17 +107,31 @@ struct CallView: View {
         return false
     }
 
+    private var isConnecting: Bool {
+        if case .connecting = state { return true }
+        return false
+    }
+
+    /// Whether the bundle carries a stand for her at all. A character without one gets the
+    /// large avatar and the dialling ripple instead (upstream `hasStand`). Until the bundle
+    /// has been asked, the stand layout is kept so nothing flashes.
+    private var hasStand: Bool { !standChecked || stand != nil }
+
+    /// She hung up for a cooldown: there is no calling her until it ends, so no redial
+    /// (upstream `endCard`).
+    private var canRedial: Bool {
+        guard case let .ended(reason) = state else { return false }
+        if case let .sheHungUp(until) = reason, until != nil { return false }
+        return true
+    }
+
     private var isCompactWidth: Bool { sizeClass != .regular }
 
     // MARK: - Start
 
-    private func start() async {
-        guard !started else { return }
-        started = true
-        loadBackdrop()
-        // Her stand does not wait on the call: it is there even when the call cannot be
-        // made (no keys yet), and her outfit can still be looked at.
-        await loadStand()
+    /// Start the call; a redial starts it again from a clean screen.
+    private func dial() async {
+        resetCallState()
         do {
             let call = try await app.beginCall(for: character)
             session = call
@@ -112,6 +144,24 @@ struct CallView: View {
         } catch {
             startError = error.localizedDescription
         }
+    }
+
+    /// What belongs to one call, cleared before a redial so nothing of the last one shows.
+    private func resetCallState() {
+        session = nil
+        state = .connecting
+        line = nil
+        hearing = nil
+        failure = nil
+        startError = nil
+        connectedAt = nil
+        endedAt = nil
+        callStand = CallStandDirector()
+    }
+
+    private func redial() {
+        guard canRedial else { return }
+        Task { await dial() }
     }
 
     /// Her backdrop is only shown when the bundle has one; otherwise her avatar is blown up.
@@ -200,11 +250,11 @@ struct CallView: View {
         switch event {
         case let .state(next):
             state = next
-            if connectedAt == nil {
-                switch next {
-                case .connecting, .ended: break
-                default: connectedAt = Date()
-                }
+            // The call is connected when the recognizer can hear, not when the microphone
+            // opens (spec「接通」): listening is the first state that means that. A call
+            // that never connects stays without a clock.
+            if connectedAt == nil, case .listening = next {
+                connectedAt = Date()
             }
             if isEnded, endedAt == nil { endedAt = Date() }
         case let .hearing(text):
@@ -356,9 +406,18 @@ struct CallView: View {
     private var content: some View {
         VStack(spacing: 0) {
             header
+            if startError == nil, !hasStand {
+                noStandIdentity
+                    .padding(.top, 28)
+            }
             Spacer(minLength: 0)
             if let startError {
                 startFailure(startError)
+            } else if case let .ended(reason) = state {
+                // The end card replaces her line and what is being heard (upstream `Ended`).
+                endedCard(reason)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 18)
             } else {
                 VStack(spacing: 12) {
                     if let failure {
@@ -382,14 +441,16 @@ struct CallView: View {
 
     private var header: some View {
         ZStack {
-            VStack(spacing: 2) {
-                Text(character.name)
-                    .font(.system(size: 26, weight: .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                status
+            if hasStand {
+                VStack(spacing: 2) {
+                    Text(character.name)
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    status
+                }
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
             HStack {
                 Spacer()
                 if showsOutfitButton {
@@ -407,6 +468,44 @@ struct CallView: View {
             }
         }
         .padding(.horizontal, 20)
+    }
+
+    /// Her without a stand: the large avatar, a dialling ripple while it connects, her name
+    /// and the status line (upstream `MarkedAvatar` in `Ripple`).
+    private var noStandIdentity: some View {
+        VStack(spacing: 10) {
+            ZStack {
+                if isConnecting, !reduceMotion {
+                    DialingRipple()
+                }
+                avatar
+            }
+            .frame(width: 112, height: 112)
+            Text(character.name)
+                .font(.system(size: 26, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+            status
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var avatar: some View {
+        ZStack {
+            if let image = app.avatar(for: character.id) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Color(hex: character.color ?? "#333333")
+                Text(String(character.name.prefix(1)))
+                    .font(.system(size: 40, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+        }
+        .frame(width: 104, height: 104)
+        .clipShape(Circle())
+        .overlay(Circle().strokeBorder(.white.opacity(0.3), lineWidth: 1))
     }
 
     /// Only a character whose bundle carries a stand, and whose stand can draw, can be
@@ -442,9 +541,13 @@ struct CallView: View {
                 .foregroundStyle(.white.opacity(0.8))
         } else if let connectedAt {
             TimelineView(.periodic(from: .now, by: 1)) { context in
-                Text(Self.clock(context.date.timeIntervalSince(connectedAt)))
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.8))
+                Text(CallClock.shown(CallClock.time(
+                    since: connectedAt,
+                    limit: session?.durationLimit,
+                    now: context.date
+                )))
+                .font(.subheadline.monospacedDigit())
+                .foregroundStyle(.white.opacity(0.8))
             }
         }
     }
@@ -452,13 +555,7 @@ struct CallView: View {
     private func endedText(_ reason: CallEnd) -> String {
         _ = reason
         guard let connectedAt, let endedAt else { return "通话已结束" }
-        return "通话已结束 · \(Self.clock(endedAt.timeIntervalSince(connectedAt)))"
-    }
-
-    /// `mm:ss`, minutes going past 59 rather than to hours (upstream `clock`).
-    private static func clock(_ interval: TimeInterval) -> String {
-        let seconds = max(0, Int(interval))
-        return String(format: "%02d:%02d", seconds / 60, seconds % 60)
+        return "通话已结束 · \(CallClock.clock(Int(endedAt.timeIntervalSince(connectedAt))))"
     }
 
     /// Her one line right now: Japanese first, the smaller Chinese under it, and what the
@@ -499,25 +596,51 @@ struct CallView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var footer: some View {
+    /// The end card: why it ended, when she will talk again if she is cooling down, and
+    /// 「返回」/「重拨」 (upstream `Ended`). While the call is on, it is the hang-up key.
+    private func endedCard(_ reason: CallEnd) -> some View {
         VStack(spacing: 12) {
-            if isEnded, case let .ended(reason) = state {
-                Text(reason.message)
+            Text(reason.message)
+                .font(.footnote)
+                .foregroundStyle(.white.opacity(0.85))
+                .multilineTextAlignment(.center)
+            if case let .sheHungUp(until) = reason, let until {
+                Text(cooldownText(until))
                     .font(.footnote)
                     .foregroundStyle(.white.opacity(0.7))
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-                if case let .sheHungUp(until) = reason, let until {
-                    Text(cooldownText(until))
-                        .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
-                }
+            }
+            HStack(spacing: 12) {
                 Button("返回") { dismiss() }
                     .buttonStyle(.borderedProminent)
                     .tint(.white.opacity(0.25))
-            } else {
+                if canRedial {
+                    Button {
+                        redial()
+                    } label: {
+                        Label("重拨", systemImage: "phone.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.white.opacity(0.35))
+                }
+            }
+            .padding(.top, 4)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 18)
+        .frame(maxWidth: 578)
+        .frame(maxWidth: .infinity)
+        .background {
+            let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
+            shape
+                .fill(.ultraThinMaterial)
+                .overlay(shape.fill(.white.opacity(0.12)))
+        }
+    }
+
+    private var footer: some View {
+        VStack(spacing: 12) {
+            if !isEnded {
                 Button {
                     Task {
                         await session?.hangUp()
@@ -577,5 +700,29 @@ private struct DialingDots: View {
                 }
             }
         }
+    }
+}
+
+/// Two rings pulsing out from her avatar while it connects, 2 seconds each, offset by a
+/// second (upstream `Ripple`). Not drawn with reduced motion.
+private struct DialingRipple: View {
+    @State private var animating = false
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<2, id: \.self) { index in
+                Circle()
+                    .stroke(.white.opacity(0.22), lineWidth: 1.5)
+                    .scaleEffect(animating ? 1.4 : 1)
+                    .opacity(animating ? 0 : 1)
+                    .animation(
+                        .easeOut(duration: 2)
+                            .repeatForever(autoreverses: false)
+                            .delay(Double(index)),
+                        value: animating
+                    )
+            }
+        }
+        .onAppear { animating = true }
     }
 }
