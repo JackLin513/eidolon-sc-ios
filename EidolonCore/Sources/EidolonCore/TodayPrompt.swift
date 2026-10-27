@@ -16,13 +16,15 @@ public enum TodayPrompt {
     }
 
     /// What `character` is told of the day it is in Tokyo at `now`: her birthday, the
-    /// birthdays of the others among `characters` in idol order, the holiday, each if it is
-    /// the day; then each of the days of `herLives` (`WorldSetting.livesOf`) on this day in
-    /// a year before, earliest first.
+    /// birthdays of the others among `characters` in idol order — those of her unit mates
+    /// (`unitMates`, `WorldSetting.unitMates`) apart from the rest, which she is only to
+    /// know of — the holiday, each if it is the day; then each of the days of `herLives`
+    /// (`WorldSetting.livesOf`) on this day in a year before, earliest first.
     public static func lines(
         now: Date,
         character: CharacterConfig,
         characters: [CharacterConfig],
+        unitMates: [String] = [],
         herLives: [(WorldSetting.Live, [WorldSetting.LiveDay])],
         holidays: HolidayTable? = nil
     ) -> [String] {
@@ -46,13 +48,23 @@ public enum TodayPrompt {
             }
             .map(\.name)
         if !others.isEmpty {
-            lines.append(
-                "今天是\(others.joined(separator: "、"))的生日。可以顺口提一句，"
-                    + "不要替她们向制作人要祝福，也不要催制作人做什么。"
-            )
+            let mates = others.filter { unitMates.contains($0) }
+            let rest = others.filter { !unitMates.contains($0) }
+            if !mates.isEmpty {
+                lines.append(
+                    "今天是你的组合伙伴\(mates.joined(separator: "、"))的生日。可以顺口提一句，"
+                        + "不要替她们向制作人要祝福，也不要催制作人做什么。"
+                )
+            }
+            if !rest.isEmpty {
+                lines.append(
+                    "今天是\(rest.joined(separator: "、"))的生日。你知道这件事，"
+                        + "制作人提起时能接上；不用主动提。"
+                )
+            }
         }
         if let holiday = holidays?.name(year: year, month: month, day: day) {
-            lines.append("今天是日本的节假日：\(holiday)。可以自然地提到，不必每句都说。")
+            lines.append("今天是日本的节假日：\(holiday)。制作人提起再说，不用主动提。")
         }
         lines += livesOnThisDay(year: year, month: month, day: day, herLives: herLives)
         return lines

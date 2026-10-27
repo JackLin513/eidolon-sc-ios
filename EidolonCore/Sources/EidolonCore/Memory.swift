@@ -52,7 +52,8 @@ enum MemoryExtraction {
         要记的：制作人自己透露的个人情况、喜好、经历、计划、身边的人和宠物、希望偶像记住的事；会持续几天、朋友过后会问起的近况，例如生病、考试、面试、搬家、出差。
         不要记的：当天就会过去的状态（例如累、困、饿、无聊、心情不好）和一时的情绪，同一句话里还说了值得记的事时只记那件事、不记这种状态；寒暄；偶像说的话；原作剧情和偶像的设定；制作人向偶像提的问题。
 
-        每条记忆是一句能单独看懂的中文陈述，以「制作人」开头，例如「制作人养了一只叫小白的猫」。提到「明天」「下周六」这样的相对时间时，换算成具体日期写下来。
+        每条记忆是一句能单独看懂的中文陈述，以「制作人」开头，例如「制作人养了一只叫小白的猫」。
+        提到「明天」「下周六」这样的相对时间时，换算成具体日期写下来。
 
         「已经记住的事」按编号列出了和这轮对话最相关的记忆，写之前先对照：
         - 和已经记住的一样的，不要再写。
@@ -356,9 +357,32 @@ extension Eidolon {
             }
             let reply = messages[(index + 1)...].first { $0.role == "character" }
             let text = messages[index].text ?? ""
+            // Her reach-outs after the last message, the one the producer is answering,
+            // read as her words; the older ones are not part of the exchange (upstream
+            // `_answering`).
+            let after = index > 0 ? messages[index - 1].createdAt : ""
+            var history = Array(messages[..<index])
+            let reachOuts = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT id, segments, created_at FROM reach_outs
+                    WHERE conversation_id = ? AND created_at > ? AND created_at < ?
+                    ORDER BY created_at ASC, rowid ASC
+                    """,
+                arguments: [conversationID, after, messages[index].createdAt]
+            )
+            history += reachOuts.map { row in
+                StoredMessage(
+                    id: "reach:\(row["id"] as String)",
+                    role: "character",
+                    text: nil,
+                    segments: Eidolon.decodeSegments(row["segments"]),
+                    createdAt: row["created_at"]
+                )
+            }
             return Exchange(
                 characterID: characterID,
-                history: Array(messages[..<index]),
+                history: history,
                 text: text,
                 reply: reply.map(MemoryExtraction.shownText) ?? "",
                 now: Eidolon.parseTimestamp(messages[index].createdAt) ?? Date(),

@@ -47,6 +47,13 @@ struct RetrievalOutcome {
     var degradation: [String] = []
 }
 
+/// The reranker's scores below which a candidate is left out of the prompt (upstream
+/// `rerank.RerankThresholds`).
+public struct RerankThresholds: Sendable, Equatable {
+    public var references: Double
+    public var memories: Double
+}
+
 /// Every number retrieval goes by (upstream `retrieval.py`).
 public enum RetrievalRules {
     public static let maxReferences = 5
@@ -55,9 +62,19 @@ public enum RetrievalRules {
     public static let recallEpisodes = 2
     public static let recallEntries = 3
     public static let recallEpisodeChars = 3000
-    public static let minRelevance = 0.3
-    public static let memoryMinRelevance = 0.01
     public static let maxMemories = 5
+
+    /// What counts as relevant enough depends on the reranker model (upstream
+    /// `rerank.KNOWN_THRESHOLDS`). A model never calibrated gets the 4B's.
+    static let rerankerThresholds: [String: RerankThresholds] = [
+        "Qwen/Qwen3-Reranker-0.6B": RerankThresholds(references: 0.3, memories: 0.01),
+        "Qwen/Qwen3-Reranker-4B": RerankThresholds(references: 0.7, memories: 0.005),
+    ]
+    static let fallbackRerankerModel = "Qwen/Qwen3-Reranker-4B"
+
+    public static func thresholds(for model: String?) -> RerankThresholds {
+        rerankerThresholds[model ?? ""] ?? rerankerThresholds[fallbackRerankerModel]!
+    }
 }
 
 /// The tool the chat model can call to look an episode up itself (upstream
@@ -173,6 +190,7 @@ struct RetrievalEngine {
         }
         var relevant: [Reference] = []
         var scores: [Int: Double] = [:]
+        let thresholds = RetrievalRules.thresholds(for: reranker?.model)
         if let reranker {
             do {
                 let ranked = try await reranker.rerank(
@@ -180,7 +198,7 @@ struct RetrievalEngine {
                 )
                 for item in ranked { scores[item.index] = item.score }
                 relevant = ranked
-                    .filter { $0.score >= RetrievalRules.minRelevance }
+                    .filter { $0.score >= thresholds.references }
                     .prefix(RetrievalRules.maxReferences)
                     .map { candidates[$0.index] }
             } catch {
@@ -198,7 +216,7 @@ struct RetrievalEngine {
             outcome.candidates[index].score = scores[index]
             outcome.candidates[index].chosen = relevant.contains(candidates[index])
         }
-        outcome.text = relevant.isEmpty ? nil : Self.referencesPrompt(relevant)
+        outcome.text = relevant.isEmpty ? nil : Self.referencesPrompt(relevant, hasWorld: world != nil)
         return outcome
     }
 
@@ -206,16 +224,22 @@ struct RetrievalEngine {
         candidates.sorted { $0.similarity > $1.similarity }.prefix(count).map { $0 }
     }
 
-    static func referencesPrompt(_ references: [Reference]) -> String {
+    static func referencesPrompt(_ references: [Reference], hasWorld: Bool) -> String {
         var lines = [
             "# 回忆与资料",
             "下面是和制作人这句话可能有关的内容，按相关程度排列，和话题无关的可以忽略。",
             "- 「剧情」是你亲身经历过的原作剧情，可以像回忆往事一样自然地提起，不要照搬台词。"
                 + "剧情里没有记录制作人当时选了哪个选项，不要断言制作人当时说了什么或选了什么。",
             "- 「角色资料」是关于你自己和身边人物的设定。",
-            "- 「作品资料」是关于歌曲、唱片和演出的事实，可以照着回答；日期在今天之后的，是还没发售或还没举办的。"
-                + "作品资料里只有名称、日期、会场、出演者这类事实，没有台上或当时具体发生了什么，不要编造。",
         ]
+        // The work facts are a reference source only when the bundle carries a world
+        // setting (upstream `open_reference_sources`).
+        if hasWorld {
+            lines.append(
+                "- 「作品资料」是关于歌曲、唱片和演出的事实，可以照着回答；日期在今天之后的，是还没发售或还没举办的。"
+                    + "作品资料里只有名称、日期、会场、出演者这类事实，没有台上或当时具体发生了什么，不要编造。"
+            )
+        }
         for reference in references {
             lines += ["", "## \(reference.kind.heading)", reference.text]
         }
@@ -276,7 +300,8 @@ struct RetrievalEngine {
             do {
                 let ranked = try await reranker.rerank(query: query, documents: documents)
                 for item in ranked { scores[item.index] = item.score }
-                for item in ranked where item.score >= RetrievalRules.minRelevance {
+                let threshold = RetrievalRules.thresholds(for: reranker.model).references
+                for item in ranked where item.score >= threshold {
                     if item.index < story.count {
                         if episodeIDs.count < RetrievalRules.recallEpisodes,
                            !episodeIDs.contains(story[item.index].title) {
@@ -347,7 +372,7 @@ struct RetrievalEngine {
                 )
                 for item in ranked { scores[item.index] = item.score }
                 best = ranked
-                    .filter { $0.score >= RetrievalRules.memoryMinRelevance }
+                    .filter { $0.score >= RetrievalRules.thresholds(for: reranker.model).memories }
                     .prefix(RetrievalRules.maxMemories)
                     .map { candidates[$0.index] }
             } catch {
@@ -385,7 +410,7 @@ struct RetrievalEngine {
         guard !facts.isEmpty else { return [] }
         let vectors = try await eidolon.cachedVectors(
             scope: "fact:\(character.id)",
-            entries: facts.map { (id: $0.title ?? $0.text, text: $0.text) },
+            entries: facts.map { (id: $0.text, text: $0.text) },
             embedder: embedder
         )
         return Self.nearest(
@@ -455,6 +480,10 @@ struct Fact: Sendable, Hashable {
     var title: String?
     var text: String
 
+    /// Split a facts file into entries: the text under each heading, titled with the
+    /// headings above it (e.g. `人物关系 / 風野灯織`), the title and text together in
+    /// `text` (upstream `characters.parse_facts`). Headings with nothing under them make
+    /// no entry, and a heading level skipped leaves no blank in the title.
     static func parse(_ markdown: String) -> [Fact] {
         var facts: [Fact] = []
         var titles: [String] = []
@@ -462,23 +491,28 @@ struct Fact: Sendable, Hashable {
         func flush() {
             let text = body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
             if !text.isEmpty {
+                let title = titles.isEmpty ? nil : titles.joined(separator: " / ")
                 facts.append(Fact(
-                    title: titles.isEmpty ? nil : titles.joined(separator: " / "),
-                    text: text
+                    title: title,
+                    text: title.map { "\($0)\n\(text)" } ?? text
                 ))
             }
             body = []
         }
         for line in markdown.split(separator: "\n", omittingEmptySubsequences: false) {
             let text = String(line)
-            if let match = text.range(of: #"^#{1,6}\s+(.+)$"#, options: .regularExpression) {
+            if let match = text.range(
+                of: #"^#{1,6}\s+(.+?)\s*#*\s*$"#,
+                options: .regularExpression
+            ) {
                 flush()
                 let heading = String(text[match]).replacingOccurrences(
                     of: #"^#{1,6}\s+"#, with: "", options: .regularExpression
+                ).replacingOccurrences(
+                    of: #"\s*#*\s*$"#, with: "", options: .regularExpression
                 )
                 let level = text.prefix { $0 == "#" }.count
                 if titles.count >= level { titles.removeSubrange((level - 1)...) }
-                while titles.count < level - 1 { titles.append("") }
                 titles.append(heading.trimmingCharacters(in: .whitespaces))
             } else {
                 body.append(text)

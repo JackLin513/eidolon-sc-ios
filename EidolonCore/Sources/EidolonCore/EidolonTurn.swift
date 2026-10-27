@@ -62,6 +62,8 @@ public struct ChatMessageRecord: Sendable, Hashable, Identifiable {
     public var createdAt: String
 
     public var isFromCharacter: Bool { role == "character" }
+    /// One of her reach-outs, kept apart from her turns in the record (`reach:` ids).
+    public var isReachOut: Bool { id.hasPrefix("reach:") }
 
     public var japanese: String {
         segments.map(\.ja).joined()
@@ -206,14 +208,18 @@ extension Eidolon {
         if let existingConversation, try isEnded(conversationID: existingConversation) {
             throw EidolonError.conversationEnded
         }
-        let history = try existingConversation.map {
-            try loadHistory(conversationID: $0, turns: historyTurns)
-        } ?? []
+        // What the judge and retrieval read (her latest turns, and her reach-outs after
+        // the last one), and what the chat model reads (the latest turns cut back in
+        // chunks, with the events and reach-outs before each line as narration).
+        let record = try existingConversation.map {
+            try promptRecord(conversationID: $0, turns: historyTurns, timeZone: zone)
+        } ?? PromptRecord()
+        let history = record.judgingHistory
 
         // The judge is advisory (ADR-0005, ADR-0016): whatever it says, the turn goes on.
-        // When it fails — times out, is refused, or answers unreadably — the turn neither
-        // moves affinity nor looks anything up. With no judge asked at all it looks
-        // references up anyway, as before.
+        // When it fails — times out, is refused, or answers unreadably — the turn still
+        // looks references up, as upstream retrieves anyway on `JudgeError`; only the
+        // affinity is left alone. With no judge asked at all it looks references up too.
         var degradation: [String] = []
         var verdict: JudgeVerdict?
         var judgeTrace: JudgeTrace?
@@ -242,7 +248,7 @@ extension Eidolon {
             } catch {
                 if let unreadable = error as? JudgeUnreadable { raw = unreadable.raw }
                 failure = error.localizedDescription
-                degradation.append("判断模型失败，本回合不动好感、也不查资料：\(failure ?? "")")
+                degradation.append("判断模型失败，仍按 references 检索、本回合不动好感：\(failure ?? "")")
             }
             judgeTrace = JudgeTrace(
                 service: judge.judgeService,
@@ -256,7 +262,9 @@ extension Eidolon {
             )
         }
         let judged: Judged? = verdict?.affinity
-        let need: RetrievalNeed = verdict?.need ?? (judge == nil ? .references : .nothing)
+        // A judge that failed still has the turn look references up (upstream `retrieval.py`
+        // retrieves anyway on `JudgeError`).
+        let need: RetrievalNeed = verdict?.need ?? .references
         let retrieval = RetrievalEngine(
             eidolon: self,
             character: character,
@@ -307,6 +315,7 @@ extension Eidolon {
             now: now,
             character: character,
             characters: characters,
+            unitMates: world?.unitMates(of: character.name) ?? [],
             herLives: world?.livesOf(character.name) ?? [],
             holidays: try? holidayTable()
         )
@@ -318,7 +327,7 @@ extension Eidolon {
             // In a call they are talking right now: no "last time" to tell her.
             lastContact: talking == .inCall
                 ? nil
-                : try lastContact(conversationID: existingConversation),
+                : try lastContact(characterID: characterID),
             birthday: producer.birthday,
             todayLines: todayLines
         )
@@ -333,9 +342,11 @@ extension Eidolon {
             producer: producer,
             today: Self.isoDay(now, in: zone),
             nowSection: nowSection,
-            formatInstructions: ReplyFormatInstructions.forVoice(model: model)
+            formatInstructions: ReplyFormatInstructions.forVoice(model: model),
+            narration: record.narration,
+            currentNarration: record.trailingNarration
         )
-        let messages = try assembler.prompt(history: history, text: text)
+        let messages = try assembler.prompt(history: record.chatHistory, text: text)
 
         // Each step is shown in the app as it arrives.
         var parser = ReplyParser()
@@ -589,12 +600,110 @@ extension Eidolon {
         return id
     }
 
-    func loadHistory(conversationID: String, turns: Int) throws -> [StoredMessage] {
-        var history = Array(try timeline(conversationID: conversationID).suffix(turns * 2))
-        while let first = history.first, first.role == "character" {
-            history.removeFirst()
+    /// What one turn reads of a conversation: its messages, the narration the events and
+    /// her reach-outs put before them, and how much of it the chat model and the judge each
+    /// get (upstream `chat_history`, `latest_turns` and `narrations`).
+    struct PromptRecord {
+        /// Every message, her reach-outs and events left out.
+        var allMessages: [StoredMessage] = []
+        /// What the chat model reads: at least the latest turns, cut back in chunks.
+        var chatHistory: [StoredMessage] = []
+        /// What the judge and retrieval read: the latest turns, then her reach-outs after
+        /// the last message.
+        var judgingHistory: [StoredMessage] = []
+        /// What she is told before each user message, by its id.
+        var narration: [String: String] = [:]
+        /// What she is told before what the producer says now.
+        var trailingNarration: String = ""
+    }
+
+    /// Reads `conversation` as a turn does: her reach-outs and the events she is told of
+    /// become narration before the next thing the producer says, and the chat model's
+    /// history is cut back to whole turns, in chunks (upstream `narrations`,
+    /// `chat_history`).
+    func promptRecord(
+        conversationID: String,
+        turns: Int,
+        timeZone: TimeZone
+    ) throws -> PromptRecord {
+        var record = PromptRecord()
+        var pending: [String] = []
+        var answering: [StoredMessage] = []
+        for line in try conversationRecord(conversationID: conversationID) {
+            switch line {
+            case let .event(event):
+                if let said = Self.narration(of: event.kind) { pending.append(said) }
+            case let .message(message):
+                let stored = StoredMessage(
+                    id: message.id,
+                    role: message.role,
+                    text: message.text,
+                    segments: message.segments,
+                    createdAt: message.createdAt
+                )
+                if message.isReachOut {
+                    if let said = Self.reachOutNarration(message, in: timeZone) {
+                        pending.append(said)
+                    }
+                    answering.append(stored)
+                } else {
+                    answering = []
+                    if message.role == "user", !pending.isEmpty {
+                        record.narration[message.id] = pending.joined()
+                        pending = []
+                    }
+                    record.allMessages.append(stored)
+                }
+            }
         }
-        return history
+        record.chatHistory = Self.chatHistory(record.allMessages, turns: turns)
+        record.judgingHistory = Self.latestTurns(record.allMessages, turns: turns) + answering
+        record.trailingNarration = pending.joined()
+        return record
+    }
+
+    /// What she is told of an event, as it was (upstream `engine._narration`). Only the
+    /// event kinds this app records have a narration.
+    static func narration(of kind: String) -> String? {
+        switch kind {
+        case "hung_up": "（你挂断了制作人的电话。）"
+        case "ended": "（你结束了和制作人的对话。）"
+        default: nil
+        }
+    }
+
+    /// What she is told of her own reach-out: when, then her words as her replies are
+    /// written (upstream `engine._reached_out`).
+    static func reachOutNarration(_ message: ChatMessageRecord, in timeZone: TimeZone) -> String? {
+        guard let at = parseTimestamp(message.createdAt) else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let parts = calendar.dateComponents([.month, .day, .hour, .minute], from: at)
+        let clock = String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+        return "（\(parts.month ?? 0)月\(parts.day ?? 0)日 \(clock)，你先给制作人发了：）"
+            + PromptAssembler.formatReply(message.segments)
+    }
+
+    /// The messages from the `turns`th last user message on (from the first if `turns` is
+    /// 0 or there are fewer), so what reads them always opens with the user (upstream
+    /// `latest_turns`).
+    static func latestTurns(_ messages: [StoredMessage], turns: Int) -> [StoredMessage] {
+        let starts = messages.indices.filter { messages[$0].role == "user" }
+        guard let first = starts.first else { return [] }
+        guard turns > 0, turns < starts.count else {
+            return Array(messages[first...])
+        }
+        return Array(messages[starts[starts.count - turns]...])
+    }
+
+    /// The latest turns the chat model reads: at least `turns`, cut back to that many each
+    /// time they reach half as many again, rather than one at a time, so what it reads
+    /// opens the same way from turn to turn in between (upstream `chat_history`).
+    static func chatHistory(_ messages: [StoredMessage], turns: Int) -> [StoredMessage] {
+        let total = messages.filter { $0.role == "user" }.count
+        guard turns > 0, total > turns else { return latestTurns(messages, turns: 0) }
+        let step = max(1, turns / 2)
+        return latestTurns(messages, turns: total - step * ((total - turns) / step))
     }
 
     /// The conversation as it reads: the recorded messages and the reach-outs between
@@ -643,15 +752,57 @@ extension Eidolon {
         }
     }
 
+    /// When the producer and she were last in touch in `conversation`: their last message,
+    /// or the end of a call that connected in it, whichever was later (upstream
+    /// `_last_contact_in`).
     func lastContact(conversationID: String?) throws -> Date? {
         guard let conversationID else { return nil }
         return try userQueue.read { db in
-            guard let stamp: String = try String.fetchOne(
+            var moments: [Date] = []
+            if let stamp: String = try String.fetchOne(
                 db,
                 sql: "SELECT MAX(created_at) FROM messages WHERE conversation_id = ?",
                 arguments: [conversationID]
-            ) else { return nil }
-            return Self.parseTimestamp(stamp)
+            ), let at = Self.parseTimestamp(stamp) {
+                moments.append(at)
+            }
+            if let stamp: String = try String.fetchOne(
+                db,
+                sql: "SELECT MAX(ended_at) FROM call_ends WHERE conversation_id = ?",
+                arguments: [conversationID]
+            ), let at = Self.parseTimestamp(stamp) {
+                moments.append(at)
+            }
+            return moments.max()
+        }
+    }
+
+    /// When the producer and she were last in touch, in any conversation: the producer's
+    /// last message, a conversation event (her hang-up, the conversation's end) or the end
+    /// of a call that connected, whichever was later (upstream `read_last_contact`).
+    func lastContact(characterID: String) throws -> Date? {
+        try userQueue.read { db in
+            var moments: [Date] = []
+            func add(_ sql: String) throws {
+                if let stamp: String = try String.fetchOne(db, sql: sql, arguments: [characterID]),
+                   let at = Self.parseTimestamp(stamp) {
+                    moments.append(at)
+                }
+            }
+            // The producer's own line: her reply is written a moment after it, and it is
+            // his last words that say when they last spoke.
+            try add("""
+                SELECT MAX(m.created_at) FROM messages m
+                JOIN conversations c ON c.id = m.conversation_id
+                WHERE c.character_id = ? AND m.role = 'user'
+                """)
+            try add("""
+                SELECT MAX(e.created_at) FROM conversation_events e
+                JOIN conversations c ON c.id = e.conversation_id
+                WHERE c.character_id = ?
+                """)
+            try add("SELECT MAX(ended_at) FROM call_ends WHERE character_id = ?")
+            return moments.max()
         }
     }
 
@@ -905,6 +1056,11 @@ struct PromptAssembler {
     /// The reply format: the variant the voice model reads (ADR-0015's call turns pass
     /// the model; text turns pass none).
     var formatInstructions: String = ReplyFormatInstructions.text
+    /// What she is told before each user message, by its id: the events and her own
+    /// reach-outs since the last thing said (upstream `engine.narrations`).
+    var narration: [String: String] = [:]
+    /// What she is told before what the producer says now.
+    var currentNarration: String = ""
 
     func prompt(history: [StoredMessage], text: String) throws -> [PromptMessage] {
         guard let sheetPath = character.sheet else {
@@ -934,7 +1090,10 @@ struct PromptAssembler {
         ]
         for message in history {
             if message.role == "user" {
-                messages.append(PromptMessage(.user, message.text ?? ""))
+                messages.append(PromptMessage(
+                    .user,
+                    (narration[message.id] ?? "") + (message.text ?? "")
+                ))
             } else {
                 messages.append(PromptMessage(.assistant, Self.formatReply(message.segments)))
             }
@@ -942,7 +1101,7 @@ struct PromptAssembler {
         if let nowSection {
             messages.append(PromptMessage(.system, nowSection))
         }
-        messages.append(PromptMessage(.user, text))
+        messages.append(PromptMessage(.user, currentNarration + text))
         return messages
     }
 

@@ -297,6 +297,153 @@ final class TurnTests: XCTestCase {
         ])
     }
 
+    /// Upstream's `chat_history`: once the history reaches half as many turns again, it is
+    /// cut back to whole turns that many at a time, not one at a time, so what she reads
+    /// opens the same way from turn to turn in between.
+    func testHistoryFallsBackToWholeTurnsInChunks() async throws {
+        let eidolon = try await installedEidolon()
+        for turn in 1...7 {
+            let earlier = RecordingChatProvider(
+                chunks: ["<ja>返事\(turn)</ja><zh>回复\(turn)</zh>"]
+            )
+            for try await _ in eidolon.sendTurn(
+                characterID: "mano",
+                text: "質問\(turn)",
+                provider: earlier
+            ) {}
+        }
+
+        let provider = RecordingChatProvider(chunks: ["<ja>うん</ja><zh>嗯</zh>"])
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano",
+            text: "もう一つ",
+            provider: provider,
+            historyTurns: 4
+        ) {}
+        let prompt = try XCTUnwrap(provider.prompts.first)
+        let history = Array(prompt.dropFirst(2).dropLast(2))
+        // Four turns would open at 質問4; the chunk keeps the fifth last, 質問3.
+        XCTAssertEqual(history.first, PromptMessage(.user, "質問3"))
+        XCTAssertEqual(history.count, 10)
+    }
+
+    private let moment = Date(timeIntervalSince1970: 1_760_000_000) // 2025-10-09T08:53:20Z
+    private var tokyo: TimeZone { TimeZone(identifier: "Asia/Tokyo")! }
+
+    private func say(
+        _ text: String,
+        at when: Date,
+        on eidolon: Eidolon,
+        judge: (any JudgeProvider)? = nil,
+        provider: RecordingChatProvider = RecordingChatProvider(
+            chunks: ["<ja>うん</ja><zh>嗯</zh>"]
+        )
+    ) async throws -> RecordingChatProvider {
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano",
+            text: text,
+            provider: provider,
+            judge: judge,
+            now: when,
+            timeZone: tokyo
+        ) {}
+        return provider
+    }
+
+    /// She is told of her own hang-up as narration, before what he says next (upstream
+    /// `engine._narration`).
+    func testHerHangUpIsNarratedBeforeWhatHeSaysNext() async throws {
+        let eidolon = try await installedEidolon()
+        _ = try await say("おはよう", at: moment, on: eidolon)
+        let current = try await eidolon.currentConversationID("mano")
+        let conversationID = try XCTUnwrap(current)
+        try eidolon.recordConversationEvent(
+            conversationID: conversationID,
+            kind: "hung_up",
+            at: moment.addingTimeInterval(60)
+        )
+
+        let provider = try await say("そうなんだ", at: moment.addingTimeInterval(120), on: eidolon)
+        XCTAssertEqual(
+            provider.prompts.first?.last,
+            PromptMessage(.user, "（你挂断了制作人的电话。）そうなんだ")
+        )
+    }
+
+    /// Her reach-out is narrated as what she said first, with when (upstream
+    /// `engine._reached_out`), and is not an assistant turn of the history.
+    func testHerReachOutIsNarratedAsWhatSheSaidFirst() async throws {
+        let eidolon = try await installedEidolon()
+        _ = try await say("おはよう", at: moment, on: eidolon)
+        let reach = try await eidolon.reachOutIfDue(
+            characterID: "mano",
+            provider: RecordingChatProvider(chunks: ["<ja>ねえ</ja><zh>喂</zh>"]),
+            hours: 6,
+            now: moment.addingTimeInterval(8 * 3600),
+            timeZone: tokyo
+        )
+        XCTAssertNotNil(reach)
+
+        let provider = try await say(
+            "そうなんだ",
+            at: moment.addingTimeInterval(8 * 3600 + 60),
+            on: eidolon
+        )
+        XCTAssertEqual(
+            provider.prompts.first?.last,
+            PromptMessage(
+                .user,
+                "（10月10日 01:53，你先给制作人发了：）<ja>ねえ</ja><zh>喂</zh>そうなんだ"
+            )
+        )
+        XCTAssertFalse(
+            provider.prompts.first?.contains(PromptMessage(.assistant, "<ja>ねえ</ja><zh>喂</zh>")) ?? true
+        )
+    }
+
+    /// "Last time we talked" is across conversations, not only this one: a new conversation
+    /// still knows when they last spoke (upstream `read_last_contact`).
+    func testLastContactIsAcrossConversations() async throws {
+        let eidolon = try await installedEidolon()
+        _ = try await say("おはよう", at: moment, on: eidolon)
+        let harsh = FixedJudge(judged: Judged(level: 0, outOfLine: true))
+        _ = try await say("ひどい", at: moment.addingTimeInterval(60), on: eidolon, judge: harsh)
+        _ = try await say("またひどい", at: moment.addingTimeInterval(120), on: eidolon, judge: harsh)
+        let ended = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertEqual(ended?.ended, true)
+        _ = try await eidolon.startConversation(
+            characterID: "mano",
+            now: moment.addingTimeInterval(3600)
+        )
+
+        let provider = try await say("元気？", at: moment.addingTimeInterval(3600), on: eidolon)
+        let system = provider.prompts.first?
+            .filter { $0.role == .system }
+            .map(\.content)
+            .joined(separator: "\n") ?? ""
+        XCTAssertTrue(system.contains("上次和制作人说话是 10月9日 17:55，"), system)
+    }
+
+    /// The end of a call that connected counts as the last contact (upstream's `calls`).
+    func testTheEndOfACallCountsAsLastContact() async throws {
+        let eidolon = try await installedEidolon()
+        _ = try await say("おはよう", at: moment, on: eidolon)
+        let current = try await eidolon.currentConversationID("mano")
+        let conversationID = try XCTUnwrap(current)
+        try eidolon.recordCallEnd(
+            conversationID: conversationID,
+            characterID: "mano",
+            at: moment.addingTimeInterval(1800)
+        )
+
+        let provider = try await say("元気？", at: moment.addingTimeInterval(3600), on: eidolon)
+        let system = provider.prompts.first?
+            .filter { $0.role == .system }
+            .map(\.content)
+            .joined(separator: "\n") ?? ""
+        XCTAssertTrue(system.contains("上次和制作人说话是 10月9日 18:23，"), system)
+    }
+
     func testStoppingKeepsWhatSheAlreadySaid() async throws {
         let eidolon = try await installedEidolon()
         let provider = RecordingChatProvider(

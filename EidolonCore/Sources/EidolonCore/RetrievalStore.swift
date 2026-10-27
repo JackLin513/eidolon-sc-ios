@@ -45,7 +45,11 @@ extension Eidolon {
         for id in episodeIDs {
             guard let episode = try contentDatabase().episode(id: id) else { continue }
             lines += ["", "## \(episode.category) / \(episode.source) /「\(episode.title)」"]
-            let siblings = try contentDatabase().episodeTitles(sourcesLike: episode.source)
+            let siblings = try contentDatabase().episodeTitles(
+                characterID: characterID,
+                category: episode.category,
+                source: episode.source
+            )
             if siblings.count > 1 {
                 lines.append("（\(episode.source)中你出场的剧情依次是：\(siblings.map { "「\($0)」" }.joined())）")
             }
@@ -66,7 +70,9 @@ extension Eidolon {
         embedder: (any EmbeddingProvider)?
     ) async throws -> [[Float]] {
         guard let embedder else { return entries.map { _ in [] } }
-        let model = (try? installedContentInfo()?.embeddingModel) ?? ""
+        // The vectors are kept under the embedder in use, so changing it never pairs an
+        // old model's cache with the new model's query vector.
+        let model = embedder.model
         let existing: [(String, Data)] = try await userQueue.read { db in
             try Row.fetchAll(
                 db,
@@ -210,7 +216,7 @@ extension Eidolon {
             if memory.sourceCharacterID == characterID {
                 lines.append("- \(memory.text)（\(when)，制作人对你说的）")
             } else {
-                let name = memory.sourceCharacterID.flatMap { names[$0] } ?? "别的偶像"
+                let name = memory.sourceCharacterID.flatMap { names[$0] } ?? "事务所的另一位偶像"
                 lines.append("- \(memory.text)（\(when)，制作人对\(name)说的，你是听\(name)说的："
                     + "提起时要用转述的口吻，例如「听\(name)说……」，不要说成是制作人亲口告诉你的）")
             }
@@ -256,12 +262,19 @@ extension ContentDatabase {
         }
     }
 
-    func episodeTitles(sourcesLike source: String) throws -> [String] {
+    /// The episodes of the same card or event she is cast in, in source order: her place
+    /// in the catalog, not every episode the source holds (upstream `corpus.catalog`).
+    func episodeTitles(characterID: String, category: String, source: String) throws -> [String] {
         try queue.read { db in
             try String.fetchAll(
                 db,
-                sql: "SELECT title FROM episodes WHERE source = ? ORDER BY id",
-                arguments: [source]
+                sql: """
+                    SELECT e.title FROM episodes e
+                    JOIN episode_cast c ON c.episode_id = e.id
+                    WHERE c.character_id = ? AND e.category = ? AND e.source = ?
+                    ORDER BY e.id
+                    """,
+                arguments: [characterID, category, source]
             )
         }
     }

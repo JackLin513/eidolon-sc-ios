@@ -41,6 +41,10 @@ enum Fixture {
         /// Extra `content` counts, e.g. a key that is not a database table.
         var extraContentCounts: [String: Int] = [:]
         var world: WorldJSON = .none
+        /// Gives mano a facts file whose headings skip a level.
+        var facts = false
+        /// Adds an episode in mano's card source that only hiori is cast in.
+        var siblingEpisode = false
     }
 
     static func makeBundle(in parent: URL, options: Options = Options()) throws -> URL {
@@ -74,6 +78,9 @@ enum Fixture {
             "idol_id": .int(1),
             "birthday": .string("04-25"),
         ]
+        if options.facts {
+            mano["facts"] = .string("characters/facts/mano.md")
+        }
         if options.includeStand {
             mano["stand"] = .object([
                 "default_outfit": .object([
@@ -132,6 +139,19 @@ enum Fixture {
             atomically: true,
             encoding: .utf8
         )
+        if options.facts {
+            let factsDirectory = charactersDirectory.appendingPathComponent("facts", isDirectory: true)
+            try FileManager.default.createDirectory(at: factsDirectory, withIntermediateDirectories: true)
+            try """
+                # 人物关系
+                ### 風野灯織
+                她认真又固执。
+                """.write(
+                to: factsDirectory.appendingPathComponent("mano.md"),
+                atomically: true,
+                encoding: .utf8
+            )
+        }
         let avatarsDirectory = charactersDirectory.appendingPathComponent("avatars", isDirectory: true)
         try FileManager.default.createDirectory(at: avatarsDirectory, withIntermediateDirectories: true)
         try Data([0xFF, 0xD8, 0xFF, 0xD9]).write(to: avatarsDirectory.appendingPathComponent("mano.jpg"))
@@ -177,6 +197,15 @@ enum Fixture {
             )
             try db.execute(sql: "INSERT INTO episode_cast(episode_id, character_id) VALUES ('e1', 'mano')")
             try db.execute(sql: "INSERT INTO episode_cast(episode_id, character_id) VALUES ('e2', 'hiori')")
+            if options.siblingEpisode {
+                try db.execute(
+                    sql: """
+                        INSERT INTO episodes(id, category, source, title, imported_from, imported_at)
+                        VALUES ('e3', 'P卡剧情', 'cards/mano/1', '别人的一话', 'csv', '2026-01-01T00:00:00Z')
+                        """
+                )
+                try db.execute(sql: "INSERT INTO episode_cast(episode_id, character_id) VALUES ('e3', 'hiori')")
+            }
             try db.execute(
                 sql: """
                     INSERT INTO episode_lines(episode_id, seq, speaker, ja, zh)
@@ -213,12 +242,13 @@ enum Fixture {
                 arguments: ["e2", 1, "灯織的段落", options.model, options.embedPassages ? vector(2) : Data()]
             )
         }
-        return [
-            "episodes": 2,
-            "episode_cast": 2,
+        let counts = [
+            "episodes": options.siblingEpisode ? 3 : 2,
+            "episode_cast": options.siblingEpisode ? 3 : 2,
             "episode_lines": 2,
             "episode_passages": 3,
         ]
+        return counts
     }
 
     /// A stand tree shaped like the exporter writes it: two outfits with three files

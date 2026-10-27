@@ -948,10 +948,41 @@ final class CallSessionTests: XCTestCase {
         XCTAssertEqual(traces.first?.trace.degradation.first, "通话结束：hung_up_by_producer")
     }
 
+    /// A call that connected and ended is a contact, whichever way it ended: "when did we
+    /// last talk" counts it (upstream's `calls` table).
+    func testTheEndOfACallIsKeptForLastContact() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([["<ja>あ</ja><zh>啊</zh>"]])
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("her answer") {
+            log.all.contains { event in
+                if case .segment = event { return true }
+                return false
+            }
+        }
+        try await waitFor("listening again") { await session.currentState() == .listening }
+        await session.hangUp()
+        try await waitFor("ended") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+
+        let characters = try await eidolon.userQueue.read { db in
+            try String.fetchAll(db, sql: "SELECT character_id FROM call_ends")
+        }
+        XCTAssertEqual(characters, ["mano"])
+    }
+
     /// The settings' numbers become limits; 0 is no limit on that dimension, as upstream
     /// reads its environment (`config.py`'s `_limit`).
-    func testZeroInTheSettingsMeansNoLimitOnThatDimension() {
-        XCTAssertEqual(
+    func testZeroInTheSettingsMeansNoLimitOnThatDimension() {        XCTAssertEqual(
             CallLimits(minutes: 0, turns: 0),
             CallLimits(duration: nil, turns: nil)
         )
