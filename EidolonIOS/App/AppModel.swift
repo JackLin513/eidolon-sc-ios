@@ -169,6 +169,7 @@ final class AppModel {
             reranker: rerankProvider,
             tracing: tracing,
             limits: chatSettings.callLimits,
+            historyTurns: chatSettings.historyTurns,
             reconnectDelay: debugReconnectDelay,
             now: { Date() }
         )
@@ -237,7 +238,7 @@ final class AppModel {
         await importBundleForDebuggingIfRequested()
         #endif
         do {
-            if let info = try await core.installedContentInfo() {
+            if let info = try await core.usableContentInfo() {
                 bundleInfo = info
                 try await load()
                 phase = .ready
@@ -245,6 +246,12 @@ final class AppModel {
                 nameUntitledConversations()
                 await catchUpReachOuts()
             } else {
+                // A bundle from another format or content schema is not run: the app asks
+                // for a new import rather than failing later or missing what it added.
+                if let stale = try await core.installedContentInfo() {
+                    errorMessage = "已安装的内容包是旧格式（格式 \(stale.formatVersion)，"
+                        + "内容库 \(stale.contentSchemaVersion)）。请重新导出并导入内容包。"
+                }
                 phase = .needsContentBundle
             }
         } catch {

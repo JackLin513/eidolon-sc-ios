@@ -290,6 +290,35 @@ final class ReplyScriptProvider: ChatProvider, @unchecked Sendable {
     }
 }
 
+/// A chat provider that says part of a reply and then waits to be cancelled: the call is
+/// hung up while the turn is still being answered.
+final class HeldReplyProvider: ChatProvider, @unchecked Sendable {
+    private let lock = NSLock()
+    private var said = false
+
+    var hasSaidPart: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return said
+    }
+
+    func stream(messages: [PromptMessage]) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield("<ja>まだ話して</ja><zh>还在说</zh>")
+            lock.lock()
+            said = true
+            lock.unlock()
+            let task = Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
+    }
+}
+
 /// A segment emotion judge answering each call's segments from a script, and noting what
 /// it was asked.
 actor ScriptedEmotionJudge: SegmentEmotionJudge {
@@ -418,7 +447,8 @@ final class CallSessionTests: XCTestCase {
         playback: FakePlayback = FakePlayback(),
         judge: (any JudgeProvider)? = nil,
         emotionJudge: (any SegmentEmotionJudge)? = nil,
-        limits: CallLimits = .standard
+        limits: CallLimits = .standard,
+        historyTurns: Int = 20
     ) async throws -> (CallSession, EventLog, FakeCapture) {
         let capture = FakeCapture()
         let setup = CallSetup(
@@ -431,6 +461,7 @@ final class CallSessionTests: XCTestCase {
             judge: judge,
             emotionJudge: emotionJudge,
             limits: limits,
+            historyTurns: historyTurns,
             reconnectDelay: .milliseconds(10)
         )
         let session = try await eidolon.beginCall(characterID: "mano", setup: setup)
@@ -457,6 +488,20 @@ final class CallSessionTests: XCTestCase {
     }
 
     private func states(_ log: EventLog) -> [CallState] { log.states() }
+
+    /// How many rows `table` holds in the user library; the table names come from the
+    /// tests themselves, never from what is being tested.
+    private func rowCount(_ table: String, on eidolon: Eidolon) async throws -> Int {
+        try await eidolon.userQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM \(table)") ?? 0
+        }
+    }
+
+    /// The traces a turn left: the call's own ending is traced too, without a prompt.
+    private func turnTraceCount(on eidolon: Eidolon) async throws -> Int {
+        try await eidolon.turnTraces().filter { !$0.trace.prompts.isEmpty }.count
+    }
+
     func testACallAnswersWhatItHears() async throws {
         let eidolon = try await installedEidolon()
         let recognition = FakeRecognition([.hang])
@@ -1508,6 +1553,132 @@ final class CallSessionTests: XCTestCase {
         }
         XCTAssertEqual(messages, 0)
         await session.hangUp()
+    }
+
+    /// A line the recognizer heard that is over the limit is refused with the limit, and
+    /// the call goes on as after any turn that could not be answered.
+    func testTheCallRefusesAnOverLongLineWithTheLimit() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([["<ja>うん</ja><zh>嗯</zh>"]])
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say(String(repeating: "あ", count: 2001))
+        try await waitFor("the rejection shown") {
+            log.all.contains { event in
+                guard case let .failed(message) = event else { return false }
+                return message == "这句话太长了，最多 2000 字。"
+            }
+        }
+        try await waitFor("listening again") { await session.currentState() == .listening }
+        let messages = try await rowCount("messages", on: eidolon)
+        XCTAssertEqual(messages, 0)
+        await session.hangUp()
+    }
+
+    /// The call takes the history the settings name, as a text turn does.
+    func testTheCallsHistoryTurnsReachTheTurn() async throws {
+        let eidolon = try await installedEidolon()
+        for turn in 1...2 {
+            let earlier = RecordingChatProvider(
+                chunks: ["<ja>返事\(turn)</ja><zh>回复\(turn)</zh>"]
+            )
+            for try await _ in eidolon.sendTurn(
+                characterID: "mano",
+                text: "質問\(turn)",
+                provider: earlier
+            ) {}
+        }
+
+        let recognition = FakeRecognition([.hang])
+        let provider = RecordingChatProvider(chunks: ["<ja>うん</ja><zh>嗯</zh>"])
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            historyTurns: 1
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("もしもし")
+        try await waitFor("answered") {
+            let answered = (try? await eidolon.currentConversation(characterID: "mano")) ?? nil
+            return answered?.messages.count == 6
+        }
+
+        let prompt = try XCTUnwrap(provider.prompts.first)
+        let history = Array(prompt.dropFirst(2).dropLast(2))
+        XCTAssertEqual(history, [
+            PromptMessage(.user, "質問2"),
+            PromptMessage(.assistant, "<ja>返事2</ja><zh>回复2</zh>"),
+        ])
+        await session.hangUp()
+    }
+
+    /// Hanging up while she is still thinking drops the turn as upstream's `left` does:
+    /// what the producer said is not written, she says nothing, and nothing moves.
+    func testHangingUpWhileSheThinksLeavesNoTurn() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = RecordingChatProvider(
+            chunks: ["<ja>うん</ja><zh>嗯</zh>"],
+            delay: .seconds(5)
+        )
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("thinking") { await session.currentState() == .thinking }
+        await session.hangUp()
+        try await waitFor("ended") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+        // The cancelled turn has to notice; give it time to write anything it would.
+        try await Task.sleep(for: .milliseconds(300))
+
+        let messages = try await rowCount("messages", on: eidolon)
+        let affinities = try await rowCount("affinities", on: eidolon)
+        let traces = try await turnTraceCount(on: eidolon)
+        XCTAssertEqual(messages, 0, "the user's line and her reply are not written")
+        XCTAssertEqual(affinities, 0, "affinity does not move")
+        XCTAssertEqual(traces, 0, "the dropped turn leaves no trace")
+    }
+
+    /// The same when she had already started saying the reply: a half-said answer is not
+    /// a turn.
+    func testHangingUpWhileSheIsMidReplyLeavesNoTurn() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = HeldReplyProvider()
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("her first words") { provider.hasSaidPart }
+        try await Task.sleep(for: .milliseconds(100))
+        await session.hangUp()
+        try await waitFor("ended") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+        try await Task.sleep(for: .milliseconds(300))
+
+        let messages = try await rowCount("messages", on: eidolon)
+        let affinities = try await rowCount("affinities", on: eidolon)
+        let traces = try await turnTraceCount(on: eidolon)
+        XCTAssertEqual(messages, 0)
+        XCTAssertEqual(affinities, 0)
+        XCTAssertEqual(traces, 0)
     }
 
     func testWhatSheHearsWhileSheSpeaksIsAnsweredAfterwards() async throws {

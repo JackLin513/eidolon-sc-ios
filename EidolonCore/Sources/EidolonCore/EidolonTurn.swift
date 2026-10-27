@@ -1,6 +1,21 @@
 import Foundation
 import GRDB
 
+/// What the producer's line has to be for a turn to take it (upstream `engine.turn`).
+public enum TurnInput {
+    /// Upstream's `MAX_INPUT_LENGTH`: a longer line is refused rather than sent.
+    public static let maxLength = 2000
+
+    /// The line as the turn takes it: trimmed, and refused when it is blank or longer
+    /// than `maxLength`, with what the producer reads.
+    public static func checked(_ text: String) throws -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw EidolonError.blankInput }
+        guard trimmed.count <= maxLength else { throw EidolonError.inputTooLong(maxLength) }
+        return trimmed
+    }
+}
+
 public enum TurnEvent: Sendable {
     case delta(segment: Int, language: ReplyLanguage, text: String)
     /// Her Japanese as it is to be voiced, delivery cues kept (a call voices it per
@@ -167,6 +182,9 @@ extension Eidolon {
         voicedBy model: String?,
         emit: (TurnEvent) -> Void
     ) async throws -> TurnRecord {
+        // Nothing is asked or written of a line that is blank or too long (upstream
+        // `engine.turn` rejects it before the turn begins).
+        let text = try TurnInput.checked(text)
         let turnStarted = Date()
         let characters = try characters()
         guard let character = characters.first(where: { $0.id == characterID }) else {
@@ -398,6 +416,9 @@ extension Eidolon {
         } catch {
             failure = error
         }
+        // A provider whose stream cancelled quietly leaves the loop through its end, not
+        // through an error: the turn was still stopped by the producer.
+        if Task.isCancelled { stopped = true }
 
         // What this turn can be gone over by, later: what she was asked, what the judge
         // wrote, what retrieval found and what the fallbacks cost (ADR-0012).
@@ -431,6 +452,13 @@ extension Eidolon {
         if let failure {
             recordTrace(existingConversation, error: "对话模型失败：\(failure.localizedDescription)")
             throw failure
+        }
+        // A call's turn cancelled by a hang-up is one the producer left (upstream's
+        // `left`): nothing of it is written — not the line, not her half-said reply, not
+        // the affinity, not a trace. A text turn's stop is not the same: it keeps what
+        // she already said (upstream `engine.turn`'s `stop`).
+        if call != nil, stopped {
+            throw CancellationError()
         }
         let segments = parser.segments.filter { !($0.ja.isEmpty && $0.zh.isEmpty) }
         if segments.isEmpty && !stopped {
