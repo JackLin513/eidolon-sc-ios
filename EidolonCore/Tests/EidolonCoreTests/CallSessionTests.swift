@@ -791,7 +791,7 @@ final class CallSessionTests: XCTestCase {
         let events = try await eidolon.userQueue.read { db in
             try String.fetchAll(db, sql: "SELECT kind FROM conversation_events")
         }
-        XCTAssertEqual(events, ["she_hung_up"])
+        XCTAssertEqual(events, ["hung_up"], "only her own hang-up is written into the conversation")
 
         // The call takes no new turns once it has ended.
         recognition.say("もしもし")
@@ -867,7 +867,9 @@ final class CallSessionTests: XCTestCase {
         await session.hangUp()
     }
 
-    func testHangingUpStopsTheVoiceAndRecordsTheEvent() async throws {
+    /// Hanging up stops the voice; the producer's own hang-up is not a conversation event
+    /// (upstream writes only her own hang-up), though the trace says why the call ended.
+    func testHangingUpStopsTheVoiceWithoutWritingAnEvent() async throws {
         let eidolon = try await installedEidolon()
         let recognition = FakeRecognition([.hang])
         let provider = ReplyScriptProvider([["<ja>あ</ja><zh>啊</zh>"]])
@@ -896,7 +898,9 @@ final class CallSessionTests: XCTestCase {
         let events = try await eidolon.userQueue.read { db in
             try String.fetchAll(db, sql: "SELECT kind FROM conversation_events")
         }
-        XCTAssertEqual(events, ["hung_up"])
+        XCTAssertEqual(events, [])
+        let traces = try await eidolon.turnTraces()
+        XCTAssertEqual(traces.first?.trace.degradation.first, "通话结束：hung_up_by_producer")
     }
 
     /// The settings' numbers become limits; 0 is no limit on that dimension, as upstream
@@ -950,6 +954,10 @@ final class CallSessionTests: XCTestCase {
         XCTAssertEqual(traces.first?.trace.degradation.count, 2)
         let conversation = try await eidolon.currentConversation(characterID: "mano")
         XCTAssertNil(conversation)
+        let events = try await eidolon.userQueue.read { db in
+            try String.fetchAll(db, sql: "SELECT kind FROM conversation_events")
+        }
+        XCTAssertEqual(events, [], "the time limit is traced, not written into the conversation")
     }
 
     func testAVoiceServiceThatFailsBeforeATurnNeverConnects() async throws {
@@ -977,6 +985,10 @@ final class CallSessionTests: XCTestCase {
         )
         let conversation = try await eidolon.currentConversation(characterID: "mano")
         XCTAssertNil(conversation)
+        let events = try await eidolon.userQueue.read { db in
+            try String.fetchAll(db, sql: "SELECT kind FROM conversation_events")
+        }
+        XCTAssertEqual(events, [], "a call that never connected leaves no conversation event")
     }
 
     func testAVoiceServiceThatFailsMidCallBreaksItOff() async throws {
@@ -1013,7 +1025,7 @@ final class CallSessionTests: XCTestCase {
         let events = try await eidolon.userQueue.read { db in
             try String.fetchAll(db, sql: "SELECT kind FROM conversation_events")
         }
-        XCTAssertEqual(events, ["call_dropped"])
+        XCTAssertEqual(events, [], "a dropped call is traced, not written into the conversation")
 
         let traces = try await eidolon.turnTraces()
         XCTAssertEqual(
@@ -1051,7 +1063,7 @@ final class CallSessionTests: XCTestCase {
         let events = try await eidolon.userQueue.read { db in
             try String.fetchAll(db, sql: "SELECT kind FROM conversation_events")
         }
-        XCTAssertEqual(events, ["call_turn_limit"])
+        XCTAssertEqual(events, [], "the turn limit is traced, not written into the conversation")
 
         // The call takes no new turns once it has ended.
         recognition.say("もう一回")
@@ -1309,23 +1321,33 @@ final class CallSessionTests: XCTestCase {
         await session.hangUp()
     }
 
-    func testAHangUpIsRecordedButStaysOutOfThePrompt() async throws {
+    /// Her own hang-up is recorded where the call ended, after the last turn, and stays out
+    /// of the prompt: the chat's history reads only turns.
+    func testHerHangUpIsRecordedAfterTheLastTurnButStaysOutOfThePrompt() async throws {
         let eidolon = try await installedEidolon()
         let recognition = FakeRecognition([.hang])
-        let provider = ReplyScriptProvider([["<ja>うん</ja><zh>嗯</zh>"]])
-        let (session, _, _) = try await begin(
+        let provider = ReplyScriptProvider([
+            ["<ja>あ</ja><zh>啊</zh>"],
+            ["<ja>い</ja><zh>呀</zh>"],
+        ])
+        let (session, log, _) = try await begin(
             on: eidolon,
             provider: provider,
-            recognition: recognition
+            recognition: recognition,
+            judge: FixedJudge(judged: Judged(level: 0, outOfLine: true))
         )
-        try await waitFor("listening") { await session.currentState() == .listening }
-        recognition.say("ねえ")
-        try await waitFor("answered") {
-            let answered = (try? await eidolon.currentConversation(characterID: "mano")) ?? nil
-            return answered?.messages.count == 2
+        let segments: @Sendable () -> Int = {
+            log.all.filter { event in
+                if case .segment = event { return true }
+                return false
+            }.count
         }
-        await session.hangUp()
-        try await waitFor("ended") {
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ひどい")
+        try await waitFor("the first answer") { segments() >= 1 }
+        try await waitFor("listening after the first") { await session.currentState() == .listening }
+        recognition.say("またひどい")
+        try await waitFor("ended by her") {
             if case .ended = await session.currentState() { return true }
             return false
         }
@@ -1335,9 +1357,73 @@ final class CallSessionTests: XCTestCase {
         let events = try await eidolon.conversationEvents(conversationID: conversationID)
         XCTAssertEqual(events.map(\.kind), ["hung_up"])
 
+        let record = try await eidolon.conversationRecord(conversationID: conversationID)
+        XCTAssertEqual(record.count, 5, "the call event is not a turn")
+        guard case let .event(event) = record.last else {
+            return XCTFail("her hang-up is the last thing in the record")
+        }
+        XCTAssertEqual(event.kind, "hung_up")
+
         let timeline = try await eidolon.timeline(conversationID: conversationID)
-        XCTAssertEqual(timeline.count, 2, "the call event is not a turn")
+        XCTAssertEqual(timeline.count, 4, "the call event is not a turn")
         XCTAssertFalse(timeline.contains { $0.text?.contains("hung_up") == true })
+    }
+
+    /// Coming back to the chat from a call reads the turns, the hang-up, the affinity and
+    /// the cooldown it left, with nothing carried over from before the call
+    /// (spec「返回刷新」).
+    func testTheChatSeesWhatTheCallLeftWhenItComesBack() async throws {
+        let eidolon = try await installedEidolon()
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO affinities(character_id, value, cooling, updated_at, gained_today, gained_on)
+                    VALUES ('mano', 10.5, 0, ?, 0, NULL)
+                    """,
+                arguments: [Eidolon.timestamp(Date())]
+            )
+        }
+        let before = try await eidolon.affinityStatus(characterID: "mano")
+        XCTAssertEqual(before.tier, .cold)
+        XCTAssertFalse(before.cooling)
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>あ</ja><zh>啊</zh>"],
+            ["<ja>い</ja><zh>呀</zh>"],
+        ])
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            judge: FixedJudge(judged: Judged(level: 0, outOfLine: true))
+        )
+        let segments: @Sendable () -> Int = {
+            log.all.filter { event in
+                if case .segment = event { return true }
+                return false
+            }.count
+        }
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ひどい")
+        try await waitFor("the first answer") { segments() >= 1 }
+        try await waitFor("listening after the first") { await session.currentState() == .listening }
+        recognition.say("またひどい")
+        try await waitFor("ended by her") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+
+        // What the chat page reads when it comes back: the turns, the event and the affinity.
+        let conversation = try await eidolon.currentConversation(characterID: "mano")
+        let conversationID = try XCTUnwrap(conversation?.id)
+        XCTAssertEqual(conversation?.messages.count, 4, "the call's turns are in the chat")
+        let events = try await eidolon.conversationEvents(conversationID: conversationID)
+        XCTAssertEqual(events.map(\.kind), ["hung_up"])
+        let after = try await eidolon.affinityStatus(characterID: "mano")
+        XCTAssertNotEqual(after, before, "the call's turns moved her")
+        XCTAssertEqual(after.tier, .cold)
+        XCTAssertTrue(after.cooling)
+        XCTAssertNotNil(after.cooldownUntil)
     }
 
     func testThePrefetchedSegmentIsDroppedOnHangUp() async throws {

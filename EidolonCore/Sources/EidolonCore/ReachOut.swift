@@ -158,7 +158,7 @@ extension Eidolon {
                 arguments: [conversationID]
             ).contains { row in
                 let stamp: String = row["created_at"]
-                return ISO8601DateFormatter().date(from: stamp).map { $0 >= contact } ?? false
+                return Eidolon.parseTimestamp(stamp).map { $0 >= contact } ?? false
             }
         }
     }
