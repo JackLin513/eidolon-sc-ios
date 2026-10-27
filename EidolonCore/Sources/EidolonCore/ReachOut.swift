@@ -16,12 +16,39 @@ public enum ReachOutRules {
     /// producer change it.
     public static let defaultHours: Double = 6
 
+    /// How long after the last contact she may still reach out (upstream `WINDOW`).
+    static let window: TimeInterval = 7 * 86_400
+
+    /// When in the producer's day she does not reach out: from the first to the second
+    /// (upstream `NIGHT`). A time that falls there is put off to the morning, which in a
+    /// foreground-only app means the next time the app is opened after it.
+    static let nightStartHour = 22
+    static let nightEndHour = 8
+
+    /// The tiers she reaches out in: trust and above. Cold and distant are not
+    /// (upstream `INTERVALS`).
+    static func reachesOut(_ tier: AffinityTier) -> Bool {
+        switch tier {
+        case .trust, .close, .intimate: true
+        case .cold, .distant: false
+        }
+    }
+
+    /// Whether `moment` falls in the night of `timeZone`.
+    static func isNight(_ moment: Date, in timeZone: TimeZone) -> Bool {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let hour = calendar.component(.hour, from: moment)
+        return hour >= nightStartHour || hour < nightEndHour
+    }
+
     /// Added where what retrieval found would go, as upstream tells her how to reach out
     /// (upstream `REACH_OUT_RULES`), word for word.
     static let rules = """
         # 先开口
         制作人这会儿没在和你说话，你想先给他发几句。
         - 由头你自己挑：先接着你们最近聊过的事，或者他最近的近况；其次是你这周的工作（如果有）；再其次才是现在的时间、他的生日。
+        - 别人的生日、节假日、往年今天的演出不拿来当由头；组合伙伴的生日可以顺口提一句。
         - 不要只发一句空的问候，比如「早安」「在吗」「想你了」，要有具体想说的事。
         - 写一到两段。
         - 别和你前几次先开口时用一样的开头、一样的由头。
@@ -51,8 +78,13 @@ extension Eidolon {
         guard let conversationID = try currentConversationID(characterID) else { return nil }
         guard try !isEnded(conversationID: conversationID) else { return nil }
         let affinity = try readAffinity(characterID: characterID, now: now)
-        guard !affinity.cooling else { return nil }
+        guard !affinity.cooling, ReachOutRules.reachesOut(affinity.tier) else { return nil }
+        // Their days go by the profile's time zone, when they set one.
+        let producer = try producerProfile()
+        let zone = producer.timezone.flatMap(TimeZone.init(identifier:)) ?? timeZone
+        guard !ReachOutRules.isNight(now, in: zone) else { return nil }
         guard let contact = try lastContact(conversationID: conversationID) else { return nil }
+        guard now.timeIntervalSince(contact) <= ReachOutRules.window else { return nil }
         guard now.timeIntervalSince(contact) > hours * 3600 else { return nil }
         guard try !reachedOut(since: contact, conversationID: conversationID) else { return nil }
 
@@ -61,15 +93,14 @@ extension Eidolon {
             return nil
         }
         let world = try loadWorld()
-        let producer = try producerProfile()
-        let zone = producer.timezone.flatMap(TimeZone.init(identifier:)) ?? timeZone
         let history = try loadHistory(conversationID: conversationID, turns: 20)
         let todayLines = TodayPrompt.lines(
             now: now,
             character: character,
             characters: characters,
             herLives: world?.livesOf(character.name) ?? [],
-            holidays: try? holidayTable()
+            holidays: try? holidayTable(),
+            unitMates: world?.unitMates(of: character.name) ?? []
         )
         let nowText = NowPrompt.text(
             now: now,

@@ -234,7 +234,7 @@ struct ChatView: View {
                     Text(ReplyCues.shown(segment.ja))
                         .font(.body)
                     if !segment.zh.isEmpty {
-                        Text(segment.zh)
+                        Text(ReplyCues.shown(segment.zh))
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }

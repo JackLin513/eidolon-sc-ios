@@ -329,4 +329,117 @@ final class TurnTests: XCTestCase {
         XCTAssertEqual(messages.count, 2)
         XCTAssertFalse(messages[1].segments.isEmpty)
     }
+
+    /// A reply stopped before she says anything is not recorded at all: no empty bubble,
+    /// and no blank assistant line in the history (upstream raises `EmptyReply` before the
+    /// turn is kept).
+    func testStoppingBeforeAnythingIsSaidLeavesNoTurn() async throws {
+        let eidolon = try await installedEidolon()
+        let provider = SilentChatProvider()
+
+        let stream = eidolon.sendTurn(characterID: "mano", text: "やあ", provider: provider)
+        let consuming = Task {
+            for try await _ in stream {}
+        }
+        for _ in 0..<100 where !provider.started {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(provider.started, "her stream was asked")
+        consuming.cancel()
+        _ = try? await consuming.value
+
+        let snapshot = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertNil(snapshot, "the line and the empty reply are both left out")
+    }
+
+    /// An answer with nothing she could say reads as upstream's `FAILED`, not as a parse
+    /// error of the app's own.
+    func testAnEmptyReplyShowsTheUpstreamFailure() async throws {
+        let eidolon = try await installedEidolon()
+        let provider = RecordingChatProvider(chunks: [])
+
+        do {
+            for try await _ in eidolon.sendTurn(characterID: "mano", text: "やあ", provider: provider) {
+                XCTFail("an empty reply is not a turn")
+            }
+            XCTFail("expected the turn to fail")
+        } catch let error as EidolonError {
+            XCTAssertEqual(error, .turnFailed)
+            XCTAssertEqual(error.localizedDescription, "角色暂时无法回复，请稍后再试。")
+        }
+
+        let snapshot = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertNil(snapshot)
+    }
+
+    /// A model that fails reads the same: upstream tells the producer `FAILED` and keeps
+    /// the details in the server log, as here they stay in the trace.
+    func testAModelFailureShowsTheUpstreamFailure() async throws {
+        let eidolon = try await installedEidolon()
+        let provider = RecordingChatProvider(
+            chunks: [],
+            failure: ChatProviderError.status(500, "boom")
+        )
+
+        do {
+            for try await _ in eidolon.sendTurn(characterID: "mano", text: "やあ", provider: provider) {
+                XCTFail("a failed model is not a turn")
+            }
+            XCTFail("expected the turn to fail")
+        } catch let error as EidolonError {
+            XCTAssertEqual(error, .turnFailed)
+            XCTAssertEqual(error.localizedDescription, "角色暂时无法回复，请稍后再试。")
+        }
+
+        let snapshot = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertNil(snapshot)
+        let trace = try await eidolon.turnTraces().first
+        XCTAssertTrue(trace?.trace.error?.contains("对话模型失败") == true)
+    }
+
+    /// The 1.3 MB `world.json` is read and parsed once, not on every turn: the next turn
+    /// still has the world even after the file on disk was broken.
+    func testWorldSettingIsReadOnceAndReused() async throws {
+        let eidolon = try Eidolon(location: .init(root: root.appendingPathComponent("app")))
+        var options = Fixture.Options()
+        options.world = .valid
+        try await eidolon.install(bundleAt: try Fixture.makeBundle(in: root, options: options))
+
+        let first = RecordingChatProvider(chunks: ["<ja>うん</ja><zh>嗯</zh>"])
+        for try await _ in eidolon.sendTurn(characterID: "mano", text: "やあ", provider: first) {}
+        XCTAssertTrue(
+            first.prompts.first?.map(\.content).joined().contains("# 世界设定") ?? false
+        )
+
+        let world = eidolon.location.contentDirectory
+            .appendingPathComponent("characters/world.json")
+        try Data("{".utf8).write(to: world)
+
+        let second = RecordingChatProvider(chunks: ["<ja>うん</ja><zh>嗯</zh>"])
+        for try await _ in eidolon.sendTurn(characterID: "mano", text: "元気？", provider: second) {}
+        XCTAssertTrue(
+            second.prompts.first?.map(\.content).joined().contains("# 世界设定") ?? false,
+            "the world was not read again"
+        )
+    }
+}
+
+/// A provider that never answers and says when it was asked: the reply can be stopped
+/// before its first segment.
+final class SilentChatProvider: ChatProvider, @unchecked Sendable {
+    private let lock = NSLock()
+    private var asked = false
+
+    var started: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return asked
+    }
+
+    func stream(messages: [PromptMessage]) -> AsyncThrowingStream<String, Error> {
+        lock.lock()
+        asked = true
+        lock.unlock()
+        return AsyncThrowingStream { _ in }
+    }
 }

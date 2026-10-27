@@ -259,4 +259,69 @@ final class MemoryTests: XCTestCase {
         let memories = try await eidolon.memories()
         XCTAssertTrue(memories.isEmpty)
     }
+
+    /// The producer can forget one memory, with the vector that would have found it; one
+    /// already gone is not an error (upstream `Memory.delete`).
+    func testAMemoryCanBeDeleted() async throws {
+        let eidolon = try await installedEidolon()
+        try await addMemory("a", "制作人养了一只猫", on: eidolon)
+        try await addMemory("b", "制作人喜欢咖啡", on: eidolon)
+
+        let deleted = try await eidolon.deleteMemory(id: "a")
+        XCTAssertTrue(deleted)
+        let kept = try await eidolon.memories()
+        XCTAssertEqual(kept.map(\.text), ["制作人喜欢咖啡"])
+        let vectors = try await eidolon.userQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM memory_vectors") ?? 0
+        }
+        XCTAssertEqual(vectors, 1)
+
+        let again = try await eidolon.deleteMemory(id: "a")
+        XCTAssertFalse(again)
+    }
+
+    /// Clearing takes them all, including what earlier turns are still writing down
+    /// (upstream `Memory.clear`).
+    func testAllMemoriesCanBeCleared() async throws {
+        let eidolon = try await installedEidolon()
+        try await addMemory("a", "制作人养了一只猫", on: eidolon)
+        try await addMemory("b", "制作人喜欢咖啡", on: eidolon)
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO pending_jobs(kind, conversation_id, message_id, created_at)
+                    VALUES ('memory', NULL, NULL, '2026-10-27T12:00:00.000000Z')
+                    """
+            )
+        }
+
+        try await eidolon.clearMemories()
+
+        let left = try await eidolon.memories()
+        XCTAssertTrue(left.isEmpty)
+        let vectors = try await eidolon.userQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM memory_vectors") ?? 0
+        }
+        XCTAssertEqual(vectors, 0)
+        let jobs = try await pendingJobs(eidolon)
+        XCTAssertEqual(jobs, 0)
+    }
+
+    private func addMemory(_ id: String, _ text: String, on eidolon: Eidolon) async throws {
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO memories(id, source_character_id, text, created_at)
+                    VALUES (?, 'mano', ?, '2026-10-27T12:00:00.000000Z')
+                    """,
+                arguments: [id, text]
+            )
+            try db.execute(
+                sql: """
+                    INSERT INTO memory_vectors(memory_id, model, embedding) VALUES (?, 'test', ?)
+                    """,
+                arguments: [id, Data([0, 0, 0, 0])]
+            )
+        }
+    }
 }

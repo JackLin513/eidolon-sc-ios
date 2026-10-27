@@ -185,7 +185,6 @@ extension Eidolon {
         // Nothing is asked or written of a line that is blank or too long (upstream
         // `engine.turn` rejects it before the turn begins).
         let text = try TurnInput.checked(text)
-        let turnStarted = Date()
         let characters = try characters()
         guard let character = characters.first(where: { $0.id == characterID }) else {
             throw EidolonError.invalidContent("找不到角色 \(characterID)")
@@ -308,7 +307,8 @@ extension Eidolon {
             character: character,
             characters: characters,
             herLives: world?.livesOf(character.name) ?? [],
-            holidays: try? holidayTable()
+            holidays: try? holidayTable(),
+            unitMates: world?.unitMates(of: character.name) ?? []
         )
         let nowText = NowPrompt.text(
             now: now,
@@ -451,7 +451,8 @@ extension Eidolon {
 
         if let failure {
             recordTrace(existingConversation, error: "对话模型失败：\(failure.localizedDescription)")
-            throw failure
+            // What the producer reads is upstream's `FAILED`; the details stay in the trace.
+            throw EidolonError.turnFailed
         }
         // A call's turn cancelled by a hang-up is one the producer left (upstream's
         // `left`): nothing of it is written — not the line, not her half-said reply, not
@@ -461,13 +462,20 @@ extension Eidolon {
             throw CancellationError()
         }
         let segments = parser.segments.filter { !($0.ja.isEmpty && $0.zh.isEmpty) }
-        if segments.isEmpty && !stopped {
-            recordTrace(existingConversation, error: "她说的话是空的")
-            throw ChatProviderError.invalidResponse("她说的话是空的")
+        // Stopped before she said anything: there is no reply to keep, and upstream
+        // records none — not an empty bubble, not a blank assistant message in the
+        // history (upstream raises `EmptyReply` before `_keep`).
+        if segments.isEmpty, stopped {
+            throw CancellationError()
         }
-        // Her reply is stamped when it is written, as upstream's `_now()` does, measured
-        // from the turn's own moment so a turn simulated on an injected clock stays on it.
-        let replyAt = now.addingTimeInterval(Date().timeIntervalSince(turnStarted))
+        if segments.isEmpty {
+            recordTrace(existingConversation, error: "她说的话是空的")
+            throw EidolonError.turnFailed
+        }
+        // Her reply is stamped a microsecond after the question, in the turn's own moment:
+        // the two rows of a turn stay in the order they were written, and a turn simulated
+        // on an injected clock stays on it rather than drifting by how long the model took.
+        let replyAt = now.addingTimeInterval(0.000001)
         let recorded = try recordTurn(
             conversationID: existingConversation,
             characterID: characterID,
@@ -493,6 +501,7 @@ extension Eidolon {
         nameConversationIfDue(
             conversationID: recorded.conversationID,
             characterID: characterID,
+            turn: recorded.turn,
             provider: provider
         )
         return TurnRecord(
@@ -659,6 +668,8 @@ extension Eidolon {
         var conversationID: String
         var affinity: Affinity
         var userMessageID: String
+        /// Which turn of the conversation this was, counting from 1.
+        var turn: Int
     }
 
     private func recordTurn(
@@ -696,6 +707,16 @@ extension Eidolon {
                     """,
                 arguments: [userID, conversationID, userText, stamp]
             )
+            // The turn this is, after the line was written: the third is the one that
+            // names the conversation (upstream `titles.py`).
+            let turn = try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM messages
+                    WHERE conversation_id = ? AND role = 'user'
+                    """,
+                arguments: [conversationID]
+            ) ?? 0
 
             // Affinity changes as the turn is recorded, and only then.
             let before = try Self.readAffinity(db, characterID: characterID, now: now)
@@ -765,16 +786,26 @@ extension Eidolon {
                     arguments: [conversationID, endedStamp]
                 )
             }
-            return RecordedTurn(conversationID: conversationID, affinity: after, userMessageID: userID)
+            return RecordedTurn(
+                conversationID: conversationID,
+                affinity: after,
+                userMessageID: userID,
+                turn: turn
+            )
         }
     }
 
     // MARK: - Bundle content
 
     func loadWorld() throws -> WorldSetting? {
+        // Parsed once for the installed bundle and kept: every turn reads it, and it is a
+        // 1.3 MB file, not something to parse on the way to the first token.
+        if worldCached { return cachedWorld }
         let url = location.contentDirectory.appendingPathComponent("characters/world.json")
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return try WorldSetting(json: data)
+        let world = try (try? Data(contentsOf: url)).map { try WorldSetting(json: $0) }
+        cachedWorld = world
+        worldCached = true
+        return world
     }
 
     public func producerProfile() throws -> ProducerProfile {
