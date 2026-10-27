@@ -8,6 +8,9 @@ public protocol EmbeddingProvider: Sendable {
 }
 
 public protocol RerankProvider: Sendable {
+    /// The model the service runs: what counts as relevant enough depends on it
+    /// (upstream `rerank.KNOWN_THRESHOLDS`).
+    var model: String { get }
     /// Every document's relevance to `query`, best first.
     func rerank(query: String, documents: [String]) async throws -> [(index: Int, score: Double)]
 }
@@ -114,6 +117,8 @@ public struct SiliconFlowRerank: RerankProvider {
         self.config = config
         self.session = session
     }
+
+    public var model: String { config.model }
 
     public func rerank(query: String, documents: [String]) async throws -> [(index: Int, score: Double)] {
         guard !documents.isEmpty else { return [] }

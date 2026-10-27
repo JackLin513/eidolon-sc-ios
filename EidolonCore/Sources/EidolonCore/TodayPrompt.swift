@@ -16,17 +16,17 @@ public enum TodayPrompt {
     }
 
     /// What `character` is told of the day it is in Tokyo at `now`: her birthday, the
-    /// birthdays of the others among `characters` in idol order — those of her `unitMates`
-    /// apart from the rest, which she is only to know of — the holiday, each if it is the
-    /// day; then each of the days of `herLives` (`WorldSetting.livesOf`) on this day in a
-    /// year before, earliest first.
+    /// birthdays of the others among `characters` in idol order — those of her unit mates
+    /// (`unitMates`, `WorldSetting.unitMates`) apart from the rest, which she is only to
+    /// know of — the holiday, each if it is the day; then each of the days of `herLives`
+    /// (`WorldSetting.livesOf`) on this day in a year before, earliest first.
     public static func lines(
         now: Date,
         character: CharacterConfig,
         characters: [CharacterConfig],
+        unitMates: [String] = [],
         herLives: [(WorldSetting.Live, [WorldSetting.LiveDay])],
-        holidays: HolidayTable? = nil,
-        unitMates: Set<String> = []
+        holidays: HolidayTable? = nil
     ) -> [String] {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = tokyo
@@ -48,13 +48,13 @@ public enum TodayPrompt {
             }
             .map(\.name)
         let mates = others.filter { unitMates.contains($0) }
+        let rest = others.filter { !unitMates.contains($0) }
         if !mates.isEmpty {
             lines.append(
                 "今天是你的组合伙伴\(mates.joined(separator: "、"))的生日。可以顺口提一句，"
                     + "不要替她们向制作人要祝福，也不要催制作人做什么。"
             )
         }
-        let rest = others.filter { !unitMates.contains($0) }
         if !rest.isEmpty {
             lines.append(
                 "今天是\(rest.joined(separator: "、"))的生日。"

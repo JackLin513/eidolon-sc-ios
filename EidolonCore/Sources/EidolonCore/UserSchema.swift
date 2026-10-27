@@ -4,7 +4,7 @@ import GRDB
 /// The writable user library (ADR-0002). Its schema evolves with the app, not
 /// with the content bundle, and is therefore managed by GRDB migrations.
 enum UserSchema {
-    static let version = 5
+    static let version = 6
 
     static func migrate(_ dbQueue: DatabaseQueue) throws {
         var migrator = DatabaseMigrator()
@@ -151,6 +151,20 @@ enum UserSchema {
                 sql: "UPDATE affinities SET updated_at = ? WHERE updated_at IS NULL OR updated_at = ''",
                 arguments: [now]
             )
+        }
+        migrator.registerMigration("v6") { db in
+            // When a call that connected ended, so that "when did we last talk" counts it
+            // as upstream's `calls` table does (its `connected_at` plus `duration_s`).
+            try db.execute(sql: """
+                CREATE TABLE call_ends (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+                    character_id TEXT NOT NULL,
+                    ended_at TEXT NOT NULL
+                );
+                CREATE INDEX call_ends_by_character
+                    ON call_ends(character_id, ended_at);
+                """)
         }
         try migrator.migrate(dbQueue)
         try dbQueue.write { db in
