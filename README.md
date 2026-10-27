@@ -74,6 +74,12 @@ Eidolon-SC 让你以 **283 事务所制作人**的身份，和原作中的偶像
       <p align="center"><sub><b>周期</b>：凭她的言行记下她的经期，替你推算下一次，并讲清怎么算</sub></p>
     </td>
   </tr>
+  <tr>
+    <td colspan="2">
+      <img src="docs/images/bar.webp" alt="酒吧 VA-283：像素画面里她在店里说话，右边是调酒台，右上角开着点唱机">
+      <p align="center"><sub><b>VA-283</b>：她来酒吧光顾，你照她的点单调饮品；画面致敬《VA-11 HALL-A》</sub></p>
+    </td>
+  </tr>
 </table>
 
 <table>
@@ -110,6 +116,7 @@ Eidolon-SC 让你以 **283 事务所制作人**的身份，和原作中的偶像
 - 📅 **日历**：角色和制作人的生日、日本的节假日，她当天也知道。
 - 🗓️ **日程**：每周发布的工作，你排进她的一周，她知道并以此说话；做完的工作让她更亲近你（[配置指南](docs/configuration.md#日程)）。
 - 🌙 **周期**：她也有经期，经前、经期这几天会不舒服，体贴她有回报；你凭她的言行把经期记在周期页，页面替你推算下一次，并讲清怎么算（[配置指南](docs/configuration.md#周期)）。
+- 🍸 **VA-283**：她来酒吧光顾，你照她的点单调饮品。每天第一次玩完的光顾给一次抽奖，她也会更亲近你；第一次进店有はづき 教你调。画面和调法致敬《VA-11 HALL-A》。
 - 💌 **搭话**：你一阵子没来，她会在对话里先说几句；越亲近来得越早（[配置指南](docs/configuration.md#搭话)）。
 
 **她记得什么**
@@ -153,7 +160,7 @@ docker compose up --build
 | 剧情库 | 向量化的 key：`SILICONFLOW_API_KEY`（默认）或 `GEMINI_API_KEY` |
 | 检索与记忆 | 向量化的 key、`SILICONFLOW_API_KEY`（重排），加判断模型：`JEV_API_KEY`（默认）、Cloudflare 或阿里云百炼的凭证 |
 | 照片 | 判断模型，加生图的 key：`NOVELAI_API_KEY` |
-| 立绘与招呼 | `EIDOLON_STAND_ASSETS_URL` 和存放素材的存储桶 |
+| 立绘、招呼与酒吧的音乐 | `EIDOLON_STAND_ASSETS_URL` 和存放素材的存储桶 |
 
 每项怎么配、配了以后有什么效果，见 **[配置指南](docs/configuration.md)**；所有环境变量的说明见 [`.env.example`](.env.example)。
 
@@ -176,12 +183,12 @@ flowchart LR
         DB[("SQLite<br/>对话 · 照片 · 记忆 · 剧情库")]
     end
 
-    Bucket[("对象存储<br/>立绘 · 招呼")]
+    Bucket[("对象存储<br/>立绘 · 招呼 · 酒吧音乐")]
 
     UI -- "文字回合 /api/*" --> API
     Admin --> API
     UI <-- "WebRTC 语音 + 字幕" --> Call
-    Landing & UI -. "立绘、招呼音频" .-> Bucket
+    Landing & UI -. "立绘、招呼和酒吧的音频" .-> Bucket
     API --> Engine
     Call -- "语音识别<br/>Soniox 或阿里云百炼" --> Engine
     Engine -- "Fish Audio 语音合成<br/>（带读音表）" --> Call
@@ -274,7 +281,8 @@ eidolon-sc/
 
 - **原作的内容**：剧情数据、角色音色、立绘素材不在仓库中，使用时须遵守各自来源的条款（ADR-0003）。仓库里的人设、角色资料、头像和 README 的截图里，角色与设定属于原作版权方。
 - **Spine Runtimes**：通话层立绘用的 [`frontend/public/vendor/spine-3.6/`](frontend/public/vendor/spine-3.6/README.md) 原样收录，适用它自己的 Spine Runtimes 许可证（[ADR-0009](docs/adr/0009-spine-runtime-without-editor-license.md)）。[`LICENSING.md`](LICENSING.md) 里有一条 AGPL 第 7 节的附加许可，允许两者组合分发。
-- **字体和音效**：落地页的字体子集适用 SIL Open Font License（见 `frontend/src/app/(landing)/fonts/`）；通话音效的来源和许可见 [`CREDITS.md`](frontend/public/sounds/CREDITS.md)。
+- **VA-11 HALL-A 的素材**：酒吧用的原版图片（`frontend/public/bar/img/`，含配方卡上的官方中文）、外框上的「VA-283」标志和原版的配乐、音效，版权归 Sukeban Games，见 [`LICENSING.md`](LICENSING.md)。配乐和音效不在仓库里，部署时传进存储桶。
+- **字体和音效**：落地页的字体子集和酒吧的像素字体「缝合像素」适用 SIL Open Font License（见 `frontend/src/app/(landing)/fonts/`、`frontend/public/bar/fonts/`）；通话音效的来源和许可见 [`CREDITS.md`](frontend/public/sounds/CREDITS.md)。
 
 ## 🙏 致谢
 
@@ -289,12 +297,14 @@ eidolon-sc/
 - [Google Gemini API](https://ai.google.dev/)：Gemini Embedding（可选的向量化服务）
 - [TypeSafe Jev](https://docs.typesafe.ai/)、[OpenRouter](https://openrouter.ai/)、[Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/)、[阿里云百炼](https://help.aliyun.com/zh/model-studio/decision-model-api)：判断模型
 - [Spine Runtimes](https://github.com/EsotericSoftware/spine-runtimes)：立绘的播放（spine-ts 3.6）
+- [VA-11 HALL-A](https://waifubartending.com/)（Sukeban Games）：酒吧的画面、调法和点唱机致敬原作，用了原版的图片、配乐和音效
+- [缝合像素](https://github.com/TakWolf/fusion-pixel-font)：酒吧的像素字体
 - [im@sparql](https://sparql.crssnky.xyz/imas/)、Lantis、ふじわらはじめ、imas-db、wikiwiki：世界设定里的偶像、唱片和演出资料
 
 <div align="center">
 
 ---
 
-<sub>《偶像大师 闪耀色彩》及其角色的版权归 ©Bandai Namco Entertainment Inc. 所有。本项目为非官方粉丝作品，与版权方无关，角色由 AI 扮演。</sub>
+<sub>《偶像大师 闪耀色彩》及其角色的版权归 ©Bandai Namco Entertainment Inc. 所有。本项目为非官方粉丝作品，与版权方无关，角色由 AI 扮演。<br>《VA-11 HALL-A》及其图片、配乐和音效的版权归 ©Sukeban Games 所有。</sub>
 
 </div>

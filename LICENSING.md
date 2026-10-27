@@ -18,3 +18,22 @@ used as well as that of the covered work.
 The Spine Runtimes included in `frontend/public/vendor/spine-3.6/` are not part
 of this Program and are not covered by the GNU Affero General Public License;
 they are distributed under their own license, found in that directory.
+
+## VA-11 HALL-A assets in the bar
+
+The bar (`/play/bar`) is a tribute to *VA-11 HALL-A: Cyberpunk Bartender
+Action* and uses its original art and audio. These assets are not part of this
+Program and are not covered by the GNU Affero General Public License; they
+remain the property of Sukeban Games:
+
+- the images in `frontend/public/bar/img/`, including the official Chinese text
+  printed on the recipe cards;
+- `frontend/scripts/bar-logo.png`, the "VA-283" logo derived from the frame of
+  the original (its small lettering and "VA-" are the original's pixels);
+- the music and sound effects a deployment uploads to the `bar/` prefix of its
+  stand asset bucket with `eidolon bar upload`, which are not in this
+  repository.
+
+The pixel font Fusion Pixel (缝合像素) in `frontend/public/bar/fonts/` is not part of
+this Program either; it is distributed under the SIL Open Font License, found
+in that directory.

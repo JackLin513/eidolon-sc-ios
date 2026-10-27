@@ -651,7 +651,7 @@ def test_repository_gives_its_characters_their_idol_ids_and_default_outfits():
         "yuika": (7, "stand/1030070010"),
         "kiriko": (8, "stand/1030080010"),
         "toru": (20, "stand/1030200010"),
-        "madoka": (21, "stand/1030210010"),
+        "madoka": (21, "stand/1940210010"),
         "koito": (22, "stand/1030220010"),
         "hinana": (23, "stand/1030230010"),
         "nichika": (24, "stand/1030240010"),

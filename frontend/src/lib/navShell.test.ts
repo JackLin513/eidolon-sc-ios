@@ -8,6 +8,7 @@ import {
   isTyping,
   navDestination,
   navDots,
+  showsNav,
   showsShellCallBar,
 } from "@/lib/navShell";
 
@@ -203,5 +204,18 @@ describe("手机上在打字（dock 藏起来）", () => {
     ["按钮", { tagName: "BUTTON" }],
   ])("%s不算", (_, focused) => {
     expect(isTyping(focused)).toBe(false);
+  });
+});
+
+describe("导航栏和 dock", () => {
+  it("外壳里别的页上都有", () => {
+    expect(showsNav("/play/cycles")).toBe(true);
+  });
+
+  it("酒吧盖住它们，通话条照旧在最上面", () => {
+    expect(showsNav("/play/bar")).toBe(false);
+    expect(isInShell("/play/bar")).toBe(true);
+    expect(showsShellCallBar("/play/bar", "mano")).toBe(true);
+    expect(departure("/play/bar", "mano")).toBe("keep");
   });
 });

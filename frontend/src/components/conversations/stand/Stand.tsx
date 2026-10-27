@@ -15,8 +15,9 @@ type Props = {
   framing: Framing;
   /** 通话层收起时暂停渲染，展开时从当前姿势接着画。 */
   isPaused: boolean;
-  /** 到了之后怎么出现：手机「大立绘」从底部升起；电脑和减少动态效果时原地淡入。 */
-  entrance: "rise" | "fade";
+  /** 到了之后怎么出现：手机「大立绘」从底部升起；电脑和减少动态效果时原地淡入；
+   * `none` 一到就整个出现，怎么出场由外面那一层管（酒吧的剪影淡入）。 */
+  entrance: "rise" | "fade" | "none";
   /** 她现在该是什么样子（spec「立绘指令」）。 */
   direction: StandDirection;
   /** 减少动态效果：身体动作一律用待机，从下一个动作开始生效。 */
@@ -137,7 +138,8 @@ export function Stand({
       ref={canvas}
       aria-hidden
       className={cn(
-        "block size-full [transition:opacity_300ms_linear,translate_410ms_cubic-bezier(0.24,1,0.4,1)]",
+        "block size-full",
+        entrance !== "none" && "[transition:opacity_300ms_linear,translate_410ms_cubic-bezier(0.24,1,0.4,1)]",
         shown ? "opacity-100" : "opacity-0",
         entrance === "rise" && !shown ? "translate-y-[12%]" : "translate-y-0",
       )}

@@ -125,8 +125,8 @@ def memo_for(phrasing: Phrasing, drink_id: str) -> str:
     memos: dict[Phrasing, str] = {
         "name": f"她要 {drink.name}。", "name_big": f"她要 {drink.name}，大杯。",
         "flavor": f"她要{FLAVORS[drink.flavor]}的。", "kind": f"她要{KINDS[drink.kind]}的。",
-        "conditions": f"她要{FLAVORS[drink.flavor]}的，大杯。", "analogy": "今天嘛……",
-        "my_favorite": "她要她喜欢的。", "your_call": "她让你拿主意。", "usual": "她要上次那款。",
+        "conditions": f"她要{FLAVORS[drink.flavor]}的，大杯。", "analogy": "她说：「今天嘛……」",
+        "my_favorite": "她要她喜欢的。", "your_call": "她让我拿主意。", "usual": "她要上次那款。",
     }
     return memos[phrasing]
 
@@ -593,7 +593,7 @@ async def test_an_analogy_is_noted_as_she_said_it_once_it_names_no_drink(
 
     came = await enter(client)
 
-    assert came[-2] == {"type": "memo", "text": "甜甜的，有水果味。"}
+    assert came[-2] == {"type": "memo", "text": "她说：「甜甜的，有水果味。」"}
     told = card(llm.prompts[0])
     assert f"- 描述：{CATALOG.drinks['sugar-rush'].description}" in told
     assert "不能说出来" in told

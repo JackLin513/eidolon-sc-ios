@@ -14,6 +14,8 @@ import {
 } from "@/lib/localOwnKeys";
 import type { LLMOffer, LLMProvider } from "@/lib/llmProviders";
 import type { EffortHint } from "@/lib/reasoningEffort";
+import type { ServedBody } from "@/lib/barMixer";
+import type { VisitEvent } from "@/lib/barVisit";
 import type { Rewarded } from "@/lib/rewards";
 import { detectTimezone } from "@/lib/timezone";
 import type { Speaking } from "@/lib/call";
@@ -659,6 +661,89 @@ export async function logout(userId?: string): Promise<void> {
   if (userId) forgetOwnKeys(userId);
 }
 
+/** A drink's flavor and kind (GLOSSARY.md「饮品」), as the recipe book's categories. */
+export type DrinkFlavor = "sweet" | "bitter" | "sour" | "spicy" | "bubbly";
+export type DrinkKind = "girly" | "manly" | "classic" | "classy" | "promo";
+
+type DrinkNames = { id: string; name: string; short_name: string; flavor: DrinkFlavor; kind: DrinkKind };
+
+/** A drink of the catalog (GLOSSARY.md「饮品」「材料」), as the bar counter and the recipe book read it:
+ * mixed of parts of each ingredient (Karmotrine `"optional"` when any number will do), on ice or not,
+ * aged or not, mixed or blended, big of itself or not, with its recipe card's `page` (null for the
+ * few without a card); or bottled, with
+ * its line of description and its parts of Karmotrine. No Japanese name, no character's tastes. */
+export type Drink =
+  | (DrinkNames & {
+      method: "mix" | "blend";
+      adelhyde: number;
+      bronson_extract: number;
+      powdered_delta: number;
+      flanergide: number;
+      karmotrine: number | "optional";
+      ice: boolean;
+      aged: boolean;
+      big: boolean;
+      page: number | null;
+    })
+  | (DrinkNames & { method: "bottle"; description: string; karmotrine: number });
+
+/** `GET /api/bar`: closed, or open with the drinks in catalog order and whether a visit done today
+ * would be rewarded (none done yet today, Beijing time, and affinity and gifts open). */
+export type BarState = { enabled: false } | { enabled: true; drinks: Drink[]; reward_today: boolean };
+
+export async function getBar(): Promise<BarState> {
+  return json(await api("/api/bar"));
+}
+
+/** Comes into the bar, bringing the user's own LLM (as `own_keys`) as a text turn does, and yields
+ * the visit's first call as it comes: `visit` first, then her lines up to her order. Refused while
+ * the bar is closed (409), or over the limit (429, `retryAt` saying when). Aborting `signal` closes
+ * the call, and the server leaves the visit. */
+export async function* enterBar(userId: string, signal?: AbortSignal): AsyncGenerator<VisitEvent> {
+  const res = await api("/api/bar/visits", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ own_keys: turnOwnKeys(userId) }),
+    signal,
+  });
+  yield* serverSentEvents<VisitEvent>(res);
+}
+
+/** Serves her what the bar counter holds (lib/barMixer `served`). Once the server took it, the
+ * call it set off, to be followed as it comes: the producer's 「请慢用」, her reaction, and her next
+ * order or her goodbye. Refused if it is none of the drinks (422 `broken_drink`), while she is not
+ * waiting for one (409, a double tap), or with the visit gone (410 `visit_gone`). */
+export async function serveBarDrink(
+  visitId: string,
+  served: ServedBody,
+  signal?: AbortSignal,
+): Promise<AsyncGenerator<VisitEvent>> {
+  const res = await api(`/api/bar/visits/${encodeURIComponent(visitId)}/serves`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(served),
+    signal,
+  });
+  if (!res.ok) await json(res);
+  return serverSentEvents<VisitEvent>(res);
+}
+
+/** Tries again the call the visit stopped before, failing (a `failed` event). Once the server took
+ * it, the call to be followed as it comes, from its first line on, without the producer's 「请慢用」
+ * of a drink served. Refused while no call failed (409 `not_failed`), or with the visit gone (410
+ * `visit_gone`, as after her farewell failed to be written down). */
+export async function retryBarVisit(visitId: string, signal?: AbortSignal): Promise<AsyncGenerator<VisitEvent>> {
+  const res = await api(`/api/bar/visits/${encodeURIComponent(visitId)}/retry`, { method: "POST", signal });
+  if (!res.ok) await json(res);
+  return serverSentEvents<VisitEvent>(res);
+}
+
+/** Leaves the visit: over, not to be come back to. `keepalive` as the page goes away. */
+export async function leaveBarVisit(visitId: string, { keepalive = false } = {}): Promise<void> {
+  const path = `/api/bar/visits/${encodeURIComponent(visitId)}`;
+  await expectNoContent(await api(path, { method: "DELETE", keepalive }));
+}
+
 /** The user's stats (GLOSSARY.md「统计」), in the producer's time zone, the lower part over
  * `range` (all of it unless given). */
 export async function getStats(range: StatsRange = "all"): Promise<Stats> {
@@ -804,6 +889,11 @@ export async function* sendTurn(conversationId: string, text: string, userId: st
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ text, own_keys: turnOwnKeys(userId) }),
   });
+  yield* serverSentEvents<TurnEvent>(res);
+}
+
+/** The server-sent events of a response, each as it arrives; a refusal thrown as `json` throws it. */
+async function* serverSentEvents<T>(res: Response): AsyncGenerator<T> {
   if (!res.ok || !res.body) {
     await json(res);
     return;
@@ -823,7 +913,7 @@ export async function* sendTurn(conversationId: string, text: string, userId: st
         .filter((line) => line.startsWith("data: "))
         .map((line) => line.slice(6))
         .join("\n");
-      if (data) yield JSON.parse(data) as TurnEvent;
+      if (data) yield JSON.parse(data) as T;
     }
   }
 }

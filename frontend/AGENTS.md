@@ -13,7 +13,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 前端用 shadcn/ui（底层 Base UI，样式 `base-nova`）加 Tailwind v4（ADR-0015）。写代码守下面这些规则；视觉规范以根目录 `DESIGN.md` 为准。
 
 - **布局**：直接写 `<div>` 加 Tailwind 类，不自写 `Stack`/`Row` 原语。同样的结构在两屏以上出现、并且能用 `GLOSSARY.md` 或 `DESIGN.md` 里的词叫出名字，才抽成项目组件。
-- **颜色**：只用具名主题变量。`--her-*`、挂断红等固定色在 `src/app/globals.css` 的 `@theme inline` 里注册成 Tailwind 颜色（`bg-her-wall`、`bg-hangup`）。任意值里不准出现颜色（`[var(--…)]`、`bg-(--…)`、hex、oklch、rgb、hsl、color-mix 都不行）。新增固定色写进对比度测试（`src/theme/themeContrast.test.ts`）。
+- **颜色**：只用具名主题变量。`--her-*`、挂断红等固定色在 `src/app/globals.css` 的 `@theme inline` 里注册成 Tailwind 颜色（`bg-her-wall`、`bg-hangup`）。任意值里不准出现颜色（`[var(--…)]`、`bg-(--…)`、hex、oklch、rgb、hsl、color-mix 都不行）。新增固定色写进对比度测试（`src/theme/themeContrast.test.ts`）。酒吧（`/play/bar`）是另立的视觉世界，颜色用自己的 `BAR_INK`，不受这条管（`DESIGN.md`「酒吧」）。
 - **尺寸**：`DESIGN.md` frontmatter 里有名字的值（字号层级、气泡圆角、头像等）注册成 `@theme` token（如 `text-header`、`text-meta`、`rounded-bubble`），必须用 token。间距只用 Tailwind 刻度。任意值只用于一次性的布局约束（`max-w-[min(30rem,72vw)]`、`grid-cols-[…]`、`h-[80%]`）。
 - **`components/ui/` 直接改**（Own-the-Source），改处加 `// eidolon: <原因>`。`shadcn add` 不带 `--overwrite`，更新组件先看 diff。
 - **调用处不改外观**：调用处的 className 只管定位和排布。外观要变就到 `ui/` 组件加 variant/prop 或改那条带条件的类；禁止 `!` important；`group-data-[…]` 盖不住的情况同样这样处理。

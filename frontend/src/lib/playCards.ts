@@ -5,7 +5,9 @@
 // the gift state, which the first level and the subpages read alike; the calendar (.scratch/calendar
 // spec「玩法页的『日历』卡」) of the characters' birthdays, the producer's and the holidays, and is
 // there whether affinity and gifts are open or not; the cycles (.scratch/cycle-page spec「玩法页的卡」) of the
-// periods the user wrote down, there only while the deployment and the user have cycles on.
+// periods the user wrote down, there only while the deployment and the user have cycles on; the bar
+// (.scratch/bar-room spec「入口、路由和外壳」) of whether today's first visit is still rewarded, there
+// only while the bar is open.
 
 import { copy } from "@/i18n";
 import { unlockedStages, unseenStages } from "@/lib/achievements";
@@ -23,13 +25,18 @@ export type CalendarCardContext = CalendarView<{ name: string; birthday: string 
  * name of each (lib/schedule's `shortName`). */
 export type CyclesCardContext = { today: string; hers: readonly Her[]; nameOf: (characterId: string) => string };
 
+/** What the bar card is made of: whether a visit done today would be rewarded (`GET /api/bar`'s
+ * `reward_today`). */
+export type BarCardContext = { rewardToday: boolean };
+
 /** What the cards are made of: the gift state (null until it has been read), whether draw chances
  * have come that are not yet seen (`newRewards`, the nav's dot), the latest unlock of the
  * combined achievements seen on this device (`achievementsSeenAt`), the calendar's (null until
  * the characters, the profile and the holidays have been read), and how many of this week's jobs
  * are still to be placed (`schedulePending`, lib/schedule's `pendingJobs`; 0 while schedules are
- * off or unread, or this week is not published), and the cycles' (`cycles`, null while cycles are off
- * or unread, so the card does not show and then go). */
+ * off or unread, or this week is not published), the cycles' (`cycles`, null while cycles are off
+ * or unread, so the card does not show and then go), and the bar's (`bar`, null while it is closed or
+ * unread, likewise). */
 export type PlayContext = {
   state: GiftState | null;
   newRewards: boolean;
@@ -37,6 +44,7 @@ export type PlayContext = {
   calendar: CalendarCardContext | null;
   schedulePending: number;
   cycles: CyclesCardContext | null;
+  bar: BarCardContext | null;
 };
 
 /** A card as the page shows it: `status` is empty until the state has been read. */
@@ -115,6 +123,18 @@ const CARDS: Definition[] = [
     name: t.cards.cycles.name,
     isShown: ({ cycles }) => cycles !== null,
     status: ({ cycles }) => (cycles ? cyclesText(cycles) : ""),
+    hasDot: () => false,
+    dotLabel: "",
+  },
+  {
+    id: "bar",
+    name: t.cards.bar.name,
+    isShown: ({ bar }) => bar !== null,
+    status: ({ bar, state }) => {
+      if (bar?.rewardToday) return t.cards.bar.rewardToday;
+      if (!state) return "";
+      return state.open ? t.cards.bar.rewarded : t.cards.bar.unrewarded;
+    },
     hasDot: () => false,
     dotLabel: "",
   },

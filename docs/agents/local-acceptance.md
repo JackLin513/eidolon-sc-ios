@@ -108,3 +108,46 @@ await held!.fulfill({ status: 429, contentType: "application/json", body: JSON.s
 3. 接通后由假后端发 `{"label":"rtvi-ai","type":"server-message","data":<服务器消息>}`；挂断再发 `{"type":"signalling","message":{"type":"peerLeft"}}`。
 
 这样造出来的对话事件等只在页面上，库里没有；对话列表按接口重读，看不到它。
+
+## 酒吧
+
+### 拦下光顾的事件流
+
+`page.route` 的 `fulfill` 一次交出整个回答，造不出「分段推、挂着不回」。改成在页面里换掉 `fetch`：`/api/bar/visits*` 交给假的，回一个测试手里攥着的 `ReadableStream`，想推什么、什么时候推由脚本定，不推就一直挂着。别的请求照常走真后端。
+
+```ts
+await context.addInitScript(() => {
+  const w = window as any;
+  w.__bar = { requests: [], fake: { status: 200, body: null } };
+  const original = window.fetch.bind(window);
+  window.fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const method = init?.method ?? "GET";
+    if (!url.includes("/api/bar/visits")) return original(input, init);
+    w.__bar.requests.push({ url, method }); // 离开时的 DELETE 也记在这里
+    if (method === "DELETE") return new Response(null, { status: 204 });
+    const { status, body } = w.__bar.fake; // 造拒绝：429、409、500……
+    if (status !== 200) return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const stream = new ReadableStream<Uint8Array>({ start: (c) => void (controller = c) });
+    w.__bar.push = (event: unknown) => controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
+    w.__bar.end = () => controller.close();
+    return new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } });
+  };
+});
+```
+
+- 点进门以后等 `window.__bar.push` 出现，再一件一件推：先 `{"type":"visit","visit_id":"v1","character_id":"<真的角色 id>"}`（立绘要用真的角色），再 `line`、`memo`、`waiting`……事件的形状见后端 `bar.py` 的 `shown()`。造拒绝时在点进门之前改 `window.__bar.fake`，例如 `{ status: 429, body: { detail: "…", retry_at: "<ISO>" } }`。
+- 画面上的字都在 canvas 上，读不到文本。`PixelText` 给读屏的名字就是它写的字（`\n` 隔行），用 `.bar-stage canvas[aria-label]` 读出来比对。文本框是 `button[aria-label="继续"]`。
+- 离开以后页面换了，`window.__bar` 也跟着没了：要确认发了 `DELETE`，在点「离开」之前用 `page.evaluate` 起一个等 `requests` 变长的 Promise。
+- 本机 `.env` 的对话模型接得通，接真后端也能走一次。光顾有限额，连着进几次就是 429，正好看真的「HH:mm 以后再来」；要再走就换个开发登录用户。
+
+### 关掉酒吧
+
+只在这次起的后端上关，不改 `.env`：
+
+```sh
+cd backend && EIDOLON_BAR=0 uv run --quiet --env-file=../.env eidolon serve
+```
+
+后台「配置」里存过酒吧开关的话，存的值比 `.env` 优先，这时环境变量不起作用，要在后台关（验完改回来）。
