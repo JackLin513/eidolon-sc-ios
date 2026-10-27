@@ -119,13 +119,14 @@ from eidolon.clock import Clock
 from eidolon.data_access import Database
 from eidolon.drink_catalog import DrinkCatalog, Mixture
 from eidolon.gifts import Gifts
+from eidolon.her_now import HerNow
+from eidolon.her_now import Known as KnownNow
 from eidolon.llm import ChatLLM
 from eidolon.own_keys import BroughtKeys, OwnKeyFailed, TurnKeys
-from eidolon.producer import producer_prompt
+from eidolon.producer import ProducerProfile, producer_prompt
 from eidolon.randomness import Random
-from eidolon.schedule import Job, Schedules
+from eidolon.schedule import Job
 from eidolon.store import read_profile
-from eidolon.today import today_lines
 from eidolon.world import World
 
 log = logging.getLogger(__name__)
@@ -371,14 +372,14 @@ class Bar:
         world: World | None = None,
         affinities: Affinities | None = None,
         gifts: Gifts | None = None,
-        schedules: Schedules | None = None,
+        her_now: HerNow | None = None,
         facts: BarFacts | None = None,
     ) -> None:
         """`is_on` tells whether the bar is open now (the live configuration's switch). Without
-        `world`, she has no world setting; without `affinities`, no affinity; without `gifts`
-        too, no reward; without `schedules`, no job of hers for a reason; without `facts`, none
-        of her facts are looked up. Her reasons for
-        coming and topics are drawn from `listed`. Visits are let in by `admissions`."""
+        `world`, she has no world setting; without `affinities` or `gifts`, no reward; without
+        `her_now`, she knows nothing of now (how she feels among it), nor has a job of hers for
+        a reason; without `facts`, none of her facts are looked up. Her reasons for coming and
+        topics are drawn from `listed`. Visits are let in by `admissions`."""
         self._db = db
         self._clock = clock
         self._characters = characters
@@ -391,7 +392,7 @@ class Bar:
         self._world = world
         self._affinities = affinities
         self._gifts = gifts
-        self._schedules = schedules
+        self._her_now = her_now
         self._facts = facts
         self._visits: dict[str, _Visit] = {}
         """Each user's visit under way, by user."""
@@ -458,18 +459,14 @@ class Bar:
         """The user's visit by `character`, coming in `now`, let in as `admission`: all the
         rest of it drawn."""
         today = day_of(now)
-        everyone = list(self._characters.values())
-        her_jobs = (
-            await self._schedules.hers(user_id, character.id, device_timezone)
-            if self._schedules is not None else None
+        her_now = self._her_now
+        now_known = (
+            await her_now.read(user_id, character.id, device_timezone, "visit")
+            if her_now is not None else None
         )
         hers = await self._db.read(_hers, user_id, character.id)
-        status = (
-            await self._affinities.status(user_id, character.id)
-            if self._affinities is not None else None
-        )
         reason = self._reason(
-            character, her_jobs.done_today() if her_jobs is not None else None, hers.reasons
+            character, now_known.done_today if now_known is not None else None, hers.reasons
         )
         topic = self._topic(character, hers.topics)
         with admission.recording.current():
@@ -487,8 +484,7 @@ class Bar:
             shared_prompt(character, world.prompt(character.name, today) if world else None),
             visit_prompt(
                 hers.about_producer, reason, topic, drinks,
-                affinity_prompt(status.tier, None) if status is not None else [],
-                today_lines(now, character, everyone, world),
+                _now_lines(her_now, now_known, now),
                 hers.remembered, now, character, self._catalog, facts,
             ),
             admission,
@@ -910,6 +906,16 @@ def _before(db: sqlite3.Connection, user_id: str, today: date) -> _Before:
         "SELECT COUNT(*) FROM visit_records WHERE user_id = ?", (user_id,)
     ).fetchone()
     return _Before(_done_on(db, user_id, today), done)
+
+
+def _now_lines(her_now: HerNow | None, known: KnownNow | None, now: datetime) -> list[str]:
+    """What she is told of now coming in at `now`, as `known`: how she feels toward the
+    producer, then the day in Tokyo. A visit tells her neither the time nor anything of the
+    producer's (`her_now.CARRIES`), so no time zone, profile or last contact is needed."""
+    if her_now is None or known is None:
+        return []
+    felt = affinity_prompt(known.affinity.tier, None) if known.affinity is not None else []
+    return her_now.lines(known, "visit", now, "Asia/Tokyo", ProducerProfile(), None, felt)
 
 
 def _hers(db: sqlite3.Connection, user_id: str, character_id: str) -> _Hers:
