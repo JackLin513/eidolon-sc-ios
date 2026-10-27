@@ -156,13 +156,14 @@ final class AppModel {
             throw missing
         }
         let hotWords = (try? await core.callHotWords()) ?? []
+        let readings = (try? await core.readings()) ?? Readings()
         let (capture, recognition) = callAudio(hotWords: hotWords)
         let judge = judgeProvider
         let setup = CallSetup(
             capture: capture,
             playback: SpeechPlayback(),
             recognition: recognition,
-            synthesis: speechSynthesis(),
+            synthesis: speechSynthesis(readings: readings),
             voiceModel: chatSettings.fishModel,
             provider: provider,
             judge: judge,
@@ -206,9 +207,9 @@ final class AppModel {
     }
 
     /// Without a Fish Audio key her words are subtitles only (ADR-0011).
-    private func speechSynthesis() -> any SpeechSynthesis {
+    private func speechSynthesis(readings: Readings) -> any SpeechSynthesis {
         guard !chatSettings.fishAPIKey.isEmpty else { return UnvoicedSynthesis() }
-        return FishSynthesis(apiKey: chatSettings.fishAPIKey)
+        return FishSynthesis(apiKey: chatSettings.fishAPIKey, readings: readings)
     }
 
     func saveProducerProfile(_ profile: ProducerProfile) async throws {

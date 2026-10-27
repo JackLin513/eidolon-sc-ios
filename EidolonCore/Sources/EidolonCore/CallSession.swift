@@ -23,6 +23,15 @@ public protocol AudioCapture: Sendable {
     /// as its connection lasts, and a stream that one connection stopped reading must not
     /// keep the next one silent: every call gets its own.
     func chunks() -> AsyncThrowingStream<Data, Error>
+    /// The system stopped or rerouted the microphone — a phone call, Siri, headphones
+    /// plugged or pulled, or the app coming back from the background. Open it again if it
+    /// went quiet; the call's listening stream stays the same.
+    func recover() async
+}
+
+extension AudioCapture {
+    /// A capture with nothing to recover keeps working as it did.
+    public func recover() async {}
 }
 
 /// The speaker, as the call uses it: one segment's audio at a time.
@@ -33,6 +42,9 @@ public protocol AudioPlayback: Sendable {
 
 /// What the recognizer heard.
 public enum SpeechEvent: Sendable, Hashable {
+    /// The connection is up and its configuration accepted: from here on it hears. A call
+    /// is connected when this first comes, not when the microphone opened (spec「接通」).
+    case connected
     /// Words still being said, replaced as they are corrected.
     case partial(String)
     /// What the producer said, when the recognizer found the end of it.
@@ -266,6 +278,9 @@ public struct CallSetup: Sendable {
     public var historyTurns: Int
     /// How long to wait before listening again after the recognizer's connection dropped.
     public var reconnectDelay: Duration
+    /// How long the recognizer may take to become ready; a call that never does is given up
+    /// as one that could not connect (upstream `CONNECT_TIMEOUT`, 30 seconds).
+    public var connectTimeout: Duration
     public var now: @Sendable () -> Date
 
     public init(
@@ -283,6 +298,7 @@ public struct CallSetup: Sendable {
         limits: CallLimits = .standard,
         historyTurns: Int = 20,
         reconnectDelay: Duration = .seconds(1),
+        connectTimeout: Duration = .seconds(30),
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.capture = capture
@@ -299,6 +315,7 @@ public struct CallSetup: Sendable {
         self.limits = limits
         self.historyTurns = historyTurns
         self.reconnectDelay = reconnectDelay
+        self.connectTimeout = connectTimeout
         self.now = now
     }
 }
@@ -308,6 +325,9 @@ public struct CallSetup: Sendable {
 /// services and shows what it says; everything else is here (ADR-0007, ADR-0015).
 public actor CallSession {
     public nonisolated let characterID: String
+    /// How long this call may last, if it has a limit: the call screen counts down the last
+    /// minute of it (upstream `callTime.ts`).
+    public nonisolated let durationLimit: Duration?
 
     private let eidolon: Eidolon
     private let characterName: String
@@ -319,8 +339,13 @@ public actor CallSession {
     private var state: CallState = .connecting
     private var started = false
     private var finished = false
+    /// Whether the recognizer's connection is up right now.
+    private var connectedNow = false
+    /// Whether it has ever been up: the call counts as connected from the first time.
+    private var everConnected = false
     private var tasks: [Task<Void, Never>] = []
     private var turnTask: Task<Void, Never>?
+    private var connectTimeoutTask: Task<Void, Never>?
 
     /// What the producer said while she was answering; answered once she is done.
     private var pending: [String] = []
@@ -370,6 +395,7 @@ public actor CallSession {
         self.characterName = characterName
         self.voice = voice
         self.setup = setup
+        durationLimit = setup.limits.duration
         (stream, continuation) = AsyncStream.makeStream(of: CallEvent.self)
     }
 
@@ -383,7 +409,8 @@ public actor CallSession {
     }
 
     /// Connects: the microphone starts, and the call listens. This is silent: she says
-    /// nothing until the producer speaks.
+    /// nothing until the producer speaks, and the call is not connected until the
+    /// recognizer can hear (spec「接通」).
     public func start() async {
         guard !started, !finished else { return }
         started = true
@@ -394,27 +421,37 @@ public actor CallSession {
             await finish(.micDenied(detail: error.localizedDescription))
             return
         }
-        setState(.listening)
         tasks.append(Task { await self.listenLoop() })
-        if setup.limits.duration != nil {
-            tasks.append(Task { await self.timeLimitLoop() })
+        if setup.connectTimeout > .zero {
+            let timeout = setup.connectTimeout
+            connectTimeoutTask = Task { await self.connectTimedOut(after: timeout) }
         }
+    }
+
+    /// A recognizer that never becomes ready would leave the producer talking into a screen
+    /// that says it is listening; the call is given up instead (upstream `CONNECT_TIMEOUT`).
+    private func connectTimedOut(after timeout: Duration) async {
+        try? await Task.sleep(for: timeout)
+        guard !Task.isCancelled, !finished, !everConnected else { return }
+        await finish(.notConnected(service: "识别", detail: "连接超时"))
     }
 
     public func hangUp() async {
         await finish(.hungUpByProducer)
     }
 
+    /// The app came back to the foreground or the audio route changed: let the microphone
+    /// open again if the system stopped it (spec「通话健壮性」). Nothing happens once the
+    /// call has ended.
+    public func recoverAudio() async {
+        guard !finished else { return }
+        await setup.capture.recover()
+    }
+
     // MARK: - Listening
 
     private func listenLoop() async {
-        var listeningAgain = false
         while !finished, !Task.isCancelled {
-            if listeningAgain {
-                // The recognizer took a new connection: it hears again.
-                setState(.listening)
-            }
-            listeningAgain = true
             // The microphone feeds this connection only: the previous connection closed
             // its stream when it closed, and that ended stream would hear nothing.
             let audio = setup.capture.chunks()
@@ -422,6 +459,8 @@ public actor CallSession {
                 for try await event in setup.recognition.listen(audio) {
                     if finished || Task.isCancelled { return }
                     switch event {
+                    case .connected:
+                        connectionReady()
                     case let .partial(text):
                         let saying = text.trimmingCharacters(in: .whitespacesAndNewlines)
                         if !saying.isEmpty { emit(.hearing(saying)) }
@@ -432,7 +471,7 @@ public actor CallSession {
                     }
                 }
                 if finished || Task.isCancelled { return }
-                setState(.reconnecting)
+                connectionLost()
                 try? await Task.sleep(for: setup.reconnectDelay)
             } catch is CancellationError {
                 return
@@ -442,9 +481,37 @@ public actor CallSession {
                     await serviceFailed(failure)
                     return
                 }
-                setState(.reconnecting)
+                connectionLost()
                 try? await Task.sleep(for: setup.reconnectDelay)
             }
+        }
+    }
+
+    /// The recognizer's connection is up: the call is connected from the first time, and its
+    /// clock and limits start then. A reconnect does not put listening over her own state
+    /// when she is speaking or thinking (spec「接通」).
+    private func connectionReady() {
+        guard !finished else { return }
+        connectedNow = true
+        if !everConnected {
+            everConnected = true
+            connectTimeoutTask?.cancel()
+            connectTimeoutTask = nil
+            if setup.limits.duration != nil {
+                tasks.append(Task { await self.timeLimitLoop() })
+            }
+        }
+        if !turnActive, speaking == nil {
+            setState(.listening)
+        }
+    }
+
+    /// The connection is gone; she may be in the middle of a reply, and that is what the
+    /// screen keeps saying until she is done.
+    private func connectionLost() {
+        connectedNow = false
+        if !turnActive, speaking == nil {
+            setState(.reconnecting)
         }
     }
 
@@ -478,7 +545,7 @@ public actor CallSession {
     private func goOn() {
         guard !finished, !turnActive, speaking == nil else { return }
         guard !pending.isEmpty else {
-            if queue.isEmpty { setState(.listening) }
+            if queue.isEmpty { setState(connectedNow ? .listening : .reconnecting) }
             return
         }
         let text = pending.joined(separator: "\n")
@@ -775,6 +842,8 @@ public actor CallSession {
         // after it: hanging up must not leave her talking out of a call that is over.
         await setup.playback.stop()
         for task in tasks { task.cancel() }
+        connectTimeoutTask?.cancel()
+        connectTimeoutTask = nil
         turnTask?.cancel()
         speaking?.cancel()
         prefetch?.task.cancel()

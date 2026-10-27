@@ -14,6 +14,7 @@ final class FakeCapture: AudioCapture, @unchecked Sendable {
     /// What opening the microphone fails with: no permission, no input, a broken route.
     var startError: Error?
     var timeline: Timeline?
+    private(set) var recoveries = 0
 
     func start() async throws {
         if let startError { throw startError }
@@ -23,6 +24,16 @@ final class FakeCapture: AudioCapture, @unchecked Sendable {
     func stop() async {
         timeline?.add("mic-stop")
         markStopped()
+    }
+
+    func recover() async {
+        markRecovery()
+    }
+
+    private func markRecovery() {
+        lock.lock()
+        recoveries += 1
+        lock.unlock()
     }
 
     private func markStarted() {
@@ -75,7 +86,7 @@ final class FakeCapture: AudioCapture, @unchecked Sendable {
 }
 
 final class FakeRecognition: SpeechRecognition, @unchecked Sendable {
-    enum Step {
+    enum Step: Sendable {
         case events([SpeechEvent])
         case fail
         /// The service itself failing, as Soniox reports a refused key.
@@ -90,6 +101,8 @@ final class FakeRecognition: SpeechRecognition, @unchecked Sendable {
     private var backlog: [SpeechEvent] = []
     /// The microphone audio the recognizer was actually fed.
     private var fed: [UInt8] = []
+    /// How long a connection takes to be ready, as a network handshake would.
+    var connectDelay: Duration?
     private(set) var calls = 0
 
     init(_ steps: [Step] = []) {
@@ -122,18 +135,43 @@ final class FakeRecognition: SpeechRecognition, @unchecked Sendable {
         }
         return AsyncThrowingStream { continuation in
             continuation.onTermination = { @Sendable _ in collector.cancel() }
-            switch step {
-            case let .events(events):
-                for event in events { continuation.yield(event) }
-                self.attach(continuation)
-            case .fail:
-                continuation.finish(throwing: URLError(.networkConnectionLost))
-            case .failService:
-                continuation.finish(throwing: SonioxError.service("401", "invalid api key"))
-            case .hang:
-                self.attach(continuation)
+            let delay = connectDelay
+            let task = Task {
+                if let delay { try? await Task.sleep(for: delay) }
+                guard !Task.isCancelled else {
+                    continuation.finish()
+                    return
+                }
+                switch step {
+                case let .events(events):
+                    self.attach(continuation)
+                    continuation.yield(.connected)
+                    self.drainBacklog(continuation)
+                    for event in events { continuation.yield(event) }
+                case .fail:
+                    continuation.finish(throwing: URLError(.networkConnectionLost))
+                case .failService:
+                    continuation.finish(throwing: SonioxError.service("401", "invalid api key"))
+                case .hang:
+                    self.attach(continuation)
+                    continuation.yield(.connected)
+                    self.drainBacklog(continuation)
+                }
+            }
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
+                collector.cancel()
             }
         }
+    }
+
+    /// The live connection dropping as a network does, without the service failing.
+    func drop() {
+        lock.lock()
+        let live = self.live
+        self.live = nil
+        lock.unlock()
+        live?.finish(throwing: URLError(.networkConnectionLost))
     }
 
     /// Converts the error as the real recognizer does: only a service error is the
@@ -160,6 +198,14 @@ final class FakeRecognition: SpeechRecognition, @unchecked Sendable {
     private func attach(_ continuation: AsyncThrowingStream<SpeechEvent, Error>.Continuation) {
         lock.lock()
         live = continuation
+        lock.unlock()
+    }
+
+    /// What was said before the connection was ready, delivered once it is.
+    private func drainBacklog(
+        _ continuation: AsyncThrowingStream<SpeechEvent, Error>.Continuation
+    ) {
+        lock.lock()
         let backlog = self.backlog
         self.backlog = []
         lock.unlock()
@@ -491,6 +537,7 @@ final class CallSessionTests: XCTestCase {
         emotionJudge: (any SegmentEmotionJudge)? = nil,
         limits: CallLimits = .standard,
         historyTurns: Int = 20,
+        connectTimeout: Duration = .seconds(30),
         voiceModel: String = "s2.1-pro-free"
     ) async throws -> (CallSession, EventLog, FakeCapture) {
         let setup = CallSetup(
@@ -504,7 +551,8 @@ final class CallSessionTests: XCTestCase {
             emotionJudge: emotionJudge,
             limits: limits,
             historyTurns: historyTurns,
-            reconnectDelay: .milliseconds(10)
+            reconnectDelay: .milliseconds(10),
+            connectTimeout: connectTimeout
         )
         let session = try await eidolon.beginCall(characterID: "mano", setup: setup)
         let log = EventLog()
@@ -1675,6 +1723,156 @@ final class CallSessionTests: XCTestCase {
         XCTAssertEqual(segments(of: log).map(\.ja), ["一つ目", "二つ目"])
         XCTAssertTrue(playback.audio.isEmpty)
         await session.hangUp()
+    }
+
+    /// The call is connected once the recognizer can hear, not when the microphone opens:
+    /// until then it is still connecting, and it says so on the screen (spec「接通」).
+    func testTheCallConnectsOnlyWhenTheRecognizerCanHear() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        recognition.connectDelay = .milliseconds(300)
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([]),
+            recognition: recognition
+        )
+
+        try await Task.sleep(for: .milliseconds(120))
+        let early = await session.currentState()
+        XCTAssertEqual(early, .connecting, "the microphone is open, but nobody can hear yet")
+        XCTAssertFalse(states(log).contains(.listening))
+
+        try await waitFor("connected when the recognizer is") {
+            await session.currentState() == .listening
+        }
+        await session.hangUp()
+    }
+
+    /// The call is given up when the recognizer never becomes ready: the producer would
+    /// otherwise talk into a screen that says it is listening (upstream `CONNECT_TIMEOUT`).
+    func testARecognitionThatNeverConnectsTimesOut() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        recognition.connectDelay = .seconds(10)
+        let (session, _, capture) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([]),
+            recognition: recognition,
+            connectTimeout: .milliseconds(150)
+        )
+
+        try await waitFor("given up") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+        let reason = await session.currentStateIfEnded
+        XCTAssertEqual(reason, .notConnected(service: "识别", detail: "连接超时"))
+        XCTAssertTrue(capture.stopped, "the microphone is closed when the call is given up")
+    }
+
+    /// The time limit counts from when the recognizer can hear, as the clock on the screen
+    /// does: a slow connection never eats into the call's length.
+    func testTheDurationLimitCountsFromWhenRecognitionIsReady() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        recognition.connectDelay = .milliseconds(300)
+        let limit: Duration = .milliseconds(300)
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([]),
+            recognition: recognition,
+            limits: CallLimits(duration: limit, turns: nil)
+        )
+
+        // The connection at 300 ms, the limit 300 ms after it: at 450 ms it is still going.
+        try await Task.sleep(for: .milliseconds(450))
+        var ended = false
+        if case .ended = await session.currentState() { ended = true }
+        XCTAssertFalse(ended, "the limit did not start before the connection")
+
+        try await waitFor("ended by the limit after connecting") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+        let reason = await session.currentStateIfEnded
+        XCTAssertEqual(reason, .durationLimit(limit: limit))
+    }
+
+    /// A connection dropping while she speaks does not put「重连中…」over her state: the
+    /// screen keeps saying she is speaking, and listening comes back once she is done.
+    func testADroppedConnectionDoesNotHideThatSheIsSpeaking() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang, .hang])
+        let provider = ReplyScriptProvider([["<ja>あ</ja><zh>啊</zh>"]])
+        let playback = FakePlayback()
+        playback.delay = .milliseconds(500)
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            playback: playback
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("speaking") { await session.currentState() == .speaking }
+        recognition.drop()
+
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertFalse(states(log).contains(.reconnecting), "her state is not covered")
+        let whileSpeaking = await session.currentState()
+        XCTAssertEqual(whileSpeaking, .speaking)
+        XCTAssertEqual(recognition.calls, 2, "the recognizer is connected again meanwhile")
+
+        try await waitFor("listening after her segment") {
+            await session.currentState() == .listening
+        }
+        await session.hangUp()
+    }
+
+    /// The same while she is thinking: the reconnect happens behind the scenes.
+    func testADroppedConnectionDoesNotHideThatSheIsThinking() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang, .hang])
+        let provider = RecordingChatProvider(
+            chunks: ["<ja>あ</ja><zh>啊</zh>"],
+            delay: .milliseconds(500)
+        )
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("thinking") { await session.currentState() == .thinking }
+        recognition.drop()
+
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertFalse(states(log).contains(.reconnecting), "her state is not covered")
+        let whileThinking = await session.currentState()
+        XCTAssertEqual(whileThinking, .thinking)
+        await session.hangUp()
+    }
+
+    /// Coming back from a phone call, Siri or the background asks the microphone to open
+    /// again; after the call ended there is nothing to recover.
+    func testRecoveringAudioAsksTheMicrophoneToComeBack() async throws {
+        let eidolon = try await installedEidolon()
+        let (session, _, capture) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([]),
+            recognition: FakeRecognition([.hang])
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+
+        await session.recoverAudio()
+        XCTAssertEqual(capture.recoveries, 1)
+
+        await session.hangUp()
+        await session.recoverAudio()
+        XCTAssertEqual(capture.recoveries, 1, "a call that ended has no microphone to recover")
     }
 
     func testTheNextSegmentIsSynthesizedWhileTheCurrentOnePlays() async throws {

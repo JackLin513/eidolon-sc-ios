@@ -6,8 +6,13 @@ import OSLog
 /// The microphone as a call hears it (ADR-0007): the input node's audio, converted to
 /// 16 kHz mono PCM16 chunks for the recognizer. The audio session runs in `.voiceChat`,
 /// so the system cancels the echo of what is being played.
+///
+/// The system can take the microphone away mid-call — a phone call, Siri, headphones
+/// plugged or pulled, or media services resetting — or leave it stopped when the app comes
+/// back from the background. The call notices all of those and opens it again; the
+/// recognizer's stream stays the same (spec「通话健壮性」).
 final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
     private let lock = NSLock()
     private var continuation: AsyncThrowingStream<Data, Error>.Continuation?
     private var running = false
@@ -15,66 +20,35 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
     /// Whether tap buffers reach the recognizer. Closed while her own voice plays, so the
     /// microphone does not hear the speaker (ADR-0015).
     private var hearing = true
+    /// One recovery at a time: the interruption end, the route change and the foreground
+    /// return can all arrive together.
+    private var recovering = false
+    private var observers: [NSObjectProtocol] = []
 
     func start() async throws {
         guard await Self.microphoneAllowed() else {
             throw CaptureError.notPermitted
         }
         setHearingNow(true)
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(
-            .playAndRecord,
-            mode: .voiceChat,
-            options: [.defaultToSpeaker, .allowBluetoothHFP]
-        )
-        // Activation can wait on the route; the asynchronous form does not hold the call.
-        if #available(iOS 27.0, *) {
-            try await session.activate(options: [])
-        } else {
-            try session.setActive(true)
-        }
-
-        let input = engine.inputNode
-        engine.prepare()
-        // The input format is zero until the session has a route; installing a tap with
-        // it raises an Objective-C exception, which would abort the app (seen on the
-        // simulator when the host app has no microphone permission). Wait, then refuse.
-        let source = try await Self.waitForInputFormat(input)
-        guard let target = AVAudioFormat(
-            commonFormat: .pcmFormatInt16,
-            sampleRate: 16_000,
-            channels: 1,
-            interleaved: true
-        ), let converter = AVAudioConverter(from: source, to: target) else {
-            throw CaptureError.unsupportedFormat
-        }
-
-        removeTapIfNeeded()
-        input.installTap(onBus: 0, bufferSize: 1024, format: source) { [weak self] buffer, _ in
-            self?.push(buffer, converter: converter, target: target)
-        }
-        markTapInstalled()
-        do {
-            try engine.start()
-        } catch {
-            removeTapIfNeeded()
-            throw error
-        }
+        try await openSession()
+        let source = try await installAndStart()
         markRunning()
+        observeAudioSession()
         Logger(subsystem: "com.jacklin.eidolon", category: "call")
             .notice("microphone open: \(source.sampleRate) Hz, \(source.channelCount) ch")
     }
 
     func stop() async {
+        stopObservingAudioSession()
         let (wasRunning, continuation) = takeContinuation()
         if wasRunning {
-            engine.stop()
+            currentEngine().stop()
         }
         removeTapIfNeeded()
         continuation?.finish()
         let session = AVAudioSession.sharedInstance()
         if #available(iOS 27.0, *) {
-            try? await session.deactivate(options: .notifyOthersOnDeactivation)
+            _ = try? await session.deactivate(options: .notifyOthersOnDeactivation)
         } else {
             try? session.setActive(false, options: .notifyOthersOnDeactivation)
         }
@@ -90,6 +64,170 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
 
     func setHearing(_ hearing: Bool) async {
         setHearingNow(hearing)
+    }
+
+    /// Open the microphone again if the system left it closed. Also called when the app
+    /// returns to the foreground, where the engine may have been stopped.
+    func recover() async {
+        guard isRunning(), beginRecovery() else { return }
+        defer { endRecovery() }
+        do {
+            try await activateSession()
+            // Always reinstall: the engine can still report itself running after an
+            // interruption or a services reset while no audio comes through.
+            _ = try await installAndStart()
+            Logger(subsystem: "com.jacklin.eidolon", category: "call")
+                .notice("microphone recovered")
+        } catch {
+            Logger(subsystem: "com.jacklin.eidolon", category: "call")
+                .error("microphone could not recover: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Opening
+
+    private func openSession() async throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(
+            .playAndRecord,
+            mode: .voiceChat,
+            options: [.defaultToSpeaker, .allowBluetoothHFP]
+        )
+        try await activateSession()
+    }
+
+    private func activateSession() async throws {
+        let session = AVAudioSession.sharedInstance()
+        if #available(iOS 27.0, *) {
+            try await session.activate(options: [])
+        } else {
+            try session.setActive(true)
+        }
+    }
+
+    /// Install the input tap and start the engine, returning the input format it runs at.
+    /// An engine that is running is stopped first: a tap cannot be replaced under it.
+    @discardableResult
+    private func installAndStart() async throws -> AVAudioFormat {
+        let engine = currentEngine()
+        let input = engine.inputNode
+        engine.prepare()
+        // The input format is zero until the session has a route; installing a tap with
+        // it raises an Objective-C exception, which would abort the app (seen on the
+        // simulator when the host app has no microphone permission). Wait, then refuse.
+        let source = try await Self.waitForInputFormat(input)
+        guard let target = AVAudioFormat(
+            commonFormat: .pcmFormatInt16,
+            sampleRate: 16_000,
+            channels: 1,
+            interleaved: true
+        ), let converter = AVAudioConverter(from: source, to: target) else {
+            throw CaptureError.unsupportedFormat
+        }
+
+        if engine.isRunning {
+            engine.stop()
+        }
+        removeTapIfNeeded()
+        input.installTap(onBus: 0, bufferSize: 1024, format: source) { [weak self] buffer, _ in
+            self?.push(buffer, converter: converter, target: target)
+        }
+        markTapInstalled()
+        do {
+            try engine.start()
+        } catch {
+            removeTapIfNeeded()
+            throw error
+        }
+        return source
+    }
+
+    // MARK: - The system taking the microphone away
+
+    private func observeAudioSession() {
+        let center = NotificationCenter.default
+        observers.append(
+            center.addObserver(
+                forName: AVAudioSession.interruptionNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let self,
+                      let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                      let type = AVAudioSession.InterruptionType(rawValue: raw)
+                else { return }
+                switch type {
+                case .began:
+                    break
+                case .ended:
+                    let rawOptions = notification
+                        .userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+                    if AVAudioSession.InterruptionOptions(rawValue: rawOptions).contains(.shouldResume) {
+                        Task { await self.recover() }
+                    }
+                @unknown default:
+                    break
+                }
+            }
+        )
+        observers.append(
+            center.addObserver(
+                forName: AVAudioSession.routeChangeNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                guard let self else { return }
+                Task { await self.recover() }
+            }
+        )
+        observers.append(
+            center.addObserver(
+                forName: AVAudioSession.mediaServicesWereResetNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                guard let self else { return }
+                // Every audio object is invalid after a reset: start from a fresh engine.
+                self.replaceEngine(AVAudioEngine())
+                Task { await self.recover() }
+            }
+        )
+    }
+
+    private func stopObservingAudioSession() {
+        for observer in observers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        observers.removeAll()
+    }
+
+    // MARK: - State
+
+    private func currentEngine() -> AVAudioEngine {
+        lock.lock()
+        defer { lock.unlock() }
+        return engine
+    }
+
+    private func replaceEngine(_ next: AVAudioEngine) {
+        lock.lock()
+        engine = next
+        tapInstalled = false
+        lock.unlock()
+    }
+
+    private func beginRecovery() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !recovering else { return false }
+        recovering = true
+        return true
+    }
+
+    private func endRecovery() {
+        lock.lock()
+        recovering = false
+        lock.unlock()
     }
 
     private func setHearingNow(_ hearing: Bool) {
@@ -110,6 +248,12 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
         lock.unlock()
     }
 
+    private func isRunning() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return running
+    }
+
     private func markTapInstalled() {
         lock.lock()
         tapInstalled = true
@@ -121,7 +265,7 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
         let installed = tapInstalled
         tapInstalled = false
         lock.unlock()
-        if installed { engine.inputNode.removeTap(onBus: 0) }
+        if installed { currentEngine().inputNode.removeTap(onBus: 0) }
     }
 
     /// The input format becomes valid once the session is active and routed; on the
