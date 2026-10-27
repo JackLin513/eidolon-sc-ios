@@ -2,6 +2,7 @@
 translations, then the card and event episodes they lack from the ShinyColorsDB mirror
 (the spec's cut point B), checked by querying the corpus afterwards."""
 
+import json
 import time
 from pathlib import Path
 
@@ -233,6 +234,39 @@ async def test_a_script_the_mirror_lacks_is_no_error_and_comes_in_once_it_is_the
     assert episode is not None and (episode.source, episode.title) == (MANO_CARD, "成長の証")
 
 
+async def test_a_script_the_mirror_lacks_comes_in_from_the_games_asset_server(
+    syncer: Syncer, mirror_site: FakeShinyColorsDB
+):
+    mirror_site.official.files["json/produce_events/200100403.json"] = json.dumps(
+        MANO_CARD_SECOND_SCRIPT, ensure_ascii=False
+    ).encode()
+
+    report = await syncer.run()
+
+    assert (report.missing, report.mirror_error) == (0, None)
+    assert mirror_site.official.sent == ["json/produce_events/200100403.json"]
+    episode = await syncer.corpus.get("produce_events/200100403")
+    assert episode is not None and (episode.source, episode.title) == (MANO_CARD, "成長の証")
+
+
+async def test_a_changed_card_checked_while_the_viewer_is_down_is_checked_on_the_games_asset_server(
+    syncer: Syncer, mirror_site: FakeShinyColorsDB
+):
+    await syncer.run()
+    mirror_site.update_card(MANO_P_SSR)
+    mirror_site.viewer_down = True
+    for script, content in mirror_site.scripts.items():
+        mirror_site.official.files[f"json/{script}.json"] = content
+
+    report = await syncer.run()
+
+    # Sent in full, as the server always does, but the same as kept: nothing imported again.
+    assert mirror_site.official.sent == [
+        "json/produce_events/200100401.json", "json/produce_events/200100402.json"
+    ]
+    assert (report.downloaded, report.untranslated.imported) == (0, 0)
+
+
 async def test_when_the_mirror_is_unreachable_the_translations_still_come_in(
     syncer: Syncer, mirror_site: FakeShinyColorsDB
 ):
@@ -341,7 +375,7 @@ def test_the_sync_command_reports_what_it_did(
     assert "汉化版：新增 4 段" in out
     assert "原文剧情：下载 4 个剧本，新增 4 段" in out
     assert "有 1 段已有汉化版" in out
-    assert "镜像上还没有" in out  # Mano's third episode
+    assert "镜像和官方 CDN 上都还没有" in out  # Mano's third episode
     assert "共跳过 3 段失败结局" in out
 
 
@@ -869,4 +903,4 @@ def test_the_sync_command_lists_produce_episodes_titled_like_a_failure(
     assert code == 0, err
     assert "以下 1 段培育剧情标题像失败结局" in out
     assert "produce_events/600100108「負けても、敗れても」" in out
-    assert "相册列出的剧本中有 1 个镜像上没有" in out
+    assert "相册列出的剧本中有 1 个镜像和官方 CDN 上都没有" in out

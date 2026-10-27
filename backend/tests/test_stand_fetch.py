@@ -11,6 +11,7 @@ import pytest
 
 from eidolon.mirror import Mirror
 from tests.conftest import Admin, CharacterConfig
+from tests.fakes import FakeEnzaAssets
 
 MANO = "櫻木真乃"
 PNG = b"\x89PNG\r\n\x1a\n texture"
@@ -19,13 +20,15 @@ WEBP = b"RIFF\x10\x00\x00\x00WEBPVP8 texture"
 
 class FakeShinyColorsDB:
     """The spine part of ShinyColorsDB's API and its CDN, which keep the cards they are
-    given and remember what they were asked for."""
+    given and remember what they were asked for, and behind them the game's asset server
+    (`official`), which has nothing unless given it."""
 
     def __init__(self) -> None:
         self.dresses: dict[int, list[dict]] = {}
         self.files: dict[str, bytes] = {}
         self.requests: list[str] = []
         self.down = False
+        self.official = FakeEnzaAssets()
 
     def card(
         self,
@@ -61,6 +64,8 @@ class FakeShinyColorsDB:
         if self.down:
             raise httpx.ConnectError("down", request=request)
         url = request.url
+        if url.host == "shinycolors.enza.fun":
+            return self.official.handle(request)
         self.requests.append(str(url))
         if url.host == "api.shinycolors.moe" and url.path == "/spine/dresslist":
             return httpx.Response(200, json=self.dresses.get(int(url.params["idolId"]), []))
@@ -175,6 +180,24 @@ def test_an_outfit_listed_without_its_files_is_skipped_until_they_are_there(
     assert stands.outfits() == [
         "stand/1030010010", "stand_costume/1030010010", "stand/1030010020", "stand_costume/1030010020",
     ]
+
+
+def test_an_outfit_shinycolorsdb_has_no_files_of_comes_from_the_games_asset_server(
+    stands: Stands, site: FakeShinyColorsDB
+):
+    site.card(1, "1030010010", f"【ナチュラルモード】{MANO}", "P_SR", without_path=("stand_costume",))
+    costume = "spine/idols/stand_costume/1030010010/"
+    site.official.files.update({
+        f"{costume}data.json": b'{"skeleton": {"spine": "3.6.53"}}',
+        f"{costume}data.atlas": b"\ndata.png\nsize: 2048,2048\n",
+        f"{costume}data.png": PNG + b" stand_costume",
+    })
+
+    code, _, err = stands.fetch()
+
+    assert code == 0, err
+    assert stands.outfits() == ["stand/1030010010", "stand_costume/1030010010"]
+    assert stands.file("stand_costume/1030010010", "data.png").read_bytes() == PNG + b" stand_costume"
 
 
 def test_a_file_that_is_not_what_it_says_is_not_kept(stands: Stands, site: FakeShinyColorsDB):

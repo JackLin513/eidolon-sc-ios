@@ -14,7 +14,8 @@ downloaded, and a script whose file is gone is downloaded again. What the API sa
 about each card is kept there too, so a card whose data has not changed since the
 last sync is not asked about again, only its scripts checked for on disk; a card that
 has changed has its scripts asked for conditionally. A script the mirror does not
-have is not an error; it is asked for again next time.
+have is asked of the game's asset server (`mirror`); one neither has is not an error,
+it is asked for again next time.
 
 Event episodes have no listing: their scripts are numbered `4001` + the event's three
 digits + the episode's two (`game_event_communications/400109701`), so they are found
@@ -329,7 +330,7 @@ def _count_card_script(fetched: Fetched, episode: CardEpisode, report: SyncRepor
         report.downloaded += 1
     elif fetched == "missing":
         report.missing += 1
-        log.info("镜像上还没有 %s", episode.script)
+        log.info("镜像和官方 CDN 上都还没有 %s", episode.script)
 
 
 async def _fetch_albums(
@@ -362,7 +363,7 @@ async def _fetch_albums(
                 report.downloaded += 1
             elif fetched == "missing":
                 report.album_missing += 1
-                log.info("镜像上没有 %s", episode.script)
+                log.info("镜像和官方 CDN 上都没有 %s", episode.script)
             elif changed and fetched == "failure":
                 report.album_failures += 1  # never imported, so not downloaded
             elif changed and fetched == "translated":

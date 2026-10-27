@@ -26,9 +26,9 @@ Fetched = Literal["translated", "failure", "kept", "downloaded", "unchanged", "m
 - `translated`: the corpus has its translation, so it was not asked for;
 - `failure`: a failure ending, never imported, so not asked for;
 - `kept`: its file is here and it was not asked for again;
-- `downloaded`: the mirror sent it and it is kept now;
-- `unchanged`: asked for again on its ETag, and the copy kept is current;
-- `missing`: the mirror does not have it;
+- `downloaded`: the mirror (or the game's asset server) sent it and it is kept now;
+- `unchanged`: asked for again, and the copy kept is current;
+- `missing`: neither the mirror nor the game's asset server has it;
 - `known_missing`: the mirror did not have it before, and it was not asked for again.
 """
 
@@ -66,13 +66,16 @@ class ScriptCache:
         if answer == "missing":
             missing_path.touch()
             return "missing"
+        if path.exists() and path.read_bytes() == answer.content:
+            # Sent in full all the same: asked of the game's asset server, or of the mirror
+            # on the server's ETag. The ETag kept is the one it sent last.
+            _keep_etag(etag_path, answer.etag)
+            missing_path.unlink(missing_ok=True)
+            return "unchanged"
         partial = path.with_name(path.name + ".part")
         partial.write_bytes(answer.content)
         os.replace(partial, path)  # never a half-written script, even if interrupted
-        if answer.etag:
-            etag_path.write_text(answer.etag, encoding="utf-8")
-        else:
-            etag_path.unlink(missing_ok=True)
+        _keep_etag(etag_path, answer.etag)
         missing_path.unlink(missing_ok=True)
         return "downloaded"
 
@@ -89,3 +92,9 @@ class ScriptCache:
     def _path(self, script: str) -> Path:
         return self._directory / f"{script}.json"
 
+
+def _keep_etag(path: Path, etag: str | None) -> None:
+    if etag:
+        path.write_text(etag, encoding="utf-8")
+    else:
+        path.unlink(missing_ok=True)

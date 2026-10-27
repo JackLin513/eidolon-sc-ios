@@ -16,6 +16,10 @@ leaves out of an answer once, keeps its place in the outfit picker. An outfit th
 lists without a place on the CDN, or whose files the CDN does not have or sends broken,
 is left out and reported, and asked for again next time. When ShinyColorsDB cannot be
 reached, or answers unlike it used to, what was fetched until then is kept and listed.
+
+A file the CDN lacks is asked of the game's asset server (`Mirror.stand_file`), so is an
+outfit the API lists without a place: the server keeps every outfit where the CDN would,
+`spine/idols/{category}/{enza_id}/`.
 """
 
 import logging
@@ -66,7 +70,8 @@ async def fetch_stands(build: Path, characters: Iterable[Character], mirror: Mir
                     if category not in dress.stands:
                         continue
                     outfit_id = f"{category}/{dress.enza_id}"
-                    if await _fetch_outfit(mirror, source, outfit_id, dress.stands[category], dress, report):
+                    cdn_path = dress.stands[category] or f"spine/idols/{outfit_id}/"
+                    if await _fetch_outfit(mirror, source, outfit_id, cdn_path, dress, report):
                         entries[outfit_path(outfit_id)] = {
                             "path": outfit_path(outfit_id),
                             "category": category,
@@ -85,13 +90,10 @@ async def fetch_stands(build: Path, characters: Iterable[Character], mirror: Mir
 
 
 async def _fetch_outfit(
-    mirror: Mirror, source: Path, outfit_id: str, cdn_path: str | None, dress: Dress, report: FetchReport
+    mirror: Mirror, source: Path, outfit_id: str, cdn_path: str, dress: Dress, report: FetchReport
 ) -> bool:
     """Whether the outfit's files are all in the source, having fetched those it lacked
     from `cdn_path` on the CDN."""
-    if cdn_path is None:
-        report.skipped.append(f"ShinyColorsDB 列了 {outfit_id}（{dress.name}）却没有它的文件，下次同步再试")
-        return False
     directory = outfit_directory(source, outfit_id)
     downloaded = 0
     for name in OUTFIT_FILES:
@@ -101,7 +103,9 @@ async def _fetch_outfit(
         content = await mirror.stand_file(f"{cdn_path}{name}")
         if content is None or not _looks_valid(name, content):
             problem = "没有" if content is None else "发来的不像是"
-            report.skipped.append(f"ShinyColorsDB {problem} {outfit_id}（{dress.name}）的 {name}，下次同步再试")
+            report.skipped.append(
+                f"ShinyColorsDB 和官方 CDN {problem} {outfit_id}（{dress.name}）的 {name}，下次同步再试"
+            )
             return False
         write_atomically(target, content)
         downloaded += len(content)
