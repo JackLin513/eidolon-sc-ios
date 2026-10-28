@@ -81,3 +81,5 @@
 - Air 安装失败：设备 free developer profile 已装 3 个 App（AltStore / Eidolon / Bangumi），spike 是第 4 个，需先删一个或换付费账号。
 - `usdchecker` 输出 `Success!`；RealityKit macOS 加载 extents ≈ 0.106 × 0.127 × 0.023，App 归一化到 1.6m。
 - Review 修正：文件选择的 security-scoped URL 先复制到 Documents；灯光只加一次；空 bounds 报错；empty/failure 共用 placeholder。
+- Air 已安装并截到静态模型：几何、比例、orbit 相机正常；但当前截图仍是灰色材质，纹理 USDZ 已包含 PNG 且在 USD 里是 UsdPreviewSurface，RealityKit 在 Air 上没有显示贴图。Air 截图：`build/mltd-spike/out/ios-3d-air-2.png`。
+- 纹理问题未解决；不要把它当作“完成”。下一步需要检查 USDZ 材质绑定/RealityKit 对 MMD 转换材质支持。

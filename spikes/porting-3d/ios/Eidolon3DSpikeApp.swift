@@ -14,6 +14,9 @@ struct Eidolon3DSpikeApp: App {
             let url = raw.hasPrefix("/") ? URL(fileURLWithPath: raw) : URL.documentsDirectory.appending(path: raw)
             if FileManager.default.fileExists(atPath: url.path) { return url }
         }
+        if let bundled = Bundle.main.url(forResource: "mirai", withExtension: "usdz") {
+            return bundled
+        }
         let fallback = URL.documentsDirectory.appending(path: "mirai.usdz")
         return FileManager.default.fileExists(atPath: fallback.path) ? fallback : nil
     }
