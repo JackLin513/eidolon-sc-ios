@@ -70,6 +70,10 @@ struct StandPreviewView: View {
         .task {
             await start()
             #if DEBUG
+            if let raw = ProcessInfo.processInfo.environment["EIDOLON_PREVIEW_WEAR"],
+               let stand {
+                previewWear(stand.worn(choice: raw))
+            }
             if ProcessInfo.processInfo.environment["EIDOLON_OPEN_OUTFITS"] == "1" {
                 showsOutfits = true
             }
@@ -347,12 +351,20 @@ struct StandPreviewView: View {
     }
 
     /// Put the outfit chosen in the picker on the preview without losing the action it
-    /// was showing: the renderer is replaced, but the director and segment stay.
+    /// was showing. The renderer that is already on screen keeps its view: replacing it
+    /// here left the new WebView unhosted until the preview was opened again.
     private func previewWear(_ outfit: StandOutfit) {
         guard let stand else { return }
         outfitID = outfit.id
-        phase = .loading
-        loadRenderer(outfit, root: stand.root ?? app.core.location.contentDirectory)
+        if let renderer, case .shown = phase {
+            phase = .loading
+            renderer.load(outfit)
+        } else if let renderer, case .loading = phase {
+            renderer.load(outfit)
+        } else {
+            phase = .loading
+            loadRenderer(outfit, root: stand.root ?? app.core.location.contentDirectory)
+        }
     }
 
     private func loadRenderer(_ outfit: StandOutfit, root: URL) {
