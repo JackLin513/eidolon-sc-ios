@@ -184,6 +184,10 @@ extension Eidolon {
         voicedBy model: String?,
         emit: (TurnEvent) -> Void
     ) async throws -> TurnRecord {
+        // Where the turn's time goes, for the trace (ADR-0012): the producer waits through
+        // earlier memories, the judge, retrieval and the model's first token before hearing
+        // anything, and the whole turn is what a slow reply feels like.
+        let turnStarted = ContinuousClock.now
         // Nothing is asked or written of a line that is blank or too long (upstream
         // `engine.turn` rejects it before the turn begins).
         let text = try TurnInput.checked(text)
@@ -197,7 +201,9 @@ extension Eidolon {
         }
         // What the producer said last turn is remembered by the time they go on, unless
         // it takes too long.
+        let memoryStarted = ContinuousClock.now
         await settleMemories()
+        let memoryElapsed = ContinuousClock.now - memoryStarted
 
         let world = try loadWorld()
         let producer = try producerProfile()
@@ -272,7 +278,9 @@ extension Eidolon {
             reranker: reranker,
             timeZone: zone
         )
+        let retrievalStarted = ContinuousClock.now
         let retrieved = await retrieval.retrieve(history: history, text: text, need: need)
+        let retrievalElapsed = ContinuousClock.now - retrievalStarted
 
         // A call's turns count apart from the conversation's typed ones: what it holds
         // comes from the call, not from the messages (upstream `in_call`).
@@ -372,6 +380,8 @@ extension Eidolon {
         var prompts: [[TracedMessage]] = []
         var toolCalls: [String] = []
         var failure: Error?
+        let chatStarted = ContinuousClock.now
+        var firstTokenAt: ContinuousClock.Instant?
         do {
             while true {
                 prompts.append(prompt.map(TracedMessage.init))
@@ -387,6 +397,7 @@ extension Eidolon {
                         try Task.checkCancellation()
                         switch event {
                         case let .text(chunk):
+                            if firstTokenAt == nil { firstTokenAt = ContinuousClock.now }
                             said += chunk
                             shown(parser.feed(chunk))
                         case let .toolCalls(made):
@@ -396,6 +407,7 @@ extension Eidolon {
                 } else {
                     for try await chunk in provider.stream(messages: prompt) {
                         try Task.checkCancellation()
+                        if firstTokenAt == nil { firstTokenAt = ContinuousClock.now }
                         said += chunk
                         shown(parser.feed(chunk))
                     }
@@ -449,7 +461,13 @@ extension Eidolon {
                 retrieval: retrieved.trace,
                 toolCalls: toolCalls,
                 degradation: degraded,
-                error: error
+                error: error,
+                timings: TurnTimings(
+                    memory: memoryElapsed.inSeconds,
+                    retrieval: retrievalElapsed.inSeconds,
+                    firstToken: firstTokenAt.map { ($0 - chatStarted).inSeconds },
+                    total: (ContinuousClock.now - turnStarted).inSeconds
+                )
             )
             try? writeTrace(
                 trace,

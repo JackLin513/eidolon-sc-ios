@@ -113,12 +113,22 @@ struct TraceListView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             } else {
-                Text("检索：\(record.trace.retrieval.need)，候选 \(record.trace.retrieval.candidates.count) 条")
+                Text("检索：\(record.trace.retrieval.need)，候选 \(record.trace.retrieval.candidates.count) 条\(totalSuffix(record))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 2)
+    }
+
+    /// The whole turn, when it was recorded: what a slow reply feels like, at a glance.
+    private func totalSuffix(_ record: TurnTraceRecord) -> String {
+        guard let total = record.trace.timings?.total else { return "" }
+        return " · 总耗时 \(Self.seconds(total))"
+    }
+
+    private static func seconds(_ value: Double) -> String {
+        String(format: "%.2f 秒", value)
     }
 
     private func load() async {
@@ -181,6 +191,26 @@ struct TraceDetailView: View {
                 }
             }
 
+            if let timings = trace.timings {
+                Section("耗时") {
+                    if let memory = timings.memory {
+                        LabeledContent("等待记忆", value: Self.seconds(memory))
+                    }
+                    if let judge = trace.judge?.latency {
+                        LabeledContent("判断", value: Self.seconds(judge))
+                    }
+                    if let retrieval = timings.retrieval {
+                        LabeledContent("检索", value: Self.seconds(retrieval))
+                    }
+                    if let firstToken = timings.firstToken {
+                        LabeledContent("首 token", value: Self.seconds(firstToken))
+                    }
+                    if let total = timings.total {
+                        LabeledContent("总耗时", value: Self.seconds(total))
+                    }
+                }
+            }
+
             Section("判断") {
                 if let judge = trace.judge {
                     LabeledContent("服务", value: judge.service)
@@ -199,7 +229,7 @@ struct TraceDetailView: View {
                         LabeledContent("输入 token", value: "\(tokens)")
                     }
                     if let latency = judge.latency {
-                        LabeledContent("耗时", value: String(format: "%.2f 秒", latency))
+                        LabeledContent("耗时", value: Self.seconds(latency))
                     }
                     if let failure = judge.failure {
                         Text(failure)
@@ -258,6 +288,10 @@ struct TraceDetailView: View {
         }
         .navigationTitle("回合追踪")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private static func seconds(_ value: Double) -> String {
+        String(format: "%.2f 秒", value)
     }
 
     private func candidateRow(_ candidate: RetrievalCandidate) -> some View {

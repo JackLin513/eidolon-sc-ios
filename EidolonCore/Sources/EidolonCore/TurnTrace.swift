@@ -98,6 +98,32 @@ public struct JudgeTrace: Codable, Sendable, Hashable {
     }
 }
 
+/// How long each part of a turn took, in seconds: what the producer waits through before
+/// her first word (ADR-0012). Every part is optional so a trace from an older build still
+/// reads, and a turn that ended before reaching one leaves it nil.
+public struct TurnTimings: Codable, Sendable, Hashable {
+    /// Waiting for what earlier turns were still writing down (`settleMemories`).
+    public var memory: Double?
+    /// Looking references and memories up: the local search and any embedding/rerank calls.
+    public var retrieval: Double?
+    /// From the chat request to the first text chunk of her reply.
+    public var firstToken: Double?
+    /// From the turn's start to its trace — after the reply is written down.
+    public var total: Double?
+
+    public init(
+        memory: Double? = nil,
+        retrieval: Double? = nil,
+        firstToken: Double? = nil,
+        total: Double? = nil
+    ) {
+        self.memory = memory
+        self.retrieval = retrieval
+        self.firstToken = firstToken
+        self.total = total
+    }
+}
+
 /// One turn, as it can be gone over afterwards: what she was asked, what the judge
 /// answered, what retrieval found and what each fallback cost (ADR-0012). It stays in the
 /// user library and never leaves the phone.
@@ -110,6 +136,8 @@ public struct TurnTrace: Codable, Sendable, Hashable {
     public var toolCalls: [String]
     public var degradation: [String]
     public var error: String?
+    /// Where the turn's time went; nil for traces written before it was recorded.
+    public var timings: TurnTimings?
 
     public init(
         characterID: String,
@@ -119,7 +147,8 @@ public struct TurnTrace: Codable, Sendable, Hashable {
         retrieval: RetrievalTrace = RetrievalTrace(),
         toolCalls: [String] = [],
         degradation: [String] = [],
-        error: String? = nil
+        error: String? = nil,
+        timings: TurnTimings? = nil
     ) {
         self.characterID = characterID
         self.prompts = prompts
@@ -129,6 +158,7 @@ public struct TurnTrace: Codable, Sendable, Hashable {
         self.toolCalls = toolCalls
         self.degradation = degradation
         self.error = error
+        self.timings = timings
     }
 }
 
