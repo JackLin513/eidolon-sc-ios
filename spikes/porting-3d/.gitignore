@@ -1,0 +1,10 @@
+assets/
+out/
+*.unity3d
+*.pmx
+*.vmd
+*.png
+*.jpg
+*.jpeg
+*.mp4
+*.mov
