@@ -211,6 +211,34 @@ struct TraceDetailView: View {
                 }
             }
 
+            if let call = trace.callTimings, !call.turns.isEmpty {
+                Section("通话耗时") {
+                    ForEach(call.turns, id: \.reply) { turn in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("第 \(turn.reply + 1) 回合")
+                                .font(.caption.bold())
+                            Group {
+                                if let delay = turn.replyDelay {
+                                    Text("识别 → 回复：\(Self.seconds(delay))")
+                                }
+                                if let line = turn.firstLine {
+                                    Text("识别 → 首句：\(Self.seconds(line))")
+                                }
+                                if let wait = turn.voiceWait {
+                                    Text("回复 → 开口：\(Self.seconds(wait))")
+                                }
+                                if let voice = turn.firstVoice {
+                                    Text("识别 → 开口：\(Self.seconds(voice))")
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+            }
+
             Section("判断") {
                 if let judge = trace.judge {
                     LabeledContent("服务", value: judge.service)
