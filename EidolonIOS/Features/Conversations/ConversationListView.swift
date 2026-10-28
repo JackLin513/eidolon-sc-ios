@@ -26,7 +26,7 @@ struct ConversationListView: View {
             .task { await app.refresh() }
             .onAppear {
                 #if DEBUG
-                if app.debugShowsMemories || app.debugShowsTraces || app.debugShowsStandPreview {
+                if app.openDebugSettingsIfRequested() {
                     showSettings = true
                 }
                 if path.isEmpty,
@@ -39,6 +39,9 @@ struct ConversationListView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        #if DEBUG
+                        app.markSettingsOpenedManually()
+                        #endif
                         showSettings = true
                     } label: {
                         Image(systemName: "gearshape")

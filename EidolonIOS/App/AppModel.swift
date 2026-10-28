@@ -386,6 +386,49 @@ final class AppModel {
         ProcessInfo.processInfo.environment["EIDOLON_OPEN_STAND_PREVIEW"] == "1"
     }
 
+    #if DEBUG
+    private var didAutoOpenDebugSettings = false
+    private var didConsumeDebugSettingsDestinations = false
+    private var didConsumeDebugLatestTrace = false
+    /// True only for a Settings sheet opened by a debug launch flag, not the gear button.
+    private(set) var settingsOpenedByDebug = false
+
+    private var hasDebugSettingsEntry: Bool {
+        debugShowsMemories || debugShowsTraces || debugShowsStandPreview
+    }
+
+    /// The launch flag may auto-open Settings once; pressing the gear later must not
+    /// keep re-opening the debug destination on every appearance.
+    func openDebugSettingsIfRequested() -> Bool {
+        guard !didAutoOpenDebugSettings, hasDebugSettingsEntry else { return false }
+        didAutoOpenDebugSettings = true
+        settingsOpenedByDebug = true
+        return true
+    }
+
+    func markSettingsOpenedManually() {
+        settingsOpenedByDebug = false
+    }
+
+    func consumeDebugSettingsDestinations() -> (
+        memories: Bool,
+        traces: Bool,
+        standPreview: Bool
+    )? {
+        guard settingsOpenedByDebug, !didConsumeDebugSettingsDestinations,
+              debugShowsMemories || debugShowsTraces || debugShowsStandPreview
+        else { return nil }
+        didConsumeDebugSettingsDestinations = true
+        return (debugShowsMemories, debugShowsTraces, debugShowsStandPreview)
+    }
+
+    func consumeDebugLatestTrace() -> Bool {
+        guard !didConsumeDebugLatestTrace, debugShowsLatestTrace else { return false }
+        didConsumeDebugLatestTrace = true
+        return true
+    }
+    #endif
+
     /// Development aid: `SIMCTL_CHILD_EIDOLON_IMPORT_BUNDLE` points at a bundle
     /// already copied into this app's container, so the simulator can reach the
     /// screens that normally sit behind the file picker.
