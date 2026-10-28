@@ -494,6 +494,23 @@ final class AppModel {
         try? await core.standIndexData()
     }
 
+    /// Deletes `.eidolonpkg` files left in the app's Documents by a USB copy or an
+    /// earlier import. The installed content/stand directories are untouched.
+    @discardableResult
+    func removeDocumentPackages() -> Int {
+        let fileManager = FileManager.default
+        guard let urls = try? fileManager.contentsOfDirectory(
+            at: URL.documentsDirectory,
+            includingPropertiesForKeys: nil
+        ) else { return 0 }
+        var removed = 0
+        for url in urls where url.pathExtension.lowercased() == "eidolonpkg" {
+            try? fileManager.removeItem(at: url)
+            removed += 1
+        }
+        return removed
+    }
+
     func refresh() async {
         do {
             try await load()

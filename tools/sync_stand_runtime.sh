@@ -1,7 +1,7 @@
 #!/bin/sh
 # Copy the official Spine 3.6 WebGL runtime out of the upstream checkout into the app's
 # resources (ADR-0017). The runtime is third-party code and never enters this repository;
-# her outfits travel in the content bundle instead (ADR-0018).
+# her outfits travel in the separate stand bundle instead (ADR-0020).
 #
 #   sync_stand_runtime.sh <destination-directory> [upstream-checkout]
 #

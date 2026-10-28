@@ -58,7 +58,7 @@
 
 ### 内容包
 
-- 沿用现有 `.eidolonpkg` 格式（format 2）；不新增 `kind`——App 的两个导入入口区分内容包和立绘包。旧包按 legacy 兼容。
+- 沿用现有 `.eidolonpkg` 格式（format 2）；manifest 新增可选的 `kind: "content"`，旧包没有这个字段也照常导入。App 的两个导入入口仍然区分内容包和立绘包。
 - 不再包含 `stand/` 素材；`characters.json` 不再依赖 `stand` 字段。
 - 内容包继续原子替换：`Content/current`，失败保留 `Content/previous`。
 - 剧情更新仍然全量导入，但不再包含立绘，体积回到很小。
@@ -109,10 +109,10 @@
 ### 增量立绘包
 
 - 解压到临时目录；校验每个新文件。
-- 新 outfit 文件按路径移入 `Content/stand/stand/idols/`；已存在的编号跳过（素材不可变）。
+- 新/变更的 outfit 文件按路径移入 `Content/stand/stand/idols/`；未变更的素材不在包内，已有的旧衣装保留。
 - `stand/outfits/*.json`、manifest 和 `index.json` 用原子替换写入；列表更新失败时保留旧列表。
 - 不删除已有衣装；新目录先落盘、后改列表，失败时最多留下不会被列表引用的孤儿文件，重试即可。
-- 增量包不能改变已有 outfit 的内容；如果换了素材，用新编号或重新导全量。
+- 增量包可以更新已存在 outfit 的素材（按大小/CRC 判断变化）；上游的 outfit 编号稳定，变更时保留同一编号。
 
 ### 进度与资源
 

@@ -1,9 +1,9 @@
 import Foundation
 import ZIPFoundation
 
-/// Unpacks, validates and atomically installs a stand bundle beside the content bundle
-/// (ADR-0020). A full bundle replaces the stand directory; the previous one is kept for
-/// rollback. A delta bundle is not handled here yet.
+/// Unpacks, validates and installs a stand bundle beside the content bundle (ADR-0020).
+/// A full bundle replaces the stand directory; a delta merges new/changed files and
+/// keeps the old outfits. Both keep the previous state on failure.
 struct StandBundleInstaller {
     let contentRoot: URL
     let fileManager: FileManager
@@ -49,7 +49,8 @@ struct StandBundleInstaller {
             formatVersion: manifest.formatVersion,
             installedAt: ISO8601DateFormatter().string(from: Date()),
             characterCount: manifest.characters.count,
-            outfitCount: outfitCount
+            outfitCount: outfitCount,
+            mode: manifest.mode
         )
     }
 

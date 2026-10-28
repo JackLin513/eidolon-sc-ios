@@ -9,11 +9,14 @@ produces the read-only archive described in docs/adr/0003-content-bundle-format.
     content/holidays.json       — Japan's holidays, 2000–2100, Tokyo date → name
     characters/characters.json  — characters.toml, paths rewritten package-relative
     characters/*.json|*.md|*.jpg
+
+A separate stand bundle (`.eidolonpkg` with `kind: stand`) carries:
     stand/idols/<outfit_id>/{data.json,data.atlas,data.png}
     stand/outfits/<idol_id>.json — her outfit list, urls package-relative
 
 The stand files come from the upstream `stand fetch` / `stand outfits` build
-directory (ADR-0018): pass it with `--stand`. Without it the bundle has no stands.
+directory (ADR-0020): pass it with `--stand-only` to write a separate stand bundle.
+The story bundle never carries stands.
 
 The user database (docs/adr/0002-content-and-user-databases.md) is never read.
 
@@ -479,21 +482,25 @@ def stand_manifest(assets: StandAssets) -> dict:
     }
 
 
-def read_stand_index(path: Path) -> dict[str, tuple[int, str | None]]:
-    """Read the app's stand index (format 1) into package path → (size, crc32)."""
+def read_stand_index(path: Path) -> dict[str, tuple[int, str | None]] | None:
+    """Read the app's stand index (format 1); nil (with a warning) when it is unusable."""
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, UnicodeDecodeError) as error:
-        die(f"读不了立绘清单 {path}：{error}")
+        print(f"warning: 读不了立绘清单 {path}：{error}；改为全量导出", file=sys.stderr)
+        return None
     if document.get("format_version") != 1 or not isinstance(document.get("files"), dict):
-        die(f"立绘清单 {path} 不是格式 1")
+        print(f"warning: 立绘清单 {path} 不是格式 1；改为全量导出", file=sys.stderr)
+        return None
     result: dict[str, tuple[int, str | None]] = {}
     for package_path, record in document["files"].items():
         if not isinstance(record, dict) or type(record.get("size")) is not int:
-            die(f"立绘清单里的 {package_path} 格式不对")
+            print(f"warning: 立绘清单里的 {package_path} 格式不对；改为全量导出", file=sys.stderr)
+            return None
         crc = record.get("crc32")
         if crc is not None and not isinstance(crc, str):
-            die(f"立绘清单里的 {package_path} 校验值格式不对")
+            print(f"warning: 立绘清单里的 {package_path} 校验值格式不对；改为全量导出", file=sys.stderr)
+            return None
         result[package_path] = (record["size"], crc)
     return result
 
@@ -503,7 +510,7 @@ def read_device_stand_index(
     bundle_id: str,
     *,
     timeout: int = 120,
-) -> dict[str, tuple[int, str | None]]:
+) -> dict[str, tuple[int, str | None]] | None:
     """Copy the installed stand index off a connected iPhone with devicectl."""
     with tempfile.TemporaryDirectory() as scratch:
         destination = Path(scratch) / "stand-index.json"
@@ -532,14 +539,15 @@ def read_device_stand_index(
                 timeout=timeout,
             )
         except (OSError, subprocess.TimeoutExpired) as error:
-            die(f"从设备读立绘清单失败：{error}")
+            print(f"warning: 从设备读立绘清单失败：{error}；改为全量导出", file=sys.stderr)
+            return None
         if completed.returncode != 0:
-            die(
-                "从设备读立绘清单失败："
-                + (completed.stderr.strip() or completed.stdout.strip() or "devicectl 退出 " + str(completed.returncode))
-            )
+            detail = completed.stderr.strip() or completed.stdout.strip() or f"devicectl 退出 {completed.returncode}"
+            print(f"warning: 从设备读立绘清单失败：{detail}；改为全量导出", file=sys.stderr)
+            return None
         if not destination.is_file():
-            die("设备上没有立绘清单；先在 App 里导入全量立绘包")
+            print("warning: 设备上没有立绘清单；改为全量导出", file=sys.stderr)
+            return None
         return read_stand_index(destination)
 
 
@@ -623,6 +631,7 @@ def write_bundle(
             counts["stand"] = stand.file_count
         manifest = {
             "format_version": FORMAT_VERSION,
+            "kind": "content",
             "content_schema_version": CONTENT_SCHEMA_VERSION,
             "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "embedding": {
@@ -803,6 +812,7 @@ def main() -> int:
         if index is None:
             out = (args.out or Path("build/eidolon-stand.eidolonpkg")).resolve()
             write_stand_bundle(out, stand)
+            print("  清单不可用：已改为全量立绘包")
         else:
             changed = changed_stand_files(stand, index)
             out = (args.out or Path("build/eidolon-stand-add.eidolonpkg")).resolve()
