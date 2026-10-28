@@ -437,6 +437,79 @@ def build_stand(
     )
 
 
+
+STAND_FORMAT_VERSION = 1
+
+
+def stand_manifest(assets: StandAssets) -> dict:
+    """The manifest of a self-contained stand bundle (ADR-0020).
+
+    Paths are relative to the stand root: `idols/...` and `outfits/...`, not the content
+    bundle's `stand/...` tree. Only characters with a packaged stand are listed.
+    """
+    characters = []
+    for item in assets.characters:
+        stand = item.get("stand")
+        if not isinstance(stand, dict):
+            continue
+        default = stand.get("default_outfit")
+        if not isinstance(default, dict):
+            continue
+        characters.append(
+            {
+                "id": item["id"],
+                "stand": {
+                    "default_outfit": {
+                        "id": default["id"],
+                        "path": default["path"],
+                    },
+                    "outfits": stand["outfits"],
+                },
+            }
+        )
+    return {
+        "format_version": STAND_FORMAT_VERSION,
+        "kind": "stand",
+        "mode": "full",
+        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "characters": characters,
+        "files": {},
+    }
+
+
+def write_stand_bundle(out_path: Path, assets: StandAssets) -> None:
+    """Write a stand bundle: its own manifest, outfit lists and stand files, no story."""
+    if not assets.characters or not assets.file_count:
+        die("没有可打包的立绘")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest = stand_manifest(assets)
+    with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for package_path in sorted(assets.files):
+            archive.write(assets.files[package_path], package_path)
+        for package_path in sorted(assets.lists):
+            archive.writestr(
+                package_path,
+                json.dumps(assets.lists[package_path], ensure_ascii=False, indent=1),
+            )
+        manifest["files"] = {
+            info.filename: {"size": info.file_size, "crc32": f"{info.CRC:08x}"}
+            for info in archive.infolist()
+        }
+        archive.writestr(
+            "manifest.json",
+            json.dumps(manifest, ensure_ascii=False, indent=2),
+        )
+
+    digest = sha256_of(out_path)
+    print(
+        f"已写出 {out_path} （{out_path.stat().st_size / 1e6:.1f} MB，sha256 {digest[:16]}…）"
+    )
+    print(
+        f"  立绘包 {len(manifest['characters'])} 位角色，"
+        f"{assets.file_count} 个文件（{manifest['mode']}）"
+    )
+
+
 def write_bundle(
     out_path: Path,
     source_db: Path,
@@ -560,8 +633,9 @@ def main() -> int:
     parser.add_argument(
         "--out",
         type=Path,
-        default=Path("build/eidolon-content.eidolonpkg"),
-        help="输出文件（默认 build/eidolon-content.eidolonpkg）",
+        default=None,
+        help="输出文件（内容包默认 build/eidolon-content.eidolonpkg，"
+        "立绘包默认 build/eidolon-stand.eidolonpkg）",
     )
     parser.add_argument(
         "--stand",
@@ -573,31 +647,61 @@ def main() -> int:
     parser.add_argument(
         "--stand-cards",
         type=int,
-        default=3,
-        help="每位角色打包衣装清单里的前几张卡（默认 3；默认衣装所在的卡总会带上）",
+        default=None,
+        help="每位角色打包衣装清单里的前几张卡（内容包默认 3，立绘包默认全部；"
+        "默认衣装所在的卡总会带上）",
     )
     parser.add_argument(
         "--stand-all-outfits",
         action="store_true",
         help="打包衣装清单里的全部衣装（不再按 --stand-cards 截取）",
     )
+    parser.add_argument(
+        "--stand-only",
+        action="store_true",
+        help="只导出立绘包；不给 --stand 时会报错，不需要数据库。立绘包默认打全部衣装",
+    )
     args = parser.parse_args()
 
     upstream = args.upstream.resolve()
     if not upstream.is_dir():
         die(f"找不到上游仓库 {upstream}")
-    source_db = (args.db or upstream / "backend" / "data" / "eidolon.db").resolve()
     characters_dir = (args.characters or upstream / "characters").resolve()
 
+    if args.stand_only:
+        if args.stand is None:
+            die("--stand-only 需要 --stand 指向立绘整理目录")
+        characters, _ = load_characters(characters_dir)
+        all_outfits = args.stand_all_outfits or args.stand_cards is None
+        cards = args.stand_cards if args.stand_cards is not None else 0
+        stand = build_stand(
+            characters,
+            args.stand.resolve(),
+            cards=cards,
+            all_outfits=all_outfits,
+        )
+        out = (args.out or Path("build/eidolon-stand.eidolonpkg")).resolve()
+        write_stand_bundle(out, stand)
+        return 0
+
+    source_db = (args.db or upstream / "backend" / "data" / "eidolon.db").resolve()
     characters, character_files = load_characters(characters_dir)
+    cards = args.stand_cards if args.stand_cards is not None else 3
+    if args.stand is not None and not args.stand_all_outfits:
+        print(
+            "warning: 内容包仍在走旧格式、会带立绘；新流程请用 --stand-only "
+            "单独导出立绘包",
+            file=sys.stderr,
+        )
     stand = build_stand(
         characters,
         args.stand.resolve() if args.stand else None,
-        cards=args.stand_cards,
+        cards=cards,
         all_outfits=args.stand_all_outfits,
     )
+    out = (args.out or Path("build/eidolon-content.eidolonpkg")).resolve()
     write_bundle(
-        args.out.resolve(),
+        out,
         source_db,
         stand.characters,
         character_files,

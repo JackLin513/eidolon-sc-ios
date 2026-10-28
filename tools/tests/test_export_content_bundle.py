@@ -328,6 +328,36 @@ class BundleManifestTests(unittest.TestCase):
             self.assertEqual(entry["stand"]["default_outfit"]["id"], "stand/1030010010")
             self.assertEqual(entry["stand"]["outfits"], "stand/outfits/1.json")
 
+    def test_stand_bundle_is_self_contained_and_keeps_its_own_shape(self) -> None:
+        assets = exporter.build_stand(
+            [character()], self.stand.root, cards=1, all_outfits=False
+        )
+
+        out = self.root / "stand.eidolonpkg"
+        exporter.write_stand_bundle(out, assets)
+
+        with zipfile.ZipFile(out) as archive:
+            names = set(archive.namelist())
+            manifest = json.loads(archive.read("manifest.json"))
+            stand_files = {
+                name for name in names if name.startswith("stand/")
+            }
+            for name in stand_files:
+                data = archive.read(name)
+                record = manifest["files"][name]
+                self.assertEqual(record["size"], len(data))
+                self.assertEqual(record["crc32"], f"{zlib.crc32(data):08x}")
+            self.assertIn("stand/idols/stand/1030010010/data.json", names)
+            self.assertIn("stand/outfits/1.json", names)
+            self.assertFalse(any(name.startswith(("content/", "characters/")) for name in names))
+            self.assertEqual(manifest["format_version"], 1)
+            self.assertEqual(manifest["kind"], "stand")
+            self.assertEqual(manifest["mode"], "full")
+            config = manifest["characters"][0]["stand"]
+            self.assertEqual(config["default_outfit"]["id"], "stand/1030010010")
+            self.assertEqual(config["default_outfit"]["path"], "stand/idols/stand/1030010010/")
+            self.assertEqual(config["outfits"], "stand/outfits/1.json")
+
     def test_archive_without_stand_keeps_the_old_shape(self) -> None:
         original_holidays = exporter.build_holidays
         exporter.build_holidays = lambda: {"2026-01-01": "元日"}

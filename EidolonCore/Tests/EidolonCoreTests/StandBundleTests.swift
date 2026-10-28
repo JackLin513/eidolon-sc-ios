@@ -24,7 +24,7 @@ enum StandFixture {
             let stage = "stand_costume/\(number)"
             for outfit in [everyday, stage] {
                 for name in ["data.json", "data.atlas", "data.png"] {
-                    files["idols/\(outfit)/\(name)"] = Data("\(outfit)/\(name)".utf8)
+                    files["stand/idols/\(outfit)/\(name)"] = Data("\(outfit)/\(name)".utf8)
                 }
             }
             cardValues.append(
@@ -49,13 +49,13 @@ enum StandFixture {
             "idol_id": .int(1),
             "cards": .array(cardValues),
         ]
-        files["outfits/1.json"] = try JSONEncoder().encode(list)
+        files["stand/outfits/1.json"] = try JSONEncoder().encode(list)
 
         let defaultID = "stand/1030010010"
         let config = StandConfig(
             defaultOutfitID: defaultID,
-            defaultOutfitPath: "idols/\(defaultID)/",
-            outfitListPath: "outfits/1.json"
+            defaultOutfitPath: "stand/idols/\(defaultID)/",
+            outfitListPath: "stand/outfits/1.json"
         )
         var records: [String: StandManifest.FileRecord] = [:]
         for (path, data) in files {
