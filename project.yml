@@ -73,7 +73,6 @@ targets:
       - path: spikes/porting-3d/ios
         excludes:
           - tests
-          - Resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jacklin.eidolon3dspike
@@ -87,16 +86,14 @@ targets:
         DEVELOPMENT_TEAM: "MFZ8WGP52J"
         SWIFT_VERSION: "5.0"
         ENABLE_USER_SCRIPT_SANDBOXING: NO
-    postBuildScripts:
-      - name: Copy 3D preview resources
+    preBuildScripts:
+      - name: Ensure 3D preview resources exist
         basedOnDependencyAnalysis: false
         script: |
-          mkdir -p "${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
+          mkdir -p "${SRCROOT}/spikes/porting-3d/ios/Resources"
           for name in mirai-pr001.usdz mirai-ss003.usdz; do
             src="${SRCROOT}/spikes/porting-3d/ios/Resources/${name}"
-            if [ -f "$src" ]; then
-              cp "$src" "${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/${name}"
-            fi
+            [ -f "$src" ] || : > "$src"
           done
 
   Eidolon3DSpikeTests:
