@@ -64,6 +64,22 @@ targets:
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: "FF7NMQWZKK"
 
+  Eidolon3DSpike:
+    type: application
+    platform: iOS
+    sources:
+      - path: spikes/porting-3d/ios
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jacklin.eidolon3dspike
+        PRODUCT_NAME: Eidolon3DSpike
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: "MFZ8WGP52J"
+        SWIFT_VERSION: "5.0"
+
 schemes:
   EidolonIOS:
     build:
@@ -76,3 +92,10 @@ schemes:
       config: Debug
       targets:
         - EidolonIOSUITests
+
+  Eidolon3DSpike:
+    build:
+      targets:
+        Eidolon3DSpike: all
+    run:
+      config: Debug

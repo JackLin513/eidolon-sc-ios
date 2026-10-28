@@ -66,3 +66,26 @@ Headless MLTDTools 补丁在 `mltools-headless.patch`（给 MillionDance 加 `--
 
 - 不提供/执行绕过 DRM、解密 `.pak`、提取 ACB/HCA 的步骤。
 - 不把游戏原始资源或转换产物提交、上传、分发。
+
+## 3D 支线（spec #53）
+
+独立 target：`Eidolon3DSpike`，不依赖 `EidolonCore`/`EidolonIOS`。
+
+```sh
+xcodegen generate
+xcodebuild -project EidolonIOS.xcodeproj -scheme Eidolon3DSpike \
+  -destination 'platform=iOS Simulator,id=<sim>' build
+```
+
+App 从 Documents 的 `mirai.usdz` 或 `EIDOLON_3D_MODEL` 读取 USDZ；也支持文件选择。没有把 USDZ 打进仓库。
+
+转换：
+
+```sh
+build/mltd-spike/Blender42.app/Contents/MacOS/Blender --background \
+  --python spikes/porting-3d/pmx_to_usdz.py -- \
+  --pmx build/mltd-spike/out/mltd/mirai.pmx \
+  --out build/mltd-spike/out/mltd/mirai.usdz
+```
+
+已验证：`usdchecker` Success；RealityKit 在 macOS 能加载 USDZ（模型很小，App 会归一化到 1.6m）。Air 安装被 free developer profile 的 3-App 上限挡住（AltStore/Eidolon/Bangumi 已占满），需要先删一个才能装 spike。
