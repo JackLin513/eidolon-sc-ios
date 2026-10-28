@@ -118,3 +118,9 @@
 - 固定渐变舞台、固定机位、底部私服/演出服按钮均可见；`StandDirection` 为 calm 并跨换装保留。
 - `xcodebuild test` 在模拟器执行：4 个 locator 测试全部通过。
 - 实机安装仍超时，最终 Air 验收留给 T6（#60）。
+
+### T2 动作映射起点
+
+- 新增 `Model3DAction` / `Model3DActionMap`：calm→idle、speaking→talk+mouthOpen、looking→listen、nod→nodYes/nodNo，情绪透传。
+- 新增 4 个纯映射单测，模拟器全部通过。
+- 渲染器动作播放/按钮状态机尚未接上，T2 不能关闭。
