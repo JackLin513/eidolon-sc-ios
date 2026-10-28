@@ -14,6 +14,21 @@
 - MLTDTools：
 - Blender / MMD Tools：
 
+## 2026-10-28 iOS 容器只读探测
+
+- 容器：`~/Library/Containers/jp.co.bandainamcoent.BNEI0310/Data/Documents`（本机已有 iOS 版缓存）
+- 扫描：4885 个文件，4422 个 UnityFS bundle，约 1.36GB；没有导出/复制素材。
+- Unity revision 分布：
+  - `2018.4.11f1` 1575
+  - `2018.4.12f1` 882
+  - `2020.3.28f1` 44
+  - `2020.3.32f1` 270
+  - `2021.3.21f1` 412
+  - `2021.3.36f1` 896
+  - `6000.2.6f2` 343
+- 结论：缓存不是单一版本；2018.4 的 2457 个 bundle 与 MLTDTools v0.3.0 的年代接近，可能可读；2020.3/2021/6000 不应假设旧 AssetStudio 能读。下一步要在 2018.4 bundle 中定位目标角色的 `ch_*`/`cb_*`/`dan_*`，再决定是否启动 Windows VM。
+- 探测工具：`unityfs_probe.py`；测试：`tests/test_unityfs_probe.py`（4 tests）。只读 header，不解析资源内容。
+
 ## 结果
 
 - [ ] head/body 读取

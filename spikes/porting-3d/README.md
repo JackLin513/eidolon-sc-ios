@@ -34,6 +34,15 @@
 - 产物：`build/mltd-spike/out/` 里的 PMX/VMD/PNG、截图/录屏；不提交。
 - 记录：`notes.md` 记录游戏版本、工具版本、每一步成功/失败、issue 对照。
 
+## 只读探测
+
+```sh
+python3 spikes/porting-3d/unityfs_probe.py   "$HOME/Library/Containers/jp.co.bandainamcoent.BNEI0310/Data/Documents" --json
+python3 -m unittest discover -s spikes/porting-3d/tests
+```
+
+`unityfs_probe.py` 只读 UnityFS header 的 Unity revision，不解析/导出素材。
+
 ## 执行清单
 
 1. 确认资源版本与来源；只在本机处理。
