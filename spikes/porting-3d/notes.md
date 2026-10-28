@@ -146,3 +146,9 @@
   - `CharacterImasMotionPlayerDance.SolveCurves` @ `0x37EE384`、`SetResultToTransforms` @ `0x37EE99C`。
 - 曲线 `KeyType`：0 固定 60fps、1 时间/值对、2 常量、3 全帧曲线、6 全帧偏移、7 增量帧；`SolveCurve` 负责 Hermite/线性插值。
 - 结论：应直接从 `.imo.unity3d` 的 `CharacterImasMotionAsset` 解码，生成 USDZ/骨骼动画；不再依赖 MMD/VMD 或 Blender 的 MMD Tools 导入。
+
+### 原生曲线直接套骨骼的实验
+
+- 从 `dan_loveig_01` 解出 180 条曲线（`CharacterImasMotionAsset`），导出为 `/tmp/loveig-curves.json`（本地副本在 `build/mltd-spike/out/il2cpp/`）。
+- 直接按 native path（MUNE1/MUNE2/SAKOTSU_L/...）映射到 MMD 骨骼并应用 Euler 角，模型仍爆炸。
+- 结论：原生曲线本身可读，但 native 骨骼局部轴/rest pose 与 MLTDTools PMX/MMD 骨骼不一致；需要按 native skeleton 的 rest transform 做 retarget，不能直接套 MMD 骨骼。下一步应构建 native skeleton 或使用 `CharacterCommonSkeleton` 的 rest 矩阵。
