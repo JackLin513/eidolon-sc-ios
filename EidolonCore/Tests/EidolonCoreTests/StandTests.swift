@@ -116,6 +116,24 @@ final class StandTests: XCTestCase {
         XCTAssertNil(hiori)
     }
 
+    /// The lookup can be pointed at more than one root, so a separate stand package can
+    /// be tried before the legacy content bundle. Nothing is found under a missing root;
+    /// the next one is used.
+    func testStandResolverTriesRootsInOrder() async throws {
+        let eidolon = try await installedEidolon()
+        let characters = try await eidolon.characters()
+        let character = try XCTUnwrap(characters.first { $0.id == "mano" })
+        let config = try XCTUnwrap(character.stand)
+        let missing = root.appendingPathComponent("missing", isDirectory: true)
+
+        let found = StandResolver(
+            roots: [missing, eidolon.location.contentDirectory]
+        ).stand(for: config)
+
+        XCTAssertEqual(found?.defaultOutfit.id, "stand/1030010010")
+        XCTAssertEqual(found?.outfitList?.cards.count, 2)
+    }
+
     // MARK: - Installation
 
     func testBundleWithStandCountKeyInstallsAndCountsOutfits() async throws {

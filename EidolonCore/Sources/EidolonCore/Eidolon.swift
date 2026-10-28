@@ -17,6 +17,8 @@ public actor Eidolon {
         var userDatabase: URL { userDirectory.appendingPathComponent("eidolon.sqlite") }
         /// The installed bundle's directory: where her stand's files are read from (ADR-0018).
         public var contentDirectory: URL { contentRoot.appendingPathComponent("current", isDirectory: true) }
+        /// Where a separate stand package will be installed; empty until one is imported.
+        public var standDirectory: URL { contentRoot.appendingPathComponent("stand", isDirectory: true) }
     }
 
     public nonisolated let location: Location
@@ -233,18 +235,7 @@ public actor Eidolon {
               let config = character.stand
         else { return nil }
 
-        let root = location.contentDirectory
-        let listURL = root.appendingPathComponent(config.outfitListPath)
-        let list = (try? Data(contentsOf: listURL)).flatMap { data in
-            OutfitList(data: data, at: listURL)
-        }
-        return CharacterStand(
-            defaultOutfit: StandOutfit(
-                id: config.defaultOutfitID,
-                directory: root.appendingPathComponent(config.defaultOutfitPath, isDirectory: true)
-            ),
-            outfitList: list
-        )
+        return StandResolver(roots: [location.contentDirectory]).stand(for: config)
     }
 
     // MARK: - Plumbing
