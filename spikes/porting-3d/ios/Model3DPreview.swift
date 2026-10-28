@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// A standalone 3D preview. This is deliberately not connected to `StandRenderer`:
-/// the game's current stand is Spine 2D, while this spike loads a USDZ 3D model.
+/// the game's current stand is Spine 2D, while this spike loads USDZ 3D models.
 @MainActor
 struct Model3DPreview: View {
     private enum Phase: Equatable {
@@ -13,13 +13,17 @@ struct Model3DPreview: View {
         case failed(String)
     }
 
-    @State private var modelURL: URL?
+    @State private var outfit = Model3DOutfit.privateClothes
     @State private var entity: Entity?
     @State private var phase = Phase.empty
     @State private var isPicking = false
+    @State private var loadError: String?
 
-    init(modelURL: URL?) {
-        _modelURL = State(initialValue: modelURL)
+    init() {
+        if let raw = ProcessInfo.processInfo.environment["EIDOLON_3D_OUTFIT"],
+           let selected = Model3DOutfit(rawValue: raw) {
+            _outfit = State(initialValue: selected)
+        }
     }
 
     var body: some View {
@@ -41,12 +45,20 @@ struct Model3DPreview: View {
                     }
                     .realityViewCameraControls(.orbit)
                     .ignoresSafeArea()
+                    if let loadError {
+                        Text(loadError)
+                            .font(.footnote)
+                            .foregroundStyle(.white)
+                            .padding(8)
+                            .background(.red.opacity(0.8), in: Capsule())
+                            .padding(.top, 8)
+                    }
                 }
             case .failed(let message):
                 failureView(message)
             }
         }
-        .task(id: modelURL) { await load() }
+        .task(id: outfit) { await load(outfit) }
         .fileImporter(
             isPresented: $isPicking,
             allowedContentTypes: [UTType(filenameExtension: "usdz") ?? .data],
@@ -55,10 +67,24 @@ struct Model3DPreview: View {
             guard case .success(let urls) = result, let url = urls.first else { return }
             importPickedFile(url)
         }
+        .overlay(alignment: .bottom) {
+            if phase == .loaded {
+                HStack(spacing: 10) {
+                    ForEach(Model3DOutfit.allCases) { candidate in
+                        Button(candidate.title) {
+                            outfit = candidate
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(candidate == outfit ? .pink : .gray)
+                    }
+                }
+                .padding()
+            }
+        }
         .overlay(alignment: .bottomTrailing) {
             if phase != .empty {
                 Button("选择 USDZ") { isPicking = true }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.bordered)
                     .padding()
             }
         }
@@ -68,7 +94,7 @@ struct Model3DPreview: View {
         placeholder(
             title: "还没有 USDZ",
             systemImage: "cube",
-            message: "把 mirai.usdz 放进 Documents，或选择一个 USDZ 文件。",
+            message: "把 mirai-pr001.usdz 或 mirai-ss003.usdz 放进 bundle/Documents，或选择一个 USDZ 文件。",
             button: "选择 USDZ"
         )
     }
@@ -108,31 +134,60 @@ struct Model3DPreview: View {
                 try? FileManager.default.removeItem(at: destination)
                 try FileManager.default.copyItem(at: url, to: destination)
             }
-            modelURL = destination
+            phase = .loading
+            Task {
+                do {
+                    let loaded = try await Entity.load(contentsOf: destination)
+                    guard normalize(loaded) else {
+                        entity = nil
+                        phase = .failed("USDZ 里没有可见几何")
+                        return
+                    }
+                    entity = loaded
+                    phase = .loaded
+                } catch {
+                    entity = nil
+                    phase = .failed(error.localizedDescription)
+                }
+            }
         } catch {
-            phase = .failed("无法复制所选 USDZ：\(error.localizedDescription)")
+            phase = .failed("无法载入所选 USDZ：\(error.localizedDescription)")
         }
     }
 
-    private func load() async {
-        guard let modelURL else {
-            phase = .empty
+    private func load(_ selected: Model3DOutfit) async {
+        guard let url = Model3DResourceLocator.locate(
+            environment: ProcessInfo.processInfo.environment,
+            documents: URL.documentsDirectory,
+            resourceRoot: Bundle.main.resourceURL,
+            fileName: selected.fileName
+        ) else {
             entity = nil
+            phase = .failed("找不到 \(selected.fileName)")
             return
         }
         phase = .loading
         do {
-            let loaded = try await Entity.load(contentsOf: modelURL)
+            let loaded = try await Entity.load(contentsOf: url)
             guard normalize(loaded) else {
-                entity = nil
-                phase = .failed("USDZ 里没有可见几何")
+                if entity != nil {
+                    loadError = "USDZ 里没有可见几何"
+                    phase = .loaded
+                } else {
+                    phase = .failed("USDZ 里没有可见几何")
+                }
                 return
             }
             entity = loaded
+            loadError = nil
             phase = .loaded
         } catch {
-            entity = nil
-            phase = .failed(error.localizedDescription)
+            if entity != nil {
+                loadError = error.localizedDescription
+                phase = .loaded
+            } else {
+                phase = .failed(error.localizedDescription)
+            }
         }
     }
 

@@ -87,3 +87,12 @@
 - 纹理问题实际是安装缓存/旧 build，不是 USDZ 材质；textured USDZ 已嵌入 PNG。
 - 增加 `Model3DResourceLocator` 与 iOS XCTest：env → bundle（递归）→ Documents；`xcodebuild test` 因模拟器 boot timeout 未执行，但测试代码已编译。
 - 重启 Air 后重新安装，textured USDZ 正常显示；此前空页面是设备安装/快照缓存问题。
+
+## T1（#55）双衣装静态预览
+
+- 新增 `Model3DOutfit`：`pr001` 私服、`ss003` 演出服；两套 USDZ 作为 target resources 打入 App。
+- UI 底部可切换两套衣装；固定默认舞台/机位，orbit 保留为调试手势。
+- 载入失败保留上一套实体并显示红色错误条；没有上一套时才进入失败页。
+- Air 截图：`build/mltd-spike/out/ios-3d-pr001d.png`、`build/mltd-spike/out/ios-3d-ss003.png`。
+- `ss003` 第一次从 Windows VM 复制出的 PMX 损坏（同尺寸但 MMD Tools 报 signature invalid）；重新复制后导出成功。以后跨 VM 复制大文件要重拷贝/校验。
+- 新增 outfit-specific locator 单测；`build-for-testing` 通过，模拟器测试运行仍受 boot timeout 阻塞。

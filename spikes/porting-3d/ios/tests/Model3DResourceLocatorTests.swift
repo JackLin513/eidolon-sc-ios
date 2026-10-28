@@ -43,6 +43,21 @@ final class Model3DResourceLocatorTests: XCTestCase {
         XCTAssertEqual(resolved, nested)
     }
 
+    func testFindsAnOutfitSpecificResource() throws {
+        let resources = root.appending(path: "App.app")
+        let nested = resources.appending(path: "mirai-ss003.usdz")
+        try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
+        try Data().write(to: nested)
+
+        let resolved = Model3DResourceLocator.locate(
+            environment: [:],
+            documents: root,
+            resourceRoot: resources,
+            fileName: "mirai-ss003.usdz"
+        )
+        XCTAssertEqual(resolved, nested)
+    }
+
     func testFallsBackToDocumentsAndThenNil() throws {
         let documents = root.appending(path: "Documents")
         try FileManager.default.createDirectory(at: documents, withIntermediateDirectories: true)
