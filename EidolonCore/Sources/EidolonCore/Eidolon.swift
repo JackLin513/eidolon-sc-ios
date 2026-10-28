@@ -113,16 +113,62 @@ public actor Eidolon {
             fileManager: .default
         )
         let info = try installer.install(url)
-        let encoded = try JSONEncoder().encode(info)
-        try userQueue.write { db in
-            try db.execute(
-                sql: """
-                    INSERT INTO app_state(key, value) VALUES('stand.bundle', ?)
-                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
-                    """,
-                arguments: [String(decoding: encoded, as: UTF8.self)]
-            )
+        try saveStandInfo(info)
+        cachedStandConfigs = nil
+        return info
+    }
+
+    /// Moves the old all-in-one content bundle's stand tree into the separate stand
+    /// directory and writes its manifest, once. If anything fails, the legacy tree stays
+    /// where it is and `stand(for:)` keeps reading it.
+    @discardableResult
+    public func migrateLegacyStandIfNeeded() throws -> StandBundleInfo? {
+        let fileManager = FileManager.default
+        guard !fileManager.fileExists(atPath: location.standDirectory.path),
+              try installedStandInfo() == nil,
+              try usableContentInfo() != nil
+        else { return nil }
+
+        let legacy = location.contentDirectory.appendingPathComponent("stand", isDirectory: true)
+        guard fileManager.fileExists(atPath: legacy.path) else { return nil }
+        let characters = try characters()
+        let entries = characters.compactMap { character -> StandManifest.Character? in
+            guard let config = character.stand else { return nil }
+            return StandManifest.Character(id: character.id, stand: config)
         }
+        guard !entries.isEmpty else { return nil }
+
+        let staging = location.contentRoot.appendingPathComponent(
+            ".stand-migration-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try fileManager.createDirectory(at: staging, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: staging) }
+
+        try fileManager.copyItem(
+            at: legacy,
+            to: staging.appendingPathComponent("stand", isDirectory: true)
+        )
+        let manifest = StandManifest(
+            mode: .full,
+            createdAt: ISO8601DateFormatter().string(from: Date()),
+            characters: entries,
+            files: try standFileRecords(in: staging, fileManager: fileManager)
+        )
+        let data = try JSONEncoder().encode(manifest)
+        try data.write(to: staging.appendingPathComponent("manifest.json"))
+
+        guard !fileManager.fileExists(atPath: location.standDirectory.path) else { return nil }
+        try fileManager.moveItem(at: staging, to: location.standDirectory)
+        try? fileManager.removeItem(at: legacy)
+
+        let info = StandBundleInfo(
+            formatVersion: manifest.formatVersion,
+            installedAt: manifest.createdAt,
+            characterCount: entries.count,
+            outfitCount: countStandOutfits(in: location.standDirectory, fileManager: fileManager)
+        )
+        try saveStandInfo(info)
         cachedStandConfigs = nil
         return info
     }
@@ -321,5 +367,57 @@ public actor Eidolon {
         let opened = try openContent()
         content = opened
         return opened
+    }
+
+    private func saveStandInfo(_ info: StandBundleInfo) throws {
+        let encoded = try JSONEncoder().encode(info)
+        try userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO app_state(key, value) VALUES('stand.bundle', ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                    """,
+                arguments: [String(decoding: encoded, as: UTF8.self)]
+            )
+        }
+    }
+
+    private func standFileRecords(
+        in directory: URL,
+        fileManager: FileManager
+    ) throws -> [String: StandManifest.FileRecord] {
+        guard let enumerator = fileManager.enumerator(
+            at: directory,
+            includingPropertiesForKeys: [.isDirectoryKey]
+        ) else { return [:] }
+        var records: [String: StandManifest.FileRecord] = [:]
+        let base = directory.standardizedFileURL.pathComponents
+        for case let url as URL in enumerator {
+            let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory
+                ?? false
+            if isDirectory { continue }
+            let relative = url.standardizedFileURL.pathComponents
+                .dropFirst(base.count)
+                .joined(separator: "/")
+            guard !relative.isEmpty, let data = try? Data(contentsOf: url) else { continue }
+            records[relative] = StandManifest.FileRecord(
+                size: data.count,
+                crc32: CRC32.hex(data)
+            )
+        }
+        return records
+    }
+
+    private func countStandOutfits(in directory: URL, fileManager: FileManager) -> Int {
+        let idols = directory.appendingPathComponent("stand/idols", isDirectory: true)
+        guard let enumerator = fileManager.enumerator(
+            at: idols,
+            includingPropertiesForKeys: nil
+        ) else { return 0 }
+        var count = 0
+        for case let url as URL in enumerator where url.lastPathComponent == "data.json" {
+            count += 1
+        }
+        return count
     }
 }
