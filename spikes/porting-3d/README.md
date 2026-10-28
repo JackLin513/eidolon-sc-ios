@@ -96,4 +96,4 @@ Validation Result with no explicit variants set
 Success!
 ```
 
-RealityKit 在 macOS 上加载同一 USDZ 得到 `extents ≈ 0.106 × 0.127 × 0.023`；App 会按 y 高度归一化到 1.6m。Air 已安装；几何/比例/相机截图在 `build/mltd-spike/out/ios-3d-air-2.png`。但当前截图是灰色材质，纹理 USDZ 虽然已嵌入 PNG 且 USD 里有 UsdPreviewSurface，Air 上仍未显示贴图；纹理问题未解决，因此 Air 验收仍未完成。
+RealityKit 在 macOS 上加载同一 USDZ 得到 `extents ≈ 0.106 × 0.127 × 0.023`；App 会按 y 高度归一化到 1.6m。Air 重启并清理安装后验收通过：textured USDZ 的头发/眼睛/衣服/裙子/鞋子贴图正常，比例/朝向可用。截图：`build/mltd-spike/out/ios-3d-reboot.png`。orbit 相机走 `realityViewCameraControls(.orbit)`，未做手势自动化。

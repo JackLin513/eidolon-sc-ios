@@ -82,6 +82,8 @@
 - `usdchecker` 输出 `Success!`；RealityKit macOS 加载 extents ≈ 0.106 × 0.127 × 0.023，App 归一化到 1.6m。
 - Review 修正：文件选择的 security-scoped URL 先复制到 Documents；灯光只加一次；空 bounds 报错；empty/failure 共用 placeholder。
 - Air 已安装并截到静态模型：几何、比例、orbit 相机正常；但当前截图仍是灰色材质，纹理 USDZ 已包含 PNG 且在 USD 里是 UsdPreviewSurface，RealityKit 在 Air 上没有显示贴图。Air 截图：`build/mltd-spike/out/ios-3d-air-2.png`。
-- 纹理问题未解决；不要把它当作“完成”。下一步需要检查 USDZ 材质绑定/RealityKit 对 MMD 转换材质支持。
+- Air 重启并清理安装后重新安装成功：textured USDZ 正常显示，头发/眼睛/衣服/裙子/鞋子贴图都在，比例和朝向可用。截图：`build/mltd-spike/out/ios-3d-reboot.png`。
+- orbit 相机由 RealityKit 的 `realityViewCameraControls(.orbit)` 提供；未做手势自动化，只确认代码路径和静态画面。
+- 纹理问题实际是安装缓存/旧 build，不是 USDZ 材质；textured USDZ 已嵌入 PNG。
 - 增加 `Model3DResourceLocator` 与 iOS XCTest：env → bundle（递归）→ Documents；`xcodebuild test` 因模拟器 boot timeout 未执行，但测试代码已编译。
-- 多次 uninstall/reinstall 后 Air 仍显示旧空页面/旧二进制现象；可能是设备安装/SpringBoard 快照缓存，需重启 Air 或清理安装后复核。
+- 重启 Air 后重新安装，textured USDZ 正常显示；此前空页面是设备安装/快照缓存问题。
