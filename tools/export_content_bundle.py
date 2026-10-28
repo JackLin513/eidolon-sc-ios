@@ -736,7 +736,7 @@ def main() -> int:
         type=Path,
         default=None,
         help="立绘整理目录（上游 stand fetch / stand outfits 的产物，含 source/ 与 outfits/）；"
-        "不给时包里没有立绘",
+        "内容包不再带立绘，这条只配合 --stand-only 使用",
     )
     parser.add_argument(
         "--stand-cards",
@@ -813,12 +813,8 @@ def main() -> int:
     source_db = (args.db or upstream / "backend" / "data" / "eidolon.db").resolve()
     characters, character_files = load_characters(characters_dir)
     cards = args.stand_cards if args.stand_cards is not None else 3
-    if args.stand is not None and not args.stand_all_outfits:
-        print(
-            "warning: 内容包仍在走旧格式、会带立绘；新流程请用 --stand-only "
-            "单独导出立绘包",
-            file=sys.stderr,
-        )
+    if args.stand is not None:
+        die("内容包不再带立绘；请用 --stand-only 单独导出立绘包")
     stand = build_stand(
         characters,
         args.stand.resolve() if args.stand else None,
