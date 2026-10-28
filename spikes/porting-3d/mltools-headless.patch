@@ -1,0 +1,677 @@
+diff --git a/src/AcbPack/AcbPack.csproj b/src/AcbPack/AcbPack.csproj
+index 63997eb..0adffc0 100644
+--- a/src/AcbPack/AcbPack.csproj
++++ b/src/AcbPack/AcbPack.csproj
+@@ -8,7 +8,7 @@
+     <OutputType>Exe</OutputType>
+     <RootNamespace>OpenMLTD.MLTDTools.Applications.AcbPack</RootNamespace>
+     <AssemblyName>AcbPack</AssemblyName>
+-    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
++    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+     <FileAlignment>512</FileAlignment>
+   </PropertyGroup>
+   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+diff --git a/src/AssetStudio.Extended.CompositeModels/AssetStudio.Extended.CompositeModels.csproj b/src/AssetStudio.Extended.CompositeModels/AssetStudio.Extended.CompositeModels.csproj
+index 2773170..9d98d76 100644
+--- a/src/AssetStudio.Extended.CompositeModels/AssetStudio.Extended.CompositeModels.csproj
++++ b/src/AssetStudio.Extended.CompositeModels/AssetStudio.Extended.CompositeModels.csproj
+@@ -9,7 +9,7 @@
+         <AppDesignerFolder>Properties</AppDesignerFolder>
+         <RootNamespace>AssetStudio.Extended.CompositeModels</RootNamespace>
+         <AssemblyName>AssetStudio.Extended.CompositeModels</AssemblyName>
+-        <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
++        <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+         <FileAlignment>512</FileAlignment>
+         <LangVersion>7.3</LangVersion>
+     </PropertyGroup>
+diff --git a/src/AssetStudio.Extended.MonoBehaviours/AssetStudio.Extended.MonoBehaviours.csproj b/src/AssetStudio.Extended.MonoBehaviours/AssetStudio.Extended.MonoBehaviours.csproj
+index 8acd638..2532648 100644
+--- a/src/AssetStudio.Extended.MonoBehaviours/AssetStudio.Extended.MonoBehaviours.csproj
++++ b/src/AssetStudio.Extended.MonoBehaviours/AssetStudio.Extended.MonoBehaviours.csproj
+@@ -9,7 +9,7 @@
+         <AppDesignerFolder>Properties</AppDesignerFolder>
+         <RootNamespace>AssetStudio.Extended.MonoBehaviours</RootNamespace>
+         <AssemblyName>AssetStudio.Extended.MonoBehaviours</AssemblyName>
+-        <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
++        <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+         <FileAlignment>512</FileAlignment>
+     </PropertyGroup>
+     <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+diff --git a/src/AssetStudio.Extended/AssetStudio.Extended.csproj b/src/AssetStudio.Extended/AssetStudio.Extended.csproj
+index 3aeb229..a2169be 100644
+--- a/src/AssetStudio.Extended/AssetStudio.Extended.csproj
++++ b/src/AssetStudio.Extended/AssetStudio.Extended.csproj
+@@ -9,7 +9,7 @@
+         <AppDesignerFolder>Properties</AppDesignerFolder>
+         <RootNamespace>AssetStudio.Extended</RootNamespace>
+         <AssemblyName>AssetStudio.Extended</AssemblyName>
+-        <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
++        <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+         <FileAlignment>512</FileAlignment>
+     </PropertyGroup>
+     <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+diff --git a/src/ExtractAcb/ExtractAcb.csproj b/src/ExtractAcb/ExtractAcb.csproj
+index 3c3679c..895f9d5 100644
+--- a/src/ExtractAcb/ExtractAcb.csproj
++++ b/src/ExtractAcb/ExtractAcb.csproj
+@@ -9,7 +9,7 @@
+         <AppDesignerFolder>Properties</AppDesignerFolder>
+         <RootNamespace>ExtractAcb</RootNamespace>
+         <AssemblyName>ExtractAcb</AssemblyName>
+-        <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
++        <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+         <FileAlignment>512</FileAlignment>
+     </PropertyGroup>
+     <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+diff --git a/src/HcaDec/HcaDec.csproj b/src/HcaDec/HcaDec.csproj
+index 596eb3b..6ccbddb 100644
+--- a/src/HcaDec/HcaDec.csproj
++++ b/src/HcaDec/HcaDec.csproj
+@@ -8,7 +8,7 @@
+     <OutputType>Exe</OutputType>
+     <RootNamespace>OpenMLTD.MLTDTools.Applications.HcaDec</RootNamespace>
+     <AssemblyName>HcaDec</AssemblyName>
+-    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
++    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+     <FileAlignment>512</FileAlignment>
+   </PropertyGroup>
+   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+diff --git a/src/Imas.Data.Serialized/Imas.Data.Serialized.csproj b/src/Imas.Data.Serialized/Imas.Data.Serialized.csproj
+index a7d2bd5..a98c99d 100644
+--- a/src/Imas.Data.Serialized/Imas.Data.Serialized.csproj
++++ b/src/Imas.Data.Serialized/Imas.Data.Serialized.csproj
+@@ -9,7 +9,7 @@
+     <AppDesignerFolder>Properties</AppDesignerFolder>
+     <RootNamespace>Imas.Data.Serialized</RootNamespace>
+     <AssemblyName>Imas.Data.Serialized</AssemblyName>
+-    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
++    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+     <FileAlignment>512</FileAlignment>
+     <Deterministic>true</Deterministic>
+   </PropertyGroup>
+diff --git a/src/ManifestTools/ManifestTools.csproj b/src/ManifestTools/ManifestTools.csproj
+index fdd0715..3277849 100644
+--- a/src/ManifestTools/ManifestTools.csproj
++++ b/src/ManifestTools/ManifestTools.csproj
+@@ -8,7 +8,7 @@
+     <OutputType>WinExe</OutputType>
+     <RootNamespace>OpenMLTD.ManifestTools</RootNamespace>
+     <AssemblyName>ManifestTools</AssemblyName>
+-    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
++    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+     <FileAlignment>512</FileAlignment>
+     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+     <Deterministic>true</Deterministic>
+diff --git a/src/MillionDance/ConsoleHost.cs b/src/MillionDance/ConsoleHost.cs
+new file mode 100644
+index 0000000..c7ea608
+--- /dev/null
++++ b/src/MillionDance/ConsoleHost.cs
+@@ -0,0 +1,25 @@
++using System;
++
++namespace OpenMLTD.MillionDance {
++    internal sealed class ConsoleHost : IMainWorkerHost {
++        public bool Failed { get; private set; }
++
++        public bool InvokeRequired => false;
++
++        public void Invoke(Action action) {
++            action();
++        }
++
++        public void Log(string message) {
++            Console.WriteLine(message);
++        }
++
++        public void EnableMainControls(bool enabled) {
++        }
++
++        public void ShowError(string message) {
++            Failed = true;
++            Console.Error.WriteLine(message);
++        }
++    }
++}
+diff --git a/src/MillionDance/FMain.cs b/src/MillionDance/FMain.cs
+index bf282cd..ec07b69 100644
+--- a/src/MillionDance/FMain.cs
++++ b/src/MillionDance/FMain.cs
+@@ -10,7 +10,7 @@ using OpenMLTD.MillionDance.Core;
+ using OpenMLTD.MillionDance.Utilities;
+ 
+ namespace OpenMLTD.MillionDance {
+-    public partial class FMain : Form {
++    public partial class FMain : Form, IMainWorkerHost {
+ 
+         internal FMain() {
+             InitializeComponent();
+@@ -632,6 +632,18 @@ namespace OpenMLTD.MillionDance {
+             btnGo.Enabled = b;
+         }
+ 
++        bool IMainWorkerHost.InvokeRequired => InvokeRequired;
++
++        void IMainWorkerHost.Invoke(Action action) => Invoke(action);
++
++        void IMainWorkerHost.Log(string message) => Log(message);
++
++        void IMainWorkerHost.EnableMainControls(bool enabled) => EnableMainControls(enabled);
++
++        void IMainWorkerHost.ShowError(string message) {
++            MessageBox.Show(message, ApplicationHelper.GetApplicationTitle(), MessageBoxButtons.OK, MessageBoxIcon.Error);
++        }
++
+         internal void EnableMainControls(bool enabled) {
+             groupBox1.Enabled = enabled;
+             groupBox2.Enabled = enabled;
+diff --git a/src/MillionDance/HeadlessRunner.cs b/src/MillionDance/HeadlessRunner.cs
+new file mode 100644
+index 0000000..3e8af67
+--- /dev/null
++++ b/src/MillionDance/HeadlessRunner.cs
+@@ -0,0 +1,44 @@
++using System;
++using System.IO;
++using System.Threading;
++using Newtonsoft.Json;
++
++namespace OpenMLTD.MillionDance {
++    internal static class HeadlessRunner {
++        public static int Run(string[] args) {
++            string configPath = null;
++            for (var i = 0; i < args.Length; i++) {
++                if (args[i] == "--config" && i + 1 < args.Length) {
++                    configPath = args[++i];
++                } else if (args[i] == "--help") {
++                    Console.WriteLine("MillionDance --config <json>");
++                    return 0;
++                }
++            }
++            if (string.IsNullOrEmpty(configPath)) {
++                Console.Error.WriteLine("usage: MillionDance --config <json>");
++                return 2;
++            }
++            if (!File.Exists(configPath)) {
++                Console.Error.WriteLine($"config not found: {configPath}");
++                return 2;
++            }
++            MainWorkerInputParams input;
++            try {
++                input = JsonConvert.DeserializeObject<MainWorkerInputParams>(File.ReadAllText(configPath));
++            } catch (Exception ex) {
++                Console.Error.WriteLine($"cannot read config: {ex.Message}");
++                return 2;
++            }
++            if (input == null) {
++                Console.Error.WriteLine("empty config");
++                return 2;
++            }
++            var host = new ConsoleHost();
++            var worker = new MainWorker(host, input);
++            var thread = worker.Start();
++            thread.Join();
++            return host.Failed ? 1 : 0;
++        }
++    }
++}
+diff --git a/src/MillionDance/IMainWorkerHost.cs b/src/MillionDance/IMainWorkerHost.cs
+new file mode 100644
+index 0000000..6d0c6fa
+--- /dev/null
++++ b/src/MillionDance/IMainWorkerHost.cs
+@@ -0,0 +1,11 @@
++using System;
++
++namespace OpenMLTD.MillionDance {
++    internal interface IMainWorkerHost {
++        bool InvokeRequired { get; }
++        void Invoke(Action action);
++        void Log(string message);
++        void EnableMainControls(bool enabled);
++        void ShowError(string message);
++    }
++}
+diff --git a/src/MillionDance/MainWorker.cs b/src/MillionDance/MainWorker.cs
+index 95835e2..e5ef14f 100644
+--- a/src/MillionDance/MainWorker.cs
++++ b/src/MillionDance/MainWorker.cs
+@@ -24,23 +24,24 @@ using OpenMLTD.MLTDTools.Applications.TDFacial.Entities;
+ namespace OpenMLTD.MillionDance {
+     internal sealed class MainWorker {
+ 
+-        public MainWorker([NotNull] FMain form, [NotNull] MainWorkerInputParams inputParams) {
+-            _form = form;
++        public MainWorker([NotNull] IMainWorkerHost host, [NotNull] MainWorkerInputParams inputParams) {
++            _host = host;
+             _inputParams = inputParams;
+         }
+ 
+-        public void Start() {
++        public Thread Start() {
+             var thread = new Thread(DoWork);
+ 
+             thread.Name = "Conversion thread";
+             thread.IsBackground = true;
+ 
+             thread.Start(_inputParams);
++            return thread;
+         }
+ 
+         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+         private void Log([NotNull] string message) {
+-            _form.Log(message);
++            _host.Log(message);
+         }
+ 
+         private void DoWork([NotNull] object state) {
+@@ -54,11 +55,9 @@ namespace OpenMLTD.MillionDance {
+                 Log("Error occurred.");
+                 Log(exDesc);
+ 
+-                InvokeInForm(() => {
+-                    MessageBox.Show(exDesc, ApplicationHelper.GetApplicationTitle(), MessageBoxButtons.OK, MessageBoxIcon.Error);
+-                });
++                InvokeInForm(() => _host.ShowError(exDesc));
+             } finally {
+-                InvokeInForm(() => _form.EnableMainControls(true));
++                InvokeInForm(() => _host.EnableMainControls(true));
+             }
+         }
+ 
+@@ -630,7 +629,7 @@ namespace OpenMLTD.MillionDance {
+ 
+         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+         private void InvokeInForm([NotNull] Action action) {
+-            _form.Invoke(action);
++            _host.Invoke(action);
+         }
+ 
+         private bool InvokeRequired {
+@@ -639,7 +638,7 @@ namespace OpenMLTD.MillionDance {
+         }
+ 
+         [NotNull]
+-        private readonly FMain _form;
++        private readonly IMainWorkerHost _host;
+ 
+         [NotNull]
+         private readonly MainWorkerInputParams _inputParams;
+diff --git a/src/MillionDance/MillionDance.csproj b/src/MillionDance/MillionDance.csproj
+index 4935511..1c3dc3a 100644
+--- a/src/MillionDance/MillionDance.csproj
++++ b/src/MillionDance/MillionDance.csproj
+@@ -8,7 +8,7 @@
+     <OutputType>WinExe</OutputType>
+     <RootNamespace>OpenMLTD.MillionDance</RootNamespace>
+     <AssemblyName>MillionDance</AssemblyName>
+-    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
++    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+     <FileAlignment>512</FileAlignment>
+   </PropertyGroup>
+   <PropertyGroup>
+@@ -188,6 +188,9 @@
+     <Compile Include="Extensions\Vector3Extensions.cs" />
+     <Compile Include="Core\PmxCreator.cs" />
+     <Compile Include="Program.cs" />
++    <Compile Include="IMainWorkerHost.cs" />
++    <Compile Include="ConsoleHost.cs" />
++    <Compile Include="HeadlessRunner.cs" />
+     <Compile Include="Properties\AssemblyInfo.cs" />
+     <Compile Include="Utilities\DirectBitmapAccess.cs" />
+     <Compile Include="Utilities\GeometryHelper.cs" />
+diff --git a/src/MillionDance/MillionDanceCli.csproj b/src/MillionDance/MillionDanceCli.csproj
+new file mode 100644
+index 0000000..d94fc32
+--- /dev/null
++++ b/src/MillionDance/MillionDanceCli.csproj
+@@ -0,0 +1,241 @@
++﻿<?xml version="1.0" encoding="utf-8"?>
++<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
++  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
++  <PropertyGroup>
++    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
++    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
++    <ProjectGuid>{8A36E44E-4CF7-48A6-874C-FC770D02D874}</ProjectGuid>
++    <OutputType>WinExe</OutputType>
++    <RootNamespace>OpenMLTD.MillionDance</RootNamespace>
++    <AssemblyName>MillionDance</AssemblyName>
++    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
++    <FileAlignment>512</FileAlignment>
++  </PropertyGroup>
++  <PropertyGroup>
++    <StartupObject />
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x86'">
++    <DebugSymbols>true</DebugSymbols>
++    <OutputPath>bin\x86\Debug\</OutputPath>
++    <DefineConstants>DEBUG;TRACE</DefineConstants>
++    <DebugType>full</DebugType>
++    <PlatformTarget>x86</PlatformTarget>
++    <LangVersion>7.3</LangVersion>
++    <ErrorReport>prompt</ErrorReport>
++    <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
++    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x86'">
++    <OutputPath>bin\x86\Release\</OutputPath>
++    <DefineConstants>TRACE</DefineConstants>
++    <Optimize>true</Optimize>
++    <DebugType>pdbonly</DebugType>
++    <PlatformTarget>x86</PlatformTarget>
++    <LangVersion>7.3</LangVersion>
++    <ErrorReport>prompt</ErrorReport>
++    <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
++    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
++  </PropertyGroup>
++  <PropertyGroup>
++    <ApplicationIcon>Resources\Icon.ico</ApplicationIcon>
++  </PropertyGroup>
++  <ItemGroup>
++    <Reference Include="JetBrains.Annotations, Version=2020.1.0.0, Culture=neutral, PublicKeyToken=1010a0d8d6380325">
++      <HintPath>..\packages\JetBrains.Annotations.2020.1.0\lib\net20\JetBrains.Annotations.dll</HintPath>
++      <Private>True</Private>
++    </Reference>
++    <Reference Include="Newtonsoft.Json, Version=12.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed">
++      <HintPath>..\packages\Newtonsoft.Json.12.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
++      <Private>True</Private>
++    </Reference>
++    <Reference Include="OpenTK, Version=3.2.0.0, Culture=neutral, PublicKeyToken=bad199fe84eb3df4">
++      <HintPath>..\packages\OpenTK.3.2\lib\net20\OpenTK.dll</HintPath>
++      <Private>True</Private>
++    </Reference>
++    <Reference Include="System" />
++    <Reference Include="System.Core" />
++    <Reference Include="System.Drawing" />
++    <Reference Include="System.Windows.Forms" />
++    <Reference Include="System.Xml.Linq" />
++    <Reference Include="System.Data.DataSetExtensions" />
++    <Reference Include="Microsoft.CSharp" />
++    <Reference Include="System.Data" />
++    <Reference Include="System.Net.Http" />
++    <Reference Include="System.Xml" />
++  </ItemGroup>
++  <ItemGroup>
++    <Compile Include="ApplicationHelper.cs" />
++    <Compile Include="Core\AppealHelper.cs" />
++    <Compile Include="Core\CameraOrientation.cs" />
++    <Compile Include="Core\ConversionConfig.cs" />
++    <Compile Include="Core\FrameRate.cs" />
++    <Compile Include="Core\IBodyAnimationSource.cs" />
++    <Compile Include="Core\IO\MvdWriter.cs" />
++    <Compile Include="Core\IO\PmxWriter.cs" />
++    <Compile Include="Core\IO\ResourceLoader.cs" />
++    <Compile Include="Core\IO\VmdWriter.cs" />
++    <Compile Include="Core\MltdAnimation.cs" />
++    <Compile Include="Core\MotionFormat.cs" />
++    <Compile Include="Core\MvdCreator.Camera.cs" />
++    <Compile Include="Core\MvdCreator.cs" />
++    <Compile Include="Core\PmxCreator.ConversionDetails.cs" />
++    <Compile Include="Core\PmxCreator.Model.cs" />
++    <Compile Include="Core\PmxCreator.Physics.cs" />
++    <Compile Include="Core\PmxCreator.Physics.PhysicsObject.cs" />
++    <Compile Include="Core\SkeletonFormat.cs" />
++    <Compile Include="Core\VmdCreator.Dance.cs" />
++    <Compile Include="Core\VmdCreator.Camera.cs" />
++    <Compile Include="Core\VmdCreator.FacialExpressions.cs" />
++    <Compile Include="Core\VmdCreator.FacialExpressionTable.cs" />
++    <Compile Include="Core\VmdCreator.Light.cs" />
++    <Compile Include="Entities\Extensions\KeyTypeExtension.cs" />
++    <Compile Include="Entities\Extensions\PropertyTypeExtension.cs" />
++    <Compile Include="Entities\Extensions\ScenarioObjectExtensions.cs" />
++    <Compile Include="Entities\Internal\AnimationSet.cs" />
++    <Compile Include="Entities\Internal\AnimationSet`1.cs" />
++    <Compile Include="Entities\Internal\BakedMaterial.cs" />
++    <Compile Include="Entities\Internal\CameraAnimation.cs" />
++    <Compile Include="Entities\Internal\CameraAnimationSet`1.cs" />
++    <Compile Include="Entities\Internal\CameraFrame.cs" />
++    <Compile Include="Entities\Internal\DanceAnimationSet`1.cs" />
++    <Compile Include="Entities\Mltd\CompiledBodyAnimationSource.cs" />
++    <Compile Include="Entities\Mltd\LegacyBodyAnimationSource.cs" />
++    <Compile Include="Entities\Mvd\InterpolationPair.cs" />
++    <Compile Include="Entities\Mvd\MvdBaseFrame.cs" />
++    <Compile Include="Entities\Mvd\MvdBaseMotion.cs" />
++    <Compile Include="Entities\Mvd\MvdCameraFrame.cs" />
++    <Compile Include="Entities\Mvd\MvdCameraMotion.cs" />
++    <Compile Include="Entities\Mvd\MvdCameraObject.cs" />
++    <Compile Include="Entities\Mvd\MvdCameraPropertyFrame.cs" />
++    <Compile Include="Entities\Mvd\MvdModelObject.cs" />
++    <Compile Include="Entities\Mvd\MvdMotion.cs" />
++    <Compile Include="Entities\OpenTK\Vector2i.cs" />
++    <Compile Include="Entities\Pmx\Extensions\PmxPassGroupExtensions.cs" />
++    <Compile Include="Extensions\DictionaryExtensions.cs" />
++    <Compile Include="Extensions\Internal\ArrayEnumerateHelper`1.cs" />
++    <Compile Include="Extensions\ListExtensions.cs" />
++    <Compile Include="Extensions\StringExtensions.cs" />
++    <Compile Include="FMain.cs">
++      <SubType>Form</SubType>
++    </Compile>
++    <Compile Include="FMain.Designer.cs">
++      <DependentUpon>FMain.cs</DependentUpon>
++    </Compile>
++    <Compile Include="MainWorkerInputParams.cs" />
++    <Compile Include="MainWorker.cs" />
++    <Compile Include="Utilities\AnalysesUtils.cs" />
++    <Compile Include="Utilities\BoneLookup.cs" />
++    <Compile Include="Core\ScalingConfig.cs" />
++    <Compile Include="DisposableBase.cs" />
++    <Compile Include="Entities\Extensions\CurveExtension.cs" />
++    <Compile Include="Entities\Internal\BodyAnimation.cs" />
++    <Compile Include="Entities\Internal\BoneNode.cs" />
++    <Compile Include="Entities\Internal\KeyFrame.cs" />
++    <Compile Include="Entities\Pmx\BodyAnchor.cs" />
++    <Compile Include="Entities\Pmx\BoneFlags.cs" />
++    <Compile Include="Entities\Pmx\BoneWeight.cs" />
++    <Compile Include="Entities\Pmx\BoundingBoxKind.cs" />
++    <Compile Include="Entities\Pmx\Deformation.cs" />
++    <Compile Include="Entities\Pmx\ElementType.cs" />
++    <Compile Include="Entities\Pmx\Extensions\PmxBoneExtensions.cs" />
++    <Compile Include="Entities\Pmx\IKLink.cs" />
++    <Compile Include="Entities\Pmx\IPmxNamedObject.cs" />
++    <Compile Include="Entities\Pmx\JointKind.cs" />
++    <Compile Include="Entities\Pmx\KineticMode.cs" />
++    <Compile Include="Entities\Pmx\MaterialFlags.cs" />
++    <Compile Include="Entities\Pmx\MorphOffsetKind.cs" />
++    <Compile Include="Entities\Pmx\MorphOp.cs" />
++    <Compile Include="Entities\Pmx\NodeElement.cs" />
++    <Compile Include="Entities\Pmx\PmxBaseBody.cs" />
++    <Compile Include="Entities\Pmx\PmxBaseMorph.cs" />
++    <Compile Include="Entities\Pmx\PmxBodyPassGroup.cs" />
++    <Compile Include="Entities\Pmx\PmxBone.cs" />
++    <Compile Include="Entities\Pmx\PmxBoneMorph.cs" />
++    <Compile Include="Entities\Pmx\PmxGroupMorph.cs" />
++    <Compile Include="Entities\Pmx\PmxIK.cs" />
++    <Compile Include="Entities\Pmx\PmxImpulseMorph.cs" />
++    <Compile Include="Entities\Pmx\PmxJoint.cs" />
++    <Compile Include="Entities\Pmx\PmxMaterial.cs" />
++    <Compile Include="Entities\Pmx\PmxMaterialMorph.cs" />
++    <Compile Include="Entities\Pmx\PmxModel.cs" />
++    <Compile Include="Entities\Pmx\PmxMorph.cs" />
++    <Compile Include="Entities\Pmx\PmxNode.cs" />
++    <Compile Include="Entities\Pmx\PmxRigidBody.cs" />
++    <Compile Include="Entities\Pmx\PmxSoftBody.cs" />
++    <Compile Include="Entities\Pmx\PmxUVMorph.cs" />
++    <Compile Include="Entities\Pmx\PmxVertex.cs" />
++    <Compile Include="Entities\Pmx\PmxVertexMorph.cs" />
++    <Compile Include="Entities\Pmx\SoftBodyConfig.cs" />
++    <Compile Include="Entities\Pmx\SoftBodyFlags.cs" />
++    <Compile Include="Entities\Pmx\SoftBodyMaterialConfig.cs" />
++    <Compile Include="Entities\Pmx\SoftBodyShape.cs" />
++    <Compile Include="Entities\Pmx\SphereTextureMode.cs" />
++    <Compile Include="Entities\Pmx\VertexPin.cs" />
++    <Compile Include="Entities\Vmd\IkControl.cs" />
++    <Compile Include="Entities\Vmd\VmdBaseFrame.cs" />
++    <Compile Include="Entities\Vmd\VmdBoneFrame.cs" />
++    <Compile Include="Entities\Vmd\VmdCameraFrame.cs" />
++    <Compile Include="Entities\Vmd\VmdFacialFrame.cs" />
++    <Compile Include="Entities\Vmd\VmdIkFrame.cs" />
++    <Compile Include="Entities\Vmd\VmdLightFrame.cs" />
++    <Compile Include="Entities\Vmd\VmdMotion.cs" />
++    <Compile Include="Extensions\ArrayExtensions.cs" />
++    <Compile Include="Extensions\BinaryReaderExtensions.cs" />
++    <Compile Include="Extensions\BinaryWriterExtensions.cs" />
++    <Compile Include="Extensions\EnumerableExtensions.cs" />
++    <Compile Include="Extensions\QuaternionExtensions.cs" />
++    <Compile Include="Extensions\UnityStudioMathExtensions.cs" />
++    <Compile Include="Extensions\Vector3Extensions.cs" />
++    <Compile Include="Core\PmxCreator.cs" />
++    <Compile Include="Program.cs" />
++    <Compile Include="IMainWorkerHost.cs" />
++    <Compile Include="ConsoleHost.cs" />
++    <Compile Include="HeadlessRunner.cs" />
++    <Compile Include="Properties\AssemblyInfo.cs" />
++    <Compile Include="Utilities\DirectBitmapAccess.cs" />
++    <Compile Include="Utilities\GeometryHelper.cs" />
++    <Compile Include="Utilities\MorphUtils.cs" />
++    <Compile Include="Core\UnityRotation.cs" />
++    <Compile Include="Core\VmdCreator.cs" />
++    <Compile Include="Utilities\TimedList`2.cs" />
++    <Compile Include="Utilities\UrlOpener.cs" />
++  </ItemGroup>
++  <ItemGroup>
++    <Compile Include="FMain.TextBoxTracer.cs">
++      <SubType>Form</SubType>
++    </Compile>
++    <None Include="OpenTK.dll.config" />
++    <None Include="Resources\facial_expr.json">
++      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
++    </None>
++    <None Include="packages.config" />
++  </ItemGroup>
++  <ItemGroup>
++  </ItemGroup>
++  <ItemGroup>
++    <EmbeddedResource Include="FMain.resx">
++      <DependentUpon>FMain.cs</DependentUpon>
++    </EmbeddedResource>
++  </ItemGroup>
++  <ItemGroup>
++    <Content Include="Resources\Icon.ico" />
++  </ItemGroup>
++  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
++
++  <ItemGroup>
++    <Reference Include="AssetStudio"><HintPath>C:\MLTDTools\AssetStudio.dll</HintPath><Private>True</Private></Reference>
++    <Reference Include="AssetStudio.Extended"><HintPath>C:\MLTDTools\AssetStudio.Extended.dll</HintPath><Private>True</Private></Reference>
++    <Reference Include="AssetStudio.Extended.CompositeModels"><HintPath>C:\MLTDTools\AssetStudio.Extended.CompositeModels.dll</HintPath><Private>True</Private></Reference>
++    <Reference Include="AssetStudio.Extended.MonoBehaviours"><HintPath>C:\MLTDTools\AssetStudio.Extended.MonoBehaviours.dll</HintPath><Private>True</Private></Reference>
++    <Reference Include="AssetStudioUtility"><HintPath>C:\MLTDTools\AssetStudioUtility.dll</HintPath><Private>True</Private></Reference>
++    <Reference Include="Imas.Data.Serialized"><HintPath>C:\MLTDTools\Imas.Data.Serialized.dll</HintPath><Private>True</Private></Reference>
++    <Reference Include="TDFacial"><HintPath>C:\MLTDTools\TDFacial.dll</HintPath><Private>True</Private></Reference>
++    <Reference Include="MiriTore.Common"><HintPath>C:\MLTDTools\MiriTore.Common.dll</HintPath><Private>True</Private></Reference>
++    <Reference Include="MiriTore.Database"><HintPath>C:\MLTDTools\MiriTore.Database.dll</HintPath><Private>True</Private></Reference>
++    <Reference Include="MiriTore.Logging"><HintPath>C:\MLTDTools\MiriTore.Logging.dll</HintPath><Private>True</Private></Reference>
++    <Reference Include="DereTore.Common"><HintPath>C:\MLTDTools\DereTore.Common.dll</HintPath><Private>True</Private></Reference>
++    <Reference Include="DereTore.Exchange.Archive.ACB"><HintPath>C:\MLTDTools\DereTore.Exchange.Archive.ACB.dll</HintPath><Private>True</Private></Reference>
++    <Reference Include="DereTore.Exchange.Audio.HCA"><HintPath>C:\MLTDTools\DereTore.Exchange.Audio.HCA.dll</HintPath><Private>True</Private></Reference>
++    <Reference Include="Texture2DDecoder"><HintPath>C:\MLTDTools\Texture2DDecoder.dll</HintPath><Private>True</Private></Reference>
++  </ItemGroup>
++</Project>
+\ No newline at end of file
+diff --git a/src/MillionDance/Program.cs b/src/MillionDance/Program.cs
+index 5c815a2..d95bea3 100644
+--- a/src/MillionDance/Program.cs
++++ b/src/MillionDance/Program.cs
+@@ -5,13 +5,17 @@ namespace OpenMLTD.MillionDance {
+     internal static class Program {
+ 
+         [STAThread]
+-        private static void Main() {
++        private static int Main(string[] args) {
++            if (args.Length > 0) {
++                return HeadlessRunner.Run(args);
++            }
+             Application.EnableVisualStyles();
+             Application.SetCompatibleTextRenderingDefault(false);
+ 
+             using (var f = new FMain()) {
+                 Application.Run(f);
+             }
++            return 0;
+         }
+ 
+     }
+diff --git a/src/MillionDanceView/MillionDanceView.csproj b/src/MillionDanceView/MillionDanceView.csproj
+index 66f9f85..7fc0c89 100644
+--- a/src/MillionDanceView/MillionDanceView.csproj
++++ b/src/MillionDanceView/MillionDanceView.csproj
+@@ -8,7 +8,7 @@
+     <OutputType>WinExe</OutputType>
+     <RootNamespace>OpenMLTD.MillionDance.Viewer</RootNamespace>
+     <AssemblyName>MillionDanceView</AssemblyName>
+-    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
++    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+     <FileAlignment>512</FileAlignment>
+   </PropertyGroup>
+   <PropertyGroup>
+diff --git a/src/MiriTore.Common/MiriTore.Common.csproj b/src/MiriTore.Common/MiriTore.Common.csproj
+index ceee233..7c02ed0 100644
+--- a/src/MiriTore.Common/MiriTore.Common.csproj
++++ b/src/MiriTore.Common/MiriTore.Common.csproj
+@@ -9,7 +9,7 @@
+     <AppDesignerFolder>Properties</AppDesignerFolder>
+     <RootNamespace>OpenMLTD.MiriTore</RootNamespace>
+     <AssemblyName>MiriTore.Common</AssemblyName>
+-    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
++    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+     <FileAlignment>512</FileAlignment>
+   </PropertyGroup>
+   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+diff --git a/src/MiriTore.Database/MiriTore.Database.csproj b/src/MiriTore.Database/MiriTore.Database.csproj
+index 9191e7e..2f3277c 100644
+--- a/src/MiriTore.Database/MiriTore.Database.csproj
++++ b/src/MiriTore.Database/MiriTore.Database.csproj
+@@ -9,7 +9,7 @@
+         <AppDesignerFolder>Properties</AppDesignerFolder>
+         <RootNamespace>OpenMLTD.MiriTore.Database</RootNamespace>
+         <AssemblyName>MiriTore.Database</AssemblyName>
+-        <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
++        <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+         <FileAlignment>512</FileAlignment>
+     </PropertyGroup>
+     <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+diff --git a/src/MiriTore.Logging/MiriTore.Logging.csproj b/src/MiriTore.Logging/MiriTore.Logging.csproj
+index 0bf1656..d347469 100644
+--- a/src/MiriTore.Logging/MiriTore.Logging.csproj
++++ b/src/MiriTore.Logging/MiriTore.Logging.csproj
+@@ -9,7 +9,7 @@
+     <AppDesignerFolder>Properties</AppDesignerFolder>
+     <RootNamespace>OpenMLTD.MiriTore.Logging</RootNamespace>
+     <AssemblyName>MiriTore.Logging</AssemblyName>
+-    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
++    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+     <FileAlignment>512</FileAlignment>
+   </PropertyGroup>
+   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+diff --git a/src/MltdInfoViewer/MltdInfoViewer.csproj b/src/MltdInfoViewer/MltdInfoViewer.csproj
+index a32bab1..80553cd 100644
+--- a/src/MltdInfoViewer/MltdInfoViewer.csproj
++++ b/src/MltdInfoViewer/MltdInfoViewer.csproj
+@@ -8,7 +8,7 @@
+     <OutputType>WinExe</OutputType>
+     <RootNamespace>MltdInfoViewer</RootNamespace>
+     <AssemblyName>MltdInfoViewer</AssemblyName>
+-    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
++    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+     <FileAlignment>512</FileAlignment>
+   </PropertyGroup>
+   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+diff --git a/src/TDFacial/TDFacial.csproj b/src/TDFacial/TDFacial.csproj
+index 786bd84..e701c6b 100644
+--- a/src/TDFacial/TDFacial.csproj
++++ b/src/TDFacial/TDFacial.csproj
+@@ -8,7 +8,7 @@
+     <OutputType>WinExe</OutputType>
+     <RootNamespace>OpenMLTD.MLTDTools.Applications.TDFacial</RootNamespace>
+     <AssemblyName>TDFacial</AssemblyName>
+-    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
++    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+     <FileAlignment>512</FileAlignment>
+     <Deterministic>true</Deterministic>
+   </PropertyGroup>
+diff --git a/thirdparty/AssetStudio b/thirdparty/AssetStudio
+--- a/thirdparty/AssetStudio
++++ b/thirdparty/AssetStudio
+@@ -1 +1 @@
+-Subproject commit e81c66b7a8bd48d97c76f8b25ee72cd9d6f33ee3
++Subproject commit e81c66b7a8bd48d97c76f8b25ee72cd9d6f33ee3-dirty

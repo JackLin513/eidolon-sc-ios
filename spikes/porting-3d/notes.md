@@ -37,11 +37,25 @@
 - 结果：身体/衣服/头发/鞋/裙纹理基本正确；脸与眼睛材质仍不完整（脸是闭眼贴图，眼睛层还没接对）。
 - 这一步证明“iOS 缓存里的 2018.4 模型可读、可在 Mac 显示”，不证明 MLTDTools 的 PMX/VMD 转换可用。
 
+## 2026-10-28 Headless MLTDTools
+
+- 给 MLTDTools 加了 `--config` 控制台入口（`MainWorker` 改成 `IMainWorkerHost`，ConsoleHost 不依赖 WinForms），补丁见 `mltools-headless.patch`。
+- 用 Mac Mono/xbuild + 预编译依赖构建出 `MillionDance.exe --config ...`，在 Windows VM 上运行成功（Windows 侧只需 .NET 4.8 + 预编译 DLL；不必装 Visual Studio）。
+- 用 2018.4 的 `ch_pr001_014mir` + `cb_pr001_014mir` + `dan_loveig_01` + `scrobj_loveig` 生成：
+  - `mirai.pmx`（约 694KB）
+  - `mirai.vmd`（约 24MB，3900 帧）
+  - `tex/` 贴图
+- PMX 在 Blender + MMD Tools 里能正确导入并渲染 T-pose；VMD 导入后模型爆炸/拉伸，尚未解决。
+- 失败点已定位到 VMD 的动画坐标/骨骼映射，不是 PMX/贴图；下一步比较 VMD 与 PMX 的骨骼名/缩放，或用 MillionDanceView 复核 VMD。
+- 输出只在 `build/mltd-spike/out/mltd/`，不提交。
+
 ## 结果
 
 - [x] head/body 读取（UnityPy）
 - [x] 静态模型 + 贴图渲染（Blender，T-pose）
-- [ ] MLTDTools PMX/VMD
+- [x] Headless MLTDTools 生成 PMX/VMD
+- [x] PMX 导入 Blender 显示正确
+- [ ] VMD 动画导入显示正确
 - [ ] PMX 导出
 - [ ] 贴图
 - [ ] 骨架
