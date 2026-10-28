@@ -69,10 +69,14 @@ targets:
     platform: iOS
     sources:
       - path: spikes/porting-3d/ios
+        excludes:
+          - tests
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jacklin.eidolon3dspike
         PRODUCT_NAME: Eidolon3DSpike
+        CURRENT_PROJECT_VERSION: "3"
+        MARKETING_VERSION: "0.3"
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
@@ -80,6 +84,18 @@ targets:
         DEVELOPMENT_TEAM: "MFZ8WGP52J"
         SWIFT_VERSION: "5.0"
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+  Eidolon3DSpikeTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: spikes/porting-3d/ios/tests
+    dependencies:
+      - target: Eidolon3DSpike
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jacklin.eidolon3dspike.tests
+        GENERATE_INFOPLIST_FILE: YES
 
 schemes:
   EidolonIOS:
@@ -100,3 +116,7 @@ schemes:
         Eidolon3DSpike: all
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - Eidolon3DSpikeTests

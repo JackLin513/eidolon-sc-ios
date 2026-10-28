@@ -39,7 +39,20 @@
          </BuildableReference>
       </MacroExpansion>
       <Testables>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "06050DC0201785DC2F2CCF35"
+               BuildableName = "Eidolon3DSpikeTests.xctest"
+               BlueprintName = "Eidolon3DSpikeTests"
+               ReferencedContainer = "container:EidolonIOS.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
+      <CommandLineArguments>
+      </CommandLineArguments>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"

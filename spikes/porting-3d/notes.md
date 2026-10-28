@@ -83,3 +83,5 @@
 - Review 修正：文件选择的 security-scoped URL 先复制到 Documents；灯光只加一次；空 bounds 报错；empty/failure 共用 placeholder。
 - Air 已安装并截到静态模型：几何、比例、orbit 相机正常；但当前截图仍是灰色材质，纹理 USDZ 已包含 PNG 且在 USD 里是 UsdPreviewSurface，RealityKit 在 Air 上没有显示贴图。Air 截图：`build/mltd-spike/out/ios-3d-air-2.png`。
 - 纹理问题未解决；不要把它当作“完成”。下一步需要检查 USDZ 材质绑定/RealityKit 对 MMD 转换材质支持。
+- 增加 `Model3DResourceLocator` 与 iOS XCTest：env → bundle（递归）→ Documents；`xcodebuild test` 因模拟器 boot timeout 未执行，但测试代码已编译。
+- 多次 uninstall/reinstall 后 Air 仍显示旧空页面/旧二进制现象；可能是设备安装/SpringBoard 快照缓存，需重启 Air 或清理安装后复核。
