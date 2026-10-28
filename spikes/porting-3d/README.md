@@ -88,4 +88,12 @@ build/mltd-spike/Blender42.app/Contents/MacOS/Blender --background \
   --out build/mltd-spike/out/mltd/mirai.usdz
 ```
 
-已验证：`usdchecker` Success；RealityKit 在 macOS 能加载 USDZ（模型很小，App 会归一化到 1.6m）。Air 安装被 free developer profile 的 3-App 上限挡住（AltStore/Eidolon/Bangumi 已占满），需要先删一个才能装 spike。
+已验证（本机命令）：
+
+```text
+$ usdchecker build/mltd-spike/out/mltd/mirai.usdz
+Validation Result with no explicit variants set
+Success!
+```
+
+RealityKit 在 macOS 上加载同一 USDZ 得到 `extents ≈ 0.106 × 0.127 × 0.023`；App 会按 y 高度归一化到 1.6m。**Air 上的显示验收仍未完成**：free developer profile 已有 AltStore / Eidolon / Bangumi 三个 App，spike 是第 4 个，需先删一个或换付费账号。
