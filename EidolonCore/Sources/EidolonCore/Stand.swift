@@ -28,6 +28,38 @@ public struct StandConfig: Sendable, Hashable {
     }
 }
 
+extension StandConfig: Codable {
+    private struct DefaultOutfit: Codable {
+        var id: String
+        var path: String
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case defaultOutfit = "default_outfit"
+        case outfits
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let outfit = try container.decode(DefaultOutfit.self, forKey: .defaultOutfit)
+        let outfits = try container.decode(String.self, forKey: .outfits)
+        self.init(
+            defaultOutfitID: outfit.id,
+            defaultOutfitPath: outfit.path,
+            outfitListPath: outfits
+        )
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(
+            DefaultOutfit(id: defaultOutfitID, path: defaultOutfitPath),
+            forKey: .defaultOutfit
+        )
+        try container.encode(outfitListPath, forKey: .outfits)
+    }
+}
+
 /// One outfit of hers, resolved under the installed content bundle.
 public struct StandOutfit: Sendable, Hashable {
     /// The upstream outfit number, for example `stand/1030010010`.

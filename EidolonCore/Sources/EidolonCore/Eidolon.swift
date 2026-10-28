@@ -34,6 +34,8 @@ public actor Eidolon {
     var memoryJobs: [Int64: Task<Void, Never>] = [:]
     /// What conversations are being named.
     var titleJobs: [String: Task<Void, Never>] = [:]
+    /// The stand package's character map, read once per install.
+    private var cachedStandConfigs: [String: StandConfig]?
 
     public init(location: Location) throws {
         self.location = location
@@ -100,6 +102,60 @@ public actor Eidolon {
         cachedWorld = nil
         worldCached = false
         return info
+    }
+
+    /// Installs a stand bundle beside the content bundle, atomically. On any failure the
+    /// previous stand directory stays in place (ADR-0020).
+    @discardableResult
+    public func installStand(bundleAt url: URL) throws -> StandBundleInfo {
+        let installer = StandBundleInstaller(
+            contentRoot: location.contentRoot,
+            fileManager: .default
+        )
+        let info = try installer.install(url)
+        let encoded = try JSONEncoder().encode(info)
+        try userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO app_state(key, value) VALUES('stand.bundle', ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                    """,
+                arguments: [String(decoding: encoded, as: UTF8.self)]
+            )
+        }
+        cachedStandConfigs = nil
+        return info
+    }
+
+    public func installedStandInfo() throws -> StandBundleInfo? {
+        let stored: String? = try userQueue.read { db in
+            try String.fetchOne(
+                db,
+                sql: "SELECT value FROM app_state WHERE key = 'stand.bundle'"
+            )
+        }
+        guard let stored, let data = stored.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(StandBundleInfo.self, from: data)
+    }
+
+    /// The stand package's character-to-outfit map; empty when no stand bundle is
+    /// installed. The paths in it are relative to the stand directory.
+    public func standConfigs() throws -> [String: StandConfig] {
+        if let cachedStandConfigs { return cachedStandConfigs }
+        let url = location.standDirectory.appendingPathComponent("manifest.json")
+        guard let data = try? Data(contentsOf: url),
+              let manifest = try? JSONDecoder().decode(StandManifest.self, from: data),
+              manifest.kind == .stand
+        else {
+            cachedStandConfigs = [:]
+            return [:]
+        }
+        var configs: [String: StandConfig] = [:]
+        for character in manifest.characters {
+            configs[character.id] = character.stand
+        }
+        cachedStandConfigs = configs
+        return configs
     }
 
     // MARK: - Reading the content
@@ -230,11 +286,18 @@ public actor Eidolon {
     /// Her stand: the default outfit and, when her list reads and its files are in
     /// the bundle, the outfits she can change into, all under the installed bundle
     /// (ADR-0018). nil when the bundle carries no stand for her.
+    /// Her stand: from the separately installed stand package when it has her, otherwise
+    /// from the legacy content bundle (ADR-0018, ADR-0020). nil when neither carries a
+    /// usable stand for her.
     public func stand(for characterID: String) -> CharacterStand? {
-        guard let character = try? characters().first(where: { $0.id == characterID }),
-              let config = character.stand
+        guard let character = try? characters().first(where: { $0.id == characterID })
         else { return nil }
 
+        if let config = try? standConfigs()[characterID],
+           let found = StandResolver(roots: [location.standDirectory]).stand(for: config) {
+            return found
+        }
+        guard let config = character.stand else { return nil }
         return StandResolver(roots: [location.contentDirectory]).stand(for: config)
     }
 

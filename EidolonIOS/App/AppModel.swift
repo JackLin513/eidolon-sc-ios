@@ -17,6 +17,7 @@ final class AppModel {
     private(set) var characters: [CharacterConfig] = []
     private(set) var latest: [String: LatestActivity] = [:]
     private(set) var bundleInfo: ContentBundleInfo?
+    private(set) var standInfo: StandBundleInfo?
     private(set) var avatars: [String: UIImage] = [:]
     private(set) var memories: [MemoryRecord] = []
     var errorMessage: String?
@@ -430,6 +431,29 @@ final class AppModel {
         }
     }
 
+    /// Installs a stand bundle beside the content bundle. The content bundle and the
+    /// user library are untouched when the stand bundle is bad (ADR-0020).
+    func importStandBundle(from url: URL) async {
+        guard !isImporting else { return }
+        isImporting = true
+        errorMessage = nil
+        defer { isImporting = false }
+
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+
+        let copy = FileManager.default.temporaryDirectory
+            .appending(path: "import-stand-\(UUID().uuidString).eidolonpkg")
+        defer { try? FileManager.default.removeItem(at: copy) }
+
+        do {
+            try FileManager.default.copyItem(at: url, to: copy)
+            standInfo = try await core.installStand(bundleAt: copy)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func refresh() async {
         do {
             try await load()
@@ -446,6 +470,7 @@ final class AppModel {
     private func load() async throws {
         characters = try await core.characters()
         latest = try await core.latestActivities()
+        standInfo = try await core.installedStandInfo()
 
         var images: [String: UIImage] = [:]
         for character in characters {

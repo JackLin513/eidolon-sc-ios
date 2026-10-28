@@ -55,9 +55,15 @@ struct SettingsView: View {
     @State private var tracingEnabled = true
     @State private var traceRetention = 200
     @State private var isPicking = false
+    @State private var importKind: ImportKind = .content
     @State private var showMemories = false
     @State private var showTraces = false
     @State private var showStandPreview = false
+
+    private enum ImportKind {
+        case content
+        case stand
+    }
 
     var body: some View {
         NavigationStack {
@@ -271,7 +277,7 @@ struct SettingsView: View {
                     Button {
                         showMemories = true
                     } label: {
-                        LabeledContent("记忆", value: "\(app.memories.filter(\.holds).count) 条")
+                        LabeledContent("记忆", value: "\(heldMemoryCount) 条")
                     }
                 } header: {
                     Text("记忆")
@@ -303,15 +309,19 @@ struct SettingsView: View {
                 } header: {
                     Text("立绘")
                 } footer: {
-                    Text("用内容包里她的默认衣装看一段待机动作。没有同步 Spine 运行时、页面失败或素材缺失时显示「没有立绘」。")
+                    Text("用立绘包里她的默认衣装看一段待机动作。没有同步 Spine 运行时、页面失败或素材缺失时显示「没有立绘」。")
                 }
+
+                standBundleSection
 
                 Section("内容包") {
                     if let info = app.bundleInfo {
                         LabeledContent("剧情", value: "\(info.episodeCount)")
                         LabeledContent("段落", value: "\(info.passageCount)")
                         LabeledContent("角色", value: "\(info.characterCount)")
-                        LabeledContent("立绘", value: "\(info.standOutfitCount) 套")
+                        if info.standOutfitCount > 0 {
+                            LabeledContent("内容包内立绘（旧包）", value: "\(info.standOutfitCount) 套")
+                        }
                         LabeledContent("向量模型", value: info.embeddingModel)
                         LabeledContent("向量维度", value: "\(info.embeddingDimensions)")
                         LabeledContent("内容 schema", value: "\(info.contentSchemaVersion)")
@@ -324,11 +334,12 @@ struct SettingsView: View {
 
                 Section {
                     Button("重新导入内容包") {
+                        importKind = .content
                         isPicking = true
                     }
                     .disabled(app.isImporting)
                 } footer: {
-                    Text("导入失败时保留当前内容包；对话、记忆和好感度不受影响。")
+                    Text("内容包只带剧情，不含立绘；立绘在立绘包里单独导入。导入失败时保留当前内容包；对话、记忆和好感度不受影响。")
                 }
             }
             .navigationTitle("设置")
@@ -395,8 +406,43 @@ struct SettingsView: View {
                 allowsMultipleSelection: false
             ) { result in
                 guard case .success(let urls) = result, let url = urls.first else { return }
-                Task { await app.importBundle(from: url) }
+                Task {
+                    switch importKind {
+                    case .content:
+                        await app.importBundle(from: url)
+                    case .stand:
+                        await app.importStandBundle(from: url)
+                    }
+                }
             }
+        }
+    }
+
+    private var heldMemoryCount: Int {
+        app.memories.filter(\.holds).count
+    }
+
+    @ViewBuilder
+    private var standBundleSection: some View {
+        Section {
+            if let info = app.standInfo {
+                LabeledContent("角色", value: "\(info.characterCount)")
+                LabeledContent("衣装", value: "\(info.outfitCount) 套")
+                LabeledContent("格式", value: "v\(info.formatVersion)")
+                LabeledContent("安装时间", value: info.installedAt)
+            } else {
+                Text("还没有导入立绘包")
+                    .foregroundStyle(.secondary)
+            }
+            Button(app.standInfo == nil ? "导入立绘包" : "重新导入立绘包") {
+                importKind = .stand
+                isPicking = true
+            }
+            .disabled(app.isImporting)
+        } header: {
+            Text("立绘包")
+        } footer: {
+            Text("立绘包和内容包分开导入；第一次导入全量包，之后可以追加增量包。导入失败保留上一份。")
         }
     }
 

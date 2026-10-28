@@ -411,7 +411,7 @@ enum Fixture {
         return full.dropFirst(base.count).joined(separator: "/")
     }
 
-    private static func zip(_ directory: URL, to destination: URL) throws -> URL {
+    static func zip(_ directory: URL, to destination: URL) throws -> URL {
         try? FileManager.default.removeItem(at: destination)
         let archive = try Archive(url: destination, accessMode: .create)
         let enumerator = FileManager.default.enumerator(
