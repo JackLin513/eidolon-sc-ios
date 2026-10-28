@@ -152,6 +152,39 @@ final class StandBundleTests: XCTestCase {
         XCTAssertEqual(standInfo?.outfitCount, 8)
     }
 
+    func testLegacyStandIsMigratedAndSurvivesAContentUpdate() async throws {
+        let eidolon = try await installedEidolon(includeStand: true)
+        let standRoot = eidolon.location.standDirectory
+        XCTAssertFalse(FileManager.default.fileExists(atPath: standRoot.path))
+
+        let migrated = try await eidolon.migrateLegacyStandIfNeeded()
+        XCTAssertEqual(migrated?.characterCount, 1)
+        XCTAssertEqual(migrated?.outfitCount, 3)
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: standRoot.appendingPathComponent("manifest.json").path
+            )
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: standRoot
+                    .appendingPathComponent("stand/idols/stand/1030010010/data.json").path
+            )
+        )
+        let migratedStand = await eidolon.stand(for: "mano")
+        let legacy = try XCTUnwrap(migratedStand)
+        XCTAssertEqual(legacy.outfitList?.cards.count, 2)
+
+        // A new story bundle without stands must not remove the migrated stand tree.
+        try await eidolon.install(bundleAt: Fixture.makeBundle(in: root))
+        let afterStand = await eidolon.stand(for: "mano")
+        let after = try XCTUnwrap(afterStand)
+        XCTAssertEqual(after.outfitList?.cards.count, 2)
+
+        let again = try await eidolon.migrateLegacyStandIfNeeded()
+        XCTAssertNil(again)
+    }
+
     func testStoryBundleWithoutStandStillInstallsAndChats() async throws {
         let eidolon = try await installedEidolon()
         let installed = try await eidolon.installedContentInfo()

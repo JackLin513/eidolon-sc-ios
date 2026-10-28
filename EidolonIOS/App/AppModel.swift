@@ -256,6 +256,7 @@ final class AppModel {
         do {
             if let info = try await core.usableContentInfo() {
                 bundleInfo = info
+                _ = try? await core.migrateLegacyStandIfNeeded()
                 try await load()
                 phase = .ready
                 resumeMemoryJobs()
