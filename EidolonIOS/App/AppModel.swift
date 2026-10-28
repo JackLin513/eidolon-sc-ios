@@ -22,6 +22,7 @@ final class AppModel {
     private(set) var memories: [MemoryRecord] = []
     var errorMessage: String?
     private(set) var isImporting = false
+    private(set) var importProgress: ImportProgress?
     private(set) var chatSettings = ChatSettings.load()
 
     var chatProvider: (any ChatProvider)? {
@@ -420,10 +421,15 @@ final class AppModel {
         let copy = FileManager.default.temporaryDirectory
             .appending(path: "import-\(UUID().uuidString).eidolonpkg")
         defer { try? FileManager.default.removeItem(at: copy) }
+        importProgress = nil
+        UIApplication.shared.isIdleTimerDisabled = true
+        defer { UIApplication.shared.isIdleTimerDisabled = false }
 
         do {
             try FileManager.default.copyItem(at: url, to: copy)
-            let info = try await core.install(bundleAt: copy)
+            let info = try await core.install(bundleAt: copy) { [weak self] progress in
+                Task { @MainActor in self?.importProgress = progress }
+            }
             bundleInfo = info
             try await load()
             phase = .ready
@@ -446,10 +452,15 @@ final class AppModel {
         let copy = FileManager.default.temporaryDirectory
             .appending(path: "import-stand-\(UUID().uuidString).eidolonpkg")
         defer { try? FileManager.default.removeItem(at: copy) }
+        importProgress = nil
+        UIApplication.shared.isIdleTimerDisabled = true
+        defer { UIApplication.shared.isIdleTimerDisabled = false }
 
         do {
             try FileManager.default.copyItem(at: url, to: copy)
-            standInfo = try await core.installStand(bundleAt: copy)
+            standInfo = try await core.installStand(bundleAt: copy) { [weak self] progress in
+                Task { @MainActor in self?.importProgress = progress }
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

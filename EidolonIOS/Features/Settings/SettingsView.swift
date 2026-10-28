@@ -373,9 +373,23 @@ struct SettingsView: View {
             .task { await load() }
             .overlay {
                 if app.isImporting {
-                    ProgressView("正在导入…")
-                        .padding(24)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    VStack(spacing: 10) {
+                        if let progress = app.importProgress {
+                            ProgressView(value: progress.fraction) {
+                                Text(progress.phase == .extracting ? "正在解压…" : "正在校验…")
+                                    .font(.callout)
+                            }
+                            .progressViewStyle(.linear)
+                            .frame(maxWidth: 260)
+                            Text("\(progress.completed) / \(progress.total)")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ProgressView("正在导入…")
+                        }
+                    }
+                    .padding(24)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
                 }
             }
             .alert("保存失败", isPresented: saveErrorBinding) {

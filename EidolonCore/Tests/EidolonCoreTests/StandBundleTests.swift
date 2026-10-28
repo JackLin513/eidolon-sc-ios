@@ -93,6 +93,23 @@ enum StandFixture {
     }
 }
 
+final class ProgressRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [ImportProgress] = []
+
+    func add(_ progress: ImportProgress) {
+        lock.lock()
+        values.append(progress)
+        lock.unlock()
+    }
+
+    var all: [ImportProgress] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
+    }
+}
+
 final class StandBundleTests: XCTestCase {
     private var root: URL!
 
@@ -187,6 +204,21 @@ final class StandBundleTests: XCTestCase {
 
         let again = try await eidolon.migrateLegacyStandIfNeeded()
         XCTAssertNil(again)
+    }
+
+    func testImportReportsExtractionAndValidationProgress() async throws {
+        let eidolon = try await installedEidolon()
+        let recorder = ProgressRecorder()
+        try await eidolon.installStand(
+            bundleAt: StandFixture.makeBundle(in: root),
+            progress: { recorder.add($0) }
+        )
+
+        let progress = recorder.all
+        XCTAssertEqual(progress.first?.phase, .extracting)
+        XCTAssertEqual(progress.last?.phase, .validating)
+        XCTAssertEqual(progress.last?.completed, progress.last?.total)
+        XCTAssertEqual(progress.last?.fraction, 1)
     }
 
     func testADeltaAddsNewCardsAndKeepsTheOldOnes() async throws {
