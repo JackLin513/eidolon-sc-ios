@@ -51,6 +51,8 @@ build/mltd-spike/Blender.app/Contents/MacOS/Blender --background   --python spik
 
 这一步只验证静态模型；动画/PMX/VMD 仍需 MLTDTools。
 
+Headless MLTDTools 补丁在 `mltools-headless.patch`（给 MillionDance 加 `--config`）。PMX/VMD 已能在 Windows VM 上生成，PMX 在 Blender 正常；VMD 导入仍会爆炸，见 `notes.md`。
+
 ## 执行清单
 
 1. 确认资源版本与来源；只在本机处理。
