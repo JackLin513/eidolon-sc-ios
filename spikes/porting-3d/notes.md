@@ -124,3 +124,10 @@
 - 新增 `Model3DAction` / `Model3DActionMap`：calm→idle、speaking→talk+mouthOpen、looking→listen、nod→nodYes/nodNo，情绪透传。
 - 新增 4 个纯映射单测，模拟器全部通过。
 - 渲染器动作播放/按钮状态机尚未接上，T2 不能关闭。
+
+### T4 Phase 0（MMD/ARM）
+
+- Windows ARM 无法正常安装 x64 VC++ 2008；改用 App-local x64 VC90（从 VisualCppRedist AIO 提取 `msvcr90/msvcp90/vcomp90` + 私有 manifest，manifest 版本改成 MMD 依赖的 `9.0.21022.8`），MMD 进程能启动。
+- 在 VM 桌面打开 `C:\MMD\app\MikuMikuDance.exe`，加载 `mirai.pmx` + `mirai.vmd`：动作/骨骼运动正常；Mesh 因 Windows ARM/MMD 渲染问题不可见。
+- 结论：VMD 动作有效性通过（按用户确认），Phase 3 可以用 VMD 路径；但“MMD 里看到模型内容物”仍受 ARM 渲染限制，不能用于模型视觉验收。
+- 下一步不是再装运行库，而是解决 Blender/MMD Tools VMD 导入爆炸，或写 VMD→USDZ 导出。
