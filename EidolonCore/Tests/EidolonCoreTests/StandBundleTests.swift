@@ -8,7 +8,9 @@ enum StandFixture {
     static func makeBundle(
         in parent: URL,
         cards: Int = 4,
-        corruptCRC: Bool = false
+        corruptCRC: Bool = false,
+        mode: StandManifest.Mode = .full,
+        fileCardsFrom: Int = 0
     ) throws -> URL {
         let staging = parent.appendingPathComponent(
             "stand-\(UUID().uuidString)",
@@ -22,9 +24,11 @@ enum StandFixture {
             let number = "10300100\(index + 1)0"
             let everyday = "stand/\(number)"
             let stage = "stand_costume/\(number)"
-            for outfit in [everyday, stage] {
-                for name in ["data.json", "data.atlas", "data.png"] {
-                    files["stand/idols/\(outfit)/\(name)"] = Data("\(outfit)/\(name)".utf8)
+            if index >= fileCardsFrom {
+                for outfit in [everyday, stage] {
+                    for name in ["data.json", "data.atlas", "data.png"] {
+                        files["stand/idols/\(outfit)/\(name)"] = Data("\(outfit)/\(name)".utf8)
+                    }
                 }
             }
             cardValues.append(
@@ -66,7 +70,7 @@ enum StandFixture {
             records[path] = StandManifest.FileRecord(size: data.count, crc32: crc)
         }
         let manifest = StandManifest(
-            mode: .full,
+            mode: mode,
             createdAt: "2026-10-28T00:00:00Z",
             characters: [StandManifest.Character(id: "mano", stand: config)],
             files: records
@@ -183,6 +187,35 @@ final class StandBundleTests: XCTestCase {
 
         let again = try await eidolon.migrateLegacyStandIfNeeded()
         XCTAssertNil(again)
+    }
+
+    func testADeltaAddsNewCardsAndKeepsTheOldOnes() async throws {
+        let eidolon = try await installedEidolon()
+        try await eidolon.installStand(bundleAt: StandFixture.makeBundle(in: root, cards: 4))
+
+        let delta = try StandFixture.makeBundle(
+            in: root,
+            cards: 5,
+            mode: .delta,
+            fileCardsFrom: 4
+        )
+        let info = try await eidolon.installStand(bundleAt: delta)
+        XCTAssertEqual(info.outfitCount, 10)
+
+        let standOptional = await eidolon.stand(for: "mano")
+        let stand = try XCTUnwrap(standOptional)
+        XCTAssertEqual(stand.outfitList?.cards.count, 5)
+        XCTAssertEqual(stand.outfitList?.cards.last?.name, "衣装 5")
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: eidolon.location.standDirectory
+                    .appendingPathComponent("stand/idols/stand/1030010010/data.json").path
+            ),
+            "the old outfit is still there"
+        )
+        let index = try await eidolon.standIndex()
+        XCTAssertTrue(index.files.keys.contains("stand/idols/stand/1030010050/data.json"))
+        XCTAssertTrue(index.files.keys.contains("stand/idols/stand/1030010010/data.json"))
     }
 
     func testStoryBundleWithoutStandStillInstallsAndChats() async throws {

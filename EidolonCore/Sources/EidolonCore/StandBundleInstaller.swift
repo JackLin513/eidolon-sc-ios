@@ -29,10 +29,18 @@ struct StandBundleInstaller {
         let manifest = try readManifest(in: staging)
         try validateManifest(manifest)
         try validateFiles(manifest, in: staging)
-        try validateCharacters(manifest, in: staging)
-        let outfitCount = countOutfits(in: staging)
-
-        try swapIn(staging)
+        switch manifest.mode {
+        case .full:
+            try validateCharacters(manifest, in: staging, fallback: nil)
+            try swapIn(staging)
+        case .delta:
+            guard fileManager.fileExists(atPath: standDirectory.path) else {
+                throw EidolonError.invalidBundle("增量立绘包需要先导入全量立绘包")
+            }
+            try validateCharacters(manifest, in: staging, fallback: standDirectory)
+            try merge(manifest, from: staging)
+        }
+        let outfitCount = countOutfits(in: standDirectory)
 
         return StandBundleInfo(
             formatVersion: manifest.formatVersion,
@@ -86,8 +94,8 @@ struct StandBundleInstaller {
         guard manifest.kind == .stand else {
             throw EidolonError.invalidBundle("不是立绘包")
         }
-        guard manifest.mode == .full else {
-            throw EidolonError.invalidBundle("增量立绘包暂未支持")
+        guard manifest.mode == .full || manifest.mode == .delta else {
+            throw EidolonError.invalidBundle("立绘包模式无法识别")
         }
         guard !manifest.characters.isEmpty else {
             throw EidolonError.invalidContent("立绘包里没有角色")
@@ -125,28 +133,68 @@ struct StandBundleInstaller {
         }
     }
 
-    private func validateCharacters(_ manifest: StandManifest, in directory: URL) throws {
+    private func validateCharacters(
+        _ manifest: StandManifest,
+        in directory: URL,
+        fallback: URL?
+    ) throws {
         for character in manifest.characters {
-            let defaultDirectory = directory.appendingPathComponent(
-                character.stand.defaultOutfitPath,
-                isDirectory: true
-            )
-            for name in OutfitList.files {
-                guard fileManager.fileExists(
-                    atPath: defaultDirectory.appendingPathComponent(name).path
-                ) else {
-                    throw EidolonError.invalidContent(
-                        "角色 \(character.id) 的默认衣装缺少 \(name)"
+            let roots = [directory] + (fallback.map { [$0] } ?? [])
+            let defaultFound = roots.contains { root in
+                let defaultDirectory = root.appendingPathComponent(
+                    character.stand.defaultOutfitPath,
+                    isDirectory: true
+                )
+                return OutfitList.files.allSatisfy {
+                    fileManager.fileExists(
+                        atPath: defaultDirectory.appendingPathComponent($0).path
                     )
                 }
             }
-            let listURL = directory.appendingPathComponent(character.stand.outfitListPath)
-            guard fileManager.fileExists(atPath: listURL.path) else {
+            guard defaultFound else {
+                throw EidolonError.invalidContent(
+                    "角色 \(character.id) 的默认衣装缺少文件"
+                )
+            }
+            let listFound = roots.contains { root in
+                fileManager.fileExists(
+                    atPath: root.appendingPathComponent(character.stand.outfitListPath).path
+                )
+            }
+            guard listFound else {
                 throw EidolonError.invalidContent(
                     "角色 \(character.id) 的衣装清单不存在"
                 )
             }
         }
+    }
+
+    /// Merge a delta into the installed stand directory. New/changed files are copied in;
+    /// old outfits are kept; the manifest and lists change last, so a failure leaves the
+    /// old lists in charge of the old files.
+    private func merge(_ manifest: StandManifest, from staging: URL) throws {
+        for path in manifest.files.keys.sorted() {
+            let source = staging.appendingPathComponent(path)
+            let destination = standDirectory.appendingPathComponent(path)
+            try fileManager.createDirectory(
+                at: destination.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let temporary = destination.deletingLastPathComponent()
+                .appendingPathComponent(".merge-\(UUID().uuidString)")
+            defer { try? fileManager.removeItem(at: temporary) }
+            try fileManager.copyItem(at: source, to: temporary)
+            if fileManager.fileExists(atPath: destination.path) {
+                _ = try fileManager.replaceItemAt(destination, withItemAt: temporary)
+            } else {
+                try fileManager.moveItem(at: temporary, to: destination)
+            }
+        }
+        let manifestData = try Data(contentsOf: staging.appendingPathComponent("manifest.json"))
+        try manifestData.write(
+            to: standDirectory.appendingPathComponent("manifest.json"),
+            options: .atomic
+        )
     }
 
     /// Each outfit directory holds exactly one `data.json`, so counting those counts the
