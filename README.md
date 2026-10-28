@@ -30,10 +30,10 @@
 
 **立绘**
 
-- 官方 Spine 3.6 素材随内容包分发，在本地不联网的 `WKWebView` 里由改编自上游的播放器绘制（ADR-0017、ADR-0018）
+- 官方 Spine 3.6 素材随独立的立绘包分发（全量 29 个角色、1522 张卡、2034 套衣装），在本地不联网的 `WKWebView` 里由改编自上游的播放器绘制（ADR-0017、ADR-0020）
 - 说话时张嘴、我说话时看镜头、说完点头；每段台词说完判断一次情绪与点头，按情绪换表情与动作，判断超时或失败按平静演
 - 取景按宽度：紧凑宽度到膝盖，常规宽度到腰；拨通时从下方升起淡入，挂断后 40% 透明
-- 换衣装：通话层右上角打开面板，大预览 + 卡片网格（私服 / 演出），缩略图在端上渲染并缓存；每个角色记住一套，载入失败回退默认衣装
+- 换衣装：通话层和设置预览共用面板，大预览 + 卡片网格（私服 / 演出），缩略图在端上渲染并缓存；每个角色记住一套，载入失败回退默认衣装
 - 没有立绘的角色（或运行时/素材缺失）只显示背景与字幕，通话照常
 
 **通用**
@@ -62,7 +62,7 @@ EidolonIOS/               # SwiftUI 客户端（xcodegen 生成工程）
 └── Features/             # 对话、通话、立绘、设置、记忆、追踪、导入
 AppIcon.icon/             # 图标工程（Icon Composer，Liquid Glass 分层与外观）
 tools/
-├── export_content_bundle.py   # Mac 上把上游数据与立绘导出成 .eidolonpkg
+├── export_content_bundle.py   # Mac 上导出内容包/立绘包（含增量）
 ├── sync_stand_runtime.sh      # 构建后从上游 checkout 取 Spine 运行时（不进仓库）
 ├── tests/                     # 导出工具的标准库 unittest
 └── oracle/                    # 上游提示词对照组
@@ -74,7 +74,9 @@ GLOSSARY.md               # 领域词汇（从上游复制）
 
 ## 跑起来
 
-1. **准备内容包**（Mac，一次性）：
+1. **准备内容包与立绘包**（Mac，一次性）：
+
+   剧情内容包不带立绘：
 
    ```sh
    cd ../eidolon-sc/backend
@@ -83,15 +85,25 @@ GLOSSARY.md               # 领域词汇（从上游复制）
      --out ../../eidolon-sc-ios/build/eidolon-content.eidolonpkg
    ```
 
-   要带上她的立绘，先用上游的 `eidolon stand fetch` 和 `eidolon stand outfits` 把素材整理到
-   `build/stand`（`EIDOLON_STAND_BUILD_PATH` 指到这里），再给导出工具加 `--stand`：
+   立绘包先用上游的 `eidolon stand fetch` 和 `eidolon stand outfits` 把素材整理到
+   `build/stand`（`EIDOLON_STAND_BUILD_PATH` 指到这里），再单独导出。立绘包默认全量：
 
    ```sh
-   # 默认衣装 + 清单里的前 3 张卡；--stand-all-outfits 打全部，--stand-cards 0 只打默认衣装
    uv run --env-file=../.env python ../../eidolon-sc-ios/tools/export_content_bundle.py \
-     --upstream .. --db data/eidolon.db --characters ../characters \
-     --stand ../../eidolon-sc-ios/build/stand \
-     --stand-cards 3 --out ../../eidolon-sc-ios/build/eidolon-content.eidolonpkg
+     --upstream .. --characters ../characters --stand ../../eidolon-sc-ios/build/stand \
+     --stand-only --stand-all-outfits \
+     --out ../../eidolon-sc-ios/build/eidolon-stand.eidolonpkg
+   ```
+
+   全量立绘包实测 29 个角色、6131 个文件、586.9 MB（原始素材约 2.5 GB）。只用前几张卡时加
+   `--stand-cards N`。立绘有新增时，先重新同步 `build/stand`，再用手机导出的清单只打增量：
+
+   ```sh
+   # 自动从连接的 iPhone 读清单（推荐；没有设备时用 --have stand-index.json）
+   uv run --env-file=../.env python ../../eidolon-sc-ios/tools/export_content_bundle.py \
+     --upstream .. --characters ../characters --stand ../../eidolon-sc-ios/build/stand \
+     --stand-only --stand-all-outfits --device <UDID> \
+     --out ../../eidolon-sc-ios/build/eidolon-stand-add.eidolonpkg
    ```
 
    没有偶像编号、默认衣装或素材的角色跳过（同步还没跑完也能导出）。素材同步是一次一个请求、每秒一个，
@@ -108,7 +120,7 @@ GLOSSARY.md               # 领域词汇（从上游复制）
 
    构建时 `tools/sync_stand_runtime.sh` 从上游 checkout（默认 `../eidolon-sc`，可用 `EIDOLON_UPSTREAM` 指定）把 `spine-webgl.js` 拷进 App 资源。运行时是第三方代码，不进仓库；没有 checkout 或运行时缺失时脚本只打印一条警告，App 照常编译，只是立绘显示「没有立绘」。
 
-3. **运行**：选一个 iPhone 模拟器，首次启动点「选择内容包」导入；然后在设置里填对话模型、向量化/重排，以及通话用的 Soniox 与 Fish Audio 密钥（密钥存钥匙串）。
+3. **运行**：选一个 iPhone 模拟器，首次启动点「选择内容包」导入内容包；再在设置 →「立绘包」导入立绘包（全量一次，之后可导入增量包）。然后在设置里填对话模型、向量化/重排，以及通话用的 Soniox 与 Fish Audio 密钥（密钥存钥匙串）。
 
 4. **上真机（可选）**：
 
@@ -120,10 +132,14 @@ GLOSSARY.md               # 领域词汇（从上游复制）
    xcrun devicectl device install app --device <UDID> \
      build/DerivedData/Build/Products/Debug-iphoneos/Eidolon.app
    xcrun devicectl device copy to --device <UDID> --domain-type appDataContainer \
-     --domain-identifier com.jacklin.eidolon --destination Documents/你的包.eidolonpkg \
+     --domain-identifier com.jacklin.eidolon --destination Documents/你的内容包.eidolonpkg \
      --source build/eidolon-content.eidolonpkg
+   xcrun devicectl device copy to --device <UDID> --domain-type appDataContainer \
+     --domain-identifier com.jacklin.eidolon --destination Documents/你的立绘包.eidolonpkg \
+     --source build/eidolon-stand.eidolonpkg
    xcrun devicectl device process launch --device <UDID> \
-     -e '{"EIDOLON_IMPORT_BUNDLE":"你的包.eidolonpkg"}' com.jacklin.eidolon
+     -e '{"EIDOLON_IMPORT_BUNDLE":"你的内容包.eidolonpkg","EIDOLON_IMPORT_STAND_BUNDLE":"你的立绘包.eidolonpkg"}' \
+     com.jacklin.eidolon
    ```
 
    自动签名要求 Xcode 里登录了开发者账号；没有账号时可以先无签名构建、再用设备上已有的描述文件手工 `codesign`。
@@ -170,7 +186,9 @@ tools/oracle/run.sh                          # 与上游逐字对照提示词（
 - `EIDOLON_REACH_OUT_HOURS`：把搭话间隔改短，方便看搭话
 - `EIDOLON_NO_JUDGE=1`：不接判断模型，由对话模型自行决定是否调用「回顾剧情」
 - `EIDOLON_OPEN_HISTORY` / `_TRACES` / `_LATEST_TRACE` / `_MEMORIES`：直接打开历史、追踪、最新追踪或记忆页
+- `EIDOLON_IMPORT_STAND_BUNDLE`：导入这个立绘包（裸文件名会在 Documents 里找），真机也能用
 - `EIDOLON_OPEN_STAND_PREVIEW=1`：直接打开设置里的立绘预览（她站在深色背景上待机）
+- `EIDOLON_OPEN_OUTFITS=1`：配合预览直接打开换衣装面板
 - `EIDOLON_BAILIAN_WORKSPACE` / `_REGION` / `_MODEL` / `_API_KEY`：预置百炼判断配置，其余设置不动；真机也能用 `xcrun devicectl device process launch --environment-variables` 传入
 
 真机上这些变量用 `xcrun devicectl device process launch --environment-variables` 传入（键值写成 JSON）。
@@ -180,6 +198,6 @@ tools/oracle/run.sh                          # 与上游逐字对照提示词（
 ## 上游与许可
 
 - 上游 [Sallyn0225/eidolon-sc](https://github.com/Sallyn0225/eidolon-sc) 是 AGPL-3.0；本仓库是它的 iOS 移植，供自己使用。
-- 上游 checkout 只读。Spine 运行时与立绘素材都有第三方版权，**都不进仓库**：素材由导出工具打进内容包，运行时由构建脚本从上游 checkout 同步到构建产物。
+- 上游 checkout 只读。Spine 运行时与立绘素材都有第三方版权，**都不进仓库**：素材由导出工具打进立绘包，运行时由构建脚本从上游 checkout 同步到构建产物。
 - 本地验证用的密钥只从 `../eidolon-sc/.env` 读取，不写进仓库、提交或 issue。
 - App 图标是 Icon Composer 工程（`AppIcon.icon`，前景/背景两层 SVG）：听筒轮廓取自 Google Material Icons 的 `call`（Apache-2.0），其余为自制。底色（fill）指定为深夜蓝 `#1B1F3A`——留默认的蓝色自动渐变时，深色外观会把听筒染成蓝色。
