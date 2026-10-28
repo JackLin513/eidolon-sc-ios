@@ -10,14 +10,10 @@ struct Eidolon3DSpikeApp: App {
     }
 
     private static var startingModelURL: URL? {
-        if let raw = ProcessInfo.processInfo.environment["EIDOLON_3D_MODEL"] {
-            let url = raw.hasPrefix("/") ? URL(fileURLWithPath: raw) : URL.documentsDirectory.appending(path: raw)
-            if FileManager.default.fileExists(atPath: url.path) { return url }
-        }
-        if let bundled = Bundle.main.url(forResource: "mirai", withExtension: "usdz") {
-            return bundled
-        }
-        let fallback = URL.documentsDirectory.appending(path: "mirai.usdz")
-        return FileManager.default.fileExists(atPath: fallback.path) ? fallback : nil
+        Model3DResourceLocator.locate(
+            environment: ProcessInfo.processInfo.environment,
+            documents: URL.documentsDirectory,
+            resourceRoot: Bundle.main.resourceURL
+        )
     }
 }
