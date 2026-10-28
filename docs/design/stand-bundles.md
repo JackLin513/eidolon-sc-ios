@@ -58,7 +58,7 @@
 
 ### 内容包
 
-- 沿用现有 `.eidolonpkg` zip/manifest；新增 `kind: "content"`（旧包按 legacy 兼容）。
+- 沿用现有 `.eidolonpkg` 格式（format 2）；不新增 `kind`——App 的两个导入入口区分内容包和立绘包。旧包按 legacy 兼容。
 - 不再包含 `stand/` 素材；`characters.json` 不再依赖 `stand` 字段。
 - 内容包继续原子替换：`Content/current`，失败保留 `Content/previous`。
 - 剧情更新仍然全量导入，但不再包含立绘，体积回到很小。

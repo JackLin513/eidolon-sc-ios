@@ -78,11 +78,14 @@ struct ContentBundleInstaller {
                 withIntermediateDirectories: true
             )
             _ = try archive.extract(entry, to: target)
-            progress?(ImportProgress(
-                phase: .extracting,
-                completed: index + 1,
-                total: entries.count
-            ))
+            let completed = index + 1
+            if completed == entries.count || completed % 25 == 0 {
+                progress?(ImportProgress(
+                    phase: .extracting,
+                    completed: completed,
+                    total: entries.count
+                ))
+            }
         }
     }
 
@@ -143,11 +146,14 @@ struct ContentBundleInstaller {
             if let expected = record.crc32, CRC32.hex(data) != expected {
                 throw EidolonError.invalidBundle("文件 \(path) 校验失败")
             }
-            progress?(ImportProgress(
-                phase: .validating,
-                completed: index + 1,
-                total: files.count
-            ))
+            let completed = index + 1
+            if completed == files.count || completed % 25 == 0 {
+                progress?(ImportProgress(
+                    phase: .validating,
+                    completed: completed,
+                    total: files.count
+                ))
+            }
         }
     }
 

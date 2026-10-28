@@ -76,11 +76,14 @@ struct StandBundleInstaller {
                 withIntermediateDirectories: true
             )
             _ = try archive.extract(entry, to: target)
-            progress?(ImportProgress(
-                phase: .extracting,
-                completed: index + 1,
-                total: entries.count
-            ))
+            let completed = index + 1
+            if completed == entries.count || completed % 25 == 0 {
+                progress?(ImportProgress(
+                    phase: .extracting,
+                    completed: completed,
+                    total: entries.count
+                ))
+            }
         }
     }
 

@@ -379,8 +379,8 @@ struct StandPreviewView: View {
                 animations: animations
             )
         )
-        renderer.load(outfit)
         self.renderer = renderer
+        renderer.load(outfit)
     }
 
     private static func reason(_ failure: StandRenderFailure) -> String {
