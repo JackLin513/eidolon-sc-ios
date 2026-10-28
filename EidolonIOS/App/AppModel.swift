@@ -253,6 +253,7 @@ final class AppModel {
         applyDebugChatSettings()
         applyDebugBailianSettings()
         await importBundleForDebuggingIfRequested()
+        await importStandBundleForDebuggingIfRequested()
         #endif
         do {
             if let info = try await core.usableContentInfo() {
@@ -388,6 +389,28 @@ final class AppModel {
     /// Development aid: `SIMCTL_CHILD_EIDOLON_IMPORT_BUNDLE` points at a bundle
     /// already copied into this app's container, so the simulator can reach the
     /// screens that normally sit behind the file picker.
+    private func importStandBundleForDebuggingIfRequested() async {
+        guard let path = ProcessInfo.processInfo.environment["EIDOLON_IMPORT_STAND_BUNDLE"] else {
+            return
+        }
+        let url = path.hasPrefix("/")
+            ? URL(fileURLWithPath: path)
+            : URL.documentsDirectory.appending(path: path)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            errorMessage = "调试用的立绘包不存在：\(path)"
+            return
+        }
+        #if DEBUG
+        UIApplication.shared.isIdleTimerDisabled = true
+        defer { UIApplication.shared.isIdleTimerDisabled = false }
+        #endif
+        do {
+            standInfo = try await core.installStand(bundleAt: url)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func importBundleForDebuggingIfRequested() async {
         guard let path = ProcessInfo.processInfo.environment["EIDOLON_IMPORT_BUNDLE"] else { return }
         // A bare name is looked up in Documents, so a device can be given a freshly

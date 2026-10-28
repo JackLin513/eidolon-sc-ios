@@ -67,7 +67,14 @@ struct StandPreviewView: View {
                 .accessibilityLabel("换衣装")
             }
         }
-        .task { await start() }
+        .task {
+            await start()
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["EIDOLON_OPEN_OUTFITS"] == "1" {
+                showsOutfits = true
+            }
+            #endif
+        }
         .sheet(isPresented: $showsOutfits) {
             if let stand, let character = characters.first(where: { $0.id == selectedID }) {
                 OutfitPickerView(
@@ -103,6 +110,7 @@ struct StandPreviewView: View {
                 if let renderer, !hasFailed {
                     StandView(renderer: renderer)
                         .id(ObjectIdentifier(renderer as AnyObject))
+                        .frame(width: proxy.size.width, height: proxy.size.height)
                         .opacity(over ? 0.4 : 1)
                         .onAppear { renderer.setViewportSize(proxy.size) }
                         .onChange(of: proxy.size) { _, size in renderer.setViewportSize(size) }

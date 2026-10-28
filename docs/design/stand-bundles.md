@@ -1,6 +1,6 @@
 # 立绘包：全量衣装、拆包与增量更新
 
-设计于 2026-10-28。目标是把端上立绘从「每个角色前 3 张卡」扩到上游全量，并把立绘素材从内容包里拆出来，使剧情更新不必重传 GB 级素材。代码尚未实现；决策记录见 [ADR-0020](../adr/0020-stand-bundles-split-and-incremental.md)。
+设计于 2026-10-28，已实现。目标是把端上立绘从「每个角色前 3 张卡」扩到上游全量，并把立绘素材从内容包里拆出来，使剧情更新不必重传 GB 级素材。决策记录见 [ADR-0020](../adr/0020-stand-bundles-split-and-incremental.md)。
 
 ## 背景
 
@@ -15,7 +15,7 @@
 1. 立绘数据与上游全量对齐：29 个角色、1522 张卡、2034 套衣装。
 2. 内容包与立绘包分开：第一次传全量立绘，之后剧情更新只传小内容包；立绘追加只传增量。
 3. 设置里的立绘预览可以换衣装，行为和通话页的换衣装一致。
-4. 导入 GB 级包时有可见进度、不会因锁屏中断，失败保留上一份。
+4. 导入大立绘包时有可见进度、不会因锁屏中断，失败保留上一份。
 5. 不引入运行时 HTTP 服务；复用现有 `devicectl` 通道和离线文件。
 
 ## 非目标
@@ -68,30 +68,28 @@
 - 同样是 zip，建议沿用 `.eidolonpkg` 扩展名；manifest 带 `kind: "stand"`、`mode: "full" | "delta"`、`format_version`、`files`（大小 + CRC32/哈希）。
 - 包内布局：
   ```text
-  characters.json       # 角色 id → 默认衣装、衣装清单路径
-  outfits/<idol_id>.json
-  idols/<outfit_id>/{data.json,data.atlas,data.png}
-  index.json            # 本包包含的 outfit 编号 + 文件大小/校验值
-  manifest.json
+  manifest.json         # kind/mode、角色 id → 默认衣装/衣装清单、文件大小/CRC
+  stand/outfits/<idol_id>.json
+  stand/idols/<outfit_id>/{data.json,data.atlas,data.png}
   ```
-- 全量包包含全部角色；增量包只含新增/变更的 outfit 文件，但带上受影响（建议全部）的 `outfits/*.json` 和 `characters.json`，保证卡片/默认衣装的变化能被看到。
+- 全量包包含全部角色；增量包只含新增/变更的 outfit 文件，但带上 `stand/outfits/*.json` 和 manifest 里的角色映射，保证卡片/默认衣装的变化能被看到。`index.json` 由 App 在安装后生成，不要求包自带。
 - 立绘包不包含内容库，不依赖 App 的剧情 schema。
 
 ### 立绘目录
 
 - `Content/stand/`：
   ```text
-  characters.json
-  outfits/
-  idols/
-  index.json
+  manifest.json
+  stand/outfits/
+  stand/idols/
+  index.json            # App 生成的已安装文件大小/CRC
   ```
-- `Content/stand/previous/` 只用于全量包导入的失败回滚；增量包不复制整个目录。
+- `Content/stand-previous/` 只用于全量包导入的失败回滚；增量包不复制整个目录。
 - 旧版把立绘放在 `Content/current/stand/`；迁移后 `Content/current` 不再持有立绘。
 
 ### 角色与立绘的关联
 
-- 立绘包自带的 `characters.json` 是「角色 → 默认衣装 / 衣装清单」的唯一来源；故事包的 `characters.json` 不需要保留 `stand` 字段。
+- 立绘包 manifest 的 `characters` 是「角色 → 默认衣装 / 衣装清单」的唯一来源；故事包的 `characters.json` 不需要保留 `stand` 字段。
 - `Eidolon.stand(for:)` 先查立绘目录，再回退到旧内容包里的 `stand`（legacy）。
 - 设置预览的角色筛选、通话页的立绘加载都走同一个查找，不再依赖 `CharacterConfig.stand`。
 
@@ -111,8 +109,8 @@
 ### 增量立绘包
 
 - 解压到临时目录；校验每个新文件。
-- 新 outfit 目录按编号移入 `Content/stand/idols/`；已存在的编号跳过（素材不可变）。
-- `outfits/*.json`、`characters.json`、`index.json` 用原子替换写入；列表更新失败时保留旧列表。
+- 新 outfit 文件按路径移入 `Content/stand/stand/idols/`；已存在的编号跳过（素材不可变）。
+- `stand/outfits/*.json`、manifest 和 `index.json` 用原子替换写入；列表更新失败时保留旧列表。
 - 不删除已有衣装；新目录先落盘、后改列表，失败时最多留下不会被列表引用的孤儿文件，重试即可。
 - 增量包不能改变已有 outfit 的内容；如果换了素材，用新编号或重新导全量。
 
@@ -121,7 +119,7 @@
 - `ContentBundleInstaller` 提供字节/文件进度回调；导入页显示进度条。
 - 导入期间禁用系统自动锁屏；App 进入后台时提示需要保持前台。
 - 导入完成删除临时拷贝；如果 `.eidolonpkg` 还在 App Documents，设置里提供清理入口/提示。
-- 2.4 GB 包的解压 + 逐文件 CRC 允许几分钟；峰值磁盘占用预计几 GB。
+- 实测全量包 586.9 MB（原始素材 2.5 GB）；解压后约 2.4 GB，逐文件 CRC 约 1–2 分钟，峰值磁盘约 3 GB。
 
 ## 增量流程
 
@@ -175,8 +173,8 @@
 ## 迁移
 
 - App 启动时：
-  1. 若 `Content/stand` 不存在、`Content/current/stand` 存在，把旧目录搬到 `Content/stand`。
-  2. 从旧 `characters.json` 的 `stand` 字段生成 `Content/stand/characters.json` 和 `index.json`。
+  1. 若 `Content/stand` 不存在、`Content/current/stand` 存在，把旧目录搬到 `Content/stand/stand/`。
+  2. 从旧 `characters.json` 的 `stand` 字段生成 `Content/stand/manifest.json` 和 `index.json`。
   3. 迁移失败时保留旧内容包里的立绘，走 legacy 查找；不阻塞启动。
 - 迁移后第一次导入不带立绘的内容包不会丢立绘；全量/增量立绘包导入后再替换/合并。
 - 旧的全量内容包（内容 + 立绘）仍可导入：识别为 legacy，立绘作为迁移来源。
@@ -192,11 +190,11 @@
 
 ## 风险与代价
 
-- **导入**：2.4 GB 解压 + 6000 多个文件 CRC，可能几分钟；峰值磁盘几 GB；手机需保持前台。
+- **导入**：全量包 586.9 MB，解压后约 2.4 GB；6000 多个文件 CRC，约 1–2 分钟；峰值磁盘约 3 GB；手机需保持前台。
 - **首屏**：62 张卡的缩略图首次打开偏慢；缓存后正常。
 - **格式/代码**：两个 manifest 类型、两个导入入口、独立立绘目录、增量合并、迁移，都比单包复杂。
 - **增量一致性**：增量包依赖手机清单；清单过期/设备不同步时可能漏文件，回退全量。
-- **ZIP**：全量包目前约 2.4 GB，ZIP32 上限 4 GB；接近上限时要转 ZIP64。
+- **ZIP**：全量包目前 586.9 MB，离 ZIP32 上限还远；超过 4 GB 时再转 ZIP64。
 - **兼容**：旧 all-in-one 内容包要能继续读；迁移失败不能丢立绘。
 
 ## 验收
@@ -205,13 +203,13 @@
 - 更新内容包但不导入立绘包：立绘仍在，选择仍在。
 - 新增一套衣装：导出全量/增量的差异只包含新素材；导入增量包后旧衣装和选择不变。
 - 现有 3 张卡设备升级后立绘不消失；迁移后第一次内容包更新不丢立绘。
-- 导入 2.4 GB 包时进度可见、不锁屏、失败保留上一份。
+- 导入全量包时进度可见、不锁屏、失败保留上一份。
 - 导出工具单测：全量/增量/`--have`/`--device` 路径；Core 测试：两个根、全量替换、增量合并、迁移、清单；Air 实机验收。
 
 ## 留给 spec 的实现细节
 
 - 实际 manifest schema、`format_version`、`kind`/`mode` 的最终字段名，以及旧 v2 包的兼容方式。
-- 立绘包 `characters.json` 与 `index.json` 的精确结构；哈希用 CRC32 还是更强的校验。
+- 立绘包 manifest 的 `characters` 与 `index.json` 的精确结构；哈希用 CRC32 还是更强的校验。
 - 增量合并的原子性/回滚实现；全量包是否也允许合并（建议全量替换）。
 - 导入进度的粒度和取消行为；临时包清理入口的位置。
 - 缩略图性能阈值与回退方案的触发条件。
