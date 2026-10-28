@@ -363,6 +363,12 @@ public actor CallSession {
     /// Moves the line card at her pace while her voice does not come (upstream
     /// `linePacing.ts`): a reply that cannot be voiced still has to be read.
     private var lineFallback: Task<Void, Never>?
+    /// When each reply's producer line ended, her reply was recorded, her first line showed,
+    /// and her first voice started: what the call's trace says about latency (ADR-0012).
+    private var replyRecognizedAt: [Int: ContinuousClock.Instant] = [:]
+    private var replyRecordedAt: [Int: ContinuousClock.Instant] = [:]
+    private var replyFirstLineAt: [Int: ContinuousClock.Instant] = [:]
+    private var replyFirstVoiceAt: [Int: ContinuousClock.Instant] = [:]
     /// Which of her replies the segments being said belong to, from 0: every answer she
     /// gives in the call is one reply (spec「通话事件」).
     private var reply = -1
@@ -571,6 +577,7 @@ public actor CallSession {
         setState(.thinking)
         emit(.recognized(text))
         reply += 1
+        replyRecognizedAt[reply] = ContinuousClock.now
         said = text
         speech.removeAll()
         captions.removeAll()
@@ -604,6 +611,7 @@ public actor CallSession {
                 case let .delta(segment, language, shown):
                     appendCaption(segment, language, shown)
                 case let .finished(record):
+                    replyRecordedAt[reply] = ContinuousClock.now
                     recordedTurns += 1
                     callOutOfLine += record.outOfLine ? 1 : 0
                     callHurts.append(record.hurt)
@@ -688,6 +696,7 @@ public actor CallSession {
     private func showSegment(reply: Int, index: Int) {
         guard index > shownThrough else { return }
         shownThrough = index
+        if replyFirstLineAt[reply] == nil { replyFirstLineAt[reply] = ContinuousClock.now }
         let caption = captions[index] ?? (ja: "", zh: "")
         emit(.segment(
             reply: reply,
@@ -843,6 +852,9 @@ public actor CallSession {
                 if setup.synthesis.providesVoice {
                     showSegment(reply: item.reply, index: item.index)
                 }
+                if replyFirstVoiceAt[item.reply] == nil {
+                    replyFirstVoiceAt[item.reply] = ContinuousClock.now
+                }
                 emit(.segmentStarted(reply: item.reply, segment: item.index))
                 await playWhileDeaf(audio)
                 emit(.segmentStopped(reply: item.reply, segment: item.index))
@@ -993,11 +1005,42 @@ public actor CallSession {
         if let detail = reason.detail { notes.append(detail) }
         let conversationID = (try? eidolon.currentConversationIDNow(characterID)) ?? nil
         try? await eidolon.writeTrace(
-            TurnTrace(characterID: characterID, degradation: notes),
+            TurnTrace(
+                characterID: characterID,
+                degradation: notes,
+                callTimings: callTimingSummary()
+            ),
             conversationID: conversationID,
             createdAt: Eidolon.timestamp(setup.now()),
             tracing: setup.tracing
         )
+    }
+
+    /// Each reply's latency, as the call's trace keeps it: from the end of the producer's
+    /// line to her reply, to the first line on the card, and to the first voice.
+    private func callTimingSummary() -> CallTimings? {
+        let replies = replyRecognizedAt.keys.sorted()
+        guard !replies.isEmpty else { return nil }
+        let turns = replies.compactMap { reply -> CallTimings.Turn? in
+            guard let recognized = replyRecognizedAt[reply] else { return nil }
+            let recorded = replyRecordedAt[reply]
+            let line = replyFirstLineAt[reply]
+            let voice = replyFirstVoiceAt[reply]
+            let wait: Double?
+            if let recorded, let voice {
+                wait = (voice - recorded).inSeconds
+            } else {
+                wait = nil
+            }
+            return CallTimings.Turn(
+                reply: reply,
+                replyDelay: recorded.map { ($0 - recognized).inSeconds },
+                voiceWait: wait,
+                firstVoice: voice.map { ($0 - recognized).inSeconds },
+                firstLine: line.map { ($0 - recognized).inSeconds }
+            )
+        }
+        return CallTimings(turns: turns)
     }
 
     private func setState(_ next: CallState) {

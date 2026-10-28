@@ -240,6 +240,7 @@ final class TurnTraceTests: XCTestCase {
             """
         let trace = try JSONDecoder().decode(TurnTrace.self, from: Data(json.utf8))
         XCTAssertNil(trace.timings)
+        XCTAssertNil(trace.callTimings)
     }
 
     func testAFailingReplyIsTracedWithItsError() async throws {

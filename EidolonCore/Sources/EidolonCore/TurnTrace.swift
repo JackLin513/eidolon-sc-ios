@@ -124,6 +124,44 @@ public struct TurnTimings: Codable, Sendable, Hashable {
     }
 }
 
+/// How long a call's replies took to come back and to be heard: the call layer's part of
+/// what the producer waits through, written on the call's own trace when it ends
+/// (ADR-0012). The turn's text-side timings are on each reply's own trace.
+public struct CallTimings: Codable, Sendable, Hashable {
+    public struct Turn: Codable, Sendable, Hashable {
+        /// Which of her replies in the call this is, from 0.
+        public var reply: Int
+        /// From the end of the producer's line to her reply being recorded.
+        public var replyDelay: Double?
+        /// From her reply being recorded to the first segment's voice starting.
+        public var voiceWait: Double?
+        /// From the end of the producer's line to the first segment's voice.
+        public var firstVoice: Double?
+        /// From the end of the producer's line to the first line card (voice or subtitles).
+        public var firstLine: Double?
+
+        public init(
+            reply: Int,
+            replyDelay: Double? = nil,
+            voiceWait: Double? = nil,
+            firstVoice: Double? = nil,
+            firstLine: Double? = nil
+        ) {
+            self.reply = reply
+            self.replyDelay = replyDelay
+            self.voiceWait = voiceWait
+            self.firstVoice = firstVoice
+            self.firstLine = firstLine
+        }
+    }
+
+    public var turns: [Turn]
+
+    public init(turns: [Turn] = []) {
+        self.turns = turns
+    }
+}
+
 /// One turn, as it can be gone over afterwards: what she was asked, what the judge
 /// answered, what retrieval found and what each fallback cost (ADR-0012). It stays in the
 /// user library and never leaves the phone.
@@ -138,6 +176,9 @@ public struct TurnTrace: Codable, Sendable, Hashable {
     public var error: String?
     /// Where the turn's time went; nil for traces written before it was recorded.
     public var timings: TurnTimings?
+    /// The call's own replies, on the trace written when the call ends; nil on a turn's
+    /// trace and on calls recorded before this was kept.
+    public var callTimings: CallTimings?
 
     public init(
         characterID: String,
@@ -148,7 +189,8 @@ public struct TurnTrace: Codable, Sendable, Hashable {
         toolCalls: [String] = [],
         degradation: [String] = [],
         error: String? = nil,
-        timings: TurnTimings? = nil
+        timings: TurnTimings? = nil,
+        callTimings: CallTimings? = nil
     ) {
         self.characterID = characterID
         self.prompts = prompts
@@ -159,6 +201,7 @@ public struct TurnTrace: Codable, Sendable, Hashable {
         self.degradation = degradation
         self.error = error
         self.timings = timings
+        self.callTimings = callTimings
     }
 }
 

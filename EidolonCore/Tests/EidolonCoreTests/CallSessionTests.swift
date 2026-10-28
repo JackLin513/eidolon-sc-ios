@@ -2184,6 +2184,40 @@ final class CallSessionTests: XCTestCase {
         await session.hangUp()
     }
 
+    /// The call's own trace says how long her reply and her first voice took: from the end
+    /// of the producer's line to the reply, to the first line, and to the first voice.
+    func testTheCallTraceSaysHowLongTheReplyAndVoiceTook() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([["<ja>うん</ja><zh>嗯</zh>"]])
+        let synthesis = FakeSynthesis()
+        synthesis.delay = .milliseconds(120)
+        let playback = FakePlayback()
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            synthesis: synthesis,
+            playback: playback
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("her voice played") { playback.audio.count == 1 }
+        await session.hangUp()
+
+        let records = try await eidolon.turnTraces()
+        let record = try XCTUnwrap(records.first)
+        let turns = try XCTUnwrap(record.trace.callTimings?.turns)
+        XCTAssertEqual(turns.count, 1)
+        let turn = try XCTUnwrap(turns.first)
+        XCTAssertEqual(turn.reply, 0)
+        XCTAssertNotNil(turn.replyDelay)
+        XCTAssertNotNil(turn.firstLine)
+        XCTAssertGreaterThanOrEqual(turn.voiceWait ?? 0, 0.1)
+        XCTAssertGreaterThanOrEqual(turn.firstVoice ?? 0, 0.1)
+        XCTAssertGreaterThanOrEqual(turn.firstLine ?? 0, 0)
+    }
+
     func testAFailedTurnKeepsTheCall() async throws {
         let eidolon = try await installedEidolon()
         let recognition = FakeRecognition([.hang])
