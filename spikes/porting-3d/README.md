@@ -43,6 +43,14 @@ python3 -m unittest discover -s spikes/porting-3d/tests
 
 `unityfs_probe.py` 只读 UnityFS header 的 Unity revision，不解析/导出素材。
 
+已用 UnityPy 从 iOS 缓存导出 2018.4 的 `014mir`（春日未来）OBJ + PNG，并用 Blender headless 渲染：
+
+```sh
+build/mltd-spike/Blender.app/Contents/MacOS/Blender --background   --python spikes/porting-3d/render_obj.py --   --obj-dir build/mltd-spike/out   --texture-dir build/mltd-spike/out/textures   --out build/mltd-spike/out/mirai.png
+```
+
+这一步只验证静态模型；动画/PMX/VMD 仍需 MLTDTools。
+
 ## 执行清单
 
 1. 确认资源版本与来源；只在本机处理。
