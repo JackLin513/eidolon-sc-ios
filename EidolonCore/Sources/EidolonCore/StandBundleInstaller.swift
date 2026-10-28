@@ -152,7 +152,7 @@ struct StandBundleInstaller {
     /// Each outfit directory holds exactly one `data.json`, so counting those counts the
     /// outfits without trusting a separate count in the manifest.
     private func countOutfits(in directory: URL) -> Int {
-        let idols = directory.appendingPathComponent("idols", isDirectory: true)
+        let idols = directory.appendingPathComponent("stand/idols", isDirectory: true)
         guard let enumerator = fileManager.enumerator(at: idols, includingPropertiesForKeys: nil)
         else { return 0 }
         var count = 0

@@ -79,8 +79,9 @@ struct CallView: View {
                 OutfitPickerView(
                     character: character,
                     stand: stand,
-                    contentRoot: app.core.location.contentDirectory,
-                    contentVersion: app.bundleInfo?.installedAt ?? "current",
+                    contentRoot: stand.root ?? app.core.location.contentDirectory,
+                    contentVersion: app.standInfo?.installedAt
+                        ?? app.bundleInfo?.installedAt ?? "current",
                     onWear: { outfit in
                         outfitChosen(outfit)
                     },
@@ -194,7 +195,7 @@ struct CallView: View {
         // in mid-call fades her back in instead of showing an empty stage at full opacity.
         standLoaded = false
         let renderer = StandWebRenderer(
-            contentRoot: app.core.location.contentDirectory,
+            contentRoot: stand?.root ?? app.core.location.contentDirectory,
             framing: StandFraming(compactWidth: isCompactWidth)
         )
         fallbackOutfits = fallback

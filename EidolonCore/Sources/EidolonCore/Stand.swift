@@ -169,10 +169,18 @@ public struct OutfitList: Sendable, Hashable {
 public struct CharacterStand: Sendable, Hashable {
     public var defaultOutfit: StandOutfit
     public var outfitList: OutfitList?
+    /// The root her outfits are read from: the stand package's directory, or the legacy
+    /// content bundle's directory. The renderer serves the `stand/` tree under it.
+    public var root: URL?
 
-    public init(defaultOutfit: StandOutfit, outfitList: OutfitList? = nil) {
+    public init(
+        defaultOutfit: StandOutfit,
+        outfitList: OutfitList? = nil,
+        root: URL? = nil
+    ) {
         self.defaultOutfit = defaultOutfit
         self.outfitList = outfitList
+        self.root = root
     }
 }
 
@@ -208,7 +216,8 @@ struct StandResolver: Sendable {
                     id: config.defaultOutfitID,
                     directory: defaultDirectory
                 ),
-                outfitList: list
+                outfitList: list,
+                root: root
             )
         }
         return nil
