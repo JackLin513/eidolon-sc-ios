@@ -214,6 +214,34 @@ final class TurnTraceTests: XCTestCase {
         XCTAssertNil(trace.family)
     }
 
+    /// A turn's trace says where its time went: the wait for earlier memories, retrieval,
+    /// the model's first token, and the whole turn.
+    func testATurnTraceRecordsWhereItsTimeWent() async throws {
+        let eidolon = try await installedEidolon()
+        let provider = RecordingChatProvider(
+            chunks: ["<ja>うん</ja>", "<zh>嗯</zh>"],
+            delay: .milliseconds(120)
+        )
+        try await send(on: eidolon, provider: provider)
+
+        let record = try await eidolon.turnTraces().first
+        let trace = try XCTUnwrap(record).trace
+        let timings = try XCTUnwrap(trace.timings)
+        XCTAssertNotNil(timings.memory)
+        XCTAssertNotNil(timings.retrieval)
+        XCTAssertGreaterThanOrEqual(timings.firstToken ?? 0, 0.1)
+        XCTAssertGreaterThanOrEqual(timings.total ?? 0, 0.1)
+    }
+
+    /// Traces written before the timings were added still read.
+    func testAnOlderTraceWithoutTimingsStillReads() throws {
+        let json = """
+            {"characterID":"mano","prompts":[],"retrieval":{"need":"","candidates":[],"degradation":[]},"toolCalls":[],"degradation":[]}
+            """
+        let trace = try JSONDecoder().decode(TurnTrace.self, from: Data(json.utf8))
+        XCTAssertNil(trace.timings)
+    }
+
     func testAFailingReplyIsTracedWithItsError() async throws {
         let eidolon = try await installedEidolon()
         do {
