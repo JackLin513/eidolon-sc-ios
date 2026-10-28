@@ -18,7 +18,7 @@
 | 项目能力、结构、怎么跑、调试注入开关 | `README.md`（「现在能做什么」「还没做 / 已知」「结构」「跑起来」「测试」） |
 | 硬约束与领域背景 | `CLAUDE.md`（项目背景、已讨论过的取舍、密钥红线） |
 | 领域词汇 | `GLOSSARY.md`（从上游复制；端上新增「台词卡」等条目） |
-| 为什么这样做 | `docs/adr/0001–0019` |
+| 为什么这样做 | `docs/adr/0001–0020` |
 | issue / 标签 / 领域文档约定 | `docs/agents/issue-tracker.md`、`triage-labels.md`、`domain.md` |
 | issue 历史 | GitHub Issues（见下「时间线」） |
 

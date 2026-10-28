@@ -66,7 +66,8 @@ tools/
 ├── sync_stand_runtime.sh      # 构建后从上游 checkout 取 Spine 运行时（不进仓库）
 ├── tests/                     # 导出工具的标准库 unittest
 └── oracle/                    # 上游提示词对照组
-docs/adr/                 # 架构决策（0001–0019）
+docs/adr/                 # 架构决策（0001–0020）
+docs/design/              # 设计文档（立绘拆包等）
 docs/agents/              # issue 跟踪、分类标签、领域文档约定
 GLOSSARY.md               # 领域词汇（从上游复制）
 ```
