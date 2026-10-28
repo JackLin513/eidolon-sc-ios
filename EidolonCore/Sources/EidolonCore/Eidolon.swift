@@ -80,13 +80,16 @@ public actor Eidolon {
     /// Installs a bundle atomically. On any failure the previously installed
     /// bundle stays in place (ADR-0003).
     @discardableResult
-    public func install(bundleAt url: URL) throws -> ContentBundleInfo {
+    public func install(
+        bundleAt url: URL,
+        progress: ((ImportProgress) -> Void)? = nil
+    ) throws -> ContentBundleInfo {
         let installer = ContentBundleInstaller(
             contentRoot: location.contentRoot,
             userDatabasePath: location.userDatabase,
             fileManager: .default
         )
-        let info = try installer.install(url)
+        let info = try installer.install(url, progress: progress)
         let encoded = try JSONEncoder().encode(info)
         try userQueue.write { db in
             try db.execute(
@@ -107,12 +110,15 @@ public actor Eidolon {
     /// Installs a stand bundle beside the content bundle, atomically. On any failure the
     /// previous stand directory stays in place (ADR-0020).
     @discardableResult
-    public func installStand(bundleAt url: URL) throws -> StandBundleInfo {
+    public func installStand(
+        bundleAt url: URL,
+        progress: ((ImportProgress) -> Void)? = nil
+    ) throws -> StandBundleInfo {
         let installer = StandBundleInstaller(
             contentRoot: location.contentRoot,
             fileManager: .default
         )
-        let info = try installer.install(url)
+        let info = try installer.install(url, progress: progress)
         try saveStandInfo(info)
         try? StandIndex.scan(at: location.standDirectory).write(to: location.standDirectory)
         cachedStandConfigs = nil

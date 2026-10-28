@@ -13,7 +13,10 @@ struct StandBundleInstaller {
         contentRoot.appendingPathComponent("stand-previous", isDirectory: true)
     }
 
-    func install(_ bundleURL: URL) throws -> StandBundleInfo {
+    func install(
+        _ bundleURL: URL,
+        progress: ((ImportProgress) -> Void)? = nil
+    ) throws -> StandBundleInfo {
         guard fileManager.fileExists(atPath: bundleURL.path) else {
             throw EidolonError.unreadableBundle("文件不存在")
         }
@@ -24,11 +27,11 @@ struct StandBundleInstaller {
         try fileManager.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: staging) }
 
-        try extract(bundleURL, to: staging)
+        try extract(bundleURL, to: staging, progress: progress)
 
         let manifest = try readManifest(in: staging)
         try validateManifest(manifest)
-        try validateFiles(manifest, in: staging)
+        try validateFiles(manifest, in: staging, progress: progress)
         switch manifest.mode {
         case .full:
             try validateCharacters(manifest, in: staging, fallback: nil)
@@ -52,11 +55,17 @@ struct StandBundleInstaller {
 
     // MARK: - Unpacking
 
-    private func extract(_ bundleURL: URL, to destination: URL) throws {
+    private func extract(
+        _ bundleURL: URL,
+        to destination: URL,
+        progress: ((ImportProgress) -> Void)?
+    ) throws {
         guard let archive = try? Archive(url: bundleURL, accessMode: .read) else {
             throw EidolonError.unreadableBundle("不是有效的 zip")
         }
-        for entry in archive {
+        let entries = Array(archive)
+        progress?(ImportProgress(phase: .extracting, completed: 0, total: entries.count))
+        for (index, entry) in entries.enumerated() {
             let target = destination.appendingPathComponent(entry.path)
             let resolved = target.standardizedFileURL.path
             guard resolved.hasPrefix(destination.standardizedFileURL.path + "/") else {
@@ -67,6 +76,11 @@ struct StandBundleInstaller {
                 withIntermediateDirectories: true
             )
             _ = try archive.extract(entry, to: target)
+            progress?(ImportProgress(
+                phase: .extracting,
+                completed: index + 1,
+                total: entries.count
+            ))
         }
     }
 
@@ -111,12 +125,21 @@ struct StandBundleInstaller {
         }
     }
 
-    private func validateFiles(_ manifest: StandManifest, in directory: URL) throws {
+    private func validateFiles(
+        _ manifest: StandManifest,
+        in directory: URL,
+        progress: ((ImportProgress) -> Void)?
+    ) throws {
         guard !manifest.files.isEmpty else {
             throw EidolonError.invalidBundle("manifest 没有列出文件")
         }
         let root = directory.standardizedFileURL.path + "/"
-        for (path, record) in manifest.files {
+        progress?(ImportProgress(
+            phase: .validating,
+            completed: 0,
+            total: manifest.files.count
+        ))
+        for (index, (path, record)) in manifest.files.enumerated() {
             let url = directory.appendingPathComponent(path).standardizedFileURL
             guard url.path.hasPrefix(root) else {
                 throw EidolonError.invalidBundle("包含超出目录的路径 \(path)")
@@ -130,6 +153,11 @@ struct StandBundleInstaller {
             if let expected = record.crc32, CRC32.hex(data) != expected {
                 throw EidolonError.invalidBundle("文件 \(path) 校验失败")
             }
+            progress?(ImportProgress(
+                phase: .validating,
+                completed: index + 1,
+                total: manifest.files.count
+            ))
         }
     }
 
