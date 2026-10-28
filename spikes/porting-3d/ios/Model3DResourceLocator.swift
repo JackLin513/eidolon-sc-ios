@@ -7,6 +7,7 @@ enum Model3DResourceLocator {
         environment: [String: String],
         documents: URL,
         resourceRoot: URL?,
+        fileName: String = "mirai.usdz",
         fileManager: FileManager = .default
     ) -> URL? {
         if let raw = environment["EIDOLON_3D_MODEL"], !raw.isEmpty {
@@ -19,7 +20,7 @@ enum Model3DResourceLocator {
         }
 
         if let resourceRoot {
-            let direct = resourceRoot.appending(path: "mirai.usdz")
+            let direct = resourceRoot.appending(path: fileName)
             if fileManager.fileExists(atPath: direct.path) {
                 return direct
             }
@@ -28,7 +29,7 @@ enum Model3DResourceLocator {
                 includingPropertiesForKeys: [.isRegularFileKey]
             ) {
                 for case let url as URL in enumerator
-                where url.lastPathComponent == "mirai.usdz" {
+                where url.lastPathComponent == fileName {
                     let isFile = (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile
                         ?? false
                     if isFile { return url }
@@ -36,7 +37,7 @@ enum Model3DResourceLocator {
             }
         }
 
-        let fallback = documents.appending(path: "mirai.usdz")
+        let fallback = documents.appending(path: fileName)
         return fileManager.fileExists(atPath: fallback.path) ? fallback : nil
     }
 }

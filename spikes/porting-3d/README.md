@@ -97,3 +97,10 @@ Success!
 ```
 
 RealityKit 在 macOS 上加载同一 USDZ 得到 `extents ≈ 0.106 × 0.127 × 0.023`；App 会按 y 高度归一化到 1.6m。Air 重启并清理安装后验收通过：textured USDZ 的头发/眼睛/衣服/裙子/鞋子贴图正常，比例/朝向可用。截图：`build/mltd-spike/out/ios-3d-reboot.png`。orbit 相机走 `realityViewCameraControls(.orbit)`，未做手势自动化。
+
+### 两套衣装（T1）
+
+- 私服：`mirai-pr001.usdz`
+- 演出服：`mirai-ss003.usdz`
+- App 内底部按钮切换；`EIDOLON_3D_OUTFIT=pr001|ss003` 可用于启动时选择。
+- 两个文件都是 target resource；本仓库不提交 USDZ。
