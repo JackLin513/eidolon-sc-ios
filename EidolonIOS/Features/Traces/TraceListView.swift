@@ -68,7 +68,7 @@ struct TraceListView: View {
         .task {
             await load()
             #if DEBUG
-            if app.debugShowsLatestTrace, selected == nil {
+            if app.consumeDebugLatestTrace(), selected == nil {
                 selected = traces.first
             }
             #endif

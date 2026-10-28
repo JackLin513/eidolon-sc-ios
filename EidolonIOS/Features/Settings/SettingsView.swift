@@ -357,9 +357,11 @@ struct SettingsView: View {
             .task { await app.loadMemories() }
             .onAppear {
                 #if DEBUG
-                if app.debugShowsMemories { showMemories = true }
-                if app.debugShowsTraces { showTraces = true }
-                if app.debugShowsStandPreview { showStandPreview = true }
+                if let destinations = app.consumeDebugSettingsDestinations() {
+                    if destinations.memories { showMemories = true }
+                    if destinations.traces { showTraces = true }
+                    if destinations.standPreview { showStandPreview = true }
+                }
                 #endif
             }
             .toolbar {
