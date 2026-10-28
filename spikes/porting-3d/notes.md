@@ -111,3 +111,10 @@
 - USDZ 重新作为 target Resources，由 Xcode 正常签名。
 - `preBuildScripts` 只在文件缺失时创建空占位，保证 clean checkout/无素材时仍能构建；本地有真实 USDZ 时不会被覆盖。
 - 最新 build 已生成两个 USDZ；Air 安装连续 `devicectl` timeout，需解锁设备后复验。
+
+### T1 模拟器复验
+
+- iPhone Air 模拟器（`6C599927...`）启动成功，最新 build 已安装并截到两套衣装：`build/mltd-spike/out/sim-pr001b.png`、`build/mltd-spike/out/sim-ss003b.png`。
+- 固定渐变舞台、固定机位、底部私服/演出服按钮均可见；`StandDirection` 为 calm 并跨换装保留。
+- `xcodebuild test` 在模拟器执行：4 个 locator 测试全部通过。
+- 实机安装仍超时，最终 Air 验收留给 T6（#60）。
