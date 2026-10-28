@@ -38,10 +38,6 @@ struct Model3DPreview: View {
                         if entity.parent == nil {
                             content.add(entity)
                         }
-                        let light = DirectionalLight()
-                        light.light.intensity = 2_000
-                        light.orientation = simd_quatf(angle: .pi / 4, axis: [1, 0, 0])
-                        content.add(light)
                     }
                     .realityViewCameraControls(.orbit)
                     .ignoresSafeArea()
@@ -57,7 +53,7 @@ struct Model3DPreview: View {
             allowsMultipleSelection: false
         ) { result in
             guard case .success(let urls) = result, let url = urls.first else { return }
-            modelURL = url
+            importPickedFile(url)
         }
         .overlay(alignment: .bottomTrailing) {
             if phase != .empty {
@@ -69,27 +65,53 @@ struct Model3DPreview: View {
     }
 
     private var emptyView: some View {
+        placeholder(
+            title: "还没有 USDZ",
+            systemImage: "cube",
+            message: "把 mirai.usdz 放进 Documents，或选择一个 USDZ 文件。",
+            button: "选择 USDZ"
+        )
+    }
+
+    private func failureView(_ message: String) -> some View {
+        placeholder(
+            title: "USDZ 载入失败",
+            systemImage: "exclamationmark.triangle",
+            message: message,
+            button: "换一个 USDZ"
+        )
+    }
+
+    private func placeholder(
+        title: String,
+        systemImage: String,
+        message: String,
+        button: String
+    ) -> some View {
         ContentUnavailableView {
-            Label("还没有 USDZ", systemImage: "cube")
+            Label(title, systemImage: systemImage)
         } description: {
-            Text("把 mirai.usdz 放进 Documents，或选择一个 USDZ 文件。")
+            Text(message)
         } actions: {
-            Button("选择 USDZ") { isPicking = true }
+            Button(button) { isPicking = true }
                 .buttonStyle(.borderedProminent)
         }
         .foregroundStyle(.white)
     }
 
-    private func failureView(_ message: String) -> some View {
-        ContentUnavailableView {
-            Label("USDZ 载入失败", systemImage: "exclamationmark.triangle")
-        } description: {
-            Text(message)
-        } actions: {
-            Button("换一个 USDZ") { isPicking = true }
-                .buttonStyle(.borderedProminent)
+    private func importPickedFile(_ url: URL) {
+        do {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            let destination = URL.documentsDirectory.appending(path: url.lastPathComponent)
+            if destination.standardizedFileURL != url.standardizedFileURL {
+                try? FileManager.default.removeItem(at: destination)
+                try FileManager.default.copyItem(at: url, to: destination)
+            }
+            modelURL = destination
+        } catch {
+            phase = .failed("无法复制所选 USDZ：\(error.localizedDescription)")
         }
-        .foregroundStyle(.white)
     }
 
     private func load() async {
@@ -101,7 +123,11 @@ struct Model3DPreview: View {
         phase = .loading
         do {
             let loaded = try await Entity.load(contentsOf: modelURL)
-            normalize(loaded)
+            guard normalize(loaded) else {
+                entity = nil
+                phase = .failed("USDZ 里没有可见几何")
+                return
+            }
             entity = loaded
             phase = .loaded
         } catch {
@@ -112,12 +138,23 @@ struct Model3DPreview: View {
 
     /// The USDZ may come from any source; keep the camera useful regardless of its
     /// authored scale or origin.
-    private func normalize(_ entity: Entity) {
+    private func normalize(_ entity: Entity) -> Bool {
         let bounds = entity.visualBounds(relativeTo: nil)
-        let height = max(bounds.extents.y, 0.001)
-        let scale = 1.6 / height
+        guard bounds.extents.x > 0.000_001,
+              bounds.extents.y > 0.000_001,
+              bounds.extents.z > 0.000_001
+        else { return false }
+        let scale = 1.6 / bounds.extents.y
         entity.scale = SIMD3<Float>(repeating: scale)
         let center = bounds.center * scale
         entity.position = [-center.x, -center.y, -center.z]
+
+        // One light belongs to the loaded model; adding it to the entity keeps
+        // RealityView content rebuilds from accumulating duplicate lights.
+        let light = DirectionalLight()
+        light.light.intensity = 2_000
+        light.orientation = simd_quatf(angle: .pi / 4, axis: [1, 0, 0])
+        entity.addChild(light)
+        return true
     }
 }
