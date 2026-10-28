@@ -152,3 +152,9 @@
 - 从 `dan_loveig_01` 解出 180 条曲线（`CharacterImasMotionAsset`），导出为 `/tmp/loveig-curves.json`（本地副本在 `build/mltd-spike/out/il2cpp/`）。
 - 直接按 native path（MUNE1/MUNE2/SAKOTSU_L/...）映射到 MMD 骨骼并应用 Euler 角，模型仍爆炸。
 - 结论：原生曲线本身可读，但 native 骨骼局部轴/rest pose 与 MLTDTools PMX/MMD 骨骼不一致；需要按 native skeleton 的 rest transform 做 retarget，不能直接套 MMD 骨骼。下一步应构建 native skeleton 或使用 `CharacterCommonSkeleton` 的 rest 矩阵。
+
+### 真矩阵链尝试
+
+- 按 `skin = rest^-1 * currentWorld`、`local = rest * skin * parentWorld^-1` 实现一帧 retarget，使用 PMX rest 作为 native rest 的代理。
+- 结果仍爆炸。说明 PMX rest 不能替代 native rest；必须先取得 `CharacterCommonSkeleton` 的 native rest world matrices，再套矩阵链。
+- 未完成 T5；不能继续用 PMX rest 冒充 native rest。
