@@ -118,11 +118,27 @@ public actor Eidolon {
             contentRoot: location.contentRoot,
             fileManager: .default
         )
-        let info = try installer.install(url, progress: progress)
-        try saveStandInfo(info)
-        try? StandIndex.scan(at: location.standDirectory).write(to: location.standDirectory)
-        cachedStandConfigs = nil
-        return info
+        do {
+            let info = try installer.install(url, progress: progress)
+            try saveStandInfo(info)
+            do {
+                try StandIndex.scan(at: location.standDirectory)
+                    .write(to: location.standDirectory)
+            } catch {
+                // Never leave an old index next to a new stand tree; the lazy rebuild
+                // will make a correct one next time.
+                try? FileManager.default.removeItem(
+                    at: location.standDirectory.appendingPathComponent("index.json")
+                )
+            }
+            cachedStandConfigs = nil
+            return info
+        } catch {
+            try? FileManager.default.removeItem(
+                at: location.standDirectory.appendingPathComponent("index.json")
+            )
+            throw error
+        }
     }
 
     /// Moves the old all-in-one content bundle's stand tree into the separate stand
@@ -173,7 +189,8 @@ public actor Eidolon {
             formatVersion: manifest.formatVersion,
             installedAt: manifest.createdAt,
             characterCount: entries.count,
-            outfitCount: countStandOutfits(in: location.standDirectory, fileManager: fileManager)
+            outfitCount: countStandOutfits(in: location.standDirectory, fileManager: fileManager),
+            mode: .full
         )
         try saveStandInfo(info)
         try? StandIndex.scan(at: location.standDirectory).write(to: location.standDirectory)
@@ -350,9 +367,6 @@ public actor Eidolon {
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
-    /// Her stand: the default outfit and, when her list reads and its files are in
-    /// the bundle, the outfits she can change into, all under the installed bundle
-    /// (ADR-0018). nil when the bundle carries no stand for her.
     /// Her stand: from the separately installed stand package when it has her, otherwise
     /// from the legacy content bundle (ADR-0018, ADR-0020). nil when neither carries a
     /// usable stand for her.

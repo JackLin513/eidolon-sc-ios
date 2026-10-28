@@ -60,6 +60,7 @@ struct SettingsView: View {
     @State private var showTraces = false
     @State private var showStandPreview = false
     @State private var standIndexURL: URL?
+    @State private var confirmingPackageCleanup = false
 
     private enum ImportKind {
         case content
@@ -387,6 +388,9 @@ struct SettingsView: View {
                         } else {
                             ProgressView("正在导入…")
                         }
+                        Text("导入期间请保持 App 在前台")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                     .padding(24)
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
@@ -404,6 +408,16 @@ struct SettingsView: View {
             }
             .alert("已保存", isPresented: $savedNotice) {
                 Button("好") {}
+            }
+            .confirmationDialog(
+                "清理 Documents 里的内容包？",
+                isPresented: $confirmingPackageCleanup
+            ) {
+                Button("清理", role: .destructive) {
+                    _ = app.removeDocumentPackages()
+                }
+            } message: {
+                Text("只删除 Documents 里的 .eidolonpkg 文件；已安装的内容和立绘不受影响。")
             }
             .alert("判断模型可用", isPresented: judgeCheckBinding) {
                 Button("好") { judgeCheck = nil }
@@ -474,6 +488,9 @@ struct SettingsView: View {
                     ShareLink(item: standIndexURL) {
                         Label("分享立绘清单", systemImage: "square.and.arrow.up")
                     }
+                }
+                Button("清理 Documents 里的内容包", role: .destructive) {
+                    confirmingPackageCleanup = true
                 }
             }
         } header: {

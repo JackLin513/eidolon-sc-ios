@@ -75,16 +75,20 @@ public struct StandBundleInfo: Codable, Sendable, Hashable {
     public var installedAt: String
     public var characterCount: Int
     public var outfitCount: Int
+    /// `full` or `delta`; nil for an install record written before this was kept.
+    public var mode: StandManifest.Mode?
 
     public init(
         formatVersion: Int,
         installedAt: String,
         characterCount: Int,
-        outfitCount: Int
+        outfitCount: Int,
+        mode: StandManifest.Mode? = nil
     ) {
         self.formatVersion = formatVersion
         self.installedAt = installedAt
         self.characterCount = characterCount
         self.outfitCount = outfitCount
+        self.mode = mode
     }
 }
