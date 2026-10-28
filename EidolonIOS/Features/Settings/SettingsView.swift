@@ -59,6 +59,7 @@ struct SettingsView: View {
     @State private var showMemories = false
     @State private var showTraces = false
     @State private var showStandPreview = false
+    @State private var standIndexURL: URL?
 
     private enum ImportKind {
         case content
@@ -418,6 +419,18 @@ struct SettingsView: View {
         }
     }
 
+    private func exportStandIndex() async {
+        guard let data = await app.standIndexData() else { return }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("stand-index.json")
+        do {
+            try data.write(to: url, options: .atomic)
+            standIndexURL = url
+        } catch {
+            app.errorMessage = error.localizedDescription
+        }
+    }
+
     private var heldMemoryCount: Int {
         app.memories.filter(\.holds).count
     }
@@ -439,6 +452,16 @@ struct SettingsView: View {
                 isPicking = true
             }
             .disabled(app.isImporting)
+            if app.standInfo != nil {
+                Button("导出立绘清单") {
+                    Task { await exportStandIndex() }
+                }
+                if let standIndexURL {
+                    ShareLink(item: standIndexURL) {
+                        Label("分享立绘清单", systemImage: "square.and.arrow.up")
+                    }
+                }
+            }
         } header: {
             Text("立绘包")
         } footer: {

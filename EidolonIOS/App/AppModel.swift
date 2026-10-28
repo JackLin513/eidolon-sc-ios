@@ -455,6 +455,11 @@ final class AppModel {
         }
     }
 
+    /// The installed stand index, for sharing with the Mac to build a delta bundle.
+    func standIndexData() async -> Data? {
+        try? await core.standIndexData()
+    }
+
     func refresh() async {
         do {
             try await load()

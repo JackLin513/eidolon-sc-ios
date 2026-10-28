@@ -328,6 +328,36 @@ class BundleManifestTests(unittest.TestCase):
             self.assertEqual(entry["stand"]["default_outfit"]["id"], "stand/1030010010")
             self.assertEqual(entry["stand"]["outfits"], "stand/outfits/1.json")
 
+    def test_delta_contains_only_missing_or_changed_files(self) -> None:
+        cards = [card(f"10300100{index}0") for index in range(1, 5)]
+        self.stand.write_full_list(1, cards)
+        assets = exporter.build_stand(
+            [character()], self.stand.root, cards=4, all_outfits=False
+        )
+        index = {}
+        skipped = "stand/idols/stand/1030010040/data.json"
+        for path, source in assets.files.items():
+            if path == skipped:
+                continue
+            size, crc = exporter.stand_file_record(source)
+            index[path] = {"size": size, "crc32": crc}
+
+        changed = exporter.changed_stand_files(
+            assets,
+            {path: (record["size"], record["crc32"]) for path, record in index.items()},
+        )
+        self.assertEqual(set(changed), {skipped})
+
+        out = self.root / "stand-add.eidolonpkg"
+        exporter.write_stand_bundle(out, assets, mode="delta", files=changed)
+        with zipfile.ZipFile(out) as archive:
+            names = set(archive.namelist())
+            manifest = json.loads(archive.read("manifest.json"))
+        self.assertEqual(manifest["mode"], "delta")
+        self.assertIn(skipped, names)
+        self.assertIn("stand/outfits/1.json", names)
+        self.assertNotIn("stand/idols/stand/1030010010/data.json", names)
+
     def test_stand_bundle_is_self_contained_and_keeps_its_own_shape(self) -> None:
         assets = exporter.build_stand(
             [character()], self.stand.root, cards=1, all_outfits=False

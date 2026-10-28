@@ -114,6 +114,7 @@ public actor Eidolon {
         )
         let info = try installer.install(url)
         try saveStandInfo(info)
+        try? StandIndex.scan(at: location.standDirectory).write(to: location.standDirectory)
         cachedStandConfigs = nil
         return info
     }
@@ -169,6 +170,7 @@ public actor Eidolon {
             outfitCount: countStandOutfits(in: location.standDirectory, fileManager: fileManager)
         )
         try saveStandInfo(info)
+        try? StandIndex.scan(at: location.standDirectory).write(to: location.standDirectory)
         cachedStandConfigs = nil
         return info
     }
@@ -202,6 +204,19 @@ public actor Eidolon {
         }
         cachedStandConfigs = configs
         return configs
+    }
+
+    /// Every installed stand file and its checksum; rebuilt once when an older install
+    /// predates the index. The exporter reads this to make a delta bundle.
+    public func standIndex() throws -> StandIndex {
+        if let index = StandIndex.read(at: location.standDirectory) { return index }
+        let index = try StandIndex.scan(at: location.standDirectory)
+        try index.write(to: location.standDirectory)
+        return index
+    }
+
+    public func standIndexData() throws -> Data {
+        try standIndex().encoded()
     }
 
     // MARK: - Reading the content

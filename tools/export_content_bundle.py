@@ -32,10 +32,12 @@ import hashlib
 import json
 import re
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import tomllib
 import zipfile
+import zlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -477,15 +479,107 @@ def stand_manifest(assets: StandAssets) -> dict:
     }
 
 
-def write_stand_bundle(out_path: Path, assets: StandAssets) -> None:
+def read_stand_index(path: Path) -> dict[str, tuple[int, str | None]]:
+    """Read the app's stand index (format 1) into package path → (size, crc32)."""
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as error:
+        die(f"读不了立绘清单 {path}：{error}")
+    if document.get("format_version") != 1 or not isinstance(document.get("files"), dict):
+        die(f"立绘清单 {path} 不是格式 1")
+    result: dict[str, tuple[int, str | None]] = {}
+    for package_path, record in document["files"].items():
+        if not isinstance(record, dict) or type(record.get("size")) is not int:
+            die(f"立绘清单里的 {package_path} 格式不对")
+        crc = record.get("crc32")
+        if crc is not None and not isinstance(crc, str):
+            die(f"立绘清单里的 {package_path} 校验值格式不对")
+        result[package_path] = (record["size"], crc)
+    return result
+
+
+def read_device_stand_index(
+    device: str,
+    bundle_id: str,
+    *,
+    timeout: int = 120,
+) -> dict[str, tuple[int, str | None]]:
+    """Copy the installed stand index off a connected iPhone with devicectl."""
+    with tempfile.TemporaryDirectory() as scratch:
+        destination = Path(scratch) / "stand-index.json"
+        command = [
+            "xcrun",
+            "devicectl",
+            "device",
+            "copy",
+            "from",
+            "--device",
+            device,
+            "--domain-type",
+            "appDataContainer",
+            "--domain-identifier",
+            bundle_id,
+            "--source",
+            "Library/Application Support/Eidolon/Content/stand/index.json",
+            "--destination",
+            str(destination),
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            die(f"从设备读立绘清单失败：{error}")
+        if completed.returncode != 0:
+            die(
+                "从设备读立绘清单失败："
+                + (completed.stderr.strip() or completed.stdout.strip() or "devicectl 退出 " + str(completed.returncode))
+            )
+        if not destination.is_file():
+            die("设备上没有立绘清单；先在 App 里导入全量立绘包")
+        return read_stand_index(destination)
+
+
+def stand_file_record(path: Path) -> tuple[int, str]:
+    data = path.read_bytes()
+    return len(data), f"{zlib.crc32(data):08x}"
+
+
+def changed_stand_files(
+    assets: StandAssets,
+    index: dict[str, tuple[int, str | None]],
+) -> dict[str, Path]:
+    """The source files the installed index does not already have, unchanged."""
+    changed: dict[str, Path] = {}
+    for package_path, source in assets.files.items():
+        size, crc = stand_file_record(source)
+        installed = index.get(package_path)
+        if installed == (size, crc):
+            continue
+        changed[package_path] = source
+    return changed
+
+
+def write_stand_bundle(
+    out_path: Path,
+    assets: StandAssets,
+    *,
+    mode: str = "full",
+    files: dict[str, Path] | None = None,
+) -> None:
     """Write a stand bundle: its own manifest, outfit lists and stand files, no story."""
     if not assets.characters or not assets.file_count:
         die("没有可打包的立绘")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     manifest = stand_manifest(assets)
+    manifest["mode"] = mode
+    included = files if files is not None else assets.files
     with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for package_path in sorted(assets.files):
-            archive.write(assets.files[package_path], package_path)
+        for package_path in sorted(included):
+            archive.write(included[package_path], package_path)
         for package_path in sorted(assets.lists):
             archive.writestr(
                 package_path,
@@ -506,7 +600,7 @@ def write_stand_bundle(out_path: Path, assets: StandAssets) -> None:
     )
     print(
         f"  立绘包 {len(manifest['characters'])} 位角色，"
-        f"{assets.file_count} 个文件（{manifest['mode']}）"
+        f"{len(included)} 个素材文件 + {len(assets.lists)} 份衣装清单（{mode}）"
     )
 
 
@@ -661,12 +755,33 @@ def main() -> int:
         action="store_true",
         help="只导出立绘包；不给 --stand 时会报错，不需要数据库。立绘包默认打全部衣装",
     )
+    parser.add_argument(
+        "--device",
+        default=None,
+        help="从连接的 iPhone 读立绘清单，只导出缺失/变更的增量立绘包",
+    )
+    parser.add_argument(
+        "--have",
+        type=Path,
+        default=None,
+        help="从文件读立绘清单（App 导出的 stand-index.json），只导出增量",
+    )
+    parser.add_argument(
+        "--bundle-id",
+        default="com.jacklin.eidolon",
+        help="App 的 bundle id（--device 用，默认 com.jacklin.eidolon）",
+    )
     args = parser.parse_args()
 
     upstream = args.upstream.resolve()
     if not upstream.is_dir():
         die(f"找不到上游仓库 {upstream}")
     characters_dir = (args.characters or upstream / "characters").resolve()
+
+    if args.device is not None and args.have is not None:
+        die("--device 和 --have 只能给一个")
+    if (args.device is not None or args.have is not None) and not args.stand_only:
+        die("--device / --have 只能和 --stand-only 一起用")
 
     if args.stand_only:
         if args.stand is None:
@@ -680,8 +795,19 @@ def main() -> int:
             cards=cards,
             all_outfits=all_outfits,
         )
-        out = (args.out or Path("build/eidolon-stand.eidolonpkg")).resolve()
-        write_stand_bundle(out, stand)
+        index = None
+        if args.device is not None:
+            index = read_device_stand_index(args.device, args.bundle_id)
+        elif args.have is not None:
+            index = read_stand_index(args.have)
+        if index is None:
+            out = (args.out or Path("build/eidolon-stand.eidolonpkg")).resolve()
+            write_stand_bundle(out, stand)
+        else:
+            changed = changed_stand_files(stand, index)
+            out = (args.out or Path("build/eidolon-stand-add.eidolonpkg")).resolve()
+            write_stand_bundle(out, stand, mode="delta", files=changed)
+            print(f"  增量：{len(changed)} 个缺失/变更素材，{len(stand.lists)} 份衣装清单")
         return 0
 
     source_db = (args.db or upstream / "backend" / "data" / "eidolon.db").resolve()
