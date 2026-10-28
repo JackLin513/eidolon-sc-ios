@@ -96,3 +96,12 @@
 - Air 截图：`build/mltd-spike/out/ios-3d-pr001d.png`、`build/mltd-spike/out/ios-3d-ss003.png`。
 - `ss003` 第一次从 Windows VM 复制出的 PMX 损坏（同尺寸但 MMD Tools 报 signature invalid）；重新复制后导出成功。以后跨 VM 复制大文件要重拷贝/校验。
 - 新增 outfit-specific locator 单测；`build-for-testing` 通过，模拟器测试运行仍受 boot timeout 阻塞。
+
+### T1 review 修正
+
+- 固定舞台改为与主线一致的渐变背景；移除默认 orbit，默认机位固定。
+- 换装不再卸载 RealityView：旧实体保留，载入时覆盖 spinner；成功后替换实体，失败保留上一套并显示错误条。
+- 加入 `StandDirection` 状态（calm），换装不重置；动作消费在 T2。
+- 资源引用从 Xcode 工程移除；`postBuildScripts` 仅在本地资源存在时复制，clean checkout 不会因缺 USDZ 构建失败。
+- 移除文件选择器，避免未结构化的加载 Task 与衣装选择竞态。
+- 当前 Air 重新安装被设备/连接阻塞，最新固定机位版本尚未重新截图；旧双衣装截图仍有效。
