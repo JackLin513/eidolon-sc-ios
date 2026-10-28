@@ -131,3 +131,18 @@
 - 在 VM 桌面打开 `C:\MMD\app\MikuMikuDance.exe`，加载 `mirai.pmx` + `mirai.vmd`：动作/骨骼运动正常；Mesh 因 Windows ARM/MMD 渲染问题不可见。
 - 结论：VMD 动作有效性通过（按用户确认），Phase 3 可以用 VMD 路径；但“MMD 里看到模型内容物”仍受 ARM 渲染限制，不能用于模型视觉验收。
 - 下一步不是再装运行库，而是解决 Blender/MMD Tools VMD 导入爆炸，或写 VMD→USDZ 导出。
+
+## 原生动作分析（IDA + Il2CppDumper）
+
+- 将 PlayCover 容器里的 `UnityFramework` 复制到 `/tmp/MLTD-UnityFramework` 后，IDA 可以打开；容器原路径会 `Failed to open database`。
+- 完整 IDA 分析完成：702,223 个函数，数据库 `/tmp/MLTD-UnityFramework.i64`。
+- Il2CppDumper 6.7.46 生成 `dump.cs` / `il2cpp.h`（本地 `build/mltd-spike/out/il2cpp/`，不提交）。
+- 关键原生类型/地址：
+  - `CharacterImasMotionAsset.Curve`：`path`、`attribs`、`values`。
+  - `CharacterImasMotionData.CurveSet`：`px/py/pz/rx/ry/rz` 六个曲线，按 `path` 分骨骼。
+  - `CharacterImasMotionData.CreateFromImoAsset` @ `0x37EC030`。
+  - `CharacterImasMotionData.GetKeyCount/GetDeltaTime/GetKeyTime/GetKeyValue` @ `0x37EC388/0x37EC454/0x37EC4A4/0x37EC598`。
+  - `CharacterImasMotionPlayer.SolveCurve` @ `0x37E80B8`、`GetLastSeekerPosition` @ `0x37E89DC`。
+  - `CharacterImasMotionPlayerDance.SolveCurves` @ `0x37EE384`、`SetResultToTransforms` @ `0x37EE99C`。
+- 曲线 `KeyType`：0 固定 60fps、1 时间/值对、2 常量、3 全帧曲线、6 全帧偏移、7 增量帧；`SolveCurve` 负责 Hermite/线性插值。
+- 结论：应直接从 `.imo.unity3d` 的 `CharacterImasMotionAsset` 解码，生成 USDZ/骨骼动画；不再依赖 MMD/VMD 或 Blender 的 MMD Tools 导入。
