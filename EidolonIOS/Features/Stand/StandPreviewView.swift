@@ -16,8 +16,10 @@ struct StandPreviewView: View {
     @State private var characters: [CharacterConfig] = []
     @State private var selectedID: String?
     @State private var outfitID: String?
+    @State private var stand: CharacterStand?
     @State private var renderer: (any StandRenderer)?
     @State private var phase = Phase.loading
+    @State private var showsOutfits = false
 
     /// The call's events as the buttons give them; her look comes out of it.
     @State private var director = StandDirector()
@@ -55,8 +57,34 @@ struct StandPreviewView: View {
                 }
                 .disabled(characters.isEmpty)
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showsOutfits = true
+                } label: {
+                    Image(systemName: "tshirt.fill")
+                }
+                .disabled(stand == nil)
+                .accessibilityLabel("换衣装")
+            }
         }
         .task { await start() }
+        .sheet(isPresented: $showsOutfits) {
+            if let stand, let character = characters.first(where: { $0.id == selectedID }) {
+                OutfitPickerView(
+                    character: character,
+                    stand: stand,
+                    contentRoot: stand.root ?? app.core.location.contentDirectory,
+                    contentVersion: app.standInfo?.installedAt
+                        ?? app.bundleInfo?.installedAt ?? "current",
+                    onWear: { outfit in
+                        previewWear(outfit)
+                    },
+                    onClose: {
+                        showsOutfits = false
+                    }
+                )
+            }
+        }
         .onChange(of: scenePhase) { _, value in
             renderer?.setPaused(value != .active)
         }
@@ -112,7 +140,7 @@ struct StandPreviewView: View {
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
             if let outfitID {
-                Text("默认衣装 \(outfitID)")
+                Text("衣装 \(outfitID)")
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
             }
@@ -265,7 +293,13 @@ struct StandPreviewView: View {
     // MARK: - Loading her
 
     private func start() async {
-        characters = app.characters.filter { $0.stand != nil }
+        var withStands: [CharacterConfig] = []
+        for character in app.characters {
+            if await app.core.stand(for: character.id) != nil {
+                withStands.append(character)
+            }
+        }
+        characters = withStands
         guard let first = characters.first else {
             phase = .missing("这份内容包里没有带立绘的角色")
             return
@@ -282,6 +316,7 @@ struct StandPreviewView: View {
     private func show(_ id: String) async {
         selectedID = id
         outfitID = nil
+        stand = nil
         phase = .loading
         renderer?.setPaused(true)
         renderer = nil
@@ -291,14 +326,31 @@ struct StandPreviewView: View {
         playing = false
         over = false
 
-        guard let stand = await app.core.stand(for: id) else {
+        guard let found = await app.core.stand(for: id) else {
             phase = .missing("内容包里没有她的立绘")
             return
         }
-        outfitID = stand.defaultOutfit.id
+        stand = found
+        let worn = found.worn(
+            choice: StandOutfitChoiceStore().choice(for: id)
+        )
+        outfitID = worn.id
+        loadRenderer(worn, root: found.root ?? app.core.location.contentDirectory)
+    }
 
+    /// Put the outfit chosen in the picker on the preview without losing the action it
+    /// was showing: the renderer is replaced, but the director and segment stay.
+    private func previewWear(_ outfit: StandOutfit) {
+        guard let stand else { return }
+        outfitID = outfit.id
+        phase = .loading
+        loadRenderer(outfit, root: stand.root ?? app.core.location.contentDirectory)
+    }
+
+    private func loadRenderer(_ outfit: StandOutfit, root: URL) {
+        renderer?.setPaused(true)
         let renderer = StandWebRenderer(
-            contentRoot: app.core.location.contentDirectory,
+            contentRoot: root,
             framing: StandFraming(compactWidth: sizeClass != .regular)
         )
         renderer.onLoaded = { report in
@@ -319,7 +371,7 @@ struct StandPreviewView: View {
                 animations: animations
             )
         )
-        renderer.load(stand.defaultOutfit)
+        renderer.load(outfit)
         self.renderer = renderer
     }
 
