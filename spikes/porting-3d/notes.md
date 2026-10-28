@@ -105,3 +105,9 @@
 - 资源引用从 Xcode 工程移除；`postBuildScripts` 仅在本地资源存在时复制，clean checkout 不会因缺 USDZ 构建失败。
 - 移除文件选择器，避免未结构化的加载 Task 与衣装选择竞态。
 - 当前 Air 重新安装被设备/连接阻塞，最新固定机位版本尚未重新截图；旧双衣装截图仍有效。
+
+### 资源打包最终方案
+
+- USDZ 重新作为 target Resources，由 Xcode 正常签名。
+- `preBuildScripts` 只在文件缺失时创建空占位，保证 clean checkout/无素材时仍能构建；本地有真实 USDZ 时不会被覆盖。
+- 最新 build 已生成两个 USDZ；Air 安装连续 `devicectl` timeout，需解锁设备后复验。
