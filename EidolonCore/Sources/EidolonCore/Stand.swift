@@ -143,3 +143,42 @@ public struct CharacterStand: Sendable, Hashable {
         self.outfitList = outfitList
     }
 }
+
+/// Where a character's stand is read from: the first root that actually holds it. A
+/// separate stand package is tried before the legacy content bundle, so moving stand
+/// assets out of the content bundle changes only this lookup.
+struct StandResolver: Sendable {
+    var roots: [URL]
+
+    init(roots: [URL]) {
+        self.roots = roots
+    }
+
+    func stand(for config: StandConfig) -> CharacterStand? {
+        let fileManager = FileManager.default
+        for root in roots {
+            let defaultDirectory = root.appendingPathComponent(
+                config.defaultOutfitPath,
+                isDirectory: true
+            )
+            let listURL = root.appendingPathComponent(config.outfitListPath)
+            let hasDefault = OutfitList.files.allSatisfy {
+                fileManager.fileExists(atPath: defaultDirectory.appendingPathComponent($0).path)
+            }
+            let hasList = fileManager.fileExists(atPath: listURL.path)
+            guard hasDefault || hasList else { continue }
+
+            let list = (try? Data(contentsOf: listURL)).flatMap { data in
+                OutfitList(data: data, at: listURL, fileManager: fileManager)
+            }
+            return CharacterStand(
+                defaultOutfit: StandOutfit(
+                    id: config.defaultOutfitID,
+                    directory: defaultDirectory
+                ),
+                outfitList: list
+            )
+        }
+        return nil
+    }
+}
