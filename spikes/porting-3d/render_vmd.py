@@ -17,6 +17,7 @@ def args() -> argparse.Namespace:
     p.add_argument("--frame", type=int, default=1)
     p.add_argument("--vmd-scale", type=float, default=0.08)
     p.add_argument("--pmx-scale", type=float, default=0.08)
+    p.add_argument("--pose-mode", action="store_true")
     return p.parse_args(argv)
 
 
@@ -26,7 +27,7 @@ def main() -> None:
     bpy.ops.preferences.addon_enable(module="mmd_tools")
     bpy.ops.mmd_tools.import_model(filepath=a.pmx, scale=a.pmx_scale, types={"MESH", "ARMATURE", "PHYSICS"})
     if a.vmd:
-        bpy.ops.mmd_tools.import_vmd(filepath=a.vmd, scale=a.vmd_scale, margin=0)
+        bpy.ops.mmd_tools.import_vmd(filepath=a.vmd, scale=a.vmd_scale, margin=0, use_pose_mode=a.pose_mode)
 
     scene = bpy.context.scene
     scene.frame_set(a.frame)
