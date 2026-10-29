@@ -48,6 +48,20 @@ class Primitive:
     triangles: list
 
 
+def read_material(env, pointer) -> MaterialInfo:
+    material = pointer.read()
+    image = None
+    for entry in material.m_SavedProperties.m_TexEnvs or []:
+        name, environment = entry[0], entry[1]
+        if name == "_MainTex":
+            try:
+                image = environment.m_Texture.read().image
+            except Exception:
+                image = None
+            break
+    return MaterialInfo(name=material.m_Name, image=image)
+
+
 def read_main_texture(env, renderer):
     """The `_MainTex` texture behind a renderer's first material, if any."""
     for material_pointer in renderer.m_Materials:
@@ -60,14 +74,21 @@ def read_main_texture(env, renderer):
     return None, None
 
 
+@dataclass(frozen=True)
+class MaterialInfo:
+    name: str | None
+    image: object | None
+
+
 @dataclass
 class SkinnedMesh:
     name: str
     primitive: Primitive
     bone_paths: list[int]
     bindposes: list[tuple[float, ...]] = field(default_factory=list)
-    material_name: str | None = None
-    image: object | None = None
+    materials: list[MaterialInfo] = field(default_factory=list)
+    # (first triangle, triangle count) per submesh, in material order.
+    submeshes: list[tuple[int, int]] = field(default_factory=list)
 
 
 def _vec(value) -> tuple[float, float, float]:
@@ -132,15 +153,19 @@ def read_skinned_meshes(env) -> list[SkinnedMesh]:
             joints=decode_channel(stream(offsets[2]), strides[2], count, BONE_INDICES),
             triangles=decode_triangles(bytes(mesh.m_IndexBuffer), True),
         )
-        material_name, image = read_main_texture(env, renderer)
+        materials = [read_material(env, pointer) for pointer in renderer.m_Materials]
+        submeshes = [
+            (submaterial.firstByte // 2 // 3, submaterial.indexCount // 3)
+            for submaterial in mesh.m_SubMeshes
+        ]
         meshes.append(
             SkinnedMesh(
                 name=mesh.m_Name,
                 primitive=primitive,
                 bone_paths=[bone.path_id for bone in renderer.m_Bones],
                 bindposes=[matrix_tuple(matrix) for matrix in mesh.m_BindPose],
-                material_name=material_name,
-                image=image,
+                materials=materials,
+                submeshes=submeshes,
             )
         )
     return meshes

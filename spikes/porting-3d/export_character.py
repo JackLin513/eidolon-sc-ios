@@ -97,17 +97,19 @@ def world_of(merged: Merged, index: int) -> list[list[float]]:
     return world
 
 
-def primitive_colors(primitive) -> list[tuple[int, int, int, int]]:
-    """Unity stores vertex colour as UNorm8x4 in RGBA order, same as glTF."""
-    return [tuple(int(component) for component in value) for value in primitive.colors]
+def sanitise(name: str) -> str:
+    return "".join(
+        character if character.isalnum() or character in "-_" else "_"
+        for character in name
+    )[:40]
 
 
-def build(body: Path, head: Path | None, arguments_out: Path) -> GltfDocument:
+def build(body: Path, head: Path | None, out: Path) -> GltfDocument:
     merged, body_map, head_map = merge_skeleton(body, head)
 
     chunks = _Chunks()
     gltf_nodes = []
-    for index, node in enumerate(merged.nodes):
+    for node in merged.nodes:
         gltf_nodes.append(
             {
                 "name": node.name,
@@ -128,69 +130,90 @@ def build(body: Path, head: Path | None, arguments_out: Path) -> GltfDocument:
         sources.append((head, head_map))
 
     joint_order: list[int] = []
-    primitives = []
-    materials: list[dict] = []
-    images: list[dict] = []
-    textures: list[dict] = []
-    textures_dir = arguments_out / "textures"
-    textures_dir.mkdir(parents=True, exist_ok=True)
+    meshes: list = []
     for bundle, mapping in sources:
         for mesh in read_skinned_meshes(load(str(bundle))):
             local_joints = [mapping[path_id] for path_id in mesh.bone_paths]
             for joint in local_joints:
                 if joint not in joint_order:
                     joint_order.append(joint)
-            material_index = None
-            if mesh.image is not None:
-                file_name = f"textures/{len(images):02d}_{mesh.name.split('(')[0]}.png"
-                mesh.image.save(arguments_out / file_name)
-                images.append({"uri": file_name})
-                textures.append({"source": len(images) - 1, "sampler": 0})
-                materials.append(
-                    {
-                        "name": mesh.material_name or mesh.name,
-                        "pbrMetallicRoughness": {
-                            "baseColorTexture": {"index": len(textures) - 1},
-                            "metallicFactor": 0.0,
-                            "roughnessFactor": 0.9,
-                        },
-                        "doubleSided": True,
-                    }
-                )
-                material_index = len(materials) - 1
-            primitives.append((mesh, local_joints, material_index))
+            meshes.append((mesh, local_joints))
 
     skin_of_joint = {joint: position for position, joint in enumerate(joint_order)}
 
-    for mesh, local_joints, material_index in primitives:
+    images: list[dict] = []
+    textures: list[dict] = []
+    materials: list[dict] = []
+    material_index: dict[str, int] = {}
+    (out / "textures").mkdir(parents=True, exist_ok=True)
+
+    def material_for(info) -> int | None:
+        if info is None:
+            return None
+        key = info.name or "material"
+        if key in material_index:
+            return material_index[key]
+        pbr: dict = {"metallicFactor": 0.0, "roughnessFactor": 0.9}
+        if info.image is not None:
+            file_name = f"textures/{len(images):02d}_{sanitise(key)}.png"
+            info.image.save(out / file_name)
+            images.append({"uri": file_name})
+            textures.append({"source": len(images) - 1, "sampler": 0})
+            pbr["baseColorTexture"] = {"index": len(textures) - 1}
+        else:
+            pbr["baseColorFactor"] = [0.85, 0.85, 0.85, 1.0]
+        materials.append(
+            {"name": key, "pbrMetallicRoughness": pbr, "doubleSided": True}
+        )
+        material_index[key] = len(materials) - 1
+        return material_index[key]
+
+    primitive_entries: list[dict] = []
+    for mesh, local_joints in meshes:
         primitive = mesh.primitive
         positions, normals, triangles = flip_handedness(
             primitive.positions, primitive.normals, primitive.triangles
         )
-        attributes = {
-            "POSITION": chunks.floats(positions, 3, "VEC3"),
-            "NORMAL": chunks.floats(normals, 3, "VEC3"),
-            "TEXCOORD_0": chunks.floats(
-                [(u, 1.0 - v) for u, v in primitive.uvs], 2, "VEC2"
-            ),
-            "JOINTS_0": chunks.bytes(
-                [[skin_of_joint[local_joints[int(i)]] for i in value] for value in primitive.joints],
-                "VEC4",
-            ),
-            "WEIGHTS_0": chunks.floats(
-                [[max(0.0, float(w)) for w in value] for value in primitive.weights],
-                4,
-                "VEC4",
-            ),
-        }
-        if any(any(component for component in value) for value in primitive.colors):
-            attributes["COLOR_0"] = chunks.normalized_bytes(
-                primitive_colors(primitive), "VEC4"
-            )
-        entry = {"attributes": attributes, "indices": chunks.indices(triangles)}
-        if material_index is not None:
-            entry["material"] = material_index
-        chunks.primitives = getattr(chunks, "primitives", []) + [entry]
+        ranges = mesh.submeshes or [(0, len(triangles))]
+        for submesh_index, (first, count) in enumerate(ranges):
+            if submesh_index < len(mesh.materials):
+                info = mesh.materials[submesh_index]
+            elif mesh.materials:
+                info = mesh.materials[0]
+            else:
+                info = None
+            # Every primitive gets its own attribute accessors: Blender's glTF
+            # importer deduplicates shared accessors across primitives and then
+            # produces out-of-range indices for the second one.
+            entry: dict = {
+                "attributes": {
+                    "POSITION": chunks.floats(positions, 3, "VEC3"),
+                    "NORMAL": chunks.floats(normals, 3, "VEC3"),
+                    "TEXCOORD_0": chunks.floats(
+                        [(u, 1.0 - v) for u, v in primitive.uvs], 2, "VEC2"
+                    ),
+                    "JOINTS_0": chunks.bytes(
+                        [
+                            [skin_of_joint[local_joints[int(i)]] for i in value]
+                            for value in primitive.joints
+                        ],
+                        "VEC4",
+                    ),
+                    "WEIGHTS_0": chunks.floats(
+                        [
+                            [max(0.0, float(w)) for w in value]
+                            for value in primitive.weights
+                        ],
+                        4,
+                        "VEC4",
+                    ),
+                },
+                "indices": chunks.indices(triangles[first : first + count]),
+            }
+            index = material_for(info)
+            if index is not None:
+                entry["material"] = index
+            primitive_entries.append(entry)
 
     inverse_bind = chunks.floats(
         [
@@ -202,15 +225,13 @@ def build(body: Path, head: Path | None, arguments_out: Path) -> GltfDocument:
     )
 
     mesh_index = len(gltf_nodes)
-    gltf_nodes.append(
-        {"name": "character", "mesh": 0, "skin": 0, "children": []}
-    )
+    gltf_nodes.append({"name": "character", "mesh": 0, "skin": 0})
     roots = [index for index, parent in merged.parent_of.items() if parent is None]
 
-    document = GltfDocument(
+    return GltfDocument(
         chunks=chunks,
         nodes=gltf_nodes,
-        meshes=[{"name": "character", "primitives": getattr(chunks, "primitives", [])}],
+        meshes=[{"name": "character", "primitives": primitive_entries}],
         skins=[
             {
                 "joints": joint_order,
@@ -223,7 +244,6 @@ def build(body: Path, head: Path | None, arguments_out: Path) -> GltfDocument:
         images=images,
         textures=textures,
     )
-    return document
 
 
 def main(argv: list[str] | None = None) -> int:

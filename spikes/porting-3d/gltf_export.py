@@ -132,6 +132,7 @@ class GltfDocument:
     images: list = field(default_factory=list)
     textures: list = field(default_factory=list)
     root_nodes: list = field(default_factory=lambda: [0])
+    name: str = "character"
 
     def as_dict(self) -> dict:
         document = {
@@ -144,7 +145,7 @@ class GltfDocument:
             "bufferViews": self.chunks.buffer_views,
             "accessors": self.chunks.accessors,
             "buffers": [
-                {"byteLength": len(self.chunks.blob), "uri": "character.bin"}
+                {"byteLength": len(self.chunks.blob), "uri": f"{self.name}.bin"}
             ],
         }
         if self.materials:
@@ -155,6 +156,7 @@ class GltfDocument:
         return document
 
     def write(self, directory: Path, name: str = "character") -> Path:
+        self.name = name
         (directory / f"{name}.bin").write_bytes(bytes(self.chunks.blob))
         path = directory / f"{name}.gltf"
         path.write_text(json.dumps(self.as_dict(), indent=2), "utf-8")
