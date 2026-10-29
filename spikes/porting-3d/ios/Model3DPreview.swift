@@ -286,8 +286,8 @@ struct Model3DPreview: View {
             // faces culled and vertices pushed out along the normal. RealityKit
             // has no per-model second pass, so it is a cloned sibling.
             let outline = loaded.clone(recursive: true)
-            outline.name = loaded.name + "-outline"
             ToonShading.applyOutline(to: outline)
+            outline.name = loaded.name + "-outline"
             for child in container.children {
                 child.removeFromParent()
             }
@@ -301,6 +301,9 @@ struct Model3DPreview: View {
             // to twice the intended height. Fit repeatedly and keep the largest
             // box seen.
             guard await fitAfterSettle(loaded) else {
+                // A cancelled load fails the fit by construction; that is not an
+                // error to report, the newer load owns the view now.
+                if Task.isCancelled { return }
                 if entity == nil {
                     phase = .failed("USDZ 里没有可见几何")
                 } else {
@@ -308,6 +311,9 @@ struct Model3DPreview: View {
                 }
                 return
             }
+            // A cancelled load must not touch the container: the next outfit's
+            // load may already own it.
+            guard !Task.isCancelled else { return }
             resetInspection()
             entity = loaded
             applyInspection()
@@ -344,12 +350,16 @@ struct Model3DPreview: View {
         var heights: [Float] = []
         var centres: [SIMD3<Float>] = []
         for _ in 0..<24 {
+            // `try?` here would swallow CancellationError and run all 24 samples
+            // anyway, so a superseded load would keep going and push its model
+            // into a container that already holds the next outfit's.
+            guard !Task.isCancelled else { return false }
             let bounds = entity.visualBounds(relativeTo: nil)
             if bounds.extents.y > 0.000_001 {
                 heights.append(bounds.extents.y)
                 centres.append(bounds.center)
             }
-            try? await Task.sleep(for: .milliseconds(80))
+            do { try await Task.sleep(for: .milliseconds(80)) } catch { return false }
         }
         guard !heights.isEmpty else { return false }
 
