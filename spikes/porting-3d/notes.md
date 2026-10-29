@@ -218,3 +218,13 @@ stream0 stride 40（pos12 + normal12 + tangent16）、stream1 stride 12（color4
 - 身体顶点色全是 `(0,0,0,0)`，没用；COLOR_0 只在非全零时才写。头/脸有真实贴图，UV 的 V 翻转（Unity 左下原点 → glTF 左上原点）验证正确。
 - 32 个 face shape key 还没导出成 morph target。
 - 还没转 USDZ、还没接进 `Eidolon3DSpike`。
+
+### 2026-10-29 USDZ 与模拟器（#73 收尾）
+
+两套衣装都能从原生资产导出成 USDZ：`mirai-pr001.usdz` 2.2 MB、`mirai-ss003.usdz` 2.3 MB，各自 8 张贴图内嵌。Blender 只做 GLB → USDZ 的格式转换。
+
+**Blender 4.2 的坑**：`bpy.ops.wm.usd_export` 没有 `export_format` 参数，格式由扩展名决定；参数是 `export_armatures` / `export_shapekeys` / `export_animation`，不是 `export_skeletons` / `export_animations`。
+
+**glTF 的坑**：每个 primitive 必须有自己的属性 accessor。共享 accessor 时 Blender 的导入器会去重，然后给第二个 primitive 产出越界索引。另外 `buffers[0].uri` 要跟着 `--name` 走，不能写死。
+
+**未完成**：装进 iPhone 18 Pro 模拟器后启动，截图全黑，没有崩溃日志。iPhone Air 模拟器本身坏了（`simctl install` 挂住、`bootstatus` 报 `Data Migration Failed`）。下一步要先查这个黑屏，不要当成模型问题。
