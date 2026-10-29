@@ -56,6 +56,9 @@ LAYOUT: list[tuple[str, str]] = [
     # `_IllumiColor` is neutral at 0.5 like `_Color`, so it is doubled back
     # wherever it is applied; the three channels have to stay adjacent.
     ("_IllumiColor", "r"), ("_IllumiColor", "g"), ("_IllumiColor", "b"),
+    ("_ExtraBihaku", "-"),
+    ("_Whitish", "-"),
+    ("_Freq", "-"),
 ]
 
 # Rows the atlas is sized for. The shader's V coordinate is
