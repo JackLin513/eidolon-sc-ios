@@ -6,6 +6,11 @@ import SwiftUI
 /// the game's current stand is Spine 2D, while this spike loads USDZ 3D models.
 @MainActor
 struct Model3DPreview: View {
+    private enum DragMode {
+        case rotate
+        case move
+    }
+
     private enum Phase: Equatable {
         case empty
         case loading
@@ -28,8 +33,9 @@ struct Model3DPreview: View {
     /// Framing the loader chose, before any inspection gesture moves it.
     @State private var baseScale: Float = 1
     @State private var basePosition = SIMD3<Float>.zero
-    /// Scale the last fit settled on.
+    /// Scale and position the last fit settled on; double-tap restores them.
     @State private var appliedScale: Float = 0
+    @State private var fittedPosition = SIMD3<Float>.zero
 
     /// Inspection gestures. Orbit is a debug affordance, not the parity framing:
     /// the preview opens on the fixed front composition.
@@ -37,6 +43,10 @@ struct Model3DPreview: View {
     @State private var pitch: Float = 0
     @State private var zoom: Float = 1
     @State private var dragStart: SIMD2<Float>?
+    /// What a drag does. Rotation is the default; panning exists so the model can
+    /// be moved out from behind the buttons.
+    @State private var dragMode = DragMode.rotate
+    @State private var panStart: SIMD3<Float>?
     @State private var zoomStart: Float?
 
     init() {
@@ -109,6 +119,15 @@ struct Model3DPreview: View {
 
     private var controls: some View {
         HStack(spacing: 10) {
+            Button {
+                dragMode = dragMode == .rotate ? .move : .rotate
+            } label: {
+                Text(dragMode == .rotate ? "拖动：旋转" : "拖动：移动")
+                    .padding(.horizontal, 6)
+            }
+            .buttonStyle(.bordered)
+            .tint(.white)
+
             ForEach(Model3DOutfit.allCases) { candidate in
                 Button {
                     outfit = candidate
@@ -127,13 +146,29 @@ struct Model3DPreview: View {
     private var orbitGesture: some Gesture {
         DragGesture()
             .onChanged { value in
-                if dragStart == nil { dragStart = SIMD2(yaw, pitch) }
-                guard let start = dragStart else { return }
-                yaw = start.x + Float(value.translation.width) * 0.012
-                pitch = start.y + Float(value.translation.height) * 0.012
+                switch dragMode {
+                case .rotate:
+                    if dragStart == nil { dragStart = SIMD2(yaw, pitch) }
+                    guard let start = dragStart else { return }
+                    yaw = start.x + Float(value.translation.width) * 0.012
+                    pitch = start.y + Float(value.translation.height) * 0.012
+                case .move:
+                    if panStart == nil { panStart = basePosition }
+                    guard let start = panStart else { return }
+                    // Screen points to world units: the model is a couple of
+                    // units tall in a viewport a few units wide.
+                    basePosition = SIMD3(
+                        start.x + Float(value.translation.width) * 0.004,
+                        start.y - Float(value.translation.height) * 0.004,
+                        start.z
+                    )
+                }
                 applyInspection()
             }
-            .onEnded { _ in dragStart = nil }
+            .onEnded { _ in
+                dragStart = nil
+                panStart = nil
+            }
     }
 
     private var zoomGesture: some Gesture {
@@ -147,10 +182,12 @@ struct Model3DPreview: View {
             .onEnded { _ in zoomStart = nil }
     }
 
+    /// Double-tap: undo rotation, zoom and panning.
     private func resetInspection() {
         yaw = 0
         pitch = 0
         zoom = 1
+        basePosition = fittedPosition
         applyInspection()
     }
 
@@ -309,9 +346,10 @@ struct Model3DPreview: View {
         let scale = targetHeight / extent
         let center = (sampled ?? bounds.center) * scale
         // Push the model away from the camera: the default RealityView camera
-        // sits at the origin, so centring at zero crops her. The upward nudge is
-        // a fraction of her height so the framing holds at any scale.
-        basePosition = [-center.x, -center.y + targetHeight * 0.11, -center.z - 1.0]
+        // sits at the origin. No vertical nudge — she sits centred in the frame;
+        // drag in move mode to shift her.
+        basePosition = [-center.x, -center.y, -center.z - 1.0]
+        fittedPosition = basePosition
         appliedScale = scale
         baseScale = scale
         entity.scale = SIMD3<Float>(repeating: scale)

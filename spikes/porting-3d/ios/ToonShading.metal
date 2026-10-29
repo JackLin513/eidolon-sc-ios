@@ -75,6 +75,28 @@ constexpr sampler kAtlas(
 
 constexpr sampler kPoint(filter::nearest, address::clamp_to_edge);
 
+// The game shades in **gamma space**, not linear.
+//
+// Unity projects of this vintage default to Gamma colour space, so the shader's
+// `_Color * tex - 0.02` subtracts from an sRGB value and barely darkens it. Done
+// on linear values instead, that same subtraction crushes dark channels to zero:
+// the hair lost its blue and came out at saturation 0.84 against the game's 0.45.
+// RealityKit linearises textures on sample and expects linear output, so the
+// maths is undone and redone around the curve here.
+static float3 toGamma(float3 linearValue)
+{
+    return select(1.055f * pow(max(linearValue, 0.0f), 1.0f / 2.4f) - 0.055f,
+                  linearValue * 12.92f,
+                  linearValue <= 0.0031308f);
+}
+
+static float3 toLinear(float3 gammaValue)
+{
+    return select(pow((gammaValue + 0.055f) / 1.055f, 2.4f),
+                  gammaValue / 12.92f,
+                  gammaValue <= 0.04045f);
+}
+
 static float param(thread const texture2d<half> &lut, uint row, uint column)
 {
     float2 uv = float2(float(column) + 0.5f, float(row) + 0.5f)
@@ -119,8 +141,12 @@ void toonSurface(realitykit::surface_parameters params)
     float2 uv = params.geometry().uv0();
     float2 flipped = float2(uv.x, 1.0 - uv.y);
 
-    half4 mainTex = params.textures().custom().sample(kAtlas, flipped);
-    half4 subTex = params.textures().emissive_color().sample(kAtlas, flipped);
+    // Sampled textures arrive linearised; the game's maths runs on the sRGB
+    // values the artist painted.
+    half4 mainTexRaw = params.textures().custom().sample(kAtlas, flipped);
+    half4 subTexRaw = params.textures().emissive_color().sample(kAtlas, flipped);
+    half4 mainTex = half4(half3(toGamma(float3(mainTexRaw.rgb))), mainTexRaw.a);
+    half4 subTex = half4(half3(toGamma(float3(subTexRaw.rgb))), subTexRaw.a);
 
     float4 custom = params.uniforms().custom_parameter();
     bool hasParams = custom.y > 0.5f;
@@ -311,7 +337,8 @@ void toonSurface(realitykit::surface_parameters params)
         }
     }
 
-    params.surface().set_base_color(saturate(half3(result)));
+    // Back to linear for RealityKit's own pass.
+    params.surface().set_base_color(half3(toLinear(saturate(result))));
     params.surface().set_metallic(0.0);
     params.surface().set_roughness(1.0);
 }
