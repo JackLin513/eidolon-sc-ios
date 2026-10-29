@@ -1,17 +1,14 @@
 import Metal
 import RealityKit
 
-/// Replaces every loaded material with a two-step toon ramp.
+/// Replaces every loaded material with the game's character shading.
 ///
-/// The game shades characters with a ramp plus a rim light rather than a
-/// physical BRDF. Under a single directional light a PBR material crushes every
-/// surface facing away from it, which reads as damage on limbs.
-///
-/// Highlights come from the material's second texture slot, `_SubTex`: an
-/// additive layer holding the eye catch-light, the hair shine and the costume's
-/// neon trim. The exporter folds it into the glTF's emissive texture, so it
-/// carries through USD and RealityKit adds it on top of whatever the surface
-/// shader writes.
+/// MLTD does not use a physical BRDF: each material carries its own ambient
+/// colour, light direction, shading thresholds and rim settings, and the shader
+/// combines them with a two-step ramp plus an additive `_SubTex` highlight
+/// layer. Those constants arrive in `MaterialParameters`; each material is told
+/// its row through `custom.value.x` and the table itself rides in the otherwise
+/// unused `specular` texture slot.
 @MainActor
 enum ToonShading {
     private static let library: MTLLibrary? = {
@@ -23,36 +20,55 @@ enum ToonShading {
         return CustomMaterial.SurfaceShader(named: name, in: library)
     }
 
-    static func apply(to entity: Entity) {
-        let logNames = ProcessInfo.processInfo.environment["EIDOLON_3D_LOG_MATERIALS"] != nil
+    static func apply(to entity: Entity, parameters: MaterialParameters?) {
+        let environment = ProcessInfo.processInfo.environment
+        let logNames = environment["EIDOLON_3D_LOG_MATERIALS"] != nil
+        let lightingModel: CustomMaterial.LightingModel =
+            environment["EIDOLON_3D_UNLIT"] != nil ? .unlit : .lit
         guard let surface = shader(named: "toonSurface") else { return }
         if var model = entity.components[ModelComponent.self] {
             model.materials = model.materials.map { material in
                 guard let physical = material as? PhysicallyBasedMaterial,
                       let texture = physical.baseColor.texture
                 else { return material }
+                let name = material.name ?? ""
+                let row = parameters?.row(for: name)
                 if logNames {
-                    print("[toon] material name=\(material.name ?? "nil") glow=\(physical.emissiveColor.texture != nil)")
+                    let glow = physical.emissiveColor.texture != nil
+                    print("[toon] material name=\(name) glow=\(glow) row=\(row.map(String.init) ?? "nil")")
                 }
+                // `.unlit` looks like the right model for a toon ramp, but it
+                // stops binding `custom` and `emissive`: the character renders
+                // as a black silhouette. Stay on `.lit` and tame its PBR pass
+                // with roughness instead.
                 guard var toon = try? CustomMaterial(
                     surfaceShader: surface,
-                    lightingModel: .lit
+                    lightingModel: lightingModel
                 ) else { return material }
+                let debug = ProcessInfo.processInfo.environment["EIDOLON_3D_LUT_DEBUG"] != nil
+                var custom = CustomMaterial.Custom(
+                    value: SIMD4(Float(row ?? 0), row == nil ? 0 : 1, debug ? 1 : 0, 0)
+                )
                 if let customTexture = try? CustomMaterial.Texture(texture) {
-                    toon.custom.texture = customTexture
+                    custom.texture = customTexture
                 }
-                // Binding the glow only; the surface shader adds it. A white
-                // tint here would let the lit model add the same layer twice.
+                toon.custom = custom
+                // Binding the glow only; the surface shader adds it, so a white
+                // tint here would apply the same layer twice.
                 if let glow = physical.emissiveColor.texture,
                    let glowTexture = try? CustomMaterial.Texture(glow) {
                     toon.emissiveColor = .init(color: .black, texture: glowTexture)
+                }
+                if let parameters,
+                   let lut = try? CustomMaterial.Texture(parameters.textureResource) {
+                    toon.specular = .init(scale: 1, texture: lut)
                 }
                 return toon
             }
             entity.components[ModelComponent.self] = model
         }
         for child in entity.children {
-            apply(to: child)
+            apply(to: child, parameters: parameters)
         }
     }
 }

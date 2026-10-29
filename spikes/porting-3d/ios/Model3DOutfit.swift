@@ -15,4 +15,10 @@ enum Model3DOutfit: String, CaseIterable, Identifiable {
     }
 
     var fileName: String { "mirai-\(rawValue).usdz" }
+
+    /// The game's shading constants for this costume, written beside the USDZ.
+    var materialsFileName: String { "mirai-\(rawValue)-materials.json" }
+
+    /// Those constants baked into an atlas the surface shader samples by row.
+    var parametersFileName: String { "mirai-\(rawValue)-params.png" }
 }

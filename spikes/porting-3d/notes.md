@@ -346,3 +346,21 @@ stream0 stride 40（pos12 + normal12 + tangent16）、stream1 stride 12（color4
 **顺带修掉的构图问题**：`visualBounds` 在实体还没挂到场景里时读到的包围盒不可靠（骨架 rest pose 决定），pr001 因此被缩到四分之一个 ss003。现在先 `container.addChild`、睡 120 ms 再 `normalize`。归一化目标从魔数 `1.6` 改成显式常量 `targetHeight = 2.3`——默认 `RealityView` 相机在 z = -1 处的可视高度约 3.1 单位，2.3 正好留出状态栏和按钮的位置。
 
 **仍未做**：`_AmbientColor` / `_DiffuseColor` / `_ShadingOffset` / `_Outline*` 这些材质标量仍没进导出，所以明暗分级还是全局一套，没有描边。
+
+### 2026-10-29 参数迁移：把每个材质的完整参数送到端上
+
+目标是不再靠猜全局常量，而是把游戏每个材质自己的颜色和浮点原样交给 shader。
+
+**导出**：`material_params.py` 读整个 `m_SavedProperties`（每个材质 9–11 个颜色、18–38 个浮点），写成 `<name>-materials.json`。shader 名只在 `Shader.m_ParsedForm.m_Name` 里，`Material.m_Shader.m_Name` 全是空串。五个 shader 都认出来了：`Chr_Glow` / `Chr_Basic` / `Chr_Face` / `Chr_Hair` / `BultIn/Bi_CharEye`。
+
+**传输**：一条 `float4` 装不下 30 个数。试了三条路，只有第三条能用：
+
+1. `LowLevelTexture` + `metal.replace(region:)` —— **写不进去**，CPU 回读全是 0。加了 `.shaderWrite` 也没用。
+2. `TextureResource(dimensions:format:contents:)` + `Format.raw(pixelFormat:)` —— `Dimensions2D` **没有公开初始化器**，编译不过。
+3. `TextureResource(contentsOf:)` 读一张 PNG —— **可以**。参数烘进 `material_atlas.py` 生成的 32×64 图，**每texel 一个参数，存在 alpha 通道里**：颜色通道会被色彩管理（sRGB PNG 取回来是线性化过的），alpha 原样通过。shader 用 nearest 采样读 `.a`，一个字节就是 `value/255`。
+
+**`.unlit` 用不了**：`CustomMaterial(lightingModel: .unlit)` 下 `custom` / `emissive` 贴图不再绑定，整个人渲染成黑剪影（换成有效参数表之后依然如此）。只能用 `.lit`，于是 PBR 光照会在 shader 结果上再加一层；目前靠三盏方向光把亮度维持住。
+
+**已验证**：调试开关 `EIDOLON_3D_LUT_DEBUG=1` 把参数行直接画成颜色（R=shader 类型/10，G=`_Color.r`，B=|\_Light.x|），躯干打出 (0.38,0.76,0.58)、头发 (0.71,0.81,0.62)，与表里的 0.2/0.502/0.3 和 0.4/0.502/0.3 按同一增益吻合——查表真的接通了。
+
+**顺带确认的事实**：`_Light` / `_RimLight` 在所有材质里都是 `(-0.3,-0.4,1.0)`；`_Color` 全是 0.502；`_DiffuseColor` 全白；`_OutlineColor` 全同；`_ShadingOffset` 0.25、`_ShadingBorder` 5.0、`_RimOffset` 0.25、`_RimBorder` 2.0 也全同。真正逐材质变化的是 `_AmbientColor`（0.863 灰 / 0.841,0.709,0.647 头发 / 0.980,0.827,0.788 皮肤）、眼睛的 `_SpecTex_*`、头发的 `_Sub*`、`Chr_Glow` 的 `_WhityCol`/`_WhiteMode`、脸的 `_Bihaku*`/`_Reddish*`。`_BumpScale`/`_Parallax`/`_Glossiness` 是 Unity Standard 的遗留字段，没有 `_BumpMap` 槽，所以**原版没有法线贴图，凹凸这一项没有可迁移的东西**。`_Cube`（反射）在所有材质的 `m_PathID` 都是 0，`_UseReflect`=0——**原版这两套衣装不反射**。
