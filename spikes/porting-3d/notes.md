@@ -165,3 +165,11 @@
 - 用 native rest + native curves + PMX binding 矩阵链渲染，仍爆炸。
 - 已排除“没有 native rest”这一项；剩余问题在 native 路径/父子关系或 native→PMX binding 的对应。
 - T5 仍未完成。
+
+### 运行时 native rest dump（成功）
+
+- Frida attach 到 PlayCover MLTD，找到 `UnityFramework` 的 `il2cpp_*` 导出。
+- 通过 `ilm2cpp_class_from_name("Imas","CharacterCommonSkeleton")`、静态字段 `s_static_data` 读取。
+- 已 dump 64 根 native 骨骼：`bone_id/local_position/local_angle`。
+- 文件：`build/mltd-spike/out/il2cpp/native-rest.json`。
+- 这是真正的 `CharacterCommonSkeleton` rest，不是 Avatar/Transform 推断。
