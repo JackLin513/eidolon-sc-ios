@@ -537,7 +537,7 @@ EIDOLON_PROXY_URL=http://127.0.0.1:7890
 EIDOLON_PROXY_SERVICES=chat_llm,tts,stt
 ```
 
-- **地址**：`http://`、`https://`、`socks5://` 或 `socks5h://` 开头，写明主机和端口，可以带用户名和密码（`http://用户名:密码@主机:端口`）。不填就没有代理。生产环境（`docker-compose.prod.yml`）的后端和宿主机共用网络，宿主机上的代理（比如 mihomo）直接写 `127.0.0.1`。
+- **地址**：`http://`、`https://`、`socks5://` 或 `socks5h://` 开头，写明主机和端口，可以带用户名和密码（`http://用户名:密码@主机:端口`）。不填就没有代理。生产环境（`docker-compose.prod.yml`）的后端和宿主机共用网络，宿主机上的代理（比如 mihomo）直接写 `127.0.0.1`。本地用 `docker-compose.yml` 时后端在自己的容器网络里，容器里的 `127.0.0.1` 是容器自己，宿主机上的代理要写成 `host.docker.internal`（比如 `http://host.docker.internal:7890`）；Linux 上代理软件还要打开「允许局域网连接」。哪些服务该走代理，可以让 `eidolon doctor` 试出来（见[部署文档](deploy.md)的「排障」）。
 - **走代理的服务**：逗号分隔，`all` 表示全部。
 
 | 名字 | 服务 |

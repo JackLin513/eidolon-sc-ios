@@ -65,6 +65,10 @@
                                      stopped (deploy/db-restore.sh), if it is whole and has
                                      this project's tables, leaving it alone if not; and
                                      say how many users it has; --check only checks it
+    eidolon doctor [--json]          try each service .env configures, the way the server
+                                     reaches it, through the proxy and direct, and say
+                                     what is wrong and what to change; exits 1 if anything
+                                     is (docs/agents/deploying.md)
     eidolon reembed                  after changing the embedding service, model or
                                      dimensions, embed the story corpus, character facts,
                                      work facts, and memories again from
@@ -113,6 +117,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command in (None, "serve"):
         return _serve()
+    if args.command == "doctor":
+        from eidolon.doctor import run
+
+        return asyncio.run(run(args.json))
     if args.command == "story" and args.action == "sync":
         return asyncio.run(_sync_story(args))
     if args.command == "story":
@@ -1017,6 +1025,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     commands = parser.add_subparsers(dest="command", metavar="命令")
     commands.add_parser("serve", help="启动服务（默认）")
+    doctor = commands.add_parser(
+        "doctor",
+        help="按 .env 逐项试一次各项服务（经代理和直连），说明哪里不对、该怎么改"
+        "（后端不用停，也不必在运行）",
+    )
+    doctor.add_argument("--json", action="store_true", help="结果输出成 JSON，给 Agent 读")
 
     user = commands.add_parser("user", help="管理用户").add_subparsers(
         dest="action", required=True, metavar="操作"

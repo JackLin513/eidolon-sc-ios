@@ -1,6 +1,7 @@
 #!/bin/sh
 # 每周同步剧情库：更新 SCTranslationData，再在后端容器里运行 `eidolon story sync`。
-# 由主机上的 cron 运行，安装方法见 docs/deploy.md 的「每周自动同步」。需要 git 和 flock（util-linux）。
+# 由主机上的 cron 运行，安装方法见 docs/deploy.md 的「每周自动同步」。需要 git；有 flock（util-linux）时加锁，
+# 防止两次同步重叠，没有时（例如 Windows 的 Git Bash）不加锁照常同步。
 #
 # 输出追加到仓库根目录的 logs/story-sync.log（可用 EIDOLON_SYNC_LOG 改到别处）。
 # 默认用 docker-compose.prod.yml；设置了 COMPOSE_FILE 时用它指定的配置。
@@ -46,13 +47,13 @@ finish() {
 say "==== 开始同步剧情库（$root）"
 
 # 首次全量补齐要一到两个小时，手动运行时可能和 cron 撞上
-if ! command -v flock >/dev/null; then
-  say "找不到 flock（util-linux），无法防止两次同步重叠"
-  finish 4
-fi
-exec 9>"$root/logs/story-sync.lock"
-if ! flock -n 9; then
-  finish 5
+if command -v flock >/dev/null; then
+  exec 9>"$root/logs/story-sync.lock"
+  if ! flock -n 9; then
+    finish 5
+  fi
+else
+  say "找不到 flock（util-linux），不加锁：别同时运行两次"
 fi
 
 corpus=corpus/SCTranslationData

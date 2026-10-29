@@ -130,14 +130,18 @@ def connect(path: Path) -> sqlite3.Connection:
     return db
 
 
+def read_only(path: Path, timeout: float = 5.0) -> sqlite3.Connection:
+    """A read-only connection of its own to the database at `path`, outside the data
+    access layer so as to wait on no write task, making no database where there is none;
+    raises sqlite3.Error if it cannot be opened."""
+    return sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=timeout)
+
+
 def readable(path: Path) -> bool:
-    """Whether the database at `path` can be read now, on a read-only connection of its
-    own, outside the data access layer so as to wait on no write task, nor make a
-    database where there is none; for the health check."""
+    """Whether the database at `path` can be read now, on a `read_only` connection; for
+    the health check."""
     try:
-        db = sqlite3.connect(
-            f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=HEALTH_READ_TIMEOUT
-        )
+        db = read_only(path, HEALTH_READ_TIMEOUT)
         try:
             db.execute("SELECT 1 FROM sqlite_master LIMIT 1").fetchall()
         finally:
