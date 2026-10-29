@@ -135,6 +135,7 @@ struct Model3DPreview: View {
                 }
                 return
             }
+            ToonShading.apply(to: loaded)
             entity = loaded
             loadError = nil
             phase = .loaded

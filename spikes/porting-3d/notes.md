@@ -271,3 +271,16 @@ stream0 stride 40（pos12 + normal12 + tangent16）、stream1 stride 12（color4
 **构图**：`Model3DPreview` 把模型推到 z = -1.35。原先居中在原点，RealityKit 默认相机也在原点，等于贴在脸上，脚会被切掉。
 
 **注意**：`Model3DPreview` **没有** orbit 手势，这是 spec 里的决定（固定正面构图），不是 bug。
+
+### 2026-10-29 toon 着色
+
+`ToonShading.metal` 是一段两段式 ramp（>0.55 全亮、>0.15 半亮、否则 0.66 保底），`ToonShading.swift` 把载入模型的每个 `PhysicallyBasedMaterial` 换成 `CustomMaterial`，把它自己的 baseColor 贴图接到 `custom.texture`。
+
+**踩到的 API**
+
+- `CustomMaterial(surfaceShader:lightingModel:)` 本身是 **throwing**（它在编译 shader）。
+- `CustomMaterial.SurfaceShader(named:in:)` 的 `in` 是 **`MTLLibrary`**，不是 `Bundle`。用 `MTLCreateSystemDefaultDevice()!.makeDefaultLibrary()`。
+- `CustomMaterial.Texture(_:)` 也 throwing。
+- **surface shader 里拿到的 UV 没有翻 V**。内置材质内部会翻，自定义 shader 必须自己 `1.0 - uv.y`，否则整张图集错位（表现为衣服变成橙色、袖子变成格子）。
+
+效果：两套衣装都不再有压黑的暗部，头发和脸干净。
