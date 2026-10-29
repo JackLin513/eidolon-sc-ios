@@ -117,7 +117,7 @@ grep '结束：' logs/story-sync.log | tail
 
 同步出错时退出码以 1、2 为准（git 同时出错会写在日志里）。日志每周只增加几十行，不用轮转；太大时直接删掉即可。
 
-脚本默认用 `docker-compose.prod.yml`，设置了 `COMPOSE_FILE` 时用它指定的配置。想先小规模试一试，可以直接在容器里运行同步，例如只同步櫻木真乃的卡和相册：`docker compose -f docker-compose.prod.yml exec backend eidolon story sync --idol 1`。
+脚本默认用 `docker-compose.prod.yml`，设置了 `COMPOSE_FILE` 时用它指定的配置。设了 `EIDOLON_SYNC_DIRECT=1` 时不经过 docker，在 `backend/` 下用 uv 同步本地的库（本机不装 Docker 直接跑时用，见 `docs/agents/deploying.md`）。想先小规模试一试，可以直接在容器里运行同步，例如只同步櫻木真乃的卡和相册：`docker compose -f docker-compose.prod.yml exec backend eidolon story sync --idol 1`。
 
 ### 缓存与手动导入
 
@@ -271,7 +271,7 @@ docker compose -f docker-compose.prod.yml exec backend eidolon eval memory --jso
 3. `npm run stand:thumbnails`（在 `frontend/` 里）：用和通话层同一套播放代码，在无界面的 Chromium 里给每套衣装渲染一张缩略图，渲染前先让动画走约 1 秒，避开待机表情开头的眨眼。已经有缩略图的不再渲染，想全部重画时删掉整理目录里的 `thumbnails/`（或者直接运行 `npm run stand:thumbnails -- --force`）。
 4. `eidolon stand upload`：上传衣装清单列出的每套衣装的文件、缩略图，最后上传衣装清单。缩略图渲染失败的衣装照常上传、照常列在清单里，换衣装面板上暂时没有它的缩略图，下次同步补上。存储桶里已经有、内容相同的（按 ETag 比较 MD5）不重复上传，所以再次同步时只多列一次存储桶。
 
-脚本不经过 docker，直接在服务器或自己的电脑上运行都行（后端只需要知道 `EIDOLON_STAND_ASSETS_URL`）。这台机器上要有：
+脚本不经过 docker，直接在服务器或自己的电脑上运行都行（后端只需要知道 `EIDOLON_STAND_ASSETS_URL`）。设了 `EIDOLON_STAND_FETCH_ONLY=1` 时只做第一步拉取，只要 uv、不要存储桶，本机体验用本地的静态服务器提供拉到的立绘（见 `docs/agents/deploying.md`「立绘」）。这台机器上要有：
 
 - [uv](https://docs.astral.sh/uv/)（运行 `eidolon` 命令）和 Node.js 22.18 以上（渲染缩略图）。有 `flock`（util-linux，Linux 一般都自带）时脚本会加锁，防止两次同步重叠；没有时（例如 Windows 的 Git Bash）不加锁照常同步。在 Windows 上用 Git Bash 运行 `sh deploy/stand-sync.sh`。
 - Playwright 的 Chromium：在 `frontend/` 里 `npm ci`，再 `npx playwright install --with-deps chromium`（`--with-deps` 会用 apt 装上它要的系统库，需要 root；装过一次即可）。没有显卡也能渲染。
