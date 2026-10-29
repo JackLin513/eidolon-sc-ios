@@ -27,6 +27,10 @@ constant uint kParamSpecTexCenterY = 24;
 constant uint kParamSpecTexScaleX = 25;
 constant uint kParamSpecTexScaleY = 26;
 constant uint kParamSpecTexZoom = 27;
+constant uint kParamSpecTexFade = 28;
+constant uint kParamSpecTexVectorY = 30;
+constant uint kParamSpecTexMove = 50;
+constant uint kParamSpecTexMove2 = 51;
 constant uint kParamShaderKind = 31;
 constant uint kParamGlowColor = 32;
 constant uint kParamWhityCol = 35;
@@ -217,9 +221,34 @@ void toonSurface(realitykit::surface_parameters params)
         result *= colour * illum * diffuse * 4.0f;
     } else if (kind > kKindHair - 0.5f) {
         // --- Chr_Hair ---------------------------------------------------
-        // Without a second UV set the sheen cannot be placed, so only the
-        // corrected albedo survives.
-        result = correctedBase(colour, float3(mainTex.rgb));
+        // The sheen lives in `_SubTex` and is sampled with the **second** UV
+        // set, slid along the strands by the view angle: `_Up` defines "up", and
+        // `_SpecTex_Move * _SpecTex_Move2` scales how far it travels.
+        float3 base = float3(mainTex.rgb);
+        if (hasParams) {
+            float2 uv1 = params.geometry().uv1();
+            float3 upView = normalize(
+                (params.uniforms().model_to_view() * float4(0.0f, 1.0f, 0.0f, 0.0f)).xyz
+            );
+            float slide = dot(view, upView);
+            float2 sheenUV = float2(
+                uv1.x,
+                (param(lut, row, kParamSpecTexVectorY) * 0.1f)
+                    - slide * (param(lut, row, kParamSpecTexMove)
+                               * param(lut, row, kParamSpecTexMove2))
+                    + uv1.y
+            );
+            half3 sheen = params.textures().emissive_color()
+                .sample(kAtlas, float2(sheenUV.x, 1.0f - sheenUV.y)).rgb;
+            // `nz³` keeps the sheen off the back of the head; `_SpecTex_Fade`
+            // lifts the floor. The exporter premultiplied the mask into the
+            // colour, so no separate alpha term is needed.
+            float nz = normal.z;
+            float weight = clamp(min(nz * nz * nz + param(lut, row, kParamSpecTexFade), 1.0f),
+                                 0.0f, 1.0f);
+            base += weight * float3(sheen) * 2.0f * param(lut, row, kParamSubColor);
+        }
+        result = correctedBase(colour, base);
         float ramp = rampFactor(normal, light, shadingOffset, shadingBorder);
         result = 2.0f * mix(ambient, diffuse, ramp) * result;
         result = result * (2.0f * illum) + rim;

@@ -201,13 +201,14 @@ def build(
         # does not survive as alpha, so it is premultiplied into RGB; the gate
         # channel is untouched because that texture is opaque.
         #
-        # Only the hair has a second UV set, and the Blender USD export writes a
-        # single `primvars:st`, so a hair sheen could only be sampled with the
-        # wrong coordinates. Skipping it loses the shine band but beats spraying
-        # the strokes across the head.
-        if info.glow is not None and glow_uv == 0:
+        # `glow_uv` records which UV set the game samples `_SubTex` with. The
+        # vertex attribute is written either way — TEXCOORD_1 for the hair — and
+        # `pack_usd.py` lifts it into `primvars:st1` because Blender's USD export
+        # only writes the first set.
+        if info.glow is not None:
             entry["emissiveTexture"] = {
-                "index": add_image(info.glow, f"{key}_glow", premultiply=True)
+                "index": add_image(info.glow, f"{key}_glow", premultiply=True),
+                "texCoord": glow_uv,
             }
             entry["emissiveFactor"] = [1.0, 1.0, 1.0]
         materials.append(entry)

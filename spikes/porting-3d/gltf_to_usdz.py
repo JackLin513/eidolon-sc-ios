@@ -4,6 +4,7 @@ Blender is only a format converter here: it imports the glTF the exporter wrote
 and writes USD. It must not bind, retarget or pose anything.
 """
 
+import json
 import sys
 
 import bpy
@@ -57,6 +58,25 @@ def main() -> None:
         # exporter writes faceVarying normals and RealityKit flat-shades them.
         bpy.ops.mesh.customdata_custom_splitnormals_clear()
         obj.select_set(False)
+
+    # Blender's USD exporter writes only the first UV set. Save both, in loop
+    # order, so `pack_usd.py` can add `primvars:st1` for the hair sheen.
+    uv_path = destination.rsplit(".", 1)[0] + "-uv.json"
+    uvs = {}
+    for obj in bpy.context.scene.objects:
+        if obj.type != "MESH":
+            continue
+        layers = [layer.name for layer in obj.data.uv_layers][:2]
+        uvs[obj.name] = {
+            name: [
+                [round(layer.data[i].uv[0], 6), round(layer.data[i].uv[1], 6)]
+                for i in range(len(obj.data.loops))
+            ]
+            for name, layer in ((n, obj.data.uv_layers[n]) for n in layers)
+        }
+    with open(uv_path, "w") as handle:
+        json.dump({"meshes": uvs}, handle)
+    print(f"wrote {uv_path}")
 
     bpy.ops.wm.usd_export(
         filepath=destination.rsplit(".", 1)[0] + ".usdc",
