@@ -200,6 +200,16 @@ struct Model3DPreview: View {
         do {
             let loaded = try await Self.decode(url)
             guard !Task.isCancelled else { return }
+            ToonShading.apply(to: loaded)
+            for child in container.children {
+                child.removeFromParent()
+            }
+            container.addChild(loaded)
+            // Bounds of a skinned model are only meaningful once the skeleton is
+            // mounted and resolved; read while detached and the armature's rest
+            // pose decides, which sized the private outfit a quarter of the stage
+            // costume.
+            try? await Task.sleep(for: .milliseconds(120))
             guard normalize(loaded) else {
                 if entity == nil {
                     phase = .failed("USDZ 里没有可见几何")
@@ -208,11 +218,6 @@ struct Model3DPreview: View {
                 }
                 return
             }
-            ToonShading.apply(to: loaded)
-            for child in container.children {
-                child.removeFromParent()
-            }
-            container.addChild(loaded)
             resetInspection()
             entity = loaded
             applyInspection()
@@ -245,12 +250,21 @@ struct Model3DPreview: View {
               bounds.extents.y > 0.000_001,
               bounds.extents.z > 0.000_001
         else { return false }
-        let scale = 1.6 / bounds.extents.y
+        if ProcessInfo.processInfo.environment["EIDOLON_3D_LOG_MATERIALS"] != nil {
+            print("[frame] extents=\(bounds.extents) center=\(bounds.center)")
+        }
+        // World units of height the model should occupy. Measured against the
+        // default RealityView camera at z = -1: the frustum is about 3.1 units
+        // tall there, and 2.3 leaves room for the status bar and the outfit
+        // buttons without cropping her feet.
+        let targetHeight: Float = 2.3
+        let scale = targetHeight / bounds.extents.y
         baseScale = scale
         let center = bounds.center * scale
         // Push the model away from the camera: the default RealityView camera
-        // sits at the origin, so centring at zero crops her.
-        basePosition = [-center.x, -center.y + 0.18, -center.z - 1.0]
+        // sits at the origin, so centring at zero crops her. The upward nudge is
+        // a fraction of her height so the framing holds at any scale.
+        basePosition = [-center.x, -center.y + targetHeight * 0.11, -center.z - 1.0]
         entity.scale = SIMD3<Float>(repeating: scale)
         entity.position = basePosition
 

@@ -26,6 +26,7 @@ from unity_mesh import (
 CHANNEL_POSITION = 0
 CHANNEL_NORMAL = 1
 CHANNEL_TEXCOORD0 = 4
+CHANNEL_TEXCOORD1 = 5
 CHANNEL_WEIGHTS = 12
 CHANNEL_BONE_INDICES = 13
 
@@ -45,24 +46,38 @@ class Primitive:
     positions: list
     normals: list
     uvs: list
+    uvs1: list
     colors: list
     weights: list
     joints: list
     triangles: list
 
 
+def _texture_image(environment):
+    try:
+        return environment.m_Texture.read().image
+    except Exception:
+        return None
+
+
 def read_material(env, pointer) -> MaterialInfo:
+    """The two texture slots the game's character shaders actually use.
+
+    `_MainTex` is the albedo atlas. `_SubTex` is an additive glow layer, not an
+    alpha mask: ss003's is a black field with neon outlines, the hair's is a few
+    transparent strokes, the eyes' is the catch-light. It has to be added at
+    shading time, so it travels as its own texture.
+    """
     material = pointer.read()
     image = None
+    glow = None
     for entry in material.m_SavedProperties.m_TexEnvs or []:
         name, environment = entry[0], entry[1]
         if name == "_MainTex":
-            try:
-                image = environment.m_Texture.read().image
-            except Exception:
-                image = None
-            break
-    return MaterialInfo(name=material.m_Name, image=image)
+            image = _texture_image(environment)
+        elif name == "_SubTex":
+            glow = _texture_image(environment)
+    return MaterialInfo(name=material.m_Name, image=image, glow=glow)
 
 
 def read_main_texture(env, renderer):
@@ -81,6 +96,7 @@ def read_main_texture(env, renderer):
 class MaterialInfo:
     name: str | None
     image: object | None
+    glow: object | None = None
 
 
 @dataclass
@@ -147,6 +163,7 @@ def read_skinned_meshes(env) -> list[SkinnedMesh]:
         position_channel = channel(CHANNEL_POSITION, Channel(3, 0, 0, 0))
         normal_channel = channel(CHANNEL_NORMAL, Channel(3, 0, 12, 0))
         uv_channel = channel(CHANNEL_TEXCOORD0, Channel(2, 0, 0, 1))
+        uv1_channel = channel(CHANNEL_TEXCOORD1, Channel(0, 0, 0, 1))
         weight_channel = channel(CHANNEL_WEIGHTS, Channel(4, 0, 0, 2))
         bone_channel = channel(CHANNEL_BONE_INDICES, Channel(4, 11, 16, 2))
 
@@ -176,6 +193,16 @@ def read_skinned_meshes(env) -> list[SkinnedMesh]:
                 strides[uv_channel.stream],
                 count,
                 uv_channel,
+            ),
+            uvs1=(
+                decode_channel(
+                    stream(offsets[uv1_channel.stream]),
+                    strides[uv1_channel.stream],
+                    count,
+                    uv1_channel,
+                )
+                if uv1_channel.dimension
+                else []
             ),
             colors=[],
             weights=decode_channel(
