@@ -65,6 +65,9 @@ LAYOUT: list[tuple[str, str]] = [
     # The alpha-cut `02alp` ribbons are the only cutout materials; the flag
     # matters because the texture's alpha does not survive the USD trip.
     ("_IsCutOff", "-"),
+    # `_Up` is the object-space "up" the hair sheen slides along; the artist
+    # authored (-1, 0, 0), not +Y.
+    ("_Up", "r"), ("_Up", "g"), ("_Up", "b"),
 ]
 
 # Rows the atlas is sized for. The shader's V coordinate is
