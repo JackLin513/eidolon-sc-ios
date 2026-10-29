@@ -34,6 +34,7 @@ from eidolon.config import (
     ServiceName,
     Settings,
 )
+from eidolon.database import read_only
 from eidolon.proxy import ProxyRoutes, masked, open_client
 
 Problem = Literal["network", "region", "key", "balance", "model", "other"]
@@ -254,8 +255,11 @@ def story_episodes(database: Path) -> int | None:
     if not database.exists():
         return None
     try:
-        with sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True) as db:
+        db = read_only(database)
+        try:
             return db.execute("SELECT count(*) FROM episodes").fetchone()[0]
+        finally:
+            db.close()
     except sqlite3.OperationalError:  # no such table: the server never started on it
         return 0
 
