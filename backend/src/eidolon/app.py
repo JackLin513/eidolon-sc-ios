@@ -63,6 +63,7 @@ from eidolon.bar_api import add_bar_routes
 from eidolon.calendar_api import add_calendar_routes
 from eidolon.cycles_api import add_cycle_routes
 from eidolon.gifts_api import add_gift_routes
+from eidolon.invites_api import add_invite_routes
 from eidolon.photos_api import add_photo_routes
 from eidolon.schedule_api import add_schedule_routes
 from eidolon.sessions import DeviceTimezone, UserId, session_middleware
@@ -400,6 +401,7 @@ def create_app(backend: Backend) -> FastAPI:
     add_dashboard_routes(app, backend)
     add_admin_backup_routes(app, backend)
     add_admin_user_routes(app, backend)
+    add_invite_routes(app, backend)
     add_admin_config_routes(app, backend)
     add_admin_price_routes(app, backend)
     add_announcement_routes(app, backend)

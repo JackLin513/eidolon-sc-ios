@@ -56,7 +56,7 @@ import { BackIcon } from "@/theme/icons";
 const t = copy.admin.users;
 
 /**
- * 一位用户的详情：登录方式（含邮箱和填进管理者名单用的标识）、注册和最后活跃的时间、
+ * 一位用户的详情：登录方式（含邮箱和填进管理者名单用的标识）、注册和最后活跃的时间、经哪条邀请链接注册（是的话）、
  * 单独限额（设定、修改、取消）、封禁的时间和备注、近期用量，以及封禁 / 解除封禁
  * 和删除（二次确认，删完回到列表）。不含任何对话、记忆和制作人档案。
  * 资料是一张 Card 里的两列定义列表，单独限额的按钮在 CardFooter；近期用量一张表；删除单独一张 Card
@@ -199,6 +199,15 @@ export function AdminUserDetails({ id }: { id: string }) {
             <MetadataListItem label={t.details.createdAt}>
               <Timestamp value={user.created_at} />
             </MetadataListItem>
+            {user.invite && (
+              <MetadataListItem label={t.details.invite}>
+                {user.invite.note ? (
+                  <span>{user.invite.note}</span>
+                ) : (
+                  <span className="text-muted-foreground">{t.details.noNote}</span>
+                )}
+              </MetadataListItem>
+            )}
             <MetadataListItem label={t.details.lastActive}>
               {user.last_active_at ? (
                 <Timestamp value={user.last_active_at} />

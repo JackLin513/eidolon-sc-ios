@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 import httpx
 
 from eidolon.accounts import Accounts
+from eidolon.invites import Invites
 from eidolon.activity import ActivityLog, metered_retrieval
 from eidolon.admission import Admissions
 from eidolon.affinity import Affinities
@@ -139,6 +140,8 @@ class Backend:
     """What admins write for every user to see."""
     sponsor: Sponsor
     """The code users may scan to sponsor the deployment, where it is on."""
+    invites: Invites
+    """The invite links admins make, for those who may sign up only through one."""
     affinities: Affinities
     """Every user's affinity with every character, where it is on."""
     gifts: Gifts
@@ -286,6 +289,7 @@ def build(
     prices = Prices(database, clock, catalog)
     announcements = Announcements(database, clock)
     sponsor = Sponsor(database, clock)
+    invites = Invites(database, clock)
     backups = Backups(database, clock, transport=backup_transport)
     closers.append(backups.aclose)
     image_client = None
@@ -460,13 +464,17 @@ def build(
         speech=speech,
         own_keys=own_keys,
         admissions=admissions,
-        accounts=Accounts(store, clock, memories, calls, settings.secret_key),
+        accounts=Accounts(
+            store, clock, memories, calls, invites, lambda: config.registration,
+            settings.admins, settings.secret_key,
+        ),
         identity_providers=identity_providers,
         activity=activity,
         config=config,
         prices=prices,
         announcements=announcements,
         sponsor=sponsor,
+        invites=invites,
         affinities=affinities,
         gifts=gifts,
         happenings=happenings,

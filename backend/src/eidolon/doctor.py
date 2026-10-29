@@ -31,6 +31,7 @@ from websockets.exceptions import WebSocketException
 from eidolon.config import (
     PROXIED_SERVICES,
     ProxySettings,
+    Registration,
     ServiceName,
     Settings,
 )
@@ -361,6 +362,14 @@ class Report:
     image_configured: bool
     public: bool
     admins: bool
+    registration: Registration
+
+    @property
+    def invite_without_admins(self) -> bool:
+        """Only those invited may sign up, but there is no admin console to make an invite
+        link in: no one but the first user can. Only warned of, for the first user signs in
+        before their identity can be put on the admin list."""
+        return self.registration == "invite" and not self.admins
 
     @property
     def ok(self) -> bool:
@@ -371,6 +380,7 @@ class Report:
         found = asdict(self)
         found["services"] = found.pop("findings")
         del found["admins"]
+        found["invite_without_admins"] = self.invite_without_admins
         return {"ok": self.ok, "config_error": None, **found}
 
     def lines(self) -> list[str]:
@@ -414,6 +424,15 @@ class Report:
             said.append(f"立绘：没配 EIDOLON_STAND_ASSETS_URL，通话时只显示背景图（{GUIDE}「立绘」）")
         else:
             said.append(f"立绘：从 {self.stand_assets_url} 加载")
+        if self.invite_without_admins:
+            said += [
+                "! 注册：设了只让受邀的人注册（EIDOLON_REGISTRATION=invite），却没设管理者名单"
+                "（EIDOLON_ADMINS）",
+                "  → 没有后台就生成不了邀请链接，除了第一位用户谁都注册不了。"
+                f"先登录一次，再配好管理者名单（{GUIDE}「公网部署」）",
+            ]
+        elif self.registration == "invite":
+            said.append("注册：只让受邀的人注册，邀请链接在后台配置页「注册」里生成")
         said += [
             "",
             "全部正常" if self.ok else f"有问题，按上面的提示改；改完再运行一次。说明在 {GUIDE}「排障」",
@@ -437,6 +456,7 @@ async def examine(settings: Settings) -> Report:
         image_configured=settings.image is not None,
         public=settings.domain is not None,
         admins=bool(settings.admins),
+        registration=settings.registration,
     )
 
 

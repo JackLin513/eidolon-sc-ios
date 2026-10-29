@@ -34,7 +34,8 @@ export type ItemName =
   | "cycles"
   | "bar"
   | "proxy"
-  | "service_status";
+  | "service_status"
+  | "registration";
 
 /** A model's extra request body is a JSON object; every other value is plain. */
 type Value = string | number | boolean | null | JsonObject;
@@ -75,13 +76,24 @@ export function isAvailable(item: ConfigItem | UnavailableItem): item is ConfigI
 }
 
 /** The page's tabs, in order. */
-export const CONFIG_TABS = ["models", "voice", "image", "network", "status", "limits", "sponsor", "prices", "read_only"] as const;
+export const CONFIG_TABS = [
+  "models",
+  "voice",
+  "image",
+  "network",
+  "status",
+  "limits",
+  "registration",
+  "sponsor",
+  "prices",
+  "read_only",
+] as const;
 
 export type ConfigTab = (typeof CONFIG_TABS)[number];
 
 /** The items under each tab, in the order it shows them. Every item is under exactly one tab;
- * sponsoring, the prices and the read-only items are not items, so their tabs list none and the
- * page puts their cards in itself. */
+ * sponsoring, the invite links, the prices and the read-only items are not items, so their tabs
+ * list none, or only the item beside them, and the page puts their cards in itself. */
 export const TAB_ITEMS: Record<ConfigTab, ItemName[]> = {
   models: ["chat_llm", "memory_llm", "judge", "judge_thresholds", "rerank"],
   voice: ["tts", "stt"],
@@ -89,6 +101,7 @@ export const TAB_ITEMS: Record<ConfigTab, ItemName[]> = {
   network: ["proxy"],
   status: ["service_status"],
   limits: ["limits", "affinity", "reach_outs", "schedule", "cycles", "bar"],
+  registration: ["registration"],
   sponsor: [],
   prices: [],
   read_only: [],
@@ -193,6 +206,9 @@ export const CUSTOM_MODEL = "custom";
 export function modelChoice(options: readonly string[], model: string): string {
   return options.includes(model) ? model : CUSTOM_MODEL;
 }
+
+/** Who may sign up (GLOSSARY.md「注册方式」): anyone, or only those who bring an invite link. */
+export const REGISTRATIONS = ["open", "invite"] as const;
 
 /** How many of the latest minutes the service status may go by, as the backend takes them. */
 export const STATUS_WINDOWS = ["10", "30", "60"] as const;
@@ -378,6 +394,13 @@ export const ITEM_SPECS: Record<ItemName, ItemSpec> = {
       { name: "window_minutes", kind: "minutes", options: STATUS_WINDOWS },
       ...STATUS_SERVICES.map((name): FieldSpec => ({ name, kind: "switch" })),
     ],
+    tried: false,
+  },
+  // 注册方式（GLOSSARY.md「注册方式」）：谁都能注册，或者只让受邀的人注册。不试调。
+  registration: {
+    rows: ["mode"],
+    secrets: [],
+    form: [{ name: "mode", kind: "select", options: REGISTRATIONS }],
     tried: false,
   },
 };

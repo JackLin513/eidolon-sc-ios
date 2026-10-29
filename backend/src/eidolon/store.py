@@ -27,6 +27,10 @@ from eidolon.delivery_cues import without_cues
 from eidolon.producer import Birthday, ProducerProfile
 from eidolon.reply_format import Segment
 
+Admit = Callable[[sqlite3.Connection, str], None]
+"""Run in the write that makes a new user, given their id, to let them sign up: whatever it
+raises makes no one (`Store.create_user_signing_in_with`)."""
+
 Role = Literal["user", "character"]
 EventKind = Literal["hung_up", "gift", "ended", "unwell"]
 PhotoStatus = Literal["pending", "ready", "failed"]
@@ -593,12 +597,17 @@ class Store:
         """The id of the user this identity belongs to, if any."""
         return await self._db.read(_user_signing_in_with, provider, subject)
 
-    async def create_user_signing_in_with(self, name: str, method: SignInMethod) -> User:
-        """A new user, whose one sign-in method is `method`. Raises IdentityTaken, making
-        no one, if the identity already belongs to someone."""
+    async def create_user_signing_in_with(
+        self,
+        name: str,
+        method: SignInMethod,
+        admit: Admit | None = None,
+    ) -> User:
+        """A new user, whose one sign-in method is `method`, let sign up by `admit` if given.
+        Raises IdentityTaken, making no one, if the identity already belongs to someone."""
         user = User(uuid.uuid4().hex, name, _now())
         try:
-            await self._db.write(_insert_user_signing_in_with, user, method)
+            await self._db.write(_insert_user_signing_in_with, user, method, admit)
         except sqlite3.IntegrityError:
             raise IdentityTaken from None
         return user
@@ -988,10 +997,15 @@ def _user_signing_in_with(db: sqlite3.Connection, provider: str, subject: str) -
 
 
 def _insert_user_signing_in_with(
-    db: sqlite3.Connection, user: User, method: SignInMethod
+    db: sqlite3.Connection,
+    user: User,
+    method: SignInMethod,
+    admit: Admit | None,
 ) -> None:
     _insert_user(db, user)
     _insert_sign_in_method(db, user.id, method)
+    if admit is not None:
+        admit(db, user.id)
 
 
 def _insert_sign_in_method(db: sqlite3.Connection, user_id: str, method: SignInMethod) -> None:

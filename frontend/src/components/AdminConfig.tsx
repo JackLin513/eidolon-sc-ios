@@ -12,6 +12,7 @@ import { LLMProviderPicker, type ModelLister } from "@/components/app/LLMProvide
 import { ModelChoiceField } from "@/components/app/ModelChoiceField";
 import { EffortField, ExtraBodyField, useEffortHint } from "@/components/app/ReasoningEffortFields";
 import { OpenFormProvider, useOpenForm } from "@/components/admin/OpenForm";
+import { AdminInvites } from "@/components/admin/AdminInvites";
 import { AdminSponsor } from "@/components/admin/AdminSponsor";
 import { ResetCardGrants } from "@/components/admin/ResetCardGrants";
 import { useSubmitCheck } from "@/components/admin/useSubmitCheck";
@@ -76,7 +77,7 @@ import { FailureIcon } from "@/theme/icons";
 const t = copy.admin.config;
 
 /**
- * 后台的「配置」页：页首下面一排分类标签（模型 / 语音 / 生图 / 网络 / 服务状态 / 限额与玩法 / 赞赏 / 单价 / 只读），一次只看一类；
+ * 后台的「配置」页：页首下面一排分类标签（模型 / 语音 / 生图 / 网络 / 服务状态 / 限额与玩法 / 注册 / 赞赏 / 单价 / 只读），一次只看一类；
  * 内容列窄的时候标签换成下拉（`TabSelect`）。
  * 每一项一张卡，标题旁用 Badge 标出覆盖的状态，列出当前生效的值（有后台覆盖时对照 .env 的值），
  * 可以在卡里展开表单修改、恢复成 .env 的值（DESIGN.md「Layout · 后台 · 配置」）。
@@ -127,6 +128,7 @@ export function AdminConfig({ initialTab }: { initialTab: ConfigTab }) {
                     {item === "affinity" && <ResetCardGrants isOn={isOn(config.affinity)} />}
                   </ItemCard>
                 ))}
+                {name === "registration" && <AdminInvites />}
                 {name === "sponsor" && <AdminSponsor />}
                 {name === "prices" && <AdminPrices />}
                 {name === "read_only" && <ReadOnlyCard items={config.read_only} />}
@@ -140,7 +142,7 @@ export function AdminConfig({ initialTab }: { initialTab: ConfigTab }) {
 }
 
 /**
- * 内容列窄（< 32rem，手机上）时代替那排标签的下拉：一排放不下九个标签，滚动又会把琥珀色点藏到屏外。
+ * 内容列窄（< 32rem，手机上）时代替那排标签的下拉：一排放不下十个标签，滚动又会把琥珀色点藏到屏外。
  * 选项后面照样跟琥珀色点；收起时只要有一类有覆盖没生效，框里也跟一个点，提醒点开看。
  */
 function TabSelect({ tab, config, onChoose }: { tab: ConfigTab; config: Config; onChoose: (value: string) => void }) {
@@ -241,7 +243,7 @@ function Values({ name, rows: fieldRows }: { name: ItemName; rows: FieldRow[] })
 
 /**
  * 一个值在表里的样子：key 只有末 4 位，max_tokens 没设时是接口类型的默认值，思考强度是「中文名（原值）」或「不设置」，
- * 额外请求参数是一行 JSON，服务、地域和语音合成的模型用界面上的叫法，限额的 0 是不限，开关是打开或关闭。
+ * 额外请求参数是一行 JSON，服务、地域、语音合成的模型和注册方式用界面上的叫法，限额的 0 是不限，开关是打开或关闭。
  */
 function shown(name: ItemName, field: string, value: FieldRow["env"]): string {
   if (ITEM_SPECS[name].form.some((spec) => spec.name === field && spec.kind === "effort")) {
@@ -256,6 +258,7 @@ function shown(name: ItemName, field: string, value: FieldRow["env"]): string {
   if (field === "region") return t.regions[String(value)] ?? String(value);
   if (field === "api_format") return t.imageFormats[String(value)] ?? String(value);
   if (name === "tts" && field === "model") return optionLabel(name, field, String(value));
+  if (name === "registration") return optionLabel(name, field, String(value));
   if (name === "limits" && value === 0) return t.unlimited;
   if (field === "window_minutes") return t.minutes(String(value));
   return String(value);
@@ -286,6 +289,7 @@ function fieldHint(name: ItemName, spec: FieldSpec, keysEditable: boolean, item?
 }
 
 function optionLabel(name: ItemName, field: string, option: string): string {
+  if (name === "registration") return t.registrations[option] ?? option;
   if (field === "protocol") return t.protocols[option as LLMProtocol] ?? option;
   if (field === "api_format") return t.imageFormats[option] ?? option;
   if (field === "region") return t.regions[option] ?? option;

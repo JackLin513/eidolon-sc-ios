@@ -2,8 +2,9 @@
 banning or unbanning them (ADR-0013).
 
 What an admin sees of a user is who they are and how they use the deployment: their
-sign-in methods (email included), when they joined and were last active, whether they
-are banned and why, and whether they are an admin. Never what they said, what was
+sign-in methods (email included), when they joined and were last active, through which
+invite link they signed up, if one, whether they are banned and why, and whether they are an
+admin. Never what they said, what was
 remembered of them or their producer profile, nor whether they brought their own keys,
 which their browsers keep (ADR-0017): only how much of their use was on them.
 
@@ -144,9 +145,11 @@ def add_admin_user_routes(app: FastAPI, backend: Backend) -> None:
         [shown] = await described([user])
         now = clock()
         records = await activity.of_user(user_id, now - max(USAGE_RANGES.values()))
+        invite = await backend.invites.of_user(user_id)
         return shown | {
             "banned_at": user.banned_at,
             "ban_note": user.ban_note,
+            "invite": None if invite is None else {"id": invite.id, "note": invite.note},
             "usage": {
                 name: recent_usage(records, now - span) for name, span in USAGE_RANGES.items()
             },

@@ -34,6 +34,7 @@ from eidolon.live_config import (
     PROXY,
     REACH_OUTS,
     READ_ONLY,
+    REGISTRATION,
     RERANK,
     SCHEDULE,
     SERVICE_STATUS,
@@ -235,6 +236,12 @@ class ServiceStatusInput(BaseModel):
     image: StrictBool
 
 
+class RegistrationInput(BaseModel):
+    """Who may sign up, `open` or `invite`; checked by the live configuration."""
+
+    mode: Any
+
+
 INPUTS: dict[str, type[BaseModel]] = {
     CHAT_LLM: ChatLLMInput,
     MEMORY_LLM: LLMInput,
@@ -252,6 +259,7 @@ INPUTS: dict[str, type[BaseModel]] = {
     BAR: BarInput,
     PROXY: ProxyInput,
     SERVICE_STATUS: ServiceStatusInput,
+    REGISTRATION: RegistrationInput,
 }
 
 

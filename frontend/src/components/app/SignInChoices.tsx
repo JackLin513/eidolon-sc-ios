@@ -12,9 +12,18 @@ const t = copy.login;
 
 /**
  * 登录组件：后端提供的登录方式（第一种是主按钮）、登录即同意的说明，部署者一种都没配时的提示。
- * 登录页和落地页的登录面板共用它；`options` 还没取到时只有同意说明。
+ * 登录页和落地页的登录面板共用它；`options` 还没取到时只有同意说明。从邀请链接打开的登录页传来 `invite`，
+ * 随登录带给后端（GLOSSARY.md「邀请链接」），页面上不另加说明。
  */
-export function SignInChoices({ options, className }: { options: SignInOptions | null; className?: string }) {
+export function SignInChoices({
+  options,
+  invite,
+  className,
+}: {
+  options: SignInOptions | null;
+  invite?: string | null;
+  className?: string;
+}) {
   return (
     <section aria-label={t.signInRegion} className={cn("flex flex-col gap-3", className)}>
       {options?.providers.map((provider, i) => (
@@ -24,7 +33,7 @@ export function SignInChoices({ options, className }: { options: SignInOptions |
           variant={i === 0 ? "default" : "outline"}
           size="lg"
           nativeButton={false}
-          render={<a href={signInUrl(provider)} />}
+          render={<a href={signInUrl(provider, invite)} />}
           className="w-full"
         >
           {t.signInWith(PROVIDER_LABELS[provider])}

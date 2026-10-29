@@ -15,6 +15,7 @@ import { copy } from "@/i18n";
 import {
   devLogin,
   getSignInOptions,
+  isSignedInHere,
   listCharacters,
   type Character,
   type SignInOptions,
@@ -25,16 +26,25 @@ import { FailureIcon } from "@/theme/icons";
 
 const t = copy.login;
 
-/** 登录页：登录被拒时后端带着 `?error=` 回到这里，开发登录也在这里，也可以直接访问。访客平常在落地页的登录面板登录。 */
+/**
+ * 登录页：登录被拒时后端带着 `?error=` 回到这里，开发登录也在这里，也可以直接访问。访客平常在落地页的登录面板登录。
+ * 邀请链接也指向这里（`?invite=`），链接里的码随登录带给后端；已经登录的人打开它直接进对话列表。
+ */
 export default function LoginPage() {
   const [options, setOptions] = useState<SignInOptions | null>(null);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [invite, setInvite] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [failure, setFailure] = useState<Failure | null>(null);
 
   useEffect(() => {
-    setRefusal(new URLSearchParams(window.location.search).get("error"));
+    const query = new URLSearchParams(window.location.search);
+    setRefusal(query.get("error"));
+    const code = query.get("invite");
+    setInvite(code);
+    // 已经登录的人打开邀请链接，用不上它，照常进对话列表。
+    if (code) isSignedInHere().then((yes) => yes && window.location.replace("/conversations"), () => {});
     getSignInOptions().then(setOptions, (e) => setFailure(toFailure(e)));
     // 角色名单随 characters.toml 变化，从后端取；取不到只是少了展示，不算失败。
     listCharacters().then(setCharacters, () => {});
@@ -70,7 +80,7 @@ export default function LoginPage() {
           </Alert>
         )}
 
-        <SignInChoices options={options} className="max-w-90" />
+        <SignInChoices options={options} invite={invite} className="max-w-90" />
 
         {options?.dev_login && (
           <form onSubmit={submit} className="flex max-w-90 flex-col gap-3">
