@@ -23,9 +23,17 @@ enum ToonShading {
     static func apply(to entity: Entity, parameters: MaterialParameters?) {
         let environment = ProcessInfo.processInfo.environment
         let logNames = environment["EIDOLON_3D_LOG_MATERIALS"] != nil
+        // Unlit by default: the surface shader already produces the final
+        // colour, and a lit model would run RealityKit's own PBR on top of it.
+        // `EIDOLON_3D_LIT` is kept as the A/B escape hatch.
         let lightingModel: CustomMaterial.LightingModel =
-            environment["EIDOLON_3D_UNLIT"] != nil ? .unlit : .lit
+            environment["EIDOLON_3D_LIT"] != nil ? .lit : .unlit
         guard let surface = shader(named: "toonSurface") else { return }
+        // Thickness is a model-space distance, and the USD models arrive at all
+        // kinds of authored scales, so derive it from the mesh rather than
+        // hard-coding a number that only suited one asset.
+        let height = entity.visualBounds(relativeTo: nil).extents.y
+        let thickness = max(height * 0.003, 0.000_001)
         if var model = entity.components[ModelComponent.self] {
             model.materials = model.materials.map { material in
                 guard let physical = material as? PhysicallyBasedMaterial,
@@ -80,5 +88,43 @@ enum ToonShading {
         for child in entity.children {
             apply(to: child, parameters: parameters)
         }
+    }
+
+    /// A black inverted hull behind the model, matching the game's outline pass.
+    ///
+    /// `lightingModel: .unlit` is what makes this cheap: RealityKit binds no
+    /// textures for an unlit custom material, so it renders a flat silhouette —
+    /// exactly the fill an outline wants. Front faces are culled so only the
+    /// pushed-out back shell is drawn.
+    static func applyOutline(to entity: Entity) {
+        guard let surface = shader(named: "outlineSurface"),
+              let vertex = geometryModifier(named: "outlineVertex")
+        else { return }
+        // Thickness is a model-space distance, and the USD models arrive at all
+        // kinds of authored scales, so derive it from the mesh rather than
+        // hard-coding a number that only suited one asset.
+        let height = entity.visualBounds(relativeTo: nil).extents.y
+        let thickness = max(height * 0.003, 0.000_001)
+        if var model = entity.components[ModelComponent.self] {
+            model.materials = model.materials.map { material in
+                guard var outline = try? CustomMaterial(
+                    surfaceShader: surface,
+                    geometryModifier: vertex,
+                    lightingModel: .unlit
+                ) else { return material }
+                outline.faceCulling = .front
+                outline.custom.value = SIMD4(thickness, 0, 0, 0)
+                return outline
+            }
+            entity.components[ModelComponent.self] = model
+        }
+        for child in entity.children {
+            applyOutline(to: child)
+        }
+    }
+
+    private static func geometryModifier(named name: String) -> CustomMaterial.GeometryModifier? {
+        guard let library else { return nil }
+        return CustomMaterial.GeometryModifier(named: name, in: library)
     }
 }
