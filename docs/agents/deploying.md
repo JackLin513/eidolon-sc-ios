@@ -4,7 +4,7 @@
 
 几条贯穿始终的做法：
 
-- **key 由用户自己填进 `.env`**。你告诉用户打开哪个文件、填在哪一行（比如 `CHAT_LLM_API_KEY=` 后面），填完说一声；要确认填得对，就跑 doctor。让用户别把 key 贴进对话：对话记录会留在 Agent 的服务商那里。
+- **key 由用户自己填进 `.env`**，去哪申请、怎么填、你怎么确认，见「申请和填写 key」。让用户别把 key 贴进对话：对话记录会留在 Agent 的服务商那里。
 - **命令按用户的系统给**。Windows 用 PowerShell，`.sh` 脚本用 Git Bash 跑（装 Git 时自带）；macOS 和 Linux 用终端。PowerShell 里给一条命令设环境变量要写成 `$env:名字="值"; 命令`，不能写 `名字=值 命令`。
 - **变量的含义以 `.env.example` 为准**，每一项的注释都写在那里。这份指南只讲流程、选哪家服务、哪里容易踩坑。功能的细节见 `docs/configuration.md`，服务器部署的细节见 `docs/deploy.md`。
 - **出错先跑 doctor**（见「排障」），照它的提示改；doctor 说不清时，再看后端的输出。
@@ -55,7 +55,7 @@ cd eidolon-sc
 cp .env.example .env        # PowerShell：Copy-Item .env.example .env
 ```
 
-让用户在 `.env` 里填好对话模型的三项：`CHAT_LLM_BASE_URL`、`CHAT_LLM_API_KEY`、`CHAT_LLM_MODEL`（怎么选见「服务一览」）。另外加一行 `EIDOLON_DEV_LOGIN=1`，本机体验不用配 GitHub 或 Google 登录。
+让用户在 `.env` 里填好对话模型的三项：`CHAT_LLM_BASE_URL`、`CHAT_LLM_API_KEY`、`CHAT_LLM_MODEL`（选哪家见「服务一览」，怎么申请和填见「申请和填写 key」）。另外加一行 `EIDOLON_DEV_LOGIN=1`，本机体验不用配 GitHub 或 Google 登录。
 
 **在中国大陆**：第一次下载依赖、构建前端时要连 GitHub、PyPI、npm 和 Google Fonts（前端构建时要从 Google Fonts 下载字体，连不上就构建失败）。用户有代理软件时，在接下来运行命令的那个终端里先设上代理（`HTTPS_PROXY` 的写法见「网络和代理」），依赖装好、前端构建完之后就不需要了。Docker 跑的，还要在 Docker Desktop 的 Settings → Resources → Proxies 里填代理（Linux 上配 docker 守护进程的代理），构建时拉镜像、装依赖、下载字体都走它。
 
@@ -128,7 +128,87 @@ docker compose up -d --build
 - 对话模型必须支持工具调用，否则后端拒绝启动，doctor 会报「模型不对」。模型名以服务商文档为准，填进去以后由 doctor 实测。
 - 后台模型（`BACKGROUND_LLM_*`，用来提炼记忆和起标题）不填就沿用对话模型。想省钱可以只填 `BACKGROUND_LLM_MODEL`，在同一家换一个便宜的模型。
 - Fish Audio 的默认模型 `s2.1-pro-free` 不消耗 API 额度，但它的免费期限以 Fish Audio 的公告为准。到期后改用付费模型，要充值。
+- 每一家怎么申请、填哪几行，见下一节「申请和填写 key」。
 - 「中国大陆」这一列只是起点。哪一项到底要不要代理，以 doctor 在用户机器上的实测为准。
+
+## 申请和填写 key
+
+### 怎么填
+
+每个服务都按同一个顺序来：
+
+1. 你把下面这家的申请步骤转述给用户，用户在浏览器里注册、生成 key。很多控制台的 key **只在生成时完整显示一次**，提醒用户当场复制。
+2. 让用户用编辑器打开仓库根目录的 `.env`：Windows 是 `notepad .env`，macOS 是 `open -e .env`，Linux 和服务器上是 `nano .env`。你把要填的那几行（下面每家的代码块）告诉用户，让用户找到 `.env` 里同名的那一行，把值写在 `=` 后面。不加引号，也不留空格。接口地址、模型名这类不是密钥的项，可以由你直接写进 `.env`。
+3. 用户保存并说「填好了」以后，你确认这一行有值，但不把值打出来（PowerShell：`(Select-String -Path .env -Pattern '^CHAT_LLM_API_KEY=.').Count`；macOS/Linux：`grep -c '^CHAT_LLM_API_KEY=.' .env`；是 1 就是填上了）。然后重启后端、跑 doctor。
+
+doctor 对这一项显示 ✓，这家才算配好。
+
+### 每一家
+
+**DeepSeek（对话模型，国内能直连）**：在 platform.deepseek.com 注册，到 platform.deepseek.com/api_keys 点「创建 API key」。要先充值，余额是 0 时 key 能通过认证，但一回复就会失败（doctor 报「余额不足」）。
+
+```sh
+CHAT_LLM_BASE_URL=https://api.deepseek.com/v1
+CHAT_LLM_API_KEY=用户的 key
+CHAT_LLM_MODEL=deepseek-flash
+```
+
+模型名以 DeepSeek 文档（api-docs.deepseek.com）当时的说法为准，填进去以后 doctor 会实测。想让通话里开口快些，可以按 `.env.example` 的说明设 `CHAT_LLM_CALL_REASONING_EFFORT`。
+
+**其他对话模型**：`CHAT_LLM_PROTOCOL` 要和服务对上：OpenAI 兼容的填 `chat-completions`（也可以不填），Anthropic 的填 `anthropic`，OpenAI Responses 的填 `responses`。`CHAT_LLM_BASE_URL` 填到 `/v1` 这一级，比如硅基流动是 `https://api.siliconflow.cn/v1`，阿里云百炼北京地域是 `https://dashscope.aliyuncs.com/compatible-mode/v1`。
+
+**硅基流动（向量化和重排，国内能直连）**：在 cloud.siliconflow.cn 注册，左侧「API 密钥」→「新建 API 密钥」。有些模型要实名认证才能用，赠送额度以官网为准。
+
+```sh
+SILICONFLOW_API_KEY=用户的 key
+```
+
+**Fish Audio（语音合成）**：在 fish.audio 注册并验证邮箱，到 fish.audio/app/api-keys 点「Create New Key」。默认模型 `s2.1-pro-free` 不扣额度，不用充值。国内通常要代理（见「网络和代理」）。
+
+```sh
+FISH_AUDIO_API_KEY=用户的 key
+```
+
+**阿里云百炼（语音识别，国内能直连）**：用阿里云账号登录 bailian.console.aliyun.com，**账号要先完成实名认证**。第一次进入时按提示开通服务，然后把右上角的地域切到「华北2（北京）」（免费额度只在北京地域），打开「API-Key」页面创建 key，业务空间选默认的就行。还要在模型广场里开通语音识别模型 `qwen-audio-3.1-asr-flash-streaming`：没开通时 doctor 和后端都会说明。
+
+```sh
+STT_PROVIDER=bailian
+DASHSCOPE_API_KEY=用户的 key
+```
+
+**Soniox（语音识别，另一个选择）**：在 console.soniox.com 注册，进入项目（默认叫 My First Project）→「API Keys」→「Create API key」。
+
+```sh
+SONIOX_API_KEY=用户的 key
+```
+
+**判断模型（三选一）**：
+
+- 阿里云百炼的决策模型（国内推荐）：要业务空间的 key 和业务空间 ID。key 要在那个业务空间下创建，ID 在控制台「业务空间管理」里看，形如 `llm-xxxx`。这个 key 和上面语音识别的 key 分开填。
+
+  ```sh
+  JUDGE_PROVIDER=bailian
+  BAILIAN_JUDGE_API_KEY=用户的 key
+  BAILIAN_JUDGE_WORKSPACE_ID=llm-xxxx
+  ```
+
+- Cloudflare Workers AI（每天有免费额度）：在 dash.cloudflare.com 打开 Workers AI，选「Use REST API」，创建 token（要 Workers AI 的 Read 和 Edit 权限），再复制 Account ID。
+
+  ```sh
+  JUDGE_PROVIDER=cloudflare
+  CLOUDFLARE_API_TOKEN=用户的 token
+  CLOUDFLARE_ACCOUNT_ID=用户的 account id
+  ```
+
+- Jev（经 OpenRouter，要先在 OpenRouter 充值，国内要代理）：在 openrouter.ai 注册，到 Settings → Keys 创建 key。
+
+  ```sh
+  JEV_API_KEY=用户的 key
+  ```
+
+**Gemini（向量化的另一个选择，不对中国大陆、香港、澳门开放）**：在 aistudio.google.com/apikey 创建 key，填 `EMBEDDING_PROVIDER=gemini` 和 `GEMINI_API_KEY`，重排照样要硅基流动。公开部署要开通计费，见 `.env.example`。
+
+**生图（NovelAI）、登录（GitHub、Google 的 OAuth 应用）、存储桶**：步骤分别在 `.env.example`「生图」、`docs/deploy.md`「配置 OAuth 应用」和「立绘素材」里，照着带用户做。
 
 ## 网络和代理
 
