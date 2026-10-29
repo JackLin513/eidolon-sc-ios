@@ -228,3 +228,26 @@ stream0 stride 40（pos12 + normal12 + tangent16）、stream1 stride 12（color4
 **glTF 的坑**：每个 primitive 必须有自己的属性 accessor。共享 accessor 时 Blender 的导入器会去重，然后给第二个 primitive 产出越界索引。另外 `buffers[0].uri` 要跟着 `--name` 走，不能写死。
 
 **未完成**：装进 iPhone 18 Pro 模拟器后启动，截图全黑，没有崩溃日志。iPhone Air 模拟器本身坏了（`simctl install` 挂住、`bootstatus` 报 `Data Migration Failed`）。下一步要先查这个黑屏，不要当成模型问题。
+
+### 2026-10-29 曲线压缩（#74）
+
+三种 key_type 实测：
+
+| key_type | 曲线数 | 值个数 | 结论 |
+|---|---|---|---|
+| `Const` | 74 | 1 | 整段一个值，可折叠成常量表 |
+| `FullFrame` | 52 | 7801 | **60 fps 每帧一个**（130.0 s × 60 + 1），已确认 |
+| `Discreate` | 52 | 22 / 54 / 4662…4890 不等 | 长度不规整，**采样语义未确认** |
+
+压缩实测（`motion.py`，33 个单测通过）：
+
+- 折叠 74 条 `Const` + `FullFrame` 降到 30 fps + int16 量化
+- 0.01° 精度 → **2.45 MB**；0.1° 精度 → **1.99 MB**（原始 13.32 MB）
+
+**未确认的三件事**（原计划用 rea 反编译确认，但这台机器上 rea 6.8.0 **没有 ida provider**——`rea providers` 只列出 ghidra / hopper / native-macos / rea-artifact-graph / rea-dotnet-static / sqlite）：
+
+1. `Discreate` 的采样语义与时间轴（决定还能压多少）
+2. 欧拉顺序与符号
+3. `MODEL_00/BODY_SCALE` 在角色实际层级里是否存在
+
+要补 IDA：`idalib-mcp` 在 `~/.local/bin/idalib-mcp`，配置在 `~/.dsh/plugins/rea-bundle/ida-mcp.json`，但 rea 6.8.0 不认这份配置。
