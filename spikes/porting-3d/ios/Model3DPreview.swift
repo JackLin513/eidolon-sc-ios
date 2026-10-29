@@ -18,7 +18,8 @@ struct Model3DPreview: View {
         case failed(String)
     }
 
-    @State private var outfit = Model3DOutfit.privateClothes
+    @State private var outfit = Model3DOutfit.initial
+    @State private var character = Model3DOutfit.initial.character
     /// Added to the scene once. Models are swapped inside it, because
     /// `RealityView`'s make closure does not run again when state changes.
     @State private var container = Entity()
@@ -51,8 +52,11 @@ struct Model3DPreview: View {
 
     init() {
         if let raw = ProcessInfo.processInfo.environment["EIDOLON_3D_OUTFIT"],
-           let selected = Model3DOutfit(rawValue: raw) {
+           let selected = Model3DOutfit.all.first(where: {
+               $0.id == raw || $0.title == raw
+           }) {
             _outfit = State(initialValue: selected)
+            _character = State(initialValue: selected.character)
         }
     }
 
@@ -129,10 +133,14 @@ struct Model3DPreview: View {
               let seconds = Double(raw)
         else { return }
         try? await Task.sleep(for: .seconds(seconds))
-        outfit = outfit == .privateClothes ? .stageCostume : .privateClothes
+        guard let current = Model3DOutfit.all.firstIndex(of: outfit),
+              Model3DOutfit.all.count > 1
+        else { return }
+        outfit = Model3DOutfit.all[(current + 1) % Model3DOutfit.all.count]
     }
 
     private var controls: some View {
+        VStack(spacing: 8) {
         HStack(spacing: 10) {
             Button {
                 zoom = min(zoom * 1.25, 3)
@@ -165,19 +173,52 @@ struct Model3DPreview: View {
             .buttonStyle(.bordered)
             .tint(.white)
 
-            ForEach(Model3DOutfit.allCases) { candidate in
-                Button {
-                    outfit = candidate
-                } label: {
-                    Text(candidate.title)
-                        .padding(.horizontal, 6)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(candidate == outfit ? .pink : .gray)
-                .contentShape(Rectangle())
-            }
+        }
+        characterRow
+        outfitRow
         }
         .padding()
+    }
+
+    /// One button per idol found on disk. Each character's outfits sit in the
+    /// row below, so a corpus of a dozen characters stays readable.
+    private var characterRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Model3DOutfit.characters(Model3DOutfit.all), id: \.self) { name in
+                    Button {
+                        character = name
+                        if let first = Model3DOutfit.outfits(
+                            of: name, in: Model3DOutfit.all
+                        ).first {
+                            outfit = first
+                        }
+                    } label: {
+                        Text(name).padding(.horizontal, 6)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(character == name ? .pink : .white)
+                    .contentShape(Rectangle())
+                }
+            }
+        }
+    }
+
+    private var outfitRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Model3DOutfit.outfits(of: character, in: Model3DOutfit.all)) { candidate in
+                    Button {
+                        outfit = candidate
+                    } label: {
+                        Text(candidate.title).padding(.horizontal, 6)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(candidate == outfit ? .pink : .gray)
+                    .contentShape(Rectangle())
+                }
+            }
+        }
     }
 
     private var orbitGesture: some Gesture {
@@ -424,7 +465,9 @@ struct Model3DPreview: View {
         // sits at the origin. Its look-at is above the content origin, though, so
         // centring her on the origin renders her low in the frame; half a model
         // height brings her back to the middle. Drag in move mode to shift her.
-        basePosition = [-center.x, -center.y + extent * 0.5, -center.z - 1.0]
+        // The control bar now carries a character row and an outfit row, so lift
+        // her clear of it as well as centring her on the look-at.
+        basePosition = [-center.x, -center.y + extent * 0.62, -center.z - 1.0]
         fittedPosition = basePosition
         appliedScale = scale
         baseScale = scale
