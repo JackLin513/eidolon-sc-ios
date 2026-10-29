@@ -171,11 +171,27 @@ void outlineSurface(realitykit::surface_parameters params)
 [[visible]]
 void outlineVertex(realitykit::geometry_parameters params)
 {
+    // The game pushes the hull out in CLIP space (`out.xy += nP * 0.7 * k *
+    // _Outline`) with a depth-dependent k, which makes the line a constant number
+    // of pixels at any distance. A model-space constant instead gets fatter the
+    // closer the camera is, which is what a naive port looks like.
+    float4x4 modelToView = params.uniforms().model_to_view();
+    float4x4 viewToProjection = params.uniforms().view_to_projection();
+    float4 view = modelToView * float4(params.geometry().model_position(), 1.0f);
+    // NDC y = 1 sits `depth * tanHalfFov` from the axis, so a fraction of NDC is
+    // a world length that grows with distance — exactly the game's k.
+    float depth = max(-view.z, 0.001f);
+    float tanHalfFov = 1.0f / max(viewToProjection[1][1], 0.0001f);
+    float modelScale = max(length(float3(modelToView[0].xyz)), 0.000001f);
+
+    // `_Outline * 0.7 * k` works out to this half-width; the number is measured
+    // against the game's own outline, not derived, because Unity's
+    // `_ProjectionParams` and `_ScreenParams` terms are not all recoverable.
+    const float outlineHalfWidth = 0.0014f;
+
     float3 normal = normalize(params.geometry().normal());
-    // Model space, and the host passes the model-relative thickness in custom.x,
-    // so this follows the asset rather than a guessed constant.
-    float thickness = params.uniforms().custom_parameter().x;
-    params.geometry().set_model_position_offset(normal * thickness);
+    float lengthInModel = outlineHalfWidth * depth * tanHalfFov / modelScale;
+    params.geometry().set_model_position_offset(normal * lengthInModel);
 }
 
 [[visible]]

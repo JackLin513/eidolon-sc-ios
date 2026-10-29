@@ -29,11 +29,6 @@ enum ToonShading {
         let lightingModel: CustomMaterial.LightingModel =
             environment["EIDOLON_3D_LIT"] != nil ? .lit : .unlit
         guard let surface = shader(named: "toonSurface") else { return }
-        // Thickness is a model-space distance, and the USD models arrive at all
-        // kinds of authored scales, so derive it from the mesh rather than
-        // hard-coding a number that only suited one asset.
-        let height = entity.visualBounds(relativeTo: nil).extents.y
-        let thickness = max(height * 0.003, 0.000_001)
         if var model = entity.components[ModelComponent.self] {
             model.materials = model.materials.map { material in
                 guard let physical = material as? PhysicallyBasedMaterial,
@@ -100,11 +95,6 @@ enum ToonShading {
         guard let surface = shader(named: "outlineSurface"),
               let vertex = geometryModifier(named: "outlineVertex")
         else { return }
-        // Thickness is a model-space distance, and the USD models arrive at all
-        // kinds of authored scales, so derive it from the mesh rather than
-        // hard-coding a number that only suited one asset.
-        let height = entity.visualBounds(relativeTo: nil).extents.y
-        let thickness = max(height * 0.003, 0.000_001)
         if var model = entity.components[ModelComponent.self] {
             model.materials = model.materials.map { material in
                 guard var outline = try? CustomMaterial(
@@ -113,7 +103,6 @@ enum ToonShading {
                     lightingModel: .unlit
                 ) else { return material }
                 outline.faceCulling = .front
-                outline.custom.value = SIMD4(thickness, 0, 0, 0)
                 return outline
             }
             entity.components[ModelComponent.self] = model
