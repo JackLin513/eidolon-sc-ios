@@ -296,3 +296,22 @@ stream0 stride 40（pos12 + normal12 + tangent16）、stream1 stride 12（color4
 **ramp 过硬**：三段式（0.55/0.15）在低模脸上切出硬边，看着像疤。改成 `mix(0.80, 1.0, smoothstep(0.15, 0.55, lambert))`。
 
 **调试开关**：`EIDOLON_3D_SWAP_SECONDS=6` 启动后自动换一次装，用来验证换装路径（模拟器没有点击自动化）。
+
+### 2026-10-29 UV 通道 bug（真正的原因）
+
+**症状**：ss003 演出服胸口一大块红色墨水、身上到处色块；pr001 看着正常。
+
+**根因**：`TEXCOORD0` 的 offset 被写死成 4。两条流的布局其实不同：
+
+| 包 | stream1 通道 | UV offset |
+|---|---|---|
+| `cb_pr001_014mir` | color(UNorm8x4) @0 + UV @4 | **4** |
+| `cb_ss003_014mir` | 只有 UV @0 | **0** |
+
+写死 4 之后，ss003 的所有 UV 都从错误位置读，采样到图集的随机区域——所以是"墨水""色块"，而不是整体错位。
+
+**修法**：`unity_rig` 改成从 `m_VertexData.m_Channels` 按通道号查 offset/stride，不再硬编码。通道号：0 位置、1 法线、4 UV0、12 权重、13 骨索引。
+
+修完两套衣装在模拟器里都正确（`fix-pr001.png` / `fix-ss003.png`）。
+
+**顺带发现**：MLTD 的材质多数有两个贴图——`_MainTex`（反照率）和 `_SubTex`（发光/配色遮罩）。我们只用了 `_MainTex`，暂时够用，但发光部件会缺。

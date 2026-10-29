@@ -19,12 +19,15 @@ from unity_mesh import (
     stream_strides,
 )
 
-POSITION = Channel(dimension=3, format=0, offset=0, stream=0)
-NORMAL = Channel(dimension=3, format=0, offset=12, stream=0)
-TEXCOORD0 = Channel(dimension=2, format=0, offset=4, stream=1)
-COLOR = Channel(dimension=4, format=2, offset=0, stream=1)
-WEIGHTS = Channel(dimension=4, format=0, offset=0, stream=2)
-BONE_INDICES = Channel(dimension=4, format=11, offset=16, stream=2)
+# Unity channel indices. The offsets differ per mesh, so they are read from the
+# mesh's own channel table rather than assumed: `cb_pr001` carries a vertex
+# colour in stream 1 and therefore puts UV at offset 4, while `cb_ss003` has no
+# colour and puts UV at offset 0.
+CHANNEL_POSITION = 0
+CHANNEL_NORMAL = 1
+CHANNEL_TEXCOORD0 = 4
+CHANNEL_WEIGHTS = 12
+CHANNEL_BONE_INDICES = 13
 
 
 @dataclass(frozen=True)
@@ -137,6 +140,16 @@ def read_skinned_meshes(env) -> list[SkinnedMesh]:
             Channel(c.dimension, c.format, c.offset, c.stream)
             for c in data.m_Channels
         ]
+        def channel(index: int, fallback: Channel) -> Channel:
+            found = channels[index] if index < len(channels) else None
+            return found if found and found.dimension else fallback
+
+        position_channel = channel(CHANNEL_POSITION, Channel(3, 0, 0, 0))
+        normal_channel = channel(CHANNEL_NORMAL, Channel(3, 0, 12, 0))
+        uv_channel = channel(CHANNEL_TEXCOORD0, Channel(2, 0, 0, 1))
+        weight_channel = channel(CHANNEL_WEIGHTS, Channel(4, 0, 0, 2))
+        bone_channel = channel(CHANNEL_BONE_INDICES, Channel(4, 11, 16, 2))
+
         strides = stream_strides(channels)
         offsets = stream_offsets(channels, data.m_VertexCount)
         count = data.m_VertexCount
@@ -146,12 +159,37 @@ def read_skinned_meshes(env) -> list[SkinnedMesh]:
             return buffer[offset:]
 
         primitive = Primitive(
-            positions=decode_channel(stream(offsets[0]), strides[0], count, POSITION),
-            normals=decode_channel(stream(offsets[0]), strides[0], count, NORMAL),
-            uvs=decode_channel(stream(offsets[1]), strides[1], count, TEXCOORD0),
-            colors=decode_channel(stream(offsets[1]), strides[1], count, COLOR),
-            weights=decode_channel(stream(offsets[2]), strides[2], count, WEIGHTS),
-            joints=decode_channel(stream(offsets[2]), strides[2], count, BONE_INDICES),
+            positions=decode_channel(
+                stream(offsets[position_channel.stream]),
+                strides[position_channel.stream],
+                count,
+                position_channel,
+            ),
+            normals=decode_channel(
+                stream(offsets[normal_channel.stream]),
+                strides[normal_channel.stream],
+                count,
+                normal_channel,
+            ),
+            uvs=decode_channel(
+                stream(offsets[uv_channel.stream]),
+                strides[uv_channel.stream],
+                count,
+                uv_channel,
+            ),
+            colors=[],
+            weights=decode_channel(
+                stream(offsets[weight_channel.stream]),
+                strides[weight_channel.stream],
+                count,
+                weight_channel,
+            ),
+            joints=decode_channel(
+                stream(offsets[bone_channel.stream]),
+                strides[bone_channel.stream],
+                count,
+                bone_channel,
+            ),
             triangles=decode_triangles(bytes(mesh.m_IndexBuffer), True),
         )
         materials = [read_material(env, pointer) for pointer in renderer.m_Materials]
