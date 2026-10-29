@@ -215,12 +215,21 @@ def build(
         material_index[cache_key] = len(materials) - 1
         return material_index[cache_key]
 
+    # Blender's glTF importer recomputes normals when the USD step clears the
+    # custom split normals, and its guess is not the game's: on the hair, 30% of
+    # vertices ended up more than 30 degrees off, some fully flipped. The mesh
+    # points survive that round trip in their original order, so the originals
+    # travel beside the file and `pack_usd.py` writes them straight back.
+    attributes: dict[str, list] = {"points": [], "normals": []}
+
     primitive_entries: list[dict] = []
     for mesh, local_joints in meshes:
         primitive = mesh.primitive
         positions, normals, triangles = flip_handedness(
             primitive.positions, primitive.normals, primitive.triangles
         )
+        attributes["points"].extend([[round(v, 5) for v in p] for p in positions])
+        attributes["normals"].extend([[round(v, 5) for v in n] for n in normals])
         ranges = mesh.submeshes or [(0, len(triangles))]
         for submesh_index, (first, count) in enumerate(ranges):
             if submesh_index < len(mesh.materials):
@@ -285,6 +294,9 @@ def build(
     materials_table: dict[str, dict] = {}
     for bundle, _ in sources:
         materials_table.update(read_material_table(load(str(bundle))))
+    (out / f"{name}-attributes.json").write_text(
+        json.dumps(attributes), encoding="utf-8"
+    )
     atlas, atlas_rows = parameter_atlas(materials_table)
     atlas.save(out / f"{name}-params.png")
     (out / f"{name}-materials.json").write_text(
