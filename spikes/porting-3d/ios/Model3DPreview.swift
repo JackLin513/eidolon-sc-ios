@@ -200,7 +200,21 @@ struct Model3DPreview: View {
         do {
             let loaded = try await Self.decode(url)
             guard !Task.isCancelled else { return }
-            ToonShading.apply(to: loaded)
+            let environment = ProcessInfo.processInfo.environment
+            let locate: (String) -> URL? = { name in
+                Model3DResourceLocator.locate(
+                    environment: environment,
+                    documents: URL.documentsDirectory,
+                    resourceRoot: Bundle.main.resourceURL,
+                    fileName: name
+                )
+            }
+            var materials: MaterialParameters?
+            if let atlas = locate(selected.parametersFileName),
+               let table = locate(selected.materialsFileName) {
+                materials = await MaterialParameters.load(atlas: atlas, table: table)
+            }
+            ToonShading.apply(to: loaded, parameters: materials)
             for child in container.children {
                 child.removeFromParent()
             }
@@ -254,9 +268,9 @@ struct Model3DPreview: View {
             print("[frame] extents=\(bounds.extents) center=\(bounds.center)")
         }
         // World units of height the model should occupy. Measured against the
-        // default RealityView camera at z = -1: the frustum is about 3.1 units
-        // tall there, and 2.3 leaves room for the status bar and the outfit
-        // buttons without cropping her feet.
+        // default RealityView camera at z = -1: 2.3 fills a little over half the
+        // viewport and keeps head and feet inside it. Larger values crop her,
+        // because the bounds a skinned model reports are not the full figure.
         let targetHeight: Float = 2.3
         let scale = targetHeight / bounds.extents.y
         baseScale = scale

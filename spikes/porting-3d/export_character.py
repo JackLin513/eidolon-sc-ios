@@ -27,6 +27,7 @@ from gltf_export import (
     matrix_inverse,
     matrix_multiply,
 )
+from material_atlas import parameter_atlas
 from material_params import read_material_table
 from unity_mesh import flip_handedness
 from unity_rig import Node, load, read_nodes, read_skinned_meshes
@@ -178,7 +179,7 @@ def build(
         textures.append({"source": len(images) - 1, "sampler": 0})
         return len(textures) - 1
 
-    def material_for(info, glow_uv: int) -> int | None:
+    def material_for(info, glow_uv: int) -> int | None:  # noqa: C901
         """glTF carries the game's two texture slots as base colour + emissive.
 
         `_SubTex` is additive glow, which is what `emissiveTexture` means, and
@@ -274,12 +275,19 @@ def build(
             primitive_entries.append(entry)
 
     # The glTF has no home for the game's two dozen shading scalars, so they
-    # travel beside it and the runtime turns them into a lookup texture.
+    # travel beside it: a JSON table for reference and one small atlas texture
+    # the surface shader samples by row.
     materials_table: dict[str, dict] = {}
     for bundle, _ in sources:
         materials_table.update(read_material_table(load(str(bundle))))
+    atlas, atlas_rows = parameter_atlas(materials_table)
+    atlas.save(out / f"{name}-params.png")
     (out / f"{name}-materials.json").write_text(
-        json.dumps({"materials": materials_table}, indent=1, ensure_ascii=False),
+        json.dumps(
+            {"rows": atlas_rows, "materials": materials_table},
+            indent=1,
+            ensure_ascii=False,
+        ),
         encoding="utf-8",
     )
 

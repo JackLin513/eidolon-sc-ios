@@ -10,3 +10,7 @@ out/
 *.mov
 
 *.usdz
+
+# Material parameter tables rebuilt by export_character.py, alongside the usdz.
+*-materials.json
+*-params.png
