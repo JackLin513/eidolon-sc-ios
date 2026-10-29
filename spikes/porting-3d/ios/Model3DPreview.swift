@@ -22,6 +22,18 @@ struct Model3DPreview: View {
     /// selection seam must already be one value rather than an outfit-only flag.
     @State private var direction = StandDirection.calm
 
+    /// Framing the loader chose, before any inspection gesture moves it.
+    @State private var baseScale: Float = 1
+    @State private var basePosition = SIMD3<Float>.zero
+
+    /// Inspection gestures. Orbit is a debug affordance, not the parity framing:
+    /// the preview opens on the fixed front composition.
+    @State private var yaw: Float = 0
+    @State private var pitch: Float = 0
+    @State private var zoom: Float = 1
+    @State private var dragStart: SIMD2<Float>?
+    @State private var zoomStart: Float?
+
     init() {
         if let raw = ProcessInfo.processInfo.environment["EIDOLON_3D_OUTFIT"],
            let selected = Model3DOutfit(rawValue: raw) {
@@ -53,38 +65,87 @@ struct Model3DPreview: View {
                         }
                     }
                     .ignoresSafeArea()
-                    if isLoading {
-                        ProgressView()
-                            .tint(.white)
-                    }
-                    if let loadError {
-                        Text(loadError)
-                            .font(.footnote)
-                            .foregroundStyle(.white)
-                            .padding(8)
-                            .background(.red.opacity(0.8), in: Capsule())
-                            .padding(.top, 8)
-                    }
+                    .gesture(orbitGesture)
+                    .simultaneousGesture(zoomGesture)
+                    .onTapGesture(count: 2) { resetInspection() }
+                }
+                if isLoading {
+                    ProgressView()
+                        .tint(.white)
+                }
+                if let loadError {
+                    Text(loadError)
+                        .font(.footnote)
+                        .foregroundStyle(.white)
+                        .padding(8)
+                        .background(.red.opacity(0.8), in: Capsule())
+                        .padding(.top, 8)
                 }
             case .failed(let message):
                 failureView(message)
             }
         }
         .task(id: outfit) { await load(outfit) }
-        .overlay(alignment: .bottom) {
+        .safeAreaInset(edge: .bottom) {
             if phase == .loaded {
-                HStack(spacing: 10) {
-                    ForEach(Model3DOutfit.allCases) { candidate in
-                        Button(candidate.title) {
-                            outfit = candidate
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(candidate == outfit ? .pink : .gray)
-                    }
-                }
-                .padding()
+                controls
             }
         }
+    }
+
+    private var controls: some View {
+        HStack(spacing: 10) {
+            ForEach(Model3DOutfit.allCases) { candidate in
+                Button {
+                    outfit = candidate
+                } label: {
+                    Text(candidate.title)
+                        .padding(.horizontal, 6)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(candidate == outfit ? .pink : .gray)
+                .contentShape(Rectangle())
+            }
+        }
+        .padding()
+    }
+
+    private var orbitGesture: some Gesture {
+        DragGesture()
+            .onChanged { value in
+                if dragStart == nil { dragStart = SIMD2(yaw, pitch) }
+                guard let start = dragStart else { return }
+                yaw = start.x + Float(value.translation.width) * 0.012
+                pitch = start.y + Float(value.translation.height) * 0.012
+                applyInspection()
+            }
+            .onEnded { _ in dragStart = nil }
+    }
+
+    private var zoomGesture: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                if zoomStart == nil { zoomStart = zoom }
+                guard let start = zoomStart else { return }
+                zoom = min(max(start * Float(value.magnification), 0.4), 3)
+                applyInspection()
+            }
+            .onEnded { _ in zoomStart = nil }
+    }
+
+    private func resetInspection() {
+        yaw = 0
+        pitch = 0
+        zoom = 1
+        applyInspection()
+    }
+
+    private func applyInspection() {
+        guard let entity else { return }
+        entity.scale = SIMD3<Float>(repeating: baseScale * zoom)
+        entity.position = basePosition
+        entity.orientation = simd_quatf(angle: yaw, axis: [0, 1, 0])
+            * simd_quatf(angle: pitch, axis: [1, 0, 0])
     }
 
     private var emptyView: some View {
@@ -136,7 +197,9 @@ struct Model3DPreview: View {
                 return
             }
             ToonShading.apply(to: loaded)
+            resetInspection()
             entity = loaded
+            applyInspection()
             loadError = nil
             phase = .loaded
         } catch is CancellationError {
@@ -161,11 +224,13 @@ struct Model3DPreview: View {
               bounds.extents.z > 0.000_001
         else { return false }
         let scale = 1.6 / bounds.extents.y
-        entity.scale = SIMD3<Float>(repeating: scale)
+        baseScale = scale
         let center = bounds.center * scale
         // Push the model away from the camera: the default RealityView camera
         // sits at the origin, so centring at zero crops her.
-        entity.position = [-center.x, -center.y, -center.z - 1.35]
+        basePosition = [-center.x, -center.y + 0.18, -center.z - 1.0]
+        entity.scale = SIMD3<Float>(repeating: scale)
+        entity.position = basePosition
 
         // Key plus fill plus rim. A single directional light crushes every
         // surface facing away from it, which reads as damage on limbs; the game
