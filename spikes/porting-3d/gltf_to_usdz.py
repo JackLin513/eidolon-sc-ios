@@ -39,8 +39,27 @@ def main() -> None:
             obj.parent = None
             obj.matrix_world.identity()
 
+    # Blender's glTF→USD conversion leaves the character facing +X. Yaw the whole
+    # rig so she faces the camera; the skin is a similarity transform of the rig,
+    # so rotating mesh and armature together keeps the deformation intact.
+    root = bpy.data.objects.new("rigRoot", None)
+    bpy.context.scene.collection.objects.link(root)
+    for obj in [o for o in bpy.context.scene.objects if o.parent is None and o is not root]:
+        obj.parent = root
+    root.rotation_euler = (0.0, 0.0, -1.5707963267948966)
+
+    # The exporter writes per-face-varying normals, which RealityKit flat-shades.
+    for obj in [o for o in bpy.context.scene.objects if o.type == "MESH"]:
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+        bpy.ops.object.shade_smooth()
+        # glTF import leaves custom split normals; while they are present the USD
+        # exporter writes faceVarying normals and RealityKit flat-shades them.
+        bpy.ops.mesh.customdata_custom_splitnormals_clear()
+        obj.select_set(False)
+
     bpy.ops.wm.usd_export(
-        filepath=destination,
+        filepath=destination.rsplit(".", 1)[0] + ".usdc",
         export_armatures=True,
         export_shapekeys=True,
         convert_orientation=True,

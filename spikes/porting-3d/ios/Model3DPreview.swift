@@ -162,7 +162,9 @@ struct Model3DPreview: View {
         let scale = 1.6 / bounds.extents.y
         entity.scale = SIMD3<Float>(repeating: scale)
         let center = bounds.center * scale
-        entity.position = [-center.x, -center.y, -center.z]
+        // Push the model away from the camera: the default RealityView camera
+        // sits at the origin, so centring at zero crops her.
+        entity.position = [-center.x, -center.y, -center.z - 1.35]
 
         // One light belongs to the loaded model; adding it to the entity keeps
         // RealityView content rebuilds from accumulating duplicate lights.
