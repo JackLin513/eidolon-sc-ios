@@ -251,3 +251,23 @@ stream0 stride 40（pos12 + normal12 + tangent16）、stream1 stride 12（color4
 3. `MODEL_00/BODY_SCALE` 在角色实际层级里是否存在
 
 要补 IDA：`idalib-mcp` 在 `~/.local/bin/idalib-mcp`，配置在 `~/.dsh/plugins/rea-bundle/ida-mcp.json`，但 rea 6.8.0 不认这份配置。
+
+### 2026-10-29 模拟器里跑通（#73 收尾）
+
+两套衣装都能在模拟器里正立、正面、贴图正确显示。截图：
+
+- `build/mltd-spike/out/native/sim-final.png`（私服）
+- `build/mltd-spike/out/native/sim-ss003.png`（演出服）
+
+**这一步修掉的四个 Blender 转换缺陷**
+
+1. **朝向转了 90°**：角色朝 +X 而不是朝相机。在导出前把整具 rig（网格 + 骨架）挂到一个 yaw = -90° 的父空对象下面。蒙皮是相似变换，整 rig 一起转不破坏形变。
+2. **法线是 `faceVarying`**：Blender 的 USD 导出器**无条件**写 face-varying 法线，`shade_smooth()` 和清 custom split normals 都改不掉。RealityKit 不做面法线插值，于是头发和所有曲面都是硬边块面。解决：`pack_usd.py` 用 pxr 把面法线平均回顶点、改 `interpolation=vertex`，再用 `UsdUtils.CreateNewUsdzPackage` 重新打包。7485 顶点 → 7485 条法线。
+3. **`upAxis` 是 Z**：Blender 默认不转，RealityKit 要 Y。`convert_orientation=True`。
+4. **蒙皮网格被挂到骨下面**：父级的 90° 会被重复施加，表现为侧身 + 鞋子和腿断开。导出前把它从父级摘掉、世界矩阵归一。
+
+**流程因此变成**：glTF →（Blender）`X.usdc` →（`pack_usd.py`：修法线 + 打包）`X.usdz`。
+
+**构图**：`Model3DPreview` 把模型推到 z = -1.35。原先居中在原点，RealityKit 默认相机也在原点，等于贴在脸上，脚会被切掉。
+
+**注意**：`Model3DPreview` **没有** orbit 手势，这是 spec 里的决定（固定正面构图），不是 bug。
