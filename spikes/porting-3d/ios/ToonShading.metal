@@ -73,6 +73,12 @@ constexpr sampler kAtlas(
     address::clamp_to_edge
 );
 
+constexpr sampler kAtlasMipmapped(
+    filter::linear,
+    mip_filter::linear,
+    address::clamp_to_edge
+);
+
 constexpr sampler kPoint(filter::nearest, address::clamp_to_edge);
 
 // The game shades in **gamma space**, not linear.
@@ -143,15 +149,18 @@ void toonSurface(realitykit::surface_parameters params)
 
     // Sampled textures arrive linearised; the game's maths runs on the sRGB
     // values the artist painted.
-    half4 mainTexRaw = params.textures().custom().sample(kAtlas, flipped);
-    half4 subTexRaw = params.textures().emissive_color().sample(kAtlas, flipped);
-    half4 mainTex = half4(half3(toGamma(float3(mainTexRaw.rgb))), mainTexRaw.a);
-    half4 subTex = half4(half3(toGamma(float3(subTexRaw.rgb))), subTexRaw.a);
-
     float4 custom = params.uniforms().custom_parameter();
     bool hasParams = custom.y > 0.5f;
     uint row = uint(custom.x);
     texture2d<half> lut = params.textures().specular();
+
+    const bool mipmapped = custom.w > 0.5f;
+    half4 mainTexRaw = params.textures().custom().sample(
+        mipmapped ? kAtlasMipmapped : kAtlas, flipped);
+    half4 subTexRaw = params.textures().emissive_color().sample(
+        mipmapped ? kAtlasMipmapped : kAtlas, flipped);
+    half4 mainTex = half4(half3(toGamma(float3(mainTexRaw.rgb))), mainTexRaw.a);
+    half4 subTex = half4(half3(toGamma(float3(subTexRaw.rgb))), subTexRaw.a);
 
     // RealityKit already hands the shader a view-space normal; the game computes
     // in view space too, so no transform is needed. (Multiplying by
@@ -169,7 +178,7 @@ void toonSurface(realitykit::surface_parameters params)
         return;
     }
 
-    if (custom.w > 0.5f) {
+    if (custom.w > 1.5f) {
         // `EIDOLON_3D_DEBUG_NORMALS`: view-space normal as colour, so faceting
         // and a wrong space are both obvious.
         params.surface().set_base_color(half3(saturate(normal * 0.5f + 0.5f)));

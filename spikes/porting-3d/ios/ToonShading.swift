@@ -50,12 +50,13 @@ enum ToonShading {
                 let normals = environment["EIDOLON_3D_DEBUG_NORMALS"] != nil
                 let constant = environment["EIDOLON_3D_DEBUG_CONST"] != nil
                 let noSheen = environment["EIDOLON_3D_NO_SHEEN"] != nil
+                let mipmaps = environment["EIDOLON_3D_MIPMAPS"] != nil
                 var custom = CustomMaterial.Custom(
                     value: SIMD4(
                         Float(row ?? 0),
                         row == nil ? 0 : 1,
                         debug ? 1 : (noSheen ? -1 : 0),
-                        normals ? 1 : (constant ? -1 : 0)
+                        normals ? 2 : (mipmaps ? 1 : (constant ? -1 : 0))
                     )
                 )
                 if let customTexture = try? CustomMaterial.Texture(texture) {
