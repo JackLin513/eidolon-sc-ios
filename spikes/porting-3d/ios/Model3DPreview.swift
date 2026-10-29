@@ -192,10 +192,12 @@ struct Model3DPreview: View {
     }
 
     private func applyInspection() {
-        guard let entity else { return }
-        entity.scale = SIMD3<Float>(repeating: baseScale * zoom)
-        entity.position = basePosition
-        entity.orientation = simd_quatf(angle: yaw, axis: [0, 1, 0])
+        guard entity != nil else { return }
+        // The outline pass is a sibling of the model, so the transform lives on
+        // the container and both passes move together.
+        container.scale = SIMD3<Float>(repeating: baseScale * zoom)
+        container.position = basePosition
+        container.orientation = simd_quatf(angle: yaw, axis: [0, 1, 0])
             * simd_quatf(angle: pitch, axis: [1, 0, 0])
     }
 
@@ -253,11 +255,25 @@ struct Model3DPreview: View {
                let table = locate(selected.materialsFileName) {
                 materials = await MaterialParameters.load(atlas: atlas, table: table)
             }
+            // The container carries the last outfit's transform, and the bounds
+            // sampled below are world-space, so the fit would compound the
+            // previous scale and offset. Start from identity every load.
+            container.scale = .one
+            container.position = .zero
             ToonShading.apply(to: loaded, parameters: materials)
+            // The game's outline is a second draw of the same mesh with front
+            // faces culled and vertices pushed out along the normal. RealityKit
+            // has no per-model second pass, so it is a cloned sibling.
+            let outline = loaded.clone(recursive: true)
+            outline.name = loaded.name + "-outline"
+            ToonShading.applyOutline(to: outline)
             for child in container.children {
                 child.removeFromParent()
             }
             container.addChild(loaded)
+            if environment["EIDOLON_3D_NO_OUTLINE"] == nil {
+                container.addChild(outline)
+            }
             // Bounds of a skinned model are only meaningful once the skeleton is
             // mounted and resolved, and they keep growing for a few frames after
             // that — a single early read sized the model anywhere from a quarter
@@ -274,6 +290,7 @@ struct Model3DPreview: View {
             resetInspection()
             entity = loaded
             applyInspection()
+
             loadError = nil
             phase = .loaded
         } catch is CancellationError {
@@ -342,18 +359,20 @@ struct Model3DPreview: View {
         // World units of height the model should occupy. Calibrated against the
         // settled bounds: 2.3 rendered her at 38% of the viewport height, so 4.2
         // lands near 70% with the head clear of the status bar.
-        let targetHeight: Float = 4.2
+        let targetHeight: Float = 2.1
         let scale = targetHeight / extent
         let center = (sampled ?? bounds.center) * scale
         // Push the model away from the camera: the default RealityView camera
-        // sits at the origin. No vertical nudge — she sits centred in the frame;
-        // drag in move mode to shift her.
-        basePosition = [-center.x, -center.y, -center.z - 1.0]
+        // sits at the origin. Its look-at is above the content origin, though, so
+        // centring her on the origin renders her low in the frame; half a model
+        // height brings her back to the middle. Drag in move mode to shift her.
+        basePosition = [-center.x, -center.y + extent * 0.5, -center.z - 1.0]
         fittedPosition = basePosition
         appliedScale = scale
         baseScale = scale
-        entity.scale = SIMD3<Float>(repeating: scale)
-        entity.position = basePosition
+        // The transform lives on the container (applyInspection) so the outline
+        // pass, a sibling of the model, follows it. Setting it here as well would
+        // apply the scale twice.
         return true
     }
 

@@ -141,6 +141,43 @@ static float rampFactor(float3 normal, float3 light, float offset, float border)
     return saturate((dot(normal, light) - offset) * border);
 }
 
+// The game draws its outline as an inverted hull: a second pass with `Cull
+// Front` whose vertices are pushed out along the mesh's "hard" normals, which it
+// keeps in the TANGENT channel. That channel does not survive the glTF/USD trip,
+// so this uses the ordinary normal — close enough on the body, softer on the
+// hair.
+// Unlit custom materials ignore `set_base_color` and render `set_emissive_color`
+// instead (`RealityKitSurfaceShader.h:484-494`). Writing zero to base and the
+// result to emissive therefore produces the same picture under `.unlit` and
+// `.lit`, so the lighting model becomes a switch rather than a rewrite.
+static void writeColour(realitykit::surface_parameters params, float3 colour)
+{
+    params.surface().set_base_color(half3(0.0f));
+    params.surface().set_emissive_color(half3(toLinear(saturate(colour))));
+    params.surface().set_metallic(0.0f);
+    params.surface().set_roughness(1.0f);
+    params.surface().set_specular(0.0f);
+}
+
+/// The inverted hull is filled with the toon pass's own shading in the game's
+/// shader, but the outline reads as a flat dark line, so this writes that
+/// directly rather than binding the parameter atlas a second time.
+[[visible]]
+void outlineSurface(realitykit::surface_parameters params)
+{
+    writeColour(params, float3(0.045f));
+}
+
+[[visible]]
+void outlineVertex(realitykit::geometry_parameters params)
+{
+    float3 normal = normalize(params.geometry().normal());
+    // Model space, and the host passes the model-relative thickness in custom.x,
+    // so this follows the asset rather than a guessed constant.
+    float thickness = params.uniforms().custom_parameter().x;
+    params.geometry().set_model_position_offset(normal * thickness);
+}
+
 [[visible]]
 void toonSurface(realitykit::surface_parameters params)
 {
@@ -172,18 +209,14 @@ void toonSurface(realitykit::surface_parameters params)
     if (custom.w < -0.5f) {
         // `EIDOLON_3D_DEBUG_CONST`: a flat, known linear value, to measure how
         // much RealityKit's own pass adds on top of the surface shader.
-        params.surface().set_base_color(half3(0.5f));
-        params.surface().set_metallic(0.0);
-        params.surface().set_roughness(1.0);
+        writeColour(params, float3(0.5f));
         return;
     }
 
     if (custom.w > 1.5f) {
         // `EIDOLON_3D_DEBUG_NORMALS`: view-space normal as colour, so faceting
         // and a wrong space are both obvious.
-        params.surface().set_base_color(half3(saturate(normal * 0.5f + 0.5f)));
-        params.surface().set_metallic(0.0);
-        params.surface().set_roughness(1.0);
+        writeColour(params, saturate(normal * 0.5f + 0.5f));
         return;
     }
 
@@ -193,9 +226,7 @@ void toonSurface(realitykit::surface_parameters params)
         float kind = hasParams ? param(lut, row, kParamShaderKind) * 10.0f : -1.0f;
         float colour = hasParams ? param(lut, row, kParamColor) : -1.0f;
         float lightX = hasParams ? abs(paramSigned(lut, row, kParamLight)) : -1.0f;
-        params.surface().set_base_color(half3(kind / 10.0f, colour, lightX));
-        params.surface().set_metallic(0.0);
-        params.surface().set_roughness(1.0);
+        writeColour(params, float3(kind / 10.0f, colour, lightX));
         return;
     }
 
@@ -359,8 +390,5 @@ void toonSurface(realitykit::surface_parameters params)
         }
     }
 
-    // Back to linear for RealityKit's own pass.
-    params.surface().set_base_color(half3(toLinear(saturate(result))));
-    params.surface().set_metallic(0.0);
-    params.surface().set_roughness(1.0);
+    writeColour(params, result);
 }
