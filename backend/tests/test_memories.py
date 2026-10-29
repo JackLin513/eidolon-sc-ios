@@ -186,6 +186,9 @@ async def test_one_users_memories_never_reach_another_user(
     friend = (await world.store.create_user("friend")).id
 
     await tell(memories, world, await world.conversation("mano"), "我家的猫叫小白")
+    # Written down before the friend speaks: the background model's scripted replies go
+    # in order, the cat to whichever user asks first.
+    await memories.entries(world.producer)
     await tell(memories, world, await world.conversation("mano", friend), "我喜欢狗")
     section = await find(memories, world, await world.conversation("kogane", friend), "你知道我家的猫吗？")
 
@@ -544,6 +547,7 @@ async def test_a_memory_supersedes_only_what_the_background_model_was_shown(
         json.dumps({"memories": [{"text": TOKYO, "supersedes": [1, 2]}]}, ensure_ascii=False),
     )
     await tell(memories, world, await world.conversation("mano", friend), "我住在大阪")
+    await memories.entries(friend)  # written down first, as the scripted replies go in order
     await tell(memories, world, await world.conversation("mano"), "我养了一只狗")
     await tell(memories, world, await world.conversation("mano"), "我搬到东京了")
 
