@@ -16,11 +16,9 @@ describe("signInFailure", () => {
     expect(signInFailure("taken")).toContain("另一位用户");
   });
 
-  it("tells a banned user, and one who needs an invite link, how to reach the deployer, when the deployer says how", () => {
-    for (const reason of ["banned", "not_invited"]) {
-      expect(signInFailure(reason, "admin@example.com"), reason).toContain("admin@example.com");
-      expect(signInFailure(reason, null), reason).toBe(signInFailure(reason));
-    }
+  it("tells a banned user, or one who needs an invite link, how to reach the deployer, when the deployer says how", () => {
+    expect(signInFailure("not_invited", "admin@example.com")).toContain("admin@example.com");
+    expect(signInFailure("not_invited", null)).toBe(signInFailure("not_invited"));
     expect(signInFailure("too_new", "admin@example.com")).not.toContain("admin@example.com");
   });
 

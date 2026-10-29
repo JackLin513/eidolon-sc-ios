@@ -27,6 +27,10 @@ from eidolon.delivery_cues import without_cues
 from eidolon.producer import Birthday, ProducerProfile
 from eidolon.reply_format import Segment
 
+Admit = Callable[[sqlite3.Connection, str], None]
+"""Run in the write that makes a new user, given their id, to let them sign up: whatever it
+raises makes no one (`Store.create_user_signing_in_with`)."""
+
 Role = Literal["user", "character"]
 EventKind = Literal["hung_up", "gift", "ended", "unwell"]
 PhotoStatus = Literal["pending", "ready", "failed"]
@@ -597,12 +601,10 @@ class Store:
         self,
         name: str,
         method: SignInMethod,
-        admit: Callable[[sqlite3.Connection, str], None] | None = None,
+        admit: Admit | None = None,
     ) -> User:
-        """A new user, whose one sign-in method is `method`. Raises IdentityTaken, making
-        no one, if the identity already belongs to someone. `admit`, if given, is run in the
-        same write once the user is made, given their id: whatever it raises makes no
-        one."""
+        """A new user, whose one sign-in method is `method`, let sign up by `admit` if given.
+        Raises IdentityTaken, making no one, if the identity already belongs to someone."""
         user = User(uuid.uuid4().hex, name, _now())
         try:
             await self._db.write(_insert_user_signing_in_with, user, method, admit)
@@ -998,7 +1000,7 @@ def _insert_user_signing_in_with(
     db: sqlite3.Connection,
     user: User,
     method: SignInMethod,
-    admit: Callable[[sqlite3.Connection, str], None] | None,
+    admit: Admit | None,
 ) -> None:
     _insert_user(db, user)
     _insert_sign_in_method(db, user.id, method)

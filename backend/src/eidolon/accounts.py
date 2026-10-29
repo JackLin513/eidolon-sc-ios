@@ -21,7 +21,6 @@ in nor be linked again.
 
 import hashlib
 import hmac
-import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -36,7 +35,7 @@ from eidolon.config import Registration, Settings
 from eidolon.identity import Identity
 from eidolon.invites import Invites, NotInvited
 from eidolon.memory import Memories
-from eidolon.store import IdentityTaken, SignInMethod, Store, User
+from eidolon.store import Admit, IdentityTaken, SignInMethod, Store, User
 
 async def is_admin(store: Store, settings: Settings, user_id: str) -> bool:
     """Whether any identity the user signs in with is one the deployer lists as an admin's."""
@@ -163,9 +162,7 @@ class Accounts:
         if identity.provider == "google" and not identity.email_verified:
             raise SignInRefused("email_unverified")
 
-    def _admit(
-        self, identity: Identity, invite: str | None
-    ) -> Callable[[sqlite3.Connection, str], None] | None:
+    def _admit(self, identity: Identity, invite: str | None) -> Admit | None:
         """What the new user `identity` makes must pass to sign up: nothing while anyone may,
         nor for an admin's identity; else the invite link `invite` (`Invites.admit`)."""
         if self.registration() == "open" or (identity.provider, identity.subject) in self.admins:

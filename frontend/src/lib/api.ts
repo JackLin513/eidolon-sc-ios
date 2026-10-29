@@ -483,7 +483,6 @@ export function sponsorImageUrl(version: string): string {
   return `/api/sponsor/image?${new URLSearchParams({ v: version })}`;
 }
 
-/** The signed-in user; sends the browser to sign in, or to agree to the terms, first. */
 /** Whether this browser is signed in, as one who has yet to agree to the terms too; unlike `api`, it
  * sends the browser nowhere when it is not. */
 export async function isSignedInHere(): Promise<boolean> {
@@ -491,6 +490,7 @@ export async function isSignedInHere(): Promise<boolean> {
   return res.ok || res.status === CONSENT_REQUIRED;
 }
 
+/** The signed-in user; sends the browser to sign in, or to agree to the terms, first. */
 export async function getAccount(): Promise<Account> {
   return json(await api("/api/account"));
 }

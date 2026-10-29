@@ -367,17 +367,14 @@ class Report:
     @property
     def invite_without_admins(self) -> bool:
         """Only those invited may sign up, but there is no admin console to make an invite
-        link in: no one but the first user can."""
+        link in: no one but the first user can. Only warned of, for the first user signs in
+        before their identity can be put on the admin list."""
         return self.registration == "invite" and not self.admins
 
     @property
     def ok(self) -> bool:
-        """Everything tried works, the way `.env` routes it, and new users can sign up."""
-        return (
-            self.proxy_error is None
-            and all(f.ok and f.move is None for f in self.findings)
-            and not self.invite_without_admins
-        )
+        """Everything tried works, the way `.env` routes it."""
+        return self.proxy_error is None and all(f.ok and f.move is None for f in self.findings)
 
     def as_json(self) -> dict:
         found = asdict(self)
@@ -429,7 +426,7 @@ class Report:
             said.append(f"立绘：从 {self.stand_assets_url} 加载")
         if self.invite_without_admins:
             said += [
-                "✗ 注册：设了只让受邀的人注册（EIDOLON_REGISTRATION=invite），却没设管理者名单"
+                "! 注册：设了只让受邀的人注册（EIDOLON_REGISTRATION=invite），却没设管理者名单"
                 "（EIDOLON_ADMINS）",
                 "  → 没有后台就生成不了邀请链接，除了第一位用户谁都注册不了。"
                 f"先登录一次，再配好管理者名单（{GUIDE}「公网部署」）",

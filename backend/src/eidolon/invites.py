@@ -13,7 +13,6 @@ again: each is 128 random bits, and backups are encrypted.
 
 import secrets
 import sqlite3
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Literal
@@ -21,6 +20,7 @@ from typing import Literal
 from eidolon.clock import Clock
 from eidolon.data_access import Database
 from eidolon.database import by_name
+from eidolon.store import Admit
 
 MAX_USES = 100
 """How many times a link may be used at most."""
@@ -54,6 +54,8 @@ CREATE INDEX IF NOT EXISTS invited_users_by_invite ON invited_users(invite_id);
 
 
 class NotInvited(Exception):
+    """Signing up takes an invite link that can be used, saying why it was refused."""
+
     def __init__(self, reason: NotInvitedReason) -> None:
         super().__init__(reason)
         self.reason: NotInvitedReason = reason
@@ -118,7 +120,7 @@ class Invites:
         """The link the user signed up through, if they did through one still kept."""
         return await self._db.read(_of_user, user_id)
 
-    def admit(self, code: str | None) -> Callable[[sqlite3.Connection, str], None]:
+    def admit(self, code: str | None) -> Admit:
         """What lets the user just made, in the write that made them, sign up as one
         invited: through the link with `code`, counting a use of it and keeping who it let
         in. The deployment's first user needs none: the deployer, who has no admin console

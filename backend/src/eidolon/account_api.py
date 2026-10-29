@@ -75,10 +75,10 @@ INVITE_CODE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 """An invite link's code (`invites`), as the start of what the link brought may be."""
 
 
-def invite_code(brought: str | None) -> str:
-    """The code of the invite link a sign-in was started through: what the link brought, but
-    whatever a chat app stuck to its end, a full stop say; empty for none."""
-    found = INVITE_CODE.match(brought or "")
+def invite_code(invite: str | None) -> str:
+    """The code of the invite link a sign-in was started through, `invite` as the link brought
+    it, but whatever a chat app stuck to its end, a full stop say; empty for none."""
+    found = INVITE_CODE.match(invite or "")
     return found.group() if found else ""
 
 

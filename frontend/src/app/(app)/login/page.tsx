@@ -28,7 +28,7 @@ const t = copy.login;
 
 /**
  * 登录页：登录被拒时后端带着 `?error=` 回到这里，开发登录也在这里，也可以直接访问。访客平常在落地页的登录面板登录。
- * 邀请链接也指向这里（`?invite=`），邀请码随登录带给后端；已经登录的人打开它直接进对话列表。
+ * 邀请链接也指向这里（`?invite=`），链接里的码随登录带给后端；已经登录的人打开它直接进对话列表。
  */
 export default function LoginPage() {
   const [options, setOptions] = useState<SignInOptions | null>(null);

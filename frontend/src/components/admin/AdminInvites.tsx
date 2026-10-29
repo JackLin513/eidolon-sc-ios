@@ -34,6 +34,7 @@ import {
   MAX_INVITE_USES,
   type Invite,
   type InviteLifetime,
+  type NewInvite,
 } from "@/lib/adminInvites";
 import { toFailure, type Failure } from "@/lib/failure";
 
@@ -46,7 +47,7 @@ const COPIED_FOR = 2000;
  * 配置页「注册」标签里，注册方式下面的那张卡（GLOSSARY.md「邀请链接」，DESIGN.md「Layout · 后台 · 配置」）。
  * 右上角 outline 的「生成邀请链接」，点了在卡里展开表单（备注、可用次数、有效期），和配置项的「修改」一样全页只开一张。
  * 下面每条链接一行（`divide-y`），新生成的在上：备注（没有时 muted 的「没有备注」），用完、过期的跟一个 outline Badge；
- * 下一行 muted 的次数和到期时间；有人经它注册时再一行「经它注册：」加名字，链到用户详情。行尾 ghost 的「复制链接」
+ * 下面是 0.75rem、muted 的副行：次数和到期时间；有人经它注册时再一行「经它注册：」加名字，链到用户详情。行尾 ghost 的「复制链接」
  * （复制后两秒内写「已复制」）和「删除」，删除先弹 AlertDialog。
  */
 export function AdminInvites() {
@@ -64,7 +65,7 @@ export function AdminInvites() {
     return () => clearTimeout(copiedTimer.current);
   }, []);
 
-  async function create(made: Parameters<typeof createInvite>[0]) {
+  async function create(made: NewInvite) {
     setBusy("create");
     setFailure(null);
     setNotice(null);
@@ -141,7 +142,7 @@ export function AdminInvites() {
                     <span className={invite.note ? "font-medium break-all" : "text-muted-foreground"}>{invite.note ?? t.noNote}</span>
                     {invite.state !== "usable" && <Badge variant="outline">{t.states[invite.state]}</Badge>}
                   </div>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-xs text-muted-foreground tabular-nums">
                     {t.used(invite.used, invite.max_uses)} ·{" "}
                     {invite.expires_at ? (
                       <>
@@ -152,11 +153,11 @@ export function AdminInvites() {
                     )}
                   </p>
                   {invite.invited.length > 0 && (
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {t.invited}
                       {invite.invited.map((user, i) => (
                         <Fragment key={user.id}>
-                          {i > 0 && copy.serviceList.separator}
+                          {i > 0 && t.nameSeparator}
                           <AppLink href={`/admin/users/${user.id}`}>{user.name}</AppLink>
                         </Fragment>
                       ))}
@@ -217,7 +218,7 @@ function InviteForm({
   onCancel,
 }: {
   busy: boolean;
-  onSubmit: (made: Parameters<typeof createInvite>[0]) => void;
+  onSubmit: (made: NewInvite) => void;
   onCancel: () => void;
 }) {
   const id = useId();
@@ -264,7 +265,6 @@ function InviteForm({
             isIntegerOnly
             isInvalid={checked && !usesValid}
           />
-          <FieldDescription>{t.form.maxUsesHint(MAX_INVITE_USES)}</FieldDescription>
           {checked && !usesValid && <FieldError>{t.form.maxUsesProblem(MAX_INVITE_USES)}</FieldError>}
         </Field>
         <Field>

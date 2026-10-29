@@ -46,6 +46,7 @@ def add_invite_routes(app: FastAPI, backend: Backend) -> None:
 
     @app.post("/api/admin/invites", status_code=201)
     async def create_invite(body: InviteInput, _: Admin) -> dict:
+        """A new link, the note trimmed, an empty one none."""
         lifetime = None if body.lifetime_days is None else timedelta(days=body.lifetime_days)
         return described(
             await invites.create((body.note or "").strip() or None, body.max_uses, lifetime)

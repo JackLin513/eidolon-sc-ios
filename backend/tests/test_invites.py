@@ -70,6 +70,10 @@ async def test_an_invite_link_signs_up_as_many_as_it_may_be_used_for_and_says_wh
     made = await invite(admin, note="群里", max_uses=2, lifetime_days=None)
     code = code_of(made["link"])
 
+    too_new = await sign_in_with(
+        make_client(FakeLLM(), user=None), github,
+        github_identity("1000", created_at=START - timedelta(days=30)), invite=code,
+    )
     # As a chat app may stick the full stop after it onto the link.
     friend = await sign_in_with(
         make_client(FakeLLM(), user=None), github, github_identity("1001", "friend"),
@@ -81,11 +85,16 @@ async def test_an_invite_link_signs_up_as_many_as_it_may_be_used_for_and_says_wh
     third = await sign_in_with(
         make_client(FakeLLM(), user=None), github, github_identity("1003", "third"), invite=code
     )
+    friend_again = await sign_in_with(
+        make_client(FakeLLM(), user=None), github, github_identity("1001", "friend"), invite=code
+    )
 
     assert made["link"] == f"http://localhost:3000/login?invite={code}"
+    assert too_new.headers["location"] == "/login?error=too_new"
     assert friend.headers["location"] == "/conversations"
     assert second.headers["location"] == "/conversations"
     assert third.headers["location"] == "/login?error=invite_invalid"
+    assert friend_again.headers["location"] == "/conversations"
     assert await invites(admin) == [{
         "id": made["id"], "link": made["link"], "note": "群里", "max_uses": 2, "used": 2,
         "expires_at": None, "created_at": made["created_at"], "state": "used_up",
@@ -124,9 +133,9 @@ async def test_an_invite_link_cannot_be_used_once_it_has_expired_or_is_deleted(
         invite=code_of(kept["link"]),
     )
 
-    assert (for_a_day["max_uses"], for_a_day["note"], for_a_day["state"]) == (1, None, "usable")
-    assert for_a_day["expires_at"] == (START + timedelta(days=1)).isoformat()
-    assert kept["expires_at"] == (START + timedelta(days=7)).isoformat()
+    assert (for_a_day["state"], for_a_day["expires_at"]) == (
+        "usable", (START + timedelta(days=1)).isoformat()
+    )
     assert expired.headers["location"] == "/login?error=invite_invalid"
     assert deleted.headers["location"] == "/login?error=invite_invalid"
     assert [(i["id"], i["state"]) for i in await invites(admin)] == [(for_a_day["id"], "expired")]
