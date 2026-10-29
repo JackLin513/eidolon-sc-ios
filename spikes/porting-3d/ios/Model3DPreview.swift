@@ -166,12 +166,20 @@ struct Model3DPreview: View {
         // sits at the origin, so centring at zero crops her.
         entity.position = [-center.x, -center.y, -center.z - 1.35]
 
-        // One light belongs to the loaded model; adding it to the entity keeps
-        // RealityView content rebuilds from accumulating duplicate lights.
-        let light = DirectionalLight()
-        light.light.intensity = 2_000
-        light.orientation = simd_quatf(angle: .pi / 4, axis: [1, 0, 0])
-        entity.addChild(light)
+        // Key plus fill plus rim. A single directional light crushes every
+        // surface facing away from it, which reads as damage on limbs; the game
+        // never shows that because its toon ramp keeps a floor under the shadow.
+        addLight(to: entity, pitch: .pi / 4, yaw: 0, intensity: 2_000)
+        addLight(to: entity, pitch: 0, yaw: -.pi / 2, intensity: 1_100)
+        addLight(to: entity, pitch: -.pi / 6, yaw: .pi, intensity: 700)
         return true
+    }
+
+    private func addLight(to entity: Entity, pitch: Float, yaw: Float, intensity: Float) {
+        let light = DirectionalLight()
+        light.light.intensity = intensity
+        light.orientation = simd_quatf(angle: yaw, axis: [0, 1, 0])
+            * simd_quatf(angle: pitch, axis: [1, 0, 0])
+        entity.addChild(light)
     }
 }
