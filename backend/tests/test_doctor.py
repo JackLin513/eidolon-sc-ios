@@ -124,7 +124,7 @@ def env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> pytest.MonkeyPatch:
         "SILICONFLOW_API_KEY", "GEMINI_API_KEY", "FISH_AUDIO_API_KEY", "SONIOX_API_KEY",
         "DASHSCOPE_API_KEY", "STT_PROVIDER", "NOVELAI_API_KEY", "EIDOLON_PROXY_URL",
         "EIDOLON_PROXY_SERVICES", "EIDOLON_ADMINS", "EIDOLON_STAND_ASSETS_URL",
-        "EIDOLON_REGISTRATION",
+        "EIDOLON_REGISTRATION", "EIDOLON_DEV_LOGIN",
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("CHAT_LLM_BASE_URL", "http://127.0.0.1:9/v1")  # nothing listens there
@@ -166,3 +166,18 @@ def test_the_doctor_says_no_one_can_be_invited_without_admins_to_invite_them(
     with_admins = json.loads(capsys.readouterr().out)["invite_without_admins"]
 
     assert (without_admins, with_admins) == (True, False)
+
+
+def test_the_doctor_says_everyone_is_an_admin_with_dev_login_and_no_admins(
+    env: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    env.setenv("EIDOLON_REGISTRATION", "invite")
+    env.setenv("EIDOLON_DEV_LOGIN", "1")
+
+    main(["doctor"])
+    said = capsys.readouterr().out
+    main(["doctor", "--json"])
+    report = json.loads(capsys.readouterr().out)
+
+    assert "开发登录：所有人都能进后台" in said
+    assert report["invite_without_admins"] is False

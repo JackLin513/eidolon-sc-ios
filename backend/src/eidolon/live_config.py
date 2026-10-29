@@ -1617,7 +1617,8 @@ class LiveConfig:
         self._failures.pop(name, None)
 
     def _read_only(self) -> list[dict[str, Any]]:
-        """What is only shown, with why: never a key, only whether it is set."""
+        """What is only shown, with why: never a key, only whether it is set; the admins,
+        `everyone` while everyone is one (`Settings.everyone_admin`)."""
         s = self.settings
         turn = s.turn.urls if s.turn else []
         ice = [u for server in s.ice_servers for u in _urls(server["urls"])]
@@ -1625,7 +1626,8 @@ class LiveConfig:
             f"{s.embedding.provider} · {s.embedding.model}" if s.embedding else None
         )
         values: dict[str, Any] = {
-            "admins": sorted(f"{p}:{subject}" for p, subject in s.admins),
+            "admins": "everyone" if s.everyone_admin
+            else sorted(f"{p}:{subject}" for p, subject in s.admins),
             "secret_key": s.secret_key is not None,
             "oauth": [name for name, o in (("github", s.github), ("google", s.google)) if o],
             "domain": s.domain,

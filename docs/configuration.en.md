@@ -478,7 +478,7 @@ Anyone can sign in with Google or GitHub, with no invitation or approval ([ADR-0
   - The **birthday** is just a month and day, no year. Which day it is follows the profile's time zone (or the current device's if none is set), and a February 29 birthday counts as February 28 in non-leap years. The characters know your birthday all along and can answer when asked, but don't bring it up; on the day itself, each will wish you a happy birthday once, in her own words, at a fitting moment, in text conversations and calls alike. A birthday you mention in conversation may also be remembered as a memory, but only the profile's birthday prompts a wish on the day, and when the two disagree the profile wins.
 - **Sign-in methods**: On the settings page's 「登录与数据」 (Sign-in and data) tab, users can link another sign-in method; identities with the same email are never merged automatically. A session doesn't expire as long as it is used within 30 days. Users can sign out of the current device or of all devices.
 - **Deleting data**: 「删除我的全部数据」 (Delete all my data), after a second confirmation, deletes memories, conversations, the producer profile, sign-in methods and usage limit counts for good, and signs the user out on all devices. Copies in the daily encrypted backups disappear within 30 days at most ([ADR-0012](adr/0012-encrypted-offsite-backups-with-bounded-retention.md)).
-- **Dev login**: For local development, set `EIDOLON_DEV_LOGIN=1`, and the sign-in panel gains 「开发登录」 (Dev login), which signs in directly by name. A public deployment with `EIDOLON_DOMAIN` set refuses to start if it detects this switch.
+- **Dev login**: For local development, set `EIDOLON_DEV_LOGIN=1`, and the sign-in panel gains 「开发登录」 (Dev login), which signs in directly by name. A public deployment with `EIDOLON_DOMAIN` set refuses to start if it detects this switch. With it on and `EIDOLON_ADMINS` empty, everyone is an admin and can open the admin console.
 
 So that no single user drains the deployer's API credits, the following limits apply by default (0 means unlimited). They can also be changed in the admin console, and turns, calls, photos and visits per hour can be set for an individual user:
 
@@ -577,7 +577,7 @@ EIDOLON_STATUS_WINDOW_MINUTES=30
 
 ## Admin console
 
-List the admins' sign-in method identifiers in `EIDOLON_ADMINS` in `.env` (like `github:12345`; look them up with `eidolon user list`) and recreate the backend. Those users then find 「进入后台」 (Open admin console) on the settings page's 「登录与数据」 (Sign-in and data) tab ([ADR-0013](adr/0013-admin-console-overrides-env.md)). Without it there is no admin console, and anyone else gets a 404 at `/admin`.
+List the admins' sign-in method identifiers in `EIDOLON_ADMINS` in `.env` (like `github:12345`; look them up with `eidolon user list`) and recreate the backend. Those users then find 「进入后台」 (Open admin console) on the settings page's 「登录与数据」 (Sign-in and data) tab ([ADR-0013](adr/0013-admin-console-overrides-env.md)). Without it there is no admin console, and anyone else gets a 404 at `/admin`; except with dev login on, when everyone is an admin (see 「Dev login」 above).
 
 | Page | What it does |
 |---|---|

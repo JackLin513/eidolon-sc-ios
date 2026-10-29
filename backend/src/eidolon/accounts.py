@@ -38,16 +38,18 @@ from eidolon.memory import Memories
 from eidolon.store import Admit, IdentityTaken, SignInMethod, Store, User
 
 async def is_admin(store: Store, settings: Settings, user_id: str) -> bool:
-    """Whether any identity the user signs in with is one the deployer lists as an admin's."""
-    return bool(settings.admins) and signs_in_as_admin(
+    """Whether the user is an admin (`signs_in_as_admin`)."""
+    return settings.admin_console and signs_in_as_admin(
         await store.sign_in_methods(user_id), settings
     )
 
 
 def signs_in_as_admin(methods: list[SignInMethod], settings: Settings) -> bool:
-    """Whether any of a user's sign-in methods, `methods`, is one the deployer lists as an
-    admin's."""
-    return any((m.provider, m.subject) in settings.admins for m in methods)
+    """Whether a user who signs in with `methods` is an admin: any of them is one the
+    deployer lists as an admin's, or everyone is one (`Settings.everyone_admin`)."""
+    return settings.everyone_admin or any(
+        (m.provider, m.subject) in settings.admins for m in methods
+    )
 
 
 MIN_GITHUB_ACCOUNT_AGE = timedelta(days=365)

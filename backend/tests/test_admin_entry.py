@@ -1,6 +1,7 @@
 """Entering the admin console: admins are the users who sign in with an identity the
 deployer lists in `EIDOLON_ADMINS`. Everyone else, signed in or not, finds no admin
-console at all (404), and without the list there is none for anyone."""
+console at all (404), and without the list there is none for anyone; unless dev login is
+on, which lets anyone sign in as anyone: then without the list everyone is an admin."""
 
 from dataclasses import replace
 
@@ -74,13 +75,27 @@ async def test_an_admin_who_has_not_agreed_to_the_terms_finds_no_admin_console(
 
 
 async def test_without_the_list_there_is_no_admin_console(
-    make_client: ClientFactory, github: FakeIdentityProvider
+    make_client: ClientFactory, settings: Settings, github: FakeIdentityProvider
 ):
-    client = make_client(FakeLLM(), user=None)
+    settings = replace(settings, dev_login=False)
+    client = make_client(FakeLLM(), user=None, settings=settings)
     await sign_in_with(client, github, github_identity("1001"))
     await agree_to_terms(client)
 
-    assert not await enters(client)
+    assert not await enters(client) and not await is_admin(client)
+
+
+async def test_with_dev_login_and_without_the_list_everyone_is_an_admin(
+    make_client: ClientFactory, settings: Settings
+):
+    by_name = make_client(FakeLLM())  # dev login is on in the tests
+    nobody = make_client(FakeLLM(), user=None)
+    listed = replace(settings, admins=frozenset({("github", "1001")}))
+    not_listed = make_client(FakeLLM(), settings=listed)
+
+    assert await enters(by_name) and await is_admin(by_name)
+    assert not await enters(nobody)
+    assert not await enters(not_listed) and not await is_admin(not_listed)
 
 
 async def test_a_banned_admin_finds_no_admin_console(

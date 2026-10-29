@@ -766,7 +766,10 @@ function BreakAtUnderscores({ text }: { text: string }) {
 /** 只能查看的项：当前的值（密钥只说设没设）和为什么不能在后台改。宽屏（≥ 1024px）是表，更窄时换成行。 */
 function ReadOnlyCard({ items }: { items: ReadOnlyItem[] }) {
   const wide = useMediaQuery("(min-width: 1024px)", true);
-  const value = (row: ReadOnlyItem) => readOnlyValue(row.value, { ...t.readOnly, none: t.none });
+  const value = (row: ReadOnlyItem) =>
+    row.name === "admins" && row.value === "everyone"
+      ? t.readOnly.everyone
+      : readOnlyValue(row.value, { ...t.readOnly, none: t.none });
   return (
     <Card>
       <CardHeader>

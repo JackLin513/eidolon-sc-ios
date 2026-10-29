@@ -46,9 +46,10 @@ async def signed_in(client: httpx.AsyncClient) -> bool:
 
 
 async def test_the_first_sign_in_with_github_makes_a_user_and_signs_them_in(
-    make_client: ClientFactory, github: FakeIdentityProvider
+    make_client: ClientFactory, settings: Settings, github: FakeIdentityProvider
 ):
-    client = make_client(FakeLLM(), user=None)
+    # Without dev login, under which everyone would be an admin.
+    client = make_client(FakeLLM(), user=None, settings=replace(settings, dev_login=False))
 
     res = await sign_in_with(client, github, github_identity())
 

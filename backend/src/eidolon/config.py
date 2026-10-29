@@ -478,7 +478,8 @@ class Settings:
     train on, embeds users' memories (ADR-0005, revised)."""
     admins: frozenset[tuple[str, str]] = frozenset()
     """The identities, as (provider, subject), whose users are admins and may enter the
-    admin console (ADR-0013); without any, there is no admin console."""
+    admin console (ADR-0013); without any, there is no admin console, unless everyone is
+    an admin (`everyone_admin`)."""
     contact: str | None = None
     """How to reach the deployer, told to banned users when they try to sign in, and to
     those turned away for want of an invite link; None tells them no one."""
@@ -503,6 +504,18 @@ class Settings:
     def chat_model(self) -> ChatModelSettings:
         """The chat model, as text turns and calls each use it."""
         return ChatModelSettings(self.chat_llm, self.call_reasoning_effort)
+
+    @property
+    def everyone_admin(self) -> bool:
+        """Whether every user is an admin: with dev login, which lets anyone sign in as
+        anyone, so that no list keeps anyone out, and no admins listed (ADR-0013, revised
+        2026-10-29)."""
+        return self.dev_login and not self.admins
+
+    @property
+    def admin_console(self) -> bool:
+        """Whether there is an admin console: with admins listed, or everyone one."""
+        return bool(self.admins) or self.everyone_admin
 
     @property
     def stt_key(self) -> SttKey | None:

@@ -1596,6 +1596,8 @@ export const zh = {
         } as Record<string, string>,
         set: "已设置",
         unset: "未设置",
+        /** 开发登录打开、没设管理者名单时，人人都是管理者。 */
+        everyone: "所有人（开发登录）",
       },
       protocols: {
         "chat-completions": "OpenAI 兼容（Chat Completions）",
