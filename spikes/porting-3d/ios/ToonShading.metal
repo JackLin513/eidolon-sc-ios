@@ -11,7 +11,7 @@ using namespace metal;
 //
 // Per-material constants arrive in an atlas texture, one byte per parameter in
 // the alpha channel. The order is `material_atlas.py`'s `LAYOUT`.
-constant uint kParamColumns = 62;
+constant uint kParamColumns = 65;
 constant uint kParamCapacity = 64;
 
 constant uint kParamColor = 0;
@@ -52,6 +52,9 @@ constant uint kParamBihakuWidth = 56;
 constant uint kParamBihakuHeight = 57;
 constant uint kParamBihakuBorder = 58;
 constant uint kParamIllum = 59;
+constant uint kParamExtraBihaku = 62;
+constant uint kParamWhitish = 63;
+constant uint kParamFreq = 64;
 
 // Shader discriminator, matching `material_atlas.SHADER_KINDS`.
 constant float kKindBasic = 1.0;
@@ -267,10 +270,7 @@ void toonSurface(realitykit::surface_parameters params)
             float d2 = dot(delta, delta);
             float f = 3.0227f * d2 - 4.4114f * d2 * d2 + 2.3887f * d2 * d2 * d2;
             float border = max(param(lut, row, kParamBihakuBorder), 1e-4f);
-            // `_ExtraBihaku` is a uniform the game pushes from C# and its value
-            // is unknown, so the atlas-edge override is left off rather than
-            // guessed at full strength.
-            const float extra = 0.0f;
+            const float extra = param(lut, row, kParamExtraBihaku);
             mask = saturate(max(extra, (0.5f + border - f) / border));
         }
 
@@ -293,13 +293,17 @@ void toonSurface(realitykit::surface_parameters params)
             // is `_MainTex.a * _SubTex.g`, not the sub texture's brightness.
             float3 glowColour = paramColour(lut, row, kParamGlowColor);
             float3 whity = paramColour(lut, row, kParamWhityCol);
-            // The material carries `_ColorBlendRate = 0`, but that is only the
-            // placeholder: the game sets it at runtime. Measured against a
-            // screenshot of the 3D viewer, ss003's trim averages (174,118,165),
-            // which is `_WhityCol` (176,123,157) in 8-bit — so the runtime value
-            // is 1, the "blown out" target, not the unshaded texture colour.
-            // With 0 the trim renders as the atlas's raw magenta (255,78,249).
-            const float blend = 1.0f;
+            // `_ColorBlendRate` is not a material value: `CharacterMaterials`
+            // pushes it every frame from `GlowProperty`. For ss003's
+            // `_WhiteMode = 2 / _Whitish = 1 / _Freq = 0.5` that is a two-second
+            // triangle wave between the unshaded texture colour and `_WhityCol`.
+            // A screenshot landed on the peak — the trim measured (174,118,165),
+            // i.e. `_WhityCol` (176,123,157) — which is why the phase is offset
+            // so the preview opens there instead of on the dull half.
+            float period = max(1.0f / max(param(lut, row, kParamFreq), 0.0001f), 0.0001f);
+            float phase = fract(params.uniforms().time() / period + 0.5f);
+            float blend = param(lut, row, kParamWhitish)
+                * (1.0f - abs(2.0f * phase - 1.0f));
             float3 glowTarget = mix(2.0f * correctedBase(colour, float3(mainTex.rgb)) * glowColour,
                                     whity, blend);
             float mask = step(0.5f, float(mainTex.a) * float(subTex.g));
