@@ -41,7 +41,7 @@ struct Model3DPreview: View {
     /// the preview opens on the fixed front composition.
     @State private var yaw: Float = 0
     @State private var pitch: Float = 0
-    @State private var zoom: Float = 1
+    @State private var zoom: Float = Float(ProcessInfo.processInfo.environment["EIDOLON_3D_ZOOM"] ?? "1") ?? 1
     @State private var dragStart: SIMD2<Float>?
     /// What a drag does. Rotation is the default; panning exists so the model can
     /// be moved out from behind the buttons.
@@ -78,8 +78,7 @@ struct Model3DPreview: View {
                         content.add(container)
                     }
                     .ignoresSafeArea()
-                    .gesture(orbitGesture)
-                    .simultaneousGesture(zoomGesture)
+                    .gesture(SimultaneousGesture(orbitGesture, zoomGesture))
                     .onTapGesture(count: 2) { resetInspection() }
                 }
                 if isLoading {
@@ -120,9 +119,31 @@ struct Model3DPreview: View {
     private var controls: some View {
         HStack(spacing: 10) {
             Button {
+                zoom = min(zoom * 1.25, 3)
+                applyInspection()
+            } label: {
+                Image(systemName: "plus.magnifyingglass")
+                    .padding(.horizontal, 4)
+            }
+            .buttonStyle(.bordered)
+            .tint(.white)
+
+            Button {
+                zoom = max(zoom / 1.25, 0.4)
+                applyInspection()
+            } label: {
+                Image(systemName: "minus.magnifyingglass")
+                    .padding(.horizontal, 4)
+            }
+            .buttonStyle(.bordered)
+            .tint(.white)
+
+            Button {
                 dragMode = dragMode == .rotate ? .move : .rotate
             } label: {
-                Text(dragMode == .rotate ? "拖动：旋转" : "拖动：移动")
+                Image(systemName: dragMode == .rotate
+                      ? "rotate.3d"
+                      : "arrow.up.left.and.arrow.down.right")
                     .padding(.horizontal, 6)
             }
             .buttonStyle(.bordered)
@@ -186,7 +207,7 @@ struct Model3DPreview: View {
     private func resetInspection() {
         yaw = 0
         pitch = 0
-        zoom = 1
+        zoom = Float(ProcessInfo.processInfo.environment["EIDOLON_3D_ZOOM"] ?? "1") ?? 1
         basePosition = fittedPosition
         applyInspection()
     }
