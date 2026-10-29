@@ -327,3 +327,22 @@ stream0 stride 40（pos12 + normal12 + tangent16）、stream1 stride 12（color4
 第一版实现：`toonSurface` 加 fresnel 边缘光（0.10）+ 收紧的高光（pow 48，阈值 0.72）；另写 `eyeSurface`（pow 120、强度 0.85）想给眼睛单独加强。
 
 **没生效**：眼睛那条路靠 `material.name` 匹配 `"eye"`，但 USD 导入后 `Material.name` 可能是 nil，所以全部走了通用 shader。下一步要用可靠标识（材质名、贴图尺寸，或按 primitive 索引）来分流。
+
+### 2026-10-29 高光第二版：`_SubTex`，以及它到底是什么
+
+第一版把高光当成"程序化算出来的"（`_RimLight*` / `_SpecTex_*`），结果眼睛那条路也没生效。这版先按 `research-mltd-materials.md` 的结论把真正承载高光的那张贴图搬过来，结论是：**MLTD 的高光是 `_SubTex` 这一层加法贴图，不是参数**。
+
+**证据**：把 `_SubTex` 导出后再渲染，眼睛出现明确的白色眼神光（原来是平的）、ss003 的霓虹描边从暗紫变成亮白。同一份 glTF 去掉 `emissiveTexture` 再渲染，这两处都消失。两版对比图在 `build/mltd-spike/out/native/probe-glow-ss003.png`（开）与 `/tmp/noglow-ss003.png`（关）。
+
+**原来的调查结论要修正一处**：`_SpecTex_*` 那套参数确实存在，但眼睛上真正画出亮点的是 `_SubTex`——一张白底（`(255,255,255)`）配 alpha 遮罩、覆盖率约 2% 的贴图。`_SpecTex_*` 是经营这套高光的运动/缩放参数，不是高光本身。
+
+**这条链上的四个坑**
+
+1. **`_SubTex` 的 alpha 是遮罩，emissive 只乘 RGB。** 直接把带 alpha 的原图当 emissive，眼睛会整块发光。导出时先把 alpha 乘进颜色（`premultiplied()`），alpha 再置 255；ss003 的 glow 本来就 alpha=255，乘积是恒等。测试在 `tests/test_export_character.py`。
+2. **`params.textures().emissive_color()` 能采样，但 `.lit` 光照模型不会替你把 emissive 加进结果。** 验证方法是先把 `emissiveColor` 的 tint 设白（结果没变化），再在 shader 里自己加（结果出来了）。所以现在 tint 设成 `.black` 只用来**绑定**贴图，加算在 `toonSurface` 里做——否则两条路径同时生效会加两遍。
+3. **UV1 读错了地方**：`decode_channel(stream(uv1_channel.stream), ...)` 少写了 `offsets[...]`，把 stream 序号 1 当成字节偏移，读出来是 `-1.7e18` 量级的垃圾。修好后 hair 的 UV1 范围是 u∈[0.099, 0.998]、v∈[0.002, 0.995]。
+4. **Blender 的 USD 导出器只写一套 `primvars:st`。** 场景里 `UVMap` / `UVMap.001` 都在，`export_uvmaps=True`，但导出的 USD 里没有 `primvars:st1`。所以头发的 `_SubTex`（唯一需要 UV1 的材质）暂时跳过——用 UV0 采样只会把几笔高光甩到头上，比没有更糟。
+
+**顺带修掉的构图问题**：`visualBounds` 在实体还没挂到场景里时读到的包围盒不可靠（骨架 rest pose 决定），pr001 因此被缩到四分之一个 ss003。现在先 `container.addChild`、睡 120 ms 再 `normalize`。归一化目标从魔数 `1.6` 改成显式常量 `targetHeight = 2.3`——默认 `RealityView` 相机在 z = -1 处的可视高度约 3.1 单位，2.3 正好留出状态栏和按钮的位置。
+
+**仍未做**：`_AmbientColor` / `_DiffuseColor` / `_ShadingOffset` / `_Outline*` 这些材质标量仍没进导出，所以明暗分级还是全局一套，没有描边。

@@ -97,6 +97,24 @@ def world_of(merged: Merged, index: int) -> list[list[float]]:
     return world
 
 
+def premultiplied(image):
+    """Fold alpha into the colour channels.
+
+    `_SubTex` uses alpha as its mask (the eye highlight is a white blob on a
+    transparent field), but an emissive texture is multiplied by RGB alone, so
+    an unmasked white would light the whole quad.
+    """
+    from PIL import ImageChops
+
+    image = image.convert("RGBA")
+    alpha = image.getchannel("A")
+    rgb = ImageChops.multiply(
+        image.convert("RGB"), alpha.convert("RGB")
+    )
+    rgb.putalpha(255)
+    return rgb
+
+
 def sanitise(name: str) -> str:
     return "".join(
         character if character.isalnum() or character in "-_" else "_"
@@ -144,29 +162,48 @@ def build(body: Path, head: Path | None, out: Path) -> GltfDocument:
     images: list[dict] = []
     textures: list[dict] = []
     materials: list[dict] = []
-    material_index: dict[str, int] = {}
+    material_index: dict[tuple[str, int], int] = {}
     (out / "textures").mkdir(parents=True, exist_ok=True)
 
-    def material_for(info) -> int | None:
+    def add_image(image, key: str, premultiply: bool = False) -> int:
+        file_name = f"textures/{len(images):02d}_{sanitise(key)}.png"
+        if premultiply:
+            image = premultiplied(image)
+        image.save(out / file_name)
+        images.append({"uri": file_name})
+        textures.append({"source": len(images) - 1, "sampler": 0})
+        return len(textures) - 1
+
+    def material_for(info, glow_uv: int) -> int | None:
+        """glTF carries the game's two texture slots as base colour + emissive.
+
+        `_SubTex` is additive glow, which is what `emissiveTexture` means, and
+        `texCoord` picks the UV set: only the hair has a second one.
+        """
         if info is None:
             return None
         key = info.name or "material"
-        if key in material_index:
-            return material_index[key]
+        cache_key = (key, glow_uv)
+        if cache_key in material_index:
+            return material_index[cache_key]
         pbr: dict = {"metallicFactor": 0.0, "roughnessFactor": 0.9}
         if info.image is not None:
-            file_name = f"textures/{len(images):02d}_{sanitise(key)}.png"
-            info.image.save(out / file_name)
-            images.append({"uri": file_name})
-            textures.append({"source": len(images) - 1, "sampler": 0})
-            pbr["baseColorTexture"] = {"index": len(textures) - 1}
+            pbr["baseColorTexture"] = {"index": add_image(info.image, key)}
         else:
             pbr["baseColorFactor"] = [0.85, 0.85, 0.85, 1.0]
-        materials.append(
-            {"name": key, "pbrMetallicRoughness": pbr, "doubleSided": True}
-        )
-        material_index[key] = len(materials) - 1
-        return material_index[key]
+        entry: dict = {"name": key, "pbrMetallicRoughness": pbr, "doubleSided": True}
+        # Only the hair has a second UV set, and the Blender USD export writes a
+        # single `primvars:st`, so a hair glow could only be sampled with the
+        # wrong coordinates. Skipping it loses the shine band but beats spraying
+        # the strokes across the head.
+        if info.glow is not None and glow_uv == 0:
+            entry["emissiveTexture"] = {
+                "index": add_image(info.glow, f"{key}_glow", premultiply=True)
+            }
+            entry["emissiveFactor"] = [1.0, 1.0, 1.0]
+        materials.append(entry)
+        material_index[cache_key] = len(materials) - 1
+        return material_index[cache_key]
 
     primitive_entries: list[dict] = []
     for mesh, local_joints in meshes:
@@ -192,6 +229,17 @@ def build(body: Path, head: Path | None, out: Path) -> GltfDocument:
                     "TEXCOORD_0": chunks.floats(
                         [(u, 1.0 - v) for u, v in primitive.uvs], 2, "VEC2"
                     ),
+                    **(
+                        {
+                            "TEXCOORD_1": chunks.floats(
+                                [(u, 1.0 - v) for u, v in primitive.uvs1],
+                                2,
+                                "VEC2",
+                            )
+                        }
+                        if primitive.uvs1
+                        else {}
+                    ),
                     "JOINTS_0": chunks.bytes(
                         [
                             [skin_of_joint[local_joints[int(i)]] for i in value]
@@ -210,7 +258,7 @@ def build(body: Path, head: Path | None, out: Path) -> GltfDocument:
                 },
                 "indices": chunks.indices(triangles[first : first + count]),
             }
-            index = material_for(info)
+            index = material_for(info, 1 if primitive.uvs1 else 0)
             if index is not None:
                 entry["material"] = index
             if mesh.shapes:
