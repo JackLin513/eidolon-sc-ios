@@ -389,3 +389,24 @@ stream0 stride 40（pos12 + normal12 + tangent16）、stream1 stride 12（color4
 **眼睛高光**：原版用第二套 UV 算一个透镜畸变、随视角旋转的高光位置，但 `eyes` mesh 根本没有 uv1（一手数据里只有 uv0），公式跑起来会把整个虹膜刷白。改用 MLTDTools 记录的做法：按 base UV 采样（两张图尺寸相同，等价）。这也是研究报告 §7 里那条 UNVERIFIED 的处置。
 
 **构图**：`visualBounds` 在骨骼就绪后还会继续变大好几帧，读一次会把模型缩成四分之一或撑爆。改成挂载后连续 6 帧取最大包围盒（异步 100 ms 一次），并允许换装时重算。
+
+### 2026-10-29 色彩空间：已验证是 Gamma
+
+前面按"饱和度偏高 + 蓝通道被吃"推断项目是 Gamma，属于推测。现在读到了游戏自己的设置：
+
+```
+UnityPy.load(.../Data/data.unity3d)
+  PlayerSettings.m_ActiveColorSpace == 0        # 0 = Gamma, 1 = Linear
+```
+
+注意：直接 `obj.read()` 会因这个 2018.4 数据的 typetree 少 4 字节报
+`Expected to read 900 bytes, but only read 896`，用 `read(check_read=False)` 才能拿到。
+
+旁证（方向一致）：`Chr_Glow/Basic/Face/Hair/Bi_CharEye` 五个角色 shader 里**没有任何**
+色彩空间转换（无 `ColorSpaceDouble`、无 `LinearToGammaSpace`），全包出现 `0.416666`
+的只有 UI / Legacy 那几个内置 shader。也就是说角色 shader 不转换，算术直接在当前
+色彩空间里做——Gamma 项目里就是在 sRGB 值上做 `_Color*tex - 0.02`。
+
+RealityKit 采样会线性化、输出也期望线性，所以 `ToonShading.metal` 在采样后做
+`toGamma`、出结果前做 `toLinear`，把数学放回 sRGB 空间。实测头发饱和度
+0.84 → 0.71（游戏 0.45），余下差距归因于 `.lit` 的 PBR 那层。
