@@ -120,8 +120,21 @@ void toonSurface(realitykit::surface_parameters params)
     uint row = uint(custom.x);
     texture2d<half> lut = params.textures().specular();
 
+    // RealityKit already hands the shader a view-space normal; the game computes
+    // in view space too, so no transform is needed. (Multiplying by
+    // `model_to_view` here rotated the field by the rig's yaw and lit the wrong
+    // side — confirmed with `EIDOLON_3D_DEBUG_NORMALS`.)
     float3 normal = normalize(params.geometry().normal());
     float3 view = normalize(params.geometry().view_direction());
+
+    if (custom.w > 0.5f) {
+        // `EIDOLON_3D_DEBUG_NORMALS`: view-space normal as colour, so faceting
+        // and a wrong space are both obvious.
+        params.surface().set_base_color(half3(saturate(normal * 0.5f + 0.5f)));
+        params.surface().set_metallic(0.0);
+        params.surface().set_roughness(1.0);
+        return;
+    }
 
     if (custom.z > 0.5f) {
         // `EIDOLON_3D_LUT_DEBUG`: paint the parameter row instead of shading, so
@@ -251,7 +264,13 @@ void toonSurface(realitykit::surface_parameters params)
             // is `_MainTex.a * _SubTex.g`, not the sub texture's brightness.
             float3 glowColour = paramColour(lut, row, kParamGlowColor);
             float3 whity = paramColour(lut, row, kParamWhityCol);
-            float blend = param(lut, row, kParamColorBlendRate);
+            // The material carries `_ColorBlendRate = 0`, but that is only the
+            // placeholder: the game sets it at runtime. Measured against a
+            // screenshot of the 3D viewer, ss003's trim averages (174,118,165),
+            // which is `_WhityCol` (176,123,157) in 8-bit — so the runtime value
+            // is 1, the "blown out" target, not the unshaded texture colour.
+            // With 0 the trim renders as the atlas's raw magenta (255,78,249).
+            const float blend = 1.0f;
             float3 glowTarget = mix(2.0f * correctedBase(colour, float3(mainTex.rgb)) * glowColour,
                                     whity, blend);
             float mask = step(0.5f, float(mainTex.a) * float(subTex.g));
