@@ -9,6 +9,7 @@ a single skin can drive every mesh.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,6 +27,7 @@ from gltf_export import (
     matrix_inverse,
     matrix_multiply,
 )
+from material_params import read_material_table
 from unity_mesh import flip_handedness
 from unity_rig import Node, load, read_nodes, read_skinned_meshes
 
@@ -122,7 +124,9 @@ def sanitise(name: str) -> str:
     )[:40]
 
 
-def build(body: Path, head: Path | None, out: Path) -> GltfDocument:
+def build(
+    body: Path, head: Path | None, out: Path, name: str = "character"
+) -> GltfDocument:
     merged, body_map, head_map = merge_skeleton(body, head)
 
     chunks = _Chunks()
@@ -269,6 +273,16 @@ def build(body: Path, head: Path | None, out: Path) -> GltfDocument:
                 entry["extras"] = {"targetNames": [name for name, _ in mesh.shapes]}
             primitive_entries.append(entry)
 
+    # The glTF has no home for the game's two dozen shading scalars, so they
+    # travel beside it and the runtime turns them into a lookup texture.
+    materials_table: dict[str, dict] = {}
+    for bundle, _ in sources:
+        materials_table.update(read_material_table(load(str(bundle))))
+    (out / f"{name}-materials.json").write_text(
+        json.dumps({"materials": materials_table}, indent=1, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
     inverse_bind = chunks.floats(
         [
             flip_matrix(column_major(matrix_inverse(world_of(merged, joint))))
@@ -308,7 +322,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--name", default="character")
     arguments = parser.parse_args(argv)
 
-    document = build(arguments.body, arguments.head, arguments.out)
+    document = build(arguments.body, arguments.head, arguments.out, arguments.name)
     print(document.write(arguments.out, arguments.name))
     return 0
 
