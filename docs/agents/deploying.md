@@ -61,7 +61,7 @@ cp .env.example .env        # PowerShell：Copy-Item .env.example .env
 
 ### 2.3 启动
 
-**直接跑**：开两个终端，都在仓库根目录。你自己操作时，就把两条命令放到后台运行。
+**直接跑**：开两个终端，都在仓库根目录。你自己操作时，就把两条命令放到后台运行（Windows 上用 `Start-Process` 时写 `npm.cmd`，原因见「拉取剧情和立绘」）。
 
 ```sh
 # 终端一：后端（:8000）
@@ -98,7 +98,7 @@ docker compose up -d --build
 
 ### 2.5 剧情和立绘
 
-见下面的「剧情库」和「立绘」。
+用户想要剧情回忆或通话立绘时，由你按「拉取剧情和立绘」拉取，跑到全部拉完。
 
 ## 3. 公网部署
 
@@ -228,50 +228,57 @@ $env:HTTPS_PROXY="http://127.0.0.1:7890"     # PowerShell
 
 git 也可以单独设代理：`git config --global http.https://github.com.proxy http://127.0.0.1:端口`。
 
+## 拉取剧情和立绘
+
+用户问起剧情或立绘，或者一开始就说想要这两项功能时，**下载由你来执行，跑到全部拉完**，用户不碰命令行。两项都很耗时，按这个顺序做：
+
+1. **先说清楚再开始**：要多久、占多大空间、花不花钱（见下面两节），用户同意了再开始。
+2. **确认前提**：拉剧情要 doctor 里的「向量化」是 ✓。在中国大陆连不上 GitHub、ShinyColorsDB 时，先在你启动脚本的那个终端里设上 `HTTPS_PROXY`（见「网络和代理」），脚本会继承它。
+3. **用独立的进程在后台跑**，这样你的会话结束了它也照常跑完。两个脚本自己会把输出写进 `logs/` 下的日志，你只管启动：
+   - Windows（PowerShell，在仓库根目录）。`.sh` 要交给 Git 自带的 `sh.exe`：
+
+     ```powershell
+     $sh = Join-Path (Split-Path (Split-Path (Get-Command git).Source)) "bin\sh.exe"
+     $env:EIDOLON_SYNC_DIRECT = "1"   # 按下面各节设对应的变量
+     Start-Process -WindowStyle Minimized -FilePath $sh -ArgumentList "deploy/story-sync.sh"
+     ```
+
+   - macOS、Linux：`EIDOLON_SYNC_DIRECT=1 nohup sh deploy/story-sync.sh >/dev/null 2>&1 &`
+   - Windows 上用 `Start-Process` 启动 Node 的命令时，要写 `npm.cmd`、`npx.cmd`。只写 `npm`、`npx`，它会用记事本打开同名的脚本文件，什么也不启动。
+4. **隔一阵看一次日志的最后几行**，用一句话把进度告诉用户，比如「剧情已经下载了 1200 个剧本」。
+5. **日志最后一行「结束：退出码 N（含义）」不是 0，就再启动一次**。脚本会接着上次的进度做，已经下载的不会重下。退出码 5 表示上一次还没跑完，等着就行。
+
+两个脚本退出码的含义，见 `docs/deploy.md`「每周自动同步」和「同步素材」那两张表。
+
 ## 剧情库
 
 用户常问：「为什么仓库里没有剧情？」这样回答：剧情文本的版权不属于本项目，所以不随仓库分发（`docs/adr/0003-corpus-and-voices-stay-private.md`），仓库里只有同步工具。没同步之前，角色只凭人设回复，不会回忆原作剧情。
 
-同步之前要先配好向量化服务（`SILICONFLOW_API_KEY`）。同步会先拿到汉化版 SCTranslationData，再从镜像补齐还缺的原文剧情：
-
-```sh
-# 直接跑：在仓库根目录。后端开着、停着都行
-git clone --depth 1 https://github.com/ShinyGroup/SCTranslationData.git corpus/SCTranslationData
-cd backend
-uv run --env-file=../.env eidolon story sync
-```
-
-```sh
-# Docker 跑：后端要在运行。Windows 在 Git Bash 里运行
-COMPOSE_FILE=docker-compose.yml sh deploy/story-sync.sh
-# 服务器
-deploy/story-sync.sh
-```
-
-- 第一次要下载几千个剧本，镜像要求逐个下载、间隔约一秒，所以要一到两个小时（另加向量化的时间）。中途断了重新运行会接着做，已经下载的不会再下。
-- 直接跑时，结果就是命令的输出，退出码 0 是完全成功，2 是镜像出了错（汉化版已经导入了，再运行一次会接着拉）。之后要更新，先 `git -C corpus/SCTranslationData pull --ff-only`，再运行一次 `story sync`。
-- 用脚本时，进度写在 `logs/story-sync.log`，最后一行「结束：退出码 N（含义）」就是结果，退出码的含义见 `docs/deploy.md`「每周自动同步」那张表。脚本不会把 `HTTPS_PROXY` 带进容器，镜像连不上（退出码 2）时，改成直接在容器里运行：`docker compose exec -e HTTPS_PROXY=http://host.docker.internal:端口 backend eidolon story sync`（服务器上加 `-f docker-compose.prod.yml`，主机写 `127.0.0.1`）。
-- 向量化按量计费，费用见服务商的价格页，同步之前先告诉用户。
-- 同步完跑 doctor，「剧情库：N 段剧情」里的 N 大于 0 就是成功了。
+- **要告诉用户的**：第一次要下载几千个剧本，镜像要求逐个下载、间隔约一秒，所以要一到两个小时，另加向量化的时间。向量化按量计费，费用见服务商的价格页。
+- **脚本**：`deploy/story-sync.sh`，日志在 `logs/story-sync.log`。它会先克隆（以后是更新）汉化版 SCTranslationData，再从镜像补齐还缺的原文剧情。
+  - 直接跑：设 `EIDOLON_SYNC_DIRECT=1`。不经过 Docker，后端开着、停着都行。
+  - Docker 跑：设 `COMPOSE_FILE=docker-compose.yml`，后端要在运行。
+  - 服务器：什么都不用设。
+- **镜像连不上时**（退出码 2，日志里是连接错误）：直接跑时，设上 `HTTPS_PROXY` 再启动一次。Docker 跑和服务器上，脚本不会把 `HTTPS_PROXY` 带进容器，改成直接在容器里运行：`docker compose exec -e HTTPS_PROXY=http://host.docker.internal:端口 backend eidolon story sync`（服务器上加 `-f docker-compose.prod.yml`，主机写 `127.0.0.1`）。
+- **完成的标准**：日志最后一行是「结束：退出码 0」，doctor 显示「剧情库：N 段剧情」，N 有几千。告诉用户可以去和她聊聊原作的事了。
+- 之后要更新，再启动一次脚本就行，通常几分钟就跑完。
 
 ## 立绘
 
 用户常问：「为什么通话时只有背景图，没有会动的立绘？」这样回答：立绘是原作的 Spine 素材，同样不随仓库分发，要从 ShinyColorsDB 拉取。落地页的招呼语音和酒吧音乐也是同样的情况，没配时落地页会安静一些，这不是坏了。
 
-**本机体验**：只看通话里的默认衣装，不用存储桶。直接跑和 Docker 跑都要先装 uv 和 Node.js（见 2.1）。在仓库根目录：
+**本机体验**：不用存储桶，拉到本地，再用一个本地的静态服务器提供给浏览器。直接跑和 Docker 跑都一样，要装好 uv（见 2.1）。
 
-```sh
-cd backend
-uv run --env-file=../.env eidolon stand fetch     # 连不上 ShinyColorsDB 时先设 HTTPS_PROXY
-cd ..
-npx http-server corpus/stand/source/assets -p 8765 --cors   # 一直开着
-```
+- **要告诉用户的**：要拉 29 位角色的全部衣装，有几 GB。ShinyColorsDB 要求逐个下载、间隔约一秒，所以要几个小时。不花钱。
+- **拉取**：用 `deploy/stand-sync.sh`，设 `EIDOLON_STAND_FETCH_ONLY=1`，只拉取，不渲染缩略图、不上传。日志在 `logs/stand-sync.log`。退出码 6 表示有一部分没拉到，再启动一次。
+- **拉完以后**，你接着做下面三件事：
+  1. 在后台启动静态服务器，它要一直开着。Windows：`Start-Process -WindowStyle Minimized -FilePath npx.cmd -ArgumentList "--yes","http-server","corpus/stand/source/assets","-p","8765","--cors"`；macOS、Linux：`nohup npx --yes http-server corpus/stand/source/assets -p 8765 --cors >/dev/null 2>&1 &`。
+  2. 在 `.env` 里写上 `EIDOLON_STAND_ASSETS_URL=http://localhost:8765`，然后重启后端。
+  3. 直接跑时，**前端也要带上这个地址重新启动**：`BACKEND_URL=http://localhost:8000 EIDOLON_STAND_ASSETS_URL=http://localhost:8765 npm run start`（PowerShell 写成两条 `$env:…=` 再 `npm run start`）。前端只允许页面从这个地址加载立绘，不带上它，立绘会被浏览器挡掉。Docker 跑时用 `docker compose up -d`，它会自动把地址传给前端。
+- **完成的标准**：日志最后一行是「结束：退出码 0」，8765 端口在监听，用户打一通电话能看到她的立绘。
+- 告诉用户：以后每次用之前，静态服务器也要和前后端一起开着。换衣装面板要有衣装清单和缩略图，本机体验没有，这是正常的。
 
-- 第一次拉取的是 29 位角色的全部衣装，有几 GB，要很久。只想先看效果的话，拉完几位角色就可以按 Ctrl+C 停下，下次运行会接着拉。
-- `.env` 里填 `EIDOLON_STAND_ASSETS_URL=http://localhost:8765`，然后重启后端。直接跑时**前端也要带上这个地址**重新启动：`BACKEND_URL=http://localhost:8000 EIDOLON_STAND_ASSETS_URL=http://localhost:8765 npm run start`（PowerShell 写成两条 `$env:…=` 再 `npm run start`）。前端只允许页面从这个地址加载立绘，不带上它，立绘会被浏览器挡掉。Docker 跑时用 `docker compose up -d`，它会自动把地址传给前端。
-- 换衣装面板要有衣装清单和缩略图，本机体验没有，这是正常的。
-
-**公网部署**要一个公开可读的 S3 兼容存储桶（推荐 Cloudflare R2，不收流量费），然后用 `deploy/stand-sync.sh` 拉取、渲染缩略图、上传。存储桶的设置（公开访问、CORS）、要装的东西和退出码都在 `docs/deploy.md`「立绘素材」。存储桶和 API 令牌要用户在 Cloudflare 控制台里自己建：你一步步告诉用户点哪里，用户把四项 `EIDOLON_STAND_S3_*` 和公开地址填进 `.env`。
+**公网部署**要一个公开可读的 S3 兼容存储桶（推荐 Cloudflare R2，不收流量费）。存储桶和 API 令牌要用户在 Cloudflare 控制台里自己建：你一步步告诉用户点哪里，用户把四项 `EIDOLON_STAND_S3_*` 和公开地址填进 `.env`。存储桶的设置（公开访问、CORS）、服务器上要装的东西，见 `docs/deploy.md`「立绘素材」。之后由你按「拉取剧情和立绘」的做法在服务器上运行 `deploy/stand-sync.sh`，什么变量都不用设，它会拉取、渲染缩略图、上传。日志最后一行是「结束：退出码 0」、通话里能看到立绘，就算完成。
 
 ## 排障
 

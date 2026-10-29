@@ -5,6 +5,8 @@
 #
 # 输出追加到仓库根目录的 logs/story-sync.log（可用 EIDOLON_SYNC_LOG 改到别处）。
 # 默认用 docker-compose.prod.yml；设置了 COMPOSE_FILE 时用它指定的配置。
+# 设了 EIDOLON_SYNC_DIRECT=1 时不经过 docker，在 backend/ 下用 uv 同步本地的库（本机直接跑，
+# docs/agents/deploying.md「三种跑法」），设置从仓库根目录的 .env 读。
 #
 # 退出码（含义也写在每次同步的最后一行日志里）：
 #   0  完全成功
@@ -12,14 +14,14 @@
 #   2  镜像或 API 出错，这次没拉到（全部）原文剧情；汉化版已照常导入
 #   3  git 没能更新 SCTranslationData：有已下载的数据时照常同步（同步出错时以 1、2 为准），
 #      一份都没有时不运行同步
-#   4  后端容器没有运行，或无法运行同步命令
+#   4  后端容器没有运行，或无法运行同步命令（直接跑时：找不到 uv）
 #   5  上一次同步还没结束，这次没有运行
 
 set -u
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root" || exit 4
-PATH=/usr/local/bin:/usr/bin:/bin:$PATH # cron 的 PATH 很短
+PATH=/usr/local/bin:/usr/bin:/bin:$PATH:$HOME/.local/bin # cron 的 PATH 很短；uv 默认装在 ~/.local/bin
 export COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
 log=${EIDOLON_SYNC_LOG:-$root/logs/story-sync.log}
 mkdir -p "$root/logs" "$(dirname "$log")"
@@ -88,20 +90,37 @@ if [ "$git_failed" = 1 ]; then
   fi
 fi
 
-# 出错时（例如没有 docker 的权限）docker 自己的错误信息也写进日志
-if [ -z "$(docker compose ps --status running --quiet backend)" ]; then
-  say "后端容器没有运行（docker compose ps 里找不到运行中的 backend）"
-  finish 4
+if [ "${EIDOLON_SYNC_DIRECT:-}" = 1 ]; then
+  if ! command -v uv >/dev/null; then
+    say "找不到 uv（docs/agents/deploying.md 的 2.1 说了怎么装）"
+    finish 4
+  fi
+  env_file=
+  if [ -f .env ]; then
+    env_file="--env-file=../.env"
+  fi
+  say "eidolon story sync（不经过 docker）"
+  # PYTHONIOENCODING：输出重定向到日志时，Windows 上的 Python 默认用 GBK，和脚本自己写的 UTF-8 混成乱码
+  # shellcheck disable=SC2086 # 没有 .env 时 $env_file 为空，不传这个参数
+  (cd backend && PYTHONUNBUFFERED=1 PYTHONIOENCODING=utf-8 uv run --quiet $env_file eidolon story sync)
+  sync_code=$?
+  ran_with="uv run"
+else
+  # 出错时（例如没有 docker 的权限）docker 自己的错误信息也写进日志
+  if [ -z "$(docker compose ps --status running --quiet backend)" ]; then
+    say "后端容器没有运行（docker compose ps 里找不到运行中的 backend）"
+    finish 4
+  fi
+  say "docker compose exec backend eidolon story sync"
+  # -T：cron 里没有终端；PYTHONUNBUFFERED：进度日志和结果按实际顺序写进日志
+  docker compose exec -T -e PYTHONUNBUFFERED=1 backend eidolon story sync
+  sync_code=$?
+  ran_with="docker compose exec"
 fi
-
-say "docker compose exec backend eidolon story sync"
-# -T：cron 里没有终端；PYTHONUNBUFFERED：进度日志和结果按实际顺序写进日志
-docker compose exec -T -e PYTHONUNBUFFERED=1 backend eidolon story sync
-sync_code=$?
 case $sync_code in
   0 | 1 | 2) ;;
   *)
-    say "docker compose exec 以 $sync_code 结束"
+    say "$ran_with 以 $sync_code 结束"
     finish 4
     ;;
 esac

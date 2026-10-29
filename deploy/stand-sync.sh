@@ -7,6 +7,8 @@
 # 加锁，防止两次同步重叠，没有时（例如 Windows 的 Git Bash）不加锁照常同步。
 #
 # 设置从仓库根目录的 .env 读（环境变量里已有的优先）：EIDOLON_STAND_S3_*、EIDOLON_STAND_BUILD_PATH 等。
+# 设了 EIDOLON_STAND_FETCH_ONLY=1 时只做第一步拉取，只要 uv、不要存储桶：本机体验用本地的静态服务器
+# 提供拉到的立绘（docs/agents/deploying.md「立绘」）。
 # 输出追加到仓库根目录的 logs/stand-sync.log（可用 EIDOLON_STAND_SYNC_LOG 改到别处）。
 #
 # 退出码（含义也写在每次同步的最后一行日志里）：
@@ -50,7 +52,11 @@ finish() {
 
 say "==== 开始同步立绘素材（$root）"
 
-for tool in uv node npm; do
+tools="uv node npm"
+if [ "${EIDOLON_STAND_FETCH_ONLY:-}" = 1 ]; then
+  tools=uv
+fi
+for tool in $tools; do
   if ! command -v "$tool" >/dev/null; then
     say "找不到 $tool（docs/deploy.md「立绘素材」列出了要装的东西）"
     finish 4
@@ -66,7 +72,7 @@ else
   say "找不到 flock（util-linux），不加锁：别同时运行两次"
 fi
 
-if [ ! -d frontend/node_modules/playwright ]; then
+if [ "${EIDOLON_STAND_FETCH_ONLY:-}" != 1 ] && [ ! -d frontend/node_modules/playwright ]; then
   say "npm ci（frontend 的依赖，渲染缩略图要用）"
   if ! npm --prefix frontend ci --no-audit --no-fund; then
     finish 4
@@ -92,6 +98,13 @@ case $fetch_code in
     finish 1
     ;;
 esac
+
+if [ "${EIDOLON_STAND_FETCH_ONLY:-}" = 1 ]; then
+  if [ "$fetch_failed" = 1 ]; then
+    finish 6
+  fi
+  finish 0
+fi
 
 say "eidolon stand outfits"
 # shellcheck disable=SC2086 # 没有 .env 时 $env_file 为空，不传这个参数
