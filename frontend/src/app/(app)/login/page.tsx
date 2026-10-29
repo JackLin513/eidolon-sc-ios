@@ -14,8 +14,8 @@ import { Input } from "@/components/ui/input";
 import { copy } from "@/i18n";
 import {
   devLogin,
-  getAccount,
   getSignInOptions,
+  isSignedInHere,
   listCharacters,
   type Character,
   type SignInOptions,
@@ -44,7 +44,7 @@ export default function LoginPage() {
     const code = query.get("invite");
     setInvite(code);
     // 已经登录的人打开邀请链接，用不上它，照常进对话列表。
-    if (code) getAccount().then(() => window.location.replace("/conversations"), () => {});
+    if (code) isSignedInHere().then((yes) => yes && window.location.replace("/conversations"), () => {});
     getSignInOptions().then(setOptions, (e) => setFailure(toFailure(e)));
     // 角色名单随 characters.toml 变化，从后端取；取不到只是少了展示，不算失败。
     listCharacters().then(setCharacters, () => {});

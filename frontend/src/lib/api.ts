@@ -484,6 +484,13 @@ export function sponsorImageUrl(version: string): string {
 }
 
 /** The signed-in user; sends the browser to sign in, or to agree to the terms, first. */
+/** Whether this browser is signed in, as one who has yet to agree to the terms too; unlike `api`, it
+ * sends the browser nowhere when it is not. */
+export async function isSignedInHere(): Promise<boolean> {
+  const res = await fetch("/api/account", { headers: apiHeaders() });
+  return res.ok || res.status === CONSENT_REQUIRED;
+}
+
 export async function getAccount(): Promise<Account> {
   return json(await api("/api/account"));
 }
