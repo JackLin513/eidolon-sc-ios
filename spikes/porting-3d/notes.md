@@ -284,3 +284,15 @@ stream0 stride 40（pos12 + normal12 + tangent16）、stream1 stride 12（color4
 - **surface shader 里拿到的 UV 没有翻 V**。内置材质内部会翻，自定义 shader 必须自己 `1.0 - uv.y`，否则整张图集错位（表现为衣服变成橙色、袖子变成格子）。
 
 效果：两套衣装都不再有压黑的暗部，头发和脸干净。
+
+### 2026-10-29 换装修复与画质
+
+**换装不生效的真因**：不是按钮。`RealityView` 的 make 闭包只跑一次，重新给 `@State entity` 赋值不会重新挂载；按钮状态变了、模型没换。改成先 `content.add(container)`，换装时清空 `container` 的子节点再挂新的。
+
+**换装卡死**：`Entity.load(contentsOf:)` 在主 actor 上解析 5 MB USDZ。改成 `nonisolated` 静态方法，离主线程跑。
+
+**头部色块/伤疤**：不是打光，是**图集 mipmap 串色**。card 贴图是一张图集，采样 mip 链会把相邻岛的颜色混过来（头发上出现青紫色块，而头发贴图里根本没有这些颜色）。sampler 改成 `mip_filter::none` + `address::clamp_to_edge` 后消失。
+
+**ramp 过硬**：三段式（0.55/0.15）在低模脸上切出硬边，看着像疤。改成 `mix(0.80, 1.0, smoothstep(0.15, 0.55, lambert))`。
+
+**调试开关**：`EIDOLON_3D_SWAP_SECONDS=6` 启动后自动换一次装，用来验证换装路径（模拟器没有点击自动化）。

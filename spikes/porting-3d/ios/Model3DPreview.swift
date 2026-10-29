@@ -14,6 +14,9 @@ struct Model3DPreview: View {
     }
 
     @State private var outfit = Model3DOutfit.privateClothes
+    /// Added to the scene once. Models are swapped inside it, because
+    /// `RealityView`'s make closure does not run again when state changes.
+    @State private var container = Entity()
     @State private var entity: Entity?
     @State private var phase = Phase.empty
     @State private var isLoading = false
@@ -60,9 +63,7 @@ struct Model3DPreview: View {
             case .loaded:
                 if let entity {
                     RealityView { content in
-                        if entity.parent == nil {
-                            content.add(entity)
-                        }
+                        content.add(container)
                     }
                     .ignoresSafeArea()
                     .gesture(orbitGesture)
@@ -86,11 +87,22 @@ struct Model3DPreview: View {
             }
         }
         .task(id: outfit) { await load(outfit) }
+        .task { await scheduleDebugSwap() }
         .safeAreaInset(edge: .bottom) {
             if phase == .loaded {
                 controls
             }
         }
+    }
+
+    /// Debug hook: `EIDOLON_3D_SWAP_SECONDS=4` switches outfits once after launch,
+    /// which exercises the same path as the buttons without a tap.
+    private func scheduleDebugSwap() async {
+        guard let raw = ProcessInfo.processInfo.environment["EIDOLON_3D_SWAP_SECONDS"],
+              let seconds = Double(raw)
+        else { return }
+        try? await Task.sleep(for: .seconds(seconds))
+        outfit = outfit == .privateClothes ? .stageCostume : .privateClothes
     }
 
     private var controls: some View {
@@ -186,7 +198,7 @@ struct Model3DPreview: View {
         defer { isLoading = false }
 
         do {
-            let loaded = try await Entity.load(contentsOf: url)
+            let loaded = try await Self.decode(url)
             guard !Task.isCancelled else { return }
             guard normalize(loaded) else {
                 if entity == nil {
@@ -197,6 +209,10 @@ struct Model3DPreview: View {
                 return
             }
             ToonShading.apply(to: loaded)
+            for child in container.children {
+                child.removeFromParent()
+            }
+            container.addChild(loaded)
             resetInspection()
             entity = loaded
             applyInspection()
@@ -212,6 +228,12 @@ struct Model3DPreview: View {
                 phase = .failed(error.localizedDescription)
             }
         }
+    }
+
+    /// Parsing a multi-megabyte USDZ on the main actor froze the app when the
+    /// user swapped outfits, so the decode runs off it.
+    private nonisolated static func decode(_ url: URL) async throws -> Entity {
+        try await Entity.load(contentsOf: url)
     }
 
     /// The USDZ may come from any source; keep the camera useful regardless of its
