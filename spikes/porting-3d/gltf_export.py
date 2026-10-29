@@ -93,6 +93,20 @@ class _Chunks:
         )
         return len(self.accessors) - 1
 
+    def normalized_bytes(self, values, kind: str) -> int:
+        flat = [component for value in values for component in value]
+        view = self._view(bytes(flat), ARRAY_BUFFER)
+        self.accessors.append(
+            {
+                "bufferView": view,
+                "componentType": UNSIGNED_BYTE,
+                "normalized": True,
+                "count": len(values),
+                "type": kind,
+            }
+        )
+        return len(self.accessors) - 1
+
     def indices(self, triangles: list[tuple[int, int, int]]) -> int:
         flat = [index for triangle in triangles for index in triangle]
         payload = struct.pack("<" + "H" * len(flat), *flat)

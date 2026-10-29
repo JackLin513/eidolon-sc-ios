@@ -97,7 +97,12 @@ def world_of(merged: Merged, index: int) -> list[list[float]]:
     return world
 
 
-def build(body: Path, head: Path | None) -> GltfDocument:
+def primitive_colors(primitive) -> list[tuple[int, int, int, int]]:
+    """Unity stores vertex colour as UNorm8x4 in RGBA order, same as glTF."""
+    return [tuple(int(component) for component in value) for value in primitive.colors]
+
+
+def build(body: Path, head: Path | None, arguments_out: Path) -> GltfDocument:
     merged, body_map, head_map = merge_skeleton(body, head)
 
     chunks = _Chunks()
@@ -124,17 +129,40 @@ def build(body: Path, head: Path | None) -> GltfDocument:
 
     joint_order: list[int] = []
     primitives = []
+    materials: list[dict] = []
+    images: list[dict] = []
+    textures: list[dict] = []
+    textures_dir = arguments_out / "textures"
+    textures_dir.mkdir(parents=True, exist_ok=True)
     for bundle, mapping in sources:
         for mesh in read_skinned_meshes(load(str(bundle))):
             local_joints = [mapping[path_id] for path_id in mesh.bone_paths]
             for joint in local_joints:
                 if joint not in joint_order:
                     joint_order.append(joint)
-            primitives.append((mesh, local_joints))
+            material_index = None
+            if mesh.image is not None:
+                file_name = f"textures/{len(images):02d}_{mesh.name.split('(')[0]}.png"
+                mesh.image.save(arguments_out / file_name)
+                images.append({"uri": file_name})
+                textures.append({"source": len(images) - 1, "sampler": 0})
+                materials.append(
+                    {
+                        "name": mesh.material_name or mesh.name,
+                        "pbrMetallicRoughness": {
+                            "baseColorTexture": {"index": len(textures) - 1},
+                            "metallicFactor": 0.0,
+                            "roughnessFactor": 0.9,
+                        },
+                        "doubleSided": True,
+                    }
+                )
+                material_index = len(materials) - 1
+            primitives.append((mesh, local_joints, material_index))
 
     skin_of_joint = {joint: position for position, joint in enumerate(joint_order)}
 
-    for mesh, local_joints in primitives:
+    for mesh, local_joints, material_index in primitives:
         primitive = mesh.primitive
         positions, normals, triangles = flip_handedness(
             primitive.positions, primitive.normals, primitive.triangles
@@ -142,7 +170,9 @@ def build(body: Path, head: Path | None) -> GltfDocument:
         attributes = {
             "POSITION": chunks.floats(positions, 3, "VEC3"),
             "NORMAL": chunks.floats(normals, 3, "VEC3"),
-            "TEXCOORD_0": chunks.floats(primitive.uvs, 2, "VEC2"),
+            "TEXCOORD_0": chunks.floats(
+                [(u, 1.0 - v) for u, v in primitive.uvs], 2, "VEC2"
+            ),
             "JOINTS_0": chunks.bytes(
                 [[skin_of_joint[local_joints[int(i)]] for i in value] for value in primitive.joints],
                 "VEC4",
@@ -153,9 +183,14 @@ def build(body: Path, head: Path | None) -> GltfDocument:
                 "VEC4",
             ),
         }
-        chunks.primitives = getattr(chunks, "primitives", []) + [
-            {"attributes": attributes, "indices": chunks.indices(triangles)}
-        ]
+        if any(any(component for component in value) for value in primitive.colors):
+            attributes["COLOR_0"] = chunks.normalized_bytes(
+                primitive_colors(primitive), "VEC4"
+            )
+        entry = {"attributes": attributes, "indices": chunks.indices(triangles)}
+        if material_index is not None:
+            entry["material"] = material_index
+        chunks.primitives = getattr(chunks, "primitives", []) + [entry]
 
     inverse_bind = chunks.floats(
         [
@@ -184,6 +219,9 @@ def build(body: Path, head: Path | None) -> GltfDocument:
             }
         ],
         root_nodes=roots + [mesh_index],
+        materials=materials,
+        images=images,
+        textures=textures,
     )
     return document
 
@@ -196,7 +234,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--name", default="character")
     arguments = parser.parse_args(argv)
 
-    document = build(arguments.body, arguments.head)
+    document = build(arguments.body, arguments.head, arguments.out)
     print(document.write(arguments.out, arguments.name))
     return 0
 

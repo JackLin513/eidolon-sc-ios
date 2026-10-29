@@ -22,6 +22,7 @@ from unity_mesh import (
 POSITION = Channel(dimension=3, format=0, offset=0, stream=0)
 NORMAL = Channel(dimension=3, format=0, offset=12, stream=0)
 TEXCOORD0 = Channel(dimension=2, format=0, offset=4, stream=1)
+COLOR = Channel(dimension=4, format=2, offset=0, stream=1)
 WEIGHTS = Channel(dimension=4, format=0, offset=0, stream=2)
 BONE_INDICES = Channel(dimension=4, format=11, offset=16, stream=2)
 
@@ -41,9 +42,22 @@ class Primitive:
     positions: list
     normals: list
     uvs: list
+    colors: list
     weights: list
     joints: list
     triangles: list
+
+
+def read_main_texture(env, renderer):
+    """The `_MainTex` texture behind a renderer's first material, if any."""
+    for material_pointer in renderer.m_Materials:
+        material = material_pointer.read()
+        for entry in material.m_SavedProperties.m_TexEnvs or []:
+            name, environment = entry[0], entry[1]
+            if name == "_MainTex":
+                texture = environment.m_Texture.read()
+                return material.m_Name, texture.image
+    return None, None
 
 
 @dataclass
@@ -52,6 +66,8 @@ class SkinnedMesh:
     primitive: Primitive
     bone_paths: list[int]
     bindposes: list[tuple[float, ...]] = field(default_factory=list)
+    material_name: str | None = None
+    image: object | None = None
 
 
 def _vec(value) -> tuple[float, float, float]:
@@ -111,16 +127,20 @@ def read_skinned_meshes(env) -> list[SkinnedMesh]:
             positions=decode_channel(stream(offsets[0]), strides[0], count, POSITION),
             normals=decode_channel(stream(offsets[0]), strides[0], count, NORMAL),
             uvs=decode_channel(stream(offsets[1]), strides[1], count, TEXCOORD0),
+            colors=decode_channel(stream(offsets[1]), strides[1], count, COLOR),
             weights=decode_channel(stream(offsets[2]), strides[2], count, WEIGHTS),
             joints=decode_channel(stream(offsets[2]), strides[2], count, BONE_INDICES),
             triangles=decode_triangles(bytes(mesh.m_IndexBuffer), True),
         )
+        material_name, image = read_main_texture(env, renderer)
         meshes.append(
             SkinnedMesh(
                 name=mesh.m_Name,
                 primitive=primitive,
                 bone_paths=[bone.path_id for bone in renderer.m_Bones],
                 bindposes=[matrix_tuple(matrix) for matrix in mesh.m_BindPose],
+                material_name=material_name,
+                image=image,
             )
         )
     return meshes

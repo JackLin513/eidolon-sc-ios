@@ -48,10 +48,13 @@ def main() -> None:
     bpy.context.scene.collection.objects.link(light)
 
     scene = bpy.context.scene
-    scene.render.engine = "BLENDER_WORKBENCH"
-    scene.display.shading.light = "STUDIO"
-    scene.display.shading.color_type = "SINGLE"
-    scene.display.shading.single_color = (0.8, 0.8, 0.85)
+    scene.render.engine = "BLENDER_EEVEE_NEXT"
+    scene.eevee.taa_render_samples = 16
+    world = bpy.data.worlds.new("world")
+    world.use_nodes = True
+    world.node_tree.nodes["Background"].inputs[0].default_value = (0.16, 0.17, 0.2, 1.0)
+    world.node_tree.nodes["Background"].inputs[1].default_value = 1.0
+    scene.world = world
     scene.render.resolution_x = 720
     scene.render.resolution_y = 960
     scene.render.film_transparent = True
