@@ -288,7 +288,12 @@ struct Model3DPreview: View {
             let outline = loaded.clone(recursive: true)
             ToonShading.applyOutline(to: outline)
             outline.name = loaded.name + "-outline"
-            for child in container.children {
+            // Snapshot the old children before touching them: a load that was
+            // cancelled after it had already installed its model leaves a body
+            // and its outline behind, and the outline (a clone of the previous
+            // mesh) is what shows up drawn over the new outfit.
+            let stale = container.children
+            for child in stale {
                 child.removeFromParent()
             }
             container.addChild(loaded)
@@ -314,6 +319,12 @@ struct Model3DPreview: View {
             // A cancelled load must not touch the container: the next outfit's
             // load may already own it.
             guard !Task.isCancelled else { return }
+            // Belt and braces: whatever else is parented to the container is a
+            // leftover from an earlier outfit and would render on top of this one.
+            for child in container.children
+            where child !== loaded && child !== outline {
+                child.removeFromParent()
+            }
             resetInspection()
             entity = loaded
             applyInspection()
