@@ -364,3 +364,28 @@ stream0 stride 40（pos12 + normal12 + tangent16）、stream1 stride 12（color4
 **已验证**：调试开关 `EIDOLON_3D_LUT_DEBUG=1` 把参数行直接画成颜色（R=shader 类型/10，G=`_Color.r`，B=|\_Light.x|），躯干打出 (0.38,0.76,0.58)、头发 (0.71,0.81,0.62)，与表里的 0.2/0.502/0.3 和 0.4/0.502/0.3 按同一增益吻合——查表真的接通了。
 
 **顺带确认的事实**：`_Light` / `_RimLight` 在所有材质里都是 `(-0.3,-0.4,1.0)`；`_Color` 全是 0.502；`_DiffuseColor` 全白；`_OutlineColor` 全同；`_ShadingOffset` 0.25、`_ShadingBorder` 5.0、`_RimOffset` 0.25、`_RimBorder` 2.0 也全同。真正逐材质变化的是 `_AmbientColor`（0.863 灰 / 0.841,0.709,0.647 头发 / 0.980,0.827,0.788 皮肤）、眼睛的 `_SpecTex_*`、头发的 `_Sub*`、`Chr_Glow` 的 `_WhityCol`/`_WhiteMode`、脸的 `_Bihaku*`/`_Reddish*`。`_BumpScale`/`_Parallax`/`_Glossiness` 是 Unity Standard 的遗留字段，没有 `_BumpMap` 槽，所以**原版没有法线贴图，凹凸这一项没有可迁移的东西**。`_Cube`（反射）在所有材质的 `m_PathID` 都是 0，`_UseReflect`=0——**原版这两套衣装不反射**。
+
+### 2026-10-29 着色换成原版公式（从游戏自带的 GPU 程序反推）
+
+**来源是一手**：主包 `Data/data.unity3d` 里 200 个 `Shader` 全带 LZ4 压缩的 `compressedBlob`，解压后不是汇编，而是 **hlslcc 生成的完整 Metal 源码**。iOS 上 Unity 就是把它编成 metallib 跑的，所以这五个 shader 的数学不需要反汇编、不需要看重实现。提取方法在 `research-mltd-shading-math.md` §8（该文件**不入库**，因为它逐行引用了反编译出来的游戏代码；结论已全部落到 `ToonShading.metal`）。
+
+**写进 shader 前纠正的四处错判**
+
+1. **`_Light` 在视空间**，且只翻 x、y，z 保持不变：`L = normalize(-Lx,-Ly,+Lz)`。明暗是**线性斜坡** `saturate((N·L - 0.25) * 5)`，不是 smoothstep。
+2. **`_Color` / `_IllumiColor` 恒为 0.5，是"中性"**，shader 里到处 `×2` 抵消。以前按贴图直接乘，整体亮度就差了。
+3. **`_SubTex` 有三种语义，不是统一加法**：
+   - `Chr_Glow`：门控是 `_MainTex.a * _SubTex.g > 0.5`（**绿通道**），命中时把颜色**替换**成 `2*base*_GlowColor`（= 不参与明暗的纯贴图色），所以霓虹线看着像自发光；
+   - `Bi_CharEye`：alpha 当遮罩，向 `_IrisColor` 插值——眼神光其实是"白色插值"；
+   - `Chr_Hair`：`nz³` 加权的加法高光，需要第二套 UV。
+4. **`_RimOffset` / `_RimBorder` 不在编译出来的变体里**。边缘光是顶点路径 `(1-|N·V|)^5 * saturate(2*(N·Lr-0.25))`；另一条重算路径依赖 C# 每帧推入的 `_RimCtrl`，取值未知。
+
+**顺带确认**：`_Cube` 全包 75 个材质里没有一个非空，`_USEREFLECT_ON` 从未开启 → **原版不反射**；`_BumpMap` 槽不存在 → **原版没有法线贴图**；`02alp_m` 不是半透明，是 `_ISCUTOFF_ON` 的 alpha 裁剪；顶点色 R 被夹到 ≥1，**实际不影响颜色**。
+
+**踩到的两个 RealityKit 限制**
+
+- `RealityKit` 的 emissive 贴图**会丢 alpha**（USDZ 里的 PNG alpha 还在，0–255 完好）。所以 `_SubTex` 导出时把 alpha 乘进 RGB，shader 用 `.r` 当遮罩。ss003 的 glow 本来 alpha=255，乘积是恒等，绿通道门控不受影响。
+- `.unlit` 下 `custom` / `emissive` 贴图不再绑定（整只角色黑剪影），只能用 `.lit`，于是 PBR 光照会在着色结果上再加一层——这是目前剩下的主要失真来源。
+
+**眼睛高光**：原版用第二套 UV 算一个透镜畸变、随视角旋转的高光位置，但 `eyes` mesh 根本没有 uv1（一手数据里只有 uv0），公式跑起来会把整个虹膜刷白。改用 MLTDTools 记录的做法：按 base UV 采样（两张图尺寸相同，等价）。这也是研究报告 §7 里那条 UNVERIFIED 的处置。
+
+**构图**：`visualBounds` 在骨骼就绪后还会继续变大好几帧，读一次会把模型缩成四分之一或撑爆。改成挂载后连续 6 帧取最大包围盒（异步 100 ms 一次），并允许换装时重算。

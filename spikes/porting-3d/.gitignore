@@ -14,3 +14,6 @@ out/
 # Material parameter tables rebuilt by export_character.py, alongside the usdz.
 *-materials.json
 *-params.png
+
+# Decompiled shader source quoted line by line; conclusions live in ToonShading.metal.
+research-mltd-shading-math.md
