@@ -124,6 +124,7 @@ def env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> pytest.MonkeyPatch:
         "SILICONFLOW_API_KEY", "GEMINI_API_KEY", "FISH_AUDIO_API_KEY", "SONIOX_API_KEY",
         "DASHSCOPE_API_KEY", "STT_PROVIDER", "NOVELAI_API_KEY", "EIDOLON_PROXY_URL",
         "EIDOLON_PROXY_SERVICES", "EIDOLON_ADMINS", "EIDOLON_STAND_ASSETS_URL",
+        "EIDOLON_REGISTRATION",
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("CHAT_LLM_BASE_URL", "http://127.0.0.1:9/v1")  # nothing listens there
@@ -151,3 +152,17 @@ def test_the_doctor_says_what_in_env_keeps_the_server_from_starting(
 
     assert main(["doctor"]) == 1
     assert "EIDOLON_PROXY_SERVICES" in capsys.readouterr().out
+
+
+def test_the_doctor_says_no_one_can_be_invited_without_admins_to_invite_them(
+    env: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    env.setenv("EIDOLON_REGISTRATION", "invite")
+
+    main(["doctor", "--json"])
+    without_admins = json.loads(capsys.readouterr().out)["invite_without_admins"]
+    env.setenv("EIDOLON_ADMINS", "github:9001")
+    main(["doctor", "--json"])
+    with_admins = json.loads(capsys.readouterr().out)["invite_without_admins"]
+
+    assert (without_admins, with_admins) == (True, False)

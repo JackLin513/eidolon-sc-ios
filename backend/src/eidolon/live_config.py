@@ -9,7 +9,8 @@ the reranker's thresholds, and the limits (per hour, per call, and the turns eac
 carries, with the exempting keys), whether affinity and gifts are on, whether characters
 reach out to users and how often at most (GLOSSARY.md「搭话」), and which of the
 deployer's services and of users' own keys go through which proxy (GLOSSARY.md「网络代理」), and
-which services users are shown the status of, over how long (GLOSSARY.md「服务状态」). Overrides are
+which services users are shown the status of, over how long (GLOSSARY.md「服务状态」), and who
+may sign up (GLOSSARY.md「注册方式」). Overrides are
 kept in the database, one row per field, a key encrypted with a key derived from
 `EIDOLON_SECRET_KEY` (without it, keys cannot be changed here, only seen). A change to a
 service is tried before it is kept, as the chat model is when the server starts; it then holds for every turn and call that starts after
@@ -78,11 +79,13 @@ from eidolon.config import (
     LLMSettings,
     OWN_KEYS_PROXIED,
     PROXIED_SERVICES,
+    REGISTRATIONS,
     SERVICE_NAMES,
     STATUS_WINDOWS,
     ProxiedService,
     ProxySettings,
     ReachOutSettings,
+    Registration,
     Service,
     ServiceName,
     ServiceStatusSettings,
@@ -146,6 +149,7 @@ CYCLES = "cycles"
 BAR = "bar"
 PROXY = "proxy"
 SERVICE_STATUS = "service_status"
+REGISTRATION = "registration"
 
 LLM_FIELDS = (
     "protocol", "base_url", "api_key", "model", "max_tokens", "reasoning_effort", "extra_body",
@@ -905,6 +909,24 @@ class _ServiceStatus(_Item):
         return current | change
 
 
+class _Registration(_Item):
+    """Who may sign up (GLOSSARY.md「注册方式」): anyone, or only those who bring an invite
+    link, as `.env` has it (anyone by default); not tried."""
+
+    name = REGISTRATION
+    fields = ("mode",)
+
+    def env(self) -> Values:
+        return {"mode": self.c.settings.registration}
+
+    def candidate(self, current: Values, change: Values) -> Values:
+        if change.get("mode") not in REGISTRATIONS:
+            raise ConfigInvalid(
+                f"注册方式只能是 {'、'.join(REGISTRATIONS)}，而不是 {change.get('mode')!r}"
+            )
+        return current | change
+
+
 def _proxy_settings(values: Values) -> ProxySettings:
     url = values["url"]
     return ProxySettings(
@@ -966,7 +988,7 @@ class LiveConfig:
                 _Proxy(self), _ChatLLM(self), _MemoryLLM(self), _TTS(self), _STT(self),
                 _Image(self), _Judge(self), _JudgeThresholds(self), _Rerank(self),
                 _Limits(self), _Affinity(self), _ReachOuts(self), _Schedule(self),
-                _Cycles(self), _Bar(self), _ServiceStatus(self),
+                _Cycles(self), _Bar(self), _ServiceStatus(self), _Registration(self),
             )
         }
         self._failures: dict[str, str] = {}
@@ -1160,6 +1182,11 @@ class LiveConfig:
         """The deployer's image generation in effect now, to generate on; None without it."""
         settings = self.image_settings
         return None if settings is None else ImageGenerator(settings, self._images)
+
+    @property
+    def registration(self) -> Registration:
+        """Who may sign up now."""
+        return self.effective(REGISTRATION)["mode"]
 
     @property
     def history_turns(self) -> int | None:

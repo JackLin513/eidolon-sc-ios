@@ -47,6 +47,11 @@ EXEMPTING_SERVICES: tuple[Service, ...] = ("llm", "tts", "stt")
 """The services that may be exempting keys (GLOSSARY.md「免限额密钥」): never image
 generation, whose photos count by whose they are on alone."""
 
+Registration = Literal["open", "invite"]
+"""Who may sign up (GLOSSARY.md「注册方式」): anyone, or only those who bring an invite link
+(GLOSSARY.md「邀请链接」)."""
+REGISTRATIONS: tuple[Registration, ...] = get_args(Registration)
+
 ProxiedService = Literal[
     "chat_llm", "memory_llm", "judge", "embedding", "rerank", "tts", "stt", "image",
     "own_llm", "own_tts", "own_stt", "own_image",
@@ -475,8 +480,11 @@ class Settings:
     """The identities, as (provider, subject), whose users are admins and may enter the
     admin console (ADR-0013); without any, there is no admin console."""
     contact: str | None = None
-    """How to reach the deployer, told to banned users when they try to sign in; None
-    tells them no one."""
+    """How to reach the deployer, told to banned users when they try to sign in, and to
+    those turned away for want of an invite link; None tells them no one."""
+    registration: Registration = "open"
+    """Who may sign up (GLOSSARY.md「注册方式」): anyone unless `.env` takes only those
+    invited, and the admin console may override it."""
     stand_assets_url: str | None = None
     """Where browsers download the stands from, without a trailing slash: the public URL
     of the object storage they are synced to (ADR-0003, revised 2026-09-30). None shows
@@ -559,6 +567,7 @@ class Settings:
             stand_assets_url=stand_assets_url_from_env(),
             admins=admins_from_env(),
             contact=os.environ.get("EIDOLON_CONTACT", "").strip() or None,
+            registration=registration_from_env(),
         )
 
 
@@ -569,6 +578,17 @@ def _stt_provider() -> SttProvider:
             f"环境变量 STT_PROVIDER 只能是 {'、'.join(STT_PROVIDERS)}，而不是 {provider}"
         )
     return provider  # pyright: ignore[reportReturnType]  # checked above
+
+
+def registration_from_env() -> Registration:
+    """`EIDOLON_REGISTRATION`: `open` (the default) or `invite`."""
+    value = (os.environ.get("EIDOLON_REGISTRATION") or "").strip() or "open"
+    if value not in REGISTRATIONS:
+        raise RuntimeError(
+            f"环境变量 EIDOLON_REGISTRATION 只能是 open（谁都能注册）或 invite（凭邀请链接注册），"
+            f"而不是 {value}"
+        )
+    return value  # pyright: ignore[reportReturnType]  # checked above
 
 
 def fish_audio_model_from_env() -> FishAudioModel:

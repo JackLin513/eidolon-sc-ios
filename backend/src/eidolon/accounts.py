@@ -7,6 +7,11 @@ another identity by hand. The only gate is against throwaway accounts: a GitHub 
 must be a year old, and a Google account's email address verified. A banned user's
 identities cannot sign in.
 
+Unless the deployment takes only those invited (GLOSSARY.md「注册方式」, ADR-0006 revised
+2026-10-29): a new identity then signs up only through an invite link (`invites`), but an
+admin's, and the deployment's first user. Users who already are sign in as ever, and
+linking another identity is not signing up.
+
 Users can delete themselves, and admins can delete them, and with them everything of
 theirs, for good: signing in with the same identity afterwards makes a new user. Unless
 they were banned: deleting is not unbanning, so the identities a banned user signed in
@@ -16,6 +21,8 @@ in nor be linked again.
 
 import hashlib
 import hmac
+import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Literal
@@ -25,8 +32,9 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from eidolon.call import Calls
 from eidolon.clock import Clock
-from eidolon.config import Settings
+from eidolon.config import Registration, Settings
 from eidolon.identity import Identity
+from eidolon.invites import Invites, NotInvited
 from eidolon.memory import Memories
 from eidolon.store import IdentityTaken, SignInMethod, Store, User
 
@@ -46,12 +54,17 @@ def signs_in_as_admin(methods: list[SignInMethod], settings: Settings) -> bool:
 MIN_GITHUB_ACCOUNT_AGE = timedelta(days=365)
 """How old a GitHub account must be to sign in with."""
 
-Refusal = Literal["too_new", "email_unverified", "banned", "taken", "already_linked"]
+Refusal = Literal[
+    "too_new", "email_unverified", "banned", "not_invited", "invite_invalid", "taken",
+    "already_linked",
+]
 """Why an identity may not sign in, or be linked:
 
 - `too_new`: a GitHub account less than a year old
 - `email_unverified`: a Google account whose email address is not verified
 - `banned`: it belongs to a banned user, or did to one since deleted
+- `not_invited`: it would sign up, but only those invited may, and it brought no invite link
+- `invite_invalid`: it would sign up through an invite link that cannot be used
 - `taken`: (linking) it belongs to another user
 - `already_linked`: (linking) the user already signs in with another identity there
 """
@@ -69,6 +82,12 @@ class Accounts:
     clock: Clock
     memories: Memories
     calls: Calls
+    invites: Invites
+    registration: Callable[[], Registration]
+    """Who may sign up now, as the live configuration has it."""
+    admins: frozenset[tuple[str, str]] = frozenset()
+    """The identities, as (provider, subject), whose users are admins: they sign up without
+    an invite link."""
     secret_key: str | None = None
     """The deployment's, from which the key the ban list is hashed with is derived."""
     _ban_key: bytes | None = field(init=False, repr=False)
@@ -76,15 +95,18 @@ class Accounts:
     def __post_init__(self) -> None:
         self._ban_key = _ban_list_key(self.secret_key) if self.secret_key else None
 
-    async def sign_in(self, identity: Identity) -> User:
-        """The user this identity signs in as, made the first time. Raises SignInRefused."""
+    async def sign_in(self, identity: Identity, invite: str | None = None) -> User:
+        """The user this identity signs in as, made the first time, through the invite link
+        with the code `invite` if only those invited may sign up. Raises SignInRefused."""
         await self._check(identity)
         user_id = await self.store.user_signing_in_with(identity.provider, identity.subject)
         if user_id is None:
             try:
                 return await self.store.create_user_signing_in_with(
-                    identity.display_name, self._method(identity)
+                    identity.display_name, self._method(identity), self._admit(identity, invite)
                 )
+            except NotInvited as e:
+                raise SignInRefused(e.reason) from None
             except IdentityTaken:  # signed in twice at once; the other made the user
                 user_id = await self.store.user_signing_in_with(
                     identity.provider, identity.subject
@@ -140,6 +162,15 @@ class Accounts:
             raise SignInRefused("too_new")
         if identity.provider == "google" and not identity.email_verified:
             raise SignInRefused("email_unverified")
+
+    def _admit(
+        self, identity: Identity, invite: str | None
+    ) -> Callable[[sqlite3.Connection, str], None] | None:
+        """What the new user `identity` makes must pass to sign up: nothing while anyone may,
+        nor for an admin's identity; else the invite link `invite` (`Invites.admit`)."""
+        if self.registration() == "open" or (identity.provider, identity.subject) in self.admins:
+            return None
+        return self.invites.admit(invite)
 
     def _method(self, identity: Identity) -> SignInMethod:
         return SignInMethod(

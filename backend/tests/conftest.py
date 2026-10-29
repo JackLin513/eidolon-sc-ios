@@ -360,12 +360,13 @@ async def sign_in_with(
     identity: Identity,
     *,
     link: bool = False,
+    invite: str | None = None,
 ) -> httpx.Response:
-    """Go through signing in at `provider` as `identity`, or with `link`, linking it to the
-    signed-in user; the response to the callback."""
-    start = await client.get(
-        f"/api/auth/{provider.name}/start", params={"link": "1"} if link else None
-    )
+    """Go through signing in at `provider` as `identity`, through the invite link with the
+    code `invite` if given, or with `link`, linking it to the signed-in user; the response
+    to the callback."""
+    params = {"link": "1"} if link else {"invite": invite} if invite is not None else None
+    start = await client.get(f"/api/auth/{provider.name}/start", params=params)
     assert start.status_code == 302, start.text
     [state] = parse_qs(urlsplit(start.headers["location"]).query)["state"]
     code = provider.will_identify(identity)

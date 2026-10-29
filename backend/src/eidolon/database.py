@@ -48,6 +48,7 @@ USER_DATA = [
     ("cycles_off", "user_id = ?"),
     ("cycle_records", "user_id = ?"),
     ("data_package_imports", "user_id = ?"),
+    ("invited_users", "user_id = ?"),
     ("sessions", "user_id = ?"),
     ("sign_in_methods", "user_id = ?"),
     ("users", "id = ?"),
@@ -89,7 +90,7 @@ NOT_USER_DATA = frozenset(
         "price_catalog_offers", "price_catalog_state", "banned_identities", "announcements",
         "sponsor", "gifts_opened", "reset_card_grants", "backup_runs", "record_rollups",
         "taken_rollups", "call_rollups", "spread_rollups", "achievements_launched",
-        "weekly_jobs",
+        "weekly_jobs", "invites",
     }
 )
 """Every other table: the story corpus, the embedded text set, the calls to outside
@@ -100,8 +101,9 @@ with, which say whose they were to no one, the announcements admins write, which
 nothing of who wrote them, the sponsor code admins upload, when gifts last opened, which
 is no one's, and the reset cards admins have given every user, which say nothing of who
 gave them or to whom, the record of each backup run, which says nothing of anyone's, and
-when the achievements launched, which is no one's, and each week's jobs, the same for
-everyone."""
+when the achievements launched, which is no one's, each week's jobs, the same for
+everyone, and the invite links admins make, which say nothing of who made them, those who
+signed up through each being the users' own."""
 
 
 HEALTH_READ_TIMEOUT = 2.0

@@ -593,12 +593,19 @@ class Store:
         """The id of the user this identity belongs to, if any."""
         return await self._db.read(_user_signing_in_with, provider, subject)
 
-    async def create_user_signing_in_with(self, name: str, method: SignInMethod) -> User:
+    async def create_user_signing_in_with(
+        self,
+        name: str,
+        method: SignInMethod,
+        admit: Callable[[sqlite3.Connection, str], None] | None = None,
+    ) -> User:
         """A new user, whose one sign-in method is `method`. Raises IdentityTaken, making
-        no one, if the identity already belongs to someone."""
+        no one, if the identity already belongs to someone. `admit`, if given, is run in the
+        same write once the user is made, given their id: whatever it raises makes no
+        one."""
         user = User(uuid.uuid4().hex, name, _now())
         try:
-            await self._db.write(_insert_user_signing_in_with, user, method)
+            await self._db.write(_insert_user_signing_in_with, user, method, admit)
         except sqlite3.IntegrityError:
             raise IdentityTaken from None
         return user
@@ -988,10 +995,15 @@ def _user_signing_in_with(db: sqlite3.Connection, provider: str, subject: str) -
 
 
 def _insert_user_signing_in_with(
-    db: sqlite3.Connection, user: User, method: SignInMethod
+    db: sqlite3.Connection,
+    user: User,
+    method: SignInMethod,
+    admit: Callable[[sqlite3.Connection, str], None] | None,
 ) -> None:
     _insert_user(db, user)
     _insert_sign_in_method(db, user.id, method)
+    if admit is not None:
+        admit(db, user.id)
 
 
 def _insert_sign_in_method(db: sqlite3.Connection, user_id: str, method: SignInMethod) -> None:

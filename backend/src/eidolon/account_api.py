@@ -6,7 +6,9 @@ Signing in with Google or GitHub goes through the browser:
     /api/auth/{provider}/callback  ← back from it, with a code and the state sent there
 
 The state is kept in a short-lived cookie of its own, so a callback can only finish a
-sign-in this browser started. The callback sends the browser on: home when signed in,
+sign-in this browser started. So is the code of the invite link the sign-in page was
+opened through, brought to `start` as `?invite=<code>`, for a new user to sign up with
+while only those invited may. The callback sends the browser on: home when signed in,
 the sign-in page with `?error=<reason>` when not (see `accounts.Refusal`, plus `state`
 for a callback this browser did not start or that expired, `cancelled` when the user
 turned the provider down, and `provider` when the provider could not be reached).
@@ -17,6 +19,7 @@ callback then sends the browser back to the sign-in settings (`/settings/sign-in
 """
 
 import logging
+import re
 import secrets
 from typing import Annotated, Any
 
@@ -67,6 +70,16 @@ log = logging.getLogger(__name__)
 STATE_COOKIE = "eidolon_oauth_state"
 STATE_LIFETIME = 600
 """How long, in seconds, the browser has to sign in at the provider and come back."""
+
+INVITE_CODE = re.compile(r"[A-Za-z0-9_-]{1,64}")
+"""An invite link's code (`invites`), as the start of what the link brought may be."""
+
+
+def invite_code(brought: str | None) -> str:
+    """The code of the invite link a sign-in was started through: what the link brought, but
+    whatever a chat app stuck to its end, a full stop say; empty for none."""
+    found = INVITE_CODE.match(brought or "")
+    return found.group() if found else ""
 
 
 class DevLogin(BaseModel):
@@ -278,10 +291,10 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
 
     @app.get("/api/auth/{provider}/start")
     async def start_sign_in(
-        provider: str, request: Request, link: bool = False
+        provider: str, request: Request, link: bool = False, invite: str | None = None
     ) -> RedirectResponse:
-        """Off to the provider to sign in, or with `link`, to link another identity to the
-        signed-in user."""
+        """Off to the provider to sign in, through the invite link with the code `invite` if
+        given, or with `link`, to link another identity to the signed-in user."""
         identity_provider = providers.get(provider)  # pyright: ignore[reportArgumentType]
         if identity_provider is None:
             raise HTTPException(404, "没有这种登录方式")
@@ -295,7 +308,7 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
         )
         response.set_cookie(
             STATE_COOKIE,
-            f"{'link' if link else 'login'}:{provider}:{state}",
+            f"{'link' if link else 'login'}:{provider}:{state}:{'' if link else invite_code(invite)}",
             max_age=STATE_LIFETIME,
             path="/api/auth",
             httponly=True,
@@ -312,9 +325,9 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
         state: str | None = None,
         error: str | None = None,
     ) -> RedirectResponse:
-        purpose, expected_provider, expected_state = (
-            request.cookies.get(STATE_COOKIE, "").split(":", 2) + ["", ""]
-        )[:3]
+        purpose, expected_provider, expected_state, invite = (
+            request.cookies.get(STATE_COOKIE, "").split(":", 3) + ["", "", ""]
+        )[:4]
         linking = purpose == "link"
         back = "/settings/sign-in" if linking else "/login"
 
@@ -346,7 +359,7 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
                     return go("/login?error=state")
                 await accounts.link(user.id, identity)
                 return go(f"/settings/sign-in?linked={provider}")
-            user = await accounts.sign_in(identity)
+            user = await accounts.sign_in(identity, invite or None)
         except SignInRefused as e:
             return go(f"{back}?error={e.reason}")
         response = go("/conversations")
