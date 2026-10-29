@@ -410,3 +410,20 @@ UnityPy.load(.../Data/data.unity3d)
 RealityKit 采样会线性化、输出也期望线性，所以 `ToonShading.metal` 在采样后做
 `toGamma`、出结果前做 `toLinear`，把数学放回 sRGB 空间。实测头发饱和度
 0.84 → 0.71（游戏 0.45），余下差距归因于 `.lit` 的 PBR 那层。
+
+## 2026-10-30 描边与 unlit 输出
+
+- **纠正**：之前记「`.unlit` 会把自定义纹理绑丢」是错的。`RealityKitSurfaceShader.h:484-494`
+  写明 unlit 材质只取 `set_emissive_color()` 的输出；黑剪影是因为着色器只写了
+  `set_base_color()`。现在基色写 0、结果写 emissive，同一份着色器两种光照模型都对。
+  默认 unlit（`EIDOLON_3D_LIT` 可切回），RealityKit 的 PBR 那层和它带来的多余光照随之消失。
+  截图对比：头发从偏橙的高饱和变成红棕，肤色回暖，和游戏接近了很多。
+- **描边**：游戏是倒装壳——同一网格再画一遍，沿法线外推、`Cull Front`。RealityKit 没有
+  单模型的第二 pass，所以克隆一份做兄弟节点，`faceCulling = .front`，`lightingModel = .unlit`，
+  颜色写死近黑。第一次做的时候外推量写死 0.004，结果整块黑：这是**模型本地空间**的单位，
+  而这个 USD 原生只有 1.58 高，壳被撑得比人还大，从内部看就是全黑。改成按模型自身高度
+  取 0.003。
+- **取景**两个老 bug 一并修了：`fit()` 设了 entity 的 transform，`applyInspection` 又设容器的，
+  缩放被应用两次；换装时容器残留上一次变换，而 `visualBounds(relativeTo:)` 是世界坐标，
+  会一路累积。现在每次加载先把容器归零。另外实测默认相机不是盯着内容原点，居中后她在
+  画面偏下，所以按半个模型高度抬了一点。
