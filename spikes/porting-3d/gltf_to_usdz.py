@@ -25,10 +25,25 @@ def main() -> None:
             bpy.context.view_layer.objects.active = meshes[0]
             bpy.ops.object.join()
 
+    # The glTF importer creates an icosphere to draw joints with; it is not part
+    # of the character and must not reach the USD.
+    for obj in list(bpy.context.scene.objects):
+        if obj.name.startswith("Icosphere"):
+            bpy.data.objects.remove(obj, do_unlink=True)
+
+    # glTF says a skinned mesh's own transform is irrelevant: the joints alone
+    # place the vertices. Blender re-parents the imported skinned mesh under the
+    # armature, so exporting as-is bakes the skeleton root's rotation in twice.
+    for obj in list(bpy.context.scene.objects):
+        if obj.type == "MESH" and any(m.type == "ARMATURE" for m in obj.modifiers):
+            obj.parent = None
+            obj.matrix_world.identity()
+
     bpy.ops.wm.usd_export(
         filepath=destination,
         export_armatures=True,
-        export_shapekeys=False,
+        export_shapekeys=True,
+        convert_orientation=True,
         export_animation=False,
         export_materials=True,
         export_uvmaps=True,
