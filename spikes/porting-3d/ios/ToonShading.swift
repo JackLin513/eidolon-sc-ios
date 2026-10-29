@@ -103,6 +103,13 @@ enum ToonShading {
                     lightingModel: .unlit
                 ) else { return material }
                 outline.faceCulling = .front
+                // Carry the parameter atlas and its row across: the outline pass
+                // needs the same `_OutlineColor` as the material it stands
+                // behind, and the atlas rides in the specular slot.
+                if let source = material as? CustomMaterial {
+                    outline.specular = source.specular
+                    outline.custom.value = SIMD4(source.custom.value.x, 1, 0, 0)
+                }
                 return outline
             }
             entity.components[ModelComponent.self] = model

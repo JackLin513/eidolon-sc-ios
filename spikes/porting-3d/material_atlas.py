@@ -59,6 +59,9 @@ LAYOUT: list[tuple[str, str]] = [
     ("_ExtraBihaku", "-"),
     ("_Whitish", "-"),
     ("_Freq", "-"),
+    # The outline pass tints the hull with `2 * _IllumiColor * _OutlineColor`,
+    # which is a dark brown in every character material, not black.
+    ("_OutlineColor", "r"), ("_OutlineColor", "g"), ("_OutlineColor", "b"),
 ]
 
 # Rows the atlas is sized for. The shader's V coordinate is

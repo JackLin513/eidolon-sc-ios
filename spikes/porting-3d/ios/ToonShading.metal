@@ -11,7 +11,7 @@ using namespace metal;
 //
 // Per-material constants arrive in an atlas texture, one byte per parameter in
 // the alpha channel. The order is `material_atlas.py`'s `LAYOUT`.
-constant uint kParamColumns = 65;
+constant uint kParamColumns = 68;
 constant uint kParamCapacity = 64;
 
 constant uint kParamColor = 0;
@@ -55,6 +55,7 @@ constant uint kParamIllum = 59;
 constant uint kParamExtraBihaku = 62;
 constant uint kParamWhitish = 63;
 constant uint kParamFreq = 64;
+constant uint kParamOutlineColor = 65;
 
 // Shader discriminator, matching `material_atlas.SHADER_KINDS`.
 constant float kKindBasic = 1.0;
@@ -165,7 +166,15 @@ static void writeColour(realitykit::surface_parameters params, float3 colour)
 [[visible]]
 void outlineSurface(realitykit::surface_parameters params)
 {
-    writeColour(params, float3(0.045f));
+    uint row = uint(params.uniforms().custom_parameter().x);
+    texture2d<half> lut = params.textures().specular();
+    // The game writes `2 * _IllumiColor * _OutlineColor` into the hull's colour
+    // in the vertex shader, then multiplies by the toon ramp in the fragment
+    // shader. `_IllumiColor` is neutral (0.5) in every character material, so
+    // the doubling cancels out, and the ramp is 1 for the outline pass.
+    float3 colour = paramColour(lut, row, kParamOutlineColor) * 2.0f
+                  * paramColour(lut, row, kParamIllum);
+    writeColour(params, colour);
 }
 
 [[visible]]
