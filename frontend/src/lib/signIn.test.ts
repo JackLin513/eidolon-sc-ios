@@ -11,12 +11,16 @@ describe("signInFailure", () => {
     expect(signInFailure("too_new")).toContain("一年");
     expect(signInFailure("email_unverified")).toContain("验证");
     expect(signInFailure("banned")).toContain("封禁");
+    expect(signInFailure("not_invited")).toContain("邀请链接");
+    expect(signInFailure("invite_invalid")).toContain("失效");
     expect(signInFailure("taken")).toContain("另一位用户");
   });
 
-  it("tells a banned user how to reach the deployer, when the deployer says how", () => {
-    expect(signInFailure("banned", "admin@example.com")).toContain("admin@example.com");
-    expect(signInFailure("banned", null)).toBe(signInFailure("banned"));
+  it("tells a banned user, and one who needs an invite link, how to reach the deployer, when the deployer says how", () => {
+    for (const reason of ["banned", "not_invited"]) {
+      expect(signInFailure(reason, "admin@example.com"), reason).toContain("admin@example.com");
+      expect(signInFailure(reason, null), reason).toBe(signInFailure(reason));
+    }
     expect(signInFailure("too_new", "admin@example.com")).not.toContain("admin@example.com");
   });
 
@@ -28,6 +32,7 @@ describe("signInFailure", () => {
 describe("signInUrl", () => {
   it("starts at the backend, which sends the browser on to the provider", () => {
     expect(signInUrl("github")).toBe("/api/auth/github/start");
+    expect(signInUrl("github", "a-B_9")).toBe("/api/auth/github/start?invite=a-B_9");
     expect(linkUrl("google")).toBe("/api/auth/google/start?link=1");
   });
 });

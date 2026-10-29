@@ -1261,6 +1261,8 @@ export const zh = {
         noEmail: "没有邮箱",
         id: "用户 ID",
         createdAt: "注册时间",
+        /** 经邀请链接注册的用户多一项，值是那条链接的备注。 */
+        invite: "经邀请链接注册",
         lastActive: "最后活跃",
         bannedAt: "封禁于",
         banNote: "封禁备注",
@@ -1343,6 +1345,7 @@ export const zh = {
         network: "网络",
         status: "服务状态",
         limits: "限额与玩法",
+        registration: "注册",
         sponsor: "赞赏",
         prices: "单价",
         read_only: "只读",
@@ -1415,6 +1418,10 @@ export const zh = {
         service_status: {
           title: "服务状态",
           hint: "对话列表铃铛旁边给用户看各项服务正不正常：按统计时段里用部署者 key 的调用算出错率，时段里没有调用的，后台用最小的真实请求试一下（生图不试）。一项都不显示时用户那边没有按钮。保存后立刻生效。",
+        },
+        registration: {
+          title: "注册方式",
+          hint: "只让受邀的人注册时，新用户要从下面的邀请链接登录；已经注册的用户和管理者照常登录。保存后立刻生效。",
         },
       },
       status: {
@@ -1501,6 +1508,7 @@ export const zh = {
           rerank: "显示「重排」",
           image: "显示「照片」（生图）",
         },
+        registration: { mode: "谁能注册" },
       } as Partial<Record<string, Record<string, string>>>,
       formHints: {
         reasoning_effort: `${reasoningEffortHints.effort}选「高」及以上时，max_tokens 留空或设宽裕一些，思考也算在上限里。`,
@@ -1554,6 +1562,8 @@ export const zh = {
         cloudflare: "Cloudflare Workers AI",
       } as Record<string, string>,
       regions: { beijing: "北京", singapore: "新加坡" } as Record<string, string>,
+      /** 注册方式（GLOSSARY.md「注册方式」）的两种。 */
+      registrations: { open: "谁都能注册", invite: "只让受邀的人注册" } as Record<string, string>,
       imageFormats: { novelai: "NovelAI 官方格式", openai: "OpenAI 图像格式" } as Record<string, string>,
       imageModels: {
         "nai-diffusion-5-curated": "V5 Curated",
@@ -1644,6 +1654,41 @@ export const zh = {
           title: "清除赞赏？",
           description: "开关会关掉，收款码会删除，用户不再看到「赞赏」。",
           confirm: "清除",
+        },
+      },
+      /** 「注册」标签里注册方式下面的那张卡（GLOSSARY.md「邀请链接」）。不是 .env 里的配置。 */
+      invites: {
+        title: "邀请链接",
+        hint: "把链接发给想邀请的人，对方打开后登录就注册好了。",
+        loading: "正在读取…",
+        create: "生成邀请链接",
+        empty: "还没有邀请链接。",
+        noNote: "没有备注",
+        used: (used: number, max: number) => `已用 ${used} / ${max} 次`,
+        expiresAt: "到期",
+        neverExpires: "不过期",
+        states: { used_up: "已用完", expired: "已过期" } as Record<string, string>,
+        invited: "经它注册：",
+        copy: "复制链接",
+        copied: "已复制",
+        copyFailed: (link: string) => `没能复制，请手动复制：${link}`,
+        created: "已生成，复制链接发给对方就行。",
+        delete: "删除",
+        form: {
+          note: "备注",
+          noteHint: "比如发给谁、发在哪个群，只有管理者看得到。",
+          maxUses: "可用次数",
+          maxUsesHint: (max: number) => `1 到 ${max} 次，每注册一位用户用掉一次。`,
+          lifetime: "有效期",
+          lifetimes: { "1": "1 天", "7": "7 天", "30": "30 天", never: "不过期" } as Record<string, string>,
+          submit: "生成",
+          submitting: "正在生成…",
+          maxUsesProblem: (max: number) => `可用次数要在 1 到 ${max} 之间。`,
+        },
+        dialog: {
+          title: "删除这条邀请链接？",
+          description: "链接会立刻失效；经它注册的用户照常使用。",
+          confirm: "删除",
         },
       },
     },
@@ -2333,7 +2378,7 @@ export const zh = {
       {
         title: "管理者能看到什么",
         items: [
-          { term: "能看到", text: "你的登录方式（Google 或 GitHub、显示名和邮箱）、注册和最后活跃的时间、最近 24 小时到 30 天的回合和通话次数（包括被限额拒绝的）、你的用量里有多少用的是自带密钥、是否被封禁（以及封禁时管理者写的备注），以及有没有单独的限额。" },
+          { term: "能看到", text: "你的登录方式（Google 或 GitHub、显示名和邮箱）、注册和最后活跃的时间、你是经哪条邀请链接注册的（如果是）、最近 24 小时到 30 天的回合和通话次数（包括被限额拒绝的）、你的用量里有多少用的是自带密钥、是否被封禁（以及封禁时管理者写的备注），以及有没有单独的限额。" },
           { term: "看不到", text: "你和角色的对话、她发给你的照片和描述照片的 tag、角色记下的记忆、你的制作人档案，各位角色对你的好感度和冷却，以及你的礼物、重置卡、抽奖次数、成就、日程、周期记录和光顾记录；好感度只能看到所有用户合起来的统计，管理者也不能调整某一位用户的好感度。" },
         ],
         notes: [
@@ -2357,7 +2402,7 @@ export const zh = {
       title: "联系部署者",
       text: (contact: string) => `对你的数据有疑问，或者想请管理者代你删除，请联系：${contact}`,
     },
-    lastUpdated: "最后更新：2026 年 10 月 27 日",
+    lastUpdated: "最后更新：2026 年 10 月 29 日",
   },
   terms: {
     title: "使用条款",

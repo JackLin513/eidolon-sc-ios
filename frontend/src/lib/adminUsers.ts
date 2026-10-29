@@ -74,11 +74,12 @@ export type UserLimitsInput = Pick<
  * none, or only on their own keys (sent as 0). */
 export type LimitDraft = { choice: "default" | "number" | "unlimited" | "own_keys"; count: number | null };
 
-/** A user's own page adds when they were banned, the note only admins see, and their
- * recent usage. */
+/** A user's own page adds when they were banned, the note only admins see, the invite link
+ * they signed up through (GLOSSARY.md「邀请链接」), if one still kept, and their recent usage. */
 export type AdminUserDetails = AdminUser & {
   banned_at: string | null;
   ban_note: string | null;
+  invite: { id: number; note: string | null } | null;
   usage: AdminUserUsage;
 };
 
