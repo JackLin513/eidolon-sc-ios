@@ -141,6 +141,21 @@ Eidolon-SC 让你以 **283 事务所制作人**的身份，和原作中的偶像
 
 ## 🚀 快速开始
 
+### 让 Agent 帮你部署
+
+不熟悉 Docker 和各种 API key 也没关系：把下面这段话发给你用的编程 Agent（Claude Code、Codex、Cursor 等都行），它会照仓库里的[部署说明](docs/agents/deploying.md)一步步带你做，碰到报错也会帮你查。
+
+```text
+帮我部署 Eidolon-SC（https://github.com/Sallyn0225/eidolon-sc）。先把仓库克隆下来，
+再照仓库里 docs/agents/deploying.md 带我一步步做。要我注册账号、申请 key 的地方告诉我怎么做；
+key 我自己填进 .env，不贴给你。
+```
+
+> [!NOTE]
+> **为什么部署好了没有剧情、通话里也没有立绘？** 剧情文本和立绘素材的版权不属于本项目，不随仓库分发，仓库里只有同步工具。部署后自己同步一次就有了，Agent 会带你做（见部署说明的「剧情库」「立绘」）。同步之前，角色只凭人设回复，通话里只显示背景图。
+
+### 自己动手
+
 需要 Docker 与 Docker Compose，以及一个支持流式输出和工具调用的对话模型。
 
 ```sh
@@ -163,6 +178,8 @@ docker compose up --build
 | 立绘、招呼与酒吧的音乐 | `EIDOLON_STAND_ASSETS_URL` 和存放素材的存储桶 |
 
 每项怎么配、配了以后有什么效果，见 **[配置指南](docs/configuration.md)**；所有环境变量的说明见 [`.env.example`](.env.example)。
+
+配好以后运行 `docker compose run --rm backend eidolon doctor`，它会逐项试一次各项服务，说明哪一项连不上、key 不对或者要走代理。
 
 ## 🧩 架构
 

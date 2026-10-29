@@ -196,11 +196,11 @@ def probes(
 
     async def chat_llm() -> None:
         async with config.trial_llm("chat_llm") as llm:
-            await _first_word(llm)
+            await first_word(llm)
 
     async def memory_llm() -> None:
         async with config.trial_llm("memory_llm") as llm:
-            await _first_word(llm)
+            await first_word(llm)
 
     async def judge() -> None:
         lease = config.lease_judge()
@@ -231,7 +231,7 @@ def probes(
     return found
 
 
-async def _first_word(llm: ChatLLM) -> None:
+async def first_word(llm: ChatLLM) -> None:
     """Ask `llm` for a word, and stop at the first part of its reply: a model that thinks
     first ends its reply when it has written all it may, its thinking or not."""
     stream = llm.stream(PROBE_MESSAGES)
