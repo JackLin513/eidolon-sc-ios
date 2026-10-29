@@ -88,3 +88,62 @@ class FlipHandednessTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MatrixTests(unittest.TestCase):
+    def test_identity_trs_is_the_identity_matrix(self) -> None:
+        from gltf_export import matrix_from_trs
+
+        matrix = matrix_from_trs((0, 0, 0), (0, 0, 0, 1), (1, 1, 1))
+
+        self.assertEqual(matrix[0], [1.0, 0.0, 0.0, 0.0])
+        self.assertEqual(matrix[3], [0.0, 0.0, 0.0, 1.0])
+
+    def test_translation_lands_in_the_last_column(self) -> None:
+        from gltf_export import matrix_from_trs
+
+        matrix = matrix_from_trs((1, 2, 3), (0, 0, 0, 1), (1, 1, 1))
+
+        self.assertEqual([row[3] for row in matrix[:3]], [1.0, 2.0, 3.0])
+
+    def test_multiplication_then_inverse_returns_identity(self) -> None:
+        from gltf_export import matrix_from_trs, matrix_inverse, matrix_multiply
+
+        matrix = matrix_from_trs((1, 2, 3), (0, 0.7071, 0, 0.7071), (1, 1, 1))
+        product = matrix_multiply(matrix, matrix_inverse(matrix))
+
+        for row in range(4):
+            for column in range(4):
+                expected = 1.0 if row == column else 0.0
+                self.assertAlmostEqual(product[row][column], expected, places=5)
+
+    def test_column_major_flat_order_matches_gltf(self) -> None:
+        from gltf_export import column_major
+
+        rows = [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]]
+
+        self.assertEqual(
+            column_major(rows), (1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15, 4, 8, 12, 16)
+        )
+
+
+class QuaternionFlipTests(unittest.TestCase):
+    def test_flipping_a_rotation_equals_conjugating_by_the_z_reflection(self) -> None:
+        from gltf_export import flip_quaternion, matrix_from_trs
+
+        for quaternion in [(0.707, 0, 0, 0.707), (0, 0, 0.707, 0.707), (0, 0.707, 0, 0.707)]:
+            original = matrix_from_trs((0, 0, 0), quaternion, (1, 1, 1))
+            flipped = matrix_from_trs((0, 0, 0), flip_quaternion(quaternion), (1, 1, 1))
+            f = (1, 1, -1)
+            for row in range(3):
+                for column in range(3):
+                    self.assertAlmostEqual(
+                        flipped[row][column],
+                        f[row] * original[row][column] * f[column],
+                        places=6,
+                    )
+
+    def test_a_rotation_about_x_keeps_its_axis_and_reverses_its_angle(self) -> None:
+        from gltf_export import flip_quaternion
+
+        self.assertEqual(flip_quaternion((0.707, 0.0, 0.0, 0.707)), (-0.707, -0.0, 0.0, 0.707))
