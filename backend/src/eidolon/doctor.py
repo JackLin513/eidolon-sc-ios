@@ -19,7 +19,8 @@ import json
 import re
 import sqlite3
 import sys
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
@@ -160,7 +161,7 @@ def _moved(route: Route) -> str:
 
 _REGION = re.compile(
     r"location is not supported|unsupported_country|country, region, or territory"
-    r"|not available in your (country|region)|地区不支持|不支持.*地区",
+    r"|not available in your (country|region)|request not allowed|地区不支持|不支持.*地区",
     re.IGNORECASE,
 )
 _BALANCE = re.compile(
@@ -266,7 +267,7 @@ def checks_for(settings: Settings) -> dict[ServiceName, Check]:
     from eidolon.judge import JUDGE_TIMEOUT, open_judge, try_judge_model
     from eidolon.llm.providers import LLM_TIMEOUT, check_chat_models, open_chat_models, open_llm
     from eidolon.rerank import RERANK_TIMEOUT, SiliconFlowReranker
-    from eidolon.service_status import PROBE_TEXT, first_word
+    from eidolon.service_status import embed_a_word, first_word, rerank_a_word
 
     checks: dict[ServiceName, Check] = {}
 
@@ -299,7 +300,7 @@ def checks_for(settings: Settings) -> dict[ServiceName, Check]:
 
         async def embed(proxy: str | None) -> None:
             async with open_client(proxy, EMBEDDING_TIMEOUT) as client:
-                await open_embedder(embedding, client).embed_query(PROBE_TEXT)
+                await embed_a_word(open_embedder(embedding, client))
 
         checks["embedding"] = embed
 
@@ -311,41 +312,128 @@ def checks_for(settings: Settings) -> dict[ServiceName, Check]:
                     rerank_settings.api_key, rerank_settings.model, rerank_settings.base_url,
                     client,
                 )
-                await reranker.rerank(PROBE_TEXT, ("在的",), 1)
+                await rerank_a_word(reranker)
 
         checks["rerank"] = rerank
 
-    def speech(proxy: str | None) -> tuple[SpeechServices, ProxyRoutes | None]:
-        routes = None
-        if proxy is not None:
-            routes = ProxyRoutes(ProxySettings(proxy, True, frozenset({"tts", "stt"})))
-        return SpeechServices(settings.bailian_stt_model, routes=routes), routes
+    @asynccontextmanager
+    async def speech(proxy: str | None) -> AsyncIterator[SpeechServices]:
+        """The speech services, both through `proxy`, or direct for None."""
+        routes = ProxyRoutes(ProxySettings(proxy, proxy is not None, frozenset({"tts", "stt"})))
+        try:
+            yield SpeechServices(settings.bailian_stt_model, routes=routes)
+        finally:
+            await routes.aclose()
 
     if (fish_key := settings.fish_audio_api_key) is not None:
 
         async def tts(proxy: str | None) -> None:
-            services, routes = speech(proxy)
-            try:
+            async with speech(proxy) as services:
                 await services.check_tts(fish_key, settings.fish_audio_model, own=False)
-            finally:
-                if routes is not None:
-                    await routes.aclose()
 
         checks["tts"] = tts
 
     if (stt_key := settings.stt_key) is not None:
 
         async def stt(proxy: str | None) -> None:
-            services, routes = speech(proxy)
-            try:
+            async with speech(proxy) as services:
                 await services.check_stt(stt_key.provider, stt_key.api_key, own=False)
-            finally:
-                if routes is not None:
-                    await routes.aclose()
 
         checks["stt"] = stt
 
     return checks
+
+
+@dataclass(frozen=True)
+class Report:
+    """What the doctor found of the deployment `.env` configures."""
+
+    findings: list[Finding]
+    proxy_error: str | None
+    """Why the proxy could not be connected to; None if it could, or there is none."""
+    suggested_proxy_services: str | None
+    story_episodes: int | None
+    stand_assets_url: str | None
+    image_configured: bool
+    public: bool
+    admins: bool
+
+    @property
+    def ok(self) -> bool:
+        """Everything tried works, the way `.env` routes it."""
+        return self.proxy_error is None and all(f.ok and f.move is None for f in self.findings)
+
+    def as_json(self) -> dict:
+        found = asdict(self)
+        found["services"] = found.pop("findings")
+        del found["admins"]
+        return {"ok": self.ok, "config_error": None, **found}
+
+    def lines(self) -> list[str]:
+        """The report as the newcomer reads it."""
+        said = ["Eidolon-SC 诊断：按 .env 逐项试一次各项服务"]
+        if self.admins:
+            said.append("  （设了管理者：后台配置页改过的项以后台为准，这里只查 .env）")
+        said.append("")
+        if self.proxy_error is not None:
+            said += [f"✗ 代理：{self.proxy_error}", ""]
+        for f in self.findings:
+            if f.ok and f.move is None:
+                said.append(f"✓ {f.label}：{'直连' if f.route == 'direct' else '经代理'}正常")
+                continue
+            assert f.problem is not None
+            said += [
+                f"{'!' if f.ok else '✗'} {f.label}（{f.service}）："
+                f"{PROBLEM_NAMES[f.problem]}（{f.problem}）",
+                f"  原话：{f.detail}",
+                f"  → {f.hint}",
+            ]
+        if self.image_configured:
+            said.append("- 生图：不试（每张都要花钱）。后台配置页「生图」保存时会真生成一张来检查")
+        said.append("")
+        if self.suggested_proxy_services is not None:
+            said += [
+                f"建议把 .env 里的这一行改成：EIDOLON_PROXY_SERVICES={self.suggested_proxy_services}",
+                "  改完重启后端才生效（用 Docker 的要 docker compose up -d，只 restart 读不到新的 .env）",
+                "",
+            ]
+        if self.story_episodes is None:
+            said.append("剧情库：还没有数据库（后端还没启动过）")
+        elif self.story_episodes == 0:
+            said.append(
+                "剧情库：空的。剧情不随仓库分发，要自己同步一次，"
+                f"在这之前角色只凭人设回复（{GUIDE}「剧情库」）"
+            )
+        else:
+            said.append(f"剧情库：{self.story_episodes} 段剧情")
+        if self.stand_assets_url is None:
+            said.append(f"立绘：没配 EIDOLON_STAND_ASSETS_URL，通话时只显示背景图（{GUIDE}「立绘」）")
+        else:
+            said.append(f"立绘：从 {self.stand_assets_url} 加载")
+        said += [
+            "",
+            "全部正常" if self.ok else f"有问题，按上面的提示改；改完再运行一次。说明在 {GUIDE}「排障」",
+        ]
+        return said
+
+
+async def examine(settings: Settings) -> Report:
+    """Try every service `settings` configure, and the proxy, if any."""
+    proxy = settings.proxy
+    proxy_error = None
+    if proxy.url is not None and proxy.enabled:
+        proxy_error = await proxy_failure(proxy.url)
+    findings = await diagnose(checks_for(settings), proxy, proxy_reachable=proxy_error is None)
+    return Report(
+        findings=findings,
+        proxy_error=proxy_error,
+        suggested_proxy_services=suggested_proxy_services(proxy, findings),
+        story_episodes=story_episodes(settings.database_path),
+        stand_assets_url=settings.stand_assets_url,
+        image_configured=settings.image is not None,
+        public=settings.domain is not None,
+        admins=bool(settings.admins),
+    )
 
 
 async def run(as_json: bool) -> int:
@@ -358,78 +446,15 @@ async def run(as_json: bool) -> int:
     try:
         settings = Settings.from_env()
     except RuntimeError as e:
-        report = {"ok": False, "config_error": str(e)}
         if as_json:
-            print(json.dumps(report, ensure_ascii=False, indent=2))
+            print(json.dumps({"ok": False, "config_error": str(e)}, ensure_ascii=False, indent=2))
         else:
             print(f"✗ .env 有错，后端不会启动：{e}")
             print("  按上面说的改 .env，改完再运行一次 eidolon doctor")
         return 1
-
-    proxy = settings.proxy
-    proxy_problem = None
-    if proxy.url is not None and proxy.enabled:
-        proxy_problem = await proxy_failure(proxy.url)
-    findings = await diagnose(
-        checks_for(settings), proxy, proxy_reachable=proxy_problem is None
-    )
-    suggested = suggested_proxy_services(proxy, findings)
-    episodes = story_episodes(settings.database_path)
-    ok = proxy_problem is None and all(f.ok and f.move is None for f in findings)
-
+    report = await examine(settings)
     if as_json:
-        report = {
-            "ok": ok,
-            "config_error": None,
-            "proxy_error": proxy_problem,
-            "services": [asdict(f) for f in findings],
-            "suggested_proxy_services": suggested,
-            "story_episodes": episodes,
-            "stand_assets_url": settings.stand_assets_url,
-            "image_configured": settings.image is not None,
-            "public": settings.domain is not None,
-        }
-        print(json.dumps(report, ensure_ascii=False, indent=2))
-        return 0 if ok else 1
-
-    print("Eidolon-SC 诊断：按 .env 逐项试一次各项服务")
-    if settings.admins:
-        print("  （设了管理者：后台配置页改过的项以后台为准，这里只查 .env）")
-    print()
-    if proxy_problem is not None:
-        print(f"✗ 代理：{proxy_problem}")
-        print()
-    for f in findings:
-        way = "直连" if f.route == "direct" else "经代理"
-        if f.ok and f.move is None:
-            print(f"✓ {f.label}：{way}正常")
-            continue
-        mark = "!" if f.ok else "✗"
-        assert f.problem is not None
-        print(f"{mark} {f.label}（{f.service}）：{PROBLEM_NAMES[f.problem]}（{f.problem}）")
-        print(f"  原话：{f.detail}")
-        print(f"  → {f.hint}")
-    if settings.image is not None:
-        print("- 生图：不试（每张都要花钱）。后台配置页「生图」保存时会真生成一张来检查")
-    print()
-    if suggested is not None:
-        print(f"建议把 .env 里的这一行改成：EIDOLON_PROXY_SERVICES={suggested}")
-        print("  改完要重建后端才生效：docker compose up -d（只 restart 读不到新的 .env）")
-        print()
-    if episodes is None:
-        print("剧情库：还没有数据库（后端还没启动过）")
-    elif episodes == 0:
-        print(
-            "剧情库：空的。剧情不随仓库分发，要自己同步一次，"
-            f"在这之前角色只凭人设回复（{GUIDE}「剧情库」）"
-        )
+        print(json.dumps(report.as_json(), ensure_ascii=False, indent=2))
     else:
-        print(f"剧情库：{episodes} 段剧情")
-    if settings.stand_assets_url is None:
-        print(f"立绘：没配 EIDOLON_STAND_ASSETS_URL，通话时只显示背景图（{GUIDE}「立绘」）")
-    else:
-        print(f"立绘：从 {settings.stand_assets_url} 加载")
-    print()
-    print("全部正常" if ok else f"有问题，按上面的提示改；改完再运行一次。说明在 {GUIDE}「排障」")
-    return 0 if ok else 1
-
+        print("\n".join(report.lines()))
+    return 0 if report.ok else 1

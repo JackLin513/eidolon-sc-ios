@@ -156,7 +156,7 @@ key 我自己填进 .env，不贴给你。
 
 ### 自己动手
 
-需要 Docker 与 Docker Compose，以及一个支持流式输出和工具调用的对话模型。
+需要 Docker 与 Docker Compose，以及一个支持流式输出和工具调用的对话模型。不想装 Docker（比如在 Windows 上），也可以用 uv 和 Node.js 直接跑前后端，见下面的「开发」和[部署说明](docs/agents/deploying.md)的「三种跑法」。
 
 ```sh
 git clone https://github.com/Sallyn0225/eidolon-sc.git && cd eidolon-sc
@@ -179,7 +179,7 @@ docker compose up --build
 
 每项怎么配、配了以后有什么效果，见 **[配置指南](docs/configuration.md)**；所有环境变量的说明见 [`.env.example`](.env.example)。
 
-配好以后运行 `docker compose run --rm backend eidolon doctor`，它会逐项试一次各项服务，说明哪一项连不上、key 不对或者要走代理。
+配好以后运行 `docker compose run --rm backend eidolon doctor`（直接跑时在 `backend/` 下 `uv run --env-file=../.env eidolon doctor`），它会逐项试一次各项服务，说明哪一项连不上、key 不对或者要走代理。
 
 ## 🧩 架构
 

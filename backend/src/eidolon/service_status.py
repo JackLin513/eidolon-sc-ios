@@ -225,9 +225,9 @@ def probes(
         "chat_llm": chat_llm, "memory_llm": memory_llm, "judge": judge, "tts": tts, "stt": stt,
     }
     if embedder is not None:
-        found["embedding"] = lambda: _embed(embedder)
+        found["embedding"] = lambda: embed_a_word(embedder)
     if reranker is not None:
-        found["rerank"] = lambda: _rerank(reranker)
+        found["rerank"] = lambda: rerank_a_word(reranker)
     return found
 
 
@@ -244,11 +244,11 @@ async def first_word(llm: ChatLLM) -> None:
             await aclose()
 
 
-async def _embed(embedder: Embedder) -> None:
+async def embed_a_word(embedder: Embedder) -> None:
     await embedder.embed_query(PROBE_TEXT)
 
 
-async def _rerank(reranker: Reranker) -> None:
+async def rerank_a_word(reranker: Reranker) -> None:
     documents: Sequence[str] = ("在的",)
     await reranker.rerank(PROBE_TEXT, documents, 1)
 
