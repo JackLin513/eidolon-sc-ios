@@ -361,6 +361,7 @@ struct Model3DPreview: View {
     /// shader's output, so these are what set the preview's overall exposure;
     /// the game's own ramp supplies the two tones.
     private func addLights(to entity: Entity) {
+        if ProcessInfo.processInfo.environment["EIDOLON_3D_NO_LIGHTS"] != nil { return }
         guard entity.children.allSatisfy({ $0.components[DirectionalLightComponent.self] == nil }) else {
             return
         }
