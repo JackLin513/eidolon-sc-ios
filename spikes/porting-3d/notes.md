@@ -315,3 +315,15 @@ stream0 stride 40（pos12 + normal12 + tangent16）、stream1 stride 12（color4
 修完两套衣装在模拟器里都正确（`fix-pr001.png` / `fix-ss003.png`）。
 
 **顺带发现**：MLTD 的材质多数有两个贴图——`_MainTex`（反照率）和 `_SubTex`（发光/配色遮罩）。我们只用了 `_MainTex`，暂时够用，但发光部件会缺。
+
+### 2026-10-29 高光（第一版）
+
+原版材质里的高光不是烘在贴图里的，是两套参数：
+
+- **边缘光**：`_RimLightOn` / `_RimBorder` / `_RimOffset`（脸、头发）
+- **眼睛高光**：`_SpecTex_Center_X/Y`、`_Zoom`、`_Rotate_Z`、`_Scale_X/Y`、`_Vector_X/Y`、`_Fade`——亮点是算出来的
+- 分级参数：`_ShadingBorder` 5.0、`_ShadingOffset` 0.25
+
+第一版实现：`toonSurface` 加 fresnel 边缘光（0.10）+ 收紧的高光（pow 48，阈值 0.72）；另写 `eyeSurface`（pow 120、强度 0.85）想给眼睛单独加强。
+
+**没生效**：眼睛那条路靠 `material.name` 匹配 `"eye"`，但 USD 导入后 `Material.name` 可能是 nil，所以全部走了通用 shader。下一步要用可靠标识（材质名、贴图尺寸，或按 primitive 索引）来分流。
