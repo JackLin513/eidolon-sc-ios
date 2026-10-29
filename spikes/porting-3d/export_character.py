@@ -103,17 +103,16 @@ def world_of(merged: Merged, index: int) -> list[list[float]]:
 def premultiplied(image):
     """Fold alpha into the colour channels.
 
-    `_SubTex` uses alpha as its mask (the eye highlight is a white blob on a
-    transparent field), but an emissive texture is multiplied by RGB alone, so
-    an unmasked white would light the whole quad.
+    `_SubTex` uses alpha as a mask — the eye catch-light is a white blob on a
+    transparent field — and RealityKit's emissive texture drops alpha on the way
+    in. Premultiplying puts the mask in RGB where it survives. For ss003's glow
+    the alpha is 255 everywhere, so this is the identity.
     """
     from PIL import ImageChops
 
     image = image.convert("RGBA")
     alpha = image.getchannel("A")
-    rgb = ImageChops.multiply(
-        image.convert("RGB"), alpha.convert("RGB")
-    )
+    rgb = ImageChops.multiply(image.convert("RGB"), alpha.convert("RGB"))
     rgb.putalpha(255)
     return rgb
 
@@ -197,8 +196,13 @@ def build(
         else:
             pbr["baseColorFactor"] = [0.85, 0.85, 0.85, 1.0]
         entry: dict = {"name": key, "pbrMetallicRoughness": pbr, "doubleSided": True}
+        # The game reads `_SubTex` per shader: the green channel gates ss003's
+        # glow, alpha masks the eye highlight and weights the hair sheen. Alpha
+        # does not survive as alpha, so it is premultiplied into RGB; the gate
+        # channel is untouched because that texture is opaque.
+        #
         # Only the hair has a second UV set, and the Blender USD export writes a
-        # single `primvars:st`, so a hair glow could only be sampled with the
+        # single `primvars:st`, so a hair sheen could only be sampled with the
         # wrong coordinates. Skipping it loses the shine band but beats spraying
         # the strokes across the head.
         if info.glow is not None and glow_uv == 0:

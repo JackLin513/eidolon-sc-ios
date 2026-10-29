@@ -28,6 +28,9 @@ struct Model3DPreview: View {
     /// Framing the loader chose, before any inspection gesture moves it.
     @State private var baseScale: Float = 1
     @State private var basePosition = SIMD3<Float>.zero
+    /// Scale the fit settled on. A later reading that wants a smaller scale is
+    /// the skeleton finishing its resolve, so the smallest wins.
+    @State private var appliedScale: Float = 0
 
     /// Inspection gestures. Orbit is a debug affordance, not the parity framing:
     /// the preview opens on the fixed front composition.
@@ -220,11 +223,11 @@ struct Model3DPreview: View {
             }
             container.addChild(loaded)
             // Bounds of a skinned model are only meaningful once the skeleton is
-            // mounted and resolved; read while detached and the armature's rest
-            // pose decides, which sized the private outfit a quarter of the stage
-            // costume.
-            try? await Task.sleep(for: .milliseconds(120))
-            guard normalize(loaded) else {
+            // mounted and resolved, and they keep growing for a few frames after
+            // that — a single early read sized the model anywhere from a quarter
+            // to twice the intended height. Fit repeatedly and keep the largest
+            // box seen.
+            guard await fitRepeatedly(loaded) else {
                 if entity == nil {
                     phase = .failed("USDZ 里没有可见几何")
                 } else {
@@ -255,10 +258,22 @@ struct Model3DPreview: View {
         try await Entity.load(contentsOf: url)
     }
 
+    /// Six fits a tenth of a second apart, keeping the tallest bounds seen.
+    private func fitRepeatedly(_ entity: Entity) async -> Bool {
+        addLights(to: entity)
+        appliedScale = 0
+        var fitted = false
+        for _ in 0..<6 {
+            fitted = fit(entity) || fitted
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return fitted
+    }
+
     /// The USDZ may come from any source; keep the camera useful regardless of its
     /// authored scale or origin. The fixed default camera is the preview framing;
     /// free orbit is intentionally not part of the parity surface.
-    private func normalize(_ entity: Entity) -> Bool {
+    private func fit(_ entity: Entity) -> Bool {
         let bounds = entity.visualBounds(relativeTo: nil)
         guard bounds.extents.x > 0.000_001,
               bounds.extents.y > 0.000_001,
@@ -273,22 +288,32 @@ struct Model3DPreview: View {
         // because the bounds a skinned model reports are not the full figure.
         let targetHeight: Float = 2.3
         let scale = targetHeight / bounds.extents.y
-        baseScale = scale
         let center = bounds.center * scale
         // Push the model away from the camera: the default RealityView camera
         // sits at the origin, so centring at zero crops her. The upward nudge is
         // a fraction of her height so the framing holds at any scale.
         basePosition = [-center.x, -center.y + targetHeight * 0.11, -center.z - 1.0]
-        entity.scale = SIMD3<Float>(repeating: scale)
-        entity.position = basePosition
+        // Only ever grow: a later read that reports a smaller box is the early,
+        // unresolved one coming through again.
+        if appliedScale == 0 || scale < appliedScale {
+            appliedScale = scale
+            baseScale = scale
+            entity.scale = SIMD3<Float>(repeating: scale)
+            entity.position = basePosition
+        }
+        return true
+    }
 
-        // Key plus fill plus rim. A single directional light crushes every
-        // surface facing away from it, which reads as damage on limbs; the game
-        // never shows that because its toon ramp keeps a floor under the shadow.
+    /// Key plus fill plus rim. RealityKit's lit model runs on top of the surface
+    /// shader's output, so these are what set the preview's overall exposure;
+    /// the game's own ramp supplies the two tones.
+    private func addLights(to entity: Entity) {
+        guard entity.children.allSatisfy({ $0.components[DirectionalLightComponent.self] == nil }) else {
+            return
+        }
         addLight(to: entity, pitch: .pi / 4, yaw: 0, intensity: 2_000)
         addLight(to: entity, pitch: 0, yaw: -.pi / 2, intensity: 1_100)
         addLight(to: entity, pitch: -.pi / 6, yaw: .pi, intensity: 700)
-        return true
     }
 
     private func addLight(to entity: Entity, pitch: Float, yaw: Float, intensity: Float) {
