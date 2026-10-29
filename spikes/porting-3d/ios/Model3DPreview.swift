@@ -75,6 +75,22 @@ struct Model3DPreview: View {
             case .loaded:
                 if let entity {
                     RealityView { content in
+                        // RealityKit applies a scene-level tone map after the
+                        // surface shader and before sRGB encoding, which pulled
+                        // every colour down (0.5 came out at 110/255 instead of
+                        // 128/255 and the whole character read dark). Toe and
+                        // shoulder weights of zero make that curve the identity
+                        // (measured within 1.25/255 across 0...1), so the shader's
+                        // output reaches the screen as the game's numbers.
+                        // iOS 27 and undocumented; the fallback keeps older
+                        // systems on the tone-mapped look rather than crashing.
+                        if #available(iOS 27.0, *) {
+                            let tone = Entity()
+                            tone.components.set(
+                                ToneMappingComponent(toeStrength: 0, shoulderStrength: 0)
+                            )
+                            content.add(tone)
+                        }
                         content.add(container)
                     }
                     .ignoresSafeArea()
