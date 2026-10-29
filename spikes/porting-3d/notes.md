@@ -173,3 +173,30 @@
 - 已 dump 64 根 native 骨骼：`bone_id/local_position/local_angle`。
 - 文件：`build/mltd-spike/out/il2cpp/native-rest.json`。
 - 这是真正的 `CharacterCommonSkeleton` rest，不是 Avatar/Transform 推断。
+
+## 2026-10-29 原生路线（ADR-0022）
+
+放弃 PMX / VMD / MLTDTools / MMD Tools。模型、骨骼、绑定、蒙皮、贴图、表情形变全部从游戏自己的 UnityFS bundle 读，动画在端上用 `SkeletalPosesComponent` 每帧算。spec 见 #54，执行见 #73–#77。
+
+**取包**：`mltd-assets.py` 用 `mltd-asset-downloader` 下载的 manifest 直接向 CDN 取指定包，不问工具要全量。URL 形如
+`https://td-assets.bn765.com/<version>/production/2018/iOS/<manifest 第二字段>`；
+当前 version `1078000`，manifest 22.7 MB。只取 9 个包（两套衣装的 `ch_/cb_/ca_/cas_` 加 `dan_loveig_01`），约 5.5 MB。
+
+**实测结构（UnityPy 1.25.4）**
+
+| 包 | 内容 |
+|---|---|
+| `ch_pr001_014mir` | 5 个 SMR（face / hair / eyes / 两个 acc），各 37 骨；`face` 有 **32 个 shape key**；Avatar TOS 45 |
+| `cb_pr001_014mir` | 1 个 SMR，134 骨；body 4422 顶点、11440 索引；Avatar TOS 143 |
+| `ch_ss003_014mir` / `cb_ss003_014mir` | 同上，body 4123 顶点、124 骨 |
+| `dan_loveig_01.imo` | **只有 MonoBehaviour + MonoScript + AssetBundle**，脚本类是 `Imas.CharacterImasMotionAsset`，字段 `curves` / `kind` / `time_length` / `attribs` |
+
+所以这支舞**不是** `AnimationClip`，是游戏自定义的 `CharacterImasMotionAsset`——但 UnityPy 能直接读，不需要自己写二进制解析。曲线的 180 条按 Transform 路径寻址，与既有 `loveig-curves.json` 一致。
+
+**顶点布局**：`m_DataSize` 就是整块顶点缓冲，三条流首尾相接、每条按 16 字节对齐。
+stream0 stride 40（pos12 + normal12 + tangent16）、stream1 stride 12（color4 + uv8）、stream2 stride 32（权重 Float32x4 + 骨索引 **SInt32x4**）。
+**每顶点 4 个骨影响**，所以 `m_VariableBoneCountWeights` 那套截断风险在本作不存在。
+
+**骨头集合**：头 37 骨与身体 134 骨共用 `KUBI` / `ATAMA` / `KUBI_RT__twist_x0`，其余 35 根头发骨只在头包里。合并成一套 joint 要做名字对齐。
+
+**已做**：`unity_mesh.py`（顶点流解码、索引解码、手性翻转）与 `mltd_assets.py`（manifest 解析、CDN URL 推导）各有单测，共 20 个通过。
