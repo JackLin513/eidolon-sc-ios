@@ -362,6 +362,8 @@ class Report:
     image_configured: bool
     public: bool
     admins: bool
+    """Whether there is an admin console (`Settings.admin_console`)."""
+    everyone_admin: bool
     registration: Registration
 
     @property
@@ -379,14 +381,16 @@ class Report:
     def as_json(self) -> dict:
         found = asdict(self)
         found["services"] = found.pop("findings")
-        del found["admins"]
+        del found["admins"], found["everyone_admin"]
         found["invite_without_admins"] = self.invite_without_admins
         return {"ok": self.ok, "config_error": None, **found}
 
     def lines(self) -> list[str]:
         """The report as the newcomer reads it."""
         said = ["Eidolon-SC 诊断：按 .env 逐项试一次各项服务"]
-        if self.admins:
+        if self.everyone_admin:
+            said.append("  （开发登录：所有人都能进后台。后台配置页改过的项以后台为准，这里只查 .env）")
+        elif self.admins:
             said.append("  （设了管理者：后台配置页改过的项以后台为准，这里只查 .env）")
         said.append("")
         if self.proxy_error is not None:
@@ -455,7 +459,8 @@ async def examine(settings: Settings) -> Report:
         stand_assets_url=settings.stand_assets_url,
         image_configured=settings.image is not None,
         public=settings.domain is not None,
-        admins=bool(settings.admins),
+        admins=settings.admin_console,
+        everyone_admin=settings.everyone_admin,
         registration=settings.registration,
     )
 

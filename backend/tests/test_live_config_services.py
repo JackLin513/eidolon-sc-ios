@@ -820,3 +820,14 @@ async def test_what_cannot_be_changed_here_is_only_shown_saying_why(
     assert unconfigured.status_code == 409
     assert "unavailable" in shown.json()["judge"]
 
+
+async def test_with_dev_login_and_no_admins_listed_the_admins_shown_are_everyone(
+    make_client: ClientFactory,
+):
+    client = make_client(FakeLLM())  # dev login is on in the tests, and no admins listed
+
+    shown = await client.get(CONFIG)
+
+    read_only = {item["name"]: item["value"] for item in shown.json()["read_only"]}
+    assert read_only["admins"] == "everyone"
+
