@@ -158,3 +158,10 @@
 - 按 `skin = rest^-1 * currentWorld`、`local = rest * skin * parentWorld^-1` 实现一帧 retarget，使用 PMX rest 作为 native rest 的代理。
 - 结果仍爆炸。说明 PMX rest 不能替代 native rest；必须先取得 `CharacterCommonSkeleton` 的 native rest world matrices，再套矩阵链。
 - 未完成 T5；不能继续用 PMX rest 冒充 native rest。
+
+### native skeleton rest（第二轮）
+
+- 从 head/body Unity Transform 层级提取 188 个 native 节点（localPosition/localRotation/parent），保存为本地 `native-skeleton.json`。
+- 用 native rest + native curves + PMX binding 矩阵链渲染，仍爆炸。
+- 已排除“没有 native rest”这一项；剩余问题在 native 路径/父子关系或 native→PMX binding 的对应。
+- T5 仍未完成。
