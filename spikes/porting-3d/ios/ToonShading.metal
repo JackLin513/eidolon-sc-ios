@@ -11,7 +11,7 @@ using namespace metal;
 //
 // Per-material constants arrive in an atlas texture, one byte per parameter in
 // the alpha channel. The order is `material_atlas.py`'s `LAYOUT`.
-constant uint kParamColumns = 68;
+constant uint kParamColumns = 69;
 constant uint kParamCapacity = 64;
 
 constant uint kParamColor = 0;
@@ -56,6 +56,7 @@ constant uint kParamExtraBihaku = 62;
 constant uint kParamWhitish = 63;
 constant uint kParamFreq = 64;
 constant uint kParamOutlineColor = 65;
+constant uint kParamIsCutOff = 68;
 
 // Shader discriminator, matching `material_atlas.SHADER_KINDS`.
 constant float kKindBasic = 1.0;
@@ -168,6 +169,17 @@ void outlineSurface(realitykit::surface_parameters params)
 {
     uint row = uint(params.uniforms().custom_parameter().x);
     texture2d<half> lut = params.textures().specular();
+    // Cutout materials keep their shape in the base pass only. Without the same
+    // test here the hull still fills the whole rectangle, which reads as a solid
+    // black patch sitting on top of the discarded base.
+    if (param(lut, row, kParamIsCutOff) > 0.5f) {
+        float2 uv = params.geometry().uv0();
+        half4 base = params.textures().custom().sample(
+            kAtlas, float2(uv.x, 1.0 - uv.y));
+        if (max(max(base.r, base.g), base.b) < 0.004h) {
+            discard_fragment();
+        }
+    }
     // The game writes `2 * _IllumiColor * _OutlineColor` into the hull's colour
     // in the vertex shader, then multiplies by the toon ramp in the fragment
     // shader. `_IllumiColor` is neutral (0.5) in every character material, so
@@ -221,6 +233,15 @@ void toonSurface(realitykit::surface_parameters params)
         mipmapped ? kAtlasMipmapped : kAtlas, flipped);
     half4 subTexRaw = params.textures().emissive_color().sample(
         mipmapped ? kAtlasMipmapped : kAtlas, flipped);
+    // `_IsCutOff` materials (the `02alp` ribbons) are a cutout shape painted on
+    // a transparent field. The alpha channel does not survive the USD trip, so
+    // the field arrives as pure black instead of transparent — which is exactly
+    // what a discarded fragment would have shown. Only cutout materials test
+    // this, because black stockings and hair shadows are legitimately black.
+    if (param(lut, row, kParamIsCutOff) > 0.5f
+        && max(max(mainTexRaw.r, mainTexRaw.g), mainTexRaw.b) < 0.004h) {
+        discard_fragment();
+    }
     half4 mainTex = half4(half3(toGamma(float3(mainTexRaw.rgb))), mainTexRaw.a);
     half4 subTex = half4(half3(toGamma(float3(subTexRaw.rgb))), subTexRaw.a);
 

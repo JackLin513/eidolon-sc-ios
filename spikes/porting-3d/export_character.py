@@ -117,6 +117,22 @@ def premultiplied(image):
     return rgb
 
 
+def cutout_safe(image):
+    """Paint the colour under transparent texels black.
+
+    The `02alp` ribbons are a dark-red field with alpha 0, and the alpha does
+    not survive the USD round trip — the field arrives opaque and paints the
+    shoe a solid maroon. Zeroing the hidden colour turns it into the black the
+    shader's `_IsCutOff` test discards, which is the same shape the game's
+    `Clip` leaves behind.
+    """
+    image = image.convert("RGBA")
+    transparent = image.getchannel("A").point(lambda a: 255 if a < 128 else 0)
+    black = image.copy()
+    black.paste((0, 0, 0, 255), mask=transparent)
+    return black
+
+
 def sanitise(name: str) -> str:
     return "".join(
         character if character.isalnum() or character in "-_" else "_"
@@ -173,6 +189,8 @@ def build(
         file_name = f"textures/{len(images):02d}_{sanitise(key)}.png"
         if premultiply:
             image = premultiplied(image)
+        else:
+            image = cutout_safe(image)
         image.save(out / file_name)
         images.append({"uri": file_name})
         textures.append({"source": len(images) - 1, "sampler": 0})

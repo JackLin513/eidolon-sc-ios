@@ -62,6 +62,9 @@ LAYOUT: list[tuple[str, str]] = [
     # The outline pass tints the hull with `2 * _IllumiColor * _OutlineColor`,
     # which is a dark brown in every character material, not black.
     ("_OutlineColor", "r"), ("_OutlineColor", "g"), ("_OutlineColor", "b"),
+    # The alpha-cut `02alp` ribbons are the only cutout materials; the flag
+    # matters because the texture's alpha does not survive the USD trip.
+    ("_IsCutOff", "-"),
 ]
 
 # Rows the atlas is sized for. The shader's V coordinate is

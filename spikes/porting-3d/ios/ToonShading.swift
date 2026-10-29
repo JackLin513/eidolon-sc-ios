@@ -108,7 +108,7 @@ enum ToonShading {
                 // behind, and the atlas rides in the specular slot.
                 if let source = material as? CustomMaterial {
                     outline.specular = source.specular
-                    outline.custom.value = SIMD4(source.custom.value.x, 1, 0, 0)
+                    outline.custom = source.custom
                 }
                 return outline
             }
