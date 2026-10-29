@@ -28,8 +28,7 @@ struct Model3DPreview: View {
     /// Framing the loader chose, before any inspection gesture moves it.
     @State private var baseScale: Float = 1
     @State private var basePosition = SIMD3<Float>.zero
-    /// Scale the fit settled on. A later reading that wants a smaller scale is
-    /// the skeleton finishing its resolve, so the smallest wins.
+    /// Scale the last fit settled on.
     @State private var appliedScale: Float = 0
 
     /// Inspection gestures. Orbit is a debug affordance, not the parity framing:
@@ -227,7 +226,7 @@ struct Model3DPreview: View {
             // that — a single early read sized the model anywhere from a quarter
             // to twice the intended height. Fit repeatedly and keep the largest
             // box seen.
-            guard await fitRepeatedly(loaded) else {
+            guard await fitAfterSettle(loaded) else {
                 if entity == nil {
                     phase = .failed("USDZ 里没有可见几何")
                 } else {
@@ -258,49 +257,65 @@ struct Model3DPreview: View {
         try await Entity.load(contentsOf: url)
     }
 
-    /// Six fits a tenth of a second apart, keeping the tallest bounds seen.
-    private func fitRepeatedly(_ entity: Entity) async -> Bool {
+    /// Sample the bounds for a couple of seconds and fit to the **median**.
+    ///
+    /// `visualBounds` of a skinned model is not merely late to settle, it is
+    /// noisy: the same build framed her anywhere from 2% to 80% of the viewport
+    /// depending on which frame got read, and neither "first", "last" nor
+    /// "largest" was stable. A median over two dozen samples ignores both the
+    /// runaway small boxes and the transient huge ones.
+    private func fitAfterSettle(_ entity: Entity) async -> Bool {
         addLights(to: entity)
-        appliedScale = 0
-        var fitted = false
-        for _ in 0..<6 {
-            fitted = fit(entity) || fitted
-            try? await Task.sleep(for: .milliseconds(100))
+        var heights: [Float] = []
+        var centres: [SIMD3<Float>] = []
+        for _ in 0..<24 {
+            let bounds = entity.visualBounds(relativeTo: nil)
+            if bounds.extents.y > 0.000_001 {
+                heights.append(bounds.extents.y)
+                centres.append(bounds.center)
+            }
+            try? await Task.sleep(for: .milliseconds(80))
         }
-        return fitted
+        guard !heights.isEmpty else { return false }
+
+        let height = heights.sorted()[heights.count / 2]
+        let centre = SIMD3<Float>(
+            centres.map(\.x).sorted()[centres.count / 2],
+            centres.map(\.y).sorted()[centres.count / 2],
+            centres.map(\.z).sorted()[centres.count / 2]
+        )
+        return fit(entity, height: height, centre: centre)
     }
 
     /// The USDZ may come from any source; keep the camera useful regardless of its
     /// authored scale or origin. The fixed default camera is the preview framing;
     /// free orbit is intentionally not part of the parity surface.
-    private func fit(_ entity: Entity) -> Bool {
+    private func fit(
+        _ entity: Entity, height: Float? = nil, centre sampled: SIMD3<Float>? = nil
+    ) -> Bool {
         let bounds = entity.visualBounds(relativeTo: nil)
         guard bounds.extents.x > 0.000_001,
-              bounds.extents.y > 0.000_001,
               bounds.extents.z > 0.000_001
         else { return false }
+        let extent = height ?? bounds.extents.y
+        guard extent > 0.000_001 else { return false }
         if ProcessInfo.processInfo.environment["EIDOLON_3D_LOG_MATERIALS"] != nil {
-            print("[frame] extents=\(bounds.extents) center=\(bounds.center)")
+            print("[frame] extents=\(bounds.extents) centre=\(sampled ?? bounds.center)")
         }
-        // World units of height the model should occupy. Measured against the
-        // default RealityView camera at z = -1: 2.3 fills a little over half the
-        // viewport and keeps head and feet inside it. Larger values crop her,
-        // because the bounds a skinned model reports are not the full figure.
-        let targetHeight: Float = 2.3
-        let scale = targetHeight / bounds.extents.y
-        let center = bounds.center * scale
+        // World units of height the model should occupy. Calibrated against the
+        // settled bounds: 2.3 rendered her at 38% of the viewport height, so 4.2
+        // lands near 70% with the head clear of the status bar.
+        let targetHeight: Float = 4.2
+        let scale = targetHeight / extent
+        let center = (sampled ?? bounds.center) * scale
         // Push the model away from the camera: the default RealityView camera
         // sits at the origin, so centring at zero crops her. The upward nudge is
         // a fraction of her height so the framing holds at any scale.
         basePosition = [-center.x, -center.y + targetHeight * 0.11, -center.z - 1.0]
-        // Only ever grow: a later read that reports a smaller box is the early,
-        // unresolved one coming through again.
-        if appliedScale == 0 || scale < appliedScale {
-            appliedScale = scale
-            baseScale = scale
-            entity.scale = SIMD3<Float>(repeating: scale)
-            entity.position = basePosition
-        }
+        appliedScale = scale
+        baseScale = scale
+        entity.scale = SIMD3<Float>(repeating: scale)
+        entity.position = basePosition
         return true
     }
 

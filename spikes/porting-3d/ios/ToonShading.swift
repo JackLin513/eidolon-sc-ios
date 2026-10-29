@@ -45,9 +45,16 @@ enum ToonShading {
                     surfaceShader: surface,
                     lightingModel: lightingModel
                 ) else { return material }
-                let debug = ProcessInfo.processInfo.environment["EIDOLON_3D_LUT_DEBUG"] != nil
+                let environment = ProcessInfo.processInfo.environment
+                let debug = environment["EIDOLON_3D_LUT_DEBUG"] != nil
+                let normals = environment["EIDOLON_3D_DEBUG_NORMALS"] != nil
                 var custom = CustomMaterial.Custom(
-                    value: SIMD4(Float(row ?? 0), row == nil ? 0 : 1, debug ? 1 : 0, 0)
+                    value: SIMD4(
+                        Float(row ?? 0),
+                        row == nil ? 0 : 1,
+                        debug ? 1 : 0,
+                        normals ? 1 : 0
+                    )
                 )
                 if let customTexture = try? CustomMaterial.Texture(texture) {
                     custom.texture = customTexture
