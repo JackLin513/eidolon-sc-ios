@@ -11,7 +11,7 @@ using namespace metal;
 //
 // Per-material constants arrive in an atlas texture, one byte per parameter in
 // the alpha channel. The order is `material_atlas.py`'s `LAYOUT`.
-constant uint kParamColumns = 69;
+constant uint kParamColumns = 72;
 constant uint kParamCapacity = 64;
 
 constant uint kParamColor = 0;
@@ -57,6 +57,7 @@ constant uint kParamWhitish = 63;
 constant uint kParamFreq = 64;
 constant uint kParamOutlineColor = 65;
 constant uint kParamIsCutOff = 68;
+constant uint kParamUp = 69;
 
 // Shader discriminator, matching `material_atlas.SHADER_KINDS`.
 constant float kKindBasic = 1.0;
@@ -351,8 +352,14 @@ void toonSurface(realitykit::surface_parameters params)
         float3 base = float3(mainTex.rgb);
         if (hasParams) {
             float2 uv1 = params.geometry().uv1();
+            // `_Up` is authored in object space and is not +Y for these meshes
+            // (it is (-1, 0, 0)), so assuming up would slide the highlight along
+            // the wrong axis.
+            float3 upObject = float3(paramSigned(lut, row, kParamUp),
+                                     paramSigned(lut, row, kParamUp + 1),
+                                     paramSigned(lut, row, kParamUp + 2));
             float3 upView = normalize(
-                (params.uniforms().model_to_view() * float4(0.0f, 1.0f, 0.0f, 0.0f)).xyz
+                (params.uniforms().model_to_view() * float4(upObject, 0.0f)).xyz
             );
             float slide = dot(view, upView);
             float2 sheenUV = float2(
@@ -374,7 +381,10 @@ void toonSurface(realitykit::surface_parameters params)
             // sheen adds a warm colour on top of brown, which is a saturation
             // source worth isolating.
             if (custom.z < -0.5f) { weight = 0.0f; }
-            base += weight * float3(sheen) * 2.0f * param(lut, row, kParamSubColor);
+            // `mainTex` was gamma-encoded before use; adding a linear sheen into
+            // it made the highlight read orange and oversaturated.
+            base += weight * toGamma(float3(sheen)) * 2.0f
+                  * param(lut, row, kParamSubColor);
         }
         result = correctedBase(colour, base);
         float ramp = rampFactor(normal, light, shadingOffset, shadingBorder);
