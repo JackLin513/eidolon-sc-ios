@@ -11,7 +11,7 @@
 
 ## 1. 先问用户三件事
 
-1. **在自己电脑上试，还是部署到服务器给别人用？** 前者走「本机体验」，后者走「公网部署」。没把握时先做本机体验，跑通以后再上服务器。
+1. **在自己电脑上试，还是部署到服务器给别人用？** 前者走「本机体验」，后者走「公网部署」。没把握时先做本机体验，跑通以后再上服务器。部署到服务器的，再问一句：**只给认识的人用，还是谁都能来？** 只给认识的人用，就从第一天起只让受邀的人注册（见「公网部署」）；否则找到网址的陌生人也能注册，花的是用户的钱。
 2. **电脑或服务器在中国大陆吗？** 这决定了推荐哪几家服务，以及要不要配代理（见「网络和代理」）。
 3. **想要哪些功能？** 文字聊天必须有，其余按需：语音通话、剧情回忆和记忆、照片、通话立绘。每多一项功能就多申请一两个服务，有的按量收费，先把这一点告诉用户。
 
@@ -110,6 +110,7 @@ docker compose up -d --build
 - `EIDOLON_TURN_SECRET`、`EIDOLON_SECRET_KEY` 用 `openssl rand -hex 32` 生成，可以由你生成并写入。**`EIDOLON_SECRET_KEY` 一旦填了就不要再换**，告诉用户把它备份好。
 - 登录要配 GitHub 或 Google 的 OAuth 应用，至少一家。见 `docs/deploy.md`「配置 OAuth 应用」，也可以用 `scripts/setup-oauth.sh`，这是一个交互式脚本，让用户自己在终端里运行。
 - 公网部署不能留 `EIDOLON_DEV_LOGIN`。它让任何人都能冒充任何用户，配置了 `EIDOLON_DOMAIN` 时后端会拒绝启动。
+- 只给认识的人用的，`.env` 里设 `EIDOLON_REGISTRATION=invite`，并且一定要配好管理者名单：邀请链接只能在后台生成。顺序是：用户自己先登录一次（第一位用户不用邀请），你用 `eidolon user list` 查到他的标识填进 `EIDOLON_ADMINS`，`up -d`；然后告诉用户在后台配置页「注册」里生成邀请链接，复制发给朋友。见 `docs/deploy.md`「开启后台」「只让受邀的人注册」。
 - 之后的命令都带 `-f docker-compose.prod.yml`，或者先 `export COMPOSE_FILE=docker-compose.prod.yml`。`.env` 缺了 `EIDOLON_DOMAIN`、`EIDOLON_TURN_SECRET` 时，compose 自己会先报「请在 .env 里填写 …」，所有命令（包括 doctor）都跑不起来，先补上。
 - 用 `https://域名` 能打开网站、用户能登录、doctor 全部正常，才算部署完成。接着建议用户配好每天的备份（`docs/deploy.md`「备份」）和每周的剧情同步（「每周自动同步」）。
 
