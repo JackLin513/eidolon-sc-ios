@@ -679,7 +679,7 @@ db.commit()
 
 有人用「玩法仓库登记」模板开 issue 时，Fork showcase workflow 会检查仓库地址：能不能打开、是不是公开、仓库名是不是还叫 eidolon-sc（[`scripts/fork_showcase.py`](../scripts/fork_showcase.py)）。结果写在一条评论里，对方编辑 issue 后会更新这条评论；没通过就打 `needs-info`，通过了就摘掉。
 
-看过对方仓库、觉得可以收录，就给 issue 打上 `accepted` 标签。workflow 会再查一遍，然后把这一条写进 [`docs/community-forks.md`](community-forks.md) 里对应分级的一节，提交到 main，评论并关闭 issue。这次提交不会触发 CI。之后要改简介或下线某一条，直接改这份文档，每一条行末的注释里记着登记 issue 的编号。
+看过对方仓库、觉得可以收录，就给 issue 打上 `accepted` 标签。workflow 会再查一遍，然后把这一条写进 [`docs/community-forks.md`](community-forks.md) 里对应分级的一节，提交到 main，评论并关闭 issue。workflow 自己推的提交不会触发 CI，所以推完会再手动触发一次 main 上的 CI，跑完才能发版本。之后要改简介或下线某一条，直接改这份文档，每一条行末的注释里记着登记 issue 的编号。
 
 本机看会写进文档的那一行：`python3 scripts/fork_showcase.py accept 171 --dry-run`。
 

@@ -1,6 +1,7 @@
 # 玩法仓库登记（scripts/fork_showcase.py，见 docs/deploy.md「玩法仓库登记」）：
 # 登记 issue 打开或编辑时自动检查仓库地址，结果写进一条评论；维护者打上 accepted 标签时收录进
 # docs/community-forks.md、推到 main、关闭 issue。issue 正文只交给脚本读，不拼进命令行。
+# 用 GITHUB_TOKEN 推的提交不会触发 ci.yml，推完手动触发一次，main 的最新提交才有测过的镜像可以发版本。
 name: Fork showcase
 
 on:
@@ -46,6 +47,7 @@ jobs:
     permissions:
       contents: write
       issues: write
+      actions: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -58,4 +60,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          before=$(git rev-parse HEAD)
           python3 scripts/fork_showcase.py accept "$NUMBER"
+          # 没通过时脚本不提交，不用跑 CI
+          if [ "$(git rev-parse HEAD)" != "$before" ]; then
+            gh workflow run ci.yml --ref main
+          fi

@@ -1,5 +1,6 @@
 # 每个 PR 和 main 上的每次推送：检查后端、前端和 shell 脚本，同时构建两个镜像。
 # 推送到 main 或 v* 标签时，检查和构建全部通过才把镜像推到 GHCR（部署见 docs/deploy.md「升级」）。
+# 用 GITHUB_TOKEN 推到 main 的提交不会触发推送事件，那边（如 fork-showcase.yml）推完再手动触发一次 main 上的 CI。
 name: CI
 
 on:
@@ -7,6 +8,7 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  workflow_dispatch:
 
 # 同一个 PR 推了新提交时取消旧的运行；main 上的每次推送都跑完，免得漏发镜像
 concurrency:
@@ -80,9 +82,9 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
-  # 推送到 main 或 v* 标签、上面全部通过时：按 image 的缓存再构建一次（通常层都命中，缓存被清掉时整个重建），推到 GHCR
+  # 推送到 main 或 v* 标签（或在 main 上手动触发）、上面全部通过时：按 image 的缓存再构建一次（通常层都命中，缓存被清掉时整个重建），推到 GHCR
   publish:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     needs: [backend, frontend, shellcheck, image]
     runs-on: ubuntu-latest
     permissions:

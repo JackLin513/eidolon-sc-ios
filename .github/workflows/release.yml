@@ -94,7 +94,8 @@ jobs:
         env:
           SHA: ${{ steps.version.outputs.sha }}
         run: |
-          passed=$(gh run list --workflow ci.yml --commit "$SHA" --event push --status success --json databaseId --jq length)
+          # 推送触发的和手动触发的（fork-showcase.yml 推完会触发）都算，PR 上的不算
+          passed=$(gh run list --workflow ci.yml --commit "$SHA" --branch main --status success --json databaseId --jq length)
           if [ "$passed" = 0 ]; then
             echo "::error::main 上 ${SHA::7} 的 CI 还没通过，等它跑完、镜像发布了再发版本"
             exit 1
