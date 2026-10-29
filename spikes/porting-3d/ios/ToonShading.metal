@@ -251,6 +251,14 @@ void toonSurface(realitykit::surface_parameters params)
     // `model_to_view` here rotated the field by the rig's yaw and lit the wrong
     // side — confirmed with `EIDOLON_3D_DEBUG_NORMALS`.)
     float3 normal = normalize(params.geometry().normal());
+    // `normal()` is world-space (verified by rotating the camera and comparing
+    // against normals built from screen derivatives), but the game's light is a
+    // view-space constant and its ramp is a view-space dot. At the default
+    // camera the two coincide, which is why this only shows up once the model
+    // is orbited.
+    float3 normalView = normalize(
+        (params.uniforms().world_to_view() * float4(normal, 0.0f)).xyz
+    );
     float3 view = normalize(params.geometry().view_direction());
 
     if (custom.w < -0.5f) {
@@ -315,7 +323,7 @@ void toonSurface(realitykit::surface_parameters params)
     float3 rim = float3(0.0f);
     if (rimOn > 0.5f) {
         float edge = pow(1.0f - abs(dot(normal, view)), 5.0f);
-        float mask = edge * saturate(2.0f * (dot(normal, light) - 0.25f));
+        float mask = edge * saturate(2.0f * (dot(normalView, light) - 0.25f));
         rim = saturate(mask * rimColour);
     }
 
@@ -374,7 +382,7 @@ void toonSurface(realitykit::surface_parameters params)
             // `nz³` keeps the sheen off the back of the head; `_SpecTex_Fade`
             // lifts the floor. The exporter premultiplied the mask into the
             // colour, so no separate alpha term is needed.
-            float nz = normal.z;
+            float nz = normalView.z;
             float weight = clamp(min(nz * nz * nz + param(lut, row, kParamSpecTexFade), 1.0f),
                                  0.0f, 1.0f);
             // `EIDOLON_3D_NO_SHEEN` (custom.z < 0) turns it off for A/B: the
@@ -387,7 +395,7 @@ void toonSurface(realitykit::surface_parameters params)
                   * param(lut, row, kParamSubColor);
         }
         result = correctedBase(colour, base);
-        float ramp = rampFactor(normal, light, shadingOffset, shadingBorder);
+        float ramp = rampFactor(normalView, light, shadingOffset, shadingBorder);
         result = 2.0f * mix(ambient, diffuse, ramp) * result;
         result = result * (2.0f * illum) + rim;
     } else if (kind > kKindFace - 0.5f) {
@@ -405,19 +413,29 @@ void toonSurface(realitykit::surface_parameters params)
             float d2 = dot(delta, delta);
             float f = 3.0227f * d2 - 4.4114f * d2 * d2 + 2.3887f * d2 * d2 * d2;
             float border = max(param(lut, row, kParamBihakuBorder), 1e-4f);
-            const float extra = param(lut, row, kParamExtraBihaku);
+            // The game only raises `_ExtraBihaku` inside three small UV patches
+            // of the face atlas — the jaw and the two cheek edges. Using it for
+            // every texel pinned the mask at 1, which flattened the shading on
+            // the neck and the sides of the face.
+            float extra = 0.0f;
+            if (uv.x < 0.25f) {
+                extra = uv.y < (121.0f / 512.0f)
+                    ? param(lut, row, kParamExtraBihaku) : 0.0f;
+            } else if (uv.x >= (375.0f / 512.0f) && uv.y < (145.0f / 512.0f)) {
+                extra = param(lut, row, kParamExtraBihaku);
+            }
             mask = saturate(max(extra, (0.5f + border - f) / border));
         }
 
         rim *= (1.0f - mask);
-        float ramp = min(mask + rampFactor(normal, light, shadingOffset, shadingBorder),
+        float ramp = min(mask + rampFactor(normalView, light, shadingOffset, shadingBorder),
                          1.0f);
         result = correctedBase(colour, float3(mainTex.rgb));
         result = 2.0f * mix(ambient, diffuse, ramp) * result;
         result = result * (2.0f * illum) + rim;
     } else {
         // --- Chr_Glow / Chr_Basic --------------------------------------
-        float ramp = rampFactor(normal, light, 0.25f, 5.0f);
+        float ramp = rampFactor(normalView, light, 0.25f, 5.0f);
         result = correctedBase(colour, float3(mainTex.rgb));
         result = 2.0f * mix(ambient, diffuse, ramp) * result;
         result = result * (2.0f * illum) + rim;
