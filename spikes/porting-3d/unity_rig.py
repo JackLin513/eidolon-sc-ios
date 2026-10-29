@@ -87,6 +87,7 @@ class SkinnedMesh:
     bone_paths: list[int]
     bindposes: list[tuple[float, ...]] = field(default_factory=list)
     materials: list[MaterialInfo] = field(default_factory=list)
+    shapes: list[tuple[str, list[tuple[float, float, float]]]] = field(default_factory=list)
     # (first triangle, triangle count) per submesh, in material order.
     submeshes: list[tuple[int, int]] = field(default_factory=list)
 
@@ -166,27 +167,37 @@ def read_skinned_meshes(env) -> list[SkinnedMesh]:
                 bindposes=[matrix_tuple(matrix) for matrix in mesh.m_BindPose],
                 materials=materials,
                 submeshes=submeshes,
+                shapes=read_shape_keys(mesh, data.m_VertexCount),
             )
         )
     return meshes
 
 
-def read_shape_keys(env) -> dict[str, list[tuple[str | None, list]]]:
-    """Per mesh name: each shape's name (often None in MLTD) and its deltas."""
-    out: dict[str, list[tuple[str | None, list]]] = {}
-    for obj in env.objects:
-        if obj.type.name != "Mesh":
-            continue
-        mesh = obj.read()
-        shapes = mesh.m_Shapes
-        if not shapes or not shapes.shapes:
-            continue
-        deltas = shapes.vertices
-        out[mesh.m_Name] = [
-            (shape.name, deltas[shape.firstVertex : shape.firstVertex + shape.vertexCount])
-            for shape in shapes.shapes
-        ]
-    return out
+SHAPE_NAME_PREFIX = "blendShape1."
+
+
+def read_shape_keys(mesh, vertex_count: int) -> list[tuple[str, list[tuple[float, float, float]]]]:
+    """Full-length position deltas per blend shape.
+
+    MLTD stores the shape names on the channels, not on the shapes themselves;
+    UnityPy reports `shapes[i].name` as None, which is why the names look absent.
+    """
+    shapes = mesh.m_Shapes
+    if not shapes or not shapes.shapes:
+        return []
+    entries: list[tuple[str, list[tuple[float, float, float]]]] = []
+    channels = list(shapes.channels or [])
+    for order, shape in enumerate(shapes.shapes):
+        name = None
+        if order < len(channels):
+            name = channels[order].name
+        if name and name.startswith(SHAPE_NAME_PREFIX):
+            name = name[len(SHAPE_NAME_PREFIX) :]
+        deltas = [(0.0, 0.0, 0.0)] * vertex_count
+        for vertex in shapes.vertices[shape.firstVertex : shape.firstVertex + shape.vertexCount]:
+            deltas[vertex.index] = (vertex.vertex.x, vertex.vertex.y, vertex.vertex.z)
+        entries.append((name or f"shape_{order:02d}", deltas))
+    return entries
 
 
 def load(path: str):

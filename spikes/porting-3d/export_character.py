@@ -213,6 +213,12 @@ def build(body: Path, head: Path | None, out: Path) -> GltfDocument:
             index = material_for(info)
             if index is not None:
                 entry["material"] = index
+            if mesh.shapes:
+                entry["targets"] = [
+                    {"POSITION": chunks.floats([flip_vector(delta) for delta in deltas], 3, "VEC3")}
+                    for _, deltas in mesh.shapes
+                ]
+                entry["extras"] = {"targetNames": [name for name, _ in mesh.shapes]}
             primitive_entries.append(entry)
 
     inverse_bind = chunks.floats(
