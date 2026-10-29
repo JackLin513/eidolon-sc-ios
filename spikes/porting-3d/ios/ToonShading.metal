@@ -160,6 +160,15 @@ void toonSurface(realitykit::surface_parameters params)
     float3 normal = normalize(params.geometry().normal());
     float3 view = normalize(params.geometry().view_direction());
 
+    if (custom.w < -0.5f) {
+        // `EIDOLON_3D_DEBUG_CONST`: a flat, known linear value, to measure how
+        // much RealityKit's own pass adds on top of the surface shader.
+        params.surface().set_base_color(half3(0.5f));
+        params.surface().set_metallic(0.0);
+        params.surface().set_roughness(1.0);
+        return;
+    }
+
     if (custom.w > 0.5f) {
         // `EIDOLON_3D_DEBUG_NORMALS`: view-space normal as colour, so faceting
         // and a wrong space are both obvious.
@@ -275,6 +284,10 @@ void toonSurface(realitykit::surface_parameters params)
             float nz = normal.z;
             float weight = clamp(min(nz * nz * nz + param(lut, row, kParamSpecTexFade), 1.0f),
                                  0.0f, 1.0f);
+            // `EIDOLON_3D_NO_SHEEN` (custom.z < 0) turns it off for A/B: the
+            // sheen adds a warm colour on top of brown, which is a saturation
+            // source worth isolating.
+            if (custom.z < -0.5f) { weight = 0.0f; }
             base += weight * float3(sheen) * 2.0f * param(lut, row, kParamSubColor);
         }
         result = correctedBase(colour, base);
