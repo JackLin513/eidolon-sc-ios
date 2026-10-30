@@ -40,7 +40,7 @@ Label: wayfinder:map
 
 <!-- 一张票一行：结论的要点，细节点链接进票里看 -->
 
-- [调研：动态旁边的天气从哪取](issues/02-weather-research.md)：Open-Meteo，免 key、按坐标取逐小时，东京用气象庁 MSM；要放 open-meteo.com 署名链接；生成时取露出那一小时的值存下不改；显示图标加整数气温，取不到就不显示也不给她；不进代理和服务状态；不用 wttr.in。
+- [调研：动态旁边的天气从哪取](issues/02-weather-research.md)：Open-Meteo，免 key、按坐标取逐小时，东京用气象庁 MSM；署名放设置的「关于」里，动态旁边不放；生成时取露出那一小时的值存下不改；显示图标加整数气温，取不到就不显示也不给她；不进代理和服务状态；不用 wttr.in。
 
 ## Not yet specified
 
