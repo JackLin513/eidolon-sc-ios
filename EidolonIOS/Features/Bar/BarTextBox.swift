@@ -90,6 +90,7 @@ enum BarCopy {
         static func category(_ name: String) -> String { "\(name)饮品" }
         static let prev = "上一页"
         static let next = "下一页"
+        static let bottleHint = "把酒瓶拖进摇酒器"
         static func bottle(_ name: String) -> String { "\(name)，拖进摇酒器" }
     }
 

@@ -241,6 +241,7 @@ struct BarRoomView: View {
             drinks: drinks,
             isCounterOpen: scene.isCounterOpen,
             drag: drag,
+            put: { put($0) },
             play: { play($0) },
             onPage: { _ in play("jukepick") }
         )
@@ -475,8 +476,22 @@ struct BarRoomView: View {
             act: { _, action, _, _ in counter(action) },
             drinkImage: { BarDrinkSprites.name($0) },
             serve: { serve() },
+            put: { put($0) },
             drag: drag
         )
+    }
+
+    /// 拖到摇酒器上松手：配料加一份，瓶装饮料放进去就算做好了。配方书里的瓶子和调酒台
+    /// 上的配料都走这一个入口——早先配方书那头传的是空回调，瓶装单根本交不上去。
+    private func put(_ item: BarDragged) {
+        guard scene.isCounterOpen else { return }
+        switch item {
+        case let .ingredient(ingredient):
+            counter(.add(ingredient))
+        case let .bottle(id):
+            guard let drink = drinks.first(where: { $0.id == id }) else { return }
+            counter(.bottle(drink))
+        }
     }
 
     private func counter(_ action: BarMixer.Action) {

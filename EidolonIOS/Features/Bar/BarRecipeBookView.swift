@@ -68,6 +68,8 @@ struct BarRecipeBookView: View {
     let drinks: [Drink]
     let isCounterOpen: Bool
     let drag: BarDrag
+    /// 瓶子拖到摇酒器上松手：和调酒台上的配料同一个入口。
+    let put: (BarDragged) -> Void
     /// Plays a sound by its name.
     let play: (String) -> Void
     /// Turns a page: -1 before, 1 after.
@@ -139,6 +141,11 @@ struct BarRecipeBookView: View {
         } else if let open, open.isBottled {
             let isDragged = drag.item == .bottle(open.id)
             BarPixelText(open.name, x: Self.title.x, y: Self.title.y)
+            // 第一次遇到瓶装单的人不知道瓶子能拖：写给看得见的人（屏幕阅读器的标签里也有）。
+            BarPixelText(
+                BarCopy.Book.bottleHint, x: Self.title.x, y: Self.title.y + 16,
+                color: UIColor(BarInk.bookGrey)
+            )
             if !isDragged {
                 BarSprite(
                     name: BarDrinkSprites.name(open.id), x: Self.bottle.x, y: Self.bottle.y,
@@ -156,7 +163,7 @@ struct BarRecipeBookView: View {
                         }
                         .onEnded { value in
                             guard isCounterOpen else { return }
-                            drag.end(at: value.location) { _ in }
+                            drag.end(at: value.location, drop: put)
                         }
                 )
                 .allowsHitTesting(isCounterOpen)
