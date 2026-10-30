@@ -122,20 +122,18 @@ def premultiplied(image):
     return rgb
 
 
-def cutout_safe(image):
-    """Paint the colour under transparent texels black.
-
-    The `02alp` ribbons are a dark-red field with alpha 0, and the alpha does
-    not survive the USD round trip — the field arrives opaque and paints the
-    shoe a solid maroon. Zeroing the hidden colour turns it into the black the
-    shader's `_IsCutOff` test discards, which is the same shape the game's
-    `Clip` leaves behind.
-    """
-    image = image.convert("RGBA")
-    transparent = image.getchannel("A").point(lambda a: 255 if a < 128 else 0)
-    black = image.copy()
-    black.paste((0, 0, 0, 255), mask=transparent)
-    return black
+# MLTD paints some pieces into texels the atlas marks as transparent: the gs001
+# belt and the piping round its bustle sit at alpha 13 with perfectly good gold
+# in RGB, because one 1024px sheet serves both the `Chr_Basic` pieces and the
+# cutout overlay that masks them. An opaque `Chr_Basic` never tests alpha, so
+# the game draws that gold — and the same alpha is the mask `Chr_Span` weights
+# its sparkle by, which is why the trim does not glitter in the game.
+#
+# Both halves therefore have to survive the export untouched. Zeroing the
+# colour under transparent texels (what this used to do) turned every gold trim
+# black; forcing the alpha to 255 would have made the trim sparkle. The textures
+# that do need a rewrite — `_SubTex` premultiplied into RGB, cutouts and blends
+# keeping their alpha — are handled at the call site.
 
 
 def _cube_face(direction):
@@ -281,10 +279,10 @@ def build(
         if premultiply:
             image = premultiplied(image)
         elif not keep_alpha:
-            # Cutouts are flattened to black so the shader's near-black test can
-            # discard them; a blending material needs the alpha it was painted
-            # with, and `pack_usd` wires it into the material graph instead.
-            image = cutout_safe(image)
+            # The shader reads this texture's alpha whatever the material is
+            # (`Chr_Span`'s sparkle weight, `Chr_Glow`'s mask, the hair's sheen
+            # gate), so there is nothing safe to normalise here.
+            image = image.convert("RGBA")
         image.save(out / file_name)
         images.append({"uri": file_name})
         textures.append({"source": len(images) - 1, "sampler": 0})

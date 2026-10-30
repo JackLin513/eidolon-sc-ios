@@ -285,6 +285,47 @@ void toonSurface(realitykit::surface_parameters params)
         params.surface().set_opacity(0.25f);
         return;
     }
+    if (custom.z < -199.5f) {
+        // Material master: one flat colour per atlas row so a screenshot maps
+        // pixels back to materials. The palette is spelled out rather than
+        // derived so the colours stay far apart after the output curve.
+        const float3 palette[16] = {
+            float3(1.0, 0.0, 0.0),    // 0 red
+            float3(0.0, 1.0, 0.0),    // 1 green
+            float3(0.0, 0.0, 1.0),    // 2 blue
+            float3(1.0, 1.0, 0.0),    // 3 yellow
+            float3(0.0, 1.0, 1.0),    // 4 cyan
+            float3(1.0, 0.0, 1.0),    // 5 magenta
+            float3(1.0, 0.5, 0.0),    // 6 orange
+            float3(0.5, 0.0, 1.0),    // 7 violet
+            float3(0.5, 1.0, 0.0),    // 8 lime
+            float3(0.0, 0.5, 0.5),    // 9 teal
+            float3(1.0, 0.6, 0.6),    // 10 pink
+            float3(0.0, 0.0, 0.5),    // 11 navy
+            float3(0.5, 0.5, 0.0),    // 12 olive
+            float3(0.7, 0.35, 0.1),   // 13 brown
+            float3(1.0, 1.0, 1.0),    // 14 white
+            float3(0.4, 0.4, 0.4),    // 15 grey
+        };
+        writeColour(params, palette[min(row, 15u)]);
+        return;
+    }
+    if (custom.z < -99.5f) {
+        // Isolate probe: everything but one atlas row is thrown away and the
+        // survivor is drawn as flat albedo, so a single material can be seen on
+        // its own without opening the exporter.
+        if (float(row) != (-custom.z - 100.0f)) { discard_fragment(); }
+        writeColour(params, float3(toGamma(float3(mainTexRaw.rgb))));
+        return;
+    }
+    if (custom.z < -3.5f) {
+        // Albedo probe: the atlas through this material's own UVs, with no
+        // lighting, ramp, rim or sparkle. If the gold trim is missing here it
+        // is a texture or UV fault; if it shows up here but not in the normal
+        // render, something downstream is eating it.
+        writeColour(params, float3(toGamma(float3(mainTexRaw.rgb))));
+        return;
+    }
     half4 mainTex = half4(half3(toGamma(float3(mainTexRaw.rgb))), mainTexRaw.a);
     half4 subTex = half4(half3(toGamma(float3(subTexRaw.rgb))), subTexRaw.a);
 

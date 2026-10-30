@@ -64,13 +64,22 @@ enum ToonShading {
                 let noReflect = environment["EIDOLON_3D_NO_REFLECT"] != nil
                 let cubeProbe = environment["EIDOLON_3D_DEBUG_CUBE"] != nil
                 let spanProbe = environment["EIDOLON_3D_DEBUG_SPAN"] != nil
+                let albedoProbe = environment["EIDOLON_3D_DEBUG_ALBEDO"] != nil
+                // `EIDOLON_3D_ISOLATE_ROW=4` draws one atlas row on its own, as
+                // flat albedo. The row travels in `custom.z` as -100 - row so it
+                // does not collide with the probes that already live there.
+                let isolateRow = Float(environment["EIDOLON_3D_ISOLATE_ROW"] ?? "")
+                // `EIDOLON_3D_DEBUG_MASTER=1` paints every material a flat,
+                // distinct colour. One screenshot then says which atlas row owns
+                // each piece of the costume — no guessing from silhouettes.
+                let master = environment["EIDOLON_3D_DEBUG_MASTER"] != nil
                 let mipmaps = environment["EIDOLON_3D_MIPMAPS"] != nil
                 let alphaProbe = environment["EIDOLON_3D_DEBUG_ALPHA"] != nil
                 var custom = CustomMaterial.Custom(
                     value: SIMD4(
                         Float(row ?? 0),
                         row == nil ? 0 : 1,
-                        debug ? 1 : (spanProbe ? -3 : (noReflect ? -2 : (noSheen ? -1 : 0))),
+                        debug ? 1 : (master ? -200 : (isolateRow.map { -100 - $0 } ?? (albedoProbe ? -4 : (spanProbe ? -3 : (noReflect ? -2 : (noSheen ? -1 : 0)))))),
                         alphaProbe ? -2 : (normals ? 2 : (mipmaps ? 1 : (cubeProbe ? 3 : (constant ? -1 : 0))))
                     )
                 )
