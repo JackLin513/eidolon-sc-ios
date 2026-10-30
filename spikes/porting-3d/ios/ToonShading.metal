@@ -11,7 +11,7 @@ using namespace metal;
 //
 // Per-material constants arrive in an atlas texture, one byte per parameter in
 // the alpha channel. The order is `material_atlas.py`'s `LAYOUT`.
-constant uint kParamColumns = 72;
+constant uint kParamColumns = 74;
 constant uint kParamCapacity = 64;
 
 constant uint kParamColor = 0;
@@ -58,6 +58,8 @@ constant uint kParamFreq = 64;
 constant uint kParamOutlineColor = 65;
 constant uint kParamIsCutOff = 68;
 constant uint kParamUp = 69;
+constant uint kParamOutline = 72;
+constant uint kParamTanFov = 73;
 
 // Shader discriminator, matching `material_atlas.SHADER_KINDS`.
 constant float kKindBasic = 1.0;
@@ -206,13 +208,23 @@ void outlineVertex(realitykit::geometry_parameters params)
     float tanHalfFov = 1.0f / max(viewToProjection[1][1], 0.0001f);
     float modelScale = max(length(float3(modelToView[0].xyz)), 0.000001f);
 
-    // `_Outline * 0.7 * k` works out to this half-width; the number is measured
-    // against the game's own outline, not derived, because Unity's
-    // `_ProjectionParams` and `_ScreenParams` terms are not all recoverable.
-    const float outlineHalfWidth = 0.0014f;
+    // The game widens the hull with distance rather than keeping a fixed world
+    // thickness: `out.xy += nP * k * _Outline`, with
+    //   k = _OutlineZadj * (min(aspect,1) * (d + near) * tanActual / _TanFov - 1) + 1
+    // Every constant in that chain is recoverable from the projection matrix, so
+    // the Unity-only `_ProjectionParams` / `_ScreenParams` are not needed. The
+    // `0.7` in older notes only applies to the OpenGL-style depth branch, which
+    // Metal never takes.
+    uint row = uint(params.uniforms().custom_parameter().x);
+    texture2d<half> lut = params.textures().specular();
+    float outlineWidth = param(lut, row, kParamOutline) / 1000.0f;
+    float tanFov = max(param(lut, row, kParamTanFov), 0.0001f);
+    float nearPlane = viewToProjection[3][2] / (viewToProjection[2][2] + 1.0f);
+    float aspect = viewToProjection[1][1] / max(viewToProjection[0][0], 0.0001f);
+    float k = min(aspect, 1.0f) * (depth + nearPlane) * tanHalfFov / tanFov;
 
     float3 normal = normalize(params.geometry().normal());
-    float lengthInModel = outlineHalfWidth * depth * tanHalfFov / modelScale;
+    float lengthInModel = k * outlineWidth * tanHalfFov * depth * tanHalfFov / modelScale;
     params.geometry().set_model_position_offset(normal * lengthInModel);
 }
 
