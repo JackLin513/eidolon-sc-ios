@@ -77,6 +77,12 @@ CAPACITY = 64
 SHADER_KINDS = {
     "Custom/Chr_Basic": 1,
     "Custom/Chr_Basic_NoOutline": 1,
+    # `Chr_CutOff` is `Chr_Basic` plus
+    # `if (mainTex.a * _Color.a < _AlphaTestValue) discard;`.
+    "Custom/Chr_CutOff": 1,
+    # `Chr_Alpha` is the blended sibling of the same family; until its blend
+    # maths is ported it draws through the Basic branch.
+    "Custom/Chr_Alpha": 1,
     "Custom/Chr_Glow": 2,
     "Custom/Chr_Face": 3,
     "Custom/Chr_Face_NoOutline": 3,
@@ -94,6 +100,10 @@ def value_of(material: dict, property_name: str, channel: str) -> float:
     if channel == "kind":
         # Scaled by ten so the byte carries the kind exactly.
         return SHADER_KINDS.get(material.get("shader", ""), 0) / 10.0
+    if property_name == "_IsCutOff" and material.get("shader", "").endswith("Chr_CutOff"):
+        # The flag is not stored on these materials; the shader name is the
+        # statement that they clip.
+        return 1.0
     colours = material.get("colours", {})
     floats = material.get("floats", {})
     if channel in _COLOUR_CHANNELS:
