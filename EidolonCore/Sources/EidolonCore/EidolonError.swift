@@ -25,6 +25,19 @@ public enum EidolonError: LocalizedError, Equatable {
     /// What the producer reads is all of it, as upstream's `FAILED` (the details stay in
     /// the trace).
     case turnFailed
+    /// The bar is not open: no one comes in (upstream `BarClosed`).
+    case barClosed
+    /// There is no such visit under way: left, done, or done away with (upstream
+    /// `VisitGone`).
+    case barVisitGone
+    /// She is not waiting for a drink: her lines are still being written (upstream
+    /// `NotWaiting`).
+    case barNotWaiting
+    /// Her lines have not failed to be written: there is nothing to try again (upstream
+    /// `NotFailed`).
+    case barNotFailed
+    /// What the bar counter holds is none of the drinks (upstream `BrokenDrink`).
+    case barBrokenDrink
 
     /// Whether the turn refused the producer's line itself, rather than failing to
     /// answer it: what it says is already the message to show.
@@ -58,6 +71,12 @@ public enum EidolonError: LocalizedError, Equatable {
         case .turnFailed:
             // Upstream `engine.FAILED`, word for word.
             return "角色暂时无法回复，请稍后再试。"
+        // Upstream `bar.py`'s messages, word for word.
+        case .barClosed: return "酒吧暂时没有开放"
+        case .barVisitGone: return "这次光顾已经结束了"
+        case .barNotWaiting: return "她还没在等这一杯"
+        case .barNotFailed: return "现在没有要再试的"
+        case .barBrokenDrink: return "调坏了，不能上"
         case .coolingDown(let until):
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "zh_CN")

@@ -53,6 +53,15 @@ def main() -> int:
         if left["role"] != right["role"]:
             print(f"message {index}: role upstream {left['role']!r}, app {right['role']!r}")
             return 1
+        # Where a scenario marks cache breakpoints (the bar's prompt, ADR-0021), they are
+        # part of what is compared; turns' scenarios have none.
+        if "cache_breakpoint" in left or "cache_breakpoint" in right:
+            if left.get("cache_breakpoint") != right.get("cache_breakpoint"):
+                print(
+                    f"message {index}: cache breakpoint upstream "
+                    f"{left.get('cache_breakpoint')}, app {right.get('cache_breakpoint')}"
+                )
+                return 1
         if left["content"] == right["content"]:
             continue
 

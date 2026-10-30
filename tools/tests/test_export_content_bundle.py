@@ -321,7 +321,7 @@ class BundleManifestTests(unittest.TestCase):
             self.assertFalse(any(name.startswith("stand/thumbnails/") for name in stand_files))
             packaged_list = json.loads(archive.read("stand/outfits/1.json"))
             self.assertIsNone(packaged_list["cards"][0]["everyday"]["thumbnail"])
-            self.assertEqual(manifest["format_version"], 2)
+            self.assertEqual(manifest["format_version"], exporter.FORMAT_VERSION)
             self.assertEqual(manifest["content"]["stand"], assets.file_count)
             self.assertEqual(manifest["content"]["episodes"], 1)
             entry = json.loads(archive.read("characters/characters.json"))[0]
@@ -409,6 +409,68 @@ class BundleManifestTests(unittest.TestCase):
             names = archive.namelist()
         self.assertNotIn("stand", manifest["content"])
         self.assertFalse(any(name.startswith("stand/") for name in names))
+
+
+
+class BarAudioInContentBundleTests(unittest.TestCase):
+    """`characters/bar_audio.json` rides in the content bundle: the bar reads its tracks and
+    sound effects from there, and without it the bar plays nothing even when the bar package
+    has every file."""
+
+    def setUp(self) -> None:
+        self.scratch = tempfile.TemporaryDirectory()
+        self.root = Path(self.scratch.name)
+        (self.root / "bar_audio.json").write_text(
+            '{"tracks": [], "default_playlist": [], "sfx": []}', encoding="utf-8"
+        )
+        (self.root / "characters.toml").write_text(
+            '[[characters]]\nid = "mano"\nname = "櫻木真乃"\nbirthday = "04-25"\n', encoding="utf-8"
+        )
+        self.original_holidays = exporter.build_holidays
+        exporter.build_holidays = lambda: {}
+
+    def make_content_db(self) -> Path:
+        path = self.root / "eidolon.db"
+        connection = sqlite3.connect(path)
+        connection.executescript(exporter.CONTENT_SCHEMA)
+        connection.execute(
+            "INSERT INTO episodes(id, category, source, title, imported_from, imported_at)"
+            " VALUES ('e1', 'P卡剧情', 'cards/mano/1', '第一话', 'csv', '2026-01-01T00:00:00Z')"
+        )
+        connection.execute("INSERT INTO episode_cast(episode_id, character_id) VALUES ('e1', 'mano')")
+        connection.execute(
+            "INSERT INTO episode_lines(episode_id, seq, speaker, ja, zh)"
+            " VALUES ('e1', 1, '真乃', 'ほわっ', '呼哇')"
+        )
+        connection.execute(
+            "INSERT INTO episode_passages(episode_id, seq, text, model, embedding)"
+            " VALUES ('e1', 1, '真乃的段落', 'test-embed', ?)",
+            (struct.pack("<f", 0.25),),
+        )
+        connection.commit()
+        connection.close()
+        return path
+
+    def tearDown(self) -> None:
+        exporter.build_holidays = self.original_holidays
+        self.scratch.cleanup()
+
+    def test_the_catalog_is_in_the_bundle(self) -> None:
+        out = self.root / "audio.eidolonpkg"
+        exporter.write_bundle(
+            out, self.make_content_db(), [character()], {Path("bar_audio.json")}, self.root, None
+        )
+
+        with zipfile.ZipFile(out) as archive:
+            self.assertEqual(
+                json.loads(archive.read("characters/bar_audio.json")),
+                {"tracks": [], "default_playlist": [], "sfx": []},
+            )
+
+    def test_collecting_characters_keeps_the_catalog(self) -> None:
+        _, files = exporter.load_characters(self.root)
+
+        self.assertIn(Path("bar_audio.json"), files)
 
 
 if __name__ == "__main__":

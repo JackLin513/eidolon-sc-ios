@@ -4,7 +4,7 @@ import GRDB
 /// The writable user library (ADR-0002). Its schema evolves with the app, not
 /// with the content bundle, and is therefore managed by GRDB migrations.
 enum UserSchema {
-    static let version = 7
+    static let version = 8
 
     static func migrate(_ dbQueue: DatabaseQueue) throws {
         var migrator = DatabaseMigrator()
@@ -178,6 +178,28 @@ enum UserSchema {
             try db.execute(
                 sql: "UPDATE conversation_events SET kind = 'hung_up' WHERE kind = 'she_hung_up'"
             )
+        }
+        migrator.registerMigration("v8") { db in
+            // Each visit to the bar done is written down (GLOSSARY.md「光顾」, ADR-0021): who
+            // came, when, why, what about, each order as JSON, whether she got drunk, and
+            // whether the visit was rewarded. Nothing of what was said. Its shape follows
+            // upstream's `visit_records` row, less the user it is the one user's of.
+            try db.execute(sql: """
+                CREATE TABLE bar_visits (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    character_id TEXT NOT NULL,
+                    entered_at TEXT NOT NULL,
+                    left_at TEXT NOT NULL,
+                    entered_on TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    topic TEXT NOT NULL,
+                    orders TEXT NOT NULL,
+                    drunk INTEGER NOT NULL,
+                    rewarded INTEGER NOT NULL
+                );
+                CREATE INDEX bar_visits_by_her ON bar_visits (character_id, id);
+                CREATE INDEX bar_visits_by_day ON bar_visits (entered_on);
+                """)
         }
         try migrator.migrate(dbQueue)
         try dbQueue.write { db in

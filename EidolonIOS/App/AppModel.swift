@@ -18,6 +18,7 @@ final class AppModel {
     private(set) var latest: [String: LatestActivity] = [:]
     private(set) var bundleInfo: ContentBundleInfo?
     private(set) var standInfo: StandBundleInfo?
+    private(set) var barInfo: BarBundleInfo?
     private(set) var avatars: [String: UIImage] = [:]
     private(set) var memories: [MemoryRecord] = []
     var errorMessage: String?
@@ -181,6 +182,79 @@ final class AppModel {
         return try await core.beginCall(characterID: character.id, setup: setup, now: now)
     }
 
+    // MARK: - The bar
+
+    /// The bar over this app's library and content (ADR-0021): one, as there is one user, made
+    /// the first time it is asked for and kept, so a visit under way survives the page.
+    private var barRoomBox: BarRoom?
+
+    func barRoom() async -> BarRoom {
+        if let barRoomBox { return barRoomBox }
+        let made = await core.barRoom()
+        barRoomBox = made
+        return made
+    }
+
+    /// What a visit's calls run on: the chat model and what she is told of the producer. Nil
+    /// while no chat model is set up — the bar then says so instead of calling.
+    var barSetup: BarRoom.Setup? {
+        guard let provider = chatProvider else { return nil }
+        let embedder = embeddingProvider
+        let reranker = rerankProvider
+        return BarRoom.Setup(
+            chat: provider,
+            embedder: embedder,
+            reranker: reranker,
+            aboutProducer: aboutProducer,
+            clock: { Date() }
+        )
+    }
+
+    /// What the prompts are told of the producer, kept as one line (upstream
+    /// `producer_prompt(read_profile(…))`), read on the way in.
+    private(set) var aboutProducer = ""
+
+    /// The bar's pictures, font and sound (nil until its package is imported), and what its
+    /// preferences say; read when the bar's page opens.
+    private(set) var barPackage: (info: BarBundleInfo, directory: URL)?
+    private(set) var barAudio = BarAudio()
+    private(set) var barSettingsValue = BarSettings.default
+    private(set) var barJukeboxState = BarJukebox.State(slots: [])
+    private(set) var barTutorialDone = false
+    /// Whether today's first visit is still rewarded (the roster card's line).
+    private(set) var barRewardToday = true
+
+    /// Reads what the bar's page needs: its package, the music and sound that package holds,
+    /// and the preferences kept beside it.
+    func loadBar() async {
+        aboutProducer = ((try? await core.producerProfile())?.prompt) ?? ""
+        barPackage = try? await core.installedBar()
+        let catalog = (try? BarAudioCatalog.read(in: core.location.contentDirectory)) ?? nil
+        let package = barPackage.map {
+            BarAudioPackage(tracks: $0.info.manifest.tracks, sfx: $0.info.manifest.sfx)
+        }
+        barAudio = catalog?.available(with: package) ?? BarAudio()
+        barSettingsValue = (try? await core.barSettings()) ?? .default
+        barJukeboxState = (try? await core.barJukebox(barAudio))
+            ?? BarJukebox.State(slots: BarJukebox.defaultSlots(barAudio))
+        barTutorialDone = (try? await core.barTutorialWalked()) ?? false
+    }
+
+    func saveBarSettings(_ settings: BarSettings) async {
+        barSettingsValue = settings
+        try? await core.saveBarSettings(settings)
+    }
+
+    func saveBarJukebox(_ state: BarJukebox.State) async {
+        barJukeboxState = state
+        try? await core.saveBarJukebox(state)
+    }
+
+    func markBarTutorialWalked() async {
+        barTutorialDone = true
+        try? await core.saveBarTutorialWalked()
+    }
+
     private func callAudio(hotWords: [String]) -> (any AudioCapture, any SpeechRecognition) {
         #if DEBUG
         // Development aid: `SIMCTL_CHILD_EIDOLON_CALL_FAKE_SPEECH` answers as if the
@@ -254,6 +328,7 @@ final class AppModel {
         applyDebugBailianSettings()
         await importBundleForDebuggingIfRequested()
         await importStandBundleForDebuggingIfRequested()
+        await importBarBundleForDebuggingIfRequested()
         #endif
         do {
             if let info = try await core.usableContentInfo() {
@@ -321,6 +396,15 @@ final class AppModel {
     /// Development aid: `SIMCTL_CHILD_EIDOLON_OPEN_CHARACTER` opens that chat directly.
     var debugCharacterID: String? {
         ProcessInfo.processInfo.environment["EIDOLON_OPEN_CHARACTER"]
+    }
+
+    /// Development aid: `SIMCTL_CHILD_EIDOLON_OPEN_BAR=1` opens the bar directly.
+    var debugBarRequested: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["EIDOLON_OPEN_BAR"] == "1"
+        #else
+        false
+        #endif
     }
 
     /// Development aid: `SIMCTL_CHILD_EIDOLON_SEND_TEXT` sends one line on opening.
@@ -454,6 +538,33 @@ final class AppModel {
         }
     }
 
+    /// `EIDOLON_IMPORT_BAR_BUNDLE` is the bar package's twin of the switch above.
+    private func importBarBundleForDebuggingIfRequested() async {
+        guard let path = ProcessInfo.processInfo.environment["EIDOLON_IMPORT_BAR_BUNDLE"] else {
+            return
+        }
+        let url = path.hasPrefix("/")
+            ? URL(fileURLWithPath: path)
+            : URL.documentsDirectory.appending(path: path)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            errorMessage = "调试用的酒吧素材包不存在：\(path)"
+            return
+        }
+        do {
+            barInfo = try await core.installBar(bundleAt: url)
+            debugLog("bar imported: \(String(describing: barInfo))")
+        } catch {
+            debugLog("bar import failed: \(error)")
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func debugLog(_ message: String) {
+        #if DEBUG
+        NSLog("[eidolon] %@", message)
+        #endif
+    }
+
     private func importBundleForDebuggingIfRequested() async {
         guard let path = ProcessInfo.processInfo.environment["EIDOLON_IMPORT_BUNDLE"] else { return }
         // A bare name is looked up in Documents, so a device can be given a freshly
@@ -532,6 +643,31 @@ final class AppModel {
         }
     }
 
+    /// Installs the bar package: its pictures, its font and (when it has them) its sound.
+    /// The content and stand bundles are untouched when the package is bad (ADR-0021).
+    func importBarBundle(from url: URL) async {
+        guard !isImporting else { return }
+        isImporting = true
+        errorMessage = nil
+        defer { isImporting = false }
+
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+
+        let copy = FileManager.default.temporaryDirectory
+            .appending(path: "import-bar-\(UUID().uuidString).eidolonpkg")
+        defer { try? FileManager.default.removeItem(at: copy) }
+        importProgress = nil
+        do {
+            try FileManager.default.copyItem(at: url, to: copy)
+            barInfo = try await core.installBar(bundleAt: copy) { [weak self] progress in
+                Task { @MainActor in self?.importProgress = progress }
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     /// The installed stand index, for sharing with the Mac to build a delta bundle.
     func standIndexData() async -> Data? {
         try? await core.standIndexData()
@@ -571,6 +707,8 @@ final class AppModel {
         characters = try await core.characters()
         latest = try await core.latestActivities()
         standInfo = try await core.installedStandInfo()
+        barInfo = try await core.installedBarInfo()
+        barRewardToday = (try? await core.barRewardToday()) ?? true
 
         var images: [String: UIImage] = [:]
         for character in characters {

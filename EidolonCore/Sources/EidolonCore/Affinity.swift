@@ -58,6 +58,22 @@ public enum AffinityRules {
     public static let fedUpTurns = 8
     public static let fedUpAt = 12.0
     public static let warnsAt = 6.0
+    /// How much each drink served her in the day's first visit to the bar done raises it, by
+    /// how well it was served, averaged over the visit's (upstream `SERVED_STEPS`).
+    public static let servedSteps: [Tier: Double] = [.best: 0.5, .right: 0.4, .wrong: 0.1]
+    /// What a drink served right raises it instead, where nothing would have been better for
+    /// its order: as much as best (upstream `RIGHT_WITH_NO_BEST_STEP`).
+    public static let rightWithNoBestStep = 0.5
+
+    /// How much a visit done raises it, from each drink served her and whether anything
+    /// would have been better for its order (upstream `Affinities.visit_done`).
+    public static func visitDone(_ servings: [(tier: Tier, hasBest: Bool)]) -> Double {
+        let steps = servings.map { serving in
+            serving.tier == .right && !serving.hasBest
+                ? rightWithNoBestStep : servedSteps[serving.tier] ?? 0
+        }
+        return steps.isEmpty ? 0 : steps.reduce(0, +) / Double(steps.count)
+    }
 
     /// Cuts a gain to what is left of the day's allowance, rounded where floating point
     /// would otherwise leave it a hair short (upstream `_limited`).
