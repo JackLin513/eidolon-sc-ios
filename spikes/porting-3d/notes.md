@@ -432,8 +432,10 @@ RealityKit 采样会线性化、输出也期望线性，所以 `ToonShading.meta
 
 按优先级，都是已知未做，不是未知问题：
 
-1. **`Chr_Alpha` 的混合数学没移植**。现在靠"近黑即透明"的硬裁切顶上，半透明边缘
-   是硬的（美希吊坠边缘可见）。原始 Metal 在 `METAL/Custom__Chr_Alpha__*`。
+1. ~~**`Chr_Alpha` 的混合数学没移植**~~ —— 已补：材质切 `.transparent`，
+   shader 用 `set_opacity(_MainTex.a)`。2026-10-30 在 003mik 吊坠上实测通过
+   （透明区能透出白衬衫）。**残留**：`_IsCutOff` 材质仍用"近黑即丢弃"替代真正的
+   `_MainTex.a < 0.5` 裁切，实测会误丢 795 个暗像素（占游戏保留像素 2.29%）。
 2. **描边外扩方向用的是 NORMAL，游戏用 TANGENT 通道里的硬法线**。手臂、裙子这类
    平滑过渡处描边会断。补法：读通道 2 → 八面体编码塞进空闲 UV 集 → `primvars:st2`
    → 着色器解码。
@@ -449,6 +451,13 @@ RealityKit 采样会线性化、输出也期望线性，所以 `ToonShading.meta
    值下恒等，但换舞台/换服装后是否仍恒等未验证。
 8. **真机未验证**。所有像素实验都在 iOS 27 模拟器上；`ToneMappingComponent` 是
    iOS 27 的未文档化组件。
+9. **部分语料的取景偏上**：052kao、046rio 等模型头被切在屏幕外，001har、007ior、
+   014mir 正常。`basePosition.y = -center.y + extent * 0.62` 用的是包围盒中心，
+   怀疑这些模型有离群顶点把 `center` 拉偏。未查。
+
+2026-10-30 又修了两个：003mik 吊坠黑底（描边壳，`applyOutline` 的材质名判断失效）
+和 052kao 纽扣花边（采样器 `clamp_to_edge` 吃掉平铺 UV）。根因与证据见本地
+`research-alpha-and-cutout.md`（逐行引用反编译源码，不进仓库）。
 
 ## 2026-10-30 剩下 18 个角色解不出来的原因（已定位到通道表）
 
