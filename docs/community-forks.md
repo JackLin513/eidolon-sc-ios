@@ -11,6 +11,7 @@
 - **[Eidolon Yoibanashi · 夜间搭话](https://github.com/S-Elirch/Eidolon_Yoibanashi)** · S-Elirch：深夜打开她的会话，还在想着说些什么，她的消息先到了。也许是一声招呼，也许是你随口提过、她还记着的小事。Eidolon Yoibanashi 为夜间交流增加这样的偶遇：让她有机会先开口，也允许没有合适话题的夜晚保持安静。事实上，就是增加进入聊天页面时触发的夜间主动搭话。提供“自然偶遇”和“今晚想听你先说”两种模式，并一定程度上预留供其他 Fork 接入的调度接口。 <!-- #187 -->
 - **[续・闪耀色彩](https://github.com/soulrewrite/eidolon-sc-tsuzuku)** · soulrewrite：在 Eidolon-SC 上补「她记得你」的那一面：不打电话也能听她说（消息语音）、晚上写进公告的信（信封、卡面与手写签名）、跨对话接得上上一段、更主动的搭话，外加好感度走到亲密之后才会出现的告白事件，以及底部新增的歌曲与专辑页。 <!-- #191 -->
 - **[Eidolon 随行](https://github.com/AN0N-max/Eidolon-Suixing)** · AN0N-max：Eidolon 随行：基于 Eidolon-SC、参考「山茶日记」部分玩法开发的 Android 手机 APP。应用独立在手机本地运行，无需部署服务器或让电脑常驻，聊天记录、记忆与日常安排均保存在本机。内置主动搭话、消息弹窗、未读提醒和按行程延迟回复，搭配信件、日记与约定，营造像聊天软件一样的日常交流感。AI 回复通过用户自行配置的模型 API 生成。 <!-- #208 -->
+- **[Eidolon-SC Chat&Voices](https://github.com/Galaxy-CZZ/eidolon-sc-Milimil)** · Milimil：「在 Eidolon-SC 上加了自主多人群聊：多个独立的群、偶像按相关度各自计时接话、话题自然收敛；酒吧加了客人配音；好感度改成四档并取消每日上限；私聊搭话和群聊抛话题在凌晨 1–7 点静默。」 <!-- #210 -->
 
 ## 含成人内容（NSFW）
 
