@@ -37,6 +37,16 @@ struct Model3DOutfit: Identifiable, Hashable {
     /// The picker's default: the first model that actually resolved.
     static var initial: Model3DOutfit { all.first ?? fallback }
 
+    /// What the preview opens on. `EIDOLON_3D_START` picks another one by id
+    /// prefix (`003mik`), so a screenshot run can land on a character without
+    /// driving the picker.
+    static var starting: Model3DOutfit {
+        guard let prefix = ProcessInfo.processInfo.environment["EIDOLON_3D_START"],
+              let match = all.first(where: { $0.id.hasPrefix(prefix) })
+        else { return initial }
+        return match
+    }
+
     static func characters(_ outfits: [Model3DOutfit]) -> [String] {
         outfits.reduce(into: [String]()) { list, outfit in
             if !list.contains(outfit.character) { list.append(outfit.character) }

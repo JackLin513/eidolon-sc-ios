@@ -18,8 +18,8 @@ struct Model3DPreview: View {
         case failed(String)
     }
 
-    @State private var outfit = Model3DOutfit.initial
-    @State private var character = Model3DOutfit.initial.character
+    @State private var outfit = Model3DOutfit.starting
+    @State private var character = Model3DOutfit.starting.character
     /// Added to the scene once. Models are swapped inside it, because
     /// `RealityView`'s make closure does not run again when state changes.
     @State private var container = Entity()
