@@ -573,33 +573,42 @@ void toonSurface(realitykit::surface_parameters params)
         }
     }
 
-    // `Chr_Span`: a noise normal perturbs the view-space normal, and the result
-    // picks a texel out of a sparkle dot pattern. The two maps ride in one
-    // 64x128 strip (bump on top, dot pattern below) because there is only one
-    // custom slot. Additive, weighted by `_MainTex.a * _Reflection`.
+    // `Chr_Span`: the game builds a *matcap* coordinate out of the view-space
+    // normal and reads a field of soft bokeh glints with it, jittering the
+    // lookup by a tiled noise map. Both maps ride in one 64x128 strip (noise in
+    // the top half, dot pattern in the bottom) because RealityKit gives the
+    // shader only one slot it can fill itself.
+    //
+    //     f  = (0, 0, 1)
+    //     m  = normalize(f + _NormRef * (N_view - f))
+    //     uv = (m.xy + (noise * 2 - 1) * _NormMapMag + 1) * 0.5
+    //     col += _Cube2D(uv) * (_MainTex.a * _Reflection)
+    //
+    // `_UVRef` is 0, so the mesh UVs play no part: an earlier version painted
+    // the glints in cloth UV space and they crawled along the seams whenever the
+    // model turned. `_NormRef` and `_UVRef` never made it into the parameter
+    // atlas (every `Chr_Span` material in the corpus agrees on 0.77 and 0); the
+    // noise tiling is 30 for the garment and 7 for the accessory, a difference
+    // of frequency only, so the atlas does not carry it either.
+    //
+    // The weight is the whole reason the gold trim stays matte: `_MainTex.a` is
+    // 13/255 there and 255 on the cloth, so the trim gets 2% of the cloth's
+    // sparkle. That only works because the exporter now wires `diffuse.a` into
+    // the material graph — without it RealityKit drops the channel and the
+    // shader reads a constant 1.
     if (span && hasParams) {
-        // The packed strip is bump on top, sparkle pattern below; the probe
-        // showed the garment reading the top half, so no offset here.
-        // `_Cube2D` is a field of soft bokeh glints, not fine grain. Driving the
-        // lookup from the surface normal (what the game does with a *deviation*
-        // vector) left it parked on one dark spot; painting it in the cloth's own
-        // UV space keeps the glints glued to the fabric at the right density.
-        float2 clothUV = float2(params.geometry().uv0().x,
-                                1.0f - params.geometry().uv0().y);
-        // Cloth UV places the glints on the fabric; the bump's noise then
-        // jitters each lookup a little, which is what turns an even polka-dot
-        // grid into something that reads as sparkle. The bump is a 32x32 tile,
-        // so it has to be tiled hard to vary from pixel to pixel.
-        half2 jitter = params.textures().base_color().sample(
-            kAtlas, float2(clothUV.x * 32.0f, fract(clothUV.y * 32.0f) * 0.25f)
-        ).xy * 2.0h - 1.0h;
-        // The view-space normal is what makes the sparkle *move*: rotate the
-        // model and every glint slides along the cloth. Kept small — at full
-        // range it swept the whole atlas and turned into moire.
-        float2 glintUV = clothUV * 6.0f + float2(jitter) * 0.12f
-            + normalView.xy * 0.25f;
+        const float3 forward = float3(0.0f, 0.0f, 1.0f);
+        float3 matcap = normalize(forward + 0.77f * (normalView - forward));
+        half2 noise = params.textures().base_color().sample(
+            kAtlas, float2(fract(uv.x * 30.0f), fract(uv.y * 30.0f) * 0.5f)
+        ).xy;
+        float2 perturb = float2(noise) * 2.0f - 1.0f;
+        // Clamped rather than wrapped: the strip is two maps stacked, so a
+        // texel past the edge would sample the other one.
+        float2 glintUV = saturate(
+            (matcap.xy + perturb * param(lut, row, kParamNormMapMag) + 1.0f) * 0.5f);
         half3 glint = params.textures().base_color().sample(
-            kAtlas, float2(glintUV.x, fract(glintUV.y) * 0.5f + 0.5f)
+            kAtlas, float2(glintUV.x, glintUV.y * 0.5f + 0.5f)
         ).xyz;
         float sparkle = float(mainTexRaw.a) * param(lut, row, kParamReflection) * 4.0f;
         if (custom.z < -2.5f) { writeColour(params, float3(params.textures().base_color().sample(kAtlas, flipped).rgb)); return; }

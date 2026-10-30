@@ -301,20 +301,19 @@ def build(
         if cache_key in material_index:
             return material_index[cache_key]
         pbr: dict = {"metallicFactor": 0.0, "roughnessFactor": 0.9}
+        # RealityKit drops a texture's alpha channel unless the material graph
+        # actually samples `diffuse.a` (`pack_usd.wire_alpha_from_diffuse` says
+        # so). `Chr_Span` multiplies its sparkle by `_MainTex.a` — the gold trim
+        # sits at 13/255 and must not glitter — so its alpha has to be wired the
+        # way a cutout's is, or the shader reads a constant 1.
+        needs_alpha = (
+            info.shader == "Custom/Chr_Alpha"
+            or info.cutoff
+            or info.shader == "Custom/Chr_Span"
+        )
         if info.image is not None:
-            # A blending material needs the alpha it was painted with; cutouts
-            # keep the black-keyed field the shader discards on. The two switches
-            # (this one and the shader's kind-6 opacity) must flip together.
-            # A cutout keeps a real alpha channel and lets the shader discard
-            # on it; a blending material keeps alpha too, and `pack_usd` wires it
-            # into the material graph. Everything else is flattened so the
-            # shader has no stray alpha to trip over.
             pbr["baseColorTexture"] = {
-                "index": add_image(
-                    info.image,
-                    key,
-                    keep_alpha=info.shader == "Custom/Chr_Alpha" or info.cutoff,
-                )
+                "index": add_image(info.image, key, keep_alpha=needs_alpha)
             }
         else:
             pbr["baseColorFactor"] = [0.85, 0.85, 0.85, 1.0]
@@ -335,6 +334,12 @@ def build(
             # which is how the alpha survives into the USDZ.
             entry["alphaMode"] = "MASK"
             entry["alphaCutoff"] = 0.5
+        elif info.shader == "Custom/Chr_Span":
+            # Same wiring, different reason: nothing is meant to be clipped, we
+            # only need the channel to exist. A cutoff of zero keeps every texel
+            # even if something downstream does honour the threshold.
+            entry["alphaMode"] = "MASK"
+            entry["alphaCutoff"] = 0.0
         # The game reads `_SubTex` per shader: the green channel gates ss003's
         # glow, alpha masks the eye highlight and weights the hair sheen. Alpha
         # does not survive as alpha, so it is premultiplied into RGB; the gate

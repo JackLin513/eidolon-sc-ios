@@ -240,18 +240,25 @@ def main() -> None:
         uvs = {}
     installed, deviation = inject_second_uv(stage, uvs) if uvs else (0, 0.0)
 
-    # Only `Chr_Alpha` blends in the game, so it is the only material whose
-    # texture alpha may reach the material graph: the shader reads every other
-    # texture's alpha as a mask, and wiring it to opacity would make the whole
-    # costume fade.
+    # The connection is also the only thing that makes RealityKit keep the
+    # channel at all, so it is needed by the two shaders that *read* `_MainTex.a`
+    # as a mask even though neither of them clips:
+    #
+    #   `Chr_Alpha`   multiplies its own colour by the alpha (kind 6).
+    #   `Chr_Span`    weights the sparkle by it — the gold trim is painted at
+    #                 alpha 13 and must stay matte, the cloth at 255 and glitters.
+    #
+    # Everyone else stays unwired: their shaders never look at alpha, and an
+    # opacity input would only invite the costume to fade.
     try:
         with open(source.rsplit(".", 1)[0] + "-materials.json") as handle:
             table = json.load(handle)["materials"]
     except OSError:
         table = {}
+    alpha_readers = {"Custom/Chr_Alpha", "Custom/Chr_Span"}
     blended = wire_alpha_from_diffuse(
         stage,
-        lambda name: table.get(name, {}).get("shader") == "Custom/Chr_Alpha",
+        lambda name: table.get(name, {}).get("shader") in alpha_readers,
     )
     if blended:
         print(f"alpha wired: {blended}")

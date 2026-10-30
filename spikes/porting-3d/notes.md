@@ -549,3 +549,41 @@ cb_gs001_202xxx_01（1024²，被 01/03ref/04spa/skin 四个材质共用）
 `audit_materials.py` 的对应检查也改了：原来把「不透明材质带透明像素」当 error
 （因为那时候确实会画成黑色），现在改成报「有多少颜色藏在透明像素里」，谁再把
 它洗掉就会在数字上看出来。
+
+## 2026-10-30 亮片把金边也点亮了：alpha 没到 GPU + 采样空间错
+
+金边修回来之后，用户指出**金边不该闪**（它只是包边），而我们这一帧里它和黑布闪得
+一样。把游戏自己的 `Custom/Chr_Span` 片元程序逐行拆开（笔记见
+`research-chr-span-sparkle.md`，只在本机，不进仓库）后有两处错：
+
+**一、`_MainTex.a` 根本没到 GPU。** 游戏的亮片权重就是
+`_MainTex.a * _Reflection`，线性、没有阈值（`Custom__Chr_Span_NoOutline__blob3_MetalFS.metal:99,112`）。
+金边 α=13、黑布 α=255，本该差 19.6 倍。但 RealityKit 只在**材质图真的采样了
+`diffuse.a`** 时才保留 alpha 通道（`pack_usd.wire_alpha_from_diffuse` 的文档就是这条），
+而我们只给 `Chr_Alpha` 接了 `opacity`。`Chr_Span` 是 opaque → 着色器读到的 a 恒为 1
+→ 权重塌成常数 0.502 → 金边和黑布一模一样。
+
+用 `EIDOLON_3D_DEBUG_ALPHA` 截图即可确诊：修之前整件衣服是均匀浅灰（a=1），修之后
+金边那条是深色（a≈0.05）、黑布仍是浅灰。现在 `export_character.py` 给 `Chr_Span`
+写 `alphaMode: MASK`（`alphaCutoff: 0`，不裁任何像素），`pack_usd.py` 的接线谓词也
+把 `Chr_Span` 加进「读 alpha 的 shader」名单。
+
+**二、采样空间是从布料 UV 编出来的。** 游戏用的是纯法线 matcap：
+
+```
+f  = (0,0,1)
+m  = normalize(f + _NormRef · (N̂_view − f))      _NormRef = 0.77
+uv = (m.xy + (bump·2−1) · _NormMapMag + 1) · 0.5   _NormMapMag = 0.2，bump 按 30×30 平铺
+col += _Cube2D(uv) · (_MainTex.a · _Reflection)
+```
+
+`_UVRef = 0`，所以网格 UV 完全不参与——之前把 `_UVRef` 当成 6、把 `_NormRef` 压成
+0.25，等于自己发明了一个采样空间，转模型时亮斑贴着布料走、还会沿接缝爬。现在照抄
+游戏公式；`_NormRef` / `_UVRef` 没进参数图集（全语料 `Chr_Span` 只有 2 个材质，取值
+一致），按常量硬编码并在注释里写明。`_NormMapMag` 走图集第 76 列。
+
+顺带记一笔：`_BumpMap_ST` 在服装上是 30、在配饰上是 7，图集没这一列，先按 30 写死，
+差别只是噪声频率，真要较真再加列（要动 `kParamColumns`，得全语料重导）。
+
+以上两条都验证过：`EIDOLON_3D_DEBUG_ALPHA` 截图为证；yaw 0/45/90 三个角度金边都
+干净、黑布照常闪；`check_corpus` 60 套 0 错、`audit_materials` 60 套干净。
