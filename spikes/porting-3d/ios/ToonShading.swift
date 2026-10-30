@@ -48,6 +48,9 @@ enum ToonShading {
                     surfaceShader: surface,
                     lightingModel: lightingModel
                 ) else { return material }
+                if logNames {
+                    print("[blend] \(name) blended=\(parameters?.isBlended(name) == true)")
+                }
                 if parameters?.isBlended(name) == true {
                     // The shader already multiplies by its own alpha, so the
                     // blend stage must not scale by opacity again.
