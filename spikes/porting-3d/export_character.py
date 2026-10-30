@@ -205,11 +205,16 @@ def build(
     material_index: dict[tuple[str, int], int] = {}
     (out / "textures").mkdir(parents=True, exist_ok=True)
 
-    def add_image(image, key: str, premultiply: bool = False) -> int:
+    def add_image(
+        image, key: str, premultiply: bool = False, keep_alpha: bool = False
+    ) -> int:
         file_name = f"textures/{len(images):02d}_{sanitise(key)}.png"
         if premultiply:
             image = premultiplied(image)
-        else:
+        elif not keep_alpha:
+            # Cutouts are flattened to black so the shader's near-black test can
+            # discard them; a blending material needs the alpha it was painted
+            # with, and `pack_usd` wires it into the material graph instead.
             image = cutout_safe(image)
         image.save(out / file_name)
         images.append({"uri": file_name})
@@ -230,7 +235,11 @@ def build(
             return material_index[cache_key]
         pbr: dict = {"metallicFactor": 0.0, "roughnessFactor": 0.9}
         if info.image is not None:
-            pbr["baseColorTexture"] = {"index": add_image(info.image, key)}
+            pbr["baseColorTexture"] = {
+                "index": add_image(
+                    info.image, key, keep_alpha=info.shader == "Custom/Chr_Alpha"
+                )
+            }
         else:
             pbr["baseColorFactor"] = [0.85, 0.85, 0.85, 1.0]
         entry: dict = {"name": key, "pbrMetallicRoughness": pbr, "doubleSided": True}

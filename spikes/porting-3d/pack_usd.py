@@ -8,7 +8,7 @@ step averages the per-face normals back onto the points and repackages.
 import json
 import sys
 
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdUtils
+from pxr import UsdShade, Gf, Sdf, Usd, UsdGeom, UsdUtils
 
 
 def average_normals(stage: Usd.Stage) -> int:
@@ -158,6 +158,66 @@ def inject_second_uv(stage: Usd.Stage, uvs: dict) -> tuple[int, float]:
     return installed, worst
 
 
+def _connected_sources(usd_input):
+    """`GetConnectedSources` returns a tuple on some pxr builds and a list on others."""
+    result = usd_input.GetConnectedSources()
+    if isinstance(result, tuple):
+        result = result[0]
+    for item in result:
+        if isinstance(item, tuple):
+            yield item[0], item[1]
+        else:
+            yield item.source, item.sourceName
+
+
+def diffuse_texture(material):
+    """The `UsdUVTexture` feeding `diffuseColor`, not just any texture child.
+
+    Hair and eye materials carry two textures (diffuse and the glow map), so
+    picking "the" texture would wire opacity to the wrong image.
+    """
+    surface = material.ComputeSurfaceSource()[0]
+    if not surface:
+        return None, None
+    diffuse = surface.GetInput("diffuseColor")
+    if not diffuse:
+        return surface, None
+    for source, _name in _connected_sources(diffuse):
+        if not source:
+            continue
+        shader = UsdShade.Shader(source.GetPrim())
+        if shader.GetIdAttr().Get() == "UsdUVTexture":
+            return surface, shader
+    return surface, None
+
+
+def wire_alpha_from_diffuse(stage, predicate):
+    """Connect `opacity <- diffuse.a` for the materials `predicate` selects.
+
+    Declaring `outputs:a` alone is not enough: RealityKit only keeps the alpha
+    channel when the material graph actually samples it, so the connection is
+    the switch.
+    """
+    changed = []
+    for prim in stage.Traverse():
+        if prim.GetTypeName() != "Material":
+            continue
+        material = UsdShade.Material(prim)
+        if not predicate(prim.GetName()):
+            continue
+        surface, texture = diffuse_texture(material)
+        if not surface or not texture:
+            continue
+        if not texture.GetOutput("a"):
+            texture.CreateOutput("a", Sdf.ValueTypeNames.Float)
+        opacity = surface.GetInput("opacity")
+        if not opacity:
+            opacity = surface.CreateInput("opacity", Sdf.ValueTypeNames.Float)
+        opacity.ConnectToSource(texture.GetOutput("a"))
+        changed.append(prim.GetName())
+    return changed
+
+
 def main() -> None:
     argv = sys.argv[sys.argv.index("--") + 1 :]
     source, destination = argv[0], argv[1]
@@ -179,6 +239,20 @@ def main() -> None:
     except OSError:
         uvs = {}
     installed, deviation = inject_second_uv(stage, uvs) if uvs else (0, 0.0)
+
+    # Only `Chr_Alpha` blends in the game; the rest are cutouts, whose alpha the
+    # exporter has already flattened to 1.
+    try:
+        with open(source.rsplit(".", 1)[0] + "-materials.json") as handle:
+            table = json.load(handle)["materials"]
+    except OSError:
+        table = {}
+    blended = wire_alpha_from_diffuse(
+        stage,
+        lambda name: table.get(name, {}).get("shader") == "Custom/Chr_Alpha",
+    )
+    if blended:
+        print(f"alpha wired: {blended}")
 
     stage.GetRootLayer().Save()
 

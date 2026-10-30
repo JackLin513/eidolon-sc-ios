@@ -69,6 +69,11 @@ def read_material(env, pointer) -> MaterialInfo:
     shading time, so it travels as its own texture.
     """
     material = pointer.read()
+    shader = ""
+    try:
+        shader = material.m_Shader.read().m_ParsedForm.m_Name or ""
+    except Exception:
+        pass
     image = None
     glow = None
     for entry in material.m_SavedProperties.m_TexEnvs or []:
@@ -77,7 +82,7 @@ def read_material(env, pointer) -> MaterialInfo:
             image = _texture_image(environment)
         elif name == "_SubTex":
             glow = _texture_image(environment)
-    return MaterialInfo(name=material.m_Name, image=image, glow=glow)
+    return MaterialInfo(name=material.m_Name, image=image, glow=glow, shader=shader)
 
 
 def read_main_texture(env, renderer):
@@ -97,6 +102,7 @@ class MaterialInfo:
     name: str | None
     image: object | None
     glow: object | None = None
+    shader: str = ""
 
 
 @dataclass
