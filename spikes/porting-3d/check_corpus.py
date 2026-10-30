@@ -76,6 +76,17 @@ def check_model(materials_path: Path) -> dict:
     if variants:
         warnings.append("未实现的变体：" + "、".join(sorted(variants)))
 
+    # Every part of a model should belong to the costume it is filed under. A
+    # head bundle often carries another costume's accessory, and gluing one onto
+    # the wrong outfit is invisible in a material count but obvious on screen.
+    costume = name.split("-")[-1]
+    misfiled = sorted({
+        m for m in materials
+        if m.startswith("ch_") and f"_{costume}_" not in m
+    })
+    if misfiled:
+        warnings.append("配件不属于本套服装：" + "、".join(misfiled))
+
     for material_name, material in materials.items():
         textures = material.get("textures", {})
         for slot in REQUIRED_TEXTURES:
