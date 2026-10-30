@@ -86,6 +86,8 @@ SHADER_KINDS = {
     #  tints the base colour; until its maths is ported it draws
     # through the Basic branch.
     "Custom/Chr_Color": 1,
+    # `Chr_Span` draws flat decorative pieces; Basic branch until ported.
+    "Custom/Chr_Span": 1,
     "Custom/Chr_Glow": 2,
     "Custom/Chr_Face": 3,
     "Custom/Chr_Face_NoOutline": 3,

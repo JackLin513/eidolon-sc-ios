@@ -40,7 +40,7 @@ def pair(idol: str, files: list[str], args_costume: str = "pr001") -> tuple[str 
     heads: list[tuple[int, str]] = []
     for path in files:
         mats = materials_in(path)
-        if f"cb_pr001_{idol}_01_m" in mats and body is None:
+        if f"cb_{args_costume}_{idol}_01_m" in mats and body is None:
             body = path
         if f"ch_pr001_{idol}_face_m" in mats and not any(m.startswith("cb_") for m in mats):
             # A head bundle can carry an accessory belonging to another costume

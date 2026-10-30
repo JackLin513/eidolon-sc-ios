@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -176,6 +177,25 @@ def build(
                 if joint not in joint_order:
                     joint_order.append(joint)
             meshes.append((mesh, local_joints))
+
+    # A head bundle can carry another outfit's accessory, and those are named
+    # after that outfit with no idol id at all (`ch_sra062_a_acc01_m`). They
+    # render as a stray piece pinned to this character, so keep only renderers
+    # that name this idol somewhere.
+    idol = None
+    for mesh, _ in meshes:
+        for material in mesh.materials:
+            match = re.search(r"_\d{3}[a-z]{3}_", material.name or "")
+            if match:
+                idol = match.group(0).strip("_")
+                break
+        if idol:
+            break
+    if idol:
+        meshes = [
+            (mesh, joints) for mesh, joints in meshes
+            if any(f"_{idol}_" in (m.name or "") for m in mesh.materials)
+        ]
 
     skin_of_joint = {joint: position for position, joint in enumerate(joint_order)}
 
