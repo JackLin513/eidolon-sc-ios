@@ -637,6 +637,7 @@ LIMIT_LABELS = {
     "calls_per_hour": "每小时通话次数",
     "photos_per_hour": "每小时照片数",
     "visits_per_hour": "每小时光顾次数",
+    "read_alouds_per_hour": "每小时朗读次数",
     "call_minutes": "单次通话的时长上限（分钟）",
     "turns_per_call": "单次通话的回合上限",
     "concurrent_calls": "同时进行的通话数上限",
@@ -677,6 +678,7 @@ class _Limits(_Item):
             "turns_per_call": limits.turns_per_call or 0,
             "concurrent_calls": limits.concurrent_calls or 0,
             "visits_per_hour": limits.visits_per_hour or 0,
+            "read_alouds_per_hour": limits.read_alouds_per_hour or 0,
             "history_turns": self.c.settings.history_turns or 0,
         } | {field: s in exempting for s, field in EXEMPTING_FIELDS.items()}
 
@@ -1070,6 +1072,7 @@ class LiveConfig:
             values["photos_per_hour"] or None,
             values["concurrent_calls"] or None,
             values["visits_per_hour"] or None,
+            values["read_alouds_per_hour"] or None,
         )
 
     @property

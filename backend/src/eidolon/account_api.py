@@ -379,9 +379,10 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
         identities they sign in with, whether they are an admin, who may enter the admin
         console, the exempting keys now (GLOSSARY.md「免限额密钥」), in a fixed order, and
         whether they have their own switch for reach-outs on (GLOSSARY.md「搭话」), None where
-        the deployer has reach-outs off, likewise for cycles (GLOSSARY.md「周期」), and the
+        the deployer has reach-outs off, likewise for cycles (GLOSSARY.md「周期」), the
         version of the sponsor code (GLOSSARY.md「赞赏」) while users are shown it, else
-        None."""
+        None, and whether the deployer has a key for speech synthesis now, which reads her
+        words aloud to those who bring none of their own (GLOSSARY.md「朗读」)."""
         sponsor = await backend.sponsor.state()
         user = await store.get_user(user_id)
         methods = await store.sign_in_methods(user_id)
@@ -399,6 +400,7 @@ def add_account_routes(app: FastAPI, backend: Backend) -> None:
             "reach_outs": reach_outs,
             "cycles": cycles,
             "sponsor_version": sponsor.version,
+            "deployer_tts": backend.config.has_service("tts"),
         }
 
     @app.put("/api/account/reach-outs", status_code=204)

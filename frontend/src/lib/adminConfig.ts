@@ -219,6 +219,7 @@ export const LIMIT_FIELDS = [
   "calls_per_hour",
   "photos_per_hour",
   "visits_per_hour",
+  "read_alouds_per_hour",
   "call_minutes",
   "turns_per_call",
   "concurrent_calls",
