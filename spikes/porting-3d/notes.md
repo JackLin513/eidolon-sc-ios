@@ -463,9 +463,13 @@ RealityKit 采样会线性化、输出也期望线性，所以 `ToonShading.meta
    值下恒等，但换舞台/换服装后是否仍恒等未验证。
 8. **真机未验证**。所有像素实验都在 iOS 27 模拟器上；`ToneMappingComponent` 是
    iOS 27 的未文档化组件。
-9. **部分语料的取景偏上**：052kao、046rio 等模型头被切在屏幕外，001har、007ior、
-   014mir 正常。`basePosition.y = -center.y + extent * 0.62` 用的是包围盒中心，
-   怀疑这些模型有离群顶点把 `center` 拉偏。未查。
+9. **部分语料的取景偏上**（已查）：003mik 等模型头被切在屏幕外，`frame.log` 显示
+   `visualBounds` 的 `centre.y = -0.061`、`extents.y = 1.62`，而骨架画出来的
+   身体在 0.002..1.621（中心 0.812）——相差 0.873，正是 glTF 里 `BASE` 关节的
+   位移。RealityKit 对蒙皮网格报的是**绑定姿势**的框，根关节带位移时框和画出来的
+   人隔一个身子。`skinned_bounds.py` 按 `global(joint) · inverseBind · p` 逐顶点
+   复算，导出时写 `<stem>-bounds.json`，预览取它的 Y 中心取景，无 sidecar 的模型
+   退回原路径。
 
 2026-10-30 又修了两个：003mik 吊坠黑底（描边壳，`applyOutline` 的材质名判断失效）
 和 052kao 纽扣花边（采样器 `clamp_to_edge` 吃掉平铺 UV）。根因与证据见本地
