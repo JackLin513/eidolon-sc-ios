@@ -100,10 +100,14 @@ def value_of(material: dict, property_name: str, channel: str) -> float:
     if channel == "kind":
         # Scaled by ten so the byte carries the kind exactly.
         return SHADER_KINDS.get(material.get("shader", ""), 0) / 10.0
-    if property_name == "_IsCutOff" and material.get("shader", "").endswith("Chr_CutOff"):
+    if property_name == "_IsCutOff":
         # The flag is not stored on these materials; the shader name is the
-        # statement that they clip.
-        return 1.0
+        # statement that they clip. `Chr_Alpha` clips too — its blend maths is
+        # not ported yet, and without the cutout its transparent field (painted
+        # black by the exporter) shows up as a solid black patch.
+        shader = material.get("shader", "")
+        if shader.endswith("Chr_CutOff") or shader.endswith("Chr_Alpha"):
+            return 1.0
     colours = material.get("colours", {})
     floats = material.get("floats", {})
     if channel in _COLOUR_CHANNELS:
