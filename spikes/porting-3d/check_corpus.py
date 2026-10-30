@@ -68,11 +68,13 @@ def check_model(materials_path: Path) -> dict:
 
     # Keyword variants we have not ported. They are not fatal — the default
     # branch still draws something — but the picture will be wrong.
+    # `_USEREFLECT_ON` and `_ISCUTOFF_ON` have since been ported (the reflection
+    # block and the cutout discard), so leaving them in here drowned the list in
+    # warnings that no longer mean anything.
     variants = set()
     for material in materials.values():
         for keyword in material.get("keywords", []) or []:
-            if keyword in {"_USEREFLECT_ON", "MOSAIC_ON", "_ISREDDISH_ON",
-                           "_ISCUTOFF_ON", "_REFLECTION_ON"}:
+            if keyword in {"MOSAIC_ON", "_ISREDDISH_ON", "_REFLECTION_ON"}:
                 variants.add(keyword)
     if variants:
         warnings.append("未实现的变体：" + "、".join(sorted(variants)))
@@ -80,10 +82,20 @@ def check_model(materials_path: Path) -> dict:
     # Every part of a model should belong to the costume it is filed under. A
     # head bundle often carries another costume's accessory, and gluing one onto
     # the wrong outfit is invisible in a material count but obvious on screen.
+    #
+    # Face, eyes and hair are the exception: the head is always the `pr001` one
+    # whatever the body wears, so a stage costume legitimately carries
+    # `ch_pr001_<idol>_face_m`. Accessories are not exempt — a `pr001` accessory
+    # on a stage outfit is exactly the mis-filing this looks for.
     costume = name.split("-")[-1]
+    head_parts = {"face", "hair", "hair2", "eyel", "eyer"}
     misfiled = sorted({
         m for m in materials
-        if m.startswith("ch_") and f"_{costume}_" not in m
+        if m.startswith("ch_")
+        and f"_{costume}_" not in m
+        # `ch_pr001_027say_v2_hair_m` puts the variant before the part name, so
+        # look at every token rather than one fixed position.
+        and not any(token in head_parts for token in m.split("_"))
     })
     if misfiled:
         warnings.append("配件不属于本套服装：" + "、".join(misfiled))

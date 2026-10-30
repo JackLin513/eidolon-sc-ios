@@ -60,6 +60,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--blender", required=True)
     parser.add_argument("--costume", default="pr001")
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--idols",
+                        help="只导这些角色，逗号分隔；用来给每个角色挑一套演出服")
     parser.add_argument("--force", action="store_true",
                         help="重导已有的模型（换了导出逻辑时需要）")
     args = parser.parse_args(argv)
@@ -72,6 +74,12 @@ def main(argv: list[str] | None = None) -> int:
                 by_idol.setdefault(idol, []).append(record["file"])
 
     idols = sorted(by_idol)
+    if args.idols:
+        wanted = {name.strip() for name in args.idols.split(",") if name.strip()}
+        unknown = wanted - set(idols)
+        if unknown:
+            print(f"这些角色在 {args.costume} 里没有本体：{'、'.join(sorted(unknown))}")
+        idols = [name for name in idols if name in wanted]
     if args.limit:
         idols = idols[: args.limit]
 

@@ -103,9 +103,20 @@ struct Model3DOutfit: Identifiable, Hashable {
 
     private static func title(for stem: String) -> String {
         switch stem {
-        case "mirai-pr001": "私服"
-        case "mirai-ss003": "演出服"
-        default: stem
+        case "mirai-pr001": return "私服"
+        case "mirai-ss003": return "演出服"
+        default:
+            // The corpus names a model `<idol>-<costume>`; the picker already
+            // groups by idol, so the button only has to say which outfit.
+            guard let costume = stem.split(separator: "-").last.map(String.init) else {
+                return stem
+            }
+            switch costume.prefix(2) {
+            case "pr": return "私服"
+            case "ss": return "演出服 \(costume)"
+            case "gs": return "衣装 \(costume)"
+            default: return costume
+            }
         }
     }
 
