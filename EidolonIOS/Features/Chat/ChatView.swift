@@ -64,6 +64,12 @@ struct ChatView: View {
                 }
             }
         }
+        .onChange(of: showCall) { _, isCalling in
+            // A call has her voice; 朗读 lets go of it the moment one starts.
+            if isCalling { app.readAloud.stop() }
+        }
+        .onChange(of: conversationID) { app.readAloud.stop() }
+        .onDisappear { app.readAloud.stop() }
         .fullScreenCover(isPresented: $showCall, onDismiss: {
             // What the call wrote is shown at once: its turns, her hang-up, the affinity and
             // any cooldown (spec「返回刷新」).
@@ -200,7 +206,7 @@ struct ChatView: View {
     @ViewBuilder
     private func bubble(_ message: ChatMessageRecord) -> some View {
         if message.isFromCharacter {
-            characterBubble(message.segments)
+            characterBubble(message.segments, line: message.id)
         } else {
             HStack {
                 Spacer(minLength: 40)
@@ -212,7 +218,9 @@ struct ChatView: View {
         }
     }
 
-    private func characterBubble(_ segments: [ReplySegment]) -> some View {
+    /// Her words. `line` is the message's, when it is one that has all arrived: what 朗读 is
+    /// for. The line still being written has none.
+    private func characterBubble(_ segments: [ReplySegment], line: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
                 VStack(alignment: .leading, spacing: 2) {
@@ -225,6 +233,12 @@ struct ChatView: View {
                     }
                 }
             }
+            if let line, let speech = ReadAloud.speech(
+                of: segments, model: app.chatSettings.fishModel
+            ), let voice = app.readAloudVoice(for: character) {
+                readAloudButton(speech, line: line, voice: voice)
+                    .id(line)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -233,6 +247,43 @@ struct ChatView: View {
             in: RoundedRectangle(cornerRadius: 16)
         )
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// 朗读: one tap voices the line, a second stops it; preparing wears a spinner, and a
+    /// failure says so and can be tapped again (spec #32).
+    private func readAloudButton(_ speech: String, line: String, voice: CallVoice) -> some View {
+        let phase = app.readAloud.phase(of: line)
+        return HStack(spacing: 6) {
+            Button {
+                app.readAloud.tap(line, speech: speech, voice: voice) { text, voice in
+                    try await app.readAloud(text, voice: voice)
+                }
+            } label: {
+                if phase == .synthesizing {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: phase == .playing ? "stop.circle" : "speaker.wave.2")
+                }
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel(readAloudLabel(phase))
+
+            if phase == .failed {
+                Text("朗读没成功，再点一次")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func readAloudLabel(_ phase: ReadAloudPlayback.Phase?) -> String {
+        switch phase {
+        case .playing: "停止朗读"
+        case .synthesizing: "正在合成朗读"
+        case .failed, nil: "朗读"
+        }
     }
 
     // MARK: - Input

@@ -15,6 +15,7 @@
 		28E1D1F65D00588EA9601DA3 /* TraceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D48DCFB6F0FC0D93BD033FC6 /* TraceListView.swift */; };
 		2AB7F50E81201BDD5EE6B1EC /* BarTutorialUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A409D36FC5F7C23FD61FFB /* BarTutorialUITests.swift */; };
 		2CF24EECC30E051467FA4D35 /* MicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */; };
+		3361C9CBA23EC466560C4FBB /* ChatReadAloud.swift in Sources */ = {isa = PBXBuildFile; fileRef = 699260EC8FFFC02E174467D0 /* ChatReadAloud.swift */; };
 		36C86D8435661F4A422CF168 /* BarSettingsBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4EC9179658A248DC6D0E540 /* BarSettingsBox.swift */; };
 		3B581C7316F3F7567E6CF0E1 /* StandThumbnails.swift in Sources */ = {isa = PBXBuildFile; fileRef = F51D53D2BDB3163C8344025C /* StandThumbnails.swift */; };
 		4235DD89FDB9280BFC39D5E1 /* BarCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85A4199D7AAE978829BFEC9 /* BarCanvas.swift */; };
@@ -77,6 +78,7 @@
 		4472CA53E92E225069B1D652 /* FishSynthesis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FishSynthesis.swift; sourceTree = "<group>"; };
 		502579B7DFF941BAC28ADE49 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		54B11631789B9A8BDAE83193 /* stand-player.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "stand-player.js"; sourceTree = "<group>"; };
+		699260EC8FFFC02E174467D0 /* ChatReadAloud.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatReadAloud.swift; sourceTree = "<group>"; };
 		6B9D77576080818CADE3BD64 /* BarRoomBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarRoomBackground.swift; sourceTree = "<group>"; };
 		6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallSettingsError.swift; sourceTree = "<group>"; };
 		6DA937E9DC437925E1DD0673 /* ChatStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStore.swift; sourceTree = "<group>"; };
@@ -196,6 +198,14 @@
 			path = EidolonIOS;
 			sourceTree = "<group>";
 		};
+		8A76D68AE641E4BBC52FB80E /* Chat */ = {
+			isa = PBXGroup;
+			children = (
+				699260EC8FFFC02E174467D0 /* ChatReadAloud.swift */,
+			);
+			path = Chat;
+			sourceTree = "<group>";
+		};
 		8DD528FF0F49C56E429F79F4 /* Chat */ = {
 			isa = PBXGroup;
 			children = (
@@ -247,6 +257,7 @@
 				F1FF6012F255268462E4A685 /* Keychain.swift */,
 				CE21F722ED79A2089F060B7F /* Theme.swift */,
 				ED8BC68D17B14C4A10AA4A37 /* Call */,
+				8A76D68AE641E4BBC52FB80E /* Chat */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -472,6 +483,7 @@
 				9E2C6AC25E575F7C295ADD54 /* BarVisitState.swift in Sources */,
 				BBCD2E47044DFC5DAB92ED57 /* CallSettingsError.swift in Sources */,
 				9C1DDAAE28F34ADE34D50C28 /* CallView.swift in Sources */,
+				3361C9CBA23EC466560C4FBB /* ChatReadAloud.swift in Sources */,
 				8FDA81B5B65A7F24FDDE1659 /* ChatSettings.swift in Sources */,
 				FB74EA11C1B5E34D38ED3937 /* ChatStore.swift in Sources */,
 				A1B405F9250C7DCD499A4A7E /* ChatView.swift in Sources */,

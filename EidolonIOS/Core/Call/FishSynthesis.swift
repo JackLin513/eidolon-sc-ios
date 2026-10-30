@@ -10,6 +10,12 @@ import OSLog
 struct FishSynthesis: SpeechSynthesis {
     var apiKey: String
     var readings: Readings = Readings()
+    /// Fish Audio's best quality for a whole line read after the fact; nil for a call, whose
+    /// segments are voiced to be heard as soon as they are ready (upstream `read_aloud.py`).
+    var latency: String?
+    /// A call's segment is short and can fall back to subtitles; one whole line is neither,
+    /// and upstream gives it a minute (spec #32).
+    var timeout: TimeInterval = 30
     var endpoint = URL(string: "https://api.fish.audio/v1/tts")!
     /// Whether this call's Fish Audio has made any segment yet: a 400/404/422 is the
     /// service refusing the call only while it has not (ADR-0011, #35 no. 37).
@@ -18,10 +24,14 @@ struct FishSynthesis: SpeechSynthesis {
     init(
         apiKey: String,
         readings: Readings = Readings(),
+        latency: String? = nil,
+        timeout: TimeInterval = 30,
         endpoint: URL = URL(string: "https://api.fish.audio/v1/tts")!
     ) {
         self.apiKey = apiKey
         self.readings = readings
+        self.latency = latency
+        self.timeout = timeout
         self.endpoint = endpoint
     }
 
@@ -29,12 +39,14 @@ struct FishSynthesis: SpeechSynthesis {
         guard !apiKey.isEmpty else { throw FishSynthesisError.missingKey }
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
-        request.timeoutInterval = 30
+        request.timeoutInterval = timeout
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(voice.model, forHTTPHeaderField: "model")
         request.httpBody = try JSONEncoder().encode(
-            FishSpeechRequest(text: text, referenceID: voice.id, readings: readings)
+            FishSpeechRequest(
+                text: text, referenceID: voice.id, latency: latency, readings: readings
+            )
         )
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
