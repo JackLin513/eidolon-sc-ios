@@ -83,6 +83,9 @@ SHADER_KINDS = {
     # `Chr_Alpha` is the blended sibling of the same family; until its blend
     # maths is ported it draws through the Basic branch.
     "Custom/Chr_Alpha": 1,
+    #  tints the base colour; until its maths is ported it draws
+    # through the Basic branch.
+    "Custom/Chr_Color": 1,
     "Custom/Chr_Glow": 2,
     "Custom/Chr_Face": 3,
     "Custom/Chr_Face_NoOutline": 3,
