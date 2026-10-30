@@ -260,6 +260,10 @@ void toonSurface(realitykit::surface_parameters params)
         // Alpha probe: grey means alpha reached the shader, white means it did
         // not (the texture loaded opaque) — the two need different fixes.
         writeColour(params, float3(mainTexRaw.a));
+        // Half opacity on top of the alpha readout: if the blended materials
+        // fade into the background, the opacity channel works and the fault is
+        // in the blending mode; if nothing changes, `.unlit` ignores opacity.
+        params.surface().set_opacity(0.25f);
         return;
     }
     half4 mainTex = half4(half3(toGamma(float3(mainTexRaw.rgb))), mainTexRaw.a);
