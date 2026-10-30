@@ -34,6 +34,10 @@ CHANGE = 16
 EROSION = 9
 # Share of the frame that may survive erosion before it is called a defect.
 BLOB_SHARE = 0.0005
+# Rows at the top of the frame that are never the model. The Dynamic Island
+# opens and closes between shots and is a large filled shape, so without this
+# every model "fails" with the same suspiciously round number.
+SKIP_TOP = 150
 
 
 def analyse(on: Path, off: Path) -> dict:
@@ -44,6 +48,7 @@ def analyse(on: Path, off: Path) -> dict:
 
     difference = ImageChops.difference(a, b).convert("L")
     mask = difference.point(lambda value: 255 if value > CHANGE else 0)
+    mask.paste(0, (0, 0, mask.width, SKIP_TOP))
     changed = sum(mask.histogram()[255:]) / (a.size[0] * a.size[1])
 
     # Erode: anything narrower than the kernel disappears. What is left is a
