@@ -25,6 +25,39 @@ def shader_name(material) -> str:
     return getattr(parsed, "m_Name", "") or ""
 
 
+def keywords(material) -> list[str]:
+    """`m_ShaderKeywords` as a list, whichever shape UnityPy hands back."""
+    raw = getattr(material, "m_ShaderKeywords", None)
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        return [word for word in raw.split() if word]
+    return [str(word) for word in raw]
+
+
+def is_cutout(
+    shader: str, name: str, shader_keywords: list[str], floats: dict[str, float]
+) -> bool:
+    """Whether the game alpha-tests this material.
+
+    The switch is the `_ISCUTOFF_ON` keyword — `_IsCutOff` is not a uniform in
+    any of the 1592 decompiled shaders, it is a saved property some materials
+    happen to carry. `Chr_CutOff` states it in the shader name, and a few
+    decals only say so in their material name. `Chr_Alpha` blends instead, so
+    it must never be clipped.
+    """
+    if shader.endswith("Chr_Alpha"):
+        return False
+    if "_ISCUTOFF_ON" in shader_keywords:
+        return True
+    if shader.endswith("Chr_CutOff"):
+        return True
+    if floats.get("_IsCutOff", 0.0) == 1.0:
+        return True
+    lowered = (name or "").lower()
+    return "cut" in lowered or "alp" in lowered
+
+
 def _colour(value) -> list[float]:
     return [float(value.r), float(value.g), float(value.b), float(value.a)]
 
@@ -41,11 +74,11 @@ def read_material_table(env) -> dict[str, dict]:
             continue
         material = obj.read()
         properties = material.m_SavedProperties
+        floats = {name: float(value) for name, value in (properties.m_Floats or [])}
         table[material.m_Name] = {
             "shader": shader_name(material),
-            "floats": {
-                name: float(value) for name, value in (properties.m_Floats or [])
-            },
+            "keywords": keywords(material),
+            "floats": floats,
             "colours": {
                 name: _colour(value) for name, value in (properties.m_Colors or [])
             },

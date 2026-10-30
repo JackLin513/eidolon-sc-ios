@@ -238,14 +238,25 @@ def build(
             # A blending material needs the alpha it was painted with; cutouts
             # keep the black-keyed field the shader discards on. The two switches
             # (this one and the shader's kind-6 opacity) must flip together.
+            # A cutout keeps a real alpha channel and lets the shader discard
+            # on it; a blending material keeps alpha too, and `pack_usd` wires it
+            # into the material graph. Everything else is flattened so the
+            # shader has no stray alpha to trip over.
             pbr["baseColorTexture"] = {
                 "index": add_image(
-                    info.image, key, keep_alpha=info.shader == "Custom/Chr_Alpha"
+                    info.image,
+                    key,
+                    keep_alpha=info.shader == "Custom/Chr_Alpha" or info.cutoff,
                 )
             }
         else:
             pbr["baseColorFactor"] = [0.85, 0.85, 0.85, 1.0]
         entry: dict = {"name": key, "pbrMetallicRoughness": pbr, "doubleSided": True}
+        if info.cutoff and info.shader != "Custom/Chr_Alpha":
+            # Blender turns these into `opacity.connect` + `opacityThreshold`,
+            # which is how the alpha survives into the USDZ.
+            entry["alphaMode"] = "MASK"
+            entry["alphaCutoff"] = 0.5
         # The game reads `_SubTex` per shader: the green channel gates ss003's
         # glow, alpha masks the eye highlight and weights the hair sheen. Alpha
         # does not survive as alpha, so it is premultiplied into RGB; the gate

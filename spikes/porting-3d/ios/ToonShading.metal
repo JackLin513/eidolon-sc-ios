@@ -187,7 +187,7 @@ void outlineSurface(realitykit::surface_parameters params)
         float2 uv = params.geometry().uv0();
         half4 base = params.textures().custom().sample(
             kAtlas, float2(uv.x, 1.0 - uv.y));
-        if (max(max(base.r, base.g), base.b) < 0.004h) {
+        if (base.a < 0.5h) {
             discard_fragment();
         }
     }
@@ -255,12 +255,12 @@ void toonSurface(realitykit::surface_parameters params)
     half4 subTexRaw = params.textures().emissive_color().sample(
         mipmapped ? kAtlasMipmapped : kAtlas, flipped);
     // `_IsCutOff` materials (the `02alp` ribbons) are a cutout shape painted on
-    // a transparent field. The alpha channel does not survive the USD trip, so
-    // the field arrives as pure black instead of transparent — which is exactly
-    // what a discarded fragment would have shown. Only cutout materials test
-    // this, because black stockings and hair shadows are legitimately black.
-    if (param(lut, row, kParamIsCutOff) > 0.5f
-        && max(max(mainTexRaw.r, mainTexRaw.g), mainTexRaw.b) < 0.004h) {
+    // a transparent field. The game tests `_MainTex.a` against 0.5; we used to
+    // stand in "near black" for that because the alpha did not survive the USD
+    // trip, which threw away dark pixels that are meant to be drawn. The
+    // exporter now keeps the real alpha and marks the material `alphaMode:
+    // MASK`, so test the same thing the game does.
+    if (param(lut, row, kParamIsCutOff) > 0.5f && mainTexRaw.a < 0.5h) {
         discard_fragment();
     }
     if (custom.w < -1.5f) {
