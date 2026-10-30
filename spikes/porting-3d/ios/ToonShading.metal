@@ -256,6 +256,12 @@ void toonSurface(realitykit::surface_parameters params)
         && max(max(mainTexRaw.r, mainTexRaw.g), mainTexRaw.b) < 0.004h) {
         discard_fragment();
     }
+    if (custom.w < -1.5f) {
+        // Alpha probe: grey means alpha reached the shader, white means it did
+        // not (the texture loaded opaque) — the two need different fixes.
+        writeColour(params, float3(mainTexRaw.a));
+        return;
+    }
     half4 mainTex = half4(half3(toGamma(float3(mainTexRaw.rgb))), mainTexRaw.a);
     half4 subTex = half4(half3(toGamma(float3(subTexRaw.rgb))), subTexRaw.a);
 
