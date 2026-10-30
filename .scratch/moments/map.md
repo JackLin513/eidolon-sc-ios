@@ -40,6 +40,8 @@ Label: wayfinder:map
 
 <!-- 一张票一行：结论的要点，细节点链接进票里看 -->
 
+- [调研：动态旁边的天气从哪取](issues/02-weather-research.md)：Open-Meteo，免 key、按坐标取逐小时，东京用气象庁 MSM；要放 open-meteo.com 署名链接；生成时取露出那一小时的值存下不改；显示图标加整数气温，取不到就不显示也不给她；不进代理和服务状态；不用 wttr.in。
+
 ## Not yet specified
 
 - **配图的提示词怎么写**：新的构图枚举（风景、物品、他拍、合照……）、她写哪几栏、`1girl, solo` 和 `looking at viewer` 什么时候去掉、黑名单的 `people`/`appearance` 类在合照时怎么放行（外貌由服务器从各人的配置注入）、要不要补 `no humans`/`scenery` 进本地 tag 表。等「调研：NovelAI 非自拍构图和多角色」和配图原型出来再定。
