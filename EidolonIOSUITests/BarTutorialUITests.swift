@@ -45,6 +45,29 @@ final class BarTutorialUITests: XCTestCase {
         )
     }
 
+    /// 瓶装单: the bottled drink's picture goes into the shaker too, and only then does
+    /// 「调制」 turn into 「上酒」 — the book used to drop it into an empty closure.
+    func testDraggingABottlePutsItInTheShaker() throws {
+        try openCounter()
+
+        let bottleTab = element("瓶装饮品")
+        XCTAssertTrue(bottleTab.isHittable, "配方书的「瓶装饮品」看不见")
+        bottleTab.tap()
+
+        let rum = element("Rum")
+        XCTAssertTrue(rum.waitForExistence(timeout: 3), "瓶装页没有列出瓶装饮品")
+        rum.tap()
+
+        let bottle = element("Rum，拖进摇酒器")
+        XCTAssertTrue(bottle.waitForExistence(timeout: 3), "打开一瓶之后没有可拖的瓶子")
+        bottle.press(forDuration: 0.5, thenDragTo: element("摇酒器"))
+
+        XCTAssertTrue(
+            element("上酒").waitForExistence(timeout: 3),
+            "瓶子拖进摇酒器之后，「调制」没有变成「上酒」"
+        )
+    }
+
     // MARK: - Walking the tutorial
 
     /// 教程, then tap the text box until 调酒 opens the recipe book (the counter comes with it).

@@ -48,6 +48,9 @@ struct BarCounter: View {
         var act: (BarMixer.State, BarMixer.Action, String?, String?) -> Void
         var drinkImage: (String) -> String
         var serve: () -> Void
+        /// 拖到摇酒器上松手，把拖过来的东西放进去：配料加一份，瓶装饮料进瓶子。
+        /// 配方书翻页里的瓶子也走这里（同一个入口，上游只有一个）。
+        var put: (BarDragged) -> Void
         var drag: BarDrag
     }
 
@@ -82,6 +85,12 @@ struct BarCounter: View {
             resetButton
             mixButtonView
             dragged
+        }
+        .onChange(of: mixer) { before, after in
+            // 摇酒器多了一份料：那瓶跳一下（上游 `bar-pulse`）。瓶子进来不跳。
+            guard let ingredient = Self.gained(before: before, after: after) else { return }
+            sequence += 1
+            pulse = (Self.bottles[ingredient]?.letter ?? "", sequence)
         }
         .task(id: mixer.shake == .shaking ? mixer.shakenAt : nil) {
             // 摇满 5 秒转快摇：到时候重画一次。
@@ -167,29 +176,13 @@ struct BarCounter: View {
                         }
                         .onEnded { value in
                             guard isLive else { return }
-                            actions.drag.end(at: value.location, drop: drop)
+                            actions.drag.end(at: value.location, drop: actions.put)
                         }
                 )
                 .allowsHitTesting(isLive)
                 .accessibilityElement()
                 .accessibilityLabel(BarCopy.Counter.parts(bottle.name, n))
                 .offset(x: bottle.x - 5, y: bottle.y - 17)
-        }
-    }
-
-    private func drop(_ item: BarDragged) {
-        switch item {
-        case let .ingredient(ingredient):
-            guard case let next = BarMixer.apply(mixer, .add(ingredient)), next != mixer else {
-                actions.act(mixer, .add(ingredient), nil, "buttonnoclick")
-                return
-            }
-            actions.act(mixer, .add(ingredient), "addingredient", "buttonnoclick")
-            sequence += 1
-            pulse = (Self.bottles[ingredient]?.letter ?? "", sequence)
-        case let .bottle(id):
-            guard let drink = drinks.first(where: { $0.id == id }) else { return }
-            actions.act(mixer, .bottle(drink), "addingredient", "buttonnoclick")
         }
     }
 
@@ -248,6 +241,11 @@ struct BarCounter: View {
                 }
             }
         }
+    }
+
+    /// The ingredient the shaker took in, if any: one part more than before.
+    private static func gained(before: BarMixer.State, after: BarMixer.State) -> Ingredient? {
+        Ingredient.allCases.first { after.parts($0) > before.parts($0) }
     }
 
     private var isOverShaker: Bool {
