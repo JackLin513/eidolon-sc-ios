@@ -36,7 +36,7 @@ from eidolon.greetings import (
     greeting_path,
     voxels_path,
 )
-from eidolon.read_aloud import ReadAloudFailed
+from eidolon.read_aloud import NoVoice, ReadAloudFailed
 from eidolon.reply_format import Segment, SegmentComplete, SegmentDelta, SpeechDelta
 from eidolon.own_keys import (
     BroughtKeys,
@@ -681,8 +681,8 @@ def create_app(backend: Backend) -> FastAPI:
         user_id: str,
     ) -> Response:
         """Her `segments` read aloud (GLOSSARY.md「朗读」), as mp3 for the user's browser alone:
-        404 without them; 503 with no key for speech synthesis; 429 with no read-alouds left
-        this hour; 502 if Fish Audio failed, with `code` "own_key" if on the user's own key,
+        404 without them; 503 with no key for speech synthesis, or her voice not configured;
+        429 with no read-alouds left this hour; 502 if Fish Audio failed, with `code` "own_key" if on the user's own key,
         saying why."""
         if segments is None:
             raise HTTPException(404, "没有这句话")
@@ -694,6 +694,8 @@ def create_app(backend: Backend) -> FastAPI:
             return JSONResponse({"detail": e.message, "code": "own_key"}, status_code=502)
         except ReadAloudFailed as e:
             return JSONResponse({"detail": str(e)}, status_code=502)
+        except NoVoice as e:
+            return JSONResponse({"detail": str(e)}, status_code=503)
         return Response(audio, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
 
     @app.post("/api/conversations/{conversation_id}/messages/{message_id}/read-aloud")

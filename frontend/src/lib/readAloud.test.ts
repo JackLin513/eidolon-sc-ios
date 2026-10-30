@@ -1,7 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/lib/api";
-import { KEPT, peaksOf, ReadAloud, readAloudKey, saidOf, type Player, type Said } from "@/lib/readAloud";
+import {
+  KEPT,
+  peaksOf,
+  ReadAloud,
+  readAloudKey,
+  readAloudsUsedUpText,
+  saidOf,
+  type Player,
+  type Said,
+} from "@/lib/readAloud";
 
 /** A player that plays nothing: says what it was told, its position set by the test. */
 class FakePlayer implements Player {
@@ -105,16 +114,18 @@ describe("ReadAloud", () => {
     expect(player.calls.filter((call) => call.startsWith("play"))).toEqual(["play blob:1 from 0"]);
   });
 
-  it("says why it was not voiced, and is asked again on trying again", async () => {
+  it("says why it was not voiced and when to read aloud again, and is asked again on trying again", async () => {
     const { readAloud, answers, asked } = setUp();
     const key = readAloudKey(one);
     readAloud.read(one);
 
-    answers.get(key)!.reject(new ApiError("你的语音合成（Fish Audio）密钥调用失败：…", 502, { code: "own_key" }));
+    const retryAt = "2026-10-31T05:00:00+00:00";
+    answers.get(key)!.reject(new ApiError("这一小时的朗读次数已经用完了（每小时 60 次）", 429, { retryAt }));
     await vi.waitFor(() => expect(readAloud.state(key)?.status).toBe("failed"));
-    expect(readAloud.state(key)).toEqual({
+    expect(readAloud.state(key)).toMatchObject({
       status: "failed",
-      failure: { message: "你的语音合成（Fish Audio）密钥调用失败：…", signedOut: false, toOwnKeys: true },
+      failure: { message: "这一小时的朗读次数已经用完了（每小时 60 次）" },
+      retryAt,
     });
     readAloud.read(one);
 
@@ -144,6 +155,14 @@ describe("saidOf", () => {
     expect(saidOf("c1", "m12")).toEqual({ conversationId: "c1", kind: "reply", id: 12 });
     expect(saidOf("c1", "r3")).toEqual({ conversationId: "c1", kind: "reach_out", id: 3 });
     expect(saidOf("c1", "new-4")).toBeNull();
+  });
+});
+
+describe("readAloudsUsedUpText", () => {
+  it("says when to read aloud again by the producer's time zone, to the minute and never early", () => {
+    expect(readAloudsUsedUpText("2026-10-31T05:00:30+00:00", "Asia/Tokyo")).toBe(
+      "这一小时的朗读次数用完了，14:01 以后可以再听",
+    );
   });
 });
 

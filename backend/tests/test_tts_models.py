@@ -68,7 +68,7 @@ async def test_the_deployers_fish_key_speaks_with_the_deployers_model(
     assert [(tts.api_key, tts.model) for tts in speech.ttss] == [(DEPLOYER_FISH_KEY, "s2.1-pro")]
 
 
-async def test_a_call_voiced_with_drama_3_has_her_direct_her_voice_and_a_text_turn_not(
+async def test_a_call_voiced_with_drama_3_has_her_direct_her_voice_and_a_text_turn_read_aloud_with_another_not(
     make_client: ClientFactory, speech: FakeSpeech, browser: Browser
 ):
     llm = FakeLLM(

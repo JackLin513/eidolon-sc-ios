@@ -191,6 +191,7 @@ export function ConversationView({
     conversationId,
     canRead: canReadAloud,
     inCall,
+    timeZone,
     subtree,
   });
 
@@ -652,9 +653,7 @@ function Messages({
 }) {
   const lines = linesOf(entries, new Date(), affinityOn);
   // 键盘停在她最后一条能朗读的话上（`ReadAloudMenu`）。
-  const tabStop = reading?.canRead
-    ? entries.findLast((e) => e.kind === "character" && !e.pending && saidOf(reading.conversationId, e.key))?.key
-    : undefined;
+  const tabStop = reading?.canRead ? entries.findLast((e) => herLineIn(reading, e))?.key : undefined;
   return (
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
       <MessageScroller>
@@ -735,14 +734,21 @@ function EventLine({ entry, name }: { entry: Extract<Entry, { kind: "event" }>; 
   );
 }
 
-/** 朗读她的话要用的（GLOSSARY.md「朗读」）：在哪个对话里、能不能点「朗读」、是不是在通话中，菜单渲染到的子树。 */
+/** 朗读她的话要用的（GLOSSARY.md「朗读」）：在哪个对话里、能不能点「朗读」、是不是在通话中，次数用完时按哪个时区写时刻，
+ * 菜单渲染到的子树。 */
 type Reading = {
   readAloud: ReadAloud;
   conversationId: string;
   canRead: boolean;
   inCall: boolean;
+  timeZone: string;
   subtree: RefObject<HTMLDivElement | null>;
 };
+
+/** 这一条是她记下的哪条话（能朗读的）；不是她的话、或者她还在回复中没有记下的，是 null。 */
+function herLineIn(reading: Reading, entry: Entry): Said | null {
+  return entry.kind === "character" && !entry.pending ? saidOf(reading.conversationId, entry.key) : null;
+}
 
 /**
  * 一条消息。制作人的在右，深蓝墨水；她的在左，日语原文在上、中文字幕在下（The Original-Then-Subtitle Rule）。
@@ -763,8 +769,7 @@ function Bubbled({
   isTabStop: boolean;
 }) {
   const time = <time className="shrink-0 pb-0.5 text-meta text-muted-foreground tabular-nums">{clock(entry.at)}</time>;
-  // 还在回复中的没有记下，不能朗读。
-  const said = reading && entry.kind === "character" && !entry.pending ? saidOf(reading.conversationId, entry.key) : null;
+  const said = reading && herLineIn(reading, entry);
   if (entry.kind === "user") {
     return (
       <Message align="end">
@@ -812,7 +817,9 @@ function Bubbled({
           </HerBubble>
           {last && !entry.pending && time}
         </div>
-        {said && reading && <ReadAloudBar readAloud={reading.readAloud} said={said} />}
+        {said && reading && (
+          <ReadAloudBar readAloud={reading.readAloud} said={said} inCall={reading.inCall} timeZone={reading.timeZone} />
+        )}
       </MessageContent>
     </Message>
   );

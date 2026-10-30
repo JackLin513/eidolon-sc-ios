@@ -9,6 +9,7 @@ synthesis, billed as a call's is.
 
 Driven through the backend's external API, Fish Audio faked at its transport."""
 
+import sqlite3
 from dataclasses import replace
 from datetime import timedelta
 
@@ -18,7 +19,16 @@ import pytest
 from eidolon.config import Settings, UsageLimits
 from eidolon.reply_format import DIRECTED_FORMAT_INSTRUCTIONS
 from tests.conftest import CharacterConfig, ClientFactory, activity_in
-from tests.fakes import DEPLOYER_FISH_KEY, START, FakeClock, FakeFishAudio, FakeLLM, system_of
+from tests.fakes import (
+    DEPLOYER_FISH_KEY,
+    FAKE_JUDGE,
+    START,
+    FakeClock,
+    FakeFishAudio,
+    FakeLLM,
+    system_of,
+)
+from tests.test_affinity import keep
 from tests.test_own_speech_keys import MY_FISH
 from tests.test_reach_outs_in_turns import reached_out
 from tests.test_text_turn import send_turn, start_conversation
@@ -207,6 +217,30 @@ async def test_without_the_deployers_key_only_the_users_own_reads_aloud(
     assert (refused.status_code, refused.json()) == (503, {"detail": "这个部署没有语音合成，朗读不了"})
     assert mine.status_code == 200, mine.text
     assert [r["key"] for r in fish.requests] == [MY_FISH]
+
+
+async def test_reading_aloud_is_no_turn_so_a_past_conversation_she_ended_is_read_while_she_cools(
+    make_client: ClientFactory, settings: Settings
+):
+    cooling = replace(settings, judge=FAKE_JUDGE, affinity_and_gifts=True)
+    clock = FakeClock()
+    client = make_client(FakeLLM([SHY]), settings=cooling, clock=clock, fish_transport=faked(FakeFishAudio()))
+    ended = await start_conversation(client)
+    await send_turn(client, ended, "喜欢事务所吗")
+    reply = await her_reply(client, ended)
+    with sqlite3.connect(settings.database_path) as db:
+        db.execute(
+            "INSERT INTO conversation_events (conversation_id, kind, created_at) VALUES (?, 'ended', ?)",
+            (ended, clock.now.isoformat()),
+        )
+    current = await start_conversation(client)
+    keep(settings.database_path, "producer", 0, clock.now, cooling=True)
+
+    turn = await client.post(f"/api/conversations/{current}/turns", json={"text": "在吗"})
+    res = await read_aloud(client, ended, reply)
+
+    assert turn.status_code == 409  # she is cooling down
+    assert res.status_code == 200, res.text
 
 
 @pytest.fixture

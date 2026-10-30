@@ -251,10 +251,12 @@ export const zh = {
     readAloud: {
       menu: "朗读",
       voicing: "正在合成语音",
-      play: "播放语音",
+      play: "播放",
       pause: "暂停",
       retry: "再试一次",
       toOwnKeys: "去设置自带密钥",
+      /** 这一小时的朗读次数用完了；`time` 是 HH:MM，按制作人的时区。 */
+      usedUp: (time: string) => `这一小时的朗读次数用完了，${time} 以后可以再听`,
     },
     hearing: "正在听你说",
     loading: "正在打开对话",

@@ -7,6 +7,8 @@
 // for Safari to let it play once the audio comes back from the server. The waveform is worked out from
 // the audio decoded apart (`decodeVoiced`).
 
+import { copy } from "@/i18n";
+import { ApiError } from "@/lib/api";
 import { toFailure, type Failure } from "@/lib/failure";
 
 /** How many of her lines are kept voiced at most; the one heard longest ago goes first. */
@@ -19,11 +21,12 @@ export const BARS = 28;
 export type Said = { conversationId: string; kind: "reply" | "reach_out"; id: number };
 
 /** Her line as read aloud: being voiced; voiced, with its waveform (`peaks`, each 0–1) and length in
- * seconds, playing or not; or not voiced, and why. */
+ * seconds, playing or not; or not voiced, and why, with when the user may read aloud again (ISO) if
+ * this hour's read-alouds are used up. */
 export type ReadAloudState =
   | { status: "voicing" }
   | { status: "ready"; peaks: number[]; duration: number; playing: boolean }
-  | { status: "failed"; failure: Failure };
+  | { status: "failed"; failure: Failure; retryAt: string | null };
 
 /** Plays one line at a time. */
 export interface Player {
@@ -157,7 +160,8 @@ export class ReadAloud {
     try {
       audio = await this.ports.voice(said);
     } catch (e) {
-      if (this.kept.has(key)) this.set(key, { status: "failed", failure: toFailure(e) });
+      const retryAt = e instanceof ApiError ? e.retryAt : null;
+      if (this.kept.has(key)) this.set(key, { status: "failed", failure: toFailure(e), retryAt });
       if (this.wanted === key) this.wanted = null;
       return;
     }
@@ -220,6 +224,14 @@ export class ReadAloud {
   }
 }
 
+/** What the voice bar says once this hour's read-alouds are used up: when to read aloud again, by the
+ * producer's time zone, to the minute and never early (within the hour, so no day). */
+export function readAloudsUsedUpText(retryAt: string, timeZone: string): string {
+  const at = new Date(Math.ceil(Date.parse(retryAt) / 60_000) * 60_000);
+  const time = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }).format(at);
+  return copy.conversation.readAloud.usedUp(time);
+}
+
 /** The waveform of decoded audio `samples` in `bars` bars: each the loudest stretch of its part, the
  * loudest bar 1, the quietest drawn still (0.1). */
 export function peaksOf(samples: Float32Array, bars = BARS): number[] {
@@ -271,6 +283,8 @@ export function elementPlayer(): Player {
   let element: HTMLAudioElement | null = null;
   let isUnlocked = false;
   let current: string | null = null;
+  /** Seeks the address just set once it has a length; dropped if another is set first. */
+  let seek: (() => void) | null = null;
   const ended: (() => void)[] = [];
   const audio = () => {
     if (!element) {
@@ -291,10 +305,18 @@ export function elementPlayer(): Player {
     async play(url, from) {
       const player = audio();
       if (current !== url) {
+        if (seek) player.removeEventListener("loadedmetadata", seek);
+        seek = null;
         player.src = url;
         current = url;
         // A new address has no length yet to seek in: seek once it has.
-        if (from > 0) player.addEventListener("loadedmetadata", () => (player.currentTime = from), { once: true });
+        if (from > 0) {
+          const at = (seek = () => {
+            player.currentTime = from;
+            if (seek === at) seek = null;
+          });
+          player.addEventListener("loadedmetadata", at, { once: true });
+        }
       } else {
         player.currentTime = from;
       }

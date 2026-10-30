@@ -413,6 +413,12 @@ class DeployerKeys:
     """The chat model as calls' turns use it, at its reasoning effort in calls; None for
     `chat_llm`."""
 
+    @property
+    def read_aloud_model(self) -> FishAudioModel | None:
+        """The model her words would be read aloud with on these keys (GLOSSARY.md「朗读」);
+        None without a key for speech synthesis."""
+        return self.tts_model if self.tts is not None else None
+
     def lease(self) -> "DeployerLease":
         """These keys, which never change, for a turn or call."""
         return DeployerLease(self, _nothing)
@@ -561,7 +567,7 @@ class OwnKeys:
             return own_model
         lease = self._deployer.lease()
         try:
-            return lease.keys.tts_model if lease.keys.tts is not None else None
+            return lease.keys.read_aloud_model
         finally:
             lease.release()
 

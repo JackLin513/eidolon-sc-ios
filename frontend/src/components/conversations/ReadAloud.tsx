@@ -6,7 +6,7 @@ import { ShellLink } from "@/components/app/ShellLink";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { copy } from "@/i18n";
-import { BARS, readAloudKey, type ReadAloud, type Said } from "@/lib/readAloud";
+import { BARS, readAloudKey, readAloudsUsedUpText, type ReadAloud, type Said } from "@/lib/readAloud";
 import { settingsHref } from "@/lib/settingsCategory";
 import { cn } from "@/lib/utils";
 import { PauseVoiceIcon, PlayVoiceIcon, ReadAloudIcon } from "@/theme/icons";
@@ -60,9 +60,20 @@ export function ReadAloudMenu({
 /**
  * 她那条话下面的语音条（DESIGN.md「Chat bubbles · 朗读」）：点了「朗读」才有。合成中是转圈加一排淡的竖条；合成好了
  * 整条是播放 / 暂停键：她颜色的图标、按音频算出的波形（放过的那段是她的颜色）和时长。没合成出来时换成一行原因和「再试一次」，
- * 自带密钥没能用、或这一小时的次数用完时再加「去设置自带密钥」。
+ * 自带密钥没能用、或这一小时的次数用完时再加「去设置自带密钥」；次数用完的时刻按制作人的时区（`timeZone`）写。
+ * 通话中播放键和「再试一次」都不能点。
  */
-export function ReadAloudBar({ readAloud, said }: { readAloud: ReadAloud; said: Said }) {
+export function ReadAloudBar({
+  readAloud,
+  said,
+  inCall,
+  timeZone,
+}: {
+  readAloud: ReadAloud;
+  said: Said;
+  inCall: boolean;
+  timeZone: string;
+}) {
   const key = readAloudKey(said);
   const state = useReadAloudState(readAloud, key);
   const progress = useReadAloudProgress(readAloud, key, state);
@@ -70,11 +81,12 @@ export function ReadAloudBar({ readAloud, said }: { readAloud: ReadAloud; said: 
   if (state.status === "failed") {
     return (
       <div role="status" className="flex flex-wrap items-baseline gap-x-2 px-1 text-meta text-muted-foreground">
-        <span>{state.failure.message}</span>
+        <span>{state.retryAt ? readAloudsUsedUpText(state.retryAt, timeZone) : state.failure.message}</span>
         <button
           type="button"
+          disabled={inCall}
           onClick={() => readAloud.read(said)}
-          className="rounded-sm font-medium text-foreground underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="rounded-sm font-medium text-foreground underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 disabled:hover:no-underline"
         >
           {t.retry}
         </button>
@@ -101,12 +113,13 @@ export function ReadAloudBar({ readAloud, said }: { readAloud: ReadAloud; said: 
     <button
       type="button"
       aria-label={state.playing ? t.pause : t.play}
+      disabled={inCall}
       onClick={() => readAloud.toggle(key)}
-      className={cn(pill, "outline-none focus-visible:ring-3 focus-visible:ring-ring/50")}
+      className={cn(pill, "outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50")}
     >
       <Icon aria-hidden className="size-4 fill-current text-her-mark" />
       <Waveform peaks={state.peaks} progress={progress} />
-      <span className="text-meta text-muted-foreground tabular-nums">{length(state.duration)}</span>
+      <span className="text-meta text-muted-foreground tabular-nums">{durationText(state.duration)}</span>
     </button>
   );
 }
@@ -139,7 +152,7 @@ function Waveform({ peaks, progress }: { peaks: number[] | null; progress: numbe
 }
 
 /** 时长，写成 0:07；长度不明时不写。 */
-function length(seconds: number): string {
+function durationText(seconds: number): string {
   if (!(seconds > 0)) return "";
   const whole = Math.max(1, Math.round(seconds));
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;

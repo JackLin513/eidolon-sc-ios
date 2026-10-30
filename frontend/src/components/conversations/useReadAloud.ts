@@ -10,10 +10,9 @@ let player: Player | null = null;
 let shared: { userId: string; readAloud: ReadAloud } | null = null;
 
 /** 这个标签页里朗读她的话的那一个（GLOSSARY.md「朗读」）：活到标签页关掉，换页不丢，刷新就没了；
- * 换了一位用户就换一个新的，前一位的停下。 */
+ * 换了一位用户就换一个新的（前一位的由用它的那一页停下）。 */
 export function readAloudFor(userId: string): ReadAloud {
   if (shared?.userId !== userId) {
-    shared?.readAloud.stop();
     player ??= elementPlayer();
     shared = {
       userId,

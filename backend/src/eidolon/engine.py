@@ -632,10 +632,11 @@ class ConversationEngine:
     ) -> AsyncGenerator[TurnEvent, None]:
         """Take one turn on `llms`, `in_call` if it is taken in one, its reply voiced with
         `voiced_by` (for a text turn's, the model it would be read aloud with, GLOSSARY.md
-        「朗读」; None if none), which has her write delivery cues as it reads them, her photo on the user's `own_image` generation if it brings it. `device_timezone`
-        is the time zone the user's device reports, used unless the producer profile sets
-        one. Once `stop` is set, the turn goes no further and is recorded with the segments
-        complete by then."""
+        「朗读」; None if none), which has her write delivery cues as it reads them, her photo
+        on the user's `own_image` generation if it brings it. `device_timezone` is the time
+        zone the user's device reports, used unless the producer profile sets one. Once
+        `stop` is set, the turn goes no further and is recorded with the segments complete by
+        then."""
         text = text.strip()
         yield UserSaid(text)
         if not text or len(text) > MAX_INPUT_LENGTH:

@@ -29,7 +29,13 @@ from eidolon.billing import bill
 from eidolon.config import CHARACTER_BILLED_FISH_AUDIO_MODELS, OWN_KEYS_PROXIED, FishAudioModel
 from eidolon.delivery_cues import spoken_by, voiced
 from eidolon.greetings import FISH_TTS_HTTP_URL
-from eidolon.own_keys import BroughtKeys, NoSpeechSynthesis, OwnKeyFailed, OwnKeys, ReadAloudKeys, masked_cause
+from eidolon.own_keys import (
+    BroughtKeys,
+    OwnKeyFailed,
+    OwnKeys,
+    ReadAloudKeys,
+    masked_cause,
+)
 from eidolon.proxy import ProxyRoutes
 from eidolon.readings import Reading, pronunciation_dictionary
 from eidolon.reply_format import Segment
@@ -53,12 +59,19 @@ class ReadAloudFailed(Exception):
         super().__init__("没能合成语音，过一会儿再试")
 
 
+class NoVoice(Exception):
+    """She has no voice to be read aloud in: the character configuration gives her none."""
+
+    def __init__(self) -> None:
+        super().__init__("她还没有配置音色，朗读不了")
+
+
 class _NotVoiced(Exception):
     """Fish Audio answered with no audio, or could not be reached; says how, as `activity`
     tells failures apart (`activity.error_kind`)."""
 
 
-def said(segments: Sequence[Segment], model: FishAudioModel) -> str:
+def fish_text(segments: Sequence[Segment], model: FishAudioModel) -> str:
     """What Fish Audio is told to say of her `segments`, voicing with `model`: each one's
     Japanese with its delivery cues as `model` reads them, a line each."""
     lines = (spoken_by(voiced(s.ja), model) for s in segments)
@@ -90,16 +103,16 @@ class ReadAloud:
         self, user_id: str, voice_id: str, segments: Sequence[Segment], brought: BroughtKeys
     ) -> bytes:
         """Her `segments` said in her voice `voice_id`, as mp3, for the user, bringing
-        `brought`. Raises NoSpeechSynthesis if there is no key for it, or she has no voice;
+        `brought`. Raises NoVoice if she has none; NoSpeechSynthesis if there is no key for it;
         OverLimit, voicing nothing, if the user has no read-alouds left this hour;
         OwnKeyFailed or ReadAloudFailed, giving the read-aloud back, if Fish Audio fails."""
         if not voice_id.strip():
-            raise NoSpeechSynthesis()
+            raise NoVoice()
         keys = self._own_keys.for_read_aloud(brought)
         try:
             use = await self._usage.take(user_id, "read_aloud", exempt=keys.own)
             try:
-                return await self._voice(keys, voice_id, said(segments, keys.tts_model))
+                return await self._voice(keys, voice_id, fish_text(segments, keys.tts_model))
             except Exception:
                 await use.give_back()
                 raise
