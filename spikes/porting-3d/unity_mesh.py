@@ -17,12 +17,16 @@ STREAM_ALIGNMENT = 16
 # Unity's VertexAttributeFormat for the subset MLTD meshes actually use.
 _FLOAT32 = 0
 _UNORM8 = 2
+_UINT32 = 10
 _SINT32 = 11
 
 _FORMATS = {
     _FLOAT32: ("f", 4),
     _UNORM8: ("B", 1),
     _SINT32: ("i", 4),
+    # Bone indices widened to 32 bits; older revisions of the exporter only
+    # ever saw the 8-bit form.
+    _UINT32: ("I", 4),
 }
 
 
