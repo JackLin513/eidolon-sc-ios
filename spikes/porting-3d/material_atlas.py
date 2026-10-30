@@ -85,9 +85,9 @@ SHADER_KINDS = {
     # `Chr_CutOff` is `Chr_Basic` plus
     # `if (mainTex.a * _Color.a < _AlphaTestValue) discard;`.
     "Custom/Chr_CutOff": 1,
-    # `Chr_Alpha` is the blended sibling of the same family; until its blend
-    # maths is ported it draws through the Basic branch.
-    "Custom/Chr_Alpha": 1,
+    # `Chr_Alpha` blends: same shading as Basic, but the fragment keeps its
+    # alpha and the host switches the material to transparent blending.
+    "Custom/Chr_Alpha": 6,
     #  tints the base colour; until its maths is ported it draws
     # through the Basic branch.
     "Custom/Chr_Color": 1,
@@ -119,8 +119,11 @@ def value_of(material: dict, property_name: str, channel: str) -> float:
         name = material.get("__name", "")
         # Some cutouts use the plain `Chr_Basic_NoOutline` shader and only say so
         # in their name (`_02cut_m`, `_02alp_m`), so the shader is not enough.
-        if (shader.endswith("Chr_CutOff") or shader.endswith("Chr_Alpha")
-                or "cut" in name or "alp" in name):
+        if shader.endswith("Chr_Alpha"):
+            # It blends, so it must NOT be discarded — the name rule below would
+            # otherwise catch `_02alp_m` and punch holes in it.
+            return 0.0
+        if shader.endswith("Chr_CutOff") or "cut" in name or "alp" in name:
             return 1.0
     colours = material.get("colours", {})
     floats = material.get("floats", {})

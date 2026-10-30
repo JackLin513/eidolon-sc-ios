@@ -235,6 +235,9 @@ def build(
             return material_index[cache_key]
         pbr: dict = {"metallicFactor": 0.0, "roughnessFactor": 0.9}
         if info.image is not None:
+            # A blending material needs the alpha it was painted with; cutouts
+            # keep the black-keyed field the shader discards on. The two switches
+            # (this one and the shader's kind-6 opacity) must flip together.
             pbr["baseColorTexture"] = {
                 "index": add_image(
                     info.image, key, keep_alpha=info.shader == "Custom/Chr_Alpha"

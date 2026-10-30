@@ -20,6 +20,9 @@ struct MaterialParameters {
 
     private let texture: TextureResource
     private let rows: [String: Int]
+    /// Materials the game renders with alpha blending. They must keep their
+    /// alpha on the device and must not be given an outline pass.
+    private let blended: Set<String>
 
     static func load(atlas: URL, table: URL) async -> MaterialParameters? {
         guard let data = try? Data(contentsOf: table),
@@ -27,7 +30,9 @@ struct MaterialParameters {
               let rows = rowIndices(document),
               let texture = try? await TextureResource(contentsOf: atlas)
         else { return nil }
-        return MaterialParameters(texture: texture, rows: rows)
+        let blended = Set(document.materials.filter { $0.value.shader.hasSuffix("Chr_Alpha") }
+            .map(\.key))
+        return MaterialParameters(texture: texture, rows: rows, blended: blended)
     }
 
     private static func rowIndices(_ document: Document) -> [String: Int]? {
@@ -38,6 +43,10 @@ struct MaterialParameters {
               document.rows.count <= capacity
         else { return nil }
         return Dictionary(uniqueKeysWithValues: document.rows.enumerated().map { ($1, $0) })
+    }
+
+    func isBlended(_ material: String) -> Bool {
+        blended.contains(material)
     }
 
     /// The row index for a material name, or `nil` when the table does not know it.

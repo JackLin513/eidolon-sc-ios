@@ -67,6 +67,7 @@ constant float kKindGlow = 2.0;
 constant float kKindFace = 3.0;
 constant float kKindHair = 4.0;
 constant float kKindEye = 5.0;
+constant float kKindAlpha = 6.0;
 
 // The card textures are atlases; sampling their mip chain bleeds neighbouring
 // islands into each other, which showed up as colour patches on the hair. Clamp
@@ -341,6 +342,12 @@ void toonSurface(realitykit::surface_parameters params)
 
     float3 result;
 
+    // A blending material shades exactly like Basic; the only difference is that
+    // it keeps its alpha instead of writing 1. Fold it back before the Eye test,
+    // which would otherwise swallow anything above 5.
+    const bool blended = kind > kKindAlpha - 0.5f;
+    if (blended) { kind = kKindBasic; }
+
     if (kind > kKindEye - 0.5f) {
         // --- Bi_CharEye -------------------------------------------------
         // The catch-light is a white lerp masked by `_SubTex`'s alpha. The game
@@ -477,4 +484,9 @@ void toonSurface(realitykit::surface_parameters params)
     }
 
     writeColour(params, result);
+    if (blended) {
+        // RealityKit multiplies opacity into the blended result by itself, so
+        // this is the alpha and not a premultiplied colour.
+        params.surface().set_opacity(mainTexRaw.a);
+    }
 }

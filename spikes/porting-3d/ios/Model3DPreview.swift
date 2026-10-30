@@ -343,7 +343,7 @@ struct Model3DPreview: View {
             // faces culled and vertices pushed out along the normal. RealityKit
             // has no per-model second pass, so it is a cloned sibling.
             let outline = loaded.clone(recursive: true)
-            ToonShading.applyOutline(to: outline)
+            ToonShading.applyOutline(to: outline, parameters: materials)
             outline.name = loaded.name + "-outline"
             // Snapshot the old children before touching them: a load that was
             // cancelled after it had already installed its model leaves a body
