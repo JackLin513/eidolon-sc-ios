@@ -45,6 +45,7 @@ Label: wayfinder:map
 - [调研：NovelAI 非自拍构图和多角色](issues/03-novelai-composition-research.md)：七种构图由她选枚举、服务器补前后缀；无人构图 `no humans` 打头；抓拍靠去掉看镜头、补视线和 `depth of field`；V5 Curated 支持多角色提示框，OpenAI 形态中转不支持；合照只做两人、只在 NovelAI 形态、原型 6 张过 5 张才进 v1；`viewer holding phone`、`solo focus` 要进黑名单；测试矩阵最多 20 张。
 - [原型：配图实测](issues/04-post-image-prototype.md)：22 张实测像朋友圈，七种构图都做、实拍风不做；无人构图压得住画风；合照两人和三人都进 v1（只在 NovelAI 形态，不用坐标）；风景和合照用 1216×832 横图，其余竖图；风景缺「在日本」的线索，桌边抓拍会看镜头，留给提示词细节。
 - [原型：入口和朋友圈页面](issues/05-entry-and-page-prototype.md)：导航加第四项「朋友圈」（导航栏和 dock 都加，关掉时不出现），有新动态时它上面一个点；页面是一栏时间线，赞和评论铺在每条下面，「⋯」里赞和评论；她的回复露出前不留痕迹；不做按角色筛选。
+- [拍板：发布节奏和调度](issues/07-cadence-and-scheduling.md)：活跃照搭话的「联系」（7 天）；东京每天排一次计划，够格的角色按档位掷骰（亲密约 80%、亲近 50%、信任 25%），生日必发，超过 N 先留生日；按时段加权抽时间，工作那条在做完后发；到点生成，失败不补，配图失败发纯文字；配图让照片插队；后台一项放开关、N、回评论上限。
 
 ## Not yet specified
 
