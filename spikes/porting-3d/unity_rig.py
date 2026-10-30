@@ -19,6 +19,8 @@ from unity_mesh import (
     stream_strides,
 )
 
+from UnityPy.export.Texture2DConverter import parse_image_data
+
 from material_params import is_cutout, keywords
 
 # Unity channel indices. The offsets differ per mesh, so they are read from the
@@ -62,6 +64,48 @@ def _texture_image(environment):
         return None
 
 
+def _cubemap_faces(environment):
+    """The six faces of a Cubemap, in `+X -X +Y -Y +Z -Z` order.
+
+    UnityPy's `image` decodes the first mip of the first face only, so the blob
+    is sliced per face and each slice decoded on its own. These are 32x32
+    reflections; the top mip is all that matters for a matcap.
+    """
+    try:
+        texture = environment.m_Texture.read()
+    except Exception:
+        return None
+    if type(texture).__name__ != "Cubemap":
+        return None
+    try:
+        data = texture.get_image_data()
+    except Exception:
+        return None
+    if not data:
+        return None
+    faces = []
+    per_face = len(data) // 6
+    version = getattr(texture.object_reader, "version", (0, 0, 0, 0))
+    for index in range(6):
+        chunk = data[index * per_face : (index + 1) * per_face]
+        try:
+            faces.append(
+                parse_image_data(
+                    chunk,
+                    texture.m_Width,
+                    texture.m_Height,
+                    texture.m_TextureFormat,
+                    version,
+                    0,
+                    None,
+                    False,
+                )
+            )
+        except Exception:
+            return None
+    return faces
+
+
 def read_material(env, pointer) -> MaterialInfo:
     """The two texture slots the game's character shaders actually use.
 
@@ -78,19 +122,37 @@ def read_material(env, pointer) -> MaterialInfo:
         pass
     image = None
     glow = None
+    cube = None
+    bump = None
+    cube2d = None
     for entry in material.m_SavedProperties.m_TexEnvs or []:
         name, environment = entry[0], entry[1]
         if name == "_MainTex":
             image = _texture_image(environment)
         elif name == "_SubTex":
             glow = _texture_image(environment)
+        elif name == "_BumpMap" and shader.endswith("Chr_Span"):
+            bump = _texture_image(environment)
+        elif name == "_Cube2D" and shader.endswith("Chr_Span"):
+            cube2d = _texture_image(environment)
+        elif name == "_Cube" and "_USEREFLECT_ON" in keywords(material):
+            # Every material carries a `_Cube` slot; only the keyword says the
+            # shader samples it, and one of the two is a 128x64 PNG per material.
+            cube = _cubemap_faces(environment)
     floats = {
         name: float(value)
         for name, value in (material.m_SavedProperties.m_Floats or [])
     }
     cutoff = is_cutout(shader, material.m_Name or "", keywords(material), floats)
     return MaterialInfo(
-        name=material.m_Name, image=image, glow=glow, shader=shader, cutoff=cutoff
+        name=material.m_Name,
+        image=image,
+        glow=glow,
+        shader=shader,
+        cutoff=cutoff,
+        cube=cube,
+        bump=bump,
+        cube2d=cube2d,
     )
 
 
@@ -115,6 +177,12 @@ class MaterialInfo:
     # The game alpha-tests this material, so its texture keeps a real alpha
     # channel and the shader discards on it.
     cutoff: bool = False
+    # `_Cube`: six square faces, +X -X +Y -Y +Z -Z, for `_USEREFLECT_ON`.
+    cube: list | None = None
+    # `Chr_Span`'s two effect maps: the noise normal that perturbs the lookup
+    # and the sparkle dot pattern it lands on.
+    bump: object | None = None
+    cube2d: object | None = None
 
 
 @dataclass

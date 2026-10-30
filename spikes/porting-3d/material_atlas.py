@@ -75,6 +75,13 @@ LAYOUT: list[tuple[str, str]] = [
     # far below one byte's resolution, so it is stored x1000.
     ("_Outline", "x1000"),
     ("_TanFov", "-"),
+    # `_USEREFLECT_ON` is a view-space matcap reflection on mirror accessories
+    # and a few guest garments. `_Reflection` runs 0.1…1.32, which one byte can
+    # only hold at x100. `_UseReflect` is the keyword, because every material
+    # carries a `_Reflection` default and only the keyword says it is used.
+    ("_UseReflect", "-"),
+    ("_Reflection", "u4"),
+    ("_NormMapMag", "-"),
 ]
 
 # Rows the atlas is sized for. The shader's V coordinate is
@@ -94,7 +101,7 @@ SHADER_KINDS = {
     # through the Basic branch.
     "Custom/Chr_Color": 1,
     # `Chr_Span` draws flat decorative pieces; Basic branch until ported.
-    "Custom/Chr_Span": 1,
+    "Custom/Chr_Span": 7,
     "Custom/Chr_Glow": 2,
     "Custom/Chr_Face": 3,
     "Custom/Chr_Face_NoOutline": 3,
@@ -123,6 +130,8 @@ def value_of(material: dict, property_name: str, channel: str) -> float:
             material.get("keywords") or [],
             material.get("floats") or {},
         ) else 0.0
+    if property_name == "_UseReflect":
+        return 1.0 if "_USEREFLECT_ON" in (material.get("keywords") or []) else 0.0
     colours = material.get("colours", {})
     floats = material.get("floats", {})
     if channel in _COLOUR_CHANNELS:
@@ -137,6 +146,8 @@ def encode(channel: str, value: float) -> int:
         value = value / 2.0 + 0.5 if channel == "s2" else (value + 1.0) / 2.0
     elif channel == "x1000":
         value = value * 1000.0
+    elif channel == "x100":
+        value = value * 100.0
     elif channel in ("u2", "u4", "u8"):
         value = value / float(channel[1])
     return max(0, min(255, round(value * 255)))
