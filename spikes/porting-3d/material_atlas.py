@@ -15,6 +15,8 @@ The order below is the contract with `ToonShading.metal`'s `kParam*` constants.
 
 from __future__ import annotations
 
+from material_params import is_cutout
+
 from PIL import Image
 
 # (property, channel). Channels: r/g/b/a and x/y/z/w read a colour component
@@ -111,20 +113,16 @@ def value_of(material: dict, property_name: str, channel: str) -> float:
         # Scaled by ten so the byte carries the kind exactly.
         return SHADER_KINDS.get(material.get("shader", ""), 0) / 10.0
     if property_name == "_IsCutOff":
-        # The flag is not stored on these materials; the shader name is the
-        # statement that they clip. `Chr_Alpha` clips too — its blend maths is
-        # not ported yet, and without the cutout its transparent field (painted
-        # black by the exporter) shows up as a solid black patch.
-        shader = material.get("shader", "")
-        name = material.get("__name", "")
-        # Some cutouts use the plain `Chr_Basic_NoOutline` shader and only say so
-        # in their name (`_02cut_m`, `_02alp_m`), so the shader is not enough.
-        if shader.endswith("Chr_Alpha"):
-            # It blends, so it must NOT be discarded — the name rule below would
-            # otherwise catch `_02alp_m` and punch holes in it.
-            return 0.0
-        if shader.endswith("Chr_CutOff") or "cut" in name or "alp" in name:
-            return 1.0
+        # Our own proxy for "the game alpha-tests this material": `_IsCutOff`
+        # is not a uniform in any decompiled shader, the real switch is the
+        # `_ISCUTOFF_ON` keyword. Same rule the exporter uses, so the atlas and
+        # the glTF `alphaMode` cannot disagree.
+        return 1.0 if is_cutout(
+            material.get("shader", ""),
+            material.get("__name", ""),
+            material.get("keywords") or [],
+            material.get("floats") or {},
+        ) else 0.0
     colours = material.get("colours", {})
     floats = material.get("floats", {})
     if channel in _COLOUR_CHANNELS:

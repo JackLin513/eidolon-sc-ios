@@ -19,6 +19,8 @@ from unity_mesh import (
     stream_strides,
 )
 
+from material_params import is_cutout, keywords
+
 # Unity channel indices. The offsets differ per mesh, so they are read from the
 # mesh's own channel table rather than assumed: `cb_pr001` carries a vertex
 # colour in stream 1 and therefore puts UV at offset 4, while `cb_ss003` has no
@@ -82,7 +84,14 @@ def read_material(env, pointer) -> MaterialInfo:
             image = _texture_image(environment)
         elif name == "_SubTex":
             glow = _texture_image(environment)
-    return MaterialInfo(name=material.m_Name, image=image, glow=glow, shader=shader)
+    floats = {
+        name: float(value)
+        for name, value in (material.m_SavedProperties.m_Floats or [])
+    }
+    cutoff = is_cutout(shader, material.m_Name or "", keywords(material), floats)
+    return MaterialInfo(
+        name=material.m_Name, image=image, glow=glow, shader=shader, cutoff=cutoff
+    )
 
 
 def read_main_texture(env, renderer):
@@ -103,6 +112,9 @@ class MaterialInfo:
     image: object | None
     glow: object | None = None
     shader: str = ""
+    # The game alpha-tests this material, so its texture keeps a real alpha
+    # channel and the shader discards on it.
+    cutoff: bool = False
 
 
 @dataclass

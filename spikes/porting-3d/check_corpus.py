@@ -26,6 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from material_atlas import CAPACITY, LAYOUT, SHADER_KINDS
+from material_params import is_cutout
 
 HERE = Path(__file__).resolve().parent
 METAL = HERE / "ios" / "ToonShading.metal"
@@ -95,6 +96,37 @@ def check_model(materials_path: Path) -> dict:
         for slot in OPTIONAL_TEXTURES:
             if slot not in textures:
                 warnings.append(f"{material_name} 没有 {slot}")
+
+    # A cutout draws its shape with the alpha channel and the shader discards on
+    # `a < 0.5`. If the texture came back opaque — `cutout_safe()` did that until
+    # 2026-10-30 — the shader never discards and the decal shows as a solid
+    # block. Two things have to hold: a real alpha channel in the PNG, and
+    # `alphaMode: MASK` in the glTF so Blender wires it through to USD.
+    gltf_path = materials_path.with_name(f"{name}.gltf")
+    gltf = json.loads(gltf_path.read_text()) if gltf_path.exists() else {"materials": []}
+    masked = {
+        material.get("name")
+        for material in gltf.get("materials", [])
+        if material.get("alphaMode") == "MASK"
+    }
+    for material_name, material in materials.items():
+        if not is_cutout(
+            material.get("shader", ""),
+            material_name,
+            material.get("keywords") or [],
+            material.get("floats") or {},
+        ):
+            continue
+        if material_name not in masked:
+            errors.append(f"{material_name} 是裁切材质，但 glTF 没标 alphaMode MASK")
+        candidates = sorted((materials_path.parent / "textures").glob(f"*_{material_name}.png"))
+        if not candidates:
+            continue
+        from PIL import Image
+
+        alpha = Image.open(candidates[0]).convert("RGBA").getchannel("A")
+        if min(alpha.getdata()) > 20:
+            errors.append(f"{material_name} 是裁切材质，但贴图 alpha 最低只有 {min(alpha.getdata())}")
 
     atlas_path = materials_path.with_name(f"{name}-params.png")
     if not atlas_path.exists():
