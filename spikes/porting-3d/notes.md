@@ -427,3 +427,25 @@ RealityKit 采样会线性化、输出也期望线性，所以 `ToonShading.meta
   缩放被应用两次；换装时容器残留上一次变换，而 `visualBounds(relativeTo:)` 是世界坐标，
   会一路累积。现在每次加载先把容器归零。另外实测默认相机不是盯着内容原点，居中后她在
   画面偏下，所以按半个模型高度抬了一点。
+
+## 2026-10-30 已知缺口（全角色上线时留的账）
+
+按优先级，都是已知未做，不是未知问题：
+
+1. **`Chr_Alpha` 的混合数学没移植**。现在靠"近黑即透明"的硬裁切顶上，半透明边缘
+   是硬的（美希吊坠边缘可见）。原始 Metal 在 `METAL/Custom__Chr_Alpha__*`。
+2. **描边外扩方向用的是 NORMAL，游戏用 TANGENT 通道里的硬法线**。手臂、裙子这类
+   平滑过渡处描边会断。补法：读通道 2 → 八面体编码塞进空闲 UV 集 → `primvars:st2`
+   → 着色器解码。
+3. **描边缺深度偏移** `out.z -= 0.001 * lerp(_ZShift1000Min, _ZShift1000Max, T.z²)`，
+   游戏用它救轮廓 z-fighting。
+4. **描边宽度系数 0.0014 是量出来的**，不是从 `0.7 * k * _Outline` 推出来的
+   （Unity 的 `_ProjectionParams` / `_ScreenParams` 无法完整复原）。
+5. **几何修改器里 `normal()` 的空间未实测**，倾向 model-space；影响 `outlineVertex`
+   的外推方向，转模型时可能看得见。
+6. **geom shader 未覆盖的变体**：`_USEREFLECT_ON`、`MOSAIC_ON`、`_ISREDDISH_ON`。
+   体检脚本会把出现过的报成 warn。
+7. **HUD/眼睛高光以外的加法层**：`_FlashColor`、`_GuradeParams`、fog 等实测在默认
+   值下恒等，但换舞台/换服装后是否仍恒等未验证。
+8. **真机未验证**。所有像素实验都在 iOS 27 模拟器上；`ToneMappingComponent` 是
+   iOS 27 的未文档化组件。
