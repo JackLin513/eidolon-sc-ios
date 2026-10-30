@@ -66,6 +66,9 @@ export { History as PastConversationsIcon, SquarePen as NewConversationIcon } fr
 // 后台用户列表可以排序的表头：按它从多到少排着的，和还没按它排的（shadcn-redesign 22）。
 export { ArrowDown as SortedIcon, ArrowUpDown as SortableIcon } from "lucide-react";
 
+// 她的气泡菜单里的「朗读」，和下面语音条的播放、暂停（GLOSSARY.md「朗读」）。
+export { Pause as PauseVoiceIcon, Play as PlayVoiceIcon, Volume2 as ReadAloudIcon } from "lucide-react";
+
 // 通话层右上角的「只看文字」胶囊。
 export { Captions as TextOnlyIcon } from "lucide-react";
 

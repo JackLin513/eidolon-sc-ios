@@ -2,6 +2,8 @@ import type { AffinityChange, AffinityStatus } from "@/lib/affinity";
 import type { Provider } from "@/lib/signIn";
 import {
   forgetOwnKeys,
+  readAloudModel,
+  readAloudOwnKeys,
   turnOwnKeys,
   type BailianRegion,
   type FishAudioModel,
@@ -19,6 +21,7 @@ import type { VisitEvent } from "@/lib/barVisit";
 import type { Rewarded } from "@/lib/rewards";
 import { detectTimezone } from "@/lib/timezone";
 import type { Speaking } from "@/lib/call";
+import type { Said } from "@/lib/readAloud";
 import type { Emotion, Nod } from "@/lib/standAnimations";
 import type { Stats, StatsRange } from "@/lib/stats";
 
@@ -475,6 +478,9 @@ export type Account = {
   reach_outs: boolean | null;
   cycles: boolean | null;
   sponsor_version: string | null;
+  /** Whether the deployer has a key for speech synthesis now: her words are read aloud on it for those
+   * who keep none of their own in this browser (GLOSSARY.md「朗读」). */
+  deployer_tts: boolean;
 };
 
 /** Where the deployer's sponsor code of `version` (`Account.sponsor_version`) is read: a new address for
@@ -889,15 +895,33 @@ export async function getCallSetup(conversationId: string, own: readonly OwnServ
 
 /**
  * Sends one text turn, bringing the user's own LLM (as `own_keys`) if this browser keeps one for
- * them, and yields the reply's server-sent events as they arrive.
+ * them, and the model of their own key for speech synthesis, without the key, for her to write her
+ * delivery cues as it reads them (`read_aloud_model`, GLOSSARY.md「朗读」); and yields the reply's
+ * server-sent events as they arrive.
  */
 export async function* sendTurn(conversationId: string, text: string, userId: string): AsyncGenerator<TurnEvent> {
   const res = await api(`/api/conversations/${conversationId}/turns`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ text, own_keys: turnOwnKeys(userId) }),
+    body: JSON.stringify({ text, own_keys: turnOwnKeys(userId), read_aloud_model: readAloudModel(userId) }),
   });
   yield* serverSentEvents<TurnEvent>(res);
+}
+
+/**
+ * Her line read aloud (GLOSSARY.md「朗读」), as mp3, on the user's own key for speech synthesis if this
+ * browser keeps one for them (as `own_keys`), else on the deployer's. Throws as `json` does when it is
+ * not: a failure on the user's own key has the code `own_key`.
+ */
+export async function readAloud(said: Said, userId: string): Promise<ArrayBuffer> {
+  const line = said.kind === "reply" ? `messages/${said.id}` : `reach-outs/${said.id}`;
+  const res = await api(`/api/conversations/${said.conversationId}/${line}/read-aloud`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ own_keys: readAloudOwnKeys(userId) }),
+  });
+  if (!res.ok) await json(res);
+  return res.arrayBuffer();
 }
 
 /** The server-sent events of a response, each as it arrives; a refusal thrown as `json` throws it. */
