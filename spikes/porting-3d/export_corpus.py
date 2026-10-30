@@ -60,6 +60,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--blender", required=True)
     parser.add_argument("--costume", default="pr001")
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--force", action="store_true",
+                        help="重导已有的模型（换了导出逻辑时需要）")
     args = parser.parse_args(argv)
 
     by_idol: dict[str, list[str]] = {}
@@ -77,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     for index, idol in enumerate(idols, 1):
         name = f"{idol}-{args.costume}"
         target = args.out / name
-        if (target / f"{name}.usdz").exists():
+        if (target / f"{name}.usdz").exists() and not args.force:
             skipped += 1
             continue
         body, head = pair(idol, by_idol[idol], args.costume)
