@@ -15,15 +15,23 @@
 		28E1D1F65D00588EA9601DA3 /* TraceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D48DCFB6F0FC0D93BD033FC6 /* TraceListView.swift */; };
 		2AB7F50E81201BDD5EE6B1EC /* BarTutorialUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A409D36FC5F7C23FD61FFB /* BarTutorialUITests.swift */; };
 		2CF24EECC30E051467FA4D35 /* MicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */; };
+		2DC8BFCFABF2EFF1C03EA9A2 /* mirai-ss003-materials.json in Resources */ = {isa = PBXBuildFile; fileRef = EDCB50A245F1E6DF95006203 /* mirai-ss003-materials.json */; };
 		36C86D8435661F4A422CF168 /* BarSettingsBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4EC9179658A248DC6D0E540 /* BarSettingsBox.swift */; };
+		39959392B68279D7A5CB561F /* Model3DResourceLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8205D3A435DC9E25ABA87ED2 /* Model3DResourceLocator.swift */; };
 		3B581C7316F3F7567E6CF0E1 /* StandThumbnails.swift in Sources */ = {isa = PBXBuildFile; fileRef = F51D53D2BDB3163C8344025C /* StandThumbnails.swift */; };
 		4235DD89FDB9280BFC39D5E1 /* BarCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85A4199D7AAE978829BFEC9 /* BarCanvas.swift */; };
 		4B6C40186ED37643BD5ED1EE /* BarSound.swift in Sources */ = {isa = PBXBuildFile; fileRef = D97FA6838C4D87D4724543C3 /* BarSound.swift */; };
 		50FF16442DF243C8411FF741 /* SonioxRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */; };
 		58D49346C2362E8BD2497083 /* BarRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F84087F773F0C23692413FF7 /* BarRoomView.swift */; };
 		5F55056A446CF6F4D61A7E16 /* BarJukeboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3A3CDE40EDED61EECF1DBF1 /* BarJukeboxView.swift */; };
+		60652B1C150CA0F816F626FC /* Model3DResourceLocatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EC0942EFD597EBEC749B32B /* Model3DResourceLocatorTests.swift */; };
+		69AA6AE6248EDE2C7DE24C39 /* Model3DAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2175E8704E12B73FF5C33433 /* Model3DAction.swift */; };
 		6ADC1F5313FCC7F5003E1676 /* stand-player.js in Resources */ = {isa = PBXBuildFile; fileRef = 54B11631789B9A8BDAE83193 /* stand-player.js */; };
+		6B71B4175DBB52E65D48F03A /* Model3DOutfit.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDC46B44103FF59A4FB86496 /* Model3DOutfit.swift */; };
+		78007BED4F9B26488899A530 /* MaterialParameters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C5E7CE1F0FD2DCC185E5C13 /* MaterialParameters.swift */; };
 		791DD675A29C48B88185FACE /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE21F722ED79A2089F060B7F /* Theme.swift */; };
+		7AA374AB9FFD47CC6E454D4D /* mirai-pr001-materials.json in Resources */ = {isa = PBXBuildFile; fileRef = A318B37F68432043597136CF /* mirai-pr001-materials.json */; };
+		7AF7471C5757A94078DF4755 /* mirai-ss003-params.png in Resources */ = {isa = PBXBuildFile; fileRef = E5120FF14A96904289280EE1 /* mirai-ss003-params.png */; };
 		8ABC906B631EDC9CC6BC2529 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 502579B7DFF941BAC28ADE49 /* AppIcon.icon */; };
 		8F700315EAE8C6E59429BD0F /* BarTextBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B8F3B95D300DF671C5E5C20 /* BarTextBox.swift */; };
 		8FDA81B5B65A7F24FDDE1659 /* ChatSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730259B31CD6DBF3CA44FC75 /* ChatSettings.swift */; };
@@ -35,11 +43,18 @@
 		9E2C6AC25E575F7C295ADD54 /* BarVisitState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74FD1739419C49E74E2FE9D0 /* BarVisitState.swift */; };
 		A186A188093AEB3E98E1E96A /* BarGuest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 889A8316C35EBB240F4D78A2 /* BarGuest.swift */; };
 		A1B405F9250C7DCD499A4A7E /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77736DA8D3A8B0B2407A626B /* ChatView.swift */; };
+		A57D2BEF021C276FBF578FAA /* EidolonCore in Frameworks */ = {isa = PBXBuildFile; productRef = 81A2113C8E0F8AA63E757F0E /* EidolonCore */; };
+		A76218A96723F4A20738503A /* Eidolon3DSpikeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D506F2365F6B8776ADBA6E3B /* Eidolon3DSpikeApp.swift */; };
 		A84B266827D901F32D324DA5 /* StandRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B65BE210B02CA6A488C94D /* StandRenderer.swift */; };
+		A8D18A43B4FCA29403725994 /* Model3DPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 205CB6BD80B1B6CD74710437 /* Model3DPreview.swift */; };
+		B010CCC803CFEEBE43FD2104 /* ToonShading.metal in Sources */ = {isa = PBXBuildFile; fileRef = 3E5ED037CA30074A04051624 /* ToonShading.metal */; };
 		B2DF1A14F646EDBA6EAECF48 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2610401DD1C29D8D7AB56C /* SettingsView.swift */; };
+		B7EB6C292E0E730824C78638 /* mirai-pr001-params.png in Resources */ = {isa = PBXBuildFile; fileRef = 504D8B8B2AF718553C19C3B0 /* mirai-pr001-params.png */; };
 		BBCD2E47044DFC5DAB92ED57 /* CallSettingsError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */; };
 		C375B67690EAE8B5B255A1B3 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1FF6012F255268462E4A685 /* Keychain.swift */; };
+		C4EA345C755A3DA4A6752728 /* ToonShading.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67AB6B0F5CA7C4BC436DD33C /* ToonShading.swift */; };
 		C5B1C51FBA6F57968A704048 /* StandPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A39D03BFDD50261F07F298 /* StandPreviewView.swift */; };
+		C7298E900405AC491176EC95 /* mirai-ss003.usdz in Resources */ = {isa = PBXBuildFile; fileRef = A2C4BC7668252B756B23FADB /* mirai-ss003.usdz */; };
 		CABF61FA71D8DD24099824B3 /* ConversationHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */; };
 		CD54EB8286C493A259743A6D /* SpeechPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362E0BAAF16B958F406E1E08 /* SpeechPlayback.swift */; };
 		CE9A6DFCD019D9A5DEBFC3CA /* BarPixelViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D2BD6185831DEBBED2FA62 /* BarPixelViews.swift */; };
@@ -48,6 +63,8 @@
 		D7B2DC33734343A4F40D315A /* OutfitPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD7263A570545913D16486F1 /* OutfitPickerView.swift */; };
 		D87D5EF9B85BB39DEBD561FB /* FishSynthesis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4472CA53E92E225069B1D652 /* FishSynthesis.swift */; };
 		E0F9B1FA2BA982860CDD2BC3 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A72BB12039666C937D7C04 /* RootView.swift */; };
+		E1C1580CD8047FBE51E5B6FF /* mirai-pr001.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 0BFBA3E20778C7E77E510753 /* mirai-pr001.usdz */; };
+		E4D536D8BC6FBB4EFFFC51A1 /* Model3DActionMapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3783EFF46823F05366835DED /* Model3DActionMapTests.swift */; };
 		EF42004562B67CC87DFCF565 /* StandWebRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1AD0F6ABD451EB0C733277C /* StandWebRenderer.swift */; };
 		FA5A10686839158B2C50E21D /* BarCounter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38B53BAD43DC896CF33D1635 /* BarCounter.swift */; };
 		FB74EA11C1B5E34D38ED3937 /* ChatStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA937E9DC437925E1DD0673 /* ChatStore.swift */; };
@@ -55,6 +72,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		98A0CE429175636506644CD8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 379E28C85FA2AD7FFACA899D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 409096EA304C27A90A4BC89C;
+			remoteInfo = Eidolon3DSpike;
+		};
 		D515522F817EFF089804E69D /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 379E28C85FA2AD7FFACA899D /* Project object */;
@@ -66,17 +90,27 @@
 
 /* Begin PBXFileReference section */
 		04FF4244E9E83A9501C1F19E /* EidolonCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = EidolonCore; path = EidolonCore; sourceTree = SOURCE_ROOT; };
+		0BFBA3E20778C7E77E510753 /* mirai-pr001.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = "mirai-pr001.usdz"; sourceTree = "<group>"; };
 		0E396CD6E4C64449524CEC32 /* EidolonIOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = EidolonIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		14A72BB12039666C937D7C04 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		17A409D36FC5F7C23FD61FFB /* BarTutorialUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarTutorialUITests.swift; sourceTree = "<group>"; };
 		1C41FC4F60852CC263CFA152 /* EidolonIOSUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = EidolonIOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		205CB6BD80B1B6CD74710437 /* Model3DPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model3DPreview.swift; sourceTree = "<group>"; };
+		2175E8704E12B73FF5C33433 /* Model3DAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model3DAction.swift; sourceTree = "<group>"; };
 		22B001CEBA8E13B70A91DA53 /* BarDoor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarDoor.swift; sourceTree = "<group>"; };
 		362E0BAAF16B958F406E1E08 /* SpeechPlayback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechPlayback.swift; sourceTree = "<group>"; };
+		3783EFF46823F05366835DED /* Model3DActionMapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model3DActionMapTests.swift; sourceTree = "<group>"; };
 		38579B2A473B296EC588CBD6 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		38B53BAD43DC896CF33D1635 /* BarCounter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarCounter.swift; sourceTree = "<group>"; };
+		3BB6834113612CC66D6FBF59 /* Eidolon3DSpike.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Eidolon3DSpike.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3E5ED037CA30074A04051624 /* ToonShading.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = ToonShading.metal; sourceTree = "<group>"; };
+		3EC0942EFD597EBEC749B32B /* Model3DResourceLocatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model3DResourceLocatorTests.swift; sourceTree = "<group>"; };
 		4472CA53E92E225069B1D652 /* FishSynthesis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FishSynthesis.swift; sourceTree = "<group>"; };
+		4C5E7CE1F0FD2DCC185E5C13 /* MaterialParameters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaterialParameters.swift; sourceTree = "<group>"; };
 		502579B7DFF941BAC28ADE49 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		504D8B8B2AF718553C19C3B0 /* mirai-pr001-params.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "mirai-pr001-params.png"; sourceTree = "<group>"; };
 		54B11631789B9A8BDAE83193 /* stand-player.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "stand-player.js"; sourceTree = "<group>"; };
+		67AB6B0F5CA7C4BC436DD33C /* ToonShading.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToonShading.swift; sourceTree = "<group>"; };
 		6B9D77576080818CADE3BD64 /* BarRoomBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarRoomBackground.swift; sourceTree = "<group>"; };
 		6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallSettingsError.swift; sourceTree = "<group>"; };
 		6DA937E9DC437925E1DD0673 /* ChatStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStore.swift; sourceTree = "<group>"; };
@@ -89,9 +123,13 @@
 		78A39D03BFDD50261F07F298 /* StandPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandPreviewView.swift; sourceTree = "<group>"; };
 		7B8F3B95D300DF671C5E5C20 /* BarTextBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarTextBox.swift; sourceTree = "<group>"; };
 		7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportGuideView.swift; sourceTree = "<group>"; };
+		8205D3A435DC9E25ABA87ED2 /* Model3DResourceLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model3DResourceLocator.swift; sourceTree = "<group>"; };
 		889A8316C35EBB240F4D78A2 /* BarGuest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarGuest.swift; sourceTree = "<group>"; };
+		A2C4BC7668252B756B23FADB /* mirai-ss003.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = "mirai-ss003.usdz"; sourceTree = "<group>"; };
+		A318B37F68432043597136CF /* mirai-pr001-materials.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "mirai-pr001-materials.json"; sourceTree = "<group>"; };
 		A3A3CDE40EDED61EECF1DBF1 /* BarJukeboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarJukeboxView.swift; sourceTree = "<group>"; };
 		A530040A28709F9772A80A94 /* CallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallView.swift; sourceTree = "<group>"; };
+		A57E639525A66CC0A7B25C43 /* Eidolon3DSpikeTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = Eidolon3DSpikeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1AD0F6ABD451EB0C733277C /* StandWebRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandWebRenderer.swift; sourceTree = "<group>"; };
 		B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationHistoryView.swift; sourceTree = "<group>"; };
 		B4EC9179658A248DC6D0E540 /* BarSettingsBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarSettingsBox.swift; sourceTree = "<group>"; };
@@ -104,9 +142,13 @@
 		CE21F722ED79A2089F060B7F /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneCapture.swift; sourceTree = "<group>"; };
 		D48DCFB6F0FC0D93BD033FC6 /* TraceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceListView.swift; sourceTree = "<group>"; };
+		D506F2365F6B8776ADBA6E3B /* Eidolon3DSpikeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Eidolon3DSpikeApp.swift; sourceTree = "<group>"; };
 		D97FA6838C4D87D4724543C3 /* BarSound.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarSound.swift; sourceTree = "<group>"; };
 		DC2610401DD1C29D8D7AB56C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		DDC46B44103FF59A4FB86496 /* Model3DOutfit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model3DOutfit.swift; sourceTree = "<group>"; };
 		E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxRecognition.swift; sourceTree = "<group>"; };
+		E5120FF14A96904289280EE1 /* mirai-ss003-params.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "mirai-ss003-params.png"; sourceTree = "<group>"; };
+		EDCB50A245F1E6DF95006203 /* mirai-ss003-materials.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "mirai-ss003-materials.json"; sourceTree = "<group>"; };
 		F1FF6012F255268462E4A685 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		F51D53D2BDB3163C8344025C /* StandThumbnails.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandThumbnails.swift; sourceTree = "<group>"; };
 		F6567288D9C69EE4C18792B6 /* EidolonIOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EidolonIOSApp.swift; sourceTree = "<group>"; };
@@ -123,6 +165,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B6BD85093DCC258ED0F5D2F7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A57D2BEF021C276FBF578FAA /* EidolonCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -134,6 +184,23 @@
 			path = Traces;
 			sourceTree = "<group>";
 		};
+		131D643C424F7302A8765F93 /* ios */ = {
+			isa = PBXGroup;
+			children = (
+				D506F2365F6B8776ADBA6E3B /* Eidolon3DSpikeApp.swift */,
+				4C5E7CE1F0FD2DCC185E5C13 /* MaterialParameters.swift */,
+				2175E8704E12B73FF5C33433 /* Model3DAction.swift */,
+				DDC46B44103FF59A4FB86496 /* Model3DOutfit.swift */,
+				205CB6BD80B1B6CD74710437 /* Model3DPreview.swift */,
+				8205D3A435DC9E25ABA87ED2 /* Model3DResourceLocator.swift */,
+				3E5ED037CA30074A04051624 /* ToonShading.metal */,
+				67AB6B0F5CA7C4BC436DD33C /* ToonShading.swift */,
+				5BC7D1D32B813B39816B5F62 /* Resources */,
+				58A88DF2FEF92F0509D1821F /* tests */,
+			);
+			path = ios;
+			sourceTree = "<group>";
+		};
 		27A0BC2BCA46C88574A55902 = {
 			isa = PBXGroup;
 			children = (
@@ -141,8 +208,17 @@
 				8428DAC951AA7D13E5248556 /* EidolonIOS */,
 				991D60CA2AEEBFDA342B90D9 /* EidolonIOSUITests */,
 				ED13E42C912E265F1EE4F490 /* Packages */,
+				3EB1F5880C670DCB750E8547 /* spikes */,
 				D74BC4D4FEFFE9A287143AFF /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		3EB1F5880C670DCB750E8547 /* spikes */ = {
+			isa = PBXGroup;
+			children = (
+				82C758BF005E4C66ACF0CC1F /* porting-3d */,
+			);
+			path = spikes;
 			sourceTree = "<group>";
 		};
 		4EB1ECB7DD9E2A371CAEF70A /* Conversations */ = {
@@ -151,6 +227,28 @@
 				C40B7B5AA3042F29A949E938 /* ConversationListView.swift */,
 			);
 			path = Conversations;
+			sourceTree = "<group>";
+		};
+		58A88DF2FEF92F0509D1821F /* tests */ = {
+			isa = PBXGroup;
+			children = (
+				3783EFF46823F05366835DED /* Model3DActionMapTests.swift */,
+				3EC0942EFD597EBEC749B32B /* Model3DResourceLocatorTests.swift */,
+			);
+			path = tests;
+			sourceTree = "<group>";
+		};
+		5BC7D1D32B813B39816B5F62 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A318B37F68432043597136CF /* mirai-pr001-materials.json */,
+				504D8B8B2AF718553C19C3B0 /* mirai-pr001-params.png */,
+				0BFBA3E20778C7E77E510753 /* mirai-pr001.usdz */,
+				EDCB50A245F1E6DF95006203 /* mirai-ss003-materials.json */,
+				E5120FF14A96904289280EE1 /* mirai-ss003-params.png */,
+				A2C4BC7668252B756B23FADB /* mirai-ss003.usdz */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		625C6D73570D8E7071EBD5D4 /* Call */ = {
@@ -183,6 +281,14 @@
 				D6F678B9E8DDCE677E089EC3 /* Stand */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		82C758BF005E4C66ACF0CC1F /* porting-3d */ = {
+			isa = PBXGroup;
+			children = (
+				131D643C424F7302A8765F93 /* ios */,
+			);
+			path = "porting-3d";
 			sourceTree = "<group>";
 		};
 		8428DAC951AA7D13E5248556 /* EidolonIOS */ = {
@@ -304,6 +410,8 @@
 		D74BC4D4FEFFE9A287143AFF /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				3BB6834113612CC66D6FBF59 /* Eidolon3DSpike.app */,
+				A57E639525A66CC0A7B25C43 /* Eidolon3DSpikeTests.xctest */,
 				0E396CD6E4C64449524CEC32 /* EidolonIOS.app */,
 				1C41FC4F60852CC263CFA152 /* EidolonIOSUITests.xctest */,
 			);
@@ -334,6 +442,45 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		06050DC0201785DC2F2CCF35 /* Eidolon3DSpikeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 35FB224192641D89091120C2 /* Build configuration list for PBXNativeTarget "Eidolon3DSpikeTests" */;
+			buildPhases = (
+				9BE8B9D6B0B1B3733564F6B3 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9EF9D48D3B1365C32236B754 /* PBXTargetDependency */,
+			);
+			name = Eidolon3DSpikeTests;
+			packageProductDependencies = (
+			);
+			productName = Eidolon3DSpikeTests;
+			productReference = A57E639525A66CC0A7B25C43 /* Eidolon3DSpikeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		409096EA304C27A90A4BC89C /* Eidolon3DSpike */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C048A0FF2E199FD875ACB079 /* Build configuration list for PBXNativeTarget "Eidolon3DSpike" */;
+			buildPhases = (
+				013C32905B6C98A10D8B2F85 /* Ensure 3D preview resources exist */,
+				03903C82C4F54F3A9511BCE8 /* Sources */,
+				74B4D4CBD9D7C576E9B4D39D /* Resources */,
+				B6BD85093DCC258ED0F5D2F7 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Eidolon3DSpike;
+			packageProductDependencies = (
+				81A2113C8E0F8AA63E757F0E /* EidolonCore */,
+			);
+			productName = Eidolon3DSpike;
+			productReference = 3BB6834113612CC66D6FBF59 /* Eidolon3DSpike.app */;
+			productType = "com.apple.product-type.application";
+		};
 		7E0134A9C2A2E0997CA04BE7 /* EidolonIOSUITests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 844E55BEB67336C073C47049 /* Build configuration list for PBXNativeTarget "EidolonIOSUITests" */;
@@ -382,6 +529,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					409096EA304C27A90A4BC89C = {
+						DevelopmentTeam = MFZ8WGP52J;
+						ProvisioningStyle = Automatic;
+					};
 					7E0134A9C2A2E0997CA04BE7 = {
 						DevelopmentTeam = FF7NMQWZKK;
 						ProvisioningStyle = Automatic;
@@ -412,11 +563,26 @@
 			targets = (
 				E750EECA85E66DE8B22D1663 /* EidolonIOS */,
 				7E0134A9C2A2E0997CA04BE7 /* EidolonIOSUITests */,
+				409096EA304C27A90A4BC89C /* Eidolon3DSpike */,
+				06050DC0201785DC2F2CCF35 /* Eidolon3DSpikeTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		74B4D4CBD9D7C576E9B4D39D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7AA374AB9FFD47CC6E454D4D /* mirai-pr001-materials.json in Resources */,
+				B7EB6C292E0E730824C78638 /* mirai-pr001-params.png in Resources */,
+				E1C1580CD8047FBE51E5B6FF /* mirai-pr001.usdz in Resources */,
+				2DC8BFCFABF2EFF1C03EA9A2 /* mirai-ss003-materials.json in Resources */,
+				7AF7471C5757A94078DF4755 /* mirai-ss003-params.png in Resources */,
+				C7298E900405AC491176EC95 /* mirai-ss003.usdz in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E7845145510D0ED36912924B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -430,6 +596,25 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		013C32905B6C98A10D8B2F85 /* Ensure 3D preview resources exist */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Ensure 3D preview resources exist";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "mkdir -p \"${SRCROOT}/spikes/porting-3d/ios/Resources\"\nfor name in mirai-pr001.usdz mirai-ss003.usdz; do\n  src=\"${SRCROOT}/spikes/porting-3d/ios/Resources/${name}\"\n  [ -f \"$src\" ] || : > \"$src\"\ndone\n";
+		};
 		B7575B81F03F56D78273AB23 /* 同步 Spine 运行时 */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -452,6 +637,21 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		03903C82C4F54F3A9511BCE8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A76218A96723F4A20738503A /* Eidolon3DSpikeApp.swift in Sources */,
+				78007BED4F9B26488899A530 /* MaterialParameters.swift in Sources */,
+				69AA6AE6248EDE2C7DE24C39 /* Model3DAction.swift in Sources */,
+				6B71B4175DBB52E65D48F03A /* Model3DOutfit.swift in Sources */,
+				A8D18A43B4FCA29403725994 /* Model3DPreview.swift in Sources */,
+				39959392B68279D7A5CB561F /* Model3DResourceLocator.swift in Sources */,
+				B010CCC803CFEEBE43FD2104 /* ToonShading.metal in Sources */,
+				C4EA345C755A3DA4A6752728 /* ToonShading.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		35F3F47F98BC46AAF4AF47CD /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -499,6 +699,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		9BE8B9D6B0B1B3733564F6B3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E4D536D8BC6FBB4EFFFC51A1 /* Model3DActionMapTests.swift in Sources */,
+				60652B1C150CA0F816F626FC /* Model3DResourceLocatorTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B73BEAE1518872813FF42296 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -510,6 +719,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		9EF9D48D3B1365C32236B754 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 409096EA304C27A90A4BC89C /* Eidolon3DSpike */;
+			targetProxy = 98A0CE429175636506644CD8 /* PBXContainerItemProxy */;
+		};
 		DC5DA05B32B9FADD5B9EA47E /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = E750EECA85E66DE8B22D1663 /* EidolonIOS */;
@@ -642,6 +856,23 @@
 			};
 			name = Debug;
 		};
+		91DE3B00C2134AF22451B5DF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.jacklin.eidolon3dspike.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Eidolon3DSpike.app/Eidolon3DSpike";
+			};
+			name = Debug;
+		};
 		A3704641DD2CFBC811FDEEF8 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -700,6 +931,30 @@
 			};
 			name = Release;
 		};
+		CFA1B9F2DBF43D1F3102EE3F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = MFZ8WGP52J;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.3;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jacklin.eidolon3dspike;
+				PRODUCT_NAME = Eidolon3DSpike;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
 		DC004F2A9071B60BAE804E06 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -721,6 +976,47 @@
 			};
 			name = Debug;
 		};
+		E72046B45CE3FB67D704C9B1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.jacklin.eidolon3dspike.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Eidolon3DSpike.app/Eidolon3DSpike";
+			};
+			name = Release;
+		};
+		E93F49654802A92D6F8F8BA0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = MFZ8WGP52J;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.3;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jacklin.eidolon3dspike;
+				PRODUCT_NAME = Eidolon3DSpike;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -729,6 +1025,15 @@
 			buildConfigurations = (
 				334CE1257C4B5FDD9DA9B09B /* Debug */,
 				A3704641DD2CFBC811FDEEF8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		35FB224192641D89091120C2 /* Build configuration list for PBXNativeTarget "Eidolon3DSpikeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				91DE3B00C2134AF22451B5DF /* Debug */,
+				E72046B45CE3FB67D704C9B1 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -751,6 +1056,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		C048A0FF2E199FD875ACB079 /* Build configuration list for PBXNativeTarget "Eidolon3DSpike" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CFA1B9F2DBF43D1F3102EE3F /* Debug */,
+				E93F49654802A92D6F8F8BA0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -762,6 +1076,10 @@
 
 /* Begin XCSwiftPackageProductDependency section */
 		0BE53CDEEF5BB1E157A83EC1 /* EidolonCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = EidolonCore;
+		};
+		81A2113C8E0F8AA63E757F0E /* EidolonCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = EidolonCore;
 		};
