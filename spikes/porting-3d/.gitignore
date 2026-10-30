@@ -15,6 +15,9 @@ out/
 *-materials.json
 *-params.png
 
+# Skinned box written by export_character.py for the preview's camera fit.
+*-bounds.json
+
 # Decompiled shader source quoted line by line; conclusions live in ToonShading.metal.
 research-mltd-shading-math.md
 research-sheen-and-colour-gaps.md

@@ -304,12 +304,18 @@ struct Model3DPreview: View {
     }
 
     private func load(_ selected: Model3DOutfit) async {
-        guard let url = Model3DResourceLocator.locate(
-            environment: ProcessInfo.processInfo.environment,
-            documents: URL.documentsDirectory,
-            resourceRoot: Bundle.main.resourceURL,
-            fileName: selected.fileName
-        ) else {
+        // Discovery already found the USDZ beside its sidecars; only fall back
+        // to the shared locator for the bundled models, which have no folder.
+        let besideModel = selected.directory.appending(path: selected.fileName)
+        guard let url = FileManager.default.fileExists(atPath: besideModel.path)
+            ? besideModel
+            : Model3DResourceLocator.locate(
+                environment: ProcessInfo.processInfo.environment,
+                documents: URL.documentsDirectory,
+                resourceRoot: Bundle.main.resourceURL,
+                fileName: selected.fileName
+            )
+        else {
             if entity == nil {
                 phase = .failed("找不到 \(selected.fileName)")
             } else {
@@ -327,7 +333,14 @@ struct Model3DPreview: View {
             guard !Task.isCancelled else { return }
             let environment = ProcessInfo.processInfo.environment
             let locate: (String) -> URL? = { name in
-                Model3DResourceLocator.locate(
+                // The batch corpus keeps each outfit in its own folder, so the
+                // sidecars sit next to the USDZ rather than at Documents' root.
+                // Look there first; the shared locator only knows flat names.
+                let besideModel = url.deletingLastPathComponent().appending(path: name)
+                if FileManager.default.fileExists(atPath: besideModel.path) {
+                    return besideModel
+                }
+                return Model3DResourceLocator.locate(
                     environment: environment,
                     documents: URL.documentsDirectory,
                     resourceRoot: Bundle.main.resourceURL,
@@ -339,6 +352,17 @@ struct Model3DPreview: View {
                let table = locate(selected.materialsFileName) {
                 materials = await MaterialParameters.load(atlas: atlas, table: table)
             }
+            // Where the skeleton actually puts the figure, in model units.
+            // `visualBounds` reports the bind box, and for a model whose root
+            // joint carries a translation that box is a body height away from
+            // what gets drawn, so the camera would aim at empty air.
+            let drawnCentreY: Float? = locate("\(selected.id)-bounds.json")
+                .flatMap { try? Data(contentsOf: $0) }
+                .flatMap { try? JSONDecoder().decode(BoundsSidecar.self, from: $0) }
+                .flatMap { box in
+                    guard box.min.count > 1, box.max.count > 1 else { return nil }
+                    return (box.min[1] + box.max[1]) / 2
+                }
             // The container carries the last outfit's transform, and the bounds
             // sampled below are world-space, so the fit would compound the
             // previous scale and offset. Start from identity every load.
@@ -368,7 +392,7 @@ struct Model3DPreview: View {
             // that — a single early read sized the model anywhere from a quarter
             // to twice the intended height. Fit repeatedly and keep the largest
             // box seen.
-            guard await fitAfterSettle(loaded) else {
+            guard await fitAfterSettle(loaded, drawnCentreY: drawnCentreY) else {
                 // A cancelled load fails the fit by construction; that is not an
                 // error to report, the newer load owns the view now.
                 if Task.isCancelled { return }
@@ -412,68 +436,89 @@ struct Model3DPreview: View {
         try await Entity.load(contentsOf: url)
     }
 
-    /// Sample the bounds for a couple of seconds and fit to the **median**.
+    /// Fit once `visualBounds` has **converged**, not on a fixed timer.
     ///
-    /// `visualBounds` of a skinned model is not merely late to settle, it is
-    /// noisy: the same build framed her anywhere from 2% to 80% of the viewport
-    /// depending on which frame got read, and neither "first", "last" nor
-    /// "largest" was stable. A median over two dozen samples ignores both the
-    /// runaway small boxes and the transient huge ones.
-    private func fitAfterSettle(_ entity: Entity) async -> Bool {
+    /// Two things did not work. A fixed 2-second median was still unstable: the
+    /// same build opened with her head behind the Dynamic Island on one launch
+    /// and clear of it on the next. Reading the meshes instead is exact for
+    /// static geometry but wrong here — a skinned mesh reports its *bind* box,
+    /// and stage costumes are authored with joint scales that leave the drawn
+    /// figure anywhere from 1x to 2x that. The measurement that matters is the
+    /// one RealityKit actually draws with.
+    ///
+    /// So sample `visualBounds` until the height stops moving: the settle is a
+    /// decaying sequence, and six consecutive readings inside 2% is the point
+    /// where it has stopped. Capped at ~4 seconds for a model that never
+    /// settles at all, in which case the last reading is used.
+    private func fitAfterSettle(_ entity: Entity, drawnCentreY: Float? = nil) async -> Bool {
         addLights(to: entity)
-        var heights: [Float] = []
-        var centres: [SIMD3<Float>] = []
-        for _ in 0..<24 {
-            // `try?` here would swallow CancellationError and run all 24 samples
-            // anyway, so a superseded load would keep going and push its model
-            // into a container that already holds the next outfit's.
+        var history: [SIMD3<Float>] = []
+        for _ in 0..<50 {
             guard !Task.isCancelled else { return false }
-            let bounds = entity.visualBounds(relativeTo: nil)
-            if bounds.extents.y > 0.000_001 {
-                heights.append(bounds.extents.y)
-                centres.append(bounds.center)
+            let extents = entity.visualBounds(relativeTo: nil).extents
+            if extents.y > 0.000_001 {
+                history.append(extents)
+                let recent = history.suffix(6).map(\.y)
+                if recent.count == 6,
+                   let low = recent.min(), let high = recent.max(),
+                   high - low < high * 0.02 {
+                    break
+                }
             }
             do { try await Task.sleep(for: .milliseconds(80)) } catch { return false }
         }
-        guard !heights.isEmpty else { return false }
-
-        let height = heights.sorted()[heights.count / 2]
-        let centre = SIMD3<Float>(
-            centres.map(\.x).sorted()[centres.count / 2],
-            centres.map(\.y).sorted()[centres.count / 2],
-            centres.map(\.z).sorted()[centres.count / 2]
-        )
-        return fit(entity, height: height, centre: centre)
+        guard let extents = history.last else { return false }
+        return fit(entity, height: extents.y,
+                   centre: entity.visualBounds(relativeTo: nil).center, extents: extents,
+                   drawnCentreY: drawnCentreY)
     }
 
     /// The USDZ may come from any source; keep the camera useful regardless of its
     /// authored scale or origin. The fixed default camera is the preview framing;
     /// free orbit is intentionally not part of the parity surface.
     private func fit(
-        _ entity: Entity, height: Float? = nil, centre sampled: SIMD3<Float>? = nil
+        _ entity: Entity, height: Float? = nil, centre sampled: SIMD3<Float>? = nil,
+        extents known: SIMD3<Float>? = nil, drawnCentreY: Float? = nil
     ) -> Bool {
         let bounds = entity.visualBounds(relativeTo: nil)
-        guard bounds.extents.x > 0.000_001,
-              bounds.extents.z > 0.000_001
+        let extents = known ?? bounds.extents
+        guard extents.x > 0.000_001,
+              extents.z > 0.000_001
         else { return false }
         let extent = height ?? bounds.extents.y
         guard extent > 0.000_001 else { return false }
         if ProcessInfo.processInfo.environment["EIDOLON_3D_LOG_MATERIALS"] != nil {
-            print("[frame] extents=\(bounds.extents) centre=\(sampled ?? bounds.center)")
+            // `print` does not reach the simulator log, so the numbers a
+            // framing problem needs go to a file next to the models instead.
+            let line = "[frame] extents=\(extents) centre=\(sampled ?? bounds.center) "
+                + "drawn=\(String(describing: drawnCentreY)) known=\(known != nil)\n"
+            let url = URL.documentsDirectory.appending(path: "frame.log")
+            if let handle = try? FileHandle(forWritingTo: url) {
+                handle.seekToEndOfFile()
+                handle.write(Data(line.utf8))
+                try? handle.close()
+            } else {
+                try? Data(line.utf8).write(to: url)
+            }
         }
         // World units of height the model should occupy. Calibrated against the
         // settled bounds: 2.3 rendered her at 38% of the viewport height, so 4.2
         // lands near 70% with the head clear of the status bar.
         let targetHeight: Float = 2.1
         let scale = targetHeight / extent
-        let center = (sampled ?? bounds.center) * scale
+        let centre = sampled ?? bounds.center
+        let center = centre * scale
+        // The skinned box is where the figure actually stands; `visualBounds`
+        // can report the bind box instead, and that one can sit a whole body
+        // height away when the root joint carries a translation.
+        let centerY = (drawnCentreY ?? centre.y) * scale
         // Push the model away from the camera: the default RealityView camera
         // sits at the origin. Its look-at is above the content origin, though, so
         // centring her on the origin renders her low in the frame; half a model
         // height brings her back to the middle. Drag in move mode to shift her.
         // The control bar now carries a character row and an outfit row, so lift
         // her clear of it as well as centring her on the look-at.
-        basePosition = [-center.x, -center.y + extent * 0.62, -center.z - 1.0]
+        basePosition = [-center.x, -centerY + extent * 0.62, -center.z - 1.0]
         fittedPosition = basePosition
         appliedScale = scale
         baseScale = scale
@@ -503,4 +548,13 @@ struct Model3DPreview: View {
             * simd_quatf(angle: pitch, axis: [1, 0, 0])
         entity.addChild(light)
     }
+}
+
+/// `<stem>-bounds.json`: the box the skeleton draws, written by
+/// `spikes/porting-3d/skinned_bounds.py`. Only the Y centre is used — that is
+/// the axis RealityKit's bind box gets wrong — but the file carries all three
+/// so a future framing change does not need a re-export.
+private struct BoundsSidecar: Decodable {
+    let min: [Float]
+    let max: [Float]
 }

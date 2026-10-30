@@ -34,6 +34,7 @@ from gltf_export import (
 )
 from material_atlas import parameter_atlas
 from material_params import read_material_table
+from skinned_bounds import bounds_for
 from unity_mesh import flip_handedness
 from unity_rig import Node, load, read_nodes, read_skinned_meshes
 
@@ -495,7 +496,14 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
 
     document = build(arguments.body, arguments.head, arguments.out, arguments.name)
-    print(document.write(arguments.out, arguments.name))
+    path = document.write(arguments.out, arguments.name)
+    # RealityKit reports the build pose box for a skinned mesh, which for these
+    # rigs can sit a body height away from the figure the skeleton draws. The
+    # preview frames on this file instead, so every export must carry one.
+    bounds = path.with_name(f"{path.stem}-bounds.json")
+    bounds.write_text(json.dumps(bounds_for(path), indent=1) + "\n", encoding="utf-8")
+    print(path)
+    print(bounds)
     return 0
 
 

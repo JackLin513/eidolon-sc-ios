@@ -17,6 +17,9 @@ struct Model3DOutfit: Identifiable, Hashable {
     /// (`cb_pr001_014mir_01_m` → `014mir`). Grouping by it is what turns one flat
     /// list into a character picker.
     let character: String
+    /// Folder the three files live in. The batch corpus gives every outfit its
+    /// own directory, so the sidecars cannot be found by name alone.
+    let directory: URL
     let fileName: String
     let materialsFileName: String
     let parametersFileName: String
@@ -29,6 +32,7 @@ struct Model3DOutfit: Identifiable, Hashable {
         id: "mirai-pr001",
         title: "私服",
         character: "014mir",
+        directory: URL.documentsDirectory,
         fileName: "mirai-pr001.usdz",
         materialsFileName: "mirai-pr001-materials.json",
         parametersFileName: "mirai-pr001-params.png"
@@ -60,16 +64,23 @@ struct Model3DOutfit: Identifiable, Hashable {
     // MARK: - Discovery
 
     private static func discover() -> [Model3DOutfit] {
-        var roots: [URL] = [URL.documentsDirectory]
+        // Documents is ours alone, so it is walked recursively: the batch
+        // corpus puts every outfit in its own folder. The bundle is not — it
+        // carries thousands of framework files and walking it delayed the
+        // first model by seconds.
+        var roots: [(root: URL, recursive: Bool)] = [
+            (URL.documentsDirectory, true),
+            (URL.documentsDirectory.appending(path: "models"), true),
+        ]
         if let resources = Bundle.main.resourceURL {
-            roots.append(resources)
-            roots.append(resources.appending(path: "models"))
+            roots.append((resources, false))
+            roots.append((resources.appending(path: "models"), false))
         }
 
         var found: [Model3DOutfit] = []
         var seen = Set<String>()
-        for root in roots {
-            for materials in files(under: root, suffix: "-materials.json") {
+        for (root, recursive) in roots {
+            for materials in files(under: root, suffix: "-materials.json", recursive: recursive) {
                 let stem = materials.lastPathComponent
                     .replacingOccurrences(of: "-materials.json", with: "")
                 guard seen.insert(stem).inserted else { continue }
@@ -81,6 +92,7 @@ struct Model3DOutfit: Identifiable, Hashable {
                         id: stem,
                         title: title(for: stem),
                         character: character(in: materials),
+                        directory: materials.deletingLastPathComponent(),
                         fileName: usdz.lastPathComponent,
                         materialsFileName: materials.lastPathComponent,
                         parametersFileName: "\(stem)-params.png"
@@ -91,10 +103,18 @@ struct Model3DOutfit: Identifiable, Hashable {
         return found.sorted { $0.id < $1.id }
     }
 
-    /// Deliberately shallow: the app bundle carries thousands of framework
-    /// files, and walking it at launch delayed the first model by seconds.
-    /// Corpus models are dropped flat into the root or into a `models` folder.
-    private static func files(under root: URL, suffix: String) -> [URL] {
+    /// Shallow by default: the app bundle carries thousands of framework files,
+    /// and walking it at launch delayed the first model by seconds. Corpus
+    /// models are dropped flat into the root, into a `models` folder, or — for
+    /// a batch export — into one folder per outfit.
+    private static func files(under root: URL, suffix: String, recursive: Bool) -> [URL] {
+        if recursive {
+            guard let walker = FileManager.default.enumerator(
+                at: root, includingPropertiesForKeys: [.isRegularFileKey]
+            ) else { return [] }
+            return walker.compactMap { $0 as? URL }
+                .filter { $0.lastPathComponent.hasSuffix(suffix) }
+        }
         let contents = (try? FileManager.default.contentsOfDirectory(
             at: root, includingPropertiesForKeys: [.isRegularFileKey]
         )) ?? []
