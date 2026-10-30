@@ -434,8 +434,20 @@ RealityKit 采样会线性化、输出也期望线性，所以 `ToonShading.meta
 
 1. ~~**`Chr_Alpha` 的混合数学没移植**~~ —— 已补：材质切 `.transparent`，
    shader 用 `set_opacity(_MainTex.a)`。2026-10-30 在 003mik 吊坠上实测通过
-   （透明区能透出白衬衫）。**残留**：`_IsCutOff` 材质仍用"近黑即丢弃"替代真正的
-   `_MainTex.a < 0.5` 裁切，实测会误丢 795 个暗像素（占游戏保留像素 2.29%）。
+   （透明区能透出白衬衫）。
+1b. ~~**裁切用「近黑即丢弃」顶替**~~ —— 已换真 alpha（2026-10-30）：导出保留
+   alpha + glTF `alphaMode: MASK`，shader 判 `mainTexRaw.a < 0.5`。重导 32 套，
+   回补 8209 个被误丢的暗像素（0.659%）。游戏里的真开关是 keyword
+   `_ISCUTOFF_ON`；`_IsCutOff` 不是 shader uniform（1592 个文件里 0 次）。
+
+### 2026-10-30 描边色只有一种
+
+284 个有描边 pass 的材质，`_OutlineColor` 全是同一个值 `(0.353, 0.235, 0.118)`
+（#5A3C1E）。反编译的顶点着色器写 `2 * _IllumiColor * _OutlineColor`，
+`_IllumiColor` 恒为 0.5，所以壳色就是 `_OutlineColor` 本身；片元着色器只做
+`clamp(COLOR0.rgb * COLOR0.a)` 再过 fog/whiteness，**没有 ramp、没有逐角色染色**。
+实测渲染值 (89,61,34)/(94,61,30)，与数据逐位吻合。006mak 看起来怪是因为她的配色是
+冷灰头发 + 橄榄绿上衣，暖棕描边对比强——不是我们算错。
 2. **描边外扩方向用的是 NORMAL，游戏用 TANGENT 通道里的硬法线**。手臂、裙子这类
    平滑过渡处描边会断。补法：读通道 2 → 八面体编码塞进空闲 UV 集 → `primvars:st2`
    → 着色器解码。
