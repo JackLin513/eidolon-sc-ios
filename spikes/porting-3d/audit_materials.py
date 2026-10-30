@@ -4,11 +4,12 @@
 `check_corpus.py` asks whether a model will *load*. This asks whether it will
 *look right*, and specifically for the two defect classes found on 2026-10-30:
 
-  1. **透明贴图没被当成透明处理.** A material whose `_MainTex` carries
-     transparent texels, but which is neither blended (`Chr_Alpha`) nor a
-     cutout, draws those texels as opaque — and because `cutout_safe()`
-     zeroes RGB under transparency, "opaque" means pure black. This is the
-     003mik pendant bug at the data level, without needing a screenshot.
+  1. **透明像素里的颜色被洗掉.** MLTD paints real pieces into texels the
+     atlas marks transparent — the gs001 belt and its bustle piping are gold at
+     alpha 13 — and the opaque shaders draw them because they never test alpha.
+     The exporter used to zero the colour under transparent texels, which turned
+     every such trim black. This counts how much colour rides on transparency
+     so a regression shows up in the numbers rather than only on the screen.
 
   2. **描边壳套错了材质.** A material whose shader variant has no OUTLINE
      pass in the game (`*_NoOutline`) still gets a hull, and any material with
@@ -84,15 +85,19 @@ def texture_stats(image: Image.Image) -> dict:
     total = width * height
     transparent = 0
     near_black_opaque = 0
+    hidden_colour = 0
     for a, (r, g, b) in zip(alpha.getdata(), rgb.getdata()):
         if a < ALPHA_CUTOFF * 255:
             transparent += 1
+            if max(r, g, b) >= NEAR_BLACK * 255:
+                hidden_colour += 1
         elif max(r, g, b) < NEAR_BLACK * 255:
             near_black_opaque += 1
     return {
         "size": [width, height],
         "transparent": transparent / total,
         "near_black_opaque": near_black_opaque / total,
+        "hidden_colour": hidden_colour / total,
     }
 
 
@@ -146,11 +151,13 @@ def audit_model(directory: Path) -> dict:
 
         if image is not None:
             stats = texture_stats(image)
-            # 1. Transparent texels on a material that has no way to drop them.
-            if not blended and not cutout and stats["transparent"] > TRANSPARENT_SHARE:
-                errors.append(
-                    f"{material_name}（{shader}）贴图有 {stats['transparent']:.1%} 透明像素，"
-                    f"但既不是 Chr_Alpha 也不是 cutout —— 会画成纯黑"
+            # 1. Colour riding on transparency. Legitimate on an opaque
+            #    shader, and the reason `cutout_safe()` had to go; reported so
+            #    that a batch export that strips it again is visible here.
+            if not blended and not cutout and stats["hidden_colour"] > TRANSPARENT_SHARE:
+                notes.append(
+                    f"{material_name}（{shader}）有 {stats['hidden_colour']:.1%} 的颜色藏在透明像素里"
+                    f"（不透明 shader 会照画，不能洗成黑色）"
                 )
             # 2. The stand-in test's collateral damage.
             if cutout and stats["near_black_opaque"] > NEAR_BLACK_SHARE:
@@ -220,7 +227,11 @@ def main(argv: list[str] | None = None) -> int:
     for report in reports:
         if not report["errors"] and not report["warnings"]:
             clean += 1
-            continue
+            # A clean model still has notes, and `--verbose` is the only way to
+            # see them; skipping the whole model hid the "colour under
+            # transparency" count behind a model that had nothing to fail on.
+            if not args.verbose or not report["notes"]:
+                continue
         status = "FAIL" if report["errors"] else "WARN"
         print(f"[{status}] {report['model']}（{report['materials']} 个材质）")
         for item in report["errors"]:

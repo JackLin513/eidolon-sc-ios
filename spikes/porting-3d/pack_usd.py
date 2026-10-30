@@ -240,8 +240,10 @@ def main() -> None:
         uvs = {}
     installed, deviation = inject_second_uv(stage, uvs) if uvs else (0, 0.0)
 
-    # Only `Chr_Alpha` blends in the game; the rest are cutouts, whose alpha the
-    # exporter has already flattened to 1.
+    # Only `Chr_Alpha` blends in the game, so it is the only material whose
+    # texture alpha may reach the material graph: the shader reads every other
+    # texture's alpha as a mask, and wiring it to opacity would make the whole
+    # costume fade.
     try:
         with open(source.rsplit(".", 1)[0] + "-materials.json") as handle:
             table = json.load(handle)["materials"]
