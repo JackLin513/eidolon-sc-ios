@@ -35,7 +35,7 @@ def materials_in(path: str) -> set[str]:
     return {o.read().m_Name for o in env.objects if o.type.name == "Material"} - {""}
 
 
-def pair(idol: str, files: list[str]) -> tuple[str | None, str | None]:
+def pair(idol: str, files: list[str], args_costume: str = "pr001") -> tuple[str | None, str | None]:
     body: str | None = None
     heads: list[tuple[int, str]] = []
     for path in files:
@@ -43,8 +43,13 @@ def pair(idol: str, files: list[str]) -> tuple[str | None, str | None]:
         if f"cb_pr001_{idol}_01_m" in mats and body is None:
             body = path
         if f"ch_pr001_{idol}_face_m" in mats and not any(m.startswith("cb_") for m in mats):
-            heads.append((len(mats), path))
-    head = min(heads)[1] if heads else None
+            # A head bundle can carry an accessory belonging to another costume
+            # (`ex007_acc01`, `ss010_acc01`). Those meshes are single-bone props
+            # and have no place on the model, so prefer a bundle whose parts all
+            # belong to the costume being exported.
+            foreign = [m for m in mats if m.startswith("ch_") and f"_{args_costume}_" not in m]
+            heads.append((len(foreign), len(mats), path))
+    head = min(heads)[2] if heads else None
     return body, head
 
 
@@ -75,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
         if (target / f"{name}.usdz").exists():
             skipped += 1
             continue
-        body, head = pair(idol, by_idol[idol])
+        body, head = pair(idol, by_idol[idol], args.costume)
         if not (body and head):
             print(f"[{index}/{len(idols)}] {idol} 缺{'本体' if not body else '头部'}，跳过")
             failed += 1

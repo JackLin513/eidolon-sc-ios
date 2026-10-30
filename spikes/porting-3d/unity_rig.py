@@ -205,17 +205,37 @@ def read_skinned_meshes(env) -> list[SkinnedMesh]:
                 else []
             ),
             colors=[],
-            weights=decode_channel(
-                stream(offsets[weight_channel.stream]),
-                strides[weight_channel.stream],
-                count,
-                weight_channel,
+            # Accessories bound to a single bone carry no weight channel at all
+            # and store one 32-bit index per vertex instead of four 8-bit ones.
+            # Unity is right to save the space; the decoder just has to read it.
+            weights=(
+                decode_channel(
+                    stream(offsets[weight_channel.stream]),
+                    strides[weight_channel.stream],
+                    count,
+                    weight_channel,
+                )
+                if len(channels) > CHANNEL_WEIGHTS
+                and channels[CHANNEL_WEIGHTS].dimension
+                else [(1.0, 0.0, 0.0, 0.0)] * count
             ),
-            joints=decode_channel(
-                stream(offsets[bone_channel.stream]),
-                strides[bone_channel.stream],
-                count,
-                bone_channel,
+            joints=(
+                [
+                    (j[0], 0, 0, 0)
+                    for j in decode_channel(
+                        stream(offsets[bone_channel.stream]),
+                        strides[bone_channel.stream],
+                        count,
+                        bone_channel,
+                    )
+                ]
+                if bone_channel.dimension == 1
+                else decode_channel(
+                    stream(offsets[bone_channel.stream]),
+                    strides[bone_channel.stream],
+                    count,
+                    bone_channel,
+                )
             ),
             triangles=decode_triangles(bytes(mesh.m_IndexBuffer), True),
         )
