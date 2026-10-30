@@ -116,7 +116,11 @@ def value_of(material: dict, property_name: str, channel: str) -> float:
         # not ported yet, and without the cutout its transparent field (painted
         # black by the exporter) shows up as a solid black patch.
         shader = material.get("shader", "")
-        if shader.endswith("Chr_CutOff") or shader.endswith("Chr_Alpha"):
+        name = material.get("__name", "")
+        # Some cutouts use the plain `Chr_Basic_NoOutline` shader and only say so
+        # in their name (`_02cut_m`, `_02alp_m`), so the shader is not enough.
+        if (shader.endswith("Chr_CutOff") or shader.endswith("Chr_Alpha")
+                or "cut" in name or "alp" in name):
             return 1.0
     colours = material.get("colours", {})
     floats = material.get("floats", {})
@@ -146,7 +150,7 @@ def parameter_atlas(materials: dict[str, dict]) -> tuple[Image.Image, list[str]]
     image = Image.new("RGBA", (len(LAYOUT), CAPACITY), (0, 0, 0, 0))
     pixels = image.load()
     for row, name in enumerate(order):
-        material = materials[name]
+        material = {**materials[name], "__name": name}
         for column, (property_name, channel) in enumerate(LAYOUT):
             byte = encode(channel, value_of(material, property_name, channel))
             pixels[column, row] = (0, 0, 0, byte)
