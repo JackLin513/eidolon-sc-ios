@@ -117,6 +117,8 @@ public struct FishSpeechRequest: Encodable, Sendable, Hashable {
     public var referenceID: String
     public var format: String
     public var normalize: Bool
+    /// Fish Audio's trade of speed for quality; nil leaves it to the service, as a call does
+    public var latency: String?
     public var pronunciationDictionary: [PronunciationDictionary]?
 
     public init(
@@ -124,12 +126,14 @@ public struct FishSpeechRequest: Encodable, Sendable, Hashable {
         referenceID: String,
         format: String = "mp3",
         normalize: Bool = true,
+        latency: String? = nil,
         readings: Readings = Readings()
     ) {
         self.text = text
         self.referenceID = referenceID
         self.format = format
         self.normalize = normalize
+        self.latency = latency
         pronunciationDictionary = readings.pronunciationDictionary
     }
 
@@ -138,6 +142,7 @@ public struct FishSpeechRequest: Encodable, Sendable, Hashable {
         case referenceID = "reference_id"
         case format
         case normalize
+        case latency
         case pronunciationDictionary = "pronunciation_dictionary"
     }
 }

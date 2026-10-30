@@ -26,6 +26,9 @@ final class AppModel {
     private(set) var importProgress: ImportProgress?
     private(set) var chatSettings = ChatSettings.load()
 
+    /// The chat's 朗读: one for the whole app, so only one line ever plays (spec #32).
+    let readAloud = ChatReadAloud()
+
     var chatProvider: (any ChatProvider)? {
         chatSettings.config.map { OpenAICompatibleChatProvider(config: $0) as any ChatProvider }
     }
@@ -286,6 +289,33 @@ final class AppModel {
     private func speechSynthesis(readings: Readings) -> any SpeechSynthesis {
         guard !chatSettings.fishAPIKey.isEmpty else { return UnvoicedSynthesis() }
         return FishSynthesis(apiKey: chatSettings.fishAPIKey, readings: readings)
+    }
+
+    // MARK: - 朗读
+
+    /// 朗读 her voice, if there is one: a Fish Audio key in settings and a `voice_id` in the
+    /// bundle. Without either the chat has no 朗读 button rather than one that fails (ADR-0011
+    /// keeps her words subtitles-only in that case).
+    func readAloudVoice(for character: CharacterConfig) -> CallVoice? {
+        guard !chatSettings.fishAPIKey.isEmpty,
+              let voiceID = character.voiceID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !voiceID.isEmpty
+        else { return nil }
+        return CallVoice(id: voiceID, model: chatSettings.fishModel)
+    }
+
+    /// One line, one request — upstream `read_aloud.py` asks Fish Audio for the whole line at
+    /// the selected quality rather than a call's streamed segments. The same key, voice and
+    /// readings as a call, so a line sounds the same read as it does spoken.
+    func readAloud(_ text: String, voice: CallVoice) async throws -> Data {
+        guard !chatSettings.fishAPIKey.isEmpty else { throw FishSynthesisError.missingKey }
+        let readings = (try? await core.readings()) ?? Readings()
+        return try await FishSynthesis(
+            apiKey: chatSettings.fishAPIKey,
+            readings: readings,
+            latency: ReadAloud.latency,
+            timeout: ReadAloud.timeout
+        ).synthesize(text, voice: voice)
     }
 
     func saveProducerProfile(_ profile: ProducerProfile) async throws {
