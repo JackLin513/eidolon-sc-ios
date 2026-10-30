@@ -111,8 +111,17 @@ enum ToonShading {
                 // exposes `name` as get-only, so anything `apply` builds is
                 // nameless and `isBlended("")` answers false — which is how the
                 // alpha materials ended up wearing a pure-black hull.
-                if let toon = material as? CustomMaterial,
-                   case .transparent = toon.blending { return material }
+                if let toon = material as? CustomMaterial {
+                    if case .transparent = toon.blending { return material }
+                    // Only five shader variants have an OUTLINE pass. A decal,
+                    // an eye or a cutout has a single pass, and the hull we
+                    // built for it has no `_OutlineColor` to draw with — the
+                    // black rectangle on 003mik's pendant was one of these.
+                    let value = toon.custom.value
+                    if value.y > 0.5, parameters?.hasOutline(row: Int(value.x)) == false {
+                        return material
+                    }
+                }
                 guard var outline = try? CustomMaterial(
                     surfaceShader: surface,
                     geometryModifier: vertex,

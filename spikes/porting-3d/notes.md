@@ -459,6 +459,32 @@ RealityKit 采样会线性化、输出也期望线性，所以 `ToonShading.meta
 和 052kao 纽扣花边（采样器 `clamp_to_edge` 吃掉平铺 UV）。根因与证据见本地
 `research-alpha-and-cutout.md`（逐行引用反编译源码，不进仓库）。
 
+### 2026-10-30 全语料普查：这两个问题的影响面
+
+修完那两个之后又做了一轮普查，确认「同类问题」不是只有那两个模型：
+
+1. **描边壳套错了材质（吊坠那类）**。去游戏自己的 `m_ParsedForm` 里数 pass：
+   只有 `Chr_Basic` / `Chr_Color` / `Chr_Face` / `Chr_Glow` / `Chr_Hair` /
+   `Chr_Span` 是两 pass（基础 pass + 描边 pass），其余全部单 pass。旁证是同名
+   的 `*_NoOutline` 兄弟 shader 一一对应存在，而 `Chr_CutOff` / `Chr_Alpha`
+   没有兄弟——它们本来就没有描边。
+   我们之前给**所有**材质都套壳：语料里 120 个 `Bi_CharEye`、29 个
+   `*_NoOutline`、12 个 `Chr_CutOff`、2 个 `Chr_Span` 都白套了。已改成按
+   shader 名白名单跳过。实测眼睛和 02cut 贴片的壳此前被深度/裁切挡住，肉眼看
+   不出来，但那是运气，不是正确。
+
+2. **平铺 UV（花边那类）比想的多**：464 个 primitive 里 241 个材质的 UV 越出
+   `[0,1]`，几乎是全语料。以前全部被 `clamp_to_edge` 拉成边框色，只是很多贴图
+   的边框色恰好接近本色，看不出来。换成 `address::repeat` 之后才和游戏一致。
+
+3. **透明贴图没有漏网的**：按图集里真正生效的 `_IsCutOff`（由 shader 名推导，
+   不是材质里的那个 float）逐材质核对，60 套里没有任何一个「有透明像素却没有
+   透明通路」的材质。有描边 pass 的 282 个材质全部带非零 `_OutlineColor`，
+   不会出现纯黑描边。
+
+工具：`audit_materials.py`（静态，查 shader/图集/贴图/UV）、`audit_outline.py`
+（拿开/关描边的两张截图做形态学差分，找出「消失一块」而不是「细一圈」的异常）。
+
 ## 2026-10-30 剩下 18 个角色解不出来的原因（已定位到通道表）
 
 对比同一份代码下的两个网格，`m_VertexData.m_Channels` 不一样：
