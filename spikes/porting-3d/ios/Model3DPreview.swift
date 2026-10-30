@@ -40,7 +40,13 @@ struct Model3DPreview: View {
 
     /// Inspection gestures. Orbit is a debug affordance, not the parity framing:
     /// the preview opens on the fixed front composition.
-    @State private var yaw: Float = 0
+    /// `EIDOLON_3D_YAW` (degrees) poses the model for screenshot runs.
+        /// `EIDOLON_3D_YAW` (degrees): a starting pose for screenshot runs.
+    private static var startingYaw: Float {
+        (Float(ProcessInfo.processInfo.environment["EIDOLON_3D_YAW"] ?? "0") ?? 0) * .pi / 180
+    }
+
+    @State private var yaw: Float = Model3DPreview.startingYaw
     @State private var pitch: Float = 0
     @State private var zoom: Float = Float(ProcessInfo.processInfo.environment["EIDOLON_3D_ZOOM"] ?? "1") ?? 1
     @State private var dragStart: SIMD2<Float>?
@@ -262,7 +268,7 @@ struct Model3DPreview: View {
 
     /// Double-tap: undo rotation, zoom and panning.
     private func resetInspection() {
-        yaw = 0
+        yaw = Self.startingYaw
         pitch = 0
         zoom = Float(ProcessInfo.processInfo.environment["EIDOLON_3D_ZOOM"] ?? "1") ?? 1
         basePosition = fittedPosition
