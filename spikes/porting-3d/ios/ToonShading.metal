@@ -70,19 +70,26 @@ constant float kKindEye = 5.0;
 constant float kKindAlpha = 6.0;
 
 // The card textures are atlases; sampling their mip chain bleeds neighbouring
-// islands into each other, which showed up as colour patches on the hair. Clamp
-// as well, so UVs a hair outside [0, 1] cannot wrap to the far edge. RealityKit
-// hands the shader unflipped UVs for USD textures, hence the 1 - uv.y.
+// islands into each other, which showed up as colour patches on the hair. Keep
+// `mip_filter::none` for that reason. RealityKit hands the shader unflipped UVs
+// for USD textures, hence the 1 - uv.y.
+//
+// `address::repeat`, not clamp: several decals are **tiled**, not unwrapped —
+// every triangle of 052kao's lace is outside [0, 1] (u in [-1.61, 2.17]). The
+// game's textures all import with `m_WrapU/V/W = 0` (Repeat), and our exporter
+// carries them over unchanged, so the UVs still mean "tile this texture".
+// Clamping them collected the texture border and smeared it into grey threads.
+// For UVs inside [0, 1] repeat and clamp are identical, so nothing else moves.
 constexpr sampler kAtlas(
     filter::linear,
     mip_filter::none,
-    address::clamp_to_edge
+    address::repeat
 );
 
 constexpr sampler kAtlasMipmapped(
     filter::linear,
     mip_filter::linear,
-    address::clamp_to_edge
+    address::repeat
 );
 
 constexpr sampler kPoint(filter::nearest, address::clamp_to_edge);

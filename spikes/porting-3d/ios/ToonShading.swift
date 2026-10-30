@@ -106,8 +106,13 @@ enum ToonShading {
         else { return }
         if var model = entity.components[ModelComponent.self] {
             model.materials = model.materials.map { material in
-                // Blending materials have no OUTLINE pass in the game.
-                if parameters?.isBlended(material.name ?? "") == true { return material }
+                // Blending materials have no OUTLINE pass in the game. Ask the
+                // material's own blending, not the name table: `CustomMaterial`
+                // exposes `name` as get-only, so anything `apply` builds is
+                // nameless and `isBlended("")` answers false — which is how the
+                // alpha materials ended up wearing a pure-black hull.
+                if let toon = material as? CustomMaterial,
+                   case .transparent = toon.blending { return material }
                 guard var outline = try? CustomMaterial(
                     surfaceShader: surface,
                     geometryModifier: vertex,
