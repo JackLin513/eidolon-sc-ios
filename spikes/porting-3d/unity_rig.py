@@ -124,6 +124,14 @@ def matrix_tuple(matrix) -> tuple[float, ...]:
     )
 
 
+def _padded(rows):
+    """Pad each per-vertex tuple to the four components glTF requires."""
+    return [
+        tuple(row) + (0,) * (4 - len(row)) if len(row) < 4 else tuple(row)
+        for row in rows
+    ]
+
+
 def read_nodes(env) -> dict[int, Node]:
     """Every Transform in the bundle, keyed by path id."""
     nodes: dict[int, Node] = {}
@@ -205,10 +213,12 @@ def read_skinned_meshes(env) -> list[SkinnedMesh]:
                 else []
             ),
             colors=[],
-            # Accessories bound to a single bone carry no weight channel at all
-            # and store one 32-bit index per vertex instead of four 8-bit ones.
-            # Unity is right to save the space; the decoder just has to read it.
-            weights=(
+            # Unity writes as many weight/index slots as the mesh needs: four for
+            # a normal character, two for a two-bone prop, none at all for a
+            # rigid one (which then stores a single 32-bit index). glTF is fixed
+            # at four per vertex, so pad every layout up to four here instead of
+            # teaching each caller about the variants.
+            weights=_padded(
                 decode_channel(
                     stream(offsets[weight_channel.stream]),
                     strides[weight_channel.stream],
@@ -219,18 +229,8 @@ def read_skinned_meshes(env) -> list[SkinnedMesh]:
                 and channels[CHANNEL_WEIGHTS].dimension
                 else [(1.0, 0.0, 0.0, 0.0)] * count
             ),
-            joints=(
-                [
-                    (j[0], 0, 0, 0)
-                    for j in decode_channel(
-                        stream(offsets[bone_channel.stream]),
-                        strides[bone_channel.stream],
-                        count,
-                        bone_channel,
-                    )
-                ]
-                if bone_channel.dimension == 1
-                else decode_channel(
+            joints=_padded(
+                decode_channel(
                     stream(offsets[bone_channel.stream]),
                     strides[bone_channel.stream],
                     count,
