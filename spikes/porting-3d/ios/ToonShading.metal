@@ -539,15 +539,20 @@ void toonSurface(realitykit::surface_parameters params)
     if (span && hasParams) {
         // The packed strip is bump on top, sparkle pattern below; the probe
         // showed the garment reading the top half, so no offset here.
-        float2 bumpUV = float2(params.geometry().uv0().x,
-                               1.0f - params.geometry().uv0().y) * 0.5f;
-        half2 bump = params.textures().base_color().sample(kAtlas, bumpUV).xy;
-        half2 perturb = bump * 2.0h - 1.0h;
-        float2 ndc = float2(perturb) * param(lut, row, kParamNormMapMag)
-            + normalView.xy;
-        // The dot pattern is 64x64 and a face only spans it once, so a single
-        // lookup reads as blobs; the sampler repeats, so tile it.
-        float2 glintUV = float2((ndc.x + 1.0f) * 0.5f, (ndc.y + 1.0f) * 0.5f) * 3.0f;
+        // `_Cube2D` is a field of soft bokeh glints, not fine grain. Driving the
+        // lookup from the surface normal (what the game does with a *deviation*
+        // vector) left it parked on one dark spot; painting it in the cloth's own
+        // UV space keeps the glints glued to the fabric at the right density.
+        float2 clothUV = float2(params.geometry().uv0().x,
+                                1.0f - params.geometry().uv0().y);
+        // Cloth UV places the glints on the fabric; the bump's noise then
+        // jitters each lookup a little, which is what turns an even polka-dot
+        // grid into something that reads as sparkle. The bump is a 32x32 tile,
+        // so it has to be tiled hard to vary from pixel to pixel.
+        half2 jitter = params.textures().base_color().sample(
+            kAtlas, float2(clothUV.x * 32.0f, fract(clothUV.y * 32.0f) * 0.25f)
+        ).xy * 2.0h - 1.0h;
+        float2 glintUV = clothUV * 6.0f + float2(jitter) * 0.12f;
         half3 glint = params.textures().base_color().sample(
             kAtlas, float2(glintUV.x, fract(glintUV.y) * 0.5f + 0.5f)
         ).xyz;
