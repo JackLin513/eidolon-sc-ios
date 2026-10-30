@@ -45,7 +45,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
 CONTENT_SCHEMA_VERSION = 1
 
 # Outfits come from the upstream `stand fetch` / `stand outfits` build directory:
@@ -101,7 +101,10 @@ CREATE TABLE episode_passages (
 PATH_FIELDS = ("sheet", "avatar", "scsp_avatar", "background", "facts")
 
 # Files copied wholesale rather than referenced from a character entry.
-SHARED_FILES = ("world.json", "world-corrections.json", "readings.toml", "gifts.toml")
+SHARED_FILES = (
+    "world.json", "world-corrections.json", "readings.toml", "gifts.toml",
+    "drinks.toml", "bar_visits.toml", "bar_lines.toml", "bar_audio.json",
+)
 
 
 def die(message: str) -> None:
@@ -665,6 +668,10 @@ def write_bundle(
                 "world-corrections.json": "characters/world-corrections.json",
                 "readings.toml": "characters/readings.json",
                 "gifts.toml": "characters/gifts.json",
+                "drinks.toml": "characters/drinks.json",
+                "bar_visits.toml": "characters/bar_visits.json",
+                "bar_lines.toml": "characters/bar_lines.json",
+                "bar_audio.json": "characters/bar_audio.json",
             }
             for relative in sorted(character_files):
                 source = characters_dir / relative

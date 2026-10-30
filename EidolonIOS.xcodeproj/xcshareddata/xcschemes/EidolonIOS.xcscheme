@@ -20,6 +20,20 @@
                ReferencedContainer = "container:EidolonIOS.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "7E0134A9C2A2E0997CA04BE7"
+               BuildableName = "EidolonIOSUITests.xctest"
+               BlueprintName = "EidolonIOSUITests"
+               ReferencedContainer = "container:EidolonIOS.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -37,6 +51,16 @@
          </BuildableReference>
       </MacroExpansion>
       <Testables>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "7E0134A9C2A2E0997CA04BE7"
+               BuildableName = "EidolonIOSUITests.xctest"
+               BlueprintName = "EidolonIOSUITests"
+               ReferencedContainer = "container:EidolonIOS.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

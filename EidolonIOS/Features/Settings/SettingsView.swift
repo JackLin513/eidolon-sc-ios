@@ -65,6 +65,7 @@ struct SettingsView: View {
     private enum ImportKind {
         case content
         case stand
+        case bar
     }
 
     var body: some View {
@@ -316,6 +317,8 @@ struct SettingsView: View {
 
                 standBundleSection
 
+                barBundleSection
+
                 Section("内容包") {
                     if let info = app.bundleInfo {
                         LabeledContent("剧情", value: "\(info.episodeCount)")
@@ -443,6 +446,8 @@ struct SettingsView: View {
                         await app.importBundle(from: url)
                     case .stand:
                         await app.importStandBundle(from: url)
+                    case .bar:
+                        await app.importBarBundle(from: url)
                     }
                 }
             }
@@ -500,6 +505,42 @@ struct SettingsView: View {
         } footer: {
             Text("立绘包和内容包分开导入；第一次导入全量包，之后可以追加增量包。导入失败保留上一份。")
         }
+    }
+
+    /// The bar's own package: its pictures, the pixel font and the sound. Without it the
+    /// bar asks for one instead of drawing a broken room (ADR-0021).
+    private var barBundleSection: some View {
+        Section {
+            if let info = app.barInfo {
+                LabeledContent("画面", value: "\(info.imageCount) 张")
+                LabeledContent("字体", value: "\(info.fontCount) 份")
+                LabeledContent(
+                    "音乐",
+                    value: info.hasAudio ? "\(info.trackCount) 首，音效 \(info.sfxCount) 个" : "没有"
+                )
+                LabeledContent("格式", value: "v\(info.formatVersion)")
+                LabeledContent("安装时间", value: info.installedAt)
+            } else {
+                Text("还没有导入酒吧素材包")
+                    .foregroundStyle(.secondary)
+            }
+            Button(app.barInfo == nil ? "导入酒吧素材包" : "重新导入酒吧素材包") {
+                importKind = .bar
+                isPicking = true
+            }
+            .disabled(app.isImporting)
+        } header: {
+            Text("酒吧素材包")
+        } footer: {
+            Text(barBundleFooter)
+        }
+    }
+
+    private var barBundleFooter: String {
+        if let barInfo = app.barInfo, !barInfo.hasAudio {
+            return "这个包没有音乐，点唱机会显示为灰色；补上音频后重新导出即可。"
+        }
+        return "酒吧的画面、像素字体和音乐单独打包，和内容包、立绘包分开导入。导入失败保留上一份。"
     }
 
     private func load() async {

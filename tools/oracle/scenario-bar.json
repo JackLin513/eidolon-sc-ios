@@ -1,0 +1,206 @@
+{
+ "character_id": "kogane",
+ "reason_id": "good-news",
+ "topic_id": "recent-work",
+ "cups": 3,
+ "about_producer": "你叫「制作人」，是 283 事务所的制作人。",
+ "affinity_lines": [
+  "好感度：800，已经是很熟的关系。"
+ ],
+ "today": [
+  "今天是 10 月 28 日，星期三。"
+ ],
+ "world": "这是世界设定：舞台与演出就在身边。",
+ "facts": [
+  "月岡恋鐘在乐队里担任主唱。",
+  "她最喜欢的乐器是贝斯。"
+ ],
+ "now": "2026-10-28T20:30:00+08:00",
+ "remembered": {
+  "visits": 6,
+  "last_left_at": "2026-10-10T21:10:00+08:00",
+  "last_orders": [
+   {
+    "target": "mulan-tea",
+    "phrasing": "name",
+    "served": "mulan-tea",
+    "big": false,
+    "tier": "right"
+   },
+   {
+    "target": "sugar-rush",
+    "phrasing": "flavor",
+    "served": "bad-touch",
+    "big": false,
+    "tier": "wrong"
+   }
+  ],
+  "last_drunk": true
+ },
+ "written": [
+  {
+   "ask": "这次写：进门，然后点第一杯。制作人的台词只写中文。\n\n点单卡：\n- 说法：直接说出饮品的名字。\n- 饮品：Mulan Tea（日文名 ムーランティー），口味甜，种类经典。",
+   "lines": [
+    {
+     "speaker": "her",
+     "ja": "いらっしゃい……じゃなくて、こんばんは。",
+     "zh": "欢迎……不对，晚上好。",
+     "emotion": "happy"
+    },
+    {
+     "speaker": "producer",
+     "zh": "今天也辛苦了。"
+    },
+    {
+     "speaker": "her",
+     "ja": "ビール、お願いします。",
+     "zh": "Beer，麻烦了。",
+     "emotion": "calm",
+     "order": true
+    }
+   ]
+  }
+ ],
+ "ask": {
+  "kind": "farewell",
+  "enjoy": "久等了，请慢用。",
+  "serving": {
+   "order": {
+    "target": "sugar-rush",
+    "phrasing": "flavor",
+    "said": [
+     "flavor",
+     "no_alcohol"
+    ]
+   },
+   "served": {
+    "adelhyde": 2,
+    "bronson_extract": 0,
+    "powdered_delta": 1,
+    "flanergide": 0,
+    "karmotrine": 3,
+    "ice": false,
+    "aged": false,
+    "method": "mix"
+   },
+   "tier": "wrong",
+   "wrong": "alcohol"
+  },
+  "servings": [
+   {
+    "order": {
+     "target": "mulan-tea",
+     "phrasing": "name"
+    },
+    "served": "mulan-tea",
+    "tier": "right"
+   },
+   {
+    "order": {
+     "target": "sugar-rush",
+     "phrasing": "flavor",
+     "said": [
+      "flavor",
+      "no_alcohol"
+     ]
+    },
+    "served": {
+     "adelhyde": 2,
+     "bronson_extract": 0,
+     "powdered_delta": 1,
+     "flanergide": 0,
+     "karmotrine": 3,
+     "ice": false,
+     "aged": false,
+     "method": "mix"
+    },
+    "tier": "wrong",
+    "wrong": "alcohol"
+   }
+  ],
+  "drunk": true
+ },
+ "asks": [
+  {
+   "kind": "farewell",
+   "enjoy": "久等了，请慢用。",
+   "serving": {
+    "order": {
+     "target": "sugar-rush",
+     "phrasing": "flavor",
+     "said": [
+      "flavor",
+      "no_alcohol"
+     ]
+    },
+    "served": {
+     "adelhyde": 2,
+     "bronson_extract": 0,
+     "powdered_delta": 1,
+     "flanergide": 0,
+     "karmotrine": 3,
+     "ice": false,
+     "aged": false,
+     "method": "mix"
+    },
+    "tier": "wrong",
+    "wrong": "alcohol"
+   },
+   "servings": [
+    {
+     "order": {
+      "target": "mulan-tea",
+      "phrasing": "name"
+     },
+     "served": "mulan-tea",
+     "tier": "right"
+    },
+    {
+     "order": {
+      "target": "sugar-rush",
+      "phrasing": "flavor",
+      "said": [
+       "flavor",
+       "no_alcohol"
+      ]
+     },
+     "served": {
+      "adelhyde": 2,
+      "bronson_extract": 0,
+      "powdered_delta": 1,
+      "flanergide": 0,
+      "karmotrine": 3,
+      "ice": false,
+      "aged": false,
+      "method": "mix"
+     },
+     "tier": "wrong",
+     "wrong": "alcohol"
+    }
+   ],
+   "drunk": true
+  },
+  {
+   "kind": "rewrite",
+   "order": {
+    "target": "sugar-rush",
+    "phrasing": "flavor",
+    "said": [
+     "flavor"
+    ]
+   },
+   "before": [
+    {
+     "speaker": "her",
+     "zh": "好的",
+     "ja": "はい",
+     "emotion": "calm"
+    },
+    {
+     "speaker": "producer",
+     "zh": "嗯。"
+    }
+   ]
+  }
+ ]
+}

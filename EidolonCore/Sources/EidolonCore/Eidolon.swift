@@ -19,6 +19,9 @@ public actor Eidolon {
         public var contentDirectory: URL { contentRoot.appendingPathComponent("current", isDirectory: true) }
         /// Where a separate stand package will be installed; empty until one is imported.
         public var standDirectory: URL { contentRoot.appendingPathComponent("stand", isDirectory: true) }
+        /// Where the bar package's pictures, font and sound are installed; empty until one
+        /// is imported (ADR-0021).
+        public var barDirectory: URL { contentRoot.appendingPathComponent("bar", isDirectory: true) }
     }
 
     public nonisolated let location: Location
@@ -198,6 +201,120 @@ public actor Eidolon {
         return info
     }
 
+    /// Installs a bar package (pictures, font, sound) beside the content and stand
+    /// bundles, atomically. On any failure the previous bar stays in place (ADR-0021).
+    @discardableResult
+    public func installBar(
+        bundleAt url: URL,
+        progress: ((ImportProgress) -> Void)? = nil
+    ) throws -> BarBundleInfo {
+        let installer = BarBundleInstaller(
+            contentRoot: location.contentRoot,
+            fileManager: .default
+        )
+        let info = try installer.install(url, progress: progress)
+        try saveBarInfo(info)
+        return info
+    }
+
+    /// What the installed bar package holds. Nil until one is imported: the bar then asks
+    /// for its package instead of drawing a broken room.
+    public func installedBarInfo() throws -> BarBundleInfo? {
+        let stored: String? = try userQueue.read { db in
+            try String.fetchOne(
+                db,
+                sql: "SELECT value FROM app_state WHERE key = 'bar.bundle'"
+            )
+        }
+        guard let stored, let data = stored.data(using: .utf8) else { return nil }
+        let info = try? JSONDecoder().decode(BarBundleInfo.self, from: data)
+        // The record alone is not enough: the directory may have been cleared underneath it.
+        guard info != nil, FileManager.default.fileExists(atPath: location.barDirectory.path)
+        else { return nil }
+        return info
+    }
+
+    private func saveBarInfo(_ info: BarBundleInfo) throws {
+        let encoded = try JSONEncoder().encode(info)
+        try userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO app_state(key, value) VALUES('bar.bundle', ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                    """,
+                arguments: [String(decoding: encoded, as: UTF8.self)]
+            )
+        }
+    }
+
+    // MARK: - The bar's preferences
+
+    /// The volumes and scanlines the app last kept; the defaults until it keeps any.
+    public func barSettings() throws -> BarSettings {
+        let stored: String? = try appState("bar.settings")
+        return BarSettings(stored: stored.flatMap(Self.decode(BarSettings.Stored.self)))
+    }
+
+    public func saveBarSettings(_ settings: BarSettings) throws {
+        try saveAppState("bar.settings", Self.encode(BarSettings.stored(settings)))
+    }
+
+    /// The jukebox's 12 slots and how its player plays, each part read as it should be: what
+    /// the record says, or the defaults when it says nothing or nothing usable.
+    public func barJukebox(_ audio: BarAudio) throws -> BarJukebox.State {
+        let stored: String? = try appState("bar.jukebox")
+        return BarJukebox.read(stored.flatMap(Self.decode(BarJukebox.State.self)), audio)
+    }
+
+    public func saveBarJukebox(_ state: BarJukebox.State) throws {
+        try saveAppState("bar.jukebox", Self.encode(state))
+    }
+
+    /// Whether a visit done at `now` would still be rewarded: none done on the device's day yet
+    /// (ADR-0021). The roster's bar card says so without opening the bar.
+    public func barRewardToday(now: Date = Date(), timeZone: TimeZone = .current) throws -> Bool {
+        let day = BarDates.day(of: now, in: timeZone)
+        return try userQueue.read { try !BarRecords.doneOn($0, day: day) }
+    }
+
+    /// Whether the tutorial has been walked through: done or skipped.
+    public func barTutorialWalked() throws -> Bool {
+        try appState("bar.tutorial") == "true"
+    }
+
+    public func saveBarTutorialWalked() throws {
+        try saveAppState("bar.tutorial", "true")
+    }
+
+    func appState(_ key: String) throws -> String? {
+        try userQueue.read { db in
+            try String.fetchOne(db, sql: "SELECT value FROM app_state WHERE key = ?", arguments: [key])
+        }
+    }
+
+    private func saveAppState(_ key: String, _ value: String) throws {
+        try userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO app_state(key, value) VALUES(?, ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                    """,
+                arguments: [key, value]
+            )
+        }
+    }
+
+    static func decode<T: Decodable>(_ type: T.Type) -> (String) -> T? {
+        { text in
+            (try? JSONDecoder().decode(T.self, from: Data(text.utf8)))
+        }
+    }
+
+    static func encode<T: Encodable>(_ value: T) -> String {
+        guard let data = try? JSONEncoder().encode(value) else { return "" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
     public func installedStandInfo() throws -> StandBundleInfo? {
         let stored: String? = try userQueue.read { db in
             try String.fetchOne(
@@ -240,6 +357,38 @@ public actor Eidolon {
 
     public func standIndexData() throws -> Data {
         try standIndex().encoded()
+    }
+
+    // MARK: - The bar
+
+    /// The bar over this app's library, reading this app's content bundle (ADR-0021). There
+    /// is one bar, as there is one user; it is open whenever the app is.
+    public func barRoom() -> BarRoom {
+        let queue = userQueue
+        let directory = location.contentDirectory
+        let world = try? loadWorld()
+        let holidays = try? holidayTable()
+        return BarRoom(
+            userQueue: queue,
+            source: {
+                // Read on every step, so a visit under way writes on the bundle it came in
+                // on; the content is small and validated on the way in.
+                let content = try BarContent(directory: directory)
+                return BarContentSource(
+                    content: content,
+                    directory: directory,
+                    world: world,
+                    holidays: holidays
+                )
+            }
+        )
+    }
+
+    /// Where the bar's pictures, pixel font and sound are, and what the package holds. Nil
+    /// until one is installed: the bar then asks for it (ADR-0021).
+    public func installedBar() throws -> (info: BarBundleInfo, directory: URL)? {
+        guard let info = try installedBarInfo() else { return nil }
+        return (info, location.barDirectory)
     }
 
     // MARK: - Reading the content

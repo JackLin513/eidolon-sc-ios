@@ -122,6 +122,12 @@ extension CharacterConfig {
         [nameZh, nameKana, nameRomaji].compactMap { $0 }.first ?? unit ?? ""
     }
 
+    /// Her birthday as she knows it in every prompt, and is told it again today
+    /// (upstream `her_birthday`); empty where the content has none.
+    public var birthdayPrompt: String {
+        birthday.map(TodayPrompt.herBirthday) ?? ""
+    }
+
     /// Search across every name she can be found by, her unit and her intro.
     public func matches(_ query: String) -> Bool {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

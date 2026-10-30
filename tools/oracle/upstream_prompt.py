@@ -57,6 +57,7 @@ async def run(upstream: Path, scenario: dict) -> list[dict[str, str]]:
     from eidolon.data_access import Database
     from eidolon.engine import ConversationEngine
     from eidolon.llm import TurnLLMs
+    from eidolon.her_now import HerNow
     from eidolon.memory import Memories
     from eidolon.store import Store
     from eidolon.titles import Titles
@@ -85,8 +86,12 @@ async def run(upstream: Path, scenario: dict) -> list[dict[str, str]]:
 
             memory = Memories(db, characters, clock)
             titles = Titles(store, characters, {})
+            # Upstream gives each occasion its lines of now through `her_now.HerNow`
+            # (ADR-0020's refactor); the typing and call scenarios have no schedule or
+            # cycle, so it is built with the world alone.
             engine = ConversationEngine(
-                db, store, characters, {}, memory, titles, clock, world=world
+                db, store, characters, {}, memory, titles, clock,
+                HerNow(characters, world=world), world=world
             )
 
             user = await store.create_user("Oracle Producer")

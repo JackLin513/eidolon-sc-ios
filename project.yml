@@ -37,7 +37,7 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: "MFZ8WGP52J"
+        DEVELOPMENT_TEAM: "FF7NMQWZKK"
         # 立绘运行时在构建时从上游 checkout 拷进构建产物（ADR-0017），那个路径在
         # SRCROOT 之外，脚本沙箱会挡住；下面的脚本只读那一个文件。
         ENABLE_USER_SCRIPT_SANDBOXING: NO
@@ -49,10 +49,30 @@ targets:
             "${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}" \
             "${EIDOLON_UPSTREAM:-${SRCROOT}/../eidolon-sc}"
 
+  EidolonIOSUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    dependencies:
+      - target: EidolonIOS
+    sources:
+      - path: EidolonIOSUITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jacklin.eidolon.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: EidolonIOS
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: "FF7NMQWZKK"
+
 schemes:
   EidolonIOS:
     build:
       targets:
         EidolonIOS: all
+        EidolonIOSUITests: [test]
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - EidolonIOSUITests

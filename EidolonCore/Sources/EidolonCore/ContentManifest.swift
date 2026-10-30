@@ -3,8 +3,9 @@ import Foundation
 /// The `manifest.json` inside a content bundle (ADR-0003).
 public struct ContentManifest: Codable, Sendable, Hashable {
     /// The bundle format this app reads. Version 2 added birthdays, idol numbers and the
-    /// holiday table, so a version-1 bundle has to be exported again.
-    public static let supportedFormatVersion = 2
+    /// holiday table, version 3 the bar's drink catalog, reasons, topics and fixed lines
+    /// (ADR-0021), so an older bundle has to be exported again.
+    public static let supportedFormatVersion = 3
 
     public struct Embedding: Codable, Sendable, Hashable {
         public var model: String
