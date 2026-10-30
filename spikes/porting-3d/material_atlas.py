@@ -68,6 +68,11 @@ LAYOUT: list[tuple[str, str]] = [
     # `_Up` is the object-space "up" the hair sheen slides along; the artist
     # authored (-1, 0, 0), not +Y.
     ("_Up", "r"), ("_Up", "g"), ("_Up", "b"),
+    # The outline pass widens with depth: `k * _Outline` in clip space, where k
+    # is rebuilt from the projection matrix in the shader. `_Outline` is 0.0005,
+    # far below one byte's resolution, so it is stored x1000.
+    ("_Outline", "x1000"),
+    ("_TanFov", "-"),
 ]
 
 # Rows the atlas is sized for. The shader's V coordinate is
@@ -125,6 +130,8 @@ def encode(channel: str, value: float) -> int:
     """One byte per parameter."""
     if channel in _SIGNED_COLOUR or channel == "s2":
         value = value / 2.0 + 0.5 if channel == "s2" else (value + 1.0) / 2.0
+    elif channel == "x1000":
+        value = value * 1000.0
     elif channel in ("u2", "u4", "u8"):
         value = value / float(channel[1])
     return max(0, min(255, round(value * 255)))
