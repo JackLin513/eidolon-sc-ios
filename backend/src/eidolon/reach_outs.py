@@ -337,7 +337,9 @@ class ReachOuts:
         lease = self._config.lease()
         try:
             with recording.current():
-                said = await self._engine.reach_out(conversation, lease.keys.chat_llm)
+                # Written for the deployer's model to read aloud: the user's is not known here.
+                voiced_by = lease.keys.tts_model if lease.keys.tts is not None else None
+                said = await self._engine.reach_out(conversation, lease.keys.chat_llm, voiced_by)
         except Exception as e:
             # Not logged with what was raised: a service's error may repeat what it was asked.
             log.warning("reaching out in conversation %s failed: %s", conversation.id,

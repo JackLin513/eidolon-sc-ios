@@ -234,6 +234,8 @@ DEFAULT_TURNS_PER_CALL = 40
 """About what ten minutes of talking takes; a cap on typing turns in quickly during a call."""
 DEFAULT_PHOTOS_PER_HOUR = 5
 DEFAULT_VISITS_PER_HOUR = 5
+DEFAULT_READ_ALOUDS_PER_HOUR = 60
+"""As many as the text turns: one for each of her replies."""
 DEFAULT_CONCURRENT_CALLS = 10
 """What one process on the deployment's two cores carries, every call's audio on the one
 event loop."""
@@ -1123,8 +1125,9 @@ time limit (`EIDOLON_CALL_MINUTES=0`)."""
 @dataclass(frozen=True)
 class UsageLimits:
     """How many text turns, voice calls and visits to the bar (GLOSSARY.md「光顾」) each user
-    may start in any hour, and how many photos she may send them (GLOSSARY.md「照片」),
-    counted across all their devices and sign-in methods, how long and how many turns one
+    may start in any hour, how many photos she may send them (GLOSSARY.md「照片」), and how many
+    times her words may be read aloud to them (GLOSSARY.md「朗读」), counted across all their
+    devices and sign-in methods, how long and how many turns one
     call may last, and how many calls there may be at once, all users' together, exempt ones
     too; None is no limit."""
 
@@ -1135,6 +1138,7 @@ class UsageLimits:
     photos_per_hour: int | None = DEFAULT_PHOTOS_PER_HOUR
     concurrent_calls: int | None = DEFAULT_CONCURRENT_CALLS
     visits_per_hour: int | None = DEFAULT_VISITS_PER_HOUR
+    read_alouds_per_hour: int | None = DEFAULT_READ_ALOUDS_PER_HOUR
 
     @classmethod
     def from_env(cls) -> "UsageLimits":
@@ -1146,6 +1150,9 @@ class UsageLimits:
             photos_per_hour=_limit("EIDOLON_PHOTOS_PER_HOUR", DEFAULT_PHOTOS_PER_HOUR),
             concurrent_calls=_limit("EIDOLON_CONCURRENT_CALLS", DEFAULT_CONCURRENT_CALLS),
             visits_per_hour=_limit("EIDOLON_VISITS_PER_HOUR", DEFAULT_VISITS_PER_HOUR),
+            read_alouds_per_hour=_limit(
+                "EIDOLON_READ_ALOUDS_PER_HOUR", DEFAULT_READ_ALOUDS_PER_HOUR
+            ),
         )
 
 

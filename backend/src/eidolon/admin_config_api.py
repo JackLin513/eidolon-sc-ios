@@ -155,6 +155,7 @@ class LimitsInput(BaseModel):
     calls_per_hour: Any
     photos_per_hour: Any
     visits_per_hour: Any
+    read_alouds_per_hour: Any
     call_minutes: Any
     turns_per_call: Any
     concurrent_calls: Any

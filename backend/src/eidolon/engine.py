@@ -631,8 +631,8 @@ class ConversationEngine:
         own_image: ImageSettings | None = None,
     ) -> AsyncGenerator[TurnEvent, None]:
         """Take one turn on `llms`, `in_call` if it is taken in one, its reply voiced with
-        `voiced_by` (None for a text turn's), which has her write delivery cues as it reads
-        them, her photo on the user's `own_image` generation if it brings it. `device_timezone`
+        `voiced_by` (for a text turn's, the model it would be read aloud with, GLOSSARY.md
+        「朗读」; None if none), which has her write delivery cues as it reads them, her photo on the user's `own_image` generation if it brings it. `device_timezone`
         is the time zone the user's device reports, used unless the producer profile sets
         one. Once `stop` is set, the turn goes no further and is recorded with the segments
         complete by then."""
@@ -874,9 +874,12 @@ class ConversationEngine:
             unwell and unwell.shown(),
         )
 
-    async def reach_out(self, conversation: Conversation, llm: ChatLLM) -> list[Segment]:
+    async def reach_out(
+        self, conversation: Conversation, llm: ChatLLM, voiced_by: FishAudioModel | None = None
+    ) -> list[Segment]:
         """What she says first in `conversation`, the user not talking to her (GLOSSARY.md
-        「搭话」), on `llm`: its segments, as the model wrote them, delivery cues and all. Her
+        「搭话」), on `llm`: its segments, as the model wrote them, delivery cues and all, as
+        `voiced_by` reads them, the model it would be read aloud with (None if none). Her
         prompt is laid out as a text turn's (ADR-0020), and opens as the next one's will, but
         for what changes from turn to turn: she is told what time it is and that they are not
         talking and when they last were, how she speaks in her tier, the memories she reaches
@@ -913,7 +916,7 @@ class ConversationEngine:
                 ),
             ],
             [*([memories] if memories else []), REACH_OUT_RULES],
-            WANTS_TO_REACH_OUT, None,
+            WANTS_TO_REACH_OUT, voiced_by,
         )
         parser = ReplyParser()
         stream = llm.stream(prompt)

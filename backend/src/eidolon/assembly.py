@@ -74,6 +74,7 @@ from eidolon.own_keys import LLMService, OwnImageService, OwnKeys, ProviderLLMSe
 from eidolon.photos import Photos
 from eidolon.proxy import ProxyRoutes
 from eidolon.reach_outs import ReachOuts
+from eidolon.read_aloud import ReadAloud
 from eidolon.readings import load_readings, readings_path
 from eidolon.rerank import (
     FALLBACK_MODEL,
@@ -127,6 +128,8 @@ class Backend:
     speech: Speech
     """The speech services calls hear and speak with."""
     own_keys: OwnKeys
+    read_aloud: ReadAloud
+    """Reads her words aloud as users ask (GLOSSARY.md「朗读」)."""
     admissions: Admissions
     """Lets text turns and calls begin, and settles them."""
     accounts: Accounts
@@ -232,6 +235,7 @@ def build(
     catalog_transport: httpx.AsyncBaseTransport | None = None,
     backup_transport: httpx.AsyncBaseTransport | None = None,
     image_transport: httpx.AsyncBaseTransport | None = None,
+    fish_transport: httpx.AsyncBaseTransport | None = None,
     random: Random | None = None,
     reach: Reach | None = None,
 ) -> Backend:
@@ -463,6 +467,7 @@ def build(
         calls=calls,
         speech=speech,
         own_keys=own_keys,
+        read_aloud=ReadAloud(own_keys, usage, activity, readings, routes, fish_transport),
         admissions=admissions,
         accounts=Accounts(
             store, clock, memories, calls, invites, lambda: config.registration,

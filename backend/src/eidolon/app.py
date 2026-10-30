@@ -26,6 +26,7 @@ from eidolon.call import (
     StillPlacing,
 )
 from eidolon.characters import Character, ScriptedLine, in_idol_order
+from eidolon.config import FishAudioModel
 from eidolon.database import readable
 from eidolon.engine import ENDED, TurnJudged, shown
 from eidolon.greetings import (
@@ -35,10 +36,13 @@ from eidolon.greetings import (
     greeting_path,
     voxels_path,
 )
-from eidolon.reply_format import SegmentComplete, SegmentDelta, SpeechDelta
+from eidolon.read_aloud import ReadAloudFailed
+from eidolon.reply_format import Segment, SegmentComplete, SegmentDelta, SpeechDelta
 from eidolon.own_keys import (
     BroughtKeys,
     CallsUnavailable,
+    NoSpeechSynthesis,
+    OwnKeyFailed,
     UnknownService,
     named_services,
 )
@@ -111,6 +115,16 @@ class TurnInput(BaseModel):
     """Where pages from before brought their own LLM. Transitional, to be deleted once no
     such page is left open: a turn bringing it is refused, asking for a refresh, rather
     than quietly run on the deployer's key and counted."""
+    read_aloud_model: FishAudioModel | None = None
+    """The model of the user's own key for speech synthesis, where their browser keeps one,
+    but not the key: her reply is written with delivery cues as the model it would be read
+    aloud with reads them (GLOSSARY.md「朗读」), the deployer's without it."""
+
+
+class ReadAloudInput(BaseModel):
+    own_keys: OwnKeysInput | None = None
+    """The user's own keys, which their browser keeps: her words are read aloud on theirs
+    for speech synthesis, if it brings it; the others go unused."""
 
 
 class CallRequest(BaseModel):
@@ -342,6 +356,10 @@ def create_app(backend: Backend) -> FastAPI:
     @app.exception_handler(UnknownService)
     async def unknown_service(_: Request, e: UnknownService) -> JSONResponse:
         return JSONResponse({"detail": str(e)}, status_code=422)
+
+    @app.exception_handler(NoSpeechSynthesis)
+    async def no_speech_synthesis(_: Request, e: NoSpeechSynthesis) -> JSONResponse:
+        return JSONResponse({"detail": str(e)}, status_code=503)
 
     @app.exception_handler(CallNotFound)
     async def call_not_found(_: Request, e: CallNotFound) -> JSONResponse:
@@ -645,6 +663,7 @@ def create_app(backend: Backend) -> FastAPI:
             async with outcome.running():
                 async with aclosing(engine.turn(
                     conversation, body.text, admission.llms, device_timezone,
+                    voiced_by=backend.own_keys.read_aloud_model(body.read_aloud_model),
                     own_image=brought.image,
                 )) as turn:
                     async for event in turn:
@@ -656,6 +675,45 @@ def create_app(backend: Backend) -> FastAPI:
                         yield _sse(shown(event))
 
         return _TurnResponse(events(), lambda: outcome.over(cut_short_by_failure=False))
+
+    async def read_aloud(
+        conversation: Conversation, segments: list[Segment] | None, body: ReadAloudInput,
+        user_id: str,
+    ) -> Response:
+        """Her `segments` read aloud (GLOSSARY.md「朗读」), as mp3 for the user's browser alone:
+        404 without them; 503 with no key for speech synthesis; 429 with no read-alouds left
+        this hour; 502 if Fish Audio failed, with `code` "own_key" if on the user's own key,
+        saying why."""
+        if segments is None:
+            raise HTTPException(404, "没有这句话")
+        brought = body.own_keys.brought() if body.own_keys else BroughtKeys()
+        voice_id = characters[conversation.character_id].voice_id
+        try:
+            audio = await backend.read_aloud.voice(user_id, voice_id, segments, brought)
+        except OwnKeyFailed as e:
+            return JSONResponse({"detail": e.message, "code": "own_key"}, status_code=502)
+        except ReadAloudFailed as e:
+            return JSONResponse({"detail": str(e)}, status_code=502)
+        return Response(audio, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/conversations/{conversation_id}/messages/{message_id}/read-aloud")
+    async def read_reply_aloud(
+        conversation_id: str, message_id: int, body: ReadAloudInput, user_id: UserId
+    ) -> Response:
+        """Her reply read aloud, in any of the user's conversations with her, past and ended
+        ones too, cooling down or not: it is no turn."""
+        conversation = await conversation_or_404(conversation_id, user_id)
+        segments = await store.reply_said(conversation.id, message_id)
+        return await read_aloud(conversation, segments, body, user_id)
+
+    @app.post("/api/conversations/{conversation_id}/reach-outs/{reach_out_id}/read-aloud")
+    async def read_reach_out_aloud(
+        conversation_id: str, reach_out_id: int, body: ReadAloudInput, user_id: UserId
+    ) -> Response:
+        """Her reach-out read aloud, as her replies are."""
+        conversation = await conversation_or_404(conversation_id, user_id)
+        segments = await store.reach_out_said(conversation.id, reach_out_id)
+        return await read_aloud(conversation, segments, body, user_id)
 
     return app
 

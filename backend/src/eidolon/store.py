@@ -762,6 +762,18 @@ class Store:
         is none such."""
         return await self._db.read(_photo_image, photo_id, user_id)
 
+    async def reply_said(self, conversation_id: str, message_id: int) -> list[Segment] | None:
+        """The segments of her reply `message_id`, as the model wrote them, delivery cues and
+        all; None unless it is a reply of hers in the conversation."""
+        return await self._db.read(_reply_said, conversation_id, message_id)
+
+    async def reach_out_said(
+        self, conversation_id: str, reach_out_id: int
+    ) -> list[Segment] | None:
+        """The segments of her reach-out `reach_out_id`, as the model wrote them; None unless
+        it is one in the conversation."""
+        return await self._db.read(_reach_out_said, conversation_id, reach_out_id)
+
     async def hang_up(self, conversation_id: str) -> ConversationEvent:
         """Record that she hung up on the user in the conversation, now (`hung_up`), unless
         she has ended it: then nothing more is recorded, and it is her ending it that is
@@ -1485,6 +1497,26 @@ def _photo_image(db: sqlite3.Connection, photo_id: str, user_id: str) -> bytes |
         (photo_id, user_id),
     ).fetchone()
     return row[0] if row else None
+
+
+def _reply_said(
+    db: sqlite3.Connection, conversation_id: str, message_id: int
+) -> list[Segment] | None:
+    row = db.execute(
+        "SELECT segments FROM messages WHERE id = ? AND conversation_id = ? AND role = 'character'",
+        (message_id, conversation_id),
+    ).fetchone()
+    return [Segment(**s) for s in json.loads(row[0] or "[]")] if row else None
+
+
+def _reach_out_said(
+    db: sqlite3.Connection, conversation_id: str, reach_out_id: int
+) -> list[Segment] | None:
+    row = db.execute(
+        "SELECT segments FROM reach_outs WHERE id = ? AND conversation_id = ?",
+        (reach_out_id, conversation_id),
+    ).fetchone()
+    return [Segment(**s) for s in json.loads(row[0])] if row else None
 
 
 def add_gift(
