@@ -552,7 +552,11 @@ void toonSurface(realitykit::surface_parameters params)
         half2 jitter = params.textures().base_color().sample(
             kAtlas, float2(clothUV.x * 32.0f, fract(clothUV.y * 32.0f) * 0.25f)
         ).xy * 2.0h - 1.0h;
-        float2 glintUV = clothUV * 6.0f + float2(jitter) * 0.12f;
+        // The view-space normal is what makes the sparkle *move*: rotate the
+        // model and every glint slides along the cloth. Kept small — at full
+        // range it swept the whole atlas and turned into moire.
+        float2 glintUV = clothUV * 6.0f + float2(jitter) * 0.12f
+            + normalView.xy * 0.25f;
         half3 glint = params.textures().base_color().sample(
             kAtlas, float2(glintUV.x, fract(glintUV.y) * 0.5f + 0.5f)
         ).xyz;
