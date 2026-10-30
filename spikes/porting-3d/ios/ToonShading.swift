@@ -61,18 +61,35 @@ enum ToonShading {
                 let normals = environment["EIDOLON_3D_DEBUG_NORMALS"] != nil
                 let constant = environment["EIDOLON_3D_DEBUG_CONST"] != nil
                 let noSheen = environment["EIDOLON_3D_NO_SHEEN"] != nil
+                let noReflect = environment["EIDOLON_3D_NO_REFLECT"] != nil
+                let cubeProbe = environment["EIDOLON_3D_DEBUG_CUBE"] != nil
+                let spanProbe = environment["EIDOLON_3D_DEBUG_SPAN"] != nil
                 let mipmaps = environment["EIDOLON_3D_MIPMAPS"] != nil
                 let alphaProbe = environment["EIDOLON_3D_DEBUG_ALPHA"] != nil
                 var custom = CustomMaterial.Custom(
                     value: SIMD4(
                         Float(row ?? 0),
                         row == nil ? 0 : 1,
-                        debug ? 1 : (noSheen ? -1 : 0),
-                        alphaProbe ? -2 : (normals ? 2 : (mipmaps ? 1 : (constant ? -1 : 0)))
+                        debug ? 1 : (spanProbe ? -3 : (noReflect ? -2 : (noSheen ? -1 : 0))),
+                        alphaProbe ? -2 : (normals ? 2 : (mipmaps ? 1 : (cubeProbe ? 3 : (constant ? -1 : 0))))
                     )
                 )
-                if let customTexture = try? CustomMaterial.Texture(texture) {
-                    custom.texture = customTexture
+                // `_MainTex` stays in `custom`, the slot it has always worked
+                // in. The effect maps take `base_color`: a `CustomMaterial`
+                // starts with a white, textureless base colour — the USD
+                // `diffuseColor` binding does not survive — so that slot is
+                // ours to fill. Binding both at once makes `custom()` read back
+                // unbound, so exactly one of the two may be used per material.
+                if let base = physical.baseColor.texture,
+                   let baseTexture = try? CustomMaterial.Texture(base) {
+                    custom.texture = baseTexture
+                }
+                if let effect = parameters?.effectTexture(for: name) {
+                    toon.baseColor = CustomMaterial.BaseColor(tint: .white, texture: effect)
+                    // `Chr_Span` is an overlay shell drawn on top of the plain
+                    // material; its faces may wind the other way, and back-face
+                    // culling then drops the whole layer.
+                    toon.faceCulling = .none
                 }
                 toon.custom = custom
                 // Binding the glow only; the surface shader adds it, so a white

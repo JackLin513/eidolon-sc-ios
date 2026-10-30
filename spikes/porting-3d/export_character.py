@@ -8,12 +8,16 @@ a single skin can drive every mesh.
 
 from __future__ import annotations
 
+import math
+
 import argparse
 import json
 import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -134,6 +138,70 @@ def cutout_safe(image):
     return black
 
 
+def _cube_face(direction):
+    """Which face a direction lands on, and where inside it.
+
+    Face order is Unity's `CubemapFace`: `+X -X +Y -Y +Z -Z`. The per-face
+    `sc`/`tc` signs are the OpenGL cube map convention.
+    """
+    x, y, z = direction
+    ax, ay, az = abs(x), abs(y), abs(z)
+    if ax >= ay and ax >= az:
+        face, sc, tc = (0, -z, -y) if x > 0 else (1, z, -y)
+        major = ax
+    elif ay >= az:
+        face, sc, tc = (2, x, z) if y > 0 else (3, x, -z)
+        major = ay
+    else:
+        face, sc, tc = (4, x, -y) if z > 0 else (5, -x, -y)
+        major = az
+    major = max(major, 1e-6)
+    return face, (sc / major + 1.0) / 2.0, (tc / major + 1.0) / 2.0
+
+
+def equirectangular(faces, width: int = 128) -> Image.Image:
+    """Fold the six cube faces into a lat-long map.
+
+    The shader has one `texture2d` to spare, not a cube map, so the game's
+    reflection is resampled here. 32x32 faces become a 128x64 strip: enough for
+    a matcap this soft, and the lookup on the other side is two trig calls.
+    """
+    size = faces[0].size[0]
+    height = width // 2
+    sources = [face.convert("RGB") for face in faces]
+    out = Image.new("RGB", (width, height))
+    pixels = out.load()
+    for row in range(height):
+        latitude = math.pi / 2 - (row + 0.5) / height * math.pi
+        cos_lat = math.cos(latitude)
+        sin_lat = math.sin(latitude)
+        for column in range(width):
+            longitude = (column + 0.5) / width * 2 * math.pi - math.pi
+            direction = (
+                cos_lat * math.cos(longitude),
+                sin_lat,
+                cos_lat * math.sin(longitude),
+            )
+            face, u, v = _cube_face(direction)
+            x = min(size - 1, max(0, int(u * size)))
+            y = min(size - 1, max(0, int(v * size)))
+            pixels[column, row] = sources[face].getpixel((x, y))
+    return out
+
+
+def pack_span(bump, cube2d) -> Image.Image:
+    """`_BumpMap` on top, `_Cube2D` below, in one 64x128 strip.
+
+    `Chr_Span` samples two extra maps and RealityKit gives the shader only one
+    slot it can fill itself, so they travel together and the shader halves the
+    V coordinate to pick one out.
+    """
+    out = Image.new("RGB", (64, 128))
+    out.paste(bump.convert("RGB").resize((64, 64), Image.LANCZOS), (0, 0))
+    out.paste(cube2d.convert("RGB").resize((64, 64), Image.LANCZOS), (0, 64))
+    return out
+
+
 def sanitise(name: str) -> str:
     return "".join(
         character if character.isalnum() or character in "-_" else "_"
@@ -199,6 +267,7 @@ def build(
 
     skin_of_joint = {joint: position for position, joint in enumerate(joint_order)}
 
+    cube_files: dict[str, str] = {}
     images: list[dict] = []
     textures: list[dict] = []
     materials: list[dict] = []
@@ -251,6 +320,17 @@ def build(
             }
         else:
             pbr["baseColorFactor"] = [0.85, 0.85, 0.85, 1.0]
+        effect = None
+        if info.cube:
+            # Not a glTF texture: this one is only read by our own shader, so it
+            # travels beside the USDZ and `MaterialParameters` hands it over.
+            effect = equirectangular(info.cube)
+        elif info.bump is not None and info.cube2d is not None:
+            effect = pack_span(info.bump, info.cube2d)
+        if effect is not None:
+            effect_name = f"textures/{len(images):02d}_{sanitise(key)}_effect.png"
+            effect.save(out / effect_name)
+            cube_files[key] = effect_name
         entry: dict = {"name": key, "pbrMetallicRoughness": pbr, "doubleSided": True}
         if info.cutoff and info.shader != "Custom/Chr_Alpha":
             # Blender turns these into `opacity.connect` + `opacityThreshold`,
@@ -355,6 +435,9 @@ def build(
     materials_table: dict[str, dict] = {}
     for bundle, _ in sources:
         materials_table.update(read_material_table(load(str(bundle))))
+    for material_name, cube_name in cube_files.items():
+        if material_name in materials_table:
+            materials_table[material_name]["effect"] = cube_name
     (out / f"{name}-attributes.json").write_text(
         json.dumps(attributes), encoding="utf-8"
     )

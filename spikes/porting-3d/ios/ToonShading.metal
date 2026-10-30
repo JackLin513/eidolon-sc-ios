@@ -11,7 +11,7 @@ using namespace metal;
 //
 // Per-material constants arrive in an atlas texture, one byte per parameter in
 // the alpha channel. The order is `material_atlas.py`'s `LAYOUT`.
-constant uint kParamColumns = 74;
+constant uint kParamColumns = 77;
 constant uint kParamCapacity = 64;
 
 constant uint kParamColor = 0;
@@ -68,6 +68,14 @@ constant float kKindFace = 3.0;
 constant float kKindHair = 4.0;
 constant float kKindEye = 5.0;
 constant float kKindAlpha = 6.0;
+
+// `_USEREFLECT_ON`: a view-space matcap on mirror accessories and a few guest
+// garments. The flag is the keyword; `_Reflection` is stored x100.
+constant uint kParamUseReflect = 74;
+constant uint kParamReflection = 75;
+// `Chr_Span` perturbs the sparkle lookup by this much along the normal.
+constant uint kParamNormMapMag = 76;
+constant float kKindSpan = 7.0;
 
 // The card textures are atlases; sampling their mip chain bleeds neighbouring
 // islands into each other, which showed up as colour patches on the hair. Keep
@@ -250,6 +258,10 @@ void toonSurface(realitykit::surface_parameters params)
     texture2d<half> lut = params.textures().specular();
 
     const bool mipmapped = custom.w > 0.5f;
+    // `_MainTex` arrives as the model's base colour texture. `custom` is the
+    // only slot RealityKit documents as "set on the CustomMaterial", so it is
+    // reserved for the per-material effect maps (the span pack, the reflection
+    // environment) and no longer carries the albedo.
     half4 mainTexRaw = params.textures().custom().sample(
         mipmapped ? kAtlasMipmapped : kAtlas, flipped);
     half4 subTexRaw = params.textures().emissive_color().sample(
@@ -302,6 +314,18 @@ void toonSurface(realitykit::surface_parameters params)
         // `EIDOLON_3D_DEBUG_NORMALS`: view-space normal as colour, so faceting
         // and a wrong space are both obvious.
         writeColour(params, saturate(normal * 0.5f + 0.5f));
+        return;
+    }
+
+    if (custom.w > 2.5f && custom.w < 3.5f) {
+        // cube/effect probe: paint the reflection environment, so an
+        // unbound `base_color()` slot shows as black rather than as "subtle".
+        float3 probe = reflect(-view, normalView);
+        float2 probeUV = float2(
+            atan2(probe.z, probe.x) / 6.283185307179586f + 0.5f,
+            0.5f - asin(clamp(probe.y, -1.0f, 1.0f)) / 3.141592653589793f
+        );
+        writeColour(params, float3(params.textures().base_color().sample(kAtlas, probeUV).rgb));
         return;
     }
 
@@ -362,8 +386,14 @@ void toonSurface(realitykit::surface_parameters params)
     // A blending material shades exactly like Basic; the only difference is that
     // it keeps its alpha instead of writing 1. Fold it back before the Eye test,
     // which would otherwise swallow anything above 5.
-    const bool blended = kind > kKindAlpha - 0.5f;
-    if (blended) { kind = kKindBasic; }
+    // Both flags have to be read **before** either one resets `kind`: span's
+    // kind is 7, which also satisfies the "blended" test (`kind > 5.5`), so the
+    // blended branch used to fold it to Basic and swallow the sparkle.
+    const bool span = kind > kKindSpan - 0.5f;
+    const bool blended = !span && kind > kKindAlpha - 0.5f;
+    // `Chr_Span` shades exactly like Basic and then adds a sparkle layer; fold
+    // it back so the Basic branch runs and keep the flag for the additive term.
+    if (span || blended) { kind = kKindBasic; }
 
     if (kind > kKindEye - 0.5f) {
         // --- Bi_CharEye -------------------------------------------------
@@ -424,7 +454,9 @@ void toonSurface(realitykit::surface_parameters params)
             // `EIDOLON_3D_NO_SHEEN` (custom.z < 0) turns it off for A/B: the
             // sheen adds a warm colour on top of brown, which is a saturation
             // source worth isolating.
-            if (custom.z < -0.5f) { weight = 0.0f; }
+            // Exactly -1, so the reflection (-2) and span (-3) probes do not
+            // also switch the sheen off.
+            if (custom.z > -1.5f && custom.z < -0.5f) { weight = 0.0f; }
             // `mainTex` was gamma-encoded before use; adding a linear sheen into
             // it made the highlight read orange and oversaturated.
             base += weight * toGamma(float3(sheen)) * 2.0f
@@ -498,6 +530,52 @@ void toonSurface(realitykit::surface_parameters params)
             float mask = step(0.5f, float(mainTex.a) * float(subTex.g));
             result = mix(result, glowTarget, param(lut, row, kParamLuminance) * mask);
         }
+    }
+
+    // `Chr_Span`: a noise normal perturbs the view-space normal, and the result
+    // picks a texel out of a sparkle dot pattern. The two maps ride in one
+    // 64x128 strip (bump on top, dot pattern below) because there is only one
+    // custom slot. Additive, weighted by `_MainTex.a * _Reflection`.
+    if (span && hasParams) {
+        // The packed strip is bump on top, sparkle pattern below; the probe
+        // showed the garment reading the top half, so no offset here.
+        float2 bumpUV = float2(params.geometry().uv0().x,
+                               1.0f - params.geometry().uv0().y) * 0.5f;
+        half2 bump = params.textures().base_color().sample(kAtlas, bumpUV).xy;
+        half2 perturb = bump * 2.0h - 1.0h;
+        float2 ndc = float2(perturb) * param(lut, row, kParamNormMapMag)
+            + normalView.xy;
+        // The dot pattern is 64x64 and a face only spans it once, so a single
+        // lookup reads as blobs; the sampler repeats, so tile it.
+        float2 glintUV = float2((ndc.x + 1.0f) * 0.5f, (ndc.y + 1.0f) * 0.5f) * 3.0f;
+        half3 glint = params.textures().base_color().sample(
+            kAtlas, float2(glintUV.x, fract(glintUV.y) * 0.5f + 0.5f)
+        ).xyz;
+        float sparkle = float(mainTexRaw.a) * param(lut, row, kParamReflection) * 4.0f;
+        if (custom.z < -2.5f) { writeColour(params, float3(params.textures().base_color().sample(kAtlas, flipped).rgb)); return; }
+        if (custom.z < -1.5f) { sparkle = 0.0f; }
+        result += toGamma(float3(glint)) * sparkle;
+    }
+
+    // `_USEREFLECT_ON`. The game reflects `normalize(viewPos)` — the camera to
+    // fragment direction — off the view-space normal and samples a cubemap; the
+    // cube is folded into a lat-long strip at export time, so the lookup here is
+    // two trig calls over the same vector. Added after the shading product and
+    // before the flash/fog terms, additive, weighted by `_MainTex.a`.
+    if (hasParams && param(lut, row, kParamUseReflect) > 0.5f) {
+        float3 reflection = reflect(-view, normalView);
+        float2 envUV = float2(
+            atan2(reflection.z, reflection.x) / 6.283185307179586f + 0.5f,
+            0.5f - asin(clamp(reflection.y, -1.0f, 1.0f)) / 3.141592653589793f
+        );
+        half3 env = params.textures().base_color().sample(kAtlas, envUV).rgb;
+        float strength = float(mainTexRaw.a) * param(lut, row, kParamReflection) * 4.0f;
+        // `EIDOLON_3D_NO_REFLECT` (custom.z == -2) turns it off for A/B: the
+        // cube is mostly dark with one hotspot, so a wrong-space vector is easy
+        // to mistake for "subtle".
+        if (custom.z < -1.5f) { strength = 0.0f; }
+        // The cube arrives in the same encoding as `_MainTex`, which is gamma.
+        result += toGamma(float3(env)) * strength;
     }
 
     writeColour(params, result);

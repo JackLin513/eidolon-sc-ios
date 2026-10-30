@@ -28,6 +28,11 @@ struct MaterialParameters {
     /// five shaders do that; everything else — decals, eyes, alpha — is a
     /// single pass, so a hull built for them is geometry the game never draws.
     private let outlined: Set<Int>
+    /// Per-material effect maps — `Chr_Span`'s bump + sparkle strip, or a
+    /// `_USEREFLECT_ON` environment folded into lat-long. They share the one
+    /// slot RealityKit lets us fill ourselves (`custom`), so `_MainTex` now
+    /// comes from `base_color()`.
+    private let effects: [String: CustomMaterial.Texture]
 
     static func load(atlas: URL, table: URL) async -> MaterialParameters? {
         guard let data = try? Data(contentsOf: table),
@@ -40,8 +45,21 @@ struct MaterialParameters {
         let outlined = Set(document.rows.indices.filter {
             outlinedShaders.contains(document.materials[document.rows[$0]]?.shader ?? "")
         })
+        var effects: [String: CustomMaterial.Texture] = [:]
+        for (name, material) in document.materials {
+            guard let path = material.effect else { continue }
+            let url = table.deletingLastPathComponent().appending(path: path)
+            guard let resource = try? await TextureResource(contentsOf: url),
+                  let effect = try? CustomMaterial.Texture(resource)
+            else { continue }
+            effects[name] = effect
+        }
         return MaterialParameters(
-            texture: texture, rows: rows, blended: blended, outlined: outlined
+            texture: texture,
+            rows: rows,
+            blended: blended,
+            outlined: outlined,
+            effects: effects
         )
     }
 
@@ -73,6 +91,11 @@ struct MaterialParameters {
         blended.contains(material)
     }
 
+    /// The effect map for a material, or `nil` when it has none.
+    func effectTexture(for material: String) -> CustomMaterial.Texture? {
+        effects[material]
+    }
+
     /// Whether the material in this atlas row gets an outline pass in the game.
     func hasOutline(row: Int) -> Bool {
         outlined.contains(row)
@@ -92,5 +115,7 @@ struct MaterialParameters {
 
     private struct Material: Decodable {
         let shader: String
+        /// Relative path to this material's effect strip, when it has one.
+        let effect: String?
     }
 }
