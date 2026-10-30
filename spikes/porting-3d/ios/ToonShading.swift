@@ -48,6 +48,11 @@ enum ToonShading {
                     surfaceShader: surface,
                     lightingModel: lightingModel
                 ) else { return material }
+                if parameters?.isBlended(name) == true {
+                    // The shader already multiplies by its own alpha, so the
+                    // blend stage must not scale by opacity again.
+                    toon.blending = .transparent(opacity: 1.0)
+                }
                 let environment = ProcessInfo.processInfo.environment
                 let debug = environment["EIDOLON_3D_LUT_DEBUG"] != nil
                 let normals = environment["EIDOLON_3D_DEBUG_NORMALS"] != nil
@@ -91,12 +96,14 @@ enum ToonShading {
     /// textures for an unlit custom material, so it renders a flat silhouette —
     /// exactly the fill an outline wants. Front faces are culled so only the
     /// pushed-out back shell is drawn.
-    static func applyOutline(to entity: Entity) {
+    static func applyOutline(to entity: Entity, parameters: MaterialParameters?) {
         guard let surface = shader(named: "outlineSurface"),
               let vertex = geometryModifier(named: "outlineVertex")
         else { return }
         if var model = entity.components[ModelComponent.self] {
             model.materials = model.materials.map { material in
+                // Blending materials have no OUTLINE pass in the game.
+                if parameters?.isBlended(material.name ?? "") == true { return material }
                 guard var outline = try? CustomMaterial(
                     surfaceShader: surface,
                     geometryModifier: vertex,
@@ -115,7 +122,7 @@ enum ToonShading {
             entity.components[ModelComponent.self] = model
         }
         for child in entity.children {
-            applyOutline(to: child)
+            applyOutline(to: child, parameters: parameters)
         }
     }
 
