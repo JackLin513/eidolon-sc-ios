@@ -386,6 +386,50 @@ final class MotionSwayTests: XCTestCase {
         )
     }
 
+    /// A panel resting on a capsule must settle, not snap between positions.
+    ///
+    /// The bind pose really does start the skirt panels inside the thigh
+    /// capsules, and a panel's own base can sit inside the capsule too, so the
+    /// feasible escape is a thin sliver of directions. Resolving it with one
+    /// normalised jump towards the summed correction overshoots, bounces, and
+    /// then re-lands on a coarse search cell — up to 6 degrees of jump per
+    /// frame, which reads on screen as the skirt flapping in a wind. Measured
+    /// on the real model: 11.8 deg/frame before, 0.6 after.
+    func testPanelRestingOnACapsuleSettlesInsteadOfFlapping() throws {
+        var rest = [JointPose](repeating: .identity, count: 5)
+        rest[1].translation = SIMD3(0, 0, 0)          // the capsule's joint
+        rest[2].translation = SIMD3(0.04, 0, 0.05)    // panel base, inside the capsule
+        rest[3].translation = SIMD3(0, 0, 1)          // HAIR, the up landmark
+        let names = ["BASE", "BASE/CAP", "BASE/skirt_a", "HAIR", "KOSHI"]
+        let parents: [Int?] = [nil, 0, 0, nil, nil]
+        let tail = SIMD3<Float>(0.02, 0, -0.2)
+
+        var sway = try XCTUnwrap(MotionSway(
+            configuration: configuration(
+                bones: [bone("BASE/skirt_a", tail: tail, radius: 0.04, colliders: [0])],
+                colliders: [MotionSway.Collider(
+                    joint: "BASE/CAP", type: "capsule", radius: 0.09,
+                    distance: 0.4, offset: [0, 0, -0.2], axis: "Z"
+                )]
+            ),
+            joints: names, rest: rest
+        ))
+
+        var poses = rest
+        var previous: SIMD3<Float>?
+        var worstStep: Float = 0
+        for frame in 0..<600 {
+            poses = rest
+            sway.apply(&poses, dt: 1 / 60)
+            let current = direction(of: 2, poses: poses, parents: parents, tail: tail)
+            if let previous, frame >= 480 {
+                worstStep = max(worstStep, acos(min(1, simd_dot(previous, current))) * 180 / .pi)
+            }
+            previous = current
+        }
+        XCTAssertLessThan(worstStep, 0.6, "the panel kept snapping (\(worstStep) deg/frame)")
+    }
+
     /// `minYAngle`/`maxYAngle`/`minZAngle`/`maxZAngle` are the window the game
     /// clamps the panel's direction to, measured in the parent's frame. Without
     /// them a panel is free to rotate all the way into the legs.

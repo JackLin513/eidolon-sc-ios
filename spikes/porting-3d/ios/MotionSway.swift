@@ -390,12 +390,22 @@ struct MotionSway {
             return correction
         }
 
-        for _ in 0..<32 {
+        // Small tangential steps, not one normalised jump towards the summed
+        // correction: when two capsules push from opposite sides the big step
+        // overshoots into the other one and bounces between them forever. At
+        // rest the skirt panels start ~4 cm inside the thigh capsules (the bind
+        // pose is authored that way), so this loop runs on every frame and any
+        // instability shows up as the skirt flapping in a wind.
+        let stepAngle: Float = 0.5 * .pi / 180
+        for _ in 0..<180 {
             let sum = correction(at: resolved)
             guard simd_length(sum) > 1e-6 else {
                 return (resolved, resolved != direction)
             }
-            resolved = simd_normalize(resolved + sum)
+            var tangential = sum - resolved * simd_dot(sum, resolved)
+            if simd_length(tangential) < 1e-7 { tangential = sum }
+            let way = simd_normalize(tangential)
+            resolved = simd_normalize(resolved + way * sin(stepAngle))
         }
 
         // Wedged between two capsules: walk out around the tangent circle.
@@ -408,6 +418,7 @@ struct MotionSway {
         if simd_length(tangent) < 1e-5 { return (resolved, true) }
         tangent = simd_normalize(tangent)
         let bitangent = simd_cross(resolved, tangent)
+        var found: SIMD3<Float>?
         for step in 1...12 {
             let angle = Float(step) * 6 * .pi / 180
             for index in 0..<12 {
@@ -415,9 +426,29 @@ struct MotionSway {
                 let offset = tangent * cos(around) + bitangent * sin(around)
                 let candidate = simd_normalize(resolved + offset * sin(angle))
                 if simd_length(correction(at: candidate)) <= 1e-6 {
-                    return (candidate, true)
+                    found = candidate
+                    break
                 }
             }
+            if found != nil { break }
+        }
+        // The grid is coarse on purpose — it only has to find *a* way out. Bisect
+        // back to the boundary before returning it, so a panel that lands here
+        // does not snap by a whole 6 degree cell between frames.
+        if var best = found {
+            var low: Float = 0
+            var high: Float = 1
+            for _ in 0..<12 {
+                let mid = (low + high) / 2
+                let probe = simd_normalize(resolved + (best - resolved) * mid)
+                if simd_length(correction(at: probe)) <= 1e-6 {
+                    high = mid
+                    best = probe
+                } else {
+                    low = mid
+                }
+            }
+            return (best, true)
         }
         return (resolved, true)
     }
