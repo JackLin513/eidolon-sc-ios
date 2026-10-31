@@ -20,6 +20,11 @@ import { cityLabel, sameCity } from "@/lib/producerProfile";
 
 const t = copy.settings.profile;
 
+/** 找城市失败时说给用户的原因：后端答的那句话。 */
+function messageOf(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 /** 输入停下这么久才去搜，免得每敲一个字都问一次和风天气。 */
 const SEARCH_DELAY_MS = 350;
 
@@ -52,7 +57,7 @@ export function CityField({
     const timer = setTimeout(() => {
       searchCities(name).then(
         (cities) => current && setFound(cities),
-        (e: unknown) => current && setProblem(e instanceof Error ? e.message : String(e)),
+        (e: unknown) => current && setProblem(messageOf(e)),
       ).finally(() => current && setSearching(false));
     }, SEARCH_DELAY_MS);
     return () => {
@@ -78,7 +83,7 @@ export function CityField({
       (position) => {
         nearestCity(position.coords.latitude, position.coords.longitude).then(
           (nearest) => (nearest ? onChange(nearest) : setProblem(t.cityNone)),
-          (e: unknown) => setProblem(e instanceof Error ? e.message : String(e)),
+          (e: unknown) => setProblem(messageOf(e)),
         ).finally(() => setLocating(false));
       },
       () => {

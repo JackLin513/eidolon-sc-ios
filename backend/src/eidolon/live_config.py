@@ -833,7 +833,7 @@ class _QWeather(_Item):
         if missing := [f for f in QWEATHER_FIELDS if not values[f]]:
             raise ConfigRejected(f"和风天气还缺 {'、'.join(missing)}，请填写")
         try:
-            await self.c.qweather.tried(QWeatherSettings(**{f: values[f] for f in QWEATHER_FIELDS}))
+            await self.c.qweather.tried(_qweather(values))
         except QWeatherFailed as e:
             raise ConfigRejected(str(e)[:MAX_REASON_LENGTH]) from None
         return values, None
@@ -1200,9 +1200,7 @@ class LiveConfig:
     def qweather_settings(self) -> QWeatherSettings | None:
         """The deployer's QWeather account in effect now; None without one."""
         values = self.effective(QWEATHER)
-        if not all(values.get(f) for f in QWEATHER_FIELDS):
-            return None
-        return QWeatherSettings(**{f: values[f] for f in QWEATHER_FIELDS})
+        return _qweather(values) if all(values.get(f) for f in QWEATHER_FIELDS) else None
 
     @property
     def schedule_on(self) -> bool:
@@ -1897,6 +1895,10 @@ def _llm(values: Values) -> LLMSettings:
 
 def _image(values: Values) -> ImageSettings:
     return ImageSettings(**{field: values[field] for field in _Image.fields})
+
+
+def _qweather(values: Values) -> QWeatherSettings:
+    return QWeatherSettings(**{f: values[f] for f in QWEATHER_FIELDS})
 
 
 def _chat_model(values: Values) -> ChatModelSettings:

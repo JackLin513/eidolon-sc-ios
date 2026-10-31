@@ -23,7 +23,13 @@ from cryptography.hazmat.primitives.serialization import (
 )
 
 from eidolon.config import QWeatherSettings, Settings
-from eidolon.her_weather import KEEP_IN_MIND, MAY_BRING_UP
+from eidolon.her_weather import (
+    KEEP_IN_MIND,
+    MAY_BRING_UP,
+    THERE_SIDE,
+    TOKYO_SIDE,
+    may_bring_up_only,
+)
 from eidolon.store import read_last_contact
 from eidolon.weather import TOKYO, Spot, Today, Weather, Weathers
 from tests.conftest import ClientFactory
@@ -199,12 +205,37 @@ async def test_with_a_city_she_knows_where_the_producer_is_and_the_weather_and_w
         "哈尔滨市气象台发布道路结冰黄色预警信号。"
     ) in told
     assert "解除" not in told
-    assert MAY_BRING_UP in told  # a warning in force, though they talked just now
+    # a warning in force there, though they talked just now; Tokyo's day is like any other
+    assert may_bring_up_only(THERE_SIDE, TOKYO_SIDE) in told.splitlines()
     assert told.index("制作人在哈尔滨") < told.index("东京（你这边）") < told.index("制作人那边（")
     harbin = [q for q in weather.days_asked() if q["latitude"] == "45.80298"]
     assert harbin and "models" not in harbin[0]
     assert qweather.warnings_asked()[0] == "/weatheralert/v1/current/45.80/126.54"
     assert len(qweather.warnings_asked()) == 1  # kept an hour
+
+
+@pytest.mark.parametrize(
+    ("spots", "free", "kept"),
+    [
+        ({"45.80298": {"later_code": 61}}, THERE_SIDE, TOKYO_SIDE),
+        ({"35.6895": {"code": 61}}, TOKYO_SIDE, THERE_SIDE),
+    ],
+    ids=["rain-there", "rain-in-tokyo"],
+)
+async def test_a_day_that_stands_out_on_one_side_frees_her_to_bring_up_that_side_alone(
+    make_client: ClientFactory, settings: Settings, spots: dict, free: str, kept: str
+):
+    clock = FakeClock(NOON)
+    weather = FakeWeather(code=1, spots=spots)
+    _, llm, client, conversation = await talk(
+        make_client, weather, city=city_of(HARBIN), clock=clock
+    )
+    last_contact(settings.database_path, conversation, NOON - timedelta(minutes=5))
+
+    await send_turn(client, conversation, "还在吗")
+
+    told = context_of(llm.prompts[-1])
+    assert may_bring_up_only(free, kept) in told.splitlines()
 
 
 async def test_in_tokyo_too_tokyos_weather_is_told_once_as_theirs_both(

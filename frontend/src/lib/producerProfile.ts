@@ -16,10 +16,10 @@ export type Draft = {
   /** 所在城市，没设置是 null。 */
   city: City | null;
   /** 部署者能不能找城市（配了和风天气）；不能时设置里不显示这一项，存着的城市照样交回。 */
-  cities: boolean;
+  findsCities: boolean;
 };
 
-export function toDraft(profile: ProducerProfile & { cities?: boolean }): Draft {
+export function toDraft(profile: ProducerProfile & { finds_cities?: boolean }): Draft {
   return {
     formOfAddress: profile.form_of_address ?? "",
     gender: profile.gender ?? "",
@@ -27,7 +27,7 @@ export function toDraft(profile: ProducerProfile & { cities?: boolean }): Draft 
     birthMonth: profile.birthday?.month ?? null,
     birthDay: profile.birthday?.day ?? null,
     city: profile.city ?? null,
-    cities: profile.cities ?? false,
+    findsCities: profile.finds_cities ?? false,
   };
 }
 

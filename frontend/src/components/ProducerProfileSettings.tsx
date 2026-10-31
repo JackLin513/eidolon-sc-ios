@@ -243,7 +243,7 @@ export function ProducerProfileSettings() {
             {showDayMissing && <FieldError id={`${id}-birthday-error`}>{t.birthDayMissing}</FieldError>}
           </Field>
 
-          {draft.cities && <CityField id={`${id}-city`} city={draft.city} onChange={(city) => update({ city })} />}
+          {draft.findsCities && <CityField id={`${id}-city`} city={draft.city} onChange={(city) => update({ city })} />}
 
           {failure && <FailureNotice failure={failure} />}
 

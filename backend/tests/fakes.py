@@ -1921,8 +1921,9 @@ class FakeWeather:
     spot is (an hour ahead of UTC for each 15 degrees east), as of `clock` (without which it
     fails): every hour `code` and `temperature`, but for those left of today, `later_code`
     if set; each day's highest `high` and lowest `low` (3 degrees off the temperature by
-    default), yesterday's `yesterday_high` and `yesterday_low` if set. Either way, failing
-    with 503 if `failing`. Records the query of each request (`requests`)."""
+    default), yesterday's `yesterday_high` and `yesterday_low` if set; any of these set apart
+    for a spot in `spots`, by its latitude as asked. Either way, failing with 503 if
+    `failing`. Records the query of each request (`requests`)."""
 
     def __init__(
         self,
@@ -1936,7 +1937,9 @@ class FakeWeather:
         low: float | None = None,
         yesterday_high: float | None = None,
         yesterday_low: float | None = None,
+        spots: "dict[str, dict[str, Any]] | None" = None,
     ) -> None:
+        self.spots = spots or {}
         self.code = code
         self.temperature = temperature
         self.failing = failing
@@ -1980,6 +1983,12 @@ class FakeWeather:
     def _days(self, query: dict[str, str]) -> httpx.Response:
         if self.clock is None:
             return httpx.Response(503, json={"error": True, "reason": "no clock"})
+        apart = self.spots.get(query["latitude"], {})
+        code, temperature = apart.get("code", self.code), apart.get("temperature", self.temperature)
+        later_code = apart.get("later_code", self.later_code)
+        high, low = apart.get("high", self.high), apart.get("low", self.low)
+        yesterday_high = apart.get("yesterday_high", self.yesterday_high)
+        yesterday_low = apart.get("yesterday_low", self.yesterday_low)
         offset = timedelta(hours=round(float(query["longitude"]) / 15))
         now = self.clock()
         local = (now + offset).replace(tzinfo=None)
@@ -1988,27 +1997,24 @@ class FakeWeather:
         hours = [days[0] + timedelta(hours=i) for i in range(72)]
         this_hour = now.replace(minute=0, second=0, microsecond=0)
         codes = [
-            self.later_code if self.later_code is not None and this_hour < h < days[2]
-            else self.code
+            later_code if later_code is not None and this_hour < h < days[2] else code
             for h in hours
         ]
-        high = self.temperature + 3 if self.high is None else self.high
-        low = self.temperature - 3 if self.low is None else self.low
+        high = temperature + 3 if high is None else high
+        low = temperature - 3 if low is None else low
         return httpx.Response(200, json={
             "utc_offset_seconds": int(offset.total_seconds()),
             "hourly": {
                 "time": [int(h.timestamp()) for h in hours],
                 "weather_code": codes,
-                "temperature_2m": [self.temperature] * len(hours),
+                "temperature_2m": [temperature] * len(hours),
             },
             "daily": {
                 "time": [int(d.timestamp()) for d in days],
                 "temperature_2m_max": [
-                    high if self.yesterday_high is None else self.yesterday_high, high, high
+                    high if yesterday_high is None else yesterday_high, high, high
                 ],
-                "temperature_2m_min": [
-                    low if self.yesterday_low is None else self.yesterday_low, low, low
-                ],
+                "temperature_2m_min": [low if yesterday_low is None else yesterday_low, low, low],
             },
         })
 

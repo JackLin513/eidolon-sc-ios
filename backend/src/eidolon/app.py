@@ -498,9 +498,9 @@ def create_app(backend: Backend) -> FastAPI:
         return {"ok": True}
 
     def shown_profile(profile: ProducerProfile) -> dict:
-        """The profile, and whether the deployer can find cities (`cities`): without it,
-        the city is not shown, nor is it any use."""
-        return asdict(profile) | {"cities": backend.config.qweather.on}
+        """The profile, and whether the deployer can find cities (`finds_cities`, with a
+        QWeather account): without, the city is not shown, nor is it any use."""
+        return asdict(profile) | {"finds_cities": backend.config.qweather.on}
 
     @app.get("/api/profile")
     async def get_profile(user_id: UserId) -> dict:

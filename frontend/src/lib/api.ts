@@ -238,7 +238,7 @@ export type ProducerProfile = {
 
 /** The profile as the backend answers with it, and whether the deployer can find cities
  * (has a QWeather account): without, the city is neither shown nor any use. */
-export type SavedProfile = ProducerProfile & { cities: boolean };
+export type SavedProfile = ProducerProfile & { finds_cities: boolean };
 
 /** A city, district or county, as QWeather names it in Chinese, and where it is. */
 export type City = {

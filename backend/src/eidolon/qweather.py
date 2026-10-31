@@ -101,14 +101,13 @@ class QWeather:
     async def nearest(self, latitude: float, longitude: float) -> City | None:
         """The city, district or county nearest the spot; None if none. Raises
         QWeatherFailed."""
-        found = await self._lookup(f"{longitude:.2f},{latitude:.2f}", settings=None)
+        found = await self._lookup(_location(latitude, longitude), settings=None)
         return found[0] if found else None
 
     async def tried(self, settings: QWeatherSettings) -> None:
         """Try the account `settings` has, finding the city at `TRIED_AT`. Raises
         QWeatherFailed saying why it does not work."""
-        latitude, longitude = TRIED_AT
-        if not await self._lookup(f"{longitude:.2f},{latitude:.2f}", settings=settings):
+        if not await self._lookup(_location(*TRIED_AT), settings=settings):
             raise QWeatherFailed("找不到北京，账号可能有问题")
 
     async def warnings(self, spot: Spot, wait: float) -> tuple[str, ...] | None:
@@ -227,6 +226,11 @@ class QWeather:
         for fetching in list(self._fetching.values()):
             fetching.cancel()
         await self._http.aclose()
+
+
+def _location(latitude: float, longitude: float) -> str:
+    """A spot as QWeather takes it to look a city up: the longitude first."""
+    return f"{longitude:.2f},{latitude:.2f}"
 
 
 def _b64(data: bytes) -> str:

@@ -13,7 +13,6 @@ from fastapi import FastAPI, HTTPException, Query
 
 from eidolon.assembly import Backend
 from eidolon.clock import Clock
-from eidolon.producer import City
 from eidolon.qweather import QWeatherFailed
 from eidolon.sessions import UserId
 
@@ -42,10 +41,6 @@ class _Asking:
         asked.append(now)
 
 
-def _shown(city: City) -> dict:
-    return asdict(city)
-
-
 def add_city_routes(app: FastAPI, backend: Backend) -> None:
     qweather = backend.config.qweather
     asking = _Asking(backend.clock)
@@ -63,7 +58,7 @@ def add_city_routes(app: FastAPI, backend: Backend) -> None:
         if not (name := q.strip()):
             return {"cities": []}
         try:
-            return {"cities": [_shown(c) for c in await qweather.search(name)]}
+            return {"cities": [asdict(c) for c in await qweather.search(name)]}
         except QWeatherFailed as e:
             raise HTTPException(502, str(e)) from None
 
@@ -78,4 +73,4 @@ def add_city_routes(app: FastAPI, backend: Backend) -> None:
             city = await qweather.nearest(latitude, longitude)
         except QWeatherFailed as e:
             raise HTTPException(502, str(e)) from None
-        return {"city": _shown(city) if city is not None else None}
+        return {"city": asdict(city) if city is not None else None}

@@ -18,7 +18,7 @@ const blank = {
   birthMonth: null,
   birthDay: null,
   city: null,
-  cities: false,
+  findsCities: false,
 };
 const harbin = { name: "哈尔滨", adm2: "哈尔滨", adm1: "黑龙江省", country: "中国", latitude: 45.80298, longitude: 126.53505 };
 
@@ -31,7 +31,7 @@ describe("toDraft", () => {
       birthMonth: null,
       birthDay: null,
       city: null,
-      cities: false,
+      findsCities: false,
     });
   });
 
@@ -50,7 +50,7 @@ describe("toDraft", () => {
       birthMonth: 2,
       birthDay: 29,
       city: null,
-      cities: false,
+      findsCities: false,
     });
   });
 });

@@ -58,7 +58,7 @@ FULL_PROFILE = {
     "birthday": {"month": 5, "day": 3},
 }
 EMPTY_PROFILE = {"form_of_address": None, "gender": None, "timezone": None, "birthday": None}
-NO_CITY = {"city": None, "cities": False}
+NO_CITY = {"city": None, "finds_cities": False}
 """What the profile is answered with besides, without a city or the deployer's QWeather."""
 
 

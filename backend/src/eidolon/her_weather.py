@@ -8,8 +8,10 @@ it is missing.
 She is always told it, so that she can answer if asked; she may bring it up herself only if
 they have not been in touch for `LONG_APART` (in a call, until it connected), or the day stands
 out where either of them is (`weather.Today.stands_out`), or a warning is in force where the
-producer is, and then only once in the conversation. Where the producer is in Tokyo too
-(within `SAME_PLACE`), Tokyo's weather is told once, as both of theirs."""
+producer is, and then only once in the conversation; Tokyo's and the producer's each on its own,
+so that a day that stands out on one side frees her to bring up that side's alone. Where the
+producer is in Tokyo too (within `SAME_PLACE`), Tokyo's weather is told once, as both of
+theirs."""
 
 import asyncio
 import math
@@ -18,7 +20,7 @@ from datetime import datetime, timedelta
 
 from eidolon.producer import City
 from eidolon.qweather import QWeather
-from eidolon.weather import NAMES, SWING, TOKYO, Today, Weathers
+from eidolon.weather import NAMES, SWING, TOKYO, Spot, Today, Weathers
 
 WAIT = 1.5
 """How long a turn waits on the weather it does not have yet, in seconds."""
@@ -34,6 +36,18 @@ MAY_BRING_UP = (
     "比如关心一句；已经聊过就不要再提。"
 )
 KEEP_IN_MIND = "天气只是让你心里有数：制作人问起时可以说，平时不要主动提。"
+
+
+def may_bring_up_only(free: str, kept: str) -> str:
+    """She may bring up the weather on the `free` side only, not on the `kept` one."""
+    return (
+        f"{free}的天气可以当个话头：这段对话里还没聊过天气的话，可以在合适的时候自然地提一次，"
+        f"比如关心一句；已经聊过就不要再提。{kept}的天气只是让你心里有数，制作人问起时可以说，平时不要主动提。"
+    )
+
+
+TOKYO_SIDE = "东京"
+THERE_SIDE = "制作人那边"
 _LATER = {"rain": "今天晚些时候还会下雨", "snow": "今天晚些时候还会下雪"}
 
 
@@ -41,15 +55,16 @@ _LATER = {"rain": "今天晚些时候还会下雨", "snow": "今天晚些时候�
 class KnownWeather:
     """The weather she knows of: Tokyo's day (None if unknown); the producer's city (None
     without one, or without the deployer's account), and its day (None if unknown) and the
-    warnings in force there; whether the producer is in Tokyo too; whether she may bring it
-    up herself."""
+    warnings in force there; whether the producer is in Tokyo too; whether she may bring up
+    Tokyo's herself, and the producer's (both of theirs in Tokyo's, in Tokyo too)."""
 
     tokyo: Today | None
     city: City | None
     there: Today | None
     warnings: tuple[str, ...]
     same_place: bool
-    may_bring_up: bool
+    tokyo_free: bool
+    there_free: bool
 
 
 class HerWeather:
@@ -67,7 +82,7 @@ class HerWeather:
         `WAIT` on what is not kept."""
         if self._qweather is None or not self._qweather.on:
             city = None
-        same = city is not None and _km(city, TOKYO.latitude, TOKYO.longitude) <= SAME_PLACE
+        same = city is not None and _km(city.spot, TOKYO) <= SAME_PLACE
         there = city if city is not None and not same else None
         tokyo, there_day, warnings = await asyncio.gather(
             self._weathers.today(TOKYO, WAIT),
@@ -76,12 +91,13 @@ class HerWeather:
         )
         warnings = warnings or ()
         apart = last_apart is None or now - last_apart >= LONG_APART
-        stands_out = any(d is not None and d.stands_out for d in (tokyo, there_day))
-        known_any = tokyo is not None or there_day is not None or bool(warnings)
-        return KnownWeather(
-            tokyo, city, there_day, warnings, same,
-            known_any and (apart or stands_out or bool(warnings)),
+        tokyo_free = tokyo is not None and (
+            apart or tokyo.stands_out or (same and bool(warnings))
         )
+        there_free = (there_day is not None or bool(warnings)) and not same and (
+            apart or bool(warnings) or (there_day is not None and there_day.stands_out)
+        )
+        return KnownWeather(tokyo, city, there_day, warnings, same, tokyo_free, there_free)
 
 
 async def _none() -> None:
@@ -91,7 +107,7 @@ async def _none() -> None:
 def weather_lines(known: KnownWeather) -> list[str]:
     """The lines of now telling her where the producer is, if she knows, then the weather,
     and whether she may bring it up; nothing of the weather if she knows none."""
-    told = [city_line(known.city)] if known.city is not None else []
+    whereabouts = [city_line(known.city)] if known.city is not None else []
     lines: list[str] = []
     if known.tokyo is not None:
         where = "你和制作人都在东京一带，东京" if known.same_place else "东京（你这边）"
@@ -101,8 +117,24 @@ def weather_lines(known: KnownWeather) -> list[str]:
     if known.warnings:
         lines.append(f"制作人那边正生效的气象预警：{'；'.join(known.warnings)}。")
     if not lines:
-        return told
-    return [*told, *lines, MAY_BRING_UP if known.may_bring_up else KEEP_IN_MIND]
+        return whereabouts
+    return [*whereabouts, *lines, _bring_up(known)]
+
+
+def _bring_up(known: KnownWeather) -> str:
+    """Whether she may bring up the weather herself, of either side she knows of."""
+    there_known = not known.same_place and (known.there is not None or bool(known.warnings))
+    sides = [
+        (TOKYO_SIDE, known.tokyo_free) if known.tokyo is not None else None,
+        (THERE_SIDE, known.there_free) if there_known else None,
+    ]
+    free = [name for name, on in filter(None, sides) if on]
+    kept = [name for name, on in filter(None, sides) if not on]
+    if not free:
+        return KEEP_IN_MIND
+    if not kept:
+        return MAY_BRING_UP
+    return may_bring_up_only(free[0], kept[0])
 
 
 def city_line(city: City) -> str:
@@ -134,8 +166,8 @@ def _change(today: Today) -> str | None:
     return f"比昨天{'冷' if c < 0 else '热'}了不少（{name}气温{'低' if c < 0 else '高'}了 {abs(c)}°C）"
 
 
-def _km(city: City, latitude: float, longitude: float) -> float:
-    """How far `city` is from the spot, in kilometres, near enough."""
-    dy = (city.latitude - latitude) * 111.2
-    dx = (city.longitude - longitude) * 111.2 * math.cos(math.radians(latitude))
+def _km(a: Spot, b: Spot) -> float:
+    """How far apart the two spots are, in kilometres, near enough."""
+    dy = (a.latitude - b.latitude) * 111.2
+    dx = (a.longitude - b.longitude) * 111.2 * math.cos(math.radians(b.latitude))
     return math.hypot(dx, dy)

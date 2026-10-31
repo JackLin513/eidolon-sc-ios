@@ -96,7 +96,7 @@ describe("一级列表上的摘要", () => {
     birthMonth: null,
     birthDay: null,
     city: null,
-    cities: false,
+    findsCities: false,
   };
   const loading: SettingsValues = {
     profile: null,

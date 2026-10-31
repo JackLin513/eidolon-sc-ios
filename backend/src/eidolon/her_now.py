@@ -52,7 +52,7 @@ class Carries:
     cycle: bool
     affinity: bool
     moments: bool
-    weather: bool = False
+    weather: bool
 
 
 CARRIES: dict[Occasion, Carries] = {
@@ -71,13 +71,15 @@ CARRIES: dict[Occasion, Carries] = {
     # The bar's story is only ever on the night shift: no time, nor the producer's birthday;
     # her cycle does not follow her there, and her jobs only tell why she came.
     "visit": Carries(
-        time=False, today=True, schedule=False, cycle=False, affinity=True, moments=False
+        time=False, today=True, schedule=False, cycle=False, affinity=True, moments=False,
+        weather=False,
     ),
     # Her moments go by Tokyo's day, as she lives there: the time is Tokyo's, and no jobs of
     # the week; when they were last in touch is not hers to post about. Her latest moments
     # she is told of as she posts, a few more of them (`moments.RECENT`).
     "moments": Carries(
-        time=True, today=True, schedule=False, cycle=True, affinity=True, moments=False
+        time=True, today=True, schedule=False, cycle=True, affinity=True, moments=False,
+        weather=False,
     ),
 }
 """What each occasion tells her of now. Anything more she is to know of now goes here, for
