@@ -169,7 +169,10 @@ struct ChatView: View {
         return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
-                    if store.transcript.isEmpty && store.streaming.isEmpty {
+                    // The reply being written is covered by the pending line it answers, so this
+                    // page can stop reading the streaming text and leave the bubble to itself
+                    // (spec #42).
+                    if store.transcript.isEmpty && store.pendingUser == nil {
                         Text("从一句问候开始吧。")
                             .font(.callout)
                             .foregroundStyle(.secondary)
@@ -200,23 +203,22 @@ struct ChatView: View {
                         }
                         .id("pending")
                     }
-                    if !store.streaming.isEmpty {
-                        characterBubble(store.streaming)
-                            .id("streaming")
-                    }
+                    // The reply being written draws itself, so a new piece of text does not
+                    // rework the whole transcript (spec #42).
+                    StreamingReply(store: store, character: character)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
+            // One way to follow the bottom, never two: the anchor is what carries the view along
+            // as the content grows. With nothing measuring a bubble's own bottom any more, the
+            // list's vertical padding is just padding. The only explicit scroll left is the one
+            // the producer asks for by sending a line (spec #42).
             .defaultScrollAnchor(.bottom)
+            .defaultScrollAnchor(.bottom, for: .sizeChanges)
             .scrollDismissesKeyboard(.interactively)
-            .onChange(of: store.transcript.count) {
-                proxy.scrollTo(store.transcript.last?.id, anchor: .bottom)
-            }
-            .onChange(of: store.streaming) {
-                proxy.scrollTo("streaming", anchor: .bottom)
-            }
-            .onChange(of: store.pendingUser) {
+            .onChange(of: store.pendingUser) { _, text in
+                guard text != nil else { return }
                 proxy.scrollTo("pending", anchor: .bottom)
             }
         }
@@ -295,7 +297,7 @@ struct ChatView: View {
     private func bubble(_ message: ChatMessageRecord, clock: String) -> some View {
         if message.isFromCharacter {
             VStack(alignment: .leading, spacing: 2) {
-                characterBubble(message.segments, line: message.id)
+                ReplyBubble(segments: message.segments, character: character, line: message.id)
                 clockText(clock)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -313,71 +315,100 @@ struct ChatView: View {
         }
     }
 
-    /// Her words. `line` is the message's, when it is one that has all arrived: what 朗读 is
-    /// for. The line still being written has none.
-    private func characterBubble(_ segments: [ReplySegment], line: String? = nil) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(ReplyCues.shown(segment.ja))
-                        .font(.body)
-                    if !segment.zh.isEmpty {
-                        Text(ReplyCues.shown(segment.zh))
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
+    /// The reply being written. It reads the streaming segments itself, so a new piece of text
+    /// redraws this one bubble and leaves the recorded transcript alone (spec #42).
+    private struct StreamingReply: View {
+        let store: ChatStore
+        let character: CharacterConfig
+
+        var body: some View {
+            if !store.streaming.isEmpty {
+                ReplyBubble(segments: store.streaming, character: character, cuesShown: true)
+            }
+        }
+    }
+
+    /// Her words in one bubble. `line` is the message's, when it is one that has all arrived:
+    /// what 朗读 is for. The line still being written has none, and it arrives with its cues
+    /// already taken out, so it is shown as it is rather than filtered a second time (spec #42).
+    private struct ReplyBubble: View {
+        let segments: [ReplySegment]
+        let character: CharacterConfig
+        var line: String? = nil
+        var cuesShown = false
+
+        @Environment(AppModel.self) private var app
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(shown(segment.ja))
+                            .font(.body)
+                        if !segment.zh.isEmpty {
+                            Text(shown(segment.zh))
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
-            }
-            if let line, let speech = ReadAloud.speech(
-                of: segments, model: app.chatSettings.fishModel
-            ), let voice = app.readAloudVoice(for: character) {
-                readAloudButton(speech, line: line, voice: voice)
-                    .id(line)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(
-            Color(hex: character.color ?? "#888888").opacity(0.18),
-            in: RoundedRectangle(cornerRadius: 16)
-        )
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// 朗读: one tap voices the line, a second stops it; preparing wears a spinner, and a
-    /// failure says so and can be tapped again (spec #32).
-    private func readAloudButton(_ speech: String, line: String, voice: CallVoice) -> some View {
-        let phase = app.readAloud.phase(of: line)
-        return HStack(spacing: 6) {
-            Button {
-                app.readAloud.tap(line, speech: speech, voice: voice) { text, voice in
-                    try await app.readAloud(text, voice: voice)
-                }
-            } label: {
-                if phase == .synthesizing {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Image(systemName: phase == .playing ? "stop.circle" : "speaker.wave.2")
+                if let line, let speech = ReadAloud.speech(
+                    of: segments, model: app.chatSettings.fishModel
+                ), let voice = app.readAloudVoice(for: character) {
+                    readAloudButton(speech, line: line, voice: voice)
+                        .id(line)
                 }
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .accessibilityLabel(readAloudLabel(phase))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                Color(hex: character.color ?? "#888888").opacity(0.18),
+                in: RoundedRectangle(cornerRadius: 16)
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
 
-            if phase == .failed {
-                Text("朗读没成功，再点一次")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+        /// What the reader sees. A recorded line keeps its cues in the store, so they are taken
+        /// out here; a line still being written arrives without them.
+        private func shown(_ text: String) -> String {
+            cuesShown ? text : ReplyCues.shown(text)
+        }
+
+        /// 朗读: one tap voices the line, a second stops it; preparing wears a spinner, and a
+        /// failure says so and can be tapped again (spec #32).
+        private func readAloudButton(_ speech: String, line: String, voice: CallVoice) -> some View {
+            let phase = app.readAloud.phase(of: line)
+            return HStack(spacing: 6) {
+                Button {
+                    app.readAloud.tap(line, speech: speech, voice: voice) { text, voice in
+                        try await app.readAloud(text, voice: voice)
+                    }
+                } label: {
+                    if phase == .synthesizing {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: phase == .playing ? "stop.circle" : "speaker.wave.2")
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(readAloudLabel(phase))
+
+                if phase == .failed {
+                    Text("朗读没成功，再点一次")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
-    }
 
-    private func readAloudLabel(_ phase: ReadAloudPlayback.Phase?) -> String {
-        switch phase {
-        case .playing: "停止朗读"
-        case .synthesizing: "正在合成朗读"
-        case .failed, nil: "朗读"
+        private func readAloudLabel(_ phase: ReadAloudPlayback.Phase?) -> String {
+            switch phase {
+            case .playing: "停止朗读"
+            case .synthesizing: "正在合成朗读"
+            case .failed, nil: "朗读"
+            }
         }
     }
 
