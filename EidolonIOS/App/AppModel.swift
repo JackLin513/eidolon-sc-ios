@@ -128,12 +128,15 @@ final class AppModel {
         defer { isCatchingUp = false }
         let embedder = embeddingProvider
         let reranker = rerankProvider
-        var hours = Double(chatSettings.reachOutHours)
+        var cadence: ReachOutCadence = chatSettings.reachOutByTier
+            ? .byTier
+            : .fixed(hours: Double(chatSettings.reachOutHours))
         #if DEBUG
-        // Development aid: `SIMCTL_CHILD_EIDOLON_REACH_OUT_HOURS=0.01` makes the wait short.
+        // Development aid: `SIMCTL_CHILD_EIDOLON_REACH_OUT_HOURS=0.01` makes the wait short,
+        // on a fixed interval.
         if let override = ProcessInfo.processInfo.environment["EIDOLON_REACH_OUT_HOURS"],
            let value = Double(override) {
-            hours = value
+            cadence = .fixed(hours: value)
         }
         #endif
         // Every character whose time has come is asked at once: six characters are not six
@@ -147,7 +150,7 @@ final class AppModel {
                         provider: provider,
                         embedder: embedder,
                         reranker: reranker,
-                        hours: hours
+                        cadence: cadence
                     )
                     return record != nil
                 }

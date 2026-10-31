@@ -19,8 +19,11 @@ struct ChatSettings {
     var embeddingModel: String = ""
     var rerankModel: String = ""
     var retrievalAPIKey: String = ""
-    /// How long she waits before saying something first (ADR-0009).
+    /// How long she waits before saying something first, when she does not go by her tier
+    /// (ADR-0009).
     var reachOutHours: Int = 6
+    /// Whether her waiting time is drawn from her affinity tier's range rather than fixed.
+    var reachOutByTier: Bool = true
     /// Whether a turn leaves a trace, and how many are kept (ADR-0012).
     var tracingEnabled: Bool = true
     var traceRetention: Int = 200
@@ -70,6 +73,7 @@ struct ChatSettings {
     private static let rerankModelKey = "retrieval.rerankModel"
     private static let retrievalKeychainAccount = "retrieval.apiKey"
     private static let reachOutHoursKey = "reachOut.hours"
+    private static let reachOutByTierKey = "reachOut.byTier"
     private static let tracingEnabledKey = "trace.enabled"
     private static let traceRetentionKey = "trace.retention"
     private static let sonioxModelKey = "call.sonioxModel"
@@ -109,6 +113,7 @@ struct ChatSettings {
             rerankModel: defaults.string(forKey: rerankModelKey) ?? "",
             retrievalAPIKey: Keychain.string(account: retrievalKeychainAccount) ?? "",
             reachOutHours: defaults.object(forKey: reachOutHoursKey) as? Int ?? 6,
+            reachOutByTier: defaults.object(forKey: reachOutByTierKey) as? Bool ?? true,
             tracingEnabled: defaults.object(forKey: tracingEnabledKey) as? Bool ?? true,
             traceRetention: defaults.object(forKey: traceRetentionKey) as? Int ?? 200,
             sonioxAPIKey: Keychain.string(account: sonioxKeychainAccount) ?? "",
@@ -159,6 +164,7 @@ struct ChatSettings {
         try Self.store(judgeAPIKey, account: JudgeService.chat.keychainAccount)
         try Self.store(retrievalAPIKey, account: Self.retrievalKeychainAccount)
         defaults.set(reachOutHours, forKey: Self.reachOutHoursKey)
+        defaults.set(reachOutByTier, forKey: Self.reachOutByTierKey)
         defaults.set(tracingEnabled, forKey: Self.tracingEnabledKey)
         defaults.set(traceRetention, forKey: Self.traceRetentionKey)
         defaults.set(sonioxModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.sonioxModelKey)

@@ -378,7 +378,7 @@ final class TurnTests: XCTestCase {
         let reach = try await eidolon.reachOutIfDue(
             characterID: "mano",
             provider: RecordingChatProvider(chunks: ["<ja>ねえ</ja><zh>喂</zh>"]),
-            hours: 6,
+            cadence: .fixed(hours: 6),
             // In the morning: she does not reach out between 22:00 and 08:00 (upstream
             // `reach_outs`), and by then she is past the six hours since they spoke.
             now: moment.addingTimeInterval(16 * 3600),

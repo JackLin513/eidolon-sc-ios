@@ -67,12 +67,17 @@ final class ReachOutTests: XCTestCase {
     }
 
     @discardableResult
-    private func say(_ text: String, at when: Date, on eidolon: Eidolon) async throws -> TurnRecord {
+    private func say(
+        _ text: String,
+        at when: Date,
+        on eidolon: Eidolon,
+        characterID: String = "mano"
+    ) async throws -> TurnRecord {
         let provider = KindChatProvider()
         provider.chat = "<ja>うん</ja><zh>嗯</zh>"
         var record: TurnRecord?
         for try await event in eidolon.sendTurn(
-            characterID: "mano",
+            characterID: characterID,
             text: text,
             provider: provider,
             now: when,
@@ -87,15 +92,54 @@ final class ReachOutTests: XCTestCase {
     private func reachOut(
         at when: Date,
         on eidolon: Eidolon,
-        provider: KindChatProvider = KindChatProvider()
+        provider: KindChatProvider = KindChatProvider(),
+        cadence: ReachOutCadence = .fixed(hours: 6)
     ) async throws -> ReachOutRecord? {
         try await eidolon.reachOutIfDue(
             characterID: "mano",
             provider: provider,
-            hours: 6,
+            cadence: cadence,
             now: when,
             timeZone: TimeZone(identifier: "Asia/Tokyo")!
         )
+    }
+
+    private func setAffinity(_ value: Double, on eidolon: Eidolon, at when: Date) async throws {
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO affinities(character_id, value, cooling, updated_at)
+                    VALUES ('mano', ?, 0, ?)
+                    ON CONFLICT(character_id) DO UPDATE SET
+                        value = excluded.value, cooling = 0, updated_at = excluded.updated_at
+                    """,
+                arguments: [value, Eidolon.timestamp(when)]
+            )
+        }
+    }
+
+    /// `count` of her reach-outs already made in the conversation at `at`.
+    private func insertReachOuts(
+        count: Int,
+        conversationID: String,
+        at when: Date,
+        on eidolon: Eidolon
+    ) async throws {
+        try await eidolon.userQueue.write { db in
+            for index in 0..<count {
+                try db.execute(
+                    sql: """
+                        INSERT INTO reach_outs(id, conversation_id, ja, zh, segments, seen, created_at)
+                        VALUES (?, ?, 'ねえ', '喂', '[{"ja":"ねえ","zh":"喂"}]', 1, ?)
+                        """,
+                    arguments: [
+                        "reach-\(UUID().uuidString)-\(index)",
+                        conversationID,
+                        Eidolon.timestamp(when),
+                    ]
+                )
+            }
+        }
     }
 
     func testNothingIsSaidBeforeTheThreshold() async throws {
@@ -158,6 +202,139 @@ final class ReachOutTests: XCTestCase {
             let reached = try await reachOut(at: start.addingTimeInterval(7 * 3600), on: eidolon)
             XCTAssertNil(reached, "\(tier)")
         }
+    }
+
+    /// Her time is drawn from her tier's range, and the draw is the same for the whole
+    /// stretch of absence (upstream `INTERVALS`, `PLACES`, `_schedule`).
+    func testHerTierRangesMatchUpstreamAndTheDrawIsAlwaysWithinThem() throws {
+        let ranges: [(AffinityTier, Double, Double)] = [
+            (.intimate, 3, 6), (.close, 8, 16), (.trust, 20, 36),
+        ]
+        for (tier, low, high) in ranges {
+            for index in 0..<200 {
+                let interval = try XCTUnwrap(
+                    ReachOutRules.interval(
+                        tier: tier,
+                        conversationID: "conversation-\(index)",
+                        contact: start
+                    ),
+                    "\(tier)"
+                )
+                XCTAssertGreaterThanOrEqual(interval, low * 3600, "\(tier)")
+                XCTAssertLessThan(interval, high * 3600, "\(tier)")
+            }
+        }
+        XCTAssertNil(ReachOutRules.interval(tier: .cold, conversationID: "c", contact: start))
+        XCTAssertNil(ReachOutRules.interval(tier: .distant, conversationID: "c", contact: start))
+
+        let first = ReachOutRules.interval(tier: .trust, conversationID: "c", contact: start)
+        let again = ReachOutRules.interval(tier: .trust, conversationID: "c", contact: start)
+        XCTAssertEqual(first, again, "the same stretch of absence keeps the same time")
+        let nextStretch = ReachOutRules.interval(
+            tier: .trust,
+            conversationID: "c",
+            contact: start.addingTimeInterval(3600)
+        )
+        XCTAssertNotEqual(first, nextStretch)
+    }
+
+    /// By tier she waits for the time drawn for this stretch of absence, and not a second
+    /// less (upstream `_interval`).
+    func testByTierSheWaitsForHerDrawnTime() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("おはよう", at: start, on: eidolon)
+        // Intimate is 3–6 hours: her time lands in the afternoon, never at night.
+        try await setAffinity(90, on: eidolon, at: start)
+        let current = try await eidolon.currentConversation(characterID: "mano")
+        let conversation = try XCTUnwrap(current)
+        let drawn = try XCTUnwrap(
+            ReachOutRules.interval(
+                tier: .intimate,
+                conversationID: conversation.id,
+                contact: start
+            )
+        )
+
+        let justBefore = try await reachOut(
+            at: start.addingTimeInterval(drawn - 1),
+            on: eidolon,
+            cadence: .byTier
+        )
+        XCTAssertNil(justBefore)
+        let due = try await reachOut(
+            at: start.addingTimeInterval(drawn + 1),
+            on: eidolon,
+            cadence: .byTier
+        )
+        XCTAssertNotNil(due)
+    }
+
+    /// By tier she is still quiet at night and speaks in the morning.
+    func testByTierSheStillWaitsForTheMorningWhenItIsNight() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("おはよう", at: start, on: eidolon)
+        try await setAffinity(90, on: eidolon, at: start)
+
+        let atNight = try await reachOut(
+            at: start.addingTimeInterval(14 * 3600),
+            on: eidolon,
+            cadence: .byTier
+        )
+        XCTAssertNil(atNight)
+        let morning = try await reachOut(
+            at: start.addingTimeInterval(23 * 3600),
+            on: eidolon,
+            cadence: .byTier
+        )
+        XCTAssertNotNil(morning)
+    }
+
+    /// She reaches out at most three times a day, over every character (upstream
+    /// `DEFAULT_REACH_OUTS_PER_DAY`).
+    func testSheReachesOutAtMostThreeTimesADay() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("おはよう", at: start, on: eidolon)
+        try await setAffinity(90, on: eidolon, at: start)
+        try await say("こんにちは", at: start, on: eidolon, characterID: "hiori")
+        // Three earlier today, before this stretch of absence began: they count for the
+        // day but not for this stretch. Two of them were said to another character.
+        let earlier = start.addingTimeInterval(-8 * 3600)
+        let currentMano = try await eidolon.currentConversation(characterID: "mano")
+        let mano = try XCTUnwrap(currentMano)
+        let currentHiori = try await eidolon.currentConversation(characterID: "hiori")
+        let hiori = try XCTUnwrap(currentHiori)
+        try await insertReachOuts(count: 2, conversationID: mano.id, at: earlier, on: eidolon)
+        try await insertReachOuts(count: 1, conversationID: hiori.id, at: earlier, on: eidolon)
+
+        let blocked = try await reachOut(
+            at: start.addingTimeInterval(7 * 3600),
+            on: eidolon,
+            cadence: .byTier
+        )
+        XCTAssertNil(blocked)
+    }
+
+    /// Yesterday's reach-outs do not count against today's three.
+    func testYesterdaysReachOutsDoNotCountAgainstToday() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("おはよう", at: start, on: eidolon)
+        try await setAffinity(90, on: eidolon, at: start)
+        let current = try await eidolon.currentConversation(characterID: "mano")
+        let mano = try XCTUnwrap(current)
+        // 23:00 the night before, in the producer's day.
+        try await insertReachOuts(
+            count: 3,
+            conversationID: mano.id,
+            at: start.addingTimeInterval(-10 * 3600),
+            on: eidolon
+        )
+
+        let due = try await reachOut(
+            at: start.addingTimeInterval(7 * 3600),
+            on: eidolon,
+            cadence: .byTier
+        )
+        XCTAssertNotNil(due)
     }
 
     /// She reaches out only in the week after they were last in touch, and not after it

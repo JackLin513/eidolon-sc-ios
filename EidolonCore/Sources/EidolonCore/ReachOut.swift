@@ -11,10 +11,33 @@ public struct ReachOutRecord: Sendable, Hashable, Identifiable {
     public var createdAt: String
 }
 
+public enum ReachOutCadence: Sendable, Hashable {
+    /// After the producer's set number of hours, whatever her tier.
+    case fixed(hours: Double)
+    /// After a time drawn from her tier's range (upstream `INTERVALS`).
+    case byTier
+}
+
 public enum ReachOutRules {
-    /// How long after the last thing said she may reach out (ADR-0009); the app lets the
-    /// producer change it.
+    /// How long after the last thing said she may reach out, when the producer has not
+    /// set a number (ADR-0009).
     public static let defaultHours: Double = 6
+
+    /// How long after the last contact she reaches out, by her tier: the closer, the
+    /// sooner. None in the tiers she does not reach out in (upstream `INTERVALS`).
+    static let intervals: [AffinityTier: (low: Double, high: Double)] = [
+        .intimate: (3, 6),
+        .close: (8, 16),
+        .trust: (20, 36),
+    ]
+
+    /// How many places in a tier's range her time may be drawn at, evenly apart (upstream
+    /// `PLACES`).
+    static let places = 1000
+
+    /// How many times she may reach out in a day, over every character (upstream
+    /// `DEFAULT_REACH_OUTS_PER_DAY`).
+    static let perDay = 3
 
     /// How long after the last contact she may still reach out (upstream `WINDOW`).
     static let window: TimeInterval = 7 * 86_400
@@ -28,10 +51,32 @@ public enum ReachOutRules {
     /// The tiers she reaches out in: trust and above. Cold and distant are not
     /// (upstream `INTERVALS`).
     static func reachesOut(_ tier: AffinityTier) -> Bool {
-        switch tier {
-        case .trust, .close, .intimate: true
-        case .cold, .distant: false
+        intervals[tier] != nil
+    }
+
+    /// Where in the tier's range her time is, in [0, 1): one of a thousand evenly spaced
+    /// places (upstream `PLACES`), taken from the conversation and the contact, so that
+    /// the same stretch of absence keeps the same time without a table of its own.
+    static func place(conversationID: String, contact: Date) -> Double {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in "\(conversationID)|\(Eidolon.timestamp(contact))".utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01b3
         }
+        return Double(hash % UInt64(places)) / Double(places)
+    }
+
+    /// How long after `contact` she reaches out in `tier`, or nil in the tiers she does
+    /// not reach out in.
+    static func interval(
+        tier: AffinityTier,
+        conversationID: String,
+        contact: Date
+    ) -> TimeInterval? {
+        guard let range = intervals[tier] else { return nil }
+        let hours = range.low
+            + (range.high - range.low) * place(conversationID: conversationID, contact: contact)
+        return hours * 3600
     }
 
     /// Whether `moment` falls in the night of `timeZone`.
@@ -63,15 +108,15 @@ public enum ReachOutRules {
 
 extension Eidolon {
     /// Whether she reaches out now, and if so, what she says: only in the conversation in
-    /// progress, only once the producer has been away longer than `hours`, and only once
-    /// per stretch of absence.
+    /// progress, only once the producer has been away for `cadence`, and only once per
+    /// stretch of absence, and no more than `ReachOutRules.perDay` times a day.
     @discardableResult
     public func reachOutIfDue(
         characterID: String,
         provider: any ChatProvider,
         embedder: (any EmbeddingProvider)? = nil,
         reranker: (any RerankProvider)? = nil,
-        hours: Double = ReachOutRules.defaultHours,
+        cadence: ReachOutCadence = .fixed(hours: ReachOutRules.defaultHours),
         now: Date = Date(),
         timeZone: TimeZone = .current
     ) async throws -> ReachOutRecord? {
@@ -85,7 +130,20 @@ extension Eidolon {
         guard !ReachOutRules.isNight(now, in: zone) else { return nil }
         guard let contact = try lastContact(conversationID: conversationID) else { return nil }
         guard now.timeIntervalSince(contact) <= ReachOutRules.window else { return nil }
-        guard now.timeIntervalSince(contact) > hours * 3600 else { return nil }
+        let wait: TimeInterval
+        switch cadence {
+        case let .fixed(hours):
+            wait = hours * 3600
+        case .byTier:
+            guard let drawn = ReachOutRules.interval(
+                tier: affinity.tier,
+                conversationID: conversationID,
+                contact: contact
+            ) else { return nil }
+            wait = drawn
+        }
+        guard now.timeIntervalSince(contact) > wait else { return nil }
+        guard try reachedOutToday(in: zone, now: now) < ReachOutRules.perDay else { return nil }
         guard try !reachedOut(since: contact, conversationID: conversationID) else { return nil }
 
         let characters = try characters()
@@ -193,6 +251,23 @@ extension Eidolon {
                 let stamp: String = row["created_at"]
                 return Eidolon.parseTimestamp(stamp).map { $0 >= contact } ?? false
             }
+        }
+    }
+
+    /// How many times she has reached out today, over every character: the day is the
+    /// producer's (upstream `_within_the_day`).
+    private func reachedOutToday(in zone: TimeZone, now: Date) throws -> Int {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
+        let began = calendar.startOfDay(for: now)
+        return try userQueue.read { db in
+            try Row.fetchAll(db, sql: "SELECT created_at FROM reach_outs")
+                .filter { row in
+                    let stamp: String = row["created_at"]
+                    guard let at = Eidolon.parseTimestamp(stamp) else { return false }
+                    return at >= began
+                }
+                .count
         }
     }
 
