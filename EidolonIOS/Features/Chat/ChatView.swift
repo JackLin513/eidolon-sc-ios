@@ -102,6 +102,10 @@ struct ChatView: View {
                             cue: store.affinityCue,
                             showsDetails: $showsAffinity
                         )
+                        // The badge keeps its 44pt tap area, but the toolbar title must not
+                        // grow with it: a 44pt badge under the name made the stack taller
+                        // than the bar, pushing the name up into the Dynamic Island.
+                        .frame(height: 16)
                     }
                 }
             }
