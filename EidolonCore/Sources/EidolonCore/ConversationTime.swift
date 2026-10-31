@@ -115,6 +115,8 @@ public enum ConversationTranscript {
         public var first: Bool
         /// This line closes its bubble group: the time goes beside it.
         public var last: Bool
+        /// The affinity change to show under this line, if it made one (spec #38).
+        public var cue: AffinityChange?
 
         public var id: String { line.id }
     }
@@ -137,12 +139,19 @@ public enum ConversationTranscript {
                 between: line, and: record[index + 1], at: index + 1,
                 instants: instants, calendar: calendar, splitsAfter: splitsAfter
             )
+            let cue: AffinityChange?
+            if case let .message(message) = line {
+                cue = message.affinityChange
+            } else {
+                cue = nil
+            }
             return Row(
                 line: line,
                 day: days[index],
                 clock: ConversationTime.clock(of: instants[index], calendar: calendar),
                 first: first,
-                last: last
+                last: last,
+                cue: cue
             )
         }
     }

@@ -10,6 +10,7 @@
 		03D1D9AFAE21C9348078853C /* ImportGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */; };
 		0EFF31521A69C5A7C7949BCB /* DebugRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCD1CD149AFF0049C2EE0F58 /* DebugRecognition.swift */; };
 		10BA2565084D529C4152A890 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38579B2A473B296EC588CBD6 /* AppModel.swift */; };
+		113F1FAAA8A9FE0C88AB1FC5 /* AffinityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2D79D1CDB4D74AADF0D731E /* AffinityViews.swift */; };
 		17CAADABE8FCFE23334C6C09 /* stand.html in Resources */ = {isa = PBXBuildFile; fileRef = C3363DDA773D810C71B70EE3 /* stand.html */; };
 		27EE9A61F1EA6DD131D5D03F /* EidolonIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6567288D9C69EE4C18792B6 /* EidolonIOSApp.swift */; };
 		28E1D1F65D00588EA9601DA3 /* TraceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D48DCFB6F0FC0D93BD033FC6 /* TraceListView.swift */; };
@@ -32,6 +33,7 @@
 		8ABC906B631EDC9CC6BC2529 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 502579B7DFF941BAC28ADE49 /* AppIcon.icon */; };
 		8F700315EAE8C6E59429BD0F /* BarTextBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B8F3B95D300DF671C5E5C20 /* BarTextBox.swift */; };
 		8FDA81B5B65A7F24FDDE1659 /* ChatSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730259B31CD6DBF3CA44FC75 /* ChatSettings.swift */; };
+		90BA232DAFE04205D280A5AF /* AffinityCue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A8C4CAB5DC57A55588F5D0 /* AffinityCue.swift */; };
 		9221A0F68F374BAAA5282CCE /* MemoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B94AA6A4C5655585B24D2400 /* MemoryListView.swift */; };
 		92E1F6607762968CB4BD184B /* BarRoomBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B9D77576080818CADE3BD64 /* BarRoomBackground.swift */; };
 		99CF59ED1AC1CDDA579652C8 /* BarDoor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22B001CEBA8E13B70A91DA53 /* BarDoor.swift */; };
@@ -81,6 +83,7 @@
 		1C41FC4F60852CC263CFA152 /* EidolonIOSUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = EidolonIOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		22B001CEBA8E13B70A91DA53 /* BarDoor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarDoor.swift; sourceTree = "<group>"; };
 		31FDC61716128573E91E0E66 /* connect.m4a */ = {isa = PBXFileReference; path = connect.m4a; sourceTree = "<group>"; };
+		32A8C4CAB5DC57A55588F5D0 /* AffinityCue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AffinityCue.swift; sourceTree = "<group>"; };
 		3426738E4DA43CD7060B7095 /* hang-up.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "hang-up.mp3"; sourceTree = "<group>"; };
 		362E0BAAF16B958F406E1E08 /* SpeechPlayback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechPlayback.swift; sourceTree = "<group>"; };
 		38579B2A473B296EC588CBD6 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
@@ -106,6 +109,7 @@
 		7B8F3B95D300DF671C5E5C20 /* BarTextBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarTextBox.swift; sourceTree = "<group>"; };
 		7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportGuideView.swift; sourceTree = "<group>"; };
 		889A8316C35EBB240F4D78A2 /* BarGuest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarGuest.swift; sourceTree = "<group>"; };
+		A2D79D1CDB4D74AADF0D731E /* AffinityViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AffinityViews.swift; sourceTree = "<group>"; };
 		A3A3CDE40EDED61EECF1DBF1 /* BarJukeboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarJukeboxView.swift; sourceTree = "<group>"; };
 		A3D7CC6AFCA2A05909641B10 /* TexturedAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TexturedAudio.swift; sourceTree = "<group>"; };
 		A530040A28709F9772A80A94 /* CallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallView.swift; sourceTree = "<group>"; };
@@ -239,6 +243,7 @@
 		8DD528FF0F49C56E429F79F4 /* Chat */ = {
 			isa = PBXGroup;
 			children = (
+				A2D79D1CDB4D74AADF0D731E /* AffinityViews.swift */,
 				6DA937E9DC437925E1DD0673 /* ChatStore.swift */,
 				77736DA8D3A8B0B2407A626B /* ChatView.swift */,
 				B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */,
@@ -283,6 +288,7 @@
 		AB93147C4769FE640D212437 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				32A8C4CAB5DC57A55588F5D0 /* AffinityCue.swift */,
 				730259B31CD6DBF3CA44FC75 /* ChatSettings.swift */,
 				F1FF6012F255268462E4A685 /* Keychain.swift */,
 				CE21F722ED79A2089F060B7F /* Theme.swift */,
@@ -503,6 +509,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				90BA232DAFE04205D280A5AF /* AffinityCue.swift in Sources */,
+				113F1FAAA8A9FE0C88AB1FC5 /* AffinityViews.swift in Sources */,
 				10BA2565084D529C4152A890 /* AppModel.swift in Sources */,
 				4235DD89FDB9280BFC39D5E1 /* BarCanvas.swift in Sources */,
 				FA5A10686839158B2C50E21D /* BarCounter.swift in Sources */,

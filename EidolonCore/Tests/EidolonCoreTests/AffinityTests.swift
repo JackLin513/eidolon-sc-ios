@@ -472,4 +472,104 @@ final class AffinityTurnTests: XCTestCase {
         let affinity = try await eidolon.readAffinity(characterID: "mano", now: Date())
         XCTAssertEqual(affinity.value, AffinityRules.normal, accuracy: 0.001)
     }
+
+    // MARK: - The feedback (spec #38)
+
+    private var shanghai: TimeZone { TimeZone(identifier: "Asia/Shanghai")! }
+
+    private func moment(_ month: Int, _ day: Int, _ hour: Int, _ minute: Int) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = shanghai
+        return calendar.date(from: DateComponents(
+            year: 2026, month: month, day: day, hour: hour, minute: minute
+        ))!
+    }
+
+    func testTheCueSaysWhatChanged() {
+        XCTAssertEqual(
+            AffinityChange(up: true, tierChanged: true, tier: .close, cooldown: false)
+                .text(name: "真乃"),
+            "和真乃更近了一步：亲近"
+        )
+        XCTAssertEqual(
+            AffinityChange(up: false, tierChanged: true, tier: .distant, cooldown: false)
+                .text(name: "真乃"),
+            "真乃和你疏远了一些：疏远"
+        )
+        XCTAssertEqual(
+            AffinityChange(up: true, tierChanged: false, tier: .trust, cooldown: false)
+                .text(name: "真乃"),
+            "真乃有点开心"
+        )
+        XCTAssertEqual(
+            AffinityChange(up: false, tierChanged: false, tier: .trust, cooldown: false)
+                .text(name: "真乃"),
+            "真乃有点不高兴"
+        )
+        XCTAssertEqual(
+            AffinityChange(up: false, tierChanged: true, tier: .cold, cooldown: true)
+                .text(name: "真乃"),
+            "真乃现在不想说话了"
+        )
+    }
+
+    func testTheTierBadgeShowsItsHeartAndWhatItMeans() {
+        let hearts: [AffinityTier: AffinityHeart] = [
+            .cold: .off, .distant: .crack, .trust: .outline, .close: .half, .intimate: .filled,
+        ]
+        let now = moment(10, 31, 15, 0)
+        for tier in AffinityTier.allCases {
+            let badge = AffinityBadge.of(
+                AffinityStatus(tier: tier), name: "真乃", now: now, timeZone: shanghai
+            )
+            XCTAssertEqual(badge.text, tier.title)
+            XCTAssertEqual(badge.label, "你们的关系：\(tier.title)")
+            XCTAssertEqual(badge.title, "你们现在的关系：\(tier.title)")
+            XCTAssertEqual(badge.note, AffinityCopy.notes[tier])
+            guard case let .tier(shown, heart) = badge.kind else {
+                return XCTFail("\(tier) should be a tier badge")
+            }
+            XCTAssertEqual(shown, tier)
+            XCTAssertEqual(heart, hearts[tier])
+        }
+    }
+
+    func testTheCooldownBadgeShowsWhenSheWillTalkAgain() {
+        let now = moment(10, 31, 15, 0)
+        let today = moment(10, 31, 21, 40)
+        let tomorrow = moment(11, 1, 8, 5)
+        XCTAssertEqual(AffinityCopy.untilText(until: today, now: now, timeZone: shanghai), "今天 21:40")
+        XCTAssertEqual(AffinityCopy.untilText(until: tomorrow, now: now, timeZone: shanghai), "明天 08:05")
+
+        let badge = AffinityBadge.of(
+            AffinityStatus(tier: .distant, cooldownUntil: today),
+            name: "真乃",
+            now: now,
+            timeZone: shanghai
+        )
+        XCTAssertEqual(badge.text, "今天 21:40")
+        XCTAssertEqual(badge.label, "真乃现在不想说话")
+        XCTAssertEqual(badge.title, "真乃现在不想说话")
+        XCTAssertEqual(badge.note, "今天 21:40 以后可以再找她。")
+        guard case .cooldown = badge.kind else {
+            return XCTFail("a cooldown should show as one")
+        }
+    }
+
+    func testTheCooldownEndFollowsTheGivenTimeZone() {
+        let now = moment(10, 31, 15, 0)
+        let until = moment(10, 31, 21, 40)
+        XCTAssertEqual(AffinityCopy.untilText(until: until, now: now, timeZone: shanghai), "今天 21:40")
+        let newYork = TimeZone(identifier: "America/New_York")!
+        XCTAssertEqual(AffinityCopy.untilText(until: until, now: now, timeZone: newYork), "今天 09:40")
+    }
+
+    func testTheCardCopyIsUpstreams() {
+        XCTAssertEqual(AffinityCopy.tiersLabel, "五个档位")
+        XCTAssertEqual(AffinityCopy.rule, "她对你的态度会随你说的话变化。低于「信任」时，不联系也会慢慢回到「信任」。")
+        XCTAssertEqual(AffinityTier.allCases.count, 5)
+        for tier in AffinityTier.allCases {
+            XCTAssertFalse((AffinityCopy.notes[tier] ?? "").isEmpty)
+        }
+    }
 }

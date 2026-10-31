@@ -29,6 +29,17 @@ public enum AffinityTier: String, Codable, Sendable, CaseIterable, Hashable {
         }
     }
 
+    /// How this tier draws as a heart (spec #38).
+    public var heart: AffinityHeart {
+        switch self {
+        case .cold: .off
+        case .distant: .crack
+        case .trust: .outline
+        case .close: .half
+        case .intimate: .filled
+        }
+    }
+
     static func of(_ value: Double) -> AffinityTier {
         AffinityTier.allCases.last { value >= $0.start } ?? .cold
     }
@@ -121,6 +132,17 @@ public struct Affinity: Sendable, Hashable {
     }
 
     public var tier: AffinityTier { AffinityTier.of(value) }
+
+    /// How becoming `after` changed her affinity; nil when the value did not move.
+    public func change(to after: Affinity) -> AffinityChange? {
+        guard after.value != value else { return nil }
+        return AffinityChange(
+            up: after.value > value,
+            tierChanged: after.tier != tier,
+            tier: after.tier,
+            cooldown: after.cooling && !cooling
+        )
+    }
 
     public var cooldownUntil: Date? {
         guard cooling else { return nil }

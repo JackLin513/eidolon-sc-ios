@@ -490,6 +490,12 @@ struct CallView: View {
             Text("重连中…")
                 .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.8))
+        } else if let cue = call.affinityCue, connectedAt != nil {
+            // A turn just changed her affinity: the words take the clock's place for a
+            // moment (upstream `Status`, spec #38).
+            AffinityCueLabel(change: cue.change, name: character.name)
+                .font(.subheadline)
+                .foregroundStyle(.white)
         } else if let connectedAt {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 Text(CallClock.shown(CallClock.time(

@@ -112,4 +112,47 @@ final class UserSchemaTests: XCTestCase {
             "（你挂断了制作人的电话。）"
         )
     }
+
+    /// v8 did not keep how a reply changed her affinity. Upgrading leaves those replies
+    /// without a change rather than guessing one (spec #38).
+    func testUpgradingToV9LeavesOldRepliesWithoutAChange() throws {
+        let queue = try DatabaseQueue()
+        try queue.write { db in
+            try db.execute(sql: "CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY)")
+            for version in ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"] {
+                try db.execute(
+                    sql: "INSERT INTO grdb_migrations(identifier) VALUES (?)",
+                    arguments: [version]
+                )
+            }
+            try db.execute(sql: """
+                CREATE TABLE messages (
+                    id TEXT PRIMARY KEY,
+                    conversation_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    text TEXT,
+                    ja TEXT,
+                    zh TEXT,
+                    segments TEXT,
+                    created_at TEXT NOT NULL,
+                    affinity TEXT,
+                    hurt INTEGER NOT NULL DEFAULT 0,
+                    out_of_line INTEGER NOT NULL DEFAULT 0,
+                    typed INTEGER NOT NULL DEFAULT 1
+                )
+                """)
+            try db.execute(sql: """
+                INSERT INTO messages(id, conversation_id, role, segments, created_at, affinity)
+                VALUES ('old', 'c1', 'character', '[]', '2026-10-30T12:00:00.000000Z', 'trust')
+                """)
+        }
+
+        try UserSchema.migrate(queue)
+
+        let change = try queue.read { db in
+            let row = try XCTUnwrap(Row.fetchOne(db, sql: "SELECT * FROM messages WHERE id = 'old'"))
+            return Eidolon.decodeAffinityChange(row)
+        }
+        XCTAssertNil(change)
+    }
 }

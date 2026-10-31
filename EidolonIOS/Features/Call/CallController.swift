@@ -27,6 +27,8 @@ final class CallController {
     private(set) var startError: String?
     /// What the microphone is doing that she cannot tell the producer herself (spec #41).
     private(set) var micNotice: MicNotice?
+    /// The change her last turn made, shown on the status line for a moment (spec #38).
+    private(set) var affinityCue: AffinityCue?
     /// When the call connected, for the status line; nil until it does.
     private(set) var connectedAt: Date?
     /// When it ended, for how long it lasted.
@@ -40,6 +42,8 @@ final class CallController {
 
     private weak var app: AppModel?
     private var events: Task<Void, Never>?
+    private var cueTask: Task<Void, Never>?
+    private var cueKey = 0
     /// The producer left to another character: the end is real, but its card is not shown.
     private var leaving = false
 
@@ -147,6 +151,8 @@ final class CallController {
         endedAt = nil
         stand = CallStandDirector()
         leaving = false
+        affinityCue = nil
+        cueTask?.cancel()
     }
 
     private func handle(_ event: CallEvent) {
@@ -161,6 +167,8 @@ final class CallController {
             }
             if case .ended = next {
                 if endedAt == nil { endedAt = Date() }
+                affinityCue = nil
+                cueTask?.cancel()
                 if !leaving { layer = layer.ended() }
             }
         case let .hearing(text):
@@ -177,10 +185,24 @@ final class CallController {
             failure = message
         case let .micNotice(notice):
             micNotice = notice
+        case let .affinity(change):
+            showAffinityCue(change)
         case .segmentStarted, .segmentStopped, .emotion:
             break
         }
         stand.apply(event)
+    }
+
+    /// Says the change on the status line for about 2.6 seconds; a second one replaces it.
+    private func showAffinityCue(_ change: AffinityChange) {
+        cueTask?.cancel()
+        cueKey += 1
+        affinityCue = AffinityCue(change: change, key: cueKey)
+        cueTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2.6))
+            guard !Task.isCancelled else { return }
+            self?.affinityCue = nil
+        }
     }
 
     // MARK: - Folding
