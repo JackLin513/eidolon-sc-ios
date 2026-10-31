@@ -11,7 +11,7 @@ from datetime import date
 import pytest
 
 from eidolon.characters import load_characters
-from eidolon.place_pool import PLACES_FILE, load_place_pool
+from eidolon.place_pool import CATEGORIES, PLACES_FILE, load_place_pool
 
 from tests.conftest import REPO_PLACES, CharacterConfig, ClientFactory
 from tests.fakes import FakeLLM
@@ -37,13 +37,14 @@ def place(id: str = "iroha-sakura-park", **fields: object) -> str:
     return "\n".join(lines) + "\n"
 
 
-def test_the_repositorys_pool_loads_with_its_holy_sites_and_venues():
+def test_the_repositorys_pool_loads_with_its_holy_sites_venues_and_every_kind():
     idols = load_characters(REPO_CHARACTERS / "characters.toml")
     pool = load_place_pool(REPO_PLACES, idols)
 
     by_category = Counter(p.category for p in pool)
+    assert 350 <= len(pool) <= 450
+    assert all(by_category[c] >= 10 for c in CATEGORIES), by_category
     assert 40 <= sum(p.source is not None for p in pool) <= 60
-    assert by_category["venue"] >= 10
     assert all(p.idols for p in pool if p.source is not None and not p.source.startswith("［"))
 
 

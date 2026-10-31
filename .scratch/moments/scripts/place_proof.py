@@ -1,4 +1,4 @@
-"""Writes E:/tmp/places15/proof.html: the place pool, the idols' place_likes and the jobs'
+"""Writes E:/tmp/places16/proof.html: the place pool, grouped by category, the idols' place_likes and the jobs'
 places, for the maintainer to proofread. Run from the repository root."""
 import html
 import json
@@ -7,8 +7,8 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(".")
-OUT = Path("E:/tmp/places15/proof.html")
-HERE = Path("E:/tmp/places15")
+OUT = Path("E:/tmp/places16/proof.html")
+SIDECARS = (Path("E:/tmp/places15"), Path("E:/tmp/places16"))
 
 KINDS = {
     "cafe": "咖啡馆·甜品·餐厅", "park": "公园·河边", "shrine": "神社·寺", "shopping-street": "商店街",
@@ -26,13 +26,15 @@ jobs = tomllib.loads((ROOT / "characters/jobs.toml").read_text(encoding="utf-8")
 names = {c["id"]: c["name"] for c in characters}
 
 coords: dict[str, str] = {}
-for f in ("coord-sources-venues.json", "coord-sources-pilgrimage.json"):
-    if (HERE / f).exists():
-        coords |= json.loads((HERE / f).read_text(encoding="utf-8"))
+for here in SIDECARS:
+    for f in ("coord-sources-venues.json", "coord-sources-pilgrimage.json", "coord-sources-others.json"):
+        if (here / f).exists():
+            coords |= json.loads((here / f).read_text(encoding="utf-8"))
 
 doubts: dict[str, str] = {}
-if (HERE / "doubts.json").exists():
-    doubts = json.loads((HERE / "doubts.json").read_text(encoding="utf-8"))
+for here in SIDECARS:
+    if (here / "doubts.json").exists():
+        doubts |= json.loads((here / "doubts.json").read_text(encoding="utf-8"))
 
 e = html.escape
 
@@ -57,16 +59,14 @@ def coord_link(source: str) -> str:
 
 
 rows = []
-holy = [p for p in places if p.get("source")]
-venues = [p for p in places if p["category"] == "venue"]
-others = [p for p in places if p not in holy and p not in venues]
-for title, group in (("圣地", holy), ("演出场馆", venues), ("其他", others)):
+for kind, title in KINDS.items():
+    group = [p for p in places if p["category"] == kind]
     if not group:
         continue
-    rows.append(f'<h2 id="{e(title)}">{e(title)}（{len(group)}）</h2><table><tr><th>#</th><th>地名 / id</th>'
+    rows.append(f'<h2 id="{e(kind)}">{e(title)}（{len(group)}）</h2><table><tr><th>#</th><th>地名 / id</th>'
                 "<th>区</th><th>类别</th><th>说明</th><th>偶像</th><th>出处</th><th>季节·时段</th>"
                 "<th>地图</th><th>坐标来源</th><th>拿不准的</th></tr>")
-    for i, p in enumerate(sorted(group, key=lambda p: (p["category"], p["area"])), 1):
+    for i, p in enumerate(sorted(group, key=lambda p: (not p.get("source"), p["area"])), 1):
         lat, lon = p["lat"], p["lon"]
         osm = f"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}#map=18/{lat}/{lon}"
         gmap = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
@@ -76,7 +76,7 @@ for title, group in (("圣地", holy), ("演出场馆", venues), ("其他", othe
         if p.get("venues"):
             extra = "<br><small>演出里写作：" + "、".join(e(v) for v in p["venues"]) + "</small>"
         rows.append(
-            f"<tr><td>{i}</td><td><b>{e(p['name'])}</b>{extra}<br><code>{e(p['id'])}</code></td>"
+            f"<tr><td>{i}</td><td><b>{e(p['name'])}</b>{' <span class=holy>圣地</span>' if p.get('source') else ''}{extra}<br><code>{e(p['id'])}</code></td>"
             f"<td>{e(p['area'])}</td><td>{e(KINDS[p['category']])}</td><td>{e(p['note'])}</td>"
             f"<td>{'、'.join(e(names.get(i, i)) for i in p.get('idols', []))}</td>"
             f"<td class=src>{links(p.get('source', ''))}</td><td>{e(when)}</td>"
@@ -103,20 +103,21 @@ job_rows.append("</table>")
 counts = {}
 for p in places:
     counts[p["category"]] = counts.get(p["category"], 0) + 1
+nav = "".join(f'<a href="#{k}">{e(KINDS[k])}</a>' for k in KINDS if k in counts)
 summary = "、".join(f"{KINDS[k]} {n}" for k, n in sorted(counts.items(), key=lambda kv: -kv[1]))
 
-OUT.write_text(f"""<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>地点池校对（票 15）</title>
+OUT.write_text(f"""<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>地点池校对（票 16）</title>
 <style>
 body{{font-family:system-ui,"Microsoft YaHei",sans-serif;margin:24px;color:#222;line-height:1.5}}
 table{{border-collapse:collapse;width:100%;margin-bottom:32px;font-size:14px}}
 th,td{{border:1px solid #ddd;padding:6px 8px;vertical-align:top;text-align:left}}
 th{{background:#f4f4f4;position:sticky;top:0}} tr:nth-child(even) td{{background:#fafafa}}
 code{{color:#888;font-size:12px}} .src{{max-width:340px;word-break:break-all;font-size:12px}}
-.none{{color:#aaa}} .doubt{{color:#a15c00;font-size:12px;max-width:260px}} nav a{{margin-right:16px}}
+.none{{color:#aaa}} .holy{{color:#fff;background:#c0392b;font-size:11px;padding:0 4px;border-radius:3px}} .doubt{{color:#a15c00;font-size:12px;max-width:260px}} nav a{{margin-right:16px}}
 </style>
-<h1>地点池校对（票 15：圣地和演出场馆）</h1>
+<h1>地点池校对（票 16：按类别）</h1>
 <p>共 {len(places)} 处：{summary}。每条的「地图」三家都能点开；「坐标来源」点开是 Wikidata 条目或 OSM 要素。</p>
-<nav><a href="#圣地">圣地</a><a href="#演出场馆">演出场馆</a><a href="#likes">place_likes</a><a href="#jobs">工作的 places</a></nav>
+<nav>{nav}<a href="#likes">place_likes</a><a href="#jobs">工作的 places</a></nav>
 {''.join(rows)}{''.join(likes)}{''.join(job_rows)}
 </html>""", encoding="utf-8")
 print(OUT)
