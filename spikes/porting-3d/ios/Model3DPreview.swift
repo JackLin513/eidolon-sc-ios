@@ -463,7 +463,10 @@ struct Model3DPreview: View {
             let dance = try JSONDecoder().decode(
                 MotionDance.self, from: Data(contentsOf: motionURL)
             )
-            guard playback.attach(dance: dance, to: container) else {
+            guard playback.attach(
+                dance: dance, to: container,
+                sway: swayConfiguration(for: selected, beside: url)
+            ) else {
                 loadError = playback.status
                 return
             }
@@ -492,6 +495,25 @@ struct Model3DPreview: View {
         let besideModel = url.deletingLastPathComponent()
             .appending(path: "\(selected.id).motion.json")
         return exists(besideModel.path) ? besideModel : nil
+    }
+
+    /// The spring sidecar `sway.py` generates for this model, if it was copied
+    /// beside the USDZ. A missing or unreadable one is not fatal: the dance
+    /// still plays, just with the skirt, ribbons and hair left rigid.
+    private func swayConfiguration(
+        for selected: Model3DOutfit, beside url: URL
+    ) -> MotionSway.Configuration? {
+        let exists = FileManager.default.fileExists(atPath:)
+        let directory = url.deletingLastPathComponent()
+        let candidates: [URL]
+        if let raw = ProcessInfo.processInfo.environment["EIDOLON_3D_SWAY"] {
+            candidates = [URL(filePath: raw), directory.appending(path: raw)]
+        } else {
+            candidates = [directory.appending(path: "\(selected.id).sway.json")]
+        }
+        guard let path = candidates.first(where: { exists($0.path) }),
+              let data = try? Data(contentsOf: path) else { return nil }
+        return try? JSONDecoder().decode(MotionSway.Configuration.self, from: data)
     }
 
     /// Parsing a multi-megabyte USDZ on the main actor froze the app when the

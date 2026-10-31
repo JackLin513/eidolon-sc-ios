@@ -171,7 +171,7 @@ struct MotionAssist {
         _ poses: inout [JointPose], helper: Helper, parents: [Int?]
     ) {
         poses[helper.joint].rotation = helper.initMy
-        let world = worldTransforms(poses, parents: parents)
+        let world = JointWorld.transforms(poses, parents: parents)
         let mine = world[helper.joint]
         let direction = world[helper.reference].position - mine.position
         let distance = simd_length(direction)
@@ -192,35 +192,6 @@ struct MotionAssist {
         } else {
             poses[helper.joint].rotation = worldRotation
         }
-    }
-
-    /// Parent-space poses to world, walking the parent links derived from the
-    /// joint names. Joint scales are 1 on this rig, so only rotation and
-    /// translation compose.
-    private static func worldTransforms(
-        _ poses: [JointPose], parents: [Int?]
-    ) -> [(position: SIMD3<Float>, rotation: SIMD4<Float>)] {
-        var world = [(position: SIMD3<Float>, rotation: SIMD4<Float>)](
-            repeating: (.zero, SIMD4(0, 0, 0, 1)), count: poses.count
-        )
-        var built = [Bool](repeating: false, count: poses.count)
-        func build(_ joint: Int) {
-            guard !built[joint] else { return }
-            let local = poses[joint]
-            if let parent = parents[joint] {
-                build(parent)
-                world[joint].rotation = QuaternionMath.multiply(
-                    world[parent].rotation, local.rotation
-                )
-                world[joint].position = world[parent].position
-                    + QuaternionMath.rotate(world[parent].rotation, local.translation)
-            } else {
-                world[joint] = (local.translation, local.rotation)
-            }
-            built[joint] = true
-        }
-        for joint in poses.indices { build(joint) }
-        return world
     }
 
     // MARK: - Name grammar

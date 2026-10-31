@@ -21,6 +21,9 @@ final class MotionPlayback {
     var duration: Double = 0
 
     @ObservationIgnored private var sampler: MotionSampler?
+    /// The spring for the bones the dance does not key; nil when the model has
+    /// no sidecar, which leaves the skirt, ribbons and hair rigid.
+    @ObservationIgnored private var sway: MotionSway?
     @ObservationIgnored private var restPose: [JointPose] = []
     @ObservationIgnored private var entities: [ModelEntity] = []
     @ObservationIgnored private var link: CADisplayLink?
@@ -49,8 +52,14 @@ final class MotionPlayback {
 
     /// Bind a dance to the skinned entities under `root`. Returns false when
     /// the model has no skeleton or no curve matched a joint.
+    ///
+    /// `configuration` is the model's sway sidecar. The dance never keys the
+    /// skirt, ribbons or hair — the game moves those with runtime physics — so
+    /// without it those bones keep their rest rotation.
     @discardableResult
-    func attach(dance: MotionDance, to root: Entity) -> Bool {
+    func attach(
+        dance: MotionDance, to root: Entity, sway configuration: MotionSway.Configuration? = nil
+    ) -> Bool {
         detach()
         let skinned = Self.skinnedEntities(in: root)
         guard let first = skinned.first, !first.jointNames.isEmpty else {
@@ -66,10 +75,16 @@ final class MotionPlayback {
             return false
         }
         sampler = MotionSampler(dance: dance, map: map, rest: rest, joints: names)
+        sway = configuration.flatMap {
+            MotionSway(configuration: $0, joints: names, rest: rest)
+        }
         entities = skinned.filter { $0.jointNames == names }
         duration = dance.timeLength
         time = 0
         status = "骨骼 \(names.count)、绑定 \(map.bindings.count) 条、辅助骨 \(sampler?.assistCount ?? 0) 根、未绑 \(map.unmapped)"
+        if configuration != nil {
+            status += "、摆动 \(sway?.count ?? 0) 根"
+        }
         apply()
         if ProcessInfo.processInfo.environment["EIDOLON_3D_LOG_MOTION"] != nil {
             Self.log(names: names, map: map, status: status, dance: dance, rest: rest)
@@ -81,6 +96,7 @@ final class MotionPlayback {
     func detach() {
         pause()
         sampler = nil
+        sway = nil
         entities = []
         time = 0
         duration = 0
@@ -110,10 +126,28 @@ final class MotionPlayback {
     func seek(to seconds: Double) {
         guard let sampler else { return }
         time = min(max(seconds, 0), sampler.dance.timeLength)
+        warmUpSway()
         apply()
     }
 
     // MARK: - Clock
+
+    /// The spring is stateful, so a seeked frame would otherwise show the skirt
+    /// wherever the last run left it. Replay the dance's own frames up to the
+    /// new playhead at the dance's rate. Capped so a far seek stays instant;
+    /// beyond the cap only the transient differs, not the hanging pose.
+    private func warmUpSway() {
+        guard var sway, let sampler else { return }
+        sway.reset()
+        let fps = sampler.dance.fps
+        let last = min(sampler.dance.frame(at: time), 30 * fps)
+        let step = 1 / Float(fps)
+        for frame in 0...last {
+            var poses = sampler.pose(atFrame: frame)
+            sway.apply(&poses, dt: step)
+        }
+        self.sway = sway
+    }
 
     private func startClock() {
         guard link == nil else { return }
@@ -130,19 +164,25 @@ final class MotionPlayback {
     fileprivate func advance(_ link: CADisplayLink) {
         defer { lastTimestamp = link.timestamp }
         guard isPlaying, lastTimestamp > 0 else { return }
-        time += link.timestamp - lastTimestamp
+        let elapsed = link.timestamp - lastTimestamp
+        time += elapsed
         if duration > 0 {
             time = time.truncatingRemainder(dividingBy: duration)
         }
-        apply()
+        // A backgrounded app can report a whole second in one tick; handing
+        // that to a stiff spring in a single step only makes it jump.
+        apply(dt: Float(min(max(elapsed, 0), 1.0 / 15)))
     }
 
     /// Write the current frame onto every skinned entity. The outline pass is a
     /// clone of the model with its own copy of the skeleton, so it needs the
     /// same pose or it draws the old outfit on top of the new.
-    private func apply() {
+    ///
+    /// `dt` advances the sway spring; the diagnostic modes stay rigid so their
+    /// screenshots keep showing only what they probe.
+    private func apply(dt: Float = 0) {
         guard let sampler else { return }
-        let poses: [JointPose]
+        var poses: [JointPose]
         switch Self.mode {
         case "rest":
             poses = restPose
@@ -152,6 +192,7 @@ final class MotionPlayback {
             poses = restPose.map { JointPose(translation: $0.translation, rotation: .init(0, 0, 0, 1), scale: .one) }
         default:
             poses = sampler.pose(at: time)
+            sway?.apply(&poses, dt: dt)
         }
         let transforms = poses.map(Self.transform(of:))
         for entity in entities {

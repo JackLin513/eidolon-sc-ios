@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		03D1D9AFAE21C9348078853C /* ImportGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */; };
+		0AADB79BBA3316D6CE36FCFC /* MotionSway.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC34AA6D1864965D8EA6DEC3 /* MotionSway.swift */; };
 		0EFF31521A69C5A7C7949BCB /* DebugRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCD1CD149AFF0049C2EE0F58 /* DebugRecognition.swift */; };
 		10BA2565084D529C4152A890 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38579B2A473B296EC588CBD6 /* AppModel.swift */; };
 		17CAADABE8FCFE23334C6C09 /* stand.html in Resources */ = {isa = PBXBuildFile; fileRef = C3363DDA773D810C71B70EE3 /* stand.html */; };
@@ -17,14 +18,13 @@
 		2CF24EECC30E051467FA4D35 /* MicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */; };
 		2DC8BFCFABF2EFF1C03EA9A2 /* mirai-ss003-materials.json in Resources */ = {isa = PBXBuildFile; fileRef = EDCB50A245F1E6DF95006203 /* mirai-ss003-materials.json */; };
 		32198FCBEC3CFF501AF276A7 /* MotionDance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B3727E865130BC91BD085C8 /* MotionDance.swift */; };
+		32E0166619DF33B56E21295C /* MotionAssist.swift in Sources */ = {isa = PBXBuildFile; fileRef = 897B6FDDE5B2A7F45A913C5D /* MotionAssist.swift */; };
 		36C86D8435661F4A422CF168 /* BarSettingsBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4EC9179658A248DC6D0E540 /* BarSettingsBox.swift */; };
 		39959392B68279D7A5CB561F /* Model3DResourceLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8205D3A435DC9E25ABA87ED2 /* Model3DResourceLocator.swift */; };
 		3B581C7316F3F7567E6CF0E1 /* StandThumbnails.swift in Sources */ = {isa = PBXBuildFile; fileRef = F51D53D2BDB3163C8344025C /* StandThumbnails.swift */; };
 		4235DD89FDB9280BFC39D5E1 /* BarCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85A4199D7AAE978829BFEC9 /* BarCanvas.swift */; };
 		4B6C40186ED37643BD5ED1EE /* BarSound.swift in Sources */ = {isa = PBXBuildFile; fileRef = D97FA6838C4D87D4724543C3 /* BarSound.swift */; };
 		4D21FBE381E3A5E9FE72DF93 /* MotionPoseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5873DC19FBF66B4C63D6DBC4 /* MotionPoseTests.swift */; };
-		4E6A8B2C0D1F3A5B7C9E1A0B /* MotionAssist.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E6A8B2C0D1F3A5B7C9E1A0C /* MotionAssist.swift */; };
-		4E6A8B2C0D1F3A5B7C9E1A0D /* MotionAssistTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E6A8B2C0D1F3A5B7C9E1A0E /* MotionAssistTests.swift */; };
 		50FF16442DF243C8411FF741 /* SonioxRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */; };
 		58D49346C2362E8BD2497083 /* BarRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F84087F773F0C23692413FF7 /* BarRoomView.swift */; };
 		5F55056A446CF6F4D61A7E16 /* BarJukeboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3A3CDE40EDED61EECF1DBF1 /* BarJukeboxView.swift */; };
@@ -39,6 +39,7 @@
 		7AA374AB9FFD47CC6E454D4D /* mirai-pr001-materials.json in Resources */ = {isa = PBXBuildFile; fileRef = A318B37F68432043597136CF /* mirai-pr001-materials.json */; };
 		7AF7471C5757A94078DF4755 /* mirai-ss003-params.png in Resources */ = {isa = PBXBuildFile; fileRef = E5120FF14A96904289280EE1 /* mirai-ss003-params.png */; };
 		8ABC906B631EDC9CC6BC2529 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 502579B7DFF941BAC28ADE49 /* AppIcon.icon */; };
+		8F11E50FC7FD723525DAED56 /* MotionSwayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9279203D5B060970AD9A127 /* MotionSwayTests.swift */; };
 		8F700315EAE8C6E59429BD0F /* BarTextBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B8F3B95D300DF671C5E5C20 /* BarTextBox.swift */; };
 		8FDA81B5B65A7F24FDDE1659 /* ChatSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730259B31CD6DBF3CA44FC75 /* ChatSettings.swift */; };
 		9221A0F68F374BAAA5282CCE /* MemoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B94AA6A4C5655585B24D2400 /* MemoryListView.swift */; };
@@ -68,6 +69,7 @@
 		D080D9792F63EBF71440173B /* EidolonCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0BE53CDEEF5BB1E157A83EC1 /* EidolonCore */; };
 		D7B2DC33734343A4F40D315A /* OutfitPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD7263A570545913D16486F1 /* OutfitPickerView.swift */; };
 		D87D5EF9B85BB39DEBD561FB /* FishSynthesis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4472CA53E92E225069B1D652 /* FishSynthesis.swift */; };
+		D94EB1F76C0DDD0C2C5BC543 /* MotionAssistTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C518F21F571C2F7FCD4793C /* MotionAssistTests.swift */; };
 		E0F9B1FA2BA982860CDD2BC3 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A72BB12039666C937D7C04 /* RootView.swift */; };
 		E1C1580CD8047FBE51E5B6FF /* mirai-pr001.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 0BFBA3E20778C7E77E510753 /* mirai-pr001.usdz */; };
 		E4D536D8BC6FBB4EFFFC51A1 /* Model3DActionMapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3783EFF46823F05366835DED /* Model3DActionMapTests.swift */; };
@@ -108,6 +110,7 @@
 		205CB6BD80B1B6CD74710437 /* Model3DPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model3DPreview.swift; sourceTree = "<group>"; };
 		2175E8704E12B73FF5C33433 /* Model3DAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model3DAction.swift; sourceTree = "<group>"; };
 		22B001CEBA8E13B70A91DA53 /* BarDoor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarDoor.swift; sourceTree = "<group>"; };
+		2C518F21F571C2F7FCD4793C /* MotionAssistTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionAssistTests.swift; sourceTree = "<group>"; };
 		362E0BAAF16B958F406E1E08 /* SpeechPlayback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechPlayback.swift; sourceTree = "<group>"; };
 		3783EFF46823F05366835DED /* Model3DActionMapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model3DActionMapTests.swift; sourceTree = "<group>"; };
 		38579B2A473B296EC588CBD6 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
@@ -138,9 +141,8 @@
 		7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportGuideView.swift; sourceTree = "<group>"; };
 		8205D3A435DC9E25ABA87ED2 /* Model3DResourceLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model3DResourceLocator.swift; sourceTree = "<group>"; };
 		8383944B7ADB903FDE495462 /* MotionPose.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionPose.swift; sourceTree = "<group>"; };
-		4E6A8B2C0D1F3A5B7C9E1A0C /* MotionAssist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionAssist.swift; sourceTree = "<group>"; };
-		4E6A8B2C0D1F3A5B7C9E1A0E /* MotionAssistTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionAssistTests.swift; sourceTree = "<group>"; };
 		889A8316C35EBB240F4D78A2 /* BarGuest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarGuest.swift; sourceTree = "<group>"; };
+		897B6FDDE5B2A7F45A913C5D /* MotionAssist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionAssist.swift; sourceTree = "<group>"; };
 		9B3727E865130BC91BD085C8 /* MotionDance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionDance.swift; sourceTree = "<group>"; };
 		A2C4BC7668252B756B23FADB /* mirai-ss003.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = "mirai-ss003.usdz"; sourceTree = "<group>"; };
 		A318B37F68432043597136CF /* mirai-pr001-materials.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "mirai-pr001-materials.json"; sourceTree = "<group>"; };
@@ -161,8 +163,10 @@
 		D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneCapture.swift; sourceTree = "<group>"; };
 		D48DCFB6F0FC0D93BD033FC6 /* TraceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceListView.swift; sourceTree = "<group>"; };
 		D506F2365F6B8776ADBA6E3B /* Eidolon3DSpikeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Eidolon3DSpikeApp.swift; sourceTree = "<group>"; };
+		D9279203D5B060970AD9A127 /* MotionSwayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionSwayTests.swift; sourceTree = "<group>"; };
 		D97FA6838C4D87D4724543C3 /* BarSound.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarSound.swift; sourceTree = "<group>"; };
 		DC2610401DD1C29D8D7AB56C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		DC34AA6D1864965D8EA6DEC3 /* MotionSway.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionSway.swift; sourceTree = "<group>"; };
 		DDC46B44103FF59A4FB86496 /* Model3DOutfit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model3DOutfit.swift; sourceTree = "<group>"; };
 		E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxRecognition.swift; sourceTree = "<group>"; };
 		E5120FF14A96904289280EE1 /* mirai-ss003-params.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "mirai-ss003-params.png"; sourceTree = "<group>"; };
@@ -211,11 +215,12 @@
 				DDC46B44103FF59A4FB86496 /* Model3DOutfit.swift */,
 				205CB6BD80B1B6CD74710437 /* Model3DPreview.swift */,
 				8205D3A435DC9E25ABA87ED2 /* Model3DResourceLocator.swift */,
+				897B6FDDE5B2A7F45A913C5D /* MotionAssist.swift */,
 				9B3727E865130BC91BD085C8 /* MotionDance.swift */,
-				4E6A8B2C0D1F3A5B7C9E1A0C /* MotionAssist.swift */,
 				6BA2B9A79BD129E042081D6F /* MotionJointMap.swift */,
 				10618915545C9211D6AB66EB /* MotionPlayback.swift */,
 				8383944B7ADB903FDE495462 /* MotionPose.swift */,
+				DC34AA6D1864965D8EA6DEC3 /* MotionSway.swift */,
 				3E5ED037CA30074A04051624 /* ToonShading.metal */,
 				67AB6B0F5CA7C4BC436DD33C /* ToonShading.swift */,
 				5BC7D1D32B813B39816B5F62 /* Resources */,
@@ -257,10 +262,11 @@
 			children = (
 				3783EFF46823F05366835DED /* Model3DActionMapTests.swift */,
 				3EC0942EFD597EBEC749B32B /* Model3DResourceLocatorTests.swift */,
-				4E6A8B2C0D1F3A5B7C9E1A0E /* MotionAssistTests.swift */,
+				2C518F21F571C2F7FCD4793C /* MotionAssistTests.swift */,
 				79227468C3942EACF51FEEBC /* MotionDanceTests.swift */,
 				B4BD899E5E39D70D58E1CCAC /* MotionJointMapTests.swift */,
 				5873DC19FBF66B4C63D6DBC4 /* MotionPoseTests.swift */,
+				D9279203D5B060970AD9A127 /* MotionSwayTests.swift */,
 			);
 			path = tests;
 			sourceTree = "<group>";
@@ -674,11 +680,12 @@
 				6B71B4175DBB52E65D48F03A /* Model3DOutfit.swift in Sources */,
 				A8D18A43B4FCA29403725994 /* Model3DPreview.swift in Sources */,
 				39959392B68279D7A5CB561F /* Model3DResourceLocator.swift in Sources */,
+				32E0166619DF33B56E21295C /* MotionAssist.swift in Sources */,
 				32198FCBEC3CFF501AF276A7 /* MotionDance.swift in Sources */,
-				4E6A8B2C0D1F3A5B7C9E1A0B /* MotionAssist.swift in Sources */,
 				70BD5C165BEEA0712BBCD329 /* MotionJointMap.swift in Sources */,
 				79C70B06FB67F36F74D20493 /* MotionPlayback.swift in Sources */,
 				EA3BAE3C426074BDEE5DD1B0 /* MotionPose.swift in Sources */,
+				0AADB79BBA3316D6CE36FCFC /* MotionSway.swift in Sources */,
 				B010CCC803CFEEBE43FD2104 /* ToonShading.metal in Sources */,
 				C4EA345C755A3DA4A6752728 /* ToonShading.swift in Sources */,
 			);
@@ -737,10 +744,11 @@
 			files = (
 				E4D536D8BC6FBB4EFFFC51A1 /* Model3DActionMapTests.swift in Sources */,
 				60652B1C150CA0F816F626FC /* Model3DResourceLocatorTests.swift in Sources */,
-				4E6A8B2C0D1F3A5B7C9E1A0D /* MotionAssistTests.swift in Sources */,
+				D94EB1F76C0DDD0C2C5BC543 /* MotionAssistTests.swift in Sources */,
 				FBAEDEBDE089F299294FD937 /* MotionDanceTests.swift in Sources */,
 				F96781857E73FF9090872C9E /* MotionJointMapTests.swift in Sources */,
 				4D21FBE381E3A5E9FE72DF93 /* MotionPoseTests.swift in Sources */,
+				8F11E50FC7FD723525DAED56 /* MotionSwayTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -112,6 +112,38 @@ enum QuaternionMath {
 }
 
 
+/// Parent-space poses to world, walking the parent links derived from the joint
+/// names. Joint scales are 1 on this rig, so only rotation and translation
+/// compose.
+enum JointWorld {
+    static func transforms(
+        _ poses: [JointPose], parents: [Int?]
+    ) -> [(position: SIMD3<Float>, rotation: SIMD4<Float>)] {
+        var world = [(position: SIMD3<Float>, rotation: SIMD4<Float>)](
+            repeating: (.zero, SIMD4(0, 0, 0, 1)), count: poses.count
+        )
+        var built = [Bool](repeating: false, count: poses.count)
+        func build(_ joint: Int) {
+            guard !built[joint] else { return }
+            let local = poses[joint]
+            if let parent = parents[joint] {
+                build(parent)
+                world[joint].rotation = QuaternionMath.multiply(
+                    world[parent].rotation, local.rotation
+                )
+                world[joint].position = world[parent].position
+                    + QuaternionMath.rotate(world[parent].rotation, local.translation)
+            } else {
+                world[joint] = (local.translation, local.rotation)
+            }
+            built[joint] = true
+        }
+        for joint in poses.indices { build(joint) }
+        return world
+    }
+}
+
+
 /// Turns a decoded dance into a full joint pose for any frame.
 ///
 /// Channels are expanded once up front: a running sum per lookup would cost
