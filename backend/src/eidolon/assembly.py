@@ -73,6 +73,7 @@ from eidolon.prices import Prices
 from eidolon.own_keys import LLMService, OwnImageService, OwnKeys, ProviderLLMService
 from eidolon.photos import Photos
 from eidolon.proxy import ProxyRoutes
+from eidolon.moments import Moments
 from eidolon.reach_outs import ReachOuts
 from eidolon.read_aloud import ReadAloud
 from eidolon.readings import load_readings, readings_path
@@ -161,6 +162,8 @@ class Backend:
     """Exports users' data packages, and imports them."""
     reach_outs: ReachOuts
     """Has characters reach out to users once their time comes."""
+    moments: Moments
+    """Has characters post moments to users once their time comes, and shows them."""
     schedules: Schedules
     """Each week's jobs and every producer's schedule, where schedules are on."""
     cycles: Cycles
@@ -177,6 +180,7 @@ class Backend:
     _keeping_fresh: asyncio.Task[None] | None = field(default=None, repr=False)
     _probing: asyncio.Task[None] | None = field(default=None, repr=False)
     _reaching_out: asyncio.Task[None] | None = field(default=None, repr=False)
+    _posting: asyncio.Task[None] | None = field(default=None, repr=False)
     _sweeping: asyncio.Task[None] | None = field(default=None, repr=False)
     _tidying: asyncio.Task[None] | None = field(default=None, repr=False)
     _watching: asyncio.Task[None] | None = field(default=None, repr=False)
@@ -186,10 +190,10 @@ class Backend:
         """What is done as the server starts, on its event loop: try the overrides of the
         configuration, falling back to `.env` where one fails; keep the price catalogs
         fresh from now on, fetching them in the background, try the services without
-        calls for their status, have characters reach out once their time comes, do away
-        with visits to the bar left untouched, delete what ages out (`housekeeping`), watch
-        how far behind the loop runs (`loop_lag`), and load the story corpus's vectors to
-        search in the background."""
+        calls for their status, have characters reach out and post moments once their time
+        comes, do away with visits to the bar left untouched, delete what ages out
+        (`housekeeping`), watch how far behind the loop runs (`loop_lag`), and load the story
+        corpus's vectors to search in the background."""
         asyncio.get_running_loop().set_default_executor(
             ThreadPoolExecutor(THREADS, thread_name_prefix="eidolon")
         )
@@ -197,6 +201,7 @@ class Backend:
         self._keeping_fresh = asyncio.create_task(self.prices.catalog.keep_fresh())
         self._probing = asyncio.create_task(self.service_status.keep_probing())
         self._reaching_out = asyncio.create_task(self.reach_outs.keep_reaching_out())
+        self._posting = asyncio.create_task(self.moments.keep_posting())
         self._sweeping = asyncio.create_task(self.bar.keep_sweeping())
         self._tidying = asyncio.create_task(keep_tidy(self.usage.forget_old, self.activity.forget_old))
         self._watching = asyncio.create_task(watch_the_loop(lambda: self.calls.in_progress))
@@ -208,7 +213,8 @@ class Backend:
         tasks = [
             task
             for task in (
-                self._keeping_fresh, self._probing, self._reaching_out, self._sweeping,
+                self._keeping_fresh, self._probing, self._reaching_out, self._posting,
+                self._sweeping,
                 self._tidying, self._watching, self._loading_stories,
             )
             if task is not None
@@ -451,6 +457,10 @@ def build(
         database, store, engine, characters, config, affinities, activity,
         calls.in_call, clock, random or secure_random,
     )
+    moments = Moments(
+        database, characters, config, affinities, activity, memories, her_now, clock,
+        random or secure_random, world,
+    )
     config.on_change(gifts.notice)
     return Backend(
         settings=settings,
@@ -488,6 +498,7 @@ def build(
         service_status=service_status,
         data_packages=DataPackages(database, store, memories, characters, gift_catalog, clock),
         reach_outs=reach_outs,
+        moments=moments,
         schedules=schedules,
         cycles=cycles,
         her_now=her_now,

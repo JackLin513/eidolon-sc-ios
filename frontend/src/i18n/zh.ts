@@ -32,10 +32,22 @@ export const zh = {
     conversations: "对话",
     /** 「对话」图标上有点时读屏读的名字：列表里有一行有没看过的搭话。 */
     conversationsUnseen: "对话，有没看过的搭话",
+    moments: "朋友圈",
     play: "玩法",
     /** 「玩法」图标上有点时读屏读的名字：有新到的抽奖次数。 */
     playRewarded: "玩法，有新到的抽奖次数",
     settings: "设置",
+  },
+  /** 朋友圈页（GLOSSARY.md「朋友圈」，DESIGN.md「朋友圈页」）。 */
+  moments: {
+    title: "朋友圈",
+    empty: "还没有动态",
+    /** 时间线一行的时间（lib/moments 的 `postedText`）。 */
+    justNow: "刚刚",
+    minutesAgo: (n: number) => `${n} 分钟前`,
+    hoursAgo: (n: number) => `${n} 小时前`,
+    yesterday: "昨天",
+    daysAgo: (n: number) => `${n} 天前`,
   },
   /** 落地页的链接贴到聊天软件、社交网站时预览卡片上的文字（Open Graph、Twitter 卡片）。页面上不显示，不进字体子集。 */
   share: {
@@ -1414,6 +1426,10 @@ export const zh = {
           title: "搭话",
           hint: "打开后，用户一阵子没来，角色会在当前对话里先说几句。用的是部署者的对话模型，花费由部署者出，自带 LLM 的用户也一样。保存后下一分钟起生效。",
         },
+        moments: {
+          title: "朋友圈",
+          hint: "打开后，和用户聊过的角色会在他的朋友圈里发动态。用的是部署者的对话模型，花费由部署者出，自带 LLM 的用户也一样。保存后下一分钟起生效。",
+        },
         schedule: {
           title: "日程",
           hint: "打开后，日历里每周发布一批工作，用户排进角色的一周，角色知道并说起；排给她的工作做完了，好感度上升（好感度关着时不加）。关掉时日历只有月视图，角色不再说起日程，已排的原样留着，再打开接着用。保存后从下一次读取起生效。",
@@ -1493,6 +1509,7 @@ export const zh = {
       itemFields: {
         chat_llm: { reasoning_effort: "文字的思考强度" },
         reach_outs: { enabled: "搭话", per_day: "每位用户每天最多几次" },
+        moments: { enabled: "朋友圈", per_day: "每位用户每天最多几条" },
         schedule: { enabled: "日程" },
         cycles: { enabled: "周期" },
         bar: { enabled: "酒吧" },

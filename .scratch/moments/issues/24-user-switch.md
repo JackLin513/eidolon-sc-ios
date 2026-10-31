@@ -30,3 +30,8 @@
 - [ ] **验收**：在本地构建版上用 Playwright 关掉、打开，看导航的变化、设置里的摘要，以及存不上时拨回去。
 - [ ] 表结构有改动，部署前手动备份数据库。
 - [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+
+### 票 14 交接
+
+- 账号的 `moments` 现在由 `Moments.switch_of(user_id)` 给：部署者开着时 `True`，关着时 `None`（没看参数）。前端 `navItems(moments)` 只在 `=== true` 时带「朋友圈」，换成用户开关后 `false` 也就自然隐藏。
+- 部署者关了再开时，`run_due` 会清掉全部计划和 `moment_users.planned_day`；用户自己的开关不要照搬这个（只清他自己的，或者按规格「当天已有计划的没到点照常发」）。

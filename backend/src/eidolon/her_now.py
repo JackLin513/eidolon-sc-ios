@@ -1,5 +1,6 @@
 """What she knows of now (GLOSSARY.md「此刻」), each time she speaks, whatever the occasion:
-typing, in a call, reaching out (GLOSSARY.md「搭话」), visiting the bar (GLOSSARY.md「光顾」).
+typing, in a call, reaching out (GLOSSARY.md「搭话」), visiting the bar (GLOSSARY.md「光顾」),
+posting a moment (GLOSSARY.md「朋友圈」).
 
 `HerNow` gives it in two steps. The first reads: her jobs, counting those done, so that her
 affinity read after it has them counted; where her cycle has her; her job done today; and, for
@@ -19,13 +20,14 @@ from typing import Literal
 from eidolon.affinity import Affinities, Status
 from eidolon.characters import Character
 from eidolon.cycles import Cycles, HerDays, always_neither, cycle_lines
-from eidolon.producer import ProducerProfile, Talking, now_prompt
+from eidolon.producer import ProducerProfile, Talking, now_prompt, posting_now_prompt
 from eidolon.schedule import HerSchedule, Job, Schedules, schedule_lines
 from eidolon.today import today_lines
 from eidolon.world import World
 
-Occasion = Talking | Literal["visit"]
-"""Where she speaks: typing, in a call, reaching out (`apart`), or visiting the bar."""
+Occasion = Talking | Literal["visit", "moments"]
+"""Where she speaks: typing, in a call, reaching out (`apart`), visiting the bar, or posting
+a moment."""
 
 
 @dataclass(frozen=True)
@@ -49,6 +51,9 @@ CARRIES: dict[Occasion, Carries] = {
     # The bar's story is only ever on the night shift: no time, nor the producer's birthday;
     # her cycle does not follow her there, and her jobs only tell why she came.
     "visit": Carries(time=False, today=True, schedule=False, cycle=False, affinity=True),
+    # Her moments go by Tokyo's day, as she lives there: the time is Tokyo's, and no jobs of
+    # the week; when they were last in touch is not hers to post about.
+    "moments": Carries(time=True, today=True, schedule=False, cycle=True, affinity=True),
 }
 """What each occasion tells her of now. Anything more she is to know of now goes here, for
 every occasion."""
@@ -127,12 +132,14 @@ class HerNow:
         producer in `timezone` with `profile`, last in touch at `last_contact` (None if never,
         or in a call), she feeling as `affinity_lines` say; her cycle where it has her at
         `now`. Joined by new lines, they make one section: the time and the rest of
-        `now_prompt`, the affinity lines last in it; the day in Tokyo; her jobs; her cycle."""
+        `now_prompt` (`posting_now_prompt` posting a moment), the affinity lines last in it; the day in Tokyo; her jobs; her cycle."""
         carries = CARRIES[occasion]
         character = known.character
         felt = affinity_lines if carries.affinity else ()
         lines: list[str] = []
-        if carries.time:
+        if occasion == "moments":
+            lines.append(posting_now_prompt(profile, now, timezone, felt))
+        elif carries.time:
             assert occasion != "visit"
             lines.append(now_prompt(profile, now, timezone, occasion, felt, last_contact))
         else:

@@ -176,12 +176,12 @@ components:
 ## Layout
 
 - **导航外壳**：对话（列表和她的对话页）、玩法和设置共用一个外壳，外壳给它们一条导航。两个词只在这里用，不进词汇表，也不叫「侧栏」：
-  - **导航栏**（电脑，≥ 768px）：最左一条 72px，右边一条 `border-r` 细线，不能收起，不用 shadcn `Sidebar`（那是后台的页框）。从上到下对话、玩法、设置，每项图标（20px）在上、字（Meta 字号）在下；当前项的图标外面铺一层中性 `bg-muted` 圆角底（48×32 的胶囊），字 foreground 加 medium，其余图标和字都是 muted，悬停时图标底 `bg-muted/60`。最底下是 GitHub 仓库的 ghost `icon-lg` 图标键（`GitHubIcon`，读屏名字「GitHub」，新标签页打开）。整条是一个读屏名字「导航」的 `nav`，当前项 `aria-current="page"`。
+  - **导航栏**（电脑，≥ 768px）：最左一条 72px，右边一条 `border-r` 细线，不能收起，不用 shadcn `Sidebar`（那是后台的页框）。从上到下对话、朋友圈、玩法、设置（账号里没有朋友圈时没有「朋友圈」，回到三项），每项图标（20px）在上、字（Meta 字号）在下；当前项的图标外面铺一层中性 `bg-muted` 圆角底（48×32 的胶囊），字 foreground 加 medium，其余图标和字都是 muted，悬停时图标底 `bg-muted/60`。最底下是 GitHub 仓库的 ghost `icon-lg` 图标键（`GitHubIcon`，读屏名字「GitHub」，新标签页打开）。整条是一个读屏名字「导航」的 `nav`，当前项 `aria-current="page"`。
   - **「对话」上的点**：对话列表里有一行有没看过的搭话（GLOSSARY.md「没看过的搭话」；正显示在对话页上的那段当前对话、在这台设备上隐藏了的不算）时，导航栏和 dock 的「对话」图标右上角一个 6px 小圆点，`bg-foreground`，和公告铃铛上的点一个样子，不用她的颜色；在设置页、玩法页也看得到。读屏名字换成「对话，有没看过的搭话」。不弹提示条、不出声音。
   - **「玩法」上的点**：有新到的抽奖次数（成就到账，GLOSSARY.md「成就」；最近一次到账晚于这台设备上看过的）时，「玩法」图标右上角同样一个 6px 的 `bg-foreground` 小点，导航栏和 dock 都有；在玩法页的任何一级上不出。进了礼物子页（`/play/gifts`，通话层没盖着）就记成看过、点消失；只进玩法页第一级或「成就」子页不算看过，第一级「礼物」卡名字旁的点还在（见「玩法页」）。在礼物子页上送礼到账的不出点。好感度和礼物关着时不出。读屏名字换成「玩法，有新到的抽奖次数」。不弹提示条。
-  - **dock**（手机，< 768px）：底部一条，项目和顺序、每项的样子同导航栏，每项高 56px、等宽撑满；实底 `--background`，上沿一条 `border-t`，底部留出 `env(safe-area-inset-bottom)`。进了她的对话页也在，在输入栏下面；任何输入框拿到焦点（textarea、不是勾选框的 input、可编辑元素，大致就是键盘弹起）时藏起来，失去焦点后回来。通话层展开时被盖住（`inert`）。
-  - **当前项和再点一下**：当前项按网址判断，`/conversations` 和 `/conversation/…` 是对话，`/play` 和 `/play/…` 是玩法，`/settings…` 是设置。好感度和礼物没开放时「玩法」也一直在。点别的项去那一项的第一级（`/conversations`、`/play`、`/settings`）；在二级页面上（她的对话页、玩法的子页、设置的一类）再点当前那一项回到第一级，已在第一级时不动。导航栏和 dock 同一条规则（`lib/navShell`），去哪都在外壳里，通话中点也不挂断。
-  - **第二栏**：导航栏右边是这一页的内容。对话页是下面说的可拖宽的对话列表加对话栏；设置页是 320px 的一级列表加这一类的二级页面（见「设置页」）；玩法页没有第二栏（见「玩法页」）。
+  - **dock**（手机，< 768px）：底部一条，项目和顺序、每项的样子同导航栏，每项高 56px、等宽撑满（四项时每项四分之一宽，最窄的 320px 屏上 80px，48px 的胶囊和两三个字放得下；三项时三分之一）；实底 `--background`，上沿一条 `border-t`，底部留出 `env(safe-area-inset-bottom)`。进了她的对话页也在，在输入栏下面；任何输入框拿到焦点（textarea、不是勾选框的 input、可编辑元素，大致就是键盘弹起）时藏起来，失去焦点后回来。通话层展开时被盖住（`inert`）。
+  - **当前项和再点一下**：当前项按网址判断，`/conversations` 和 `/conversation/…` 是对话，`/moments` 是朋友圈，`/play` 和 `/play/…` 是玩法，`/settings…` 是设置。好感度和礼物没开放时「玩法」也一直在。点别的项去那一项的第一级（`/conversations`、`/moments`、`/play`、`/settings`）；朋友圈只有第一级。在二级页面上（她的对话页、玩法的子页、设置的一类）再点当前那一项回到第一级，已在第一级时不动。导航栏和 dock 同一条规则（`lib/navShell`），去哪都在外壳里，通话中点也不挂断。
+  - **第二栏**：导航栏右边是这一页的内容。对话页是下面说的可拖宽的对话列表加对话栏；设置页是 320px 的一级列表加这一类的二级页面（见「设置页」）；玩法页、朋友圈页没有第二栏（见「玩法页」「朋友圈页」）。
   - **首屏不闪**：导航栏和 dock 都只靠 CSS 断点分宽窄（导航栏窄屏 `max-md:hidden`、dock 宽屏 `md:hidden`），不等脚本判断屏宽；手机首屏（不跑脚本）直接是单栏加 dock。
 - **宽屏（≥ 768px）**：导航栏右边两栏。左侧对话列表 340px、白底（深色模式 `--background`），右边一条 `border-r` 细线；右侧对话栏填满。通话层绝对定位盖住对话栏，列表仍可见。没选角色时右栏居中一句 muted 标题。列表可以拖右边的线调宽：用 shadcn `Resizable`（react-resizable-panels v4），按像素约束（默认 320px，240–480px，`groupResizeBehavior="preserve-pixel-size"`，窗口变化时保持像素宽），`onResize` 的 `inPixels` 记进 localStorage，沿用现在 `useSavedSize` 的做法（挂载后在 layout effect 里恢复，避免水合不一致）。不自己写拖拽。
 - **窄屏（< 768px）**：一次一栏，列表或对话，下面一条 dock；对话页首有返回键。通话层固定定位铺满整屏，盖住 dock。
@@ -233,7 +233,7 @@ components:
   - **页脚**：一条 `share-rule` 细线，左边网站名（48/800）和一句介绍，右边去掉协议的网址和 120 的二维码（指向页面 origin 的落地页 `/`，纠错级别 M，不留白边）。
   - **不放的东西**：好感度、任何登录方式的信息、「非官方粉丝作品」字样。
 
-- **玩法页**（`/play`，GLOSSARY.md「玩法」）：导航中间那一项的第一级，一张张入口卡，点卡进子页。
+- **玩法页**（`/play`，GLOSSARY.md「玩法」）：导航里「玩法」那一项的第一级，一张张入口卡，点卡进子页。
   - **版式**：没有第二栏，导航栏右边整块是一栏。页首左边「玩法」大标题（List title，下沿一条细线）；内容最宽 `max-w-3xl`、居中，`px-4 py-6`，块与块之间 `gap-4`；手机和电脑同一个版式。通话中照外壳的规矩，通话条在最顶上，切过来通话不断。
   - **卡**：四张，「礼物」「成就」「日历」和「周期」。顺序和版式写死在页面：第一张铺满一行，其余两列网格（≥ 640px）、窄屏一列；每张卡的名字、去哪、状态怎么写、要不要点由一张注册表（`lib/playCards`）管，页面只管排。一张卡是一个 `rounded-2xl` 的链接，`p-4`，最矮 44px，单行：左边 40px 的圆底里 20px 的图标，中间名字（Header 字号）和名字下面一行 Subtitle 字号 muted 的状态，右端 muted 的 ›（`ForwardIcon`）。「礼物」卡铺 `bg-muted`、不描边，图标的圆底 `bg-background`（叠在 `bg-muted` 上才看得见），悬停 `bg-muted/70`；其余描边、圆底 `bg-muted`，悬停 `bg-muted/60`。状态读到之前卡片就在，那一行空着但高度占着（`min-h-lh`），页面不跳。名字旁的点同导航上的点：6px、`bg-foreground`，读屏名字「有新到的抽奖次数」「有新解锁的成就」。
   - **状态**：「礼物」写「还有 n 次抽奖」，背包里有东西时加「 · 背包 m 件」（m 是件数，不是种数），有重置卡时加「 · 重置卡 k 张」；点随有新到的抽奖次数（同导航上的点），进了礼物子页才消失。「成就」写「已解锁 n 个阶段」（合起来的那几个成就一共解锁了几个阶段），有新解锁的成就时换成「n 个新解锁」，n 是合起来的那几个成就里解锁晚于这台设备上看过的阶段数（和子页里带点的行同一套算法）；n > 0 时有点，离开那个子页才消失。这两张的数据都从礼物状态接口来，第一级和子页各读一次。「日历」写最近的一件：「下一个：10月27日 樋口円香的生日」「下一个：11月3日 文化の日」「下一个：M月D日 我的生日」，今天就有时写「今天：…」；在没筛掉的几类里按制作人时区的今天找，同一天几件取角色生日、我的生日、节假日的顺序，同类取偶像顺序靠前的，日程不算；生日和节假日三类全筛掉时空着；不出点。日程开着、本周已发布、还有没排的工作时，前面加「本周还有 n 项工作待排 · 」（草稿算排了）；日程关着时只有「下一个」。「周期」写「记过 n 位 · 最近 {短名} M月D日」，「最近」是记过的几位里推算的下一次第一天最早、又不早于今天的那位，都过了日子时取推算的下一次最早的那位；一位都没记过时写那行说明「凭她的言行记下她的经期，这里替你推算。」；不出点。周期两个开关（部署者的、用户的）任一关着，或周期还没读到时，这张卡不出现，读到之前不闪出又消失。
@@ -288,6 +288,12 @@ components:
     - **记一次的弹窗**（shadcn Dialog，内容上注入她的颜色）：标题「记{角色名}的一次经期」。「第一天」是 `lg` 的 outline 按钮，写着「2026年10月25日 周日」，点开 Popover 里的小月历（288px 宽，周一在前，36px 圆形日期，今天描一圈前景色，选中的中性 `bg-muted`，今天以后不能选、翻不到今天以后的月）；不用原生日期框。「天数」是两个 outline `icon-lg` 的 −/+（`FewerDaysIcon`、`MoreDaysIcon`）夹着 Header 字号的「5 天」，到 1、10 时对应的键禁用。底部「取消」（outline）和「记下」（改的时候「保存」，default，她的颜色）；改的时候左下多一个 `ghost-destructive` 的「删除这次」（前面 `TrashIcon`），删前不再确认。服务器退回时标题下面一句 destructive 字的原因。
     - **讲解**：两栏下面通栏一块描边的 Accordion（`rounded-xl border px-4`），七块「怎么算的」「基础知识」「青春期」「经前和经期」「常见健康问题」「怎么体贴」「常见误区」，默认全收起、一次开一块。块名 Header 字号、最矮 44px；展开后最宽 `max-w-2xl`，先一句 muted 的导语，再一段段 Body 字号的正文，有小标题的用 medium。每句的来源放在句末标点前，Meta 字号 muted、下划线，新标签页打开。「怎么算的」导语后面是 28 天例子的示意图：28 格横条，经期 `bg-foreground/60`、易孕期 `bg-foreground/20`、排卵日前景色实底，其余 `bg-muted`，全中性，不用她的颜色；这是页面上唯一画排卵日、易孕期的地方。
     - **免责**：页面最后一行，Meta 字号 muted：「推算只是估计，不是医疗建议，不能用来避孕；身体不适请看医生。」
+
+- **朋友圈页**（`/moments`，GLOSSARY.md「朋友圈」）：导航第二项，只有第一级，在外壳里（通话中切过来不挂断，通话条在最顶上）。
+  - **版式**：同玩法页第一级，没有第二栏：页首左边「朋友圈」大标题（List title，下沿一条细线）；内容最宽 `max-w-3xl`、居中、`px-4`，手机和电脑同一个版式。打开时读一次时间线，最新的在上面，一次全给，不分页。
+  - **时间线的一行**：一条动态一行，行与行之间 `divide-y` 细线，每行 `py-4`、`gap-3`。左边她 48px 的头像（`MarkedAvatar` `lg`）；右边从上到下：名字（Row name）、日语正文（Body 字号，`<Ja>`，保留换行）、下面一行字幕（Subtitle 字号、muted，和正文的间距同对话气泡里原文和字幕）、Meta 字号 muted 的时间（「刚刚」「N 分钟前」「N 小时前」「昨天」「N 天前」，`lib/moments`）。不用她的颜色，不铺她的壁纸。
+  - **空状态**：没有动态时内容区顶上一行 Body 字号 muted 的「还没有动态」，不加图标和说明。
+  - **关着时**：读时间线被拒绝（朋友圈没开放）时换成对话列表，不留这一页在历史里。
 
 - **后台（/admin）**：
   - **页框**：shadcn `Sidebar`（16rem），头部「后台」和「管理者：{name}」，菜单「看板 / 配置 / 用户 / 公告」，底部「返回设置」；当前项用 `isActive`（中性底）。窄屏（< 768px）侧栏收进 Sheet。内容区顶上一条 48px 的页首：`SidebarTrigger` + 面包屑（Caption 字号），两者之间不加竖线。
@@ -423,7 +429,7 @@ components:
 
 ### Icons
 - 全部来自 `lucide-react`，按语义别名从一个文件导出（沿用 `PhoneIcon`、`HangUpIcon`、`MicIcon` 这类名字），组件里不直接散用 Lucide 原名。
-- 导航栏和 dock：对话是 Lucide `MessageCircle`（`ConversationsIcon`），玩法是 `Shapes`（`PlayIcon`），设置是 `Settings`（`SettingsIcon`）。
+- 导航栏和 dock：对话是 Lucide `MessageCircle`（`ConversationsIcon`），朋友圈是 `Aperture`（`MomentsIcon`），玩法是 `Shapes`（`PlayIcon`），设置是 `Settings`（`SettingsIcon`）。
 - 玩法页第一级的卡：礼物是 `Gift`（`GiftIcon`），成就是 `Trophy`（`AchievementsIcon`，和对话页更多菜单里的成就同一个），日历是 `CalendarDays`（`CalendarIcon`），周期是 `CalendarHeart`（`CyclesCardIcon`，中性）；没开放的 `Empty` 用 `PlayIcon`。不新增固定颜色。
 - 日历子页：角色生日和我的生日都是 `Cake`（`BirthdayIcon`），节假日是 `Flag`（`HolidayIcon`），筛选按钮、格子和清单里同一个；筛选的「日程」是 `CalendarCheck`（`ScheduleIcon`）；月视图标题两边是 `ChevronLeft`（`PreviousMonthIcon`）、`ChevronRight`（`NextMonthIcon`），周视图的上周、下周也用这两枚；页首的月 / 周切换是 `CalendarDays`（`MonthViewIcon`）、`Rows3`（`WeekViewIcon`）。四类工作：练习 `Music`（`PracticeJobIcon`）、出镜 `Camera`（`AppearanceJobIcon`）、事务 `Briefcase`（`BusinessJobIcon`）、私人 `Coffee`（`PrivateJobIcon`），待排、工作块和抽屉里同一个，读屏念类别名；保存过的工作块上的锁是 `Lock`（`LockedIcon`）。不新增固定颜色，角色生日的蛋糕用她的 `--her-mark`，类别图标和锁都是中性的 muted。
 - 周期子页：搜索框的 `Search`（`SearchIcon`）和筛选键的 `ListFilter`（`FilterIcon`）同对话列表；翻月同日历子页（`PreviousMonthIcon`、`NextMonthIcon`）；记录行的铅笔和「改这次」是 `Pencil`（`EditRecordIcon`），弹窗里天数的 −/+ 是 `Minus`（`FewerDaysIcon`）、`Plus`（`MoreDaysIcon`），「删除这次」是 `Trash2`（`TrashIcon`）。都跟着文字颜色，不用她的颜色。

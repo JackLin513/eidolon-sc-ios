@@ -109,6 +109,18 @@ class FakeRandom:
         return number
 
 
+class SteadyRandom:
+    """A random source giving the same number each time, however often it is asked: for
+    tests that care what is drawn, not how many times (each ask must be for more)."""
+
+    def __init__(self, number: int) -> None:
+        self._number = number
+
+    def __call__(self, below: int) -> int:
+        assert self._number < below, f"{self._number} is not below {below}"
+        return self._number
+
+
 DEPLOYER_KEY = "test-key"
 """The deployer's chat model key in the tests' settings."""
 

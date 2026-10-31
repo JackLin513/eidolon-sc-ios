@@ -8,6 +8,7 @@ import {
   isTyping,
   navDestination,
   navDots,
+  navItems,
   showsNav,
   showsShellCallBar,
 } from "@/lib/navShell";
@@ -17,6 +18,7 @@ describe("在不在导航外壳里", () => {
     "/conversations",
     "/conversation/mano",
     "/conversation/mano?x=1",
+    "/moments",
     "/settings",
     "/settings?tab=own-keys",
     "/settings/own-keys",
@@ -40,6 +42,8 @@ describe("在不在导航外壳里", () => {
     "/conversation",
     "/conversations-old",
     "/settingsx",
+    "/moments/1",
+    "/momentsx",
     "/gifts",
     "/gifts?to=mano",
     "/gifts/cake",
@@ -69,6 +73,7 @@ describe("外壳顶上的通话条", () => {
     expect(showsShellCallBar("/settings?tab=call", "mano")).toBe(true);
     expect(showsShellCallBar("/conversations", "mano")).toBe(true);
     expect(showsShellCallBar("/conversation/hiori", "mano")).toBe(true);
+    expect(showsShellCallBar("/moments", "mano")).toBe(true);
   });
 
   it("她自己的对话页上不出现：那里有页首下面那条", () => {
@@ -94,6 +99,7 @@ describe("去某个网址时通话怎么样", () => {
     expect(departure("/play", "mano")).toBe("keep");
     expect(departure("/play/gifts?to=hiori", "mano")).toBe("keep");
     expect(departure("/play/achievements", "mano")).toBe("keep");
+    expect(departure("/moments", "mano")).toBe("keep");
   });
 
   it("通话中回她自己的对话页，通话留着", () => {
@@ -113,6 +119,7 @@ describe("去某个网址时通话怎么样", () => {
 describe("导航栏和 dock 的当前项", () => {
   it.each([
     ["/conversation/mano", "conversations"],
+    ["/moments", "moments"],
     ["/settings", "settings"],
     ["/settings/own-keys", "settings"],
     ["/play", "play"],
@@ -124,6 +131,22 @@ describe("导航栏和 dock 的当前项", () => {
 
   it("外壳外面没有当前项", () => {
     expect(currentNavItem("/admin")).toBeNull();
+  });
+});
+
+describe("导航栏和 dock 上有哪几项", () => {
+  it("朋友圈开着时四项：对话、朋友圈、玩法、设置", () => {
+    expect(navItems(true)).toEqual(["conversations", "moments", "play", "settings"]);
+  });
+
+  it("账号里朋友圈为空（部署者关着）、用户关了或账号还没读到时没有「朋友圈」", () => {
+    for (const moments of [null, false, undefined])
+      expect(navItems(moments), String(moments)).toEqual(["conversations", "play", "settings"]);
+  });
+
+  it("「朋友圈」去 /moments", () => {
+    expect(navDestination("moments", "/conversations")).toBe("/moments");
+    expect(navDestination("moments", "/moments")).toBeNull();
   });
 });
 
@@ -152,9 +175,10 @@ describe("导航栏、dock 上的点", () => {
   const both = { conversations: true, rewards: true };
 
   it("「对话」有没看过的搭话、「玩法」有新到的抽奖次数时各亮各的", () => {
-    expect(navDots("settings", both)).toEqual({ conversations: true, play: true, settings: false });
+    expect(navDots("settings", both)).toEqual({ conversations: true, moments: false, play: true, settings: false });
     expect(navDots("settings", { conversations: false, rewards: true })).toEqual({
       conversations: false,
+      moments: false,
       play: true,
       settings: false,
     });
@@ -162,7 +186,7 @@ describe("导航栏、dock 上的点", () => {
   });
 
   it("当前项是「玩法」时「玩法」不亮，别的照旧", () => {
-    expect(navDots("play", both)).toEqual({ conversations: true, play: false, settings: false });
+    expect(navDots("play", both)).toEqual({ conversations: true, moments: false, play: false, settings: false });
   });
 
   it("在外壳外面（没有当前项）时照常", () => {

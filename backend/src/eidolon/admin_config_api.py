@@ -31,6 +31,7 @@ from eidolon.live_config import (
     JUDGE_THRESHOLDS,
     LIMITS,
     MEMORY_LLM,
+    MOMENTS,
     PROXY,
     REACH_OUTS,
     READ_ONLY,
@@ -179,6 +180,14 @@ class ReachOutsInput(BaseModel):
     per_day: Any
 
 
+class MomentsInput(BaseModel):
+    """Whether characters post moments, true or false, and how many a day each user at
+    most, a whole number from 1 up; checked by the live configuration."""
+
+    enabled: Any
+    per_day: Any
+
+
 class ScheduleInput(BaseModel):
     """Whether each week's jobs are published for producers to schedule, true or false;
     checked by the live configuration."""
@@ -255,6 +264,7 @@ INPUTS: dict[str, type[BaseModel]] = {
     LIMITS: LimitsInput,
     AFFINITY: AffinityInput,
     REACH_OUTS: ReachOutsInput,
+    MOMENTS: MomentsInput,
     SCHEDULE: ScheduleInput,
     CYCLES: CyclesInput,
     BAR: BarInput,

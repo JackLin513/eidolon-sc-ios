@@ -25,6 +25,7 @@ Talking = Literal["typing", "in_call", "apart"]
 """How the user and she are talking now: typing, in a call, or not at all."""
 
 DEFAULT_TIMEZONE = "Asia/Shanghai"
+_TOKYO = ZoneInfo("Asia/Tokyo")
 MAX_FORM_OF_ADDRESS_LENGTH = 20
 
 _GENDER_NAMES: dict[Gender, str] = {"male": "男性", "female": "女性"}
@@ -127,6 +128,8 @@ _BIRTHDAY = (
     "今天是制作人的生日。请在合适的时候用你自己的方式祝福一次：先回应制作人说的话，不要每句都提。"
 )
 _BIRTHDAY_APART = "今天是制作人的生日。今天还没祝福过的话，用你自己的方式祝福一次。"
+_POSTING = "你这会儿在发朋友圈，制作人没在和你说话。"
+_BIRTHDAY_POSTING = "今天是制作人的生日（按他那边的日期）。想的话，这条可以祝他生日快乐。"
 
 
 def _how_long(gap: timedelta) -> str:
@@ -170,5 +173,27 @@ def now_prompt(
         )
     if profile.birthday and is_birthday(profile.birthday, local.date()):
         lines.append(_BIRTHDAY_APART if talking == "apart" else _BIRTHDAY)
+    lines += affinity_lines
+    return "\n".join(lines)
+
+
+def posting_now_prompt(
+    profile: ProducerProfile,
+    now: datetime,
+    timezone: str,
+    affinity_lines: Sequence[str] = (),
+) -> str:
+    """The prompt section about now as she posts a moment (GLOSSARY.md「朋友圈」): the time in
+    Tokyo, where she lives and posts, never when they were last in touch; whether it is the
+    producer's birthday, in their own `timezone`; then `affinity_lines`."""
+    local = now.astimezone(_TOKYO)
+    lines = [
+        "# 此刻",
+        f"现在是 {local.year}年{local.month}月{local.day}日"
+        f"（星期{_WEEKDAYS[local.weekday()]}）{local:%H:%M}（东京时间）。",
+        _POSTING,
+    ]
+    if profile.birthday and is_birthday(profile.birthday, local_date(now, timezone)):
+        lines.append(_BIRTHDAY_POSTING)
     lines += affinity_lines
     return "\n".join(lines)

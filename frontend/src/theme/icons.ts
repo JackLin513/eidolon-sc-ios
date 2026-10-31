@@ -75,8 +75,13 @@ export { Captions as TextOnlyIcon } from "lucide-react";
 // 通话层底栏的打字键：点了底栏换成输入栏。
 export { Keyboard as TypingIcon } from "lucide-react";
 
-// 导航栏（电脑）和 dock（手机）的三项；玩法页第一级「礼物」卡的图标也是 GiftIcon（「成就」卡用 AchievementsIcon）。
-export { MessageCircle as ConversationsIcon, Settings as SettingsIcon, Shapes as PlayIcon } from "lucide-react";
+// 导航栏（电脑）和 dock（手机）的四项（朋友圈开着时）；玩法页第一级「礼物」卡的图标也是 GiftIcon（「成就」卡用 AchievementsIcon）。
+export {
+  Aperture as MomentsIcon,
+  MessageCircle as ConversationsIcon,
+  Settings as SettingsIcon,
+  Shapes as PlayIcon,
+} from "lucide-react";
 export { Gift as GiftIcon } from "lucide-react";
 
 // 日历：玩法页第一级「日历」卡；筛选、月视图和这一天的清单里我的生日（蛋糕，角色生日的蛋糕是她的颜色）和节假日（旗子）。

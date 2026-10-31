@@ -109,6 +109,21 @@ class ReachOutSettings:
     per_day: int
 
 
+DEFAULT_MOMENTS_PER_DAY = 3
+"""How many moments each user may have a day, of all characters together, unless the admin
+console says otherwise."""
+
+
+@dataclass(frozen=True)
+class MomentSettings:
+    """Whether characters post moments to users' moments (GLOSSARY.md「朋友圈」), off unless
+    `.env` turns it on, and how many moments each user may have a day; the admin console may
+    override both."""
+
+    enabled: bool
+    per_day: int
+
+
 @dataclass(frozen=True)
 class ProxySettings:
     """The proxy what is in `services` reaches its providers through, if it is
@@ -450,6 +465,9 @@ class Settings:
     reach_outs: bool = False
     """Whether characters reach out to users (GLOSSARY.md「搭话」), on the deployer's chat
     model; off unless `.env` turns it on, and the admin console may override it."""
+    moments: bool = False
+    """Whether characters post moments (GLOSSARY.md「朋友圈」), on the deployer's chat model;
+    off unless `.env` turns it on, and the admin console may override it."""
     schedule: bool = True
     """Whether each week's jobs are published for producers to schedule (GLOSSARY.md「日程」);
     on unless `.env` turns it off, and the admin console may override it."""
@@ -568,6 +586,7 @@ class Settings:
             exempting_keys=exempting_keys_from_env(),
             affinity_and_gifts=_switch("EIDOLON_AFFINITY_AND_GIFTS", default=True),
             reach_outs=_switch("EIDOLON_REACH_OUTS"),
+            moments=_switch("EIDOLON_MOMENTS"),
             schedule=_switch("EIDOLON_SCHEDULE", default=True),
             cycles=_switch("EIDOLON_CYCLES", default=True),
             bar=_switch("EIDOLON_BAR", default=True),

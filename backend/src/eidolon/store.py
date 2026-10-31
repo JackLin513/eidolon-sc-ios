@@ -428,6 +428,18 @@ class CurrentConversation:
 
 
 @dataclass(frozen=True)
+class InTouch:
+    """How a user and a character are in touch, over all their conversations, as moments go
+    by it (GLOSSARY.md「朋友圈」): whether they have had a turn; when they were last in touch
+    (`read_last_contact`; None before either)."""
+
+    user_id: str
+    character_id: str
+    has_turns: bool
+    last_contact: datetime | None
+
+
+@dataclass(frozen=True)
 class Contact:
     """A turn the user took with a character (the time of their message) or a gift they
     gave her, and whether she liked it as it was given, as stats count them."""
@@ -1685,6 +1697,48 @@ def _current_conversations(db: sqlite3.Connection) -> list[CurrentConversation]:
         )
         for row in rows
     ]
+
+
+def read_in_touch(db: sqlite3.Connection, user_id: str | None = None) -> list[InTouch]:
+    """How every user, but banned users, or only `user_id` if not banned, is in touch with
+    each character they have a conversation with, read through `db`; in no order."""
+    only = " AND c.user_id = :user" if user_id is not None else ""
+    users = f"JOIN users u ON u.id = c.user_id AND u.banned_at IS NULL{only}"
+    turns = db.execute(
+        "SELECT c.user_id, c.character_id, MAX(m.created_at) FROM conversations c"
+        f" {users} LEFT JOIN messages m ON m.conversation_id = c.id"
+        " GROUP BY c.user_id, c.character_id",
+        {"user": user_id},
+    ).fetchall()
+    calls: dict[tuple[str, str], list[tuple[str, float]]] = {}
+    for user, character, connected_at, duration_s in db.execute(
+        "SELECT c.user_id, c.character_id, k.connected_at, k.duration_s FROM calls k"
+        f" JOIN conversations c ON c.id = k.conversation_id {users}",
+        {"user": user_id},
+    ):
+        calls.setdefault((user, character), []).append((connected_at, duration_s))
+    return [
+        InTouch(user, character, last_turn is not None,
+                _last_contact(last_turn, calls.get((user, character), [])))
+        for user, character, last_turn in turns
+    ]
+
+
+def read_current_conversation(
+    db: sqlite3.Connection, user_id: str, character_id: str
+) -> Conversation | None:
+    """The user's current conversation with the character (GLOSSARY.md「当前对话」), read
+    through `db`; None without one."""
+    row = by_name(db).execute(
+        f"SELECT c.* FROM conversations c WHERE c.user_id = ? AND c.character_id = ?"
+        f" AND {_CURRENT}",
+        (user_id, character_id),
+    ).fetchone()
+    if row is None:
+        return None
+    return Conversation(
+        row["id"], row["user_id"], row["character_id"], row["created_at"], row["title"]
+    )
 
 
 def read_last_contact(

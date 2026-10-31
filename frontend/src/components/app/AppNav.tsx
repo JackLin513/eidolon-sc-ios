@@ -8,13 +8,14 @@ import { opensNewTab, useDirectory } from "@/components/conversations/Conversati
 import { Button } from "@/components/ui/button";
 import { copy } from "@/i18n";
 import { hasUnseen } from "@/lib/conversationList";
-import { currentNavItem, FIRST_LEVEL, isTyping, NAV_ITEMS, navDestination, navDots, type NavItem } from "@/lib/navShell";
+import { currentNavItem, FIRST_LEVEL, isTyping, navDestination, navDots, navItems, type NavItem } from "@/lib/navShell";
 import { REPOSITORY_URL } from "@/lib/repository";
 import { cn } from "@/lib/utils";
-import { ConversationsIcon, GitHubIcon, PlayIcon, SettingsIcon } from "@/theme/icons";
+import { ConversationsIcon, GitHubIcon, MomentsIcon, PlayIcon, SettingsIcon } from "@/theme/icons";
 
 const ICONS: Record<NavItem, typeof SettingsIcon> = {
   conversations: ConversationsIcon,
+  moments: MomentsIcon,
   play: PlayIcon,
   settings: SettingsIcon,
 };
@@ -26,7 +27,7 @@ const DOTTED: Partial<Record<NavItem, string>> = {
 };
 
 /**
- * 导航栏（电脑）：最左一条 72px，右边一条细线，不能收起；对话、玩法、设置从上往下，GitHub 仓库链接在最底下
+ * 导航栏（电脑）：最左一条 72px，右边一条细线，不能收起；对话、朋友圈、玩法、设置从上往下（账号里没有朋友圈时没有这一项），GitHub 仓库链接在最底下
  * （DESIGN.md「Layout」）。窄屏由 CSS 藏起来，换成 dock。通话层只盖住它右边，展开时它照样能点（见 NavLinks）。
  */
 export function NavRail() {
@@ -80,11 +81,11 @@ export function NavDock({ isInert }: { isInert: boolean }) {
  */
 function NavLinks({ className }: { className: string }) {
   const pathname = usePathname();
-  const { guard, held, characters, latest, preferences, onScreen, newRewards } = useDirectory();
+  const { guard, held, account, characters, latest, preferences, onScreen, newRewards } = useDirectory();
   const current = currentNavItem(pathname);
   const unseen = characters !== null && hasUnseen(characters, latest, { preferences, onScreen });
   const dots = navDots(current, { conversations: unseen, rewards: newRewards });
-  return NAV_ITEMS.map((item) => {
+  return navItems(account?.moments).map((item) => {
     const Icon = ICONS[item];
     const isCurrent = item === current;
     const onClick = (event: MouseEvent<HTMLAnchorElement>) => {

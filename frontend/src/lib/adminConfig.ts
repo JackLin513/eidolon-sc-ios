@@ -30,6 +30,7 @@ export type ItemName =
   | "limits"
   | "affinity"
   | "reach_outs"
+  | "moments"
   | "schedule"
   | "cycles"
   | "bar"
@@ -100,7 +101,7 @@ export const TAB_ITEMS: Record<ConfigTab, ItemName[]> = {
   image: ["image"],
   network: ["proxy"],
   status: ["service_status"],
-  limits: ["limits", "affinity", "reach_outs", "schedule", "cycles", "bar"],
+  limits: ["limits", "affinity", "reach_outs", "moments", "schedule", "cycles", "bar"],
   registration: ["registration"],
   sponsor: [],
   prices: [],
@@ -346,6 +347,16 @@ export const ITEM_SPECS: Record<ItemName, ItemSpec> = {
   },
   // 搭话（GLOSSARY.md「搭话」）：总开关，每位用户每天最多几次。不试调。
   reach_outs: {
+    rows: ["enabled", "per_day"],
+    secrets: [],
+    form: [
+      { name: "enabled", kind: "switch" },
+      { name: "per_day", kind: "positive" },
+    ],
+    tried: false,
+  },
+  // 朋友圈（GLOSSARY.md「朋友圈」）：总开关，每位用户每天合计最多几条。不试调。
+  moments: {
     rows: ["enabled", "per_day"],
     secrets: [],
     form: [

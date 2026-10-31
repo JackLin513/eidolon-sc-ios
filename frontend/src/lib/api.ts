@@ -467,6 +467,8 @@ export type SignInMethod = { provider: Provider; display_name: string; email: st
  * has them off.
  * `cycles`: the user's own switch for cycles (GLOSSARY.md「周期」); null where the deployer has them
  * off.
+ * `moments`: whether the user has moments (GLOSSARY.md「朋友圈」); null where the deployer has them
+ * off.
  * `sponsor_version`: the version of the deployer's sponsor code (GLOSSARY.md「赞赏」), when it was
  * uploaded, for `sponsorImageUrl`; null when users are not shown it (switched off, or no code). */
 export type Account = {
@@ -477,6 +479,7 @@ export type Account = {
   exempting_keys: OwnService[];
   reach_outs: boolean | null;
   cycles: boolean | null;
+  moments: boolean | null;
   sponsor_version: string | null;
   /** Whether the deployer has a key for speech synthesis now: her words are read aloud on it for those
    * who keep none of their own in this browser (GLOSSARY.md「朗读」). */
@@ -706,6 +709,26 @@ export type BarState = { enabled: false } | { enabled: true; drinks: Drink[]; re
 
 export async function getBar(): Promise<BarState> {
   return json(await api("/api/bar"));
+}
+
+/** A post of hers in the user's moments (GLOSSARY.md「动态」): her Japanese, its subtitle, and when it
+ * came out (ISO, with its offset). The picture, the place and the weather are null for now. */
+export type Moment = {
+  id: number;
+  character_id: string;
+  ja: string;
+  zh: string;
+  image: null;
+  place: null;
+  weather: null;
+  posted_at: string;
+};
+
+/** The user's moments of the last 30 days that have come out, newest first, all at once. Refused while
+ * the deployer has moments off (409). */
+export async function getMoments(): Promise<Moment[]> {
+  const body: { moments: Moment[] } = await json(await api("/api/moments"));
+  return body.moments;
 }
 
 /** Comes into the bar, bringing the user's own LLM (as `own_keys`) as a text turn does. Once the
