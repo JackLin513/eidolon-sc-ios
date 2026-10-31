@@ -75,8 +75,18 @@ final class MotionPlayback {
             return false
         }
         sampler = MotionSampler(dance: dance, map: map, rest: rest, joints: names)
-        sway = configuration.flatMap {
-            MotionSway(configuration: $0, joints: names, rest: rest)
+        // Debug switch for the skirt-collision question: with no capsules the
+        // solver leaves every panel where the spring puts it, which is the A/B
+        // against the canned collider data.
+        let withoutColliders = ProcessInfo.processInfo
+            .environment["EIDOLON_3D_NO_SWAY_COLLIDERS"] != nil
+        sway = configuration.flatMap { original -> MotionSway? in
+            let config = withoutColliders
+                ? MotionSway.Configuration(
+                    format: original.format, families: original.families,
+                    bones: original.bones, colliders: nil)
+                : original
+            return MotionSway(configuration: config, joints: names, rest: rest)
         }
         entities = skinned.filter { $0.jointNames == names }
         duration = dance.timeLength
