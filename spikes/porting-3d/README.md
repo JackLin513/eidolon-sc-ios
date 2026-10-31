@@ -71,7 +71,7 @@ $V spikes/porting-3d/compress_motion.py \
 $V -m unittest discover -s spikes/porting-3d/tests
 ```
 
-63 个纯函数单测（解码、手性、材质参数、曲线语义、压缩格式、资源定位），不联网。
+66 个纯函数单测（解码、手性、材质参数、曲线语义、压缩格式、资源定位、摆动尾点），不联网。
 
 Swift 单测（`Eidolon3DSpikeTests`，23 个，从 scheme `Eidolon3DSpike` 跑）：
 
@@ -106,6 +106,8 @@ xcodebuild -project EidolonIOS.xcodeproj -scheme Eidolon3DSpike \
 - `EIDOLON_3D_OUTFIT`、`EIDOLON_3D_YAW`：衣装与起始朝向；
 - `EIDOLON_3D_MODEL=<url>`：直接加载指定 USDZ；
 - `EIDOLON_3D_NO_OUTLINE=1`：关描边壳，用于 A/B；
+- `EIDOLON_3D_PAUSE_AT=<秒>`：停在该时刻的姿势，方便截图对比；
+- `EIDOLON_3D_NO_SWAY_COLLIDERS=1`：裙摆/头发不做碰撞，用于 A/B；
 - `EIDOLON_3D_LOG_MATERIALS=1`：写 `frame.log`（取景诊断）；
 - `EIDOLON_3D_DEBUG_ALPHA` / `_ALBEDO` / `_MASTER` / `_ISOLATE_ROW=n`：材质探针。
 

@@ -6,9 +6,12 @@ they need a spring of their own (`ios/MotionSway.swift`) instead of an
 animation track.
 
 The spring needs one number per bone: the tail vector from the joint to the
-point where the bone's mass sits, expressed in the bone's own local axes.  A
-chain bone's tail is the next bone's translation; a leaf panel's tail is the
-centroid of the vertices it dominates, taken in bind space.
+point where the bone's mass sits, expressed in the bone's own local axes.  That
+point is the game's *tip transform*: a chain bone's tip is its next joint, and
+a leaf panel's tip is the plain child node the model carries for it
+(`skirt_RD1`, not skinned).  The vertex centroid only stands in for leaves with
+no tip node, since a shorter tail sits inside the leg colliders and the
+collision then pushes the hem out.
 
     python3 spikes/porting-3d/sway.py <model.gltf> [--out <file>]
 
@@ -280,17 +283,29 @@ def family_of(name: str) -> str | None:
 
 def tail_for(document: Document, node: int, bones: set[int],
              centroids: dict[int, tuple]) -> tuple:
-    """The bone-local vector from the joint to its mass point."""
+    """The bone-local vector from the joint to its mass point.
+
+    That point is the game's *tip transform*: every skirt and ribbon bone
+    carries a plain child node (`skirt_RD1`, not skinned) whose local position
+    is the vector `SwayBoneMT.CalcRotate` aims the bone at, and a chain bone's
+    tip is its next joint.  Reading the child's translation is therefore
+    exact; the vertex centroid only stands in for models whose leaves have no
+    tip node.  Using the centroid for the skirt made every panel 3-10 cm
+    shorter than the game's tip, which put it inside the thigh capsule's
+    collision radius at rest and pushed the whole hem out.
+    """
+    children = document.nodes[node].get("children", [])
     sway_children = [
-        child for child in document.nodes[node].get("children", [])
+        child for child in children
         if child in bones and family_of(document.runtime_name(child))
     ]
     if len(sway_children) == 1:
         child = sway_children[0]
         return mirror(document.nodes[child].get("translation", [0, 0, 0]))
+    if len(children) == 1:
+        return mirror(document.nodes[children[0]].get("translation", [0, 0, 0]))
     if node in centroids:
         return mirror(centroids[node])
-    children = document.nodes[node].get("children", [])
     if children:
         return mirror(document.nodes[children[0]].get("translation", [0, 0, 0]))
     return (-0.04, 0.0, 0.0)
