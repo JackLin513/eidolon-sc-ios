@@ -31,7 +31,7 @@
   - 接口里地图链接按三家的格式各拼一次；后台设定的保存和校验。
 - [x] **验收**：在本地构建版上造一条带地名的动态，用 Playwright 看 Meta 一行，点开链接确认是新标签页、地图上标对了点。三家的链接各点一次。
 - [x] 表结构有改动的话，部署前手动备份数据库。（没改：`moments` 的 `place_*` 四列和运行记录的 `degraded` 列票 14 已建好）
-- [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。（affected-tests 已过，CI 待看）
+- [x] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
 
 ## Comments
 
