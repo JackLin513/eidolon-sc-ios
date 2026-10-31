@@ -156,4 +156,141 @@ final class ConversationTimeTests: XCTestCase {
             "昨天"
         )
     }
+
+    // MARK: - The transcript's bubble groups (spec #40)
+
+    private func her(_ id: String, at instant: Date, reachOut: Bool = false) -> ConversationLine {
+        .message(ChatMessageRecord(
+            id: reachOut ? "reach:\(id)" : id,
+            role: "character",
+            text: nil,
+            segments: [],
+            createdAt: Eidolon.timestamp(instant)
+        ))
+    }
+
+    private func me(_ id: String, at instant: Date) -> ConversationLine {
+        .message(ChatMessageRecord(
+            id: id,
+            role: "user",
+            text: "ねえ",
+            segments: [],
+            createdAt: Eidolon.timestamp(instant)
+        ))
+    }
+
+    private func happened(_ id: Int64, at instant: Date) -> ConversationLine {
+        .event(ConversationEventRecord(
+            id: id,
+            kind: "hung_up",
+            createdAt: Eidolon.timestamp(instant)
+        ))
+    }
+
+    func testAnEmptyTranscriptHasNoRows() {
+        XCTAssertTrue(ConversationTranscript.rows(of: [], now: date(2026, 10, 31)).isEmpty)
+    }
+
+    func testASingleLineIsADayAndAGroupOfOne() {
+        let at = date(2026, 10, 31, 9, 5)
+        let rows = ConversationTranscript.rows(
+            of: [her("a", at: at)],
+            now: date(2026, 10, 31, 12),
+            calendar: calendar
+        )
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].day, "今天")
+        XCTAssertEqual(rows[0].clock, "9:05")
+        XCTAssertTrue(rows[0].first)
+        XCTAssertTrue(rows[0].last)
+    }
+
+    func testHerConsecutiveLinesAreOneGroup() {
+        let at = date(2026, 10, 31, 9)
+        let rows = ConversationTranscript.rows(
+            of: [her("a", at: at), her("b", at: at.addingTimeInterval(60)), her("c", at: at.addingTimeInterval(120))],
+            now: date(2026, 10, 31, 12),
+            calendar: calendar
+        )
+        XCTAssertEqual(rows.map(\.day), ["今天", nil, nil])
+        XCTAssertEqual(rows.map(\.first), [true, false, false])
+        XCTAssertEqual(rows.map(\.last), [false, false, true])
+    }
+
+    func testAlternatingSidesEachStandAlone() {
+        let at = date(2026, 10, 31, 9)
+        let rows = ConversationTranscript.rows(
+            of: [her("a", at: at), me("b", at: at.addingTimeInterval(60)), her("c", at: at.addingTimeInterval(120))],
+            now: date(2026, 10, 31, 12),
+            calendar: calendar
+        )
+        XCTAssertEqual(rows.map(\.first), [true, true, true])
+        XCTAssertEqual(rows.map(\.last), [true, true, true])
+        XCTAssertEqual(rows.map(\.day), ["今天", nil, nil])
+    }
+
+    func testADayChangeStartsANewGroupAndPill() {
+        let evening = date(2026, 10, 30, 23, 59)
+        let morning = date(2026, 10, 31, 0, 5)
+        let rows = ConversationTranscript.rows(
+            of: [her("a", at: evening), her("b", at: morning)],
+            now: date(2026, 10, 31, 12),
+            calendar: calendar
+        )
+        XCTAssertEqual(rows.map(\.day), ["昨天", "今天"])
+        XCTAssertEqual(rows.map(\.first), [true, true])
+        XCTAssertEqual(rows.map(\.last), [true, true])
+    }
+
+    func testAnEventSplitsTheGroupsAroundIt() {
+        let at = date(2026, 10, 31, 9)
+        let rows = ConversationTranscript.rows(
+            of: [her("a", at: at), happened(1, at: at.addingTimeInterval(60)), her("b", at: at.addingTimeInterval(120))],
+            now: date(2026, 10, 31, 12),
+            calendar: calendar
+        )
+        XCTAssertEqual(rows.map(\.first), [true, true, true])
+        XCTAssertEqual(rows.map(\.last), [true, true, true])
+        XCTAssertEqual(rows.map(\.day), ["今天", nil, nil])
+    }
+
+    func testTwoEventsDoNotFormAGroup() {
+        let at = date(2026, 10, 31, 9)
+        let rows = ConversationTranscript.rows(
+            of: [happened(1, at: at), happened(2, at: at.addingTimeInterval(60))],
+            now: date(2026, 10, 31, 12),
+            calendar: calendar
+        )
+        XCTAssertEqual(rows.map(\.first), [true, true])
+        XCTAssertEqual(rows.map(\.last), [true, true])
+        XCTAssertEqual(rows.map(\.day), ["今天", nil])
+    }
+
+    func testAReachOutStartsANewGroupAndTheLineBeforeKeepsItsTime() {
+        let at = date(2026, 10, 31, 9)
+        let rows = ConversationTranscript.rows(
+            of: [her("a", at: at), her("b", at: at.addingTimeInterval(60), reachOut: true)],
+            now: date(2026, 10, 31, 12),
+            calendar: calendar
+        )
+        XCTAssertEqual(rows.map(\.first), [true, true])
+        XCTAssertEqual(rows.map(\.last), [true, true])
+        XCTAssertEqual(rows.map(\.day), ["今天", nil])
+    }
+
+    func testTheSplitSeamCutsGroupsWithoutADrawnCue() {
+        let at = date(2026, 10, 31, 9)
+        let lines = [her("a", at: at), her("b", at: at.addingTimeInterval(60)), her("c", at: at.addingTimeInterval(120))]
+        let rows = ConversationTranscript.rows(
+            of: lines,
+            now: date(2026, 10, 31, 12),
+            calendar: calendar,
+            splitsAfter: { line in
+                if case let .message(message) = line { return message.id == "b" }
+                return false
+            }
+        )
+        XCTAssertEqual(rows.map(\.first), [true, false, true])
+        XCTAssertEqual(rows.map(\.last), [false, true, true])
+    }
 }
