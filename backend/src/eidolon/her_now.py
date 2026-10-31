@@ -3,11 +3,13 @@ typing, in a call, reaching out (GLOSSARY.md「搭话」), visiting the bar (GLO
 posting a moment (GLOSSARY.md「朋友圈」).
 
 `HerNow` gives it in two steps. The first reads: her jobs, counting those done, so that her
-affinity read after it has them counted; where her cycle has her; her job done today; and, for
-a visit, her affinity too. The second gives the lines of now for the occasion, as its table
-(`CARRIES`) has them, from what the first read and what the caller read besides (the producer
-profile, when they were last in touch, the affinity lines). Where in the prompt they go is the
-caller's to say (ADR-0020).
+affinity read after it has them counted; where her cycle has her; her job done today; her
+latest moments, where the occasion tells her of them; and, for a visit, her affinity too. The
+second gives the lines of now for the occasion, as its table (`CARRIES`) has them, from what
+the first read and what the caller read besides (the producer profile, when they were last in
+touch, the affinity lines). Her latest moments, as the first
+read them, make a section of their own (`recent_moments.moments_section`). Where in the prompt
+they go is the caller's to say (ADR-0020).
 
 What every prompt of hers opens with (her sheet, her birthday, the world setting) is not now:
 it stays the same all day, for a service to cache (`today.always_known`)."""
@@ -21,6 +23,7 @@ from eidolon.affinity import Affinities, Status
 from eidolon.characters import Character
 from eidolon.cycles import Cycles, HerDays, always_neither, cycle_lines
 from eidolon.producer import ProducerProfile, Talking, now_prompt, posting_now_prompt
+from eidolon.recent_moments import RecentMoment, RecentMoments
 from eidolon.schedule import HerSchedule, Job, Schedules, schedule_lines
 from eidolon.today import today_lines
 from eidolon.weather import Weather
@@ -36,25 +39,38 @@ class Carries:
     """Which of what she knows of now an occasion tells her: the time, the producer's
     birthday and when they were last in touch (`now_prompt`); the day it is in Tokyo
     (`today_lines`); her jobs of this week and the next (`schedule_lines`); where her cycle
-    has her (`cycle_lines`); how she feels toward the producer (the affinity lines)."""
+    has her (`cycle_lines`); how she feels toward the producer (the affinity lines); her
+    latest moments (`recent_moments`), in a section of their own after the others."""
 
     time: bool
     today: bool
     schedule: bool
     cycle: bool
     affinity: bool
+    moments: bool
 
 
 CARRIES: dict[Occasion, Carries] = {
-    "typing": Carries(time=True, today=True, schedule=True, cycle=True, affinity=True),
-    "in_call": Carries(time=True, today=True, schedule=True, cycle=True, affinity=True),
-    "apart": Carries(time=True, today=True, schedule=True, cycle=True, affinity=True),
+    "typing": Carries(
+        time=True, today=True, schedule=True, cycle=True, affinity=True, moments=True
+    ),
+    "in_call": Carries(
+        time=True, today=True, schedule=True, cycle=True, affinity=True, moments=True
+    ),
+    "apart": Carries(
+        time=True, today=True, schedule=True, cycle=True, affinity=True, moments=True
+    ),
     # The bar's story is only ever on the night shift: no time, nor the producer's birthday;
     # her cycle does not follow her there, and her jobs only tell why she came.
-    "visit": Carries(time=False, today=True, schedule=False, cycle=False, affinity=True),
+    "visit": Carries(
+        time=False, today=True, schedule=False, cycle=False, affinity=True, moments=False
+    ),
     # Her moments go by Tokyo's day, as she lives there: the time is Tokyo's, and no jobs of
-    # the week; when they were last in touch is not hers to post about.
-    "moments": Carries(time=True, today=True, schedule=False, cycle=True, affinity=True),
+    # the week; when they were last in touch is not hers to post about. Her latest moments
+    # she is told of as she posts, a few more of them (`moments.RECENT`).
+    "moments": Carries(
+        time=True, today=True, schedule=False, cycle=True, affinity=True, moments=False
+    ),
 }
 """What each occasion tells her of now. Anything more she is to know of now goes here, for
 every occasion."""
@@ -66,14 +82,16 @@ class KnownNow:
     jobs of their week and the next, those done counted (None while schedules are off); where
     her cycle has her at any time (neither, whenever, while cycles are off, or on an occasion
     that does not tell her of it); her job done today, the latest if more than one (None
-    without); and, for a visit, her affinity, read after her jobs (None otherwise, or while
-    affinity is off)."""
+    without); for a visit, her affinity, read after her jobs (None otherwise, or while
+    affinity is off); and her latest moments, the earliest first (none on an occasion that
+    does not tell her of them, or while moments are off for the user)."""
 
     character: Character
     her_jobs: HerSchedule | None
     her_days: HerDays
     done_today: Job | None
     affinity: Status | None
+    moments: tuple[RecentMoment, ...]
 
 
 class HerNow:
@@ -84,24 +102,26 @@ class HerNow:
         schedules: Schedules | None = None,
         cycles: Cycles | None = None,
         affinities: Affinities | None = None,
+        moments: RecentMoments | None = None,
     ) -> None:
         """Without `world`, she knows only the birthdays and holiday of the day; without
         `schedules`, no jobs; without `cycles`, no days of hers; without `affinities`, she
-        reads no affinity for a visit."""
+        reads no affinity for a visit; without `moments`, none of her moments."""
         self._characters = characters
         self._world = world
         self._schedules = schedules
         self._cycles = cycles
         self._affinities = affinities
+        self._moments = moments
 
     async def read(
         self, user_id: str, character_id: str, device_timezone: str | None, occasion: Occasion
     ) -> KnownNow:
         """The first step, for the user's character on `occasion`, their device in
         `device_timezone` (None reaching out): her jobs read, those done counted towards her
-        affinity, her cycle where the occasion tells her of it, her job done today, and for a visit her affinity. Whoever reads
-        her affinity otherwise is to read it after this, so that it has her jobs done
-        counted."""
+        affinity, her cycle where the occasion tells her of it, her job done today, her latest
+        moments where it tells her of them, and for a visit her affinity. Whoever reads her
+        affinity otherwise is to read it after this, so that it has her jobs done counted."""
         her_jobs = (
             await self._schedules.hers(user_id, character_id, device_timezone)
             if self._schedules is not None else None
@@ -114,9 +134,13 @@ class HerNow:
             await self._affinities.status(user_id, character_id)
             if occasion == "visit" and self._affinities is not None else None
         )
+        moments = (
+            await self._moments.hers(user_id, character_id)
+            if CARRIES[occasion].moments and self._moments is not None else ()
+        )
         return KnownNow(
             self._characters[character_id], her_jobs, her_days,
-            her_jobs.done_today() if her_jobs is not None else None, affinity,
+            her_jobs.done_today() if her_jobs is not None else None, affinity, moments,
         )
 
     def lines(

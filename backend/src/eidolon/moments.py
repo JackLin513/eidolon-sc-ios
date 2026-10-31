@@ -136,6 +136,7 @@ from eidolon.photos import Photos
 from eidolon.place_pool import Place
 from eidolon.producer import ProducerProfile, effective_timezone, is_birthday, local_date
 from eidolon.randomness import Random
+from eidolon.recent_moments import picture_note, read_switched_on
 from eidolon.reply_format import format_reply
 from eidolon.schedule import DayJob, Schedules
 from eidolon.store import (
@@ -533,7 +534,7 @@ class Moments:
         where the deployer has them off."""
         if not self._config.moments.enabled:
             return None
-        return await self._db.read(_switched_on, user_id)
+        return await self._db.read(read_switched_on, user_id)
 
     async def switch(self, user_id: str, on: bool) -> None:
         """Switch the user's own switch on or off, from the next tick; raise `MomentsOff`
@@ -695,7 +696,7 @@ class Moments:
         active = (
             bool(contacts) and now - max(contacts) <= ACTIVE
             and (limits is None or limits.turns_per_hour != 0)
-            and _switched_on(db, user_id)
+            and read_switched_on(db, user_id)
         )
         tiers: dict[str, Tier | None] = {
             t.character_id: _tier(
@@ -866,7 +867,7 @@ class Moments:
             if conversation is not None else []
         )
         return _BeforeReply(
-            _switched_on(db, due.user_id),
+            read_switched_on(db, due.user_id),
             self._affinities.read_status(db, due.user_id, due.character_id)
             if affinity_on else None,
             replied, read_profile(db, due.user_id), conversation, messages,
@@ -900,7 +901,7 @@ class Moments:
                 tier_prompt(before.status), replying=True,
             ),
             memories,
-            recalled(before.ja, _note(before.image)),
+            recalled(before.ja, picture_note(before.image)),
             [characters[id].name for id in likes if id in characters],
             [(characters[c.character_id].name, c.ja) for c in comments
              if c.character_id in characters],
@@ -1048,11 +1049,6 @@ def _tier(status: Status | None) -> Tier | None:
 
 def _open(db: sqlite3.Connection) -> None:
     db.executescript(_SCHEMA)
-
-
-def _switched_on(db: sqlite3.Connection, user_id: str) -> bool:
-    row = db.execute("SELECT 1 FROM moments_off WHERE user_id = ?", (user_id,)).fetchone()
-    return row is None
 
 
 def _switch(db: sqlite3.Connection, user_id: str, on: bool) -> None:
@@ -1254,7 +1250,7 @@ def _before(db: sqlite3.Connection, user_id: str, character_id: str, since: str)
         if conversation is not None else []
     )
     recent = [
-        recalled(ja, _note(image))
+        recalled(ja, picture_note(image))
         for ja, image in db.execute(
             "SELECT ja, image FROM moments WHERE user_id = ? AND character_id = ?"
             " ORDER BY posted_at DESC, id DESC LIMIT ?",
@@ -1269,12 +1265,6 @@ def _before(db: sqlite3.Connection, user_id: str, character_id: str, since: str)
         )
     }
     return _Before(read_profile(db, user_id), conversation, messages, recent, used)
-
-
-def _note(image: str | None) -> str | None:
-    """The note of a moment's picture as she wrote it, kept as JSON; None for none."""
-    note = json.loads(image).get("note") if image is not None else None
-    return note if isinstance(note, str) else None
 
 
 def _read_picture(

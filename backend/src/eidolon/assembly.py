@@ -78,6 +78,7 @@ from eidolon.moments import Moments
 from eidolon.reach_outs import ReachOuts
 from eidolon.read_aloud import ReadAloud
 from eidolon.readings import load_readings, readings_path
+from eidolon.recent_moments import RecentMoments
 from eidolon.rerank import (
     FALLBACK_MODEL,
     KNOWN_THRESHOLDS,
@@ -425,7 +426,10 @@ def build(
         database, clock, lambda: config.schedule_on, idols_of(characters, world), job_list,
         affinities,
     )
-    her_now = HerNow(characters, world, schedules, cycles, affinities)
+    her_now = HerNow(
+        characters, world, schedules, cycles, affinities,
+        RecentMoments(database, clock, lambda: config.moments.enabled),
+    )
     engine = ConversationEngine(
         database, store, characters, gift_catalog, memories, titles, clock, her_now, retrieval,
         lambda: config.history_turns, world, affinities, config.affinity_judge(), photos,
