@@ -46,6 +46,7 @@ struct SettingsView: View {
     @State private var saveError: String?
     @State private var savedNotice = false
     @State private var reachOutHours = 6
+    @State private var reachOutByTier = true
     @State private var formOfAddress = ""
     @State private var gender = "default"
     @State private var profileTimezone = ""
@@ -269,11 +270,17 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("按好感度随机", isOn: $reachOutByTier)
                     Stepper("搭话间隔：\(reachOutHours) 小时", value: $reachOutHours, in: 1...72)
+                        .disabled(reachOutByTier)
                 } header: {
                     Text("搭话")
                 } footer: {
-                    Text("超过这么久没说话，她会在打开 App 时先给你发一条。同一次沉默只发一次。")
+                    Text(
+                        "超过这么久没说话，她会在打开 App 时先给你发一条。同一次沉默只发一次。\n"
+                            + "开启随机时按好感度档位抽时间：亲密 3–6 小时，亲近 8–16 小时，信任 20–36 小时；"
+                            + "冷淡和疏远不搭话。每天最多三次。关闭后一律用上面的固定间隔。"
+                    )
                 }
 
                 Section {
@@ -578,6 +585,7 @@ struct SettingsView: View {
         callMinutes = settings.callMinutes
         callTurns = settings.callTurns
         reachOutHours = settings.reachOutHours
+        reachOutByTier = settings.reachOutByTier
         tracingEnabled = settings.tracingEnabled
         traceRetention = settings.traceRetention
         if let profile = try? await app.core.producerProfile() {
@@ -608,6 +616,7 @@ struct SettingsView: View {
             rerankModel: rerankModel,
             retrievalAPIKey: retrievalAPIKey,
             reachOutHours: reachOutHours,
+            reachOutByTier: reachOutByTier,
             tracingEnabled: tracingEnabled,
             traceRetention: traceRetention,
             sonioxAPIKey: sonioxAPIKey,
