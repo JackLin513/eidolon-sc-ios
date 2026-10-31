@@ -58,6 +58,62 @@ export function hasUnread(letters: LetterSummary[] | null): boolean {
   return letters?.some((l) => !l.read) ?? false;
 }
 
+/** 谁有没读过的信（GLOSSARY.md「没读过的信」）：对话列表上她那一行名字后面一枚小信封。 */
+export function unreadFrom(letters: LetterSummary[] | null): Set<string> {
+  return new Set((letters ?? []).filter((l) => !l.read).map((l) => l.character_id));
+}
+
+/** 她的对话页页首的信封键点开的：只有她写的，从新到旧（列表接口给的顺序）。 */
+export function hersOf(letters: LetterSummary[] | null, characterId: string): LetterSummary[] {
+  return (letters ?? []).filter((l) => l.character_id === characterId);
+}
+
+/**
+ * 手上的信落后了：最新对话列表（每分钟轮询一次）上某一行说她有没读过的信，手上的信里却没有，或者反过来
+ * （她又写了一封、在别的设备上读了、删了）。还没拉到信时不算，载入时本来就要拉。
+ */
+export function lettersBehind(
+  letters: LetterSummary[] | null,
+  latest: Record<string, { unread_letter: boolean }>,
+): boolean {
+  if (letters === null) return false;
+  const unread = unreadFrom(letters);
+  return Object.entries(latest).some(([id, row]) => row.unread_letter !== unread.has(id));
+}
+
+/** 现在在哪：在对话页上、通话中都不弹信。 */
+export type PopWhere = { onConversationPage: boolean; inCall: boolean };
+
+/**
+ * 该弹哪一封（GLOSSARY.md「没读过的信」）：没读过、也没弹过的里最早的一封；跳过的已经弹过，不再弹。
+ * 在对话页上（正和谁聊着）、通话中都不弹，等离开再弹。什么时候问它（进入外壳、离开对话页，每次打开网站最多弹一封）由 `LetterProvider` 管。
+ */
+export function letterToPop(letters: LetterSummary[] | null, where: PopWhere): LetterSummary | null {
+  if (where.onConversationPage || where.inCall) return null;
+  const waiting = (letters ?? []).filter((l) => !l.read && !l.popped);
+  return waiting.at(-1) ?? null; // 列表从新到旧，最早的在最后
+}
+
+/** 所有的信，分好组：没读过的在最上面；其余按写信那天的月份分组（`YYYY-MM`）。组和组里都从新到旧。 */
+export type GroupedLetters = { unread: LetterSummary[]; months: { month: string; letters: LetterSummary[] }[] };
+
+export function groupLetters(letters: LetterSummary[]): GroupedLetters {
+  const unread = letters.filter((l) => !l.read);
+  const months = new Map<string, LetterSummary[]>();
+  const read = letters.filter((l) => l.read).sort((a, b) => (a.day === b.day ? 0 : a.day < b.day ? 1 : -1));
+  for (const letter of read) {
+    const month = letter.day.slice(0, 7);
+    months.set(month, [...(months.get(month) ?? []), letter]);
+  }
+  return { unread, months: [...months].map(([month, letters]) => ({ month, letters })) };
+}
+
+/** 分组的月份：「10月」，不是今年的带上年份。 */
+export function letterMonth(month: string, thisYear: number): string {
+  const [year, m] = month.split("-").map(Number);
+  return year === thisYear ? `${m}月` : `${year}年${m}月`;
+}
+
 /** 信封上的日期：「10月31日」，不是今年的带上年份。 */
 export function letterDay(day: string, thisYear: number): string {
   const [year, month, date] = day.split("-").map(Number);

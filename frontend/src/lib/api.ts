@@ -119,14 +119,16 @@ export type LastMessage =
   | Pick<ConversationEvent, "type" | "kind" | "created_at" | "gift_name" | "first_day" | "days_ago">
   | null;
 
-/** A character's newest conversation with the user, the last thing in it, and whether it has a
- * reach-out the user has not seen (GLOSSARY.md「没看过的搭话」), for the conversation list. */
+/** A character's newest conversation with the user, the last thing in it, whether it has a
+ * reach-out the user has not seen (GLOSSARY.md「没看过的搭话」), and whether she has a letter to the
+ * user they have not read (GLOSSARY.md「没读过的信」), for the conversation list. */
 export type LatestConversation = {
   character_id: string;
   conversation_id: string;
   created_at: string;
   last_message: LastMessage;
   unseen_reach_out: boolean;
+  unread_letter: boolean;
 };
 
 /** One of her conversations as the past conversations panel lists it; `title` is its conversation
@@ -823,6 +825,16 @@ export async function getLetter(id: number): Promise<Letter> {
 export async function markLetterRead(id: number): Promise<void> {
   const res = await api(`/api/letters/${id}/read`, { method: "PUT" });
   if (!res.ok) await json(res);
+}
+
+/** Has the letter popped up, on every device, so it does not again. */
+export async function markLetterPopped(id: number): Promise<void> {
+  await expectNoContent(await api(`/api/letters/${id}/popped`, { method: "PUT" }));
+}
+
+/** Deletes the letter, and her voice reading it, for good. */
+export async function deleteLetter(id: number): Promise<void> {
+  await expectNoContent(await api(`/api/letters/${id}`, { method: "DELETE" }));
 }
 
 /** Whether a moment, or her reply to the user's comment, has come out since they last read the

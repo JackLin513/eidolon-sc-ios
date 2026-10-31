@@ -5,8 +5,13 @@ import {
   MUSIC_TAIL,
   STALL_MS,
   finishesAt,
+  groupLetters,
   hasUnread,
+  hersOf,
   letterDay,
+  letterMonth,
+  letterToPop,
+  lettersBehind,
   musicPlan,
   partsOf,
   segmentsFrom,
@@ -14,6 +19,7 @@ import {
   signsAt,
   tick,
   timerClock,
+  unreadFrom,
   voiceClock,
   written,
   type LetterMusic,
@@ -229,5 +235,97 @@ describe("信封上的日期", () => {
   it("今年的只写月日，别的年份带上年", () => {
     expect(letterDay("2026-10-31", 2026)).toBe("10月31日");
     expect(letterDay("2025-02-03", 2026)).toBe("2025年2月3日");
+  });
+});
+
+/** 一封信：`id` 越大写得越晚；列表接口给的是从新到旧。 */
+function one(id: number, day: string, { from = "mano", read = false, popped = false } = {}): LetterSummary {
+  return { id, character_id: from, occasions: ["close"], day, read, popped };
+}
+
+describe("弹出", () => {
+  const anywhere = { onConversationPage: false, inCall: false };
+  // 从新到旧：4 读过了，3 没读过、弹过了（跳过了），2 和 1 没读过也没弹过。
+  const letters = [
+    one(4, "2026-10-31", { read: true, popped: true }),
+    one(3, "2026-10-30", { popped: true }),
+    one(2, "2026-10-29", { from: "kogane" }),
+    one(1, "2026-10-28"),
+  ];
+
+  it("弹最早的那封没读过、也没弹过的", () => {
+    expect(letterToPop(letters, anywhere)?.id).toBe(1);
+    expect(letterToPop(letters.slice(0, 3), anywhere)?.id).toBe(2);
+  });
+
+  it("读过的、弹过的（跳过的）不再弹；没有信时不弹", () => {
+    expect(letterToPop(letters.slice(0, 2), anywhere)).toBeNull();
+    expect(letterToPop([], anywhere)).toBeNull();
+    expect(letterToPop(null, anywhere)).toBeNull();
+  });
+
+  it("在对话页上、通话中都不弹", () => {
+    expect(letterToPop(letters, { onConversationPage: true, inCall: false })).toBeNull();
+    expect(letterToPop(letters, { onConversationPage: false, inCall: true })).toBeNull();
+  });
+});
+
+describe("所有的信", () => {
+  it("没读过的在最上面，其余按月分组，都从新到旧", () => {
+    const grouped = groupLetters([
+      one(6, "2026-11-01", { read: true }),
+      one(5, "2026-10-31"),
+      one(4, "2026-10-20", { read: true }),
+      one(3, "2026-10-02", { read: true }),
+      one(2, "2026-09-30"),
+      one(1, "2025-12-24", { read: true }),
+    ]);
+
+    expect(grouped.unread.map((l) => l.id)).toEqual([5, 2]);
+    expect(grouped.months.map((m) => [m.month, m.letters.map((l) => l.id)])).toEqual([
+      ["2026-11", [6]],
+      ["2026-10", [4, 3]],
+      ["2025-12", [1]],
+    ]);
+  });
+
+  it("没有信时什么组都没有", () => {
+    expect(groupLetters([])).toEqual({ unread: [], months: [] });
+  });
+
+  it("月份：今年的只写月，别的年份带上年", () => {
+    expect(letterMonth("2026-10", 2026)).toBe("10月");
+    expect(letterMonth("2025-02", 2026)).toBe("2025年2月");
+  });
+});
+
+describe("她的信", () => {
+  const letters = [one(3, "2026-10-31", { from: "kogane" }), one(2, "2026-10-30"), one(1, "2026-10-29", { read: true })];
+
+  it("只列她写的，从新到旧", () => {
+    expect(hersOf(letters, "mano").map((l) => l.id)).toEqual([2, 1]);
+    expect(hersOf(letters, "meguru")).toEqual([]);
+    expect(hersOf(null, "mano")).toEqual([]);
+  });
+
+  it("谁有没读过的信：对话列表上她那一行名字后面一枚小信封", () => {
+    expect(unreadFrom(letters)).toEqual(new Set(["kogane", "mano"]));
+    expect(unreadFrom(null)).toEqual(new Set());
+  });
+});
+
+describe("列表跟着轮询", () => {
+  const latest = (unread: Record<string, boolean>) =>
+    Object.fromEntries(Object.entries(unread).map(([id, unread_letter]) => [id, { unread_letter }]));
+
+  it("最新对话列表说她有没读过的信、手上的信里却没有，或者反过来，信要重新拉", () => {
+    const letters = [one(1, "2026-10-29")];
+    expect(lettersBehind(letters, latest({ mano: true, kogane: false }))).toBe(false);
+    expect(lettersBehind(letters, latest({ mano: true, kogane: true }))).toBe(true);
+    expect(lettersBehind(letters, latest({ mano: false }))).toBe(true);
+  });
+
+  it("还没拉到信时不算落后（载入时本来就要拉）", () => {
+    expect(lettersBehind(null, latest({ mano: true }))).toBe(false);
   });
 });

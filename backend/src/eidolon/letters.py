@@ -58,6 +58,7 @@ import sqlite3
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from eidolon.activity import ActivityLog
@@ -361,7 +362,24 @@ class Letters:
 
     async def mark_read(self, user_id: str, letter_id: int) -> bool:
         """Have the user's letter read, now, if not before; False if it is not theirs."""
-        return await self._db.write(_mark_read, user_id, letter_id, self._clock().isoformat())
+        return await self._db.write(
+            _mark, "read_at", user_id, letter_id, self._clock().isoformat()
+        )
+
+    async def mark_popped(self, user_id: str, letter_id: int) -> bool:
+        """Have the user's letter popped up, now, if not before, so it does not again, on
+        any device; False if it is not theirs."""
+        return await self._db.write(
+            _mark, "popped_at", user_id, letter_id, self._clock().isoformat()
+        )
+
+    async def delete(self, user_id: str, letter_id: int) -> bool:
+        """Delete the user's letter, its voice with it, for good; False if it is not theirs."""
+        return await self._db.write(_delete, user_id, letter_id)
+
+    async def unread_from(self, user_id: str) -> set[str]:
+        """Those who have a letter to the user they have not read (GLOSSARY.md「没读过的信」)."""
+        return await self._db.read(_unread_from, user_id)
 
     async def _write(self, due: _Due, now: datetime) -> None:
         """Write the letter, unless she is not to, or has written one that day already, then
@@ -769,12 +787,41 @@ def _voice(db: sqlite3.Connection, user_id: str, letter_id: int, block: int) -> 
     return row[0] if row is not None else None
 
 
-def _mark_read(db: sqlite3.Connection, user_id: str, letter_id: int, at: str) -> bool:
-    if db.execute(
+def _theirs(db: sqlite3.Connection, user_id: str, letter_id: int) -> bool:
+    return db.execute(
         "SELECT 1 FROM letters WHERE id = ? AND user_id = ?", (letter_id, user_id)
-    ).fetchone() is None:
+    ).fetchone() is not None
+
+
+def _mark(
+    db: sqlite3.Connection,
+    column: Literal["read_at", "popped_at"],
+    user_id: str,
+    letter_id: int,
+    at: str,
+) -> bool:
+    """Set the letter's `column` to `at` if not set before."""
+    if not _theirs(db, user_id, letter_id):
         return False
     db.execute(
-        "UPDATE letters SET read_at = ? WHERE id = ? AND read_at IS NULL", (at, letter_id)
+        f"UPDATE letters SET {column} = ? WHERE id = ? AND {column} IS NULL", (at, letter_id)
     )
     return True
+
+
+def _delete(db: sqlite3.Connection, user_id: str, letter_id: int) -> bool:
+    if not _theirs(db, user_id, letter_id):
+        return False
+    db.execute("DELETE FROM letter_voices WHERE letter_id = ?", (letter_id,))
+    db.execute("DELETE FROM letters WHERE id = ?", (letter_id,))
+    return True
+
+
+def _unread_from(db: sqlite3.Connection, user_id: str) -> set[str]:
+    return {
+        character_id
+        for (character_id,) in db.execute(
+            "SELECT DISTINCT character_id FROM letters WHERE user_id = ? AND read_at IS NULL",
+            (user_id,),
+        )
+    }

@@ -470,6 +470,18 @@ export const zh = {
     /** 信封键点开的列表的标题，和没有信时的一行。 */
     listTitle: "信",
     none: "还没有信",
+    /** 所有的信里，没读过的那一组的标题；其余按月分组，组名是月份。 */
+    unread: "没读过",
+    /** 她的对话页页首、电话键旁的信封键：读屏名字，有没读过的信时换一句；点开的标题是 `title`。 */
+    hers: (name: string) => `${name}的信`,
+    hersUnread: (name: string) => `${name}的信，有没读过的`,
+    /** 对话列表上她那一行名字后面的小信封，读屏读这一句。 */
+    unreadMark: "有没读过的信",
+    /** 列表里一封信的右键（长按）菜单，和确认框。 */
+    remove: "删除这封信",
+    removeTitle: (name: string) => `删除${name}的这封信？`,
+    removeDescription: "信和她念信的声音都会彻底删除，无法恢复。",
+    removeConfirm: "删除",
     loadFailed: "信没能载入",
     /** 信封上写的场合，越短越好；几个场合合在一封时用「、」连起来。 */
     occasions: {
