@@ -1,75 +1,78 @@
-# MLTD 3D 模型迁移技术验证
+# MLTD 3D 预览 spike（原生资产路线）
 
-状态：spike，不进入产品；分支 `spike/mltd-3d`，基于 `main`。游戏素材不进仓库。
+状态：spike，不进入产品；分支 `spike/mltd-3d-static`，基于 `main`。游戏素材与转换产物一律不进仓库。
+
+路线见 `docs/adr/0022-3d-native-assets-runtime-skinning.md`：模型、骨骼、绑定、蒙皮权重、贴图、表情形变全部来自游戏自己的 UnityFS bundle；USDZ 只承载**静态蒙皮模型**，动画在端上运行时驱动。PMX / VMD / MLTDTools / MMD Tools 那条路线已作废，不要按它走。
 
 ## 目标
 
-用合法取得的 MLTD 资源，在一个独立环境里验证：
+1. 从游戏 bundle 导出角色和衣装，转成 RealityKit 能渲染的静态蒙皮 USDZ；
+2. 在独立 target `Eidolon3DSpike` 里做固定构图的预览（换角色、换衣装）；
+3. 后续（#27–#29）在端上解码原生动作曲线并驱动骨骼、表情。
 
-1. 一个角色的 head/body 模型能被 OpenMLTD 工具链读出；
-2. 导出 PMX + VMD（或等价格式），贴图、骨架、一个动作能正常显示；
-3. 记录实际版本兼容性、失败点和后续 iOS 3D 管线的可行性。
+**不包含**：主线 App 接入、内容包、语音、舞台、相机、完整 Live、素材分发。
 
-**不包含**：内容包/`.eidolonpkg` 改造、`EidolonCore`/`EidolonIOS` 接入、多作品域模型、语音、舞台、相机、完整 Live、素材分发。
+## 管线
 
-## 决策（2026-10-28）
-
-- 结论形态：先离线验证，Blender/查看器里看效果；不在这一轮改 iOS App。
-- 范围：1 个角色 + 1 套默认衣装 + 1 个动作。
-- 隔离：spike 目录独立；素材放 `build/mltd-spike/`（根 `.gitignore` 已忽略 `build/`）；不提交 `.unity3d`/PMX/VMD/PNG/截图。
-- 成功标准：模型 + 贴图正确显示，能播放一个动作，留下截图/视频和 notes。
-- 时间盒：1 个工作日。若当前 MLTD 资源不被旧工具支持，停在兼容性探测并记录，不硬撑。
-
-## 已知风险
-
-- `MLTDTools` 是 **Windows / .NET Framework 4.7.2 / WinForms**，最新 release v0.3.0（2020-08-15）。
-- MLTD 社区 issue 报告其已到 **Unity 2020.3.32f1**；旧版 MillionDance 读不了当前资源（[#62](https://github.com/OpenMLTD/MLTDTools/issues/62)、[#54](https://github.com/OpenMLTD/MLTDTools/issues/54)、[#74](https://github.com/OpenMLTD/MLTDTools/issues/74)）。
-- 本机没有 Blender/Unity/Wine；只有 Parallels Windows 11 VM（suspended），也未确认 .NET 4.7.2/MLTDTools 是否已装。
-- 工具代码是 BSD-3-Clause-Clear / MIT，但 **不覆盖 MLTD 模型、动作、语音**；没有官方素材再分发许可。
-
-## 输入与产物
-
-- 输入：你自己合法取得的 MLTD `.unity3d`（head `ch_*`、body `cb_*`、dance `dan_*`）；放 `build/mltd-spike/assets/`。
-- 工具：Windows VM 里的 MLTDTools v0.3.0；Mac 上的 Blender + MMD Tools。
-- 产物：`build/mltd-spike/out/` 里的 PMX/VMD/PNG、截图/录屏；不提交。
-- 记录：`notes.md` 记录游戏版本、工具版本、每一步成功/失败、issue 对照。
-
-## 只读探测
-
-```sh
-python3 spikes/porting-3d/unityfs_probe.py   "$HOME/Library/Containers/jp.co.bandainamcoent.BNEI0310/Data/Documents" --json
-python3 -m unittest discover -s spikes/porting-3d/tests
+```text
+UnityFS bundle
+  → glTF（export_character.py / export_corpus.py，UnityPy）
+  → .usdc（Blender，仅格式转换）
+  → .usdz（pack_usd.py：面法线平均回顶点 + 打包）
 ```
 
-`unityfs_probe.py` 只读 UnityFS header 的 Unity revision，不解析/导出素材。
+Blender 唯一的角色是 GLB → USDZ 格式转换：不做绑定、不做重定向、不改骨架、不调姿态。
 
-已用 UnityPy 从 iOS 缓存导出 2018.4 的 `014mir`（春日未来）OBJ + PNG，并用 Blender headless 渲染：
+### 单角色
 
 ```sh
-build/mltd-spike/Blender.app/Contents/MacOS/Blender --background   --python spikes/porting-3d/render_obj.py --   --obj-dir build/mltd-spike/out   --texture-dir build/mltd-spike/out/textures   --out build/mltd-spike/out/mirai.png
+V=build/mltd-spike/venv/bin/python
+
+# 取包（manifest 已下好）
+$V spikes/porting-3d/mltd_assets.py --manifest build/mltd-spike/out/mltd/ios-manifest.json \
+   --version 1078000 --platform ios --out build/mltd-spike/assets <包名...>
+
+# glTF + 材质表 + 参数图集 + bounds sidecar
+$V spikes/porting-3d/export_character.py \
+   --body  build/mltd-spike/assets/cb_pr001_014mir.unity3d \
+   --head  build/mltd-spike/assets/ch_pr001_014mir.unity3d \
+   --out   build/mltd-spike/out/native --name 014mir-ss003
 ```
 
-这一步只验证静态模型；动画/PMX/VMD 仍需 MLTDTools。
+`export_character.py` 会同时写 `<name>-materials.json`、`<name>-params.png`、`<name>-bounds.json`。bounds sidecar 是蒙皮后骨架真正画出来的包围盒——RealityKit 的 `visualBounds` 报的是绑定姿势盒，不能拿来取景。
 
-Headless MLTDTools 补丁在 `mltools-headless.patch`（给 MillionDance 加 `--config`）。PMX/VMD 已能在 Windows VM 上生成，PMX 在 Blender 正常；VMD 导入仍会爆炸，见 `notes.md`。
+### 全语料
 
-## 执行清单
+```sh
+$V spikes/porting-3d/export_corpus.py \
+   --index build/mltd-index.jsonl \
+   --out build/mltd-corpus \
+   --blender build/mltd-spike/Blender42.app/Contents/MacOS/Blender
+```
 
-1. 确认资源版本与来源；只在本机处理。
-2. 启动 Windows 11 VM，确认 .NET Framework 4.7.2 与 MLTDTools v0.3.0 可运行。
-3. 用 MillionDance 尝试导出一个角色 + 一个动作到 PMX/VMD。
-4. 把产物拷到 Mac，Blender + MMD Tools 导入，检查贴图、骨架、动作。
-5. 截图/录屏，写 `notes.md`；若失败，记录第一个失败点和对应 issue。
-6. 只有成功后才讨论是否做 iOS SceneKit/RealityKit 最小查看器；本轮不写产品代码。
+按内容配对而不是文件名：带 `cb_pr001_<idol>_01_m` 的是身体，带 `ch_pr001_<idol>_face_m` 且无身体材质的是头；材质最少的头胜出。已导出的 USDZ 会跳过，可断点续跑。
 
-## 不做
+当前语料：58 组（001–052 角色、101kot/102mis、4 个通用 `xxx`）、109 个模型、49 套演出服。
 
-- 不提供/执行绕过 DRM、解密 `.pak`、提取 ACB/HCA 的步骤。
-- 不把游戏原始资源或转换产物提交、上传、分发。
+### 测试
 
-## 3D 支线（spec #53）
+```sh
+$V -m unittest discover -s spikes/porting-3d/tests
+```
 
-独立 target：`Eidolon3DSpike`，不依赖 `EidolonCore`/`EidolonIOS`。
+38 个纯函数单测（解码、手性、材质参数、曲线、资源定位），不联网。
+
+### 体检
+
+```sh
+$V spikes/porting-3d/audit_materials.py <gltf 或语料目录>
+$V spikes/porting-3d/audit_outline.py --with <描边开> --without <描边关>
+$V spikes/porting-3d/check_corpus.py <语料目录>
+```
+
+## 预览 App
+
+独立 target `Eidolon3DSpike`，不依赖 `EidolonCore` / `EidolonIOS`。
 
 ```sh
 xcodegen generate
@@ -77,30 +80,29 @@ xcodebuild -project EidolonIOS.xcodeproj -scheme Eidolon3DSpike \
   -destination 'platform=iOS Simulator,id=<sim>' build
 ```
 
-App 从 Documents 的 `mirai.usdz` 或 `EIDOLON_3D_MODEL` 读取 USDZ；也支持文件选择。没有把 USDZ 打进仓库。
+模型从 Documents 递归发现，底部按钮换角色/衣装；也支持文件选择。USDZ（含材质表、参数图集、bounds sidecar）放进 App 容器即可，不提交仓库。
 
-转换：
+调试开关（`SIMCTL_CHILD_` 前缀给模拟器）：
 
-```sh
-build/mltd-spike/Blender42.app/Contents/MacOS/Blender --background \
-  --python spikes/porting-3d/pmx_to_usdz.py -- \
-  --pmx build/mltd-spike/out/mltd/mirai.pmx \
-  --out build/mltd-spike/out/mltd/mirai.usdz
-```
+- `EIDOLON_3D_START=<id>`：启动时选中某个模型；
+- `EIDOLON_3D_OUTFIT`、`EIDOLON_3D_YAW`：衣装与起始朝向；
+- `EIDOLON_3D_MODEL=<url>`：直接加载指定 USDZ；
+- `EIDOLON_3D_NO_OUTLINE=1`：关描边壳，用于 A/B；
+- `EIDOLON_3D_LOG_MATERIALS=1`：写 `frame.log`（取景诊断）；
+- `EIDOLON_3D_DEBUG_ALPHA` / `_ALBEDO` / `_MASTER` / `_ISOLATE_ROW=n`：材质探针。
 
-已验证（本机命令）：
+## 已确认的坑
 
-```text
-$ usdchecker build/mltd-spike/out/mltd/mirai.usdz
-Validation Result with no explicit variants set
-Success!
-```
+- 四元数手性共轭是 `(-x, -y, z, w)`，不是 `(x, y, -z, w)`；写错静止姿势就爆。
+- glTF 的 `scenes[0].nodes` 必须是真正的根节点索引。
+- Blender 会为骨骼造 42 顶点 Icosphere，取景按「有 Armature 修改器的网格」过滤。
+- Unity 的 `m_BindPose` 等于 rest 世界矩阵的逆。
+- 身体顶点色全零，不能当颜色来源。
+- 每个网格的权重/索引槽位数按实际给的补齐到 4：常规角色 4 个影响骨，双骨骼道具 2 个，刚性配件 0 权重 + 1 个 32 位索引。
+- 手性转换 `(x, y, z) → (x, y, −z)`，同时反法线 Z 与三角形绕序；禁止根节点负缩放。
 
-RealityKit 在 macOS 上加载同一 USDZ 得到 `extents ≈ 0.106 × 0.127 × 0.023`；App 会按 y 高度归一化到 1.6m。Air 重启并清理安装后验收通过：textured USDZ 的头发/眼睛/衣服/裙子/鞋子贴图正常，比例/朝向可用。截图：`build/mltd-spike/out/ios-3d-reboot.png`。orbit 相机走 `realityViewCameraControls(.orbit)`，未做手势自动化。
+## 不做
 
-### 两套衣装（T1）
-
-- 私服：`mirai-pr001.usdz`
-- 演出服：`mirai-ss003.usdz`
-- App 内底部按钮切换；`EIDOLON_3D_OUTFIT=pr001|ss003` 可用于启动时选择。
-- 两个文件都是 target resource；本仓库不提交 USDZ。
+- 不绕过 DRM、不解密 `.pak`、不提取 ACB/HCA。
+- 不把游戏原始资源或转换产物提交、上传、分发。
+- 不改 `EidolonIOS` / `EidolonCore` / `StandRenderer`。

@@ -503,6 +503,10 @@ RealityKit 采样会线性化、输出也期望线性，所以 `ToonShading.meta
 
 ## 2026-10-30 剩下 18 个角色解不出来的原因（已定位到通道表）
 
+> 2026-10-31 结账：这批网格不是权重丢失，而是**刚性配件**——权重通道为 0、索引是一个
+> 32 位值。`5a8eea59` 按网格实际给的槽位补齐到 4（常规 4、双骨道具 2、刚性配件 0+1）
+> 之后即可导出。下面「下一步要解打包布局」已作废。
+
 对比同一份代码下的两个网格，`m_VertexData.m_Channels` 不一样：
 
 ```
@@ -591,3 +595,15 @@ col += _Cube2D(uv) · (_MainTex.a · _Reflection)
 
 以上两条都验证过：`EIDOLON_3D_DEBUG_ALPHA` 截图为证；yaw 0/45/90 三个角度金边都
 干净、黑布照常闪；`check_corpus` 60 套 0 错、`audit_materials` 60 套干净。
+
+## 2026-10-31 全语料收口与遗留登记
+
+- 语料：58 组（001–052、101kot/102mis、4 个通用 `xxx`），109 个模型，49 套演出服。
+- 取景：49 套演出服批量截图，按逐像素中位数基线分割轮廓，**0 异常**；头顶 327–602px，
+  脚底 2199–2239px，中位身高 1641px。`-bounds.json` 由 `export_character.py` 每次自动写。
+- 18 个「导不出」的角色已结账，见上一节的注。
+- 遗留已分流：配件挂点（006mak 肩带、039kon 蝴蝶结、009rit/050jul 错挂）→ issue #33；
+  缺演出服（019min/031tom/052kao）与纹理数告警 → issue #34；描边/几何变体等外观账 →
+  #26 评论。总表在 `docs/research/mltd-3d-pipeline-2026-10-31.md`。
+- README 已从 PMX 路线改写为原生资产路线；`mltools-headless.patch`、`pmx_to_usdz.py`、
+  `render_vmd.py` 已删除（git 历史可查）。
