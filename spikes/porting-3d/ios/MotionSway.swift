@@ -79,12 +79,21 @@ struct MotionSway {
         let hitTwice: Bool?
         /// `SwayBone.useLinkHit`: also collide with the side-linked bone's set.
         let useLinkHit: Bool?
+        /// `SwayBone.isSkirt`: the skirt barrier applies to this bone.
+        let isSkirt: Bool?
+        /// `SwayBone.HitMuteForce`: `CalcRotate` keeps part of the hit frame's
+        /// velocity, so the push is not thrown away by the angle window.
+        let hitMute: Bool?
+        /// `SwayBone.HitMuteRate`: how much of the clamp wins on a hit frame.
+        let hitMuteRate: Float?
 
         init(name: String, family: String, tail: [Float], radius: Float? = nil,
              spring: Spring? = nil, follow: Float? = nil, limit: Limit? = nil,
              colliders: [Int]? = nil, sideLink: String? = nil,
              sideSpring: Float? = nil, antiFold: AntiFold? = nil,
-             hitTwice: Bool? = nil, useLinkHit: Bool? = nil) {
+             hitTwice: Bool? = nil, useLinkHit: Bool? = nil,
+             isSkirt: Bool? = nil, hitMute: Bool? = nil,
+             hitMuteRate: Float? = nil) {
             self.name = name
             self.family = family
             self.tail = tail
@@ -98,6 +107,9 @@ struct MotionSway {
             self.antiFold = antiFold
             self.hitTwice = hitTwice
             self.useLinkHit = useLinkHit
+            self.isSkirt = isSkirt
+            self.hitMute = hitMute
+            self.hitMuteRate = hitMuteRate
         }
     }
 
@@ -129,10 +141,17 @@ struct MotionSway {
         let normal: [Float]?
         /// Bridge only: the joint at the far end of the capsule.
         let target: String?
+        /// `SwayCollider.useSkirtBarrier`: a skirt panel is held on its own
+        /// side of the capsule's centreline (read by the capsule hit).
+        let useSkirtBarrier: Bool?
+        /// `SwayCollider.skirtGuardOffset`: extra clearance for that barrier,
+        /// in units of the collider's radius.
+        let skirtGuardOffset: Float?
 
         init(joint: String, type: String, radius: Float, distance: Float,
              offset: [Float], axis: String?,
-             normal: [Float]? = nil, target: String? = nil) {
+             normal: [Float]? = nil, target: String? = nil,
+             useSkirtBarrier: Bool? = nil, skirtGuardOffset: Float? = nil) {
             self.joint = joint
             self.type = type
             self.radius = radius
@@ -141,6 +160,8 @@ struct MotionSway {
             self.axis = axis
             self.normal = normal
             self.target = target
+            self.useSkirtBarrier = useSkirtBarrier
+            self.skirtGuardOffset = skirtGuardOffset
         }
     }
 
@@ -172,6 +193,21 @@ struct MotionSway {
         let hitTwice: Bool
         /// The game's `useLinkHit`: also test the side-linked bone's colliders.
         let useLinkHit: Bool
+        /// The game's `isSkirt`: barrier colliders apply to this bone.
+        let isSkirt: Bool
+        /// The game's `HitMuteForce` / `HitMuteRate`: on a hit frame the
+        /// clamped tip is blended into the remembered one.
+        let hitMute: Bool
+        let hitMuteRate: Float
+    }
+
+    /// `SwayMove`'s `skirtNormal` / `skirtDir`: the panel's own up and right
+    /// axes (the game rotates `Vector3.up` / `Vector3.right` by the bone's
+    /// static rotation). The capsule hit's barrier keeps a skirt panel on the
+    /// outer side of the leg's centreline using them.
+    private struct SkirtFrame {
+        let normal: SIMD3<Float>
+        let direction: SIMD3<Float>
     }
 
     private enum BoundKind { case sphere, capsule, plane, bridge }
@@ -188,6 +224,10 @@ struct MotionSway {
         let normal: SIMD3<Float>
         /// Bridge only: the joint at the far end of the capsule.
         let target: Int?
+        /// Capsule only: `useSkirtBarrier` and its guard, as a fraction of
+        /// the collider's radius.
+        let useSkirtBarrier: Bool
+        let skirtGuardOffset: Float
     }
 
     private let pendulums: [Pendulum]
@@ -212,6 +252,13 @@ struct MotionSway {
     private var hitLastFrame: [Bool]
 
     var count: Int { pendulums.count }
+
+    /// The solver's remembered tips, in bone order. Exposed for the tests that
+    /// pin the hit bookkeeping (`HitMuteForce` blends these); the renderer
+    /// only ever reads the rotations.
+    var tipState: (current: [SIMD3<Float>], remembered: [SIMD3<Float>]) {
+        (tips, previousTips)
+    }
 
     /// Bind the sidecar to a skeleton. Returns nil when the format is not ours
     /// or none of its bones exist in `joints`, so a sidecar from another model
@@ -276,7 +323,9 @@ struct MotionSway {
                 kind: kind, joint: joint, radius: entry.radius,
                 halfLength: max(entry.distance, 0) / 2,
                 offset: SIMD3(entry.offset[0], entry.offset[1], entry.offset[2]),
-                axis: axis, normal: normal, target: target
+                axis: axis, normal: normal, target: target,
+                useSkirtBarrier: entry.useSkirtBarrier ?? false,
+                skirtGuardOffset: entry.skirtGuardOffset ?? 0
             ))
         }
 
@@ -299,7 +348,10 @@ struct MotionSway {
                 sideLinkPath: bone.sideLink, sideSpring: bone.sideSpring ?? 0,
                 antiFold: bone.antiFold,
                 hitTwice: bone.hitTwice ?? false,
-                useLinkHit: bone.useLinkHit ?? false
+                useLinkHit: bone.useLinkHit ?? false,
+                isSkirt: bone.isSkirt ?? false,
+                hitMute: bone.hitMute ?? false,
+                hitMuteRate: bone.hitMuteRate ?? 0
             ))
         }
         guard !pendulums.isEmpty else { return nil }
@@ -351,6 +403,13 @@ struct MotionSway {
                 + QuaternionMath.rotate(parentRotation, poses[pendulum.joint].translation)
             let rigid = QuaternionMath.multiply(parentRotation, pendulum.restRotation)
             let restDirection = QuaternionMath.rotate(rigid, pendulum.tail)
+            // `SwayMove` also keeps a skirt panel's own up and right axes, for
+            // the capsule hit's barrier (`skirtNormal` / `skirtDir`).
+            let skirt: SkirtFrame? = pendulum.isSkirt
+                ? SkirtFrame(
+                    normal: QuaternionMath.rotate(rigid, SIMD3(0, 1, 0)),
+                    direction: QuaternionMath.rotate(rigid, SIMD3(1, 0, 0)))
+                : nil
             let aim = base + restDirection
             bases[index] = base
 
@@ -425,7 +484,7 @@ struct MotionSway {
             var resolved = resolvingCollisions(
                 direction: springDirection, base: base, pendulum: pendulum,
                 colliders: pendulum.colliders, sideTip: sideTip,
-                sideRadius: sideRadius, world: world
+                sideRadius: sideRadius, skirt: skirt, world: world
             )
             // `SwayBoneMT`'s job calls `SwayHit` a second time when `hitTwice`
             // is set; the second pass starts from the tip the first one pushed
@@ -434,7 +493,7 @@ struct MotionSway {
                 let second = resolvingCollisions(
                     direction: resolved.direction, base: base, pendulum: pendulum,
                     colliders: pendulum.colliders, sideTip: sideTip,
-                    sideRadius: sideRadius, world: world
+                    sideRadius: sideRadius, skirt: skirt, world: world
                 )
                 resolved = (second.direction, resolved.hit || second.hit)
             }
@@ -444,6 +503,19 @@ struct MotionSway {
                 of: tips[index], from: base, parentRotation: parentRotation,
                 restDirection: restDirection, limit: pendulum.limit
             )
+            // `CalcRotate`'s `HitMuteForce`: on a hit frame the remembered
+            // tip is moved off the pushed one by `1 - HitMuteRate` of the
+            // clamp's push. The next frame's velocity is `tip - remembered`,
+            // so that much of the collision push survives the angle window;
+            // rate 1 throws all of it away. (The game blends towards its
+            // clamped `curTipPos`; ours keeps the pushed tip in `tips`, so the
+            // remembered value is mirrored.)
+            if pendulum.hitMute, resolved.hit {
+                let pushed = base + resolved.direction * pendulum.length
+                let clamped = base + direction * pendulum.length
+                previousTips[index] = pushed
+                    + (pushed - clamped) * (1 - pendulum.hitMuteRate)
+            }
 
             let turned = QuaternionMath.multiply(
                 QuaternionMath.fromToRotation(restDirection, direction),
@@ -473,6 +545,7 @@ struct MotionSway {
     private func resolvingCollisions(
         direction: SIMD3<Float>, base: SIMD3<Float>, pendulum: Pendulum,
         colliders: [Int], sideTip: SIMD3<Float>? = nil, sideRadius: Float = 0,
+        skirt: SkirtFrame? = nil,
         world: [(position: SIMD3<Float>, rotation: SIMD4<Float>)]
     ) -> (direction: SIMD3<Float>, hit: Bool) {
         guard !colliders.isEmpty else { return (direction, false) }
@@ -484,7 +557,7 @@ struct MotionSway {
             for collider in colliders {
                 if let (normal, depth) = violation(
                     of: point, with: bounds[collider], world: world,
-                    radius: pendulum.radius
+                    radius: pendulum.radius, skirt: skirt
                 ) {
                     correction += normal * depth
                 }
@@ -565,7 +638,8 @@ struct MotionSway {
     /// pushes it out. `nil` when it is outside.
     private func violation(
         of tip: SIMD3<Float>, with bound: Bounds,
-        world: [(position: SIMD3<Float>, rotation: SIMD4<Float>)], radius: Float
+        world: [(position: SIMD3<Float>, rotation: SIMD4<Float>)], radius: Float,
+        skirt: SkirtFrame? = nil
     ) -> (SIMD3<Float>, Float)? {
         let joint = world[bound.joint]
         let centre = joint.position + QuaternionMath.rotate(joint.rotation, bound.offset)
@@ -606,21 +680,49 @@ struct MotionSway {
             return (normal, limit - distance)
 
         case .sphere, .capsule:
+            var push = SIMD3<Float>.zero
+            var capsuleAxis = SIMD3<Float>.zero
             var closest = centre
             if bound.kind == .capsule {
-                let axis = simd_normalize(QuaternionMath.rotate(joint.rotation, bound.axis))
-                let along = simd_clamp(
-                    simd_dot(tip - centre, axis), -bound.halfLength, bound.halfLength
+                capsuleAxis = simd_normalize(
+                    QuaternionMath.rotate(joint.rotation, bound.axis)
                 )
-                closest = centre + axis * along
+                let along = simd_clamp(
+                    simd_dot(tip - centre, capsuleAxis),
+                    -bound.halfLength, bound.halfLength
+                )
+                closest = centre + capsuleAxis * along
             }
             let delta = tip - closest
             let distance = simd_length(delta)
-            guard distance < limit else { return nil }
-            let normal = distance > 1e-5
-                ? delta / distance
-                : simd_normalize(QuaternionMath.rotate(joint.rotation, SIMD3(1, 0, 0)))
-            return (normal, limit - distance)
+            if distance < limit {
+                let normal = distance > 1e-5
+                    ? delta / distance
+                    : simd_normalize(QuaternionMath.rotate(joint.rotation, SIMD3(1, 0, 0)))
+                push += normal * (limit - distance)
+            }
+            // `CapsuleHit`'s skirt barrier: a skirt bone whose own right axis
+            // lines up with the capsule is held on its own side of the plane
+            // through the capsule's centreline (the panel's up axis, flattened
+            // onto the capsule), `boneRadius + radius * skirtGuardOffset` out
+            // from it. Without it a panel can slip from the outer thigh to the
+            // inner one through the midway plane.
+            if bound.kind == .capsule, bound.useSkirtBarrier, let skirt,
+               simd_dot(skirt.direction, capsuleAxis) > 0.1 {
+                let flat = skirt.normal - capsuleAxis * simd_dot(skirt.normal, capsuleAxis)
+                let flatLength = simd_length(flat)
+                if flatLength > 1e-5 {
+                    let outward = flat / flatLength
+                    let clearance = radius + bound.radius * bound.skirtGuardOffset
+                    let signed = simd_dot(tip - centre, outward)
+                    if signed < clearance {
+                        push += outward * (clearance - signed)
+                    }
+                }
+            }
+            let pushLength = simd_length(push)
+            guard pushLength > 1e-7 else { return nil }
+            return (push / pushLength, pushLength)
         }
     }
 

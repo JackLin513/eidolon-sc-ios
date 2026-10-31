@@ -397,6 +397,13 @@ def build(gltf: Path, sway_texts: list[Path] | None = None) -> dict:
             "offset": [round(value, 6) for value in mirror(ortho)],
             "axis": values.get("axis", "X").upper(),
         }
+        # `SwayCollider.useSkirtBarrier`: only the capsule hit reads it, but it
+        # is stored on every collider in the game's data.
+        if values.get("useSkirtBarrier", "False") == "True":
+            entry["useSkirtBarrier"] = True
+        guard = values.get("skirtGuardOffset")
+        if guard:
+            entry["skirtGuardOffset"] = round(float(guard), 6)
         if kind == "Plane":
             entry["normal"] = [round(value, 6) for value in plane_normal(values)]
         elif kind == "Bridge":
@@ -435,6 +442,12 @@ def build(gltf: Path, sway_texts: list[Path] | None = None) -> dict:
                 entry["hitTwice"] = True
             if values.get("useLinkHit", "False") == "True":
                 entry["useLinkHit"] = True
+            if values.get("isSkirt", "False") == "True":
+                entry["isSkirt"] = True
+            if values.get("HitMuteForce", "False") == "True":
+                # `CalcRotate` keeps part of the hit frame's velocity when set.
+                entry["hitMute"] = True
+                entry["hitMuteRate"] = round(number(values, "HitMuteRate"), 6)
             source = values if values.get("refParam", "Self") == "Self" else group_values
             follow = source.get("followForce", values.get("followForce"))
             if follow is not None:

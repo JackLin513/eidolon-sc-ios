@@ -73,7 +73,7 @@ $V -m unittest discover -s spikes/porting-3d/tests
 
 67 个纯函数单测（解码、手性、材质参数、曲线语义、压缩格式、资源定位、摆动尾点），不联网。
 
-Swift 单测（`Eidolon3DSpikeTests`，72 个，从 scheme `Eidolon3DSpike` 跑）：
+Swift 单测（`Eidolon3DSpikeTests`，74 个，从 scheme `Eidolon3DSpike` 跑）：
 
 ```sh
 xcodebuild test -project EidolonIOS.xcodeproj -scheme Eidolon3DSpike \

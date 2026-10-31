@@ -49,13 +49,17 @@ final class MotionSwayTests: XCTestCase {
         sideSpring: Float? = nil,
         antiFold: MotionSway.AntiFold? = nil,
         hitTwice: Bool? = nil,
-        useLinkHit: Bool? = nil
+        useLinkHit: Bool? = nil,
+        isSkirt: Bool? = nil,
+        hitMute: Bool? = nil,
+        hitMuteRate: Float? = nil
     ) -> MotionSway.Bone {
         MotionSway.Bone(
             name: path, family: "skirt", tail: [tail.x, tail.y, tail.z],
             radius: radius, spring: spring, follow: follow, limit: limit,
             colliders: colliders, sideLink: sideLink, sideSpring: sideSpring,
-            antiFold: antiFold, hitTwice: hitTwice, useLinkHit: useLinkHit
+            antiFold: antiFold, hitTwice: hitTwice, useLinkHit: useLinkHit,
+            isSkirt: isSkirt, hitMute: hitMute, hitMuteRate: hitMuteRate
         )
     }
 
@@ -388,6 +392,57 @@ final class MotionSwayTests: XCTestCase {
         )
     }
 
+    /// `CalcRotate`'s `HitMuteForce`: on a hit frame the tip the solver
+    /// carries into the next frame is pulled `1 - HitMuteRate` of the way from
+    /// the pushed tip to the clamped one — the remembered tip. Rate 1 makes
+    /// the two agree, so the collision push leaves no velocity behind; 0.2
+    /// keeps 80% of it. (The game stores the clamped tip as `curTipPos` and
+    /// the blend as `prevTipPos`; this solver keeps the pushed tip in `tips`
+    /// and mirrors the blend.)
+    func testHitMuteKeepsPartOfThePushInTheVelocity() throws {
+        func afterOneHit(rate: Float) throws -> (current: SIMD3<Float>, remembered: SIMD3<Float>) {
+            let (names, rest) = collisionRig()
+            // Sits on the panel's tip, so the first frame is a hit frame.
+            let capsule = MotionSway.Collider(
+                joint: "BASE/MOMO_L", type: "capsule", radius: 0.1,
+                distance: 0, offset: [0.18, 0.08, 0], axis: "Z"
+            )
+            let tail = SIMD3<Float>(0.18, 0, 0)
+            var sway = try XCTUnwrap(MotionSway(
+                configuration: configuration(
+                    bones: [bone("BASE/skirt_a", tail: tail, radius: 0.04,
+                                 limit: MotionSway.Limit(
+                                     minY: -5, maxY: 5, minZ: -80, maxZ: 0),
+                                 colliders: [0], hitMute: true,
+                                 hitMuteRate: rate)],
+                    colliders: [capsule]
+                ),
+                joints: names, rest: rest
+            ))
+            var poses = rest
+            sway.apply(&poses, dt: 1 / 60)
+            let state = sway.tipState
+            return (state.current[0], state.remembered[0])
+        }
+
+        let muted = try afterOneHit(rate: 1)
+        let keeping = try afterOneHit(rate: 0.2)
+        XCTAssertEqual(
+            simd_length(muted.remembered - muted.current), 0, accuracy: 1e-5,
+            "HitMuteRate 1 still carried a collision push into the velocity"
+        )
+        let kept = simd_length(keeping.remembered - keeping.current)
+        XCTAssertGreaterThan(
+            kept, 1e-3, "HitMuteRate 0.2 threw the whole push away (\(kept))"
+        )
+        // The blend is linear in the rate: 0.2 keeps 80% of the full push.
+        let full = try afterOneHit(rate: 0)
+        XCTAssertEqual(
+            simd_length(full.remembered - full.current), kept / 0.8,
+            accuracy: 1e-3
+        )
+    }
+
     /// A panel resting on a capsule must settle, not snap between positions.
     ///
     /// The bind pose really does start the skirt panels inside the thigh
@@ -595,6 +650,52 @@ final class MotionSwayTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(
             worst, wants - 2e-3,
             "the side line let the pair through the leg (closest \(worst))"
+        )
+    }
+
+    /// `CapsuleHit`'s skirt barrier: a panel whose own axis runs with the
+    /// capsule is held outside the plane through the capsule's centreline, on
+    /// its own side. The tip here is half a hand clear of the thigh, so the
+    /// point hit never fires — only the barrier keeps it on the outer side.
+    func testSkirtBarrierKeepsThePanelOnItsOwnSide() throws {
+        var rest = [JointPose](repeating: .identity, count: 5)
+        rest[3].translation = SIMD3(0, 0, 1) // HAIR, the up landmark
+        // The panel's own right axis has to line up with the capsule for the
+        // barrier to arm: turn the bone so its local +X lands on the capsule's
+        // +Z (a quarter turn about Y).
+        let quarter = Float.pi / 4
+        rest[2].rotation = SIMD4(0, -sin(quarter), 0, cos(quarter))
+        let names = ["BASE", "BASE/MOMO_L", "BASE/skirt_a", "HAIR", "KOSHI"]
+        let parents: [Int?] = [nil, 0, 0, nil, nil]
+        let leg = MotionSway.Collider(
+            joint: "BASE/MOMO_L", type: "capsule", radius: 0.05,
+            distance: 0.2, offset: [0, 0, 0], axis: "Z",
+            normal: nil, target: nil, useSkirtBarrier: true
+        )
+        // Local tail (0, 0.02, -0.151): 151 mm out along world +X, 20 mm above
+        // the leg's centreline — outside the 80 mm capsule, inside the 30 mm
+        // barrier the panel is meant to keep.
+        let tail = SIMD3<Float>(0, 0.02, -0.151)
+        var sway = try XCTUnwrap(MotionSway(
+            configuration: configuration(bones: [
+                bone("BASE/skirt_a", tail: tail, radius: 0.03, colliders: [0],
+                     isSkirt: true)
+            ], colliders: [leg]),
+            joints: names, rest: rest
+        ))
+
+        var poses = rest
+        var least = Float.greatestFiniteMagnitude
+        for _ in 0..<180 {
+            poses = rest
+            sway.apply(&poses, dt: 1 / 60)
+            let world = JointWorld.transforms(poses, parents: parents)
+            let tip = world[2].position + QuaternionMath.rotate(world[2].rotation, tail)
+            least = min(least, tip.y)
+        }
+        XCTAssertGreaterThanOrEqual(
+            least, 0.03 - 1e-3,
+            "the skirt barrier let the panel cross the leg's centreline (y \(least))"
         )
     }
 
