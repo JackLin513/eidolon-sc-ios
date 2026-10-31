@@ -603,12 +603,19 @@ struct Model3DPreview: View {
         // height away when the root joint carries a translation.
         let centerY = (drawnCentreY ?? centre.y) * scale
         // Push the model away from the camera: the default RealityView camera
-        // sits at the origin. Its look-at is above the content origin, though, so
-        // centring her on the origin renders her low in the frame; half a model
-        // height brings her back to the middle. Drag in move mode to shift her.
-        // The control bar now carries a character row and an outfit row, so lift
-        // her clear of it as well as centring her on the look-at.
-        basePosition = [-center.x, -centerY + extent * 0.62, -center.z - 1.0]
+        // sits at the origin, so the content has to move into view. Putting the
+        // drawn box's centre on that camera's look-at is the whole of the
+        // framing: this used to add `extent * 0.62` as well, but `extent` is
+        // measured *before* the fit scale is applied, so that "half a model
+        // height" was nearly a whole body height in world units and parked her
+        // against the top edge. Drag in move mode to shift her.
+        //
+        // The control bar covers the bottom ~18% of the view, so the stage she
+        // is framed in is the area above it, whose centre sits 0.29 units above
+        // the view's centre. The camera's look-at is also ~0.15 units above the
+        // content origin, so the box has to rise by their sum to land there.
+        // Both numbers come from a screenshot at this captured distance.
+        basePosition = [-center.x, -centerY + 0.44, -center.z - 1.0]
         fittedPosition = basePosition
         appliedScale = scale
         baseScale = scale
