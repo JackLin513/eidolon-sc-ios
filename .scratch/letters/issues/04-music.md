@@ -22,3 +22,9 @@
 ### 票 01 交接
 
 - 读一封的 `music` 现在恒为 `null`；合并时的取法可以直接用 `letter_prompt.OCCASIONS` 的顺序（亲密、亲近、集齐在前）。
+
+### 票 03 交接
+
+- 她的声音在 `components/letter/letterVoice.ts` 的 `LetterVoice` 里：拆开那一下建的 `AudioContext` 和一个总音量 `GainNode`（静音键就是把它设成 0）。配乐接同一个上下文、接在这个总音量后面，静音键就能一起静掉；或者把 `LetterVoice` 扩成管整封信的声音。浏览器只让在点击里建的上下文出声，配乐别另建。
+- 每块语音在开口算起的第几秒放就是 `partsOf(letter, durations)` 各块的 `start`，到 `end` 念完：「她念的时候配乐压低」照这些时刻在配乐的音量上排 `setTargetAtTime` 即可。签名时刻 `signsAt(parts)` 已经是按实际时长排的。
+- 音频时钟停住时拆信层改按时钟写并 `stop()` 声音（`lib/letter` 的 `tick`）；配乐也要跟着停或淡出。

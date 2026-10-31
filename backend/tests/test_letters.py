@@ -12,6 +12,7 @@ import sqlite3
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -84,15 +85,18 @@ async def read(client: httpx.AsyncClient, letter_id: int) -> httpx.Response:
 
 
 async def close_with_mano(
-    make_client: ClientFactory, settings: Settings, *replies: list[str] | LLMError
+    make_client: ClientFactory,
+    settings: Settings,
+    *replies: list[str] | LLMError,
+    **services: Any,
 ) -> tuple[httpx.AsyncClient, FakeLLM, FakeClock, str]:
     """A client whose user's affinity with Mano has just first reached close, a turn after
     their first, in the conversation; her chat model then replying `replies`, and the judge
-    model judging two turns more as it did those."""
+    model judging two turns more as it did those. Any keyword goes on to `make_client`."""
     clock = FakeClock()
     llm = FakeLLM(REPLY, REPLY, *replies)
     client = make_client(
-        llm, clock=clock, clients=judged(*[level(4)] * 4), settings=settings
+        llm, clock=clock, clients=judged(*[level(4)] * 4), settings=settings, **services
     )
     conversation = await start_conversation(client)
     await turns(client, conversation, 1)
@@ -137,7 +141,7 @@ async def test_first_reaching_close_she_writes_a_letter_the_user_reads(
             {"ja": "これからもよろしくお願いします。", "zh": "今后也请多关照。"},
         ],
         "signature": {"image": None, "text": "櫻木真乃"},
-        "voice": None,
+        "voice": [f"/api/letters/{listed['id']}/voice/{block}" for block in range(3)],
         "music": None,
     }
     assert [r for r in records(settings.database_path) if r[0] == "letter"] == [

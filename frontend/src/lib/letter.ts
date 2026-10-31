@@ -21,7 +21,7 @@ export type LetterSummary = {
   popped: boolean;
 };
 
-/** 读一封：抬头和各段（日语已去掉语气提示）、信末的签名；语音、配乐还没有时为 null。 */
+/** 读一封：抬头和各段（日语已去掉语气提示）、信末的签名、每块语音的地址；没有语音、配乐时为 null。 */
 export type Letter = {
   id: number;
   character_id: string;
@@ -31,7 +31,8 @@ export type Letter = {
   paragraphs: { ja: string; zh: string }[];
   /** 她手写的签名图（透明底），没有时 `image` 为 null，照 `text` 用信上的字体写出来。 */
   signature: { image: string | null; text: string };
-  voice: null;
+  /** 她念这封信的 mp3，一块一个：第 0 块是抬头，之后每段一块。部署者没有语音合成、合成失败时为 null。 */
+  voice: string[] | null;
   music: null;
 };
 
@@ -133,4 +134,40 @@ export function signsAt(parts: Part[]): number {
 /** 整封信在第几秒写完：签名写完。 */
 export function finishesAt(parts: Part[]): number {
   return signsAt(parts) + SIGNATURE_SECONDS;
+}
+
+/** 拆开以后，语音最多等这么久取下、解码好（毫秒）；等的时候信纸上的字停着，等她开口再写。等不到就不要声音，按字数估。 */
+export const VOICE_WAIT_MS = 10000;
+
+/** 跟着声音写时，音频的时钟这么久没往前走（被系统打断、挂起）就改按时钟写，并且停掉声音，免得声音和字对不上（毫秒）。 */
+export const STALL_MS = 4000;
+
+/**
+ * 写到第几秒怎么算。跟着声音：音频时钟上 `base` 是开口算起的第 0 秒，`heard` 是上一次读到的音频时钟，
+ * `movedAt` 是它上一次往前走的时刻（毫秒，performance.now）。按时钟：从第 `from` 秒、`since` 毫秒时接着走。
+ */
+export type LetterClock =
+  | { by: "voice"; base: number; heard: number; movedAt: number }
+  | { by: "timer"; from: number; since: number };
+
+/** 跟着声音写，开口那一刻在音频时钟的 `base` 秒，现在是 `now` 毫秒。 */
+export function voiceClock(base: number, now: number): LetterClock {
+  return { by: "voice", base, heard: Number.NaN, movedAt: now };
+}
+
+/** 按时钟写，从第 0 秒、现在（`now` 毫秒）起。 */
+export function timerClock(now: number): LetterClock {
+  return { by: "timer", from: 0, since: now };
+}
+
+/**
+ * 到 `now` 毫秒写到第几秒；跟着声音时 `audioTime` 是这时的音频时钟（秒）。音频时钟超过 `STALL_MS` 没往前走，
+ * 就改成按时钟、从停下的那一秒接着走（返回的 `clock.by` 变成 "timer"，调用的一方据此停掉声音）。
+ */
+export function tick(clock: LetterClock, now: number, audioTime: number): { clock: LetterClock; at: number } {
+  if (clock.by === "timer") return { clock, at: clock.from + (now - clock.since) / 1000 };
+  const at = Math.max(0, audioTime - clock.base);
+  if (audioTime !== clock.heard) return { clock: { ...clock, heard: audioTime, movedAt: now }, at };
+  if (now - clock.movedAt > STALL_MS) return { clock: { by: "timer", from: at, since: now }, at };
+  return { clock, at };
 }

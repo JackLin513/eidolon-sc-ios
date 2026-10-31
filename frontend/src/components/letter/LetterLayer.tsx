@@ -8,10 +8,24 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { copy } from "@/i18n";
 import type { Character } from "@/lib/api";
-import { finishesAt, partsOf, signsAt, written, type Letter, type Part } from "@/lib/letter";
+import {
+  VOICE_WAIT_MS,
+  finishesAt,
+  partsOf,
+  signsAt,
+  tick,
+  timerClock,
+  voiceClock,
+  written,
+  type Letter,
+  type LetterClock,
+  type Part,
+} from "@/lib/letter";
 import { cn } from "@/lib/utils";
 import { letterVars } from "@/theme/herVars";
+import { LetterMutedIcon, LetterSoundIcon } from "@/theme/icons";
 
+import { LetterVoice } from "./letterVoice";
 import { Seal } from "./Seal";
 
 // 信上她的字：Klee One（SIL OFL 1.1），构建时下载、自托管、按 unicode-range 切片。不预载：只有拆信的人才要，
@@ -27,13 +41,15 @@ const klee = Klee_One({
 
 const t = copy.letter;
 
-/** 信封 → 拆开（封口翻开、信封落下）→ 信纸上一个字一个字写 → 收起（信纸收回信封、信封飞回存放它的键）。 */
+/** 信封 → 拆开（封口翻开、信封落下）→ 信纸上一个字一个字写、她念 → 收起（信纸收回信封、信封飞回存放它的键）。 */
 type Stage = "envelope" | "opening" | "letter" | "closing";
 
 /** 拆开的动画多久以后换成信纸：封口翻开，信封落下。 */
 const OPENING_MS = 800;
 /** 用户自己滚过信纸后，这么久之内不自动跟着写到的地方滚。 */
 const HANDS_OFF_MS = 4000;
+/** 收起时她的声音淡出多久。 */
+const FADE_OUT_MS = 600;
 
 type Props = {
   writer: Character;
@@ -48,13 +64,16 @@ type Props = {
 
 /**
  * 拆信这一层（GLOSSARY.md「信」，lib/letter），沿用停服前「她的信」的做法：整屏压暗，中间是她的信封，点了拆开。
- * 信纸上的字按时间轴一个一个写出来，每段写完，下面淡出这段的中文字幕；写完以后，信末写上她的签名。
- * 右上角是跳过；签完名信末出现「收好」，点了信收起来、飞回存放它的键。系统要求减少动态效果时，拆开就是整封信。
- * 时间轴按字数估（lib/letter 的 `partsOf`）。
+ * 信纸上的字跟着她念到哪里写到哪里，每段写完，下面淡出这段的中文字幕；念完以后，信末写上她的签名。
+ * 右上角是静音和跳过；签完名信末出现「收好」，点了信收起来、飞回存放它的键。系统要求减少动态效果时，拆开就是整封信，声音照放。
+ * 时间轴（lib/letter 的 `partsOf`）按每块语音解码出来的时长排，信纸展开后先等语音（最多 `VOICE_WAIT_MS`），
+ * 没有语音、取不到或解码不了时按字数估；字跟着音频时钟写，音频时钟停住时改按时钟写并停掉声音（`tick`）。
  */
 export function LetterLayer({ writer, letter, target, onRead, onClosed }: Props) {
   const isReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)", false);
-  const parts = useMemo(() => partsOf(letter), [letter]);
+  // 每块语音的时长：undefined 是还在等（取、解码），null 是不要声音、按字数估。
+  const [durations, setDurations] = useState<number[] | null | undefined>(letter.voice ? undefined : null);
+  const parts = useMemo(() => partsOf(letter, durations), [letter, durations]);
   const total = useMemo(() => parts.reduce((n, p) => n + p.chars.length, 0), [parts]);
   const finish = finishesAt(parts);
   const signing = signsAt(parts);
@@ -62,6 +81,10 @@ export function LetterLayer({ writer, letter, target, onRead, onClosed }: Props)
   const [count, setCount] = useState(0);
   const [isSigned, setSigned] = useState(false);
   const [isDone, setDone] = useState(false);
+  const [isVoiced, setVoiced] = useState(false);
+  const [isMuted, setMuted] = useState(false);
+  const voice = useRef<LetterVoice | null>(null);
+  const clock = useRef<LetterClock | null>(null);
   const popup = useRef<HTMLDivElement>(null);
   const envelope = useRef<HTMLButtonElement>(null);
   const backdrop = useRef<HTMLDivElement>(null);
@@ -70,16 +93,25 @@ export function LetterLayer({ writer, letter, target, onRead, onClosed }: Props)
   const done = useRef<HTMLButtonElement>(null);
   const handsOffSince = useRef(-Infinity);
   const wasRead = useRef(false);
-  const openedAt = useRef(0);
 
-  // 信封一出来就开始取字体。
+  // 信封一出来就开始取字体和她的声音。
   useEffect(() => {
     document.fonts?.load(`600 1em ${klee.style.fontFamily}`).catch(() => {});
   }, []);
+  useEffect(() => {
+    if (!letter.voice) return;
+    const v = new LetterVoice(letter.voice);
+    voice.current = v;
+    return () => {
+      v.close();
+      if (voice.current === v) voice.current = null;
+    };
+  }, [letter.voice]);
 
+  // 拆开：声音要在这一下点击里解锁，浏览器才让它出声。语音最多等 VOICE_WAIT_MS，等不到就按字数估。
   function open() {
     if (stage !== "envelope") return;
-    openedAt.current = performance.now();
+    void voice.current?.unlock(VOICE_WAIT_MS).then(setDurations);
     setStage("opening");
   }
 
@@ -89,7 +121,7 @@ export function LetterLayer({ writer, letter, target, onRead, onClosed }: Props)
     return () => window.clearTimeout(id);
   }, [stage, isReducedMotion]);
 
-  // 写：每一帧看写到第几秒、该有几个字；字数变了才重画。
+  // 信纸展开：算读过。减少动态效果时整封信一下子出来。
   useEffect(() => {
     if (stage !== "letter") return;
     if (!wasRead.current) {
@@ -101,23 +133,46 @@ export function LetterLayer({ writer, letter, target, onRead, onClosed }: Props)
       setCount(total);
       setSigned(true);
       setDone(true);
-      return;
     }
-    const startedAt = performance.now();
+  }, [stage, isReducedMotion, total, onRead]);
+
+  // 开口：信纸展开、语音也定了（解码好了，或者不要了）以后，按时间轴把每块排上音频时钟，只排一次。
+  useEffect(() => {
+    if (stage !== "letter" || durations === undefined || clock.current) return;
+    const now = performance.now();
+    const base = durations ? (voice.current?.play(parts.map((p) => p.start)) ?? null) : null;
+    clock.current = base === null ? timerClock(now) : voiceClock(base, now);
+    if (base === null) voice.current?.close();
+    else setVoiced(true);
+  }, [stage, durations, parts]);
+
+  // 写：每一帧看写到第几秒、该有几个字；字数变了才重画。音频时钟停住时改按时钟写，停掉声音。
+  useEffect(() => {
+    if (stage !== "letter" || durations === undefined || isReducedMotion) return;
     let frame = 0;
-    const tick = () => {
-      const at = (performance.now() - startedAt) / 1000;
-      setCount(parts.reduce((n, p) => n + written(p, at), 0));
-      if (at >= signing) setSigned(true);
-      if (at >= finish) {
+    const step = () => {
+      const current = clock.current;
+      if (!current) {
+        frame = requestAnimationFrame(step);
+        return;
+      }
+      const next = tick(current, performance.now(), voice.current?.time() ?? 0);
+      if (current.by === "voice" && next.clock.by === "timer") {
+        voice.current?.stop();
+        setVoiced(false);
+      }
+      clock.current = next.clock;
+      setCount(parts.reduce((n, p) => n + written(p, next.at), 0));
+      if (next.at >= signing) setSigned(true);
+      if (next.at >= finish) {
         setDone(true);
         return;
       }
-      frame = requestAnimationFrame(tick);
+      frame = requestAnimationFrame(step);
     };
-    frame = requestAnimationFrame(tick);
+    frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
-  }, [stage, isReducedMotion, parts, total, signing, finish, onRead]);
+  }, [stage, durations, isReducedMotion, parts, signing, finish]);
 
   // 跟着写到的地方滚：写到的字落到信纸下面四分之一时，把它滚回四成高的地方。用户刚自己滚过就不动。
   useEffect(() => {
@@ -152,6 +207,7 @@ export function LetterLayer({ writer, letter, target, onRead, onClosed }: Props)
         // 元素被卸掉、动画被取消：照样往下走。
       }
     };
+    voice.current?.fadeOut(ms(FADE_OUT_MS));
     (async () => {
       if (wasRead.current) {
         await play(sheet.current, [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(2rem) scale(0.92)" }], 320, "ease-in");
@@ -188,6 +244,11 @@ export function LetterLayer({ writer, letter, target, onRead, onClosed }: Props)
       isCancelled = true;
     };
   }, [stage, isReducedMotion, target, onClosed]);
+
+  function toggleMute() {
+    voice.current?.setMuted(!isMuted);
+    setMuted(!isMuted);
+  }
 
   const handsOff = () => {
     handsOffSince.current = performance.now();
@@ -269,11 +330,18 @@ export function LetterLayer({ writer, letter, target, onRead, onClosed }: Props)
           </div>
         )}
 
-        {stage !== "closing" && !isDone && (
+        {stage !== "closing" && (
           <div className="absolute top-0 right-0 flex items-center gap-2 p-3">
-            <Button variant="call-glass" size="call-sm" onClick={close}>
-              {t.skip}
-            </Button>
+            {isVoiced && isReading && (
+              <Button variant="call-round" size="icon-call" aria-label={t.mute} aria-pressed={isMuted} onClick={toggleMute}>
+                {isMuted ? <LetterMutedIcon /> : <LetterSoundIcon />}
+              </Button>
+            )}
+            {!isDone && (
+              <Button variant="call-glass" size="call-sm" onClick={close}>
+                {t.skip}
+              </Button>
+            )}
           </div>
         )}
       </DialogContent>

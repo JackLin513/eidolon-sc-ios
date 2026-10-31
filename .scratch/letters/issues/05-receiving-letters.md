@@ -26,3 +26,9 @@
 - 页首信封键的点只在载入和切回标签页时拉列表更新；停在页面上不会自己出现新信，弹出和对话列表行的轮询做好后看要不要让它跟着刷新。
 - DESIGN.md 还没动：「Conversation list · 页首」那一节仍只写服务状态和公告铃铛，信纸信封的固定色、Klee One、拆开和收起的动效都没写，按 spec 在这一票加「信」一节。对比度测试已经加了信纸、信封的那三对。
 - 列表现在只是从新到旧一列，没有按月分组和「没读过的在最上面」；列表行是 `LetterButton.tsx` 里的 `LetterRow`。
+
+### 票 03 交接
+
+- 删除一封信要连 `letter_voices` 里它的几块一起删（`letter_id` 有外键）。读一封的 `voice` 用 `/api/letters/{id}/voice/{block}`，缓存一年 immutable；`letters.id` 是 AUTOINCREMENT，删了不会复用，旧缓存不会配到新信上。
+- `DESIGN.md` 的「Icons」一节还没登记信的图标：`LetterIcon`（页首信封键）、`LetterSoundIcon` / `LetterMutedIcon`（读信时右上角的静音键），写「信」一节时一起加上。
+- 自动弹出的信封一出现，拆信层就开始取这封信的语音（几百 KB 的 mp3）；被跳过的信也取过了，弹出时机做好后看要不要改成拆开才取。

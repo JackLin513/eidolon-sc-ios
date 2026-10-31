@@ -431,7 +431,12 @@ def build(
         database, clock, lambda: config.affinity_on, affinities, characters, gift_catalog,
         random or secure_random, cycles,
     )
-    letters = Letters(database, characters, config, affinities, activity, clock)
+    own_keys = OwnKeys(
+        own_llm_service, config, activity, speech, exempting=lambda: config.exempting_keys,
+        image_service=own_images,
+    )
+    read_aloud = ReadAloud(own_keys, usage, activity, readings, routes, fish_transport)
+    letters = Letters(database, characters, config, affinities, activity, read_aloud, clock)
     happenings = Happenings(
         database, lambda: config.affinity_on, gifts, activity, letters.happened
     )
@@ -450,10 +455,6 @@ def build(
         database, store, characters, gift_catalog, memories, titles, clock, her_now, retrieval,
         lambda: config.history_turns, world, affinities, config.affinity_judge(), photos,
         happenings,
-    )
-    own_keys = OwnKeys(
-        own_llm_service, config, activity, speech, exempting=lambda: config.exempting_keys,
-        image_service=own_images,
     )
     admissions = Admissions(
         usage, activity, own_keys, cooldown_until=affinities.cooldown_until
@@ -503,7 +504,7 @@ def build(
         calls=calls,
         speech=speech,
         own_keys=own_keys,
-        read_aloud=ReadAloud(own_keys, usage, activity, readings, routes, fish_transport),
+        read_aloud=read_aloud,
         admissions=admissions,
         accounts=Accounts(
             store, clock, memories, calls, invites, lambda: config.registration,

@@ -39,7 +39,14 @@ letter has an activity record of its own (`letter`), on the deployer's keys, its
 calls under it; one the model fails, or writes no letter in, is recorded failed, and tried
 again after each of `RETRIES` in turn, then passed over.
 
-The user's letters are theirs alone to read (`listed`, `letter`), the latest first; reading
+Written, she says it in her voice on the deployer's speech synthesis, with the model it has
+then, whoever's key the user brings, requested as a read-aloud is (`read_aloud`), but kept
+and counting towards nothing: the salutation and each paragraph a request of its own, kept as
+a block each (0 the salutation). Where the
+deployer has none, she has no voice, or Fish Audio fails at any block, it is kept with no
+voice at all, its activity record saying so (`NOT_VOICED`), and is no less a letter.
+
+The user's letters are theirs alone to read (`listed`, `letter`, `voice`), the latest first; reading
 one has it read, on every device (`mark_read`). Turned off, the deployer's letters stay to be
 read. Deleting the user deletes them (`database.USER_DATA`); deleting a conversation does
 not."""
@@ -75,6 +82,7 @@ from eidolon.letter_prompt import (
 from eidolon.live_config import LiveConfig
 from eidolon.llm import ChatLLM
 from eidolon.moments import written_whole
+from eidolon.own_keys import DeployerKeys
 from eidolon.producer import (
     Birthday,
     ProducerProfile,
@@ -82,6 +90,7 @@ from eidolon.producer import (
     is_birthday,
     local_date,
 )
+from eidolon.read_aloud import ReadAloud
 from eidolon.store import read_in_touch, read_profile
 from eidolon.usage import read_user_limits
 
@@ -113,6 +122,10 @@ RETRIES = (timedelta(minutes=10), timedelta(minutes=30), timedelta(minutes=60))
 KEPT = timedelta(days=1)
 """How long after its day has gone a letter not yet written is still to be."""
 
+NOT_VOICED = "voice"
+"""What a letter's activity record names its voice made do without by, where it has none
+(`activity.Recording.degraded`)."""
+
 _RANKS: dict[Tier, int] = {t: i for i, (t, _) in enumerate(TIERS)}
 """Each tier's place, lowest first, to tell which of two is higher."""
 
@@ -135,7 +148,7 @@ CREATE TABLE IF NOT EXISTS letters (
     record_id INTEGER
 );
 CREATE INDEX IF NOT EXISTS letters_by_user ON letters(user_id, character_id, day);
--- A letter read aloud, block by block: 0 the salutation, then each paragraph; MP3.
+-- A letter in her voice, block by block: 0 the salutation, then each paragraph; MP3.
 CREATE TABLE IF NOT EXISTS letter_voices (
     letter_id INTEGER NOT NULL REFERENCES letters(id),
     block INTEGER NOT NULL,
@@ -189,8 +202,8 @@ class Listed:
 
 @dataclass(frozen=True)
 class Letter:
-    """A letter as the user reads it: whose, on what, the day, what it says, and the name she
-    signs it with."""
+    """A letter as the user reads it: whose, on what, the day, what it says, the name she
+    signs it with, and how many blocks of it she says in her voice, none without a voice."""
 
     id: int
     character_id: str
@@ -198,10 +211,13 @@ class Letter:
     day: date
     written: Written
     signed: str
+    voice_blocks: int
 
     def shown(self) -> dict:
-        """As the browser is told it: without delivery cues; no voice nor music yet, and her
-        name written out for her signature."""
+        """As the browser is told it: without delivery cues; where each block in her voice is,
+        or None without a voice; no music yet, and her name written out for her
+        signature."""
+        voice = [f"/api/letters/{self.id}/voice/{block}" for block in range(self.voice_blocks)]
         return {
             "id": self.id,
             "character_id": self.character_id,
@@ -210,7 +226,7 @@ class Letter:
             "salutation": shown(self.written.salutation),
             "paragraphs": [{"ja": shown(p.ja), "zh": p.zh} for p in self.written.paragraphs],
             "signature": {"image": None, "text": self.signed},
-            "voice": None,
+            "voice": voice or None,
             "music": None,
         }
 
@@ -239,8 +255,8 @@ class _Due:
 
 
 class Letters:
-    """Her letters, in `db`, on the deployer's chat model of `config`, each recorded in
-    `activity`."""
+    """Her letters, in `db`, on the deployer's chat model of `config`, said in her voice
+    by `read_aloud`, each recorded in `activity`."""
 
     def __init__(
         self,
@@ -249,6 +265,7 @@ class Letters:
         config: LiveConfig,
         affinities: Affinities,
         activity: ActivityLog,
+        read_aloud: ReadAloud,
         clock: Clock,
     ) -> None:
         self._db = db
@@ -256,6 +273,7 @@ class Letters:
         self._config = config
         self._affinities = affinities
         self._activity = activity
+        self._read_aloud = read_aloud
         self._clock = clock
         db.prepare(_open)
 
@@ -324,6 +342,11 @@ class Letters:
         character = self._characters.get(letter.character_id)
         return replace(letter, signed=character.name) if character is not None else letter
 
+    async def voice(self, user_id: str, letter_id: int, block: int) -> bytes | None:
+        """The block of the user's letter in her voice, as mp3; None if the letter is not
+        theirs, or there is no such block."""
+        return await self._db.read(_voice, user_id, letter_id, block)
+
     async def mark_read(self, user_id: str, letter_id: int) -> bool:
         """Have the user's letter read, now, if not before; False if it is not theirs."""
         return await self._db.write(_mark_read, user_id, letter_id, self._clock().isoformat())
@@ -355,9 +378,13 @@ class Letters:
             "letter", due.user_id, due.character_id, own_llm=False, exempt=False
         )
         lease = self._config.lease()
+        voices = None
         try:
             with recording.current():
                 written = await self._written(lease.keys.chat_llm, material)
+                if written is not None:
+                    voice_id = self._characters[due.character_id].voice_id
+                    voices = await self._said(lease.keys, voice_id, written)
         except Exception as e:
             # Not logged with what was raised: a service's error may repeat what it was asked.
             log.warning("a letter to user %s failed: %s", due.user_id, type(e).__name__)
@@ -368,7 +395,11 @@ class Letters:
             await self._db.write(_failed, due.ids, now)
             await recording.finish("failed")
             return
-        letter_id = await self._db.write(_add_letter, due, written, self._clock().isoformat())
+        if voices is None:
+            recording.degraded = {NOT_VOICED: 1}
+        letter_id = await self._db.write(
+            _add_letter, due, written, voices or [], self._clock().isoformat()
+        )
         await recording.finish("success")
         await self._db.write(_recorded_as, letter_id, recording.row_id)
 
@@ -389,6 +420,24 @@ class Letters:
             log.warning("rewriting a letter shorter failed: %s", type(e).__name__)
             shorter = None
         return shorter or written
+
+    async def _said(
+        self, keys: DeployerKeys, voice_id: str, written: Written
+    ) -> list[bytes] | None:
+        """The letter said in her voice `voice_id` on `keys`, a block at a time: the
+        salutation, then each paragraph. None without the deployer's speech synthesis, or a
+        voice of hers, or if Fish Audio fails at a block, the rest then not asked for."""
+        if keys.tts is None or not voice_id.strip():
+            return None
+        blocks = (written.salutation, *(p.ja for p in written.paragraphs))
+        try:
+            return [
+                await self._read_aloud.said_on_deployers(keys.tts, keys.tts_model, voice_id, ja)
+                for ja in blocks
+            ]
+        except Exception as e:
+            log.warning("reading a letter aloud failed: %s", type(e).__name__)
+            return None
 
     def _unplanned(
         self, db: sqlite3.Connection, now: datetime, affinity_on: bool
@@ -641,8 +690,11 @@ def _put_off(db: sqlite3.Connection, ids: Sequence[int], day: date, zone: ZoneIn
     )
 
 
-def _add_letter(db: sqlite3.Connection, due: _Due, written: Written, at: str) -> int:
-    """Keep the letter written `at`, taking what it was written for off those to be written."""
+def _add_letter(
+    db: sqlite3.Connection, due: _Due, written: Written, voices: Sequence[bytes], at: str
+) -> int:
+    """Keep the letter written `at`, said in `voices`, a block each, if any; taking what
+    it was written for off those to be written."""
     letter_id = db.execute(
         "INSERT INTO letters (user_id, character_id, occasions, day, written_at, salutation,"
         " paragraphs) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -652,6 +704,10 @@ def _add_letter(db: sqlite3.Connection, due: _Due, written: Written, at: str) ->
             json.dumps([{"ja": p.ja, "zh": p.zh} for p in written.paragraphs], ensure_ascii=False),
         ),
     ).lastrowid
+    db.executemany(
+        "INSERT INTO letter_voices (letter_id, block, mp3) VALUES (?, ?, ?)",
+        [(letter_id, block, mp3) for block, mp3 in enumerate(voices)],
+    )
     _drop(db, due.ids)
     assert letter_id is not None
     return letter_id
@@ -683,10 +739,22 @@ def _letter(db: sqlite3.Connection, user_id: str, letter_id: int) -> Letter | No
     if row is None:
         return None
     character_id, occasions, day, salutation, paragraphs = row
+    [blocks] = db.execute(
+        "SELECT COUNT(*) FROM letter_voices WHERE letter_id = ?", (letter_id,)
+    ).fetchone()
     return Letter(
         letter_id, character_id, _occasions(occasions), date.fromisoformat(day),
-        _written(salutation, paragraphs), character_id,
+        _written(salutation, paragraphs), character_id, blocks,
     )
+
+
+def _voice(db: sqlite3.Connection, user_id: str, letter_id: int, block: int) -> bytes | None:
+    row = db.execute(
+        "SELECT v.mp3 FROM letter_voices v JOIN letters l ON l.id = v.letter_id"
+        " WHERE l.id = ? AND l.user_id = ? AND v.block = ?",
+        (letter_id, user_id, block),
+    ).fetchone()
+    return row[0] if row is not None else None
 
 
 def _mark_read(db: sqlite3.Connection, user_id: str, letter_id: int, at: str) -> bool:

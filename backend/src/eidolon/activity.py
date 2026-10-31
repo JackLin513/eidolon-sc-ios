@@ -194,9 +194,10 @@ _SCHEMA = """
 -- `answered` is whether a reach-out was answered (GLOSSARY.md「搭话」): the user had a turn,
 -- or a call connected, in its conversation after it and before the next; the store marks it
 -- so, by the record its reach-out keeps (`store.add_turn`, `store.keep_call`,
--- `Store.reach_out_recorded_as`). 0 for others. `degraded` is a moment's alone: which parts
--- of what she wrote were left out or made do without, and how many of each, as a JSON object
--- (`{"comments": 1}`); NULL where none were.
+-- `Store.reach_out_recorded_as`). 0 for others. `degraded` is a moment's or a letter's alone:
+-- which parts of what she wrote were left out or made do without, and how many of each, as a
+-- JSON object (`{"comments": 1}`; a letter's, `{"voice": 1}` for one not read aloud); NULL
+-- where none were.
 CREATE TABLE IF NOT EXISTS activity_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     kind TEXT NOT NULL,
@@ -641,8 +642,8 @@ class Recording:
         self.cooled = False
         self.ended_conversation: EndsFor | None = None
         self.degraded: dict[str, int] | None = None
-        """For a moment, which parts of what she wrote were made do without, and how many of
-        each; None where none were."""
+        """For a moment or a letter, which parts of what she wrote were made do without, and
+        how many of each; None where none were."""
         self.call = call
         """The call this turn was taken in, if any."""
         self.turns: list[Recording] = []

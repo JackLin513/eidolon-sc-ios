@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import {
   LEAD_IN,
+  STALL_MS,
   finishesAt,
   hasUnread,
   letterDay,
   partsOf,
   showsLetterButton,
   signsAt,
+  tick,
+  timerClock,
+  voiceClock,
   written,
   type LetterSummary,
 } from "@/lib/letter";
@@ -77,6 +81,59 @@ describe("时间轴", () => {
   it("按码点拆字，不拆坏代理对", () => {
     const [salutation] = partsOf({ salutation: "𠮷野さん", paragraphs: [] });
     expect(salutation.chars).toEqual(["𠮷", "野", "さ", "ん"]);
+  });
+});
+
+describe("跟着她的声音写", () => {
+  it("有语音时按每块的实际时长排：每个字落在她念这一块的时候，签名跟着最后一块念完", () => {
+    const voiced = partsOf(letter, [2.5, 4, 0.5]);
+    const estimated = partsOf(letter);
+    expect(spans(voiced)).toEqual([
+      [1.2, 3.7],
+      [4.3, 8.3],
+      [9.2, 9.7],
+    ]);
+    for (const part of voiced) {
+      expect(part.at.every((t) => t >= part.start && t < part.end)).toBe(true);
+    }
+    expect(signsAt(voiced)).toBeCloseTo(10.5);
+    expect(signsAt(voiced)).not.toBeCloseTo(signsAt(estimated));
+  });
+
+  it("写到第几秒跟着音频时钟走，开口那一刻是第 0 秒", () => {
+    let clock = voiceClock(20, 1000);
+    let at: number;
+    ({ clock, at } = tick(clock, 1000, 20));
+    expect(at).toBe(0);
+    ({ clock, at } = tick(clock, 1500, 20.5));
+    expect(at).toBeCloseTo(0.5);
+    // 音频时钟走得比墙上的钟慢（设备忙），字照样跟着声音。
+    ({ clock, at } = tick(clock, 3500, 21));
+    expect(at).toBeCloseTo(1);
+    expect(clock.by).toBe("voice");
+  });
+
+  it("音频时钟停住不到 STALL_MS 时字也停着，等声音", () => {
+    let { clock } = tick(voiceClock(0, 0), 0, 3);
+    let at: number;
+    ({ clock, at } = tick(clock, STALL_MS, 3));
+    expect(clock.by).toBe("voice");
+    expect(at).toBe(3);
+  });
+
+  it("音频时钟停住超过 STALL_MS 就改按时钟，从停下的那一秒接着写", () => {
+    let { clock } = tick(voiceClock(0, 0), 0, 3);
+    let at: number;
+    ({ clock, at } = tick(clock, STALL_MS + 1, 3));
+    expect(clock.by).toBe("timer");
+    expect(at).toBe(3);
+    // 之后不再看音频时钟。
+    ({ clock, at } = tick(clock, STALL_MS + 2001, 3));
+    expect(at).toBeCloseTo(5);
+  });
+
+  it("没有声音时按时钟从第 0 秒写", () => {
+    expect(tick(timerClock(1000), 2500, 0).at).toBeCloseTo(1.5);
   });
 });
 
