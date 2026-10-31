@@ -337,6 +337,9 @@ extension Eidolon {
         let scheduleLines = (try? scheduleLines(
             characterID: characterID, now: now, timeZone: zone
         )) ?? []
+        let cycleLines = (try? cycleLines(
+            characterID: characterID, now: now, timeZone: zone
+        )) ?? []
         let nowText = NowPrompt.text(
             now: now,
             timeZone: zone,
@@ -348,7 +351,8 @@ extension Eidolon {
                 : try lastContact(characterID: characterID),
             birthday: producer.birthday,
             todayLines: todayLines,
-            scheduleLines: scheduleLines
+            scheduleLines: scheduleLines,
+            cycleLines: cycleLines
         )
         let nowSection = ([nowText, PromptAssembler.cannotSendPhoto, retrieved.memories, retrieved.references]
             .compactMap { $0 }

@@ -163,7 +163,7 @@ tools/oracle/run.sh                          # 提示词与上游逐字对照（
 ```text
 eidolon-sc-ios/
 ├── EidolonCore/            # 端上引擎（SPM 包：GRDB + ZIPFoundation）
-│   ├── Sources/EidolonCore #   内容包、回合、判断、检索、记忆、搭话、标题、通话、立绘指令、酒吧、日程
+│   ├── Sources/EidolonCore #   内容包、回合、判断、检索、记忆、搭话、标题、通话、立绘指令、酒吧、日程、周期
 │   ├── Sources/PromptOracle#   与上游逐字对照提示词
 │   └── Tests/EidolonCoreTests
 ├── EidolonIOS/             # SwiftUI 客户端
@@ -184,7 +184,7 @@ eidolon-sc-ios/
 还没做，或者做不了：
 
 - **通话里的打断**（barge-in）：她说话时麦克风是合上的，这段时间你说的话会丢。上游靠浏览器的回声消除一直开麦；端上要先把播放并进同一个 `AVAudioEngine`（voice processing）再做。
-- **上游的其余玩法**：照片、礼物、每日任务、成就、统计、数据包、生理周期都还没有；酒吧当天第一次光顾的好感奖励已经接上，抽奖和礼物还没做。
+- **上游的其余玩法**：照片、礼物、每日任务、成就、统计、数据包都还没有；生理周期的记录与推算页还没做；酒吧当天第一次光顾的好感奖励已经接上，抽奖和礼物还没做。
 - **长通话验收**：5 分钟以上的真机长通话要人来听，目前只跑过短通话。
 
 ## 📄 许可证
