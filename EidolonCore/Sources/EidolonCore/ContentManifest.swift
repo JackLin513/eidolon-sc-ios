@@ -5,7 +5,7 @@ public struct ContentManifest: Codable, Sendable, Hashable {
     /// The bundle format this app reads. Version 2 added birthdays, idol numbers and the
     /// holiday table, version 3 the bar's drink catalog, reasons, topics and fixed lines
     /// (ADR-0021), so an older bundle has to be exported again.
-    public static let supportedFormatVersion = 3
+    public static let supportedFormatVersion = 4
 
     public struct Embedding: Codable, Sendable, Hashable {
         public var model: String

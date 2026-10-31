@@ -221,7 +221,8 @@ public actor BarRoom {
             throw EidolonError.invalidContent("内容包里没有可以来酒吧的角色")
         }
         let now = clock()
-        let today = BarRecords.day(now, in: timeZone())
+        let zone = timeZone()
+        let today = BarRecords.day(now, in: zone)
         let before = try await userQueue.read { try BarRecords.before($0, today: today) }
         let indexed = before.doneToday ? pick(everyone.count) : Self.ofTheDay(today, everyone.count)
         let character = everyone[indexed]
@@ -229,10 +230,18 @@ public actor BarRoom {
             (history: try BarRecords.history(db, characterID: character.id),
              affinity: try Eidolon.readAffinity(db, characterID: character.id, now: now))
         }
-        let listed = Self.reason(
-            character, bar.content.visits, recent: Set(hers.history.reasons), random
+        let doneJob = try await userQueue.write { db in
+            try Eidolon.countDoneJobs(
+                db, now: now, timeZone: zone, thisWeek: ScheduleRules.week(of: now)
+            )
+            return try ScheduleStore.doneTodayJob(
+                db, characterID: character.id, now: now, timeZone: zone
+            )
+        }
+        let reason = Self.reason(
+            character, bar.content.visits, job: doneJob,
+            recent: Set(hers.history.reasons), random
         )
-        let reason = VisitReason(listed)
         let topic = Self.topic(character, bar.content.visits, recent: Set(hers.history.topics))
         let facts = await BarFacts(
             contentDirectory: bar.directory, userQueue: userQueue, character: character
@@ -266,7 +275,7 @@ public actor BarRoom {
             ),
             about: try BarPrompt.visit(
                 aboutProducer: setup.aboutProducer,
-                reason: listed,
+                reason: reason,
                 topic: topic,
                 cups: cups,
                 affinityLines: AffinityPrompt.lines(tier: hers.affinity.tier, judged: nil),
@@ -383,13 +392,18 @@ public actor BarRoom {
     /// Her reason for coming: one of the list's for her, none of the `recent` unless that
     /// leaves none. The device has no schedule, so none is the job of hers that day.
     static func reason(
-        _ character: CharacterConfig, _ listed: BarVisits, recent: Set<String>, _ random: BarRandom
-    ) -> BarReason {
+        _ character: CharacterConfig, _ listed: BarVisits, job: WeeklyJob? = nil,
+        recent: Set<String>, _ random: BarRandom
+    ) -> VisitReason {
+        // Half the time the job of hers done today is why she came (upstream `_reason`).
+        if let job, random(2) == 0 {
+            return VisitReason(id: job.name, note: job.note, job: true)
+        }
         let reasons = listed.reasons(for: character.id)
         guard let one = fresh(reasons, recent, random) else {
-            return BarReason(id: "", note: "", mood: .calm)
+            return VisitReason(id: "", note: "", mood: .calm)
         }
-        return one
+        return VisitReason(one)
     }
 
     /// What she is to talk about: one of the list's topics for her, none of the `recent`

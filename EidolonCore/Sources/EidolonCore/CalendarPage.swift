@@ -17,6 +17,33 @@ public struct CalendarDay: Hashable, Comparable, Sendable {
     }
 
     public var stamp: String { String(format: "%04d-%02d-%02d", year, month, day) }
+
+    /// The day `days` after this one, in the calendar's own reckoning.
+    public func adding(days: Int) -> CalendarDay {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let date = calendar.date(from: DateComponents(year: year, month: month, day: day))!
+        let moved = calendar.date(byAdding: .day, value: days, to: date)!
+        let parts = calendar.dateComponents([.year, .month, .day], from: moved)
+        return CalendarDay(year: parts.year ?? year, month: parts.month ?? month, day: parts.day ?? day)
+    }
+
+    /// How many days `self` is after `other` (negative when before).
+    public func days(since other: CalendarDay) -> Int {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let left = calendar.date(from: DateComponents(year: year, month: month, day: day))!
+        let right = calendar.date(from: DateComponents(year: other.year, month: other.month, day: other.day))!
+        return calendar.dateComponents([.day], from: right, to: left).day ?? 0
+    }
+
+    /// 0 for Monday through 6 for Sunday.
+    public var weekdayIndex: Int {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let date = calendar.date(from: DateComponents(year: year, month: month, day: day))!
+        return (calendar.component(.weekday, from: date) + 5) % 7
+    }
 }
 
 /// What a calendar day can hold (spec #49): her birthday, the producer's birthday, a Japanese

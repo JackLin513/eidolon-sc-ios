@@ -47,6 +47,8 @@ enum Fixture {
         var siblingEpisode = false
         /// Writes `characters/readings.json` with the fixture's names.
         var includeReadings = false
+        /// Writes `characters/jobs.json` with a few jobs.
+        var includeJobs = false
     }
 
     static func makeBundle(in parent: URL, options: Options = Options()) throws -> URL {
@@ -161,6 +163,34 @@ enum Fixture {
             ]
             try JSONEncoder().encode(JSONValue.object(["readings": .array(readings)]))
                 .write(to: charactersDirectory.appendingPathComponent("readings.json"))
+        }
+        if options.includeJobs {
+            let jobs: [JSONValue] = [
+                .object([
+                    "id": .string("vocal-lesson"),
+                    "name": .string("声乐课"),
+                    "note": .string("跟老师练发声。"),
+                    "category": .string("practice"),
+                    "length": .int(1),
+                ]),
+                .object([
+                    "id": .string("photos"),
+                    "name": .string("拍摄"),
+                    "note": .string("拍新的宣传照。"),
+                    "category": .string("appearance"),
+                    "length": .int(2),
+                    "slots": .array([.string("morning")]),
+                ]),
+                .object([
+                    "id": .string("day-off"),
+                    "name": .string("休息"),
+                    "note": .string("没有安排。"),
+                    "category": .string("private"),
+                    "length": .int(3),
+                ]),
+            ]
+            try JSONEncoder().encode(JSONValue.object(["jobs": .array(jobs)]))
+                .write(to: charactersDirectory.appendingPathComponent("jobs.json"))
         }
         try "# 真乃\n".write(
             to: sheetsDirectory.appendingPathComponent("mano.md"),

@@ -56,7 +56,7 @@ public enum BarPrompt {
     /// `facts` the topic found, best first.
     public static func visit(
         aboutProducer: String,
-        reason: BarReason,
+        reason: VisitReason,
         topic: BarTopic,
         cups: Int,
         affinityLines: [String],
@@ -67,7 +67,7 @@ public enum BarPrompt {
         catalog: DrinkCatalog,
         facts: [String]
     ) throws -> String {
-        let why = "你今晚来的缘由：\(reason.note)进门时的心情：\(reason.mood.zh)。"
+        let why = reasonLine(reason)
         let lines = ["# 这次光顾", why, "闲聊的话题：\(topic.note)", "你今晚打算喝 \(cups) 杯，喝完就告别。"]
             + affinityLines + today
         var parts = [
@@ -77,6 +77,16 @@ public enum BarPrompt {
         ]
         if !facts.isEmpty { parts.append(factsBlock(facts)) }
         return parts.joined(separator: "\n\n")
+    }
+
+    /// The line of why she came: her job done that day, or one of the listed reasons.
+    static func reasonLine(_ reason: VisitReason) -> String {
+        if reason.job {
+            return "你今天完成了制作人排给你的工作「\(reason.id)」（\(reason.note)），"
+                + "收工以后来了店里。心情按你做这项工作的样子来定。"
+        }
+        let mood = reason.mood?.zh ?? Mood.calm.zh
+        return "你今晚来的缘由：\(reason.note)进门时的心情：\(mood)。"
     }
 
     // MARK: - The last part
