@@ -611,6 +611,7 @@ export const zh = {
       stats: "统计",
       call: "通话",
       "reach-outs": "搭话",
+      moments: "朋友圈",
       cycles: "周期",
       appearance: "外观",
       "own-keys": "自带密钥",
@@ -737,6 +738,9 @@ export const zh = {
     },
     reachOuts: {
       on: "她们会主动搭话",
+    },
+    moments: {
+      on: "她们会发朋友圈",
     },
     cycles: {
       on: "她们的周期",

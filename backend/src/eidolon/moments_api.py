@@ -6,7 +6,7 @@ there is no such picture (404), and it is the browser's alone to keep, never a s
 `/api/moments/{id}/comment` comments on one (POST), once (409 again), 1 to 140 characters but
 for the spaces around them (422 else), or deletes the comment (DELETE). A moment not on his
 timeline, another's, not shown yet or gone, is none (404). While the deployer has moments
-off, each is refused with 409."""
+off, or the user their own switch for them, each is refused with 409."""
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse

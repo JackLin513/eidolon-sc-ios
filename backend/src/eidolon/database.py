@@ -52,6 +52,7 @@ USER_DATA = [
     ("moments", "user_id = ?"),
     ("moment_plans", "user_id = ?"),
     ("moment_users", "user_id = ?"),
+    ("moments_off", "user_id = ?"),
     ("cycles_off", "user_id = ?"),
     ("cycle_records", "user_id = ?"),
     ("data_package_imports", "user_id = ?"),

@@ -33,3 +33,7 @@
 ### 票 23 交接
 
 - 他赞没赞：`moment_likes` 有没有这条动态的行。他的评论和她的回复：`moment_comments`（`text`；`reply_ja` 不为空才算露出了，没露出的只写他评论了什么）。
+
+### 票 24 交接
+
+- 「朋友圈对这位用户关着（部署者或他自己）时，这一节和这一项都不出现」：用 `await Moments.switch_of(user_id) is True` 判断（票 24 起是 async，部署者关着为 `None`，他关了为 `False`）。在 `Database` 的读里判断时，可以用 `moments._switched_on(db, user_id)`，再加上部署者的总开关。

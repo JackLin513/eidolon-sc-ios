@@ -467,8 +467,8 @@ export type SignInMethod = { provider: Provider; display_name: string; email: st
  * has them off.
  * `cycles`: the user's own switch for cycles (GLOSSARY.md「周期」); null where the deployer has them
  * off.
- * `moments`: whether the user has moments (GLOSSARY.md「朋友圈」); null where the deployer has them
- * off.
+ * `moments`: the user's own switch for moments (GLOSSARY.md「朋友圈」); null where the deployer has
+ * them off.
  * `sponsor_version`: the version of the deployer's sponsor code (GLOSSARY.md「赞赏」), when it was
  * uploaded, for `sponsorImageUrl`; null when users are not shown it (switched off, or no code). */
 export type Account = {
@@ -509,6 +509,18 @@ export async function getAccount(): Promise<Account> {
 export async function switchReachOuts(on: boolean): Promise<void> {
   await expectNoContent(
     await api("/api/account/reach-outs", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ on }),
+    }),
+  );
+}
+
+/** Turn the user's own switch for moments on or off, for all the characters; refused where the
+ * deployer has them off. */
+export async function switchMoments(on: boolean): Promise<void> {
+  await expectNoContent(
+    await api("/api/account/moments", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ on }),
@@ -771,7 +783,7 @@ export async function deleteMomentComment(id: number): Promise<void> {
 }
 
 /** The user's moments of the last 30 days that have come out, newest first, all at once. Refused while
- * the deployer has moments off (409). */
+ * the deployer or the user has moments off (409). */
 export async function getMoments(): Promise<Moment[]> {
   const body: { moments: Moment[] } = await json(await api("/api/moments"));
   return body.moments;

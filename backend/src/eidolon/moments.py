@@ -8,7 +8,8 @@ after another in the order of their times.
 
 A user is active who has been in touch with any character within `ACTIVE`: a turn recorded,
 or a call that connected ending (`store.read_in_touch`); gifts are not being in touch. Not a
-banned user, nor one an admin lets take no turns on the deployer's keys. Planned for at the
+banned user, nor one an admin lets take no turns on the deployer's keys, nor one who has
+switched moments off by their own switch (`switch`), on by default. Planned for at the
 first tick of the day in Tokyo they are active at, from the rest of the day
 (`moment_draws.plan_day`): of the characters they have had a turn with, in trust or above and
 not in a cooldown (trust where affinity is off), each drawn for once; as many as the deployer
@@ -19,7 +20,11 @@ character first talked to, or come up to trust, that day waits for the next. The
 kept, and read again after a restart.
 
 While the deployer has moments off, nothing is planned nor posted; turned on again, what was
-planned is forgotten, and each user planned for anew from what is left of the day.
+planned is forgotten, and each user planned for anew from what is left of the day. A user
+who switches their own off is left as they are planned, and planned for, once on again, as
+any other: what is not due yet is posted, and one not yet planned for that day is planned
+for from what is left of it. While either has them off, the user's moments are refused them
+(`MomentsOff`), kept as they are.
 
 As a moment's time comes, it is looked at again: the deployer still has moments on; the user
 is still active, not banned, nor let take no turns; she is in trust or above and not in a
@@ -67,8 +72,8 @@ now is kept, she never knows what was. He may comment on it once (`comment`), fr
 reply with it, then comment again, a comment as any other. As he comments, she is to reply in
 her tier, within `moment_draws.REPLY_AFTER` (`draw_reply`), trust where affinity is off; never,
 cold to him, distant, or in a cooldown. As her time comes, with the moments due, in the order
-of their times, it is looked at again: the deployer still has moments on; she is not cold,
-distant or in a cooldown; it did not come before the backend started; she has replied to
+of their times, it is looked at again: the deployer and the user still have moments on; she
+is not cold, distant or in a cooldown; it did not come before the backend started; she has replied to
 fewer of his comments that day in Tokyo than the deployer lets her (`MomentSettings.replies_per_day`), counted by the records of her replies
 (`moment_reply`) that succeeded, as a reply deleted with its comment counts still. If not, she
 does not, for good, unrecorded. She replies on the deployer's chat model, whoever's LLM the user
@@ -262,11 +267,16 @@ CREATE TABLE IF NOT EXISTS moment_comments (
     reply_zh TEXT
 );
 CREATE INDEX IF NOT EXISTS moment_comments_by_reply ON moment_comments(reply_at);
+
+-- The users who have turned moments off, by their own switch; on for all the others.
+CREATE TABLE IF NOT EXISTS moments_off (
+    user_id TEXT PRIMARY KEY REFERENCES users(id)
+);
 """
 
 
 class MomentsOff(Exception):
-    """The deployer has moments off."""
+    """The deployer has moments off, or the user their own switch for them."""
 
 
 class NoMoment(Exception):
@@ -393,11 +403,12 @@ class _DueReply:
 @dataclass(frozen=True)
 class _BeforeReply:
     """What she replies to the producer's comment with, read beforehand in one read: whether
-    she is to (her affinity, None while it is off; how many of his comments she has replied
-    to that day); the producer, her current conversation and its messages; her moment, its
+    she is to (whether he has his own switch for moments on; her affinity, None while it is
+    off; how many of his comments she has replied to that day); the producer, her current conversation and its messages; her moment, its
     Japanese and its picture as she wrote it (None for none); whether he likes it; and his
     comment."""
 
+    switched_on: bool
     status: Status | None
     replied: int
     profile: ProducerProfile
@@ -413,7 +424,7 @@ class _BeforeReply:
 @dataclass(frozen=True)
 class _Standing:
     """What is read of a user, at one moment, to tell whether they have moments: whether
-    they are active and let take turns; and her tier with each character they have had a turn
+    they are active, let take turns and have their own switch on; and her tier with each character they have had a turn
     with, None for one she would post nothing in (in a cooldown, or below trust)."""
 
     active: bool
@@ -517,16 +528,25 @@ class Moments:
                 else:
                     await self._db.write(_no_reply, each.comment_id)
 
-    def switch_of(self, user_id: str) -> bool | None:
-        """Whether the user has moments: True, or None where the deployer has them off."""
-        return True if self._config.moments.enabled else None
+    async def switch_of(self, user_id: str) -> bool | None:
+        """Whether the user has their own switch for moments on, as it is by default; None
+        where the deployer has them off."""
+        if not self._config.moments.enabled:
+            return None
+        return await self._db.read(_switched_on, user_id)
+
+    async def switch(self, user_id: str, on: bool) -> None:
+        """Switch the user's own switch on or off, from the next tick; raise `MomentsOff`
+        where the deployer has moments off."""
+        if not self._config.moments.enabled:
+            raise MomentsOff
+        await self._db.write(_switch, user_id, on)
 
     async def timeline(self, user_id: str) -> list[Moment]:
         """The user's moments that have shown within `KEPT`, the latest first, of the
         characters there are, as are the likes and comments on them; raise `MomentsOff`
-        where the deployer has them off."""
-        if not self._config.moments.enabled:
-            raise MomentsOff
+        where the deployer or the user has them off."""
+        await self._require_on(user_id)
         now = self._clock()
         moments = await self._db.read(
             _timeline, user_id, (now - KEPT).astimezone(UTC).isoformat(),
@@ -543,9 +563,9 @@ class Moments:
 
     async def picture(self, user_id: str, moment_id: int) -> bytes | None:
         """The picture of the user's moment, if it has one and is on their timeline, as WebP;
-        None for none, or another's; raise `MomentsOff` where the deployer has them off."""
-        if not self._config.moments.enabled:
-            raise MomentsOff
+        None for none, or another's; raise `MomentsOff` where the deployer or the user has
+        them off."""
+        await self._require_on(user_id)
         now = self._clock()
         return await self._db.read(
             _read_picture, user_id, moment_id, (now - KEPT).astimezone(UTC).isoformat(),
@@ -554,7 +574,8 @@ class Moments:
 
     async def like(self, user_id: str, moment_id: int, liked: bool) -> None:
         """Have the producer like the moment on his timeline, or no longer, however he did;
-        raise `NoMoment` for one not on it, `MomentsOff` where the deployer has them off."""
+        raise `NoMoment` for one not on it, `MomentsOff` where the deployer or the user has
+        them off."""
         await self._on_timeline(user_id, moment_id)
         await self._db.write(_set_liked, moment_id, liked)
 
@@ -563,7 +584,7 @@ class Moments:
         it, and have her reply as her tier has her, if it does; what is kept of it. Raise
         `CommentInvalid` for a comment with none, or over `COMMENT_LENGTH`, characters but for
         the spaces around them; `AlreadyCommented` if he has already; `NoMoment` for one not
-        on it; `MomentsOff` where the deployer has them off."""
+        on it; `MomentsOff` where the deployer or the user has them off."""
         if not 1 <= len(text.strip()) <= COMMENT_LENGTH:
             raise CommentInvalid
         character_id = await self._on_timeline(user_id, moment_id)
@@ -582,15 +603,14 @@ class Moments:
     async def uncomment(self, user_id: str, moment_id: int) -> None:
         """Delete the producer's comment on the moment on his timeline, if any, her reply to
         it with it, shown or not; raise `NoMoment` for one not on it, `MomentsOff` where the
-        deployer has them off."""
+        deployer or the user has them off."""
         await self._on_timeline(user_id, moment_id)
         await self._db.write(_delete_comment, moment_id)
 
     async def _on_timeline(self, user_id: str, moment_id: int) -> str:
         """The character whose moment on the user's timeline it is; raise `NoMoment` for one
-        not on it, `MomentsOff` where the deployer has them off."""
-        if not self._config.moments.enabled:
-            raise MomentsOff
+        not on it, `MomentsOff` where the deployer or the user has them off."""
+        await self._require_on(user_id)
         now = self._clock()
         character_id = await self._db.read(
             _whose, user_id, moment_id, (now - KEPT).astimezone(UTC).isoformat(),
@@ -599,6 +619,11 @@ class Moments:
         if character_id is None or character_id not in self._characters:
             raise NoMoment
         return character_id
+
+    async def _require_on(self, user_id: str) -> None:
+        """Raise `MomentsOff` where the deployer or the user has moments off."""
+        if await self.switch_of(user_id) is not True:
+            raise MomentsOff
 
     @property
     def map_site(self) -> MapSite:
@@ -670,6 +695,7 @@ class Moments:
         active = (
             bool(contacts) and now - max(contacts) <= ACTIVE
             and (limits is None or limits.turns_per_hour != 0)
+            and _switched_on(db, user_id)
         )
         tiers: dict[str, Tier | None] = {
             t.character_id: _tier(
@@ -780,7 +806,7 @@ class Moments:
         if (
             due.due_at < self._started or before is None
             or due.character_id not in self._characters
-            or _tier(before.status) is None
+            or not before.switched_on or _tier(before.status) is None
             or before.replied >= self._config.moments.replies_per_day
         ):
             await self._db.write(_no_reply, due.comment_id)
@@ -840,6 +866,7 @@ class Moments:
             if conversation is not None else []
         )
         return _BeforeReply(
+            _switched_on(db, due.user_id),
             self._affinities.read_status(db, due.user_id, due.character_id)
             if affinity_on else None,
             replied, read_profile(db, due.user_id), conversation, messages,
@@ -1021,6 +1048,18 @@ def _tier(status: Status | None) -> Tier | None:
 
 def _open(db: sqlite3.Connection) -> None:
     db.executescript(_SCHEMA)
+
+
+def _switched_on(db: sqlite3.Connection, user_id: str) -> bool:
+    row = db.execute("SELECT 1 FROM moments_off WHERE user_id = ?", (user_id,)).fetchone()
+    return row is None
+
+
+def _switch(db: sqlite3.Connection, user_id: str, on: bool) -> None:
+    if on:
+        db.execute("DELETE FROM moments_off WHERE user_id = ?", (user_id,))
+    else:
+        db.execute("INSERT OR IGNORE INTO moments_off (user_id) VALUES (?)", (user_id,))
 
 
 def _keep_plan(
