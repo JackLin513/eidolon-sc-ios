@@ -6,10 +6,13 @@ import Foundation
 /// (`MODEL_00/BODY_SCALE/BASE/MUNE1`); RealityKit names a skeleton's joints by
 /// their node name, so the mapping is by name, resolved once at load time.
 ///
-/// Two of the 57 paths in `dan_loveig_01` never resolve: `POSITION` and
-/// `POSITION/SCALE_POINT` sit on root Transforms the glTF export folded away
-/// (#27). They are reported instead of silently dropped so the caller can put
-/// their translation on the model root.
+/// Four of the 57 paths in `014mir-ss002` never resolve: `POSITION`,
+/// `POSITION/SCALE_POINT` and `MODEL_00` (root Transforms the glTF export
+/// folded away, #27) and `MODEL_00/BODY_SCALE/BASE`. The first three are the
+/// model's stage placement and are reported for the caller to decide about;
+/// `BASE` is the dance's whole-body transform and is deliberately not bound as
+/// a joint — `MotionSampler` reads it by name and folds it into the skeleton
+/// roots instead, which is the only place it can act.
 struct MotionJointMap: Equatable {
     struct Binding: Equatable {
         /// Index into `MotionDance.bones`.

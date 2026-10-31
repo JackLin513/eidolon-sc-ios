@@ -82,6 +82,9 @@ final class MotionPlayback {
         duration = dance.timeLength
         time = 0
         status = "骨骼 \(names.count)、绑定 \(map.bindings.count) 条、辅助骨 \(sampler?.assistCount ?? 0) 根、未绑 \(map.unmapped)"
+        if sampler?.hasRootMotion == true {
+            status += "、根运动 BASE"
+        }
         if configuration != nil {
             status += "、摆动 \(sway?.count ?? 0) 根"
         }

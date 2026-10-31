@@ -162,11 +162,30 @@ struct MotionSampler {
         let translation: [SIMD3<Float>]?
     }
 
+    /// The model-space `BASE` node, which sits above the whole skeleton and is
+    /// not a joint, so it never binds. Its curves are nevertheless most of a
+    /// dance's whole-body motion: in `014mir-ss002` the hip yaw and lean all
+    /// live here, while the pelvis `KOSHI` is a skeleton root whose own curve is
+    /// a constant. The skirt therefore cannot swing until the roots move.
+    ///
+    /// The exported rest pose already has `BASE` folded in at frame 0. Measured
+    /// on that dance: rest is 0.0° from `rootFrame · mirror(KOSHI at frame 0)`
+    /// and 87° from `rootFrame · mirror(BASE · KOSHI at frame 0)`. So the dance
+    /// has to reach the roots as a delta from frame 0, not as an absolute turn,
+    /// or the body would face 87° the wrong way on the first frame.
+    private struct BaseMotion {
+        /// `BASE`'s rotation per frame, mirrored into app space.
+        let rotations: [SIMD4<Float>]
+        /// `BASE`'s translation per frame, mirrored into app space.
+        let translations: [SIMD3<Float>]?
+    }
+
     let dance: MotionDance
     let map: MotionJointMap
     /// The pose a joint keeps when the dance says nothing about it.
     private let rest: [JointPose]
     private let tracks: [Track]
+    private let base: BaseMotion?
     /// The game's calc-bone pass over the rig's assist bones, empty when the
     /// caller did not pass the joint names.
     private let assist: MotionAssist
@@ -185,12 +204,25 @@ struct MotionSampler {
                 translation: Self.position(bone, dance: dance)
             )
         }
+        let baseBone = dance.bones.first { $0.path.split(separator: "/").last == "BASE" }
+        if let baseBone, let rotations = Self.euler(baseBone, dance: dance) {
+            self.base = BaseMotion(
+                rotations: rotations.map(UnityHandedness.rotation),
+                translations: Self.position(baseBone, dance: dance)?
+                    .map(UnityHandedness.translation)
+            )
+        } else {
+            self.base = nil
+        }
     }
 
     var jointCount: Int { rest.count }
 
     /// How many assist bones the calc-bone pass drives, for the status line.
     var assistCount: Int { assist.count }
+
+    /// Whether the dance's model-space `BASE` track reaches the skeleton roots.
+    var hasRootMotion: Bool { base != nil }
 
     /// Every joint's local transform at `frame`, in `rest` order.
     func pose(atFrame frame: Int) -> [JointPose] {
@@ -210,7 +242,46 @@ struct MotionSampler {
             poses[track.joint] = pose
         }
         assist.apply(&poses)
+        if let base {
+            // After the tracks and the calc-bone pass: `BASE` sits above the
+            // whole skeleton, so its turn has to land on top of everything the
+            // joints decided for themselves.
+            apply(base, frame: min(max(frame, 0), dance.frames - 1), to: &poses)
+        }
         return poses
+    }
+
+    /// Turn and lift every skeleton root by what `BASE` has done since frame 0.
+    ///
+    /// `BASE`'s curves are expressed in its own parent's space, which for the
+    /// model root is Unity's world. The roots live in the model space the USDZ
+    /// was exported in, so the delta has to cross the same frame a root's own
+    /// rotation does: `RF · mirror(Δ) · RF⁻¹`. Translating the roots likewise
+    /// uses the point form of that frame, which turns a Unity Y bob into +Z.
+    ///
+    /// The rest translation of a root is its offset from `BASE`'s origin, so
+    /// strictly the delta should also rotate that offset; at 0.147 units it
+    /// moves the figure by at most a hand's width and is left out, which keeps
+    /// her dancing in place instead of orbiting the model root.
+    private func apply(_ base: BaseMotion, frame: Int, to poses: inout [JointPose]) {
+        let delta = QuaternionMath.multiply(
+            base.rotations[frame], QuaternionMath.inverse(base.rotations[0])
+        )
+        let world = QuaternionMath.multiply(
+            QuaternionMath.multiply(UnityHandedness.rootFrame, delta),
+            QuaternionMath.inverse(UnityHandedness.rootFrame)
+        )
+        let translation = base.translations.map {
+            QuaternionMath.rotate(
+                UnityHandedness.rootFrame, UnityHandedness.translation($0[frame] - $0[0])
+            )
+        }
+        for root in map.roots {
+            poses[root].rotation = QuaternionMath.multiply(world, poses[root].rotation)
+            if let translation {
+                poses[root].translation += translation
+            }
+        }
     }
 
     func pose(at time: Double) -> [JointPose] {

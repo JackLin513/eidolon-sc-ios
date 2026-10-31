@@ -116,6 +116,76 @@ final class MotionPoseTests: XCTestCase {
         XCTAssertEqual(rotation.w, 0.5, accuracy: 1e-6)
     }
 
+    // MARK: - Root motion
+
+    /// The dance's model-space `BASE` node: a −90° roll it already holds on
+    /// frame 0, a 90° yaw by frame 1, and the bob the real dance has
+    /// (0.8535 → 0.74225 Unity units on Y). `HIPS` is a skeleton root here, so
+    /// both the base turn and the bob have to reach it.
+    private let baseFixture = """
+    {"format":"eidolon.motion/1","fps":30,"frames":2,"time_length":0.0333333,
+     "angle_scale":100,"position_scale":4000,
+     "bones":[{"path":"MODEL_00/BODY_SCALE/BASE","rot":[0,[0,9000],-9000],
+               "pos":[0,[3414,-445],0]},
+              {"path":"MODEL_00/HIPS","rot":[0,0,0]}]}
+    """
+    /// A root's rest rotation is already the model-space one RealityKit
+    /// reports, so the fixture starts both roots at the root frame.
+    private let rootRest = [
+        JointPose(
+            translation: SIMD3(0, 0, 0.147), rotation: UnityHandedness.rootFrame, scale: .one
+        ),
+        JointPose(
+            translation: SIMD3(0, 0, 0.147), rotation: UnityHandedness.rootFrame, scale: .one
+        ),
+    ]
+
+    private func rootMotionSampler() throws -> MotionSampler {
+        let dance = try JSONDecoder().decode(MotionDance.self, from: Data(baseFixture.utf8))
+        let names = ["HIPS", "KOSHI"]
+        let map = MotionJointMap.resolve(paths: dance.bones.map(\.path), joints: names)
+        return MotionSampler(dance: dance, map: map, rest: rootRest, joints: names)
+    }
+
+    /// The exported rest pose already contains `BASE`, so the first frame must
+    /// come out exactly as the rest pose says, even though `BASE` itself starts
+    /// at −90° here. Applying it as an absolute turn would face her 90° aside.
+    func testBaseReachesTheRootsOnlyAsADeltaFromTheFirstFrame() throws {
+        let pose = try rootMotionSampler().pose(atFrame: 0)
+
+        for root in 0..<2 {
+            let rotation = pose[root].rotation
+            XCTAssertEqual(rotation.x, 0.7071068, accuracy: 1e-5)
+            XCTAssertEqual(rotation.w, 0.7071068, accuracy: 1e-5)
+            XCTAssertEqual(pose[root].translation, SIMD3(0, 0, 0.147))
+        }
+    }
+
+    /// By frame 1 `BASE` has yawed 90°, so the root's turn since frame 0 must be
+    /// that yaw moved into the model space: `RF · mirror(Ry(90°)) · RF⁻¹`, a
+    /// −90° turn about the model's Z axis. On top of the root frame that is
+    /// `(½, −½, −½, ½)`. Left absolute, or left unconjugated, the x or z term
+    /// comes out 0 instead.
+    func testBaseTurnSinceTheFirstFrameReachesEveryRoot() throws {
+        let pose = try rootMotionSampler().pose(atFrame: 1)
+
+        for root in 0..<2 {
+            let rotation = pose[root].rotation
+            XCTAssertEqual(rotation.x, 0.5, accuracy: 1e-5)
+            XCTAssertEqual(rotation.y, -0.5, accuracy: 1e-5)
+            XCTAssertEqual(rotation.z, -0.5, accuracy: 1e-5)
+            XCTAssertEqual(rotation.w, 0.5, accuracy: 1e-5)
+        }
+        // Unity's Y bob lands on the model's Z, and only the bob since frame 0.
+        XCTAssertEqual(pose[0].translation.z, 0.147 - 0.11125, accuracy: 1e-5)
+        XCTAssertEqual(pose[1].translation.z, 0.147 - 0.11125, accuracy: 1e-5)
+    }
+
+    func testDanceWithoutABaseTrackReportsNoRootMotion() throws {
+        XCTAssertFalse(try sampler().hasRootMotion)
+        XCTAssertTrue(try rootMotionSampler().hasRootMotion)
+    }
+
     // MARK: - Handedness
 
     func testYawIsMirroredToTheOppositeSign() {
