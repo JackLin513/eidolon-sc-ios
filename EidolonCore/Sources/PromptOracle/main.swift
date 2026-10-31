@@ -96,6 +96,9 @@ func main() async throws {
 
     let eidolon = try Eidolon(location: .init(root: root.appendingPathComponent("app")))
     try await eidolon.install(bundleAt: URL(fileURLWithPath: bundlePath))
+    // The scenarios' fixed dates say nothing of her cycle: keep it out, so the prompts are
+    // the ones upstream writes without it (spec #52).
+    try await eidolon.setCycleEnabled(false)
 
     let provider = ScriptedProvider(
         replies: scenario.history.map { ["<ja>\($0.ja)</ja><zh>\($0.zh)</zh>"] }

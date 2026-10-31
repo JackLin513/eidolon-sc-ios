@@ -243,6 +243,8 @@ final class AppModel {
     /// Whether the installed bundle carries the weekly job list (format 4). The schedule
     /// pages and their menu entry exist only then.
     private(set) var hasJobList = false
+    /// Whether her cycle is told in prompts (spec #52); on until switched off.
+    private(set) var cyclesEnabled = true
 
     /// The time zone the producer's days go by: the profile's, else this device's.
     var producerTimeZone: TimeZone {
@@ -775,6 +777,18 @@ final class AppModel {
         RosterStore.save(roster)
     }
 
+    /// Switches her cycle for every character; the position itself does not change.
+    func setCyclesEnabled(_ on: Bool) async {
+        let before = cyclesEnabled
+        cyclesEnabled = on
+        do {
+            try await core.setCycleEnabled(on)
+        } catch {
+            cyclesEnabled = before
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func refresh() async {
         do {
             try await load()
@@ -815,6 +829,7 @@ final class AppModel {
         } else {
             hasJobList = false
         }
+        cyclesEnabled = (try? await core.cycleEnabled()) ?? true
         standInfo = try await core.installedStandInfo()
         barInfo = try await core.installedBarInfo()
         barRewardToday = (try? await core.barRewardToday()) ?? true

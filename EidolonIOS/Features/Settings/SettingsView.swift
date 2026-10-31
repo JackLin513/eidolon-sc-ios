@@ -273,6 +273,17 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("周期", isOn: Binding(
+                        get: { app.cyclesEnabled },
+                        set: { on in Task { await app.setCyclesEnabled(on) } }
+                    ))
+                } header: {
+                    Text("她的周期")
+                } footer: {
+                    Text("关掉后，她的提示词不再带经期和经期前的状态；周期本身照常推进，重新打开还是原来的位置。")
+                }
+
+                Section {
                     Toggle("按好感度随机", isOn: $reachOutByTier)
                     Stepper("搭话间隔：\(reachOutHours) 小时", value: $reachOutHours, in: 1...72)
                         .disabled(reachOutByTier)
