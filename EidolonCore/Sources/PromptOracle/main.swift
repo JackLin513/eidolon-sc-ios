@@ -333,7 +333,7 @@ func barMain(_ arguments: [String]) async throws {
     )
     let visit = try BarPrompt.visit(
         aboutProducer: scenario.aboutProducer,
-        reason: listed,
+        reason: VisitReason(listed),
         topic: topic,
         cups: scenario.cups,
         affinityLines: scenario.affinityLines ?? [],

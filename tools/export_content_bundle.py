@@ -45,7 +45,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-FORMAT_VERSION = 3
+FORMAT_VERSION = 4
 CONTENT_SCHEMA_VERSION = 1
 
 # Outfits come from the upstream `stand fetch` / `stand outfits` build directory:
@@ -104,6 +104,7 @@ PATH_FIELDS = ("sheet", "avatar", "scsp_avatar", "background", "facts")
 SHARED_FILES = (
     "world.json", "world-corrections.json", "readings.toml", "gifts.toml",
     "drinks.toml", "bar_visits.toml", "bar_lines.toml", "bar_audio.json",
+    "jobs.toml",
 )
 
 
@@ -672,6 +673,7 @@ def write_bundle(
                 "bar_visits.toml": "characters/bar_visits.json",
                 "bar_lines.toml": "characters/bar_lines.json",
                 "bar_audio.json": "characters/bar_audio.json",
+                "jobs.toml": "characters/jobs.json",
             }
             for relative in sorted(character_files):
                 source = characters_dir / relative

@@ -160,6 +160,9 @@ extension Eidolon {
             herLives: world?.livesOf(character.name) ?? [],
             holidays: try? holidayTable()
         )
+        let scheduleLines = (try? scheduleLines(
+            characterID: characterID, now: now, timeZone: zone
+        )) ?? []
         let nowText = NowPrompt.text(
             now: now,
             timeZone: zone,
@@ -167,7 +170,8 @@ extension Eidolon {
             affinityLines: AffinityPrompt.lines(tier: affinity.tier, judged: nil),
             lastContact: contact,
             birthday: producer.birthday,
-            todayLines: todayLines
+            todayLines: todayLines,
+            scheduleLines: scheduleLines
         )
         let memories = await reachingOutMemories(
             characterID: characterID,

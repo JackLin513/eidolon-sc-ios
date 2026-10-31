@@ -4,7 +4,7 @@ import GRDB
 /// The writable user library (ADR-0002). Its schema evolves with the app, not
 /// with the content bundle, and is therefore managed by GRDB migrations.
 enum UserSchema {
-    static let version = 9
+    static let version = 10
 
     static func migrate(_ dbQueue: DatabaseQueue) throws {
         var migrator = DatabaseMigrator()
@@ -208,6 +208,41 @@ enum UserSchema {
             try db.execute(sql: "ALTER TABLE messages ADD COLUMN affinity_up INTEGER")
             try db.execute(sql: "ALTER TABLE messages ADD COLUMN affinity_tier_changed INTEGER")
             try db.execute(sql: "ALTER TABLE messages ADD COLUMN affinity_cooldown INTEGER")
+        }
+        migrator.registerMigration("v10") { db in
+            // The weekly schedule (spec #50): the jobs drawn for a week, kept so the week
+            // never changes once published, and what the producer placed.
+            try db.execute(sql: """
+                CREATE TABLE schedule_weeks (
+                    week TEXT PRIMARY KEY,
+                    drawn_at TEXT NOT NULL
+                );
+                CREATE TABLE weekly_jobs (
+                    id TEXT PRIMARY KEY,
+                    week TEXT NOT NULL,
+                    character_id TEXT NOT NULL,
+                    listed_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    note TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    length INTEGER NOT NULL,
+                    slots TEXT
+                );
+                CREATE INDEX weekly_jobs_by_week
+                    ON weekly_jobs(week, character_id);
+                CREATE TABLE schedule_placements (
+                    week TEXT NOT NULL,
+                    job_id TEXT NOT NULL,
+                    character_id TEXT NOT NULL,
+                    day INTEGER NOT NULL,
+                    slot INTEGER NOT NULL,
+                    saved_at TEXT NOT NULL,
+                    counted_at TEXT,
+                    PRIMARY KEY (week, job_id)
+                );
+                CREATE INDEX schedule_placements_by_her
+                    ON schedule_placements(character_id, week);
+                """)
         }
         try migrator.migrate(dbQueue)
         try dbQueue.write { db in
