@@ -103,9 +103,20 @@ def _keep_drawn_place(removals) -> None:
         xformable = UsdGeom.Xformable(node)
         if not xformable:
             continue
-        current = xformable.GetLocalTransformation()[0]
+        current = xformable.GetLocalTransformation()
+        # Only the rotation is restored. `geomBindTransform` also carries a
+        # constant translation (the Blender round trip's root offset); the
+        # skinned points already sit at their final height in skeleton space,
+        # and keeping that translation pushes the figure ~0.87 m off the
+        # bounds sidecar and the ground grid.
+        composed = current * removed
+        restored = Gf.Matrix4d(
+            *[[composed[row][column] for column in range(3)]
+              + [0.0] for row in range(3)],
+            [current[3][0], current[3][1], current[3][2], 1.0],
+        )
         xformable.ClearXformOpOrder()
-        xformable.AddTransformOp().Set(current * removed)
+        xformable.AddTransformOp().Set(restored)
 
 
 def inject_normals(stage: Usd.Stage, attributes: dict) -> tuple[int, int]:
