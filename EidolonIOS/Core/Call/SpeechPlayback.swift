@@ -54,6 +54,15 @@ final class SpeechPlayback: AudioPlayback, @unchecked Sendable {
         playing?.stop()
     }
 
+    /// Cuts the segment playing now without ending the call: 只看文字 takes her voice away
+    /// mid-answer, and the next answer may be voiced again.
+    func silence() async {
+        lock.lock()
+        let playing = current
+        lock.unlock()
+        playing?.stop()
+    }
+
     private func clear(_ player: AVAudioPlayer) {
         lock.lock()
         if current === player { current = nil }

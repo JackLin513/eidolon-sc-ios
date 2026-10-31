@@ -19,7 +19,16 @@ struct CallView: View {
     @State private var state: CallState = .connecting
     /// The line she is saying now; older ones are in the conversation.
     @State private var line: HerLine?
+    /// The segment right before it in the same reply, kept faint above it while 只看文字
+    /// is on (upstream `LineCard`).
+    @State private var previousLine: HerLine?
     @State private var hearing: String?
+    /// Whether her replies are read as text rather than voiced. It stays on this phone
+    /// between calls (spec #43), and is set on the call before it starts.
+    @AppStorage("call.textOnly") private var textOnly = false
+    /// Whether this call's microphone is closed. It belongs to the one call only: a redial
+    /// starts with the microphone open, as upstream's 麦克风静音 does (spec #43).
+    @State private var muted = false
     @State private var failure: String?
     @State private var startError: String?
     @State private var started = false
@@ -137,6 +146,9 @@ struct CallView: View {
             let call = try await app.beginCall(for: character)
             session = call
             let events = call.events()
+            // The remembered 只看文字 is set before she starts, so the first reply already
+            // follows it (spec #43). The pill stays live through dialling.
+            await call.setTextOnly(textOnly)
             await call.start()
             autoHangUpIfRequested(call)
             for await event in events {
@@ -152,6 +164,9 @@ struct CallView: View {
         session = nil
         state = .connecting
         line = nil
+        previousLine = nil
+        // 麦克风静音 belongs to one call: a redial starts with the microphone open (spec #43).
+        muted = false
         hearing = nil
         failure = nil
         startError = nil
@@ -263,8 +278,11 @@ struct CallView: View {
         case .recognized:
             hearing = nil
             failure = nil
-        case let .segment(_, _, ja, zh):
-            line = HerLine(ja: ja, zh: zh)
+        case let .segment(reply, segment, ja, zh):
+            // The segment before this one in the same reply stays faint above it while
+            // 只看文字 is on (upstream `LineCard`). A new reply starts a fresh card.
+            previousLine = line?.reply == reply ? line : nil
+            line = HerLine(reply: reply, segment: segment, ja: ja, zh: zh)
         case .segmentStarted, .segmentStopped, .emotion:
             break
         case let .failed(message):
@@ -434,27 +452,21 @@ struct CallView: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 18)
             }
-            footer
+            if startError == nil, !isEnded {
+                dock
+            }
         }
         .padding(.top, 16)
         .padding(.bottom, 16)
     }
 
+    /// Three slots, as upstream: 换衣装 on the left, her name and status in the middle,
+    /// 只看文字 on the right. Both switches are gone once the call is over; both work while
+    /// it dials.
     private var header: some View {
-        ZStack {
-            if hasStand {
-                VStack(spacing: 2) {
-                    Text(character.name)
-                        .font(.system(size: 26, weight: .bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    status
-                }
-                .frame(maxWidth: .infinity)
-            }
+        HStack(spacing: 12) {
             HStack {
-                Spacer()
-                if showsOutfitButton {
+                if showsOutfitButton, !isEnded {
                     Button {
                         showsOutfits = true
                     } label: {
@@ -466,9 +478,51 @@ struct CallView: View {
                     }
                     .accessibilityLabel("换衣装")
                 }
+                Spacer(minLength: 0)
             }
+            .frame(maxWidth: .infinity)
+            if hasStand {
+                VStack(spacing: 2) {
+                    Text(character.name)
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    status
+                }
+                .fixedSize()
+            }
+            HStack {
+                Spacer(minLength: 0)
+                if startError == nil, !isEnded {
+                    textOnlyKey
+                }
+            }
+            .frame(maxWidth: .infinity)
         }
         .padding(.horizontal, 20)
+    }
+
+    /// Upstream's 只看文字 glass pill: icon and words, lit white with black words while it is
+    /// on. Its state is remembered on this phone, so it reads the same on the next call.
+    private var textOnlyKey: some View {
+        Button {
+            textOnly.toggle()
+            Task { await session?.setTextOnly(textOnly) }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "captions.bubble")
+                    .font(.system(size: 15, weight: .semibold))
+                Text("只看文字")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .foregroundStyle(textOnly ? Color.black : Color.white)
+            .padding(.horizontal, 20)
+            .frame(height: 44)
+            .background(Capsule().fill(textOnly ? Color.white : Color.white.opacity(0.15)))
+        }
+        .accessibilityLabel("只看文字")
+        .accessibilityValue(textOnly ? "开" : "关")
+        .accessibilityAddTraits(textOnly ? .isSelected : [])
     }
 
     /// Her without a stand: the large avatar, a dialling ripple while it connects, her name
@@ -560,20 +614,21 @@ struct CallView: View {
     }
 
     /// Her one line right now: Japanese first, the smaller Chinese under it, and what the
-    /// producer is saying at the foot while they are saying it (upstream `LineCard`).
+    /// producer is saying at the foot while they are saying it (upstream `LineCard`). While
+    /// 只看文字 is on, the segment before it in the same reply stays faint above it.
     private var lineCard: some View {
         VStack(spacing: 4) {
             if let line {
-                Text(line.ja)
-                    .font(.system(size: 17))
-                    .foregroundStyle(.white)
-                if !line.zh.isEmpty {
-                    Text(line.zh)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.8))
+                VStack(spacing: 4) {
+                    if textOnly, let previousLine {
+                        lineText(previousLine)
+                            .opacity(0.45)
+                            .padding(.bottom, 12)
+                    }
+                    lineText(line)
                 }
             } else {
-                Text("直接说话就好")
+                Text(textOnly ? "她会用文字回复" : "直接说话就好")
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.8))
             }
@@ -597,13 +652,27 @@ struct CallView: View {
         .frame(maxWidth: .infinity)
     }
 
+    private func lineText(_ line: HerLine) -> some View {
+        VStack(spacing: 4) {
+            Text(line.ja)
+                .font(.system(size: 17))
+                .foregroundStyle(.white)
+            if !line.zh.isEmpty {
+                Text(line.zh)
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+        }
+    }
+
     /// The end card: why it ended, when she will talk again if she is cooling down, and
-    /// 「返回」/「重拨」 (upstream `Ended`). While the call is on, it is the hang-up key.
+    /// 「回到对话」 with 「重拨」 beside it (upstream `Ended`). No gift and no allowance here in
+    /// version 1.
     private func endedCard(_ reason: CallEnd) -> some View {
         VStack(spacing: 12) {
             Text(reason.message)
-                .font(.footnote)
-                .foregroundStyle(.white.opacity(0.85))
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
             if case let .sheHungUp(until) = reason, let until {
                 Text(cooldownText(until))
@@ -612,23 +681,42 @@ struct CallView: View {
                     .multilineTextAlignment(.center)
             }
             HStack(spacing: 12) {
-                Button("返回") { dismiss() }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.white.opacity(0.25))
+                Button {
+                    dismiss()
+                } label: {
+                    Text("回到对话")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 24)
+                        .frame(height: 44)
+                        .background {
+                            let shape = Capsule()
+                            shape
+                                .fill(.ultraThinMaterial)
+                                .overlay(shape.fill(.white.opacity(0.15)))
+                        }
+                }
                 if canRedial {
                     Button {
                         redial()
                     } label: {
-                        Label("重拨", systemImage: "phone.fill")
+                        HStack(spacing: 8) {
+                            Image(systemName: "phone.fill")
+                                .font(.system(size: 17))
+                            Text("重拨")
+                                .font(.system(size: 17, weight: .semibold))
+                        }
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 24)
+                        .frame(height: 44)
+                        .background(Capsule().fill(.white))
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.white.opacity(0.35))
                 }
             }
             .padding(.top, 4)
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 18)
+        .padding(.vertical, 24)
         .frame(maxWidth: 578)
         .frame(maxWidth: .infinity)
         .background {
@@ -639,24 +727,52 @@ struct CallView: View {
         }
     }
 
-    private var footer: some View {
-        VStack(spacing: 12) {
-            if !isEnded {
-                Button {
-                    // The page leaves at once; the hang-up tone belongs to the app's own
-                    // player, so it still sounds behind the chat (spec #35).
-                    Task { await session?.hangUp() }
-                    dismiss()
-                } label: {
-                    Image(systemName: "phone.down.fill")
-                        .font(.system(size: 26))
-                        .foregroundStyle(.white)
-                        .frame(width: 64, height: 64)
-                        .background(Color.red, in: Circle())
-                }
-                .accessibilityLabel("挂断")
-                .disabled(session == nil)
+    /// The dock: one glass capsule holding the mute key and the hang-up key (upstream
+    /// `Dock`). 麦克风静音 is greyed out until the call connects; the whole dock is gone once it
+    /// ends.
+    private var dock: some View {
+        HStack(spacing: 8) {
+            Button {
+                muted.toggle()
+                Task { await session?.setMuted(muted) }
+            } label: {
+                Image(systemName: muted ? "mic.slash.fill" : "mic.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(muted ? Color.black : Color.white)
+                    .frame(width: 56, height: 56)
+                    .background(Circle().fill(muted ? Color.white : Color.white.opacity(0.15)))
             }
+            .accessibilityLabel("麦克风静音")
+            .accessibilityValue(muted ? "开" : "关")
+            .accessibilityAddTraits(muted ? .isSelected : [])
+            .disabled(isConnecting || session == nil)
+            .opacity(isConnecting ? 0.35 : 1)
+            Button {
+                // The page leaves at once; the hang-up tone belongs to the app's own
+                // player, so it still sounds behind the chat (spec #35).
+                Task { await session?.hangUp() }
+                dismiss()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "phone.down.fill")
+                        .font(.system(size: 20))
+                    Text("挂断")
+                        .font(.system(size: 17, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 24)
+                .frame(height: 56)
+                .background(Capsule().fill(Color(hex: "#c8283c")))
+            }
+            .accessibilityLabel("挂断")
+            .disabled(session == nil)
+        }
+        .padding(8)
+        .background {
+            let shape = Capsule()
+            shape
+                .fill(.ultraThinMaterial)
+                .overlay(shape.fill(.white.opacity(0.12)))
         }
         .padding(.bottom, 8)
     }
@@ -684,6 +800,10 @@ struct CallView: View {
 }
 
 private struct HerLine {
+    /// Which reply and which segment of it this is, so the card can tell a continued line
+    /// from the start of a new one.
+    let reply: Int
+    let segment: Int
     let ja: String
     let zh: String
 }

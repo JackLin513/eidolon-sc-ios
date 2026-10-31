@@ -298,8 +298,15 @@ final class FakePlayback: AudioPlayback, @unchecked Sendable {
     private let lock = NSLock()
     private var played: [Data] = []
     private(set) var stopped = false
+    /// How many times the segment now playing was cut short, as 只看文字 does without
+    /// ending the call.
+    private(set) var silences = 0
     var delay: Duration?
     var timeline: Timeline?
+    /// The segment being played waits here until it is cut: a test can turn 只看文字 on
+    /// while the segment is still under way.
+    var playsUntilSilenced = false
+    private var held: CheckedContinuation<Void, Never>?
 
     var audio: [Data] {
         lock.lock()
@@ -310,7 +317,13 @@ final class FakePlayback: AudioPlayback, @unchecked Sendable {
     func play(_ audio: Data) async throws {
         let text = String(decoding: audio, as: UTF8.self)
         timeline?.add("play-start:\(text)")
-        if let delay { try await Task.sleep(for: delay) }
+        if playsUntilSilenced {
+            await withCheckedContinuation { continuation in
+                hold(continuation)
+            }
+        } else if let delay {
+            try await Task.sleep(for: delay)
+        }
         record(audio)
         timeline?.add("play-end:\(text)")
     }
@@ -318,6 +331,34 @@ final class FakePlayback: AudioPlayback, @unchecked Sendable {
     func stop() async {
         timeline?.add("playback-stop")
         markStopped()
+        resumeHeld()
+    }
+
+    /// As the real playback: the segment playing stops where it is, and the call goes on.
+    func silence() async {
+        timeline?.add("playback-silence")
+        markSilence()
+        resumeHeld()
+    }
+
+    private func markSilence() {
+        lock.lock()
+        silences += 1
+        lock.unlock()
+    }
+
+    private func hold(_ continuation: CheckedContinuation<Void, Never>) {
+        lock.lock()
+        held = continuation
+        lock.unlock()
+    }
+
+    private func resumeHeld() {
+        lock.lock()
+        let continuation = held
+        held = nil
+        lock.unlock()
+        continuation?.resume()
     }
 
     private func record(_ audio: Data) {
@@ -419,6 +460,7 @@ final class FakeTones: CallTones, @unchecked Sendable {
 final class ReplyScriptProvider: ChatProvider, @unchecked Sendable {
     private let lock = NSLock()
     private var replies: [[String]]
+    private var asked = 0
     let failure: Error?
 
     init(_ replies: [[String]], failure: Error? = nil) {
@@ -426,8 +468,16 @@ final class ReplyScriptProvider: ChatProvider, @unchecked Sendable {
         self.failure = failure
     }
 
+    /// How many turns were asked of her, in order: one per reply she gives.
+    var turnsAsked: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return asked
+    }
+
     func stream(messages: [PromptMessage]) -> AsyncThrowingStream<String, Error> {
         lock.lock()
+        asked += 1
         let chunks = replies.isEmpty ? [] : replies.removeFirst()
         lock.unlock()
         return AsyncThrowingStream { continuation in
@@ -621,7 +671,8 @@ final class CallSessionTests: XCTestCase {
         historyTurns: Int = 20,
         connectTimeout: Duration = .seconds(30),
         tones: any CallTones = SilentTones(),
-        voiceModel: String = "s2.1-pro-free"
+        voiceModel: String = "s2.1-pro-free",
+        prepare: (@Sendable (CallSession) async -> Void)? = nil
     ) async throws -> (CallSession, EventLog, FakeCapture) {
         let setup = CallSetup(
             capture: capture,
@@ -644,6 +695,8 @@ final class CallSessionTests: XCTestCase {
         Task.detached {
             for await event in stream { log.append(event) }
         }
+        // What the app sets while dialing, before the call connects.
+        if let prepare { await prepare(session) }
         await session.start()
         return (session, log, capture)
     }
@@ -2808,6 +2861,401 @@ final class CallSessionTests: XCTestCase {
         }
         XCTAssertEqual(captions, ["あのね"])
         await session.hangUp()
+    }
+
+    // MARK: - 只看文字 and 麦克风静音
+
+    /// 只看文字: her reply goes on the card at her pace and the voice service is never
+    /// asked; the microphone stays open, her emotions are judged and the turn is recorded
+    /// as any other (spec #43).
+    func testTextOnlyPutsHerWordsOnTheCardWithoutAVoice() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>もしもし</ja><zh>喂</zh>", "<ja>聞こえてるよ</ja><zh>听得见哦</zh>"],
+        ])
+        let synthesis = FakeSynthesis()
+        let playback = FakePlayback()
+        let judge = ScriptedEmotionJudge([
+            SegmentEmotion(emotion: .happy), SegmentEmotion(emotion: .happy),
+        ])
+        let (session, log, capture) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            synthesis: synthesis,
+            playback: playback,
+            emotionJudge: judge,
+            prepare: { await $0.setTextOnly(true) }
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("both segments on the card", timeout: .seconds(10)) {
+            segments(of: log).count == 2
+        }
+        try await waitFor("listening again", timeout: .seconds(5)) {
+            await session.currentState() == .listening
+        }
+
+        XCTAssertEqual(synthesis.texts, [], "no voice is made in 只看文字")
+        XCTAssertEqual(playback.audio, [], "nothing is played")
+        XCTAssertEqual(played(of: log), [], "her mouth does not move")
+        XCTAssertTrue(capture.isHearing, "the microphone stays open")
+        XCTAssertEqual(segments(of: log).map(\.ja), ["もしもし", "聞こえてるよ"])
+        let asked = await judge.askedSegments()
+        XCTAssertEqual(asked.count, 2, "her emotions are still judged")
+        let conversation = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertEqual(conversation?.messages.count, 2, "the turn is recorded as any other")
+        await session.hangUp()
+    }
+
+    /// Each line stays up about as long as she would take to say it: five Japanese
+    /// characters a second, never shorter than 1.5 seconds (upstream `CHARACTERS_PER_SECOND`,
+    /// `SHORTEST_LINE_MS`). The first line is on the card as soon as it arrives.
+    func testTextOnlyKeepsEachLineForAsLongAsSheWouldSayIt() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>あ</ja><zh>啊</zh>", "<ja>ああああああああああ</ja><zh>啊啊啊啊啊啊啊啊啊啊</zh>"],
+        ])
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            prepare: { await $0.setTextOnly(true) }
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        let clock = ContinuousClock()
+        let saidAt = clock.now
+        recognition.say("ねえ")
+
+        let deadline = saidAt + .seconds(10)
+        while segments(of: log).isEmpty, clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let firstShownAt = clock.now
+        while segments(of: log).count < 2, clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let secondShownAt = clock.now
+        XCTAssertEqual(segments(of: log).count, 2, "both lines reached the card")
+        XCTAssertLessThan(
+            firstShownAt - saidAt, .seconds(1),
+            "the first line is shown as it arrives, not after a wait"
+        )
+        XCTAssertGreaterThanOrEqual(
+            secondShownAt - firstShownAt, .milliseconds(1400),
+            "the second line waits out the first line's 1.5s floor"
+        )
+        await session.hangUp()
+    }
+
+    /// The pace the card keeps a line for, from the Japanese as she says it: punctuation
+    /// counts, whitespace does not.
+    func testHerTextPaceIsFiveCharactersASecondWithAShortestLine() {
+        XCTAssertEqual(CallSession.lineTime("もしもし"), .milliseconds(1500))
+        XCTAssertEqual(CallSession.lineTime(String(repeating: "あ", count: 10)), .milliseconds(2000))
+        XCTAssertEqual(CallSession.lineTime(String(repeating: "あ", count: 20)), .milliseconds(4000))
+        XCTAssertEqual(CallSession.lineTime("あ あ\nあ"), .milliseconds(1500), "whitespace does not count")
+    }
+
+    /// 只看文字 turned on while she is being heard stops the segment playing, reads the
+    /// rest of that reply on the card, and leaves the calls after it unvoiced too.
+    func testTurningTextOnlyOnMidAnswerCutsHerVoiceAndReadsTheRest() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>一つ目</ja><zh>第一句</zh>", "<ja>二つ目</ja><zh>第二句</zh>"],
+            ["<ja>三つ目</ja><zh>第三句</zh>"],
+        ])
+        let synthesis = FakeSynthesis()
+        let playback = FakePlayback()
+        playback.playsUntilSilenced = true
+        let timeline = Timeline()
+        playback.timeline = timeline
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            synthesis: synthesis,
+            playback: playback
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("her voice starts") { timeline.index(of: "play-start:一つ目") != nil }
+
+        await session.setTextOnly(true)
+        try await waitFor("the rest on the card", timeout: .seconds(5)) {
+            segments(of: log).contains { $0.reply == 0 && $0.segment == 1 }
+        }
+        XCTAssertEqual(playback.silences, 1, "the segment playing is cut")
+        XCTAssertEqual(playback.audio.count, 1, "nothing after it is played")
+        XCTAssertEqual(played(of: log), ["start:0:0", "stop:0:0"], "no mouth for the rest")
+
+        try await waitFor("listening again", timeout: .seconds(5)) {
+            await session.currentState() == .listening
+        }
+        recognition.say("二度目")
+        try await waitFor("the next reply on the card", timeout: .seconds(10)) {
+            segments(of: log).contains { $0.reply == 1 }
+        }
+        XCTAssertFalse(synthesis.texts.contains("三つ目"), "the next reply is read, not voiced")
+        XCTAssertEqual(playback.audio.count, 1)
+        await session.hangUp()
+    }
+
+    /// A reply that began as text stays text to its end even if 只看文字 is turned off
+    /// midway; her voice comes back on the next reply.
+    func testATextReplyStaysTextWhenTextOnlyIsTurnedOffMidAnswer() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>もしもし</ja><zh>喂</zh>", "<ja>聞こえてるよ</ja><zh>听得见哦</zh>"],
+            ["<ja>三つ目</ja><zh>第三句</zh>"],
+        ])
+        let synthesis = FakeSynthesis()
+        let playback = FakePlayback()
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            synthesis: synthesis,
+            playback: playback,
+            prepare: { await $0.setTextOnly(true) }
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("the first line", timeout: .seconds(5)) {
+            segments(of: log).contains { $0.reply == 0 && $0.segment == 0 }
+        }
+
+        await session.setTextOnly(false)
+        try await waitFor("the second line", timeout: .seconds(5)) {
+            segments(of: log).contains { $0.reply == 0 && $0.segment == 1 }
+        }
+        try await waitFor("listening again", timeout: .seconds(5)) {
+            await session.currentState() == .listening
+        }
+        XCTAssertEqual(synthesis.texts, [], "the reply that began as text stays text")
+        XCTAssertEqual(playback.audio, [])
+
+        recognition.say("二度目")
+        try await waitFor("her voice is back", timeout: .seconds(5)) {
+            playback.audio.count == 1
+        }
+        XCTAssertEqual(synthesis.texts, ["三つ目"], "the next reply is voiced")
+        await session.hangUp()
+    }
+
+    /// A reply cut over to text stays text to its end even if 只看文字 is turned off again
+    /// before the reply is done: the shape is latched per reply, so one reply is never half
+    /// voiced and half read, and the next reply is the first to start fresh (spec #43).
+    func testAReplyTurnedToTextStaysTextWhenTextOnlyIsTurnedOffAgain() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            [
+                "<ja>一つ目</ja><zh>第一句</zh>",
+                "<ja>二つ目</ja><zh>第二句</zh>",
+                "<ja>三つ目</ja><zh>第三句</zh>",
+            ],
+        ])
+        let synthesis = FakeSynthesis()
+        let playback = FakePlayback()
+        playback.playsUntilSilenced = true
+        let timeline = Timeline()
+        playback.timeline = timeline
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            synthesis: synthesis,
+            playback: playback
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("her voice starts") { timeline.index(of: "play-start:一つ目") != nil }
+
+        await session.setTextOnly(true)
+        try await waitFor("the second line on the card", timeout: .seconds(5)) {
+            segments(of: log).contains { $0.reply == 0 && $0.segment == 1 }
+        }
+        await session.setTextOnly(false)
+        try await waitFor("the third line on the card", timeout: .seconds(5)) {
+            segments(of: log).contains { $0.reply == 0 && $0.segment == 2 }
+        }
+
+        XCTAssertFalse(synthesis.texts.contains("三つ目"), "the reply stays text to its end")
+        XCTAssertEqual(playback.audio.count, 1, "only the line that had already started was played")
+        await session.hangUp()
+    }
+
+    /// Her reply read as text holds the call for as long as it takes to read: the next
+    /// turn does not begin until the last line has had its time, as with her voice.
+    func testTheNextTurnWaitsForATextReplysPaceToFinish() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>もしもし</ja><zh>喂</zh>", "<ja>聞こえてるよ</ja><zh>听得见哦</zh>"],
+            ["<ja>三つ目</ja><zh>第三句</zh>"],
+        ])
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            prepare: { await $0.setTextOnly(true) }
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("the first line", timeout: .seconds(5)) {
+            segments(of: log).contains { $0.reply == 0 && $0.segment == 0 }
+        }
+        recognition.say("二度目")
+        try await waitFor("her whole reply", timeout: .seconds(10)) {
+            segments(of: log).filter { $0.reply == 0 }.count == 2
+        }
+        XCTAssertEqual(
+            provider.turnsAsked, 1,
+            "the next turn does not begin while her words are still being read out"
+        )
+        try await waitFor("the second turn", timeout: .seconds(10)) {
+            segments(of: log).contains { $0.reply == 1 }
+        }
+        XCTAssertEqual(provider.turnsAsked, 2)
+        await session.hangUp()
+    }
+
+    /// 麦克风静音 closes the microphone for the call and leaves the recognizer connected: her
+    /// reply goes on, and unmuting hears at once without a reconnect (spec #43).
+    func testMutingClosesTheMicrophoneWithoutDroppingTheConnection() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>一つ目</ja><zh>第一句</zh>"],
+            ["<ja>二つ目</ja><zh>第二句</zh>"],
+        ])
+        let playback = FakePlayback()
+        playback.delay = .milliseconds(200)
+        let timeline = Timeline()
+        playback.timeline = timeline
+        let (session, _, capture) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            playback: playback
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("her voice starts") { timeline.index(of: "play-start:一つ目") != nil }
+
+        await session.setMuted(true)
+        XCTAssertFalse(capture.isHearing, "the microphone is closed")
+        capture.send(0x01)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(recognition.heard, [], "nothing the microphone hears while muted")
+        XCTAssertEqual(recognition.calls, 1, "the recognizer stays connected")
+
+        try await waitFor("her reply goes on", timeout: .seconds(5)) {
+            timeline.index(of: "play-end:一つ目") != nil
+        }
+        try await waitFor("listening again", timeout: .seconds(5)) {
+            await session.currentState() == .listening
+        }
+        XCTAssertFalse(capture.isHearing, "still muted once her reply is done")
+
+        await session.setMuted(false)
+        XCTAssertTrue(capture.isHearing, "unmuting hears again at once")
+        XCTAssertEqual(recognition.calls, 1, "no reconnection")
+        capture.send(0x02)
+        try await waitFor("the microphone reaches the recognizer") { recognition.heard == [0x02] }
+        recognition.say("二度目")
+        try await waitFor("the next turn", timeout: .seconds(5)) { playback.audio.count == 2 }
+        await session.hangUp()
+    }
+
+    /// The two switches are independent: she can be read as text while the microphone is
+    /// muted, and unmuting does not voice her.
+    func testTextOnlyAndMuteDoNotAffectEachOther() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>一つ目</ja><zh>第一句</zh>"],
+            ["<ja>二つ目</ja><zh>第二句</zh>"],
+        ])
+        let synthesis = FakeSynthesis()
+        let playback = FakePlayback()
+        let (session, log, capture) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            synthesis: synthesis,
+            playback: playback,
+            prepare: { await $0.setTextOnly(true) }
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        await session.setMuted(true)
+        XCTAssertFalse(capture.isHearing)
+        recognition.say("ねえ")
+        try await waitFor("read while muted", timeout: .seconds(5)) {
+            segments(of: log).contains { $0.reply == 0 }
+        }
+        XCTAssertFalse(capture.isHearing, "text-only does not open the microphone")
+
+        await session.setMuted(false)
+        XCTAssertTrue(capture.isHearing)
+        try await waitFor("listening again", timeout: .seconds(5)) {
+            await session.currentState() == .listening
+        }
+        recognition.say("二度目")
+        try await waitFor("the next reply", timeout: .seconds(10)) {
+            segments(of: log).contains { $0.reply == 1 }
+        }
+        XCTAssertEqual(synthesis.texts, [], "text-only goes on after unmuting")
+        XCTAssertEqual(playback.audio, [])
+        await session.hangUp()
+    }
+
+    /// Once the call has ended the switches do nothing: the microphone stays closed and
+    /// nothing is made or played.
+    func testTheSwitchesDoNothingOnceTheCallHasEnded() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([["<ja>一つ目</ja><zh>第一句</zh>"]])
+        let synthesis = FakeSynthesis()
+        let playback = FakePlayback()
+        let (session, _, capture) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            synthesis: synthesis,
+            playback: playback
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        await session.hangUp()
+        try await waitFor("ended") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+        XCTAssertFalse(capture.isHearing)
+
+        await session.setMuted(false)
+        await session.setTextOnly(true)
+        XCTAssertFalse(capture.isHearing, "the microphone stays closed")
+        let state = await session.currentState()
+        guard case .ended = state else {
+            return XCTFail("the call stays ended, not \(state)")
+        }
+        XCTAssertEqual(synthesis.texts, [])
+        XCTAssertEqual(playback.audio, [])
     }
 
     private func setup(on eidolon: Eidolon) -> CallSetup {
