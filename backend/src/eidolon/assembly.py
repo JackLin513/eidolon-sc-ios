@@ -74,6 +74,7 @@ from eidolon.prices import Prices
 from eidolon.own_keys import LLMService, OwnImageService, OwnKeys, ProviderLLMService
 from eidolon.photos import Photos
 from eidolon.proxy import ProxyRoutes
+from eidolon.letters import Letters
 from eidolon.moments import Moments
 from eidolon.reach_outs import ReachOuts
 from eidolon.read_aloud import ReadAloud
@@ -166,6 +167,8 @@ class Backend:
     """Exports users' data packages, and imports them."""
     reach_outs: ReachOuts
     """Has characters reach out to users once their time comes."""
+    letters: Letters
+    """Has characters write letters on their occasions, and shows them."""
     moments: Moments
     """Has characters post moments to users once their time comes, and shows them."""
     schedules: Schedules
@@ -185,6 +188,7 @@ class Backend:
     _probing: asyncio.Task[None] | None = field(default=None, repr=False)
     _reaching_out: asyncio.Task[None] | None = field(default=None, repr=False)
     _posting: asyncio.Task[None] | None = field(default=None, repr=False)
+    _writing: asyncio.Task[None] | None = field(default=None, repr=False)
     _sweeping: asyncio.Task[None] | None = field(default=None, repr=False)
     _tidying: asyncio.Task[None] | None = field(default=None, repr=False)
     _watching: asyncio.Task[None] | None = field(default=None, repr=False)
@@ -206,6 +210,7 @@ class Backend:
         self._probing = asyncio.create_task(self.service_status.keep_probing())
         self._reaching_out = asyncio.create_task(self.reach_outs.keep_reaching_out())
         self._posting = asyncio.create_task(self.moments.keep_posting())
+        self._writing = asyncio.create_task(self.letters.keep_writing())
         self._sweeping = asyncio.create_task(self.bar.keep_sweeping())
         self._tidying = asyncio.create_task(
             keep_tidy(self.usage.forget_old, self.activity.forget_old, self.moments.forget_old)
@@ -219,7 +224,7 @@ class Backend:
         tasks = [
             task
             for task in (
-                self._keeping_fresh, self._probing, self._reaching_out, self._posting,
+                self._keeping_fresh, self._probing, self._reaching_out, self._posting, self._writing,
                 self._sweeping,
                 self._tidying, self._watching, self._loading_stories,
             )
@@ -426,7 +431,10 @@ def build(
         database, clock, lambda: config.affinity_on, affinities, characters, gift_catalog,
         random or secure_random, cycles,
     )
-    happenings = Happenings(database, lambda: config.affinity_on, gifts, activity)
+    letters = Letters(database, characters, config, affinities, activity, clock)
+    happenings = Happenings(
+        database, lambda: config.affinity_on, gifts, activity, letters.happened
+    )
     schedules = Schedules(
         database, clock, lambda: config.schedule_on, idols_of(characters, world), job_list,
         affinities,
@@ -516,6 +524,7 @@ def build(
         service_status=service_status,
         data_packages=DataPackages(database, store, memories, characters, gift_catalog, clock),
         reach_outs=reach_outs,
+        letters=letters,
         moments=moments,
         schedules=schedules,
         cycles=cycles,

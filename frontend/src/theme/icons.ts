@@ -47,6 +47,8 @@ export { Trophy as AchievementsIcon } from "lucide-react";
 
 // 对话列表页首的公告铃铛（GLOSSARY.md「公告」）；后台导航的公告用 Megaphone。
 export { Bell as AnnouncementsBellIcon } from "lucide-react";
+// 对话列表页首的信封键（GLOSSARY.md「信」）。
+export { Mail as LetterIcon } from "lucide-react";
 
 // 对话列表页首铃铛旁边的服务状态（GLOSSARY.md「服务状态」）。
 export { Activity as ServiceStatusIcon } from "lucide-react";

@@ -19,3 +19,10 @@
 - [ ] 测试推进假时钟到那一天再调「写一遍」；第一个回合、最后一次往来照先例直接改库里的时间；照 `test_reach_outs.py`、`test_producer_profile.py` 里生日的测试。
 
 ## Comments
+
+### 票 01 交接
+
+- 场合类型在 `letter_prompt.Occasion`、`OCCASIONS`（合并时的顺序，也是 04 选配乐的顺序：亲密、亲近、集齐，再往后接她的生日、制作人生日、相识纪念）、`_OCCASIONS`（写给模型的场合）、`_RECALLED`（以前的信里怎么说这个场合）四处要一起加；前端 `lib/letter.ts` 的 `Occasion` 和 `zh.ts` 的 `copy.letter.occasions` 也要加（`satisfies Record<Occasion, string>` 会提醒）。
+- 「每一遍先排今天到了日子的场合」加在 `Letters.run_due` 里写之前；`happened` 记的是 `due_at = now`，到了日子的照这样记即可。
+- 现在失败直接删（`_drop`），`letters_due.attempts` 列已经有了，重试改这里；过期在 `_due` 或写之前判断。
+- 顺延在写的那一刻判断（`_Standing.written_today`），改到第二天制作人那边的 0 点。

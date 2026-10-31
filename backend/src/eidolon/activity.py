@@ -1,6 +1,7 @@
 """Activity records (GLOSSARY.md「运行记录」): one for each turn, each call, each reach-out
-(GLOSSARY.md「搭话」), each visit to the bar (GLOSSARY.md「光顾」) and each moment she posts
-(GLOSSARY.md「朋友圈」), saying how it turned out, and
+(GLOSSARY.md「搭话」), each visit to the bar (GLOSSARY.md「光顾」), each moment she posts
+(GLOSSARY.md「朋友圈」) and each letter she writes (GLOSSARY.md「信」), saying how it turned
+out, and
 one for each call to an outside service, saying which service, whose key, whether it failed
 and how, how long it took and what it was billed for; an LLM's, also how much of its input
 hit the provider's prompt cache, how soon its first word came and the reasoning effort it
@@ -124,19 +125,20 @@ LLM_SERVICES: tuple[ServiceName, ...] = ("chat_llm", "memory_llm")
 says how soon its first word came and at which reasoning effort."""
 
 RecordKind = Literal[
-    "turn", "call", "reach_out", "achievement", "visit", "moment", "moment_reply"
+    "turn", "call", "reach_out", "achievement", "visit", "moment", "moment_reply", "letter"
 ]
 """A reach-out is neither a turn nor a call, nor counted as one anywhere; it is always on the
 deployer's keys, as a moment is, and her reply to the producer's comment on one
-(`moment_reply`), and neither is either. Nor is an achievement's stage unlocked or
-a character complete, which has no service calls; nor a visit to the bar."""
+(`moment_reply`), and neither is either; nor is a letter she writes (`letter`). Nor is an
+achievement's stage unlocked or a character complete, which has no service calls; nor a
+visit to the bar."""
 OWN_LLM_KINDS: frozenset[RecordKind] = frozenset({"turn", "visit"})
 """The kinds whose record keeps, as being on the user's own keys, whether its LLM was the
 user's own; the others keep whether they were exempt."""
 Result = Literal["success", "failed", "rejected", "left", "not_connected"]
 """How a turn or call turned out (GLOSSARY.md「回合」「接通」): a turn succeeded, failed on
 a service, was rejected (over the limit, or its input), or the user left before it was
-done; a call also may never have connected. A reach-out or a moment succeeds or fails; a
+done; a call also may never have connected. A reach-out, a moment or a letter succeeds or fails; a
 reply to the producer's comment too, or is rejected, the comment deleted as it was made. A visit is done
 (success), failed on the call it was over at, was rejected over the limit, or else was
 left. An achievement's

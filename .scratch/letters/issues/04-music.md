@@ -18,3 +18,7 @@
 - [ ] 把用户提供的六首（仓库外 `E:/tmp/bgm/src/`）传到线上桶这一步留给用户确认后再做，传完删本地原曲；在 Comments 里写明。
 
 ## Comments
+
+### 票 01 交接
+
+- 读一封的 `music` 现在恒为 `null`；合并时的取法可以直接用 `letter_prompt.OCCASIONS` 的顺序（亲密、亲近、集齐在前）。

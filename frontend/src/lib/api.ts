@@ -18,6 +18,7 @@ import type { LLMOffer, LLMProvider } from "@/lib/llmProviders";
 import type { EffortHint } from "@/lib/reasoningEffort";
 import type { ServedBody } from "@/lib/barMixer";
 import type { VisitEvent } from "@/lib/barVisit";
+import type { Letter, LetterSummary } from "@/lib/letter";
 import type { Rewarded } from "@/lib/rewards";
 import { detectTimezone } from "@/lib/timezone";
 import type { Speaking } from "@/lib/call";
@@ -496,6 +497,8 @@ export type Account = {
   reach_outs: boolean | null;
   cycles: boolean | null;
   moments: boolean | null;
+  /** Whether the deployer has letters on (GLOSSARY.md「信」); the letters written stay to be read either way. */
+  letters: boolean;
   sponsor_version: string | null;
   /** Whether the deployer has a key for speech synthesis now: her words are read aloud on it for those
    * who keep none of their own in this browser (GLOSSARY.md「朗读」). */
@@ -803,6 +806,23 @@ export async function deleteMomentComment(id: number): Promise<void> {
 export async function getMoments(): Promise<Moment[]> {
   const body: { moments: Moment[] } = await json(await api("/api/moments"));
   return body.moments;
+}
+
+/** The user's letters (GLOSSARY.md「信」), the latest first. */
+export async function listLetters(): Promise<LetterSummary[]> {
+  const body: { letters: LetterSummary[] } = await json(await api("/api/letters"));
+  return body.letters;
+}
+
+/** One of the user's letters, to read. */
+export async function getLetter(id: number): Promise<Letter> {
+  return json(await api(`/api/letters/${id}`));
+}
+
+/** Has the letter read, on every device. */
+export async function markLetterRead(id: number): Promise<void> {
+  const res = await api(`/api/letters/${id}/read`, { method: "PUT" });
+  if (!res.ok) await json(res);
 }
 
 /** Whether a moment, or her reply to the user's comment, has come out since they last read the

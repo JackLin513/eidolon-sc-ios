@@ -18,3 +18,8 @@
 - [ ] 本地构建版上自己验声音能放、字跟着走；好不好听留给用户在本机浏览器里听。
 
 ## Comments
+
+### 票 01 交接
+
+- 读一封的 `voice` 现在恒为 `null`（`letters.Letter.shown`），前端类型 `Letter.voice: null` 要改成每块地址的数组。`letter_voices` 表已建好、已登记进用户数据，`block` 0 是抬头。
+- 时间轴已经留了每块实际时长：`partsOf(letter, durations)`，块数对不上时按字数估。`LetterLayer` 现在纯按时钟走，旧版按音频进度走的那套（`STALL_MS`、`START_MS`、静音键、`fadeOut`）这一票删掉了，要加回来看 `last-letter` 分支的 `LetterLayer.tsx`；静音键的图标和 `copy.letter.mute` 也一起删了。

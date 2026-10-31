@@ -15,3 +15,7 @@
 - [ ] 后端测试照头像接口的测试；角色加载测试覆盖签名字段可选。
 
 ## Comments
+
+### 票 01 交接
+
+- 读一封的 `signature` 已经是 `{"image": null, "text": 她的名字}`，前端 `LetterLayer` 的 `Signature` 有图时用图（`letter-signature` 三行高、`animate-sign`），取不到时退回照字写。后端只要填 `image`。
