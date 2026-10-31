@@ -15,6 +15,7 @@ struct ConversationListView: View {
     @Environment(AppModel.self) private var app
     @State private var query = ""
     @State private var showSettings = false
+    @State private var showCalendar = false
     @State private var isBarShown = false
     @State private var path = NavigationPath()
     /// The moment the list writes its times against; refreshed every minute while it is
@@ -159,6 +160,14 @@ struct ConversationListView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        showCalendar = true
+                    } label: {
+                        Image(systemName: "calendar")
+                    }
+                    .accessibilityLabel("日历")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         #if DEBUG
                         app.markSettingsOpenedManually()
                         #endif
@@ -167,6 +176,9 @@ struct ConversationListView: View {
                         Image(systemName: "gearshape")
                     }
                 }
+            }
+            .sheet(isPresented: $showCalendar) {
+                CalendarView()
             }
             .sheet(isPresented: $showSettings) {
                 SettingsView()

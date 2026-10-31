@@ -236,6 +236,15 @@ final class AppModel {
     /// What the prompts are told of the producer, kept as one line (upstream
     /// `producer_prompt(read_profile(…))`), read on the way in.
     private(set) var aboutProducer = ""
+    /// The producer's own profile, for the calendar page (spec #49).
+    private(set) var producerProfile = ProducerProfile.default
+    /// Japan's holidays as the content bundle lists them; nil before the bundle is read.
+    private(set) var holidays: HolidayTable?
+
+    /// The time zone the producer's days go by: the profile's, else this device's.
+    var producerTimeZone: TimeZone {
+        TimeZone(identifier: producerProfile.timezone ?? "") ?? .current
+    }
 
     /// The bar's pictures, font and sound (nil until its package is imported), and what its
     /// preferences say; read when the bar's page opens.
@@ -795,6 +804,9 @@ final class AppModel {
         await refreshStandCharacterIDs()
         self.characters = characters
         latest = try await core.latestActivities()
+        producerProfile = (try? await core.producerProfile()) ?? .default
+        aboutProducer = producerProfile.prompt
+        holidays = try? await core.holidayTable()
         standInfo = try await core.installedStandInfo()
         barInfo = try await core.installedBarInfo()
         barRewardToday = (try? await core.barRewardToday()) ?? true
