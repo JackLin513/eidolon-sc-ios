@@ -784,7 +784,7 @@ class Moments:
         lease = self._config.lease()
         try:
             with recording.current():
-                written = await _written(lease.keys.chat_llm.stream(post_prompt(material)))
+                written = await written_whole(lease.keys.chat_llm.stream(post_prompt(material)))
         except Exception as e:
             # Not logged with what was raised: a service's error may repeat what it was asked.
             log.warning("posting a moment to user %s failed: %s", plan.user_id,
@@ -869,7 +869,7 @@ class Moments:
         lease = self._config.lease()
         try:
             with recording.current():
-                written = await _written(lease.keys.chat_llm.stream(reply_prompt(material)))
+                written = await written_whole(lease.keys.chat_llm.stream(reply_prompt(material)))
         except Exception as e:
             # Not logged with what was raised: a service's error may repeat what it was asked.
             log.warning("replying to user %s failed: %s", due.user_id, type(e).__name__)
@@ -945,7 +945,7 @@ class Moments:
             character,
             self._world.prompt(character.name, local_date(now, timezone)) if self._world else None,
             before.profile,
-            [_said(m) for m in chat_history(before.messages, self._config.history_turns)],
+            [said_to_chat(m) for m in chat_history(before.messages, self._config.history_turns)],
             self._her_now.lines(
                 known, "moments", now, timezone, before.profile, None,
                 tier_prompt(before.status), replying=True,
@@ -1037,17 +1037,17 @@ class Moments:
             id: each for id, each in self._characters.items()
             if id != character.id and not (world is not None and world.is_staff(each.name))
         }
-        relations = _relations(character, others)
+        related_by = relations(character, others)
         unit = set(world.unit_mates(character.name)) if world is not None else set()
         mates = [id for id, each in others.items() if each.name in unit]
-        related = [id for id in relations if id not in mates]
-        strangers = [id for id in others if id not in mates and id not in relations]
+        related = [id for id in related_by if id not in mates]
+        strangers = [id for id in others if id not in mates and id not in related_by]
         birthdays = {id for id, each in others.items() if is_birthday(each.birthday, day)}
         drawn = draw_circle(mates, related, strangers, birthdays, birthday, self._random)
-        return [Member(others[id], relations.get(id)) for id in drawn]
+        return [Member(others[id], related_by.get(id)) for id in drawn]
 
 
-async def _written(stream: AsyncIterator[Streamed]) -> str:
+async def written_whole(stream: AsyncIterator[Streamed]) -> str:
     """The whole of what the model wrote, its text alone."""
     chunks: list[str] = []
     try:
@@ -1065,11 +1065,11 @@ def _when(shown: Sequence[_T], at: Sequence[datetime]) -> list[tuple[_T, str]]:
     return [(each, when.astimezone(UTC).isoformat()) for each, when in zip(shown, at, strict=True)]
 
 
-def _relations(character: Character, others: Mapping[str, Character]) -> dict[str, str]:
+def relations(character: Character, others: Mapping[str, Character]) -> dict[str, str]:
     """What a section of her facts on the people she knows says of each of `others` whose
     name is in its heading, but for sections whose headings have `NOT_ONE` in them, without
     their headings: the first for one in two."""
-    relations: dict[str, str] = {}
+    found: dict[str, str] = {}
     for fact in character.facts:
         headings = fact.headings
         if headings[:1] != [RELATIONS] or len(headings) < 2:
@@ -1078,8 +1078,8 @@ def _relations(character: Character, others: Mapping[str, Character]) -> dict[st
             continue
         for id, each in others.items():
             if each.name in headings[-1]:
-                relations.setdefault(id, fact.body)
-    return relations
+                found.setdefault(id, fact.body)
+    return found
 
 
 def _seed(text: str) -> str:
@@ -1304,7 +1304,7 @@ def _circle_shown(
     return likes, comments
 
 
-def _said(message: Message) -> ChatMessage:
+def said_to_chat(message: Message) -> ChatMessage:
     """A message of her conversation as the chat model reads it as she replies: the user's
     words, or her reply as she wrote it, without the photo she sent with it."""
     if message.role == "user":

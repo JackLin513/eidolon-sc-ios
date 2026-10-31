@@ -939,3 +939,11 @@ def _memories_prompt(
 
 def _date(moment: datetime) -> str:
     return f"{moment.year}年{moment.month}月{moment.day}日"
+
+
+def posting_memories_prompt(
+    memories: Sequence[Memory], character: Character, timezone: str
+) -> str:
+    """The prompt section carrying `memories` as she posts a moment with them, in the order
+    given, the user in `timezone`: as `Memories.for_reaching_out` writes it, `posting`."""
+    return _memories_prompt(memories, character, timezone, _POSTING)
