@@ -299,6 +299,14 @@ public enum ScheduleRules {
         return .future
     }
 
+    /// The slots a job takes, from `slot`: 上午, 上午到下午, 一整天.
+    public static func slotsName(slot: Int, length: Int) -> String {
+        if length == 3 { return "一整天" }
+        let names = ScheduleSlot.allCases.map(\.name)
+        let first = names[slot]
+        return length == 1 ? first : "\(first)到\(names[slot + length - 1])"
+    }
+
     public static func isDone(
         local: Date, timeZone: TimeZone, thisWeek: CalendarDay,
         week: CalendarDay, day: Int, slot: Int, length: Int
@@ -527,6 +535,68 @@ extension Eidolon {
         SchedulePrompt.lines(try schedule(characterID: characterID, now: now, timeZone: timeZone))
     }
 
+    /// This and next week's saved and drafted jobs across every character, and how many of
+    /// this week's jobs are still to place (spec #51). For the calendar page.
+    public func scheduleOverview(
+        now: Date = Date(), timeZone: TimeZone,
+        drafts: [ScheduleDraftKey: [PlacementInput]] = [:]
+    ) throws -> ScheduleOverview {
+        let thisWeek = ScheduleRules.week(of: now)
+        let nextWeek = thisWeek.adding(days: ScheduleRules.days)
+        let idols = try idolIDs()
+        let listed = try jobList()
+        let characters = try characters()
+        return try userQueue.write { db in
+            try Self.ensureWeekDrawn(db, week: thisWeek, idols: idols, jobs: listed)
+            try Self.ensureWeekDrawn(db, week: nextWeek, idols: idols, jobs: listed)
+            let byID = Dictionary(uniqueKeysWithValues: characters.map { ($0.id, $0) })
+            let jobs = try Self.weeklyJobs(db, weeks: [thisWeek, nextWeek], characterID: nil)
+            let jobsByID = Dictionary(uniqueKeysWithValues: jobs.map { ($0.id, $0) })
+            let placements = try Self.allPlacementRows(db, weeks: [thisWeek, nextWeek])
+            let saved = Set(placements.map(\.jobID))
+            var entries: [ScheduleCalendarEntry] = []
+            for placement in placements {
+                guard let job = jobsByID[placement.jobID],
+                      let character = byID[placement.characterID]
+                else { continue }
+                entries.append(ScheduleCalendar.entry(
+                    character: character, job: job,
+                    day: placement.week.adding(days: placement.day),
+                    slot: placement.slot, draft: false
+                ))
+            }
+            for (key, inputs) in drafts.sorted(by: {
+                ($0.key.week, $0.key.characterID) < ($1.key.week, $1.key.characterID)
+            }) {
+                guard key.week == thisWeek || key.week == nextWeek,
+                      let character = byID[key.characterID]
+                else { continue }
+                for input in inputs where !saved.contains(input.jobID) {
+                    guard let job = jobsByID[input.jobID] else { continue }
+                    entries.append(ScheduleCalendar.entry(
+                        character: character, job: job,
+                        day: key.week.adding(days: input.day),
+                        slot: input.slot, draft: true
+                    ))
+                }
+            }
+            entries.sort { ($0.day, $0.slot) < ($1.day, $1.slot) }
+            // A job counts as placed once saved or drafted this week.
+            let thisJobs = jobs.filter { $0.week == thisWeek }
+            var placed = Set(
+                placements.filter { $0.week == thisWeek }.map(\.jobID)
+            )
+            for (key, inputs) in drafts where key.week == thisWeek {
+                placed.formUnion(inputs.map(\.jobID))
+            }
+            return ScheduleOverview(
+                entries: entries,
+                pendingThisWeek: max(thisJobs.count - placed.intersection(thisJobs.map(\.id)).count, 0),
+                hasJobList: !listed.isEmpty
+            )
+        }
+    }
+
     /// Saves what can be of `placements` into `week`; the rest come back with why.
     public func saveSchedule(
         characterID: String, week: CalendarDay, placements inputs: [PlacementInput],
@@ -675,22 +745,41 @@ extension Eidolon {
                 ORDER BY week, day, slot
                 """,
             arguments: StatementArguments([characterID] + marks)
-        ).map { row in
-            let parts = (row["week"] as String).split(separator: "-").compactMap { Int($0) }
-            return SchedulePlacement(
-                week: CalendarDay(
-                    year: parts.count == 3 ? parts[0] : 0,
-                    month: parts.count == 3 ? parts[1] : 1,
-                    day: parts.count == 3 ? parts[2] : 1
-                ),
-                jobID: row["job_id"],
-                characterID: row["character_id"],
-                day: row["day"],
-                slot: row["slot"],
-                savedAt: row["saved_at"],
-                countedAt: row["counted_at"]
-            )
-        }
+        ).map(Self.placement(from:))
+    }
+
+    static func allPlacementRows(
+        _ db: Database, weeks: [CalendarDay]
+    ) throws -> [SchedulePlacement] {
+        let marks = weeks.map(\.stamp)
+        let placeholders = Array(repeating: "?", count: marks.count).joined(separator: ",")
+        return try Row.fetchAll(
+            db,
+            sql: """
+                SELECT week, job_id, character_id, day, slot, saved_at, counted_at
+                FROM schedule_placements
+                WHERE week IN (\(placeholders))
+                ORDER BY week, day, slot
+                """,
+            arguments: StatementArguments(marks)
+        ).map(Self.placement(from:))
+    }
+
+    static func placement(from row: Row) -> SchedulePlacement {
+        let parts = (row["week"] as String).split(separator: "-").compactMap { Int($0) }
+        return SchedulePlacement(
+            week: CalendarDay(
+                year: parts.count == 3 ? parts[0] : 0,
+                month: parts.count == 3 ? parts[1] : 1,
+                day: parts.count == 3 ? parts[2] : 1
+            ),
+            jobID: row["job_id"],
+            characterID: row["character_id"],
+            day: row["day"],
+            slot: row["slot"],
+            savedAt: row["saved_at"],
+            countedAt: row["counted_at"]
+        )
     }
 
     static func refusal(
@@ -783,6 +872,32 @@ extension Eidolon {
     }
 }
 
+/// Whose drafts of which week: the page keeps them apart as the producer switches between
+/// characters and weeks.
+public struct ScheduleDraftKey: Sendable, Hashable {
+    public var characterID: String
+    public var week: CalendarDay
+
+    public init(characterID: String, week: CalendarDay) {
+        self.characterID = characterID
+        self.week = week
+    }
+}
+
+/// The calendar page's view of the schedule (spec #51): the saved and drafted jobs of this
+/// and next week, how many this week are unplaced, and whether the bundle lists jobs at all.
+public struct ScheduleOverview: Sendable, Hashable {
+    public var entries: [ScheduleCalendarEntry]
+    public var pendingThisWeek: Int
+    public var hasJobList: Bool
+
+    public init(entries: [ScheduleCalendarEntry], pendingThisWeek: Int, hasJobList: Bool) {
+        self.entries = entries
+        self.pendingThisWeek = pendingThisWeek
+        self.hasJobList = hasJobList
+    }
+}
+
 /// Reading what the schedule keeps without the rest of `Eidolon`, for the bar.
 public enum ScheduleStore {
     /// Her job the producer scheduled today and she has done, the latest if more than one.
@@ -863,9 +978,6 @@ public enum SchedulePrompt {
     }
 
     static func slotsNamed(_ slot: Int, _ length: Int) -> String {
-        if length == 3 { return "一整天" }
-        let names = ScheduleSlot.allCases.map(\.name)
-        let first = names[slot]
-        return length == 1 ? first : "\(first)到\(names[slot + length - 1])"
+        ScheduleRules.slotsName(slot: slot, length: length)
     }
 }

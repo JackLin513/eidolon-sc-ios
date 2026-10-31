@@ -20,6 +20,8 @@ struct ChatView: View {
     @State private var outfitsChecked = false
     @State private var showsOutfits = false
     @State private var showsAffinity = false
+    @State private var showsSchedule = false
+    @State private var scheduleBook = ScheduleDraftBook()
 
     var body: some View {
         Group {
@@ -81,6 +83,10 @@ struct ChatView: View {
                             openOutfits()
                         }
                     }
+                    Button("她的日程") {
+                        showsSchedule = true
+                    }
+                    .disabled(!app.hasJobList)
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
@@ -122,6 +128,11 @@ struct ChatView: View {
         }
         .onDisappear {
             app.readAloud.stop()
+        }
+        .sheet(isPresented: $showsSchedule) {
+            ScheduleBoardView(
+                initialCharacterID: character.id, book: $scheduleBook
+            )
         }
         .fullScreenCover(isPresented: $showsOutfits) {
             if let stand = outfitsStand {

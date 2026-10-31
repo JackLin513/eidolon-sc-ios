@@ -47,11 +47,12 @@ public struct CalendarDay: Hashable, Comparable, Sendable {
 }
 
 /// What a calendar day can hold (spec #49): her birthday, the producer's birthday, a Japanese
-/// holiday. Schedule joins it when its UI lands.
+/// holiday, and the staff of her week (spec #51).
 public enum CalendarKind: String, CaseIterable, Sendable, Hashable {
     case character
     case producer
     case holiday
+    case schedule
 }
 
 public struct CalendarEvent: Sendable, Hashable, Identifiable {
@@ -144,7 +145,8 @@ public enum CalendarPage {
         in month: Month,
         characters: [CharacterConfig],
         producerBirthday: (month: Int, day: Int)?,
-        holidays: HolidayTable?
+        holidays: HolidayTable?,
+        schedule: [ScheduleCalendarEntry] = []
     ) -> [CalendarEvent] {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -185,6 +187,17 @@ public enum CalendarPage {
                     day: day,
                     kind: .holiday,
                     title: name
+                ))
+            }
+            for entry in schedule where entry.day == day {
+                events.append(CalendarEvent(
+                    id: "\(entry.id):\(day.stamp)",
+                    day: day,
+                    kind: .schedule,
+                    title: entry.jobName,
+                    detail: "\(entry.characterName) · \(entry.slotsName)"
+                        + (entry.draft ? "（草稿）" : ""),
+                    color: characters.first { $0.id == entry.characterID }?.color
                 ))
             }
         }
