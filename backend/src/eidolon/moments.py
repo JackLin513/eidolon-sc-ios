@@ -67,7 +67,12 @@ and comments of her circle that have shown, in the order they did, and where its
 (`picture`): the user's alone to read, as their photos are. Reading it opens the user's
 moments; whether a moment, or her reply to his comment, has shown since (`unseen`) lights the
 dot on 「朋友圈」, her circle's likes and comments not counted. One who has never opened them
-is counted from when first planned for.
+is counted from when first planned for. A moment is kept no longer than `KEPT`: as the backend
+tidies up (`forget_old`), it is deleted with its picture, her circle's likes and comments, and
+the producer's like and comment, her reply with it, shown or not, whether moments are on or
+off; so are the moments planned and missed, once the day they were of in Tokyo is the day
+before yesterday. Deleting the user deletes all of their moments (`database.USER_DATA`);
+deleting a past conversation none; none goes into a data package.
 
 The producer may like a moment on his timeline, and no longer (`like`): only whether he does
 now is kept, she never knows what was. He may comment on it once (`comment`), from 1 to
@@ -103,6 +108,7 @@ from eidolon.config import MapSite
 from eidolon.data_access import Database
 from eidolon.engine import chat_history
 from eidolon.her_now import HerNow
+from eidolon.housekeeping import in_batches
 from eidolon.live_config import LiveConfig
 from eidolon.llm import ChatMessage, Streamed
 from eidolon.memory import Memories, last_turn_query
@@ -531,6 +537,20 @@ class Moments:
                     await self._db.write(_drop_plan, each.id)
                 else:
                     await self._db.write(_no_reply, each.comment_id)
+
+    async def forget_old(self) -> None:
+        """Delete everyone's moments that showed `KEPT` ago or longer, with their pictures,
+        her circle's likes and comments, and the producer's like and comment, her reply with
+        it, shown or not; whether moments are on or off. And the moments planned and missed:
+        those of the day before yesterday in Tokyo or earlier. In batches
+        (`housekeeping.in_batches`)."""
+        now = self._clock()
+        at = (now - KEPT).astimezone(UTC).isoformat()
+        for table in _WITH_A_MOMENT:  # each a batch of rows, a picture one among them
+            await in_batches(self._db, _forget_with_moments_before, table, at)
+        await in_batches(self._db, _forget_moments_before, at)
+        yesterday = tokyo_date(now) - timedelta(days=1)
+        await in_batches(self._db, _forget_plans_before, yesterday.isoformat())
 
     async def switch_of(self, user_id: str) -> bool | None:
         """Whether the user has their own switch for moments on, as it is by default; None
@@ -1140,6 +1160,38 @@ def _forget_plans(db: sqlite3.Connection, now: str) -> None:
         "UPDATE moment_comments SET reply_at = NULL WHERE reply_ja IS NULL AND reply_at <= ?",
         (now,),
     )
+
+
+_WITH_A_MOMENT = ("moment_images", "moment_circle", "moment_likes", "moment_comments")
+"""The tables of what goes with a moment, each by `moment_id`."""
+
+
+def _forget_with_moments_before(db: sqlite3.Connection, table: str, at: str, batch: int) -> int:
+    """Delete `batch` at most of the rows in `table`, one of `_WITH_A_MOMENT`, of everyone's
+    moments that showed by `at`: how many it deleted."""
+    return db.execute(
+        f"DELETE FROM {table} WHERE rowid IN (SELECT rowid FROM {table} WHERE moment_id IN"
+        " (SELECT id FROM moments WHERE posted_at <= ?) LIMIT ?)",
+        (at, batch),
+    ).rowcount
+
+
+def _forget_moments_before(db: sqlite3.Connection, at: str, batch: int) -> int:
+    """Delete `batch` at most of everyone's moments that showed by `at`, what goes with them
+    deleted first: how many it deleted."""
+    return db.execute(
+        "DELETE FROM moments WHERE id IN (SELECT id FROM moments WHERE posted_at <= ? LIMIT ?)",
+        (at, batch),
+    ).rowcount
+
+
+def _forget_plans_before(db: sqlite3.Connection, day: str, batch: int) -> int:
+    """Delete `batch` at most of the moments planned for the days before `day`: how many it
+    deleted."""
+    return db.execute(
+        "DELETE FROM moment_plans WHERE id IN (SELECT id FROM moment_plans WHERE day < ? LIMIT ?)",
+        (day, batch),
+    ).rowcount
 
 
 def _due_replies(db: sqlite3.Connection, now: str, since: str) -> list[_DueReply]:

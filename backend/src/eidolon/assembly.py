@@ -206,7 +206,9 @@ class Backend:
         self._reaching_out = asyncio.create_task(self.reach_outs.keep_reaching_out())
         self._posting = asyncio.create_task(self.moments.keep_posting())
         self._sweeping = asyncio.create_task(self.bar.keep_sweeping())
-        self._tidying = asyncio.create_task(keep_tidy(self.usage.forget_old, self.activity.forget_old))
+        self._tidying = asyncio.create_task(
+            keep_tidy(self.usage.forget_old, self.activity.forget_old, self.moments.forget_old)
+        )
         self._watching = asyncio.create_task(watch_the_loop(lambda: self.calls.in_progress))
         if self.corpus is not None:
             self._loading_stories = asyncio.create_task(self.corpus.load())
