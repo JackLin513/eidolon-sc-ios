@@ -430,6 +430,53 @@ final class MotionSwayTests: XCTestCase {
         XCTAssertLessThan(worstStep, 0.6, "the panel kept snapping (\(worstStep) deg/frame)")
     }
 
+
+    /// A collider push must not leave the angle window.
+    ///
+    /// The game runs `SwayMove` (spring) → `SwayHit` (collision on the free
+    /// tip) → `CalcRotate` (window). Clamping first and colliding afterwards
+    /// let a push drag the bone far outside its window: on the real dance the
+    /// hair reached 91 degrees against a ±40/20 window, which is exactly the
+    /// "hair floating" the dance showed. Here a sphere pushes the panel 30
+    /// degrees off its bind direction while the window allows 5…10.
+    func testCollisionPushStaysInsideTheAngleWindow() throws {
+        var rest = [JointPose](repeating: .identity, count: 6)
+        rest[1].translation = SIMD3(0.18, -0.08, 0) // pushes the tip towards +Y
+        rest[3].translation = SIMD3(0, 0, 1)        // HAIR, the up landmark
+        let names = ["BASE", "BASE/PUSH", "BASE/skirt_a", "HAIR", "KOSHI", "BASE/unused"]
+        let parents: [Int?] = [nil, 0, 0, nil, nil, 0]
+        let tail = SIMD3<Float>(0.18, 0, 0)
+        let limit = MotionSway.Limit(minY: -5, maxY: 5, minZ: -10, maxZ: -5)
+
+        var sway = try XCTUnwrap(MotionSway(
+            configuration: configuration(
+                bones: [bone("BASE/skirt_a", tail: tail, radius: 0.04,
+                             limit: limit, colliders: [0])],
+                colliders: [MotionSway.Collider(
+                    joint: "BASE/PUSH", type: "sphere", radius: 0.12,
+                    distance: 0, offset: [0, 0, 0], axis: "X"
+                )]
+            ),
+            joints: names, rest: rest
+        ))
+
+        var poses = rest
+        for _ in 0..<90 {
+            poses = rest
+            sway.apply(&poses, dt: 1 / 60)
+        }
+        let world = JointWorld.transforms(poses, parents: parents)
+        let tip = worldTip(of: 2, poses: poses, parents: parents, tail: tail)
+        let local = QuaternionMath.rotate(
+            QuaternionMath.inverse(world[0].rotation), tip - world[2].position
+        )
+        let pitch = -atan2(local.y, simd_length(SIMD2(local.x, local.z))) * 180 / .pi
+        XCTAssertGreaterThanOrEqual(
+            pitch, -10 - 0.5,
+            "the collider dragged the panel out of its window (pitch \(pitch))"
+        )
+    }
+
     /// `minYAngle`/`maxYAngle`/`minZAngle`/`maxZAngle` are the window the game
     /// clamps the panel's direction to, measured in the parent's frame. Without
     /// them a panel is free to rotate all the way into the legs.

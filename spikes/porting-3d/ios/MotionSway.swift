@@ -327,10 +327,16 @@ struct MotionSway {
             // applied to the direction and re-normalised — pushing the free
             // tip and then rescaling it back to `length` would pull the panel
             // straight back into the thigh.
-            var direction = clampedDirection(
-                of: tips[index], from: base, parentRotation: parentRotation,
-                restDirection: restDirection, limit: pendulum.limit
-            )
+            // The game's order is `SwayMove` (spring) → `SwayHit` (collision
+            // on the free tip) → `CalcRotate` (angle window). The window has to
+            // come last: a collider push can leave the window, and clamping
+            // before the push let hair strands be shoved 90 degrees out of a
+            // ±20 degree window — the "hair floating" on the dance.
+            var springDirection = tips[index] - base
+            if simd_length(springDirection) < 1e-5 {
+                springDirection = restDirection
+            }
+            springDirection = simd_normalize(springDirection)
             // Two thigh capsules can push against each other: a panel
             // between them gets opposite normals that cancel, so a plain
             // push does nothing (measured on the real dance: still 17 mm
@@ -338,11 +344,14 @@ struct MotionSway {
             // wedged, search the tangent circle around the current direction —
             // the escape there is a few degrees sideways (4° on this dance).
             let resolved = resolvingCollisions(
-                direction: direction, base: base, pendulum: pendulum, world: world
+                direction: springDirection, base: base, pendulum: pendulum, world: world
             )
-            direction = resolved.direction
             hitLastFrame[index] = resolved.hit
-            tips[index] = base + direction * pendulum.length
+            tips[index] = base + resolved.direction * pendulum.length
+            let direction = clampedDirection(
+                of: tips[index], from: base, parentRotation: parentRotation,
+                restDirection: restDirection, limit: pendulum.limit
+            )
 
             let turned = QuaternionMath.multiply(
                 QuaternionMath.fromToRotation(restDirection, direction),
