@@ -112,13 +112,19 @@ export function isGiftsSubpageInView(href: string, isCallLayerOpen: boolean): bo
 }
 
 /** The dots on the rail and the dock: 「对话」 when a row of the list has a reach-out not yet seen,
- * 「玩法」 when draw chances have come that are not yet seen, except while the current item is the
- * play page itself (its cards say which one). */
+ * 「朋友圈」 when a moment or her reply has shown since the moments were last opened, except on
+ * the moments page itself, 「玩法」 when draw chances have come that are not yet seen, except while
+ * the current item is the play page itself (its cards say which one). */
 export function navDots(
   current: NavItem | null,
-  { conversations, rewards }: { conversations: boolean; rewards: boolean },
+  { conversations, rewards, moments }: { conversations: boolean; rewards: boolean; moments: boolean },
 ): Record<NavItem, boolean> {
-  return { conversations, moments: false, play: rewards && current !== "play", settings: false };
+  return {
+    conversations,
+    moments: moments && current !== "moments",
+    play: rewards && current !== "play",
+    settings: false,
+  };
 }
 
 /** Where clicking `item` from `href` goes: another item goes to its first level, and so does

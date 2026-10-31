@@ -789,6 +789,13 @@ export async function getMoments(): Promise<Moment[]> {
   return body.moments;
 }
 
+/** Whether a moment, or her reply to the user's comment, has come out since they last read the
+ * timeline (`getMoments`), on any device. Refused while the deployer or the user has moments off (409). */
+export async function getMomentsUnseen(): Promise<boolean> {
+  const body: { unseen: boolean } = await json(await api("/api/moments/unseen"));
+  return body.unseen;
+}
+
 /** Comes into the bar, bringing the user's own LLM (as `own_keys`) as a text turn does. Once the
  * server took it, the visit's first call, to be followed as it comes: `visit` first, then her lines
  * up to her order. Refused while the bar is closed (409), or over the limit (429, `retryAt` saying

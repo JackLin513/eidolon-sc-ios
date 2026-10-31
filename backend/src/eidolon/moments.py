@@ -64,7 +64,10 @@ her affinity or her cooldowns after.
 The timeline (`timeline`) is the user's moments of the last `KEPT`, the latest first, each
 place with a link to it on the map the deployer chooses (`map_link`), each with the likes
 and comments of her circle that have shown, in the order they did, and where its picture is
-(`picture`): the user's alone to read, as their photos are.
+(`picture`): the user's alone to read, as their photos are. Reading it opens the user's
+moments; whether a moment, or her reply to his comment, has shown since (`unseen`) lights the
+dot on 「朋友圈」, her circle's likes and comments not counted. One who has never opened them
+is counted from when first planned for.
 
 The producer may like a moment on his timeline, and no longer (`like`): only whether he does
 now is kept, she never knows what was. He may comment on it once (`comment`), from 1 to
@@ -545,10 +548,12 @@ class Moments:
 
     async def timeline(self, user_id: str) -> list[Moment]:
         """The user's moments that have shown within `KEPT`, the latest first, of the
-        characters there are, as are the likes and comments on them; raise `MomentsOff`
-        where the deployer or the user has them off."""
+        characters there are, as are the likes and comments on them, the user counted as
+        opening their moments now; raise `MomentsOff` where the deployer or the user has them
+        off."""
         await self._require_on(user_id)
         now = self._clock()
+        await self._db.write(_opened, user_id, now.astimezone(UTC).isoformat())
         moments = await self._db.read(
             _timeline, user_id, (now - KEPT).astimezone(UTC).isoformat(),
             now.astimezone(UTC).isoformat(),
@@ -561,6 +566,19 @@ class Moments:
             )
             for m in moments if m.character_id in self._characters
         ]
+
+    async def unseen(self, user_id: str) -> bool:
+        """Whether a moment on the user's timeline, of a character there is, or her reply on
+        it, has shown since they last opened their moments, reading the timeline; for one who
+        never has, since they were first planned for. Her circle's likes and comments are not
+        counted. Raise `MomentsOff` where the deployer or the user has them off."""
+        await self._require_on(user_id)
+        now = self._clock()
+        whose = await self._db.read(
+            _unseen, user_id, (now - KEPT).astimezone(UTC).isoformat(),
+            now.astimezone(UTC).isoformat(),
+        )
+        return not whose.isdisjoint(self._characters)
 
     async def picture(self, user_id: str, moment_id: int) -> bytes | None:
         """The picture of the user's moment, if it has one and is on their timeline, as WebP;
@@ -654,7 +672,9 @@ class Moments:
                 planned = plan_day(
                     eligible, day, now, self._config.moments.per_day, self._random
                 )
-                await self._db.write(_keep_plan, user_id, day.isoformat(), planned)
+                await self._db.write(
+                    _keep_plan, user_id, day.isoformat(), planned, now.astimezone(UTC).isoformat()
+                )
             except Exception:
                 log.exception("planning moments for user %s failed", user_id)
 
@@ -1059,9 +1079,10 @@ def _switch(db: sqlite3.Connection, user_id: str, on: bool) -> None:
 
 
 def _keep_plan(
-    db: sqlite3.Connection, user_id: str, day: str, planned: Sequence[Planned]
+    db: sqlite3.Connection, user_id: str, day: str, planned: Sequence[Planned], now: str
 ) -> None:
-    """Keep the user's plan for `day`, and that they are planned for it."""
+    """Keep the user's plan for `day`, and that they are planned for it; first planned for
+    `now`, they are counted as having opened their moments then."""
     db.executemany(
         "INSERT INTO moment_plans (user_id, character_id, day, due_at, kind, birthday)"
         " VALUES (?, ?, ?, ?, ?, ?)",
@@ -1070,10 +1091,44 @@ def _keep_plan(
          for p in planned],
     )
     db.execute(
-        "INSERT INTO moment_users (user_id, planned_day) VALUES (?, ?)"
-        " ON CONFLICT (user_id) DO UPDATE SET planned_day = excluded.planned_day",
-        (user_id, day),
+        "INSERT INTO moment_users (user_id, planned_day, opened_at) VALUES (?, ?, ?)"
+        " ON CONFLICT (user_id) DO UPDATE SET planned_day = excluded.planned_day,"
+        " opened_at = COALESCE(opened_at, excluded.opened_at)",
+        (user_id, day, now),
     )
+
+
+def _opened(db: sqlite3.Connection, user_id: str, now: str) -> None:
+    """Keep that the user opened their moments `now`."""
+    db.execute(
+        "INSERT INTO moment_users (user_id, opened_at) VALUES (?, ?)"
+        " ON CONFLICT (user_id) DO UPDATE SET opened_at = excluded.opened_at",
+        (user_id, now),
+    )
+
+
+def _unseen(db: sqlite3.Connection, user_id: str, since: str, now: str) -> set[str]:
+    """Whose moments on the user's timeline, or replies on it, have shown since they last
+    opened their moments, by `now`; none for one who has never been planned for nor opened
+    them."""
+    opened = db.execute(
+        "SELECT opened_at FROM moment_users WHERE user_id = ?", (user_id,)
+    ).fetchone()
+    if opened is None or opened[0] is None:
+        return set()
+    return {
+        character_id
+        for (character_id,) in db.execute(
+            "SELECT m.character_id FROM moments m"
+            " WHERE m.user_id = :user AND m.posted_at > :since AND m.posted_at <= :now"
+            " AND m.posted_at > :opened"
+            " UNION"
+            " SELECT m.character_id FROM moments m JOIN moment_comments c ON c.moment_id = m.id"
+            " WHERE m.user_id = :user AND m.posted_at > :since AND m.posted_at <= :now"
+            " AND c.reply_ja IS NOT NULL AND c.reply_at > :opened AND c.reply_at <= :now",
+            {"user": user_id, "since": since, "now": now, "opened": opened[0]},
+        )
+    }
 
 
 def _forget_plans(db: sqlite3.Connection, now: str) -> None:

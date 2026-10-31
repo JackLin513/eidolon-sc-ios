@@ -128,10 +128,11 @@ async def test_switched_off_his_moments_are_refused_him_and_kept_as_they_are(
         (await client.delete(f"/api/moments/{moment}/like")).status_code,
         (await comment(client, moment)).status_code,
         (await client.delete(f"/api/moments/{moment}/comment")).status_code,
+        (await client.get("/api/moments/unseen")).status_code,
     ]
     await switch(client, True)
 
-    assert refused == [409] * 6
+    assert refused == [409] * 7
     assert await timeline(client) == kept
 
 

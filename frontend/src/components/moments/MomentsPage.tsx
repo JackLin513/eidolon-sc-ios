@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 
 import { FailureNotice } from "@/components/app/FailureNotice";
 import { ImageViewer } from "@/components/app/ImageViewer";
@@ -52,35 +52,53 @@ const CONFLICT = 409;
 
 /**
  * 朋友圈页（`/moments`，DESIGN.md「朋友圈页」）：页首「朋友圈」大标题，下面一栏时间线（最宽 `max-w-3xl`、居中，同玩法页），
- * 最新的在上面，一条一行，行与行之间一条细线。打开时读一次，不轮询。
+ * 最新的在上面，一条一行，行与行之间一条细线。打开时读一次；开着时外壳每分钟的那次轮询改成重读（`rereadOnPoll`），陆续露出的动态、赞和评论
+ * 不用刷新就出现。每读到一次（服务器记成打开过）导航「朋友圈」上的点就清掉；打开时先在本地清掉。重读失败时留着上一次的，不提示。
  * 时间线和对话目录的角色都读到之前空着（免得名字先显示成 id，目录读不到时照样显示）；没有动态时一行 muted 的「还没有动态」。朋友圈关着（409）时换成对话列表，不留这一页在历史里。
  * 她的名字和头像从对话目录的角色里按 id 取，取不到（角色已经下架）时名字写 id、头像是名字的头一个字。
- * 赞、取消赞、评论、删评论成功后只改这一条，不重读时间线。
+ * 赞、取消赞、评论、删评论成功后只改这一条，不重读时间线；在这之前发出去的重读回来了不用，下一次再读。
  */
 export function MomentsPage() {
   const router = useRouter();
-  const { characters, failure: directoryFailure } = useDirectory();
+  const { characters, failure: directoryFailure, momentsRead, rereadOnPoll } = useDirectory();
   const [timeline, setTimeline] = useState<{ moments: Moment[]; readAt: Date } | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
+  // 在本地改过几次：读出去之后又改过的，读回来的已经落后了。
+  const changes = useRef(0);
 
   useEffect(() => {
     let live = true;
-    getMoments().then(
-      (moments) => live && setTimeline({ moments, readAt: new Date() }),
-      (e) => {
-        if (!live) return;
-        if (e instanceof ApiError && e.status === CONFLICT) router.replace("/conversations");
-        else setFailure(toFailure(e));
-      },
-    );
+    const read = (isFirst: boolean) => {
+      const since = changes.current;
+      getMoments().then(
+        (moments) => {
+          if (!live) return;
+          momentsRead();
+          if (changes.current !== since) return;
+          setFailure(null);
+          setTimeline({ moments, readAt: new Date() });
+        },
+        (e) => {
+          if (!live) return;
+          if (e instanceof ApiError && e.status === CONFLICT) router.replace("/conversations");
+          else if (isFirst) setFailure(toFailure(e));
+        },
+      );
+    };
+    momentsRead();
+    read(true);
+    const stop = rereadOnPoll(() => read(false));
     return () => {
       live = false;
+      stop();
     };
-  }, [router]);
+  }, [router, momentsRead, rereadOnPoll]);
 
   const byId = new Map((characters ?? []).map((character) => [character.id, character]));
-  const change = (id: number, patch: Partial<Moment>) =>
+  const change = (id: number, patch: Partial<Moment>) => {
+    changes.current += 1;
     setTimeline((now) => now && { ...now, moments: now.moments.map((m) => (m.id === id ? { ...m, ...patch } : m)) });
+  };
   return (
     <PageShell width="full" isInShell header={<h1 className="text-list-title">{t.title}</h1>}>
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-2">

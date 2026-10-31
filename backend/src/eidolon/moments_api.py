@@ -1,7 +1,9 @@
 """Moments over HTTP (GLOSSARY.md「朋友圈」): `/api/moments` reads the signed-in user's
-timeline, the latest first, all of it at once; `/api/moments/{id}/image` the picture of one
-on it (GLOSSARY.md「配图」, ADR-0024), the user's alone to read: to anyone else, admins too,
-there is no such picture (404), and it is the browser's alone to keep, never a shared cache's.
+timeline, the latest first, all of it at once, which has them seen; `/api/moments/unseen`
+says whether anything that lights the dot on 「朋友圈」 has shown since.
+`/api/moments/{id}/image` is the picture of one on it (GLOSSARY.md「配图」, ADR-0024), the
+user's alone to read: to anyone else, admins too, there is no such picture (404), and it is
+the browser's alone to keep, never a shared cache's.
 `/api/moments/{id}/like` likes one (PUT) or no longer (DELETE), as often as he likes;
 `/api/moments/{id}/comment` comments on one (POST), once (409 again), 1 to 140 characters but
 for the spaces around them (422 else), or deletes the comment (DELETE). A moment not on his
@@ -41,6 +43,12 @@ def add_moment_routes(app: FastAPI, backend: Backend) -> None:
         """The user's moments that have shown within the last 30 days, the latest first."""
         map_site = backend.moments.map_site
         return {"moments": [m.shown(map_site) for m in await backend.moments.timeline(user_id)]}
+
+    @app.get("/api/moments/unseen")
+    async def unseen(user_id: UserId) -> dict:
+        """Whether a moment, or her reply to his comment, has shown since he last read the
+        timeline (`/api/moments`), on any device."""
+        return {"unseen": await backend.moments.unseen(user_id)}
 
     @app.get("/api/moments/{moment_id}/image")
     async def read_picture(moment_id: int, user_id: UserId) -> Response:

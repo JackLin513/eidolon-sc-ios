@@ -172,17 +172,17 @@ describe("礼物子页在不在眼前（到账当场记成看过）", () => {
 });
 
 describe("导航栏、dock 上的点", () => {
-  const both = { conversations: true, rewards: true };
+  const both = { conversations: true, rewards: true, moments: false };
 
   it("「对话」有没看过的搭话、「玩法」有新到的抽奖次数时各亮各的", () => {
     expect(navDots("settings", both)).toEqual({ conversations: true, moments: false, play: true, settings: false });
-    expect(navDots("settings", { conversations: false, rewards: true })).toEqual({
+    expect(navDots("settings", { conversations: false, rewards: true, moments: false })).toEqual({
       conversations: false,
       moments: false,
       play: true,
       settings: false,
     });
-    expect(navDots("settings", { conversations: true, rewards: false }).play).toBe(false);
+    expect(navDots("settings", { conversations: true, rewards: false, moments: false }).play).toBe(false);
   });
 
   it("当前项是「玩法」时「玩法」不亮，别的照旧", () => {
@@ -191,6 +191,24 @@ describe("导航栏、dock 上的点", () => {
 
   it("在外壳外面（没有当前项）时照常", () => {
     expect(navDots(null, both).play).toBe(true);
+  });
+
+  it("有新的动态或她的回复时「朋友圈」上有点，别的照旧", () => {
+    expect(navDots("conversations", { conversations: false, rewards: false, moments: true })).toEqual({
+      conversations: false,
+      moments: true,
+      play: false,
+      settings: false,
+    });
+  });
+
+  it("在朋友圈页上「朋友圈」不亮，别的照旧", () => {
+    expect(navDots("moments", { ...both, moments: true })).toEqual({
+      conversations: true,
+      moments: false,
+      play: true,
+      settings: false,
+    });
   });
 });
 
