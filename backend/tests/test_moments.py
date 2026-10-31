@@ -385,14 +385,17 @@ async def test_off_by_default_the_admin_turns_them_on_with_how_many_a_day(
     await tick(client, clock, SEVEN + timedelta(hours=16, minutes=59))
 
     assert described == {
-        "status": "env", "env": {"enabled": False, "per_day": 3},
-        "effective": {"enabled": False, "per_day": 3}, "override": None, "failure": None,
+        "status": "env", "env": {"enabled": False, "per_day": 3, "map": "osm"},
+        "effective": {"enabled": False, "per_day": 3, "map": "osm"}, "override": None,
+        "failure": None,
     }
     assert account["moments"] is None
     assert refused_timeline.status_code == 409
     assert [r.status_code for r in refused] == [422] * 2
     assert turned_on.status_code == 200
-    assert turned_on.json()["moments"]["effective"] == {"enabled": True, "per_day": 1}
+    assert turned_on.json()["moments"]["effective"] == {
+        "enabled": True, "per_day": 1, "map": "osm",
+    }
     assert (await client.get("/api/account")).json()["moments"] is True
     assert len(await timeline(client)) == 1
 

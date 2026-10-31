@@ -462,6 +462,18 @@ describe("reach-outs", () => {
   });
 });
 
+describe("moments", () => {
+  const spec = ITEM_SPECS.moments;
+
+  it("send the switch, how many a day and which map", () => {
+    const form = formOf(spec, { enabled: true, per_day: 3, map: "osm" });
+    expect(form).toEqual({ enabled: "true", per_day: "3", map: "osm" });
+    expect(changeOf(spec, { ...form, map: "amap" }, true)).toEqual({
+      change: { enabled: true, per_day: 3, map: "amap" },
+    });
+  });
+});
+
 describe("schedule", () => {
   const spec = ITEM_SPECS.schedule;
 

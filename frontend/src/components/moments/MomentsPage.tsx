@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 import { FailureNotice } from "@/components/app/FailureNotice";
 import { MarkedAvatar } from "@/components/app/MarkedAvatar";
@@ -10,7 +10,7 @@ import { useDirectory } from "@/components/conversations/ConversationDirectory";
 import { copy } from "@/i18n";
 import { ApiError, getMoments, type Character, type Moment } from "@/lib/api";
 import { toFailure, type Failure } from "@/lib/failure";
-import { postedText } from "@/lib/moments";
+import { metaParts } from "@/lib/moments";
 import { Ja } from "@/theme/Ja";
 
 const t = copy.moments;
@@ -73,7 +73,8 @@ export function MomentsPage() {
   );
 }
 
-/** 时间线的一行：左边她的头像；右边名字、日语正文、一行字幕（同对话气泡）、Meta 字号的时间。 */
+/** 时间线的一行：左边她的头像；右边名字、日语正文、一行字幕（同对话气泡）、Meta 字号的「时间 · 地名」。
+ * 地名点开在新标签页打开地图，不把本站地址带过去。 */
 function MomentRow({ moment, character, now }: { moment: Moment; character: Character | undefined; now: Date }) {
   const name = character?.name ?? moment.character_id;
   return (
@@ -87,9 +88,25 @@ function MomentRow({ moment, character, now }: { moment: Moment; character: Char
           </p>
           {moment.zh && <p className="text-subtitle text-muted-foreground">{moment.zh}</p>}
         </div>
-        <time dateTime={moment.posted_at} className="text-meta text-muted-foreground">
-          {postedText(moment.posted_at, now)}
-        </time>
+        <p className="text-meta text-muted-foreground">
+          {metaParts(moment, now).map((part, i) => (
+            <Fragment key={i}>
+              {i > 0 && " · "}
+              {part.kind === "place" ? (
+                <a
+                  href={part.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-sm underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  {part.text}
+                </a>
+              ) : (
+                <time dateTime={moment.posted_at}>{part.text}</time>
+              )}
+            </Fragment>
+          ))}
+        </p>
       </div>
     </article>
   );

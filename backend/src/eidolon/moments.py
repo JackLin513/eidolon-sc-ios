@@ -30,11 +30,14 @@ held only while she does: nothing counts towards the user's limits. Her prompt i
 together from what is read beforehand (`moment_prompt.PostMaterial`): what she knows of now on
 the `moments` occasion; `SEEDS` entries of her facts; the memories she was told herself, found
 with the last turn of her current conversation (`Memories.for_reaching_out`); her latest
-`RECENT` moments. Each has an activity record of its own (`moment`), on the deployer's keys,
-its service calls under it; one the model fails, or writes nothing to post in, is recorded
-failed, and not tried again. What she posts is posted as it is written: that is when it shows.
+`RECENT` moments; as many as `moment_draws.CANDIDATES` places of the pool for her to say she
+was at one of (`moment_draws.draw_places`). Each has an activity record of its own (`moment`),
+on the deployer's keys, its service calls under it, and what of it was made do without
+(`moment_prompt.Post.degraded`); one the model fails, or writes nothing to post in, is
+recorded failed, and not tried again. What she posts is posted as it is written: that is when it shows.
 
-The timeline (`timeline`) is the user's moments of the last `KEPT`, the latest first."""
+The timeline (`timeline`) is the user's moments of the last `KEPT`, the latest first, each
+place with a link to it on the map the deployer chooses (`map_link`)."""
 
 import asyncio
 import logging
@@ -42,18 +45,29 @@ import sqlite3
 from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from urllib.parse import quote, urlencode
 
 from eidolon.activity import ActivityLog
 from eidolon.affinity import Affinities, Status, Tier, tier_prompt
 from eidolon.characters import Character
 from eidolon.clock import Clock
+from eidolon.config import MapSite
 from eidolon.data_access import Database
 from eidolon.her_now import HerNow
 from eidolon.live_config import LiveConfig
 from eidolon.llm import Streamed
 from eidolon.memory import Memories, last_turn_query
-from eidolon.moment_draws import CHANCES, Eligible, Planned, draw_seeds, plan_day
+from eidolon.moment_draws import (
+    CHANCES,
+    KEPT_APART,
+    Eligible,
+    Planned,
+    draw_places,
+    draw_seeds,
+    plan_day,
+)
 from eidolon.moment_prompt import PostMaterial, parse_post, post_prompt
+from eidolon.place_pool import Place
 from eidolon.producer import ProducerProfile, effective_timezone, is_birthday, local_date
 from eidolon.randomness import Random
 from eidolon.store import (
@@ -65,7 +79,7 @@ from eidolon.store import (
     read_profile,
     read_record,
 )
-from eidolon.today import tokyo_date
+from eidolon.today import tokyo_date, venues_on_this_day
 from eidolon.usage import read_user_limits
 from eidolon.world import World
 
@@ -136,20 +150,52 @@ class MomentsOff(Exception):
 
 
 @dataclass(frozen=True)
+class ShownPlace:
+    """A moment's copy of the place she was at: its name and where it is, in WGS-84."""
+
+    name: str
+    lat: float
+    lon: float
+
+
+def map_link(site: MapSite, place: ShownPlace) -> str:
+    """Where `place` is on the map of `site`, marked, its coordinates as they are (WGS-84):
+    none of them needs a key."""
+    lat, lon = place.lat, place.lon
+    if site == "google":  # Maps URLs
+        return "https://www.google.com/maps/search/?" + urlencode(
+            {"api": 1, "query": f"{lat},{lon}"}
+        )
+    if site == "amap":
+        return (
+            f"https://uri.amap.com/marker?position={lon},{lat}"
+            f"&name={quote(place.name)}&coordinate=wgs84"
+        )
+    return f"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}#map=17/{lat}/{lon}"
+
+
+@dataclass(frozen=True)
 class Moment:
-    """A moment as the timeline shows it: whose, what she posted, and when it showed."""
+    """A moment as the timeline shows it: whose, what she posted, when it showed, and where
+    she was, as it was then (None for nowhere)."""
 
     id: int
     character_id: str
     ja: str
     zh: str
     posted_at: str
+    place: ShownPlace | None = None
 
-    def shown(self) -> dict:
-        """As the browser is told it; no picture, place or weather yet."""
+    def shown(self, map_site: MapSite) -> dict:
+        """As the browser is told it, its place linked to on `map_site`; no picture or
+        weather yet."""
+        place = (
+            {"name": self.place.name, "map": map_link(map_site, self.place)}
+            if self.place is not None else None
+        )
         return {
             "id": self.id, "character_id": self.character_id, "ja": self.ja, "zh": self.zh,
-            "image": None, "place": None, "weather": None, "posted_at": self.posted_at,
+            "image": None, "place": place, "weather": None, "posted_at": self.posted_at,
         }
 
 
@@ -178,18 +224,20 @@ class _Standing:
 @dataclass(frozen=True)
 class _Before:
     """What she posts a moment with, read beforehand in one read: the producer, her current
-    conversation and its messages, and her latest moments' Japanese, the latest first."""
+    conversation and its messages, her latest moments' Japanese, the latest first, and the
+    places the user's moments were at within `KEPT_APART`, by identifier."""
 
     profile: ProducerProfile
     conversation: Conversation | None
     messages: list[Message]
     recent: list[str]
+    used: set[str]
 
 
 class Moments:
     """Her moments, in `db`, on the deployer's models of `config`, each recorded in
     `activity`; `random` draws who posts and when. A time that came before `clock` says it is
-    as they begin is missed."""
+    as they begin is missed. She may be at one of `places`."""
 
     def __init__(
         self,
@@ -203,6 +251,7 @@ class Moments:
         clock: Clock,
         random: Random,
         world: World | None = None,
+        places: Sequence[Place] = (),
     ) -> None:
         self._db = db
         self._characters = characters
@@ -214,6 +263,7 @@ class Moments:
         self._clock = clock
         self._random = random
         self._world = world
+        self._places = places
         self._started = clock()
         self._was_off = False
         db.prepare(_open)
@@ -263,6 +313,11 @@ class Moments:
             now.astimezone(UTC).isoformat(),
         )
         return [m for m in moments if m.character_id in self._characters]
+
+    @property
+    def map_site(self) -> MapSite:
+        """The map the places on the timeline link to now."""
+        return self._config.moments.map
 
     @property
     def _on(self) -> bool:
@@ -360,14 +415,16 @@ class Moments:
             return
         finally:
             lease.release()
-        post = parse_post(written)
+        post = parse_post(written, material.places)
         if post is None:
             log.warning("posting a moment to user %s failed: nothing to post", plan.user_id)
             await self._db.write(_drop_plan, plan.id)
             await recording.finish("failed")
             return
+        recording.degraded = dict(post.degraded) or None
         await self._db.write(
-            _add_moment, plan, post.ja, post.zh, self._clock().astimezone(UTC).isoformat()
+            _add_moment, plan, post.ja, post.zh, post.place,
+            self._clock().astimezone(UTC).isoformat(),
         )
         await recording.finish("success")
 
@@ -399,7 +456,10 @@ class Moments:
     ) -> PostMaterial:
         """What she posts the moment planned with, read now."""
         known = await self._her_now.read(plan.user_id, plan.character_id, None, "moments")
-        before = await self._db.read(_before, plan.user_id, plan.character_id)
+        before = await self._db.read(
+            _before, plan.user_id, plan.character_id,
+            (now - KEPT_APART).astimezone(UTC).isoformat(),
+        )
         status = await self._affinities.status(plan.user_id, plan.character_id)
         timezone = effective_timezone(before.profile, None)
         memories = (
@@ -420,6 +480,11 @@ class Moments:
             [_seed(f.text) for f in draw_seeds(character.facts, self._random)],
             memories,
             before.recent,
+            draw_places(
+                self._places, character.id, character.place_likes,
+                venues_on_this_day(now, character, self._world), now, before.used,
+                self._random,
+            ),
         )
 
 
@@ -495,17 +560,21 @@ def _drop_plan(db: sqlite3.Connection, plan_id: int) -> None:
     db.execute("DELETE FROM moment_plans WHERE id = ?", (plan_id,))
 
 
-def _add_moment(db: sqlite3.Connection, plan: _Plan, ja: str, zh: str, posted_at: str) -> None:
-    """Post the moment planned, taking it off the plan."""
+def _add_moment(
+    db: sqlite3.Connection, plan: _Plan, ja: str, zh: str, place: Place | None, posted_at: str
+) -> None:
+    """Post the moment planned, at a copy of `place`, taking it off the plan."""
     db.execute(
-        "INSERT INTO moments (user_id, character_id, ja, zh, day, posted_at)"
-        " VALUES (?, ?, ?, ?, ?, ?)",
-        (plan.user_id, plan.character_id, ja, zh, plan.day.isoformat(), posted_at),
+        "INSERT INTO moments (user_id, character_id, ja, zh, place_id, place_name, place_lat,"
+        " place_lon, day, posted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (plan.user_id, plan.character_id, ja, zh,
+         *((place.id, place.name, place.lat, place.lon) if place else (None,) * 4),
+         plan.day.isoformat(), posted_at),
     )
     _drop_plan(db, plan.id)
 
 
-def _before(db: sqlite3.Connection, user_id: str, character_id: str) -> _Before:
+def _before(db: sqlite3.Connection, user_id: str, character_id: str, since: str) -> _Before:
     conversation = read_current_conversation(db, user_id, character_id)
     messages = (
         [e for e in read_record(db, conversation.id) if isinstance(e, Message)]
@@ -518,14 +587,23 @@ def _before(db: sqlite3.Connection, user_id: str, character_id: str) -> _Before:
             (user_id, character_id, RECENT),
         )
     ]
-    return _Before(read_profile(db, user_id), conversation, messages, recent)
+    used = {
+        place_id for (place_id,) in db.execute(
+            "SELECT place_id FROM moments WHERE user_id = ? AND posted_at > ?"
+            " AND place_id IS NOT NULL",
+            (user_id, since),
+        )
+    }
+    return _Before(read_profile(db, user_id), conversation, messages, recent, used)
 
 
 def _timeline(db: sqlite3.Connection, user_id: str, since: str, now: str) -> list[Moment]:
     return [
-        Moment(*row)
-        for row in db.execute(
-            "SELECT id, character_id, ja, zh, posted_at FROM moments"
+        Moment(id, character_id, ja, zh, posted_at,
+               ShownPlace(name, lat, lon) if name is not None else None)
+        for id, character_id, ja, zh, posted_at, name, lat, lon in db.execute(
+            "SELECT id, character_id, ja, zh, posted_at, place_name, place_lat, place_lon"
+            " FROM moments"
             " WHERE user_id = ? AND posted_at > ? AND posted_at <= ?"
             " ORDER BY posted_at DESC, id DESC",
             (user_id, since, now),

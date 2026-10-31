@@ -211,6 +211,9 @@ export function modelChoice(options: readonly string[], model: string): string {
 /** Who may sign up (GLOSSARY.md「注册方式」): anyone, or only those who bring an invite link. */
 export const REGISTRATIONS = ["open", "invite"] as const;
 
+/** Where a moment's place links to on the map (GLOSSARY.md「地点」): OpenStreetMap, Google Maps or Amap. */
+export const MAP_SITES = ["osm", "google", "amap"] as const;
+
 /** How many of the latest minutes the service status may go by, as the backend takes them. */
 export const STATUS_WINDOWS = ["10", "30", "60"] as const;
 
@@ -355,13 +358,14 @@ export const ITEM_SPECS: Record<ItemName, ItemSpec> = {
     ],
     tried: false,
   },
-  // 朋友圈（GLOSSARY.md「朋友圈」）：总开关，每位用户每天合计最多几条。不试调。
+  // 朋友圈（GLOSSARY.md「朋友圈」）：总开关，每位用户每天合计最多几条，地名点开跳哪家地图。不试调。
   moments: {
-    rows: ["enabled", "per_day"],
+    rows: ["enabled", "per_day", "map"],
     secrets: [],
     form: [
       { name: "enabled", kind: "switch" },
       { name: "per_day", kind: "positive" },
+      { name: "map", kind: "select", options: MAP_SITES },
     ],
     tried: false,
   },

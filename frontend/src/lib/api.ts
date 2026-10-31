@@ -711,15 +711,17 @@ export async function getBar(): Promise<BarState> {
   return json(await api("/api/bar"));
 }
 
-/** A post of hers in the user's moments (GLOSSARY.md「动态」): her Japanese, its subtitle, and when it
- * came out (ISO, with its offset). The picture, the place and the weather are null for now. */
+/** A post of hers in the user's moments (GLOSSARY.md「动态」): her Japanese, its subtitle, when it
+ * came out (ISO, with its offset), and where she was (GLOSSARY.md「地点」), its Japanese name with a
+ * link to it on the map the deployer chooses, null for nowhere. The picture and the weather are null
+ * for now. */
 export type Moment = {
   id: number;
   character_id: string;
   ja: string;
   zh: string;
   image: null;
-  place: null;
+  place: { name: string; map: string } | null;
   weather: null;
   posted_at: string;
 };

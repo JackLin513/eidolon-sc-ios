@@ -2,6 +2,7 @@
 // 时间线只有 30 天内的动态，所以不写日期，只写离现在多久。
 
 import { copy } from "@/i18n";
+import type { Moment } from "@/lib/api";
 
 const t = copy.moments;
 
@@ -24,4 +25,14 @@ export function postedText(postedAt: string, now: Date): string {
 function calendarDaysBetween(at: Date, now: Date): number {
   const dayOf = (d: Date) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / (24 * HOUR);
   return dayOf(now) - dayOf(at);
+}
+
+/** Meta 一行的一段：时间，或带地图链接的地名。 */
+export type MetaPart = { kind: "time"; text: string } | { kind: "place"; text: string; href: string };
+
+/** Meta 一行从左到右的几段，中间用分隔点连：时间、地名（点开看地图）。没有的部分不出现，分隔点跟着省掉。 */
+export function metaParts(moment: Moment, now: Date): MetaPart[] {
+  const parts: MetaPart[] = [{ kind: "time", text: postedText(moment.posted_at, now) }];
+  if (moment.place) parts.push({ kind: "place", text: moment.place.name, href: moment.place.map });
+  return parts;
 }

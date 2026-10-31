@@ -1509,7 +1509,7 @@ export const zh = {
       itemFields: {
         chat_llm: { reasoning_effort: "文字的思考强度" },
         reach_outs: { enabled: "搭话", per_day: "每位用户每天最多几次" },
-        moments: { enabled: "朋友圈", per_day: "每位用户每天最多几条" },
+        moments: { enabled: "朋友圈", per_day: "每位用户每天最多几条", map: "地图" },
         schedule: { enabled: "日程" },
         cycles: { enabled: "周期" },
         bar: { enabled: "酒吧" },
@@ -1597,6 +1597,7 @@ export const zh = {
       regions: { beijing: "北京", singapore: "新加坡" } as Record<string, string>,
       /** 注册方式（GLOSSARY.md「注册方式」）的两种。 */
       registrations: { open: "谁都能注册", invite: "只让受邀的人注册" } as Record<string, string>,
+      mapSites: { osm: "OpenStreetMap", google: "Google Maps", amap: "高德地图" } as Record<string, string>,
       imageFormats: { novelai: "NovelAI 官方格式", openai: "OpenAI 图像格式" } as Record<string, string>,
       imageModels: {
         "nai-diffusion-5-curated": "V5 Curated",

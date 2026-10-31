@@ -255,8 +255,7 @@ def build(
     gift_catalog = load_gift_catalog(gifts_path(settings.characters_path))
     check_liked_gifts(characters, gift_catalog)
     job_list = load_job_list(jobs_path(settings.characters_path))
-    # Only checked so far: no moment names a place yet.
-    load_place_pool(places_path(settings.characters_path), characters)
+    places = load_place_pool(places_path(settings.characters_path), characters)
     check_job_places(job_list)
     check_place_likes(characters)
     drink_catalog = load_drink_catalog(drinks_path(settings.characters_path))
@@ -464,7 +463,7 @@ def build(
     )
     moments = Moments(
         database, characters, config, affinities, activity, memories, her_now, clock,
-        random or secure_random, world,
+        random or secure_random, world, places,
     )
     config.on_change(gifts.notice)
     return Backend(

@@ -113,15 +113,23 @@ DEFAULT_MOMENTS_PER_DAY = 3
 """How many moments each user may have a day, of all characters together, unless the admin
 console says otherwise."""
 
+MapSite = Literal["osm", "google", "amap"]
+"""Where a moment's place links to on the map: OpenStreetMap, Google Maps or Amap (高德)."""
+
+MAP_SITES: tuple[MapSite, ...] = get_args(MapSite)
+
+DEFAULT_MAP_SITE: MapSite = "osm"
+
 
 @dataclass(frozen=True)
 class MomentSettings:
     """Whether characters post moments to users' moments (GLOSSARY.md「朋友圈」), off unless
-    `.env` turns it on, and how many moments each user may have a day; the admin console may
-    override both."""
+    `.env` turns it on, how many moments each user may have a day, and which map their places
+    link to, the same for everyone; the admin console may override them all."""
 
     enabled: bool
     per_day: int
+    map: MapSite = DEFAULT_MAP_SITE
 
 
 @dataclass(frozen=True)

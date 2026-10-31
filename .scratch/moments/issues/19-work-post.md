@@ -28,3 +28,10 @@
     - 日程关着时是日常那条。
 - [ ] **验收**：在本地构建版上排一项马上就会做完的工作，推进时间、调一次「跑一遍」，看时间线上那条动态写的是工作。
 - [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+
+## Comments
+
+### 票 17 交接
+
+- 挑候选是 `moment_draws.draw_places`，现在只有日常那条的用法（全部类别，按 `place_likes`、圣地加权）。工作那条要给它加一个限定类别的参数：只挑这几项工作 `places` 里的类别；写了 `nearby` 的不限类别、只挑 `place.nearby`；都没写 `places` 时直接不给候选（`PostMaterial.places` 为空，提示词会写「这次没有候选，写 none」）。
+- 30 天排除、季节、时段、往年今天的场馆这几条照旧适用；`Moments._material` 里调它的地方要按计划的 `kind` 分开。

@@ -18,4 +18,5 @@ def add_moment_routes(app: FastAPI, backend: Backend) -> None:
     @app.get("/api/moments")
     async def timeline(user_id: UserId) -> dict:
         """The user's moments that have shown within the last 30 days, the latest first."""
-        return {"moments": [m.shown() for m in await backend.moments.timeline(user_id)]}
+        map_site = backend.moments.map_site
+        return {"moments": [m.shown(map_site) for m in await backend.moments.timeline(user_id)]}

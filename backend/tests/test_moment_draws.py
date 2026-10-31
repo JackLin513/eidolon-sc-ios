@@ -5,7 +5,8 @@ everyday moment's seeds."""
 from datetime import date, datetime, time
 
 from eidolon.characters import Fact
-from eidolon.moment_draws import Eligible, Planned, draw_seeds, plan_day
+from eidolon.moment_draws import Eligible, Planned, draw_places, draw_seeds, plan_day
+from eidolon.place_pool import Category, Place
 from eidolon.today import TOKYO
 from tests.fakes import FakeRandom
 
@@ -68,3 +69,58 @@ def test_her_seeds_are_drawn_from_her_facts_but_those_of_the_people_she_knows():
     seeds = draw_seeds(facts, FakeRandom(999, 0, 500))
 
     assert [s.text for s in seeds] == ["f", "a", "d"]
+
+
+def place(id: str, category: Category = "park", **fields) -> Place:
+    return Place(id, f"{id}の名", "渋谷区", 35.6, 139.7, category, "说明", date(2026, 10, 1),
+                 **fields)
+
+
+def test_her_places_are_drawn_by_weight_her_liked_kinds_and_holy_sites_weighing_more():
+    """A place weighs 1, one of a kind she likes 3, her holy site 4; each drawn is out of
+    the next draw."""
+    places = [place("a"), place("b", "cafe"), place("c", idols=("mano",), source="卡"),
+              place("d"), place("e"), place("f")]
+    likes = ("cafe",)
+    random = FakeRandom(
+        500,  # of a 1, b 3, c 4, d e f 1: 12; 6 of them falls in c (4–8)
+        0,  # a
+        999,  # the last, f
+        250,  # of b 3, d 1, e 1: 5; 1.25 in b
+    )
+
+    drawn = draw_places(places, "mano", likes, (), at(12), (), random)
+
+    assert [p.id for p in drawn] == ["c", "a", "f", "b"]
+
+
+def test_only_places_of_the_season_and_the_slot_and_none_used_within_30_days():
+    """October is autumn; 12:00 the afternoon."""
+    places = [
+        place("spring", seasons=("spring",)), place("autumn", seasons=("autumn", "winter")),
+        place("evening", slots=("evening",)), place("afternoon", slots=("afternoon",)),
+        place("used"), place("any"),
+    ]
+
+    drawn = draw_places(places, "mano", None, (), at(12), ("used",), FakeRandom(0, 0, 0))
+
+    assert [p.id for p in drawn] == ["autumn", "afternoon", "any"]  # fewer than 4: as many
+
+
+def test_late_at_night_no_place_with_slots():
+    places = [place("evening", slots=("morning", "afternoon", "evening")), place("any")]
+
+    assert [p.id for p in draw_places(places, "mano", None, (), at(1), (), FakeRandom(0))] == ["any"]
+
+
+def test_a_venue_only_on_the_day_of_her_live_there_and_then_first():
+    places = [place("a"), place("arena", "venue", venues=("さいたまスーパーアリーナ",)),
+              place("hall", "venue")]
+
+    on_none = draw_places(places, "mano", None, (), at(12), (), FakeRandom(0))
+    on_her_live = draw_places(
+        places, "mano", None, ("さいたまスーパーアリーナ",), at(12), (), FakeRandom(0)
+    )
+
+    assert [p.id for p in on_none] == ["a"]
+    assert [p.id for p in on_her_live] == ["arena", "a"]

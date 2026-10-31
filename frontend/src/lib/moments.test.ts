@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { postedText } from "@/lib/moments";
+import type { Moment } from "@/lib/api";
+import { metaParts, postedText } from "@/lib/moments";
 
 /** 本地时间的某一刻（测试不依赖所在时区）。 */
 function local(day: number, hour: number, minute = 0, second = 0): Date {
@@ -32,5 +33,31 @@ describe("时间线一行的时间", () => {
     expect(postedText(local(30, 0, 0).toISOString(), now)).toBe("昨天");
     expect(postedText(local(29, 23, 0).toISOString(), now)).toBe("2 天前");
     expect(postedText(local(1, 12, 0).toISOString(), now)).toBe("30 天前");
+  });
+});
+
+describe("时间线一行的 Meta", () => {
+  const moment: Moment = {
+    id: 1,
+    character_id: "mano",
+    ja: "池のボート",
+    zh: "池塘的小船",
+    image: null,
+    place: null,
+    weather: null,
+    posted_at: local(31, 11, 0).toISOString(),
+  };
+  const map = "https://www.openstreetmap.org/?mlat=35.6997&mlon=139.5731#map=17/35.6997/139.5731";
+
+  it("有地名时是「时间 · 地名」，地名带地图链接", () => {
+    const parts = metaParts({ ...moment, place: { name: "井の頭恩賜公園", map } }, now);
+    expect(parts).toEqual([
+      { kind: "time", text: "1 小时前" },
+      { kind: "place", text: "井の頭恩賜公園", href: map },
+    ]);
+  });
+
+  it("没有地名时只有时间，分隔点也省掉", () => {
+    expect(metaParts(moment, now)).toEqual([{ kind: "time", text: "1 小时前" }]);
   });
 });

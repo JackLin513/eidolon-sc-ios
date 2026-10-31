@@ -12,15 +12,23 @@ left for posts nothing that day.
 Her everyday moment's seeds (`draw_seeds`): `SEEDS` entries of her facts, but for those of
 the people she knows (`RELATIONS`), each as likely.
 
+Her places (`draw_places`): as many as `CANDIDATES`, for her to say she was at one or at
+none, of the places right for the season and the time of day she posts at in Tokyo, and none
+the user's moments were at within the last `KEPT_APART`. A venue is one only on a day she
+stood on it in a year before, and is then hers before any is drawn; the rest are drawn by
+weight, one of a kind she likes weighing `LIKED` times as much, her holy site `HOLY` times.
+
 Every draw asks the random source for a number below `PLACES`, so that one giving the same
 number each time draws alike wherever it is asked."""
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
 from eidolon.affinity import Tier
 from eidolon.characters import Fact
+from eidolon.job_list import Slot
+from eidolon.place_pool import SEASONS, Place, Season
 from eidolon.randomness import Random
 from eidolon.today import TOKYO
 
@@ -48,6 +56,25 @@ SEEDS = 3
 
 RELATIONS = "人物关系"
 """The heading of the section of her facts on the people she knows, drawn from for no seed."""
+
+CANDIDATES = 4
+"""How many places she is given to choose from at most, besides none."""
+
+LIKED = 3
+"""How much more a place of a kind she likes weighs."""
+
+HOLY = 4
+"""How much more a place weighs whose `idols` she is of: her holy site."""
+
+KEPT_APART = timedelta(days=30)
+"""How long a place one of the user's moments was at is not drawn again for them."""
+
+_SEASONS: dict[int, Season] = {
+    month: season
+    for season, months in zip(SEASONS, ((3, 4, 5), (6, 7, 8), (9, 10, 11), (12, 1, 2)), strict=True)
+    for month in months
+}
+"""The season of each month in Tokyo."""
 
 
 @dataclass(frozen=True)
@@ -96,6 +123,53 @@ def draw_seeds(facts: Sequence[Fact], random: Random) -> list[Fact]:
     drawn."""
     left = [f for f in facts if f.title is None or f.title.split(" / ")[0] != RELATIONS]
     return [left.pop(_index(random, len(left))) for _ in range(min(SEEDS, len(left)))]
+
+
+def draw_places(
+    places: Sequence[Place],
+    character_id: str,
+    likes: Collection[str] | None,
+    venues: Collection[str],
+    at: datetime,
+    used: Collection[str],
+    random: Random,
+) -> list[Place]:
+    """As many as `CANDIDATES` of `places` for her to choose from as she posts `at`: those
+    right for its season and its slot in Tokyo (one with slots none late at night, before 6),
+    none of `used` (by identifier); a venue only if `venues` (where her lives on this day in a
+    year before were) names it, and then first. The rest are drawn by weight: `LIKED` for
+    a kind she `likes`, `HOLY` for one whose `idols` are hers."""
+    local = at.astimezone(TOKYO)
+    season, slot = _SEASONS[local.month], _slot(local.hour)
+    left = [
+        p for p in places
+        if p.id not in used
+        and (p.seasons is None or season in p.seasons)
+        and (p.slots is None or (slot is not None and slot in p.slots))
+    ]
+    drawn = [p for p in left if any(name in venues for name in p.venue_names)][:CANDIDATES]
+    left = [p for p in left if p.category != "venue"]
+    weights = [
+        (LIKED if likes and p.category in likes else 1)
+        * (HOLY if character_id in p.idols else 1)
+        for p in left
+    ]
+    while left and len(drawn) < CANDIDATES:
+        weighed = _draw(random) * sum(weights)
+        index = len(left) - 1  # the last, should rounding leave it past them all
+        for i, weight in enumerate(weights):
+            if weighed < weight:
+                index = i
+                break
+            weighed -= weight
+        drawn.append(left.pop(index))
+        weights.pop(index)
+    return drawn
+
+
+def _slot(hour: int) -> Slot | None:
+    """The slot an hour in Tokyo is in; None late at night, before 6."""
+    return None if hour < 6 else "morning" if hour < 12 else "afternoon" if hour < 18 else "evening"
 
 
 def _time(

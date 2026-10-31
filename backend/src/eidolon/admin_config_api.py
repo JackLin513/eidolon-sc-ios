@@ -181,11 +181,13 @@ class ReachOutsInput(BaseModel):
 
 
 class MomentsInput(BaseModel):
-    """Whether characters post moments, true or false, and how many a day each user at
-    most, a whole number from 1 up; checked by the live configuration."""
+    """Whether characters post moments, true or false, how many a day each user at most, a
+    whole number from 1 up, and which map their places link to, unchanged if not given;
+    checked by the live configuration."""
 
     enabled: Any
     per_day: Any
+    map: Any = None
 
 
 class ScheduleInput(BaseModel):
@@ -277,9 +279,9 @@ INPUTS: dict[str, type[BaseModel]] = {
 def _change(item: str, body: BaseModel) -> dict[str, Any]:
     """What the input changes of the item: every field given (a model slot's max_tokens
     may be None, its protocol's default), a key, the judge model's account, workspace
-    and region and a proxy's password only if given."""
+    and region, a proxy's password and the moments' map only if given."""
     change = body.model_dump()
-    for field in ("account_id", "workspace_id", "region"):
+    for field in ("account_id", "workspace_id", "region", "map"):
         if change.get(field, "") is None:
             del change[field]
     if change.get("password", "") is None:
