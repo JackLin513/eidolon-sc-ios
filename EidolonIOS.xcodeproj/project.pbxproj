@@ -46,6 +46,7 @@
 		A186A188093AEB3E98E1E96A /* BarGuest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 889A8316C35EBB240F4D78A2 /* BarGuest.swift */; };
 		A1B405F9250C7DCD499A4A7E /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77736DA8D3A8B0B2407A626B /* ChatView.swift */; };
 		A84B266827D901F32D324DA5 /* StandRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B65BE210B02CA6A488C94D /* StandRenderer.swift */; };
+		AFCB1D4E31B67D5555622131 /* ScheduleCycleUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3E123E7FAC64C8170D6CDFE /* ScheduleCycleUITests.swift */; };
 		B2DF1A14F646EDBA6EAECF48 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2610401DD1C29D8D7AB56C /* SettingsView.swift */; };
 		B3AF831F701054AEEE1CCABB /* CyclesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 189051D482A540C18583A79E /* CyclesView.swift */; };
 		BBCD2E47044DFC5DAB92ED57 /* CallSettingsError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */; };
@@ -122,6 +123,7 @@
 		A530040A28709F9772A80A94 /* CallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallView.swift; sourceTree = "<group>"; };
 		B1AD0F6ABD451EB0C733277C /* StandWebRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandWebRenderer.swift; sourceTree = "<group>"; };
 		B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationHistoryView.swift; sourceTree = "<group>"; };
+		B3E123E7FAC64C8170D6CDFE /* ScheduleCycleUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleCycleUITests.swift; sourceTree = "<group>"; };
 		B4EC9179658A248DC6D0E540 /* BarSettingsBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarSettingsBox.swift; sourceTree = "<group>"; };
 		B94AA6A4C5655585B24D2400 /* MemoryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryListView.swift; sourceTree = "<group>"; };
 		BD7263A570545913D16486F1 /* OutfitPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutfitPickerView.swift; sourceTree = "<group>"; };
@@ -311,6 +313,7 @@
 			isa = PBXGroup;
 			children = (
 				17A409D36FC5F7C23FD61FFB /* BarTutorialUITests.swift */,
+				B3E123E7FAC64C8170D6CDFE /* ScheduleCycleUITests.swift */,
 			);
 			path = EidolonIOSUITests;
 			sourceTree = "<group>";
@@ -616,6 +619,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				2AB7F50E81201BDD5EE6B1EC /* BarTutorialUITests.swift in Sources */,
+				AFCB1D4E31B67D5555622131 /* ScheduleCycleUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
