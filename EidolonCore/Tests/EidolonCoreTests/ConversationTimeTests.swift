@@ -159,13 +159,19 @@ final class ConversationTimeTests: XCTestCase {
 
     // MARK: - The transcript's bubble groups (spec #40)
 
-    private func her(_ id: String, at instant: Date, reachOut: Bool = false) -> ConversationLine {
+    private func her(
+        _ id: String,
+        at instant: Date,
+        reachOut: Bool = false,
+        change: AffinityChange? = nil
+    ) -> ConversationLine {
         .message(ChatMessageRecord(
             id: reachOut ? "reach:\(id)" : id,
             role: "character",
             text: nil,
             segments: [],
-            createdAt: Eidolon.timestamp(instant)
+            createdAt: Eidolon.timestamp(instant),
+            affinityChange: change
         ))
     }
 
@@ -276,6 +282,27 @@ final class ConversationTimeTests: XCTestCase {
         XCTAssertEqual(rows.map(\.first), [true, true])
         XCTAssertEqual(rows.map(\.last), [true, true])
         XCTAssertEqual(rows.map(\.day), ["今天", nil])
+    }
+
+    func testAChangedReplyCarriesItsCueAndSplitsTheGroup() {
+        let at = date(2026, 10, 31, 9)
+        let change = AffinityChange(up: true, tierChanged: false, tier: .trust, cooldown: false)
+        let rows = ConversationTranscript.rows(
+            of: [
+                her("a", at: at),
+                her("b", at: at.addingTimeInterval(60), change: change),
+                her("c", at: at.addingTimeInterval(120)),
+            ],
+            now: date(2026, 10, 31, 12),
+            calendar: calendar,
+            splitsAfter: { line in
+                guard case let .message(message) = line else { return false }
+                return message.affinityChange != nil
+            }
+        )
+        XCTAssertEqual(rows.map(\.cue), [nil, change, nil])
+        XCTAssertEqual(rows.map(\.first), [true, false, true])
+        XCTAssertEqual(rows.map(\.last), [false, true, true])
     }
 
     func testTheSplitSeamCutsGroupsWithoutADrawnCue() {

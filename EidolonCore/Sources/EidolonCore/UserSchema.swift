@@ -4,7 +4,7 @@ import GRDB
 /// The writable user library (ADR-0002). Its schema evolves with the app, not
 /// with the content bundle, and is therefore managed by GRDB migrations.
 enum UserSchema {
-    static let version = 8
+    static let version = 9
 
     static func migrate(_ dbQueue: DatabaseQueue) throws {
         var migrator = DatabaseMigrator()
@@ -200,6 +200,14 @@ enum UserSchema {
                 CREATE INDEX bar_visits_by_her ON bar_visits (character_id, id);
                 CREATE INDEX bar_visits_by_day ON bar_visits (entered_on);
                 """)
+        }
+        migrator.registerMigration("v9") { db in
+            // How a reply changed her affinity, kept beside it so the transcript can say
+            // it after the fact (spec #38). All three are null when the turn changed
+            // nothing; `messages.affinity` still holds the tier she was left in.
+            try db.execute(sql: "ALTER TABLE messages ADD COLUMN affinity_up INTEGER")
+            try db.execute(sql: "ALTER TABLE messages ADD COLUMN affinity_tier_changed INTEGER")
+            try db.execute(sql: "ALTER TABLE messages ADD COLUMN affinity_cooldown INTEGER")
         }
         try migrator.migrate(dbQueue)
         try dbQueue.write { db in

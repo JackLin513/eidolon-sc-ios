@@ -19,6 +19,8 @@ final class ChatStore {
     private(set) var pendingUser: String?
     private(set) var isStreaming = false
     private(set) var affinity = AffinityStatus(tier: .trust, cooldownUntil: nil)
+    /// The change the last turn made, shown on the badge for a moment (spec #38).
+    private(set) var affinityCue: AffinityCue?
     /// She ended this conversation: it can only be read, until a new one starts.
     private(set) var ended = false
     /// A past conversation, opened to look at: read-only, always.
@@ -29,6 +31,8 @@ final class ChatStore {
     var errorMessage: String?
 
     private var task: Task<Void, Never>?
+    private var cueTask: Task<Void, Never>?
+    private var cueKey = 0
 
     init(character: CharacterConfig, core: Eidolon, conversationID: String? = nil) {
         self.character = character
@@ -186,6 +190,9 @@ final class ChatStore {
                             tier: record.affinityTier,
                             cooldownUntil: record.cooldownUntil
                         )
+                        if let change = record.affinityChange {
+                            showAffinityCue(change)
+                        }
                         ended = record.ended
                     }
                 }
@@ -216,6 +223,19 @@ final class ChatStore {
 
     func stop() {
         task?.cancel()
+    }
+
+    /// Shows the change on the badge for about 2.6 seconds; a second one replaces it and
+    /// starts the time over (spec #38).
+    private func showAffinityCue(_ change: AffinityChange) {
+        cueTask?.cancel()
+        cueKey += 1
+        affinityCue = AffinityCue(change: change, key: cueKey)
+        cueTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2.6))
+            guard !Task.isCancelled else { return }
+            self?.affinityCue = nil
+        }
     }
 
     private func append(segment: Int, language: ReplyLanguage, text: String) {

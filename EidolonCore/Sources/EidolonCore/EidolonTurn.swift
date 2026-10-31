@@ -40,6 +40,8 @@ public struct TurnRecord: Sendable, Hashable {
     public var hangUp: EndsReason?
     /// She ended the conversation with this turn.
     public var ended: Bool
+    /// How this turn changed her affinity; nil when it changed nothing (spec #38).
+    public var affinityChange: AffinityChange?
 }
 
 public struct AffinityStatus: Sendable, Hashable {
@@ -60,6 +62,9 @@ public struct ChatMessageRecord: Sendable, Hashable, Identifiable {
     public var text: String?
     public var segments: [ReplySegment]
     public var createdAt: String
+    /// How the reply changed her affinity; nil for the producer's lines and for a turn
+    /// that changed nothing (spec #38).
+    public var affinityChange: AffinityChange? = nil
 
     public var isFromCharacter: Bool { role == "character" }
     /// One of her reach-outs, kept apart from her turns in the record (`reach:` ids).
@@ -541,7 +546,8 @@ extension Eidolon {
             hurt: judged?.hurt ?? 0,
             outOfLine: judged?.outOfLine ?? false,
             hangUp: call != nil ? ending : nil,
-            ended: call == nil && ending != nil
+            ended: call == nil && ending != nil,
+            affinityChange: recorded.change
         )
     }
 
@@ -829,6 +835,8 @@ extension Eidolon {
     private struct RecordedTurn {
         var conversationID: String
         var affinity: Affinity
+        /// How the turn changed it; nil when it changed nothing.
+        var change: AffinityChange?
         var userMessageID: String
         /// Which turn of the conversation this was, counting from 1.
         var turn: Int
@@ -895,6 +903,7 @@ extension Eidolon {
                 : 0
             step = AffinityRules.limited(step, left: AffinityRules.gainsPerDay - gainedBefore)
             let after = before.stepped(step)
+            let change = before.change(to: after)
             let rose = max(after.value - before.value, 0)
             let gainedToday = gainedBefore + min(max(step, 0), rose)
             try db.execute(
@@ -920,8 +929,9 @@ extension Eidolon {
                 sql: """
                     INSERT INTO messages(
                         id, conversation_id, role, ja, zh, segments, created_at,
-                        affinity, hurt, out_of_line, typed
-                    ) VALUES (?, ?, 'character', ?, ?, ?, ?, ?, ?, ?, ?)
+                        affinity, hurt, out_of_line, typed,
+                        affinity_up, affinity_tier_changed, affinity_cooldown
+                    ) VALUES (?, ?, 'character', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                 arguments: [
                     replyID, conversationID,
@@ -932,6 +942,9 @@ extension Eidolon {
                     hurt,
                     outOfLine ? 1 : 0,
                     typed ? 1 : 0,
+                    change.map { $0.up ? 1 : 0 },
+                    change.map { $0.tierChanged ? 1 : 0 },
+                    change.map { $0.cooldown ? 1 : 0 },
                 ]
             )
 
@@ -953,6 +966,7 @@ extension Eidolon {
             return RecordedTurn(
                 conversationID: conversationID,
                 affinity: after,
+                change: change,
                 userMessageID: userID,
                 turn: turn
             )

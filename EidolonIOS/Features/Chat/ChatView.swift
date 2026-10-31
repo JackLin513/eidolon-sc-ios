@@ -19,6 +19,7 @@ struct ChatView: View {
     @State private var outfitsStand: CharacterStand?
     @State private var outfitsChecked = false
     @State private var showsOutfits = false
+    @State private var showsAffinity = false
 
     var body: some View {
         Group {
@@ -89,10 +90,18 @@ struct ChatView: View {
                 VStack(spacing: 1) {
                     Text(character.name)
                         .font(.headline)
+                        .lineLimit(1)
                     if let store {
-                        Text(store.affinity.tier.title)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                        AffinityBadgeView(
+                            badge: AffinityBadge.of(
+                                store.affinity,
+                                name: character.name,
+                                now: Date()
+                            ),
+                            color: Color(hex: character.color ?? "#888888"),
+                            cue: store.affinityCue,
+                            showsDetails: $showsAffinity
+                        )
                     }
                 }
             }
@@ -251,16 +260,30 @@ struct ChatView: View {
                             .frame(maxWidth: .infinity, alignment: .center)
                             .padding(.top, 40)
                     }
-                    ForEach(ConversationTranscript.rows(of: store.transcript, now: now)) { row in
+                    ForEach(ConversationTranscript.rows(
+                        of: store.transcript,
+                        now: now,
+                        // A reply that changed her affinity puts its capsule after it and
+                        // starts a new group (spec #38, the seam left in spec #40).
+                        splitsAfter: { line in
+                            guard case let .message(message) = line else { return false }
+                            return message.affinityChange != nil
+                        }
+                    )) { row in
                         VStack(alignment: .leading, spacing: 16) {
                             if let day = row.day {
                                 dayPill(day)
                             }
-                            switch row.line {
-                            case let .message(message):
-                                messageRow(message, row: row)
-                            case let .event(event):
-                                conversationEvent(event, clock: row.clock)
+                            VStack(alignment: .leading, spacing: 8) {
+                                switch row.line {
+                                case let .message(message):
+                                    messageRow(message, row: row)
+                                case let .event(event):
+                                    conversationEvent(event, clock: row.clock)
+                                }
+                                if let change = row.cue {
+                                    AffinityCueCapsule(change: change, name: character.name)
+                                }
                             }
                         }
                         // Eight inside a group, sixteen between groups and around a pill.

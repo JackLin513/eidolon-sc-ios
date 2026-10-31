@@ -2298,6 +2298,69 @@ final class CallSessionTests: XCTestCase {
         await session.hangUp()
     }
 
+    func testATurnThatChangesHerAffinityIsAnnouncedInTheCall() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([["<ja>うん</ja><zh>嗯</zh>"]]),
+            recognition: recognition,
+            judge: FixedJudge(judged: Judged(level: 4))
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+
+        recognition.say("ありがとう")
+        try await waitFor("the affinity cue") {
+            log.all.contains { if case .affinity = $0 { return true }; return false }
+        }
+        let change = log.all.compactMap { event -> AffinityChange? in
+            if case let .affinity(change) = event { return change }
+            return nil
+        }.first
+        XCTAssertEqual(change?.up, true)
+        XCTAssertEqual(change?.tier, .trust)
+        await session.hangUp()
+    }
+
+    func testACancelledTurnDoesNotAnnounceAnAffinityChange() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: SilentChatProvider(),
+            recognition: recognition,
+            judge: FixedJudge(judged: Judged(level: 4))
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+
+        recognition.say("ありがとう")
+        try await waitFor("thinking") { await session.currentState() == .thinking }
+        await session.hangUp()
+        try await waitFor("the end") {
+            log.states().contains { if case .ended = $0 { return true }; return false }
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertFalse(log.all.contains { if case .affinity = $0 { return true }; return false })
+    }
+
+    func testANeutralCallTurnHasNoAffinityCue() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([["<ja>うん</ja><zh>嗯</zh>"]]),
+            recognition: recognition,
+            judge: FixedJudge(judged: Judged(level: 2))
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+
+        recognition.say("ふうん")
+        try await waitFor("her reply") { !segments(of: log).isEmpty }
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertFalse(log.all.contains { if case .affinity = $0 { return true }; return false })
+        await session.hangUp()
+    }
+
     func testTheMicrophoneNoticeSaysWhatHappened() {
         XCTAssertEqual(MicNotice.lost.message, "麦克风断开了，也没有别的麦克风可用")
     }

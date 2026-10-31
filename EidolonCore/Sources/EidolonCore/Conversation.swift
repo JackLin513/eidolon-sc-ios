@@ -67,8 +67,9 @@ extension Eidolon {
             let messages = try Row.fetchAll(
                 db,
                 sql: """
-                    SELECT rowid, id, role, text, segments, created_at FROM messages
-                    WHERE conversation_id = ?
+                    SELECT rowid, id, role, text, segments, created_at,
+                        affinity, affinity_up, affinity_tier_changed, affinity_cooldown
+                    FROM messages WHERE conversation_id = ?
                     """,
                 arguments: [conversationID]
             ).map { row -> Placed in
@@ -81,7 +82,8 @@ extension Eidolon {
                         role: row["role"],
                         text: row["text"],
                         segments: Self.decodeSegments(row["segments"]),
-                        createdAt: createdAt
+                        createdAt: createdAt,
+                        affinityChange: Self.decodeAffinityChange(row)
                     ))
                 )
             }.sorted { left, right in
@@ -162,6 +164,23 @@ extension Eidolon {
 }
 
 extension Eidolon {
+    /// How a reply changed her affinity, as v9 writes it; nil for old rows and for turns
+    /// that changed nothing.
+    static func decodeAffinityChange(_ row: Row) -> AffinityChange? {
+        guard let up = row["affinity_up"] as Int?,
+              let tierChanged = row["affinity_tier_changed"] as Int?,
+              let cooldown = row["affinity_cooldown"] as Int?,
+              let raw: String = row["affinity"],
+              let tier = AffinityTier(rawValue: raw)
+        else { return nil }
+        return AffinityChange(
+            up: up == 1,
+            tierChanged: tierChanged == 1,
+            tier: tier,
+            cooldown: cooldown == 1
+        )
+    }
+
     /// What happened in the conversation besides turns, oldest first. Events are kept out
     /// of the prompt; they are shown in the conversation and nowhere else.
     public func conversationEvents(conversationID: String) throws -> [ConversationEventRecord] {

@@ -335,4 +335,122 @@ final class ConversationLifecycleTests: XCTestCase {
         let current = try await eidolon.currentConversation(characterID: "mano")
         XCTAssertEqual(current?.id, newID)
     }
+
+    // MARK: - The affinity a turn changed (spec #38)
+
+    private func turn(
+        _ text: String,
+        judge: Judged,
+        on eidolon: Eidolon
+    ) async throws -> TurnRecord? {
+        var record: TurnRecord?
+        for try await event in eidolon.sendTurn(
+            characterID: "mano",
+            text: text,
+            provider: reply(),
+            judge: FixedJudge(judged: judge)
+        ) {
+            if case let .finished(finished) = event { record = finished }
+        }
+        return record
+    }
+
+    func testATurnKeepsHowItChangedHerAffinity() async throws {
+        let eidolon = try await installedEidolon()
+        let record = try await turn("ありがとう", judge: Judged(level: 4), on: eidolon)
+
+        let change = try XCTUnwrap(record?.affinityChange)
+        XCTAssertTrue(change.up)
+        XCTAssertFalse(change.tierChanged)
+        XCTAssertEqual(change.tier, .trust)
+        XCTAssertFalse(change.cooldown)
+
+        let snapshot = try await eidolon.currentConversation(characterID: "mano")
+        let messages = try XCTUnwrap(snapshot?.messages)
+        XCTAssertEqual(messages.last?.affinityChange, change)
+        XCTAssertNil(messages.first?.affinityChange, "the producer's own line has no change")
+    }
+
+    func testANeutralTurnKeepsNoChange() async throws {
+        let eidolon = try await installedEidolon()
+        let record = try await turn("ふうん", judge: Judged(level: 2), on: eidolon)
+        XCTAssertNil(record?.affinityChange)
+        let snapshot = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertNil(snapshot?.messages.last?.affinityChange)
+    }
+
+    func testFallingATierIsKeptAsSuch() async throws {
+        let eidolon = try await installedEidolon()
+        let harsh = Judged(level: 0, outOfLine: true)
+        _ = try await turn("ひどい", judge: harsh, on: eidolon)
+        let record = try await turn("もう一度ひどい", judge: harsh, on: eidolon)
+
+        let change = try XCTUnwrap(record?.affinityChange)
+        XCTAssertFalse(change.up)
+        XCTAssertTrue(change.tierChanged)
+        XCTAssertEqual(change.tier, .distant)
+    }
+
+    func testFallingIntoCooldownIsKeptAsSuch() async throws {
+        let eidolon = try await installedEidolon()
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT OR REPLACE INTO affinities(
+                        character_id, value, cooling, updated_at, gained_today, gained_on
+                    ) VALUES ('mano', 5, 0, ?, 0, NULL)
+                    """,
+                arguments: [Eidolon.timestamp(Date())]
+            )
+        }
+        let record = try await turn("ひどい", judge: Judged(level: 0, outOfLine: true), on: eidolon)
+
+        let change = try XCTUnwrap(record?.affinityChange)
+        XCTAssertFalse(change.up)
+        XCTAssertTrue(change.cooldown)
+        XCTAssertEqual(change.tier, .cold)
+    }
+
+    func testTheChangeIsStillThereAfterReopeningTheLibrary() async throws {
+        let eidolon = try await installedEidolon()
+        let record = try await turn("ありがとう", judge: Judged(level: 4), on: eidolon)
+        let expected = try XCTUnwrap(record?.affinityChange)
+        let conversationID = try XCTUnwrap(record?.conversationID)
+
+        let reopened = try Eidolon(location: .init(root: root.appendingPathComponent("app")))
+        let first = try await reopened.conversationRecord(conversationID: conversationID)
+        let second = try await reopened.conversationRecord(conversationID: conversationID)
+        let changes = first.compactMap { line -> AffinityChange? in
+            guard case let .message(message) = line, message.isFromCharacter else { return nil }
+            return message.affinityChange
+        }
+        XCTAssertEqual(changes, [expected])
+        XCTAssertEqual(first, second)
+    }
+
+    func testAStoredReplyWithoutAChangeReadsAsNone() async throws {
+        let eidolon = try await installedEidolon()
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO conversations(id, character_id, created_at)
+                    VALUES ('old', 'mano', '2020-01-01T00:00:00.000000Z')
+                    """
+            )
+            try db.execute(
+                sql: """
+                    INSERT INTO messages(
+                        id, conversation_id, role, ja, zh, segments, created_at, affinity
+                    ) VALUES ('old-reply', 'old', 'character', 'うん', '嗯', '[]',
+                              '2020-01-01T00:00:01.000000Z', 'trust')
+                    """
+            )
+        }
+        let record = try await eidolon.conversationRecord(conversationID: "old")
+        let reply = try XCTUnwrap(record.compactMap { line -> ChatMessageRecord? in
+            if case let .message(message) = line { return message }
+            return nil
+        }.first)
+        XCTAssertNil(reply.affinityChange)
+    }
 }

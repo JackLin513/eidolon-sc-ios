@@ -286,6 +286,8 @@ public enum CallEvent: Sendable, Hashable {
     /// What the microphone is doing that the producer should know; nil takes the notice
     /// away. Never comes after the call ended.
     case micNotice(MicNotice?)
+    /// Her last turn changed her affinity; the status line says it for a moment (spec #38).
+    case affinity(AffinityChange)
 }
 
 /// Everything a call is made of: the platform's audio and voice services, the chat model,
@@ -811,6 +813,9 @@ public actor CallSession {
                     recordedTurns += 1
                     callOutOfLine += record.outOfLine ? 1 : 0
                     callHurts.append(record.hurt)
+                    if let change = record.affinityChange {
+                        emit(.affinity(change))
+                    }
                     if record.hangUp != nil {
                         pendingHangUp = true
                         pendingCooldownUntil = record.cooldownUntil
