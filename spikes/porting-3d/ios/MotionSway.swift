@@ -1,50 +1,57 @@
 import Foundation
 import simd
 
-/// The game's runtime spring for the bones its dances never key (issue #28).
+/// The game's runtime sway for the bones its dances never key (issue #28).
 ///
 /// The dance curves cover 57 bones and none of the skirt panels, ribbons or
-/// hair chains; the game moves those with `Imas.BoneLib.SwayBone` in
-/// `LateUpdate`. Without that pass the skirt hangs rigid while the hips swing,
-/// which is exactly what the phone showed before this existed.
+/// hair chains; the game moves those with `Imas.BoneLib.SwayBone` in a
+/// `SwayManager.ExecuteUpdate` pass. Without it the skirt hangs rigid while the
+/// hips swing.
 ///
-/// Each bone is a pendulum. Its rest direction comes from the parent's current
-/// world rotation and a tail measured from the skin weights; a spring pulls the
-/// simulated direction back towards that one, gravity pulls it down and drag
-/// bleeds off the velocity. The bone is then turned so its rigid direction
-/// points at the simulated one.
+/// This mirrors the game's V01 solver, decompiled from the shipped build:
 ///
-/// The simulation integrates a **unit direction in the parent's frame**, not a
-/// world-space position. Skirt tails are 14–28 cm, while gravity's equilibrium
-/// offset in a positional spring is `g/k = 0.375` world units — larger than the
-/// whole tail. Integrating positions therefore made gravity win outright: every
-/// panel snapped to world down within a frame and ignored the hips for the rest
-/// of the dance. On the unit sphere the same constants make gravity an angular
-/// pull of `atan(g/k)` (≈21° for the skirt), so panels keep the parent's
-/// direction and swing against it.
+/// * The state is the **tip position**, not a direction. `SwayMove` (RVA
+///   0x1C6867C) seeds it from the rigid rest direction, carries it along with
+///   the base (`MoveTipPos`, scaled by `follow`), then integrates a spring
+///   towards the rest tip at `stiffnessForce`, `(tip − previousTip)` damped by
+///   `(1 − dragForce)`, and gravity — all normalised to the game's 1/60 s step
+///   (`ratio = dt · 60`: forces divided by `ratio²` and the step multiplied
+///   back, so damping is frame-rate independent).
+/// * `SwayHit` (0x1C68C3C) pushes the tip out of every collider the bone
+///   lists — the thigh capsules and the hip sphere in `_sway.txt` — and keeps
+///   the deepest push. A frame that was hit skips gravity the next frame, so a
+///   leg does not press the panel straight back in.
+/// * `CalcRotate` (0x1C69F04) clamps the tip's yaw/pitch to
+///   `minYAngle…maxYAngle` / `minZAngle…maxZAngle` and, when it clamps,
+///   recomputes the tip from the clamped angles instead of dropping the
+///   rotation. That "penetrative" correction is why the game's panels never
+///   rotate into the legs.
+/// * `CalcSideLineDistance` / `CalcAntiFoldForce` keep neighbouring panels of
+///   the same ring from folding through each other.
 ///
-/// State must stay in that frame. Carrying the tip as a world position and
-/// rebuilding the direction from it against the *current* parent each frame
-/// turns every root translation into an angular kick: the dance's bob and
-/// weight shifts move the pelvis several centimetres per frame, and dividing
-/// that by a 14 cm tail flings the panels tens of degrees off target. The
-/// direction is therefore the state, seeded from the rest direction and never
-/// re-derived from world position.
-///
-/// The spring constants are not the game's — its `SwayBone` values are not in
-/// the shipped bundles — so they were tuned against offline renders of this
-/// same dance rather than derived.
+/// Units are the game's, taken straight from `<model>_sway.txt`: `stiffness`
+/// 0.02, `drag` 0.6, `gravity` 0.0001 are per-60-Hz-frame quantities, not SI.
 struct MotionSway {
     /// The sidecar `sway.py` writes beside a model.
+    ///
+    /// Version 2 carries what the game's own `_sway.txt` carries: a spring per
+    /// bone in the game's numbers, the angle window the game clamps each panel
+    /// to, and the colliders (thigh capsules, hip sphere) a panel is tested
+    /// against. Version 1 is the hand-tuned form and is still accepted so an
+    /// older export keeps working, it just has no limits and no collisions.
     struct Configuration: Decodable {
         let format: String
-        let families: [String: Spring]
+        let families: [String: Spring]?
         let bones: [Bone]
+        let colliders: [Collider]?
     }
 
     struct Spring: Decodable {
         let stiffness: Float
         let drag: Float
+        /// Downward pull along the solver's up axis, in the game's per-frame
+        /// units. Version 1 carried a hand-tuned magnitude from a different
+        /// scale; version 2 carries the game's own `gravity.y` magnitude.
         let gravity: Float
     }
 
@@ -52,9 +59,54 @@ struct MotionSway {
         let name: String
         let family: String
         let tail: [Float]
+        /// Tip sphere radius the game collides with (`SwayBone.radius`).
+        let radius: Float?
+        /// Per-bone spring; falls back to the family's.
+        let spring: Spring?
+        /// How much of the base's movement the tip follows (0–1).
+        let follow: Float?
+        /// The game's `minYAngle`/`maxYAngle`/`minZAngle`/`maxZAngle`, degrees
+        /// in the parent's frame. `nil` leaves the bone unclamped.
+        let limit: Limit?
+        /// Indices into `Configuration.colliders`.
+        let colliders: [Int]?
+        /// Another sway bone this one stays side-by-side with (`sideLink`).
+        let sideLink: String?
+        /// The game's `sideSpringForce`; 0 or absent turns the link off.
+        let sideSpring: Float?
+        let antiFold: AntiFold?
     }
 
-    static let format = "eidolon.sway/1"
+    struct Limit: Decodable {
+        let minY: Float
+        let maxY: Float
+        let minZ: Float
+        let maxZ: Float
+    }
+
+    /// The game's `antiFoldForceK` / `antiFoldAngle`: once two neighbours fold
+    /// closer than `angle` degrees, the pair is pushed apart with `force`.
+    struct AntiFold: Decodable {
+        let force: Float
+        let angle: Float
+    }
+
+    /// A `SwayCollider` from the game's data: a sphere or capsule hung on a
+    /// joint, in that joint's local space. `distance` is the capsule's full
+    /// length along `axis`; `offset` moves its centre off the joint.
+    struct Collider: Decodable {
+        let joint: String
+        let type: String
+        let radius: Float
+        let distance: Float
+        let offset: [Float]
+        let axis: String?
+    }
+
+    static let format = "eidolon.sway/2"
+    static let legacyFormat = "eidolon.sway/1"
+    /// The game solves at a fixed 1/60 s (`SwayManager.FIXED_DELTA`).
+    static let framesPerSecond: Float = 60
 
     private struct Pendulum {
         let joint: Int
@@ -66,20 +118,45 @@ struct MotionSway {
         /// is the local rotation the rigid pose holds.
         let restRotation: SIMD4<Float>
         let spring: Spring
+        let radius: Float
+        let follow: Float
+        let limit: Limit?
+        let colliders: [Int]
+        let sideLinkPath: String?
+        let sideSpring: Float
+        let antiFold: AntiFold?
     }
 
-    private static let substeps = 4
+    private struct Bounds {
+        let joint: Int
+        let isSphere: Bool
+        let radius: Float
+        let halfLength: Float
+        let offset: SIMD3<Float>
+        /// Local axis the capsule runs along; unused for spheres.
+        let axis: SIMD3<Float>
+    }
 
     private let pendulums: [Pendulum]
+    /// `sideLink` resolved to an index after the parent-before-child sort.
+    private let sideLinks: [Int?]
+    private let bounds: [Bounds]
     private let parents: [Int?]
     /// The solver works in world space, where the rest skeleton's up is +Z —
     /// the root-frame turn the USDZ pipeline makes lands there — not the +Y
     /// the model's own bounds use. Derive it instead of hard-coding it.
     private let up: SIMD3<Float>
 
-    private var directions: [SIMD3<Float>]
-    private var velocities: [SIMD3<Float>]
+    private var tips: [SIMD3<Float>]
+    private var previousTips: [SIMD3<Float>]
+    private var bases: [SIMD3<Float>]
+    private var lastBases: [SIMD3<Float>]
     private var seeded: [Bool]
+    /// Distance between a panel and its `sideLink`, remembered from the rest
+    /// pose so the pair keeps its shape.
+    private var sideLineRest: [Float]
+    /// The `SwayHit` half of the game: a hit frame suppresses gravity next.
+    private var hitLastFrame: [Bool]
 
     var count: Int { pendulums.count }
 
@@ -87,7 +164,10 @@ struct MotionSway {
     /// or none of its bones exist in `joints`, so a sidecar from another model
     /// leaves the pose rigid instead of half-swaying it.
     init?(configuration: Configuration, joints: [String], rest: [JointPose]) {
-        guard configuration.format == Self.format, joints.count == rest.count else {
+        guard configuration.format == Self.format
+            || configuration.format == Self.legacyFormat,
+            joints.count == rest.count
+        else {
             return nil
         }
         var byPath: [String: Int] = [:]
@@ -109,18 +189,45 @@ struct MotionSway {
             }
         }
 
+        var bounds: [Bounds] = []
+        for entry in configuration.colliders ?? [] {
+            guard entry.offset.count == 3,
+                  let joint = byPath[entry.joint],
+                  entry.radius > 0
+            else { continue }
+            let isSphere = entry.type.lowercased() != "capsule"
+            var axis = SIMD3<Float>(1, 0, 0)
+            switch entry.axis?.uppercased() {
+            case "Y": axis = SIMD3(0, 1, 0)
+            case "Z": axis = SIMD3(0, 0, 1)
+            default: break
+            }
+            bounds.append(Bounds(
+                joint: joint, isSphere: isSphere, radius: entry.radius,
+                halfLength: max(entry.distance, 0) / 2,
+                offset: SIMD3(entry.offset[0], entry.offset[1], entry.offset[2]),
+                axis: axis
+            ))
+        }
+
         var pendulums: [Pendulum] = []
         for bone in configuration.bones {
             guard bone.tail.count == 3,
                   let joint = byPath[bone.name],
-                  let spring = configuration.families[bone.family]
+                  let spring = bone.spring ?? configuration.families?[bone.family]
             else { continue }
             let tail = SIMD3(bone.tail[0], bone.tail[1], bone.tail[2])
             let length = simd_length(tail)
             guard length > 1e-5 else { continue }
+            let colliders = (bone.colliders ?? []).filter { bounds.indices.contains($0) }
             pendulums.append(Pendulum(
                 joint: joint, parent: parents[joint], tail: tail, length: length,
-                restRotation: rest[joint].rotation, spring: spring
+                restRotation: rest[joint].rotation, spring: spring,
+                radius: max(bone.radius ?? 0, 0),
+                follow: min(max(bone.follow ?? 1, 0), 1),
+                limit: bone.limit, colliders: colliders,
+                sideLinkPath: bone.sideLink, sideSpring: bone.sideSpring ?? 0,
+                antiFold: bone.antiFold
             ))
         }
         guard !pendulums.isEmpty else { return nil }
@@ -128,19 +235,36 @@ struct MotionSway {
         // before the child reads it.
         pendulums.sort { depth[$0.joint] < depth[$1.joint] }
 
+        var indexByPath: [String: Int] = [:]
+        for (index, pendulum) in pendulums.enumerated() {
+            indexByPath[joints[pendulum.joint]] = index
+        }
+        let sideLinks = pendulums.map { pendulum in
+            pendulum.sideLinkPath.flatMap { indexByPath[$0] }
+        }
+
         self.pendulums = pendulums
+        self.sideLinks = sideLinks
+        self.bounds = bounds
         self.parents = parents
         self.up = Self.upAxis(joints: joints, rest: rest, parents: parents)
-        self.directions = Array(repeating: .zero, count: pendulums.count)
-        self.velocities = Array(repeating: .zero, count: pendulums.count)
+        self.tips = Array(repeating: .zero, count: pendulums.count)
+        self.previousTips = Array(repeating: .zero, count: pendulums.count)
+        self.bases = Array(repeating: .zero, count: pendulums.count)
+        self.lastBases = Array(repeating: .zero, count: pendulums.count)
         self.seeded = Array(repeating: false, count: pendulums.count)
+        self.sideLineRest = Array(repeating: 0, count: pendulums.count)
+        self.hitLastFrame = Array(repeating: false, count: pendulums.count)
     }
 
-    /// Advance the spring by `dt` and fold the result into `poses`. A zero `dt`
-    /// only re-clamps the bones, which is what a held frame needs.
+    /// Advance the solver by `dt` and fold the result into `poses`. A zero `dt`
+    /// only re-clamps and re-collides the bones, which is what a held frame
+    /// needs.
     mutating func apply(_ poses: inout [JointPose], dt: Float) {
         var world = JointWorld.transforms(poses, parents: parents)
-        let step = max(dt, 0) / Float(Self.substeps)
+        let frames = max(dt, 0) * Self.framesPerSecond
+        let square = max(frames * frames, 1e-6)
+
         for (index, pendulum) in pendulums.enumerated() {
             let parent = pendulum.parent
             let base = parent.map { world[$0].position } ?? .zero
@@ -148,31 +272,72 @@ struct MotionSway {
                 ?? SIMD4<Float>(0, 0, 0, 1)
             let rigid = QuaternionMath.multiply(parentRotation, pendulum.restRotation)
             let restDirection = QuaternionMath.rotate(rigid, pendulum.tail)
-            let target = restDirection / pendulum.length
+            let aim = base + restDirection
+            bases[index] = base
+
             if !seeded[index] {
-                directions[index] = target
-                velocities[index] = .zero
+                tips[index] = aim
+                previousTips[index] = aim
+                lastBases[index] = base
                 seeded[index] = true
+                if let link = sideLinks[index], seeded[link] {
+                    sideLineRest[index] = simd_length(tips[link] - tips[index])
+                }
             }
 
-            let spring = pendulum.spring
-            var direction = directions[index]
-            var velocity = velocities[index]
-            for _ in 0..<Self.substeps {
-                let acceleration = spring.stiffness * (target - direction)
-                    - spring.drag * velocity
-                    - spring.gravity * up
-                velocity += acceleration * step
-                direction = simd_normalize(direction + velocity * step)
-                // Normalising moves the point back onto the sphere; project
-                // the radial speed out too, or that correction becomes energy.
-                velocity -= direction * simd_dot(velocity, direction)
+            if dt > 0 {
+                // `MoveTipPos`: the tip rides along with the base.
+                let travel = (base - lastBases[index]) * pendulum.follow
+                tips[index] += travel
+                previousTips[index] += travel
+
+                // `SwayMove`'s force: spring towards the rest tip, damped
+                // velocity, gravity, then the neighbour springs.
+                let velocity = tips[index] - previousTips[index]
+                var force = (aim - tips[index]) * pendulum.spring.stiffness
+                    + velocity * (1 - pendulum.spring.drag) / square
+                if !hitLastFrame[index] {
+                    force -= up * pendulum.spring.gravity
+                }
+                if sideLineRest[index] == 0, let link = sideLinks[index],
+                   seeded[link] {
+                    sideLineRest[index] = simd_length(tips[link] - tips[index])
+                }
+                force += sideLineForce(for: index)
+                force += antiFoldForce(for: index)
+
+                let oldTip = tips[index]
+                tips[index] += force * square
+                previousTips[index] = oldTip
+                lastBases[index] = base
             }
-            directions[index] = direction
-            velocities[index] = velocity
+
+            hitLastFrame[index] = false
+            // `SwayHit` then `CalcRotate`: a panel is only ever drawn at
+            // `length` from its base, so a push out of a collider has to be
+            // applied to the direction and re-normalised — pushing the free
+            // tip and then rescaling it back to `length` would pull the panel
+            // straight back into the thigh.
+            var direction = clampedDirection(
+                of: tips[index], from: base, parentRotation: parentRotation,
+                restDirection: restDirection, limit: pendulum.limit
+            )
+            for _ in 0..<8 {
+                var point = base + direction * pendulum.length
+                var moved = false
+                for collider in pendulum.colliders {
+                    moved = push(&point, outOf: bounds[collider], world: world,
+                                 radius: pendulum.radius) || moved
+                }
+                guard moved else { break }
+                hitLastFrame[index] = true
+                direction = simd_normalize(point - base)
+            }
+            tips[index] = base + direction * pendulum.length
 
             let turned = QuaternionMath.multiply(
-                QuaternionMath.fromToRotation(restDirection, direction), rigid
+                QuaternionMath.fromToRotation(restDirection, direction),
+                rigid
             )
             poses[pendulum.joint].rotation = parent.map {
                 QuaternionMath.multiply(QuaternionMath.inverse(world[$0].rotation), turned)
@@ -181,11 +346,132 @@ struct MotionSway {
         }
     }
 
-    /// Forget the simulated directions. Playback replays the dance from the top
+    /// Forget the simulated tips. Playback replays the dance from the top
     /// before showing a seek, so a held frame carries the sway playback would
     /// reach.
     mutating func reset() {
         seeded = Array(repeating: false, count: pendulums.count)
+        hitLastFrame = Array(repeating: false, count: pendulums.count)
+        sideLineRest = Array(repeating: 0, count: pendulums.count)
+    }
+
+    // MARK: - The game's judgements
+
+    /// Push a tip out of a sphere or capsule. Returns whether it touched.
+    private func push(
+        _ tip: inout SIMD3<Float>, outOf bound: Bounds,
+        world: [(position: SIMD3<Float>, rotation: SIMD4<Float>)], radius: Float
+    ) -> Bool {
+        let joint = world[bound.joint]
+        let centre = joint.position + QuaternionMath.rotate(joint.rotation, bound.offset)
+        let limit = bound.radius + radius
+
+        var closest = centre
+        if !bound.isSphere {
+            let axis = simd_normalize(QuaternionMath.rotate(joint.rotation, bound.axis))
+            let along = simd_clamp(
+                simd_dot(tip - centre, axis), -bound.halfLength, bound.halfLength
+            )
+            closest = centre + axis * along
+        }
+
+        let delta = tip - closest
+        let distance = simd_length(delta)
+        guard distance < limit else { return false }
+        let normal = distance > 1e-5
+            ? delta / distance
+            : simd_normalize(QuaternionMath.rotate(joint.rotation, SIMD3(1, 0, 0)))
+        tip = closest + normal * limit
+        return true
+    }
+
+    /// The game's angle window. `CalcRotate` measures the tip in the bone's
+    /// bind frame (`m_offset_rot`, the `useBindDir` direction), so the limits
+    /// are **deviations from the rest direction**, not absolute world angles:
+    /// `minZAngle … maxZAngle` is how far the panel may swing down from where
+    /// the costume was modelled, `minYAngle … maxYAngle` how far sideways.
+    private func clampedDirection(
+        of tip: SIMD3<Float>, from base: SIMD3<Float>,
+        parentRotation: SIMD4<Float>, restDirection: SIMD3<Float>,
+        limit: Limit?
+    ) -> SIMD3<Float> {
+        let offset = tip - base
+        let length = simd_length(offset)
+        guard length > 1e-6 else { return simd_normalize(restDirection) }
+        let local = QuaternionMath.rotate(
+            QuaternionMath.inverse(parentRotation), offset
+        ) / length
+
+        guard let limit else {
+            return simd_normalize(QuaternionMath.rotate(parentRotation, local))
+        }
+        let rest = QuaternionMath.rotate(
+            QuaternionMath.inverse(parentRotation), restDirection
+        )
+        let (restYaw, restPitch) = Self.angles(of: rest)
+        var (yaw, pitch) = Self.angles(of: local)
+        yaw = Self.wrap(yaw - restYaw) + restYaw
+        pitch -= restPitch
+        yaw = restYaw + min(max(yaw - restYaw, limit.minY), limit.maxY)
+        pitch = restPitch + min(max(pitch, limit.minZ), limit.maxZ)
+        let yawRadians = yaw * .pi / 180
+        let pitchRadians = pitch * .pi / 180
+        let clamped = SIMD3(
+            cos(pitchRadians) * sin(yawRadians),
+            -sin(pitchRadians),
+            -cos(pitchRadians) * cos(yawRadians)
+        )
+        return simd_normalize(QuaternionMath.rotate(parentRotation, clamped))
+    }
+
+    /// The game's two angles: yaw about the up axis, pitch towards −up.
+    private static func angles(of direction: SIMD3<Float>) -> (Float, Float) {
+        let yaw = atan2(direction.x, -direction.z) * 180 / .pi
+        let pitch = -atan2(direction.y, simd_length(SIMD2(direction.x, direction.z)))
+            * 180 / .pi
+        return (yaw, pitch)
+    }
+
+    /// Keep a yaw difference on the same turn of the circle so a panel near
+    /// ±180° does not read as a full revolution.
+    private static func wrap(_ degrees: Float) -> Float {
+        var value = degrees
+        while value > 180 { value -= 360 }
+        while value < -180 { value += 360 }
+        return value
+    }
+
+    /// The game's `CalcSideLineDistance`: a panel and its neighbour keep the
+    /// distance they had at rest.
+    private func sideLineForce(for index: Int) -> SIMD3<Float> {
+        guard let link = sideLinks[index], seeded[link], seeded[index],
+              sideLineRest[index] > 0
+        else { return .zero }
+        let delta = tips[link] - tips[index]
+        let distance = simd_length(delta)
+        guard distance > 1e-5 else { return .zero }
+        let stretch = distance - sideLineRest[index]
+        return delta / distance * (stretch * pendulums[index].sideSpring)
+    }
+
+    /// The game's `CalcAntiFoldForce`: once two neighbours fold tighter than
+    /// `antiFoldAngle`, push them apart along the bisector of their tips.
+    private func antiFoldForce(for index: Int) -> SIMD3<Float> {
+        guard let fold = pendulums[index].antiFold,
+              let link = sideLinks[index], seeded[link], seeded[index]
+        else { return .zero }
+        let mine = tips[index] - bases[index]
+        let theirs = tips[link] - bases[link]
+        guard simd_length(mine) > 1e-5, simd_length(theirs) > 1e-5 else {
+            return .zero
+        }
+        let cosine = simd_dot(simd_normalize(mine), simd_normalize(theirs))
+        let angle = acos(simd_clamp(cosine, -1, 1))
+        guard angle < fold.angle * .pi / 180 else { return .zero }
+        let apart = simd_normalize(mine) - simd_normalize(theirs)
+        return simd_length(apart) > 1e-5
+            ? simd_normalize(apart) * fold.force
+            : .zero
     }
 
     private static func upAxis(

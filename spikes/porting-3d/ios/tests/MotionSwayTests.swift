@@ -3,14 +3,20 @@ import simd
 
 @testable import Eidolon3DSpike
 
-/// The runtime spring for the bones the game's dances do not key.
+/// The runtime sway for the bones the game's dances do not key (issue #28).
 ///
-/// Without the game's own `SwayBone` assets the constants are tuned rather than
-/// derived, so these tests pin the three things that would silently break the
-/// tuning: the sidecar shape, the rest pose being a fixed point, and gravity
-/// acting along the skeleton's up axis (+Z), not the model's (+Y).
+/// The solver is a port of the game's `SwayBoneMT` and takes the game's own
+/// numbers straight out of `_sway.txt` (`stiffness 0.02`, `drag 0.6`,
+/// `gravity 0.0001`, thigh capsule r 0.088), so these tests pin the judgements
+/// that keep a skirt out of the legs: the angle window, the collider push, the
+/// anti-fold of neighbouring panels, and the base-follow that stops a
+/// translation turning into a kick.
 final class MotionSwayTests: XCTestCase {
-    private let skirt = MotionSway.Spring(stiffness: 16, drag: 1.5, gravity: 6)
+    /// The game's skirt numbers (`cb_ss003_014mir_sway`).
+    private let skirt = MotionSway.Spring(stiffness: 0.02, drag: 0.6, gravity: 0.0001)
+    private let half = Float.pi / 8
+
+    private func emptyPose() -> JointPose { .identity }
 
     /// `BASE` with one skirt panel under it, plus the two landmarks the solver
     /// reads its up axis from: `HAIR` above `KOSHI`, both roots at rest.
@@ -21,28 +27,43 @@ final class MotionSwayTests: XCTestCase {
         return (["BASE", "BASE/skirt_a", "HAIR", "KOSHI"], rest)
     }
 
-    private func configuration(
-        bones: [(name: String, tail: SIMD3<Float>)]
-    ) -> MotionSway.Configuration {
-        MotionSway.Configuration(
-            format: MotionSway.format,
-            families: ["skirt": skirt],
-            bones: bones.map {
-                MotionSway.Bone(name: $0.name, family: "skirt", tail: [$0.tail.x, $0.tail.y, $0.tail.z])
-            }
+    /// `BASE` with a thigh capsule hung on `BASE/MOMO_L` and one skirt panel on
+    /// `BASE/skirt_a`, plus the two landmarks the solver reads its up axis from.
+    private func collisionRig() -> (joints: [String], rest: [JointPose]) {
+        var rest = [JointPose](repeating: .identity, count: 5)
+        rest[3].translation = SIMD3(0, 0, 1) // HAIR on the up axis
+        return (["BASE", "BASE/MOMO_L", "BASE/skirt_a", "HAIR", "KOSHI"], rest)
+    }
+
+    private let skirtParents: [Int?] = [nil, 0, 0, nil, nil]
+
+    private func bone(
+        _ path: String,
+        tail: SIMD3<Float> = SIMD3(1, 0, 0),
+        radius: Float? = nil,
+        spring: MotionSway.Spring? = nil,
+        follow: Float? = nil,
+        limit: MotionSway.Limit? = nil,
+        colliders: [Int]? = nil,
+        sideLink: String? = nil,
+        sideSpring: Float? = nil,
+        antiFold: MotionSway.AntiFold? = nil
+    ) -> MotionSway.Bone {
+        MotionSway.Bone(
+            name: path, family: "skirt", tail: [tail.x, tail.y, tail.z],
+            radius: radius, spring: spring, follow: follow, limit: limit,
+            colliders: colliders, sideLink: sideLink, sideSpring: sideSpring,
+            antiFold: antiFold
         )
     }
 
-    private func makeSway(
-        tail: SIMD3<Float> = SIMD3(1, 0, 0),
-        rest: [JointPose]? = nil,
-        joints: [String]? = nil
-    ) -> MotionSway? {
-        let (names, poses) = rig()
-        return MotionSway(
-            configuration: configuration(bones: [("BASE/skirt_a", tail)]),
-            joints: joints ?? names,
-            rest: rest ?? poses
+    private func configuration(
+        bones: [MotionSway.Bone],
+        colliders: [MotionSway.Collider] = []
+    ) -> MotionSway.Configuration {
+        MotionSway.Configuration(
+            format: MotionSway.format, families: ["skirt": skirt], bones: bones,
+            colliders: colliders.isEmpty ? nil : colliders
         )
     }
 
@@ -51,15 +72,24 @@ final class MotionSwayTests: XCTestCase {
     private func direction(of joint: Int, poses: [JointPose], parents: [Int?],
                            tail: SIMD3<Float>) -> SIMD3<Float> {
         let world = JointWorld.transforms(poses, parents: parents)
-        let parentRotation = parents[joint].map { world[$0].rotation }
-            ?? SIMD4<Float>(0, 0, 0, 1)
-        let rigid = QuaternionMath.multiply(parentRotation, poses[joint].rotation)
-        return simd_normalize(QuaternionMath.rotate(rigid, tail))
+        return simd_normalize(QuaternionMath.rotate(world[joint].rotation, tail))
+    }
+
+    private func worldTip(of joint: Int, poses: [JointPose], parents: [Int?],
+                          tail: SIMD3<Float>) -> SIMD3<Float> {
+        let world = JointWorld.transforms(poses, parents: parents)
+        return world[joint].position + QuaternionMath.rotate(world[joint].rotation, tail)
+    }
+
+    private func distance(from p: SIMD3<Float>, to a: SIMD3<Float>, _ b: SIMD3<Float>) -> Float {
+        let ab = b - a
+        let t = simd_clamp(simd_dot(p - a, ab) / simd_dot(ab, ab), 0, 1)
+        return simd_length(p - (a + ab * t))
     }
 
     // MARK: - The sidecar
 
-    func testDecodesTheGeneratorOutput() throws {
+    func testDecodesTheLegacyGeneratorOutput() throws {
         let json = """
         {
           "format": "eidolon.sway/1",
@@ -76,48 +106,79 @@ final class MotionSwayTests: XCTestCase {
         let configuration = try JSONDecoder().decode(
             MotionSway.Configuration.self, from: Data(json.utf8)
         )
-        XCTAssertEqual(configuration.format, MotionSway.format)
-        XCTAssertEqual(configuration.families["skirt"]?.stiffness, 16)
-        XCTAssertEqual(configuration.families["hair"]?.gravity, 0.5)
+        XCTAssertEqual(configuration.format, MotionSway.legacyFormat)
+        XCTAssertEqual(configuration.families?["skirt"]?.stiffness, 16)
+        XCTAssertEqual(configuration.families?["hair"]?.gravity, 0.5)
         XCTAssertEqual(configuration.bones.count, 2)
         XCTAssertEqual(configuration.bones[0].tail[0], 0.1, accuracy: 1e-6)
-        XCTAssertEqual(configuration.bones[0].tail[1], 0.2, accuracy: 1e-6)
-        XCTAssertEqual(configuration.bones[0].tail[2], -0.3, accuracy: 1e-6)
+    }
+
+    func testDecodesTheGameDataSidecar() throws {
+        let json = """
+        {
+          "format": "eidolon.sway/2",
+          "bones": [
+            {
+              "name": "MODEL_00/BODY_SCALE/BASE/KOSHI/skirt_GP/skirt_LB0",
+              "family": "skirt", "tail": [0.16, 0, 0], "radius": 0.04,
+              "spring": { "stiffness": 0.02, "drag": 0.6, "gravity": 0.0001 },
+              "follow": 0.3,
+              "limit": { "minY": -5, "maxY": 5, "minZ": -80, "maxZ": -5 },
+              "colliders": [0, 1]
+            }
+          ],
+          "colliders": [
+            { "joint": "MODEL_00/BODY_SCALE/BASE/KOSHI/MOMO_L", "type": "Capsule",
+              "radius": 0.088, "distance": 0.3551699, "offset": [-0.177585, 0, 0],
+              "axis": "X" }
+          ]
+        }
+        """
+        let configuration = try JSONDecoder().decode(
+            MotionSway.Configuration.self, from: Data(json.utf8)
+        )
+        XCTAssertEqual(configuration.format, MotionSway.format)
+        let bone = try XCTUnwrap(configuration.bones.first)
+        XCTAssertEqual(bone.limit?.minZ, -80)
+        XCTAssertEqual(bone.radius, 0.04)
+        XCTAssertEqual(bone.colliders, [0, 1])
+        let collider = try XCTUnwrap(configuration.colliders?.first)
+        XCTAssertEqual(collider.type, "Capsule")
+        XCTAssertEqual(collider.distance, 0.3551699, accuracy: 1e-6)
     }
 
     func testAcceptsNoForeignOrUnknownSidecar() {
         let (names, poses) = rig()
         let foreign = MotionSway.Configuration(
             format: "other/1", families: ["skirt": skirt],
-            bones: [.init(name: "BASE/skirt_a", family: "skirt", tail: [1, 0, 0])]
+            bones: [bone("BASE/skirt_a")], colliders: nil
         )
         XCTAssertNil(MotionSway(configuration: foreign, joints: names, rest: poses))
 
-        let unknown = configuration(bones: [("BASE/nothing", SIMD3(1, 0, 0))])
+        let unknown = configuration(bones: [bone("BASE/nothing")])
         XCTAssertNil(MotionSway(configuration: unknown, joints: names, rest: poses))
 
-        let zeroTail = configuration(bones: [("BASE/skirt_a", .zero)])
+        let zeroTail = configuration(bones: [bone("BASE/skirt_a", tail: .zero)])
         XCTAssertNil(MotionSway(configuration: zeroTail, joints: names, rest: poses))
     }
 
     func testSkipsBonesTheRigDoesNotHaveButKeepsTheRest() {
         let (names, poses) = rig()
-        let mixed = configuration(bones: [
-            ("BASE/nothing", SIMD3(1, 0, 0)),
-            ("BASE/skirt_a", SIMD3(1, 0, 0)),
-        ])
-        let sway = MotionSway(configuration: mixed, joints: names, rest: poses)
-        XCTAssertEqual(sway?.count, 1)
+        let mixed = configuration(bones: [bone("BASE/nothing"), bone("BASE/skirt_a")])
+        XCTAssertEqual(MotionSway(configuration: mixed, joints: names, rest: poses)?.count, 1)
     }
 
     // MARK: - The spring
 
     /// A held frame with no time passing must leave the pose exactly as the
-    /// dance wrote it: the spring seeds on the rigid tip, so its first clamp is
+    /// dance wrote it: the solver seeds on the rigid tip, so its first clamp is
     /// a no-op. Otherwise every pause would snap the skirt somewhere.
     func testRestPoseIsAFixedPoint() throws {
         let (names, rest) = rig()
-        var sway = try XCTUnwrap(makeSway())
+        var sway = try XCTUnwrap(MotionSway(
+            configuration: configuration(bones: [bone("BASE/skirt_a")]),
+            joints: names, rest: rest
+        ))
         var poses = rest
         sway.apply(&poses, dt: 0)
         for (index, expected) in rest.enumerated() {
@@ -130,32 +191,44 @@ final class MotionSwayTests: XCTestCase {
         }
     }
 
-    func testGravityPullsTheBoneAlongTheSkeletonsUpAxis() throws {
+    /// Gravity is tiny next to stiffness in the game's numbers, so a panel hangs
+    /// just below its rest direction instead of snapping to world down. A
+    /// larger gravity must droop more.
+    func testGravityDroopsThePanelInProportionToItsSize() throws {
         let (names, rest) = rig()
-        var sway = try XCTUnwrap(makeSway())
-        var poses = rest
-        for _ in 0..<120 { // four seconds at the dance's rate
-            poses = rest
-            sway.apply(&poses, dt: 1 / 30)
+        let heavy = MotionSway.Spring(stiffness: 0.02, drag: 0.6, gravity: 0.002)
+
+        func settle(_ spring: MotionSway.Spring) throws -> Float {
+            var sway = try XCTUnwrap(MotionSway(
+                configuration: configuration(bones: [bone("BASE/skirt_a", spring: spring)]),
+                joints: names, rest: rest
+            ))
+            var poses = rest
+            for _ in 0..<120 {
+                poses = rest
+                sway.apply(&poses, dt: 1 / 60)
+            }
+            let settled = direction(of: 1, poses: poses, parents: [nil, 0, nil, nil],
+                                    tail: SIMD3(1, 0, 0))
+            // What is left after the rigid +X rest direction is the droop.
+            return simd_length(settled - SIMD3(1, 0, 0))
         }
-        // Rigid would be (1, 0, 0). The tuned skirt spring settles near 20°
-        // below horizontal; the skeleton's up is +Z, so "below" is −Z.
-        let settled = direction(of: 1, poses: poses, parents: [nil, 0, nil, nil],
-                                tail: SIMD3(1, 0, 0))
-        XCTAssertGreaterThan(settled.x, 0.85)
-        XCTAssertLessThan(settled.z, -0.2)
-        XCTAssertGreaterThan(settled.z, -0.5)
-        XCTAssertEqual(settled.y, 0, accuracy: 1e-4)
-        XCTAssertFalse(settled.x.isNaN, "\(names)")
+
+        let light = try settle(skirt)
+        let drooping = try settle(heavy)
+        XCTAssertLessThan(light, 0.03)
+        XCTAssertGreaterThan(drooping, light * 5)
     }
 
-    /// The spring turns the bone around its parent's *current* pose, so a
-    /// turned parent must carry the bone with it before gravity is applied.
+    /// The solver turns the bone around its parent's *current* pose, so a
+    /// turned parent must carry the bone with it.
     func testBoneRidesItsParentsTurn() throws {
         var (names, rest) = rig()
-        let half = Float.pi / 8
         rest[0].rotation = SIMD4(0, 0, sin(half), cos(half)) // BASE turned 45° about Z
-        var sway = try XCTUnwrap(makeSway(rest: rest))
+        var sway = try XCTUnwrap(MotionSway(
+            configuration: configuration(bones: [bone("BASE/skirt_a")]),
+            joints: names, rest: rest
+        ))
         var poses = rest
         sway.apply(&poses, dt: 0)
         let direction = direction(of: 1, poses: poses, parents: [nil, 0, nil, nil],
@@ -165,72 +238,56 @@ final class MotionSwayTests: XCTestCase {
         XCTAssertEqual(names.count, poses.count)
     }
 
-    /// Real skirt tails are centimetres long, not the unit vector the other
-    /// tests use. If the spring works on world-space displacement, gravity
-    /// (g/k ≈ 0.375 units) swamps a 5 cm tail and pins every panel to world
-    /// down; the skirt then stands still while the hips dance. The panel has
-    /// to hang below its *parent's turned* rest direction instead.
-    func testShortPanelFollowsItsParentInsteadOfHangingDown() throws {
-        var (names, rest) = rig()
-        let half = Float.pi / 8
-        rest[0].rotation = SIMD4(0, 0, sin(half), cos(half)) // BASE turned 45° about Z
-        let tail = SIMD3<Float>(0.05, 0, 0)
-        var sway = try XCTUnwrap(makeSway(tail: tail, rest: rest))
-        var poses = rest
-        for _ in 0..<120 {
-            poses = rest
-            sway.apply(&poses, dt: 1 / 30)
-        }
-        let settled = direction(of: 1, poses: poses, parents: [nil, 0, nil, nil], tail: tail)
-        let turnedRest = SIMD3<Float>(cos(half), sin(half), 0)
-        // Tuned droop is ~21° below the rest direction; collapsing to world
-        // down would be 90° away from it.
-        XCTAssertGreaterThan(simd_dot(settled, turnedRest), cos(0.6), "\(names)")
-    }
-
-    /// However the parents move, the bone must stay a unit-length vector off
-    /// its base — a drifting length is how a skirt starts poking through legs.
+    /// However the parents move, the drawn tip must stay exactly one tail away
+    /// from its base — a drifting length is how a skirt starts poking through
+    /// legs.
     func testLengthNeverDrifts() throws {
         var (names, rest) = rig()
-        var sway = try XCTUnwrap(makeSway())
+        var sway = try XCTUnwrap(MotionSway(
+            configuration: configuration(bones: [bone("BASE/skirt_a")]),
+            joints: names, rest: rest
+        ))
         var poses = rest
         for step in 0..<60 {
             let angle = Float(step) * 0.7
             rest[0].rotation = SIMD4(0, 0, sin(angle / 2), cos(angle / 2))
             poses = rest
-            sway.apply(&poses, dt: 1 / 30)
+            sway.apply(&poses, dt: 1 / 60)
             let world = JointWorld.transforms(poses, parents: [nil, 0, nil, nil])
-            let rigid = QuaternionMath.multiply(world[0].rotation, poses[1].rotation)
-            let length = simd_length(QuaternionMath.rotate(rigid, SIMD3(1, 0, 0)))
-            XCTAssertEqual(length, 1, accuracy: 1e-4, "step \(step)")
-            XCTAssertFalse(length.isNaN, "\(names)")
+            let tip = world[1].position
+                + QuaternionMath.rotate(world[1].rotation, SIMD3(1, 0, 0))
+            XCTAssertEqual(simd_length(tip - world[1].position), 1, accuracy: 1e-4,
+                           "step \(step)")
+            XCTAssertFalse(tip.x.isNaN, "\(names)")
         }
     }
 
-    /// Root motion is a translation, not a turn. Carrying the tip as a world
-    /// position and rebuilding the direction from it against the current base
-    /// drags the panel by `-Δbase / length` every frame: this dance bobs the
-    /// pelvis centimetres per frame, which against a 5 cm panel is tens of
-    /// degrees, and the skirt folds into the legs. Two rigs that differ only in
-    /// how far the pelvis has moved must keep identical bone rotations.
+    /// Root motion is a translation, not a turn. The game carries the tip along
+    /// with the base (`MoveTipPos`) instead of rebuilding the direction against
+    /// the new base, so two rigs that differ only in how far the pelvis moved
+    /// keep identical bone rotations.
     func testRootTranslationDoesNotTurnTheBone() throws {
-        let (_, base) = rig()
+        let (names, base) = rig()
         let tail = SIMD3<Float>(0.05, 0, 0)
-        var still = try XCTUnwrap(makeSway(tail: tail))
-        var moving = try XCTUnwrap(makeSway(tail: tail))
+        var first = try XCTUnwrap(MotionSway(
+            configuration: configuration(bones: [bone("BASE/skirt_a", tail: tail)]),
+            joints: names, rest: base
+        ))
+        var second = try XCTUnwrap(MotionSway(
+            configuration: configuration(bones: [bone("BASE/skirt_a", tail: tail)]),
+            joints: names, rest: base
+        ))
 
         var worst: Float = 0
         for step in 0..<60 {
             var stillRest = base
             var movingRest = base
-            // Sideways shift, perpendicular to the tail, so any difference is
-            // the translation turning the bone and nothing else.
             movingRest[0].translation = SIMD3(0, Float(step) * 0.01, 0)
 
             var stillPoses = stillRest
             var movingPoses = movingRest
-            still.apply(&stillPoses, dt: 1 / 30)
-            moving.apply(&movingPoses, dt: 1 / 30)
+            first.apply(&stillPoses, dt: 1 / 60)
+            second.apply(&movingPoses, dt: 1 / 60)
 
             let a = stillPoses[1].rotation
             let b = movingPoses[1].rotation
@@ -241,15 +298,18 @@ final class MotionSwayTests: XCTestCase {
         XCTAssertLessThan(worst, 1e-4, "the pelvis moving turned the panel")
     }
 
-    func testResetForgetsTheSimulatedDirection() throws {
-        let (_, rest) = rig()
-        var sway = try XCTUnwrap(makeSway())
+    func testResetForgetsTheSimulatedState() throws {
+        let (names, rest) = rig()
+        var sway = try XCTUnwrap(MotionSway(
+            configuration: configuration(bones: [bone("BASE/skirt_a")]),
+            joints: names, rest: rest
+        ))
         var first = rest
-        for _ in 0..<45 { first = rest; sway.apply(&first, dt: 1 / 30) }
+        for _ in 0..<45 { first = rest; sway.apply(&first, dt: 1 / 60) }
         let before = first[1].rotation
         sway.reset()
         var second = rest
-        for _ in 0..<45 { second = rest; sway.apply(&second, dt: 1 / 30) }
+        for _ in 0..<45 { second = rest; sway.apply(&second, dt: 1 / 60) }
         let after = second[1].rotation
 
         let difference = max(
@@ -265,11 +325,139 @@ final class MotionSwayTests: XCTestCase {
         let (names, rest) = rig()
         let trimmed = Array(names.prefix(2))
         let poses = Array(rest.prefix(2))
-        var sway = try XCTUnwrap(makeSway(rest: poses, joints: trimmed))
+        let heavy = MotionSway.Spring(stiffness: 0.02, drag: 0.6, gravity: 0.01)
+        var sway = try XCTUnwrap(MotionSway(
+            configuration: configuration(bones: [bone("BASE/skirt_a", spring: heavy)]),
+            joints: trimmed, rest: poses
+        ))
         var driven = poses
-        for _ in 0..<30 { driven = poses; sway.apply(&driven, dt: 1 / 30) }
+        for _ in 0..<120 { driven = poses; sway.apply(&driven, dt: 1 / 60) }
         let settled = direction(of: 1, poses: driven, parents: [nil, 0],
                                 tail: SIMD3(1, 0, 0))
         XCTAssertLessThan(settled.z, -0.05)
+    }
+
+    // MARK: - The game's judgements (issue #28)
+
+    /// The game does not let a skirt panel live inside the thigh. `_sway.txt`
+    /// gives every skirt bone a `radius` and points it at `MOMO_L#0`/`MOMO_R#0`
+    /// (capsule r 0.088, offset −0.178 along the bone); a panel whose release
+    /// direction lands inside that capsule has to be pushed back out to
+    /// `radius + bone radius` before anything is rendered.
+    func testSkirtPanelIsPushedOutOfTheThighCapsule() throws {
+        var (names, rest) = collisionRig()
+        let turn = Float.pi * 60 / 180 // panel swings in over the thigh
+        rest[2].rotation = SIMD4(0, sin(turn / 2), 0, cos(turn / 2))
+
+        // The thigh hangs straight below the pelvis, as it does on the rig.
+        let capsule = MotionSway.Collider(
+            joint: "BASE/MOMO_L", type: "capsule", radius: 0.088,
+            distance: 0.36, offset: [0, 0, -0.22], axis: "Z"
+        )
+        var sway = try XCTUnwrap(MotionSway(
+            configuration: configuration(
+                bones: [bone("BASE/skirt_a", tail: SIMD3(0.18, 0, 0), radius: 0.04,
+                             colliders: [0])],
+                colliders: [capsule]
+            ),
+            joints: names, rest: rest
+        ))
+
+        var poses = rest
+        var worst = Float.greatestFiniteMagnitude
+        for _ in 0..<90 {
+            poses = rest
+            sway.apply(&poses, dt: 1 / 60)
+
+            let world = JointWorld.transforms(poses, parents: skirtParents)
+            let centre = world[1].position
+                + QuaternionMath.rotate(world[1].rotation, SIMD3(0, 0, -0.22))
+            let axis = QuaternionMath.rotate(world[1].rotation, SIMD3(0, 0, 1))
+            let halfLength = capsule.distance / 2
+            let tip = worldTip(of: 2, poses: poses, parents: skirtParents,
+                               tail: SIMD3(0.18, 0, 0))
+            worst = min(worst, distance(from: tip,
+                                        to: centre - axis * halfLength,
+                                        centre + axis * halfLength))
+        }
+        XCTAssertGreaterThanOrEqual(
+            worst, 0.088 + 0.04 - 1e-3,
+            "a skirt panel stayed inside the thigh capsule (closest \(worst))"
+        )
+    }
+
+    /// `minYAngle`/`maxYAngle`/`minZAngle`/`maxZAngle` are the window the game
+    /// clamps the panel's direction to, measured in the parent's frame. Without
+    /// them a panel is free to rotate all the way into the legs.
+    func testAngleLimitKeepsThePanelInsideItsWindow() throws {
+        let (names, rest) = collisionRig()
+        let limit = MotionSway.Limit(minY: -5, maxY: 5, minZ: -80, maxZ: -5)
+        var sway = try XCTUnwrap(MotionSway(
+            configuration: configuration(bones: [
+                bone("BASE/skirt_a", tail: SIMD3(0.18, 0, 0), radius: 0.04, limit: limit)
+            ]),
+            joints: names, rest: rest
+        ))
+
+        var poses = rest
+        for _ in 0..<60 {
+            poses = rest
+            sway.apply(&poses, dt: 1 / 60)
+        }
+        let world = JointWorld.transforms(poses, parents: skirtParents)
+        let local = QuaternionMath.rotate(
+            QuaternionMath.inverse(world[0].rotation),
+            worldTip(of: 2, poses: poses, parents: skirtParents, tail: SIMD3(0.18, 0, 0))
+                - world[2].position
+        )
+        // The window is a deviation from the bind direction: the panel rests
+        // along +X (yaw 90°, pitch 0°), so it may turn ±5° sideways and
+        // 5…80° down.
+        let yaw = atan2(local.x, -local.z) * 180 / .pi
+        let pitch = -atan2(local.y, simd_length(SIMD2(local.x, local.z))) * 180 / .pi
+        XCTAssertLessThanOrEqual(yaw, 90 + 5 + 1e-3, "panel yaw escaped its window (\(yaw))")
+        XCTAssertGreaterThanOrEqual(yaw, 90 - 5 - 1e-3)
+        XCTAssertLessThanOrEqual(pitch, -5 + 1e-3, "panel pitch escaped its window (\(pitch))")
+        XCTAssertGreaterThanOrEqual(pitch, -80 - 1e-3)
+    }
+
+    /// The game's `antiFoldForce`: two neighbours folded tighter than
+    /// `antiFoldAngle` are pushed apart, which is what stops a panel folding
+    /// into the one beside it.
+    func testAntiFoldPushesNeighboursApart() throws {
+        var rest = [JointPose](repeating: .identity, count: 6)
+        rest[4].translation = SIMD3(0, 0, 1) // HAIR
+        let names = ["BASE", "BASE/MOMO_L", "BASE/skirt_a", "BASE/skirt_b", "HAIR", "KOSHI"]
+        let parents: [Int?] = [nil, 0, 0, 0, nil, nil]
+
+        let tilt = Float.pi * 10 / 180
+        rest[2].rotation = SIMD4(0, 0, sin(tilt / 2), cos(tilt / 2))
+        rest[3].rotation = SIMD4(0, 0, -sin(tilt / 2), cos(tilt / 2))
+
+        let fold = MotionSway.AntiFold(force: 0.002, angle: 60)
+        func angleAfter(_ antiFold: MotionSway.AntiFold?) throws -> Float {
+            let bones = [
+                bone("BASE/skirt_a", tail: SIMD3(0.18, 0, 0),
+                     sideLink: "BASE/skirt_b", antiFold: antiFold),
+                bone("BASE/skirt_b", tail: SIMD3(0.18, 0, 0),
+                     sideLink: "BASE/skirt_a", antiFold: antiFold),
+            ]
+            var sway = try XCTUnwrap(MotionSway(
+                configuration: configuration(bones: bones), joints: names, rest: rest
+            ))
+            var poses = rest
+            for _ in 0..<120 {
+                poses = rest
+                sway.apply(&poses, dt: 1 / 60)
+            }
+            let world = JointWorld.transforms(poses, parents: parents)
+            let a = simd_normalize(QuaternionMath.rotate(world[2].rotation, SIMD3(1, 0, 0)))
+            let b = simd_normalize(QuaternionMath.rotate(world[3].rotation, SIMD3(1, 0, 0)))
+            return acos(simd_clamp(simd_dot(a, b), -1, 1))
+        }
+
+        let folded = try angleAfter(nil)
+        let pushed = try angleAfter(fold)
+        XCTAssertGreaterThan(pushed, folded + 0.01, "anti-fold did not separate the pair")
     }
 }
