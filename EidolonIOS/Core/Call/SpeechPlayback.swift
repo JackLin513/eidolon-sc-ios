@@ -9,22 +9,52 @@ import OSLog
 final class SpeechPlayback: AudioPlayback, @unchecked Sendable {
     private static let log = Logger(subsystem: "com.jacklin.eidolon", category: "call")
 
+    /// Whether each segment is put through 电话质感 before it is played. Read at dial and
+    /// fixed for the call (spec #36).
+    private let phoneTexture: Bool
+
     private let lock = NSLock()
     private var current: AVAudioPlayer?
+
+    init(phoneTexture: Bool) {
+        self.phoneTexture = phoneTexture
+    }
+
     /// Hanging up stops the voice for the rest of the call: a segment about to start after
     /// it must not start, even if its play call was already under way.
     private var stopped = false
+    /// 只看文字 cuts the segment being heard. A segment still being prepared for the line
+    /// sees the count move and never starts.
+    private var silenceGeneration = 0
 
     func play(_ audio: Data) async throws {
         // The microphone owns the session (`.playAndRecord` + `.voiceChat`); changing it
         // here would block behind voice processing, so playback only plays.
-        let player = try AVAudioPlayer(data: audio)
+        lock.lock()
+        let generation = silenceGeneration
+        lock.unlock()
+        let original = audio
+        let played = phoneTexture ? (TexturedAudio.wav(fromMP3: original) ?? original) : original
+        let player: AVAudioPlayer
+        do {
+            player = try AVAudioPlayer(data: played)
+        } catch {
+            // The line is a decoration: a segment that will not play through it is played
+            // as it came (spec #36).
+            guard phoneTexture else { throw error }
+            Self.log.error("phone texture would not play: \(error.localizedDescription)")
+            player = try AVAudioPlayer(data: original)
+        }
         player.prepareToPlay()
 
         lock.lock()
         guard !stopped else {
             lock.unlock()
             throw CancellationError()
+        }
+        guard generation == silenceGeneration else {
+            lock.unlock()
+            return
         }
         current = player
         lock.unlock()
@@ -58,6 +88,7 @@ final class SpeechPlayback: AudioPlayback, @unchecked Sendable {
     /// mid-answer, and the next answer may be voiced again.
     func silence() async {
         lock.lock()
+        silenceGeneration += 1
         let playing = current
         lock.unlock()
         playing?.stop()

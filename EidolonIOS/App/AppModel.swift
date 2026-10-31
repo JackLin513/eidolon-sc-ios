@@ -183,7 +183,7 @@ final class AppModel {
         let judge = judgeProvider
         let setup = CallSetup(
             capture: capture,
-            playback: SpeechPlayback(),
+            playback: SpeechPlayback(phoneTexture: chatSettings.phoneTexture),
             recognition: recognition,
             synthesis: speechSynthesis(readings: readings),
             voiceModel: chatSettings.fishModel,
@@ -419,7 +419,9 @@ final class AppModel {
             sonioxAPIKey: environment["EIDOLON_SONIOX_API_KEY"] ?? "",
             sonioxModel: environment["EIDOLON_SONIOX_MODEL"] ?? "stt-rt-v5",
             fishAPIKey: environment["EIDOLON_FISH_API_KEY"] ?? "",
-            fishModel: environment["EIDOLON_FISH_MODEL"] ?? "s2.1-pro-free"
+            fishModel: environment["EIDOLON_FISH_MODEL"] ?? "s2.1-pro-free",
+            // A setting this seeding does not carry stays as the device had it.
+            phoneTexture: ChatSettings.load().phoneTexture
         )
         try? saveChatSettings(settings)
     }
