@@ -45,7 +45,7 @@
   - 新表登记（`test_database.py`）。
 - [x] **验收**：在本地构建版上造一条动态，推进时间，用 Playwright 看赞和评论陆续出现，宽屏和手机各看一次。
 - [ ] 表结构有改动，部署前手动备份数据库。
-- [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+- [x] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
 
 ## Comments
 
