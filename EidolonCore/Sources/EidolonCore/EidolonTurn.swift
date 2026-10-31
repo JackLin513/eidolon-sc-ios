@@ -615,7 +615,7 @@ extension Eidolon {
         }
     }
 
-    private func createConversation(characterID: String, now: Date) throws -> String {
+    func createConversation(characterID: String, now: Date) throws -> String {
         let id = UUID().uuidString
         try userQueue.write { db in
             try db.execute(
