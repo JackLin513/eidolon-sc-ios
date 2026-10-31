@@ -47,6 +47,7 @@
 		BEB47246CC69F57123F84743 /* CREDITS.md in Resources */ = {isa = PBXBuildFile; fileRef = 3E8A9D366A002F554C2BAE80 /* CREDITS.md */; };
 		C375B67690EAE8B5B255A1B3 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1FF6012F255268462E4A685 /* Keychain.swift */; };
 		C5B1C51FBA6F57968A704048 /* StandPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A39D03BFDD50261F07F298 /* StandPreviewView.swift */; };
+		C7D9B29CBBADC895872095A7 /* TexturedAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D7CC6AFCA2A05909641B10 /* TexturedAudio.swift */; };
 		CABF61FA71D8DD24099824B3 /* ConversationHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */; };
 		CD54EB8286C493A259743A6D /* SpeechPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362E0BAAF16B958F406E1E08 /* SpeechPlayback.swift */; };
 		CE9A6DFCD019D9A5DEBFC3CA /* BarPixelViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D2BD6185831DEBBED2FA62 /* BarPixelViews.swift */; };
@@ -106,6 +107,7 @@
 		7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportGuideView.swift; sourceTree = "<group>"; };
 		889A8316C35EBB240F4D78A2 /* BarGuest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarGuest.swift; sourceTree = "<group>"; };
 		A3A3CDE40EDED61EECF1DBF1 /* BarJukeboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarJukeboxView.swift; sourceTree = "<group>"; };
+		A3D7CC6AFCA2A05909641B10 /* TexturedAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TexturedAudio.swift; sourceTree = "<group>"; };
 		A530040A28709F9772A80A94 /* CallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallView.swift; sourceTree = "<group>"; };
 		B1AD0F6ABD451EB0C733277C /* StandWebRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandWebRenderer.swift; sourceTree = "<group>"; };
 		B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationHistoryView.swift; sourceTree = "<group>"; };
@@ -367,6 +369,7 @@
 				D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */,
 				E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */,
 				362E0BAAF16B958F406E1E08 /* SpeechPlayback.swift */,
+				A3D7CC6AFCA2A05909641B10 /* TexturedAudio.swift */,
 			);
 			path = Call;
 			sourceTree = "<group>";
@@ -542,6 +545,7 @@
 				FE5F343DF7059BBB3A98E62E /* StandSchemeHandler.swift in Sources */,
 				3B581C7316F3F7567E6CF0E1 /* StandThumbnails.swift in Sources */,
 				EF42004562B67CC87DFCF565 /* StandWebRenderer.swift in Sources */,
+				C7D9B29CBBADC895872095A7 /* TexturedAudio.swift in Sources */,
 				791DD675A29C48B88185FACE /* Theme.swift in Sources */,
 				28E1D1F65D00588EA9601DA3 /* TraceListView.swift in Sources */,
 			);

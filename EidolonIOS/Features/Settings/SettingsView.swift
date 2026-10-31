@@ -43,6 +43,7 @@ struct SettingsView: View {
     @State private var fishModel = "s2.1-pro-free"
     @State private var callMinutes = 10
     @State private var callTurns = 40
+    @State private var phoneTexture = false
     @State private var saveError: String?
     @State private var savedNotice = false
     @State private var reachOutHours = 6
@@ -234,11 +235,13 @@ struct SettingsView: View {
                         .keyboardType(.numberPad)
                     TextField("回合上限（她的回合数，0 为不限）", value: $callTurns, format: .number)
                         .keyboardType(.numberPad)
+                    Toggle("电话质感", isOn: $phoneTexture)
                 } header: {
                     Text("通话")
                 } footer: {
-                    Text("Soniox 负责实时识别你说的话，Fish Audio 负责她的声音。密钥保存在钥匙串。默认每通电话最多 10 分钟、她最多 40 个回合，从接通起算；时长与回合都到点时先按时长算。改完从下一通电话开始生效。")
+                    Text("Soniox 负责实时识别你说的话，Fish Audio 负责她的声音。密钥保存在钥匙串。默认每通电话最多 10 分钟、她最多 40 个回合，从接通起算；时长与回合都到点时先按时长算。电话质感让角色的声音像隔着电话听筒，改完从下一通电话开始生效。")
                 }
+
 
                 Section {
                     TextField("称呼（留空沿用默认）", text: $formOfAddress)
@@ -592,6 +595,7 @@ struct SettingsView: View {
         fishModel = settings.fishModel
         callMinutes = settings.callMinutes
         callTurns = settings.callTurns
+        phoneTexture = settings.phoneTexture
         reachOutHours = settings.reachOutHours
         reachOutByTier = settings.reachOutByTier
         tracingEnabled = settings.tracingEnabled
@@ -633,6 +637,7 @@ struct SettingsView: View {
             fishModel: fishModel,
             callMinutes: callMinutes,
             callTurns: callTurns,
+            phoneTexture: phoneTexture,
             judgeService: judgeService,
             bailianWorkspace: bailianWorkspace,
             bailianRegion: bailianRegion,
