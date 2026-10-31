@@ -28,6 +28,7 @@ from eidolon.drink_catalog import DRINKS_FILE
 from eidolon.gift_catalog import GIFTS_FILE
 from eidolon.identity import Identity
 from eidolon.job_list import JOBS_FILE
+from eidolon.place_pool import PLACES_FILE
 from eidolon.sessions import SESSION_COOKIE
 from eidolon.store import Store
 from tests.browser import Browser, open_browser
@@ -136,6 +137,7 @@ REPO_JOBS = Path(__file__).parents[2] / "characters" / JOBS_FILE
 REPO_DRINKS = Path(__file__).parents[2] / "characters" / DRINKS_FILE
 REPO_BAR_VISITS = Path(__file__).parents[2] / "characters" / BAR_VISITS_FILE
 REPO_BAR_LINES = Path(__file__).parents[2] / "characters" / BAR_LINES_FILE
+REPO_PLACES = Path(__file__).parents[2] / "characters" / PLACES_FILE
 BAR_TASTE: dict[str, object] = {
     "bar_flavors": ["sweet"], "bar_favorites": ["sugar-rush"], "bar_tolerance": "strong",
 }
@@ -146,10 +148,11 @@ wanting one without alcohol."""
 
 class CharacterConfig:
     """Writes a character configuration directory, the way an administrator would, with the
-    repository's gift catalog, job list, drink catalog, bar reasons and topics and bar lines
-    beside it unless a test writes its own (`gifts.toml`, `jobs.toml`, `drinks.toml`,
-    `bar_visits.toml`, `bar_lines.toml`). The reasons and topics are written for every character, none left
-    out (`not_for`), as the repository's leave out characters a test may not have."""
+    repository's gift catalog, job list, drink catalog, bar reasons and topics, bar lines and
+    place pool beside it unless a test writes its own (`gifts.toml`, `jobs.toml`,
+    `drinks.toml`, `bar_visits.toml`, `bar_lines.toml`, `places.toml`). The reasons and
+    topics are written for every character, none left out (`not_for`), and the places for
+    no one (`idols`), as the repository's name characters a test may not have."""
 
     def __init__(self, directory: Path) -> None:
         self.directory = directory
@@ -180,13 +183,14 @@ class CharacterConfig:
         liked_gifts: tuple[str, ...] | None = ("cake",),
         photo: tuple[str, str] | None = None,
         bar: dict[str, object] | None = BAR_TASTE,
+        place_likes: tuple[str, ...] | None = None,
     ) -> "CharacterConfig":
         """`greeting` is her greeting in Japanese, delivery cues and all, and its subtitle;
         `call_opener` her call opener, likewise; `other_names` her `name_zh`, `name_kana`
         and `name_romaji`; `liked_gifts` her liked gifts (None leaves them out), cake by
         default as every catalog the tests write has it; `photo` her `photo_tag` and
         `photo_appearance`; `bar` her bar tastes, field by field (None leaves them all out);
-        `birthday` her `"MM-DD"`, a day on which tests' clocks fall
+        `place_likes` the kinds of place she likes (None leaves them out); `birthday` her `"MM-DD"`, a day on which tests' clocks fall
         on no one's birthday unless they set one (None leaves it out); `age` her age, as
         TOML writes it, or None to leave it out."""
         entry = f'[[characters]]\nid = "{id}"\nname = "{name}"\nintro = "{intro}"\n'
@@ -235,6 +239,8 @@ class CharacterConfig:
             entry += f"photo_appearance = {json.dumps(photo[1])}\n"
         for field, value in (bar or {}).items():
             entry += f"{field} = {json.dumps(value)}\n"
+        if place_likes is not None:
+            entry += f"place_likes = {json.dumps(list(place_likes))}\n"
         self._entries.append(entry)
         self.directory.mkdir(parents=True, exist_ok=True)
         self.path.write_text("\n".join(self._entries), encoding="utf-8")
@@ -250,6 +256,10 @@ class CharacterConfig:
             visits.write_text(everyones, encoding="utf-8")
         if not (bar_lines := self.directory / BAR_LINES_FILE).exists():
             bar_lines.write_bytes(REPO_BAR_LINES.read_bytes())
+        if not (places := self.directory / PLACES_FILE).exists():
+            repository = REPO_PLACES.read_text(encoding="utf-8")
+            anyones = re.sub(r"^idols = \[[^]]*\]\n", "", repository, flags=re.M)
+            places.write_text(anyones, encoding="utf-8")
         return self
 
     def write(self, relative: str, content: str | bytes) -> None:

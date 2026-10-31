@@ -1,0 +1,678 @@
+# 地点池（GLOSSARY.md「地点」）。和工作清单一样由维护者在这里维护，后台和 .env 都不能改；
+# 启动时读入、校验，写错了后端起不来。运行时不查任何地图服务。
+#
+# Contains data © OpenStreetMap contributors, ODbL
+#
+# 每个地点一个 [[places]] 段：
+#   id        规范标识（小写字母、数字、- 和 _）
+#   name      日文原名，动态旁边显示的就是它，和地图、招牌一致，片假名店名照写
+#   area      区市町村，消歧、给她参考用，不显示；东京都以外的带县名，只能是神奈川県、千葉県、埼玉県
+#   lat, lon  坐标，取自来源（OSM、Wikidata、官方页面），不估
+#   category  类别：cafe（咖啡馆·甜品·餐厅）、park（公园·河边）、shrine（神社·寺）、
+#             shopping-street（商店街）、fashion-street（杂货·服装街区）、books（书店·图书馆）、
+#             mall（商场·车站大楼，含电影院）、seaside（海边·湾岸）、amusement（水族馆·动物园·游乐园）、
+#             museum（美术馆·博物馆·天象仪）、night-view（展望台·夜景）、bath（温泉·钱汤）、
+#             seasonal（季节名所）、venue（演出场馆）；
+#             cafe、books、mall、museum、bath、venue 算室内，下雨下雪只挑这几类
+#   note      一句中文，告诉她这是什么地方，她写配图时看它自己写景物
+#   checked   核对日期，如 2026-10-31
+#   idols     有关的偶像（可选，角色标识的列表）：只给圣地和角色资料里写明的地方
+#   source    出处（可选，一行）：圣地写卡面名或［背景］名加考据链接；有 source 的就是圣地
+#   seasons   只在哪些季节挑（可选，只给明显分季节的）：spring（3–5 月）、summer（6–8 月）、
+#             autumn（9–11 月）、winter（12–2 月）的列表，按东京的月份
+#   slots     只在哪些时段挑（可选，比如夜景只排晚上）：morning（上午）、afternoon（下午）、
+#             evening（晚上）的列表，按东京时间看发的那一刻；写了的深夜不挑
+#   venues    演出场馆在 world.json 里演出那天的场馆名（可选，只给 venue）：和 name 不一样、
+#             或者有几种写法时写全；不写就是 name。只在她往年今天有演出时挑
+#
+# 便利店、家庭餐厅、学校、私宅、夜生活街区不收。
+
+# 演出场馆（world.json 里在东京都和近郊的 live 场馆）
+
+[[places]]
+id = "k-arena-yokohama"
+name = "Kアリーナ横浜"
+area = "神奈川県横浜市西区"
+lat = 35.46458
+lon = 139.63059
+category = "venue"
+note = "横滨港未来21旁边的大型音乐专用场馆，扇形的看台面朝舞台。"
+checked = 2026-10-31
+
+[[places]]
+id = "pia-arena-mm"
+name = "ぴあアリーナMM"
+area = "神奈川県横浜市西区"
+lat = 35.45572
+lon = 139.62853
+category = "venue"
+note = "横滨港未来21的一万人规模演唱会场馆，出站走几分钟就到海边。"
+checked = 2026-10-31
+
+[[places]]
+id = "pacifico-yokohama"
+name = "パシフィコ横浜 国立大ホール"
+area = "神奈川県横浜市西区"
+lat = 35.45833
+lon = 139.63639
+category = "venue"
+note = "横滨港边会展中心里的大礼堂，门外就是临港公园和大海。"
+checked = 2026-10-31
+venues = ["パシフィコ横浜 国立大ホール", "パシフィコ横浜国立大ホール"]
+
+[[places]]
+id = "yokohama-buntai"
+name = "横浜BUNTAI"
+area = "神奈川県横浜市中区"
+lat = 35.44105
+lon = 139.63654
+category = "venue"
+note = "关内站旁边的体育馆兼演出场馆，附近是横滨中华街和山下公园。"
+checked = 2026-10-31
+
+[[places]]
+id = "yokohama-arena"
+name = "横浜アリーナ"
+area = "神奈川県横浜市港北区"
+lat = 35.51239
+lon = 139.62006
+category = "venue"
+note = "新横滨站附近的大型室内场馆，常办演唱会。"
+checked = 2026-10-31
+
+[[places]]
+id = "zozo-marine-stadium"
+name = "ZOZOマリンスタジアム"
+area = "千葉県千葉市美浜区"
+lat = 35.64524
+lon = 140.03092
+category = "venue"
+note = "幕张海边的露天棒球场，海风很大，夏天也办音乐节。"
+checked = 2026-10-31
+
+[[places]]
+id = "makuhari-event-hall"
+name = "幕張イベントホール"
+area = "千葉県千葉市美浜区"
+lat = 35.64821
+lon = 140.03469
+category = "venue"
+note = "幕张展览馆旁边的室内场馆，常办演唱会。"
+checked = 2026-10-31
+
+[[places]]
+id = "makuhari-messe"
+name = "幕張メッセ 国際展示場"
+area = "千葉県千葉市美浜区"
+lat = 35.64833
+lon = 140.03472
+category = "venue"
+note = "幕张新都心的大型会展中心，展厅连成一排，办大型展会和演出。"
+checked = 2026-10-31
+venues = ["幕張メッセ 国際展示場", "幕張メッセ国際展示場1~3ホール"]
+
+[[places]]
+id = "maihama-amphitheater"
+name = "舞浜アンフィシアター"
+area = "千葉県浦安市"
+lat = 35.63258
+lon = 139.88922
+category = "venue"
+note = "舞滨站旁边的半圆形剧场，就在东京迪士尼度假区门口。"
+checked = 2026-10-31
+
+[[places]]
+id = "keio-arena-tokyo"
+name = "京王アリーナTOKYO"
+area = "調布市"
+lat = 35.6656
+lon = 139.5246
+category = "venue"
+note = "调布味之素体育场旁边的室内体育馆，原名武藏野之森综合体育广场。"
+checked = 2026-10-31
+venues = ["京王アリーナTOKYO", "武蔵野の森総合スポーツプラザ メインアリーナ"]
+
+[[places]]
+id = "tachikawa-stage-garden"
+name = "立川ステージガーデン"
+area = "立川市"
+lat = 35.70486
+lon = 139.41188
+category = "venue"
+note = "立川站北边新街区里的剧场，旁边是昭和纪念公园。"
+checked = 2026-10-31
+venues = ["TACHIKAWA STAGE GARDEN(立川ステージガーデン)"]
+
+[[places]]
+id = "ryogoku-kokugikan"
+name = "両国国技館"
+area = "墨田区"
+lat = 35.69694
+lon = 139.79333
+category = "venue"
+note = "两国的相扑馆，相扑比赛之外也办演出，附近有很多相扑火锅店。"
+checked = 2026-10-31
+
+[[places]]
+id = "yoyogi-national-gymnasium"
+name = "国立代々木競技場 第一体育館"
+area = "渋谷区"
+lat = 35.6675
+lon = 139.70028
+category = "venue"
+note = "代代木公园旁边吊索屋顶的体育馆，从原宿站走几分钟。"
+checked = 2026-10-31
+
+[[places]]
+id = "nippon-budokan"
+name = "日本武道館"
+area = "千代田区"
+lat = 35.69333
+lon = 139.75
+category = "venue"
+note = "北之丸公园里八角形屋顶的武道馆，旁边就是皇居的护城河。"
+checked = 2026-10-31
+
+[[places]]
+id = "tokyo-garden-theater"
+name = "東京ガーデンシアター"
+area = "江東区"
+lat = 35.63822
+lon = 139.79214
+category = "venue"
+note = "有明的剧场型室内场馆，周围是新建的商场和公园。"
+checked = 2026-10-31
+
+[[places]]
+id = "tokyo-dome"
+name = "東京ドーム"
+area = "文京区"
+lat = 35.70556
+lon = 139.75194
+category = "venue"
+note = "水道桥的巨蛋球场，旁边是东京巨蛋城的游乐园和商场。"
+checked = 2026-10-31
+
+# 圣地（卡面、背景的取景地，有 source 的就是圣地）
+
+[[places]]
+id = "seiseki-iroha-sakura-park"
+name = "いろは坂桜公園"
+area = "多摩市"
+lat = 35.6457
+lon = 139.44475
+category = "park"
+note = "多摩市桜ヶ丘住宅区いろは坂急弯坡道顶上的小公园，春天有樱花，能俯瞰聖蹟桜ヶ丘一带。"
+checked = 2026-10-31
+idols = ["juri", "kiriko", "amana"]
+source = "【オフデーゲーム】西城樹里、【君・空・我・空】幽谷霧子、［背景］公園；公园旁的坡道：【お散歩サンライト】大崎甘奈、［背景］坂道；https://note.com/suzuya_blowgun/n/n87ab6e463404；https://aokamilong.hatenablog.com/entry/2020/06/07/190000"
+seasons = ["spring"]
+
+[[places]]
+id = "keio-seiseki-sakuragaoka-sc"
+name = "京王聖蹟桜ヶ丘ショッピングセンター"
+area = "多摩市"
+lat = 35.65083
+lon = 139.44686
+category = "mall"
+note = "京王线聖蹟桜ヶ丘站直连的车站商场，正对站前十字路口和西口广场，有超市、杂货和书店。"
+checked = 2026-10-31
+idols = ["meguru", "mano", "asahi", "chiyuki"]
+source = "【金色の元気いっぱいガール】八宮めぐる（西口広場）、【駅線上の日常】櫻木真乃（西口改札）、【さかさま世界】芹沢あさひ（駅前交差点）、［背景］街中、【マイフェイバリット】桑山千雪 コミュ背景（駅前）；https://note.com/suzuya_blowgun/n/n87ab6e463404；https://aokamilong.hatenablog.com/entry/2019/07/28/150000"
+
+[[places]]
+id = "kotta-river-cherry-trees"
+name = "乞田川"
+area = "多摩市"
+lat = 35.64702
+lon = 139.45414
+category = "seasonal"
+note = "流经多摩市的小河，两岸约 3 公里种了 500 多棵樱花，春天沿河是一条花廊。"
+checked = 2026-10-31
+idols = ["meguru", "amana"]
+source = "【友情の花吹雪】八宮めぐる、【約束ペタル】大崎甘奈（南田橋付近）；https://note.com/suzuya_blowgun/n/n87ab6e463404；https://aokamilong.hatenablog.com/entry/2021/03/28/220000"
+seasons = ["spring"]
+
+[[places]]
+id = "sakuragaoka-park-yuhi-no-oka"
+name = "都立桜ヶ丘公園"
+area = "多摩市"
+lat = 35.64188
+lon = 139.46089
+category = "park"
+note = "保留多摩丘陵杂木林的大型都立公园，高处的「ゆうひの丘」能俯瞰多摩的街景，看夕阳和夜景都好。"
+checked = 2026-10-31
+idols = ["juri"]
+source = "【意地っ張りサンセット】西城樹里、［背景］高台；https://note.com/suzuya_blowgun/n/n87ab6e463404；https://baki1771104.com/archives/6851；https://laquari.hatenablog.jp/entry/2020/08/12/105328"
+
+[[places]]
+id = "saifu-ryokuchi-tamagawa"
+name = "西府緑地"
+area = "府中市"
+lat = 35.66087
+lon = 139.44222
+category = "park"
+note = "府中四谷橋桥头、多摩川府中一侧的河岸绿地，红色步道上能看到河面、大桥和远处的多摩丘陵。"
+checked = 2026-10-31
+idols = ["meguru", "mano"]
+source = "［背景］河川敷（北東側候補）、【アイムカミングスーン】八宮めぐる（府中四谷橋）、【つむぎ、まばゆく。星屑たち】櫻木真乃（府中四谷橋下）；https://note.com/suzuya_blowgun/n/n87ab6e463404；https://laquari.hatenablog.jp/entry/2020/08/12/105328；https://soranowoto.cloudfree.jp/html_l1/imas_shiny_colors.html"
+
+[[places]]
+id = "parthenon-odori"
+name = "パルテノン大通り"
+area = "多摩市"
+lat = 35.62308
+lon = 139.42544
+category = "seasonal"
+note = "从多摩センター站笔直通到山丘上パルテノン多摩的步行大道，冬天办「多摩センターイルミネーション」，行道树和大圣诞树都会亮灯。"
+checked = 2026-10-31
+idols = ["mano"]
+source = "【冬街イルミネート】櫻木真乃；https://note.com/suzuya_blowgun/n/n87ab6e463404；https://yakolab.hatenablog.jp/entry/Shiny_Location；https://laquari.hatenablog.jp/entry/2020/08/12/105328"
+seasons = ["winter"]
+slots = ["evening"]
+
+[[places]]
+id = "sakimori-mikaeri-no-toge"
+name = "防人見返りの峠"
+area = "多摩市"
+lat = 35.61669
+lon = 139.45233
+category = "park"
+note = "多摩丘陵山脊步道「多摩よこやまの道」上的一处观景点，能俯瞰多摩新城的团地群和远处山影。"
+checked = 2026-10-31
+idols = ["kaho", "hiori"]
+source = "【ホーカゴ・ア・ゴーゴー！】小宮果穂、【伸ばす手に乗せるのは】風野灯織（SSR 演出里的俯瞰景）；https://note.com/suzuya_blowgun/n/n87ab6e463404；https://yakolab.hatenablog.jp/entry/Shiny_Location"
+
+[[places]]
+id = "yomiuriland-pool-wai"
+name = "プールWAI"
+area = "稲城市"
+lat = 35.62363
+lon = 139.52011
+category = "amusement"
+note = "游乐园よみうりランド里只在夏天开的大型露天泳池，有造浪池和滑梯，夏夜还有夜间泳池。"
+checked = 2026-10-31
+source = "［背景］屋外プール、［背景］ナイトプール；https://note.com/suzuya_blowgun/n/n438b199c9374"
+seasons = ["summer"]
+
+[[places]]
+id = "hikawa-campground"
+name = "氷川キャンプ場"
+area = "西多摩郡奥多摩町"
+lat = 35.80691
+lon = 139.09956
+category = "park"
+note = "JR 奥多摩站步行 5 分钟、多摩川上游河滩上的露营地，溪水清澈、岩石多，可以当天来玩水烧烤。"
+checked = 2026-10-31
+source = "［背景］渓谷（通用剧情背景，正式名不明）；https://note.com/ika_squid/n/n2ebc1819b2b3"
+
+[[places]]
+id = "koenji-azuma-dori"
+name = "あづま通り商店街"
+area = "杉並区"
+lat = 35.70901
+lon = 139.6516
+category = "shopping-street"
+note = "高円寺站北口延伸出去的窄商店街，旧衣店、小酒馆和老式个人小店挤在一起，杂乱又有下町味。"
+checked = 2026-10-31
+source = "［背景］街中C／路地；https://note.com/suzuya_blowgun/n/n67eb12eeb6d9；https://baki1771104.com/archives/6851；https://kimamanidance.hatenablog.com/entry/2021/05/29/180000"
+
+[[places]]
+id = "tokyo-metropolitan-government-building"
+name = "東京都庁舎"
+area = "新宿区"
+lat = 35.68951
+lon = 139.69171
+category = "night-view"
+note = "西新宿的东京都厅第一本厅舍，202 米高的 45 层有免费的南北展望室，能看新宿高楼群，天好时远眺富士山。"
+checked = 2026-10-31
+idols = ["amana"]
+source = "【お散歩サンライト】大崎甘奈（フェス，北展望室所见、左右翻转）；［背景］見上げたビル群（都庁付近）；https://note.com/suzuya_blowgun/n/n67eb12eeb6d9；https://note.com/ika_squid/n/n2ebc1819b2b3"
+
+[[places]]
+id = "book-and-bed-tokyo-shinjuku"
+name = "BOOK AND BED TOKYO SHINJUKU"
+area = "新宿区"
+lat = 35.6953
+lon = 139.7008
+category = "books"
+note = "西武新宿站前大楼 8 层的「能住的书店」，床铺嵌在书架里，白天可以在休息区边喝咖啡边看书。"
+checked = 2026-10-31
+idols = ["sakuya"]
+source = "【それは途中の１ページ】白瀬咲耶、［背景］泊まれる本屋；https://note.com/suzuya_blowgun/n/n67eb12eeb6d9；https://kimamanidance.hatenablog.com/entry/2020/08/15/180000"
+
+[[places]]
+id = "atre-akihabara-1"
+name = "アトレ秋葉原1"
+area = "千代田区"
+lat = 35.69833
+lon = 139.77246
+category = "mall"
+note = "JR 秋叶原站电气街口直连的车站商场，对着ラジオ会館和动漫店环绕的站前广场。"
+checked = 2026-10-31
+idols = ["fuyuko", "tenka"]
+source = "【ザ・冬優子イズム】黛冬優子（ラジ館前、アトレ秋葉原1前）、【四夜一夜物語】大崎甜花（动画部分）、［背景］繁華街；https://note.com/suzuya_blowgun/n/n67eb12eeb6d9；https://kimamanidance.hatenablog.com/entry/2019/11/01/180000；https://baki1771104.com/archives/6851"
+
+[[places]]
+id = "shibuya-center-gai"
+name = "渋谷センター街"
+area = "渋谷区"
+lat = 35.65981
+lon = 139.70016
+category = "shopping-street"
+note = "从涩谷十字路口延伸出去的年轻人商店街，快时尚、游戏厅、餐饮店挤满两侧，入口被大屏幕包围。"
+checked = 2026-10-31
+idols = ["meguru", "kogane"]
+source = "［背景］街中B、【アップ・トゥ・ユー】八宮めぐる（大外ビル屋上ビジョン）、【と～りゃんせ！】月岡恋鐘（スクランブル交差点）；https://note.com/suzuya_blowgun/n/n67eb12eeb6d9；https://kimamanidance.hatenablog.com/entry/2019/10/31/180000；https://baki1771104.com/archives/6851"
+
+[[places]]
+id = "shibuya-spain-zaka"
+name = "スペイン坂"
+area = "渋谷区"
+lat = 35.6615
+lon = 139.69886
+category = "fashion-street"
+note = "涩谷パルコ旁一段很短的石阶坡道，两边是小咖啡馆、杂货和服装店，名字取自南欧风情。"
+checked = 2026-10-31
+idols = ["yuika"]
+source = "【お願い、ただの少女がいい】三峰結華；https://note.com/suzuya_blowgun/n/n67eb12eeb6d9；https://laquari.hatenablog.jp/entry/2020/08/12/105328；https://kimamanidance.hatenablog.com/entry/2019/10/31/180000"
+
+[[places]]
+id = "tower-records-shibuya"
+name = "タワーレコード渋谷店"
+area = "渋谷区"
+lat = 35.66189
+lon = 139.7011
+category = "mall"
+note = "涩谷神南的 9 层大型唱片店，每层按音乐类型分区，还有活动场地和咖啡馆。"
+checked = 2026-10-31
+idols = ["nichika"]
+source = "【♡まっクろはムウサぎ♡】七草にちか、［背景］CDショップ；https://baki1771104.com/archives/6851；https://www.google.com/maps/d/viewer?mid=1f5DNrLap-5JlVzCEoqnv4efmmCMV7WcF"
+
+[[places]]
+id = "omotesando"
+name = "表参道"
+area = "渋谷区"
+lat = 35.66513
+lon = 139.71248
+category = "fashion-street"
+note = "通往明治神宫的榉树大道，两旁是海外品牌旗舰店和买手店，背街小巷里也有很多小店和咖啡馆。"
+checked = 2026-10-31
+idols = ["yuika"]
+source = "［背景］ショッピングストリート、【それなら目をつぶりましょう】三峰結華（表参道拐进去的神宮前5丁目小巷）；https://note.com/suzuya_blowgun/n/n67eb12eeb6d9；https://laquari.hatenablog.jp/entry/2020/08/12/105328；https://kimamanidance.hatenablog.com/entry/2020/11/07/180000"
+
+[[places]]
+id = "omotesando-hills"
+name = "表参道ヒルズ"
+area = "渋谷区"
+lat = 35.66725
+lon = 139.70874
+category = "mall"
+note = "沿表参道横向展开的商业设施，挑空的螺旋坡道两侧是服装和杂货店，一端是复原同润会公寓的同潤館。"
+checked = 2026-10-31
+idols = ["yuika"]
+source = "【ハロー、私の「いつも通り」】三峰結華（同潤館）；https://kimamanidance.hatenablog.com/entry/2020/11/07/180000；https://www.google.com/maps/d/viewer?mid=1f5DNrLap-5JlVzCEoqnv4efmmCMV7WcF"
+
+[[places]]
+id = "meiji-jingu-gaien"
+name = "明治神宮外苑"
+area = "港区"
+lat = 35.6775
+lon = 139.71833
+category = "seasonal"
+note = "以四列银杏并木出名的西式庭园，从青山通り笔直通到聖徳記念絵画館，11 月下旬到 12 月初变成金黄色的隧道。"
+checked = 2026-10-31
+idols = ["madoka"]
+source = "【ギンコ・ビローバ】樋口円香、［背景］いちょう並木；https://note.com/suzuya_blowgun/n/n67eb12eeb6d9；https://note.com/ika_squid/n/n2ebc1819b2b3"
+seasons = ["autumn"]
+
+[[places]]
+id = "ichigaya-fish-center"
+name = "市ヶ谷フィッシュセンター"
+area = "新宿区"
+lat = 35.69194
+lon = 139.73583
+category = "amusement"
+note = "JR 市ケ谷站站台就能看到的外濠钓鱼池，可以钓鲤鱼、金鱼，一边看电车来来往往一边发呆。"
+checked = 2026-10-31
+idols = ["mamimi"]
+source = "【スプリング・フィッシュ】田中摩美々；https://baki1771104.com/archives/6851；https://kimamanidance.hatenablog.com/entry/2020/08/29/180000；https://soranowoto.cloudfree.jp/html_l1/imas_shiny_colors.html"
+
+[[places]]
+id = "yurakucho-marui"
+name = "有楽町マルイ"
+area = "千代田区"
+lat = 35.67425
+lon = 139.76375
+category = "mall"
+note = "JR 有乐町站前有楽町イトシア里的时装百货，一楼入口就是花店，楼上是服装杂货和快闪活动场地。"
+checked = 2026-10-31
+source = "［背景］花屋（青山フラワーマーケット有楽町マルイ店）；https://note.com/suzuya_blowgun/n/n67eb12eeb6d9；https://baki1771104.com/archives/4560；https://kimamanidance.hatenablog.com/entry/2021/02/14/180000"
+
+[[places]]
+id = "hamarikyu-gardens"
+name = "浜離宮恩賜庭園"
+area = "中央区"
+lat = 35.66
+lon = 139.762
+category = "park"
+note = "紧挨汐留高楼群、引海水入池的江户大名庭园，春天油菜花田一片金黄，和背后的高楼对比很有看头。"
+checked = 2026-10-31
+idols = ["chiyuki"]
+source = "【シークレット・ヒロイン】桑山千雪、［背景］菜の花畑；https://aokamilong.hatenablog.com/entry/2020/02/16/190000；https://baki1771104.com/archives/4560；https://note.com/ika_squid/n/n2ebc1819b2b3"
+seasons = ["spring"]
+
+[[places]]
+id = "yanaka-ginza"
+name = "谷中銀座商店街"
+area = "台東区"
+lat = 35.72766
+lon = 139.76697
+category = "shopping-street"
+note = "从日暮里站下坡走到的下町商店街，以边走边吃可乐饼、炸肉饼出名，入口台阶「夕やけだんだん」看夕阳很有名，也是有名的猫街。"
+checked = 2026-10-31
+idols = ["juri"]
+source = "【坂道だらけのこの街で】西城樹里（夕やけだんだん、谷中銀座通り）、［背景］商店街；https://baki1771104.com/archives/6851；https://laquari.hatenablog.jp/entry/2020/08/12/105328；https://note.com/ika_squid/n/n2ebc1819b2b3"
+
+[[places]]
+id = "tokyo-skytree"
+name = "東京スカイツリー"
+area = "墨田区"
+lat = 35.71006
+lon = 139.81072
+category = "night-view"
+note = "634 米高的电波塔，350 米的天望甲板和 450 米的天望回廊能俯瞰全东京，夜景尤其有名，脚下是商场ソラマチ。"
+checked = 2026-10-31
+idols = ["yuika"]
+source = "【NOT≠EQUAL】三峰結華、［背景］電波塔；https://note.com/suzuya_blowgun/n/n67eb12eeb6d9；https://soranowoto.cloudfree.jp/html_l1/imas_shiny_colors.html；https://kimamanidance.hatenablog.com/entry/2020/11/08/180000"
+
+[[places]]
+id = "aqua-city-odaiba"
+name = "アクアシティお台場"
+area = "港区"
+lat = 35.62781
+lon = 139.77356
+category = "mall"
+note = "台场海边的购物中心，朝海的平台上能看到彩虹大桥和东京塔叠在一起，也是看夜景的热门地方。"
+checked = 2026-10-31
+source = "［背景］展望ビーチ／プロムナード（アクアシティ西侧平台望向海面）；https://baki1771104.com/archives/4560；https://note.com/suzuya_blowgun/n/n67eb12eeb6d9；https://kimamanidance.hatenablog.com/entry/2020/01/02/180000"
+
+[[places]]
+id = "symbol-promenade-park"
+name = "シンボルプロムナード公園"
+area = "港区"
+lat = 35.62375
+lon = 139.77526
+category = "park"
+note = "从台场延伸到青海、有明的长条步道公园，高架平台、林荫道和广场连成一片，夜里隔着灯饰能看到彩虹大桥和东京塔。"
+checked = 2026-10-31
+idols = ["chiyuki"]
+source = "【マイ・ピュア・ロマンス】桑山千雪（活动剧情，公园停车场 A 栋顶上的连廊）；https://aokamilong.hatenablog.com/entry/2019/02/24/193421"
+
+[[places]]
+id = "odaiba-kaihin-park"
+name = "お台場海浜公園"
+area = "港区"
+lat = 35.63081
+lon = 139.77661
+category = "seaside"
+note = "台场有人工沙滩和海滨步道的公园，背靠彩虹大桥和自由女神像，有水上巴士码头和展望平台。"
+checked = 2026-10-31
+idols = ["juri"]
+source = "【曲り角のランウェイ】西城樹里（码头附近）、［背景］レインボーブリッジ（展望平台附近）；https://note.com/suzuya_blowgun/n/n67eb12eeb6d9；https://baki1771104.com/archives/4560；https://note.com/ika_squid/n/n2ebc1819b2b3"
+
+[[places]]
+id = "decks-tokyo-beach"
+name = "デックス東京ビーチ"
+area = "港区"
+lat = 35.62914
+lon = 139.77586
+category = "mall"
+note = "面朝お台場海浜公園的购物中心，海侧木平台能看到彩虹大桥和东京塔，冬天有灯饰。"
+checked = 2026-10-31
+idols = ["chiyoko"]
+source = "【ちょこ色×きらきらロマン】園田智代子；https://note.com/suzuya_blowgun/n/n67eb12eeb6d9；https://yakolab.hatenablog.jp/entry/Shiny_Location；https://baki1771104.com/archives/4560"
+
+[[places]]
+id = "sumidagawa-terrace-kuramae"
+name = "隅田川テラス"
+area = "台東区"
+lat = 35.70281
+lon = 139.79349
+category = "park"
+note = "沿隅田川岸边修的亲水步道，蔵前一带和车道隔开、很安静，能看到往来的船、总武线铁桥和蔵前橋。"
+checked = 2026-10-31
+idols = ["asahi"]
+source = "［背景］川沿いの遊歩道（芹沢あさひ Landing Point 篇首次出现）；https://note.com/ika_squid/n/n2ebc1819b2b3；https://kimamanidance.hatenablog.com/entry/2021/10/30/180000"
+
+[[places]]
+id = "asakusa-nakamise"
+name = "仲見世通り"
+area = "台東区"
+lat = 35.71205
+lon = 139.7965
+category = "shopping-street"
+note = "从浅草寺雷门通往本堂的参道商店街，人形烧、炸馒头和和风小杂货店排成一长列。"
+checked = 2026-10-31
+idols = ["koito"]
+source = "【おみくじ結びますか】福丸小糸（第 1 张）；https://kimamanidance.hatenablog.com/entry/2022/08/07/180000；https://www.google.com/maps/d/viewer?mid=1f5DNrLap-5JlVzCEoqnv4efmmCMV7WcF"
+
+[[places]]
+id = "sunshine-aquarium"
+name = "サンシャイン水族館"
+area = "豊島区"
+lat = 35.72858
+lon = 139.71975
+category = "amusement"
+note = "池袋サンシャインシティ楼顶的城市水族馆，有水母隧道水槽，还有企鹅像在高楼天空里游的户外展示。"
+checked = 2026-10-31
+idols = ["amana"]
+source = "【ゆらゆらアクアリウム】大崎甘奈（水母隧道）；https://aokamilong.hatenablog.com/entry/2019/06/15/100000；https://laquari.hatenablog.jp/entry/2020/08/12/105328；https://kimamanidance.hatenablog.com/entry/2021/05/30/180000"
+
+[[places]]
+id = "shinagawa-aquarium"
+name = "しながわ水族館"
+area = "品川区"
+lat = 35.58847
+lon = 139.7375
+category = "amusement"
+note = "大森海边公园里的区立水族馆，有鱼从头顶游过的隧道水槽和海豚、海狮表演。"
+checked = 2026-10-31
+idols = ["amana"]
+source = "【ゆらゆらアクアリウム】大崎甘奈（隧道水槽）；https://aokamilong.hatenablog.com/entry/2019/06/15/100000；https://soranowoto.cloudfree.jp/html_l1/imas_shiny_colors.html"
+
+[[places]]
+id = "shimokitazawa-minamiguchi-shotengai"
+name = "下北沢南口商店街"
+area = "世田谷区"
+lat = 35.66068
+lon = 139.66752
+category = "shopping-street"
+note = "下北沢站南口延伸出去、挂着拱门招牌的商店街，旧衣店、拉面店、杂货店和小型 Live House 混在一起。"
+checked = 2026-10-31
+idols = ["kaho", "chiyoko", "juri", "rinze", "natsuha"]
+source = "SETSUNA BEAT 放課後クライマックスガールズ キービジュアル；https://baki1771104.com/archives/6851"
+
+[[places]]
+id = "kamakura-hasedera"
+name = "長谷寺"
+area = "神奈川県鎌倉市"
+lat = 35.31246
+lon = 139.53299
+category = "shrine"
+note = "镰仓长谷的观音寺，半山腰的观景台能一览由比ヶ浜和相模湾，初夏约 2500 株绣球花盛开。"
+checked = 2026-10-31
+idols = ["koito"]
+source = "【傍白のあいだ】福丸小糸、［背景］お寺（活动「さざなみはいつも凡庸な音がする」）；https://note.com/ika_squid/n/n2ebc1819b2b3；https://www.google.com/maps/d/viewer?mid=1f5DNrLap-5JlVzCEoqnv4efmmCMV7WcF"
+seasons = ["summer"]
+
+[[places]]
+id = "yokohama-cosmo-world"
+name = "よこはまコスモワールド"
+area = "神奈川県横浜市中区"
+lat = 35.4552
+lon = 139.63668
+category = "amusement"
+note = "港未来运河边免费入园的城市游乐园，大摩天轮「コスモクロック21」是地标，运河夹着的儿童区有一座两层旋转木马。"
+checked = 2026-10-31
+idols = ["toru"]
+source = "【まわるものについて】浅倉透（キッズカーニバル・ゾーンのメリーゴーランド）、［背景］遊園地；https://note.com/ika_squid/n/n2ebc1819b2b3；https://kimamanidance.hatenablog.com/entry/2021/02/13/180000"
+
+[[places]]
+id = "shichirigahama"
+name = "七里ヶ浜"
+area = "神奈川県鎌倉市"
+lat = 35.30636
+lon = 139.50946
+category = "seaside"
+note = "沿江之电铁路延伸的镰仓海岸，鎌倉高校前站道口那头就是大海和江之岛，常有冲浪和看夕阳的人。"
+checked = 2026-10-31
+idols = ["toru", "madoka", "koito", "hinana"]
+source = "SETSUNA BEAT ノクチル キービジュアル（鎌倉高校前駅そばの踏切から海を望む）；https://baki1771104.com/archives/6851"
+
+[[places]]
+id = "aeon-mall-makuhari-shintoshin"
+name = "イオンモール幕張新都心"
+area = "千葉県千葉市美浜区"
+lat = 35.65589
+lon = 140.02894
+category = "mall"
+note = "幕张新都心的超大型购物中心，四栋楼里有服装杂货、美食广场和电影院，能逛一整天。"
+checked = 2026-10-31
+source = "［背景］モール（通用剧情背景）；https://baki1771104.com/archives/6851；https://kimamanidance.hatenablog.com/entry/2021/12/19/180000；https://note.com/ika_squid/n/n2ebc1819b2b3"
+
+[[places]]
+id = "kaihin-makuhari-station"
+name = "海浜幕張駅"
+area = "千葉県千葉市美浜区"
+lat = 35.64833
+lon = 140.04186
+category = "mall"
+note = "幕张展览馆的最近车站，站楼ペリエ海浜幕張里有咖啡馆和杂货店，演出和展会的日子人山人海。"
+checked = 2026-10-31
+idols = ["rinze"]
+source = "【をとめ条約】杜野凛世（1・2番線ホーム）；https://baki1771104.com/archives/6851；https://kimamanidance.hatenablog.com/entry/2021/12/19/180000"
+
+[[places]]
+id = "funabashi-sanbanze-seaside-park"
+name = "ふなばし三番瀬海浜公園"
+area = "千葉県船橋市"
+lat = 35.67194
+lon = 139.96694
+category = "seaside"
+note = "面朝东京湾深处滩涂「三番瀬」的海滨公园，退潮时露出大片滩涂，春天赶海挖蛤蜊，冬天看候鸟。"
+checked = 2026-10-31
+idols = ["toru"]
+source = "［背景］干潟（G.R.A.D. 浅倉透篇首次出现）；https://note.com/ika_squid/n/n2ebc1819b2b3"
+
+[[places]]
+id = "tokyo-tower"
+name = "東京タワー"
+area = "港区"
+lat = 35.65861
+lon = 139.74556
+category = "night-view"
+note = "芝公园的红白电波塔，150 米主展望台和 250 米顶层展望台能俯瞰东京，夜里塔身点灯很好看。"
+checked = 2026-10-31
+idols = ["toru"]
+source = "【つづく、】浅倉透（背景里的东京塔）；https://kimamanidance.hatenablog.com/entry/2025/02/22/000000"

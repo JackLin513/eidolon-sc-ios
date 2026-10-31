@@ -54,6 +54,10 @@ flavor she dislikes if any (`bar_disliked_flavor`) and how well she holds her dr
 are right by the drink catalog is checked once both are loaded
 (`drink_catalog.check_bar_tastes`).
 
+An idol likes two to four kinds of place (`place_likes`, as the place pool names them), the
+kinds more often in her moments; they want no sources. That they are kinds there are is
+checked by `place_pool.check_place_likes`.
+
 Character facts are a Markdown file; each section under a heading is one fact,
 retrieved on its own when a turn calls for it.
 
@@ -178,6 +182,9 @@ class Character:
     liked_gifts: tuple[str, ...] = ()
     """The gifts she likes, by identifier in the gift catalog; giving her one raises
     affinity more. Never told to the user."""
+    place_likes: tuple[str, ...] | None = None
+    """The kinds of place she likes, as the place pool names them (`park`); None, none
+    given."""
     bar_flavors: tuple[str, ...] = ()
     """The flavors she likes at the bar, as the drink catalog names them (`sweet`)."""
     bar_kind: str | None = None
@@ -294,6 +301,12 @@ def _parse_character(
     if not isinstance(liked_gifts, list) or not all(isinstance(g, str) for g in liked_gifts):
         raise CharacterConfigError(f"角色 {label} 的 liked_gifts 应为礼物标识的列表")
 
+    place_likes = entry.get("place_likes")
+    if place_likes is not None and (
+        not isinstance(place_likes, list) or not all(isinstance(k, str) for k in place_likes)
+    ):
+        raise CharacterConfigError(f"角色 {label} 的 place_likes 应为地点类别的列表")
+
     avatar = _optional_file(entry, "avatar", base, label)
     background = _optional_file(entry, "background", base, label)
     scsp_avatar = _optional_file(entry, "scsp_avatar", base, label)
@@ -338,6 +351,7 @@ def _parse_character(
         name_kana=_other_name(entry, "name_kana", label),
         name_romaji=_other_name(entry, "name_romaji", label),
         liked_gifts=tuple(liked_gifts),
+        place_likes=tuple(place_likes) if place_likes is not None else None,
         bar_flavors=_bar_names(entry, "bar_flavors", label),
         bar_kind=_bar_name(entry, "bar_kind", label),
         bar_favorites=_bar_names(entry, "bar_favorites", label),

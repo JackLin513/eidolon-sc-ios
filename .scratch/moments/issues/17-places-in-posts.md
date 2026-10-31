@@ -32,3 +32,18 @@
 - [ ] **验收**：在本地构建版上造一条带地名的动态，用 Playwright 看 Meta 一行，点开链接确认是新标签页、地图上标对了点。三家的链接各点一次。
 - [ ] 表结构有改动的话，部署前手动备份数据库。
 - [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+
+## Comments
+
+### 票 17 交接
+
+- **地点池现在只校验**：`assembly.build` 里调了 `load_place_pool(places_path(...), characters)`，结果没存，要接上存进 `Backend` 或传给跑一遍的模块。
+- **`Place` 上能直接用的**：
+  - `category`、`nearby`（近郊，`area` 以三个县名之一开头）、`venue_names`（演出那天 `today_lines` 里的场馆名，按它对）。
+  - `seasons`、`slots`（None 是不限）、`idols`；`source` 不是 None 的就是圣地。
+- **模块级常量**：`INDOOR`（室内 6 类，下雨下雪只挑这几类）、`NEARBY`。
+- **工作的 `places`**：`ListedJob.places` 是 None 就不带地名。
+  - 里面有 `"nearby"` 就是任何一类，但只挑 `place.nearby` 的。
+  - 「做喜欢的事」列出了全部 13 类。
+- **`Character.place_likes`**：None 是没写（はづき）。
+- **季节和时段**：模块里只定义了取值，没有「某月是哪季」的函数，按规格（3–5 春……）在挑候选的纯函数里写。
