@@ -333,6 +333,88 @@ final class FakePlayback: AudioPlayback, @unchecked Sendable {
     }
 }
 
+/// 铃声 as the call holds it: how much of its first loop is left, and whether it was stopped.
+final class FakeRingback: Ringback, @unchecked Sendable {
+    private let lock = NSLock()
+    private var remaining: Duration
+    private var stopped = false
+    var timeline: Timeline?
+
+    init(remaining: Duration = .zero) {
+        self.remaining = remaining
+    }
+
+    func left() -> Duration {
+        lock.lock()
+        defer { lock.unlock() }
+        return stopped ? .zero : remaining
+    }
+
+    func stop() {
+        lock.lock()
+        stopped = true
+        lock.unlock()
+        timeline?.add("ring-stop")
+    }
+}
+
+/// The phone's own sounds, as the call asks for them.
+final class FakeTones: CallTones, @unchecked Sendable {
+    private let lock = NSLock()
+    private var gate: CheckedContinuation<Void, Never>?
+    /// Whether `ring()` can play at all.
+    var ringAvailable = true
+    /// The ring it starts when one plays.
+    var ringback: FakeRingback?
+    /// Whether `hangUp()` waits to be released, as a tone still sounding would.
+    var hangsUpUntilReleased = false
+    var timeline: Timeline?
+
+    func ring() -> (any Ringback)? {
+        timeline?.add("tone-ring")
+        return ringAvailable ? ringback : nil
+    }
+
+    func connect() {
+        timeline?.add("tone-connect")
+    }
+
+    func silence() {
+        timeline?.add("tone-silence")
+    }
+
+    func hangUp() async {
+        timeline?.add("tone-hang-up-start")
+        if waitsBeforeFinishing {
+            await withCheckedContinuation { continuation in
+                hold(continuation)
+            }
+        }
+        timeline?.add("tone-hang-up-end")
+    }
+
+    /// Lets the hang-up tone finish.
+    func releaseHangUp() {
+        lock.lock()
+        let gate = gate
+        self.gate = nil
+        lock.unlock()
+        gate?.resume()
+    }
+
+    private var waitsBeforeFinishing: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return hangsUpUntilReleased
+    }
+
+    private func hold(_ continuation: CheckedContinuation<Void, Never>) {
+        lock.lock()
+        gate = continuation
+        lock.unlock()
+    }
+}
+
 /// A chat provider answering each turn with the next scripted reply.
 final class ReplyScriptProvider: ChatProvider, @unchecked Sendable {
     private let lock = NSLock()
@@ -538,6 +620,7 @@ final class CallSessionTests: XCTestCase {
         limits: CallLimits = .standard,
         historyTurns: Int = 20,
         connectTimeout: Duration = .seconds(30),
+        tones: any CallTones = SilentTones(),
         voiceModel: String = "s2.1-pro-free"
     ) async throws -> (CallSession, EventLog, FakeCapture) {
         let setup = CallSetup(
@@ -552,7 +635,8 @@ final class CallSessionTests: XCTestCase {
             limits: limits,
             historyTurns: historyTurns,
             reconnectDelay: .milliseconds(10),
-            connectTimeout: connectTimeout
+            connectTimeout: connectTimeout,
+            tones: tones
         )
         let session = try await eidolon.beginCall(characterID: "mano", setup: setup)
         let log = EventLog()
@@ -575,6 +659,16 @@ final class CallSessionTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTFail("timed out waiting for \(description)")
+    }
+
+    /// Every ending after dialing plays the hang-up tone, and exactly once (spec #35).
+    private func assertOneHangUpTone(_ timeline: Timeline) async throws {
+        try await waitFor("the hang-up tone") { timeline.index(of: "tone-hang-up-start") != nil }
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(
+            timeline.all.filter { $0 == "tone-hang-up-start" }.count, 1,
+            "exactly one hang-up tone"
+        )
     }
 
     private func states(_ log: EventLog) -> [CallState] { log.states() }
@@ -924,11 +1018,15 @@ final class CallSessionTests: XCTestCase {
             ["<ja>あ</ja><zh>啊</zh>"],
             ["<ja>い</ja><zh>呀</zh>"],
         ])
+        let timeline = Timeline()
+        let tones = FakeTones()
+        tones.timeline = timeline
         let (session, log, _) = try await begin(
             on: eidolon,
             provider: provider,
             recognition: recognition,
-            judge: FixedJudge(judged: Judged(level: 0, outOfLine: true))
+            judge: FixedJudge(judged: Judged(level: 0, outOfLine: true)),
+            tones: tones
         )
         let segments: @Sendable () -> Int = {
             log.all.filter { event in
@@ -950,6 +1048,7 @@ final class CallSessionTests: XCTestCase {
         let reason = await session.currentStateIfEnded
         XCTAssertEqual(reason, .sheHungUp(cooldownUntil: nil))
         XCTAssertEqual(reason?.message, "她挂断了电话。")
+        try await assertOneHangUpTone(timeline)
         // What she said last was played before the call ended.
         XCTAssertEqual(segments(), 2)
 
@@ -1132,12 +1231,243 @@ final class CallSessionTests: XCTestCase {
             if case .ended = await session.currentState() { return true }
             return false
         }
+        try await waitFor("the microphone released") { capture.stopped }
 
         let entries = timeline.all
         let voiceStopped = try XCTUnwrap(entries.firstIndex(of: "playback-stop"))
         let micClosed = try XCTUnwrap(entries.firstIndex(of: "mic-stop"))
         XCTAssertLessThan(voiceStopped, micClosed, "the voice stops before the microphone closes")
         XCTAssertTrue(playback.audio.isEmpty, "the segment playing is cut off, not finished")
+    }
+
+    // MARK: - The phone's own sounds (spec #35)
+
+    /// 拨号后立刻响铃，上一通残留的声音先被掐掉；铃声响起时她听不见用户。
+    func testDialingRingsAndClosesTheMicrophoneToHer() async throws {
+        let eidolon = try await installedEidolon()
+        let timeline = Timeline()
+        let tones = FakeTones()
+        tones.ringback = FakeRingback(remaining: .seconds(5))
+        tones.timeline = timeline
+        let capture = FakeCapture()
+        capture.timeline = timeline
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([[]]),
+            recognition: FakeRecognition([.hang]),
+            capture: capture,
+            tones: tones
+        )
+
+        try await waitFor("the ring going out") { timeline.index(of: "tone-ring") != nil }
+        XCTAssertEqual(timeline.all.first, "tone-silence", "a tone left over from the last call is cut first")
+        XCTAssertFalse(capture.isHearing, "she cannot hear the producer while the phone rings")
+        XCTAssertNil(timeline.index(of: "tone-connect"))
+        let dialing = await session.currentState()
+        XCTAssertEqual(dialing, .connecting)
+
+        await session.hangUp()
+        try await waitFor("ended") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+    }
+
+    /// 接通时第一遍铃声还没响完：界面还是「正在拨号」，她听不见；响完才放接通音、
+    /// 打开麦克风、进入聆听。
+    func testTheCallWaitsOutTheFirstRingLoopBeforeEntering() async throws {
+        let eidolon = try await installedEidolon()
+        let timeline = Timeline()
+        let tones = FakeTones()
+        tones.ringback = FakeRingback(remaining: .milliseconds(400))
+        tones.timeline = timeline
+        let capture = FakeCapture()
+        capture.timeline = timeline
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([[]]),
+            recognition: FakeRecognition([.hang]),
+            capture: capture,
+            tones: tones
+        )
+
+        try await waitFor("the ring going out") { timeline.index(of: "tone-ring") != nil }
+        try await Task.sleep(for: .milliseconds(100))
+        let stillDialing = await session.currentState()
+        XCTAssertEqual(stillDialing, .connecting)
+        XCTAssertFalse(capture.isHearing)
+        XCTAssertNil(timeline.index(of: "tone-connect"))
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        XCTAssertTrue(capture.isHearing)
+        let ring = try XCTUnwrap(timeline.index(of: "tone-ring"))
+        let connect = try XCTUnwrap(timeline.index(of: "tone-connect"))
+        XCTAssertLessThan(ring, connect, "the connect tone comes after the ring")
+
+        await session.hangUp()
+    }
+
+    /// 铃声已经完整响过一遍：接通时不再等。
+    func testAFinishedRingEntersAtOnce() async throws {
+        let eidolon = try await installedEidolon()
+        let timeline = Timeline()
+        let tones = FakeTones()
+        tones.ringback = FakeRingback(remaining: .zero)
+        tones.timeline = timeline
+        let capture = FakeCapture()
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([[]]),
+            recognition: FakeRecognition([.hang]),
+            capture: capture,
+            tones: tones
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        XCTAssertTrue(capture.isHearing)
+        XCTAssertNotNil(timeline.index(of: "tone-connect"))
+
+        await session.hangUp()
+    }
+
+    /// 铃声放不出来：不等，也不放接通音，通话照常进行。
+    func testACallWhoseRingCannotPlayEntersAtOnce() async throws {
+        let eidolon = try await installedEidolon()
+        let timeline = Timeline()
+        let tones = FakeTones()
+        tones.ringAvailable = false
+        tones.timeline = timeline
+        let capture = FakeCapture()
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([[]]),
+            recognition: FakeRecognition([.hang]),
+            capture: capture,
+            tones: tones
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        XCTAssertTrue(capture.isHearing)
+        XCTAssertNil(timeline.index(of: "tone-connect"))
+
+        await session.hangUp()
+    }
+
+    /// 挂断音恰好放一次；结束状态在它放完之前已经可见，麦克风也还被这通电话占着。
+    func testTheEndShowsBeforeTheHangUpToneFinishes() async throws {
+        let eidolon = try await installedEidolon()
+        let timeline = Timeline()
+        let tones = FakeTones()
+        tones.ringAvailable = false
+        tones.hangsUpUntilReleased = true
+        tones.timeline = timeline
+        let capture = FakeCapture()
+        capture.timeline = timeline
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([[]]),
+            recognition: FakeRecognition([.hang]),
+            capture: capture,
+            tones: tones
+        )
+
+        try await waitFor("listening") { await session.currentState() == .listening }
+        // The hang-up itself waits for the tone, which this fake holds until the test lets
+        // it go: the ending has to show before then.
+        let hangingUp = Task { await session.hangUp() }
+        try await waitFor("ended") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+        XCTAssertNotNil(timeline.index(of: "tone-hang-up-start"))
+        XCTAssertNil(timeline.index(of: "tone-hang-up-end"))
+        XCTAssertFalse(capture.stopped, "the microphone is held until the tone is done")
+
+        tones.releaseHangUp()
+        try await waitFor("the microphone released") { capture.stopped }
+        await hangingUp.value
+        let tone = try XCTUnwrap(timeline.index(of: "tone-hang-up-end"))
+        let mic = try XCTUnwrap(timeline.index(of: "mic-stop"))
+        XCTAssertLessThan(tone, mic)
+        XCTAssertEqual(
+            timeline.all.filter { $0 == "tone-hang-up-start" }.count, 1,
+            "exactly one hang-up tone"
+        )
+    }
+
+    /// 麦克风打不开也是拨号之后的结束：放一次挂断音。
+    func testAMicrophoneThatWillNotOpenStillGetsTheHangUpTone() async throws {
+        let eidolon = try await installedEidolon()
+        let timeline = Timeline()
+        let tones = FakeTones()
+        tones.timeline = timeline
+        let capture = FakeCapture()
+        capture.startError = NSError(domain: "test", code: 1)
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([[]]),
+            recognition: FakeRecognition([.hang]),
+            capture: capture,
+            tones: tones
+        )
+
+        guard case let .ended(reason) = await session.currentState() else {
+            return XCTFail("the call did not end")
+        }
+        guard case .micDenied = reason else {
+            return XCTFail("not a microphone failure: \(reason)")
+        }
+        XCTAssertNotNil(timeline.index(of: "tone-hang-up-start"))
+    }
+
+    /// 等铃期间挂断：按已接通的通话结束（原因不是「没接通」），也照样有挂断音。
+    func testHangingUpWhileWaitingForTheRingCountsAsConnected() async throws {
+        let eidolon = try await installedEidolon()
+        let timeline = Timeline()
+        let tones = FakeTones()
+        tones.ringback = FakeRingback(remaining: .seconds(5))
+        tones.timeline = timeline
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([[]]),
+            recognition: FakeRecognition([.hang]),
+            tones: tones
+        )
+
+        try await waitFor("the ring going out") { timeline.index(of: "tone-ring") != nil }
+        try await Task.sleep(for: .milliseconds(100))
+        await session.hangUp()
+        try await waitFor("ended") {
+            if case .ended = await session.currentState() { return true }
+            return false
+        }
+
+        guard case let .ended(reason) = await session.currentState() else {
+            return XCTFail("the call did not end")
+        }
+        XCTAssertEqual(reason, .hungUpByProducer)
+        XCTAssertNotNil(timeline.index(of: "tone-hang-up-start"))
+    }
+
+    /// 从未开始拨号：没有铃声，也没有挂断音。
+    func testACallThatNeverStartedMakesNoSound() async throws {
+        let eidolon = try await installedEidolon()
+        let timeline = Timeline()
+        let tones = FakeTones()
+        tones.timeline = timeline
+        let setup = CallSetup(
+            capture: FakeCapture(),
+            playback: FakePlayback(),
+            recognition: FakeRecognition(),
+            synthesis: FakeSynthesis(),
+            voiceModel: "s2.1-pro-free",
+            provider: ReplyScriptProvider([[]]),
+            tones: tones
+        )
+        let session = try await eidolon.beginCall(characterID: "mano", setup: setup)
+
+        await session.hangUp()
+        XCTAssertTrue(timeline.all.isEmpty)
     }
 
     /// The settings' numbers become limits; 0 is no limit on that dimension, as upstream
@@ -1172,11 +1502,15 @@ final class CallSessionTests: XCTestCase {
     func testTheCallEndsAtTheTimeLimit() async throws {
         let eidolon = try await installedEidolon()
         let limit: Duration = .milliseconds(80)
+        let timeline = Timeline()
+        let tones = FakeTones()
+        tones.timeline = timeline
         let (session, _, _) = try await begin(
             on: eidolon,
             provider: ReplyScriptProvider([]),
             recognition: FakeRecognition([.hang]),
-            limits: CallLimits(duration: limit, turns: nil)
+            limits: CallLimits(duration: limit, turns: nil),
+            tones: tones
         )
         try await waitFor("ended by time limit") {
             if case .ended = await session.currentState() { return true }
@@ -1184,6 +1518,7 @@ final class CallSessionTests: XCTestCase {
         }
         let reason = await session.currentStateIfEnded
         XCTAssertEqual(reason, .durationLimit(limit: limit))
+        try await assertOneHangUpTone(timeline)
 
         let traces = try await eidolon.turnTraces()
         XCTAssertEqual(traces.first?.trace.degradation.first, "通话结束：duration_limit")
@@ -1241,10 +1576,14 @@ final class CallSessionTests: XCTestCase {
     func testAVoiceServiceThatFailsBeforeATurnNeverConnects() async throws {
         let eidolon = try await installedEidolon()
         let recognition = FakeRecognition([.failService])
+        let timeline = Timeline()
+        let tones = FakeTones()
+        tones.timeline = timeline
         let (session, _, _) = try await begin(
             on: eidolon,
             provider: ReplyScriptProvider([]),
-            recognition: recognition
+            recognition: recognition,
+            tones: tones
         )
 
         try await waitFor("ended, never connected") {
@@ -1254,6 +1593,7 @@ final class CallSessionTests: XCTestCase {
         let reason = await session.currentStateIfEnded
         XCTAssertEqual(reason, .notConnected(service: "Soniox", detail: "401 invalid api key"))
         XCTAssertEqual(reason?.message, "语音服务出了故障，通话没能接通")
+        try await assertOneHangUpTone(timeline)
         XCTAssertEqual(recognition.calls, 1, "a service failure is not reconnected")
 
         let traces = try await eidolon.turnTraces()
@@ -1272,10 +1612,14 @@ final class CallSessionTests: XCTestCase {
     func testAVoiceServiceThatFailsMidCallBreaksItOff() async throws {
         let eidolon = try await installedEidolon()
         let recognition = FakeRecognition([.hang])
+        let timeline = Timeline()
+        let tones = FakeTones()
+        tones.timeline = timeline
         let (session, log, _) = try await begin(
             on: eidolon,
             provider: ReplyScriptProvider([["<ja>あ</ja><zh>啊</zh>"]]),
-            recognition: recognition
+            recognition: recognition,
+            tones: tones
         )
 
         try await waitFor("listening") { await session.currentState() == .listening }
@@ -1295,6 +1639,7 @@ final class CallSessionTests: XCTestCase {
         let reason = await session.currentStateIfEnded
         XCTAssertEqual(reason, .dropped(service: "Soniox", detail: "401 invalid api key"))
         XCTAssertEqual(reason?.message, "语音服务出了故障，通话中断了")
+        try await assertOneHangUpTone(timeline)
         XCTAssertEqual(recognition.calls, 1, "a service failure is not reconnected")
 
         let conversation = try await eidolon.currentConversation(characterID: "mano")
@@ -1407,11 +1752,15 @@ final class CallSessionTests: XCTestCase {
             ["<ja>あ</ja><zh>啊</zh>"],
             ["<ja>い</ja><zh>呀</zh>"],
         ])
+        let timeline = Timeline()
+        let tones = FakeTones()
+        tones.timeline = timeline
         let (session, _, _) = try await begin(
             on: eidolon,
             provider: provider,
             recognition: recognition,
-            limits: CallLimits(duration: nil, turns: 1)
+            limits: CallLimits(duration: nil, turns: 1),
+            tones: tones
         )
 
         try await waitFor("listening") { await session.currentState() == .listening }
@@ -1426,6 +1775,7 @@ final class CallSessionTests: XCTestCase {
             reason?.message,
             "这次通话已经说了 1 轮了，先挂断啦。想接着聊可以重新拨打。"
         )
+        try await assertOneHangUpTone(timeline)
         let events = try await eidolon.userQueue.read { db in
             try String.fetchAll(db, sql: "SELECT kind FROM conversation_events")
         }
@@ -1754,11 +2104,15 @@ final class CallSessionTests: XCTestCase {
         let eidolon = try await installedEidolon()
         let recognition = FakeRecognition([.hang])
         recognition.connectDelay = .seconds(10)
+        let timeline = Timeline()
+        let tones = FakeTones()
+        tones.timeline = timeline
         let (session, _, capture) = try await begin(
             on: eidolon,
             provider: ReplyScriptProvider([]),
             recognition: recognition,
-            connectTimeout: .milliseconds(150)
+            connectTimeout: .milliseconds(150),
+            tones: tones
         )
 
         try await waitFor("given up") {
@@ -1767,6 +2121,7 @@ final class CallSessionTests: XCTestCase {
         }
         let reason = await session.currentStateIfEnded
         XCTAssertEqual(reason, .notConnected(service: "识别", detail: "连接超时"))
+        try await assertOneHangUpTone(timeline)
         XCTAssertTrue(capture.stopped, "the microphone is closed when the call is given up")
     }
 

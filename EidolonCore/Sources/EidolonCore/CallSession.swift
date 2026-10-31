@@ -279,6 +279,9 @@ public struct CallSetup: Sendable {
     /// How long the recognizer may take to become ready; a call that never does is given up
     /// as one that could not connect (upstream `CONNECT_TIMEOUT`, 30 seconds).
     public var connectTimeout: Duration
+    /// The sounds the phone itself makes: 铃声 while dialing, 接通音 at the connect, 挂断音 at
+    /// any ending after dialing.
+    public var tones: any CallTones
     public var now: @Sendable () -> Date
 
     public init(
@@ -297,6 +300,7 @@ public struct CallSetup: Sendable {
         historyTurns: Int = 20,
         reconnectDelay: Duration = .seconds(1),
         connectTimeout: Duration = .seconds(30),
+        tones: any CallTones = SilentTones(),
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.capture = capture
@@ -314,6 +318,7 @@ public struct CallSetup: Sendable {
         self.historyTurns = historyTurns
         self.reconnectDelay = reconnectDelay
         self.connectTimeout = connectTimeout
+        self.tones = tones
         self.now = now
     }
 }
@@ -344,6 +349,17 @@ public actor CallSession {
     private var tasks: [Task<Void, Never>] = []
     private var turnTask: Task<Void, Never>?
     private var connectTimeoutTask: Task<Void, Never>?
+
+    /// The ring going out, while the call waits out its first loop.
+    private var ringback: (any Ringback)?
+    /// The task waiting out the rest of the first loop.
+    private var holdTask: Task<Void, Never>?
+    /// Whether the ring went out at all: a ring that could not play is not followed by a
+    /// connect tone either.
+    private var ringPlayed = false
+    /// Whether the call has entered: the connect tone played and the microphone opened to
+    /// her. A reconnect must not play the connect tone again.
+    private var enteredCall = false
 
     /// What the producer said while she was answering; answered once she is done.
     private var pending: [String] = []
@@ -436,6 +452,15 @@ public actor CallSession {
             await finish(.micDenied(detail: error.localizedDescription))
             return
         }
+        // 铃声 starts with the microphone open, and she cannot hear the producer until the
+        // call has entered (GLOSSARY.md「铃声」). A ring left over from the last call is cut
+        // first (spec #35).
+        setup.tones.silence()
+        if let ringback = setup.tones.ring() {
+            self.ringback = ringback
+            ringPlayed = true
+            await setup.capture.setHearing(false)
+        }
         tasks.append(Task { await self.listenLoop() })
         if setup.connectTimeout > .zero {
             let timeout = setup.connectTimeout
@@ -475,7 +500,7 @@ public actor CallSession {
                     if finished || Task.isCancelled { return }
                     switch event {
                     case .connected:
-                        connectionReady()
+                        await connectionReady()
                     case let .partial(text):
                         let saying = text.trimmingCharacters(in: .whitespacesAndNewlines)
                         if !saying.isEmpty { emit(.hearing(saying)) }
@@ -505,7 +530,11 @@ public actor CallSession {
     /// The recognizer's connection is up: the call is connected from the first time, and its
     /// clock and limits start then. A reconnect does not put listening over her own state
     /// when she is speaking or thinking (spec「接通」).
-    private func connectionReady() {
+    ///
+    /// The call does not start talking until 铃声 has played once in full: the screen keeps
+    /// dialing, and she still cannot hear the producer, until the first loop is over
+    /// (GLOSSARY.md「铃声」, spec #35).
+    private func connectionReady() async {
         guard !finished else { return }
         connectedNow = true
         if !everConnected {
@@ -516,8 +545,46 @@ public actor CallSession {
                 tasks.append(Task { await self.timeLimitLoop() })
             }
         }
+        guard !enteredCall else {
+            if !turnActive, speaking == nil {
+                setState(.listening)
+            }
+            return
+        }
+        guard ringPlayed else {
+            await enterCall()
+            return
+        }
+        let left = ringback?.left() ?? .zero
+        if left <= .zero {
+            await enterCall()
+        } else if holdTask == nil {
+            let task = Task { await self.holdRing(left) }
+            holdTask = task
+            tasks.append(task)
+        }
+    }
+
+    /// Waits out what is left of the ring's first loop, then enters the call. A connection
+    /// that drops while waiting reconnects as any other does; the waiting goes on, and the
+    /// ring keeps looping.
+    private func holdRing(_ left: Duration) async {
+        try? await Task.sleep(for: left)
+        guard !Task.isCancelled, !finished else { return }
+        holdTask = nil
+        await enterCall()
+    }
+
+    /// Enters the call: the ring gives way to the connect tone, and the microphone opens to
+    /// her. Once only — a reconnect must not replay it.
+    private func enterCall() async {
+        guard !finished, !enteredCall else { return }
+        enteredCall = true
+        ringback = nil
+        if ringPlayed { setup.tones.connect() }
+        await setup.capture.setHearing(true)
         if !turnActive, speaking == nil {
-            setState(.listening)
+            setState(connectedNow ? .listening : .reconnecting)
         }
     }
 
@@ -941,8 +1008,9 @@ public actor CallSession {
         guard !finished else { return }
         finished = true
         pending.removeAll()
-        // Her voice stops first, cutting the segment playing now, and the microphone closes
-        // after it: hanging up must not leave her talking out of a call that is over.
+        // She hears nothing more of the producer, and her voice stops at once: hanging up
+        // must not leave her talking out of a call that is over.
+        await setup.capture.setHearing(false)
         await setup.playback.stop()
         for task in tasks { task.cancel() }
         connectTimeoutTask?.cancel()
@@ -955,12 +1023,18 @@ public actor CallSession {
         prefetch = nil
         for task in emotionTasks.values { task.cancel() }
         emotionTasks.removeAll()
-        await setup.capture.stop()
         record(reason)
         recordCallEnd(reason)
         await trace(reason)
+        // The end card and the record show at once; 挂断音 plays after them, and the
+        // microphone and its audio session are held until it is done, so the route does not
+        // jump away early (spec #35).
         setState(.ended(reason))
         continuation.finish()
+        if started {
+            await setup.tones.hangUp()
+        }
+        await setup.capture.stop()
     }
 
     /// A call she hung up is kept in the conversation's record (GLOSSARY.md「对话事件」); it

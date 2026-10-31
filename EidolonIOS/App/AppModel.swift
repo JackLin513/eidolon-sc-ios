@@ -29,6 +29,10 @@ final class AppModel {
     /// The chat's 朗读: one for the whole app, so only one line ever plays (spec #32).
     let readAloud = ChatReadAloud()
 
+    /// The phone's own call sounds: one for the whole app, so a hang-up tone outlives the
+    /// call page and a redial cuts whatever the last call left playing (spec #35).
+    let callTones = CallTonesPlayer()
+
     var chatProvider: (any ChatProvider)? {
         chatSettings.config.map { OpenAICompatibleChatProvider(config: $0) as any ChatProvider }
     }
@@ -180,6 +184,7 @@ final class AppModel {
             limits: chatSettings.callLimits,
             historyTurns: chatSettings.historyTurns,
             reconnectDelay: debugReconnectDelay,
+            tones: callTones,
             now: { Date() }
         )
         return try await core.beginCall(characterID: character.id, setup: setup, now: now)

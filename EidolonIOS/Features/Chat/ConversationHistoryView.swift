@@ -11,6 +11,8 @@ struct ConversationHistoryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var conversations: [ConversationSummary] = []
     @State private var error: String?
+    /// The conversation a swipe asked to delete; nil while nobody has asked (spec #35).
+    @State private var pendingDelete: ConversationSummary?
 
     var body: some View {
         List {
@@ -31,7 +33,9 @@ struct ConversationHistoryView: View {
                     .swipeActions(edge: .trailing) {
                         if !conversation.isCurrent {
                             Button(role: .destructive) {
-                                Task { await delete(conversation) }
+                                // The swipe only says which one; the delete waits for a
+                                // second, deliberate tap.
+                                pendingDelete = conversation
                             } label: {
                                 Label("删除", systemImage: "trash")
                             }
@@ -48,6 +52,23 @@ struct ConversationHistoryView: View {
             }
         }
         .task { await load() }
+        .confirmationDialog(
+            "删除这段对话？",
+            isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingDelete
+        ) { conversation in
+            Button("删除", role: .destructive) {
+                pendingDelete = nil
+                Task { await delete(conversation) }
+            }
+            Button("取消", role: .cancel) { pendingDelete = nil }
+        } message: { _ in
+            Text("删除后无法恢复。")
+        }
         .alert("出错了", isPresented: Binding(
             get: { error != nil },
             set: { if !$0 { error = nil } }

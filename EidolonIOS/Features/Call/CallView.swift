@@ -643,10 +643,10 @@ struct CallView: View {
         VStack(spacing: 12) {
             if !isEnded {
                 Button {
-                    Task {
-                        await session?.hangUp()
-                        dismiss()
-                    }
+                    // The page leaves at once; the hang-up tone belongs to the app's own
+                    // player, so it still sounds behind the chat (spec #35).
+                    Task { await session?.hangUp() }
+                    dismiss()
                 } label: {
                     Image(systemName: "phone.down.fill")
                         .font(.system(size: 26))

@@ -14,12 +14,15 @@
 		27EE9A61F1EA6DD131D5D03F /* EidolonIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6567288D9C69EE4C18792B6 /* EidolonIOSApp.swift */; };
 		28E1D1F65D00588EA9601DA3 /* TraceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D48DCFB6F0FC0D93BD033FC6 /* TraceListView.swift */; };
 		2AB7F50E81201BDD5EE6B1EC /* BarTutorialUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A409D36FC5F7C23FD61FFB /* BarTutorialUITests.swift */; };
+		2CAA8739C8F32538D08118CF /* CallTonesPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE4CA93A98A82A36915C5E19 /* CallTonesPlayer.swift */; };
 		2CF24EECC30E051467FA4D35 /* MicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */; };
 		3361C9CBA23EC466560C4FBB /* ChatReadAloud.swift in Sources */ = {isa = PBXBuildFile; fileRef = 699260EC8FFFC02E174467D0 /* ChatReadAloud.swift */; };
 		36C86D8435661F4A422CF168 /* BarSettingsBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4EC9179658A248DC6D0E540 /* BarSettingsBox.swift */; };
 		3B581C7316F3F7567E6CF0E1 /* StandThumbnails.swift in Sources */ = {isa = PBXBuildFile; fileRef = F51D53D2BDB3163C8344025C /* StandThumbnails.swift */; };
+		410F91B39B617580D97D62F3 /* hang-up.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 3426738E4DA43CD7060B7095 /* hang-up.mp3 */; };
 		4235DD89FDB9280BFC39D5E1 /* BarCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85A4199D7AAE978829BFEC9 /* BarCanvas.swift */; };
 		4B6C40186ED37643BD5ED1EE /* BarSound.swift in Sources */ = {isa = PBXBuildFile; fileRef = D97FA6838C4D87D4724543C3 /* BarSound.swift */; };
+		502DA124FF6C85F5C69F0991 /* connect.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 31FDC61716128573E91E0E66 /* connect.m4a */; };
 		50FF16442DF243C8411FF741 /* SonioxRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */; };
 		58D49346C2362E8BD2497083 /* BarRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F84087F773F0C23692413FF7 /* BarRoomView.swift */; };
 		5F55056A446CF6F4D61A7E16 /* BarJukeboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3A3CDE40EDED61EECF1DBF1 /* BarJukeboxView.swift */; };
@@ -39,6 +42,7 @@
 		A84B266827D901F32D324DA5 /* StandRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B65BE210B02CA6A488C94D /* StandRenderer.swift */; };
 		B2DF1A14F646EDBA6EAECF48 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2610401DD1C29D8D7AB56C /* SettingsView.swift */; };
 		BBCD2E47044DFC5DAB92ED57 /* CallSettingsError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */; };
+		BEB47246CC69F57123F84743 /* CREDITS.md in Resources */ = {isa = PBXBuildFile; fileRef = 3E8A9D366A002F554C2BAE80 /* CREDITS.md */; };
 		C375B67690EAE8B5B255A1B3 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1FF6012F255268462E4A685 /* Keychain.swift */; };
 		C5B1C51FBA6F57968A704048 /* StandPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A39D03BFDD50261F07F298 /* StandPreviewView.swift */; };
 		CABF61FA71D8DD24099824B3 /* ConversationHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */; };
@@ -48,6 +52,7 @@
 		D080D9792F63EBF71440173B /* EidolonCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0BE53CDEEF5BB1E157A83EC1 /* EidolonCore */; };
 		D7B2DC33734343A4F40D315A /* OutfitPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD7263A570545913D16486F1 /* OutfitPickerView.swift */; };
 		D87D5EF9B85BB39DEBD561FB /* FishSynthesis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4472CA53E92E225069B1D652 /* FishSynthesis.swift */; };
+		DC64850F614BE98D316D7D08 /* ringback.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 68007D7CBD92A33E2B3D28B0 /* ringback.mp3 */; };
 		E0F9B1FA2BA982860CDD2BC3 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A72BB12039666C937D7C04 /* RootView.swift */; };
 		EF42004562B67CC87DFCF565 /* StandWebRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1AD0F6ABD451EB0C733277C /* StandWebRenderer.swift */; };
 		FA5A10686839158B2C50E21D /* BarCounter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38B53BAD43DC896CF33D1635 /* BarCounter.swift */; };
@@ -72,12 +77,16 @@
 		17A409D36FC5F7C23FD61FFB /* BarTutorialUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarTutorialUITests.swift; sourceTree = "<group>"; };
 		1C41FC4F60852CC263CFA152 /* EidolonIOSUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = EidolonIOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		22B001CEBA8E13B70A91DA53 /* BarDoor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarDoor.swift; sourceTree = "<group>"; };
+		31FDC61716128573E91E0E66 /* connect.m4a */ = {isa = PBXFileReference; path = connect.m4a; sourceTree = "<group>"; };
+		3426738E4DA43CD7060B7095 /* hang-up.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "hang-up.mp3"; sourceTree = "<group>"; };
 		362E0BAAF16B958F406E1E08 /* SpeechPlayback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechPlayback.swift; sourceTree = "<group>"; };
 		38579B2A473B296EC588CBD6 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		38B53BAD43DC896CF33D1635 /* BarCounter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarCounter.swift; sourceTree = "<group>"; };
+		3E8A9D366A002F554C2BAE80 /* CREDITS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CREDITS.md; sourceTree = "<group>"; };
 		4472CA53E92E225069B1D652 /* FishSynthesis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FishSynthesis.swift; sourceTree = "<group>"; };
 		502579B7DFF941BAC28ADE49 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		54B11631789B9A8BDAE83193 /* stand-player.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "stand-player.js"; sourceTree = "<group>"; };
+		68007D7CBD92A33E2B3D28B0 /* ringback.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = ringback.mp3; sourceTree = "<group>"; };
 		699260EC8FFFC02E174467D0 /* ChatReadAloud.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatReadAloud.swift; sourceTree = "<group>"; };
 		6B9D77576080818CADE3BD64 /* BarRoomBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarRoomBackground.swift; sourceTree = "<group>"; };
 		6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallSettingsError.swift; sourceTree = "<group>"; };
@@ -104,6 +113,7 @@
 		C5B65BE210B02CA6A488C94D /* StandRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandRenderer.swift; sourceTree = "<group>"; };
 		C85A4199D7AAE978829BFEC9 /* BarCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarCanvas.swift; sourceTree = "<group>"; };
 		CE21F722ED79A2089F060B7F /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		CE4CA93A98A82A36915C5E19 /* CallTonesPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallTonesPlayer.swift; sourceTree = "<group>"; };
 		D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneCapture.swift; sourceTree = "<group>"; };
 		D48DCFB6F0FC0D93BD033FC6 /* TraceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceListView.swift; sourceTree = "<group>"; };
 		D97FA6838C4D87D4724543C3 /* BarSound.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarSound.swift; sourceTree = "<group>"; };
@@ -134,6 +144,17 @@
 				D48DCFB6F0FC0D93BD033FC6 /* TraceListView.swift */,
 			);
 			path = Traces;
+			sourceTree = "<group>";
+		};
+		23B18A5B74FD98A158E25AEE /* Sounds */ = {
+			isa = PBXGroup;
+			children = (
+				31FDC61716128573E91E0E66 /* connect.m4a */,
+				3E8A9D366A002F554C2BAE80 /* CREDITS.md */,
+				3426738E4DA43CD7060B7095 /* hang-up.mp3 */,
+				68007D7CBD92A33E2B3D28B0 /* ringback.mp3 */,
+			);
+			path = Sounds;
 			sourceTree = "<group>";
 		};
 		27A0BC2BCA46C88574A55902 = {
@@ -182,6 +203,7 @@
 		7C3354A50873374D4CA6E7BE /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				23B18A5B74FD98A158E25AEE /* Sounds */,
 				D6F678B9E8DDCE677E089EC3 /* Stand */,
 			);
 			path = Resources;
@@ -333,6 +355,7 @@
 			isa = PBXGroup;
 			children = (
 				6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */,
+				CE4CA93A98A82A36915C5E19 /* CallTonesPlayer.swift */,
 				FCD1CD149AFF0049C2EE0F58 /* DebugRecognition.swift */,
 				4472CA53E92E225069B1D652 /* FishSynthesis.swift */,
 				D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */,
@@ -433,6 +456,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				8ABC906B631EDC9CC6BC2529 /* AppIcon.icon in Resources */,
+				BEB47246CC69F57123F84743 /* CREDITS.md in Resources */,
+				502DA124FF6C85F5C69F0991 /* connect.m4a in Resources */,
+				410F91B39B617580D97D62F3 /* hang-up.mp3 in Resources */,
+				DC64850F614BE98D316D7D08 /* ringback.mp3 in Resources */,
 				6ADC1F5313FCC7F5003E1676 /* stand-player.js in Resources */,
 				17CAADABE8FCFE23334C6C09 /* stand.html in Resources */,
 			);
@@ -482,6 +509,7 @@
 				8F700315EAE8C6E59429BD0F /* BarTextBox.swift in Sources */,
 				9E2C6AC25E575F7C295ADD54 /* BarVisitState.swift in Sources */,
 				BBCD2E47044DFC5DAB92ED57 /* CallSettingsError.swift in Sources */,
+				2CAA8739C8F32538D08118CF /* CallTonesPlayer.swift in Sources */,
 				9C1DDAAE28F34ADE34D50C28 /* CallView.swift in Sources */,
 				3361C9CBA23EC466560C4FBB /* ChatReadAloud.swift in Sources */,
 				8FDA81B5B65A7F24FDDE1659 /* ChatSettings.swift in Sources */,
