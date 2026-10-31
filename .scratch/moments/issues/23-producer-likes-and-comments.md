@@ -77,7 +77,7 @@
   - 新表登记（`test_database.py`），后台设定的保存和校验。
 - [x] **验收**：在本地构建版上用 Playwright 赞、取消赞、评论、删评论；推进时间，调一次「跑一遍」，看她的回复出现。宽屏和手机各看一次。
 - [ ] 表结构有改动，部署前手动备份数据库。
-- [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+- [x] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
 
 ## Comments
 
