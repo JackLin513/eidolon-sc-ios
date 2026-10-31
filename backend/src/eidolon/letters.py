@@ -65,6 +65,7 @@ from eidolon.affinity import BELOW_TRUST, TIERS, Affinities, Tier
 from eidolon.characters import Character
 from eidolon.clock import Clock
 from eidolon.data_access import Database
+from eidolon.letter_music import Music, music_of
 from eidolon.letter_prompt import (
     ANNIVERSARY_DAYS,
     OCCASIONS,
@@ -212,11 +213,13 @@ class Letter:
     written: Written
     signed: str
     voice_blocks: int
+    music: dict | None = None
+    """The music under it, as the browser is told it (`letter_music.Music.shown`)."""
 
     def shown(self) -> dict:
         """As the browser is told it: without delivery cues; where each block in her voice is,
-        or None without a voice; no music yet, and her name written out for her
-        signature."""
+        or None without a voice; the music under it, or None; and her name written out for
+        her signature."""
         voice = [f"/api/letters/{self.id}/voice/{block}" for block in range(self.voice_blocks)]
         return {
             "id": self.id,
@@ -227,7 +230,7 @@ class Letter:
             "paragraphs": [{"ja": shown(p.ja), "zh": p.zh} for p in self.written.paragraphs],
             "signature": {"image": None, "text": self.signed},
             "voice": voice or None,
-            "music": None,
+            "music": self.music,
         }
 
 
@@ -256,7 +259,8 @@ class _Due:
 
 class Letters:
     """Her letters, in `db`, on the deployer's chat model of `config`, said in her voice
-    by `read_aloud`, each recorded in `activity`."""
+    by `read_aloud`, each recorded in `activity`, read with the `music` of each occasion
+    from the stands' address (`assets_url`; none without it)."""
 
     def __init__(
         self,
@@ -267,6 +271,8 @@ class Letters:
         activity: ActivityLog,
         read_aloud: ReadAloud,
         clock: Clock,
+        music: Mapping[Occasion, Music],
+        assets_url: str | None,
     ) -> None:
         self._db = db
         self._characters = characters
@@ -275,6 +281,8 @@ class Letters:
         self._activity = activity
         self._read_aloud = read_aloud
         self._clock = clock
+        self._music = music
+        self._assets_url = assets_url
         db.prepare(_open)
 
     async def keep_writing(self) -> None:
@@ -335,10 +343,14 @@ class Letters:
         return await self._db.read(_listed, user_id)
 
     async def letter(self, user_id: str, letter_id: int) -> Letter | None:
-        """The user's letter; None if it is not theirs, or there is none."""
+        """The user's letter, with the music of the first of its occasions that has any;
+        None if it is not theirs, or there is none."""
         letter = await self._db.read(_letter, user_id, letter_id)
         if letter is None:
             return None
+        music = music_of(letter.occasions, self._music)
+        if music is not None and self._assets_url is not None:
+            letter = replace(letter, music=music.shown(self._assets_url))
         character = self._characters.get(letter.character_id)
         return replace(letter, signed=character.name) if character is not None else letter
 

@@ -74,6 +74,7 @@ from eidolon.prices import Prices
 from eidolon.own_keys import LLMService, OwnImageService, OwnKeys, ProviderLLMService
 from eidolon.photos import Photos
 from eidolon.proxy import ProxyRoutes
+from eidolon.letter_music import letter_music_path, load_letter_music
 from eidolon.letters import Letters
 from eidolon.moments import Moments
 from eidolon.reach_outs import ReachOuts
@@ -261,8 +262,8 @@ def build(
     """The backend `settings` describe, with any of the outside services passed in
     used instead of made. Raises RuntimeError, having opened nothing, if the character
     configuration (her liked gifts, her bar tastes and all), the world setting, the gift
-    catalog, the job list, the place pool, the drink catalog or the bar's reasons and topics or its fixed lines
-    is broken, or a character is none of its idols and none of its staff."""
+    catalog, the job list, the place pool, the drink catalog, the bar's reasons and topics or its fixed lines,
+    or the letters' music list is broken, or a character is none of its idols and none of its staff."""
     characters = load_characters(settings.characters_path)
     gift_catalog = load_gift_catalog(gifts_path(settings.characters_path))
     check_liked_gifts(characters, gift_catalog)
@@ -276,6 +277,7 @@ def build(
     check_bar_visits(characters, bar_visits)
     bar_lines = load_bar_lines(bar_lines_path(settings.characters_path))
     check_bar_lines(bar_lines, drink_catalog)
+    letter_music = load_letter_music(letter_music_path(settings.characters_path))
     world = load_world(path := world_path(settings.characters_path))
     if world is None:
         log.info(
@@ -436,7 +438,10 @@ def build(
         image_service=own_images,
     )
     read_aloud = ReadAloud(own_keys, usage, activity, readings, routes, fish_transport)
-    letters = Letters(database, characters, config, affinities, activity, read_aloud, clock)
+    letters = Letters(
+        database, characters, config, affinities, activity, read_aloud, clock,
+        letter_music, settings.stand_assets_url,
+    )
     happenings = Happenings(
         database, lambda: config.affinity_on, gifts, activity, letters.happened
     )

@@ -2,17 +2,21 @@ import { describe, expect, it } from "vitest";
 
 import {
   LEAD_IN,
+  MUSIC_TAIL,
   STALL_MS,
   finishesAt,
   hasUnread,
   letterDay,
+  musicPlan,
   partsOf,
+  segmentsFrom,
   showsLetterButton,
   signsAt,
   tick,
   timerClock,
   voiceClock,
   written,
+  type LetterMusic,
   type LetterSummary,
 } from "@/lib/letter";
 
@@ -134,6 +138,75 @@ describe("跟着她的声音写", () => {
 
   it("没有声音时按时钟从第 0 秒写", () => {
     expect(tick(timerClock(1000), 2500, 0).at).toBeCloseTo(1.5);
+  });
+});
+
+function music(climax: number | null, fade: number | null = null, loop: [number, number] | null = null): LetterMusic {
+  return { url: "https://stands.example.com/letters/music/close.m4a", climax, fade, loop };
+}
+
+/** 她的生日那首：79 秒，3–60 秒那段循环，64 秒是高潮。 */
+const herBirthday = music(64, null, [3, 60]);
+
+describe("配乐对齐", () => {
+  it("高潮在签名之后（P ≥ S）：从第 P − S 秒开始放，高潮正好落在签名上", () => {
+    const plan = musicPlan(music(71), 40, 41.6);
+    expect(plan).toEqual({ offset: 31, loops: 0, segments: [{ at: 0, from: 31, to: null }], fadeAt: null });
+  });
+
+  it("高潮在签名之前（P < S）：从头放，高潮早一点到", () => {
+    const plan = musicPlan(music(71), 90, 91.6);
+    expect(plan.offset).toBe(0);
+    expect(plan.segments).toEqual([{ at: 0, from: 0, to: null }]);
+  });
+
+  it("没有高潮的从头放，签名写完 MUSIC_TAIL 秒后淡出", () => {
+    const plan = musicPlan(music(null), 40, 41.6);
+    expect(plan.segments).toEqual([{ at: 0, from: 0, to: null }]);
+    expect(plan.fadeAt).toBeCloseTo(41.6 + MUSIC_TAIL);
+  });
+
+  it("签名之后放到淡出点淡出；淡出点早于签名写完时，等签名写完再淡出", () => {
+    expect(musicPlan(music(101, 148), 60, 61.6).fadeAt).toBe(148 - 41);
+    expect(musicPlan(music(101, 148), 120, 121.6).fadeAt).toBe(148);
+    expect(musicPlan(music(101, 148), 160, 161.6).fadeAt).toBe(161.6);
+  });
+
+  it("她的生日那首够长时不循环，照样把高潮对在签名上", () => {
+    const plan = musicPlan(herBirthday, 30, 31.6);
+    expect(plan.loops).toBe(0);
+    expect(plan.segments).toEqual([{ at: 0, from: 34, to: null }]);
+  });
+
+  it("她的生日那首不够长时，3–60 秒那段接回去循环，直到 64 秒的高潮落在签名上或之后，再接尾段", () => {
+    const plan = musicPlan(herBirthday, 100, 101.6);
+    // 循环一次：高潮挪到第 64 + 57 = 121 秒，从第 21 秒开始放。
+    expect(plan.loops).toBe(1);
+    expect(plan.offset).toBe(21);
+    expect(plan.segments).toEqual([
+      { at: 0, from: 21, to: 60 },
+      { at: 39, from: 3, to: 60 },
+      { at: 96, from: 60, to: null },
+    ]);
+    // 尾段从 60 秒放起，第 64 秒的高潮落在签名上。
+    expect(plan.segments[2].at + 64 - 60).toBe(100);
+  });
+
+  it("签名越晚循环越多次；正好落在签名上时不多循环", () => {
+    expect(musicPlan(herBirthday, 200, 201.6).loops).toBe(3);
+    expect(musicPlan(herBirthday, 121, 122.6).loops).toBe(1);
+    expect(musicPlan(herBirthday, 64, 65.6).loops).toBe(0);
+    expect(musicPlan(herBirthday, 200, 201.6).segments.at(-1)).toEqual({ at: 200 - 4, from: 60, to: null });
+  });
+
+  it("配乐来晚了：从第 t 秒接着放，已经放过的段不再放", () => {
+    const { segments } = musicPlan(herBirthday, 100, 101.6);
+    expect(segmentsFrom(segments, 50)).toEqual([
+      { at: 50, from: 14, to: 60 },
+      { at: 96, from: 60, to: null },
+    ]);
+    expect(segmentsFrom(segments, 0)).toEqual(segments);
+    expect(segmentsFrom([{ at: 0, from: 31, to: null }], 10)).toEqual([{ at: 10, from: 41, to: null }]);
   });
 });
 

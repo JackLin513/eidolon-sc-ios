@@ -1,5 +1,5 @@
 // 信（GLOSSARY.md「信」）：她在特别的日子写给制作人的一封信。这里管接口上的信长什么样、页首信封键有没有点、
-// 拆开以后每个字什么时候写出来（时间轴）。时间轴的常量沿用停服前「她的信」。
+// 拆开以后每个字什么时候写出来（时间轴）、配乐从哪里放起才让高潮落在签名上。时间轴的常量沿用停服前「她的信」。
 
 /** 写信的场合（后端 letter_prompt.Occasion）。几个场合合在一封时按这个顺序列出。 */
 export type Occasion =
@@ -21,6 +21,17 @@ export type LetterSummary = {
   popped: boolean;
 };
 
+/**
+ * 这封信的配乐（后端 letter_music.py）：曲子的地址（在立绘素材的存储桶里，部署者没上传时取不到），
+ * 高潮从第几秒开始（没有为 null）、高潮之后放到第几秒淡出（null 是放到结束）、太短的那首循环哪一段。
+ */
+export type LetterMusic = {
+  url: string;
+  climax: number | null;
+  fade: number | null;
+  loop: [number, number] | null;
+};
+
 /** 读一封：抬头和各段（日语已去掉语气提示）、信末的签名、每块语音的地址；没有语音、配乐时为 null。 */
 export type Letter = {
   id: number;
@@ -33,7 +44,8 @@ export type Letter = {
   signature: { image: string | null; text: string };
   /** 她念这封信的 mp3，一块一个：第 0 块是抬头，之后每段一块。部署者没有语音合成、合成失败时为 null。 */
   voice: string[] | null;
-  music: null;
+  /** 部署者没配立绘素材地址、配乐清单里没有这些场合时为 null。 */
+  music: LetterMusic | null;
 };
 
 /** 页首的信封键：部署者开着信，或者用户已经有信时才出现。 */
@@ -170,4 +182,56 @@ export function tick(clock: LetterClock, now: number, audioTime: number): { cloc
   if (audioTime !== clock.heard) return { clock: { ...clock, heard: audioTime, movedAt: now }, at };
   if (now - clock.movedAt > STALL_MS) return { clock: { by: "timer", from: at, since: now }, at };
   return { clock, at };
+}
+
+/** 没有高潮的那首，签名写完以后再放多久才淡出（秒）。 */
+export const MUSIC_TAIL = 4;
+
+/** 曲子的一段排在时间轴上：信纸展开算起第 `at` 秒，放曲子的第 `from` 秒到第 `to` 秒（null 是放到曲子结束）。 */
+export type MusicSegment = { at: number; from: number; to: number | null };
+
+/**
+ * 配乐怎么放：从曲子（循环展开以后）的第 `offset` 秒放起，循环段多放 `loops` 遍；排成时间轴上的几段；
+ * 时间轴上第 `fadeAt` 秒开始淡出（null 是放到结束）。
+ */
+export type MusicPlan = { offset: number; loops: number; segments: MusicSegment[]; fadeAt: number | null };
+
+/**
+ * 配乐对齐（时间轴的第 0 秒是信纸展开，配乐这时开始放）：签名时刻 `signsAt` 为 S、高潮起点为 P。P ≥ S 时从第
+ * P − S 秒放起，高潮正好落在签名上；P < S 时从头放，高潮早一点到，不硬对；没有高潮的从头放。有循环段 [a, b] 的那首
+ * （高潮在 b 之后）放到 b 再接回 a，一遍一遍，直到高潮能落在签名上或之后，再接尾段，照样把高潮对在签名上。
+ * 签名之后放到淡出点淡出，淡出点早于签名写完（`finishesAt`）时等写完再淡出；没有高潮的那首签名写完 `MUSIC_TAIL` 秒后淡出。
+ */
+export function musicPlan(music: Pick<LetterMusic, "climax" | "fade" | "loop">, signsAt: number, finishesAt: number): MusicPlan {
+  const { climax, fade, loop } = music;
+  if (climax === null) {
+    return { offset: 0, loops: 0, segments: [{ at: 0, from: 0, to: null }], fadeAt: finishesAt + MUSIC_TAIL };
+  }
+  const length = loop ? loop[1] - loop[0] : 0;
+  const loops = loop && length > 0 ? Math.max(0, Math.ceil((signsAt - climax) / length)) : 0;
+  const offset = Math.max(0, climax + loops * length - signsAt);
+  // 循环展开以后的曲子：放到 b，接回 a 再放 loops 遍，然后是尾段。
+  const pieces: { from: number; to: number | null }[] =
+    loop && loops > 0
+      ? [{ from: 0, to: loop[1] }, ...Array.from({ length: loops }, () => ({ from: loop[0], to: loop[1] })), { from: loop[1], to: null }]
+      : [{ from: 0, to: null }];
+  const segments: MusicSegment[] = [];
+  let at = 0 - offset;
+  for (const piece of pieces) {
+    segments.push({ at, ...piece });
+    if (piece.to !== null) at += piece.to - piece.from;
+  }
+  return {
+    offset,
+    loops,
+    segments: segmentsFrom(segments, 0),
+    fadeAt: fade === null ? null : Math.max(fade + loops * length - offset, finishesAt),
+  };
+}
+
+/** 从时间轴的第 `t` 秒起还要放的几段：已经放完的不要，正放到一半的从这一秒接着放。 */
+export function segmentsFrom(segments: MusicSegment[], t: number): MusicSegment[] {
+  return segments
+    .filter((s) => s.to === null || s.at + (s.to - s.from) > t)
+    .map((s) => (s.at >= t ? s : { at: t, from: s.from + (t - s.at), to: s.to }));
 }
