@@ -2095,6 +2095,45 @@ final class CallSessionTests: XCTestCase {
         await session.hangUp()
     }
 
+    /// A websocket can die while the app is suspended without ever reporting it: the call
+    /// looks connected and the microphone is open, but nothing it hears arrives. Coming back
+    /// to the foreground must not keep the old connection.
+    func testComingBackToTheForegroundReconnectsEvenIfTheOldConnectionNeverSaidItDied() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang, .hang])
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([]),
+            recognition: recognition
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        XCTAssertEqual(recognition.calls, 1)
+
+        await session.appDidBecomeActive()
+
+        try await waitFor("a fresh connection") { recognition.calls == 2 }
+        await session.hangUp()
+    }
+
+    /// A connection becoming ready while nothing of hers is playing means the microphone
+    /// should be open; a system interruption can leave it shut, with no way to know.
+    func testAReadyConnectionOpensTheMicrophoneLeftShut() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang, .hang])
+        let (session, _, capture) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([]),
+            recognition: recognition
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        await capture.setHearing(false)
+
+        await session.appDidBecomeActive()
+
+        try await waitFor("the microphone open again") { capture.isHearing }
+        await session.hangUp()
+    }
+
     /// Her line card moves with her voice, not with her text: the next segment's caption is
     /// not shown until the segment before it has finished being said (upstream
     /// `linePacing.ts`, spec「通话层的台词卡按她说话的节奏换段」).

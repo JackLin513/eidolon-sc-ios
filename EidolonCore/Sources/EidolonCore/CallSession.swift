@@ -31,6 +31,10 @@ public protocol AudioCapture: Sendable {
     /// under way, says true — it has nothing to report here, and the attempt under way
     /// reports its own result.
     func recover() async -> Bool
+    /// The same, after the app came back to the foreground. A real return is not the echo of
+    /// a recovery's own route change, so it is not held off by the quiet window that keeps
+    /// route changes from asking for recovery over and over.
+    func recoverAfterForeground() async -> Bool
     /// Each system action that can take the microphone away, as one event: an interruption
     /// ending, a route change, media services resetting. The call asks the microphone to
     /// come back for each; a capture with nothing to watch yields none.
@@ -40,6 +44,7 @@ public protocol AudioCapture: Sendable {
 extension AudioCapture {
     /// A capture with nothing to recover keeps working as it did.
     public func recover() async -> Bool { true }
+    public func recoverAfterForeground() async -> Bool { await recover() }
     public func disruptions() -> AsyncStream<Void> { AsyncStream { $0.finish() } }
 }
 
@@ -384,6 +389,9 @@ public actor CallSession {
     /// Whether it has ever been up: the call counts as connected from the first time.
     private var everConnected = false
     private var tasks: [Task<Void, Never>] = []
+    /// The recognizer's current connection loop; it is replaced on foreground, since a
+    /// socket can die while the app is away without reporting it.
+    private var listenTask: Task<Void, Never>?
     private var turnTask: Task<Void, Never>?
     private var connectTimeoutTask: Task<Void, Never>?
 
@@ -520,7 +528,9 @@ public actor CallSession {
             ringPlayed = true
             await hear(false)
         }
-        tasks.append(Task { await self.listenLoop() })
+        let listening = Task { await self.listenLoop() }
+        listenTask = listening
+        tasks.append(listening)
         // The system taking the microphone away is the session's to notice and answer, so
         // that a failure can reach the screen (spec #41).
         let disruptions = setup.capture.disruptions()
@@ -552,15 +562,40 @@ public actor CallSession {
     /// while the call is still dialing is not shown — nothing is being heard yet — and a
     /// muted microphone is not the system's doing. Nothing happens once the call has ended.
     public func recoverAudio() async {
+        await recoverAudio(afterForeground: false)
+    }
+
+    private func recoverAudio(afterForeground: Bool) async {
         guard !finished, !muted, !recoveringAudio else { return }
         recoveringAudio = true
         defer { recoveringAudio = false }
-        let recovered = await setup.capture.recover()
+        let recovered = afterForeground
+            ? await setup.capture.recoverAfterForeground()
+            : await setup.capture.recover()
         if recovered {
             setMicNotice(nil)
         } else if everConnected {
             setMicNotice(.lost)
         }
+    }
+
+    /// The app came back to the foreground. The microphone and the recognizer's connection
+    /// may both have died while it was away, and a websocket can die without reporting it:
+    /// the microphone is asked to open again, and the connection is replaced rather than
+    /// trusted until it says something.
+    public func appDidBecomeActive() async {
+        guard !finished else { return }
+        await recoverAudio(afterForeground: true)
+        restartListening()
+    }
+
+    /// Replaces the recognizer's connection with a fresh one. The old loop is cancelled,
+    /// which closes its socket and its audio stream; the new one asks for a new stream of
+    /// the microphone and opens a new connection.
+    private func restartListening() {
+        guard started, !finished else { return }
+        listenTask?.cancel()
+        listenTask = Task { await self.listenLoop() }
     }
 
     /// Shows a notice once, and takes it away once: the screen hears only about changes.
@@ -676,6 +711,12 @@ public actor CallSession {
         guard !enteredCall else {
             if !turnActive, speaking == nil {
                 setState(.listening)
+            }
+            // Nothing of hers is playing, so the microphone should be feeding this
+            // connection: a system interruption can have left it shut, and a reconnect is
+            // the moment to open it again.
+            if speakingIndex == nil {
+                await hear(true)
             }
             return
         }
@@ -1237,6 +1278,8 @@ public actor CallSession {
         await hear(false)
         await setup.playback.stop()
         for task in tasks { task.cancel() }
+        listenTask?.cancel()
+        listenTask = nil
         connectTimeoutTask?.cancel()
         connectTimeoutTask = nil
         turnTask?.cancel()

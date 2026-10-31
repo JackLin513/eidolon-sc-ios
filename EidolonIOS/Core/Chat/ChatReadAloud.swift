@@ -26,6 +26,9 @@ final class ChatReadAloud {
     private var voicing: Task<Void, Never>?
     /// The interruption observer; written once on the main actor, read once in `deinit`.
     nonisolated(unsafe) private var interrupted: NSObjectProtocol?
+    /// Whether this run left the session active for reading a line. Only a session it took
+    /// is given back: a call's `.playAndRecord` session is not this feature's to close.
+    private var borrowedSession = false
 
     init() {
         // A phone call or another app taking the session pauses the player without
@@ -116,6 +119,7 @@ final class ChatReadAloud {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .spokenAudio, options: [.mixWithOthers])
             try session.setActive(true)
+            borrowedSession = true
             let player = try AVAudioPlayer(data: data)
             player.prepareToPlay()
             let delegate = PlayerDelegate { [weak self, weak player] in
@@ -147,7 +151,11 @@ final class ChatReadAloud {
     }
 
     /// The session was only borrowed to read this line; give the microphone back at once.
+    /// A session this feature never took — a call is using it — is left alone, or leaving
+    /// the chat page would close the microphone of a call that is still going.
     private func deactivate() {
+        guard borrowedSession else { return }
+        borrowedSession = false
         try? AVAudioSession.sharedInstance().setActive(
             false, options: .notifyOthersOnDeactivation
         )
