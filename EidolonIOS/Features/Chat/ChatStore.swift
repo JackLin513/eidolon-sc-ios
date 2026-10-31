@@ -102,15 +102,30 @@ final class ChatStore {
         affinity = reading.affinity
     }
 
-    /// Starts a new conversation after she ended the last one, and shows it.
-    func startNewConversation() async {
-        guard !isPast else { return }
+    /// Whether 新对话 can be used: there is something in this conversation to leave
+    /// behind, and no reply is being written. The page adds its own call condition
+    /// (spec #37).
+    var canStartNewConversation: Bool {
+        !lines.isEmpty && !isStreaming
+    }
+
+    /// Starts another conversation and leaves this one behind — not ended, not touched;
+    /// it falls into the history. In a past conversation the new one is the current one,
+    /// and the page that opened it closes (spec #37). Says whether it was written.
+    @discardableResult
+    func startNewConversation() async -> Bool {
+        guard canStartNewConversation else { return false }
         do {
-            try await core.startConversation(characterID: character.id)
-            ended = false
-            await load()
+            try await core.beginNewConversation(characterID: character.id)
+            if !isPast {
+                ended = false
+                input = ""
+                await load()
+            }
+            return true
         } catch {
             errorMessage = error.localizedDescription
+            return false
         }
     }
 

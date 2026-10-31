@@ -28,6 +28,10 @@ final class AppModel {
     private(set) var isImporting = false
     private(set) var importProgress: ImportProgress?
     private(set) var chatSettings = ChatSettings.load()
+    /// Bumped when a conversation is started from somewhere other than the page that
+    /// shows it — a past conversation in the history sheet. The current page reloads to
+    /// the new one and the sheet closes (spec #37).
+    private(set) var conversationRevision = 0
 
     /// The chat's 朗读: one for the whole app, so only one line ever plays (spec #32).
     let readAloud = ChatReadAloud()
@@ -731,6 +735,11 @@ final class AppModel {
             removed += 1
         }
         return removed
+    }
+
+    /// A new conversation was started elsewhere: let the page and the history sheet hear it.
+    func noteConversationStarted() {
+        conversationRevision += 1
     }
 
     func refresh() async {

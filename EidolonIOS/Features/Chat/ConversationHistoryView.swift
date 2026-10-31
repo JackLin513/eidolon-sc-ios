@@ -6,6 +6,8 @@ import SwiftUI
 /// never be typed in again.
 struct ConversationHistoryView: View {
     let character: CharacterConfig
+    /// Whether the page that opened the history is still waiting on a reply (spec #37).
+    var currentTurnInFlight: Bool = false
 
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
@@ -26,7 +28,11 @@ struct ConversationHistoryView: View {
             } else {
                 ForEach(conversations) { conversation in
                     NavigationLink {
-                        ChatView(character: character, conversationID: conversation.id)
+                        ChatView(
+                            character: character,
+                            conversationID: conversation.id,
+                            currentTurnInFlight: currentTurnInFlight
+                        )
                     } label: {
                         row(conversation)
                     }
@@ -52,6 +58,11 @@ struct ConversationHistoryView: View {
             }
         }
         .task { await load() }
+        // A new conversation started from one of the past ones closes the history: the
+        // page underneath is already showing it (spec #37).
+        .onChange(of: app.conversationRevision) {
+            dismiss()
+        }
         .confirmationDialog(
             "删除这段对话？",
             isPresented: Binding(

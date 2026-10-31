@@ -255,6 +255,14 @@ extension Eidolon {
         }
     }
 
+    /// Starts a new conversation whatever the current one is doing: the one it leaves
+    /// behind stays as it is — not ended, not touched — and falls into the history
+    /// (upstream's `start_new`). The page uses this when the producer asks for another.
+    @discardableResult
+    public func beginNewConversation(characterID: String, now: Date = Date()) throws -> String {
+        try createConversation(characterID: characterID, now: now)
+    }
+
     /// Starts a new conversation with her: the next turn goes into it, and the one that
     /// was current becomes a past conversation. Does nothing while the current one is
     /// still open.
@@ -264,14 +272,7 @@ extension Eidolon {
            try !isEnded(conversationID: current) {
             return current
         }
-        let id = UUID().uuidString
-        try userQueue.write { db in
-            try db.execute(
-                sql: "INSERT INTO conversations(id, character_id, created_at) VALUES (?, ?, ?)",
-                arguments: [id, characterID, Self.timestamp(now)]
-            )
-        }
-        return id
+        return try createConversation(characterID: characterID, now: now)
     }
 
     /// Deletes a past conversation for good. What she remembered from it stays, as does

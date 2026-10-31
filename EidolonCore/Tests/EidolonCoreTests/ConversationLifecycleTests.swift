@@ -231,4 +231,108 @@ final class ConversationLifecycleTests: XCTestCase {
         XCTAssertEqual(summaries.first?.records, 6)
         XCTAssertEqual(summaries.first?.lastPreview, "嗯")
     }
+
+
+    // MARK: - Starting another conversation by hand (spec #37)
+
+    func testBeginNewConversationLeavesTheOpenOneBehindAndStartsAnother() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("こんにちは", provider: reply(), on: eidolon)
+        let old = try await eidolon.currentConversation(characterID: "mano")
+        let oldID = try XCTUnwrap(old?.id)
+
+        let newID = try await eidolon.beginNewConversation(characterID: "mano")
+
+        XCTAssertNotEqual(newID, oldID)
+        let summaries = try await eidolon.conversations(characterID: "mano")
+        XCTAssertEqual(summaries.first?.id, newID)
+        XCTAssertTrue(summaries.first?.isCurrent == true)
+        XCTAssertFalse(summaries.first?.ended == true)
+        XCTAssertEqual(summaries.first?.records, 0)
+        XCTAssertEqual(summaries.first { $0.id == oldID }?.isCurrent, false)
+        let oldAfter = try await eidolon.conversation(id: oldID)
+        XCTAssertEqual(oldAfter?.messages.map(\.id), old?.messages.map(\.id))
+        XCTAssertFalse(oldAfter?.ended == true, "starting another does not end the one left behind")
+    }
+
+    func testTheNextTurnGoesIntoTheNewConversation() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("こんにちは", provider: reply(), on: eidolon)
+        let oldSnapshot = try await eidolon.currentConversation(characterID: "mano")
+        let oldID = try XCTUnwrap(oldSnapshot?.id)
+
+        let newID = try await eidolon.beginNewConversation(characterID: "mano")
+        try await say("はじめまして", provider: reply("やあ"), on: eidolon)
+
+        let freshSnapshot = try await eidolon.conversation(id: newID)
+        let fresh = try XCTUnwrap(freshSnapshot)
+        XCTAssertEqual(fresh.messages.count, 2)
+        let oldRecord = try await eidolon.conversation(id: oldID)
+        let old = try XCTUnwrap(oldRecord)
+        XCTAssertEqual(old.messages.count, 2)
+        let current = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertEqual(current?.id, newID)
+    }
+
+    func testAPastConversationKeepsItsEventsAndReachOuts() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("こんにちは", provider: reply(), on: eidolon)
+        let oldSnapshot = try await eidolon.currentConversation(characterID: "mano")
+        let oldID = try XCTUnwrap(oldSnapshot?.id)
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO conversation_events(conversation_id, kind, created_at)
+                    VALUES (?, 'hung_up', '2030-01-01T00:00:00.000000Z')
+                    """,
+                arguments: [oldID]
+            )
+            try db.execute(
+                sql: """
+                    INSERT INTO reach_outs(id, conversation_id, ja, zh, segments, seen, created_at)
+                    VALUES ('reach-old', ?, 'ねえ', '喂', '[]', 0, '2030-01-01T00:00:01.000000Z')
+                    """,
+                arguments: [oldID]
+            )
+        }
+
+        _ = try await eidolon.beginNewConversation(characterID: "mano")
+
+        let record = try await eidolon.conversationRecord(conversationID: oldID)
+        XCTAssertTrue(record.contains { line in
+            if case let .event(event) = line { return event.kind == "hung_up" }
+            return false
+        })
+        XCTAssertTrue(record.contains { line in
+            if case let .message(message) = line { return message.id == "reach:reach-old" }
+            return false
+        })
+    }
+
+    func testTheNewConversationIsCurrentAfterReopening() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("こんにちは", provider: reply(), on: eidolon)
+        let newID = try await eidolon.beginNewConversation(characterID: "mano")
+
+        let reopened = try Eidolon(location: .init(root: root.appendingPathComponent("app")))
+        let current = try await reopened.currentConversation(characterID: "mano")
+        XCTAssertEqual(current?.id, newID)
+        XCTAssertEqual(current?.messages.count, 0)
+    }
+
+    func testBeginNewConversationCreatesAnotherEvenAfterTheLastOneEnded() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("こんにちは", provider: reply(), on: eidolon)
+        try await endConversation(on: eidolon)
+        let endedSnapshot = try await eidolon.currentConversation(characterID: "mano")
+        let ended = try XCTUnwrap(endedSnapshot)
+
+        let newID = try await eidolon.beginNewConversation(characterID: "mano")
+
+        XCTAssertNotEqual(newID, ended.id)
+        let left = try await eidolon.conversation(id: ended.id)
+        XCTAssertTrue(left?.ended == true)
+        let current = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertEqual(current?.id, newID)
+    }
 }

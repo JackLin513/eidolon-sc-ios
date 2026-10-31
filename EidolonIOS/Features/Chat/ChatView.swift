@@ -5,6 +5,10 @@ struct ChatView: View {
     let character: CharacterConfig
     /// A past conversation to look at; nil shows the current one.
     var conversationID: String? = nil
+    /// Whether the page this history was opened from is still waiting on a reply. A past
+    /// page cannot start another conversation then, since the current page would reload
+    /// mid-turn (spec #37).
+    var currentTurnInFlight: Bool = false
 
     @Environment(AppModel.self) private var app
     @State private var store: ChatStore?
@@ -42,16 +46,6 @@ struct ChatView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if app.hasStand(for: character.id) {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        openOutfits()
-                    } label: {
-                        Image(systemName: "tshirt")
-                    }
-                    .accessibilityLabel("换衣装")
-                }
-            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showCall = true
@@ -61,11 +55,25 @@ struct ChatView: View {
                 .disabled(store?.readOnly == true || store?.affinity.cooling == true)
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showHistory = true
+                // Upstream's order: 新对话, 历史对话, 换衣装. Items are greyed, never
+                // hidden; 换衣装 only exists when she has a stand (spec #37).
+                Menu {
+                    Button("新对话") {
+                        startNewConversation()
+                    }
+                    .disabled(!newConversationIsEnabled)
+                    Button("历史对话") {
+                        showHistory = true
+                    }
+                    if app.hasStand(for: character.id) {
+                        Button("换衣装") {
+                            openOutfits()
+                        }
+                    }
                 } label: {
-                    Image(systemName: "clock.arrow.circlepath")
+                    Image(systemName: "ellipsis.circle")
                 }
+                .accessibilityLabel("更多")
             }
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 1) {
@@ -84,6 +92,9 @@ struct ChatView: View {
             if isCalling { app.readAloud.stop() }
         }
         .onChange(of: conversationID) { app.readAloud.stop() }
+        .onChange(of: app.conversationRevision) {
+            Task { await store?.load() }
+        }
         .onDisappear {
             app.readAloud.stop()
             // Leaving the chat page also lets the call's sounds go (spec #35).
@@ -111,7 +122,10 @@ struct ChatView: View {
         }
         .sheet(isPresented: $showHistory) {
             NavigationStack {
-                ConversationHistoryView(character: character)
+                ConversationHistoryView(
+                character: character,
+                currentTurnInFlight: store?.isStreaming == true
+            )
             }
             .environment(app)
         }
@@ -180,6 +194,26 @@ struct ChatView: View {
                             tracing: app.tracing
                         ) }
         #endif
+    }
+
+    /// 新对话 is unusable with nothing to leave behind, while a reply is being written,
+    /// or during a call. In a past conversation it is usable unless the current page is
+    /// still waiting on a reply: it goes back to the current one and starts another
+    /// (spec #37).
+    private var newConversationIsEnabled: Bool {
+        guard let store, !showCall, store.canStartNewConversation else { return false }
+        return !store.isPast || !currentTurnInFlight
+    }
+
+    /// The one action both the menu and the ended bar call: from a past conversation it
+    /// also closes the history sheet and brings the current page to the new one.
+    private func startNewConversation() {
+        guard let store else { return }
+        Task {
+            if await store.startNewConversation(), store.isPast {
+                app.noteConversationStarted()
+            }
+        }
     }
 
     // MARK: - Transcript
@@ -525,10 +559,11 @@ struct ChatView: View {
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
             Button("开始新对话") {
-                Task { await store.startNewConversation() }
+                startNewConversation()
             }
             .font(.footnote)
             .buttonStyle(.bordered)
+            .disabled(!newConversationIsEnabled)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
