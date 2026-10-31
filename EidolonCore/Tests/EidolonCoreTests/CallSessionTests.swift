@@ -15,6 +15,9 @@ final class FakeCapture: AudioCapture, @unchecked Sendable {
     var startError: Error?
     var timeline: Timeline?
     private(set) var recoveries = 0
+    /// Whether a recovery attempt opens the microphone: false is an input that stays shut.
+    var recoverable = true
+    private var disruption: AsyncStream<Void>.Continuation?
 
     func start() async throws {
         if let startError { throw startError }
@@ -26,8 +29,31 @@ final class FakeCapture: AudioCapture, @unchecked Sendable {
         markStopped()
     }
 
-    func recover() async {
+    func recover() async -> Bool {
         markRecovery()
+        return isRecoverable()
+    }
+
+    private func isRecoverable() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return recoverable
+    }
+
+    func disruptions() -> AsyncStream<Void> {
+        AsyncStream { continuation in
+            lock.lock()
+            disruption = continuation
+            lock.unlock()
+        }
+    }
+
+    /// The system taking the microphone away, as the capture reports it.
+    func disrupt() {
+        lock.lock()
+        let disruption = self.disruption
+        lock.unlock()
+        disruption?.yield(())
     }
 
     private func markRecovery() {
@@ -624,6 +650,14 @@ private func played(of log: EventLog) -> [String] {
         case let .segmentStopped(reply, segment): return "stop:\(reply):\(segment)"
         default: return nil
         }
+    }
+}
+
+/// The microphone notices in order, including the nil that takes one away.
+private func micNotices(of log: EventLog) -> [MicNotice?] {
+    log.all.flatMap { event -> [MicNotice?] in
+        guard case let .micNotice(notice) = event else { return [] }
+        return [notice]
     }
 }
 
@@ -2264,6 +2298,10 @@ final class CallSessionTests: XCTestCase {
         await session.hangUp()
     }
 
+    func testTheMicrophoneNoticeSaysWhatHappened() {
+        XCTAssertEqual(MicNotice.lost.message, "麦克风断开了，也没有别的麦克风可用")
+    }
+
     /// Coming back from a phone call, Siri or the background asks the microphone to open
     /// again; after the call ended there is nothing to recover.
     func testRecoveringAudioAsksTheMicrophoneToComeBack() async throws {
@@ -2281,6 +2319,145 @@ final class CallSessionTests: XCTestCase {
         await session.hangUp()
         await session.recoverAudio()
         XCTAssertEqual(capture.recoveries, 1, "a call that ended has no microphone to recover")
+    }
+
+    func testALostMicrophoneIsNoticedOnceAndClearedWhenItComesBack() async throws {
+        let eidolon = try await installedEidolon()
+        let (session, log, capture) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([]),
+            recognition: FakeRecognition([.hang])
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+
+        capture.recoverable = false
+        await session.recoverAudio()
+        try await waitFor("the notice") { micNotices(of: log) == [.lost] }
+
+        await session.recoverAudio()
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(micNotices(of: log), [.lost], "the same loss is not said twice")
+
+        capture.recoverable = true
+        await session.recoverAudio()
+        try await waitFor("the notice taken away") { micNotices(of: log) == [.lost, nil] }
+        await session.hangUp()
+    }
+
+    func testARecoveredMicrophoneNeverNotices() async throws {
+        let eidolon = try await installedEidolon()
+        let (session, log, capture) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([]),
+            recognition: FakeRecognition([.hang])
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+
+        await session.recoverAudio()
+        await session.recoverAudio()
+
+        XCTAssertEqual(capture.recoveries, 2)
+        XCTAssertTrue(micNotices(of: log).isEmpty)
+        await session.hangUp()
+    }
+
+    func testADialingCallDoesNotNoticeALostMicrophone() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        recognition.connectDelay = .seconds(3)
+        let (session, log, capture) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([]),
+            recognition: recognition
+        )
+
+        capture.recoverable = false
+        await session.recoverAudio()
+        try await Task.sleep(for: .milliseconds(50))
+
+        XCTAssertTrue(micNotices(of: log).isEmpty, "nothing is being heard yet")
+        XCTAssertEqual(capture.recoveries, 1)
+        XCTAssertFalse(log.states().contains { if case .ended = $0 { return true }; return false })
+        await session.hangUp()
+    }
+
+    func testMutingTakesTheMicrophoneNoticeAway() async throws {
+        let eidolon = try await installedEidolon()
+        let (session, log, capture) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([]),
+            recognition: FakeRecognition([.hang])
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+
+        capture.recoverable = false
+        await session.recoverAudio()
+        try await waitFor("the notice") { micNotices(of: log) == [.lost] }
+
+        await session.setMuted(true)
+        try await waitFor("the notice gone while muted") { micNotices(of: log) == [.lost, nil] }
+        await session.hangUp()
+    }
+
+    func testAMutedMicrophoneIsNotNoticedUntilItIsUnmuted() async throws {
+        let eidolon = try await installedEidolon()
+        let (session, log, capture) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([]),
+            recognition: FakeRecognition([.hang])
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+
+        await session.setMuted(true)
+        capture.recoverable = false
+        await session.recoverAudio()
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(micNotices(of: log).isEmpty, "the microphone was closed on purpose")
+
+        await session.setMuted(false)
+        try await waitFor("the notice after unmuting") { micNotices(of: log) == [.lost] }
+        await session.hangUp()
+    }
+
+    func testASystemDisruptionAsksTheMicrophoneToComeBack() async throws {
+        let eidolon = try await installedEidolon()
+        let (session, _, capture) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([]),
+            recognition: FakeRecognition([.hang])
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+
+        capture.disrupt()
+        try await waitFor("the recovery") { capture.recoveries == 1 }
+        await session.hangUp()
+    }
+
+    func testEndingClearsTheMicrophoneNoticeBeforeTheEndState() async throws {
+        let eidolon = try await installedEidolon()
+        let (session, log, capture) = try await begin(
+            on: eidolon,
+            provider: ReplyScriptProvider([]),
+            recognition: FakeRecognition([.hang])
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+
+        capture.recoverable = false
+        await session.recoverAudio()
+        try await waitFor("the notice") { micNotices(of: log) == [.lost] }
+        await session.hangUp()
+        try await waitFor("the end") { log.states().contains { if case .ended = $0 { return true }; return false } }
+
+        XCTAssertEqual(micNotices(of: log), [.lost, nil])
+        let cleared = log.all.firstIndex { event in
+            if case .micNotice(nil) = event { return true }
+            return false
+        }
+        let ended = log.all.firstIndex { event in
+            if case .state(.ended) = event { return true }
+            return false
+        }
+        XCTAssertLessThan(cleared ?? Int.max, ended ?? Int.max, "no notice outlives the call")
     }
 
     func testTheNextSegmentIsSynthesizedWhileTheCurrentOnePlays() async throws {

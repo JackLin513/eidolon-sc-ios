@@ -75,6 +75,14 @@ struct CallView: View {
         .onChange(of: call.stand.direction) {
             renderPose()
         }
+        // VoiceOver says the loss once when it appears and once when it is over.
+        .onChange(of: call.micNotice) { previous, notice in
+            if let notice {
+                UIAccessibility.post(notification: .announcement, argument: notice.message)
+            } else if previous != nil {
+                UIAccessibility.post(notification: .announcement, argument: "麦克风恢复了")
+            }
+        }
         // Folded away, her stand is off screen: keep it from drawing until it is back.
         .onChange(of: call.layer) {
             updatePause()
@@ -325,6 +333,15 @@ struct CallView: View {
                     .padding(.bottom, 18)
             } else {
                 VStack(spacing: 12) {
+                    // The microphone went away and cannot come back: say so above her line,
+                    // quietly enough to read as a status (spec #41).
+                    if let notice = call.micNotice {
+                        Text(notice.message)
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.8))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                    }
                     if let failure {
                         Text(failure)
                             .font(.caption)

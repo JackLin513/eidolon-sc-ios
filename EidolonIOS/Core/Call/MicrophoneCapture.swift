@@ -23,7 +23,6 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
     /// One recovery at a time: the interruption end, the route change and the foreground
     /// return can all arrive together.
     private var recovering = false
-    private var observers: [NSObjectProtocol] = []
 
     func start() async throws {
         guard await Self.microphoneAllowed() else {
@@ -33,13 +32,11 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
         try await openSession()
         let source = try await installAndStart()
         markRunning()
-        observeAudioSession()
         Logger(subsystem: "com.jacklin.eidolon", category: "call")
             .notice("microphone open: \(source.sampleRate) Hz, \(source.channelCount) ch")
     }
 
     func stop() async {
-        stopObservingAudioSession()
         let (wasRunning, continuation) = takeContinuation()
         if wasRunning {
             currentEngine().stop()
@@ -72,9 +69,12 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
     }
 
     /// Open the microphone again if the system left it closed. Also called when the app
-    /// returns to the foreground, where the engine may have been stopped.
-    func recover() async {
-        guard isRunning(), beginRecovery() else { return }
+    /// returns to the foreground, where the engine may have been stopped. Says whether the
+    /// input feeds the call after the attempt (spec #41).
+    func recover() async -> Bool {
+        guard isRunning() else { return true }
+        // A recovery already under way will report its own result.
+        guard beginRecovery() else { return true }
         defer { endRecovery() }
         do {
             try await activateSession()
@@ -83,9 +83,56 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
             _ = try await installAndStart()
             Logger(subsystem: "com.jacklin.eidolon", category: "call")
                 .notice("microphone recovered")
+            return true
         } catch {
             Logger(subsystem: "com.jacklin.eidolon", category: "call")
                 .error("microphone could not recover: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// The system actions that can take the microphone away, for the call to answer
+    /// (spec #41). Replacing the engine after a media services reset stays here, since
+    /// every audio object is invalid after one.
+    func disruptions() -> AsyncStream<Void> {
+        AsyncStream { continuation in
+            let center = NotificationCenter.default
+            let interruption = center.addObserver(
+                forName: AVAudioSession.interruptionNotification,
+                object: nil,
+                queue: .main
+            ) { notification in
+                guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                      let type = AVAudioSession.InterruptionType(rawValue: raw),
+                      type == .ended
+                else { return }
+                let rawOptions = notification
+                    .userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+                if AVAudioSession.InterruptionOptions(rawValue: rawOptions).contains(.shouldResume) {
+                    continuation.yield(())
+                }
+            }
+            let route = center.addObserver(
+                forName: AVAudioSession.routeChangeNotification,
+                object: nil,
+                queue: .main
+            ) { _ in
+                continuation.yield(())
+            }
+            let reset = center.addObserver(
+                forName: AVAudioSession.mediaServicesWereResetNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                // Every audio object is invalid after a reset: start from a fresh engine.
+                self?.replaceEngine(AVAudioEngine())
+                continuation.yield(())
+            }
+            continuation.onTermination = { _ in
+                for observer in [interruption, route, reset] {
+                    NotificationCenter.default.removeObserver(observer)
+                }
+            }
         }
     }
 
@@ -145,65 +192,6 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
             throw error
         }
         return source
-    }
-
-    // MARK: - The system taking the microphone away
-
-    private func observeAudioSession() {
-        let center = NotificationCenter.default
-        observers.append(
-            center.addObserver(
-                forName: AVAudioSession.interruptionNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] notification in
-                guard let self,
-                      let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-                      let type = AVAudioSession.InterruptionType(rawValue: raw)
-                else { return }
-                switch type {
-                case .began:
-                    break
-                case .ended:
-                    let rawOptions = notification
-                        .userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
-                    if AVAudioSession.InterruptionOptions(rawValue: rawOptions).contains(.shouldResume) {
-                        Task { await self.recover() }
-                    }
-                @unknown default:
-                    break
-                }
-            }
-        )
-        observers.append(
-            center.addObserver(
-                forName: AVAudioSession.routeChangeNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                guard let self else { return }
-                Task { await self.recover() }
-            }
-        )
-        observers.append(
-            center.addObserver(
-                forName: AVAudioSession.mediaServicesWereResetNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                guard let self else { return }
-                // Every audio object is invalid after a reset: start from a fresh engine.
-                self.replaceEngine(AVAudioEngine())
-                Task { await self.recover() }
-            }
-        )
-    }
-
-    private func stopObservingAudioSession() {
-        for observer in observers {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        observers.removeAll()
     }
 
     // MARK: - State

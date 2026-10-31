@@ -25,6 +25,8 @@ final class CallController {
     private(set) var muted = false
     private(set) var failure: String?
     private(set) var startError: String?
+    /// What the microphone is doing that she cannot tell the producer herself (spec #41).
+    private(set) var micNotice: MicNotice?
     /// When the call connected, for the status line; nil until it does.
     private(set) var connectedAt: Date?
     /// When it ended, for how long it lasted.
@@ -140,6 +142,7 @@ final class CallController {
         muted = false
         failure = nil
         startError = nil
+        micNotice = nil
         connectedAt = nil
         endedAt = nil
         stand = CallStandDirector()
@@ -172,6 +175,8 @@ final class CallController {
             line = HerLine(reply: reply, segment: segment, ja: ja, zh: zh)
         case let .failed(message):
             failure = message
+        case let .micNotice(notice):
+            micNotice = notice
         case .segmentStarted, .segmentStopped, .emotion:
             break
         }
