@@ -157,7 +157,9 @@ final class MotionPlayback {
         let ticker = TickTarget()
         ticker.playback = self
         let link = CADisplayLink(target: ticker, selector: #selector(TickTarget.step(_:)))
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 15, maximum: 30, preferred: 30)
+        // The dance only exists on the game's 1/60 s grid and the sway solver
+        // normalises against that step, so run at 60 Hz as well.
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
         link.add(to: .main, forMode: .common)
         self.ticker = ticker
         self.link = link
