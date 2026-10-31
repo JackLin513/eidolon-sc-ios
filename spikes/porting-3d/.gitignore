@@ -30,3 +30,6 @@ research-chr-span-sparkle.md
 
 # Decompiled CalcBone driver quoted line by line; conclusions live in ios/MotionAssist.swift.
 research-mltd-calcbone.md
+
+# Decompiled sway/collider driver quoted line by line; conclusions live in ios/MotionSway.swift.
+research-mltd-sway-physics.md
