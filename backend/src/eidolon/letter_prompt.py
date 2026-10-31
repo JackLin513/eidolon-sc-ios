@@ -30,11 +30,16 @@ from eidolon.llm import ChatMessage
 from eidolon.producer import ProducerProfile, producer_prompt
 from eidolon.today import always_known
 
-Occasion = Literal["close", "intimate", "complete"]
+Occasion = Literal[
+    "close", "intimate", "complete", "her_birthday", "producer_birthday", "anniversary"
+]
 """What she writes a letter on: her affinity first reaching close, first reaching intimate,
-and her being complete (GLOSSARY.md「成就」)."""
+and her being complete (GLOSSARY.md「成就」); her birthday, the producer's, and the day they
+first talked come round, 100 days on and every year after."""
 
-OCCASIONS: tuple[Occasion, ...] = ("intimate", "close", "complete")
+OCCASIONS: tuple[Occasion, ...] = (
+    "intimate", "close", "complete", "her_birthday", "producer_birthday", "anniversary"
+)
 """Every occasion, in the order a letter of several names them."""
 
 _OCCASIONS: dict[Occasion, str] = {
@@ -44,14 +49,24 @@ _OCCASIONS: dict[Occasion, str] = {
     "你想把平时说不出口的心意写下来。",
     "complete": "你和制作人之间的往来已经很多很多了：聊过很多、打过很多电话、收到过他的礼物、"
     "一起完成过工作。你想回头看看这一路，写信谢谢他。",
+    "her_birthday": "今天是你的生日。制作人一直陪在你身边，你想在自己生日这天写信，谢谢他的陪伴。",
+    "producer_birthday": "今天是制作人的生日。你想在这一天给他写一封信，祝他生日快乐。",
+    "anniversary": "今天是你们认识{since}的日子（从你们第一次说话那天算起）。"
+    "你想回头看看你们是怎么开始的，写信纪念这一天。",
 }
 
 _RECALLED: dict[Occasion, str] = {
     "close": "第一次和他更近了一步",
     "intimate": "他第一次成了特别的人",
     "complete": "回头看这一路",
+    "her_birthday": "你自己的生日",
+    "producer_birthday": "他的生日",
+    "anniversary": "认识的纪念日",
 }
 """Each occasion as she recalls a letter written on it."""
+
+ANNIVERSARY_DAYS = 100
+"""How many days after they first talked their first anniversary is; then every year."""
 
 WRITE = "（请写这封信。）"
 
@@ -150,7 +165,7 @@ def letter_prompt(material: LetterMaterial) -> list[ChatMessage]:
         _between(material),
         _said(material.said),
         *([_earlier(material.earlier)] if material.earlier else []),
-        _RULES.format(occasion=_occasion(material.occasions), date=_date(material.day)),
+        _RULES.format(occasion=_occasion(material), date=_date(material.day)),
     ]
     return [
         ChatMessage("system", "\n\n".join(opening)),
@@ -191,11 +206,22 @@ def parse_letter(text: str) -> Written | None:
     return Written(salutation.strip(), tuple(kept))
 
 
-def _occasion(occasions: Sequence[Occasion]) -> str:
-    if len(occasions) == 1:
-        return _OCCASIONS[occasions[0]]
-    told = "\n".join(f"- {_OCCASIONS[o]}" for o in occasions)
-    return f"这次有几件事在同一天：\n{told}\n把这几件事都写进这封信里。"
+def _occasion(material: LetterMaterial) -> str:
+    since = _since(material.first_day, material.day)
+    told = [_OCCASIONS[o].format(since=since) for o in material.occasions]
+    if len(told) == 1:
+        return told[0]
+    each = "\n".join(f"- {t}" for t in told)
+    return f"这次有几件事在同一天：\n{each}\n把这几件事都写进这封信里。"
+
+
+def _since(first_day: date | None, day: date) -> str:
+    """How long they have known each other on `day`, as she counts it: 100 days within the
+    first year, else the years, a letter put off to the next day counted as on its own."""
+    years = 0 if first_day is None else (day - first_day).days // 365
+    if years == 0:
+        return f"满 {ANNIVERSARY_DAYS} 天"
+    return "满一年" if years == 1 else f"满 {years} 年"
 
 
 def _between(material: LetterMaterial) -> str:

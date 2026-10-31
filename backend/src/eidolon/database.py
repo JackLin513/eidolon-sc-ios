@@ -56,6 +56,7 @@ USER_DATA = [
     ("letter_voices", "letter_id IN (SELECT id FROM letters WHERE user_id = ?)"),
     ("letters", "user_id = ?"),
     ("letters_due", "user_id = ?"),
+    ("letter_users", "user_id = ?"),
     ("cycles_off", "user_id = ?"),
     ("cycle_records", "user_id = ?"),
     ("data_package_imports", "user_id = ?"),

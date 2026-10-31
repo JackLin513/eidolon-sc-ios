@@ -2,7 +2,13 @@
 // 拆开以后每个字什么时候写出来（时间轴）。时间轴的常量沿用停服前「她的信」。
 
 /** 写信的场合（后端 letter_prompt.Occasion）。几个场合合在一封时按这个顺序列出。 */
-export type Occasion = "intimate" | "close" | "complete";
+export type Occasion =
+  | "intimate"
+  | "close"
+  | "complete"
+  | "her_birthday"
+  | "producer_birthday"
+  | "anniversary";
 
 /** 所有的信列表里的一封：读没读过、弹没弹过在每台设备上都一样。 */
 export type LetterSummary = {

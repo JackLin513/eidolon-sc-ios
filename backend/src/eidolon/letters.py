@@ -1,14 +1,27 @@
 """Letters (GLOSSARY.md「信」): what she writes the producer on an occasion between them, for
 the producer to keep and read again.
 
-Only where the deployer turns them on (`LiveConfig.letters_on`). The occasions so far are
-those the achievements tell (`Happenings`): her affinity first reaching close, first reaching
-intimate, and her being complete. Each is kept, in the transaction the achievement is, as a
-letter to be written that day where the producer is, in the profile's time zone (or
-`Asia/Shanghai`), from then on (`happened`); none while the deployer has letters off, and
-none for what was reached before the achievements launched. Every `TICK` the backend writes
-those whose time has come (`run_due`): those of one character and one day together, in one
-letter. One of a day she has written a letter on already is put off to the next.
+Only where the deployer turns them on (`LiveConfig.letters_on`). Some occasions the
+achievements tell (`Happenings`): her affinity first reaching close, first reaching intimate,
+and her being complete. Each is kept, in the transaction the achievement is, as a letter to be
+written that day where the producer is, in the profile's time zone (or `Asia/Shanghai`), from
+then on (`happened`); none while the deployer has letters off, and none for what was reached
+before the achievements launched.
+
+The others are days that come round, where the producer is: the producer's birthday, written
+on by one alone, the one of those they have had a turn with, in trust or above and in no
+cooldown, highest in tier, then with the most turns, then first in idol order (where affinity
+is off, with the most turns); her birthday, if she is close or above; and the day they first
+talked come round, `ANNIVERSARY_DAYS` on and every year after, if she is in trust or above.
+February 29 falls on February 28 in a year without it. Each is kept as a letter to be written
+from the first tick of its day, once a day for each user (`letter_users`), only for those last
+in touch within `ACTIVE`, by a turn with anyone or a call that connected; a day the backend was
+down through, or the deployer had letters off through, is not made up for.
+
+Every `TICK` the backend writes those whose time has come (`run_due`): those of one character
+and one day together, in one letter, all of them once the time of one has come. One of a day
+she has written a letter on already is put off to the next; one of a day gone over `KEPT` ago
+is passed over.
 
 Each is looked at again as it is written: the deployer still has letters on; the user is not
 banned, nor let take no turns on the deployer's keys; she is not cold or distant, nor in a
@@ -23,8 +36,8 @@ own `MEMORIES` latest memories of the producer not superseded; their `MESSAGES` 
 messages across every conversation; the `EARLIER` letters she wrote them last. A body longer
 than `LONGEST` she is asked once to write shorter; still longer, it is kept as it is. Each
 letter has an activity record of its own (`letter`), on the deployer's keys, its service
-calls under it; one the model fails, or writes no letter in, is recorded failed, and passed
-over.
+calls under it; one the model fails, or writes no letter in, is recorded failed, and tried
+again after each of `RETRIES` in turn, then passed over.
 
 The user's letters are theirs alone to read (`listed`, `letter`), the latest first; reading
 one has it read, on every device (`mark_read`). Turned off, the deployer's letters stay to be
@@ -41,11 +54,12 @@ from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from eidolon.activity import ActivityLog
-from eidolon.affinity import BELOW_TRUST, Affinities, Tier
+from eidolon.affinity import BELOW_TRUST, TIERS, Affinities, Tier
 from eidolon.characters import Character
 from eidolon.clock import Clock
 from eidolon.data_access import Database
 from eidolon.letter_prompt import (
+    ANNIVERSARY_DAYS,
     OCCASIONS,
     Earlier,
     LetterMaterial,
@@ -61,8 +75,14 @@ from eidolon.letter_prompt import (
 from eidolon.live_config import LiveConfig
 from eidolon.llm import ChatLLM
 from eidolon.moments import written_whole
-from eidolon.producer import effective_timezone, local_date
-from eidolon.store import read_profile
+from eidolon.producer import (
+    Birthday,
+    ProducerProfile,
+    effective_timezone,
+    is_birthday,
+    local_date,
+)
+from eidolon.store import read_in_touch, read_profile
 from eidolon.usage import read_user_limits
 
 log = logging.getLogger(__name__)
@@ -82,6 +102,19 @@ MESSAGES = 60
 
 EARLIER = 3
 """How many of the letters she wrote the producer last she writes with."""
+
+ACTIVE = timedelta(days=30)
+"""How recently the user must have been in touch, by a turn with anyone or a call that
+connected, for her to write on a day that comes round."""
+
+RETRIES = (timedelta(minutes=10), timedelta(minutes=30), timedelta(minutes=60))
+"""How long after each time a letter fails it is tried again; failing once more, given up."""
+
+KEPT = timedelta(days=1)
+"""How long after its day has gone a letter not yet written is still to be."""
+
+_RANKS: dict[Tier, int] = {t: i for i, (t, _) in enumerate(TIERS)}
+"""Each tier's place, lowest first, to tell which of two is higher."""
 
 _SCHEMA = """
 -- A letter she wrote the user (GLOSSARY.md「信」): on what (a JSON array of occasions), the
@@ -121,6 +154,12 @@ CREATE TABLE IF NOT EXISTS letters_due (
     attempts INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS letters_due_by_time ON letters_due(due_at);
+-- Each user's letters as a whole: the latest day where the producer is that the days which
+-- come round were kept as letters to be written for.
+CREATE TABLE IF NOT EXISTS letter_users (
+    user_id TEXT PRIMARY KEY REFERENCES users(id),
+    planned_day TEXT NOT NULL
+);
 """
 
 
@@ -230,15 +269,23 @@ class Letters:
                 log.exception("writing letters failed")
 
     async def run_due(self) -> None:
-        """Write every letter whose time has come, one after another; one going wrong keeps
-        none of the others from it. While the deployer has letters off, pass over every one
-        to be written; without the chat model, write none."""
+        """Keep the days that come round today as letters to be written, for each user not
+        kept for yet, then write every letter whose time has come, one after another; one
+        going wrong keeps none of the others from it. While the deployer has letters off,
+        pass over every one to be written; without the chat model, do nothing."""
         if not self._config.letters_on:
             await self._db.write(_forget_due)
             return
         if not self._config.has_service("chat_llm"):
             return
         now = self._clock()
+        for user_id, day, occasions in await self._db.read(
+            self._unplanned, now, self._affinities.on
+        ):
+            try:
+                await self._db.write(_keep_plan, user_id, day, occasions, _utc(now))
+            except Exception:
+                log.exception("keeping the days of user %s failed", user_id)
         for due in await self._db.read(_due, _utc(now)):
             try:
                 await self._write(due, now)
@@ -293,6 +340,9 @@ class Letters:
             await self._db.write(_drop, due.ids)
             return
         tier, zone = standing.tier, standing.zone
+        if now.astimezone(zone).date() > due.day + KEPT:
+            await self._db.write(_drop, due.ids)
+            return
         if standing.written_today:
             await self._db.write(_put_off, due.ids, due.day + timedelta(days=1), zone)
             return
@@ -315,7 +365,7 @@ class Letters:
         finally:
             lease.release()
         if written is None:
-            await self._db.write(_drop, due.ids)
+            await self._db.write(_failed, due.ids, now)
             await recording.finish("failed")
             return
         letter_id = await self._db.write(_add_letter, due, written, self._clock().isoformat())
@@ -339,6 +389,76 @@ class Letters:
             log.warning("rewriting a letter shorter failed: %s", type(e).__name__)
             shorter = None
         return shorter or written
+
+    def _unplanned(
+        self, db: sqlite3.Connection, now: datetime, affinity_on: bool
+    ) -> list[tuple[str, date, list[tuple[str, Occasion]]]]:
+        """Each user in touch within `ACTIVE` of `now` not kept for yet on the day it is
+        where the producer is, with the day and the days that come round on it, read through
+        `db`; banned users not, nor one whose days could not be read, logged."""
+        contacts: dict[str, list[datetime]] = {}
+        for each in read_in_touch(db):
+            if each.last_contact is not None:
+                contacts.setdefault(each.user_id, []).append(each.last_contact)
+        planned = dict(db.execute("SELECT user_id, planned_day FROM letter_users").fetchall())
+        unplanned = []
+        for user_id, theirs in contacts.items():
+            if now - max(theirs) > ACTIVE:
+                continue
+            profile = read_profile(db, user_id)
+            zone = ZoneInfo(effective_timezone(profile, None))
+            day = now.astimezone(zone).date()
+            if planned.get(user_id, "") >= day.isoformat():
+                continue
+            try:
+                come_round = self._come_round(db, user_id, profile, zone, day, affinity_on)
+            except Exception:
+                log.exception("reading the days of user %s failed", user_id)
+                continue
+            unplanned.append((user_id, day, come_round))
+        return unplanned
+
+    def _come_round(
+        self,
+        db: sqlite3.Connection,
+        user_id: str,
+        profile: ProducerProfile,
+        zone: ZoneInfo,
+        day: date,
+        affinity_on: bool,
+    ) -> list[tuple[str, Occasion]]:
+        """The days that come round on `day` for the user, read through `db`: whose, and
+        which."""
+        had = {
+            character_id: (_day_of(first, zone), turns)
+            for character_id, first, turns in db.execute(
+                "SELECT c.character_id, MIN(m.created_at), SUM(m.role = 'user')"
+                " FROM conversations c JOIN messages m ON m.conversation_id = c.id"
+                " WHERE c.user_id = ? GROUP BY c.character_id",
+                (user_id,),
+            )
+            if turns
+        }
+        occasions: list[tuple[str, Occasion]] = []
+        ranked: list[tuple[int, int, int, str]] = []
+        for place, (character_id, character) in enumerate(self._characters.items()):
+            tier: Tier = "trust"  # as where affinity is off
+            if affinity_on:
+                status = self._affinities.read_status(db, user_id, character_id)
+                if status.cooling or status.tier in BELOW_TRUST:
+                    continue
+                tier = status.tier
+                if _RANKS[tier] >= _RANKS["close"] and is_birthday(character.birthday, day):
+                    occasions.append((character_id, "her_birthday"))
+            if character_id not in had:
+                continue
+            first, turns = had[character_id]
+            if _comes_round(first, day):
+                occasions.append((character_id, "anniversary"))
+            ranked.append((_RANKS[tier], turns, -place, character_id))
+        if profile.birthday is not None and is_birthday(profile.birthday, day) and ranked:
+            occasions.append((max(ranked)[-1], "producer_birthday"))
+        return occasions
 
     def _standing(
         self, db: sqlite3.Connection, due: _Due, affinity_on: bool
@@ -439,12 +559,43 @@ def _written(salutation: str, paragraphs: str) -> Written:
     return Written(salutation, tuple(Paragraph(p["ja"], p["zh"]) for p in json.loads(paragraphs)))
 
 
+def _comes_round(first: date, day: date) -> bool:
+    """Whether the day they first talked, `first`, comes round on `day`: `ANNIVERSARY_DAYS`
+    on, or a year or more on, February 29 falling on February 28 in a year without it."""
+    return (day - first).days == ANNIVERSARY_DAYS or (
+        day.year > first.year and is_birthday(Birthday(first.month, first.day), day)
+    )
+
+
+def _keep_plan(
+    db: sqlite3.Connection,
+    user_id: str,
+    day: date,
+    occasions: Sequence[tuple[str, Occasion]],
+    now: str,
+) -> None:
+    """Keep the user's `occasions` on `day` as letters to be written from `now`, and the day
+    as kept for."""
+    db.executemany(
+        "INSERT INTO letters_due (user_id, character_id, occasion, day, due_at)"
+        " VALUES (?, ?, ?, ?, ?)",
+        [(user_id, c, o, day.isoformat(), now) for c, o in occasions],
+    )
+    db.execute(
+        "INSERT INTO letter_users (user_id, planned_day) VALUES (?, ?) ON CONFLICT (user_id)"
+        " DO UPDATE SET planned_day = excluded.planned_day",
+        (user_id, day.isoformat()),
+    )
+
+
 def _due(db: sqlite3.Connection, now: str) -> list[_Due]:
-    """The letters to be written whose time has come by `now`, those of one character and one
-    day together, the earliest first."""
+    """The letters to be written, those of one character and one day together, of which the
+    time of one has come by `now`; the earliest first."""
     grouped: dict[tuple[str, str, str], list[tuple[int, str]]] = {}
     for id, user_id, character_id, occasion, day in db.execute(
-        "SELECT id, user_id, character_id, occasion, day FROM letters_due WHERE due_at <= ?"
+        "SELECT id, user_id, character_id, occasion, day FROM letters_due d WHERE EXISTS"
+        " (SELECT 1 FROM letters_due e WHERE e.user_id = d.user_id"
+        " AND e.character_id = d.character_id AND e.day = d.day AND e.due_at <= ?)"
         " ORDER BY due_at, id",
         (now,),
     ):
@@ -461,6 +612,20 @@ def _due(db: sqlite3.Connection, now: str) -> list[_Due]:
 
 def _drop(db: sqlite3.Connection, ids: Sequence[int]) -> None:
     db.executemany("DELETE FROM letters_due WHERE id = ?", [(id,) for id in ids])
+
+
+def _failed(db: sqlite3.Connection, ids: Sequence[int], now: datetime) -> None:
+    """The letters to be written failed `now`: each tried again after the next of `RETRIES`,
+    given up once tried after them all."""
+    for id in ids:
+        [attempts] = db.execute("SELECT attempts FROM letters_due WHERE id = ?", (id,)).fetchone()
+        if attempts < len(RETRIES):
+            db.execute(
+                "UPDATE letters_due SET attempts = ?, due_at = ? WHERE id = ?",
+                (attempts + 1, _utc(now + RETRIES[attempts]), id),
+            )
+        else:
+            _drop(db, [id])
 
 
 def _forget_due(db: sqlite3.Connection) -> None:

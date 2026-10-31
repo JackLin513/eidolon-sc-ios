@@ -416,19 +416,48 @@ async def test_a_letter_rewritten_shorter_is_kept_shorter(
 
 
 @pytest.mark.parametrize("fails", ["no letter", "the model"])
-async def test_one_she_writes_no_letter_in_is_recorded_failed_and_passed_over(
+async def test_one_she_writes_no_letter_in_is_recorded_failed_and_tried_again_later(
     make_client: ClientFactory, settings: Settings, fails: str
 ):
     reply = ["我写不出来。"] if fails == "no letter" else LLMError("模型返回 503: overloaded")
-    client, _, _, _ = await close_with_mano(make_client, settings, reply, written())
+    client, llm, clock, _ = await close_with_mano(make_client, settings, reply, written())
+    letters_of = backend_of(client).letters
 
-    await backend_of(client).letters.run_due()
-    await backend_of(client).letters.run_due()
+    await letters_of.run_due()
+    clock.advance(minutes=9, seconds=59)
+    await letters_of.run_due()
+    before = await letters(client)
+    clock.advance(seconds=1)
+    await letters_of.run_due()
+
+    assert before == []
+    assert [each["occasions"] for each in await letters(client)] == [["close"]]
+    assert len(llm.prompts) == 2 + 2
+    assert [r for r in records(settings.database_path) if r[0] == "letter"] == [
+        ("letter", "mano", "failed", 0), ("letter", "mano", "success", 0),
+    ]
+
+
+async def test_one_failing_each_time_is_tried_three_times_more_then_given_up(
+    make_client: ClientFactory, settings: Settings
+):
+    """Once more after 10 minutes, after 30, and after 60, each failure recorded."""
+    fails = LLMError("模型返回 503: overloaded")
+    client, llm, clock, _ = await close_with_mano(
+        make_client, settings, *[fails] * 4, written()
+    )
+    letters_of = backend_of(client).letters
+
+    await letters_of.run_due()
+    for minutes in (10, 30, 60, 24 * 60):
+        clock.advance(minutes=minutes)
+        await letters_of.run_due()
 
     assert await letters(client) == []
+    assert len(llm.prompts) == 2 + 4
     assert [r for r in records(settings.database_path) if r[0] == "letter"] == [
         ("letter", "mano", "failed", 0)
-    ]
+    ] * 4
 
 
 async def test_the_users_letters_are_theirs_alone_and_read_once_read_on_every_device(

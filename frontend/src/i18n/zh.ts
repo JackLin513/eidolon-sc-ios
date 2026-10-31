@@ -472,7 +472,14 @@ export const zh = {
     none: "还没有信",
     loadFailed: "信没能载入",
     /** 信封上写的场合，越短越好；几个场合合在一封时用「、」连起来。 */
-    occasions: { close: "更近了一步", intimate: "亲密", complete: "集齐" } satisfies Record<Occasion, string>,
+    occasions: {
+      close: "更近了一步",
+      intimate: "亲密",
+      complete: "集齐",
+      her_birthday: "她的生日",
+      producer_birthday: "你的生日",
+      anniversary: "相识纪念",
+    } satisfies Record<Occasion, string>,
     /** 列表里一枚信封的读屏名字。 */
     row: (name: string, occasion: string, day: string, isUnread: boolean) =>
       `${name}的信，${occasion}，${day}${isUnread ? "，没读过" : ""}`,
