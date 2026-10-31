@@ -26,7 +26,7 @@
   - 关着时没有这一节；搭话由头里的那一项随开关出现和消失。
   - 先例：`test_her_now.py`、`test_dynamic_context.py`、`test_reach_outs_in_turns.py`、`test_reach_outs.py`。
 - [x] **验收**：在本地构建版上造一条动态，赞一下、评论一句，然后在对话里问她「昨天发了什么」，用真模型看她答得上来。
-- [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+- [x] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
 
 ## Comments
 
