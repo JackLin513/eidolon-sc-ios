@@ -54,3 +54,9 @@
   - HTML 里有动态、回复、清洗后的 tag 串，坏的部分标了出来。
   - 终端打出计数；返回值对。
 - [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+
+## Comments
+
+### 票 19 交接
+
+- 工作那条的素材是 `PostMaterial.jobs`（每项写成「名字：note」，按做完的先后），这时 `seeds` 为空；地点候选只来自这几项工作的 `places`（`draw_places(..., within=)`），都没写就是空。场景文件要能写出这两样，才评得到工作那条。

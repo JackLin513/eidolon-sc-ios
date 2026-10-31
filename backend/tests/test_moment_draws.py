@@ -4,10 +4,13 @@ everyday moment's seeds."""
 
 from datetime import date, datetime, time
 
+import pytest
+
 from eidolon.characters import Fact
 from eidolon.moment_draws import Eligible, Planned, draw_places, draw_seeds, plan_day
 from eidolon.place_pool import Category, Place
-from eidolon.today import TOKYO
+from eidolon.schedule import done_at
+from eidolon.today import TOKYO, tokyo_date
 from tests.fakes import FakeRandom
 
 DAY = date(2026, 10, 19)
@@ -124,3 +127,58 @@ def test_a_venue_only_on_the_day_of_her_live_there_and_then_first():
 
     assert [p.id for p in on_none] == ["a"]
     assert [p.id for p in on_her_live] == ["arena", "a"]
+
+
+def test_her_work_moment_is_half_an_hour_to_two_hours_after_her_last_job_of_the_day_is_done():
+    """Her jobs done at 13:00, her last; drawn from 13:30 to 15:00, 500 of 1000 its middle."""
+    eligible = [Eligible("mano", "trust", False, last_done=at(13))]
+
+    planned = plan_day(eligible, DAY, MIDNIGHT, 3, FakeRandom(0, 500))
+
+    assert planned == [Planned("mano", at(14, 15), False, "work")]
+
+
+def test_an_everyday_moment_is_an_hour_apart_from_a_work_moment():
+    """Mano's at 19:00; Kogane's after work, from 18:00, not before 20:00."""
+    eligible = [Eligible("mano", "trust", False, last_done=at(18, 30)),
+                Eligible("kogane", "intimate", False)]
+    random = FakeRandom(
+        0, 0,  # both post
+        0,  # Mano at 19:00
+        500, 0,  # Kogane after work, as early as she may
+    )
+
+    planned = plan_day(eligible, DAY, MIDNIGHT, 3, random)
+
+    assert planned == [Planned("mano", at(19), False, "work"), Planned("kogane", at(20), False)]
+
+
+def test_planned_late_her_work_moment_is_in_what_is_left_of_its_time_or_of_her_everyday():
+    """Planned at 15:00: done at 14:00, from 15:00 to 16:00 is left; done at 9:00, none is,
+    and her everyday moment is after work, from 18:00."""
+    left = plan_day([Eligible("mano", "trust", False, last_done=at(14))], DAY, at(15), 3,
+                    FakeRandom(0, 500))
+    over = plan_day([Eligible("mano", "trust", False, last_done=at(9))], DAY, at(15), 3,
+                    FakeRandom(0, 0, 0))
+
+    assert left == [Planned("mano", at(15, 30), False, "work")]
+    assert over == [Planned("mano", at(18), False)]
+
+
+@pytest.mark.parametrize(
+    ("timezone", "slot", "done", "day"),
+    [
+        ("Asia/Shanghai", 2, at(1, day=date(2026, 10, 20)), date(2026, 10, 20)),
+        ("Asia/Tokyo", 2, at(0, day=date(2026, 10, 20)), date(2026, 10, 20)),
+        ("America/Los_Angeles", 0, at(4, day=date(2026, 10, 20)), date(2026, 10, 20)),
+    ],
+)
+def test_a_job_is_of_the_day_in_tokyo_it_is_done_on(
+    timezone: str, slot: int, done: datetime, day: date
+):
+    """Monday's evening in Shanghai is done at 01:00 on Tuesday in Tokyo; in Tokyo, at
+    midnight, Tuesday's; Monday's morning in Los Angeles, at 12:00 there, at 04:00 on
+    Tuesday in Tokyo."""
+    at_ = done_at(DAY, 0, slot, 1, timezone)
+
+    assert (at_, tokyo_date(at_)) == (done, day)

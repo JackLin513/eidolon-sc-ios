@@ -4,8 +4,10 @@ and the eval alike take them as they are.
 
 The day's plan (`plan_day`): each character eligible is drawn for once, by her tier
 (`CHANCES`); on her birthday, in Tokyo, she posts whatever is drawn. Over as many as the user
-may have a day, those whose birthday it is are kept first, the rest drawn among. Each kept is
-then given a time in Tokyo, after the moment planned at: a part of the day drawn by its weight
+may have a day, those whose birthday it is are kept first, the rest drawn among. One with jobs
+the producer scheduled her that are done that day in Tokyo posts of them (`work`), within
+`AFTER_WORK` after the last is done (`work_time`); one planned after that is over, and the
+others, of their everyday (`daily`), each given a time in Tokyo after the moment planned at: a part of the day drawn by its weight
 (`PARTS`), then a time in it, at least `APART` from the user's others; one there is no time
 left for posts nothing that day.
 
@@ -17,7 +19,8 @@ none, of the places right for the season and the time of day she posts at in Tok
 the user's moments were at within the last `KEPT_APART`; in rain, snow or thunder, only those
 under a roof. A venue is one only on a day she stood on it in a year before, and is then hers
 before any is drawn; the rest are drawn by weight, one of a kind she likes weighing `LIKED`
-times as much, her holy site `HOLY` times.
+times as much, her holy site `HOLY` times. Of her work moment, only of the kinds of place her
+jobs take her to, each as likely.
 
 Every draw asks the random source for a number below `PLACES`, so that one giving the same
 number each time draws alike wherever it is asked."""
@@ -25,11 +28,12 @@ number each time draws alike wherever it is asked."""
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
+from typing import Literal
 
 from eidolon.affinity import Tier
 from eidolon.characters import Fact
 from eidolon.job_list import Slot
-from eidolon.place_pool import INDOOR, SEASONS, Place, Season
+from eidolon.place_pool import INDOOR, NEARBY, SEASONS, Place, Season
 from eidolon.randomness import Random
 from eidolon.today import TOKYO
 
@@ -45,6 +49,9 @@ PARTS: tuple[tuple[time, time, int], ...] = (
 """The parts of the day in Tokyo her everyday moment is posted in, from the first to the
 second (midnight ending the day), and how much each weighs: the morning, lunch, after work,
 late at night."""
+
+AFTER_WORK = (timedelta(minutes=30), timedelta(hours=2))
+"""How long after her last job of the day is done her work moment is, at least and at most."""
 
 APART = timedelta(hours=1)
 """How far apart one user's moments of a day are at least."""
@@ -78,23 +85,30 @@ _SEASONS: dict[int, Season] = {
 """The season of each month in Tokyo."""
 
 
+Kind = Literal["daily", "work"]
+"""Whether a moment is of her everyday or of her jobs done that day."""
+
+
 @dataclass(frozen=True)
 class Eligible:
     """A character the user may have a moment of today: her tier (trust where affinity is
-    off), and whether it is her birthday in Tokyo."""
+    off), whether it is her birthday in Tokyo, and when the last of her jobs done that day in
+    Tokyo is done, None without any."""
 
     character_id: str
     tier: Tier
     birthday: bool
+    last_done: datetime | None = None
 
 
 @dataclass(frozen=True)
 class Planned:
-    """A moment planned: whose, when it is due, and whether on her birthday."""
+    """A moment planned: whose, when it is due, whether on her birthday, and of what."""
 
     character_id: str
     due_at: datetime
     birthday: bool
+    kind: Kind = "daily"
 
 
 def plan_day(
@@ -112,11 +126,28 @@ def plan_day(
         while len(kept) < per_day:
             kept.append(rest.pop(_index(random, len(rest))))
     planned: list[Planned] = []
+    daily: list[Eligible] = []
     for each in kept:
+        at = work_time(each.last_done, after, random) if each.last_done is not None else None
+        if at is None:
+            daily.append(each)
+        else:
+            planned.append(Planned(each.character_id, at, each.birthday, "work"))
+    for each in daily:
         at = _time(day, after, [p.due_at for p in planned], random)
         if at is not None:
             planned.append(Planned(each.character_id, at, each.birthday))
     return sorted(planned, key=lambda p: p.due_at)
+
+
+def work_time(last_done: datetime, after: datetime, random: Random) -> datetime | None:
+    """When her work moment is, her last job of the day done at `last_done`: drawn within
+    `AFTER_WORK` after it, of what is left of that after `after`; None if nothing is."""
+    least, most = AFTER_WORK
+    start, end = max(last_done + least, after), last_done + most
+    if start >= end:
+        return None
+    return start + timedelta(seconds=int((end - start).total_seconds() * _draw(random)))
 
 
 def draw_seeds(facts: Sequence[Fact], random: Random) -> list[Fact]:
@@ -135,27 +166,30 @@ def draw_places(
     used: Collection[str],
     random: Random,
     roofed: bool = False,
+    within: Collection[str] | None = None,
 ) -> list[Place]:
     """As many as `CANDIDATES` of `places` for her to choose from as she posts `at`: those
     right for its season and its slot in Tokyo (one with slots none late at night, before 6),
     none of `used` (by identifier), and only those under a roof if `roofed` (for rain, snow
     or thunder; `INDOOR`); a venue only if `venues` (where her lives on this day in a
     year before were) names it, and then first. The rest are drawn by weight: `LIKED` for
-    a kind she `likes`, `HOLY` for one whose `idols` are hers."""
+    a kind she `likes`, `HOLY` for one whose `idols` are hers. Of her work moment, only those
+    of the kinds `within` names, or with `NEARBY` there, any in the outskirts; each as likely."""
     local = at.astimezone(TOKYO)
     season, slot = _SEASONS[local.month], _slot(local.hour)
     left = [
         p for p in places
         if p.id not in used
         and (not roofed or p.category in INDOOR)
+        and (within is None or p.category in within or (NEARBY in within and p.nearby))
         and (p.seasons is None or season in p.seasons)
         and (p.slots is None or (slot is not None and slot in p.slots))
     ]
     drawn = [p for p in left if any(name in venues for name in p.venue_names)][:CANDIDATES]
     left = [p for p in left if p.category != "venue"]
     weights = [
-        (LIKED if likes and p.category in likes else 1)
-        * (HOLY if character_id in p.idols else 1)
+        1 if within is not None else
+        (LIKED if likes and p.category in likes else 1) * (HOLY if character_id in p.idols else 1)
         for p in left
     ]
     while left and len(drawn) < CANDIDATES:

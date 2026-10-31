@@ -33,7 +33,8 @@ POST_RULES = """# 发朋友圈
 - 用日语写一到三句、最多一百字左右，像随手发的一条近况，再附上中文字幕。
 - 表情和颜文字按你自己的性格：平时爱用就用，不爱用就不用。
 - 不用 # 话题标签，不用 @，不加语气提示。
-- 「日常的素材」可用可不用；换个话题，别和「你最近发的朋友圈」重复。
+- 有「今天做完的工作」时，把这几项串成一条写；「日常的素材」可用可不用。
+- 换个话题，别和「你最近发的朋友圈」重复。
 - 关于制作人的记忆只能隐约呼应，不要复述；他私下告诉你的事不要点明。
 - 可以提到「プロデューサーさん」，但关系再亲近也不写成情侣的口吻。
 - 「此刻」里没写天气时，正文别提天气和冷热。
@@ -51,6 +52,7 @@ WANTS_TO_POST = "（你想发一条朋友圈。）"
 HER_BIRTHDAY = "今天是你的生日，这条围绕你的生日写。"
 """What she is told on her birthday, in Tokyo, beside what the day tells her."""
 
+JOBS_OPENING = "# 今天做完的工作\n制作人今天给你排的、你都做完了："
 SEEDS_OPENING = "# 日常的素材\n下面是你资料里的几条，可以拿来当由头，也可以不用："
 RECENT_OPENING = "# 你最近发的朋友圈\n最新的在前："
 PLACES_OPENING = "# 地点候选\n你这会儿可能在下面某一处，也可能哪儿都没去："
@@ -73,7 +75,8 @@ class PostMaterial:
     `moments` occasion); whether it is her birthday; the entries of her facts drawn for her
     everyday (`seeds`); the memories she posts with, as their prompt section
     (`Memories.for_reaching_out`, None for none); her latest moments' Japanese, the
-    latest first; and the places she may be at."""
+    latest first; the places she may be at; and of her work moment, her jobs done that day,
+    each its name and what it is, in the order done, in place of seeds."""
 
     character: Character
     world_prompt: str | None
@@ -84,6 +87,7 @@ class PostMaterial:
     memories: str | None
     recent: Sequence[str]
     places: Sequence[Place] = ()
+    jobs: Sequence[str] = ()
 
 
 @dataclass(frozen=True)
@@ -104,6 +108,8 @@ def post_prompt(material: PostMaterial) -> list[ChatMessage]:
     told = ["\n".join(material.now)]
     if material.birthday:
         told.append(HER_BIRTHDAY)
+    if material.jobs:
+        told.append("\n".join([JOBS_OPENING, *(f"- {job}" for job in material.jobs)]))
     if material.seeds:
         told.append("\n".join([SEEDS_OPENING, *(f"- {seed}" for seed in material.seeds)]))
     if material.memories:

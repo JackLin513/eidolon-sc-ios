@@ -12,9 +12,11 @@ banned user, nor one an admin lets take no turns on the deployer's keys. Planned
 first tick of the day in Tokyo they are active at, from the rest of the day
 (`moment_draws.plan_day`): of the characters they have had a turn with, in trust or above and
 not in a cooldown (trust where affinity is off), each drawn for once; as many as the deployer
-sets a day at most. Once planned, a user is not again that day: a character first talked to,
-or come up to trust, that day waits for the next. The plan is kept, and read again after a
-restart.
+sets a day at most. One with jobs in the user's schedule done that day in Tokyo, done already
+or not yet, posts of them, after the last is done; the others, and one planned too long after
+that, of their everyday (`kind`); all of their everyday while schedules are off. Once planned, a user is not again that day: a
+character first talked to, or come up to trust, that day waits for the next. The plan is
+kept, and read again after a restart.
 
 While the deployer has moments off, nothing is planned nor posted; turned on again, what was
 planned is forgotten, and each user planned for anew from what is left of the day.
@@ -23,19 +25,24 @@ As a moment's time comes, it is looked at again: the deployer still has moments 
 is still active, not banned, nor let take no turns; she is in trust or above and not in a
 cooldown; the user has had fewer moments of its day than the deployer sets. If not, it is
 passed over, for good. One whose time came before the backend started is passed over too,
-not made up for. Each is taken off the plan once posted or passed over.
+not made up for. Each is taken off the plan once posted or passed over. One of her jobs whose
+time comes as she is still at one, the producer having scheduled her more since, is put off
+till after the last as it was planned, past midnight if so, still of the day planned for.
 
 She posts on the deployer's chat model as text turns use it, whoever's LLM the user brings,
 held only while she does: nothing counts towards the user's limits. Her prompt is put
 together from what is read beforehand (`moment_prompt.PostMaterial`): what she knows of now on
-the `moments` occasion; `SEEDS` entries of her facts; the memories she was told herself, found
-with the last turn of her current conversation (`Memories.for_reaching_out`); her latest
-`RECENT` moments; as many as `moment_draws.CANDIDATES` places of the pool for her to say she
-was at one of (`moment_draws.draw_places`), only those under a roof in rain, snow or thunder;
-Tokyo's weather as she posts (`weather`), kept with the moment, none if it cannot be had. Each has an activity record of its own (`moment`),
-on the deployer's keys, its service calls under it, and what of it was made do without
+the `moments` occasion; her jobs done that day, each its name and what it is, or else
+`SEEDS` entries of her facts; the memories she was told herself, found with the last turn of
+her current conversation (`Memories.for_reaching_out`); her latest `RECENT` moments; as many
+as `moment_draws.CANDIDATES` places of the pool for her to say she was at one of
+(`moment_draws.draw_places`), of her jobs only of the kinds they take her to, only those
+under a roof in rain, snow or thunder; Tokyo's weather as she posts (`weather`), kept with the
+moment, none if it cannot be had. Each has an activity record of its own (`moment`), on the
+deployer's keys, its service calls under it, and what of it was made do without
 (`moment_prompt.Post.degraded`); one the model fails, or writes nothing to post in, is
-recorded failed, and not tried again. What she posts is posted as it is written: that is when it shows.
+recorded failed, and not tried again. What she posts is posted as it is written: that is when
+it shows.
 
 The timeline (`timeline`) is the user's moments of the last `KEPT`, the latest first, each
 place with a link to it on the map the deployer chooses (`map_link`)."""
@@ -62,15 +69,18 @@ from eidolon.moment_draws import (
     CHANCES,
     KEPT_APART,
     Eligible,
+    Kind,
     Planned,
     draw_places,
     draw_seeds,
     plan_day,
+    work_time,
 )
 from eidolon.moment_prompt import PostMaterial, parse_post, post_prompt
 from eidolon.place_pool import Place
 from eidolon.producer import ProducerProfile, effective_timezone, is_birthday, local_date
 from eidolon.randomness import Random
+from eidolon.schedule import DayJob, Schedules
 from eidolon.store import (
     Conversation,
     InTouch,
@@ -213,6 +223,7 @@ class _Plan:
     day: date
     due_at: datetime
     birthday: bool
+    kind: Kind = "daily"
 
 
 @dataclass(frozen=True)
@@ -241,8 +252,8 @@ class _Before:
 class Moments:
     """Her moments, in `db`, on the deployer's models of `config`, each recorded in
     `activity`; `random` draws who posts and when. A time that came before `clock` says it is
-    as they begin is missed. She posts in Tokyo's weather as `weathers` has it, and may be at
-    one of `places`."""
+    as they begin is missed. She posts in Tokyo's weather as `weathers` has it, of her jobs in
+    the user's schedule, as `schedules` has them, and may be at one of `places`."""
 
     def __init__(
         self,
@@ -256,6 +267,7 @@ class Moments:
         clock: Clock,
         random: Random,
         weathers: Weathers,
+        schedules: Schedules,
         world: World | None = None,
         places: Sequence[Place] = (),
     ) -> None:
@@ -271,6 +283,7 @@ class Moments:
         self._world = world
         self._places = places
         self._weathers = weathers
+        self._schedules = schedules
         self._started = clock()
         self._was_off = False
         db.prepare(_open)
@@ -337,11 +350,15 @@ class Moments:
         affinity_on = self._affinities.on
         unplanned = await self._db.read(self._unplanned, day, now, affinity_on)
         for user_id, tiers in unplanned.items():
-            eligible = [
-                Eligible(id, tier, is_birthday(self._characters[id].birthday, day))
-                for id, tier in tiers.items() if tier is not None
-            ]
             try:
+                jobs = await self._schedules.done_on(user_id, day)
+                eligible = [
+                    Eligible(
+                        id, tier, is_birthday(self._characters[id].birthday, day),
+                        jobs[id][-1].done_at if id in jobs else None,
+                    )
+                    for id, tier in tiers.items() if tier is not None
+                ]
                 planned = plan_day(
                     eligible, day, now, self._config.moments.per_day, self._random
                 )
@@ -398,15 +415,26 @@ class Moments:
         return _Standing(active, tiers)
 
     async def _post(self, plan: _Plan) -> None:
-        """Post the moment planned, unless it is to be passed over; either way, take it off
-        the plan."""
+        """Post the moment planned, unless it is to be passed over, or is of her jobs while
+        she is still at one, then put off till after the last, and looked at again then;
+        posted or passed over, take it off the plan."""
         if plan.due_at < self._started or not await self._still(plan):
             await self._db.write(_drop_plan, plan.id)
             return
         now = self._clock()
+        jobs: list[DayJob] = []
+        if plan.kind == "work":
+            jobs = (await self._schedules.done_on(plan.user_id, plan.day)).get(
+                plan.character_id, []
+            )
+            if jobs and jobs[-1].done_at > now:  # scheduled more since it was planned
+                due = work_time(jobs[-1].done_at, now, self._random)
+                assert due is not None  # the last is done after now
+                await self._db.write(_put_off, plan.id, due.astimezone(UTC).isoformat())
+                return
         character = self._characters[plan.character_id]
         weather = await self._weathers.at(now)
-        material = await self._material(plan, character, now, weather)
+        material = await self._material(plan, character, now, weather, jobs)
         recording = self._activity.begin(
             "moment", plan.user_id, plan.character_id, own_llm=False, exempt=False
         )
@@ -460,10 +488,16 @@ class Moments:
         return self._standing(db, plan.user_id, now, affinity_on), posted
 
     async def _material(
-        self, plan: _Plan, character: Character, now: datetime, weather: Weather | None
+        self,
+        plan: _Plan,
+        character: Character,
+        now: datetime,
+        weather: Weather | None,
+        jobs: Sequence[DayJob],
     ) -> PostMaterial:
         """What she posts the moment planned with, read now, in `weather` (None for none
-        known)."""
+        known): of `jobs`, her jobs done that day, if any, else of her everyday. Of her jobs,
+        her places are of the kinds they take her to, none if none takes her anywhere."""
         known = await self._her_now.read(plan.user_id, plan.character_id, None, "moments")
         before = await self._db.read(
             _before, plan.user_id, plan.character_id,
@@ -477,6 +511,16 @@ class Moments:
             )
             if before.conversation is not None else None
         )
+        kinds = {kind for each in jobs for kind in each.places or ()}
+        places = (
+            draw_places(
+                self._places, character.id, None if jobs else character.place_likes,
+                venues_on_this_day(now, character, self._world), now, before.used,
+                self._random, roofed=weather is not None and weather.wet,
+                within=kinds if jobs else None,
+            )
+            if kinds or not jobs else []
+        )
         return PostMaterial(
             character,
             self._world.prompt(character.name, local_date(now, timezone)) if self._world else None,
@@ -486,14 +530,11 @@ class Moments:
                 tier_prompt(status), weather,
             ),
             plan.birthday,
-            [_seed(f.text) for f in draw_seeds(character.facts, self._random)],
+            [] if jobs else [_seed(f.text) for f in draw_seeds(character.facts, self._random)],
             memories,
             before.recent,
-            draw_places(
-                self._places, character.id, character.place_likes,
-                venues_on_this_day(now, character, self._world), now, before.used,
-                self._random, roofed=weather is not None and weather.wet,
-            ),
+            places,
+            [f"{each.job.name}：{each.job.note}" for each in jobs],
         )
 
 
@@ -535,8 +576,9 @@ def _keep_plan(
     """Keep the user's plan for `day`, and that they are planned for it."""
     db.executemany(
         "INSERT INTO moment_plans (user_id, character_id, day, due_at, kind, birthday)"
-        " VALUES (?, ?, ?, ?, 'daily', ?)",
-        [(user_id, p.character_id, day, p.due_at.astimezone(UTC).isoformat(), int(p.birthday))
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        [(user_id, p.character_id, day, p.due_at.astimezone(UTC).isoformat(), p.kind,
+          int(p.birthday))
          for p in planned],
     )
     db.execute(
@@ -556,13 +598,17 @@ def _due(db: sqlite3.Connection, now: str) -> list[_Plan]:
     """The moments planned whose time has come by `now`, the earliest first."""
     return [
         _Plan(id, user_id, character_id, date.fromisoformat(day),
-              datetime.fromisoformat(due_at), bool(birthday))
-        for id, user_id, character_id, day, due_at, birthday in db.execute(
-            "SELECT id, user_id, character_id, day, due_at, birthday FROM moment_plans"
+              datetime.fromisoformat(due_at), bool(birthday), kind)
+        for id, user_id, character_id, day, due_at, birthday, kind in db.execute(
+            "SELECT id, user_id, character_id, day, due_at, birthday, kind FROM moment_plans"
             " WHERE due_at <= ? ORDER BY due_at, id",
             (now,),
         )
     ]
+
+
+def _put_off(db: sqlite3.Connection, plan_id: int, due_at: str) -> None:
+    db.execute("UPDATE moment_plans SET due_at = ? WHERE id = ?", (due_at, plan_id))
 
 
 def _drop_plan(db: sqlite3.Connection, plan_id: int) -> None:
