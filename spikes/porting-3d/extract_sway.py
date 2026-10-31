@@ -98,6 +98,9 @@ def unpack(path: Path) -> bytes:
         offset = (offset + 15) & ~15
     at_end = bool(flags & 0x80)
     kind = flags & 0x3F
+    # 0x200 pads the block table's data to a 16-byte boundary; without it the
+    # first block is read four bytes early and the LZ4 stream decodes to junk.
+    padded_start = bool(flags & 0x200)
     if at_end:
         info = data[len(data) - info_size :]
         blocks_at = offset
@@ -108,6 +111,8 @@ def unpack(path: Path) -> bytes:
         info = lz4_block(info, info_unpacked)
     elif kind == 1:
         raise ValueError("LZMA block info is not supported")
+    if padded_start:
+        blocks_at = (blocks_at + 15) & ~15
     cursor = 16  # the block table starts after its hash
     count = _be32(info, cursor)
     cursor += 4
@@ -167,9 +172,18 @@ def main() -> None:
         parser.error("give bundle paths, or --index with --idol and --costume")
 
     args.out.mkdir(parents=True, exist_ok=True)
-    written = 0
+    written = skipped = 0
     for path in bundles:
-        text = sway_text(unpack(path))
+        try:
+            text = sway_text(unpack(path))
+        except (ValueError, IndexError, struct.error) as error:
+            # An index entry can name a bundle this reader cannot unpack (a
+            # block compressed with something other than LZ4, say). The
+            # character's own head and body bundles still yield their texts,
+            # so one bad file must not abort the batch.
+            print(f"{path.name}: unreadable ({error})")
+            skipped += 1
+            continue
         if text is None:
             print(f"{path.name}: no sway text")
             continue
@@ -178,7 +192,7 @@ def main() -> None:
         destination.write_text(text + "\n", encoding="utf-8")
         print(f"{path.name} -> {destination.name} ({text.count(chr(10)) + 1} lines)")
         written += 1
-    print(f"{written} sway text(s) in {args.out}")
+    print(f"{written} sway text(s) in {args.out}" + (f", {skipped} skipped" if skipped else ""))
 
 
 if __name__ == "__main__":
