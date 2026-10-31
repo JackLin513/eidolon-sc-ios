@@ -47,6 +47,7 @@
 		A1B405F9250C7DCD499A4A7E /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77736DA8D3A8B0B2407A626B /* ChatView.swift */; };
 		A84B266827D901F32D324DA5 /* StandRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B65BE210B02CA6A488C94D /* StandRenderer.swift */; };
 		B2DF1A14F646EDBA6EAECF48 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2610401DD1C29D8D7AB56C /* SettingsView.swift */; };
+		B3AF831F701054AEEE1CCABB /* CyclesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 189051D482A540C18583A79E /* CyclesView.swift */; };
 		BBCD2E47044DFC5DAB92ED57 /* CallSettingsError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */; };
 		BEB47246CC69F57123F84743 /* CREDITS.md in Resources */ = {isa = PBXBuildFile; fileRef = 3E8A9D366A002F554C2BAE80 /* CREDITS.md */; };
 		C375B67690EAE8B5B255A1B3 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1FF6012F255268462E4A685 /* Keychain.swift */; };
@@ -84,6 +85,7 @@
 		14A72BB12039666C937D7C04 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		17A409D36FC5F7C23FD61FFB /* BarTutorialUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarTutorialUITests.swift; sourceTree = "<group>"; };
 		17CCE5274F40A022DD05DD08 /* CalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarView.swift; sourceTree = "<group>"; };
+		189051D482A540C18583A79E /* CyclesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CyclesView.swift; sourceTree = "<group>"; };
 		1C41FC4F60852CC263CFA152 /* EidolonIOSUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = EidolonIOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		22B001CEBA8E13B70A91DA53 /* BarDoor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarDoor.swift; sourceTree = "<group>"; };
 		31FDC61716128573E91E0E66 /* connect.m4a */ = {isa = PBXFileReference; path = connect.m4a; sourceTree = "<group>"; };
@@ -238,6 +240,7 @@
 				625C6D73570D8E7071EBD5D4 /* Call */,
 				8DD528FF0F49C56E429F79F4 /* Chat */,
 				4EB1ECB7DD9E2A371CAEF70A /* Conversations */,
+				8558628643CC46E4097F4DB9 /* Cycles */,
 				995265C6FFC7B29A269D1355 /* Import */,
 				CFE774A2132F20F0133C7F5E /* Memories */,
 				58AA237FFE5C565A46CEA761 /* Schedule */,
@@ -267,6 +270,14 @@
 				3B4679FF0157C32A8AAEE9E6 /* Support */,
 			);
 			path = EidolonIOS;
+			sourceTree = "<group>";
+		};
+		8558628643CC46E4097F4DB9 /* Cycles */ = {
+			isa = PBXGroup;
+			children = (
+				189051D482A540C18583A79E /* CyclesView.swift */,
+			);
+			path = Cycles;
 			sourceTree = "<group>";
 		};
 		8A76D68AE641E4BBC52FB80E /* Chat */ = {
@@ -574,6 +585,7 @@
 				A1B405F9250C7DCD499A4A7E /* ChatView.swift in Sources */,
 				CABF61FA71D8DD24099824B3 /* ConversationHistoryView.swift in Sources */,
 				9DE409627BE4363A227DD407 /* ConversationListView.swift in Sources */,
+				B3AF831F701054AEEE1CCABB /* CyclesView.swift in Sources */,
 				0EFF31521A69C5A7C7949BCB /* DebugRecognition.swift in Sources */,
 				27EE9A61F1EA6DD131D5D03F /* EidolonIOSApp.swift in Sources */,
 				D87D5EF9B85BB39DEBD561FB /* FishSynthesis.swift in Sources */,
