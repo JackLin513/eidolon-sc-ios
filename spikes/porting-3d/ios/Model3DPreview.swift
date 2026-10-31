@@ -1,6 +1,7 @@
 import EidolonCore
 import RealityKit
 import SwiftUI
+import UIKit
 
 /// A standalone 3D preview. This is deliberately not connected to `StandRenderer`:
 /// the game's current stand is Spine 2D, while this spike loads USDZ 3D models.
@@ -385,6 +386,12 @@ struct Model3DPreview: View {
                     guard box.min.count > 1, box.max.count > 1 else { return nil }
                     return (box.min[1] + box.max[1]) / 2
                 }
+            // The same sidecar's floor, so a ground grid can sit at her feet
+            // instead of wherever the exported origin happens to be.
+            let drawnFloorY: Float? = locate("\(selected.id)-bounds.json")
+                .flatMap { try? Data(contentsOf: $0) }
+                .flatMap { try? JSONDecoder().decode(BoundsSidecar.self, from: $0) }
+                .flatMap { box in box.min.count > 1 ? box.min[1] : nil }
             // The container carries the last outfit's transform, and the bounds
             // sampled below are world-space, so the fit would compound the
             // previous scale and offset. Start from identity every load.
@@ -437,6 +444,7 @@ struct Model3DPreview: View {
             resetInspection()
             entity = loaded
             applyInspection()
+            addGround(to: container, floorY: drawnFloorY ?? 0)
             startMotion(for: selected, beside: url)
 
             loadError = nil
@@ -623,6 +631,57 @@ struct Model3DPreview: View {
         // pass, a sibling of the model, follows it. Setting it here as well would
         // apply the scale twice.
         return true
+    }
+
+
+    /// A ground reference drawn in the model's own space: a 10 cm grid plus the
+    /// three axes, so a pose can be read against real coordinates.
+    ///
+    /// It is parented to the container, so fitting, panning and yaw all carry it
+    /// along, and it is rebuilt per outfit from that outfit's own floor height —
+    /// the exported origin is not always under the feet. Unlit materials keep it
+    /// out of the toon lighting, and the grid is geometry rather than a texture
+    /// so it needs no asset and stays crisp at any zoom.
+    private func addGround(to container: Entity, floorY: Float) {
+        if ProcessInfo.processInfo.environment["EIDOLON_3D_NO_GROUND"] != nil { return }
+        let ground = Entity()
+        ground.name = "ground"
+        let extent: Float = 0.8
+        let step: Float = 0.1
+        let minor = UIColor(white: 1, alpha: 0.08)
+        let major = UIColor(white: 1, alpha: 0.20)
+
+        func line(_ from: SIMD3<Float>, _ to: SIMD3<Float>, _ color: UIColor, _ width: Float) {
+            let delta = to - from
+            let length = simd_length(delta)
+            guard length > 0.0001 else { return }
+            let box = MeshResource.generateBox(width: width, height: width, depth: length)
+            let entity = ModelEntity(mesh: box, materials: [UnlitMaterial(color: color)])
+            entity.position = (from + to) / 2
+            entity.orientation = simd_quatf(from: SIMD3(0, 0, 1), to: simd_normalize(delta))
+            ground.addChild(entity)
+        }
+
+        // The grid lies in the model's XZ plane; the exported rig is Y-up and
+        // `floorY` is where the bounds sidecar says the figure actually stands.
+        let y = floorY
+        var offset = -extent
+        while offset <= extent + 0.0001 {
+            let isMajor = abs(offset.rounded() - offset) < 0.0001
+            let color = isMajor ? major : minor
+            line(SIMD3(-extent, y, offset), SIMD3(extent, y, offset), color, 0.0025)
+            line(SIMD3(offset, y, -extent), SIMD3(offset, y, extent), color, 0.0025)
+            offset += step
+        }
+
+        // Axes: +X red, +Y green, +Z blue, half a body long.
+        let origin = SIMD3<Float>(0, y, 0)
+        let arm: Float = 0.4
+        line(origin, origin + SIMD3(arm, 0, 0), UIColor(red: 0.95, green: 0.25, blue: 0.25, alpha: 0.95), 0.006)
+        line(origin, origin + SIMD3(0, arm, 0), UIColor(red: 0.3, green: 0.9, blue: 0.35, alpha: 0.95), 0.006)
+        line(origin, origin + SIMD3(0, 0, arm), UIColor(red: 0.3, green: 0.5, blue: 0.95, alpha: 0.95), 0.006)
+
+        container.addChild(ground)
     }
 
     /// Key plus fill plus rim. RealityKit's lit model runs on top of the surface
