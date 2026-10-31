@@ -163,13 +163,13 @@ tools/oracle/run.sh                          # 提示词与上游逐字对照（
 ```text
 eidolon-sc-ios/
 ├── EidolonCore/            # 端上引擎（SPM 包：GRDB + ZIPFoundation）
-│   ├── Sources/EidolonCore #   内容包、回合、判断、检索、记忆、搭话、标题、通话、立绘指令、酒吧
+│   ├── Sources/EidolonCore #   内容包、回合、判断、检索、记忆、搭话、标题、通话、立绘指令、酒吧、日程
 │   ├── Sources/PromptOracle#   与上游逐字对照提示词
 │   └── Tests/EidolonCoreTests
 ├── EidolonIOS/             # SwiftUI 客户端
 │   ├── App/                #   入口、AppModel
 │   ├── Core/               #   设置、钥匙串、通话音频
-│   └── Features/           #   对话、通话、立绘、设置、记忆、追踪、导入、酒吧
+│   └── Features/           #   对话、通话、立绘、设置、记忆、追踪、导入、酒吧、日历与日程
 ├── EidolonIOSUITests/      # 酒吧新手教程的 UI 测试
 ├── tools/                  # 导出内容包/立绘包、同步 Spine 运行时、提示词对照
 ├── docs/                   # 构建、配置、测试、ADR、调研笔记
@@ -184,7 +184,7 @@ eidolon-sc-ios/
 还没做，或者做不了：
 
 - **通话里的打断**（barge-in）：她说话时麦克风是合上的，这段时间你说的话会丢。上游靠浏览器的回声消除一直开麦；端上要先把播放并进同一个 `AVAudioEngine`（voice processing）再做。
-- **上游的其余玩法**：照片、礼物、每日任务、成就、统计、数据包、日程与生理周期都还没有；酒吧当天第一次光顾的好感奖励已经接上，抽奖和礼物还没做。
+- **上游的其余玩法**：照片、礼物、每日任务、成就、统计、数据包、生理周期都还没有；酒吧当天第一次光顾的好感奖励已经接上，抽奖和礼物还没做。
 - **长通话验收**：5 分钟以上的真机长通话要人来听，目前只跑过短通话。
 
 ## 📄 许可证

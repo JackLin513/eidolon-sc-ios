@@ -10,8 +10,12 @@ struct CalendarView: View {
     @State private var month: CalendarPage.Month?
     @State private var selected: CalendarDay?
     @State private var kinds = CalendarView.storedKinds()
+    @State private var overview: ScheduleOverview?
+    @State private var scheduleBook = ScheduleDraftBook()
+    @State private var showsSchedule = false
 
-    private static let kindsKey = "calendar.kinds"
+    private static let kindsKey = "calendar.kinds.v2"
+    private static let olderKindsKey = "calendar.kinds"
 
     var body: some View {
         NavigationStack {
@@ -40,6 +44,16 @@ struct CalendarView: View {
             )
             selected = today
         }
+        .task { await loadSchedule() }
+        .sheet(isPresented: $showsSchedule, onDismiss: { Task { await loadSchedule() } }) {
+            ScheduleBoardView(book: $scheduleBook)
+        }
+    }
+
+    private func loadSchedule() async {
+        overview = try? await app.core.scheduleOverview(
+            now: Date(), timeZone: app.producerTimeZone, drafts: scheduleBook.drafts
+        )
     }
 
     private func content(_ month: CalendarPage.Month) -> some View {
@@ -48,13 +62,15 @@ struct CalendarView: View {
             in: month,
             characters: app.characters,
             producerBirthday: app.producerProfile.birthday,
-            holidays: app.holidays
+            holidays: app.holidays,
+            schedule: overview?.entries ?? []
         )
         let shown = all.filter { kinds.contains($0.kind) }
         let byDay: [CalendarDay: [CalendarEvent]] = Dictionary(grouping: shown, by: \.day)
         return ScrollView {
             VStack(spacing: 16) {
                 monthBar(month)
+                scheduleRow
                 filters
                 weekdays
                 grid(month, today: today, byDay: byDay)
@@ -94,6 +110,48 @@ struct CalendarView: View {
             }
             .accessibilityLabel("下个月")
         }
+    }
+
+    private var scheduleRow: some View {
+        Button {
+            showsSchedule = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "calendar.badge.clock")
+                    .foregroundStyle(.teal)
+                Text("本周工作")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 0)
+                if let overview {
+                    if !overview.hasJobList {
+                        Text("内容包没有工作清单")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("还剩 \(overview.pendingThisWeek) 项待排")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(10)
+            .background {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.secondary.opacity(0.08))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            overview.map {
+                $0.hasJobList ? "本周工作，还剩 \($0.pendingThisWeek) 项待排" : "本周工作，内容包没有工作清单"
+            } ?? "本周工作"
+        )
     }
 
     private var filters: some View {
@@ -160,14 +218,22 @@ struct CalendarView: View {
             VStack(spacing: 3) {
                 Text("\(day.day)")
                     .font(.subheadline.weight(isToday ? .bold : .regular))
-                HStack(spacing: 2) {
-                    ForEach(events.prefix(3)) { event in
-                        Circle()
-                            .fill(color(event.kind))
-                            .frame(width: 4, height: 4)
+                Group {
+                    if events.contains(where: { $0.kind == .schedule }), events.count > 1 {
+                        Text("\(events.count)")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        HStack(spacing: 2) {
+                            ForEach(events.prefix(3)) { event in
+                                Circle()
+                                    .fill(color(event.kind))
+                                    .frame(width: 4, height: 4)
+                            }
+                        }
                     }
                 }
-                .frame(height: 4)
+                .frame(height: 8)
             }
             .frame(maxWidth: .infinity)
             .frame(height: 52)
@@ -221,9 +287,14 @@ struct CalendarView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(event.title)
                     .font(.subheadline)
+                if let detail = event.detail {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Text(label(event.kind))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
             Spacer(minLength: 0)
         }
@@ -240,6 +311,7 @@ struct CalendarView: View {
         case .character: return "她的生日"
         case .producer: return "制作人生日"
         case .holiday: return "节假日"
+        case .schedule: return "工作"
         }
     }
 
@@ -248,6 +320,7 @@ struct CalendarView: View {
         case .character: return .pink
         case .producer: return .orange
         case .holiday: return .green
+        case .schedule: return .teal
         }
     }
 
@@ -262,9 +335,15 @@ struct CalendarView: View {
     }
 
     static func storedKinds() -> Set<CalendarKind> {
-        guard let raw = UserDefaults.standard.stringArray(forKey: kindsKey) else {
-            return Set(CalendarKind.allCases)
+        if let raw = UserDefaults.standard.stringArray(forKey: kindsKey) {
+            return Set(raw.compactMap(CalendarKind.init(rawValue:)))
         }
-        return Set(raw.compactMap(CalendarKind.init(rawValue:)))
+        // From before the schedule kind: keep what was shown, and show the new kind.
+        if let old = UserDefaults.standard.stringArray(forKey: olderKindsKey) {
+            var kinds = Set(old.compactMap(CalendarKind.init(rawValue:)))
+            kinds.insert(.schedule)
+            return kinds
+        }
+        return Set(CalendarKind.allCases)
     }
 }

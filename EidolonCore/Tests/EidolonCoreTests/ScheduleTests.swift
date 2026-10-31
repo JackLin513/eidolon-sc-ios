@@ -306,6 +306,79 @@ final class ScheduleTests: XCTestCase {
         XCTAssertEqual(job?.name, "声乐课")
     }
 
+    /// The calendar's view: saved and drafted jobs, and what this week has left to place.
+    func testTheOverviewShowsSavedAndDraftedJobsAndWhatIsLeft() async throws {
+        let eidolon = try await installed(includeJobs: true)
+        let week = CalendarDay(year: 2026, month: 11, day: 2)
+        let next = week.adding(days: 7)
+        try await insertWeek(eidolon, week: week, jobs: [("vocal", "声乐课", 1, nil)])
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO weekly_jobs(
+                        id, week, character_id, listed_id, name, note, category, length, slots
+                    ) VALUES (?, ?, 'hiori', 'dance', '舞蹈课', '说明。', 'practice', 2, NULL)
+                    """,
+                arguments: ["\(week.stamp):dance", week.stamp]
+            )
+            try db.execute(
+                sql: """
+                    INSERT INTO schedule_placements(
+                        week, job_id, character_id, day, slot, saved_at
+                    ) VALUES (?, ?, 'mano', 1, 0, ?)
+                    """,
+                arguments: [week.stamp, "\(week.stamp):vocal", "2026-11-02T00:00:00.000000Z"]
+            )
+            try db.execute(
+                sql: "INSERT INTO schedule_weeks(week, drawn_at) VALUES (?, ?)",
+                arguments: [next.stamp, "2026-11-02T00:00:00.000000Z"]
+            )
+        }
+        let overview = try await eidolon.scheduleOverview(
+            now: date("2026-11-03T03:00:00Z"), timeZone: tokyo,
+            drafts: [
+                ScheduleDraftKey(characterID: "hiori", week: week): [
+                    PlacementInput(jobID: "\(week.stamp):dance", day: 2, slot: 0),
+                ],
+            ]
+        )
+        XCTAssertTrue(overview.hasJobList)
+        XCTAssertEqual(overview.entries.map(\.jobName), ["声乐课", "舞蹈课"])
+        XCTAssertEqual(overview.entries.map(\.draft), [false, true])
+        XCTAssertEqual(overview.pendingThisWeek, 0)
+    }
+
+    /// Only this week and the next are the calendar's to show.
+    func testTheOverviewLeavesOutTheWeekAfterNext() async throws {
+        let eidolon = try await installed(includeJobs: true)
+        let week = CalendarDay(year: 2026, month: 11, day: 2)
+        let next = week.adding(days: 7)
+        let after = week.adding(days: 14)
+        try await insertWeek(eidolon, week: week, jobs: [("vocal", "声乐课", 1, nil)])
+        try await insertWeek(eidolon, week: next, jobs: [])
+        try await insertWeek(eidolon, week: after, jobs: [("late", "下周之后", 1, nil)])
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO schedule_placements(
+                        week, job_id, character_id, day, slot, saved_at
+                    ) VALUES (?, ?, 'mano', 0, 0, ?)
+                    """,
+                arguments: [after.stamp, "\(after.stamp):late", "2026-11-02T00:00:00.000000Z"]
+            )
+        }
+        let overview = try await eidolon.scheduleOverview(
+            now: date("2026-11-03T03:00:00Z"), timeZone: tokyo,
+            drafts: [
+                ScheduleDraftKey(characterID: "mano", week: after): [
+                    PlacementInput(jobID: "\(after.stamp):late", day: 1, slot: 0),
+                ],
+            ]
+        )
+        XCTAssertTrue(overview.entries.isEmpty)
+        XCTAssertEqual(overview.pendingThisWeek, 1)
+    }
+
     // MARK: - The bundle and the bar
 
     func testTheJobListIsReadFromTheBundle() async throws {

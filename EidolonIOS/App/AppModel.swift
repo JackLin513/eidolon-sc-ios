@@ -240,6 +240,9 @@ final class AppModel {
     private(set) var producerProfile = ProducerProfile.default
     /// Japan's holidays as the content bundle lists them; nil before the bundle is read.
     private(set) var holidays: HolidayTable?
+    /// Whether the installed bundle carries the weekly job list (format 4). The schedule
+    /// pages and their menu entry exist only then.
+    private(set) var hasJobList = false
 
     /// The time zone the producer's days go by: the profile's, else this device's.
     var producerTimeZone: TimeZone {
@@ -807,6 +810,11 @@ final class AppModel {
         producerProfile = (try? await core.producerProfile()) ?? .default
         aboutProducer = producerProfile.prompt
         holidays = try? await core.holidayTable()
+        if let jobs = try? await core.jobList() {
+            hasJobList = !jobs.isEmpty
+        } else {
+            hasJobList = false
+        }
         standInfo = try await core.installedStandInfo()
         barInfo = try await core.installedBarInfo()
         barRewardToday = (try? await core.barRewardToday()) ?? true
