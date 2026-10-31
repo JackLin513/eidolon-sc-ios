@@ -467,7 +467,7 @@ def build(
     closers.append(weathers.aclose)
     moments = Moments(
         database, characters, config, affinities, activity, memories, her_now, clock,
-        random or secure_random, weathers, schedules, world, places,
+        random or secure_random, weathers, schedules, photos, world, places,
     )
     config.on_change(gifts.notice)
     return Backend(

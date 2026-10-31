@@ -719,13 +719,14 @@ export type WeatherKind = "clear" | "cloudy" | "overcast" | "fog" | "rain" | "sn
  * link to it on the map the deployer chooses, null for nowhere, and Tokyo's weather then, its kind
  * and temperature in whole degrees Celsius, null if it could not be had; the other idols who have
  * liked it so far, by character id, in the order they did, and their comments so far, in order.
- * Those yet to show are not there. The picture is null for now. */
+ * Those yet to show are not there. `image` is where its picture is read (GLOSSARY.md「配图」), the
+ * user's alone, null for none. */
 export type Moment = {
   id: number;
   character_id: string;
   ja: string;
   zh: string;
-  image: null;
+  image: string | null;
   place: { name: string; map: string } | null;
   weather: { kind: WeatherKind; temperature: number } | null;
   posted_at: string;

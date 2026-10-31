@@ -54,6 +54,8 @@ export const zh = {
     likersSeparator: "，",
     likedBy: "赞",
     commentedBy: (name: string) => `${name}：`,
+    /** 配图的缩略图：读屏读的按钮名、图的替代文字，放大后弹窗的名字。 */
+    picture: { open: "放大配图", alt: "她的配图", viewer: "配图" },
   },
   /** 落地页的链接贴到聊天软件、社交网站时预览卡片上的文字（Open Graph、Twitter 卡片）。页面上不显示，不进字体子集。 */
   share: {

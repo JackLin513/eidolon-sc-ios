@@ -30,6 +30,9 @@ others. When each like and comment shows (`draw_shown`): each like within `LIKES
 moment, on its own; as many times within `COMMENTS_AFTER` drawn as there are comments, and
 given them in order.
 
+Her picture (`draw_compositions`): where there is image generation, `PICTURED` of her
+moments have one, in any composition, or only those no one is in where she has no photo tags.
+
 Every draw asks the random source for a number below `PLACES`, so that one giving the same
 number each time draws alike wherever it is asked."""
 
@@ -41,6 +44,7 @@ from typing import Literal
 from eidolon.affinity import Tier
 from eidolon.characters import Fact
 from eidolon.job_list import Slot
+from eidolon.photo_prompt import COMPOSITIONS, UNPEOPLED, Composition
 from eidolon.place_pool import INDOOR, NEARBY, SEASONS, Place, Season
 from eidolon.randomness import Random
 from eidolon.today import TOKYO
@@ -106,6 +110,9 @@ LIKES_AFTER = (timedelta(minutes=5), timedelta(hours=3))
 
 COMMENTS_AFTER = (timedelta(minutes=15), timedelta(hours=6))
 """How long after the moment shows each comment shows, at least and at most."""
+
+PICTURED = 2 / 3
+"""How likely her moment is to have a picture, where there is image generation."""
 
 _SEASONS: dict[int, Season] = {
     month: season
@@ -257,6 +264,17 @@ def draw_circle(
     while strangers and len(circle) < size:
         circle.append(strangers.pop(_index(random, len(strangers))))
     return circle
+
+
+def draw_compositions(
+    generating: bool, photographed: bool, random: Random
+) -> tuple[Composition, ...]:
+    """The compositions her moment's picture may be in, none for no picture: none without
+    image generation (`generating`), drawn for nothing; else `PICTURED` of the time every one,
+    or those no one is in (`UNPEOPLED`) where she has no photo tags (`photographed`)."""
+    if not generating or _draw(random) >= PICTURED:
+        return ()
+    return COMPOSITIONS if photographed else UNPEOPLED
 
 
 def draw_shown(

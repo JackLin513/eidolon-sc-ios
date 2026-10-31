@@ -26,7 +26,16 @@ own, and told: a list of likes not written is no one's (`NO_LIKES`); one not in 
 is left out (`OUTSIDE_LIKER`), as is a comment by one, or without its Japanese or its subtitle
 (`BROKEN_COMMENT`); those over as many as `LIKES` and `COMMENTS`, or on her birthday
 `BIRTHDAY_LIKES` and `BIRTHDAY_COMMENTS`, are left out, the last first (`LIKES_OVER`,
-`COMMENTS_OVER`)."""
+`COMMENTS_OVER`).
+
+Where her moment may have a picture (GLOSSARY.md「配图」), she is told last in what compositions
+(`PostMaterial.compositions`, `COMPOSITIONS_OPENING`), and writes it as a photo tag is written,
+`<image>…</image>`, its composition among its fields, and a note in Chinese of what is in it,
+never sent: kept with the moment, what her latest moments are recalled by (`recalled`). One
+not written, in a composition she was not given, of an object with nothing in it, or that
+cannot be read, is made do without: the moment is posted without a picture, and it is told
+(`IMAGE`). One she writes where she was not told she may is not read. A framing not of its
+composition is not made do without: it is from the waist up."""
 
 import re
 from collections import Counter
@@ -36,6 +45,7 @@ from dataclasses import dataclass, field
 from eidolon.characters import Character, parse_facts
 from eidolon.delivery_cues import without_written_cues
 from eidolon.llm import ChatMessage
+from eidolon.photo_prompt import Composition, PictureTag, read_picture, tag_fields
 from eidolon.place_pool import Place
 from eidolon.producer import ProducerProfile, producer_prompt
 from eidolon.today import always_known
@@ -55,10 +65,16 @@ POST_RULES = """# 发朋友圈
 - 标了「你的卡面在这里拍过」的候选，只借那里的景，不说「这是我那张卡拍的地方」。
 - 「圈子成员」里的人会来赞、来评论，人数照那一节说的；名单里只写她们的 id。
 - 每条评论用评论的人自己的口吻（照她的自称、称呼和口癖），一两句、最多四十字左右，日语加中文字幕。
-- 评论只回应正文里写出来的东西，以及她和你之间的关系；正文里没写的事不提，不对制作人说话。
+- 评论只回应正文和配图里写出来的东西（配图看你写的 note），以及她和你之间的关系；没写的事不提，不对制作人说话。
 - 评论按出现的先后写，后面的可以顺着前面的接一句。
+- 有「这次允许的构图」时带一张配图。正文不依赖配图，配图没发出来也读得通。
+- 工作那条从做完的几项里挑一项来配图。
+- 写街景时写站在地面能看到的东西（sidewalk、power lines、vending machine、storefront、crosswalk 一类），只写 street, dusk 会画成从高处俯瞰。
+- 风景、食物、物品的 action 写景物、食物或物品，不是动作；outfit、framing 不用写。
+- 摆拍和抓拍可以选 wide shot：人小景大，适合在名胜、街景前。
 - 只输出下面的格式，不写别的：
 <post><ja>日语正文</ja><zh>中文字幕</zh></post>
+<image>配图标签</image>（只在有「这次允许的构图」时写）
 <place>候选的 id 或 none</place>
 <likes>来赞的人的 id，用逗号隔开</likes>
 <comment from="评论的人的 id"><ja>日语</ja><zh>中文字幕</zh></comment>（一条评论一个，没人评论就不写）"""
@@ -77,6 +93,36 @@ CIRCLE_OPENING = "# 圈子成员\n下面这几位会看到这条动态。挑 1 �
 NO_CIRCLE = "# 圈子成员\n这次没有人会来，<likes> 留空，不写 <comment>。"
 PLACES_OPENING = "# 地点候选\n你这会儿可能在下面某一处，也可能哪儿都没去："
 NO_PLACES = "# 地点候选\n这次没有候选，写 none。"
+COMPOSITIONS_OPENING = """\
+# 这次允许的构图
+这条动态带一张配图，写在 <post> 后面，一行一栏，比如：
+<image>
+composition: posed
+framing: upper body
+place: park, autumn leaves, outdoors, day
+outfit: coat, scarf
+action: peace sign, smile
+note: 在公园的银杏树下请人帮我拍的
+</image>
+- composition 只能从下面选一个："""
+COMPOSITIONS_CLOSING = """\
+- framing：只在有你的构图里写。selfie 选 portrait 或 upper body；posed、candid 选 portrait、upper body、cowboy shot、full body、wide shot。
+- place：1–4 个英文 tag，写地点、室内还是室外、时段或天气、光线。
+- outfit：1–4 个英文 tag，写一套衣服，只写这个景别里看得见的。
+- action：有你的构图写 2–4 个英文 tag，一个动作、一两个表情，抓拍写正在做的事；没有人的构图写 1–3 个景物、食物或物品。
+- note：一句中文，写这张图拍了什么。
+- 画面里只有你一个人，或者没有人；不写发色、瞳色、发型、身材，也不写画风或画师。全年龄，和发照片的规矩一样。"""
+"""What she is told of the picture her moment may have, before and after its compositions."""
+
+COMPOSITION_NAMES: dict[Composition, str] = {
+    "scenery": "风景，没有人",
+    "food": "食物，没有人",
+    "object": "物品，没有人",
+    "selfie": "你的自拍",
+    "posed": "别人帮你拍，你看着镜头",
+    "candid": "别人趁你不注意抓拍，你不看镜头",
+}
+"""What each composition is, as she is told."""
 
 RELATION = "你资料里关于她的："
 """What opens what her facts say of one of her circle."""
@@ -99,6 +145,9 @@ NONE = "none"
 
 PLACE = "place"
 """What `Post.degraded` names a place made do without by."""
+
+IMAGE = "image"
+"""What `Post.degraded` names a picture made do without by."""
 
 NO_LIKES = "likes"
 """What `Post.degraded` names a list of likes not written by."""
@@ -128,9 +177,10 @@ class PostMaterial:
     without one); the producer's profile; what she knows of now (`HerNow.lines`, on the
     `moments` occasion); whether it is her birthday; the entries of her facts drawn for her
     everyday (`seeds`); the memories she posts with, as their prompt section
-    (`Memories.for_reaching_out`, None for none); her latest moments' Japanese, the
-    latest first; the places she may be at; of her work moment, her jobs done that day,
-    each its name and what it is, in the order done, in place of seeds; and her circle."""
+    (`Memories.for_reaching_out`, None for none); her latest moments, the latest first,
+    as she recalls them (`recalled`); the places she may be at; of her work moment, her
+    jobs done that day, each its name and what it is, in the order done, in place of seeds;
+    her circle; and the compositions her moment's picture may be in, none for no picture."""
 
     character: Character
     world_prompt: str | None
@@ -143,6 +193,17 @@ class PostMaterial:
     places: Sequence[Place] = ()
     jobs: Sequence[str] = ()
     circle: Sequence[Member] = ()
+    compositions: Sequence[Composition] = ()
+
+
+@dataclass(frozen=True)
+class Picture:
+    """The picture she wrote for her moment: as read, the fields she wrote it in, as she
+    wrote them, its composition among them as read, and its note."""
+
+    tag: PictureTag
+    written: Mapping[str, str]
+    note: str
 
 
 @dataclass(frozen=True)
@@ -159,15 +220,22 @@ class Comment:
 class Post:
     """What she wrote to post, delivery cues left out: in Japanese, and its subtitle; the
     place she was at, of those given, None for none; who of her circle likes it, by
-    identifier; the comments on it, in the order they show; and which parts of what she wrote
-    were made do without, and how many of each."""
+    identifier; the comments on it, in the order they show; its picture, None for none; and
+    which parts of what she wrote were made do without, and how many of each."""
 
     ja: str
     zh: str
     place: Place | None = None
     likes: Sequence[str] = ()
     comments: Sequence[Comment] = ()
+    picture: Picture | None = None
     degraded: Mapping[str, int] = field(default_factory=dict)
+
+
+def recalled(ja: str, note: str | None) -> str:
+    """One of her latest moments, as she recalls it: her Japanese, and what its picture is,
+    if it had one with a note."""
+    return f"{ja}（配图：{note}）" if note else ja
 
 
 def post_prompt(material: PostMaterial) -> list[ChatMessage]:
@@ -189,6 +257,12 @@ def post_prompt(material: PostMaterial) -> list[ChatMessage]:
         "\n".join([PLACES_OPENING, *(_candidate(p, material.character.id) for p in material.places)])
         if material.places else NO_PLACES
     )
+    if material.compositions:
+        told.append("\n".join([
+            COMPOSITIONS_OPENING,
+            *(f"  - {c}：{COMPOSITION_NAMES[c]}" for c in material.compositions),
+            COMPOSITIONS_CLOSING,
+        ]))
     return [
         ChatMessage("system", "\n\n".join(shared), cache_breakpoint=True),
         ChatMessage("system", producer_prompt(material.profile)),
@@ -239,12 +313,15 @@ _COMMENT = re.compile(
 )
 _JA = re.compile(r"<ja>(.*?)</ja>", re.DOTALL)
 _ZH = re.compile(r"<zh>(.*?)</zh>", re.DOTALL)
+_IMAGE = re.compile(r"<image>(.*?)</image>", re.DOTALL)
+_WRITTEN = ("composition", "framing", "place", "outfit", "action", "note")
+"""The fields of her picture that are kept as she wrote them."""
 
 
 def parse_post(written: str, material: PostMaterial) -> Post | None:
     """What she wrote to post, read from the whole of `written`, as she was told `material`:
-    the places she was given, her circle, whether it is her birthday. None if it has no post,
-    in Japanese and its subtitle both."""
+    the places she was given, her circle, whether it is her birthday, the compositions her
+    picture may be in. None if it has no post, in Japanese and its subtitle both."""
     found = _POST.search(written)
     if found is None:
         return None
@@ -280,9 +357,36 @@ def parse_post(written: str, material: PostMaterial) -> Post | None:
             comments.append(Comment(known[by.strip()], *said))
         else:
             degraded[BROKEN_COMMENT] += 1
+    picture = None
+    if material.compositions:
+        idols = [
+            m.character.photo_tag for m in (Member(material.character), *material.circle)
+            if m.character.photo_tag
+        ]
+        picture = _picture(written, material.compositions, idols)
+        if picture is None:
+            degraded[IMAGE] += 1
     most_likes, most_comments = _most(material.birthday)
     if len(likes) > most_likes:
         degraded[LIKES_OVER] = len(likes) - most_likes
     if len(comments) > most_comments:
         degraded[COMMENTS_OVER] = len(comments) - most_comments
-    return Post(ja, zh, place, likes[:most_likes], comments[:most_comments], dict(degraded))
+    return Post(
+        ja, zh, place, likes[:most_likes], comments[:most_comments], picture, dict(degraded)
+    )
+
+
+def _picture(
+    written: str, compositions: Sequence[Composition], idols: Sequence[str]
+) -> Picture | None:
+    """The picture `written` has, in one of `compositions`, `idols` the character tags of
+    those who may be in it; None for none."""
+    found = _IMAGE.search(written)
+    if found is None:
+        return None
+    fields = tag_fields(found[1])
+    tag = read_picture(fields, compositions, idols)
+    if tag is None:
+        return None
+    kept = {name: fields[name] for name in _WRITTEN if name in fields}
+    return Picture(tag, {**kept, "composition": tag.composition}, fields.get("note", ""))

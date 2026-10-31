@@ -25,3 +25,7 @@
   - 删历史对话后，动态还在（照 `test_delete_past_conversations.py`）。
   - 数据包导出里没有朋友圈（照 `test_data_package_reach_outs.py`）。
 - [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+
+### 票 21 交接
+
+- 新表 `moment_images`（`moment_id` 主键，`image` 是 WebP）已登记进 `USER_DATA`。30 天清理删动态时要连它一起删，放在删 `moments` 之前。

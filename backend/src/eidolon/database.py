@@ -46,6 +46,7 @@ USER_DATA = [
     ("user_limits", "user_id = ?"),
     ("reach_outs_off", "user_id = ?"),
     ("moment_circle", "moment_id IN (SELECT id FROM moments WHERE user_id = ?)"),
+    ("moment_images", "moment_id IN (SELECT id FROM moments WHERE user_id = ?)"),
     ("moments", "user_id = ?"),
     ("moment_plans", "user_id = ?"),
     ("moment_users", "user_id = ?"),

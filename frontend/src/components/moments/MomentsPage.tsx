@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useState } from "react";
 
 import { FailureNotice } from "@/components/app/FailureNotice";
+import { ImageViewer } from "@/components/app/ImageViewer";
 import { MarkedAvatar } from "@/components/app/MarkedAvatar";
 import { PageShell } from "@/components/app/PageShell";
 import { useDirectory } from "@/components/conversations/ConversationDirectory";
@@ -75,8 +76,8 @@ export function MomentsPage() {
   );
 }
 
-/** 时间线的一行：左边她的头像；右边名字、日语正文、一行字幕（同对话气泡）、Meta 字号的「时间 · 地名 · 天气」，
- * 有赞或评论时再下面一块。地名点开在新标签页打开地图，不把本站地址带过去。别的偶像的名字从 `nameOf` 取。 */
+/** 时间线的一行：左边她的头像；右边名字、日语正文、一行字幕（同对话气泡）、配图的缩略图（有的话）、
+ * Meta 字号的「时间 · 地名 · 天气」，有赞或评论时再下面一块。地名点开在新标签页打开地图，不把本站地址带过去。别的偶像的名字从 `nameOf` 取。 */
 function MomentRow({
   moment,
   character,
@@ -101,6 +102,7 @@ function MomentRow({
           </p>
           {moment.zh && <p className="text-subtitle text-muted-foreground">{moment.zh}</p>}
         </div>
+        {moment.image && <Picture src={moment.image} />}
         <p className="text-meta text-muted-foreground">
           {metaParts(moment, now).map((part, i) => (
             <Fragment key={i}>
@@ -128,6 +130,25 @@ function MomentRow({
         {block && <ReactionsBlock reactions={block} />}
       </div>
     </article>
+  );
+}
+
+/** 配图的缩略图（GLOSSARY.md「配图」）：按原比例缩进 160px 见方，横图竖图都不变形，`rounded-lg`；本身是按钮，
+ * 点了用 `ImageViewer` 整屏放大。 */
+function Picture({ src }: { src: string }) {
+  const [viewing, setViewing] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={t.picture.open}
+        onClick={() => setViewing(true)}
+        className="mt-1 w-fit overflow-hidden rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <img src={src} alt={t.picture.alt} className="block max-h-40 max-w-40" />
+      </button>
+      <ImageViewer src={src} title={t.picture.viewer} alt={t.picture.alt} open={viewing} onOpenChange={setViewing} />
+    </>
   );
 }
 

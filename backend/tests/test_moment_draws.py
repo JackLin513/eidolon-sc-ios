@@ -1,6 +1,7 @@
 """The draws behind moments (GLOSSARY.md「朋友圈」), given what they go by and the numbers
 drawn (`FakeRandom`, each below 1000): the day's plan, of who posts and when in Tokyo, and her
-everyday moment's seeds."""
+everyday moment's seeds, her places, her circle, when her circle shows, and whether her
+moment has a picture."""
 
 from datetime import date, datetime, time
 
@@ -11,6 +12,7 @@ from eidolon.moment_draws import (
     Eligible,
     Planned,
     draw_circle,
+    draw_compositions,
     draw_places,
     draw_seeds,
     draw_shown,
@@ -252,3 +254,21 @@ def test_likes_show_5_minutes_to_3_hours_after_the_moment_and_comments_15_minute
 
     assert likes == [at(7, 5), at(8, 15)]
     assert comments == [at(7, 15), at(8, 24), at(10, 42)]
+
+
+@pytest.mark.parametrize(
+    ("drawn", "photographed", "compositions"),
+    [
+        (666, True, ("scenery", "food", "object", "selfie", "posed", "candid")),
+        (666, False, ("scenery", "food", "object")),
+        (667, True, ()),
+    ],
+)
+def test_two_thirds_of_her_moments_have_a_picture_of_her_only_where_she_has_photo_tags(
+    drawn: int, photographed: bool, compositions: tuple[str, ...]
+):
+    assert draw_compositions(True, photographed, FakeRandom(drawn)) == compositions
+
+
+def test_without_image_generation_none_has_a_picture_nor_is_drawn_for():
+    assert draw_compositions(False, True, FakeRandom()) == ()

@@ -291,7 +291,8 @@ components:
 
 - **朋友圈页**（`/moments`，GLOSSARY.md「朋友圈」）：导航第二项，只有第一级，在外壳里（通话中切过来不挂断，通话条在最顶上）。
   - **版式**：同玩法页第一级，没有第二栏：页首左边「朋友圈」大标题（List title，下沿一条细线）；内容最宽 `max-w-3xl`、居中、`px-4`，手机和电脑同一个版式。打开时读一次时间线，最新的在上面，一次全给，不分页。
-  - **时间线的一行**：一条动态一行，行与行之间 `divide-y` 细线，每行 `py-4`、`gap-3`。左边她 48px 的头像（`MarkedAvatar` `lg`）；右边从上到下：名字（Row name）、日语正文（Body 字号，`<Ja>`，保留换行）、下面一行字幕（Subtitle 字号、muted，和正文的间距同对话气泡里原文和字幕）、Meta 字号 muted 的「时间 · 地名 · 天气」（时间写「刚刚」「N 分钟前」「N 小时前」「昨天」「N 天前」；天气是 14px 的 Lucide 图标加整数气温，如「☀ 18°」，晴 `Sun`、多云 `CloudSun`、阴 `Cloud`、雾 `CloudFog`、雨 `CloudRain`、雪 `CloudSnow`、雷雨 `CloudLightning`，图标给读屏读档位名；没有地名或天气时连同分隔点省掉，`lib/moments`）。地名是链接，平时同 muted 字、悬停变前景色加下划线，点开在新标签页打开部署者选的那家地图（`rel="noopener noreferrer"`）。不用她的颜色，不铺她的壁纸。
+  - **时间线的一行**：一条动态一行，行与行之间 `divide-y` 细线，每行 `py-4`、`gap-3`。左边她 48px 的头像（`MarkedAvatar` `lg`）；右边从上到下：名字（Row name）、日语正文（Body 字号，`<Ja>`，保留换行）、下面一行字幕（Subtitle 字号、muted，和正文的间距同对话气泡里原文和字幕）、有配图时一张缩略图（见下）、Meta 字号 muted 的「时间 · 地名 · 天气」（时间写「刚刚」「N 分钟前」「N 小时前」「昨天」「N 天前」；天气是 14px 的 Lucide 图标加整数气温，如「☀ 18°」，晴 `Sun`、多云 `CloudSun`、阴 `Cloud`、雾 `CloudFog`、雨 `CloudRain`、雪 `CloudSnow`、雷雨 `CloudLightning`，图标给读屏读档位名；没有地名或天气时连同分隔点省掉，`lib/moments`）。地名是链接，平时同 muted 字、悬停变前景色加下划线，点开在新标签页打开部署者选的那家地图（`rel="noopener noreferrer"`）。不用她的颜色，不铺她的壁纸。
+  - **配图**（GLOSSARY.md「配图」）：字幕下面 4px 一张缩略图，按原比例缩进 160px 见方（竖图 832×1216 约 109×160，横图约 160×109），`rounded-lg`，不投影、不描边。缩略图本身是按钮（读屏「放大配图」），点了用照片同样的 `viewer` 弹窗整屏放大。配图没生成出来的动态就是纯文字，不留占位和说明。
   - **赞和评论**：有赞或评论时，Meta 一行下面多一块 `bg-muted` 的 `rounded-lg`（`px-3 py-2`，`text-sm`，行间 `gap-1`）。第一行是 14px 的 Lucide `Heart`（`LikesIcon`，读屏读「赞」）加赞的人的名字（medium，按露出的先后用「，」连）；有赞又有评论时中间一条 `h-px bg-foreground/10` 的细线；下面每条评论是「名字：日语」（名字 medium，日语 `<Ja>`），再下面一行 Subtitle 字号 muted 的字幕。只有赞时没有细线和评论，只有评论时没有心形那一行；都没有时这一块不出现（`lib/moments` 的 `reactions`）。还没露出的赞和评论不留痕迹。
   - **空状态**：没有动态时内容区顶上一行 Body 字号 muted 的「还没有动态」，不加图标和说明。
   - **关着时**：读时间线被拒绝（朋友圈没开放）时换成对话列表，不留这一页在历史里。

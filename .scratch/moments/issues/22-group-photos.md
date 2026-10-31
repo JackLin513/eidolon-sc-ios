@@ -42,3 +42,11 @@
 
 - 合照的人从圈子里选：`PostMaterial.circle` 是 `Member(character, relation)` 的列表，`character.photo_tag`、`photo_appearance` 在那里。「圈子里至少一位配齐外貌才允许合照」照它判断。
 - 「合照里的人必定算进赞」放进 `moment_prompt.parse_post`：现在赞是先去掉圈子外的、去重，再截到 `LIKES`/`BIRTHDAY_LIKES`（超了记 `likes_over`）。补人的时候要放在截掉之前还是之后，自己定。
+
+### 票 21 交接
+
+- 构图在 `photo_prompt.Composition`（现在六种）里加 `group`；`read_picture(fields, allowed)` 按 `allowed` 认构图，`_PEOPLED_FIXED` 按构图给去重的固定集合（合照要按实际人数换掉 `_FIXED` 里的 `1girl`、`solo`）。`_field(..., alone=True)` 剥 `holding hands`，合照传 `alone=False`；`_peopled`/`_no_one`/`_unaware` 是各构图另外丢掉的。
+- 尺寸走 `ImagePrompt.size`（`PORTRAIT`/`LANDSCAPE`），生图客户端已按它发、按它查，合照给 `LANDSCAPE` 就行。多角色框要改 `image_generation.generation_request` 的 `char_captions`（现在写死空列表）。
+- 允许的构图由 `moment_draws.draw_compositions(generating, photographed, random)` 给；合照的条件（NovelAI 形态、圈子里有配齐的人）加在这里或在 `Moments._material` 里追加，`PostMaterial.compositions` 是传给提示词和解析器的那份。
+- `moment_prompt` 里「这次允许的构图」一节的说明在 `COMPOSITION_NAMES` 和 `COMPOSITIONS_CLOSING`，`with` 栏要补进去；她写的各栏原样存进 `moments.image`（JSON，`_WRITTEN` 列了哪几栏），`with` 也要加进 `_WRITTEN`。
+- `COMPOSITIONS_CLOSING` 末条现在写「画面里只有你一个人，或者没有人」，加合照时要改。

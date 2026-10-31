@@ -38,11 +38,15 @@ her current conversation (`Memories.for_reaching_out`); her latest `RECENT` mome
 as `moment_draws.CANDIDATES` places of the pool for her to say she was at one of
 (`moment_draws.draw_places`), of her jobs only of the kinds they take her to, only those
 under a roof in rain, snow or thunder; Tokyo's weather as she posts (`weather`), kept with the
-moment, none if it cannot be had. Each has an activity record of its own (`moment`), on the
+moment, none if it cannot be had; and, where there is image generation, the compositions her
+picture may be in (`moment_draws.draw_compositions`). Each has an activity record of its own (`moment`), on the
 deployer's keys, its service calls under it, and what of it was made do without
 (`moment_prompt.Post.degraded`); one the model fails, or writes nothing to post in, is
-recorded failed, and not tried again. What she posts is posted as it is written: that is when
-it shows.
+recorded failed, and not tried again. Her picture is generated first, on the deployer's image
+generation, behind every photo waiting (`Photos.picture`), by `PICTURE_TIME_LIMIT` at the
+latest, waiting its turn included; one that fails or takes too long is no picture, the moment
+posted all the same, and recorded a success. What she posts is posted as it is written: that
+is when it shows.
 
 She posts it with her circle (`moment_draws.draw_circle`), of the other idols, the office's
 staff in no one's: her unit mates, as the world setting has them; those a section of her
@@ -53,9 +57,11 @@ her affinity or her cooldowns after.
 
 The timeline (`timeline`) is the user's moments of the last `KEPT`, the latest first, each
 place with a link to it on the map the deployer chooses (`map_link`), each with the likes
-and comments of her circle that have shown, in the order they did."""
+and comments of her circle that have shown, in the order they did, and where its picture is
+(`picture`): the user's alone to read, as their photos are."""
 
 import asyncio
+import json
 import logging
 import sqlite3
 from collections.abc import AsyncIterator, Mapping, Sequence
@@ -82,13 +88,24 @@ from eidolon.moment_draws import (
     Kind,
     Planned,
     draw_circle,
+    draw_compositions,
     draw_places,
     draw_seeds,
     draw_shown,
     plan_day,
     work_time,
 )
-from eidolon.moment_prompt import Comment, Member, PostMaterial, parse_post, post_prompt
+from eidolon.image_generation import ImageFailed
+from eidolon.moment_prompt import (
+    Comment,
+    Member,
+    Picture,
+    PostMaterial,
+    parse_post,
+    post_prompt,
+    recalled,
+)
+from eidolon.photos import Photos
 from eidolon.place_pool import Place
 from eidolon.producer import ProducerProfile, effective_timezone, is_birthday, local_date
 from eidolon.randomness import Random
@@ -125,6 +142,9 @@ RECENT = 5
 
 KEPT = timedelta(days=30)
 """How long moments show on the timeline."""
+
+PICTURE_TIME_LIMIT = timedelta(minutes=10)
+"""The longest her moment's picture may take, waiting its turn included."""
 
 NOT_ONE = ("制作人", "プロデューサー", "其他偶像")
 """What is in the heading of a section of her facts on the people she knows that is on no
@@ -190,6 +210,13 @@ CREATE TABLE IF NOT EXISTS moment_circle (
     shown_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS moment_circle_by_moment ON moment_circle(moment_id, shown_at);
+
+-- The picture of a moment (GLOSSARY.md「配图」), one at most: WebP, nothing but its pixels
+-- (ADR-0024).
+CREATE TABLE IF NOT EXISTS moment_images (
+    moment_id INTEGER PRIMARY KEY REFERENCES moments(id),
+    image BLOB NOT NULL
+);
 """
 
 
@@ -225,8 +252,9 @@ def map_link(site: MapSite, place: ShownPlace) -> str:
 @dataclass(frozen=True)
 class Moment:
     """A moment as the timeline shows it: whose, what she posted, when it showed, where she
-    was, as it was then (None for nowhere), Tokyo's weather then (None for none known), and
-    who of her circle has liked it and commented on it so far, in the order they showed."""
+    was, as it was then (None for nowhere), Tokyo's weather then (None for none known), who
+    of her circle has liked it and commented on it so far, in the order they showed, and
+    whether it has a picture."""
 
     id: int
     character_id: str
@@ -237,16 +265,18 @@ class Moment:
     weather: Weather | None = None
     likes: tuple[str, ...] = ()
     comments: tuple[Comment, ...] = ()
+    pictured: bool = False
 
     def shown(self, map_site: MapSite) -> dict:
-        """As the browser is told it, its place linked to on `map_site`; no picture yet."""
+        """As the browser is told it, its place linked to on `map_site`, its picture by where
+        it is read (None for none)."""
         place = (
             {"name": self.place.name, "map": map_link(map_site, self.place)}
             if self.place is not None else None
         )
         return {
             "id": self.id, "character_id": self.character_id, "ja": self.ja, "zh": self.zh,
-            "image": None, "place": place,
+            "image": f"/api/moments/{self.id}/image" if self.pictured else None, "place": place,
             "weather": self.weather.shown() if self.weather is not None else None,
             "posted_at": self.posted_at,
             "likes": list(self.likes),
@@ -282,8 +312,8 @@ class _Standing:
 @dataclass(frozen=True)
 class _Before:
     """What she posts a moment with, read beforehand in one read: the producer, her current
-    conversation and its messages, her latest moments' Japanese, the latest first, and the
-    places the user's moments were at within `KEPT_APART`, by identifier."""
+    conversation and its messages, her latest moments as she recalls them, the latest first,
+    and the places the user's moments were at within `KEPT_APART`, by identifier."""
 
     profile: ProducerProfile
     conversation: Conversation | None
@@ -296,7 +326,8 @@ class Moments:
     """Her moments, in `db`, on the deployer's models of `config`, each recorded in
     `activity`; `random` draws who posts and when. A time that came before `clock` says it is
     as they begin is missed. She posts in Tokyo's weather as `weathers` has it, of her jobs in
-    the user's schedule, as `schedules` has them, and may be at one of `places`."""
+    the user's schedule, as `schedules` has them, and may be at one of `places`; her pictures
+    are generated by `photos`."""
 
     def __init__(
         self,
@@ -311,6 +342,7 @@ class Moments:
         random: Random,
         weathers: Weathers,
         schedules: Schedules,
+        photos: Photos,
         world: World | None = None,
         places: Sequence[Place] = (),
     ) -> None:
@@ -327,6 +359,7 @@ class Moments:
         self._places = places
         self._weathers = weathers
         self._schedules = schedules
+        self._photos = photos
         self._started = clock()
         self._was_off = False
         db.prepare(_open)
@@ -384,6 +417,17 @@ class Moments:
             )
             for m in moments if m.character_id in self._characters
         ]
+
+    async def picture(self, user_id: str, moment_id: int) -> bytes | None:
+        """The picture of the user's moment, if it has one and is on their timeline, as WebP;
+        None for none, or another's; raise `MomentsOff` where the deployer has them off."""
+        if not self._config.moments.enabled:
+            raise MomentsOff
+        now = self._clock()
+        return await self._db.read(
+            _read_picture, user_id, moment_id, (now - KEPT).astimezone(UTC).isoformat(),
+            now.astimezone(UTC).isoformat(),
+        )
 
     @property
     def map_site(self) -> MapSite:
@@ -509,6 +553,10 @@ class Moments:
             await recording.finish("failed")
             return
         recording.degraded = dict(post.degraded) or None
+        image = None
+        if post.picture is not None:
+            with recording.current():
+                image = await self._picture(plan, character, post.picture)
         posted_at = self._clock()
         likes_at, comments_at = draw_shown(
             posted_at, len(post.likes), len(post.comments), self._random
@@ -517,8 +565,25 @@ class Moments:
             _add_moment, plan, post.ja, post.zh, post.place, weather,
             posted_at.astimezone(UTC).isoformat(),
             _when(post.likes, likes_at), _when(post.comments, comments_at),
+            post.picture, image,
         )
         await recording.finish("success")
+
+    async def _picture(self, plan: _Plan, character: Character, picture: Picture) -> bytes | None:
+        """Her moment's picture, generated by `PICTURE_TIME_LIMIT` from now; None if it fails
+        or takes too long."""
+        until = asyncio.get_running_loop().time() + PICTURE_TIME_LIMIT.total_seconds()
+        try:
+            return await self._photos.picture(character, picture.tag, until)
+        except ImageFailed as e:
+            log.warning("the picture of a moment to user %s was not generated: %s",
+                        plan.user_id, e.reason)
+        except TimeoutError:
+            log.warning("the picture of a moment to user %s waited its turn too long",
+                        plan.user_id)
+        except Exception:
+            log.exception("generating the picture of a moment to user %s failed", plan.user_id)
+        return None
 
     async def _still(self, plan: _Plan) -> bool:
         """Whether the moment planned is to be posted, as it is now."""
@@ -578,6 +643,9 @@ class Moments:
             if kinds or not jobs else []
         )
         seeds = [] if jobs else [_seed(f.text) for f in draw_seeds(character.facts, self._random)]
+        compositions = draw_compositions(
+            self._config.image_settings is not None, character.photographed, self._random
+        )
         return PostMaterial(
             character,
             self._world.prompt(character.name, local_date(now, timezone)) if self._world else None,
@@ -593,6 +661,7 @@ class Moments:
             places,
             [f"{each.job.name}：{each.job.note}" for each in jobs],
             self._circle(character, tokyo_date(now), plan.birthday),
+            compositions,
         )
 
     def _circle(self, character: Character, day: date, birthday: bool) -> list[Member]:
@@ -721,14 +790,18 @@ def _add_moment(
     posted_at: str,
     likes: Sequence[tuple[str, str]],
     comments: Sequence[tuple[Comment, str]],
+    picture: Picture | None = None,
+    image: bytes | None = None,
 ) -> None:
     """Post the moment planned, at a copy of `place`, in `weather`, with the `likes` and
-    `comments` of her circle, each with when it shows; taking it off the plan."""
+    `comments` of her circle, each with when it shows, and the `picture` she wrote, as she
+    wrote it, its `image` if it was generated; taking it off the plan."""
+    written = json.dumps(dict(picture.written), ensure_ascii=False) if picture else None
     moment_id = db.execute(
-        "INSERT INTO moments (user_id, character_id, ja, zh, place_id, place_name, place_lat,"
-        " place_lon, weather, temperature, day, posted_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (plan.user_id, plan.character_id, ja, zh,
+        "INSERT INTO moments (user_id, character_id, ja, zh, image, place_id, place_name,"
+        " place_lat, place_lon, weather, temperature, day, posted_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (plan.user_id, plan.character_id, ja, zh, written,
          *((place.id, place.name, place.lat, place.lon) if place else (None,) * 4),
          *((weather.kind, weather.temperature) if weather else (None, None)),
          plan.day.isoformat(), posted_at),
@@ -740,6 +813,10 @@ def _add_moment(
         + [(moment_id, c.character_id, _COMMENT, c.ja, c.zh, i, at)
            for i, (c, at) in enumerate(comments)],
     )
+    if image is not None:
+        db.execute(
+            "INSERT INTO moment_images (moment_id, image) VALUES (?, ?)", (moment_id, image)
+        )
     _drop_plan(db, plan.id)
 
 
@@ -750,8 +827,9 @@ def _before(db: sqlite3.Connection, user_id: str, character_id: str, since: str)
         if conversation is not None else []
     )
     recent = [
-        ja for (ja,) in db.execute(
-            "SELECT ja FROM moments WHERE user_id = ? AND character_id = ?"
+        recalled(ja, _note(image))
+        for ja, image in db.execute(
+            "SELECT ja, image FROM moments WHERE user_id = ? AND character_id = ?"
             " ORDER BY posted_at DESC, id DESC LIMIT ?",
             (user_id, character_id, RECENT),
         )
@@ -764,6 +842,23 @@ def _before(db: sqlite3.Connection, user_id: str, character_id: str, since: str)
         )
     }
     return _Before(read_profile(db, user_id), conversation, messages, recent, used)
+
+
+def _note(image: str | None) -> str | None:
+    """The note of a moment's picture as she wrote it, kept as JSON; None for none."""
+    note = json.loads(image).get("note") if image is not None else None
+    return note if isinstance(note, str) else None
+
+
+def _read_picture(
+    db: sqlite3.Connection, user_id: str, moment_id: int, since: str, now: str
+) -> bytes | None:
+    found = db.execute(
+        "SELECT i.image FROM moment_images i JOIN moments m ON m.id = i.moment_id"
+        " WHERE i.moment_id = ? AND m.user_id = ? AND m.posted_at > ? AND m.posted_at <= ?",
+        (moment_id, user_id, since, now),
+    ).fetchone()
+    return found[0] if found is not None else None
 
 
 def _timeline(db: sqlite3.Connection, user_id: str, since: str, now: str) -> list[Moment]:
@@ -784,11 +879,13 @@ def _timeline(db: sqlite3.Connection, user_id: str, since: str, now: str) -> lis
         Moment(id, character_id, ja, zh, posted_at,
                ShownPlace(name, lat, lon) if name is not None else None,
                Weather(kind, temperature) if kind in ALL_KINDS else None,
-               tuple(likes.get(id, ())), tuple(comments.get(id, ())))
-        for id, character_id, ja, zh, posted_at, name, lat, lon, kind, temperature
+               tuple(likes.get(id, ())), tuple(comments.get(id, ())), bool(pictured))
+        for id, character_id, ja, zh, posted_at, name, lat, lon, kind, temperature, pictured
         in db.execute(
             "SELECT id, character_id, ja, zh, posted_at, place_name, place_lat, place_lon,"
-            " weather, temperature FROM moments"
+            " weather, temperature,"
+            " EXISTS (SELECT 1 FROM moment_images i WHERE i.moment_id = moments.id)"
+            " FROM moments"
             " WHERE user_id = ? AND posted_at > ? AND posted_at <= ?"
             " ORDER BY posted_at DESC, id DESC",
             (user_id, since, now),
