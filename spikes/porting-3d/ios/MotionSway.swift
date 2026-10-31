@@ -9,10 +9,27 @@ import simd
 /// which is exactly what the phone showed before this existed.
 ///
 /// Each bone is a pendulum. Its rest direction comes from the parent's current
-/// world rotation and a tail measured from the skin weights; a spring pulls
-/// the simulated tip back towards that direction, gravity pulls it down and
-/// drag bleeds off the velocity. The bone is then turned so its rigid direction
+/// world rotation and a tail measured from the skin weights; a spring pulls the
+/// simulated direction back towards that one, gravity pulls it down and drag
+/// bleeds off the velocity. The bone is then turned so its rigid direction
 /// points at the simulated one.
+///
+/// The simulation integrates a **unit direction in the parent's frame**, not a
+/// world-space position. Skirt tails are 14–28 cm, while gravity's equilibrium
+/// offset in a positional spring is `g/k = 0.375` world units — larger than the
+/// whole tail. Integrating positions therefore made gravity win outright: every
+/// panel snapped to world down within a frame and ignored the hips for the rest
+/// of the dance. On the unit sphere the same constants make gravity an angular
+/// pull of `atan(g/k)` (≈21° for the skirt), so panels keep the parent's
+/// direction and swing against it.
+///
+/// State must stay in that frame. Carrying the tip as a world position and
+/// rebuilding the direction from it against the *current* parent each frame
+/// turns every root translation into an angular kick: the dance's bob and
+/// weight shifts move the pelvis several centimetres per frame, and dividing
+/// that by a 14 cm tail flings the panels tens of degrees off target. The
+/// direction is therefore the state, seeded from the rest direction and never
+/// re-derived from world position.
 ///
 /// The spring constants are not the game's — its `SwayBone` values are not in
 /// the shipped bundles — so they were tuned against offline renders of this
@@ -60,7 +77,7 @@ struct MotionSway {
     /// the model's own bounds use. Derive it instead of hard-coding it.
     private let up: SIMD3<Float>
 
-    private var tips: [SIMD3<Float>]
+    private var directions: [SIMD3<Float>]
     private var velocities: [SIMD3<Float>]
     private var seeded: [Bool]
 
@@ -114,7 +131,7 @@ struct MotionSway {
         self.pendulums = pendulums
         self.parents = parents
         self.up = Self.upAxis(joints: joints, rest: rest, parents: parents)
-        self.tips = Array(repeating: .zero, count: pendulums.count)
+        self.directions = Array(repeating: .zero, count: pendulums.count)
         self.velocities = Array(repeating: .zero, count: pendulums.count)
         self.seeded = Array(repeating: false, count: pendulums.count)
     }
@@ -130,32 +147,28 @@ struct MotionSway {
             let parentRotation = parent.map { world[$0].rotation }
                 ?? SIMD4<Float>(0, 0, 0, 1)
             let rigid = QuaternionMath.multiply(parentRotation, pendulum.restRotation)
-            let tip = base + QuaternionMath.rotate(rigid, pendulum.tail)
+            let restDirection = QuaternionMath.rotate(rigid, pendulum.tail)
+            let target = restDirection / pendulum.length
             if !seeded[index] {
-                tips[index] = tip
+                directions[index] = target
                 velocities[index] = .zero
                 seeded[index] = true
             }
 
             let spring = pendulum.spring
-            var point = tips[index]
+            var direction = directions[index]
             var velocity = velocities[index]
             for _ in 0..<Self.substeps {
-                let acceleration = spring.stiffness * (tip - point)
+                let acceleration = spring.stiffness * (target - direction)
                     - spring.drag * velocity
                     - spring.gravity * up
                 velocity += acceleration * step
-                point += velocity * step
+                direction = simd_normalize(direction + velocity * step)
+                // Normalising moves the point back onto the sphere; project
+                // the radial speed out too, or that correction becomes energy.
+                velocity -= direction * simd_dot(velocity, direction)
             }
-
-            let restDirection = QuaternionMath.rotate(rigid, pendulum.tail)
-            let offset = point - base
-            let distance = simd_length(offset)
-            let direction = distance > 1e-6
-                ? offset / distance
-                : simd_normalize(restDirection)
-            point = base + direction * pendulum.length
-            tips[index] = point
+            directions[index] = direction
             velocities[index] = velocity
 
             let turned = QuaternionMath.multiply(
@@ -168,8 +181,9 @@ struct MotionSway {
         }
     }
 
-    /// Forget the simulated tips. Playback replays the dance from the top before
-    /// showing a seek, so a held frame carries the sway playback would reach.
+    /// Forget the simulated directions. Playback replays the dance from the top
+    /// before showing a seek, so a held frame carries the sway playback would
+    /// reach.
     mutating func reset() {
         seeded = Array(repeating: false, count: pendulums.count)
     }

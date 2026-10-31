@@ -165,6 +165,29 @@ final class MotionSwayTests: XCTestCase {
         XCTAssertEqual(names.count, poses.count)
     }
 
+    /// Real skirt tails are centimetres long, not the unit vector the other
+    /// tests use. If the spring works on world-space displacement, gravity
+    /// (g/k ≈ 0.375 units) swamps a 5 cm tail and pins every panel to world
+    /// down; the skirt then stands still while the hips dance. The panel has
+    /// to hang below its *parent's turned* rest direction instead.
+    func testShortPanelFollowsItsParentInsteadOfHangingDown() throws {
+        var (names, rest) = rig()
+        let half = Float.pi / 8
+        rest[0].rotation = SIMD4(0, 0, sin(half), cos(half)) // BASE turned 45° about Z
+        let tail = SIMD3<Float>(0.05, 0, 0)
+        var sway = try XCTUnwrap(makeSway(tail: tail, rest: rest))
+        var poses = rest
+        for _ in 0..<120 {
+            poses = rest
+            sway.apply(&poses, dt: 1 / 30)
+        }
+        let settled = direction(of: 1, poses: poses, parents: [nil, 0, nil, nil], tail: tail)
+        let turnedRest = SIMD3<Float>(cos(half), sin(half), 0)
+        // Tuned droop is ~21° below the rest direction; collapsing to world
+        // down would be 90° away from it.
+        XCTAssertGreaterThan(simd_dot(settled, turnedRest), cos(0.6), "\(names)")
+    }
+
     /// However the parents move, the bone must stay a unit-length vector off
     /// its base — a drifting length is how a skirt starts poking through legs.
     func testLengthNeverDrifts() throws {
@@ -184,7 +207,41 @@ final class MotionSwayTests: XCTestCase {
         }
     }
 
-    func testResetForgetsTheSimulatedTip() throws {
+    /// Root motion is a translation, not a turn. Carrying the tip as a world
+    /// position and rebuilding the direction from it against the current base
+    /// drags the panel by `-Δbase / length` every frame: this dance bobs the
+    /// pelvis centimetres per frame, which against a 5 cm panel is tens of
+    /// degrees, and the skirt folds into the legs. Two rigs that differ only in
+    /// how far the pelvis has moved must keep identical bone rotations.
+    func testRootTranslationDoesNotTurnTheBone() throws {
+        let (_, base) = rig()
+        let tail = SIMD3<Float>(0.05, 0, 0)
+        var still = try XCTUnwrap(makeSway(tail: tail))
+        var moving = try XCTUnwrap(makeSway(tail: tail))
+
+        var worst: Float = 0
+        for step in 0..<60 {
+            var stillRest = base
+            var movingRest = base
+            // Sideways shift, perpendicular to the tail, so any difference is
+            // the translation turning the bone and nothing else.
+            movingRest[0].translation = SIMD3(0, Float(step) * 0.01, 0)
+
+            var stillPoses = stillRest
+            var movingPoses = movingRest
+            still.apply(&stillPoses, dt: 1 / 30)
+            moving.apply(&movingPoses, dt: 1 / 30)
+
+            let a = stillPoses[1].rotation
+            let b = movingPoses[1].rotation
+            worst = max(
+                worst, abs(a.x - b.x), abs(a.y - b.y), abs(a.z - b.z), abs(a.w - b.w)
+            )
+        }
+        XCTAssertLessThan(worst, 1e-4, "the pelvis moving turned the panel")
+    }
+
+    func testResetForgetsTheSimulatedDirection() throws {
         let (_, rest) = rig()
         var sway = try XCTUnwrap(makeSway())
         var first = rest
