@@ -26,10 +26,12 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import re
 import struct
 from pathlib import Path
 
 FORMAT = "eidolon.sway/1"
+GAME_FORMAT = "eidolon.sway/2"
 
 # leaf-name prefix, family, stiffness, drag, gravity.  Chosen against the
 # offline prototype: the game's own SwayBone values are not in the shipped
@@ -189,6 +191,83 @@ def mirror(vector) -> tuple:
     return (vector[0], vector[1], -vector[2])
 
 
+
+# --- the game's own data ------------------------------------------------------
+
+GAME_PREFIXES = ("MODEL_00/BODY_SCALE/BASE/", "MODEL_00/BODY_SCALE/", "MODEL_00/")
+
+
+def runtime_path(path: str) -> str:
+    """`MODEL_00/BODY_SCALE/BASE/KOSHI/...` → the joint name the app sees."""
+    for prefix in GAME_PREFIXES:
+        if path.startswith(prefix):
+            return path[len(prefix):]
+    return path
+
+
+def parse_sway_text(text: str):
+    """Read `<model>_sway.txt`: stanzas of `Key: value` under a header line."""
+    managers: dict[str, dict] = {}
+    bones: dict[str, dict] = {}
+    colliders: list[dict] = []
+    current = None
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        header = re.match(r"^(SwayManager|SwayBone|SwayCollider): (.+)$", line)
+        if header:
+            kind, path = header.groups()
+            current = {"path": path, "values": {}, "refs": []}
+            if kind == "SwayManager":
+                managers[path] = current
+            elif kind == "SwayBone":
+                bones[path] = current
+            else:
+                colliders.append(current)
+            continue
+        if current is None:
+            continue
+        ref = re.match(r"^\s+(\d+): (.+)$", line)
+        if ref:
+            current["refs"].append(ref.group(2).strip())
+            continue
+        item = re.match(r"^\s+([A-Za-z0-9_]+): (.*)$", line)
+        if item:
+            current["values"][item.group(1)] = item.group(2).strip()
+    return managers, bones, colliders
+
+
+def number(values: dict, key: str, default: float = 0.0) -> float:
+    try:
+        return float(values.get(key, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def manager_for(path: str, managers: dict[str, dict]):
+    """The deepest `SwayManager` group a bone belongs to."""
+    best = None
+    for candidate in managers:
+        if path.startswith(candidate) and (best is None or len(candidate) > len(best)):
+            best = candidate
+    return managers[best] if best else None
+
+
+def spring_from(values: dict, group: dict | None) -> dict:
+    source = values if values.get("refParam", "Self") == "Self" else (group or {})
+    group_values = (group or {}).get("values", {})
+    gravity_values = source.get("gravity") or group_values.get("gravity") or "0,-1,0"
+    try:
+        parts = [float(part) for part in gravity_values.split(",")]
+    except ValueError:
+        parts = [0.0, -1.0, 0.0]
+    magnitude = sum(part * part for part in parts) ** 0.5
+    return {
+        "stiffness": number(source, "stiffnessForce", number(group_values, "stiffnessForce")),
+        "drag": number(source, "dragForce", number(group_values, "dragForce")),
+        "gravity": round(magnitude, 8),
+    }
+
 def family_of(name: str) -> str | None:
     leaf = name.split("/")[-1]
     if leaf in GROUP_NODES:
@@ -217,43 +296,143 @@ def tail_for(document: Document, node: int, bones: set[int],
     return (-0.04, 0.0, 0.0)
 
 
-def build(gltf: Path) -> dict:
+def vector(values: dict, key: str, default=(0.0, 0.0, 0.0)) -> list:
+    try:
+        parts = [float(part) for part in values[key].split(",")]
+    except (KeyError, ValueError):
+        return list(default)
+    return parts if len(parts) == 3 else list(default)
+
+
+def build(gltf: Path, sway_texts: list[Path] | None = None) -> dict:
     document = Document(gltf)
     armature = document.armature()
     bones = set(armature)
     centroids = document.bone_centroids()
+    names = {document.runtime_name(node) for node in armature}
+
+    managers: dict[str, dict] = {}
+    game_bones: dict[str, dict] = {}
+    collider_stanzas: list[dict] = []
+    for path in sway_texts or []:
+        parsed_managers, parsed_bones, parsed_colliders = parse_sway_text(
+            path.read_text()
+        )
+        managers.update({runtime_path(key): value for key, value in parsed_managers.items()})
+        game_bones.update({runtime_path(key): value for key, value in parsed_bones.items()})
+        collider_stanzas.extend(parsed_colliders)
+
+    # Colliders, indexed by (joint, ordinal) in file order; the game's data
+    # refers to them as `<joint>#<ordinal>`.
+    collider_index: dict[tuple[str, int], int] = {}
+    collider_entries: list[dict] = []
+    ordinals: dict[str, int] = {}
+    for stanza in collider_stanzas:
+        joint = runtime_path(stanza["path"])
+        ordinal = ordinals.get(joint, 0)
+        ordinals[joint] = ordinal + 1
+        values = stanza["values"]
+        kind = values.get("type", "Sphere")
+        if kind not in ("Sphere", "Capsule"):
+            continue  # planes and bridges are not modelled yet
+        ortho = vector(values, "offset")
+        collider_index[(joint, ordinal)] = len(collider_entries)
+        collider_entries.append({
+            "joint": joint,
+            "type": kind.lower(),
+            "radius": round(number(values, "radius"), 6),
+            "distance": round(number(values, "distance"), 6),
+            "offset": [round(value, 6) for value in mirror(ortho)],
+            "axis": values.get("axis", "X").upper(),
+        })
 
     entries = []
+    used_colliders: list[int] = []
     for node in armature:
         name = document.runtime_name(node)
         family = family_of(name)
         if family is None:
             continue
+        stanza = game_bones.get(name)
+        if sway_texts and stanza is None:
+            # A bone the game's data does not list stays rigid; guessing a
+            # spring for it would use the wrong scale and swing it wildly.
+            continue
         tail = tail_for(document, node, bones, centroids)
-        entries.append({
+        entry = {
             "name": name,
             "family": family,
             "tail": [round(value, 6) for value in tail],
-        })
+        }
+        if stanza is not None:
+            values = stanza["values"]
+            group = manager_for(runtime_path(stanza["path"]), managers)
+            group_values = (group or {}).get("values", {})
+            entry["radius"] = round(number(values, "radius"), 6)
+            entry["spring"] = spring_from(values, group)
+            source = values if values.get("refParam", "Self") == "Self" else group_values
+            follow = source.get("followForce", values.get("followForce"))
+            if follow is not None:
+                entry["follow"] = round(float(follow), 6)
+            if values.get("limitAngle") == "True":
+                # A few stanzas list the window with min above max (ribbons are
+                # stored that way); order each pair so the clamp is a window.
+                y = sorted((number(values, "minYAngle"), number(values, "maxYAngle")))
+                z = sorted((number(values, "minZAngle"), number(values, "maxZAngle")))
+                entry["limit"] = {"minY": y[0], "maxY": y[1], "minZ": z[0], "maxZ": z[1]}
+            link = values.get("sideLink")
+            if link and runtime_path(link) in names:
+                entry["sideLink"] = runtime_path(link)
+            entry["sideSpring"] = round(number(values, "sideSpringForce"), 6)
+            if number(values, "antiFoldForceK") > 0:
+                entry["antiFold"] = {
+                    "force": number(values, "antiFoldForceK"),
+                    "angle": number(values, "antiFoldAngle"),
+                }
+            refs = []
+            for reference in stanza["refs"]:
+                if "#" not in reference:
+                    continue
+                path, ordinal = reference.rsplit("#", 1)
+                key = (runtime_path(path), int(ordinal))
+                if key in collider_index and collider_index[key] not in refs:
+                    refs.append(collider_index[key])
+            if refs:
+                entry["colliders"] = refs
+                for index in refs:
+                    if index not in used_colliders:
+                        used_colliders.append(index)
+        entries.append(entry)
     entries.sort(key=lambda entry: entry["name"])
 
-    return {
-        "format": FORMAT,
+    payload = {
+        "format": GAME_FORMAT if sway_texts else FORMAT,
         "families": {
             family: {"stiffness": stiffness, "drag": drag, "gravity": gravity}
             for family, stiffness, drag, gravity in FAMILIES.values()
         },
         "bones": entries,
     }
+    if sway_texts:
+        remap = {old: new for new, old in enumerate(used_colliders)}
+        for entry in entries:
+            if "colliders" in entry:
+                entry["colliders"] = [remap[index] for index in entry["colliders"]]
+        payload["colliders"] = [collider_entries[index] for index in used_colliders]
+    return payload
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("gltf", type=Path, help="exported character glTF")
     parser.add_argument("--out", type=Path, help="sidecar path")
+    parser.add_argument(
+        "--sway-text", action="append", type=Path, default=None,
+        help="the game's <model>_sway.txt (repeat for head + body)",
+    )
     args = parser.parse_args()
 
-    payload = build(args.gltf)
+    payload = build(args.gltf, args.sway_text)
     out = args.out or args.gltf.with_suffix(".sway.json")
     out.write_text(json.dumps(payload, indent=2) + "\n")
     families = {}
