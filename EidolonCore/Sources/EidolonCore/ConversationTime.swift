@@ -102,3 +102,85 @@ public enum ConversationTime {
         }
     }
 }
+
+public enum ConversationTranscript {
+    /// One line of the transcript, in the database's order.
+    public struct Row: Sendable, Hashable, Identifiable {
+        public var line: ConversationLine
+        /// The day pill to draw above this line; nil while the pill above is still up.
+        public var day: String?
+        /// The line's moment, `H:mm`.
+        public var clock: String
+        /// This line opens its bubble group: it gets her avatar and name.
+        public var first: Bool
+        /// This line closes its bubble group: the time goes beside it.
+        public var last: Bool
+
+        public var id: String { line.id }
+    }
+
+    public static func rows(
+        of record: [ConversationLine],
+        now: Date,
+        calendar: Calendar = .current,
+        splitsAfter: (ConversationLine) -> Bool = { _ in false }
+    ) -> [Row] {
+        let instants = record.map { Eidolon.parseTimestamp($0.createdAt) ?? now }
+        let days = ConversationTime.dayPills(for: instants, now: now, calendar: calendar)
+        return record.indices.map { index in
+            let line = record[index]
+            let first = index == 0 || breaks(
+                between: record[index - 1], and: line, at: index,
+                instants: instants, calendar: calendar, splitsAfter: splitsAfter
+            )
+            let last = index == record.count - 1 || breaks(
+                between: line, and: record[index + 1], at: index + 1,
+                instants: instants, calendar: calendar, splitsAfter: splitsAfter
+            )
+            return Row(
+                line: line,
+                day: days[index],
+                clock: ConversationTime.clock(of: instants[index], calendar: calendar),
+                first: first,
+                last: last
+            )
+        }
+    }
+
+    /// Whether the boundary that starts the line at `index` is a group break. The first and
+    /// last of a group are the same boundary seen from either side.
+    private static func breaks(
+        between previous: ConversationLine,
+        and next: ConversationLine,
+        at index: Int,
+        instants: [Date],
+        calendar: Calendar,
+        splitsAfter: (ConversationLine) -> Bool
+    ) -> Bool {
+        // An event is not a person: it is never in a group, and splits both sides.
+        if case .event = previous { return true }
+        if case .event = next { return true }
+        return !ConversationTime.isSameDay(instants[index - 1], instants[index], calendar: calendar)
+            || side(of: previous) != side(of: next)
+            || splitsAfter(previous)
+            || reachesOut(next)
+    }
+
+    private enum Side {
+        case her
+        case producer
+    }
+
+    /// Who a line is from. Reach-outs are hers.
+    private static func side(of line: ConversationLine) -> Side? {
+        switch line {
+        case let .message(message): message.role == "user" ? .producer : .her
+        case .event: nil
+        }
+    }
+
+    private static func reachesOut(_ line: ConversationLine) -> Bool {
+        guard case let .message(message) = line else { return false }
+        return message.isReachOut
+    }
+}

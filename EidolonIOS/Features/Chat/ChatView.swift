@@ -222,7 +222,7 @@ struct ChatView: View {
         let now = Date()
         return ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
+                LazyVStack(alignment: .leading, spacing: 8) {
                     // The reply being written is covered by the pending line it answers, so this
                     // page can stop reading the streaming text and leave the bubble to itself
                     // (spec #42).
@@ -233,32 +233,32 @@ struct ChatView: View {
                             .frame(maxWidth: .infinity, alignment: .center)
                             .padding(.top, 40)
                     }
-                    ForEach(entries(store, now: now)) { entry in
-                        if let day = entry.day {
-                            dayPill(day)
+                    ForEach(ConversationTranscript.rows(of: store.transcript, now: now)) { row in
+                        VStack(alignment: .leading, spacing: 16) {
+                            if let day = row.day {
+                                dayPill(day)
+                            }
+                            switch row.line {
+                            case let .message(message):
+                                messageRow(message, row: row)
+                            case let .event(event):
+                                conversationEvent(event, clock: row.clock)
+                            }
                         }
-                        switch entry.line {
-                        case let .message(message):
-                            bubble(message, clock: entry.clock)
-                        case let .event(event):
-                            conversationEvent(event, clock: entry.clock)
-                        }
+                        // Eight inside a group, sixteen between groups and around a pill.
+                        .padding(.top, row.day != nil || row.first ? 8 : 0)
                     }
                     if let pending = store.pendingUser {
                         HStack {
                             Spacer(minLength: 40)
-                            Text(pending)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                                .background(
-                                    Color.accentColor.opacity(0.15),
-                                    in: RoundedRectangle(cornerRadius: 16)
-                                )
+                            producerBubble(pending)
                         }
                         .id("pending")
+                        .padding(.top, 8)
                     }
                     // The reply being written draws itself, so a new piece of text does not
-                    // rework the whole transcript (spec #42).
+                    // rework the whole transcript (spec #42). It is her next group's first
+                    // line, so it carries her avatar and name (spec #40).
                     StreamingReply(store: store, character: character)
                 }
                 .padding(.horizontal, 16)
@@ -275,32 +275,6 @@ struct ChatView: View {
                 guard text != nil else { return }
                 proxy.scrollTo("pending", anchor: .bottom)
             }
-        }
-    }
-
-    /// One transcript line as the page shows it: the day pill it hangs under (nil when the
-    /// pill is still up from the line before) and its moment (spec #35).
-    private struct TranscriptEntry: Identifiable {
-        let line: ConversationLine
-        let day: String?
-        let clock: String
-
-        var id: String { line.id }
-    }
-
-    /// The transcript with its day breaks worked out. The first line always gets a pill;
-    /// after that only a change of calendar day does. The day is judged when the page is
-    /// drawn, so a conversation left open across midnight gains its new pill on the next
-    /// redraw.
-    private func entries(_ store: ChatStore, now: Date) -> [TranscriptEntry] {
-        let instants = store.transcript.map { Eidolon.parseTimestamp($0.createdAt) ?? now }
-        let days = ConversationTime.dayPills(for: instants, now: now)
-        return store.transcript.enumerated().map { index, line in
-            TranscriptEntry(
-                line: line,
-                day: days[index],
-                clock: ConversationTime.clock(of: instants[index])
-            )
         }
     }
 
@@ -347,26 +321,51 @@ struct ChatView: View {
         ConversationEventKind(stored: kind).displayText
     }
 
+    /// One message as the bubble-group rule draws it: her group's first line carries her
+    /// avatar and name, the group's last line carries the time beside it, and the corners
+    /// that meet another line of the same group are smaller (spec #40).
     @ViewBuilder
-    private func bubble(_ message: ChatMessageRecord, clock: String) -> some View {
+    private func messageRow(_ message: ChatMessageRecord, row: ConversationTranscript.Row) -> some View {
         if message.isFromCharacter {
-            VStack(alignment: .leading, spacing: 2) {
-                ReplyBubble(segments: message.segments, character: character, line: message.id)
-                clockText(clock)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-            HStack {
-                Spacer(minLength: 40)
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(message.text ?? "")
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 16))
-                    clockText(clock)
+            HerMessageRow(character: character, first: row.first) {
+                HStack(alignment: .bottom, spacing: 6) {
+                    ReplyBubble(
+                        segments: message.segments,
+                        character: character,
+                        line: message.id,
+                        joinsPrevious: !row.first,
+                        joinsNext: !row.last
+                    )
+                    if row.last {
+                        clockText(row.clock)
+                    }
                 }
             }
+        } else {
+            HStack(alignment: .bottom, spacing: 6) {
+                Spacer(minLength: 40)
+                if row.last {
+                    clockText(row.clock)
+                }
+                producerBubble(message.text ?? "", first: row.first, last: row.last)
+            }
         }
+    }
+
+    /// What the producer's own line looks like, and the line still being sent.
+    private func producerBubble(_ text: String, first: Bool = true, last: Bool = true) -> some View {
+        Text(text)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                Color.accentColor.opacity(0.15),
+                in: UnevenRoundedRectangle(
+                    topLeadingRadius: 16,
+                    bottomLeadingRadius: 16,
+                    bottomTrailingRadius: last ? 16 : 8,
+                    topTrailingRadius: first ? 16 : 8
+                )
+            )
     }
 
     /// The reply being written. It reads the streaming segments itself, so a new piece of text
@@ -377,7 +376,68 @@ struct ChatView: View {
 
         var body: some View {
             if !store.streaming.isEmpty {
-                ReplyBubble(segments: store.streaming, character: character, cuesShown: true)
+                HerMessageRow(character: character) {
+                    ReplyBubble(segments: store.streaming, character: character, cuesShown: true)
+                }
+                .padding(.top, 8)
+            }
+        }
+    }
+
+    /// Her side of a bubble group: the avatar on the left, and her name above the group's
+    /// first line. Every line of the group keeps the avatar's width so the bubbles align
+    /// (spec #40).
+    private struct HerMessageRow<Content: View>: View {
+        let character: CharacterConfig
+        var first = true
+        @ViewBuilder var content: Content
+
+        var body: some View {
+            HStack(alignment: .top, spacing: 8) {
+                BubbleAvatar(character: character, shown: first)
+                VStack(alignment: .leading, spacing: 4) {
+                    if first {
+                        Text(character.name)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 2)
+                    }
+                    content
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// Her avatar at the top of a bubble group: the picture when there is one, otherwise
+    /// her colour and the first letter of her name. A line after the group's first keeps
+    /// the same width so the bubbles stay aligned (spec #40).
+    private struct BubbleAvatar: View {
+        let character: CharacterConfig
+        var shown = true
+
+        @Environment(AppModel.self) private var app
+
+        var body: some View {
+            if shown {
+                if let image = app.avatar(for: character.id) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 36, height: 36)
+                        .clipShape(Circle())
+                } else {
+                    Circle()
+                        .fill(Color(hex: character.color ?? "#888888").opacity(0.35))
+                        .frame(width: 36, height: 36)
+                        .overlay {
+                            Text(String(character.name.prefix(1)))
+                                .font(.footnote)
+                        }
+                }
+            } else {
+                Color.clear
+                    .frame(width: 36, height: 36)
             }
         }
     }
@@ -390,6 +450,9 @@ struct ChatView: View {
         let character: CharacterConfig
         var line: String? = nil
         var cuesShown = false
+        /// Another line of her group sits above / below: the meeting corner is smaller.
+        var joinsPrevious = false
+        var joinsNext = false
 
         @Environment(AppModel.self) private var app
 
@@ -417,9 +480,13 @@ struct ChatView: View {
             .padding(.vertical, 10)
             .background(
                 Color(hex: character.color ?? "#888888").opacity(0.18),
-                in: RoundedRectangle(cornerRadius: 16)
+                in: UnevenRoundedRectangle(
+                    topLeadingRadius: joinsPrevious ? 8 : 16,
+                    bottomLeadingRadius: joinsNext ? 8 : 16,
+                    bottomTrailingRadius: 16,
+                    topTrailingRadius: 16
+                )
             )
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
 
         /// What the reader sees. A recorded line keeps its cues in the store, so they are taken
