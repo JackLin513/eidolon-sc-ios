@@ -24,14 +24,23 @@ public protocol AudioCapture: Sendable {
     /// keep the next one silent: every call gets its own.
     func chunks() -> AsyncThrowingStream<Data, Error>
     /// The system stopped or rerouted the microphone — a phone call, Siri, headphones
-    /// plugged or pulled, or the app coming back from the background. Open it again if it
-    /// went quiet; the call's listening stream stays the same.
-    func recover() async
+    /// plugged or pulled, media services resetting, or the app coming back from the
+    /// background. Open it again if it went quiet; the call's listening stream stays the
+    /// same. Says whether the input feeds the call after the attempt: false only when this
+    /// attempt left it shut. A capture that is not running, or one whose attempt is already
+    /// under way, says true — it has nothing to report here, and the attempt under way
+    /// reports its own result.
+    func recover() async -> Bool
+    /// Each system action that can take the microphone away, as one event: an interruption
+    /// ending, a route change, media services resetting. The call asks the microphone to
+    /// come back for each; a capture with nothing to watch yields none.
+    func disruptions() -> AsyncStream<Void>
 }
 
 extension AudioCapture {
     /// A capture with nothing to recover keeps working as it did.
-    public func recover() async {}
+    public func recover() async -> Bool { true }
+    public func disruptions() -> AsyncStream<Void> { AsyncStream { $0.finish() } }
 }
 
 /// The speaker, as the call uses it: one segment's audio at a time.
@@ -121,6 +130,20 @@ public enum CallState: Sendable, Hashable {
     /// The recognizer's connection dropped; the call is still up.
     case reconnecting
     case ended(CallEnd)
+}
+
+/// Something about the microphone the call tells the producer while it goes on
+/// (upstream `MicNotice`): the input went away and could not be opened again.
+public enum MicNotice: Sendable, Hashable {
+    /// The microphone is gone and no other input can be opened; she cannot hear anything.
+    case lost
+
+    public var message: String {
+        switch self {
+        case .lost:
+            "麦克风断开了，也没有别的麦克风可用"
+        }
+    }
 }
 
 /// Why a call ended: the backend's reasons and its own words, and the one ending told apart
@@ -260,6 +283,9 @@ public enum CallEvent: Sendable, Hashable {
     case emotion(reply: Int, segment: Int, emotion: StandEmotion, nod: StandNod.Kind?)
     /// The turn could not be answered; the call goes on.
     case failed(String)
+    /// What the microphone is doing that the producer should know; nil takes the notice
+    /// away. Never comes after the call ended.
+    case micNotice(MicNotice?)
 }
 
 /// Everything a call is made of: the platform's audio and voice services, the chat model,
@@ -378,6 +404,11 @@ public actor CallSession {
     private var textStartedReply: Int?
     /// 麦克风静音: the producer's microphone is closed for the rest of this call.
     private var muted = false
+    /// The microphone notice showing now, if any.
+    private var micNotice: MicNotice?
+    /// One recovery at a time: the foreground and a system action can arrive together, and
+    /// the second must not clear what the first is about to report.
+    private var recoveringAudio = false
 
     /// What the producer said while she was answering; answered once she is done.
     private var pending: [String] = []
@@ -488,6 +519,14 @@ public actor CallSession {
             await hear(false)
         }
         tasks.append(Task { await self.listenLoop() })
+        // The system taking the microphone away is the session's to notice and answer, so
+        // that a failure can reach the screen (spec #41).
+        let disruptions = setup.capture.disruptions()
+        tasks.append(Task {
+            for await _ in disruptions {
+                await self.recoverAudio()
+            }
+        })
         if setup.connectTimeout > .zero {
             let timeout = setup.connectTimeout
             connectTimeoutTask = Task { await self.connectTimedOut(after: timeout) }
@@ -506,12 +545,27 @@ public actor CallSession {
         await finish(.hungUpByProducer)
     }
 
-    /// The app came back to the foreground or the audio route changed: let the microphone
-    /// open again if the system stopped it (spec「通话健壮性」). Nothing happens once the
-    /// call has ended.
+    /// The app came back to the foreground or the system took the microphone away: open it
+    /// again if it went quiet, and say so when it cannot be opened (spec #41). A failure
+    /// while the call is still dialing is not shown — nothing is being heard yet — and a
+    /// muted microphone is not the system's doing. Nothing happens once the call has ended.
     public func recoverAudio() async {
-        guard !finished else { return }
-        await setup.capture.recover()
+        guard !finished, !muted, !recoveringAudio else { return }
+        recoveringAudio = true
+        defer { recoveringAudio = false }
+        let recovered = await setup.capture.recover()
+        if recovered {
+            setMicNotice(nil)
+        } else if everConnected {
+            setMicNotice(.lost)
+        }
+    }
+
+    /// Shows a notice once, and takes it away once: the screen hears only about changes.
+    private func setMicNotice(_ notice: MicNotice?) {
+        guard micNotice != notice else { return }
+        micNotice = notice
+        emit(.micNotice(notice))
     }
 
     /// 只看文字: her words go on the card at her pace and no voice service is called at all
@@ -548,11 +602,15 @@ public actor CallSession {
         guard !finished, muted != on else { return }
         muted = on
         if on {
+            setMicNotice(nil)
             await hear(false)
         } else {
             // Back to what it would be: open once the call has entered, but not while her
             // own voice is playing (ADR-0015) — that segment reopens it when it is done.
             await hear(enteredCall && speakingIndex == nil)
+            // A microphone lost while muted can come back here; if it cannot, say so
+            // (spec #41). Before the call connects there is nothing to notice yet.
+            await recoverAudio()
         }
     }
 
@@ -1188,6 +1246,8 @@ public actor CallSession {
         record(reason)
         recordCallEnd(reason)
         await trace(reason)
+        // The end card speaks for itself; no microphone notice outlives the call.
+        setMicNotice(nil)
         // The end card and the record show at once; 挂断音 plays after them, and the
         // microphone and its audio session are held until it is done, so the route does not
         // jump away early (spec #35).
