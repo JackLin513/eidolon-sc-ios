@@ -51,6 +51,7 @@ Label: wayfinder:map
 - [拍板：地点池怎么整理](issues/10-place-pool-curation.md)：`characters/places.toml` 约 400 个，东京加近郊，取自 OSM、Wikidata 和可复核的圣地考据；地名只写日文；圣地是带 `source` 的记号；14 类，`jobs.toml` 加 `places`、`characters.toml` 加 `place_likes`；代理出初稿、用户用 HTML 校对；地图默认 OSM，后台可换 Google 或高德（大陆不开代理打不开 OSM）。
 - [拍板：一条动态里有什么、素材怎么挑](issues/06-post-content.md)：日语原文加字幕，每条都有文字；服务器先掷带不带图（约 2/3）；工作那条给做完的工作，日常那条给 3 条角色资料，记忆只隐约呼应，带最近 5 条防重复；4 个地点候选加「不带」，30 天不重复，下雨只给室内；服务器抽 4–6 人的圈子，她从中选赞、评论、合照；露出时间服务器定；标签格式不用 JSON，坏了各部分分别降级；私事不点明。
 - [拍板：配图的提示词细节](issues/11-post-image-prompt.md)：风景前缀补 `japan, outdoors`，街景让她写地面能看到的东西（验证 8 张）；桌边抓拍看镜头不修；无人构图的 `action` 栏装景物；清洗表照搬调研；摆拍、抓拍加 `wide shot`；合照靠 `action` 里的 `selfie` 区分自拍，两人 `side-by-side`、三人 `group picture`，`with` 无效降成单人摆拍；`use_coords` 不管。
+- [拍板：隐私政策和使用条款里朋友圈怎么写](issues/12-privacy-and-terms.md)：照旧例只补句子、改日期，不重新同意；隐私政策加「朋友圈」一条，运行记录、语言模型、生图、管理者看不到各补半句，Open-Meteo 和地图链接不写（链接加 `noreferrer`）；更正用户页不显示朋友圈条数；使用条款「角色由 AI 扮演」覆盖到朋友圈，「玩法」加赞和评论不影响好感度。
 
 ## Not yet specified
 
