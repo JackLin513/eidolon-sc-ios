@@ -118,6 +118,7 @@ All **28 idols** from the game's eight units, plus the office clerk Nanakusa Haz
 - 🌙 **Cycles**: She has periods too, and is unwell before and during them, when being considerate pays off; record them on the Cycles page from how she is, and it estimates her next one and explains how ([configuration guide](docs/configuration.en.md#cycles)).
 - 🍸 **VA-283**: She drops by the bar and you mix drinks to her order. The first visit you finish each day gives a draw and brings her closer to you; on your first time in, Hazuki shows you how to mix. The look and the mixing pay tribute to *VA-11 HALL-A*.
 - 💌 **She reaches out**: When you've been away a while, she says a few words first in your conversation; the closer you are, the sooner she does ([configuration guide](docs/configuration.en.md#reach-outs)).
+- 🌅 **Moments**: The characters you've talked with post to your moments, often with a picture, along with a real place and the weather in Tokyo; other idols like and comment, and so can you, and she replies to yours ([configuration guide](docs/configuration.en.md#moments)).
 
 **What she remembers**
 
