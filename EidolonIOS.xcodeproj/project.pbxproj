@@ -16,6 +16,7 @@
 		2AB7F50E81201BDD5EE6B1EC /* BarTutorialUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A409D36FC5F7C23FD61FFB /* BarTutorialUITests.swift */; };
 		2CF24EECC30E051467FA4D35 /* MicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */; };
 		2DC8BFCFABF2EFF1C03EA9A2 /* mirai-ss003-materials.json in Resources */ = {isa = PBXBuildFile; fileRef = EDCB50A245F1E6DF95006203 /* mirai-ss003-materials.json */; };
+		32198FCBEC3CFF501AF276A7 /* MotionDance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B3727E865130BC91BD085C8 /* MotionDance.swift */; };
 		36C86D8435661F4A422CF168 /* BarSettingsBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4EC9179658A248DC6D0E540 /* BarSettingsBox.swift */; };
 		39959392B68279D7A5CB561F /* Model3DResourceLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8205D3A435DC9E25ABA87ED2 /* Model3DResourceLocator.swift */; };
 		3B581C7316F3F7567E6CF0E1 /* StandThumbnails.swift in Sources */ = {isa = PBXBuildFile; fileRef = F51D53D2BDB3163C8344025C /* StandThumbnails.swift */; };
@@ -68,6 +69,7 @@
 		EF42004562B67CC87DFCF565 /* StandWebRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1AD0F6ABD451EB0C733277C /* StandWebRenderer.swift */; };
 		FA5A10686839158B2C50E21D /* BarCounter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38B53BAD43DC896CF33D1635 /* BarCounter.swift */; };
 		FB74EA11C1B5E34D38ED3937 /* ChatStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA937E9DC437925E1DD0673 /* ChatStore.swift */; };
+		FBAEDEBDE089F299294FD937 /* MotionDanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79227468C3942EACF51FEEBC /* MotionDanceTests.swift */; };
 		FE5F343DF7059BBB3A98E62E /* StandSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74AACADEE8C7E3D7A4110BBE /* StandSchemeHandler.swift */; };
 /* End PBXBuildFile section */
 
@@ -121,10 +123,12 @@
 		77736DA8D3A8B0B2407A626B /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		77D2BD6185831DEBBED2FA62 /* BarPixelViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarPixelViews.swift; sourceTree = "<group>"; };
 		78A39D03BFDD50261F07F298 /* StandPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandPreviewView.swift; sourceTree = "<group>"; };
+		79227468C3942EACF51FEEBC /* MotionDanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionDanceTests.swift; sourceTree = "<group>"; };
 		7B8F3B95D300DF671C5E5C20 /* BarTextBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarTextBox.swift; sourceTree = "<group>"; };
 		7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportGuideView.swift; sourceTree = "<group>"; };
 		8205D3A435DC9E25ABA87ED2 /* Model3DResourceLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model3DResourceLocator.swift; sourceTree = "<group>"; };
 		889A8316C35EBB240F4D78A2 /* BarGuest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarGuest.swift; sourceTree = "<group>"; };
+		9B3727E865130BC91BD085C8 /* MotionDance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionDance.swift; sourceTree = "<group>"; };
 		A2C4BC7668252B756B23FADB /* mirai-ss003.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = "mirai-ss003.usdz"; sourceTree = "<group>"; };
 		A318B37F68432043597136CF /* mirai-pr001-materials.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "mirai-pr001-materials.json"; sourceTree = "<group>"; };
 		A3A3CDE40EDED61EECF1DBF1 /* BarJukeboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarJukeboxView.swift; sourceTree = "<group>"; };
@@ -193,6 +197,7 @@
 				DDC46B44103FF59A4FB86496 /* Model3DOutfit.swift */,
 				205CB6BD80B1B6CD74710437 /* Model3DPreview.swift */,
 				8205D3A435DC9E25ABA87ED2 /* Model3DResourceLocator.swift */,
+				9B3727E865130BC91BD085C8 /* MotionDance.swift */,
 				3E5ED037CA30074A04051624 /* ToonShading.metal */,
 				67AB6B0F5CA7C4BC436DD33C /* ToonShading.swift */,
 				5BC7D1D32B813B39816B5F62 /* Resources */,
@@ -234,6 +239,7 @@
 			children = (
 				3783EFF46823F05366835DED /* Model3DActionMapTests.swift */,
 				3EC0942EFD597EBEC749B32B /* Model3DResourceLocatorTests.swift */,
+				79227468C3942EACF51FEEBC /* MotionDanceTests.swift */,
 			);
 			path = tests;
 			sourceTree = "<group>";
@@ -647,6 +653,7 @@
 				6B71B4175DBB52E65D48F03A /* Model3DOutfit.swift in Sources */,
 				A8D18A43B4FCA29403725994 /* Model3DPreview.swift in Sources */,
 				39959392B68279D7A5CB561F /* Model3DResourceLocator.swift in Sources */,
+				32198FCBEC3CFF501AF276A7 /* MotionDance.swift in Sources */,
 				B010CCC803CFEEBE43FD2104 /* ToonShading.metal in Sources */,
 				C4EA345C755A3DA4A6752728 /* ToonShading.swift in Sources */,
 			);
@@ -705,6 +712,7 @@
 			files = (
 				E4D536D8BC6FBB4EFFFC51A1 /* Model3DActionMapTests.swift in Sources */,
 				60652B1C150CA0F816F626FC /* Model3DResourceLocatorTests.swift in Sources */,
+				FBAEDEBDE089F299294FD937 /* MotionDanceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

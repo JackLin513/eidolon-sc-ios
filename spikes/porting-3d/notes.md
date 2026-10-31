@@ -237,20 +237,26 @@ stream0 stride 40（pos12 + normal12 + tangent16）、stream1 stride 12（color4
 |---|---|---|---|
 | `Const` | 74 | 1 | 整段一个值，可折叠成常量表 |
 | `FullFrame` | 52 | 7801 | **60 fps 每帧一个**（130.0 s × 60 + 1），已确认 |
-| `Discreate` | 52 | 22 / 54 / 4662…4890 不等 | 长度不规整，**采样语义未确认** |
+| `Discreate` | 52 | 22 / 54 / 4662…4890 不等 | 扁平的 `(time, value)` 对，键间线性插值，首尾夹住；已确认（见 10-31 一节） |
 
-压缩实测（`motion.py`，33 个单测通过）：
+压缩实测（`motion.py`，旧版）：
 
 - 折叠 74 条 `Const` + `FullFrame` 降到 30 fps + int16 量化
 - 0.01° 精度 → **2.45 MB**；0.1° 精度 → **1.99 MB**（原始 13.32 MB）
 
-**未确认的三件事**（原计划用 rea 反编译确认，但这台机器上 rea 6.8.0 **没有 ida provider**——`rea providers` 只列出 ghidra / hopper / native-macos / rea-artifact-graph / rea-dotnet-static / sqlite）：
+### 2026-10-31 曲线语义定案与压缩格式（#27）
 
-1. `Discreate` 的采样语义与时间轴（决定还能压多少）
-2. 欧拉顺序与符号
-3. `MODEL_00/BODY_SCALE` 在角色实际层级里是否存在
+用 IDA Pro 9.4（`ida-pro-mcp`）反编译 `CharacterImasMotionPlayer` 的几个函数确认语义，替代原来猜测、试错的三件事：
 
-要补 IDA：`idalib-mcp` 在 `~/.local/bin/idalib-mcp`，配置在 `~/.dsh/plugins/rea-bundle/ida-mcp.json`，但 rea 6.8.0 不认这份配置。
+1. **欧拉顺序与符号**：`SetResultToTransforms` 把 `Result.angle` 的 x/y/z 原样乘 0.01745329 后交给 `Quaternion.Euler` → `Transform.set_localRotation`，没有取负、没有换轴。Unity 的 `Internal_FromEulerRad` 内部按 **z → x → y** 施加，即 `q = qY * qX * qZ`。位置只在 CurveSet 里至少有一条 Position 曲线时才写 `set_localPosition`。
+2. **采样与插值**：`SolveCurves` 先把 `current_time` 截断到整帧 `(int)(t*60)/60`，所以姿势只存在于 60 fps 网格上。`FullFrame` 每 1/60 s 一个样本；`FullFrameOffset` 的 `values[0]` 是起始时间；`DeltaFrame` 的 `values[0]` 是帧长（秒）；`Discreate` 是扁平的 `(time, value)` 对；这四种都线性插值，越界夹到首/尾。`Step` 保持前一个值，`Const` 取 `values[0]`，`FCurve` 是标准三次 Hermite（`(time, value, inTangent, outTangent)`，切线乘键距），`Step_3Values` 在 `SolveCurve` 里不参与求值（返回 0）。
+3. **`MODEL_00/BODY_SCALE` 存在**：`CharacterImasMotionAsset` 的曲线路径里就有 `MODEL_00/BODY_SCALE/BASE`（本支舞 57 个路径之一）；`dump.cs` 里 `CharacterCommonSkeleton.BoneID` 的 `POSITION = 0, MODEL_00 = 1, BODY_SCALE = 2, BASE = 3`，`ShadowMapCtrl` 也把 `"MODEL_00/BODY_SCALE/BASE"` 写死成常量。
+
+新的端上格式 `eidolon.motion/1`（`compress_motion.py` 产出）：统一 30 fps 网格、折叠常量、通道做**增量编码**（`[首帧, 增量…]`，首帧和单个增量都按 int16 上限校验）。角度整数化用 1/100°，位置 1/4000 单位。`dan_loveig_01` 实测：**1.32 MB**（< 2 MB 门槛）、57 根骨、3901 帧，最大单帧增量 16637（< 32767）；`--verify` 重新采样原始曲线对照，最差角度误差 0.005°（= 量化半步），位置误差 0.000125 单位。
+
+Swift 侧 `spikes/porting-3d/ios/MotionDance.swift` 是纯值类型解码器（不 import RealityKit），含 Unity ZXY 欧拉 → 四元数；单测 `MotionDanceTests` 覆盖格式、增量还原、越界夹取、手算四元数，以及「单骨骼单帧」数值对照。
+
+**给 #28 的坑**：导出的 USDZ 层级里只有 `MODEL_00 → BASE`，`POSITION` 与 `BODY_SCALE` 两个 Transform 在 glTF 导出时被压掉了（它们不是 SkinnedMeshRenderer 的骨骼，导出器按骨骼重建层级）。而曲线路径正好按这两个节点寻址。`register_imo_data`（`0x37ECCE4`）对每个 CurveSet 用 `go.transform.Find(path)` 各自解析目标 Transform 再存进 `CurveBinder.tr`，所以 `POSITION` 和 `MODEL_00` 是**两个不同的 Transform**、游戏里就是两级各自叠加——端上照做即可，不要去重。缺失的 `POSITION` / `POSITION/SCALE_POINT` 两条曲线要补根节点或合进根实体；其余路径先按叶子唯一名匹配（55/57），匹配不到时把 `MODEL_00/BODY_SCALE/` 改写成 `MODEL_00/`。
 
 ### 2026-10-29 模拟器里跑通（#73 收尾）
 

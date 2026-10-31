@@ -54,13 +54,31 @@ $V spikes/porting-3d/export_corpus.py \
 
 当前语料：58 组（001–052 角色、101kot/102mis、4 个通用 `xxx`）、109 个模型、49 套演出服。
 
+### 动作曲线
+
+```sh
+$V spikes/porting-3d/compress_motion.py \
+   --input  build/mltd-spike/out/il2cpp/loveig-curves.json \
+   --output build/mltd-spike/out/curves/loveig.motion.json \
+   --verify
+```
+
+把 `CharacterImasMotionAsset` 的曲线压成端上格式 `eidolon.motion/1`：30 fps 统一网格、折叠常量、通道增量编码、1/100° 与 1/4000 单位量化。`--verify` 会用原始曲线重新采样对照，报告真实误差。语义（欧拉顺序、各 key_type 的采样与插值）已用 IDA 反编译确认，见 `notes.md` 的 2026-10-31 一节。端上解码器是 `ios/MotionDance.swift`，纯值类型，不依赖 RealityKit。
+
 ### 测试
 
 ```sh
 $V -m unittest discover -s spikes/porting-3d/tests
 ```
 
-38 个纯函数单测（解码、手性、材质参数、曲线、资源定位），不联网。
+63 个纯函数单测（解码、手性、材质参数、曲线语义、压缩格式、资源定位），不联网。
+
+Swift 单测（`Eidolon3DSpikeTests`，23 个，从 scheme `Eidolon3DSpike` 跑）：
+
+```sh
+xcodebuild test -project EidolonIOS.xcodeproj -scheme Eidolon3DSpike \
+  -destination 'platform=iOS Simulator,id=<sim>'
+```
 
 ### 体检
 
