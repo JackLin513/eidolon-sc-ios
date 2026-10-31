@@ -85,7 +85,7 @@
   - 前端：`navShell.test.ts` 测四项的顺序、`/moments` 在外壳里、当前项、关着时没有这一项；新的 `moments.test.ts` 测时间线一行的 Meta。
 - [x] **验收**：按 `docs/agents/local-acceptance.md` 在本地构建版上看。本地库里有真的对话，改用一份副本：改好时间，调一次「跑一遍」，用真模型造出一条动态。用 Playwright 在宽屏和手机上各看一次：导航的四项、时间线的一行、通话中切过去不挂断。看完删掉副本、脚本和截图。
 - [ ] 表结构有改动，部署前手动备份数据库。（部署时做）
-- [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。（本机 affected-tests 通过；CI 待推送后看）
+- [x] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。（第一次推送漏改 `test_sign_in.py` 里账号的完整返回，aa1ab892 修好后 CI 全绿）
 
 ## Comments
 
