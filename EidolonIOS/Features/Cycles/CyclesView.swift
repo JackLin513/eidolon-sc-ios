@@ -246,7 +246,7 @@ struct CyclesView: View {
             }
             .accessibilityLabel("上个月")
             Spacer()
-            Text("\(month.year)年\(month.month)月")
+            Text(verbatim: "\(month.year)年\(month.month)月")
                 .font(.title3.weight(.semibold))
                 .monospacedDigit()
             Spacer()
@@ -401,7 +401,7 @@ struct CyclesView: View {
                     } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("\(record.firstDay.year)年\(record.firstDay.month)月\(record.firstDay.day)日")
+                                Text(verbatim: "\(record.firstDay.year)年\(record.firstDay.month)月\(record.firstDay.day)日")
                                     .font(.subheadline)
                                 Text("\(record.days) 天")
                                     .font(.caption)

@@ -175,6 +175,7 @@ struct ConversationListView: View {
                     } label: {
                         Image(systemName: "gearshape")
                     }
+                    .accessibilityLabel("设置")
                 }
             }
             .sheet(isPresented: $showCalendar) {

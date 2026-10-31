@@ -95,7 +95,7 @@ struct CalendarView: View {
             }
             .accessibilityLabel("上个月")
             Spacer()
-            Text("\(month.year)年\(month.month)月")
+            Text(verbatim: "\(month.year)年\(month.month)月")
                 .font(.title3.weight(.semibold))
                 .monospacedDigit()
             Spacer()

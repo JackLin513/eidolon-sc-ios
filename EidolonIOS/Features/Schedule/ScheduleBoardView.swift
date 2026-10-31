@@ -20,6 +20,7 @@ struct ScheduleBoardView: View {
     @State private var isLoading = true
     @State private var loadError: String?
     @State private var saving = false
+    @State private var switching = false
     @State private var notice: String?
     @State private var inspected: ScheduleCell?
     /// At least 44pt a cell, scaled with the text size; seven days may scroll on a narrow
@@ -87,6 +88,7 @@ struct ScheduleBoardView: View {
             guard characterID != nil else {
                 loadError = "内容包里没有角色"
                 isLoading = false
+                switching = false
                 return
             }
             return
@@ -105,6 +107,7 @@ struct ScheduleBoardView: View {
             loadError = error.localizedDescription
         }
         isLoading = false
+        switching = false
     }
 
     /// Reloads the week after a save, keeping unsaved drafts and their reasons.
@@ -162,6 +165,14 @@ struct ScheduleBoardView: View {
             .padding(.bottom, 24)
         }
         .scrollDismissesKeyboard(.interactively)
+        .disabled(switching)
+        .overlay {
+            if switching {
+                ProgressView()
+                    .padding(14)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            }
+        }
     }
 
     private var characterBar: some View {
@@ -171,8 +182,7 @@ struct ScheduleBoardView: View {
                     let chosen = candidate.id == characterID
                     Button {
                         characterID = candidate.id
-                        board = nil
-                        planner = nil
+                        switching = true
                     } label: {
                         HStack(spacing: 6) {
                             avatar(candidate)
@@ -227,8 +237,7 @@ struct ScheduleBoardView: View {
                     let chosen = weekOffset == offset
                     Button {
                         weekOffset = offset
-                        board = nil
-                        planner = nil
+                        switching = true
                     } label: {
                         Text(offset == 0 ? "本周" : "下周")
                             .font(.subheadline.weight(chosen ? .semibold : .regular))
@@ -273,7 +282,7 @@ struct ScheduleBoardView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: 4) {
                 VStack(spacing: 4) {
-                    Color.clear.frame(height: 22)
+                    Color.clear.frame(height: 28)
                     ForEach(0..<3, id: \.self) { slot in
                         Text(ScheduleSlot(rawValue: slot)?.name ?? "")
                             .font(.caption2)
@@ -287,14 +296,17 @@ struct ScheduleBoardView: View {
                         now: Date(), timeZone: app.producerTimeZone
                     )
                     VStack(spacing: 4) {
-                        Text(dayHeader(day))
-                            .font(.caption2.weight(
-                                day == today && weekOffset == 0 ? .bold : .regular
-                            ))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                            .frame(height: 22)
+                        VStack(spacing: 0) {
+                            Text(dayName(day))
+                                .font(.caption2.weight(
+                                    day == today && weekOffset == 0 ? .bold : .regular
+                                ))
+                            Text(dateLabel(day))
+                                .font(.caption2)
+                                .monospacedDigit()
+                        }
+                        .foregroundStyle(.secondary)
+                        .frame(height: 28)
                         ForEach(0..<3, id: \.self) { slot in
                             cellButton(planner.cell(day: day, slot: slot))
                         }
@@ -305,11 +317,13 @@ struct ScheduleBoardView: View {
         }
     }
 
-    private func dayHeader(_ day: Int) -> String {
-        let weekdays = "一二三四五六日"
-        let name = String(weekdays[weekdays.index(weekdays.startIndex, offsetBy: day)])
+    private func dayName(_ day: Int) -> String {
+        String(Array("一二三四五六日")[day])
+    }
+
+    private func dateLabel(_ day: Int) -> String {
         let date = week.adding(days: day)
-        return "\(name)\n\(date.month)/\(date.day)"
+        return "\(date.month)/\(date.day)"
     }
 
     private func cellButton(_ cell: ScheduleCell) -> some View {
@@ -333,6 +347,9 @@ struct ScheduleBoardView: View {
                     } else if isAvailable(cell, planner: planner) {
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
                             .strokeBorder(Color.accentColor, lineWidth: 1.2)
+                    } else if !cell.state.isSaved {
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .strokeBorder(cellBorderColor(cell.state), lineWidth: 1)
                     }
                 }
                 .contentShape(Rectangle())
@@ -367,7 +384,16 @@ struct ScheduleBoardView: View {
         case .now: return Color.orange.opacity(0.12)
         case .past: return Color.secondary.opacity(0.06)
         case .cannot: return Color.secondary.opacity(0.04)
-        case .empty: return Color.secondary.opacity(0.08)
+        case .empty: return Color.secondary.opacity(0.06)
+        }
+    }
+
+    private func cellBorderColor(_ state: ScheduleCellState) -> Color {
+        switch state {
+        case .empty: Color.secondary.opacity(0.28)
+        case .now: Color.orange.opacity(0.45)
+        case .past, .cannot: Color.secondary.opacity(0.12)
+        case .saved, .draft: .clear
         }
     }
 
@@ -410,10 +436,6 @@ struct ScheduleBoardView: View {
         case .past, .now:
             return "已经过去或正在进行"
         }
-    }
-
-    private func dayName(_ day: Int) -> String {
-        String(Array("一二三四五六日")[day])
     }
 
     private func progressLine(_ planner: SchedulePlanner) -> some View {
