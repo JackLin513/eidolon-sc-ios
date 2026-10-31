@@ -27,3 +27,6 @@ research-alpha-and-cutout.md
 research-cutout-alpha-and-seams.md
 research-userelflect-and-texture-slots.md
 research-chr-span-sparkle.md
+
+# Decompiled CalcBone driver quoted line by line; conclusions live in ios/MotionAssist.swift.
+research-mltd-calcbone.md

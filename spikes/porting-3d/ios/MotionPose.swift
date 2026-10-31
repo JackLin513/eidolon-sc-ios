@@ -1,0 +1,213 @@
+import Foundation
+import simd
+
+/// One joint's local transform in the app's right-handed space, kept free of
+/// RealityKit so the playback maths is a plain value type under test.
+struct JointPose: Equatable {
+    /// Local translation relative to the parent joint.
+    var translation: SIMD3<Float>
+    /// Rotation as `(x, y, z, w)`, the same layout `UnityEuler` returns.
+    var rotation: SIMD4<Float>
+    var scale: SIMD3<Float>
+
+    static let identity = JointPose(
+        translation: .zero, rotation: SIMD4(0, 0, 0, 1), scale: .one
+    )
+}
+
+/// The exported model lives in glTF's right-handed frame; the game's curves are
+/// authored in Unity's left-handed one. `gltf_export.flip_quaternion` maps
+/// between them by conjugating with `diag(1, 1, -1)`, which for a quaternion
+/// means negating x and y and keeping z, and for a point means negating z.
+/// Playback has to apply the same mirror, or every joint bends the wrong way.
+enum UnityHandedness {
+    static func rotation(_ degrees: SIMD3<Float>) -> SIMD4<Float> {
+        let q = UnityEuler.quaternion(degrees)
+        return SIMD4(-q.x, -q.y, q.z, q.w)
+    }
+
+    static func translation(_ position: SIMD3<Float>) -> SIMD3<Float> {
+        SIMD3(position.x, position.y, -position.z)
+    }
+
+    /// The extra turn between the game's frame and the one RealityKit uses as
+    /// a skeleton root joint's parent.
+    ///
+    /// `rest.json` dumps RealityKit's own rest pose, and for the two root
+    /// joints it disagrees with the game: `MUNE1` comes back at
+    /// `(0, 0, 0.147)` where the dance's own chain has `(0, 0.147, 0)`, and its
+    /// rest rotation is the game's `BASE` rotation turned a further +90° about
+    /// X. That is the Y-up to Z-up turn the USDZ pipeline makes at the model
+    /// root; child joints are unaffected because both they and their parents
+    /// went through it. So a root joint's local rotation needs this left
+    /// factor, and only a root joint's.
+    static let rootFrame = SIMD4<Float>(0.70710678, 0, 0, 0.70710678)
+
+    /// Rotation `a` followed by `b`, both `(x, y, z, w)`.
+    static func multiply(_ a: SIMD4<Float>, _ b: SIMD4<Float>) -> SIMD4<Float> {
+        QuaternionMath.multiply(a, b)
+    }
+}
+
+/// Quaternion arithmetic in the app's right-handed frame, with Unity's operand
+/// order: `multiply(a, b)` applies `b` first, then `a`.
+enum QuaternionMath {
+    static func multiply(_ a: SIMD4<Float>, _ b: SIMD4<Float>) -> SIMD4<Float> {
+        SIMD4(
+            a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+            a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+            a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+            a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z
+        )
+    }
+
+    static func inverse(_ q: SIMD4<Float>) -> SIMD4<Float> {
+        SIMD4(-q.x, -q.y, -q.z, q.w)
+    }
+
+    /// Rotate `v` by the unit quaternion `q` (`q v q*`).
+    static func rotate(_ q: SIMD4<Float>, _ v: SIMD3<Float>) -> SIMD3<Float> {
+        let axis = SIMD3(q.x, q.y, q.z)
+        let twice = 2 * simd_cross(axis, v)
+        return v + q.w * twice + simd_cross(axis, twice)
+    }
+
+    static func dot(_ a: SIMD4<Float>, _ b: SIMD4<Float>) -> Float {
+        simd_dot(a, b)
+    }
+
+    /// Shortest-path spherical interpolation, the same result as Unity's
+    /// `Quaternion.Slerp` up to sign.
+    static func slerp(_ a: SIMD4<Float>, _ b: SIMD4<Float>, _ t: Float) -> SIMD4<Float> {
+        var end = b
+        var cosine = dot(a, end)
+        if cosine < 0 {
+            end = -end
+            cosine = -cosine
+        }
+        if cosine > 0.9995 {
+            return simd_normalize(a + (end - a) * t)
+        }
+        let angle = acos(min(cosine, 1))
+        let sine = sin(angle)
+        let start = sin((1 - t) * angle) / sine
+        let finish = sin(t * angle) / sine
+        return start * a + finish * end
+    }
+
+    /// The shortest turn that takes unit vector `from` onto `to`.
+    static func fromToRotation(_ from: SIMD3<Float>, _ to: SIMD3<Float>) -> SIMD4<Float> {
+        let a = simd_normalize(from)
+        let b = simd_normalize(to)
+        let cosine = simd_dot(a, b)
+        if cosine < -0.999999 {
+            // Antiparallel: any perpendicular axis gives a half turn.
+            let fallback: SIMD3<Float> = abs(a.x) < 0.9 ? SIMD3(1, 0, 0) : SIMD3(0, 1, 0)
+            let axis = simd_normalize(simd_cross(a, fallback))
+            return SIMD4(axis.x, axis.y, axis.z, 0)
+        }
+        let axis = simd_cross(a, b)
+        return simd_normalize(SIMD4(axis.x, axis.y, axis.z, 1 + cosine))
+    }
+}
+
+
+/// Turns a decoded dance into a full joint pose for any frame.
+///
+/// Channels are expanded once up front: a running sum per lookup would cost
+/// a few hundred thousand additions per rendered frame, and the expanded form
+/// of a whole dance is only a few megabytes.
+struct MotionSampler {
+    /// One bone's animation after resolution and unit conversion.
+    private struct Track {
+        let joint: Int
+        /// Whether this joint hangs off the model space instead of a parent
+        /// joint, and so needs the frame change in `pose(atFrame:)`.
+        let isRoot: Bool
+        /// Euler degrees per frame, still in Unity space.
+        let rotation: [SIMD3<Float>]?
+        /// Unity units per frame, still in Unity space.
+        let translation: [SIMD3<Float>]?
+    }
+
+    let dance: MotionDance
+    let map: MotionJointMap
+    /// The pose a joint keeps when the dance says nothing about it.
+    private let rest: [JointPose]
+    private let tracks: [Track]
+    /// The game's calc-bone pass over the rig's assist bones, empty when the
+    /// caller did not pass the joint names.
+    private let assist: MotionAssist
+
+    init(dance: MotionDance, map: MotionJointMap, rest: [JointPose], joints: [String] = []) {
+        self.dance = dance
+        self.map = map
+        self.rest = rest
+        self.assist = MotionAssist(joints: joints, rest: rest)
+        self.tracks = map.bindings.map { binding in
+            let bone = dance.bones[binding.bone]
+            return Track(
+                joint: binding.joint,
+                isRoot: map.roots.contains(binding.joint),
+                rotation: Self.euler(bone, dance: dance),
+                translation: Self.position(bone, dance: dance)
+            )
+        }
+    }
+
+    var jointCount: Int { rest.count }
+
+    /// How many assist bones the calc-bone pass drives, for the status line.
+    var assistCount: Int { assist.count }
+
+    /// Every joint's local transform at `frame`, in `rest` order.
+    func pose(atFrame frame: Int) -> [JointPose] {
+        var poses = rest
+        for track in tracks {
+            let index = min(max(frame, 0), dance.frames - 1)
+            var pose = poses[track.joint]
+            if let rotation = track.rotation {
+                let mirrored = UnityHandedness.rotation(rotation[index])
+                pose.rotation = track.isRoot
+                    ? UnityHandedness.multiply(UnityHandedness.rootFrame, mirrored)
+                    : mirrored
+            }
+            if let translation = track.translation {
+                pose.translation = UnityHandedness.translation(translation[index])
+            }
+            poses[track.joint] = pose
+        }
+        assist.apply(&poses)
+        return poses
+    }
+
+    func pose(at time: Double) -> [JointPose] {
+        pose(atFrame: dance.frame(at: time))
+    }
+
+    private static func euler(_ bone: MotionDance.Bone, dance: MotionDance) -> [SIMD3<Float>]? {
+        guard bone.rot.count == 3 else { return nil }
+        let channels = bone.rot.map { $0.expanded(frames: dance.frames) }
+        let scale = dance.angleScale
+        return (0..<dance.frames).map { frame in
+            SIMD3(
+                Float(channels[0][frame]) / scale,
+                Float(channels[1][frame]) / scale,
+                Float(channels[2][frame]) / scale
+            )
+        }
+    }
+
+    private static func position(_ bone: MotionDance.Bone, dance: MotionDance) -> [SIMD3<Float>]? {
+        guard let pos = bone.pos, pos.count == 3 else { return nil }
+        let channels = pos.map { $0.expanded(frames: dance.frames) }
+        let scale = dance.positionScale
+        return (0..<dance.frames).map { frame in
+            SIMD3(
+                Float(channels[0][frame]) / scale,
+                Float(channels[1][frame]) / scale,
+                Float(channels[2][frame]) / scale
+            )
+        }
+    }
+}

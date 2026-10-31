@@ -51,6 +51,28 @@ def average_normals(stage: Usd.Stage) -> int:
     return converted
 
 
+def neutralize_geom_bind(stage: Usd.Stage) -> int:
+    """Make `geomBindTransform` the identity on every skinned mesh.
+
+    Blender's exporter computes `geomBindTransform` from the mesh's transform
+    relative to the armature, but the glTF import leaves the points *already* in
+    bind space (`gltf_to_usdz.py` clears the mesh's own transform for exactly
+    that reason; measured vertex-to-dominant-joint distance at rest is 0.11).
+    A spec-correct renderer applies the point transform first —
+    `P' = Σ w · jointWorld · invBind · geomBind · P` — so the stale non-identity
+    matrix was applied on top of bind-space points and tore every posed frame
+    into sheets, while the rest pose looked perfect (a constant pre-transform
+    cancels there). RealityKit honours the spec; the identity is the fix.
+    """
+    patched = 0
+    for prim in stage.Traverse():
+        attribute = prim.GetAttribute("primvars:skel:geomBindTransform")
+        if attribute and attribute.HasAuthoredValue():
+            attribute.Set(Gf.Matrix4d(1.0))
+            patched += 1
+    return patched
+
+
 def inject_normals(stage: Usd.Stage, attributes: dict) -> tuple[int, int]:
     """Write the game's own vertex normals, instead of Blender's guess.
 
@@ -263,12 +285,15 @@ def main() -> None:
     if blended:
         print(f"alpha wired: {blended}")
 
+    rebased = neutralize_geom_bind(stage)
+
     stage.GetRootLayer().Save()
 
     UsdUtils.CreateNewUsdzPackage(source, destination)
     print(
         f"packed {destination} ({normals_installed} meshes re-normalled, "
         f"{installed} second UV sets added, {averaged} averaged, "
+        f"{rebased} geomBindTransforms reset, "
         f"st sanity {deviation:.4f})"
     )
 

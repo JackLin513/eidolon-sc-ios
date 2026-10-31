@@ -30,6 +30,9 @@ struct Model3DPreview: View {
     /// Kept across outfit swaps; actions arrive in the next ticket, but the
     /// selection seam must already be one value rather than an outfit-only flag.
     @State private var direction = StandDirection.calm
+    /// Drives the decoded dance curves; attached only when a motion file sits
+    /// beside the model (or `EIDOLON_3D_MOTION` names one).
+    @State private var playback = MotionPlayback()
 
     /// Framing the loader chose, before any inspection gesture moves it.
     @State private var baseScale: Float = 1
@@ -40,8 +43,7 @@ struct Model3DPreview: View {
 
     /// Inspection gestures. Orbit is a debug affordance, not the parity framing:
     /// the preview opens on the fixed front composition.
-    /// `EIDOLON_3D_YAW` (degrees) poses the model for screenshot runs.
-        /// `EIDOLON_3D_YAW` (degrees): a starting pose for screenshot runs.
+    /// `EIDOLON_3D_YAW` (degrees): a starting pose for screenshot runs.
     private static var startingYaw: Float {
         (Float(ProcessInfo.processInfo.environment["EIDOLON_3D_YAW"] ?? "0") ?? 0) * .pi / 180
     }
@@ -178,6 +180,26 @@ struct Model3DPreview: View {
             }
             .buttonStyle(.bordered)
             .tint(.white)
+
+            if playback.duration > 0 {
+                Button {
+                    playback.toggle()
+                } label: {
+                    Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                        .padding(.horizontal, 6)
+                }
+                .buttonStyle(.bordered)
+                .tint(playback.isPlaying ? .pink : .white)
+
+                Button {
+                    playback.seek(to: 0)
+                } label: {
+                    Image(systemName: "backward.end.fill")
+                        .padding(.horizontal, 6)
+                }
+                .buttonStyle(.bordered)
+                .tint(.white)
+            }
 
         }
         characterRow
@@ -415,6 +437,7 @@ struct Model3DPreview: View {
             resetInspection()
             entity = loaded
             applyInspection()
+            startMotion(for: selected, beside: url)
 
             loadError = nil
             phase = .loaded
@@ -428,6 +451,47 @@ struct Model3DPreview: View {
                 phase = .failed(error.localizedDescription)
             }
         }
+    }
+
+    /// Attach a dance when one was exported beside the model. The file is named
+    /// after the outfit (`014mir-ss002.motion.json`) because the curves belong
+    /// to the body skeleton rather than the costume; `EIDOLON_3D_MOTION` names a
+    /// file directly, or one to look up beside the USDZ, for a one-off run.
+    private func startMotion(for selected: Model3DOutfit, beside url: URL) {
+        guard let motionURL = motionURL(for: selected, beside: url) else { return }
+        do {
+            let dance = try JSONDecoder().decode(
+                MotionDance.self, from: Data(contentsOf: motionURL)
+            )
+            guard playback.attach(dance: dance, to: container) else {
+                loadError = playback.status
+                return
+            }
+            // A screenshot takes most of a second, so a diagnostic run that
+            // wants "the pose at t" holds that frame instead of racing the
+            // clock.
+            if let raw = ProcessInfo.processInfo.environment["EIDOLON_3D_PAUSE_AT"],
+               let seconds = Double(raw) {
+                playback.seek(to: seconds)
+            } else {
+                playback.play()
+            }
+        } catch {
+            loadError = "动作读不了：\(error.localizedDescription)"
+        }
+    }
+
+    private func motionURL(for selected: Model3DOutfit, beside url: URL) -> URL? {
+        let exists = FileManager.default.fileExists(atPath:)
+        if let raw = ProcessInfo.processInfo.environment["EIDOLON_3D_MOTION"] {
+            let direct = URL(filePath: raw)
+            if exists(direct.path) { return direct }
+            let besideModel = url.deletingLastPathComponent().appending(path: raw)
+            return exists(besideModel.path) ? besideModel : nil
+        }
+        let besideModel = url.deletingLastPathComponent()
+            .appending(path: "\(selected.id).motion.json")
+        return exists(besideModel.path) ? besideModel : nil
     }
 
     /// Parsing a multi-megabyte USDZ on the main actor froze the app when the
@@ -504,7 +568,11 @@ struct Model3DPreview: View {
         // World units of height the model should occupy. Calibrated against the
         // settled bounds: 2.3 rendered her at 38% of the viewport height, so 4.2
         // lands near 70% with the head clear of the status bar.
-        let targetHeight: Float = 2.1
+        // `EIDOLON_3D_FIT_ZOOM` pulls the camera back while inspecting: a pose
+        // that throws a limb out of frame can only be judged when the whole
+        // swept volume is visible.
+        let zoom = Float(ProcessInfo.processInfo.environment["EIDOLON_3D_FIT_ZOOM"] ?? "") ?? 1
+        let targetHeight: Float = 2.1 * zoom
         let scale = targetHeight / extent
         let centre = sampled ?? bounds.center
         let center = centre * scale
