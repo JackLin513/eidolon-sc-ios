@@ -185,14 +185,16 @@ class CharacterConfig:
         photo: tuple[str, str] | None = None,
         bar: dict[str, object] | None = BAR_TASTE,
         place_likes: tuple[str, ...] | None = None,
+        short_name: str | None = None,
     ) -> "CharacterConfig":
         """`greeting` is her greeting in Japanese, delivery cues and all, and its subtitle;
         `call_opener` her call opener, likewise; `other_names` her `name_zh`, `name_kana`
         and `name_romaji`; `liked_gifts` her liked gifts (None leaves them out), cake by
         default as every catalog the tests write has it; `photo` her `photo_tag` and
         `photo_appearance`; `bar` her bar tastes, field by field (None leaves them all out);
-        `place_likes` the kinds of place she likes (None leaves them out); `birthday` her `"MM-DD"`, a day on which tests' clocks fall
-        on no one's birthday unless they set one (None leaves it out); `age` her age, as
+        `place_likes` the kinds of place she likes (None leaves them out); `short_name` her
+        short name; `birthday` her `"MM-DD"`, a day on which tests' clocks fall on no one's
+        birthday unless they set one (None leaves it out); `age` her age, as
         TOML writes it, or None to leave it out."""
         entry = f'[[characters]]\nid = "{id}"\nname = "{name}"\nintro = "{intro}"\n'
         entry += f'voice_id = "{voice_id}"\nsheet = "sheets/{id}.md"\n'
@@ -230,6 +232,8 @@ class CharacterConfig:
             text, subtitle = call_opener
             entry += f"call_opener = {json.dumps(text, ensure_ascii=False)}\n"
             entry += f"call_opener_subtitle = {json.dumps(subtitle, ensure_ascii=False)}\n"
+        if short_name is not None:
+            entry += f"short_name = {json.dumps(short_name, ensure_ascii=False)}\n"
         if other_names is not None:
             for field, value in zip(("name_zh", "name_kana", "name_romaji"), other_names):
                 entry += f"{field} = {json.dumps(value, ensure_ascii=False)}\n"

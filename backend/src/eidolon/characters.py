@@ -103,6 +103,16 @@ class Fact:
     text: str
     """The entry as it is retrieved, headed by its title."""
 
+    @property
+    def headings(self) -> list[str]:
+        """The headings above it, the outermost first; none for text before any heading."""
+        return self.title.split(" / ") if self.title is not None else []
+
+    @property
+    def body(self) -> str:
+        """What is under its heading, without its title."""
+        return self.text.split("\n", 1)[1].strip() if self.title is not None else self.text
+
 
 @dataclass(frozen=True)
 class ScriptedLine:

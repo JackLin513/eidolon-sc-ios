@@ -22,6 +22,14 @@ before any is drawn; the rest are drawn by weight, one of a kind she likes weigh
 times as much, her holy site `HOLY` times. Of her work moment, only of the kinds of place her
 jobs take her to, each as likely.
 
+Her circle (`draw_circle`), those who may like and comment on her moment: as many as `CIRCLE`
+(`BIRTHDAY_CIRCLE` on her birthday), those she knows whose birthday it is first; then, now
+and then (`STRANGER`), one of the others; then those she knows drawn by weight, her unit mates
+weighing `MATE`, those of a section of her facts `RELATED`; then, should they be too few, the
+others. When each like and comment shows (`draw_shown`): each like within `LIKES_AFTER` of the
+moment, on its own; as many times within `COMMENTS_AFTER` drawn as there are comments, and
+given them in order.
+
 Every draw asks the random source for a number below `PLACES`, so that one giving the same
 number each time draws alike wherever it is asked."""
 
@@ -76,6 +84,28 @@ HOLY = 4
 
 KEPT_APART = timedelta(days=30)
 """How long a place one of the user's moments was at is not drawn again for them."""
+
+CIRCLE = (4, 6)
+"""How many are in her circle, at least and at most."""
+
+BIRTHDAY_CIRCLE = (8, 10)
+"""How many are in her circle on her birthday, at least and at most."""
+
+MATE = 3
+"""How much one of her unit mates weighs in drawing her circle."""
+
+RELATED = 1
+"""How much one of a section of her facts on the people she knows weighs in drawing her
+circle."""
+
+STRANGER = 0.25
+"""How likely one of another unit is in her circle."""
+
+LIKES_AFTER = (timedelta(minutes=5), timedelta(hours=3))
+"""How long after the moment shows each like shows, at least and at most."""
+
+COMMENTS_AFTER = (timedelta(minutes=15), timedelta(hours=6))
+"""How long after the moment shows each comment shows, at least and at most."""
 
 _SEASONS: dict[int, Season] = {
     month: season
@@ -153,7 +183,7 @@ def work_time(last_done: datetime, after: datetime, random: Random) -> datetime 
 def draw_seeds(facts: Sequence[Fact], random: Random) -> list[Fact]:
     """`SEEDS` of `facts`, or all if fewer, but for those under `RELATIONS`, in the order
     drawn."""
-    left = [f for f in facts if f.title is None or f.title.split(" / ")[0] != RELATIONS]
+    left = [f for f in facts if f.headings[:1] != [RELATIONS]]
     return [left.pop(_index(random, len(left))) for _ in range(min(SEEDS, len(left)))]
 
 
@@ -193,16 +223,60 @@ def draw_places(
         for p in left
     ]
     while left and len(drawn) < CANDIDATES:
-        weighed = _draw(random) * sum(weights)
-        index = len(left) - 1  # the last, should rounding leave it past them all
-        for i, weight in enumerate(weights):
-            if weighed < weight:
-                index = i
-                break
-            weighed -= weight
+        index = _weighted(random, weights)
         drawn.append(left.pop(index))
         weights.pop(index)
     return drawn
+
+
+def draw_circle(
+    mates: Sequence[str],
+    related: Sequence[str],
+    others: Sequence[str],
+    birthdays: Collection[str],
+    her_birthday: bool,
+    random: Random,
+) -> list[str]:
+    """Her circle, of her unit `mates`, those a section of her facts is on (`related`) and
+    the `others`, none of them twice: those of `mates` and `related` whose birthday it is
+    (`birthdays`) first, then the others drawn for, as many as `CIRCLE`, or
+    `BIRTHDAY_CIRCLE` on `her_birthday`, in the order drawn."""
+    least, most = BIRTHDAY_CIRCLE if her_birthday else CIRCLE
+    size = least + _index(random, most - least + 1)
+    known = [*mates, *related]
+    circle = [each for each in known if each in birthdays]
+    strangers = list(others)
+    if strangers and len(circle) < size and _draw(random) < STRANGER:
+        circle.append(strangers.pop(_index(random, len(strangers))))
+    left = [each for each in known if each not in circle]
+    weights = [MATE if each in mates else RELATED for each in left]
+    while left and len(circle) < size:
+        index = _weighted(random, weights)
+        circle.append(left.pop(index))
+        weights.pop(index)
+    while strangers and len(circle) < size:
+        circle.append(strangers.pop(_index(random, len(strangers))))
+    return circle
+
+
+def draw_shown(
+    posted_at: datetime, likes: int, comments: int, random: Random
+) -> tuple[list[datetime], list[datetime]]:
+    """When each of as many `likes` and `comments` on a moment posted at `posted_at` shows:
+    the likes', each drawn within `LIKES_AFTER`; the comments', as many drawn within
+    `COMMENTS_AFTER`, the earliest first."""
+    return (
+        [_within(posted_at, LIKES_AFTER, random) for _ in range(likes)],
+        sorted(_within(posted_at, COMMENTS_AFTER, random) for _ in range(comments)),
+    )
+
+
+def _within(
+    start: datetime, after: tuple[timedelta, timedelta], random: Random
+) -> datetime:
+    """A time after `start` by at least the first of `after` and at most the second."""
+    least, most = after
+    return start + least + timedelta(seconds=int((most - least).total_seconds() * _draw(random)))
 
 
 def _slot(hour: int) -> Slot | None:
@@ -255,6 +329,16 @@ def _free(
 def _draw(random: Random) -> float:
     """A number from 0 up to 1."""
     return random(PLACES) / PLACES
+
+
+def _weighted(random: Random, weights: Sequence[int]) -> int:
+    """One of as many places as `weights`, each as likely as it weighs."""
+    weighed = _draw(random) * sum(weights)
+    for i, weight in enumerate(weights):
+        if weighed < weight:
+            return i
+        weighed -= weight
+    return len(weights) - 1  # the last, should rounding leave it past them all
 
 
 def _index(random: Random, length: int) -> int:

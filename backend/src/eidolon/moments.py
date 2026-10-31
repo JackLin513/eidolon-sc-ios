@@ -44,15 +44,24 @@ deployer's keys, its service calls under it, and what of it was made do without
 recorded failed, and not tried again. What she posts is posted as it is written: that is when
 it shows.
 
+She posts it with her circle (`moment_draws.draw_circle`), of the other idols, the office's
+staff in no one's: her unit mates, as the world setting has them; those a section of her
+facts on the people she knows is on, by their names in its heading (but for those on the
+producer and on the other idols, `NOT_ONE`); and the others. Of those she writes like it and
+comment on it, each shows at a time of its own (`moment_draws.draw_shown`), whatever comes of
+her affinity or her cooldowns after.
+
 The timeline (`timeline`) is the user's moments of the last `KEPT`, the latest first, each
-place with a link to it on the map the deployer chooses (`map_link`)."""
+place with a link to it on the map the deployer chooses (`map_link`), each with the likes
+and comments of her circle that have shown, in the order they did."""
 
 import asyncio
 import logging
 import sqlite3
 from collections.abc import AsyncIterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
+from typing import TypeVar
 from urllib.parse import quote, urlencode
 
 from eidolon.activity import ActivityLog
@@ -68,15 +77,18 @@ from eidolon.memory import Memories, last_turn_query
 from eidolon.moment_draws import (
     CHANCES,
     KEPT_APART,
+    RELATIONS,
     Eligible,
     Kind,
     Planned,
+    draw_circle,
     draw_places,
     draw_seeds,
+    draw_shown,
     plan_day,
     work_time,
 )
-from eidolon.moment_prompt import PostMaterial, parse_post, post_prompt
+from eidolon.moment_prompt import Comment, Member, PostMaterial, parse_post, post_prompt
 from eidolon.place_pool import Place
 from eidolon.producer import ProducerProfile, effective_timezone, is_birthday, local_date
 from eidolon.randomness import Random
@@ -97,6 +109,11 @@ from eidolon.world import World
 
 log = logging.getLogger(__name__)
 
+_T = TypeVar("_T")
+
+_LIKE, _COMMENT = "like", "comment"
+"""The kinds of what `moment_circle` keeps: a like, a comment."""
+
 TICK = timedelta(minutes=1)
 """How often it is looked whose time has come."""
 
@@ -108,6 +125,10 @@ RECENT = 5
 
 KEPT = timedelta(days=30)
 """How long moments show on the timeline."""
+
+NOT_ONE = ("制作人", "プロデューサー", "其他偶像")
+"""What is in the heading of a section of her facts on the people she knows that is on no
+one of her circle."""
 
 _SCHEMA = """
 -- What she posted to a user's moments (GLOSSARY.md「动态」), as shown, delivery cues left out.
@@ -154,6 +175,21 @@ CREATE TABLE IF NOT EXISTS moment_users (
     planned_day TEXT,
     opened_at TEXT
 );
+
+-- The likes and comments of her circle on a moment (GLOSSARY.md「动态」): whose, a like
+-- (`like`) or a comment (`comment`, `kind`), a comment's Japanese and subtitle (NULL for a like), where it is in
+-- what she wrote (`position`, from 0, likes and comments each on their own), and when it shows.
+CREATE TABLE IF NOT EXISTS moment_circle (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    moment_id INTEGER NOT NULL REFERENCES moments(id),
+    character_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    ja TEXT,
+    zh TEXT,
+    position INTEGER NOT NULL,
+    shown_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS moment_circle_by_moment ON moment_circle(moment_id, shown_at);
 """
 
 
@@ -189,7 +225,8 @@ def map_link(site: MapSite, place: ShownPlace) -> str:
 @dataclass(frozen=True)
 class Moment:
     """A moment as the timeline shows it: whose, what she posted, when it showed, where she
-    was, as it was then (None for nowhere), and Tokyo's weather then (None for none known)."""
+    was, as it was then (None for nowhere), Tokyo's weather then (None for none known), and
+    who of her circle has liked it and commented on it so far, in the order they showed."""
 
     id: int
     character_id: str
@@ -198,6 +235,8 @@ class Moment:
     posted_at: str
     place: ShownPlace | None = None
     weather: Weather | None = None
+    likes: tuple[str, ...] = ()
+    comments: tuple[Comment, ...] = ()
 
     def shown(self, map_site: MapSite) -> dict:
         """As the browser is told it, its place linked to on `map_site`; no picture yet."""
@@ -210,6 +249,10 @@ class Moment:
             "image": None, "place": place,
             "weather": self.weather.shown() if self.weather is not None else None,
             "posted_at": self.posted_at,
+            "likes": list(self.likes),
+            "comments": [
+                {"character_id": c.character_id, "ja": c.ja, "zh": c.zh} for c in self.comments
+            ],
         }
 
 
@@ -324,7 +367,8 @@ class Moments:
 
     async def timeline(self, user_id: str) -> list[Moment]:
         """The user's moments that have shown within `KEPT`, the latest first, of the
-        characters there are; raise `MomentsOff` where the deployer has them off."""
+        characters there are, as are the likes and comments on them; raise `MomentsOff`
+        where the deployer has them off."""
         if not self._config.moments.enabled:
             raise MomentsOff
         now = self._clock()
@@ -332,7 +376,14 @@ class Moments:
             _timeline, user_id, (now - KEPT).astimezone(UTC).isoformat(),
             now.astimezone(UTC).isoformat(),
         )
-        return [m for m in moments if m.character_id in self._characters]
+        return [
+            replace(
+                m,
+                likes=tuple(id for id in m.likes if id in self._characters),
+                comments=tuple(c for c in m.comments if c.character_id in self._characters),
+            )
+            for m in moments if m.character_id in self._characters
+        ]
 
     @property
     def map_site(self) -> MapSite:
@@ -451,16 +502,21 @@ class Moments:
             return
         finally:
             lease.release()
-        post = parse_post(written, material.places)
+        post = parse_post(written, material)
         if post is None:
             log.warning("posting a moment to user %s failed: nothing to post", plan.user_id)
             await self._db.write(_drop_plan, plan.id)
             await recording.finish("failed")
             return
         recording.degraded = dict(post.degraded) or None
+        posted_at = self._clock()
+        likes_at, comments_at = draw_shown(
+            posted_at, len(post.likes), len(post.comments), self._random
+        )
         await self._db.write(
             _add_moment, plan, post.ja, post.zh, post.place, weather,
-            self._clock().astimezone(UTC).isoformat(),
+            posted_at.astimezone(UTC).isoformat(),
+            _when(post.likes, likes_at), _when(post.comments, comments_at),
         )
         await recording.finish("success")
 
@@ -521,6 +577,7 @@ class Moments:
             )
             if kinds or not jobs else []
         )
+        seeds = [] if jobs else [_seed(f.text) for f in draw_seeds(character.facts, self._random)]
         return PostMaterial(
             character,
             self._world.prompt(character.name, local_date(now, timezone)) if self._world else None,
@@ -530,12 +587,29 @@ class Moments:
                 tier_prompt(status), weather,
             ),
             plan.birthday,
-            [] if jobs else [_seed(f.text) for f in draw_seeds(character.facts, self._random)],
+            seeds,
             memories,
             before.recent,
             places,
             [f"{each.job.name}：{each.job.note}" for each in jobs],
+            self._circle(character, tokyo_date(now), plan.birthday),
         )
+
+    def _circle(self, character: Character, day: date, birthday: bool) -> list[Member]:
+        """Her circle on `day` in Tokyo, on her `birthday` or not, as drawn."""
+        world = self._world
+        others = {
+            id: each for id, each in self._characters.items()
+            if id != character.id and not (world is not None and world.is_staff(each.name))
+        }
+        relations = _relations(character, others)
+        unit = set(world.unit_mates(character.name)) if world is not None else set()
+        mates = [id for id, each in others.items() if each.name in unit]
+        related = [id for id in relations if id not in mates]
+        strangers = [id for id in others if id not in mates and id not in relations]
+        birthdays = {id for id, each in others.items() if is_birthday(each.birthday, day)}
+        drawn = draw_circle(mates, related, strangers, birthdays, birthday, self._random)
+        return [Member(others[id], relations.get(id)) for id in drawn]
 
 
 async def _written(stream: AsyncIterator[Streamed]) -> str:
@@ -549,6 +623,28 @@ async def _written(stream: AsyncIterator[Streamed]) -> str:
         if (close := getattr(stream, "aclose", None)) is not None:
             await close()
     return "".join(chunks)
+
+
+def _when(shown: Sequence[_T], at: Sequence[datetime]) -> list[tuple[_T, str]]:
+    """Each of `shown` with when it shows, as the database writes it."""
+    return [(each, when.astimezone(UTC).isoformat()) for each, when in zip(shown, at, strict=True)]
+
+
+def _relations(character: Character, others: Mapping[str, Character]) -> dict[str, str]:
+    """What a section of her facts on the people she knows says of each of `others` whose
+    name is in its heading, but for sections whose headings have `NOT_ONE` in them, without
+    their headings: the first for one in two."""
+    relations: dict[str, str] = {}
+    for fact in character.facts:
+        headings = fact.headings
+        if headings[:1] != [RELATIONS] or len(headings) < 2:
+            continue
+        if any(word in headings[-1] for word in NOT_ONE):
+            continue
+        for id, each in others.items():
+            if each.name in headings[-1]:
+                relations.setdefault(id, fact.body)
+    return relations
 
 
 def _seed(text: str) -> str:
@@ -623,9 +719,12 @@ def _add_moment(
     place: Place | None,
     weather: Weather | None,
     posted_at: str,
+    likes: Sequence[tuple[str, str]],
+    comments: Sequence[tuple[Comment, str]],
 ) -> None:
-    """Post the moment planned, at a copy of `place`, in `weather`, taking it off the plan."""
-    db.execute(
+    """Post the moment planned, at a copy of `place`, in `weather`, with the `likes` and
+    `comments` of her circle, each with when it shows; taking it off the plan."""
+    moment_id = db.execute(
         "INSERT INTO moments (user_id, character_id, ja, zh, place_id, place_name, place_lat,"
         " place_lon, weather, temperature, day, posted_at)"
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -633,6 +732,13 @@ def _add_moment(
          *((place.id, place.name, place.lat, place.lon) if place else (None,) * 4),
          *((weather.kind, weather.temperature) if weather else (None, None)),
          plan.day.isoformat(), posted_at),
+    ).lastrowid
+    db.executemany(
+        "INSERT INTO moment_circle (moment_id, character_id, kind, ja, zh, position, shown_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [(moment_id, id, _LIKE, None, None, i, at) for i, (id, at) in enumerate(likes)]
+        + [(moment_id, c.character_id, _COMMENT, c.ja, c.zh, i, at)
+           for i, (c, at) in enumerate(comments)],
     )
     _drop_plan(db, plan.id)
 
@@ -661,10 +767,24 @@ def _before(db: sqlite3.Connection, user_id: str, character_id: str, since: str)
 
 
 def _timeline(db: sqlite3.Connection, user_id: str, since: str, now: str) -> list[Moment]:
+    likes: dict[int, list[str]] = {}
+    comments: dict[int, list[Comment]] = {}
+    for moment_id, character_id, kind, ja, zh in db.execute(
+        "SELECT c.moment_id, c.character_id, c.kind, c.ja, c.zh"
+        " FROM moment_circle c JOIN moments m ON m.id = c.moment_id"
+        " WHERE m.user_id = ? AND m.posted_at > ? AND c.shown_at <= ?"
+        " ORDER BY c.shown_at, c.position",
+        (user_id, since, now),
+    ):
+        if kind == _LIKE:
+            likes.setdefault(moment_id, []).append(character_id)
+        else:
+            comments.setdefault(moment_id, []).append(Comment(character_id, ja, zh))
     return [
         Moment(id, character_id, ja, zh, posted_at,
                ShownPlace(name, lat, lon) if name is not None else None,
-               Weather(kind, temperature) if kind in ALL_KINDS else None)
+               Weather(kind, temperature) if kind in ALL_KINDS else None,
+               tuple(likes.get(id, ())), tuple(comments.get(id, ())))
         for id, character_id, ja, zh, posted_at, name, lat, lon, kind, temperature
         in db.execute(
             "SELECT id, character_id, ja, zh, posted_at, place_name, place_lat, place_lon,"

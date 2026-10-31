@@ -717,8 +717,9 @@ export type WeatherKind = "clear" | "cloudy" | "overcast" | "fog" | "rain" | "sn
 /** A post of hers in the user's moments (GLOSSARY.md「动态」): her Japanese, its subtitle, when it
  * came out (ISO, with its offset), where she was (GLOSSARY.md「地点」), its Japanese name with a
  * link to it on the map the deployer chooses, null for nowhere, and Tokyo's weather then, its kind
- * and temperature in whole degrees Celsius, null if it could not be had. The picture is null for
- * now. */
+ * and temperature in whole degrees Celsius, null if it could not be had; the other idols who have
+ * liked it so far, by character id, in the order they did, and their comments so far, in order.
+ * Those yet to show are not there. The picture is null for now. */
 export type Moment = {
   id: number;
   character_id: string;
@@ -728,7 +729,12 @@ export type Moment = {
   place: { name: string; map: string } | null;
   weather: { kind: WeatherKind; temperature: number } | null;
   posted_at: string;
+  likes: string[];
+  comments: MomentComment[];
 };
+
+/** A comment on a moment by another idol: her Japanese and its subtitle. */
+export type MomentComment = { character_id: string; ja: string; zh: string };
 
 /** The user's moments of the last 30 days that have come out, newest first, all at once. Refused while
  * the deployer has moments off (409). */

@@ -35,3 +35,10 @@
   - 合照里的人进了赞的人。
 - [ ] **验收**：在本地构建版上用假生图造一条合照动态，看时间线显示横图。要用真中转出图看效果时，先向用户报张数，等他点头再出。
 - [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+
+## Comments
+
+### 票 20 交接
+
+- 合照的人从圈子里选：`PostMaterial.circle` 是 `Member(character, relation)` 的列表，`character.photo_tag`、`photo_appearance` 在那里。「圈子里至少一位配齐外貌才允许合照」照它判断。
+- 「合照里的人必定算进赞」放进 `moment_prompt.parse_post`：现在赞是先去掉圈子外的、去重，再截到 `LIKES`/`BIRTHDAY_LIKES`（超了记 `likes_over`）。补人的时候要放在截掉之前还是之后，自己定。

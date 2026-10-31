@@ -50,6 +50,7 @@ checked = 2026-10-01
 AT_THE_PARK = [
     "<post><ja>池のボート、乗ってみたいな</ja><zh>池塘的小船，好想坐坐看</zh></post>",
     "<place>inokashira</place>",
+    "<likes></likes>",
 ]
 PARK_ON_THE_MAP = {
     "name": "井の頭恩賜公園",
@@ -110,7 +111,7 @@ async def test_she_chooses_among_the_places_given_and_the_moment_shows_it_on_the
 async def test_at_none_or_at_one_not_given_the_moment_shows_no_place(
     make_client: ClientFactory, settings: Settings, written: str, made_do_without: dict | None
 ):
-    client, _, clock, _ = await talked(make_client, [AT_THE_PARK[0], written])
+    client, _, clock, _ = await talked(make_client, [AT_THE_PARK[0], written, AT_THE_PARK[2]])
 
     await tick(client, clock, START)
     await tick(client, clock, SEVEN)

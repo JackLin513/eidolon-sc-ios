@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 
 import { copy } from "@/i18n";
-import type { Moment, WeatherKind } from "@/lib/api";
+import type { Moment, MomentComment, WeatherKind } from "@/lib/api";
 
 const t = copy.moments;
 
@@ -54,6 +54,22 @@ export type MetaPart =
   | { kind: "time"; text: string }
   | { kind: "place"; text: string; href: string }
   | { kind: "weather"; text: string; icon: LucideIcon; label: string };
+
+/** 一条动态下面那一块（`bg-muted` 圆角）：赞的人那一行（没人赞为 null）和评论，各条「名字：」打头。 */
+export type Reactions = {
+  likers: string | null;
+  comments: (MomentComment & { by: string })[];
+};
+
+/** 一条动态下面那一块写什么：赞的人按露出先后用「，」连成一行，评论按先后。都没有时为 null，这一块不出现。
+ * 名字从 `nameOf` 取。 */
+export function reactions(moment: Moment, nameOf: (characterId: string) => string): Reactions | null {
+  if (moment.likes.length === 0 && moment.comments.length === 0) return null;
+  return {
+    likers: moment.likes.length > 0 ? moment.likes.map(nameOf).join(t.likersSeparator) : null,
+    comments: moment.comments.map((comment) => ({ ...comment, by: t.commentedBy(nameOf(comment.character_id)) })),
+  };
+}
 
 /** Meta 一行从左到右的几段，中间用分隔点连：时间、地名（点开看地图）、天气。没有的部分不出现，分隔点跟着省掉。 */
 export function metaParts(moment: Moment, now: Date): MetaPart[] {

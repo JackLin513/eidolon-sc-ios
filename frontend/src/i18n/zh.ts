@@ -50,6 +50,10 @@ export const zh = {
     daysAgo: (n: number) => `${n} 天前`,
     /** 天气图标读屏读的档位名。 */
     weather: { clear: "晴", cloudy: "多云", overcast: "阴", fog: "雾", rain: "雨", snow: "雪", thunder: "雷雨" },
+    /** 一条动态下面那一块：赞的人之间的分隔，心形读屏读的名字，评论里名字和日语之间。 */
+    likersSeparator: "，",
+    likedBy: "赞",
+    commentedBy: (name: string) => `${name}：`,
   },
   /** 落地页的链接贴到聊天软件、社交网站时预览卡片上的文字（Open Graph、Twitter 卡片）。页面上不显示，不进字体子集。 */
   share: {

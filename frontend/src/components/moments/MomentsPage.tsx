@@ -10,7 +10,8 @@ import { useDirectory } from "@/components/conversations/ConversationDirectory";
 import { copy } from "@/i18n";
 import { ApiError, getMoments, type Character, type Moment } from "@/lib/api";
 import { toFailure, type Failure } from "@/lib/failure";
-import { metaParts } from "@/lib/moments";
+import { metaParts, reactions, type Reactions } from "@/lib/moments";
+import { LikesIcon } from "@/theme/icons";
 import { Ja } from "@/theme/Ja";
 
 const t = copy.moments;
@@ -20,12 +21,12 @@ const CONFLICT = 409;
 /**
  * 朋友圈页（`/moments`，DESIGN.md「朋友圈页」）：页首「朋友圈」大标题，下面一栏时间线（最宽 `max-w-3xl`、居中，同玩法页），
  * 最新的在上面，一条一行，行与行之间一条细线。打开时读一次，不轮询。
- * 读到之前空着；没有动态时一行 muted 的「还没有动态」。朋友圈关着（409）时换成对话列表，不留这一页在历史里。
+ * 时间线和对话目录的角色都读到之前空着（免得名字先显示成 id，目录读不到时照样显示）；没有动态时一行 muted 的「还没有动态」。朋友圈关着（409）时换成对话列表，不留这一页在历史里。
  * 她的名字和头像从对话目录的角色里按 id 取，取不到（角色已经下架）时名字写 id、头像是名字的头一个字。
  */
 export function MomentsPage() {
   const router = useRouter();
-  const { characters } = useDirectory();
+  const { characters, failure: directoryFailure } = useDirectory();
   const [timeline, setTimeline] = useState<{ moments: Moment[]; readAt: Date } | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
 
@@ -53,7 +54,7 @@ export function MomentsPage() {
             <FailureNotice failure={failure} />
           </div>
         )}
-        {timeline &&
+        {timeline && (characters || directoryFailure) &&
           (timeline.moments.length === 0 ? (
             <p className="py-4 text-body text-muted-foreground">{t.empty}</p>
           ) : (
@@ -63,6 +64,7 @@ export function MomentsPage() {
                   key={moment.id}
                   moment={moment}
                   character={byId.get(moment.character_id)}
+                  nameOf={(id) => byId.get(id)?.name ?? id}
                   now={timeline.readAt}
                 />
               ))}
@@ -73,10 +75,21 @@ export function MomentsPage() {
   );
 }
 
-/** 时间线的一行：左边她的头像；右边名字、日语正文、一行字幕（同对话气泡）、Meta 字号的「时间 · 地名 · 天气」。
- * 地名点开在新标签页打开地图，不把本站地址带过去。 */
-function MomentRow({ moment, character, now }: { moment: Moment; character: Character | undefined; now: Date }) {
+/** 时间线的一行：左边她的头像；右边名字、日语正文、一行字幕（同对话气泡）、Meta 字号的「时间 · 地名 · 天气」，
+ * 有赞或评论时再下面一块。地名点开在新标签页打开地图，不把本站地址带过去。别的偶像的名字从 `nameOf` 取。 */
+function MomentRow({
+  moment,
+  character,
+  nameOf,
+  now,
+}: {
+  moment: Moment;
+  character: Character | undefined;
+  nameOf: (characterId: string) => string;
+  now: Date;
+}) {
   const name = character?.name ?? moment.character_id;
+  const block = reactions(moment, nameOf);
   return (
     <article className="flex gap-3 py-4">
       <MarkedAvatar name={name} src={character?.avatar_url} size="lg" />
@@ -112,7 +125,32 @@ function MomentRow({ moment, character, now }: { moment: Moment; character: Char
             </Fragment>
           ))}
         </p>
+        {block && <ReactionsBlock reactions={block} />}
       </div>
     </article>
+  );
+}
+
+/** 一条动态下面 `bg-muted` 圆角的一块：心形加赞的人；细线下面是评论，「名字：日语」下面一行字幕。 */
+function ReactionsBlock({ reactions: { likers, comments } }: { reactions: Reactions }) {
+  return (
+    <div className="mt-1 flex flex-col gap-1 rounded-lg bg-muted px-3 py-2 text-sm">
+      {likers && (
+        <p className="flex gap-1.5">
+          <LikesIcon role="img" aria-label={t.likedBy} className="mt-1 size-3.5 shrink-0" />
+          <span className="font-medium">{likers}</span>
+        </p>
+      )}
+      {likers && comments.length > 0 && <div className="h-px bg-foreground/10" />}
+      {comments.map((comment, i) => (
+        <div key={i} className="flex flex-col gap-0.5">
+          <p>
+            <span className="font-medium">{comment.by}</span>
+            <Ja>{comment.ja}</Ja>
+          </p>
+          <p className="text-subtitle text-muted-foreground">{comment.zh}</p>
+        </div>
+      ))}
+    </div>
   );
 }

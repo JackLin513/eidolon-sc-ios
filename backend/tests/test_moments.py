@@ -147,6 +147,7 @@ async def test_planned_after_midnight_she_posts_at_her_time_asked_as_a_turn_with
         "id": 1, "character_id": "mano",
         "ja": "今日は公園でピーちゃんと日向ぼっこ(^^)", "zh": "今天和小哔在公园晒太阳(^^)",
         "image": None, "place": None, "weather": None, "posted_at": SEVEN.isoformat(),
+        "likes": [], "comments": [],
     }]
     assert (await client.get("/api/account")).json()["moments"] is True
     assert moment_records(settings.database_path) == [("moment", "mano", "success", 0)]

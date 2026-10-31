@@ -7,7 +7,15 @@ from datetime import date, datetime, time
 import pytest
 
 from eidolon.characters import Fact
-from eidolon.moment_draws import Eligible, Planned, draw_places, draw_seeds, plan_day
+from eidolon.moment_draws import (
+    Eligible,
+    Planned,
+    draw_circle,
+    draw_places,
+    draw_seeds,
+    draw_shown,
+    plan_day,
+)
 from eidolon.place_pool import Category, Place
 from eidolon.schedule import done_at
 from eidolon.today import TOKYO, tokyo_date
@@ -182,3 +190,65 @@ def test_a_job_is_of_the_day_in_tokyo_it_is_done_on(
     at_ = done_at(DAY, 0, slot, 1, timezone)
 
     assert (at_, tokyo_date(at_)) == (done, day)
+
+
+def test_her_circle_is_drawn_her_unit_mates_weighing_most_then_those_she_knows():
+    """A unit mate weighs 3, one with a section of her facts 1; one of another unit only
+    now and then; each drawn is out of the next draw."""
+    random = FakeRandom(
+        0,  # 4 of 4–6
+        999,  # none of another unit
+        500,  # of a 3, b 3, c d e 1: 9; 4.5 falls in b (3–6)
+        0,  # a
+        999,  # of c d e: the last, e
+        0,  # c
+    )
+
+    circle = draw_circle(["a", "b"], ["c", "d", "e"], ["x", "y"], (), False, random)
+
+    assert circle == ["b", "a", "e", "c"]
+
+
+def test_one_of_another_unit_now_and_then_and_the_rest_of_them_where_too_few_she_knows():
+    random = FakeRandom(
+        999,  # 6 of 4–6
+        249,  # one of another unit
+        300,  # y of x, y, z, w
+        0,  # a, the only one she knows
+        0, 0, 0,  # x, z, w, as many as are left
+    )
+
+    circle = draw_circle(["a"], [], ["x", "y", "z", "w"], (), False, random)
+
+    assert circle == ["y", "a", "x", "z", "w"]
+
+
+def test_one_she_knows_whose_birthday_it_is_is_in_her_circle_but_one_of_another_unit_not():
+    random = FakeRandom(0, 999, 0, 0, 0)  # 4; none of another unit; a, b, d
+
+    circle = draw_circle(["a", "b"], ["c", "d"], ["x"], {"c", "x"}, False, random)
+
+    assert circle == ["c", "a", "b", "d"]
+
+
+def test_on_her_birthday_her_circle_is_8_to_10():
+    others = [f"o{i}" for i in range(9)]
+    random = FakeRandom(999, 999, *[0] * 10)  # 10 of 8–10; none of another unit; in order
+
+    circle = draw_circle(["a", "b"], ["c"], others, (), True, random)
+
+    assert circle == ["a", "b", "c", *others[:7]]
+
+
+def test_likes_show_5_minutes_to_3_hours_after_the_moment_and_comments_15_minutes_to_6_hours_in_order():
+    """Each like on its own; the comments' times drawn each, then given them in order."""
+    posted = at(7)
+    random = FakeRandom(
+        0, 400,  # likes: 5 minutes, 5 + 175 × 0.4 = 75 minutes
+        600, 0, 200,  # comments: 15 + 345 × 0.6 = 222 minutes, 15, 15 + 69 = 84
+    )
+
+    likes, comments = draw_shown(posted, 2, 3, random)
+
+    assert likes == [at(7, 5), at(8, 15)]
+    assert comments == [at(7, 15), at(8, 24), at(10, 42)]

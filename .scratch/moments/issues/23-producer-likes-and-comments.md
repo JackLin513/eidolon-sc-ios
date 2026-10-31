@@ -78,3 +78,11 @@
 - [ ] **验收**：在本地构建版上用 Playwright 赞、取消赞、评论、删评论；推进时间，调一次「跑一遍」，看她的回复出现。宽屏和手机各看一次。
 - [ ] 表结构有改动，部署前手动备份数据库。
 - [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+
+## Comments
+
+### 票 20 交接
+
+- 时间线每条现在有 `likes`（偶像的角色 id）和 `comments`（`{character_id, ja, zh}`），都只给已露出的。他赞没赞、他的评论、她的回复照规格另加字段。
+- 前端那一块是 `lib/moments.reactions` 加 `MomentsPage` 的 `ReactionsBlock`：「制作人」排在赞的最前面、他的评论和「她 回复 制作人」都加在这里，`moments.test.ts` 跟着补。
+- 回评论的提示词要「到那一刻已露出的偶像的赞和评论」：`moment_circle` 按 `shown_at <= 现在` 读，写法同 `moments._timeline`。

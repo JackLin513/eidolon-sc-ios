@@ -2,7 +2,7 @@ import { Cloud, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, Sun } 
 import { describe, expect, it } from "vitest";
 
 import type { Moment, WeatherKind } from "@/lib/api";
-import { metaParts, postedText } from "@/lib/moments";
+import { metaParts, postedText, reactions } from "@/lib/moments";
 
 /** 本地时间的某一刻（测试不依赖所在时区）。 */
 function local(day: number, hour: number, minute = 0, second = 0): Date {
@@ -47,6 +47,8 @@ describe("时间线一行的 Meta", () => {
     place: null,
     weather: null,
     posted_at: local(31, 11, 0).toISOString(),
+    likes: [],
+    comments: [],
   };
   const map = "https://www.openstreetmap.org/?mlat=35.6997&mlon=139.5731#map=17/35.6997/139.5731";
 
@@ -99,5 +101,49 @@ describe("时间线一行的 Meta", () => {
   ])("天气「%s」用它自己的图标", (kind, icon, label) => {
     const weather = metaParts({ ...moment, weather: { kind, temperature: 10 } }, now).at(-1);
     expect(weather).toEqual({ kind: "weather", text: "10°", icon, label });
+  });
+});
+
+describe("一条动态下面赞和评论的那一块", () => {
+  const moment: Moment = {
+    id: 1,
+    character_id: "mano",
+    ja: "池のボート",
+    zh: "池塘的小船",
+    image: null,
+    place: null,
+    weather: null,
+    posted_at: local(31, 11, 0).toISOString(),
+    likes: [],
+    comments: [],
+  };
+  const names: Record<string, string> = { hiori: "風野灯織", meguru: "八宮めぐる" };
+  const nameOf = (id: string) => names[id] ?? id;
+  const hiori = { character_id: "hiori", ja: "真乃、楽しそう", zh: "真乃，看起来好开心" };
+
+  it("没人赞也没人评论时这一块不出现", () => {
+    expect(reactions(moment, nameOf)).toBeNull();
+  });
+
+  it("赞的人按先后用「，」连成一行", () => {
+    expect(reactions({ ...moment, likes: ["meguru", "hiori"] }, nameOf)).toEqual({
+      likers: "八宮めぐる，風野灯織",
+      comments: [],
+    });
+  });
+
+  it("评论按先后，每条「名字：」打头，带日语和字幕；没人赞时没有赞的一行", () => {
+    const meguru = { character_id: "meguru", ja: "わたしも行く！", zh: "我也要去！" };
+    expect(reactions({ ...moment, comments: [hiori, meguru] }, nameOf)).toEqual({
+      likers: null,
+      comments: [
+        { ...hiori, by: "風野灯織：" },
+        { ...meguru, by: "八宮めぐる：" },
+      ],
+    });
+  });
+
+  it("名字取不到时写 id", () => {
+    expect(reactions({ ...moment, likes: ["kogane"] }, nameOf)?.likers).toBe("kogane");
   });
 });
