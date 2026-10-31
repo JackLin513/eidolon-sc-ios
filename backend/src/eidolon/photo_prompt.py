@@ -11,9 +11,9 @@ does not know as tags put as it does, by the local tag table (`photo_tags.json`,
 `scripts/photo_tags.py` from NovelAI's tag suggestions); one it has no word on is kept as it
 is, and logged. A tag crossing the line (ADR-0023: nudity, underwear, see-through, bathing,
 a sexual pose or look) is stripped, as is one of her looks, an art style or an artist, or
-anyone else in the picture: only that tag, the photo taken all the same of the rest
-(`PhotoTag.stripped` says which part of the line each stripped crossed, for the activity
-records, never the tag). Each is written once, and each field cut to its most; a field left
+anyone else in the picture, holding hands among it: only that tag, the photo taken all the
+same of the rest (`PhotoTag.stripped` says which part of the line each stripped crossed, for
+the activity records, never the tag). Each is written once, and each field cut to its most; a field left
 empty gets its default. Swimsuits, pajamas, lying on a bed, a pool and the beach are not
 crossing it. Neither the deployer nor any user changes the table.
 
@@ -179,7 +179,8 @@ def read_tag(text: str) -> PhotoTag:
     seen = {*_FIXED, *_shot_tags(shot), framing}
     stripped: list[Crossing] = []
     place, outfit, action = (
-        _field(fields.get(name, ""), seen, stripped, DEFAULTS[name]) for name in DEFAULTS
+        _field(fields.get(name, ""), seen, stripped, DEFAULTS[name], alone=True)
+        for name in DEFAULTS
     )
     return PhotoTag(shot, framing, place, outfit, action, tuple(stripped))
 

@@ -92,7 +92,7 @@
 - **前端**：`MomentsPage` 字幕下面加缩略图（按原比例缩进 160px 见方），点开用 `ImageViewer`；`DESIGN.md` 补了「配图」一条。
 - **tag 表**：`scripts/photo_tags.py` 加了 6.4 的种子和改写表（改写目标写空串表示剥掉），`people` 类补 `viewer holding phone`、`solo focus`，重跑后 `photo_tags.json` 已知多了 328 个，改写 8 条全收。
 - **判断**：
-  - `holding hands` 只在配图里剥，照片不动（票里只说 `people` 新增两项「照片也跟着生效」）。审查倾向照片也剥，留给用户定。
+  - `holding hands` 照片也剥（用户定的，计为 `people`），合照（票 22）放行。
   - 允许带图却没写 `<image>` 算写坏、记降级；没让带图时写了不读、不记。
   - 风景的 `action` 空着不补默认值；无人构图另外丢掉的那几类不计入被剥 tag 的计数，`holding hands` 计。
   - 时间线的 `image` 只给地址，不给尺寸；缩略图载入前没有占位。
