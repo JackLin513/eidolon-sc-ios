@@ -72,7 +72,7 @@
   先例：`test_photos.py`、`test_photo_all_ages.py`、`test_photo_records.py`、`test_photo_failures.py`、`test_image_service.py`。
 - [x] **验收**：在本地构建版上用假生图造一条带图的动态，用 Playwright 看缩略图和放大，宽屏和手机各看一次。要用真中转出图看效果时，先向用户报张数，等他点头再出。
 - [ ] 表结构有改动，部署前手动备份数据库。
-- [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。（affected-tests 已过，CI 待看）
+- [x] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
 
 ## Comments
 
