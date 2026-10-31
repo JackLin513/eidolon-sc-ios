@@ -28,6 +28,8 @@ final class AppModel {
     private(set) var isImporting = false
     private(set) var importProgress: ImportProgress?
     private(set) var chatSettings = ChatSettings.load()
+    /// The one call the app is in, owned here so changing pages does not end it (spec #46).
+    let call = CallController()
     /// Bumped when a conversation is started from somewhere other than the page that
     /// shows it — a past conversation in the history sheet. The current page reloads to
     /// the new one and the sheet closes (spec #37).
@@ -365,6 +367,7 @@ final class AppModel {
         let root = URL.applicationSupportDirectory
             .appending(path: "Eidolon", directoryHint: .isDirectory)
         core = try Eidolon(location: .init(root: root))
+        call.attach(self)
     }
 
     func bootstrap() async {

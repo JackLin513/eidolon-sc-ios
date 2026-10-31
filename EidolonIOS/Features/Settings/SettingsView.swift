@@ -354,6 +354,14 @@ struct SettingsView: View {
                     Text("内容包只带剧情，不含立绘；立绘在立绘包里单独导入。导入失败时保留当前内容包；对话、记忆和好感度不受影响。")
                 }
             }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                CallBar()
+            }
+            // Returning to the call brings the layer over every page; settings gets out of
+            // its way (spec #46).
+            .onChange(of: app.call.layer) { _, layer in
+                if layer == .expanded { dismiss() }
+            }
             .navigationTitle("设置")
             .navigationDestination(isPresented: $showMemories) {
                 MemoryListView()

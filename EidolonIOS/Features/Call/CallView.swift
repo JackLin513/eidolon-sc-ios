@@ -10,37 +10,29 @@ struct CallView: View {
     let character: CharacterConfig
 
     @Environment(AppModel.self) private var app
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var session: CallSession?
-    @State private var state: CallState = .connecting
-    /// The line she is saying now; older ones are in the conversation.
-    @State private var line: HerLine?
-    /// The segment right before it in the same reply, kept faint above it while 只看文字
-    /// is on (upstream `LineCard`).
-    @State private var previousLine: HerLine?
-    @State private var hearing: String?
-    /// Whether her replies are read as text rather than voiced. It stays on this phone
-    /// between calls (spec #43), and is set on the call before it starts.
-    @AppStorage("call.textOnly") private var textOnly = false
-    /// Whether this call's microphone is closed. It belongs to the one call only: a redial
-    /// starts with the microphone open, as upstream's 麦克风静音 does (spec #43).
-    @State private var muted = false
-    @State private var failure: String?
-    @State private var startError: String?
-    @State private var started = false
-    /// When the call connected, for the status line; nil until it does.
-    @State private var connectedAt: Date?
-    /// When it ended, for how long it lasted.
-    @State private var endedAt: Date?
+    /// The one call, owned by the app so folding it away or changing pages loses nothing
+    /// (spec #46). The view only draws it.
+    private var call: CallController { app.call }
+    private var session: CallSession? { call.session }
+    private var state: CallState { call.state }
+    private var line: HerLine? { call.line }
+    private var previousLine: HerLine? { call.previousLine }
+    private var hearing: String? { call.hearing }
+    private var textOnly: Bool { call.textOnly }
+    private var muted: Bool { call.muted }
+    private var failure: String? { call.failure }
+    private var startError: String? { call.startError }
+    private var connectedAt: Date? { call.connectedAt }
+    private var endedAt: Date? { call.endedAt }
+    private var callStand: CallStandDirector { call.stand }
     /// Her backdrop image, when the bundle carries one.
     @State private var backdrop: UIImage?
 
     /// Her stand, driven by the call's events. Nothing is drawn without one.
-    @State private var callStand = CallStandDirector()
     @State private var renderer: (any StandRenderer)?
     /// What the loaded outfit can play, as the player reported it.
     @State private var animations: [String: Double] = [:]
@@ -56,7 +48,6 @@ struct CallView: View {
     @State private var fallbackOutfits: [StandOutfit] = []
     /// The size the stand is laid out at, so a renderer made mid-call frames her the same.
     @State private var standViewport = CGSize.zero
-    @State private var showsOutfits = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -74,39 +65,32 @@ struct CallView: View {
         .background(Color.black)
         .preferredColorScheme(.dark)
         .task {
-            guard !started else { return }
-            started = true
             loadBackdrop()
             // Her stand does not wait on the call: it is there even when the call cannot be
             // made (no keys yet), and her outfit can still be looked at.
             await loadStand()
             standChecked = true
-            await dial()
         }
-        .fullScreenCover(isPresented: $showsOutfits) {
-            if let stand {
-                OutfitPickerView(
-                    character: character,
-                    stand: stand,
-                    contentRoot: stand.root ?? app.core.location.contentDirectory,
-                    contentVersion: app.standInfo?.installedAt
-                        ?? app.bundleInfo?.installedAt ?? "current",
-                    onWear: { outfit in
-                        outfitChosen(outfit)
-                    },
-                    onClose: {
-                        showsOutfits = false
-                    }
-                )
-            }
+        // Her events move her stand through the controller; the layer draws the pose.
+        .onChange(of: call.stand.direction) {
+            renderPose()
         }
-        .interactiveDismissDisabled(session != nil && !isEnded)
+        // Folded away, her stand is off screen: keep it from drawing until it is back.
+        .onChange(of: call.layer) {
+            updatePause()
+        }
+        // Esc (iPad or an external keyboard) folds the layer away, as upstream does.
+        .background {
+            EscapeKey { call.collapse() }
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        }
         .onChange(of: scenePhase) { _, phase in
-            renderer?.setPaused(phase != .active)
+            updatePause()
             // Back from a phone call or the background: the system may have stopped the
             // microphone, so ask it to open again (spec「通话健壮性」).
             if phase == .active, session != nil {
-                Task { await session?.recoverAudio() }
+                Task { await call.recoverAudio() }
             }
         }
         .onDisappear { renderer?.setPaused(true) }
@@ -129,56 +113,9 @@ struct CallView: View {
 
     /// She hung up for a cooldown: there is no calling her until it ends, so no redial
     /// (upstream `endCard`).
-    private var canRedial: Bool {
-        guard case let .ended(reason) = state else { return false }
-        if case let .sheHungUp(until) = reason, until != nil { return false }
-        return true
-    }
+    private var canRedial: Bool { call.canRedial }
 
     private var isCompactWidth: Bool { sizeClass != .regular }
-
-    // MARK: - Start
-
-    /// Start the call; a redial starts it again from a clean screen.
-    private func dial() async {
-        resetCallState()
-        do {
-            let call = try await app.beginCall(for: character)
-            session = call
-            let events = call.events()
-            // The remembered 只看文字 is set before she starts, so the first reply already
-            // follows it (spec #43). The pill stays live through dialling.
-            await call.setTextOnly(textOnly)
-            await call.start()
-            autoHangUpIfRequested(call)
-            for await event in events {
-                handle(event)
-            }
-        } catch {
-            startError = error.localizedDescription
-        }
-    }
-
-    /// What belongs to one call, cleared before a redial so nothing of the last one shows.
-    private func resetCallState() {
-        session = nil
-        state = .connecting
-        line = nil
-        previousLine = nil
-        // 麦克风静音 belongs to one call: a redial starts with the microphone open (spec #43).
-        muted = false
-        hearing = nil
-        failure = nil
-        startError = nil
-        connectedAt = nil
-        endedAt = nil
-        callStand = CallStandDirector()
-    }
-
-    private func redial() {
-        guard canRedial else { return }
-        Task { await dial() }
-    }
 
     /// Her backdrop is only shown when the bundle has one; otherwise her avatar is blown up.
     private func loadBackdrop() {
@@ -228,68 +165,17 @@ struct CallView: View {
             standLoaded = false
             standFailed = true
         }
-        renderer.setPaused(scenePhase != .active)
         if standViewport != .zero {
             renderer.setViewportSize(standViewport)
         }
         self.renderer = renderer
+        updatePause()
         renderer.load(outfit)
     }
 
-    /// Put the outfit she just chose on her: the same renderer loads it in place, so the
-    /// camera, her direction and the call all stay; if this one cannot load, her default
-    /// takes over. The choice stays remembered either way.
-    private func outfitChosen(_ outfit: StandOutfit) {
-        guard let renderer, !standFailed else { return }
-        let fallback = outfit.id == stand?.defaultOutfit.id
-            ? []
-            : [stand?.defaultOutfit].compactMap { $0 }
-        fallbackOutfits = fallback
-        renderer.load(outfit)
-    }
-
-    /// Development aid: `SIMCTL_CHILD_EIDOLON_CALL_HANGUP_MS` ends the call by itself,
-    /// so the record it leaves can be seen without tapping.
-    private func autoHangUpIfRequested(_ call: CallSession) {
-        #if DEBUG
-        guard let text = ProcessInfo.processInfo.environment["EIDOLON_CALL_HANGUP_MS"],
-              let milliseconds = Int(text), milliseconds >= 0
-        else { return }
-        Task {
-            try? await Task.sleep(for: .milliseconds(milliseconds))
-            await call.hangUp()
-        }
-        #endif
-    }
-
-    private func handle(_ event: CallEvent) {
-        switch event {
-        case let .state(next):
-            state = next
-            // The call is connected when the recognizer can hear, not when the microphone
-            // opens (spec「接通」): listening is the first state that means that. A call
-            // that never connects stays without a clock.
-            if connectedAt == nil, case .listening = next {
-                connectedAt = Date()
-            }
-            if isEnded, endedAt == nil { endedAt = Date() }
-        case let .hearing(text):
-            hearing = text.isEmpty ? nil : text
-        case .recognized:
-            hearing = nil
-            failure = nil
-        case let .segment(reply, segment, ja, zh):
-            // The segment before this one in the same reply stays faint above it while
-            // 只看文字 is on (upstream `LineCard`). A new reply starts a fresh card.
-            previousLine = line?.reply == reply ? line : nil
-            line = HerLine(reply: reply, segment: segment, ja: ja, zh: zh)
-        case .segmentStarted, .segmentStopped, .emotion:
-            break
-        case let .failed(message):
-            failure = message
-        }
-        callStand.apply(event)
-        renderPose()
+    /// Her stand draws only while the layer is on screen and the app is active.
+    private func updatePause() {
+        renderer?.setPaused(call.layer == .collapsed || scenePhase != .active)
     }
 
     /// Ask the animation table what the current direction looks like on this outfit.
@@ -466,17 +352,17 @@ struct CallView: View {
     private var header: some View {
         HStack(spacing: 12) {
             HStack {
-                if showsOutfitButton, !isEnded {
+                if call.isLive {
                     Button {
-                        showsOutfits = true
+                        call.collapse()
                     } label: {
-                        Image(systemName: "tshirt.fill")
+                        Image(systemName: "chevron.down")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(width: 38, height: 38)
                             .background(.white.opacity(0.16), in: Circle())
                     }
-                    .accessibilityLabel("换衣装")
+                    .accessibilityLabel("收起")
                 }
                 Spacer(minLength: 0)
             }
@@ -506,8 +392,7 @@ struct CallView: View {
     /// on. Its state is remembered on this phone, so it reads the same on the next call.
     private var textOnlyKey: some View {
         Button {
-            textOnly.toggle()
-            Task { await session?.setTextOnly(textOnly) }
+            call.toggleTextOnly()
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "captions.bubble")
@@ -561,12 +446,6 @@ struct CallView: View {
         .frame(width: 104, height: 104)
         .clipShape(Circle())
         .overlay(Circle().strokeBorder(.white.opacity(0.3), lineWidth: 1))
-    }
-
-    /// Only a character whose bundle carries a stand, and whose stand can draw, can be
-    /// changed: otherwise there is nothing to preview or put on her (spec「退化」).
-    private var showsOutfitButton: Bool {
-        stand != nil && renderer != nil && !standFailed
     }
 
     /// Upstream's `Status`: calling while it connects, how long it has lasted once connected,
@@ -682,9 +561,9 @@ struct CallView: View {
             }
             HStack(spacing: 12) {
                 Button {
-                    dismiss()
+                    call.returnFromCall()
                 } label: {
-                    Text("回到对话")
+                    Text("返回")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 24)
@@ -698,7 +577,7 @@ struct CallView: View {
                 }
                 if canRedial {
                     Button {
-                        redial()
+                        call.redial()
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "phone.fill")
@@ -733,8 +612,7 @@ struct CallView: View {
     private var dock: some View {
         HStack(spacing: 8) {
             Button {
-                muted.toggle()
-                Task { await session?.setMuted(muted) }
+                call.toggleMuted()
             } label: {
                 Image(systemName: muted ? "mic.slash.fill" : "mic.fill")
                     .font(.system(size: 20))
@@ -748,10 +626,10 @@ struct CallView: View {
             .disabled(isConnecting || session == nil)
             .opacity(isConnecting ? 0.35 : 1)
             Button {
-                // The page leaves at once; the hang-up tone belongs to the app's own
-                // player, so it still sounds behind the chat (spec #35).
-                Task { await session?.hangUp() }
-                dismiss()
+                // The end card comes up on its own when the call ends; the hang-up tone
+                // belongs to the app's own player, so it still sounds behind the chat
+                // (spec #35).
+                Task { await call.hangUp() }
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "phone.down.fill")
@@ -791,21 +669,12 @@ struct CallView: View {
                 .foregroundStyle(.white.opacity(0.85))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
-            Button("返回") { dismiss() }
+            Button("返回") { call.returnFromCall() }
                 .buttonStyle(.bordered)
                 .tint(.white)
         }
         .frame(maxHeight: .infinity)
     }
-}
-
-private struct HerLine {
-    /// Which reply and which segment of it this is, so the card can tell a continued line
-    /// from the start of a new one.
-    let reply: Int
-    let segment: Int
-    let ja: String
-    let zh: String
 }
 
 /// Upstream's three pulsing dots while the call connects; still with reduced motion.
@@ -845,5 +714,48 @@ private struct DialingRipple: View {
             }
         }
         .onAppear { animating = true }
+    }
+}
+
+/// A zero-size first responder that turns Esc into an action: SwiftUI's `onKeyPress`
+/// only hears keys on a focused view, and the call layer has nothing to focus.
+private struct EscapeKey: UIViewControllerRepresentable {
+    let action: () -> Void
+
+    func makeUIViewController(context: Context) -> EscapeResponder {
+        EscapeResponder(action: action)
+    }
+
+    func updateUIViewController(_ controller: EscapeResponder, context: Context) {
+        controller.action = action
+    }
+}
+
+private final class EscapeResponder: UIViewController {
+    var action: () -> Void
+
+    init(action: @escaping () -> Void) {
+        self.action = action
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var canBecomeFirstResponder: Bool { true }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        becomeFirstResponder()
+    }
+
+    override var keyCommands: [UIKeyCommand]? {
+        [UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(escape))]
+    }
+
+    @objc private func escape() {
+        action()
     }
 }
