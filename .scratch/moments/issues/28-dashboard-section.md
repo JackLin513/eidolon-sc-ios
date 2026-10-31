@@ -23,7 +23,7 @@
   - 关着、范围内也没有记录时，这一节为空；关着但范围内有记录时，照样显示。
   - 花费归到各项服务。
 - [x] **验收**：在本地构建版上造几条动态和回复，打开后台看板，用 Playwright 看这一节。
-- [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+- [x] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
 
 ## Comments
 
