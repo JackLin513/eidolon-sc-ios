@@ -522,6 +522,7 @@ final class ReplyScriptProvider: ChatProvider, @unchecked Sendable {
 final class HeldReplyProvider: ChatProvider, @unchecked Sendable {
     private let lock = NSLock()
     private var said = false
+    private var lines: [String] = []
 
     var hasSaidPart: Bool {
         lock.lock()
@@ -529,11 +530,19 @@ final class HeldReplyProvider: ChatProvider, @unchecked Sendable {
         return said
     }
 
+    /// The producer's line each turn was asked with, in order.
+    var saidTexts: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return lines
+    }
+
     func stream(messages: [PromptMessage]) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             continuation.yield("<ja>まだ話して</ja><zh>还在说</zh>")
             lock.lock()
             said = true
+            lines.append(messages.last(where: { $0.role == .user })?.content ?? "")
             lock.unlock()
             let task = Task {
                 while !Task.isCancelled {
@@ -762,6 +771,149 @@ final class CallSessionTests: XCTestCase {
 
     /// How many rows `table` holds in the user library; the table names come from the
     /// tests themselves, never from what is being tested.
+    /// Typing with no turn under way is a turn of its own, recorded as a call turn.
+    func testTypingWithNoTurnUnderWayStartsAndRecordsOne() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>こんばんは</ja><zh>晚上好</zh>"],
+        ])
+        let playback = FakePlayback()
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            playback: playback
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+
+        await session.say("こんばんは")
+
+        try await waitFor("her answer played") {
+            playback.audio == [Data("こんばんは".utf8)]
+        }
+        XCTAssertTrue(log.all.contains(.typed("こんばんは")))
+        let conversation = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertEqual(conversation?.messages.map(\.role), ["user", "character"])
+        XCTAssertEqual(conversation?.messages.first?.text, "こんばんは")
+        let typed = try await eidolon.userQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT typed FROM messages WHERE role = 'character'") ?? -1
+        }
+        XCTAssertEqual(typed, 0, "a typed line in a call is still a call turn")
+        await session.hangUp()
+    }
+
+    /// Typing works while the microphone is muted: mute is about her hearing the voice.
+    func testTypingWorksWhileTheMicrophoneIsMuted() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<ja>はい</ja><zh>好</zh>"],
+        ])
+        let playback = FakePlayback()
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            playback: playback
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        await session.setMuted(true)
+
+        await session.say("聞こえる")
+
+        try await waitFor("her answer played") { playback.audio.count == 1 }
+        let conversation = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertEqual(conversation?.messages.first?.text, "聞こえる")
+        await session.hangUp()
+    }
+
+    /// Typing while she is still thinking is a follow-on: the reply being written leaves no
+    /// trace, and the turn is answered again with the typed line joined on.
+    func testTypingBeforeSheIsHeardMergesIntoTheTurnAsAFollowOn() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = HeldReplyProvider()
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("her first words") { provider.hasSaidPart }
+
+        await session.say("もう一度")
+
+        try await waitFor("the joined turn") { provider.saidTexts.count == 2 }
+        XCTAssertEqual(provider.saidTexts, ["ねえ", "ねえ\nもう一度"])
+        let messages = try await rowCount("messages", on: eidolon)
+        XCTAssertEqual(messages, 0, "the dropped reply is not written")
+        await session.hangUp()
+    }
+
+    /// Once she has started a complete segment, typing interrupts her: the complete segment
+    /// is kept, and the typed line starts a new turn.
+    func testTypingAfterSheHasSaidASegmentInterruptsAndKeepsIt() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = HeldHalfReplyProvider()
+        let playback = FakePlayback()
+        playback.playsUntilSilenced = true
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            playback: playback
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("her first segment starts") {
+            log.all.contains(.segmentStarted(reply: 0, segment: 0))
+        }
+
+        await session.say("割り込み")
+
+        try await waitFor("the typed turn starts") {
+            log.all.contains(.segmentStarted(reply: 1, segment: 0))
+        }
+        XCTAssertGreaterThanOrEqual(playback.silences, 1)
+        let conversation = try await eidolon.currentConversation(characterID: "mano")
+        let messages = conversation?.messages ?? []
+        XCTAssertEqual(messages.map(\.role), ["user", "character"])
+        XCTAssertEqual(messages.first?.text, "ねえ")
+        XCTAssertEqual(
+            messages.last?.segments.map(\.ja), ["一つ目"],
+            "only the complete segment is kept"
+        )
+        await session.hangUp()
+    }
+
+    /// Typed while still dialing, the line waits for the call to enter.
+    func testTypingWhileDialingWaitsForTheCallToEnter() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        recognition.connectDelay = .seconds(1)
+        let provider = ReplyScriptProvider([
+            ["<ja>もしもし</ja><zh>喂</zh>"],
+        ])
+        let playback = FakePlayback()
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            playback: playback
+        )
+
+        await session.say("もしもし")
+        XCTAssertEqual(provider.turnsAsked, 0, "nothing is answered before the call enters")
+
+        try await waitFor("the queued line answered") { playback.audio.count == 1 }
+        let conversation = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertEqual(conversation?.messages.first?.text, "もしもし")
+        await session.hangUp()
+    }
+
     private func rowCount(_ table: String, on eidolon: Eidolon) async throws -> Int {
         try await eidolon.userQueue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM \(table)") ?? 0
