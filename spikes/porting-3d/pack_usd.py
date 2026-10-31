@@ -63,14 +63,49 @@ def neutralize_geom_bind(stage: Usd.Stage) -> int:
     matrix was applied on top of bind-space points and tore every posed frame
     into sheets, while the rest pose looked perfect (a constant pre-transform
     cancels there). RealityKit honours the spec; the identity is the fix.
+
+    The removed matrix is not thrown away: it also carried the turn Blender
+    gave the mesh so the rest pose faces the camera, and dropping it turned the
+    model 90 degrees. `_keep_drawn_place` puts that back on the SkelRoot.
     """
+    removals: list[tuple[object, Gf.Matrix4d]] = []
     patched = 0
     for prim in stage.Traverse():
         attribute = prim.GetAttribute("primvars:skel:geomBindTransform")
         if attribute and attribute.HasAuthoredValue():
+            removals.append((prim, Gf.Matrix4d(attribute.Get())))
             attribute.Set(Gf.Matrix4d(1.0))
             patched += 1
+    _keep_drawn_place(removals)
     return patched
+
+
+def _keep_drawn_place(removals) -> None:
+    """Compose each removed point transform into the SkelRoot above it.
+
+    The SkelRoot sits above both the mesh and the skeleton, so a rigid transform
+    there moves the whole figure without touching the bind: the rest pose keeps
+    the authored facing while the skinning stays in bind space.
+
+    Verified by rendering the probe pose in `usdrecord`: for `014mir-ss002` the
+    SkelRoot's own yaw (-90) times the removed matrix is a 180 degree turn about
+    the vertical, which is what the exported model then needs to face forward.
+    """
+    roots: dict = {}
+    for prim, removed in removals:
+        node = prim.GetParent()
+        while node and node.GetTypeName() != "SkelRoot":
+            node = node.GetParent()
+        if not node:
+            continue
+        roots[node.GetPath()] = (node, removed)
+    for node, removed in roots.values():
+        xformable = UsdGeom.Xformable(node)
+        if not xformable:
+            continue
+        current = xformable.GetLocalTransformation()[0]
+        xformable.ClearXformOpOrder()
+        xformable.AddTransformOp().Set(current * removed)
 
 
 def inject_normals(stage: Usd.Stage, attributes: dict) -> tuple[int, int]:
