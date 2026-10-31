@@ -52,6 +52,11 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
         } else {
             try? session.setActive(false, options: .notifyOthersOnDeactivation)
         }
+        // `.playAndRecord` means a call holds the session — the hang-up tone reads it to
+        // decide whether it has one to play on. Put the category back now that this call has
+        // let go, or a later call that never gets the microphone would mistake the stale
+        // category for a live session and play its tone on the wrong route.
+        try? session.setCategory(.ambient, mode: .default, options: [])
     }
 
     func chunks() -> AsyncThrowingStream<Data, Error> {

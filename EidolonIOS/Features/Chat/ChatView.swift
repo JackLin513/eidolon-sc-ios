@@ -11,6 +11,11 @@ struct ChatView: View {
     @State private var didAutoSend = false
     @State private var showHistory = false
     @State private var showCall = false
+    /// Her stand, only so the toolbar can offer her clothes from here (spec #35): the chat
+    /// page draws none of it. Nil while it has not been read, or when she has none.
+    @State private var outfitsStand: CharacterStand?
+    @State private var outfitsChecked = false
+    @State private var showsOutfits = false
 
     var body: some View {
         Group {
@@ -37,6 +42,16 @@ struct ChatView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if outfitsStand != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showsOutfits = true
+                    } label: {
+                        Image(systemName: "tshirt")
+                    }
+                    .accessibilityLabel("换衣装")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showCall = true
@@ -69,7 +84,23 @@ struct ChatView: View {
             if isCalling { app.readAloud.stop() }
         }
         .onChange(of: conversationID) { app.readAloud.stop() }
-        .onDisappear { app.readAloud.stop() }
+        .onDisappear {
+            app.readAloud.stop()
+            // Leaving the chat page also lets the call's sounds go (spec #35).
+            app.callTones.silence()
+        }
+        .fullScreenCover(isPresented: $showsOutfits) {
+            if let stand = outfitsStand {
+                OutfitPickerView(
+                    character: character,
+                    stand: stand,
+                    contentRoot: stand.root ?? app.core.location.contentDirectory,
+                    contentVersion: app.standInfo?.installedAt ?? app.bundleInfo?.installedAt ?? "current",
+                    onWear: { _ in },
+                    onClose: { showsOutfits = false }
+                )
+            }
+        }
         .fullScreenCover(isPresented: $showCall, onDismiss: {
             // What the call wrote is shown at once: its turns, her hang-up, the affinity and
             // any cooldown (spec「返回刷新」).
@@ -99,6 +130,13 @@ struct ChatView: View {
             if app.debugOpensCall, !created.readOnly { showCall = true }
             #endif
         }
+        .task {
+            // The clothes button only exists for a character who has a stand to dress
+            // (spec #35); reading it is no use on the chat page otherwise.
+            guard !outfitsChecked else { return }
+            outfitsChecked = true
+            outfitsStand = await app.core.stand(for: character.id)
+        }
     }
 
     /// Development aid: `SIMCTL_CHILD_EIDOLON_SEND_TEXT` sends one line on opening, so
@@ -127,7 +165,8 @@ struct ChatView: View {
     // MARK: - Transcript
 
     private func transcript(_ store: ChatStore) -> some View {
-        ScrollViewReader { proxy in
+        let now = Date()
+        return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     if store.transcript.isEmpty && store.streaming.isEmpty {
@@ -137,12 +176,15 @@ struct ChatView: View {
                             .frame(maxWidth: .infinity, alignment: .center)
                             .padding(.top, 40)
                     }
-                    ForEach(store.transcript) { line in
-                        switch line {
+                    ForEach(entries(store, now: now)) { entry in
+                        if let day = entry.day {
+                            dayPill(day)
+                        }
+                        switch entry.line {
                         case let .message(message):
-                            bubble(message)
+                            bubble(message, clock: entry.clock)
                         case let .event(event):
-                            conversationEvent(event)
+                            conversationEvent(event, clock: entry.clock)
                         }
                     }
                     if let pending = store.pendingUser {
@@ -180,16 +222,62 @@ struct ChatView: View {
         }
     }
 
+    /// One transcript line as the page shows it: the day pill it hangs under (nil when the
+    /// pill is still up from the line before) and its moment (spec #35).
+    private struct TranscriptEntry: Identifiable {
+        let line: ConversationLine
+        let day: String?
+        let clock: String
+
+        var id: String { line.id }
+    }
+
+    /// The transcript with its day breaks worked out. The first line always gets a pill;
+    /// after that only a change of calendar day does. The day is judged when the page is
+    /// drawn, so a conversation left open across midnight gains its new pill on the next
+    /// redraw.
+    private func entries(_ store: ChatStore, now: Date) -> [TranscriptEntry] {
+        let instants = store.transcript.map { Eidolon.parseTimestamp($0.createdAt) ?? now }
+        let days = ConversationTime.dayPills(for: instants, now: now)
+        return store.transcript.enumerated().map { index, line in
+            TranscriptEntry(
+                line: line,
+                day: days[index],
+                clock: ConversationTime.clock(of: instants[index])
+            )
+        }
+    }
+
+    private func dayPill(_ label: String) -> some View {
+        Text(label)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(Color(.secondarySystemBackground), in: Capsule())
+            .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    /// A line's moment: small and quiet, below and to its own side.
+    private func clockText(_ clock: String) -> some View {
+        Text(clock)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+    }
+
     /// A call that ended is part of the conversation: it is shown here, and nowhere in
     /// the prompt.
-    private func conversationEvent(_ event: ConversationEventRecord) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: eventIcon(event.kind))
-                .font(.caption2)
-            Text(eventText(event.kind))
-                .font(.caption2)
+    private func conversationEvent(_ event: ConversationEventRecord, clock: String) -> some View {
+        VStack(spacing: 2) {
+            HStack(spacing: 6) {
+                Image(systemName: eventIcon(event.kind))
+                    .font(.caption2)
+                Text(eventText(event.kind))
+                    .font(.caption2)
+            }
+            .foregroundStyle(.secondary)
+            clockText(clock)
         }
-        .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 2)
         .id("event-\(event.id)")
@@ -204,16 +292,23 @@ struct ChatView: View {
     }
 
     @ViewBuilder
-    private func bubble(_ message: ChatMessageRecord) -> some View {
+    private func bubble(_ message: ChatMessageRecord, clock: String) -> some View {
         if message.isFromCharacter {
-            characterBubble(message.segments, line: message.id)
+            VStack(alignment: .leading, spacing: 2) {
+                characterBubble(message.segments, line: message.id)
+                clockText(clock)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             HStack {
                 Spacer(minLength: 40)
-                Text(message.text ?? "")
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 16))
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(message.text ?? "")
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 16))
+                    clockText(clock)
+                }
             }
         }
     }

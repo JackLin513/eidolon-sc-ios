@@ -17,6 +17,9 @@ struct ConversationListView: View {
     @State private var showSettings = false
     @State private var isBarShown = false
     @State private var path = NavigationPath()
+    /// The moment the list writes its times against; refreshed every minute while it is
+    /// open, so an old 昨天 turns into a date and today's times keep up (spec #35).
+    @State private var now = Date()
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -50,6 +53,12 @@ struct ConversationListView: View {
                 )
             }
             .task { await app.refresh() }
+            .task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(60))
+                    now = Date()
+                }
+            }
             .task {
                 #if DEBUG
                 if app.openDebugSettingsIfRequested() {
@@ -178,6 +187,13 @@ struct ConversationListView: View {
             }
 
             Spacer(minLength: 0)
+
+            if let time = lastTime(character) {
+                Text(time)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(maxHeight: .infinity, alignment: .top)
+            }
         }
         .padding(.vertical, 4)
     }
@@ -206,6 +222,15 @@ struct ConversationListView: View {
         // The last thing in the conversation may be something that happened, not said.
         if let kind = activity.lastEventKind { return Self.eventPreview(kind) }
         return activity.lastMessagePreview ?? "还没聊过"
+    }
+
+    /// When this conversation last heard from her or the producer, as the list writes it;
+    /// nothing at all until there has been something (spec #35).
+    private func lastTime(_ character: CharacterConfig) -> String? {
+        guard let stamp = app.latest[character.id]?.lastMessageAt,
+              let at = Eidolon.parseTimestamp(stamp)
+        else { return nil }
+        return ConversationTime.listTime(of: at, now: now)
     }
 
     private static func eventPreview(_ kind: String) -> String {
