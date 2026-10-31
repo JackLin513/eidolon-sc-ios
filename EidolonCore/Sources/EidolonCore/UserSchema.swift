@@ -4,7 +4,7 @@ import GRDB
 /// The writable user library (ADR-0002). Its schema evolves with the app, not
 /// with the content bundle, and is therefore managed by GRDB migrations.
 enum UserSchema {
-    static let version = 11
+    static let version = 12
 
     static func migrate(_ dbQueue: DatabaseQueue) throws {
         var migrator = DatabaseMigrator()
@@ -257,6 +257,22 @@ enum UserSchema {
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     enabled INTEGER NOT NULL DEFAULT 1
                 );
+                """)
+        }
+        migrator.registerMigration("v12") { db in
+            // The periods the producer writes down (spec #53); the estimate is worked out
+            // from them whenever it is read, never stored, and her true cycle is not read.
+            try db.execute(sql: """
+                CREATE TABLE cycle_records (
+                    id TEXT PRIMARY KEY,
+                    character_id TEXT NOT NULL,
+                    first_day TEXT NOT NULL,
+                    days INTEGER NOT NULL,
+                    recorded_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE INDEX cycle_records_by_her
+                    ON cycle_records(character_id, first_day);
                 """)
         }
         try migrator.migrate(dbQueue)

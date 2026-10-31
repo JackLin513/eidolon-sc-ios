@@ -91,12 +91,9 @@ public enum HerCycle {
     /// Where her cycle has her on `day`; nil in her other days.
     public static func day(seed: Data, under18: Bool, on day: CalendarDay) -> HerCycleDay? {
         let drawn = rhythm(seed: seed)
-        var first = epoch.adding(days: -drawn.offset)
-        var k = 0
-        while day < first {
-            k -= 1
-            first = first.adding(days: -length(seed, under18: under18, drawn: drawn, k: k))
-        }
+        let (start, startK) = cycle(startingAt: day, drawn: drawn, seed: seed, under18: under18)
+        var first = start
+        var k = startK
         while true {
             let length = length(seed, under18: under18, drawn: drawn, k: k)
             let period = period(seed, drawn: drawn, k: k)
@@ -120,12 +117,9 @@ public enum HerCycle {
         seed: Data, under18: Bool, from day: CalendarDay = epoch, count: Int
     ) -> [(firstDay: CalendarDay, length: Int, period: Int)] {
         let drawn = rhythm(seed: seed)
-        var first = epoch.adding(days: -drawn.offset)
-        var k = 0
-        while day < first {
-            k -= 1
-            first = first.adding(days: -length(seed, under18: under18, drawn: drawn, k: k))
-        }
+        let (start, startK) = cycle(startingAt: day, drawn: drawn, seed: seed, under18: under18)
+        var first = start
+        var k = startK
         return (0..<count).map { step in
             let cycle = (
                 firstDay: first,
@@ -135,6 +129,20 @@ public enum HerCycle {
             first = first.adding(days: cycle.length)
             return cycle
         }
+    }
+
+    /// The cycle `day` is in (or the first after it) and its number, walking back from the
+    /// epoch before it.
+    private static func cycle(
+        startingAt day: CalendarDay, drawn: CycleRhythm, seed: Data, under18: Bool
+    ) -> (CalendarDay, Int) {
+        var first = epoch.adding(days: -drawn.offset)
+        var k = 0
+        while day < first {
+            k -= 1
+            first = first.adding(days: -length(seed, under18: under18, drawn: drawn, k: k))
+        }
+        return (first, k)
     }
 
     private static func length(
@@ -218,10 +226,10 @@ extension Eidolon {
     /// Whether cycles are on for this device; on until switched off.
     public func cycleEnabled() throws -> Bool {
         try userQueue.read { db in
-            let off = try Int.fetchOne(
+            let enabled = try Int.fetchOne(
                 db, sql: "SELECT enabled FROM cycle_settings WHERE id = 1"
             )
-            return off != 0
+            return enabled != 0
         }
     }
 
@@ -264,6 +272,14 @@ extension Eidolon {
     public func herCycle(
         characterID: String, now: Date = Date(), timeZone: TimeZone
     ) throws -> HerCycleDay? {
+        try herCycle(
+            characterID: characterID,
+            on: CalendarPage.today(now: now, timeZone: timeZone)
+        )
+    }
+
+    /// Where her cycle has her on `day`, the producer's calendar day.
+    public func herCycle(characterID: String, on day: CalendarDay) throws -> HerCycleDay? {
         guard try cycleEnabled() else { return nil }
         let characters = try characters()
         guard let character = characters.first(where: { $0.id == characterID }) else {
@@ -271,10 +287,7 @@ extension Eidolon {
         }
         guard let seed = try cycleSeed(characterID: characterID) else { return nil }
         let age = character.raw["age"]?.intValue
-        let day = CalendarPage.today(now: now, timeZone: timeZone)
-        return HerCycle.day(
-            seed: seed, under18: HerCycle.isUnder18(age), on: day
-        )
+        return HerCycle.day(seed: seed, under18: HerCycle.isUnder18(age), on: day)
     }
 
     /// What her prompt is told of her cycle; none when cycles are off or on her other days.

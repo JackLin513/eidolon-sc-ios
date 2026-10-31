@@ -201,6 +201,17 @@ final class HerCycleTests: XCTestCase {
         XCTAssertEqual(mano, reread)
     }
 
+    func testTypingAndACallAreBothToldOfHerCycle() {
+        for talking in [NowPrompt.Talking.typing, .inCall] {
+            let text = NowPrompt.text(
+                now: Date(timeIntervalSince1970: 1_760_000_000),
+                timeZone: tokyo, talking: talking, affinityLines: [],
+                lastContact: nil, birthday: nil, cycleLines: ["周期行"]
+            )
+            XCTAssertTrue(text.contains("周期行"))
+        }
+    }
+
     /// Typing, a call and reaching out read the same prompt path, which carries the cycle
     /// lines; the bar's visit prompt does not.
     func testATurnOnACycleDayIsToldOfIt() async throws {
@@ -215,6 +226,43 @@ final class HerCycleTests: XCTestCase {
             now: now, timeZone: tokyo
         )
         for try await _ in stream {}
+        let prompts = provider.prompts.flatMap { $0.map(\.content) }.joined(separator: "\n")
+        XCTAssertTrue(
+            prompts.contains("你今天身体很不舒服") || prompts.contains("你这几天身体还有点虚")
+                || prompts.contains("你这几天心情有点起伏") || prompts.contains("你这两天特别容易烦躁"),
+            prompts
+        )
+    }
+
+    func testHerCycleCanBeReadOnAGivenDay() async throws {
+        let eidolon = try await installed()
+        let maybeStored = try await eidolon.cycleSeed(characterID: "mano")
+        let stored = try XCTUnwrap(maybeStored)
+        let day = someCycleDay(stored)
+        let read = try await eidolon.herCycle(characterID: "mano", on: day)
+        XCTAssertEqual(read, HerCycle.day(seed: stored, under18: false, on: day))
+    }
+
+    func testReachingOutCarriesTheCycleLines() async throws {
+        let eidolon = try await installed()
+        let maybeStored = try await eidolon.cycleSeed(characterID: "mano")
+        let stored = try XCTUnwrap(maybeStored)
+        let now = noon(someCycleDay(stored), in: tokyo)
+        let earlier = now.addingTimeInterval(-8 * 3600)
+
+        let chat = KindChatProvider()
+        chat.chat = "<ja>うん</ja><zh>嗯</zh>"
+        let turn = await eidolon.sendTurn(
+            characterID: "mano", text: "你好", provider: chat,
+            now: earlier, timeZone: tokyo
+        )
+        for try await _ in turn {}
+
+        let provider = KindChatProvider()
+        _ = try await eidolon.reachOutIfDue(
+            characterID: "mano", provider: provider, cadence: .fixed(hours: 6),
+            now: now, timeZone: tokyo
+        )
         let prompts = provider.prompts.flatMap { $0.map(\.content) }.joined(separator: "\n")
         XCTAssertTrue(
             prompts.contains("你今天身体很不舒服") || prompts.contains("你这几天身体还有点虚")
