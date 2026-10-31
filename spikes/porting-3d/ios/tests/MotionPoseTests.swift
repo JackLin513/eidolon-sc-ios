@@ -1,4 +1,5 @@
 import XCTest
+import simd
 
 @testable import Eidolon3DSpike
 
@@ -200,5 +201,36 @@ final class MotionPoseTests: XCTestCase {
         XCTAssertEqual(
             UnityHandedness.translation(SIMD3(1, 2, 3)), SIMD3(1, 2, -3)
         )
+    }
+
+    /// `BASE` turns the whole model about its origin, so it has to carry the
+    /// roots' **positions** as well as their orientations. The skeleton roots
+    /// several chains independently (KOSHI, MUNE1, …); rotating each chain in
+    /// place instead tore the body apart at the seams.
+    func testBaseTurnCarriesRootPositionsLikeARigidBody() throws {
+        let dance = try JSONDecoder().decode(MotionDance.self, from: Data(baseFixture.utf8))
+        let names = ["HIPS", "KOSHI"]
+        let map = MotionJointMap.resolve(paths: dance.bones.map(\.path), joints: names)
+        let rest = [
+            JointPose(
+                translation: SIMD3(0.1, 0, 0.147),
+                rotation: UnityHandedness.rootFrame, scale: .one
+            ),
+            JointPose(
+                translation: SIMD3(0, 0.2, 0.147),
+                rotation: UnityHandedness.rootFrame, scale: .one
+            ),
+        ]
+        let sampler = MotionSampler(dance: dance, map: map, rest: rest, joints: names)
+        let before = sampler.pose(atFrame: 0)
+        let after = sampler.pose(atFrame: 1)
+
+        let was = before[1].translation - before[0].translation
+        let is_ = after[1].translation - after[0].translation
+        XCTAssertEqual(simd_length(is_), simd_length(was), accuracy: 1e-5,
+                       "root motion stretched the skeleton")
+        // The delta is a −90° turn, so the pair must end up perpendicular.
+        let cosine = simd_dot(is_, was) / (simd_length(is_) * simd_length(was))
+        XCTAssertEqual(cosine, 0, accuracy: 1e-4, "root positions did not turn")
     }
 }

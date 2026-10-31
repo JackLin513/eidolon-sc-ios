@@ -277,6 +277,12 @@ struct MotionSampler {
             )
         }
         for root in map.roots {
+            // The BASE delta is a rigid turn of the whole model about its
+            // origin. Rotating the root's orientation alone leaves each root
+            // chain pivoting in place — the skeleton has several independently
+            // rooted chains (KOSHI, MUNE1, …), so the body tore apart at the
+            // seams instead of turning.
+            poses[root].translation = QuaternionMath.rotate(world, poses[root].translation)
             poses[root].rotation = QuaternionMath.multiply(world, poses[root].rotation)
             if let translation {
                 poses[root].translation += translation
