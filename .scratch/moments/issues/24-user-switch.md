@@ -35,3 +35,8 @@
 
 - 账号的 `moments` 现在由 `Moments.switch_of(user_id)` 给：部署者开着时 `True`，关着时 `None`（没看参数）。前端 `navItems(moments)` 只在 `=== true` 时带「朋友圈」，换成用户开关后 `false` 也就自然隐藏。
 - 部署者关了再开时，`run_due` 会清掉全部计划和 `moment_users.planned_day`；用户自己的开关不要照搬这个（只清他自己的，或者按规格「当天已有计划的没到点照常发」）。
+
+### 票 23 交接
+
+- 到点的回复（23）已经做了，「他没关自己的朋友圈」由这一张加：`Moments._reply` 开头那串条件里加一条，不满足就照其他条件一样 `_no_reply`、不留记录。
+- 赞、取消赞、发评论、删评论都先过 `Moments._on_timeline`，他关着时在那里抛 409 就一起拦住了。

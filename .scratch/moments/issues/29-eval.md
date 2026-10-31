@@ -65,3 +65,7 @@
 
 - `draw_compositions` 现在要传第四个参数 `group`。场景 ⑨ 要允许合照，`PostMaterial.compositions` 里要带 `"group"`，圈子里至少一位配齐了 `photo_tag` 和 `photo_appearance`；场景 ⑩ 不带。
 - 「合照里的人有没有算进赞」：`parse_post` 会自动把合照里的人补进 `Post.likes`，所以只看 `Post.likes` 总是对的。要查她自己写没写，得拿 `<likes>` 原文和 `post.picture.tag.others` 比。降成摆拍记在 `degraded["with"]`。
+
+### 票 23 交接
+
+- 回评论走 `moment_prompt.reply_prompt(ReplyMaterial)` 和 `parse_reply`，素材全在 `ReplyMaterial` 里（历史是已经截好的 `ChatMessage`，偶像的赞和评论用名字）；此刻那几行用 `HerNow.lines(..., "moments", ..., replying=True)`。

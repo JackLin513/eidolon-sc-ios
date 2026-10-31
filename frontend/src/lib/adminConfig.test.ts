@@ -465,11 +465,11 @@ describe("reach-outs", () => {
 describe("moments", () => {
   const spec = ITEM_SPECS.moments;
 
-  it("send the switch, how many a day and which map", () => {
-    const form = formOf(spec, { enabled: true, per_day: 3, map: "osm" });
-    expect(form).toEqual({ enabled: "true", per_day: "3", map: "osm" });
-    expect(changeOf(spec, { ...form, map: "amap" }, true)).toEqual({
-      change: { enabled: true, per_day: 3, map: "amap" },
+  it("send the switch, how many a day, which map and how many comments a day she replies to", () => {
+    const form = formOf(spec, { enabled: true, per_day: 3, map: "osm", replies_per_day: 10 });
+    expect(form).toEqual({ enabled: "true", per_day: "3", map: "osm", replies_per_day: "10" });
+    expect(changeOf(spec, { ...form, map: "amap", replies_per_day: "5" }, true)).toEqual({
+      change: { enabled: true, per_day: 3, map: "amap", replies_per_day: 5 },
     });
   });
 });

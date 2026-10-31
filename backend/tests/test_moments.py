@@ -148,6 +148,7 @@ async def test_planned_after_midnight_she_posts_at_her_time_asked_as_a_turn_with
         "ja": "今日は公園でピーちゃんと日向ぼっこ(^^)", "zh": "今天和小哔在公园晒太阳(^^)",
         "image": None, "place": None, "weather": None, "posted_at": SEVEN.isoformat(),
         "likes": [], "comments": [],
+        "producer_liked": False, "producer_comment": None, "reply": None,
     }]
     assert (await client.get("/api/account")).json()["moments"] is True
     assert moment_records(settings.database_path) == [("moment", "mano", "success", 0)]
@@ -386,8 +387,10 @@ async def test_off_by_default_the_admin_turns_them_on_with_how_many_a_day(
     await tick(client, clock, SEVEN + timedelta(hours=16, minutes=59))
 
     assert described == {
-        "status": "env", "env": {"enabled": False, "per_day": 3, "map": "osm"},
-        "effective": {"enabled": False, "per_day": 3, "map": "osm"}, "override": None,
+        "status": "env",
+        "env": {"enabled": False, "per_day": 3, "map": "osm", "replies_per_day": 10},
+        "effective": {"enabled": False, "per_day": 3, "map": "osm", "replies_per_day": 10},
+        "override": None,
         "failure": None,
     }
     assert account["moments"] is None
@@ -395,7 +398,7 @@ async def test_off_by_default_the_admin_turns_them_on_with_how_many_a_day(
     assert [r.status_code for r in refused] == [422] * 2
     assert turned_on.status_code == 200
     assert turned_on.json()["moments"]["effective"] == {
-        "enabled": True, "per_day": 1, "map": "osm",
+        "enabled": True, "per_day": 1, "map": "osm", "replies_per_day": 10,
     }
     assert (await client.get("/api/account")).json()["moments"] is True
     assert len(await timeline(client)) == 1

@@ -59,7 +59,23 @@ her affinity or her cooldowns after.
 The timeline (`timeline`) is the user's moments of the last `KEPT`, the latest first, each
 place with a link to it on the map the deployer chooses (`map_link`), each with the likes
 and comments of her circle that have shown, in the order they did, and where its picture is
-(`picture`): the user's alone to read, as their photos are."""
+(`picture`): the user's alone to read, as their photos are.
+
+The producer may like a moment on his timeline, and no longer (`like`): only whether he does
+now is kept, she never knows what was. He may comment on it once (`comment`), from 1 to
+`COMMENT_LENGTH` characters but for the spaces around them, kept as he wrote it, and delete it (`uncomment`), her
+reply with it, then comment again, a comment as any other. As he comments, she is to reply in
+her tier, within `moment_draws.REPLY_AFTER` (`draw_reply`), trust where affinity is off; never,
+cold to him, distant, or in a cooldown. As her time comes, with the moments due, in the order
+of their times, it is looked at again: the deployer still has moments on; she is not cold,
+distant or in a cooldown; it did not come before the backend started; she has replied to
+fewer of his comments that day in Tokyo than the deployer lets her (`MomentSettings.replies_per_day`), counted by the records of her replies
+(`moment_reply`) that succeeded, as a reply deleted with its comment counts still. If not, she
+does not, for good, unrecorded. She replies on the deployer's chat model, whoever's LLM the user
+brings (`moment_prompt.reply_prompt`), with the memories she was told herself; one the model
+fails, or writes no reply in, is recorded failed, and not tried again. Her reply shows as it is
+written, unless his comment was deleted meanwhile, when it is recorded rejected. Neither a like,
+a comment nor a reply changes her affinity, is remembered, or is being in touch."""
 
 import asyncio
 import json
@@ -67,19 +83,20 @@ import logging
 import sqlite3
 from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import TypeVar
 from urllib.parse import quote, urlencode
 
-from eidolon.activity import ActivityLog
+from eidolon.activity import ActivityLog, read_replied_between
 from eidolon.affinity import Affinities, Status, Tier, tier_prompt
 from eidolon.characters import Character
 from eidolon.clock import Clock
 from eidolon.config import MapSite
 from eidolon.data_access import Database
+from eidolon.engine import chat_history
 from eidolon.her_now import HerNow
 from eidolon.live_config import LiveConfig
-from eidolon.llm import Streamed
+from eidolon.llm import ChatMessage, Streamed
 from eidolon.memory import Memories, last_turn_query
 from eidolon.moment_draws import (
     CHANCES,
@@ -91,6 +108,7 @@ from eidolon.moment_draws import (
     draw_circle,
     draw_compositions,
     draw_places,
+    draw_reply,
     draw_seeds,
     draw_shown,
     plan_day,
@@ -102,14 +120,18 @@ from eidolon.moment_prompt import (
     Member,
     Picture,
     PostMaterial,
+    ReplyMaterial,
     parse_post,
+    parse_reply,
     post_prompt,
     recalled,
+    reply_prompt,
 )
 from eidolon.photos import Photos
 from eidolon.place_pool import Place
 from eidolon.producer import ProducerProfile, effective_timezone, is_birthday, local_date
 from eidolon.randomness import Random
+from eidolon.reply_format import format_reply
 from eidolon.schedule import DayJob, Schedules
 from eidolon.store import (
     Conversation,
@@ -120,7 +142,7 @@ from eidolon.store import (
     read_profile,
     read_record,
 )
-from eidolon.today import tokyo_date, venues_on_this_day
+from eidolon.today import TOKYO, tokyo_date, venues_on_this_day
 from eidolon.usage import read_user_limits
 from eidolon.weather import ALL_KINDS, Weather, Weathers
 from eidolon.world import World
@@ -146,6 +168,9 @@ KEPT = timedelta(days=30)
 
 PICTURE_TIME_LIMIT = timedelta(minutes=10)
 """The longest her moment's picture may take, waiting its turn included."""
+
+COMMENT_LENGTH = 140
+"""How many characters the producer's comment may have at most, but for the spaces around it."""
 
 NOT_ONE = ("制作人", "プロデューサー", "其他偶像")
 """What is in the heading of a section of her facts on the people she knows that is on no
@@ -218,11 +243,42 @@ CREATE TABLE IF NOT EXISTS moment_images (
     moment_id INTEGER PRIMARY KEY REFERENCES moments(id),
     image BLOB NOT NULL
 );
+
+-- The producer's like of a moment, while he likes it: none once he no longer does.
+CREATE TABLE IF NOT EXISTS moment_likes (
+    moment_id INTEGER PRIMARY KEY REFERENCES moments(id)
+);
+
+-- The producer's comment on a moment, one at most: what he wrote, when, and her reply to it:
+-- when it is due, or showed once written (`reply_at`, NULL where she does not reply), and its
+-- Japanese and subtitle, written as it shows.
+CREATE TABLE IF NOT EXISTS moment_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    moment_id INTEGER NOT NULL UNIQUE REFERENCES moments(id),
+    text TEXT NOT NULL,
+    commented_at TEXT NOT NULL,
+    reply_at TEXT,
+    reply_ja TEXT,
+    reply_zh TEXT
+);
+CREATE INDEX IF NOT EXISTS moment_comments_by_reply ON moment_comments(reply_at);
 """
 
 
 class MomentsOff(Exception):
     """The deployer has moments off."""
+
+
+class NoMoment(Exception):
+    """There is no such moment on the user's timeline: another's, not shown yet, or gone."""
+
+
+class AlreadyCommented(Exception):
+    """The producer has commented on the moment already."""
+
+
+class CommentInvalid(Exception):
+    """The producer's comment is empty, or longer than `COMMENT_LENGTH`."""
 
 
 @dataclass(frozen=True)
@@ -251,11 +307,24 @@ def map_link(site: MapSite, place: ShownPlace) -> str:
 
 
 @dataclass(frozen=True)
+class ProducerComment:
+    """The producer's comment on a moment: what he wrote, and when, as the database has it."""
+
+    text: str
+    commented_at: str
+
+    def shown(self) -> dict:
+        return {"text": self.text, "commented_at": self.commented_at}
+
+
+@dataclass(frozen=True)
 class Moment:
     """A moment as the timeline shows it: whose, what she posted, when it showed, where she
     was, as it was then (None for nowhere), Tokyo's weather then (None for none known), who
     of her circle has liked it and commented on it so far, in the order they showed, and
-    whether it has a picture."""
+    whether it has a picture; whether the producer likes it, his comment on it (None for
+    none), and her reply to that, once it has shown, in Japanese and its subtitle (None
+    till then, and for none)."""
 
     id: int
     character_id: str
@@ -267,6 +336,9 @@ class Moment:
     likes: tuple[str, ...] = ()
     comments: tuple[Comment, ...] = ()
     pictured: bool = False
+    liked: bool = False
+    producer_comment: ProducerComment | None = None
+    reply: tuple[str, str] | None = None
 
     def shown(self, map_site: MapSite) -> dict:
         """As the browser is told it, its place linked to on `map_site`, its picture by where
@@ -284,6 +356,13 @@ class Moment:
             "comments": [
                 {"character_id": c.character_id, "ja": c.ja, "zh": c.zh} for c in self.comments
             ],
+            "producer_liked": self.liked,
+            "producer_comment": (
+                self.producer_comment.shown() if self.producer_comment is not None else None
+            ),
+            "reply": (
+                {"ja": self.reply[0], "zh": self.reply[1]} if self.reply is not None else None
+            ),
         }
 
 
@@ -298,6 +377,37 @@ class _Plan:
     due_at: datetime
     birthday: bool
     kind: Kind = "daily"
+
+
+@dataclass(frozen=True)
+class _DueReply:
+    """Her reply to the producer's comment, as `moment_comments` keeps it: which comment, on
+    whose moment, and when it is due."""
+
+    comment_id: int
+    user_id: str
+    character_id: str
+    due_at: datetime
+
+
+@dataclass(frozen=True)
+class _BeforeReply:
+    """What she replies to the producer's comment with, read beforehand in one read: whether
+    she is to (her affinity, None while it is off; how many of his comments she has replied
+    to that day); the producer, her current conversation and its messages; her moment, its
+    Japanese and its picture as she wrote it (None for none); whether he likes it; and his
+    comment."""
+
+    status: Status | None
+    replied: int
+    profile: ProducerProfile
+    conversation: Conversation | None
+    messages: list[Message]
+    moment_id: int
+    ja: str
+    image: str | None
+    liked: bool
+    comment: str
 
 
 @dataclass(frozen=True)
@@ -376,24 +486,36 @@ class Moments:
 
     async def run_due(self) -> None:
         """Plan for each user active and not yet planned for today in Tokyo, then post each
-        moment whose time has come, one after another in the order of their times; one going
-        wrong keeps none of the others from it. Nothing while the deployer has moments off,
-        or has no chat model; turned on again, what was planned is forgotten, and each user
-        planned for anew."""
+        moment and reply whose time has come, one after another in the order of their times;
+        one going wrong keeps none of the others from it. Nothing while the deployer has
+        moments off, or has no chat model; turned on again, what was planned is forgotten,
+        each user planned for anew, and the replies whose time came meanwhile are not made."""
+        now = self._clock()
         if not self._on:
             self._was_off = True
             return
         if self._was_off:  # turned on again: planned anew, from what is left of the day
-            await self._db.write(_forget_plans)
+            await self._db.write(_forget_plans, now.astimezone(UTC).isoformat())
             self._was_off = False
-        now = self._clock()
         await self._plan(now)
-        for plan in await self._db.read(_due, now.astimezone(UTC).isoformat()):
+        at = now.astimezone(UTC).isoformat()
+        due: list[_Plan | _DueReply] = [
+            *await self._db.read(_due, at),
+            *await self._db.read(_due_replies, at, (now - KEPT).astimezone(UTC).isoformat()),
+        ]
+        for each in sorted(due, key=lambda each: each.due_at):
             try:
-                await self._post(plan)
+                if isinstance(each, _Plan):
+                    await self._post(each)
+                else:
+                    await self._reply(each)
             except Exception:
-                log.exception("posting a moment to user %s failed", plan.user_id)
-                await self._db.write(_drop_plan, plan.id)  # not tried again
+                log.exception("a moment or reply to user %s failed", each.user_id)
+                # not tried again
+                if isinstance(each, _Plan):
+                    await self._db.write(_drop_plan, each.id)
+                else:
+                    await self._db.write(_no_reply, each.comment_id)
 
     def switch_of(self, user_id: str) -> bool | None:
         """Whether the user has moments: True, or None where the deployer has them off."""
@@ -429,6 +551,54 @@ class Moments:
             _read_picture, user_id, moment_id, (now - KEPT).astimezone(UTC).isoformat(),
             now.astimezone(UTC).isoformat(),
         )
+
+    async def like(self, user_id: str, moment_id: int, liked: bool) -> None:
+        """Have the producer like the moment on his timeline, or no longer, however he did;
+        raise `NoMoment` for one not on it, `MomentsOff` where the deployer has them off."""
+        await self._on_timeline(user_id, moment_id)
+        await self._db.write(_set_liked, moment_id, liked)
+
+    async def comment(self, user_id: str, moment_id: int, text: str) -> ProducerComment:
+        """Have the producer comment `text` on the moment on his timeline, kept as he wrote
+        it, and have her reply as her tier has her, if it does; what is kept of it. Raise
+        `CommentInvalid` for a comment with none, or over `COMMENT_LENGTH`, characters but for
+        the spaces around them; `AlreadyCommented` if he has already; `NoMoment` for one not
+        on it; `MomentsOff` where the deployer has them off."""
+        if not 1 <= len(text.strip()) <= COMMENT_LENGTH:
+            raise CommentInvalid
+        character_id = await self._on_timeline(user_id, moment_id)
+        now = self._clock()
+        reply_at = draw_reply(
+            now, _tier(await self._affinities.status(user_id, character_id)), self._random
+        )
+        kept = ProducerComment(text, now.astimezone(UTC).isoformat())
+        if not await self._db.write(
+            _add_comment, moment_id, kept,
+            reply_at.astimezone(UTC).isoformat() if reply_at is not None else None,
+        ):
+            raise AlreadyCommented
+        return kept
+
+    async def uncomment(self, user_id: str, moment_id: int) -> None:
+        """Delete the producer's comment on the moment on his timeline, if any, her reply to
+        it with it, shown or not; raise `NoMoment` for one not on it, `MomentsOff` where the
+        deployer has them off."""
+        await self._on_timeline(user_id, moment_id)
+        await self._db.write(_delete_comment, moment_id)
+
+    async def _on_timeline(self, user_id: str, moment_id: int) -> str:
+        """The character whose moment on the user's timeline it is; raise `NoMoment` for one
+        not on it, `MomentsOff` where the deployer has them off."""
+        if not self._config.moments.enabled:
+            raise MomentsOff
+        now = self._clock()
+        character_id = await self._db.read(
+            _whose, user_id, moment_id, (now - KEPT).astimezone(UTC).isoformat(),
+            now.astimezone(UTC).isoformat(),
+        )
+        if character_id is None or character_id not in self._characters:
+            raise NoMoment
+        return character_id
 
     @property
     def map_site(self) -> MapSite:
@@ -598,6 +768,119 @@ class Moments:
             and posted < self._config.moments.per_day
         )
 
+    async def _reply(self, due: _DueReply) -> None:
+        """Reply to the producer's comment, unless she is not to now, or its time came before
+        the backend started, then for good, as her record says how it turned out."""
+        now = self._clock()
+        day = tokyo_date(now)
+        start = datetime.combine(day, time(), TOKYO)
+        before = await self._db.read(
+            self._before_reply, due, self._affinities.on, start, start + timedelta(days=1)
+        )
+        if (
+            due.due_at < self._started or before is None
+            or due.character_id not in self._characters
+            or _tier(before.status) is None
+            or before.replied >= self._config.moments.replies_per_day
+        ):
+            await self._db.write(_no_reply, due.comment_id)
+            return
+        material = await self._reply_material(due, before, now)
+        recording = self._activity.begin(
+            "moment_reply", due.user_id, due.character_id, own_llm=False, exempt=False
+        )
+        lease = self._config.lease()
+        try:
+            with recording.current():
+                written = await _written(lease.keys.chat_llm.stream(reply_prompt(material)))
+        except Exception as e:
+            # Not logged with what was raised: a service's error may repeat what it was asked.
+            log.warning("replying to user %s failed: %s", due.user_id, type(e).__name__)
+            await self._db.write(_no_reply, due.comment_id)
+            await recording.finish("failed")
+            return
+        finally:
+            lease.release()
+        said = parse_reply(written)
+        if said is None:
+            log.warning("replying to user %s failed: nothing to reply", due.user_id)
+            await self._db.write(_no_reply, due.comment_id)
+            await recording.finish("failed")
+            return
+        shown = await self._db.write(
+            _add_reply, due.comment_id, *said, self._clock().astimezone(UTC).isoformat()
+        )
+        await recording.finish("success" if shown else "rejected")
+
+    def _before_reply(
+        self,
+        db: sqlite3.Connection,
+        due: _DueReply,
+        affinity_on: bool,
+        start: datetime,
+        end: datetime,
+    ) -> _BeforeReply | None:
+        """What she replies to the producer's comment with, read through `db`, her affinity
+        only while it is `affinity_on`, counting her replies between `start` and `end`; None
+        if the comment is gone, or replied to."""
+        found = db.execute(
+            "SELECT m.id, m.ja, m.image, c.text,"
+            " EXISTS (SELECT 1 FROM moment_likes l WHERE l.moment_id = m.id)"
+            " FROM moment_comments c JOIN moments m ON m.id = c.moment_id"
+            " WHERE c.id = ? AND c.reply_ja IS NULL",
+            (due.comment_id,),
+        ).fetchone()
+        if found is None:
+            return None
+        moment_id, ja, image, text, liked = found
+        replied = read_replied_between(db, due.user_id, start, end)
+        conversation = read_current_conversation(db, due.user_id, due.character_id)
+        messages = (
+            [e for e in read_record(db, conversation.id) if isinstance(e, Message)]
+            if conversation is not None else []
+        )
+        return _BeforeReply(
+            self._affinities.read_status(db, due.user_id, due.character_id)
+            if affinity_on else None,
+            replied, read_profile(db, due.user_id), conversation, messages,
+            moment_id, ja, image, bool(liked), text,
+        )
+
+    async def _reply_material(
+        self, due: _DueReply, before: _BeforeReply, now: datetime
+    ) -> ReplyMaterial:
+        """What she replies to the producer's comment with, read now, of what was `before`."""
+        character = self._characters[due.character_id]
+        known = await self._her_now.read(due.user_id, due.character_id, None, "moments")
+        timezone = effective_timezone(before.profile, None)
+        memories = (
+            await self._memory.for_reaching_out(
+                before.conversation, timezone, last_turn_query(before.messages), posting=True
+            )
+            if before.conversation is not None else None
+        )
+        likes, comments = await self._db.read(
+            _circle_shown, before.moment_id, now.astimezone(UTC).isoformat()
+        )
+        characters = self._characters
+        return ReplyMaterial(
+            character,
+            self._world.prompt(character.name, local_date(now, timezone)) if self._world else None,
+            before.profile,
+            [_said(m) for m in chat_history(before.messages, self._config.history_turns)],
+            self._her_now.lines(
+                known, "moments", now, timezone, before.profile, None,
+                tier_prompt(before.status), replying=True,
+            ),
+            memories,
+            recalled(before.ja, _note(before.image)),
+            [characters[id].name for id in likes if id in characters],
+            [(characters[c.character_id].name, c.ja) for c in comments
+             if c.character_id in characters],
+            before.liked,
+            before.comment,
+        )
+
     def _standing_then(
         self, db: sqlite3.Connection, plan: _Plan, now: datetime, affinity_on: bool
     ) -> tuple[_Standing, int]:
@@ -758,10 +1041,110 @@ def _keep_plan(
     )
 
 
-def _forget_plans(db: sqlite3.Connection) -> None:
-    """Forget every moment planned, and that anyone was planned for."""
+def _forget_plans(db: sqlite3.Connection, now: str) -> None:
+    """Forget every moment planned, and that anyone was planned for, and every reply whose
+    time came by `now`."""
     db.execute("DELETE FROM moment_plans")
     db.execute("UPDATE moment_users SET planned_day = NULL")
+    db.execute(
+        "UPDATE moment_comments SET reply_at = NULL WHERE reply_ja IS NULL AND reply_at <= ?",
+        (now,),
+    )
+
+
+def _due_replies(db: sqlite3.Connection, now: str, since: str) -> list[_DueReply]:
+    """Her replies whose time has come by `now`, to comments on moments shown after `since`,
+    the earliest first."""
+    return [
+        _DueReply(id, user_id, character_id, datetime.fromisoformat(reply_at))
+        for id, user_id, character_id, reply_at in db.execute(
+            "SELECT c.id, m.user_id, m.character_id, c.reply_at"
+            " FROM moment_comments c JOIN moments m ON m.id = c.moment_id"
+            " WHERE c.reply_ja IS NULL AND c.reply_at <= ? AND m.posted_at > ?"
+            " ORDER BY c.reply_at, c.id",
+            (now, since),
+        )
+    ]
+
+
+def _no_reply(db: sqlite3.Connection, comment_id: int) -> None:
+    """Have her not reply to the comment after all."""
+    db.execute(
+        "UPDATE moment_comments SET reply_at = NULL WHERE id = ? AND reply_ja IS NULL",
+        (comment_id,),
+    )
+
+
+def _add_reply(db: sqlite3.Connection, comment_id: int, ja: str, zh: str, at: str) -> bool:
+    """Show her reply to the comment from `at`; False if the comment is gone."""
+    return db.execute(
+        "UPDATE moment_comments SET reply_ja = ?, reply_zh = ?, reply_at = ?"
+        " WHERE id = ? AND reply_ja IS NULL",
+        (ja, zh, at, comment_id),
+    ).rowcount == 1
+
+
+def _whose(
+    db: sqlite3.Connection, user_id: str, moment_id: int, since: str, now: str
+) -> str | None:
+    """The character whose moment on the user's timeline it is, shown after `since` and by
+    `now`; None for none."""
+    found = db.execute(
+        "SELECT character_id FROM moments"
+        " WHERE id = ? AND user_id = ? AND posted_at > ? AND posted_at <= ?",
+        (moment_id, user_id, since, now),
+    ).fetchone()
+    return found[0] if found is not None else None
+
+
+def _set_liked(db: sqlite3.Connection, moment_id: int, liked: bool) -> None:
+    if liked:
+        db.execute("INSERT OR IGNORE INTO moment_likes (moment_id) VALUES (?)", (moment_id,))
+    else:
+        db.execute("DELETE FROM moment_likes WHERE moment_id = ?", (moment_id,))
+
+
+def _add_comment(
+    db: sqlite3.Connection, moment_id: int, comment: ProducerComment, reply_at: str | None
+) -> bool:
+    """Keep the producer's comment, her reply due at `reply_at` (None for none); False if he
+    has commented already."""
+    return db.execute(
+        "INSERT OR IGNORE INTO moment_comments (moment_id, text, commented_at, reply_at)"
+        " VALUES (?, ?, ?, ?)",
+        (moment_id, comment.text, comment.commented_at, reply_at),
+    ).rowcount == 1
+
+
+def _delete_comment(db: sqlite3.Connection, moment_id: int) -> None:
+    db.execute("DELETE FROM moment_comments WHERE moment_id = ?", (moment_id,))
+
+
+def _circle_shown(
+    db: sqlite3.Connection, moment_id: int, now: str
+) -> tuple[list[str], list[Comment]]:
+    """Who of her circle has liked the moment by `now`, and their comments, in the order they
+    showed."""
+    likes: list[str] = []
+    comments: list[Comment] = []
+    for character_id, kind, ja, zh in db.execute(
+        "SELECT character_id, kind, ja, zh FROM moment_circle"
+        " WHERE moment_id = ? AND shown_at <= ? ORDER BY shown_at, position",
+        (moment_id, now),
+    ):
+        if kind == _LIKE:
+            likes.append(character_id)
+        else:
+            comments.append(Comment(character_id, ja, zh))
+    return likes, comments
+
+
+def _said(message: Message) -> ChatMessage:
+    """A message of her conversation as the chat model reads it as she replies: the user's
+    words, or her reply as she wrote it, without the photo she sent with it."""
+    if message.role == "user":
+        return ChatMessage("user", message.text or "")
+    return ChatMessage("assistant", format_reply(message.segments))
 
 
 def _due(db: sqlite3.Connection, now: str) -> list[_Plan]:
@@ -884,15 +1267,21 @@ def _timeline(db: sqlite3.Connection, user_id: str, since: str, now: str) -> lis
         Moment(id, character_id, ja, zh, posted_at,
                ShownPlace(name, lat, lon) if name is not None else None,
                Weather(kind, temperature) if kind in ALL_KINDS else None,
-               tuple(likes.get(id, ())), tuple(comments.get(id, ())), bool(pictured))
-        for id, character_id, ja, zh, posted_at, name, lat, lon, kind, temperature, pictured
+               tuple(likes.get(id, ())), tuple(comments.get(id, ())), bool(pictured),
+               bool(liked),
+               ProducerComment(text, commented_at) if text is not None else None,
+               (reply_ja, reply_zh) if reply_ja is not None and reply_at <= now else None)
+        for (id, character_id, ja, zh, posted_at, name, lat, lon, kind, temperature, pictured,
+             liked, text, commented_at, reply_at, reply_ja, reply_zh)
         in db.execute(
-            "SELECT id, character_id, ja, zh, posted_at, place_name, place_lat, place_lon,"
-            " weather, temperature,"
-            " EXISTS (SELECT 1 FROM moment_images i WHERE i.moment_id = moments.id)"
-            " FROM moments"
-            " WHERE user_id = ? AND posted_at > ? AND posted_at <= ?"
-            " ORDER BY posted_at DESC, id DESC",
+            "SELECT m.id, m.character_id, m.ja, m.zh, m.posted_at, m.place_name, m.place_lat,"
+            " m.place_lon, m.weather, m.temperature,"
+            " EXISTS (SELECT 1 FROM moment_images i WHERE i.moment_id = m.id),"
+            " EXISTS (SELECT 1 FROM moment_likes l WHERE l.moment_id = m.id),"
+            " c.text, c.commented_at, c.reply_at, c.reply_ja, c.reply_zh"
+            " FROM moments m LEFT JOIN moment_comments c ON c.moment_id = m.id"
+            " WHERE m.user_id = ? AND m.posted_at > ? AND m.posted_at <= ?"
+            " ORDER BY m.posted_at DESC, m.id DESC",
             (user_id, since, now),
         )
     ]

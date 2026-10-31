@@ -29,3 +29,9 @@
   - 停在朋友圈页时再造一条，它一分钟内出现在页面上；
   - 切到后台标签页时不拉，切回前台马上拉。
 - [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+
+## Comments
+
+### 票 23 交接
+
+- 「她的回复」露出时间是 `moment_comments.reply_at`，只认 `reply_ja` 不为空的行（`reply_ja` 为空时 `reply_at` 是还没到的到点时间）。

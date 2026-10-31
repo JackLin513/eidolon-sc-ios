@@ -129,18 +129,19 @@ class HerNow:
         last_contact: datetime | None,
         affinity_lines: Sequence[str],
         weather: Weather | None = None,
+        replying: bool = False,
     ) -> list[str]:
         """The second step: the lines of now for `occasion` (`CARRIES`), at `now`, the
         producer in `timezone` with `profile`, last in touch at `last_contact` (None if never,
         or in a call), she feeling as `affinity_lines` say, posting a moment in `weather` (None
-        for none known); her cycle where it has her at `now`. Joined by new lines, they make one section: the time and the rest of
+        for none known), or `replying` to the producer's comment on one; her cycle where it has her at `now`. Joined by new lines, they make one section: the time and the rest of
         `now_prompt` (`posting_now_prompt` posting a moment), the affinity lines last in it; the day in Tokyo; her jobs; her cycle."""
         carries = CARRIES[occasion]
         character = known.character
         felt = affinity_lines if carries.affinity else ()
         lines: list[str] = []
         if occasion == "moments":
-            lines.append(posting_now_prompt(profile, now, timezone, felt, weather))
+            lines.append(posting_now_prompt(profile, now, timezone, felt, weather, replying))
         elif carries.time:
             assert occasion != "visit"
             lines.append(now_prompt(profile, now, timezone, occasion, felt, last_contact))

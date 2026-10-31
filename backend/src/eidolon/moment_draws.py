@@ -34,6 +34,9 @@ Her picture (`draw_compositions`): where there is image generation, `PICTURED` o
 moments have one, in any composition, or only those no one is in where she has no photo tags;
 a group photo only in NovelAI's own format, with one of her circle who has photo tags.
 
+When she replies to the producer's comment on her moment (`draw_reply`): within
+`REPLY_AFTER` it by her tier, the closer the sooner, never in a tier below trust.
+
 Every draw asks the random source for a number below `PLACES`, so that one giving the same
 number each time draws alike wherever it is asked."""
 
@@ -111,6 +114,14 @@ LIKES_AFTER = (timedelta(minutes=5), timedelta(hours=3))
 
 COMMENTS_AFTER = (timedelta(minutes=15), timedelta(hours=6))
 """How long after the moment shows each comment shows, at least and at most."""
+
+REPLY_AFTER: dict[Tier, tuple[timedelta, timedelta]] = {
+    "intimate": (timedelta(minutes=5), timedelta(minutes=30)),
+    "close": (timedelta(minutes=15), timedelta(hours=1)),
+    "trust": (timedelta(minutes=30), timedelta(hours=2)),
+}
+"""How long after the producer comments on her moment she replies, at least and at most, by
+her tier; she replies in none of the tiers not here."""
 
 PICTURED = 2 / 3
 """How likely her moment is to have a picture, where there is image generation."""
@@ -292,6 +303,15 @@ def draw_shown(
         [_within(posted_at, LIKES_AFTER, random) for _ in range(likes)],
         sorted(_within(posted_at, COMMENTS_AFTER, random) for _ in range(comments)),
     )
+
+
+def draw_reply(commented_at: datetime, tier: Tier | None, random: Random) -> datetime | None:
+    """When she replies to the producer's comment made at `commented_at`, in `tier`: within
+    `REPLY_AFTER` it, by night as by day; None in a tier she does not reply in, or for None, in
+    a cooldown."""
+    if tier not in REPLY_AFTER:
+        return None
+    return _within(commented_at, REPLY_AFTER[tier], random)
 
 
 def _within(

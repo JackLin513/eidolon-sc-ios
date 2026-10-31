@@ -40,7 +40,16 @@ composition is not made do without: it is from the waist up.
 Where it may be a group photo, she is told which of her circle may be in it with her (those
 with photo tags, `GROUP_MARK`), and names them in `with`. One with no one named, or one not of
 them, is a posed photo of her alone instead, and it is told (`WITH`). Whoever is in it with her
-likes her moment, written so or not, and is never one of those over as many as are kept."""
+likes her moment, written so or not, and is never one of those over as many as are kept.
+
+Her reply to the producer's comment on her moment is asked as her reaching out is
+(`reply_prompt`): her character sheet and the world setting; who the producer is; the latest
+turns of her current conversation; then, in a system message of its own, what she knows of
+now on the `moments` occasion, replying, the memories she replies with, her moment, the likes
+and comments of her circle that have shown, whether he has liked it, and how to reply
+(`REPLY_RULES`); and where the user's words would be, his comment, as he wrote it
+(`COMMENTED`): they are his words. She writes one Japanese line with its subtitle,
+`<ja>…</ja><zh>…</zh>`, delivery cues left out (`parse_reply`); either missing, it fails."""
 
 import re
 from collections import Counter
@@ -88,6 +97,27 @@ POST_RULES = """# 发朋友圈
 
 WANTS_TO_POST = "（你想发一条朋友圈。）"
 """Where the user's words would be as she posts."""
+
+REPLY_RULES = """# 回评论
+制作人在你这条朋友圈下面评论了，你在评论区回他一句。
+- 用日语写一两句，评论区里随手回的口吻，再附上中文字幕。
+- 别重复别人评论里已经说过的话。
+- 评论区大家都看得到：关系再亲近也不写成情侣的口吻，他私下告诉你的事不要点明。
+- 不发照片，也不说要给他发照片。
+- 不加语气提示。
+- 只输出下面的格式，不写别的：
+<ja>日语</ja><zh>中文字幕</zh>"""
+"""How she is to reply to the producer's comment on her moment, told her last."""
+
+COMMENTED = "（制作人在你这条动态下面评论：）"
+"""Where the user's words would be as she replies to his comment, before them."""
+
+REPLIED_MOMENT = "# 你这条朋友圈"
+REPLIED_CIRCLE = "# 大家的赞和评论"
+NO_ONE_YET = "还没有别人赞或评论。"
+LIKED_BY = "赞："
+PRODUCER_LIKED = "制作人赞了这条。"
+PRODUCER_NOT_LIKED = "制作人没有赞这条。"
 
 HER_BIRTHDAY = "今天是你的生日，这条围绕你的生日写。"
 """What she is told on her birthday, in Tokyo, beside what the day tells her."""
@@ -221,6 +251,29 @@ class PostMaterial:
 
 
 @dataclass(frozen=True)
+class ReplyMaterial:
+    """What she replies to the producer's comment on her moment with: her sheet and the world
+    setting (`world_prompt`, None without one); the producer's profile; the latest turns of her
+    current conversation, as the chat model reads them; what she knows of now (`HerNow.lines`,
+    on the `moments` occasion, replying); the memories she replies with, as their prompt
+    section (None for none); her moment, as she recalls it (`recalled`); who of her circle has
+    liked it so far, by name, in the order they showed, and their comments, each its name and
+    Japanese; whether he has liked it; and his comment, as he wrote it."""
+
+    character: Character
+    world_prompt: str | None
+    profile: ProducerProfile
+    history: Sequence[ChatMessage]
+    now: Sequence[str]
+    memories: str | None
+    moment: str
+    likes: Sequence[str]
+    comments: Sequence[tuple[str, str]]
+    liked: bool
+    comment: str
+
+
+@dataclass(frozen=True)
 class Picture:
     """The picture she wrote for her moment: as read, the fields she wrote it in, as she
     wrote them, its composition among them as read, and its note."""
@@ -294,6 +347,47 @@ def post_prompt(material: PostMaterial) -> list[ChatMessage]:
         ChatMessage("system", "\n\n".join(told)),
         ChatMessage("user", WANTS_TO_POST),
     ]
+
+
+def reply_prompt(material: ReplyMaterial) -> list[ChatMessage]:
+    """The prompt she replies to the producer's comment on her moment with, from `material`."""
+    shown = [REPLIED_CIRCLE]
+    if material.likes:
+        shown.append(LIKED_BY + "、".join(material.likes))
+    shown += [f"- {name}：{ja}" for name, ja in material.comments]
+    if len(shown) == 1:
+        shown.append(NO_ONE_YET)
+    told = [
+        "\n".join(material.now),
+        *([material.memories] if material.memories else []),
+        "\n".join([REPLIED_MOMENT, material.moment]),
+        "\n".join(shown),
+        PRODUCER_LIKED if material.liked else PRODUCER_NOT_LIKED,
+        REPLY_RULES,
+    ]
+    return [
+        ChatMessage(
+            "system", "\n\n".join(always_known(material.character, material.world_prompt)),
+            cache_breakpoint=True,
+        ),
+        ChatMessage("system", producer_prompt(material.profile)),
+        *material.history,
+        ChatMessage("system", "\n\n".join(told)),
+        ChatMessage("user", COMMENTED + material.comment),
+    ]
+
+
+_REPLY = re.compile(r"<ja>(.*?)</ja>\s*<zh>(.*?)</zh>", re.DOTALL)
+
+
+def parse_reply(written: str) -> tuple[str, str] | None:
+    """Her reply, read from the whole of `written`: the first Japanese line with its subtitle,
+    delivery cues left out; None if either is missing."""
+    found = _REPLY.search(written)
+    if found is None:
+        return None
+    ja, zh = (without_written_cues(part) for part in found.groups())
+    return (ja, zh) if ja and zh else None
 
 
 def _circle(circle: Sequence[Member], birthday: bool, group: bool) -> str:

@@ -358,14 +358,15 @@ export const ITEM_SPECS: Record<ItemName, ItemSpec> = {
     ],
     tried: false,
   },
-  // 朋友圈（GLOSSARY.md「朋友圈」）：总开关，每位用户每天合计最多几条，地名点开跳哪家地图。不试调。
+  // 朋友圈（GLOSSARY.md「朋友圈」）：总开关，每位用户每天合计最多几条，地名点开跳哪家地图，每位用户每天她最多回几条评论。不试调。
   moments: {
-    rows: ["enabled", "per_day", "map"],
+    rows: ["enabled", "per_day", "map", "replies_per_day"],
     secrets: [],
     form: [
       { name: "enabled", kind: "switch" },
       { name: "per_day", kind: "positive" },
       { name: "map", kind: "select", options: MAP_SITES },
+      { name: "replies_per_day", kind: "positive" },
     ],
     tried: false,
   },

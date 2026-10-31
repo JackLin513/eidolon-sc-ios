@@ -1,7 +1,7 @@
 """The draws behind moments (GLOSSARY.md「朋友圈」), given what they go by and the numbers
 drawn (`FakeRandom`, each below 1000): the day's plan, of who posts and when in Tokyo, and her
-everyday moment's seeds, her places, her circle, when her circle shows, and whether her
-moment has a picture."""
+everyday moment's seeds, her places, her circle, when her circle shows, whether her
+moment has a picture, and when she replies to the producer's comment."""
 
 from datetime import date, datetime, time
 
@@ -15,6 +15,7 @@ from eidolon.moment_draws import (
     draw_compositions,
     draw_places,
     draw_seeds,
+    draw_reply,
     draw_shown,
     plan_day,
 )
@@ -273,3 +274,24 @@ def test_two_thirds_of_her_moments_have_a_picture_of_her_only_where_she_has_phot
 
 def test_without_image_generation_none_has_a_picture_nor_is_drawn_for():
     assert draw_compositions(False, True, FakeRandom(), True) == ()
+
+
+@pytest.mark.parametrize(
+    ("tier", "drawn", "after"),
+    [("intimate", 999, 29), ("close", 500, 37), ("trust", 0, 30)],
+)
+def test_she_replies_to_his_comment_the_sooner_the_closer_she_is(
+    tier: str, drawn: int, after: int
+):
+    """Intimate within 5–30 minutes, close 15–60, trust 30–120, to the whole minute here."""
+    commented = at(23, 50)
+
+    reply = draw_reply(commented, tier, FakeRandom(drawn))  # type: ignore[arg-type]
+
+    assert reply is not None
+    assert int((reply - commented).total_seconds() // 60) == after
+
+
+def test_below_trust_she_does_not_reply():
+    """Cold alike; a cooldown the caller tells as None."""
+    assert draw_reply(at(12), "distant", FakeRandom()) is None

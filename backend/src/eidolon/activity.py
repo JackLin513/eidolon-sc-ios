@@ -123,9 +123,12 @@ LLM_SERVICES: tuple[ServiceName, ...] = ("chat_llm", "memory_llm")
 """The LLMs among them (`llm_origin`): a user's own is recorded as `OWN`, and each call
 says how soon its first word came and at which reasoning effort."""
 
-RecordKind = Literal["turn", "call", "reach_out", "achievement", "visit", "moment"]
+RecordKind = Literal[
+    "turn", "call", "reach_out", "achievement", "visit", "moment", "moment_reply"
+]
 """A reach-out is neither a turn nor a call, nor counted as one anywhere; it is always on the
-deployer's keys, as a moment is, and neither is that. Nor is an achievement's stage unlocked or
+deployer's keys, as a moment is, and her reply to the producer's comment on one
+(`moment_reply`), and neither is either. Nor is an achievement's stage unlocked or
 a character complete, which has no service calls; nor a visit to the bar."""
 OWN_LLM_KINDS: frozenset[RecordKind] = frozenset({"turn", "visit"})
 """The kinds whose record keeps, as being on the user's own keys, whether its LLM was the
@@ -133,7 +136,8 @@ user's own; the others keep whether they were exempt."""
 Result = Literal["success", "failed", "rejected", "left", "not_connected"]
 """How a turn or call turned out (GLOSSARY.md「回合」「接通」): a turn succeeded, failed on
 a service, was rejected (over the limit, or its input), or the user left before it was
-done; a call also may never have connected. A reach-out or a moment succeeds or fails. A visit is done
+done; a call also may never have connected. A reach-out or a moment succeeds or fails; a
+reply to the producer's comment too, or is rejected, the comment deleted as it was made. A visit is done
 (success), failed on the call it was over at, was rejected over the limit, or else was
 left. An achievement's
 record has which stage of which instead (`stage_unlocked`), or `COMPLETE`."""
@@ -915,6 +919,20 @@ def read_reached_out_since(db: sqlite3.Connection, user_id: str, moment: datetim
         "SELECT COUNT(*) FROM activity_records WHERE user_id = ? AND started_at >= ?"
         " AND kind = 'reach_out' AND result = 'success'",
         (user_id, moment.timestamp()),
+    ).fetchone()
+    return count
+
+
+def read_replied_between(
+    db: sqlite3.Connection, user_id: str, start: datetime, end: datetime
+) -> int:
+    """How many of the user's comments on moments characters replied to from `start` till
+    `end`, as of when each began, read through `db`; only those that showed count, not those
+    that failed or were rejected."""
+    [count] = db.execute(
+        "SELECT COUNT(*) FROM activity_records WHERE user_id = ? AND started_at >= ?"
+        " AND started_at < ? AND kind = 'moment_reply' AND result = 'success'",
+        (user_id, start.timestamp(), end.timestamp()),
     ).fetchone()
     return count
 

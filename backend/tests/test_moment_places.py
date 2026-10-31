@@ -189,7 +189,9 @@ async def test_a_map_not_of_the_three_is_refused_and_one_left_out_left_as_it_is(
         left_out = await admin.put(MOMENTS, json={"enabled": True, "per_day": 2})
 
     assert refused.status_code == 422
-    assert left_out.json()["moments"]["effective"] == {"enabled": True, "per_day": 2, "map": "amap"}
+    assert left_out.json()["moments"]["effective"] == {
+        "enabled": True, "per_day": 2, "map": "amap", "replies_per_day": 10,
+    }
 
 
 async def test_her_holy_site_is_marked_among_the_places_given(

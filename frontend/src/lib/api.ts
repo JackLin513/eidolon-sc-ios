@@ -720,7 +720,9 @@ export type WeatherKind = "clear" | "cloudy" | "overcast" | "fog" | "rain" | "sn
  * and temperature in whole degrees Celsius, null if it could not be had; the other idols who have
  * liked it so far, by character id, in the order they did, and their comments so far, in order.
  * Those yet to show are not there. `image` is where its picture is read (GLOSSARY.md「配图」), the
- * user's alone, null for none. */
+ * user's alone, null for none. `producer_liked`: whether the user likes it now; `producer_comment`:
+ * his comment on it, null for none; `reply`: her reply to that, null until it shows (and for none:
+ * which of the two is never told). */
 export type Moment = {
   id: number;
   character_id: string;
@@ -732,10 +734,41 @@ export type Moment = {
   posted_at: string;
   likes: string[];
   comments: MomentComment[];
+  producer_liked: boolean;
+  producer_comment: ProducerComment | null;
+  reply: { ja: string; zh: string } | null;
 };
 
 /** A comment on a moment by another idol: her Japanese and its subtitle. */
 export type MomentComment = { character_id: string; ja: string; zh: string };
+
+/** The user's comment on a moment: as he wrote it, but for the spaces around it, and when (ISO). */
+export type ProducerComment = { text: string; commented_at: string };
+
+/** How many characters his comment may have at most, but for the spaces around it; the backend says
+ * so too (422). */
+export const COMMENT_LENGTH = 140;
+
+/** Likes one of his moments, or no longer, however he did. Gone (another's, or over 30 days old): 404. */
+export async function likeMoment(id: number, liked: boolean): Promise<void> {
+  await expectNoContent(await api(`/api/moments/${id}/like`, { method: liked ? "PUT" : "DELETE" }));
+}
+
+/** Comments on one of his moments, once (409 again): what is kept of it. */
+export async function commentOnMoment(id: number, text: string): Promise<ProducerComment> {
+  return json(
+    await api(`/api/moments/${id}/comment`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text }),
+    }),
+  );
+}
+
+/** Deletes his comment on one of his moments, her reply to it with it. */
+export async function deleteMomentComment(id: number): Promise<void> {
+  await expectNoContent(await api(`/api/moments/${id}/comment`, { method: "DELETE" }));
+}
 
 /** The user's moments of the last 30 days that have come out, newest first, all at once. Refused while
  * the deployer has moments off (409). */

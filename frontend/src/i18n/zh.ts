@@ -54,6 +54,15 @@ export const zh = {
     likersSeparator: "，",
     likedBy: "赞",
     commentedBy: (name: string) => `${name}：`,
+    /** 赞的一行和评论区里制作人自己的名字；她回他的评论打头。 */
+    producer: "制作人",
+    repliedBy: (name: string) => `${name} 回复 制作人：`,
+    /** 行尾「⋯」：读屏读的按钮名和里面的几项。 */
+    actions: { open: "更多操作", like: "赞", unlike: "取消赞", comment: "评论", uncomment: "删除评论" },
+    /** 「删除评论」先确认：她的回复会一起删。 */
+    uncomment: { title: "删除评论？", description: "她的回复也会一起删掉。", confirm: "删除" },
+    /** 评论输入：输入框读屏读的名字、占位、发送键，几个字（超了才显示）。 */
+    commentBox: { label: "评论", placeholder: "评论", send: "发送", count: (n: number, most: number) => `${n}/${most}` },
     /** 配图的缩略图：读屏读的按钮名、图的替代文字，放大后弹窗的名字。 */
     picture: { open: "放大配图", alt: "她的配图", viewer: "配图" },
   },
@@ -1517,7 +1526,12 @@ export const zh = {
       itemFields: {
         chat_llm: { reasoning_effort: "文字的思考强度" },
         reach_outs: { enabled: "搭话", per_day: "每位用户每天最多几次" },
-        moments: { enabled: "朋友圈", per_day: "每位用户每天最多几条", map: "地图" },
+        moments: {
+          enabled: "朋友圈",
+          per_day: "每位用户每天最多几条",
+          map: "地图",
+          replies_per_day: "每位用户每天她最多回几条评论",
+        },
         schedule: { enabled: "日程" },
         cycles: { enabled: "周期" },
         bar: { enabled: "酒吧" },

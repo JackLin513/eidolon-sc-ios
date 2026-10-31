@@ -27,3 +27,9 @@
   - 先例：`test_her_now.py`、`test_dynamic_context.py`、`test_reach_outs_in_turns.py`、`test_reach_outs.py`。
 - [ ] **验收**：在本地构建版上造一条动态，赞一下、评论一句，然后在对话里问她「昨天发了什么」，用真模型看她答得上来。
 - [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+
+## Comments
+
+### 票 23 交接
+
+- 他赞没赞：`moment_likes` 有没有这条动态的行。他的评论和她的回复：`moment_comments`（`text`；`reply_ja` 不为空才算露出了，没露出的只写他评论了什么）。

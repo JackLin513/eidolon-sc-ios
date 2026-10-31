@@ -29,3 +29,9 @@
 ### 票 21 交接
 
 - 新表 `moment_images`（`moment_id` 主键，`image` 是 WebP）已登记进 `USER_DATA`。30 天清理删动态时要连它一起删，放在删 `moments` 之前。
+
+## Comments
+
+### 票 23 交接
+
+- 清理时连 `moment_likes`、`moment_comments`（包括还没露出的回复）一起按动态删；两张表在 `USER_DATA` 里排在 `moments` 前面。

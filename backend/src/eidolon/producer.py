@@ -132,6 +132,8 @@ _BIRTHDAY = (
 _BIRTHDAY_APART = "今天是制作人的生日。今天还没祝福过的话，用你自己的方式祝福一次。"
 _POSTING = "你这会儿在发朋友圈，制作人没在和你说话。"
 _BIRTHDAY_POSTING = "今天是制作人的生日（按他那边的日期）。想的话，这条可以祝他生日快乐。"
+_REPLYING = "你这会儿在看自己朋友圈下面的评论，制作人没在和你说话。"
+_BIRTHDAY_REPLYING = "今天是制作人的生日（按他那边的日期）。"
 
 
 def _how_long(gap: timedelta) -> str:
@@ -185,21 +187,22 @@ def posting_now_prompt(
     timezone: str,
     affinity_lines: Sequence[str] = (),
     weather: Weather | None = None,
+    replying: bool = False,
 ) -> str:
-    """The prompt section about now as she posts a moment (GLOSSARY.md「朋友圈」): the time in
-    Tokyo, where she lives and posts, never when they were last in touch; Tokyo's `weather`,
-    if known; whether it is the producer's birthday, in their own `timezone`; then
-    `affinity_lines`."""
+    """The prompt section about now as she posts a moment (GLOSSARY.md「朋友圈」), or is
+    `replying` to the producer's comment on one: the time in Tokyo, where she lives and posts,
+    never when they were last in touch; Tokyo's `weather`, if known; whether it is the
+    producer's birthday, in their own `timezone`; then `affinity_lines`."""
     local = now.astimezone(_TOKYO)
     lines = [
         "# 此刻",
         f"现在是 {local.year}年{local.month}月{local.day}日"
         f"（星期{_WEEKDAYS[local.weekday()]}）{local:%H:%M}（东京时间）。",
-        _POSTING,
+        _REPLYING if replying else _POSTING,
     ]
     if weather is not None:
         lines.append(weather_line(weather))
     if profile.birthday and is_birthday(profile.birthday, local_date(now, timezone)):
-        lines.append(_BIRTHDAY_POSTING)
+        lines.append(_BIRTHDAY_REPLYING if replying else _BIRTHDAY_POSTING)
     lines += affinity_lines
     return "\n".join(lines)

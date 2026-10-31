@@ -24,3 +24,10 @@
   - 花费归到各项服务。
 - [ ] **验收**：在本地构建版上造几条动态和回复，打开后台看板，用 Playwright 看这一节。
 - [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+
+## Comments
+
+### 票 23 交接
+
+- 回评论的运行记录是 `moment_reply`：成功、失败（模型出错或解析不了），写下时评论已删记 `rejected`。
+- 「制作人赞过或评论过的占比」：`moment_likes`、`moment_comments` 都按 `moment_id` 对 `moments`。
