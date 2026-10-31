@@ -29,7 +29,7 @@
   - 新表登记（`test_database.py`）。
 - [x] **验收**：在本地构建版上用 Playwright 关掉、打开，看导航的变化、设置里的摘要，以及存不上时拨回去。
 - [ ] 表结构有改动，部署前手动备份数据库。
-- [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+- [x] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
 
 ### 票 14 交接
 
