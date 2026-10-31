@@ -2,6 +2,7 @@ import AVFoundation
 import EidolonCore
 import Foundation
 import OSLog
+import UIKit
 
 /// The microphone as a call hears it (ADR-0007): the input node's audio, converted to
 /// 16 kHz mono PCM16 chunks for the recognizer. The audio session runs in `.voiceChat`,
@@ -23,6 +24,10 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
     /// One recovery at a time: the interruption end, the route change and the foreground
     /// return can all arrive together.
     private var recovering = false
+    /// When the last recovery succeeded. Reconfiguring the session and restarting the engine
+    /// posts route changes of their own; without a quiet window each one would ask for
+    /// another recovery and the engine would never settle.
+    private var recoveredAt = Date.distantPast
 
     func start() async throws {
         guard await Self.microphoneAllowed() else {
@@ -72,15 +77,44 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
     /// returns to the foreground, where the engine may have been stopped. Says whether the
     /// input feeds the call after the attempt (spec #41).
     func recover() async -> Bool {
+        await recover(forced: false)
+    }
+
+    func recoverAfterForeground() async -> Bool {
+        await recover(forced: true)
+    }
+
+    private func recover(forced: Bool) async -> Bool {
         guard isRunning() else { return true }
+        // Nothing can be opened while the app is in the background or inactive, and the
+        // call asks again when it is active: trying here only fails and stops the engine.
+        guard await Self.applicationIsActive() else { return true }
         // A recovery already under way will report its own result.
         guard beginRecovery() else { return true }
         defer { endRecovery() }
+        // A route change that came from this very recovery is not another disruption;
+        // coming back to the foreground is a real one and is never held off.
+        if !forced, recoveryIsTooSoon() {
+            return true
+        }
         do {
-            try await activateSession()
+            // The session may belong to something else by now: 朗读 switches it to
+            // `.playback`, and a recovery that only activated it would install the input
+            // tap on a playback session — AVFAudio raises an Objective-C exception for
+            // that, which aborts the app. Put the call's own configuration back first.
+            try await openSession()
             // Always reinstall: the engine can still report itself running after an
             // interruption or a services reset while no audio comes through.
-            _ = try await installAndStart()
+            do {
+                _ = try await installAndStart()
+            } catch CaptureError.tapRefused {
+                // A tap refused right after a route change may be reading a graph that is
+                // already stale; one fresh engine is worth a second try before giving up.
+                replaceEngine(AVAudioEngine())
+                try await openSession()
+                _ = try await installAndStart()
+            }
+            markRecovered()
             Logger(subsystem: "com.jacklin.eidolon", category: "call")
                 .notice("microphone recovered")
             return true
@@ -140,11 +174,14 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
 
     private func openSession() async throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(
-            .playAndRecord,
-            mode: .voiceChat,
-            options: [.defaultToSpeaker, .allowBluetoothHFP]
-        )
+        let options: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
+        // Setting the same category again still posts a route change on some routes, and
+        // every route change asks for another recovery: only change what is not already so.
+        if session.category != .playAndRecord
+            || session.mode != .voiceChat
+            || session.categoryOptions != options {
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: options)
+        }
         try await activateSession()
     }
 
@@ -167,7 +204,16 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
         // The input format is zero until the session has a route; installing a tap with
         // it raises an Objective-C exception, which would abort the app (seen on the
         // simulator when the host app has no microphone permission). Wait, then refuse.
-        let source = try await Self.waitForInputFormat(input)
+        _ = try await Self.waitForInputFormat(input)
+        // The format is read again here, after the wait: a route can change while it is
+        // being waited for, and a tap installed with the old format raises.
+        guard AVAudioSession.sharedInstance().isInputAvailable else {
+            throw CaptureError.noInput
+        }
+        let source = input.inputFormat(forBus: 0)
+        guard source.sampleRate >= 8_000, source.channelCount > 0 else {
+            throw CaptureError.noInput
+        }
         guard let target = AVAudioFormat(
             commonFormat: .pcmFormatInt16,
             sampleRate: 16_000,
@@ -181,8 +227,17 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
             engine.stop()
         }
         removeTapIfNeeded()
-        input.installTap(onBus: 0, bufferSize: 1024, format: source) { [weak self] buffer, _ in
-            self?.push(buffer, converter: converter, target: target)
+        // AVFAudio reports a tap it will not install as an Objective-C exception, which
+        // Swift cannot catch; caught here, a recovery fails instead of aborting the app.
+        let refused = EIDCatchObjectiveCException {
+            input.installTap(onBus: 0, bufferSize: 1024, format: source) { [weak self] buffer, _ in
+                self?.push(buffer, converter: converter, target: target)
+            }
+        }
+        if let refused {
+            Logger(subsystem: "com.jacklin.eidolon", category: "call")
+                .error("microphone tap refused: \(refused)")
+            throw CaptureError.tapRefused
         }
         markTapInstalled()
         do {
@@ -223,6 +278,18 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
         lock.unlock()
     }
 
+    private func recoveryIsTooSoon() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return Date().timeIntervalSince(recoveredAt) < 1
+    }
+
+    private func markRecovered() {
+        lock.lock()
+        recoveredAt = Date()
+        lock.unlock()
+    }
+
     private func setHearingNow(_ hearing: Bool) {
         lock.lock()
         self.hearing = hearing
@@ -258,7 +325,14 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
         let installed = tapInstalled
         tapInstalled = false
         lock.unlock()
-        if installed { currentEngine().inputNode.removeTap(onBus: 0) }
+        guard installed else { return }
+        // The same kind of exception can come from removing a tap the system already took.
+        let input = currentEngine().inputNode
+        let refused = EIDCatchObjectiveCException { input.removeTap(onBus: 0) }
+        if let refused {
+            Logger(subsystem: "com.jacklin.eidolon", category: "call")
+                .error("microphone tap would not be removed: \(refused)")
+        }
     }
 
     /// The input format becomes valid once the session is active and routed; on the
@@ -329,6 +403,40 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
         continuation?.yield(bytes)
     }
 
+
+    private var debugPushCount = 0
+    private var debugLastPushAt = Date.distantPast
+
+    private func debugCount(hearing: Bool) {
+        lock.lock()
+        debugPushCount += 1
+        let count = debugPushCount
+        lock.unlock()
+        if count == 1 || count % 100 == 0 {
+        }
+    }
+
+    private func debugPush(frames: AVAudioFrameCount, samples: UnsafeMutablePointer<Int16>, continuation: Bool) {
+        let now = Date()
+        lock.lock()
+        let due = now.timeIntervalSince(debugLastPushAt) >= 1
+        if due { debugLastPushAt = now }
+        lock.unlock()
+        guard due else { return }
+        var sum = 0.0
+        let n = min(Int(frames), 512)
+        for i in 0..<n {
+            let v = Double(samples[i]) / 32768.0
+            sum += v * v
+        }
+        let rms = n > 0 ? (sum / Double(n)).squareRoot() : 0
+    }
+
+    /// Whether the app can use the session at all right now.
+    private static func applicationIsActive() async -> Bool {
+        await MainActor.run { UIApplication.shared.applicationState == .active }
+    }
+
     private static func microphoneAllowed() async -> Bool {
         switch AVAudioApplication.shared.recordPermission {
         case .granted:
@@ -350,6 +458,7 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
         case notPermitted
         case noInput
         case unsupportedFormat
+        case tapRefused
 
         var errorDescription: String? {
             switch self {
@@ -359,6 +468,8 @@ final class MicrophoneCapture: AudioCapture, @unchecked Sendable {
                 return "读不到麦克风：在 Mac 的系统设置 → 隐私与安全性 → 麦克风里允许 Simulator，然后重新通话"
             case .unsupportedFormat:
                 return "麦克风格式不受支持"
+            case .tapRefused:
+                return "麦克风暂时打不开"
             }
         }
     }

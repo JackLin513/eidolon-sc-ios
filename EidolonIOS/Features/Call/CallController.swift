@@ -254,6 +254,12 @@ final class CallController {
         await session?.recoverAudio()
     }
 
+    /// Back from the background: the microphone is opened again and the recognizer's
+    /// connection replaced, since it can die while the app is suspended without reporting.
+    func appDidBecomeActive() async {
+        await session?.appDidBecomeActive()
+    }
+
     private func clear() {
         events?.cancel()
         events = nil

@@ -34,6 +34,9 @@ struct CallView: View {
 
     /// Her stand, driven by the call's events. Nothing is drawn without one.
     @State private var renderer: (any StandRenderer)?
+    /// Whether the app went to the background, so coming back replaces the audio and the
+    /// recognizer's connection; a Control Center pull only makes it inactive.
+    @State private var wasBackgrounded = false
     /// What the loaded outfit can play, as the player reported it.
     @State private var animations: [String: Double] = [:]
     @State private var standLoaded = false
@@ -95,10 +98,22 @@ struct CallView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             updatePause()
+            if phase == .background { wasBackgrounded = true }
             // Back from a phone call or the background: the system may have stopped the
-            // microphone, so ask it to open again (spec「通话健壮性」).
+            // microphone, so ask it to open again (spec「通话健壮性」). After a real
+            // background the recognizer's connection is replaced too: a websocket can die
+            // while the app is suspended without reporting it, leaving the call looking
+            // connected while nothing it hears arrives.
             if phase == .active, session != nil {
-                Task { await call.recoverAudio() }
+                let reconnect = wasBackgrounded
+                wasBackgrounded = false
+                Task {
+                    if reconnect {
+                        await call.appDidBecomeActive()
+                    } else {
+                        await call.recoverAudio()
+                    }
+                }
             }
         }
         .onDisappear { renderer?.setPaused(true) }

@@ -38,6 +38,9 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: "FF7NMQWZKK"
+        # AVFAudio 的安装 tap 会以 Objective-C 异常失败，Swift 接不住；一个 ObjC 兜底
+        # 把闪退变成一次失败的恢复。
+        SWIFT_OBJC_BRIDGING_HEADER: EidolonIOS/Support/EidolonIOS-Bridging-Header.h
         # 立绘运行时在构建时从上游 checkout 拷进构建产物（ADR-0017），那个路径在
         # SRCROOT 之外，脚本沙箱会挡住；下面的脚本只读那一个文件。
         ENABLE_USER_SCRIPT_SANDBOXING: NO
