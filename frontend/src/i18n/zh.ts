@@ -1164,6 +1164,18 @@ export const zh = {
         title: "酒吧",
         tiles: { visits: "光顾", done: "玩完", failed: "失败" },
       },
+      /** 「用量」里的「朋友圈」一小节：范围内发了几条、失败几次、回评论几次、失败几次（写下时评论已删的不算失败）；
+       * 近 30 天露出的动态里制作人赞过或评论过的占比，不跟时间范围走。 */
+      moments: {
+        title: "朋友圈",
+        tiles: {
+          posted: "发了",
+          posts_failed: "发失败",
+          replied: "回评论",
+          replies_failed: "回失败",
+          liked_or_commented: "近 30 天制作人赞或评论过",
+        },
+      },
       /** 「好感度」里的「日程」一小节：本周（北京时间）排了日程的人数，不跟时间范围走。 */
       schedule: {
         title: "日程",

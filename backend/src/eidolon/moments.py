@@ -552,6 +552,16 @@ class Moments:
         yesterday = tokyo_date(now) - timedelta(days=1)
         await in_batches(self._db, _forget_plans_before, yesterday.isoformat())
 
+    async def liked_or_commented_share(self) -> float | None:
+        """Of everyone's moments that have shown within `KEPT`, the share the producer likes or
+        has commented on, as he does now; None of none."""
+        now = self._clock()
+        shown, liked_or_commented = await self._db.read(
+            _liked_or_commented, (now - KEPT).astimezone(UTC).isoformat(),
+            now.astimezone(UTC).isoformat(),
+        )
+        return liked_or_commented / shown if shown else None
+
     async def switch_of(self, user_id: str) -> bool | None:
         """Whether the user has their own switch for moments on, as it is by default; None
         where the deployer has them off."""
@@ -1149,6 +1159,19 @@ def _unseen(db: sqlite3.Connection, user_id: str, since: str, now: str) -> set[s
             {"user": user_id, "since": since, "now": now, "opened": opened[0]},
         )
     }
+
+
+def _liked_or_commented(db: sqlite3.Connection, since: str, now: str) -> tuple[int, int]:
+    """How many moments showed after `since` up to `now`, and how many of them the producer
+    likes or has commented on."""
+    shown, liked_or_commented = db.execute(
+        "SELECT COUNT(*), COALESCE(SUM("
+        " EXISTS (SELECT 1 FROM moment_likes l WHERE l.moment_id = m.id)"
+        " OR EXISTS (SELECT 1 FROM moment_comments c WHERE c.moment_id = m.id)), 0)"
+        " FROM moments m WHERE m.posted_at > ? AND m.posted_at <= ?",
+        (since, now),
+    ).fetchone()
+    return shown, liked_or_commented
 
 
 def _forget_plans(db: sqlite3.Connection, now: str) -> None:
