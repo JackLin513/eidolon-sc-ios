@@ -50,6 +50,7 @@ Label: wayfinder:map
 - [拍板：存储、开关、运行记录和看板](issues/09-storage-switches-dashboard.md)：配图照 ADR-0024 存库、只有本人能读；全部登记 `USER_DATA`，不挂对话；`housekeeping` 按露出时间删 30 天前的；`EIDOLON_MOMENTS` 默认关，部署者或用户关掉都是隐藏不删；被隐藏的角色照发；运行记录新增 `moment`、`moment_reply`，回评论上限从记录数；导航的点只存「上次打开的时刻」；看板加「朋友圈」小节，花费不单列；不进统计和成就；服务状态不特殊处理。
 - [拍板：地点池怎么整理](issues/10-place-pool-curation.md)：`characters/places.toml` 约 400 个，东京加近郊，取自 OSM、Wikidata 和可复核的圣地考据；地名只写日文；圣地是带 `source` 的记号；14 类，`jobs.toml` 加 `places`、`characters.toml` 加 `place_likes`；代理出初稿、用户用 HTML 校对；地图默认 OSM，后台可换 Google 或高德（大陆不开代理打不开 OSM）。
 - [拍板：一条动态里有什么、素材怎么挑](issues/06-post-content.md)：日语原文加字幕，每条都有文字；服务器先掷带不带图（约 2/3）；工作那条给做完的工作，日常那条给 3 条角色资料，记忆只隐约呼应，带最近 5 条防重复；4 个地点候选加「不带」，30 天不重复，下雨只给室内；服务器抽 4–6 人的圈子，她从中选赞、评论、合照；露出时间服务器定；标签格式不用 JSON，坏了各部分分别降级；私事不点明。
+- [拍板：配图的提示词细节](issues/11-post-image-prompt.md)：风景前缀补 `japan, outdoors`，街景让她写地面能看到的东西（验证 8 张）；桌边抓拍看镜头不修；无人构图的 `action` 栏装景物；清洗表照搬调研；摆拍、抓拍加 `wide shot`；合照靠 `action` 里的 `selfie` 区分自拍，两人 `side-by-side`、三人 `group picture`，`with` 无效降成单人摆拍；`use_coords` 不管。
 
 ## Not yet specified
 
@@ -59,3 +60,5 @@ Label: wayfinder:map
 - 配图里出现制作人。
 - 其他偶像回复制作人的评论、制作人和偶像在评论区来回对话。
 - 动态进数据包。
+- 她给别的偶像单独拍的配图：偶像之间的互动由合照覆盖（[拍板：配图的提示词细节](issues/11-post-image-prompt.md)）。
+- 无人构图换用 GPT Image 系列生图：NovelAI 实测够用，没有换的理由（[拍板：配图的提示词细节](issues/11-post-image-prompt.md)）。
