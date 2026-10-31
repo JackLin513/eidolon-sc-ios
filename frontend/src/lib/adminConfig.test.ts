@@ -462,6 +462,18 @@ describe("reach-outs", () => {
   });
 });
 
+describe("moments", () => {
+  const spec = ITEM_SPECS.moments;
+
+  it("send the switch, how many a day, which map and how many comments a day she replies to", () => {
+    const form = formOf(spec, { enabled: true, per_day: 3, map: "osm", replies_per_day: 10 });
+    expect(form).toEqual({ enabled: "true", per_day: "3", map: "osm", replies_per_day: "10" });
+    expect(changeOf(spec, { ...form, map: "amap", replies_per_day: "5" }, true)).toEqual({
+      change: { enabled: true, per_day: 3, map: "amap", replies_per_day: 5 },
+    });
+  });
+});
+
 describe("schedule", () => {
   const spec = ITEM_SPECS.schedule;
 
@@ -472,8 +484,8 @@ describe("schedule", () => {
 });
 
 describe("cycles and the bar", () => {
-  it("are cards of limits and play, after the schedule", () => {
-    expect(TAB_ITEMS.limits).toEqual(["limits", "affinity", "reach_outs", "schedule", "cycles", "bar"]);
+  it("are cards of limits and play: moments after reach-outs, cycles and the bar after the schedule", () => {
+    expect(TAB_ITEMS.limits).toEqual(["limits", "affinity", "reach_outs", "moments", "schedule", "cycles", "bar"]);
   });
 });
 

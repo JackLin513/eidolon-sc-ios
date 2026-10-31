@@ -118,6 +118,7 @@ Eidolon-SC では、**283プロのプロデューサー**として原作のア�
 - 🌙 **周期**：彼女にも月経があり、月経前と月経中の数日は具合が悪く、気づかうと報われます。彼女の言動から周期ページに記録すると、次の月経を推定し、どう計算したかを説明します（[設定ガイド](docs/configuration.ja.md#周期)）。
 - 🍸 **VA-283**：彼女がバーに来店し、あなたは注文どおりにドリンクを作ります。毎日最初に最後まで遊んだ来店で抽選が 1 回もらえ、彼女との距離も縮まります。初めて来たときは、はづきが作り方を教えてくれます。画面と作り方は『VA-11 HALL-A』へのオマージュです。
 - 💌 **声かけ**：しばらく来ないと、会話の中でアイドルのほうから話しかけてくれます。親しいほど早く来ます（[設定ガイド](docs/configuration.ja.md#声かけ)）。
+- 🌅 **モーメンツ**：話したことのあるアイドルがあなたのモーメンツに投稿します。画像がつくことが多く、地名と東京の天気も添えられ、ほかのアイドルがいいねやコメントをします。あなたもいいねやコメントができ、アイドルが返事をくれます（[設定ガイド](docs/configuration.ja.md#モーメンツ)）。
 
 **彼女が覚えていること**
 
@@ -300,6 +301,8 @@ eidolon-sc/
 - [VA-11 HALL-A](https://waifubartending.com/)（Sukeban Games）：バーの画面、作り方、ジュークボックスは原作へのオマージュで、原作の画像、音楽、効果音を使っています
 - [縫合像素（Fusion Pixel）](https://github.com/TakWolf/fusion-pixel-font)：バーのピクセルフォント
 - [im@sparql](https://sparql.crssnky.xyz/imas/)、Lantis、ふじわらはじめ、imas-db、wikiwiki：世界設定のアイドル・CD・ライブのデータ
+- [OpenStreetMap](https://www.openstreetmap.org/copyright) 貢献者（ODbL）、[Wikidata](https://www.wikidata.org/)：モーメンツの場所の名前と座標
+- [Open-Meteo](https://open-meteo.com/)（CC BY 4.0）：モーメンツの天気
 - [LINUX DO](https://linux.do/)：技術選定から開発、デプロイと運用まで、多くの知見をここでの共有から得ました
 
 <div align="center">

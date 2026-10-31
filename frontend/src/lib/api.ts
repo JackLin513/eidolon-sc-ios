@@ -467,6 +467,8 @@ export type SignInMethod = { provider: Provider; display_name: string; email: st
  * has them off.
  * `cycles`: the user's own switch for cycles (GLOSSARY.md「周期」); null where the deployer has them
  * off.
+ * `moments`: the user's own switch for moments (GLOSSARY.md「朋友圈」); null where the deployer has
+ * them off.
  * `sponsor_version`: the version of the deployer's sponsor code (GLOSSARY.md「赞赏」), when it was
  * uploaded, for `sponsorImageUrl`; null when users are not shown it (switched off, or no code). */
 export type Account = {
@@ -477,6 +479,7 @@ export type Account = {
   exempting_keys: OwnService[];
   reach_outs: boolean | null;
   cycles: boolean | null;
+  moments: boolean | null;
   sponsor_version: string | null;
   /** Whether the deployer has a key for speech synthesis now: her words are read aloud on it for those
    * who keep none of their own in this browser (GLOSSARY.md「朗读」). */
@@ -506,6 +509,18 @@ export async function getAccount(): Promise<Account> {
 export async function switchReachOuts(on: boolean): Promise<void> {
   await expectNoContent(
     await api("/api/account/reach-outs", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ on }),
+    }),
+  );
+}
+
+/** Turn the user's own switch for moments on or off, for all the characters; refused where the
+ * deployer has them off. */
+export async function switchMoments(on: boolean): Promise<void> {
+  await expectNoContent(
+    await api("/api/account/moments", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ on }),
@@ -706,6 +721,79 @@ export type BarState = { enabled: false } | { enabled: true; drinks: Drink[]; re
 
 export async function getBar(): Promise<BarState> {
   return json(await api("/api/bar"));
+}
+
+/** Tokyo's weather as a moment came out: one of seven kinds. */
+export type WeatherKind = "clear" | "cloudy" | "overcast" | "fog" | "rain" | "snow" | "thunder";
+
+/** A post of hers in the user's moments (GLOSSARY.md「动态」): her Japanese, its subtitle, when it
+ * came out (ISO, with its offset), where she was (GLOSSARY.md「地点」), its Japanese name with a
+ * link to it on the map the deployer chooses, null for nowhere, and Tokyo's weather then, its kind
+ * and temperature in whole degrees Celsius, null if it could not be had; the other idols who have
+ * liked it so far, by character id, in the order they did, and their comments so far, in order.
+ * Those yet to show are not there. `image` is where its picture is read (GLOSSARY.md「配图」), the
+ * user's alone, null for none. `producer_liked`: whether the user likes it now; `producer_comment`:
+ * his comment on it, null for none; `reply`: her reply to that, null until it shows (and for none:
+ * which of the two is never told). */
+export type Moment = {
+  id: number;
+  character_id: string;
+  ja: string;
+  zh: string;
+  image: string | null;
+  place: { name: string; map: string } | null;
+  weather: { kind: WeatherKind; temperature: number } | null;
+  posted_at: string;
+  likes: string[];
+  comments: MomentComment[];
+  producer_liked: boolean;
+  producer_comment: ProducerComment | null;
+  reply: { ja: string; zh: string } | null;
+};
+
+/** A comment on a moment by another idol: her Japanese and its subtitle. */
+export type MomentComment = { character_id: string; ja: string; zh: string };
+
+/** The user's comment on a moment: as he wrote it, but for the spaces around it, and when (ISO). */
+export type ProducerComment = { text: string; commented_at: string };
+
+/** How many characters his comment may have at most, but for the spaces around it; the backend says
+ * so too (422). */
+export const COMMENT_LENGTH = 140;
+
+/** Likes one of his moments, or no longer, however he did. Gone (another's, or over 30 days old): 404. */
+export async function likeMoment(id: number, liked: boolean): Promise<void> {
+  await expectNoContent(await api(`/api/moments/${id}/like`, { method: liked ? "PUT" : "DELETE" }));
+}
+
+/** Comments on one of his moments, once (409 again): what is kept of it. */
+export async function commentOnMoment(id: number, text: string): Promise<ProducerComment> {
+  return json(
+    await api(`/api/moments/${id}/comment`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text }),
+    }),
+  );
+}
+
+/** Deletes his comment on one of his moments, her reply to it with it. */
+export async function deleteMomentComment(id: number): Promise<void> {
+  await expectNoContent(await api(`/api/moments/${id}/comment`, { method: "DELETE" }));
+}
+
+/** The user's moments of the last 30 days that have come out, newest first, all at once. Refused while
+ * the deployer or the user has moments off (409). */
+export async function getMoments(): Promise<Moment[]> {
+  const body: { moments: Moment[] } = await json(await api("/api/moments"));
+  return body.moments;
+}
+
+/** Whether a moment, or her reply to the user's comment, has come out since they last read the
+ * timeline (`getMoments`), on any device. Refused while the deployer or the user has moments off (409). */
+export async function getMomentsUnseen(): Promise<boolean> {
+  const body: { unseen: boolean } = await json(await api("/api/moments/unseen"));
+  return body.unseen;
 }
 
 /** Comes into the bar, bringing the user's own LLM (as `own_keys`) as a text turn does. Once the

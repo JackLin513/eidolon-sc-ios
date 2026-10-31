@@ -35,7 +35,10 @@ will be: it is kept as having taken too long once the server starts again.
 Each key to an image service generates so many photos at a time (the deployer's, as many
 as it is set to), the others waiting their turn, first come first served, however many; a
 key set to another number from then on generates as many apart from those it had under
-way; a user's own, one at a time. None takes longer than `TIME_LIMIT` from her tag on, waiting its turn included; one
+way; a user's own, one at a time. A moment's picture (GLOSSARY.md「配图」, `picture`) is
+generated on the deployer's key alone, counted towards no one's photos, waiting its turn
+with the photos, each photo ahead of every picture still waiting (one being generated goes
+on). None takes longer than `TIME_LIMIT` from her tag on, waiting its turn included; one
 that waited all of it was never sent, and one that comes back later is left. Begun in a
 turn, a photo is generated in the turn's context: its request to the image service is a
 service call recorded under the turn (`activity`), however long after it the photo comes
@@ -49,6 +52,7 @@ import asyncio
 import logging
 import sqlite3
 import uuid
+from collections import deque
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, field
@@ -67,7 +71,7 @@ from eidolon.characters import Character
 from eidolon.config import ImageSettings
 from eidolon.image_generation import TIME_LIMIT, ImageFailed, ImageGenerator
 from eidolon.own_keys import masked_cause
-from eidolon.photo_prompt import image_prompt, read_tag
+from eidolon.photo_prompt import PictureTag, image_prompt, picture_prompt, read_tag
 from eidolon.store import Photo, PhotoFailure, Store
 from eidolon.usage import OverLimit, UsageLimiter
 
@@ -168,13 +172,43 @@ class _Generating:
     settled: asyncio.Event = field(default_factory=asyncio.Event)
 
 
-@dataclass
 class _Queue:
-    """The photos generating on one key at most so many at a time (`room`), and how many
-    are, or are waiting their turn."""
+    """The pictures generating on one key at most so many at a time, those waiting their
+    turn, photos ahead of moments' pictures (`aside`), each first come first served, and how
+    many are generating or waiting (`pictures`)."""
 
-    room: asyncio.Semaphore
-    photos: int = 0
+    def __init__(self, room: int) -> None:
+        self._room = room
+        self._photos: deque[asyncio.Future[None]] = deque()
+        self._aside: deque[asyncio.Future[None]] = deque()
+        self.pictures = 0
+
+    async def take(self, aside: bool) -> None:
+        """Wait for room for one more picture, and take it."""
+        if self._room:  # none waiting, then
+            self._room -= 1
+            return
+        turn = asyncio.get_running_loop().create_future()
+        waiting = self._aside if aside else self._photos
+        waiting.append(turn)
+        try:
+            await turn
+        except asyncio.CancelledError:
+            if turn.done() and not turn.cancelled():  # its turn came as it stopped waiting
+                self.give()
+            elif turn in waiting:
+                waiting.remove(turn)
+            raise
+
+    def give(self) -> None:
+        """Give back the room one picture took: to the next waiting, if any."""
+        for waiting in (self._photos, self._aside):
+            while waiting:
+                turn = waiting.popleft()
+                if not turn.done():  # one stopped waiting may not have left yet
+                    turn.set_result(None)
+                    return
+        self._room += 1
 
 
 class Photos:
@@ -321,7 +355,7 @@ class Photos:
                 raise ImageFailed("service_error", "image generation is off")
             settings = generator.settings
             read = read_tag(tag)
-            async with self._turn_on(settings.api_key, settings.concurrency, until):
+            async with self._turn_on(settings.api_key, settings.concurrency, until, aside=False):
                 with turn.current() if turn is not None else nullcontext():
                     image = await timed(
                         self._activity,
@@ -353,28 +387,48 @@ class Photos:
             )
             return None, "own_key_failed"
 
+    async def picture(
+        self, character: Character, tag: PictureTag, until: float
+    ) -> bytes:
+        """The moment's picture of `character` `tag` says, as kept, generated on the
+        deployer's image generation by `until` (the running loop's time), waiting its turn
+        behind every photo waiting; its request a service call recorded under the activity
+        record current. Raises ImageFailed saying why there is none, or TimeoutError if its
+        turn never came in time, its request never sent."""
+        generator = self._generator()
+        if generator is None:
+            raise ImageFailed("service_error", "image generation is off")
+        settings = generator.settings
+        async with self._turn_on(settings.api_key, settings.concurrency, until, aside=True):
+            image = await timed(
+                self._activity, image_origin(settings),
+                generator.generate(picture_prompt(character, tag, settings.style), until),
+                tag.stripped,
+            )
+        return image.webp
+
     @asynccontextmanager
-    async def _turn_on(self, key: str, at_a_time: int, until: float) -> AsyncIterator[None]:
+    async def _turn_on(
+        self, key: str, at_a_time: int, until: float, aside: bool
+    ) -> AsyncIterator[None]:
         """Wait, first come first served, for the image service to have room for one more
-        photo on `key`, `at_a_time` generating at most; raises TimeoutError if there is
-        none by `until` (the running loop's time). Those on the key at another number wait
-        apart."""
-        queue = self._queues.setdefault(
-            (key, at_a_time), _Queue(asyncio.Semaphore(at_a_time))
-        )
-        queue.photos += 1
+        picture on `key`, `at_a_time` generating at most, a moment's picture (`aside`)
+        behind every photo waiting; raises TimeoutError if there is none by `until` (the
+        running loop's time). Those on the key at another number wait apart."""
+        queue = self._queues.setdefault((key, at_a_time), _Queue(at_a_time))
+        queue.pictures += 1
         try:
             async with asyncio.timeout_at(until):
-                await queue.room.acquire()
+                await queue.take(aside)
             try:
                 if asyncio.get_running_loop().time() >= until:  # its turn came too late to send
                     raise TimeoutError
                 yield
             finally:
-                queue.room.release()
+                queue.give()
         finally:
-            queue.photos -= 1
-            if not queue.photos:
+            queue.pictures -= 1
+            if not queue.pictures:
                 del self._queues[key, at_a_time]
 
     async def _keep(

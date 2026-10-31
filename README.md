@@ -118,6 +118,7 @@ Eidolon-SC 让你以 **283 事务所制作人**的身份，和原作中的偶像
 - 🌙 **周期**：她也有经期，经前、经期这几天会不舒服，体贴她有回报；你凭她的言行把经期记在周期页，页面替你推算下一次，并讲清怎么算（[配置指南](docs/configuration.md#周期)）。
 - 🍸 **VA-283**：她来酒吧光顾，你照她的点单调饮品。每天第一次玩完的光顾给一次抽奖，她也会更亲近你；第一次进店有はづき 教你调。画面和调法致敬《VA-11 HALL-A》。
 - 💌 **搭话**：你一阵子没来，她会在对话里先说几句；越亲近来得越早（[配置指南](docs/configuration.md#搭话)）。
+- 🌅 **朋友圈**：和你聊过的角色在你的朋友圈里发动态，常带配图，写着地名和东京的天气，其他偶像来赞和评论；你也能赞、能评论，她会回你（[配置指南](docs/configuration.md#朋友圈)）。
 
 **她记得什么**
 
@@ -317,6 +318,8 @@ eidolon-sc/
 - [VA-11 HALL-A](https://waifubartending.com/)（Sukeban Games）：酒吧的画面、调法和点唱机致敬原作，用了原版的图片、配乐和音效
 - [缝合像素](https://github.com/TakWolf/fusion-pixel-font)：酒吧的像素字体
 - [im@sparql](https://sparql.crssnky.xyz/imas/)、Lantis、ふじわらはじめ、imas-db、wikiwiki：世界设定里的偶像、唱片和演出资料
+- [OpenStreetMap](https://www.openstreetmap.org/copyright) 贡献者（ODbL）、[Wikidata](https://www.wikidata.org/)：朋友圈里地点的名字和坐标
+- [Open-Meteo](https://open-meteo.com/)（CC BY 4.0）：朋友圈里的天气
 - [LINUX DO](https://linux.do/)：从技术选型、开发到部署运维，许多经验来自这里的分享
 
 <div align="center">

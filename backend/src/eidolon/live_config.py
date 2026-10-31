@@ -64,6 +64,10 @@ from eidolon.characters import Character
 from eidolon.clock import Clock
 from eidolon.config import (
     CLOUDFLARE_JUDGE_MODELS,
+    DEFAULT_MAP_SITE,
+    DEFAULT_MOMENT_REPLIES_PER_DAY,
+    DEFAULT_MOMENTS_PER_DAY,
+    MAP_SITES,
     DEFAULT_REACH_OUTS_PER_DAY,
     DEFAULT_BAILIAN_JUDGE_REGION,
     ChatModelSettings,
@@ -84,6 +88,7 @@ from eidolon.config import (
     STATUS_WINDOWS,
     ProxiedService,
     ProxySettings,
+    MomentSettings,
     ReachOutSettings,
     Registration,
     Service,
@@ -144,6 +149,7 @@ RERANK = "rerank"
 LIMITS = "limits"
 AFFINITY = "affinity"
 REACH_OUTS = "reach_outs"
+MOMENTS = "moments"
 SCHEDULE = "schedule"
 CYCLES = "cycles"
 BAR = "bar"
@@ -752,6 +758,35 @@ class _ReachOuts(_Item):
         return current | change
 
 
+class _Moments(_Item):
+    """Whether characters post moments (GLOSSARY.md「朋友圈」), as `.env` has it (off by
+    default), how many moments each user may have a day, a whole number from 1 up, which
+    map their places link to, OpenStreetMap by default, and how many of each user's comments
+    a day they reply to, a whole number from 1 up; not tried."""
+
+    name = MOMENTS
+    fields = ("enabled", "per_day", "map", "replies_per_day")
+
+    def env(self) -> Values:
+        return {
+            "enabled": self.c.settings.moments, "per_day": DEFAULT_MOMENTS_PER_DAY,
+            "map": DEFAULT_MAP_SITE, "replies_per_day": DEFAULT_MOMENT_REPLIES_PER_DAY,
+        }
+
+    def candidate(self, current: Values, change: Values) -> Values:
+        if "enabled" in change and not isinstance(change["enabled"], bool):
+            raise ConfigInvalid(f"朋友圈需要是 true 或 false，而不是 {change['enabled']!r}")
+        per_day = change.get("per_day", current["per_day"])
+        if isinstance(per_day, bool) or not isinstance(per_day, int) or per_day < 1:
+            raise ConfigInvalid(f"每位用户每天最多几条动态需要是正整数，而不是 {per_day!r}")
+        if "map" in change and change["map"] not in MAP_SITES:
+            raise ConfigInvalid(f"地图需要是 {'、'.join(MAP_SITES)} 之一，而不是 {change['map']!r}")
+        replies = change.get("replies_per_day", current["replies_per_day"])
+        if isinstance(replies, bool) or not isinstance(replies, int) or replies < 1:
+            raise ConfigInvalid(f"每位用户每天最多回几条评论需要是正整数，而不是 {replies!r}")
+        return current | change
+
+
 class _Schedule(_Item):
     """Whether each week's jobs are published for producers to schedule (GLOSSARY.md「日程」),
     as `.env` has it (on by default); not tried."""
@@ -989,7 +1024,7 @@ class LiveConfig:
                 # The proxy first: as the server starts, the services are tried through it.
                 _Proxy(self), _ChatLLM(self), _MemoryLLM(self), _TTS(self), _STT(self),
                 _Image(self), _Judge(self), _JudgeThresholds(self), _Rerank(self),
-                _Limits(self), _Affinity(self), _ReachOuts(self), _Schedule(self),
+                _Limits(self), _Affinity(self), _ReachOuts(self), _Moments(self), _Schedule(self),
                 _Cycles(self), _Bar(self), _ServiceStatus(self), _Registration(self),
             )
         }
@@ -1094,6 +1129,16 @@ class LiveConfig:
         most."""
         values = self.effective(REACH_OUTS)
         return ReachOutSettings(values["enabled"], values["per_day"])
+
+    @property
+    def moments(self) -> MomentSettings:
+        """Whether characters post moments now, how many a day each user at most, which map
+        their places link to, and how many of each user's comments a day they reply to at
+        most."""
+        values = self.effective(MOMENTS)
+        return MomentSettings(
+            values["enabled"], values["per_day"], values["map"], values["replies_per_day"]
+        )
 
     @property
     def schedule_on(self) -> bool:

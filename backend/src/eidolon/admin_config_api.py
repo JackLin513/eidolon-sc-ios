@@ -31,6 +31,7 @@ from eidolon.live_config import (
     JUDGE_THRESHOLDS,
     LIMITS,
     MEMORY_LLM,
+    MOMENTS,
     PROXY,
     REACH_OUTS,
     READ_ONLY,
@@ -179,6 +180,18 @@ class ReachOutsInput(BaseModel):
     per_day: Any
 
 
+class MomentsInput(BaseModel):
+    """Whether characters post moments, true or false, how many a day each user at most, a
+    whole number from 1 up, which map their places link to, and how many of each user's
+    comments a day they reply to, a whole number from 1 up, each of the last two unchanged
+    if not given; checked by the live configuration."""
+
+    enabled: Any
+    per_day: Any
+    map: Any = None
+    replies_per_day: Any = None
+
+
 class ScheduleInput(BaseModel):
     """Whether each week's jobs are published for producers to schedule, true or false;
     checked by the live configuration."""
@@ -255,6 +268,7 @@ INPUTS: dict[str, type[BaseModel]] = {
     LIMITS: LimitsInput,
     AFFINITY: AffinityInput,
     REACH_OUTS: ReachOutsInput,
+    MOMENTS: MomentsInput,
     SCHEDULE: ScheduleInput,
     CYCLES: CyclesInput,
     BAR: BarInput,
@@ -267,9 +281,10 @@ INPUTS: dict[str, type[BaseModel]] = {
 def _change(item: str, body: BaseModel) -> dict[str, Any]:
     """What the input changes of the item: every field given (a model slot's max_tokens
     may be None, its protocol's default), a key, the judge model's account, workspace
-    and region and a proxy's password only if given."""
+    and region, a proxy's password and the moments' map and how many comments a day they
+    reply to only if given."""
     change = body.model_dump()
-    for field in ("account_id", "workspace_id", "region"):
+    for field in ("account_id", "workspace_id", "region", "map", "replies_per_day"):
         if change.get(field, "") is None:
             del change[field]
     if change.get("password", "") is None:

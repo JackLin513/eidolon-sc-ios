@@ -1,5 +1,6 @@
 """Activity records (GLOSSARY.md「运行记录」): one for each turn, each call, each reach-out
-(GLOSSARY.md「搭话」) and each visit to the bar (GLOSSARY.md「光顾」), saying how it turned out, and
+(GLOSSARY.md「搭话」), each visit to the bar (GLOSSARY.md「光顾」) and each moment she posts
+(GLOSSARY.md「朋友圈」), saying how it turned out, and
 one for each call to an outside service, saying which service, whose key, whether it failed
 and how, how long it took and what it was billed for; an LLM's, also how much of its input
 hit the provider's prompt cache, how soon its first word came and the reasoning effort it
@@ -122,17 +123,21 @@ LLM_SERVICES: tuple[ServiceName, ...] = ("chat_llm", "memory_llm")
 """The LLMs among them (`llm_origin`): a user's own is recorded as `OWN`, and each call
 says how soon its first word came and at which reasoning effort."""
 
-RecordKind = Literal["turn", "call", "reach_out", "achievement", "visit"]
+RecordKind = Literal[
+    "turn", "call", "reach_out", "achievement", "visit", "moment", "moment_reply"
+]
 """A reach-out is neither a turn nor a call, nor counted as one anywhere; it is always on the
-deployer's keys. Nor is an achievement's stage unlocked or a character complete, which has no
-service calls; nor a visit to the bar."""
+deployer's keys, as a moment is, and her reply to the producer's comment on one
+(`moment_reply`), and neither is either. Nor is an achievement's stage unlocked or
+a character complete, which has no service calls; nor a visit to the bar."""
 OWN_LLM_KINDS: frozenset[RecordKind] = frozenset({"turn", "visit"})
 """The kinds whose record keeps, as being on the user's own keys, whether its LLM was the
 user's own; the others keep whether they were exempt."""
 Result = Literal["success", "failed", "rejected", "left", "not_connected"]
 """How a turn or call turned out (GLOSSARY.md「回合」「接通」): a turn succeeded, failed on
 a service, was rejected (over the limit, or its input), or the user left before it was
-done; a call also may never have connected. A reach-out succeeds or fails. A visit is done
+done; a call also may never have connected. A reach-out or a moment succeeds or fails; a
+reply to the producer's comment too, or is rejected, the comment deleted as it was made. A visit is done
 (success), failed on the call it was over at, was rejected over the limit, or else was
 left. An achievement's
 record has which stage of which instead (`stage_unlocked`), or `COMPLETE`."""
@@ -187,7 +192,9 @@ _SCHEMA = """
 -- `answered` is whether a reach-out was answered (GLOSSARY.md「搭话」): the user had a turn,
 -- or a call connected, in its conversation after it and before the next; the store marks it
 -- so, by the record its reach-out keeps (`store.add_turn`, `store.keep_call`,
--- `Store.reach_out_recorded_as`). 0 for others.
+-- `Store.reach_out_recorded_as`). 0 for others. `degraded` is a moment's alone: which parts
+-- of what she wrote were left out or made do without, and how many of each, as a JSON object
+-- (`{"comments": 1}`); NULL where none were.
 CREATE TABLE IF NOT EXISTS activity_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     kind TEXT NOT NULL,
@@ -206,7 +213,8 @@ CREATE TABLE IF NOT EXISTS activity_records (
     manipulation INTEGER,
     cooled INTEGER,
     ended_conversation TEXT,
-    answered INTEGER NOT NULL DEFAULT 0
+    answered INTEGER NOT NULL DEFAULT 0,
+    degraded TEXT
 );
 CREATE INDEX IF NOT EXISTS activity_records_by_time ON activity_records(started_at);
 CREATE INDEX IF NOT EXISTS activity_records_by_user ON activity_records(user_id, started_at);
@@ -630,6 +638,9 @@ class Recording:
         self.judged_as: Judged | None = None
         self.cooled = False
         self.ended_conversation: EndsFor | None = None
+        self.degraded: dict[str, int] | None = None
+        """For a moment, which parts of what she wrote were made do without, and how many of
+        each; None where none were."""
         self.call = call
         """The call this turn was taken in, if any."""
         self.turns: list[Recording] = []
@@ -912,6 +923,20 @@ def read_reached_out_since(db: sqlite3.Connection, user_id: str, moment: datetim
     return count
 
 
+def read_replied_between(
+    db: sqlite3.Connection, user_id: str, start: datetime, end: datetime
+) -> int:
+    """How many of the user's comments on moments characters replied to from `start` till
+    `end`, as of when each began, read through `db`; only those that showed count, not those
+    that failed or were rejected."""
+    [count] = db.execute(
+        "SELECT COUNT(*) FROM activity_records WHERE user_id = ? AND started_at >= ?"
+        " AND started_at < ? AND kind = 'moment_reply' AND result = 'success'",
+        (user_id, start.timestamp(), end.timestamp()),
+    ).fetchone()
+    return count
+
+
 @dataclass(frozen=True)
 class _Written:
     """A record handed in to be written: with the service calls made in it so far."""
@@ -939,6 +964,7 @@ def _open(db: sqlite3.Connection) -> None:
     _add_stripped_tags_column(db)
     _add_judgement_columns(db)
     _add_answered_column(db)
+    _add_degraded_column(db)
     _forget_own_llms(db)
 
 
@@ -987,12 +1013,13 @@ def _insert(
         recording.call.row_id if recording.call is not None else None,
         recording.duration_s, recording.end_reason, *_writing_judgement(recording),
         recording.ended_conversation,
+        json.dumps(recording.degraded) if recording.degraded else None,
     )
     insert = (
         "INSERT INTO activity_records (user_id, anonymous_id, kind, character_id,"
         " started_at, result, own_keys, time_to_speak_ms, call_id, duration_s, end_reason,"
-        f" {', '.join(JUDGEMENT_COLUMNS)}, ended_conversation)"
-        f" VALUES ({', '.join('?' * (12 + len(JUDGEMENT_COLUMNS)))})"
+        f" {', '.join(JUDGEMENT_COLUMNS)}, ended_conversation, degraded)"
+        f" VALUES ({', '.join('?' * (13 + len(JUDGEMENT_COLUMNS)))})"
     )
     try:
         cursor = db.execute(insert, (recording.user_id, None, *row))
@@ -1511,6 +1538,14 @@ def _add_answered_column(db: sqlite3.Connection) -> None:
         db.execute(
             "ALTER TABLE activity_records ADD COLUMN answered INTEGER NOT NULL DEFAULT 0"
         )
+
+
+def _add_degraded_column(db: sqlite3.Connection) -> None:
+    """Records written before moments were posted have no column for what of them was made
+    do without: none were."""
+    columns = {name for _, name, *_ in db.execute("PRAGMA table_info(activity_records)")}
+    if "degraded" not in columns:
+        db.execute("ALTER TABLE activity_records ADD COLUMN degraded TEXT")
 
 
 def _add_llm_columns(db: sqlite3.Connection) -> None:

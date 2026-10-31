@@ -83,6 +83,10 @@
                                      take the memory eval set's turns on the deployer's
                                      background model, embedder, reranker and judge
                                      model, and count what passes by category
+    eidolon eval moments --html F [--model M] [--runs N]
+                                     have the deployer's chat model, or model M, write the
+                                     moments eval set's moments and replies, N times each,
+                                     into the page F, the parts made do without marked
 """
 
 import argparse
@@ -151,6 +155,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return asyncio.run(_eval_judge(args))
     if args.command == "eval" and args.action == "memory":
         return asyncio.run(_eval_memory(args))
+    if args.command == "eval" and args.action == "moments":
+        return asyncio.run(_eval_moments(args))
     if args.command == "eval":
         return asyncio.run(_eval_rerank(args))
 
@@ -977,6 +983,60 @@ async def _eval_memory(args: argparse.Namespace) -> int:
     return 0
 
 
+async def _eval_moments(args: argparse.Namespace) -> int:
+    from eidolon.characters import load_characters
+    from eidolon.config import ImageSettings, LLMSettings
+    from eidolon.llm.providers import open_llm
+    from eidolon.moment_eval import (
+        MomentEvalError,
+        evaluate,
+        load_moment_eval,
+        render_html,
+        summary_line,
+    )
+    from eidolon.place_pool import PlacePoolError, load_place_pool, places_path
+    from eidolon.world import WorldError, load_world, world_path
+
+    if args.runs < 1:
+        print("--runs 至少是 1", file=sys.stderr)
+        return 1
+    try:
+        characters_path = args.characters or characters_path_from_env()
+        characters = load_characters(characters_path)
+        places = load_place_pool(places_path(characters_path), characters)
+        world = load_world(world_path(characters_path))
+        moment_eval = load_moment_eval(args.file, characters, places, world)
+    except (RuntimeError, MomentEvalError, PlacePoolError, WorldError) as e:
+        print(e, file=sys.stderr)
+        return 1
+    try:
+        chat = LLMSettings.chat_from_env()
+        image = ImageSettings.from_env()
+    except RuntimeError as e:
+        print(f"朋友圈评测要用部署者配置的对话模型：{e}", file=sys.stderr)
+        return 1
+    if args.model:
+        chat = replace(chat, model=args.model)
+    llm = open_llm(chat)
+    try:
+        results = await evaluate(
+            moment_eval, llm, args.runs, image.style if image is not None else "",
+            lambda case: print(case, file=sys.stderr, flush=True),
+        )
+    finally:
+        await llm.aclose()
+    try:
+        args.html.write_text(
+            render_html(results, chat.model, args.runs, datetime.now().astimezone()),
+            encoding="utf-8",
+        )
+    except OSError as e:
+        print(f"写不了 {args.html}：{e}", file=sys.stderr)
+        return 1
+    print(f"{summary_line(results)}。结果在 {args.html}")
+    return 0
+
+
 async def _list_users(db: Database, _: argparse.Namespace) -> None:
     store = Store(db)
     users = await store.list_users()
@@ -1290,6 +1350,26 @@ def _parser() -> argparse.ArgumentParser:
     )
     memory.add_argument(
         "--json", type=Path, help="把逐条结果和汇总写成 JSON 文件（基线就是这样提交的）"
+    )
+
+    moments = evaluation.add_parser(
+        "moments",
+        help="用朋友圈评测集的场景让对话模型逐个写动态和回复，连同配图清洗后的 tag 串写进 HTML，"
+        "格式坏了、超字数这类机器标出来，读起来怎样由人读（用部署者的对话模型，不真的生图）",
+    )
+    moments.add_argument("--html", type=Path, required=True, help="写成哪个 HTML 文件")
+    moments.add_argument(
+        "--file",
+        type=Path,
+        default=Path("eval/moments.toml"),
+        help="朋友圈评测集（默认 eval/moments.toml）",
+    )
+    moments.add_argument("--model", help="换一个对话模型（默认取环境变量 CHAT_LLM_MODEL）")
+    moments.add_argument("--runs", type=int, default=1, help="每个场景跑几遍（默认 1）")
+    moments.add_argument(
+        "--characters",
+        type=Path,
+        help="角色配置文件（默认取环境变量 EIDOLON_CHARACTERS_PATH）",
     )
 
     backup = commands.add_parser(

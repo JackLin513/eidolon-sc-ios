@@ -137,6 +137,7 @@ from eidolon.memory import Memories, last_turn_query
 from eidolon.own_keys import OwnKeyFailed
 from eidolon.photos import CANNOT_SEND, NOT_RECEIVED, Eligibility, Photos, photo_turn
 from eidolon.producer import ProducerProfile, effective_timezone, local_date, producer_prompt
+from eidolon.recent_moments import moments_section
 from eidolon.reply_format import (
     format_instructions,
     PhotoTagged,
@@ -516,9 +517,9 @@ def narrations(
     return told
 
 
-REACH_OUT_RULES = """# 先开口
+_REACH_OUT_RULES = """# 先开口
 制作人这会儿没在和你说话，你想先给他发几句。
-- 由头你自己挑：先接着你们最近聊过的事，或者他最近的近况；其次是你这周的工作（如果有）；再其次才是现在的时间、他的生日。
+- 由头你自己挑：先接着你们最近聊过的事，或者他最近的近况；其次是你这周的工作（如果有）；{moments}再其次才是现在的时间、他的生日。
 - 别人的生日、节假日、往年今天的演出不拿来当由头；组合伙伴的生日可以顺口提一句。
 - 不要只发一句空的问候，比如「早安」「在吗」「想你了」，要有具体想说的事。
 - 写一到两段。
@@ -526,12 +527,29 @@ REACH_OUT_RULES = """# 先开口
 - 说到你自己那边：日程里有的就说日程里的；没有的话只说练习、拍摄、事务所的工作这类平常的事，或者世界设定里快到的 live 和新歌，已经过去的只当回忆说，先对照现在的年份；不要编具体的剧情，也不要说别的偶像做了什么。
 - 不发照片，也不说要给他发照片、要给他打电话。
 - 让他好接话，但不必用问句结尾。"""
+
+REACH_OUT_RULES = _REACH_OUT_RULES.format(moments="")
 """How she is to reach out (GLOSSARY.md「搭话」), told her last in what changes from turn to turn,
 where what retrieval finds would be."""
+
+REACH_OUT_RULES_WITH_MOMENTS = _REACH_OUT_RULES.format(
+    moments="然后是你最近发的朋友圈（比如问他看到没有）；"
+)
+"""How she is to reach out with her latest moments to tell (`recent_moments`), as she may
+reach out about them too."""
 
 WANTS_TO_REACH_OUT = "（制作人这会儿没在和你说话。你想先给他发几句。）"
 """Where the user's words would be as she reaches out, after the events since the last turn:
 so every protocol takes the prompt, ending with the user, as narration does."""
+
+
+def _moments_told(
+    known: KnownNow, now: datetime, timezone: str, affinity: Status | None
+) -> list[str]:
+    """The section telling her of her latest moments `known` (`recent_moments`), if any, at
+    `now`, the producer in `timezone`, she as `affinity` has her."""
+    section = moments_section(known.moments, now, timezone, affinity and affinity.tier)
+    return [section] if section else []
 
 
 def _since_last_turn(
@@ -768,6 +786,7 @@ class ConversationEngine:
                 self._now_section(
                     known, occasion, now, timezone, profile, last_contact, affinity_lines
                 ),
+                *_moments_told(known, now, timezone, affinity),
                 *([about_photo] if about_photo else []),
             ],
             [p for p in (retrieved.memories_prompt, retrieved.prompt) if p],
@@ -883,8 +902,9 @@ class ConversationEngine:
         `voiced_by` reads them, the model it would be read aloud with (None if none). Her
         prompt is laid out as a text turn's (ADR-0020), and opens as the next one's will, but
         for what changes from turn to turn: she is told what time it is and that they are not
-        talking and when they last were, how she speaks in her tier, the memories she reaches
-        out with (`Memories.for_reaching_out`), and how to reach out; then, where the user's
+        talking and when they last were, how she speaks in her tier, her latest moments, if any
+        (`recent_moments`), the memories she reaches out with (`Memories.for_reaching_out`), and
+        how to reach out, about her moments too if told of any; then, where the user's
         words would be, the events and her reach-outs since the last turn and that she wants
         to say something first. Nothing else is retrieved, no tool offered, nothing judged.
         Raises EmptyReply if the model says nothing she could say, and whatever the model
@@ -908,6 +928,7 @@ class ConversationEngine:
         memories = await self._memory.for_reaching_out(
             conversation, timezone, last_turn_query(messages)
         )
+        moments = _moments_told(known, now, timezone, affinity)
         prompt = self._prompt(
             character, world_prompt, producer_prompt(profile),
             chat_history(messages, self._history_turns()), told,
@@ -915,8 +936,12 @@ class ConversationEngine:
                 self._now_section(
                     known, "apart", now, timezone, profile, last_contact, tier_prompt(affinity)
                 ),
+                *moments,
             ],
-            [*([memories] if memories else []), REACH_OUT_RULES],
+            [
+                *([memories] if memories else []),
+                REACH_OUT_RULES_WITH_MOMENTS if moments else REACH_OUT_RULES,
+            ],
             WANTS_TO_REACH_OUT, voiced_by,
         )
         parser = ReplyParser()

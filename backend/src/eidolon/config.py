@@ -109,6 +109,35 @@ class ReachOutSettings:
     per_day: int
 
 
+DEFAULT_MOMENTS_PER_DAY = 3
+"""How many moments each user may have a day, of all characters together, unless the admin
+console says otherwise."""
+
+DEFAULT_MOMENT_REPLIES_PER_DAY = 10
+"""How many of each user's comments a day the characters reply to at most, of them all
+together, unless the admin console says otherwise."""
+
+MapSite = Literal["osm", "google", "amap"]
+"""Where a moment's place links to on the map: OpenStreetMap, Google Maps or Amap (高德)."""
+
+MAP_SITES: tuple[MapSite, ...] = get_args(MapSite)
+
+DEFAULT_MAP_SITE: MapSite = "osm"
+
+
+@dataclass(frozen=True)
+class MomentSettings:
+    """Whether characters post moments to users' moments (GLOSSARY.md「朋友圈」), off unless
+    `.env` turns it on, how many moments each user may have a day, which map their places
+    link to, the same for everyone, and how many of each user's comments a day they reply to;
+    the admin console may override them all."""
+
+    enabled: bool
+    per_day: int
+    map: MapSite = DEFAULT_MAP_SITE
+    replies_per_day: int = DEFAULT_MOMENT_REPLIES_PER_DAY
+
+
 @dataclass(frozen=True)
 class ProxySettings:
     """The proxy what is in `services` reaches its providers through, if it is
@@ -450,6 +479,9 @@ class Settings:
     reach_outs: bool = False
     """Whether characters reach out to users (GLOSSARY.md「搭话」), on the deployer's chat
     model; off unless `.env` turns it on, and the admin console may override it."""
+    moments: bool = False
+    """Whether characters post moments (GLOSSARY.md「朋友圈」), on the deployer's chat model;
+    off unless `.env` turns it on, and the admin console may override it."""
     schedule: bool = True
     """Whether each week's jobs are published for producers to schedule (GLOSSARY.md「日程」);
     on unless `.env` turns it off, and the admin console may override it."""
@@ -568,6 +600,7 @@ class Settings:
             exempting_keys=exempting_keys_from_env(),
             affinity_and_gifts=_switch("EIDOLON_AFFINITY_AND_GIFTS", default=True),
             reach_outs=_switch("EIDOLON_REACH_OUTS"),
+            moments=_switch("EIDOLON_MOMENTS"),
             schedule=_switch("EIDOLON_SCHEDULE", default=True),
             cycles=_switch("EIDOLON_CYCLES", default=True),
             bar=_switch("EIDOLON_BAR", default=True),
