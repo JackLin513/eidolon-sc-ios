@@ -523,12 +523,47 @@ public actor Eidolon {
         guard let character = try? characters().first(where: { $0.id == characterID })
         else { return nil }
 
-        if let config = try? standConfigs()[characterID],
-           let found = StandResolver(roots: [location.standDirectory]).stand(for: config) {
-            return found
+        for source in standSources(for: character, configs: (try? standConfigs()) ?? [:]) {
+            if let found = StandResolver(roots: [source.root]).stand(for: source.config) {
+                return found
+            }
         }
-        guard let config = character.stand else { return nil }
-        return StandResolver(roots: [location.contentDirectory]).stand(for: config)
+        return nil
+    }
+
+    /// Every character whose stand can actually be opened, answered in one shot before the
+    /// character list reaches the UI. `AppModel` reads it alongside the character list so
+    /// the chat toolbar never changes after its first layout (spec #44). It shares the
+    /// lookup order with `stand(for:)`, but only checks files, so no outfit list is parsed.
+    public func characterIDsWithStands() -> Set<String> {
+        let characters = (try? characters()) ?? []
+        let configs = (try? standConfigs()) ?? [:]
+        var ids: Set<String> = []
+        for character in characters {
+            let sources = standSources(for: character, configs: configs)
+            let found = sources.contains { source in
+                StandResolver(roots: [source.root]).hasStand(for: source.config)
+            }
+            if found { ids.insert(character.id) }
+        }
+        return ids
+    }
+
+    /// Where her stand may come from, in lookup order: the stand package first, then the
+    /// legacy content bundle (ADR-0020). Both `stand(for:)` and `characterIDsWithStands()`
+    /// walk this list, so the picker and the toolbar can never disagree.
+    private func standSources(
+        for character: CharacterConfig,
+        configs: [String: StandConfig]
+    ) -> [(config: StandConfig, root: URL)] {
+        var sources: [(config: StandConfig, root: URL)] = []
+        if let config = configs[character.id] {
+            sources.append((config, location.standDirectory))
+        }
+        if let config = character.stand {
+            sources.append((config, location.contentDirectory))
+        }
+        return sources
     }
 
     // MARK: - Plumbing

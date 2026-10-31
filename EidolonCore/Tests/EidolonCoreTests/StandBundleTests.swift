@@ -10,7 +10,8 @@ enum StandFixture {
         cards: Int = 4,
         corruptCRC: Bool = false,
         mode: StandManifest.Mode = .full,
-        fileCardsFrom: Int = 0
+        fileCardsFrom: Int = 0,
+        characterID: String = "mano"
     ) throws -> URL {
         let staging = parent.appendingPathComponent(
             "stand-\(UUID().uuidString)",
@@ -72,7 +73,7 @@ enum StandFixture {
         let manifest = StandManifest(
             mode: mode,
             createdAt: "2026-10-28T00:00:00Z",
-            characters: [StandManifest.Character(id: "mano", stand: config)],
+            characters: [StandManifest.Character(id: characterID, stand: config)],
             files: records
         )
         let manifestData = try JSONEncoder().encode(manifest)
@@ -147,6 +148,55 @@ final class StandBundleTests: XCTestCase {
         XCTAssertEqual(found.outfitList?.cards.last?.name, "衣装 4")
         let other = await eidolon.stand(for: "hiori")
         XCTAssertNil(other)
+    }
+
+    func testCharacterIDsWithStandsFollowsTheStandPackageAndKeepsItAfterABadImport() async throws {
+        let eidolon = try await installedEidolon()
+        var ids = await eidolon.characterIDsWithStands()
+        XCTAssertTrue(ids.isEmpty)
+
+        try await eidolon.installStand(bundleAt: StandFixture.makeBundle(in: root))
+        ids = await eidolon.characterIDsWithStands()
+        XCTAssertEqual(ids, ["mano"])
+
+        let bad = try StandFixture.makeBundle(in: root, corruptCRC: true)
+        do {
+            try await eidolon.installStand(bundleAt: bad)
+            XCTFail("a bad stand bundle must not install")
+        } catch {}
+        ids = await eidolon.characterIDsWithStands()
+        XCTAssertEqual(ids, ["mano"])
+    }
+
+    func testCharacterIDsWithStandsAgreesWithTheStandLookup() async throws {
+        let eidolon = try await installedEidolon(includeStand: true)
+        try await eidolon.installStand(bundleAt: StandFixture.makeBundle(in: root))
+        let characters = try await eidolon.characters()
+        let ids = await eidolon.characterIDsWithStands()
+
+        for character in characters {
+            let found = await eidolon.stand(for: character.id)
+            XCTAssertEqual(ids.contains(character.id), found != nil, character.id)
+        }
+    }
+
+    func testCharacterIDsWithStandsFollowsADeltaImport() async throws {
+        let eidolon = try await installedEidolon()
+        try await eidolon.installStand(
+            bundleAt: StandFixture.makeBundle(in: root, characterID: "mano")
+        )
+        var ids = await eidolon.characterIDsWithStands()
+        XCTAssertEqual(ids, ["mano"])
+
+        let delta = try StandFixture.makeBundle(
+            in: root,
+            mode: .delta,
+            characterID: "hiori"
+        )
+        try await eidolon.installStand(bundleAt: delta)
+
+        ids = await eidolon.characterIDsWithStands()
+        XCTAssertEqual(ids, ["hiori"])
     }
 
     func testStandPackageIsPreferredOverLegacyAndSurvivesABadImport() async throws {
