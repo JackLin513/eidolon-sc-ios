@@ -103,6 +103,7 @@ extension Eidolon {
         // The call this turn is taken in, and what its turns have come to; it counts
         // apart from the conversation's typed turns.
         inCall: CallScope? = nil,
+        stop: CallTurnStop? = nil,
         voicedBy model: String? = nil
     ) -> AsyncThrowingStream<TurnEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -121,6 +122,7 @@ extension Eidolon {
                         tracing: tracing,
                         talking: talking,
                         inCall: inCall,
+                        stop: stop,
                         voicedBy: model
                     ) { continuation.yield($0) }
                     continuation.yield(.finished(record))
@@ -186,6 +188,7 @@ extension Eidolon {
         tracing: TurnTracing,
         talking: NowPrompt.Talking,
         inCall: CallScope?,
+        stop: CallTurnStop?,
         voicedBy model: String?,
         emit: (TurnEvent) -> Void
     ) async throws -> TurnRecord {
@@ -489,12 +492,20 @@ extension Eidolon {
         }
         // A call's turn cancelled by a hang-up is one the producer left (upstream's
         // `left`): nothing of it is written — not the line, not her half-said reply, not
-        // the affinity, not a trace. A text turn's stop is not the same: it keeps what
-        // she already said (upstream `engine.turn`'s `stop`).
+        // the affinity, not a trace. A call's interruption is not the same: it keeps what
+        // she had already finished saying (upstream `StopReply`), and so does a text turn's
+        // stop (upstream `engine.turn`'s `stop`).
+        var keepComplete: Int?
         if call != nil, stopped {
-            throw CancellationError()
+            guard case let .keepCompleteSegments(count) = stop?.currentMode() ?? .drop,
+                  count > 0
+            else { throw CancellationError() }
+            keepComplete = count
         }
-        let segments = parser.segments.filter { !($0.ja.isEmpty && $0.zh.isEmpty) }
+        var segments = parser.segments.filter { !($0.ja.isEmpty && $0.zh.isEmpty) }
+        if let keepComplete {
+            segments = Array(segments.prefix(keepComplete))
+        }
         // Stopped before she said anything: there is no reply to keep, and upstream
         // records none — not an empty bubble, not a blank assistant message in the
         // history (upstream raises `EmptyReply` before `_keep`).

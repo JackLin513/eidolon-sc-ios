@@ -22,6 +22,7 @@ struct CallView: View {
     private var line: HerLine? { call.line }
     private var previousLine: HerLine? { call.previousLine }
     private var hearing: String? { call.hearing }
+    private var typed: String? { call.typed }
     private var textOnly: Bool { call.textOnly }
     private var muted: Bool { call.muted }
     private var failure: String? { call.failure }
@@ -34,6 +35,10 @@ struct CallView: View {
 
     /// Her stand, driven by the call's events. Nothing is drawn without one.
     @State private var renderer: (any StandRenderer)?
+    /// Whether the producer is typing during the call (spec #47), and what they have typed.
+    @State private var typing = false
+    @State private var draft = ""
+    @FocusState private var typingFocused: Bool
     /// Whether the app went to the background, so coming back replaces the audio and the
     /// recognizer's connection; a Control Center pull only makes it inactive.
     @State private var wasBackgrounded = false
@@ -95,6 +100,12 @@ struct CallView: View {
             EscapeKey { call.collapse() }
                 .frame(width: 0, height: 0)
                 .accessibilityHidden(true)
+        }
+        .onChange(of: isEnded) { _, ended in
+            if ended {
+                typing = false
+                typingFocused = false
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             updatePause()
@@ -371,7 +382,7 @@ struct CallView: View {
                 .padding(.bottom, 18)
             }
             if startError == nil, !isEnded {
-                dock
+                bottomControls
             }
         }
         .padding(.top, 16)
@@ -549,7 +560,12 @@ struct CallView: View {
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.8))
             }
-            if let hearing {
+            if let typed {
+                Text("你说：\(typed)")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.8))
+                    .padding(.top, 8)
+            } else if let hearing {
                 Text("正在听：\(hearing)…")
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.8))
@@ -644,9 +660,74 @@ struct CallView: View {
         }
     }
 
-    /// The dock: one glass capsule holding the mute key and the hang-up key (upstream
-    /// `Dock`). 麦克风静音 is greyed out until the call connects; the whole dock is gone once it
-    /// ends.
+    /// The bottom of the call: the typing row when it is open, then the dock. The keyboard
+    /// takes the space below; mute, 打字, and 挂断 stay reachable (spec #47).
+    private var bottomControls: some View {
+        VStack(spacing: 8) {
+            if typing, !isEnded {
+                typingRow
+            }
+            dock
+        }
+    }
+
+    private var typingRow: some View {
+        HStack(spacing: 8) {
+            Button {
+                typingFocused = false
+                typing = false
+            } label: {
+                Image(systemName: "keyboard.chevron.compact.down")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("收起键盘")
+            TextField("打字给她…", text: $draft, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.system(size: 17))
+                .foregroundStyle(.white)
+                .tint(.white)
+                .lineLimit(1...4)
+                .focused($typingFocused)
+                .submitLabel(.send)
+                .onSubmit(sendTyped)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(.white.opacity(0.16))
+                }
+                .onAppear { typingFocused = true }
+            Button(action: sendTyped) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundStyle(.white)
+            }
+            .accessibilityLabel("发送")
+            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background {
+            let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
+            shape
+                .fill(.ultraThinMaterial)
+                .overlay(shape.fill(.white.opacity(0.12)))
+        }
+        .padding(.horizontal, 8)
+    }
+
+    private func sendTyped() {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        draft = ""
+        Task { await call.say(text) }
+    }
+
+    /// The dock: one glass capsule holding the mute key, the typing key and the hang-up key
+    /// (upstream `Dock`). 麦克风静音 is greyed out until the call connects; the whole dock is
+    /// gone once it ends.
     private var dock: some View {
         HStack(spacing: 8) {
             Button {
@@ -663,6 +744,20 @@ struct CallView: View {
             .accessibilityAddTraits(muted ? .isSelected : [])
             .disabled(isConnecting || session == nil)
             .opacity(isConnecting ? 0.35 : 1)
+            if !typing {
+                Button {
+                    typing = true
+                } label: {
+                    Image(systemName: "keyboard")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.white)
+                        .frame(width: 56, height: 56)
+                        .background(Circle().fill(.white.opacity(0.15)))
+                }
+                .accessibilityLabel("打字")
+                .disabled(isConnecting || session == nil)
+                .opacity(isConnecting ? 0.35 : 1)
+            }
             Button {
                 // The end card comes up on its own when the call ends; the hang-up tone
                 // belongs to the app's own player, so it still sounds behind the chat

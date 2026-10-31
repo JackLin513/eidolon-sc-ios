@@ -293,6 +293,10 @@ public enum CallEvent: Sendable, Hashable {
     case micNotice(MicNotice?)
     /// Her last turn changed her affinity; the status line says it for a moment (spec #38).
     case affinity(AffinityChange)
+    /// What the producer just typed; the line card shows it until she starts answering.
+    case typed(String)
+    /// The reply being written was dropped for a follow-on: nothing of it is shown.
+    case replyDropped
 }
 
 /// Everything a call is made of: the platform's audio and voice services, the chat model,
@@ -468,6 +472,18 @@ public actor CallSession {
     /// Wakes `drain` when a reply read as text gets another segment, or is settled.
     private var segmentWaiter: CheckedContinuation<Void, Never>?
     private var turnActive = false
+    /// Whether the reply being answered has been recorded; an interruption keeps it.
+    private var replyRecorded = false
+    /// Why the turn in progress is stopped: a drop by default, an interruption keeping
+    /// what she had already finished saying.
+    private var currentStop: CallTurnStop?
+    /// A typed line is replacing the turn in progress: its result must not start the next
+    /// turn on its own.
+    private var typedHold = false
+    /// What to answer once the dropped turn has really stopped.
+    private var typedAfterStop: String?
+    /// Lines typed while the call was still dialing; taken up once it enters.
+    private var queuedTyped: [String] = []
     /// What the call's turns have come to, told to the next one: the call keeps its own
     /// count, apart from the conversation's typed turns (upstream `InCall`).
     private var callOutOfLine = 0
@@ -651,6 +667,95 @@ public actor CallSession {
         }
     }
 
+    // MARK: - Typing
+
+    /// What the producer typed during the call. Typing before she has started a complete
+    /// segment is a follow-on: the reply being written is dropped, and she answers the turn
+    /// again with what was said plus this line. Once she has started one, it interrupts her:
+    /// what she already finished is kept, and the typed line starts a new turn (upstream
+    /// `turn_taking.py`).
+    public func say(_ text: String) async {
+        guard !finished else { return }
+        let line: String
+        do {
+            line = try TurnInput.checked(text)
+        } catch {
+            emit(.failed(error.localizedDescription))
+            return
+        }
+        emit(.typed(line))
+        guard enteredCall else {
+            queuedTyped.append(line)
+            return
+        }
+        switch CallTypedTurn.action(for: typedReplyState()) {
+        case .start:
+            pending.append(line)
+            goOn()
+        case .followOn:
+            await followOn(line)
+        case .interrupt:
+            await interrupt(line)
+        }
+    }
+
+    private func typedReplyState() -> CallTypedTurn.Reply {
+        CallTypedTurn.Reply(
+            turnActive: turnActive,
+            recorded: replyRecorded,
+            startedSpeaking: voiceStarted || (readsAsText(reply) && shownThrough >= 0),
+            completeSegments: max(0, lastFinalized + 1),
+            stillSpeaking: speaking != nil
+        )
+    }
+
+    /// Drops the reply being written: nothing of the turn is recorded, and nothing of it
+    /// stays on the card. The turn is answered again with `line`.
+    private func followOn(_ line: String) async {
+        let joined = said.isEmpty ? line : said + "\n" + line
+        typedHold = true
+        typedAfterStop = joined
+        turnTask?.cancel()
+        await turnTask?.value
+        turnTask = nil
+        typedHold = false
+        typedAfterStop = nil
+        turnActive = false
+        await dropReply()
+        emit(.replyDropped)
+        pending.append(joined)
+        goOn()
+    }
+
+    /// Stops the reply being written, keeping the segments she had already finished, and
+    /// starts a new turn with `line`.
+    private func interrupt(_ line: String) async {
+        if turnActive, let task = turnTask {
+            typedHold = true
+            currentStop?.keepCompleteSegments(max(0, lastFinalized + 1))
+            task.cancel()
+            await task.value
+            turnTask = nil
+            typedHold = false
+        }
+        turnActive = false
+        await dropReply()
+        pending.append(line)
+        goOn()
+    }
+
+    /// Cuts what is queued or playing; a recorded reply stays recorded.
+    private func dropReply() async {
+        queue.removeAll()
+        prefetch?.task.cancel()
+        prefetch = nil
+        speaking?.cancel()
+        speaking = nil
+        speakingIndex = nil
+        drainingIndex = nil
+        await setup.playback.silence()
+    }
+
     // MARK: - Listening
 
     private func listenLoop() async {
@@ -755,6 +860,11 @@ public actor CallSession {
         if !turnActive, speaking == nil {
             setState(connectedNow ? .listening : .reconnecting)
         }
+        if !queuedTyped.isEmpty {
+            pending.append(contentsOf: queuedTyped)
+            queuedTyped.removeAll()
+            goOn()
+        }
     }
 
     /// The connection is gone; she may be in the middle of a reply, and that is what the
@@ -801,7 +911,12 @@ public actor CallSession {
         }
         let text = pending.joined(separator: "\n")
         pending.removeAll()
+        said = text
         turnActive = true
+        replyRecorded = false
+        lastFinalized = -1
+        shownThrough = -1
+        voiceStarted = false
         turnTask = Task { await self.answer(text) }
     }
 
@@ -818,6 +933,9 @@ public actor CallSession {
         // does not put a voice back on a reply that began without one.
         textStartedReply = textOnly ? reply : nil
         said = text
+        replyRecorded = false
+        let stop = CallTurnStop()
+        currentStop = stop
         speech.removeAll()
         captions.removeAll()
         lastFinalized = -1
@@ -841,6 +959,7 @@ public actor CallSession {
                 tracing: setup.tracing,
                 talking: .inCall,
                 inCall: CallScope(outOfLine: callOutOfLine, hurts: callHurts),
+                stop: stop,
                 voicedBy: setup.voiceModel
             ) {
                 if finished || Task.isCancelled { break }
@@ -851,6 +970,7 @@ public actor CallSession {
                     appendCaption(segment, language, shown)
                 case let .finished(record):
                     replyRecordedAt[reply] = ContinuousClock.now
+                    replyRecorded = true
                     recordedTurns += 1
                     callOutOfLine += record.outOfLine ? 1 : 0
                     callHurts.append(record.hurt)
@@ -871,6 +991,11 @@ public actor CallSession {
         } catch {
             failure = error.localizedDescription
         }
+        if typedHold {
+            turnActive = false
+            currentStop = nil
+            return
+        }
         if !finished {
             finalize(from: 0, before: Int.max)
             // Everything this reply will say has been streamed: a reply being read as text
@@ -887,6 +1012,7 @@ public actor CallSession {
             }
         }
         turnActive = false
+        currentStop = nil
         if !finished {
             await checkEnding()
         }

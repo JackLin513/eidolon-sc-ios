@@ -27,6 +27,8 @@ final class CallController {
     private(set) var startError: String?
     /// What the microphone is doing that she cannot tell the producer herself (spec #41).
     private(set) var micNotice: MicNotice?
+    /// The line the producer just typed; shown on the card until she answers (spec #47).
+    private(set) var typed: String?
     /// The change her last turn made, shown on the status line for a moment (spec #38).
     private(set) var affinityCue: AffinityCue?
     /// When the call connected, for the status line; nil until it does.
@@ -147,6 +149,7 @@ final class CallController {
         failure = nil
         startError = nil
         micNotice = nil
+        typed = nil
         connectedAt = nil
         endedAt = nil
         stand = CallStandDirector()
@@ -173,10 +176,12 @@ final class CallController {
             }
         case let .hearing(text):
             hearing = text.isEmpty ? nil : text
+            if !text.isEmpty { typed = nil }
         case .recognized:
             hearing = nil
             failure = nil
         case let .segment(reply, segment, ja, zh):
+            typed = nil
             // The segment before this one in the same reply stays faint above it while
             // 只看文字 is on (upstream `LineCard`). A new reply starts a fresh card.
             previousLine = line?.reply == reply ? line : nil
@@ -185,6 +190,12 @@ final class CallController {
             failure = message
         case let .micNotice(notice):
             micNotice = notice
+        case let .typed(text):
+            typed = text
+        case .replyDropped:
+            typed = nil
+            line = nil
+            previousLine = nil
         case let .affinity(change):
             showAffinityCue(change)
         case .segmentStarted, .segmentStopped, .emotion:
@@ -252,6 +263,11 @@ final class CallController {
 
     func recoverAudio() async {
         await session?.recoverAudio()
+    }
+
+    /// A line the producer typed during the call (spec #47).
+    func say(_ text: String) async {
+        await session?.say(text)
     }
 
     /// Back from the background: the microphone is opened again and the recognizer's
