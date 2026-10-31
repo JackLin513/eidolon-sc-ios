@@ -22,6 +22,8 @@ struct ConversationListView: View {
     @State private var now = Date()
     /// The character a tap asked to enter while another call is under way (spec #46).
     @State private var pendingCharacter: CharacterConfig?
+    /// Whether the roles hidden from the list are being shown (spec #48).
+    @State private var showingHidden = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -31,25 +33,62 @@ struct ConversationListView: View {
                 }
                 Section {
                     ForEach(filtered, id: \.id) { character in
-                        if app.call.isLive, !app.call.isCalling(character.id) {
-                            // Entering another character hangs the call up: ask first
-                            // (spec #46).
-                            Button {
-                                pendingCharacter = character
-                            } label: {
-                                HStack(spacing: 8) {
+                        Group {
+                            if app.call.isLive, !app.call.isCalling(character.id) {
+                                // Entering another character hangs the call up: ask first
+                                // (spec #46).
+                                Button {
+                                    pendingCharacter = character
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        row(character)
+                                        Image(systemName: "chevron.right")
+                                            .font(.footnote.weight(.semibold))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.primary)
+                            } else {
+                                NavigationLink(value: character) {
                                     row(character)
-                                    Image(systemName: "chevron.right")
-                                        .font(.footnote.weight(.semibold))
-                                        .foregroundStyle(.tertiary)
                                 }
                             }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.primary)
-                        } else {
-                            NavigationLink(value: character) {
-                                row(character)
+                        }
+                        .swipeActions(edge: .leading) {
+                            let pinned = app.roster.isPinned(character.id)
+                            Button {
+                                app.togglePinned(character.id)
+                            } label: {
+                                Label(pinned ? "取消置顶" : "置顶",
+                                      systemImage: pinned ? "pin.slash" : "pin")
                             }
+                            .tint(.accentColor)
+                        }
+                        .swipeActions(edge: .trailing) {
+                            let hidden = app.roster.isHidden(character.id)
+                            Button {
+                                app.toggleHidden(character.id)
+                            } label: {
+                                Label(hidden ? "显示" : "隐藏",
+                                      systemImage: hidden ? "eye" : "eye.slash")
+                            }
+                            .tint(.gray)
+                        }
+                    }
+                }
+                if !searching, hiddenCount > 0 {
+                    Section {
+                        Button {
+                            showingHidden.toggle()
+                        } label: {
+                            Label(
+                                showingHidden
+                                    ? "收起隐藏的角色"
+                                    : "已隐藏 \(hiddenCount) 位",
+                                systemImage: showingHidden ? "eye.slash" : "eye"
+                            )
+                            .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -200,8 +239,18 @@ struct ConversationListView: View {
         // Most recent activity first; ties keep the content's own order (upstream `arrange`).
         let ordered = ConversationOrder.byRecency(app.characters, latest: app.latest)
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !needle.isEmpty else { return ordered }
-        return ordered.filter { $0.matches(needle) }
+        // Searching always looks through the hidden ones too, as upstream's list does.
+        let arranged = app.roster.arrange(ordered, showingHidden: showingHidden || !needle.isEmpty)
+        guard !needle.isEmpty else { return arranged }
+        return arranged.filter { $0.matches(needle) }
+    }
+
+    private var searching: Bool {
+        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var hiddenCount: Int {
+        app.roster.hiddenCount(of: app.characters)
     }
 
     private func row(_ character: CharacterConfig) -> some View {
@@ -216,6 +265,17 @@ struct ConversationListView: View {
                         Circle()
                             .fill(Color.accentColor)
                             .frame(width: 7, height: 7)
+                    }
+                    if app.roster.isPinned(character.id) {
+                        Image(systemName: "pin.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("置顶")
+                    }
+                    if app.roster.isHidden(character.id) {
+                        Text("已隐藏")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 if !character.subtitle.isEmpty {

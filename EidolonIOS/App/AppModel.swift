@@ -38,6 +38,9 @@ final class AppModel {
     /// The chat's 朗读: one for the whole app, so only one line ever plays (spec #32).
     let readAloud = ChatReadAloud()
 
+    /// This phone's roster tidy choices (spec #48); not part of the user library.
+    private(set) var roster = RosterStore.load()
+
     /// The phone's own call sounds: one for the whole app, so a hang-up tone outlives the
     /// call page and a redial cuts whatever the last call left playing (spec #35).
     let callTones = CallTonesPlayer()
@@ -745,6 +748,19 @@ final class AppModel {
     /// A new conversation was started elsewhere: let the page and the history sheet hear it.
     func noteConversationStarted() {
         conversationRevision += 1
+    }
+
+    /// Pins or unpins a role in this phone's roster (spec #48).
+    func togglePinned(_ characterID: String) {
+        roster.togglePinned(characterID)
+        RosterStore.save(roster)
+    }
+
+    /// Hides or shows a role in this phone's roster (spec #48). Hidden only takes her out
+    /// of the list; nothing else about her changes.
+    func toggleHidden(_ characterID: String) {
+        roster.toggleHidden(characterID)
+        RosterStore.save(roster)
     }
 
     func refresh() async {
