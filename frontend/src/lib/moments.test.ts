@@ -1,6 +1,7 @@
+import { Cloud, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, Sun } from "lucide-react";
 import { describe, expect, it } from "vitest";
 
-import type { Moment } from "@/lib/api";
+import type { Moment, WeatherKind } from "@/lib/api";
 import { metaParts, postedText } from "@/lib/moments";
 
 /** 本地时间的某一刻（测试不依赖所在时区）。 */
@@ -59,5 +60,44 @@ describe("时间线一行的 Meta", () => {
 
   it("没有地名时只有时间，分隔点也省掉", () => {
     expect(metaParts(moment, now)).toEqual([{ kind: "time", text: "1 小时前" }]);
+  });
+
+  it("有天气时排在最后，是图标加整数气温：「时间 · 地名 · ☀ 18°」", () => {
+    const parts = metaParts(
+      { ...moment, place: { name: "井の頭恩賜公園", map }, weather: { kind: "clear", temperature: 18 } },
+      now,
+    );
+    expect(parts).toEqual([
+      { kind: "time", text: "1 小时前" },
+      { kind: "place", text: "井の頭恩賜公園", href: map },
+      { kind: "weather", text: "18°", icon: Sun, label: "晴" },
+    ]);
+  });
+
+  it("没有地名、有天气时是「时间 · 天气」，零下照写负号", () => {
+    expect(metaParts({ ...moment, weather: { kind: "snow", temperature: -2 } }, now)).toEqual([
+      { kind: "time", text: "1 小时前" },
+      { kind: "weather", text: "-2°", icon: CloudSnow, label: "雪" },
+    ]);
+  });
+
+  it("有地名、没有天气时是「时间 · 地名」", () => {
+    expect(metaParts({ ...moment, place: { name: "井の頭恩賜公園", map } }, now).map((p) => p.kind)).toEqual([
+      "time",
+      "place",
+    ]);
+  });
+
+  it.each<[WeatherKind, unknown, string]>([
+    ["clear", Sun, "晴"],
+    ["cloudy", CloudSun, "多云"],
+    ["overcast", Cloud, "阴"],
+    ["fog", CloudFog, "雾"],
+    ["rain", CloudRain, "雨"],
+    ["snow", CloudSnow, "雪"],
+    ["thunder", CloudLightning, "雷雨"],
+  ])("天气「%s」用它自己的图标", (kind, icon, label) => {
+    const weather = metaParts({ ...moment, weather: { kind, temperature: 10 } }, now).at(-1);
+    expect(weather).toEqual({ kind: "weather", text: "10°", icon, label });
   });
 });

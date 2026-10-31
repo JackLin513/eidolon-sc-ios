@@ -1,8 +1,19 @@
 // 朋友圈页的时间线（GLOSSARY.md「朋友圈」「动态」，DESIGN.md「朋友圈页」）：一行底下 Meta 字号的那一行怎么写。
 // 时间线只有 30 天内的动态，所以不写日期，只写离现在多久。
 
+import {
+  Cloud,
+  CloudFog,
+  CloudLightning,
+  CloudRain,
+  CloudSnow,
+  CloudSun,
+  type LucideIcon,
+  Sun,
+} from "lucide-react";
+
 import { copy } from "@/i18n";
-import type { Moment } from "@/lib/api";
+import type { Moment, WeatherKind } from "@/lib/api";
 
 const t = copy.moments;
 
@@ -27,12 +38,30 @@ function calendarDaysBetween(at: Date, now: Date): number {
   return dayOf(now) - dayOf(at);
 }
 
-/** Meta 一行的一段：时间，或带地图链接的地名。 */
-export type MetaPart = { kind: "time"; text: string } | { kind: "place"; text: string; href: string };
+/** 天气每一档的图标。 */
+const WEATHER_ICONS: Record<WeatherKind, LucideIcon> = {
+  clear: Sun,
+  cloudy: CloudSun,
+  overcast: Cloud,
+  fog: CloudFog,
+  rain: CloudRain,
+  snow: CloudSnow,
+  thunder: CloudLightning,
+};
 
-/** Meta 一行从左到右的几段，中间用分隔点连：时间、地名（点开看地图）。没有的部分不出现，分隔点跟着省掉。 */
+/** Meta 一行的一段：时间，带地图链接的地名，或天气（图标、读屏读的档位名和整数气温）。 */
+export type MetaPart =
+  | { kind: "time"; text: string }
+  | { kind: "place"; text: string; href: string }
+  | { kind: "weather"; text: string; icon: LucideIcon; label: string };
+
+/** Meta 一行从左到右的几段，中间用分隔点连：时间、地名（点开看地图）、天气。没有的部分不出现，分隔点跟着省掉。 */
 export function metaParts(moment: Moment, now: Date): MetaPart[] {
   const parts: MetaPart[] = [{ kind: "time", text: postedText(moment.posted_at, now) }];
   if (moment.place) parts.push({ kind: "place", text: moment.place.name, href: moment.place.map });
+  if (moment.weather) {
+    const { kind, temperature } = moment.weather;
+    parts.push({ kind: "weather", text: `${temperature}°`, icon: WEATHER_ICONS[kind], label: t.weather[kind] });
+  }
   return parts;
 }

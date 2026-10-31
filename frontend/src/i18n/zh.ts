@@ -48,6 +48,8 @@ export const zh = {
     hoursAgo: (n: number) => `${n} 小时前`,
     yesterday: "昨天",
     daysAgo: (n: number) => `${n} 天前`,
+    /** 天气图标读屏读的档位名。 */
+    weather: { clear: "晴", cloudy: "多云", overcast: "阴", fog: "雾", rain: "雨", snow: "雪", thunder: "雷雨" },
   },
   /** 落地页的链接贴到聊天软件、社交网站时预览卡片上的文字（Open Graph、Twitter 卡片）。页面上不显示，不进字体子集。 */
   share: {

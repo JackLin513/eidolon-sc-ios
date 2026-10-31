@@ -711,10 +711,14 @@ export async function getBar(): Promise<BarState> {
   return json(await api("/api/bar"));
 }
 
+/** Tokyo's weather as a moment came out: one of seven kinds. */
+export type WeatherKind = "clear" | "cloudy" | "overcast" | "fog" | "rain" | "snow" | "thunder";
+
 /** A post of hers in the user's moments (GLOSSARY.md「动态」): her Japanese, its subtitle, when it
- * came out (ISO, with its offset), and where she was (GLOSSARY.md「地点」), its Japanese name with a
- * link to it on the map the deployer chooses, null for nowhere. The picture and the weather are null
- * for now. */
+ * came out (ISO, with its offset), where she was (GLOSSARY.md「地点」), its Japanese name with a
+ * link to it on the map the deployer chooses, null for nowhere, and Tokyo's weather then, its kind
+ * and temperature in whole degrees Celsius, null if it could not be had. The picture is null for
+ * now. */
 export type Moment = {
   id: number;
   character_id: string;
@@ -722,7 +726,7 @@ export type Moment = {
   zh: string;
   image: null;
   place: { name: string; map: string } | null;
-  weather: null;
+  weather: { kind: WeatherKind; temperature: number } | null;
   posted_at: string;
 };
 

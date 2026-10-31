@@ -37,6 +37,7 @@ from tests.fakes import (
     DEPLOYER_SONIOX_KEY,
     START,
     FakeCatalog,
+    FakeWeather,
     FakeClock,
     FakeDashScope,
     FakeIdentityProvider,
@@ -452,9 +453,9 @@ async def make_client(
     `FakeServiceClients` that make them (`clients`), or an outside service to use instead
     of the one the settings describe (see `fakes.build_faked`); speech, the identity
     providers (the `github` and `google` fixtures), the LLM services users bring their
-    own keys to (`own_llm`) and the price catalogs online (an empty `FakeCatalog`) are
-    fakes by default, and `voice_configured=False` leaves the deployer without speech
-    keys."""
+    own keys to (`own_llm`), the price catalogs online (an empty `FakeCatalog`) and Tokyo's
+    weather (a `FakeWeather` failing, so that moments go without it) are fakes by default,
+    and `voice_configured=False` leaves the deployer without speech keys."""
     backends: list[Backend] = []
     clients: list[httpx.AsyncClient] = []
 
@@ -470,6 +471,7 @@ async def make_client(
         services.setdefault("own_llm_service", own_llm)
         services.setdefault("speech", speech)
         services.setdefault("catalog_transport", FakeCatalog().transport())
+        services.setdefault("weather_transport", FakeWeather(failing=True).transport())
         if not voice_configured:
             settings = replace(settings, soniox_api_key=None, fish_audio_api_key=None)
         backend = build_faked(settings, llm, **services)

@@ -94,6 +94,7 @@ from eidolon.sponsor import Sponsor
 from eidolon.store import Store
 from eidolon.titles import Titles
 from eidolon.usage import UsageLimiter
+from eidolon.weather import Weathers
 from eidolon.world import World, load_world, world_path
 
 log = logging.getLogger(__name__)
@@ -243,6 +244,7 @@ def build(
     backup_transport: httpx.AsyncBaseTransport | None = None,
     image_transport: httpx.AsyncBaseTransport | None = None,
     fish_transport: httpx.AsyncBaseTransport | None = None,
+    weather_transport: httpx.AsyncBaseTransport | None = None,
     random: Random | None = None,
     reach: Reach | None = None,
 ) -> Backend:
@@ -461,9 +463,11 @@ def build(
         database, store, engine, characters, config, affinities, activity,
         calls.in_call, clock, random or secure_random,
     )
+    weathers = Weathers(clock, weather_transport)
+    closers.append(weathers.aclose)
     moments = Moments(
         database, characters, config, affinities, activity, memories, her_now, clock,
-        random or secure_random, world, places,
+        random or secure_random, weathers, world, places,
     )
     config.on_change(gifts.notice)
     return Backend(

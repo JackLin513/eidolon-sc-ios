@@ -1910,6 +1910,38 @@ class FakeWorldSites:
         )
 
 
+class FakeWeather:
+    """Open-Meteo's forecast API, as `weather` fetches Tokyo's weather over HTTP
+    (`transport`): each hour from `start_hour` to `end_hour` asked for answered with `code`
+    and `temperature` (the code None, as MSM leaves an hour it has not forecast), or failing
+    with 503. Records the query of each request (`requests`)."""
+
+    def __init__(self, code: int | None = 0, temperature: float = 18.4, *, failing: bool = False) -> None:
+        self.code = code
+        self.temperature = temperature
+        self.failing = failing
+        self.requests: list[dict[str, str]] = []
+
+    def transport(self) -> httpx.MockTransport:
+        return httpx.MockTransport(self._handle)
+
+    def _handle(self, request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "api.open-meteo.com", request.url
+        query = dict(request.url.params)
+        self.requests.append(query)
+        if self.failing:
+            return httpx.Response(503, json={"error": True, "reason": "unavailable"})
+        start, end = (
+            datetime.fromisoformat(query[k]).replace(tzinfo=UTC) for k in ("start_hour", "end_hour")
+        )
+        hours = int((end - start) / timedelta(hours=1)) + 1
+        return httpx.Response(200, json={"hourly": {
+            "time": [int((start + timedelta(hours=i)).timestamp()) for i in range(hours)],
+            "weather_code": [self.code] * hours,
+            "temperature_2m": [self.temperature] * hours,
+        }})
+
+
 class FakeCatalog:
     """The price catalogs online, models.dev's and OpenRouter's, as `price_catalog` fetches
     them over HTTP (`transport`): what the test sets, empty by default, or failing. Counts

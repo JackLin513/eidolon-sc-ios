@@ -301,6 +301,7 @@ eidolon-sc/
 - [縫合像素（Fusion Pixel）](https://github.com/TakWolf/fusion-pixel-font)：バーのピクセルフォント
 - [im@sparql](https://sparql.crssnky.xyz/imas/)、Lantis、ふじわらはじめ、imas-db、wikiwiki：世界設定のアイドル・CD・ライブのデータ
 - [OpenStreetMap](https://www.openstreetmap.org/copyright) 貢献者（ODbL）、[Wikidata](https://www.wikidata.org/)：モーメンツの場所の名前と座標
+- [Open-Meteo](https://open-meteo.com/)（CC BY 4.0）：モーメンツの天気
 - [LINUX DO](https://linux.do/)：技術選定から開発、デプロイと運用まで、多くの知見をここでの共有から得ました
 
 <div align="center">

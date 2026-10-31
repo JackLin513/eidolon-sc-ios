@@ -20,6 +20,8 @@ from functools import cache
 from typing import Literal
 from zoneinfo import ZoneInfo, available_timezones
 
+from eidolon.weather import Weather, weather_line
+
 Gender = Literal["male", "female"]
 Talking = Literal["typing", "in_call", "apart"]
 """How the user and she are talking now: typing, in a call, or not at all."""
@@ -182,10 +184,12 @@ def posting_now_prompt(
     now: datetime,
     timezone: str,
     affinity_lines: Sequence[str] = (),
+    weather: Weather | None = None,
 ) -> str:
     """The prompt section about now as she posts a moment (GLOSSARY.md「朋友圈」): the time in
-    Tokyo, where she lives and posts, never when they were last in touch; whether it is the
-    producer's birthday, in their own `timezone`; then `affinity_lines`."""
+    Tokyo, where she lives and posts, never when they were last in touch; Tokyo's `weather`,
+    if known; whether it is the producer's birthday, in their own `timezone`; then
+    `affinity_lines`."""
     local = now.astimezone(_TOKYO)
     lines = [
         "# 此刻",
@@ -193,6 +197,8 @@ def posting_now_prompt(
         f"（星期{_WEEKDAYS[local.weekday()]}）{local:%H:%M}（东京时间）。",
         _POSTING,
     ]
+    if weather is not None:
+        lines.append(weather_line(weather))
     if profile.birthday and is_birthday(profile.birthday, local_date(now, timezone)):
         lines.append(_BIRTHDAY_POSTING)
     lines += affinity_lines

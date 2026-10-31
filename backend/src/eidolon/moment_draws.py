@@ -14,9 +14,10 @@ the people she knows (`RELATIONS`), each as likely.
 
 Her places (`draw_places`): as many as `CANDIDATES`, for her to say she was at one or at
 none, of the places right for the season and the time of day she posts at in Tokyo, and none
-the user's moments were at within the last `KEPT_APART`. A venue is one only on a day she
-stood on it in a year before, and is then hers before any is drawn; the rest are drawn by
-weight, one of a kind she likes weighing `LIKED` times as much, her holy site `HOLY` times.
+the user's moments were at within the last `KEPT_APART`; in rain, snow or thunder, only those
+under a roof. A venue is one only on a day she stood on it in a year before, and is then hers
+before any is drawn; the rest are drawn by weight, one of a kind she likes weighing `LIKED`
+times as much, her holy site `HOLY` times.
 
 Every draw asks the random source for a number below `PLACES`, so that one giving the same
 number each time draws alike wherever it is asked."""
@@ -28,7 +29,7 @@ from datetime import date, datetime, time, timedelta
 from eidolon.affinity import Tier
 from eidolon.characters import Fact
 from eidolon.job_list import Slot
-from eidolon.place_pool import SEASONS, Place, Season
+from eidolon.place_pool import INDOOR, SEASONS, Place, Season
 from eidolon.randomness import Random
 from eidolon.today import TOKYO
 
@@ -133,10 +134,12 @@ def draw_places(
     at: datetime,
     used: Collection[str],
     random: Random,
+    roofed: bool = False,
 ) -> list[Place]:
     """As many as `CANDIDATES` of `places` for her to choose from as she posts `at`: those
     right for its season and its slot in Tokyo (one with slots none late at night, before 6),
-    none of `used` (by identifier); a venue only if `venues` (where her lives on this day in a
+    none of `used` (by identifier), and only those under a roof if `roofed` (for rain, snow
+    or thunder; `INDOOR`); a venue only if `venues` (where her lives on this day in a
     year before were) names it, and then first. The rest are drawn by weight: `LIKED` for
     a kind she `likes`, `HOLY` for one whose `idols` are hers."""
     local = at.astimezone(TOKYO)
@@ -144,6 +147,7 @@ def draw_places(
     left = [
         p for p in places
         if p.id not in used
+        and (not roofed or p.category in INDOOR)
         and (p.seasons is None or season in p.seasons)
         and (p.slots is None or (slot is not None and slot in p.slots))
     ]

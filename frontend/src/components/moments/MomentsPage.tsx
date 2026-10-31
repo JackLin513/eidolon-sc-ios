@@ -73,7 +73,7 @@ export function MomentsPage() {
   );
 }
 
-/** 时间线的一行：左边她的头像；右边名字、日语正文、一行字幕（同对话气泡）、Meta 字号的「时间 · 地名」。
+/** 时间线的一行：左边她的头像；右边名字、日语正文、一行字幕（同对话气泡）、Meta 字号的「时间 · 地名 · 天气」。
  * 地名点开在新标签页打开地图，不把本站地址带过去。 */
 function MomentRow({ moment, character, now }: { moment: Moment; character: Character | undefined; now: Date }) {
   const name = character?.name ?? moment.character_id;
@@ -92,7 +92,12 @@ function MomentRow({ moment, character, now }: { moment: Moment; character: Char
           {metaParts(moment, now).map((part, i) => (
             <Fragment key={i}>
               {i > 0 && " · "}
-              {part.kind === "place" ? (
+              {part.kind === "weather" ? (
+                <span className="whitespace-nowrap">
+                  <part.icon role="img" aria-label={part.label} className="mr-1 inline size-3.5 align-middle" />
+                  {part.text}
+                </span>
+              ) : part.kind === "place" ? (
                 <a
                   href={part.href}
                   target="_blank"

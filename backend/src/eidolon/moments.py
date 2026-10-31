@@ -31,7 +31,8 @@ together from what is read beforehand (`moment_prompt.PostMaterial`): what she k
 the `moments` occasion; `SEEDS` entries of her facts; the memories she was told herself, found
 with the last turn of her current conversation (`Memories.for_reaching_out`); her latest
 `RECENT` moments; as many as `moment_draws.CANDIDATES` places of the pool for her to say she
-was at one of (`moment_draws.draw_places`). Each has an activity record of its own (`moment`),
+was at one of (`moment_draws.draw_places`), only those under a roof in rain, snow or thunder;
+Tokyo's weather as she posts (`weather`), kept with the moment, none if it cannot be had. Each has an activity record of its own (`moment`),
 on the deployer's keys, its service calls under it, and what of it was made do without
 (`moment_prompt.Post.degraded`); one the model fails, or writes nothing to post in, is
 recorded failed, and not tried again. What she posts is posted as it is written: that is when it shows.
@@ -81,6 +82,7 @@ from eidolon.store import (
 )
 from eidolon.today import tokyo_date, venues_on_this_day
 from eidolon.usage import read_user_limits
+from eidolon.weather import ALL_KINDS, Weather, Weathers
 from eidolon.world import World
 
 log = logging.getLogger(__name__)
@@ -176,8 +178,8 @@ def map_link(site: MapSite, place: ShownPlace) -> str:
 
 @dataclass(frozen=True)
 class Moment:
-    """A moment as the timeline shows it: whose, what she posted, when it showed, and where
-    she was, as it was then (None for nowhere)."""
+    """A moment as the timeline shows it: whose, what she posted, when it showed, where she
+    was, as it was then (None for nowhere), and Tokyo's weather then (None for none known)."""
 
     id: int
     character_id: str
@@ -185,17 +187,19 @@ class Moment:
     zh: str
     posted_at: str
     place: ShownPlace | None = None
+    weather: Weather | None = None
 
     def shown(self, map_site: MapSite) -> dict:
-        """As the browser is told it, its place linked to on `map_site`; no picture or
-        weather yet."""
+        """As the browser is told it, its place linked to on `map_site`; no picture yet."""
         place = (
             {"name": self.place.name, "map": map_link(map_site, self.place)}
             if self.place is not None else None
         )
         return {
             "id": self.id, "character_id": self.character_id, "ja": self.ja, "zh": self.zh,
-            "image": None, "place": place, "weather": None, "posted_at": self.posted_at,
+            "image": None, "place": place,
+            "weather": self.weather.shown() if self.weather is not None else None,
+            "posted_at": self.posted_at,
         }
 
 
@@ -237,7 +241,8 @@ class _Before:
 class Moments:
     """Her moments, in `db`, on the deployer's models of `config`, each recorded in
     `activity`; `random` draws who posts and when. A time that came before `clock` says it is
-    as they begin is missed. She may be at one of `places`."""
+    as they begin is missed. She posts in Tokyo's weather as `weathers` has it, and may be at
+    one of `places`."""
 
     def __init__(
         self,
@@ -250,6 +255,7 @@ class Moments:
         her_now: HerNow,
         clock: Clock,
         random: Random,
+        weathers: Weathers,
         world: World | None = None,
         places: Sequence[Place] = (),
     ) -> None:
@@ -264,6 +270,7 @@ class Moments:
         self._random = random
         self._world = world
         self._places = places
+        self._weathers = weathers
         self._started = clock()
         self._was_off = False
         db.prepare(_open)
@@ -398,7 +405,8 @@ class Moments:
             return
         now = self._clock()
         character = self._characters[plan.character_id]
-        material = await self._material(plan, character, now)
+        weather = await self._weathers.at(now)
+        material = await self._material(plan, character, now, weather)
         recording = self._activity.begin(
             "moment", plan.user_id, plan.character_id, own_llm=False, exempt=False
         )
@@ -423,7 +431,7 @@ class Moments:
             return
         recording.degraded = dict(post.degraded) or None
         await self._db.write(
-            _add_moment, plan, post.ja, post.zh, post.place,
+            _add_moment, plan, post.ja, post.zh, post.place, weather,
             self._clock().astimezone(UTC).isoformat(),
         )
         await recording.finish("success")
@@ -452,9 +460,10 @@ class Moments:
         return self._standing(db, plan.user_id, now, affinity_on), posted
 
     async def _material(
-        self, plan: _Plan, character: Character, now: datetime
+        self, plan: _Plan, character: Character, now: datetime, weather: Weather | None
     ) -> PostMaterial:
-        """What she posts the moment planned with, read now."""
+        """What she posts the moment planned with, read now, in `weather` (None for none
+        known)."""
         known = await self._her_now.read(plan.user_id, plan.character_id, None, "moments")
         before = await self._db.read(
             _before, plan.user_id, plan.character_id,
@@ -474,7 +483,7 @@ class Moments:
             before.profile,
             self._her_now.lines(
                 known, "moments", now, timezone, before.profile, None,
-                tier_prompt(status),
+                tier_prompt(status), weather,
             ),
             plan.birthday,
             [_seed(f.text) for f in draw_seeds(character.facts, self._random)],
@@ -483,7 +492,7 @@ class Moments:
             draw_places(
                 self._places, character.id, character.place_likes,
                 venues_on_this_day(now, character, self._world), now, before.used,
-                self._random,
+                self._random, roofed=weather is not None and weather.wet,
             ),
         )
 
@@ -561,14 +570,22 @@ def _drop_plan(db: sqlite3.Connection, plan_id: int) -> None:
 
 
 def _add_moment(
-    db: sqlite3.Connection, plan: _Plan, ja: str, zh: str, place: Place | None, posted_at: str
+    db: sqlite3.Connection,
+    plan: _Plan,
+    ja: str,
+    zh: str,
+    place: Place | None,
+    weather: Weather | None,
+    posted_at: str,
 ) -> None:
-    """Post the moment planned, at a copy of `place`, taking it off the plan."""
+    """Post the moment planned, at a copy of `place`, in `weather`, taking it off the plan."""
     db.execute(
         "INSERT INTO moments (user_id, character_id, ja, zh, place_id, place_name, place_lat,"
-        " place_lon, day, posted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " place_lon, weather, temperature, day, posted_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (plan.user_id, plan.character_id, ja, zh,
          *((place.id, place.name, place.lat, place.lon) if place else (None,) * 4),
+         *((weather.kind, weather.temperature) if weather else (None, None)),
          plan.day.isoformat(), posted_at),
     )
     _drop_plan(db, plan.id)
@@ -600,10 +617,12 @@ def _before(db: sqlite3.Connection, user_id: str, character_id: str, since: str)
 def _timeline(db: sqlite3.Connection, user_id: str, since: str, now: str) -> list[Moment]:
     return [
         Moment(id, character_id, ja, zh, posted_at,
-               ShownPlace(name, lat, lon) if name is not None else None)
-        for id, character_id, ja, zh, posted_at, name, lat, lon in db.execute(
-            "SELECT id, character_id, ja, zh, posted_at, place_name, place_lat, place_lon"
-            " FROM moments"
+               ShownPlace(name, lat, lon) if name is not None else None,
+               Weather(kind, temperature) if kind in ALL_KINDS else None)
+        for id, character_id, ja, zh, posted_at, name, lat, lon, kind, temperature
+        in db.execute(
+            "SELECT id, character_id, ja, zh, posted_at, place_name, place_lat, place_lon,"
+            " weather, temperature FROM moments"
             " WHERE user_id = ? AND posted_at > ? AND posted_at <= ?"
             " ORDER BY posted_at DESC, id DESC",
             (user_id, since, now),
