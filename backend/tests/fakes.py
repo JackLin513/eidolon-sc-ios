@@ -556,7 +556,10 @@ def build_faked(
     `background_llm`'s, judging what turns need from `retrieval_judge`'s and her emotions
     from `emotion_judge`'s, either judging both if only one is given. With a judge
     script, `.env` has the judge model `FAKE_JUDGE` unless it has one. Any other keyword
-    is an outside service passed on to `build`."""
+    is an outside service passed on to `build`; the weather and QWeather are fakes failing
+    by default, so that no test asks the real ones as she talks."""
+    services.setdefault("weather_transport", FakeWeather(failing=True).transport())
+    services.setdefault("qweather_transport", FakeQWeather(failing=True).transport())
     clients = clients or FakeServiceClients()
     if llm is not None:
         clients.llm = llm
@@ -1911,19 +1914,50 @@ class FakeWorldSites:
 
 
 class FakeWeather:
-    """Open-Meteo's forecast API, as `weather` fetches Tokyo's weather over HTTP
-    (`transport`): each hour from `start_hour` to `end_hour` asked for answered with `code`
-    and `temperature` (the code None, as MSM leaves an hour it has not forecast), or failing
-    with 503. Records the query of each request (`requests`)."""
+    """Open-Meteo's forecast API, as `weather` fetches the weather over HTTP (`transport`).
+    Asked for hours (a moment's), each hour from `start_hour` to `end_hour` is answered with
+    `code` and `temperature` (the code None, as MSM leaves an hour it has not forecast).
+    Asked for days (her day's, `daily`), it answers yesterday, today and tomorrow where the
+    spot is (an hour ahead of UTC for each 15 degrees east), as of `clock` (without which it
+    fails): every hour `code` and `temperature`, but for those left of today, `later_code`
+    if set; each day's highest `high` and lowest `low` (3 degrees off the temperature by
+    default), yesterday's `yesterday_high` and `yesterday_low` if set. Either way, failing
+    with 503 if `failing`. Records the query of each request (`requests`)."""
 
-    def __init__(self, code: int | None = 0, temperature: float = 18.4, *, failing: bool = False) -> None:
+    def __init__(
+        self,
+        code: int | None = 0,
+        temperature: float = 18.4,
+        *,
+        failing: bool = False,
+        clock: "Callable[[], datetime] | None" = None,
+        later_code: int | None = None,
+        high: float | None = None,
+        low: float | None = None,
+        yesterday_high: float | None = None,
+        yesterday_low: float | None = None,
+    ) -> None:
         self.code = code
         self.temperature = temperature
         self.failing = failing
+        self.clock = clock
+        self.later_code = later_code
+        self.high = high
+        self.low = low
+        self.yesterday_high = yesterday_high
+        self.yesterday_low = yesterday_low
         self.requests: list[dict[str, str]] = []
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self._handle)
+
+    def days_asked(self) -> list[dict[str, str]]:
+        """The queries that asked for days."""
+        return [q for q in self.requests if "daily" in q]
+
+    def hours_asked(self) -> list[dict[str, str]]:
+        """The queries that asked for a moment's hours."""
+        return [q for q in self.requests if "daily" not in q]
 
     def _handle(self, request: httpx.Request) -> httpx.Response:
         assert request.url.host == "api.open-meteo.com", request.url
@@ -1931,6 +1965,8 @@ class FakeWeather:
         self.requests.append(query)
         if self.failing:
             return httpx.Response(503, json={"error": True, "reason": "unavailable"})
+        if "daily" in query:
+            return self._days(query)
         start, end = (
             datetime.fromisoformat(query[k]).replace(tzinfo=UTC) for k in ("start_hour", "end_hour")
         )
@@ -1940,6 +1976,119 @@ class FakeWeather:
             "weather_code": [self.code] * hours,
             "temperature_2m": [self.temperature] * hours,
         }})
+
+    def _days(self, query: dict[str, str]) -> httpx.Response:
+        if self.clock is None:
+            return httpx.Response(503, json={"error": True, "reason": "no clock"})
+        offset = timedelta(hours=round(float(query["longitude"]) / 15))
+        now = self.clock()
+        local = (now + offset).replace(tzinfo=None)
+        today = datetime(local.year, local.month, local.day, tzinfo=UTC) - offset
+        days = [today - timedelta(days=1), today, today + timedelta(days=1)]
+        hours = [days[0] + timedelta(hours=i) for i in range(72)]
+        this_hour = now.replace(minute=0, second=0, microsecond=0)
+        codes = [
+            self.later_code if self.later_code is not None and this_hour < h < days[2]
+            else self.code
+            for h in hours
+        ]
+        high = self.temperature + 3 if self.high is None else self.high
+        low = self.temperature - 3 if self.low is None else self.low
+        return httpx.Response(200, json={
+            "utc_offset_seconds": int(offset.total_seconds()),
+            "hourly": {
+                "time": [int(h.timestamp()) for h in hours],
+                "weather_code": codes,
+                "temperature_2m": [self.temperature] * len(hours),
+            },
+            "daily": {
+                "time": [int(d.timestamp()) for d in days],
+                "temperature_2m_max": [
+                    high if self.yesterday_high is None else self.yesterday_high, high, high
+                ],
+                "temperature_2m_min": [
+                    low if self.yesterday_low is None else self.yesterday_low, low, low
+                ],
+            },
+        })
+
+
+HARBIN = {
+    "name": "哈尔滨", "id": "101050101", "lat": "45.80298", "lon": "126.53505",
+    "adm2": "哈尔滨", "adm1": "黑龙江省", "country": "中国", "tz": "Asia/Shanghai",
+}
+"""Harbin, as QWeather finds it."""
+
+DONGCHENG = {
+    "name": "东城", "id": "101011600", "lat": "39.91755", "lon": "116.41876",
+    "adm2": "北京", "adm1": "北京市", "country": "中国", "tz": "Asia/Shanghai",
+}
+"""Dongcheng, in Beijing, as QWeather finds it."""
+
+SHINJUKU = {
+    "name": "新宿", "id": "B00176", "lat": "35.69384", "lon": "139.70355",
+    "adm2": "东京", "adm1": "东京都", "country": "日本", "tz": "Asia/Tokyo",
+}
+"""Shinjuku, in Tokyo, as QWeather finds it."""
+
+
+class FakeQWeather:
+    """QWeather (和风天气) on the account's own host, as `qweather` asks it over HTTP
+    (`transport`): looking a city up answers with `cities` (404 for none), the warnings at
+    a spot with `alerts`; failing as an account it does not know, 401, if `failing`.
+    Records each request's path, query and token (`requests`)."""
+
+    def __init__(
+        self,
+        cities: Sequence[dict] = (HARBIN,),
+        alerts: Sequence[dict] = (),
+        *,
+        failing: bool = False,
+    ) -> None:
+        self.cities = list(cities)
+        self.alerts = list(alerts)
+        self.failing = failing
+        self.requests: list[tuple[str, dict[str, str], str]] = []
+
+    def transport(self) -> httpx.MockTransport:
+        return httpx.MockTransport(self._handle)
+
+    def lookups(self) -> list[dict[str, str]]:
+        return [q for path, q, _ in self.requests if path == "/geo/v2/city/lookup"]
+
+    def warnings_asked(self) -> list[str]:
+        return [path for path, _, _ in self.requests if path.startswith("/weatheralert/")]
+
+    def _handle(self, request: httpx.Request) -> httpx.Response:
+        auth = request.headers.get("authorization", "")
+        self.requests.append((request.url.path, dict(request.url.params), auth))
+        if self.failing:
+            return httpx.Response(401, json={"error": {
+                "status": 401, "type": "https://dev.qweather.com/docs/resource/error-code/#unauthorized",
+                "title": "Unauthorized", "detail": "Invalid token",
+            }})
+        if request.url.path == "/geo/v2/city/lookup":
+            if not self.cities:
+                return httpx.Response(200, json={"code": "404"})
+            return httpx.Response(200, json={
+                "code": "200", "location": self.cities,
+                "refer": {"sources": ["QWeather"], "license": ["QWeather Developers License"]},
+            })
+        if request.url.path.startswith("/weatheralert/v1/current/"):
+            return httpx.Response(200, json={
+                "metadata": {"tag": "t", "zeroResult": not self.alerts},
+                "alerts": self.alerts,
+            })
+        return httpx.Response(404, json={"error": {"status": 404, "title": "Not Found"}})
+
+
+def alert(headline: str, code: str = "alert") -> dict:
+    """A weather warning, as QWeather tells of one in force (or cancelled, `cancel`)."""
+    return {
+        "id": "1", "senderName": "哈尔滨市气象台", "messageType": {"code": code},
+        "eventType": {"name": "寒潮", "code": "1009"}, "severity": "minor",
+        "color": {"code": "blue"}, "headline": headline,
+    }
 
 
 class FakeCatalog:

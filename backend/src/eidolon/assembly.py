@@ -95,6 +95,7 @@ from eidolon.sponsor import Sponsor
 from eidolon.store import Store
 from eidolon.titles import Titles
 from eidolon.usage import UsageLimiter
+from eidolon.her_weather import HerWeather
 from eidolon.weather import Weathers
 from eidolon.world import World, load_world, world_path
 
@@ -248,6 +249,7 @@ def build(
     image_transport: httpx.AsyncBaseTransport | None = None,
     fish_transport: httpx.AsyncBaseTransport | None = None,
     weather_transport: httpx.AsyncBaseTransport | None = None,
+    qweather_transport: httpx.AsyncBaseTransport | None = None,
     random: Random | None = None,
     reach: Reach | None = None,
 ) -> Backend:
@@ -320,6 +322,7 @@ def build(
     config = LiveConfig(
         settings, clients or ProviderClients(routes), clock, db=database, activity=activity,
         speech=speech, routes=routes, image_client=image_client,
+        qweather_transport=qweather_transport,
         **({"reach": reach} if reach is not None else {}),
     )
     closers.append(config.aclose)
@@ -428,9 +431,12 @@ def build(
         database, clock, lambda: config.schedule_on, idols_of(characters, world), job_list,
         affinities,
     )
+    weathers = Weathers(clock, weather_transport)
+    closers.append(weathers.aclose)
     her_now = HerNow(
         characters, world, schedules, cycles, affinities,
         RecentMoments(database, clock, lambda: config.moments.enabled),
+        HerWeather(weathers, config.qweather),
     )
     engine = ConversationEngine(
         database, store, characters, gift_catalog, memories, titles, clock, her_now, retrieval,
@@ -469,8 +475,6 @@ def build(
         database, store, engine, characters, config, affinities, activity,
         calls.in_call, clock, random or secure_random,
     )
-    weathers = Weathers(clock, weather_transport)
-    closers.append(weathers.aclose)
     moments = Moments(
         database, characters, config, affinities, activity, memories, her_now, clock,
         random or secure_random, weathers, schedules, photos, world, places,

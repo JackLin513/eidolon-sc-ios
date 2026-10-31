@@ -33,6 +33,7 @@ from eidolon.live_config import (
     MEMORY_LLM,
     MOMENTS,
     PROXY,
+    QWEATHER,
     REACH_OUTS,
     READ_ONLY,
     REGISTRATION,
@@ -166,6 +167,19 @@ class LimitsInput(BaseModel):
     exempting_stt: Any
 
 
+class QWeatherInput(BaseModel):
+    """The deployer's QWeather account; without `private_key`, the key stays as it is.
+    Checked by the live configuration, which says what is wrong in so many words."""
+
+    host: str = Field(min_length=1, max_length=200)
+    developer_id: str = Field(min_length=1, max_length=100)
+    project_id: str = Field(min_length=1, max_length=100)
+    key_id: str = Field(min_length=1, max_length=100)
+    private_key: str | None = Field(None, min_length=8, max_length=1000)
+
+    _trim = field_validator("host", "developer_id", "project_id", "key_id")(_trimmed)
+
+
 class AffinityInput(BaseModel):
     """Whether affinity and gifts are on, true or false; checked by the live configuration."""
 
@@ -269,6 +283,7 @@ INPUTS: dict[str, type[BaseModel]] = {
     AFFINITY: AffinityInput,
     REACH_OUTS: ReachOutsInput,
     MOMENTS: MomentsInput,
+    QWEATHER: QWeatherInput,
     SCHEDULE: ScheduleInput,
     CYCLES: CyclesInput,
     BAR: BarInput,
@@ -289,6 +304,8 @@ def _change(item: str, body: BaseModel) -> dict[str, Any]:
             del change[field]
     if change.get("password", "") is None:
         del change["password"]
+    if change.get("private_key", "") is None:
+        del change["private_key"]
     if key := change.pop("api_key", None):
         change[STT_KEY_FIELDS[change["provider"]] if item == STT else "api_key"] = key
     return change

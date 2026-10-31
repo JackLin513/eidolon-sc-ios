@@ -60,7 +60,7 @@ async def test_she_is_told_tokyos_weather_and_the_moment_shows_it(
     assert "东京这会儿的天气：多云，19°C。" in told
     assert told.index("东京这会儿的天气") < told.index("# 地点候选")
     assert "inokashira：" in told and "kissa：" in told  # dry: outdoors too
-    [asked] = weather.requests
+    [asked] = weather.hours_asked()
     assert (asked["latitude"], asked["longitude"]) == ("35.6895", "139.6917")
     assert asked["models"] == "jma_msm"
     assert asked["start_hour"] == "2026-10-18T22:00"

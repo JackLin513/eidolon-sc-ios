@@ -459,6 +459,8 @@ class Settings:
     fish_audio_model: FishAudioModel = DEFAULT_FISH_AUDIO_MODEL
     embedding: "EmbeddingSettings | None" = None
     rerank: "RerankSettings | None" = None
+    qweather: "QWeatherSettings | None" = None
+    """The deployer's QWeather account, for where the producer is; None without it."""
     image: "ImageSettings | None" = None
     """The deployer's image generation (GLOSSARY.md「生图」), for photos; None without it."""
     judge: "JudgeSettings | None" = None
@@ -593,6 +595,7 @@ class Settings:
             embedding=EmbeddingSettings.from_env(),
             rerank=RerankSettings.from_env(),
             image=ImageSettings.from_env(),
+            qweather=QWeatherSettings.from_env(),
             judge=judge_from_env(),
             emotion=EmotionSettings.from_env(),
             usage_limits=UsageLimits.from_env(),
@@ -937,6 +940,49 @@ class JevSettings:
             model=os.environ.get("JEV_MODEL") or DEFAULT_JEV_MODEL,
             base_url=os.environ.get("JEV_BASE_URL") or DEFAULT_JEV_BASE_URL,
         )
+
+
+QWEATHER_FIELDS = ("host", "developer_id", "project_id", "key_id", "private_key")
+"""What the deployer's QWeather account takes, all of them, or it is none."""
+
+
+@dataclass(frozen=True)
+class QWeatherSettings:
+    """The deployer's QWeather (和风天气) account, for where the producer is (`qweather`): its
+    own API `host`, the developer's id (`iss`), the project's (`sub`), the credential's
+    (`kid`), and the Ed25519 private key it was made with, in PEM or its base64 alone."""
+
+    host: str
+    developer_id: str
+    project_id: str
+    key_id: str
+    private_key: str
+
+    @classmethod
+    def from_env(cls) -> "QWeatherSettings | None":
+        """`QWEATHER_API_HOST`, `QWEATHER_DEVELOPER_ID`, `QWEATHER_PROJECT_ID`,
+        `QWEATHER_KEY_ID` and `QWEATHER_PRIVATE_KEY`: none if all are unset; some set and
+        not the others, the server does not start."""
+        names = {
+            "host": "QWEATHER_API_HOST", "developer_id": "QWEATHER_DEVELOPER_ID",
+            "project_id": "QWEATHER_PROJECT_ID", "key_id": "QWEATHER_KEY_ID",
+            "private_key": "QWEATHER_PRIVATE_KEY",
+        }
+        values = {f: (os.environ.get(n) or "").strip() for f, n in names.items()}
+        if not any(values.values()):
+            return None
+        if missing := [names[f] for f, v in values.items() if not v]:
+            raise RuntimeError(f"和风天气还缺环境变量 {'、'.join(missing)}，要么都填，要么都不填")
+        values["host"] = qweather_host(values["host"])
+        return cls(**values)
+
+
+def qweather_host(value: str) -> str:
+    """The API host as it may be written: with or without `https://` and a trailing slash."""
+    value = value.strip()
+    for prefix in ("https://", "http://"):
+        value = value.removeprefix(prefix)
+    return value.rstrip("/")
 
 
 @dataclass(frozen=True)
