@@ -33,15 +33,24 @@ and the idols' own, where anyone looks, what anyone holds); food with nothing in
 picture. Three have her alone in them: a selfie, as a photo's; one someone else takes of her
 posing, looking at the camera; one someone takes of her unawares, looking elsewhere, at a depth
 of field. Those two may show her small (`wide shot`); a framing not of its composition is from
-the waist up. Where she is alone or no one is, no one holds hands (`people`). Scenery is
-landscape (`LANDSCAPE`), the others portrait, as photos are.
+the waist up. Where she is alone or no one is, no one holds hands (`people`).
+
+The seventh is a group photo (`group`), of her with one or two of those she may be pictured
+with (`with`, by identifier): a selfie if her `action` says so, else someone else taking it of
+the two side by side, or of the three as a group; from the waist up or the thighs up, a selfie
+no more than an arm's length takes in. Each of them is a character of her own in NovelAI's
+multiple characters, her character tag and her looks in it, she first; how many they are is
+said once, of them all, as is what they wear, and they may hold hands. One with no one written
+with her, or one she may not be pictured with, is a posed photo of her alone instead, at the
+framing she wrote (`PictureTag.alone_instead`). Scenery and group photos are landscape
+(`LANDSCAPE`), the others portrait, as photos are.
 """
 
 import json
 import logging
 import re
-from collections.abc import Callable, Collection, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Collection, Mapping, Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, get_args
 
@@ -75,10 +84,15 @@ SHOT_FRAMINGS: tuple[PictureFraming, ...] = get_args(PictureFraming)
 """How much of her a moment's picture someone else takes can show: a photo's, or her small in
 a wide shot."""
 
-Composition = Literal["scenery", "food", "object", "selfie", "posed", "candid"]
+Composition = Literal["scenery", "food", "object", "selfie", "posed", "candid", "group"]
 COMPOSITIONS: tuple[Composition, ...] = get_args(Composition)
 UNPEOPLED: tuple[Composition, ...] = ("scenery", "food", "object")
 """The compositions of a moment's picture no one is in."""
+GROUP_FRAMINGS: tuple[PictureFraming, ...] = ("upper body", "cowboy shot")
+"""How much of them a group photo someone else takes can show: enough to tell each by her
+face."""
+GROUP_MOST = 2
+"""How many may be in a group photo with her at most."""
 
 NO_HUMANS_NEGATIVE = f"{NEGATIVE_PROMPT}, 1girl, 1boy, people"
 """The negative prompt of a picture no one is in."""
@@ -142,15 +156,23 @@ class PictureTag:
     action: tuple[str, ...]
     stripped: tuple[Crossing, ...] = ()
     """Which part of the line each tag stripped crossed, one for each."""
+    others: tuple[Character, ...] = ()
+    """Who is in a group photo with her, in the order written."""
+    selfie: bool = False
+    """Whether a group photo is a selfie."""
+    alone_instead: bool = False
+    """Whether it is a posed photo of her alone in place of a group photo written amiss."""
 
 
 @dataclass(frozen=True)
 class ImagePrompt:
-    """The prompts a picture is generated from, and its size, width by height."""
+    """The prompts a picture is generated from, and its size, width by height; of a group
+    photo, each one's own in NovelAI's multiple characters (`characters`), hers first."""
 
     positive: str
     negative: str
     size: tuple[int, int] = PORTRAIT
+    characters: tuple[str, ...] = ()
 
 
 def tag_fields(text: str) -> dict[str, str]:
@@ -186,16 +208,27 @@ def read_tag(text: str) -> PhotoTag:
 
 
 def read_picture(
-    fields: Mapping[str, str], allowed: Collection[Composition], idols: Collection[str] = ()
+    fields: Mapping[str, str],
+    allowed: Collection[Composition],
+    idols: Collection[str] = (),
+    pictured: Sequence[Character] = (),
 ) -> PictureTag | None:
     """The moment's picture its `fields` say (`tag_fields`), in one of the compositions
     `allowed`; None for none: a composition not allowed, or an object with nothing in it.
     `idols` are the character tags that would draw one of them into a picture no one is
-    in."""
+    in; `pictured` those she may be in a group photo with, `with` naming them by
+    identifier."""
     written = _cleaned(fields.get("composition", ""))
     composition: Composition | None = next((c for c in allowed if c == written), None)
     if composition is None:
         return None
+    if composition == "group":
+        others = _with(fields.get("with", ""), pictured)
+        if others:
+            return _group(fields, others, idols)
+        alone = read_picture({**fields, "composition": "posed"}, ["posed"])
+        assert alone is not None  # a posed photo is always one
+        return replace(alone, alone_instead=True)
     stripped: list[Crossing] = []
     if composition in UNPEOPLED:
         seen = {*_UNPEOPLED_FIXED[composition], WORK_TAG, *idols}  # never written, then
@@ -206,14 +239,7 @@ def read_picture(
         if not action and composition == "object":
             return None
         return PictureTag(composition, None, place, (), action, tuple(stripped))
-    framings: tuple[PictureFraming, ...] = (
-        SELFIE_FRAMINGS if composition == "selfie" else SHOT_FRAMINGS
-    )
-    asked = _cleaned(fields.get("framing", ""))
-    framing: PictureFraming = "upper body"
-    for known in framings:
-        if known == asked:
-            framing = known
+    framing = _framing(fields, SELFIE_FRAMINGS if composition == "selfie" else SHOT_FRAMINGS)
     seen = {*_FIXED, *_PEOPLED_FIXED[composition], framing}
     drops = _unaware if composition == "candid" else _no_one
     place, outfit, action = (
@@ -223,10 +249,56 @@ def read_picture(
     return PictureTag(composition, framing, place, outfit, action, tuple(stripped))
 
 
+def _framing(
+    fields: Mapping[str, str], framings: Sequence[PictureFraming]
+) -> PictureFraming:
+    """The framing its `fields` say, of `framings`; from the waist up for one not of them."""
+    asked = _cleaned(fields.get("framing", ""))
+    for known in framings:
+        if known == asked:
+            return known
+    return "upper body"
+
+
+def _with(written: str, pictured: Sequence[Character]) -> tuple[Character, ...]:
+    """Who `written` names to be in a group photo with her, of those `pictured`, by
+    identifier, each once, as many as `GROUP_MOST`; none if it names none, or one not of
+    them."""
+    by_id = {each.id: each for each in pictured}
+    named = list(dict.fromkeys(n for n in re.split(r"[\s,，、`]+", written) if n))
+    if not named or any(n not in by_id for n in named):
+        return ()
+    return tuple(by_id[n] for n in named[:GROUP_MOST])
+
+
+def _group(
+    fields: Mapping[str, str], others: tuple[Character, ...], idols: Collection[str]
+) -> PictureTag:
+    """The group photo its `fields` say, of her with `others`: a selfie if her `action` has
+    one (then not kept in it, but said of them all); `idols`' character tags never written
+    in it, each one's in her box alone."""
+    selfie = "selfie" in _tags(fields.get("action", ""))
+    framing = _framing(fields, SELFIE_FRAMINGS if selfie else GROUP_FRAMINGS)
+    people = len(others) + 1
+    seen = {
+        _count(people), WORK_TAG, *QUALITY_TAGS, *_group_shot(people, selfie), framing, *idols,
+    }
+    stripped: list[Crossing] = []
+    place, outfit, action = (
+        _field(fields.get(name, ""), seen, stripped, DEFAULTS[name], _crowded)
+        for name in DEFAULTS
+    )
+    return PictureTag(
+        "group", framing, place, outfit, action, tuple(stripped), others, selfie
+    )
+
+
 def picture_prompt(character: Character, tag: PictureTag, style: str = "") -> ImagePrompt:
     """The prompts the moment's picture `tag` says is generated from, of `character` (who has
     her photo tags, if she is in it), in the art style `style`."""
     styled = _styled(style)
+    if tag.composition == "group":
+        return _group_prompt(character, tag, styled)
     if tag.composition == "scenery":
         opening = _UNPEOPLED_FIXED["scenery"][:4]
         return _prompt((*opening, *styled, *tag.place, *tag.action), NO_HUMANS_NEGATIVE, LANDSCAPE)
@@ -249,6 +321,39 @@ def picture_prompt(character: Character, tag: PictureTag, style: str = "") -> Im
         *shot, tag.framing, *tag.place, *tag.outfit, *action, *after,
     )
     return _prompt(positive, negative)
+
+
+def _group_prompt(
+    character: Character, tag: PictureTag, styled: tuple[str, ...]
+) -> ImagePrompt:
+    """The prompts of the group photo `tag` of `character` and those with her: how many they
+    are, how it is taken and what they wear said once, of them all; each her own character
+    tag and looks, written as they are, never cleaned."""
+    assert tag.framing is not None
+    everyone = (character, *tag.others)
+    looks = any(g in t for t in tag.action for g in _GAZES)
+    positive = (
+        _count(len(everyone)), WORK_TAG, *styled, *_group_shot(len(everyone), tag.selfie),
+        tag.framing, *tag.place, *tag.outfit, *tag.action,
+        *(() if looks else (LOOKING_AT_VIEWER,)),
+    )
+    characters: list[str] = []
+    for each in everyone:
+        assert each.photo_tag is not None and each.photo_appearance is not None
+        characters.append(f"girl, {each.photo_tag}, {each.photo_appearance}")
+    return replace(_prompt(positive, NEGATIVE_PROMPT, LANDSCAPE), characters=tuple(characters))
+
+
+def _count(people: int) -> str:
+    """The tag for how many are in a group photo."""
+    return f"{people}girls"
+
+
+def _group_shot(people: int, selfie: bool) -> tuple[str, ...]:
+    """The tags for how a group photo of as many `people` is taken."""
+    if selfie:
+        return ("selfie",)
+    return ("side-by-side",) if people == 2 else ("group picture",)
 
 
 def _prompt(
@@ -292,6 +397,12 @@ def _shot_tags(shot: Shot) -> tuple[str, ...]:
     return ("selfie", LOOKING_AT_VIEWER) if shot == "selfie" else ()
 
 
+def _tags(value: str) -> list[str]:
+    """The tags `value` writes, cleaned and put as the model knows them."""
+    cleaned = (_cleaned(raw) for raw in re.split(r"[,，、]", value))
+    return [_TABLE.rewrites.get(tag, tag) for tag in cleaned if tag]
+
+
 def _field(
     value: str,
     seen: set[str],
@@ -306,9 +417,7 @@ def _field(
     one is there to hold them with (`alone`); cut to `FIELD_TAGS`; its `default`, if any, if
     none are left."""
     tags: list[str] = []
-    for raw in re.split(r"[,，、]", value):
-        written = _cleaned(raw)
-        tag = _TABLE.rewrites.get(written, written)
+    for tag in _tags(value):
         if not tag or tag in seen or drops(tag):
             continue
         seen.add(tag)
@@ -333,6 +442,11 @@ def _peopled(tag: str) -> bool:
 def _no_one(tag: str) -> bool:
     """Whether `tag` would leave her out of a picture of her."""
     return tag == NO_HUMANS
+
+
+def _crowded(tag: str) -> bool:
+    """Whether `tag` would leave her out of a group photo, or have her alone in it."""
+    return tag in (NO_HUMANS, "1girl", "solo")
 
 
 def _unaware(tag: str) -> bool:

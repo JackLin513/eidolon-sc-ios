@@ -35,7 +35,12 @@ never sent: kept with the moment, what her latest moments are recalled by (`reca
 not written, in a composition she was not given, of an object with nothing in it, or that
 cannot be read, is made do without: the moment is posted without a picture, and it is told
 (`IMAGE`). One she writes where she was not told she may is not read. A framing not of its
-composition is not made do without: it is from the waist up."""
+composition is not made do without: it is from the waist up.
+
+Where it may be a group photo, she is told which of her circle may be in it with her (those
+with photo tags, `GROUP_MARK`), and names them in `with`. One with no one named, or one not of
+them, is a posed photo of her alone instead, and it is told (`WITH`). Whoever is in it with her
+likes her moment, written so or not, and is never one of those over as many as are kept."""
 
 import re
 from collections import Counter
@@ -72,6 +77,7 @@ POST_RULES = """# 发朋友圈
 - 写街景时写站在地面能看到的东西（sidewalk、power lines、vending machine、storefront、crosswalk 一类），只写 street, dusk 会画成从高处俯瞰。
 - 风景、食物、物品的 action 写景物、食物或物品，不是动作；outfit、framing 不用写。
 - 摆拍和抓拍可以选 wide shot：人小景大，适合在名胜、街景前。
+- 合照想拍成自拍，就在 action 里写 selfie；不写就是别人帮你们拍。
 - 只输出下面的格式，不写别的：
 <post><ja>日语正文</ja><zh>中文字幕</zh></post>
 <image>配图标签</image>（只在有「这次允许的构图」时写）
@@ -105,14 +111,25 @@ action: peace sign, smile
 note: 在公园的银杏树下请人帮我拍的
 </image>
 - composition 只能从下面选一个："""
-COMPOSITIONS_CLOSING = """\
-- framing：只在有你的构图里写。selfie 选 portrait 或 upper body；posed、candid 选 portrait、upper body、cowboy shot、full body、wide shot。
+_FRAMING = "- framing：只在有你的构图里写。selfie 选 portrait 或 upper body；posed、candid 选 portrait、upper body、cowboy shot、full body、wide shot{group}。"
+_FIELDS = """\
 - place：1–4 个英文 tag，写地点、室内还是室外、时段或天气、光线。
-- outfit：1–4 个英文 tag，写一套衣服，只写这个景别里看得见的。
-- action：有你的构图写 2–4 个英文 tag，一个动作、一两个表情，抓拍写正在做的事；没有人的构图写 1–3 个景物、食物或物品。
+- outfit：1–4 个英文 tag，写一套衣服，只写这个景别里看得见的{group}。
+- action：有你的构图写 2–4 个英文 tag，一个动作、一两个表情，抓拍写正在做的事；没有人的构图写 1–3 个景物、食物或物品。"""
+_LAST = """\
 - note：一句中文，写这张图拍了什么。
-- 画面里只有你一个人，或者没有人；不写发色、瞳色、发型、身材，也不写画风或画师。全年龄，和发照片的规矩一样。"""
-"""What she is told of the picture her moment may have, before and after its compositions."""
+- 画面里只有你一个人，或者没有人{group}；不写发色、瞳色、发型、身材，也不写画风或画师。全年龄，和发照片的规矩一样。"""
+COMPOSITIONS_CLOSING = "\n".join(
+    (_FRAMING.format(group=""), _FIELDS.format(group=""), _LAST.format(group=""))
+)
+GROUP_CLOSING = "\n".join((
+    _FRAMING.format(group="；group 自拍选 portrait 或 upper body，别人帮你们拍选 upper body 或 cowboy shot"),
+    _FIELDS.format(group="；group 里大家穿这一套"),
+    "- with：只在 group 里写，「圈子成员」里标了「能一起合照」的 1–2 位的 id，用逗号隔开。",
+    _LAST.format(group="；group 里是你和 with 里的人"),
+))
+"""What she is told of the picture her moment may have, after its compositions: without a
+group photo among them, and with one."""
 
 COMPOSITION_NAMES: dict[Composition, str] = {
     "scenery": "风景，没有人",
@@ -121,8 +138,12 @@ COMPOSITION_NAMES: dict[Composition, str] = {
     "selfie": "你的自拍",
     "posed": "别人帮你拍，你看着镜头",
     "candid": "别人趁你不注意抓拍，你不看镜头",
+    "group": "和圈子里的一两位合照，自拍或者别人帮你们拍",
 }
 """What each composition is, as she is told."""
+
+GROUP_MARK = "（能一起合照）"
+"""What marks one of her circle she may be in a group photo with."""
 
 RELATION = "你资料里关于她的："
 """What opens what her facts say of one of her circle."""
@@ -148,6 +169,9 @@ PLACE = "place"
 
 IMAGE = "image"
 """What `Post.degraded` names a picture made do without by."""
+
+WITH = "with"
+"""What `Post.degraded` names a group photo made a photo of her alone by."""
 
 NO_LIKES = "likes"
 """What `Post.degraded` names a list of likes not written by."""
@@ -252,7 +276,8 @@ def post_prompt(material: PostMaterial) -> list[ChatMessage]:
         told.append(material.memories)
     if material.recent:
         told.append("\n".join([RECENT_OPENING, *(f"- {ja}" for ja in material.recent)]))
-    told.append(_circle(material.circle, material.birthday))
+    group = "group" in material.compositions
+    told.append(_circle(material.circle, material.birthday, group))
     told.append(
         "\n".join([PLACES_OPENING, *(_candidate(p, material.character.id) for p in material.places)])
         if material.places else NO_PLACES
@@ -261,7 +286,7 @@ def post_prompt(material: PostMaterial) -> list[ChatMessage]:
         told.append("\n".join([
             COMPOSITIONS_OPENING,
             *(f"  - {c}：{COMPOSITION_NAMES[c]}" for c in material.compositions),
-            COMPOSITIONS_CLOSING,
+            GROUP_CLOSING if group else COMPOSITIONS_CLOSING,
         ]))
     return [
         ChatMessage("system", "\n\n".join(shared), cache_breakpoint=True),
@@ -271,14 +296,16 @@ def post_prompt(material: PostMaterial) -> list[ChatMessage]:
     ]
 
 
-def _circle(circle: Sequence[Member], birthday: bool) -> str:
-    """Her circle as she is told it, and how many of them may like and comment."""
+def _circle(circle: Sequence[Member], birthday: bool, group: bool) -> str:
+    """Her circle as she is told it, and how many of them may like and comment; where her
+    picture may be a `group` photo, those who may be in it with her marked."""
     if not circle:
         return NO_CIRCLE
     likes, comments = _most(birthday)
     lines = [CIRCLE_OPENING.format(likes=likes, comments=comments)]
     for member in circle:
-        lines.append(f"## {member.character.id}：{member.character.name}")
+        mark = GROUP_MARK if group and member.character.photographed else ""
+        lines.append(f"## {member.character.id}：{member.character.name}{mark}")
         if member.relation:
             lines += [RELATION, member.relation]
         sections = sheet_sections(member.character.sheet)
@@ -314,7 +341,7 @@ _COMMENT = re.compile(
 _JA = re.compile(r"<ja>(.*?)</ja>", re.DOTALL)
 _ZH = re.compile(r"<zh>(.*?)</zh>", re.DOTALL)
 _IMAGE = re.compile(r"<image>(.*?)</image>", re.DOTALL)
-_WRITTEN = ("composition", "framing", "place", "outfit", "action", "note")
+_WRITTEN = ("composition", "framing", "place", "outfit", "action", "with", "note")
 """The fields of her picture that are kept as she wrote them."""
 
 
@@ -363,29 +390,39 @@ def parse_post(written: str, material: PostMaterial) -> Post | None:
             m.character.photo_tag for m in (Member(material.character), *material.circle)
             if m.character.photo_tag
         ]
-        picture = _picture(written, material.compositions, idols)
+        pictured = [m.character for m in material.circle if m.character.photographed]
+        picture = _picture(written, material.compositions, idols, pictured)
         if picture is None:
             degraded[IMAGE] += 1
+        elif picture.tag.alone_instead:
+            degraded[WITH] += 1
+    with_her = [each.id for each in picture.tag.others] if picture is not None else []
+    likes += [id for id in with_her if id not in likes]
     most_likes, most_comments = _most(material.birthday)
     if len(likes) > most_likes:
-        degraded[LIKES_OVER] = len(likes) - most_likes
+        over = len(likes) - most_likes
+        degraded[LIKES_OVER] = over
+        cut = [id for id in likes if id not in with_her][-over:]
+        likes = [id for id in likes if id not in cut]
     if len(comments) > most_comments:
         degraded[COMMENTS_OVER] = len(comments) - most_comments
-    return Post(
-        ja, zh, place, likes[:most_likes], comments[:most_comments], picture, dict(degraded)
-    )
+    return Post(ja, zh, place, likes, comments[:most_comments], picture, dict(degraded))
 
 
 def _picture(
-    written: str, compositions: Sequence[Composition], idols: Sequence[str]
+    written: str,
+    compositions: Sequence[Composition],
+    idols: Sequence[str],
+    pictured: Sequence[Character],
 ) -> Picture | None:
     """The picture `written` has, in one of `compositions`, `idols` the character tags of
-    those who may be in it; None for none."""
+    those who may be in it, `pictured` those who may be in a group photo with her; None for
+    none."""
     found = _IMAGE.search(written)
     if found is None:
         return None
     fields = tag_fields(found[1])
-    tag = read_picture(fields, compositions, idols)
+    tag = read_picture(fields, compositions, idols, pictured)
     if tag is None:
         return None
     kept = {name: fields[name] for name in _WRITTEN if name in fields}

@@ -72,7 +72,15 @@ class GeneratedImage:
 
 
 def generation_request(model: str, prompt: ImagePrompt, seed: int) -> dict:
-    """The body NovelAI's `/ai/generate-image` is sent for `prompt` with `model`."""
+    """The body NovelAI's `/ai/generate-image` is sent for `prompt` with `model`: each of a
+    group photo's characters in a box of her own, her negative box beside it empty, placed
+    where the model chooses."""
+    # Without coordinates: centers (0, 0) and `use_coords` false. The PNG that comes back
+    # says `use_coords: true` in its metadata all the same; the picture is none the worse.
+    # Not to be "fixed".
+    unplaced = [{"x": 0, "y": 0}]
+    positives = [{"char_caption": c, "centers": unplaced} for c in prompt.characters]
+    negatives = [{"char_caption": "", "centers": unplaced} for _ in prompt.characters]
     return {
         "input": prompt.positive,
         "model": model,
@@ -92,12 +100,12 @@ def generation_request(model: str, prompt: ImagePrompt, seed: int) -> dict:
             "cfg_rescale": 0,
             "negative_prompt": prompt.negative,
             "v4_prompt": {
-                "caption": {"base_caption": prompt.positive, "char_captions": []},
+                "caption": {"base_caption": prompt.positive, "char_captions": positives},
                 "use_coords": False,
                 "use_order": True,
             },
             "v4_negative_prompt": {
-                "caption": {"base_caption": prompt.negative, "char_captions": []},
+                "caption": {"base_caption": prompt.negative, "char_captions": negatives},
                 "legacy_uc": False,
             },
         },

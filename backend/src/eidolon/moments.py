@@ -39,7 +39,8 @@ as `moment_draws.CANDIDATES` places of the pool for her to say she was at one of
 (`moment_draws.draw_places`), of her jobs only of the kinds they take her to, only those
 under a roof in rain, snow or thunder; Tokyo's weather as she posts (`weather`), kept with the
 moment, none if it cannot be had; and, where there is image generation, the compositions her
-picture may be in (`moment_draws.draw_compositions`). Each has an activity record of its own (`moment`), on the
+picture may be in (`moment_draws.draw_compositions`), a group photo among them only in
+NovelAI's own format, with those of her circle who have photo tags. Each has an activity record of its own (`moment`), on the
 deployer's keys, its service calls under it, and what of it was made do without
 (`moment_prompt.Post.degraded`); one the model fails, or writes nothing to post in, is
 recorded failed, and not tried again. Her picture is generated first, on the deployer's image
@@ -643,8 +644,12 @@ class Moments:
             if kinds or not jobs else []
         )
         seeds = [] if jobs else [_seed(f.text) for f in draw_seeds(character.facts, self._random)]
+        circle = self._circle(character, tokyo_date(now), plan.birthday)
+        image = self._config.image_settings
         compositions = draw_compositions(
-            self._config.image_settings is not None, character.photographed, self._random
+            image is not None, character.photographed, self._random,
+            group=image is not None and image.api_format == "novelai"
+            and any(m.character.photographed for m in circle),
         )
         return PostMaterial(
             character,
@@ -660,7 +665,7 @@ class Moments:
             before.recent,
             places,
             [f"{each.job.name}：{each.job.note}" for each in jobs],
-            self._circle(character, tokyo_date(now), plan.birthday),
+            circle,
             compositions,
         )
 

@@ -31,7 +31,8 @@ moment, on its own; as many times within `COMMENTS_AFTER` drawn as there are com
 given them in order.
 
 Her picture (`draw_compositions`): where there is image generation, `PICTURED` of her
-moments have one, in any composition, or only those no one is in where she has no photo tags.
+moments have one, in any composition, or only those no one is in where she has no photo tags;
+a group photo only in NovelAI's own format, with one of her circle who has photo tags.
 
 Every draw asks the random source for a number below `PLACES`, so that one giving the same
 number each time draws alike wherever it is asked."""
@@ -267,14 +268,18 @@ def draw_circle(
 
 
 def draw_compositions(
-    generating: bool, photographed: bool, random: Random
+    generating: bool, photographed: bool, random: Random, group: bool
 ) -> tuple[Composition, ...]:
     """The compositions her moment's picture may be in, none for no picture: none without
-    image generation (`generating`), drawn for nothing; else `PICTURED` of the time every one,
-    or those no one is in (`UNPEOPLED`) where she has no photo tags (`photographed`)."""
+    image generation (`generating`), drawn for nothing; else `PICTURED` of the time every one
+    but a group photo, that too where `group` (NovelAI's own format, one of her circle
+    with photo tags), or only those no one is in (`UNPEOPLED`) where she has no photo tags
+    (`photographed`)."""
     if not generating or _draw(random) >= PICTURED:
         return ()
-    return COMPOSITIONS if photographed else UNPEOPLED
+    if not photographed:
+        return UNPEOPLED
+    return COMPOSITIONS if group else tuple(c for c in COMPOSITIONS if c != "group")
 
 
 def draw_shown(

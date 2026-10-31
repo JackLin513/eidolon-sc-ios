@@ -4,19 +4,19 @@
 
 **Blocked by:** 20, 21
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] **什么时候允许合照**，三条都满足才允许：
+- [x] **什么时候允许合照**，三条都满足才允许：
   - 部署者的生图是 NovelAI 形态；
   - 她自己配齐了 `photo_tag` 和 `photo_appearance`；
   - 这条动态的圈子里至少有一位也配齐了。
   
   不满足时，「这次允许的构图」里就没有合照，她不用另外知道。
-- [ ] **提示词**：
+- [x] **提示词**：
   - 圈子成员那一节里，标出哪几位能进合照（配齐了外貌的）。
   - `<image>` 多一栏 `with`，写合照里的人，1–2 个 id。
   - 规则加一句：想拍成自拍，就在 `action` 里写 `selfie`；不写就是别人帮她们拍。
-- [ ] **请求体**：
+- [x] **请求体**：
   - 多角色提示框里，她本人和 `with` 里的每个人各一个框，每框写 `girl, <角色 tag>, <外貌>`；负面也照这个结构写。
   - centers 发 `(0,0)`，`use_coords` 发 `false`。返回的 PNG 元数据会把它记成 `true`，这不影响出图，别去「修」。在代码注释里记一句。
   - 人数 tag 只写在 base 里：
@@ -24,16 +24,16 @@
     - 没有 `selfie`，就是别人拍：两人写 `2girls, side-by-side`，三人写 `3girls, group picture`，景别 `upper body` 或 `cowboy shot`。
   - `outfit` 全员共用。合照里放行 `holding hands`。去重用的那个固定集合，按实际人数换。
   - 人数 tag 和每个人的外貌由服务器写进去，不经过清洗。
-- [ ] **尺寸**：合照用 1216×832 的横图。
-- [ ] **降级**：选了合照，`with` 却是空的，或者有人不在可选名单里，就降成她一个人的摆拍，景别保留，记一次降级。
-- [ ] **名单**：合照里的人一定算进赞的人，她没写也补上。
-- [ ] **测试**，都看 `FakeImageService` 收到的请求体：
+- [x] **尺寸**：合照用 1216×832 的横图。
+- [x] **降级**：选了合照，`with` 却是空的，或者有人不在可选名单里，就降成她一个人的摆拍，景别保留，记一次降级。
+- [x] **名单**：合照里的人一定算进赞的人，她没写也补上。
+- [x] **测试**，都看 `FakeImageService` 收到的请求体：
   - 两人、三人；自拍和别人拍；
   - 景别的范围；
   - `with` 无效时降成摆拍；
   - OpenAI 形态下、圈子里没有配齐的人、她自己没配外貌时，都不允许合照；
   - 合照里的人进了赞的人。
-- [ ] **验收**：在本地构建版上用假生图造一条合照动态，看时间线显示横图。要用真中转出图看效果时，先向用户报张数，等他点头再出。
+- [x] **验收**：在本地构建版上用假生图造一条合照动态，看时间线显示横图。要用真中转出图看效果时，先向用户报张数，等他点头再出。
 - [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
 
 ## Comments
@@ -50,3 +50,17 @@
 - 允许的构图由 `moment_draws.draw_compositions(generating, photographed, random)` 给；合照的条件（NovelAI 形态、圈子里有配齐的人）加在这里或在 `Moments._material` 里追加，`PostMaterial.compositions` 是传给提示词和解析器的那份。
 - `moment_prompt` 里「这次允许的构图」一节的说明在 `COMPOSITION_NAMES` 和 `COMPOSITIONS_CLOSING`，`with` 栏要补进去；她写的各栏原样存进 `moments.image`（JSON，`_WRITTEN` 列了哪几栏），`with` 也要加进 `_WRITTEN`。
 - `COMPOSITIONS_CLOSING` 末条现在写「画面里只有你一个人，或者没有人」，加合照时要改。
+
+### 实现说明（票 22）
+
+- **`photo_prompt`**：`Composition` 加 `group`（七种）；`read_picture(fields, allowed, idols, pictured)` 多了 `pictured`（能进合照的人）。`with` 按 id 认，逗号、顿号、空格分隔，去重后截到 `GROUP_MOST`（2）；空的或有人不在 `pictured` 里，就按 `posed` 重读一遍，`PictureTag.alone_instead` 为真。合照的 `PictureTag` 多了 `others`（合照里的人）和 `selfie`。`_group` 用 `{n}girls`、作品 tag、质量 tag、拍法 tag、景别和圈子里各人的 `photo_tag` 去重，另外丢掉 `1girl`、`solo`、`no humans`（`_crowded`），`holding hands` 放行。`action` 里的 `selfie`（含改写来的 `group selfie`）进 base，不留在 `action` 里。选景别抽成 `_framing`，和单人构图共用。
+- **`picture_prompt`**：合照的 base 是 `{n}girls, 作品 tag, 画风, selfie | side-by-side | group picture, 景别, place, outfit, action[, looking at viewer]`，后接质量 tag；`ImagePrompt.characters` 是每人一个 `girl, <tag>, <外貌>`，她排第一；负面照用 `NEGATIVE_PROMPT`；尺寸 `LANDSCAPE`。
+- **`image_generation.generation_request`**：`char_captions` 照 `ImagePrompt.characters` 填，负面每人一个空串框，centers 都是 `(0,0)`，`use_coords` 还是 `false`；PNG 元数据记成 `true` 的事写在注释里。
+- **`moment_draws.draw_compositions(generating, photographed, random, group)`**：`group` 是必填参数，为假时去掉合照，她没配外貌时照旧只给无人的三种。`Moments._material` 先抽圈子，再定构图，`group` = 部署者的生图是 NovelAI 形态，并且圈子里有人配齐了外貌。
+- **`moment_prompt`**：「圈子成员」里能进合照的人标 `GROUP_MARK`（「（能一起合照）」），只在允许合照时标；允许合照时结尾换成 `GROUP_CLOSING`（景别范围、`with` 一栏、outfit 大家共用、画面里是你和 with 里的人）；`POST_RULES` 加了「合照想拍成自拍，就在 action 里写 selfie」；`_WRITTEN` 加了 `with`；降成摆拍记降级 `with`（`WITH`）。合照里的人在截断之前补进赞的名单，截断时只从她写的人里、从末尾截，所以合照里的人不会被截掉。
+- **判断**：
+  - `with` 写了超过 2 个合法的 id 时，静默截成前 2 个，不降级、不记数。
+  - 合照里的人是补进去的，不记降级；她自己有没有写，在 `Post` 上看不出来（见票 29 交接）。
+  - 降成摆拍以后存的 `composition` 是 `posed`，`with` 照她写的原样存。
+- **验收**：用真的解析器、提示词和请求体代码，在本地库给 Sallyn 造了一条真乃和灯织的合照动态，图是假的 1216×832 PNG，经 `kept_as_webp` 转换。请求体和调研 4.2 的草案一致。本地构建版上宽屏和手机的缩略图都是 160×109，放大后是横图，赞里补上了灯织。验完删掉了数据和脚本。没有用真中转出图。
+- **审查里没改的**：`"group"` 字面量散在 `draw_compositions`、`post_prompt`、`read_picture`、`picture_prompt` 几处，没收成常量；`Moments._material` 里自己拼「能不能合照」的条件，直接和 `"novelai"` 比较，没挪到 `ImageSettings` 上。这两处都是判断题。

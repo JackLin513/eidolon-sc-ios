@@ -257,18 +257,19 @@ def test_likes_show_5_minutes_to_3_hours_after_the_moment_and_comments_15_minute
 
 
 @pytest.mark.parametrize(
-    ("drawn", "photographed", "compositions"),
+    ("drawn", "photographed", "group", "compositions"),
     [
-        (666, True, ("scenery", "food", "object", "selfie", "posed", "candid")),
-        (666, False, ("scenery", "food", "object")),
-        (667, True, ()),
+        (666, True, False, ("scenery", "food", "object", "selfie", "posed", "candid")),
+        (666, True, True, ("scenery", "food", "object", "selfie", "posed", "candid", "group")),
+        (666, False, True, ("scenery", "food", "object")),
+        (667, True, True, ()),
     ],
 )
 def test_two_thirds_of_her_moments_have_a_picture_of_her_only_where_she_has_photo_tags(
-    drawn: int, photographed: bool, compositions: tuple[str, ...]
+    drawn: int, photographed: bool, group: bool, compositions: tuple[str, ...]
 ):
-    assert draw_compositions(True, photographed, FakeRandom(drawn)) == compositions
+    assert draw_compositions(True, photographed, FakeRandom(drawn), group) == compositions
 
 
 def test_without_image_generation_none_has_a_picture_nor_is_drawn_for():
-    assert draw_compositions(False, True, FakeRandom()) == ()
+    assert draw_compositions(False, True, FakeRandom(), True) == ()

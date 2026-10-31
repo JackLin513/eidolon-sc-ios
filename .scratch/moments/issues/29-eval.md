@@ -60,3 +60,8 @@
 ### 票 19 交接
 
 - 工作那条的素材是 `PostMaterial.jobs`（每项写成「名字：note」，按做完的先后），这时 `seeds` 为空；地点候选只来自这几项工作的 `places`（`draw_places(..., within=)`），都没写就是空。场景文件要能写出这两样，才评得到工作那条。
+
+### 票 22 交接
+
+- `draw_compositions` 现在要传第四个参数 `group`。场景 ⑨ 要允许合照，`PostMaterial.compositions` 里要带 `"group"`，圈子里至少一位配齐了 `photo_tag` 和 `photo_appearance`；场景 ⑩ 不带。
+- 「合照里的人有没有算进赞」：`parse_post` 会自动把合照里的人补进 `Post.likes`，所以只看 `Post.likes` 总是对的。要查她自己写没写，得拿 `<likes>` 原文和 `post.picture.tag.others` 比。降成摆拍记在 `degraded["with"]`。

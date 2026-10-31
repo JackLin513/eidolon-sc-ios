@@ -300,7 +300,7 @@ async def test_she_without_photo_tags_is_let_choose_only_those_no_one_is_in(
 
     for composition in ("scenery", "food", "object"):
         assert f"  - {composition}：" in told
-    for composition in ("selfie", "posed", "candid"):
+    for composition in ("selfie", "posed", "candid", "group"):
         assert f"  - {composition}：" not in told
     assert image.requests == []
     assert moment["image"] is None
