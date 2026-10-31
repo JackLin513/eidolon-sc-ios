@@ -38,6 +38,15 @@ extension AudioCapture {
 public protocol AudioPlayback: Sendable {
     func play(_ audio: Data) async throws
     func stop() async
+    /// Cuts the segment playing now, without ending the call: switching to 只看文字 while she
+    /// is being heard leaves her words on the card but takes her voice away at once. Unlike
+    /// `stop`, a later segment may still be played.
+    func silence() async
+}
+
+extension AudioPlayback {
+    /// A playback with one segment at a time has nothing to cut between plays.
+    public func silence() async {}
 }
 
 /// What the recognizer heard.
@@ -360,6 +369,15 @@ public actor CallSession {
     /// Whether the call has entered: the connect tone played and the microphone opened to
     /// her. A reconnect must not play the connect tone again.
     private var enteredCall = false
+    /// 只看文字: her words are put on the card at her pace and no voice is made (upstream
+    /// `muted`). It can change while the call is up, and a reply that started while it was on
+    /// stays text to its end.
+    private var textOnly = false
+    /// The reply that began while 只看文字 was on: her voice comes back on the next reply,
+    /// as upstream latches whether a reply is voiced when it starts.
+    private var textStartedReply: Int?
+    /// 麦克风静音: the producer's microphone is closed for the rest of this call.
+    private var muted = false
 
     /// What the producer said while she was answering; answered once she is done.
     private var pending: [String] = []
@@ -400,6 +418,14 @@ public actor CallSession {
     /// The segment whose audio is playing, if any.
     private var speakingIndex: Int?
     private var speaking: Task<Void, Never>?
+    /// The segment `drain` has taken off the queue, being made or read: 只看文字 turning on
+    /// mid-answer must not queue it a second time.
+    private var drainingIndex: Int?
+    /// The last reply whose segments have all been streamed: `drain` reading a reply as text
+    /// waits for its later segments until this reply has been settled.
+    private var settledReply = -1
+    /// Wakes `drain` when a reply read as text gets another segment, or is settled.
+    private var segmentWaiter: CheckedContinuation<Void, Never>?
     private var turnActive = false
     /// What the call's turns have come to, told to the next one: the call keeps its own
     /// count, apart from the conversation's typed turns (upstream `InCall`).
@@ -459,7 +485,7 @@ public actor CallSession {
         if let ringback = setup.tones.ring() {
             self.ringback = ringback
             ringPlayed = true
-            await setup.capture.setHearing(false)
+            await hear(false)
         }
         tasks.append(Task { await self.listenLoop() })
         if setup.connectTimeout > .zero {
@@ -486,6 +512,48 @@ public actor CallSession {
     public func recoverAudio() async {
         guard !finished else { return }
         await setup.capture.recover()
+    }
+
+    /// 只看文字: her words go on the card at her pace and no voice service is called at all
+    /// (upstream `muted`). A reply that starts while it is on stays text to its end; turning
+    /// it on mid-reply cuts the segment being heard and reads the rest.
+    public func setTextOnly(_ on: Bool) async {
+        guard !finished, textOnly != on else { return }
+        textOnly = on
+        guard on else {
+            // A reply that started voiced may go on with its voice: let `drain` look at
+            // its queue again instead of sleeping until the reply settles.
+            wakeSegments()
+            return
+        }
+        // Her voice belongs to the mode the reply started in: stop making or playing it, and
+        // read what the voice path never reached. The reply under way turns text for good —
+        // turning 只看文字 off again must not put a voice back on its remaining segments —
+        // and the next reply is the first to start fresh.
+        textStartedReply = reply
+        lineFallback?.cancel()
+        lineFallback = nil
+        prefetch?.task.cancel()
+        prefetch = nil
+        if speakingIndex != nil {
+            await setup.playback.silence()
+        }
+        queueUnreadSegments()
+    }
+
+    /// 麦克风静音: the producer's microphone is closed for the rest of this call. The recognizer's
+    /// connection stays up, so unmuting hears again without reconnecting. It is not
+    /// remembered past the call.
+    public func setMuted(_ on: Bool) async {
+        guard !finished, muted != on else { return }
+        muted = on
+        if on {
+            await hear(false)
+        } else {
+            // Back to what it would be: open once the call has entered, but not while her
+            // own voice is playing (ADR-0015) — that segment reopens it when it is done.
+            await hear(enteredCall && speakingIndex == nil)
+        }
     }
 
     // MARK: - Listening
@@ -582,7 +650,7 @@ public actor CallSession {
         enteredCall = true
         ringback = nil
         if ringPlayed { setup.tones.connect() }
-        await setup.capture.setHearing(true)
+        await hear(true)
         if !turnActive, speaking == nil {
             setState(connectedNow ? .listening : .reconnecting)
         }
@@ -645,6 +713,9 @@ public actor CallSession {
         emit(.recognized(text))
         reply += 1
         replyRecognizedAt[reply] = ContinuousClock.now
+        // Whether this reply is voiced is decided as it starts: turning 只看文字 off midway
+        // does not put a voice back on a reply that began without one.
+        textStartedReply = textOnly ? reply : nil
         said = text
         speech.removeAll()
         captions.removeAll()
@@ -698,6 +769,10 @@ public actor CallSession {
         }
         if !finished {
             finalize(from: 0, before: Int.max)
+            // Everything this reply will say has been streamed: a reply being read as text
+            // no longer has to wait for more segments.
+            settledReply = reply
+            wakeSegments()
             // A reply whose voice has not started a while after it was recorded is shown at
             // her pace instead (upstream `linePacing.ts`, `VOICE_WAIT_MS`).
             scheduleLineFallback()
@@ -746,7 +821,12 @@ public actor CallSession {
             guard !(caption.ja.isEmpty && caption.zh.isEmpty) else { continue }
             judgeEmotion(segment: index)
             let spoken = ReplyCues.spoken(speech[index] ?? "", by: setup.voiceModel)
-            if !spoken.isEmpty {
+            if readsAsText(reply) {
+                // 只看文字: the card reads every segment at her pace, and no voice is made.
+                queue.append((reply: reply, index: index, speech: spoken))
+                ensureSpeaking()
+                wakeSegments()
+            } else if !spoken.isEmpty {
                 queue.append((reply: reply, index: index, speech: spoken))
                 if !setup.synthesis.providesVoice { showSegment(reply: reply, index: index) }
                 ensureSpeaking()
@@ -788,7 +868,7 @@ public actor CallSession {
     /// not leave the producer with a blank card. Her voice starting cancels it; if the voice
     /// starts later, the card jumps to it and stays there (upstream `linePacing.ts`).
     private func scheduleLineFallback() {
-        guard !finished, lineFallback == nil else { return }
+        guard !finished, lineFallback == nil, !readsAsText(reply) else { return }
         guard (Set(captions.keys).union(speech.keys)).contains(where: { $0 > shownThrough }) else {
             return
         }
@@ -884,6 +964,54 @@ public actor CallSession {
 
     // MARK: - Voicing
 
+    /// Whether her reply is read as text rather than voiced: 只看文字 is on now, or it was on
+    /// when the reply started (upstream latches whether a reply is voiced as it starts).
+    private func readsAsText(_ reply: Int) -> Bool {
+        textOnly || textStartedReply == reply
+    }
+
+    /// Opens or closes the microphone to the producer: 麦克风静音 keeps it closed for the call, and
+    /// it is closed while her own voice plays (ADR-0015).
+    private func hear(_ open: Bool) async {
+        await setup.capture.setHearing(open && !muted)
+    }
+
+    /// Wakes `drain` if it is waiting for the reply being read as text to go on.
+    private func wakeSegments() {
+        segmentWaiter?.resume()
+        segmentWaiter = nil
+    }
+
+    /// Waits for the reply being read as text to get another segment or to settle. The
+    /// continuation is stored before the suspension, and every path that can end the wait —
+    /// `finalize`, the end of `answer`, `finish` — wakes it.
+    private func waitForSegment() async {
+        guard !finished, reply != settledReply else { return }
+        await withCheckedContinuation { continuation in
+            segmentWaiter = continuation
+        }
+    }
+
+    /// Queues the segments of the reply being answered that were finalized but never put on
+    /// the card, so 只看文字 turning on mid-answer reads them instead of leaving them lost.
+    private func queueUnreadSegments() {
+        var added = false
+        let indices = Set(captions.keys).union(speech.keys).sorted()
+        for index in indices where index > shownThrough && index <= lastFinalized {
+            guard index != drainingIndex else { continue }
+            guard !queue.contains(where: { $0.reply == reply && $0.index == index }) else {
+                continue
+            }
+            let caption = captions[index] ?? (ja: "", zh: "")
+            guard !(caption.ja.isEmpty && caption.zh.isEmpty) else { continue }
+            let spoken = ReplyCues.spoken(speech[index] ?? "", by: setup.voiceModel)
+            queue.append((reply: reply, index: index, speech: spoken))
+            added = true
+        }
+        if added { ensureSpeaking() }
+        wakeSegments()
+    }
+
     private func ensureSpeaking() {
         guard speaking == nil, !finished else { return }
         speaking = Task { await self.drain() }
@@ -891,11 +1019,27 @@ public actor CallSession {
 
     /// Voices the queued segments one at a time; one that cannot be voiced is skipped.
     /// The next one is made while the current one plays, so the gap between them stays
-    /// short (ADR-0011).
+    /// short (ADR-0011). A reply being read as text has its segments put on the card at her
+    /// pace instead, and no voice is made for it.
     private func drain() async {
-        while !finished, !Task.isCancelled, !queue.isEmpty {
+        while !finished, !Task.isCancelled {
+            if queue.isEmpty {
+                // A reply read as text is paced as it arrives: the rest of it may still be
+                // on its way, and listening again would cut it short.
+                if readsAsText(reply), reply != settledReply {
+                    await waitForSegment()
+                    continue
+                }
+                break
+            }
             let item = queue.removeFirst()
+            drainingIndex = item.index
             setState(.speaking)
+            if readsAsText(item.reply) {
+                await paceSegment(item)
+                drainingIndex = nil
+                continue
+            }
             do {
                 let audio: Data
                 if let held = prefetch, held.index == item.index {
@@ -908,6 +1052,13 @@ public actor CallSession {
                     audio = try await setup.synthesis.synthesize(item.speech, voice: voice)
                 }
                 if finished || Task.isCancelled { break }
+                // 只看文字 turned on while this segment was being made: it is read, not
+                // played, and the rest of the reply follows it as text.
+                if readsAsText(item.reply) {
+                    await paceSegment(item)
+                    drainingIndex = nil
+                    continue
+                }
                 voiceStarted = true
                 lineFallback?.cancel()
                 lineFallback = nil
@@ -938,6 +1089,7 @@ public actor CallSession {
                 }
             }
             speakingIndex = nil
+            drainingIndex = nil
         }
         prefetch?.task.cancel()
         prefetch = nil
@@ -955,17 +1107,26 @@ public actor CallSession {
         }
     }
 
+    /// Reads one segment on the card at her pace, with the microphone left open: there is
+    /// no voice of hers to echo, and upstream keeps hearing in 只看文字.
+    private func paceSegment(_ item: (reply: Int, index: Int, speech: String)) async {
+        showSegment(reply: item.reply, index: item.index)
+        let caption = captions[item.index] ?? (ja: "", zh: "")
+        let line = caption.ja.isEmpty ? item.speech : caption.ja
+        try? await Task.sleep(for: Self.lineTime(line))
+    }
+
     /// Plays one segment with the microphone closed: her own voice comes out of the
     /// speaker, and an open microphone would feed it back to the recognizer, where it
     /// would be heard as something the producer said and she would answer herself.
     private func playWhileDeaf(_ audio: Data) async {
-        await setup.capture.setHearing(false)
+        await hear(false)
         do {
             try await setup.playback.play(audio)
         } catch {
             // This segment is lost; the reply goes on.
         }
-        await setup.capture.setHearing(true)
+        await hear(true)
     }
 
     /// Starts making the next segment while the current one plays, unless there is
@@ -1010,13 +1171,14 @@ public actor CallSession {
         pending.removeAll()
         // She hears nothing more of the producer, and her voice stops at once: hanging up
         // must not leave her talking out of a call that is over.
-        await setup.capture.setHearing(false)
+        await hear(false)
         await setup.playback.stop()
         for task in tasks { task.cancel() }
         connectTimeoutTask?.cancel()
         connectTimeoutTask = nil
         turnTask?.cancel()
         speaking?.cancel()
+        wakeSegments()
         lineFallback?.cancel()
         lineFallback = nil
         prefetch?.task.cancel()
