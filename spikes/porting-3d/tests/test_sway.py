@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from sway import mirror, tail_for
+from sway import mirror, plane_normal, tail_for
 
 
 class FakeDocument:
@@ -48,6 +48,32 @@ class TailForTests(unittest.TestCase):
             tail_for(document, 0, {0}, {0: (-0.04, 0.0, 0.0)}),
             mirror([-0.04, 0.0, 0.0]),
         )
+
+
+class PlaneNormalTests(unittest.TestCase):
+    def test_unrotated_plane_pushes_away_from_its_named_side(self):
+        # `CheckPlane` keeps the tip on the far side of a `minusY` plane, i.e.
+        # it pushes towards +Y; the exporter stores that push direction.
+        self.assertEqual(
+            plane_normal({"planeAxis": "minusY", "planeRotOn": "False"}),
+            mirror([0.0, 1.0, 0.0]),
+        )
+        # A `plusZ` plane pushes towards −Z in game space, which the usual
+        # mirror turns into +Z in the app's frame.
+        self.assertEqual(
+            plane_normal({"planeAxis": "plusZ", "planeRotOn": "False"}),
+            (0.0, 0.0, 1.0),
+        )
+
+    def test_rotated_plane_follows_the_euler(self):
+        normal = plane_normal({
+            "planeAxis": "minusZ", "planeRotOn": "True",
+            "planeRotEuler": "30,0,0",
+        })
+        # (0,0,1) turned 30° about X, then mirrored on Z.
+        self.assertAlmostEqual(normal[1], -0.5, places=4)
+        self.assertAlmostEqual(abs(normal[2]), 0.866, places=3)
+
 
 
 if __name__ == "__main__":

@@ -477,6 +477,79 @@ final class MotionSwayTests: XCTestCase {
         )
     }
 
+
+    /// `SwayColliderMT.CheckPlane`: a half-space through the collider's offset,
+    /// keeping the tip `radius` past it. This is the chest/back guard the hair
+    /// data leans on (86 of 109 models reference planes), and it was skipped by
+    /// the exporter until now.
+    func testPlaneKeepsTheTipOutOfItsHalfSpace() throws {
+        let (names, rest) = collisionRig()
+        let plane = MotionSway.Collider(
+            joint: "BASE/MOMO_L", type: "plane", radius: 0.1,
+            distance: 0, offset: [0, 0, 0.004], axis: "X",
+            normal: [0, 0, -1], target: nil
+        )
+        var sway = try XCTUnwrap(MotionSway(
+            configuration: configuration(
+                bones: [bone("BASE/skirt_a", tail: SIMD3(0.18, 0, 0), radius: 0.01,
+                             colliders: [0])],
+                colliders: [plane]
+            ),
+            joints: names, rest: rest
+        ))
+        var poses = rest
+        for _ in 0..<60 {
+            poses = rest
+            sway.apply(&poses, dt: 1 / 60)
+        }
+        let tip = worldTip(of: 2, poses: poses, parents: skirtParents, tail: SIMD3(0.18, 0, 0))
+        // The kept side is −Z, measured from the offset at z = 0.004: the
+        // margin is the bone radius (0.01) plus the solver's surface epsilon,
+        // so the tip has to sit at z ≤ 0.004 − 0.011 = −0.007.
+        XCTAssertLessThanOrEqual(tip.z, -0.007 + 1e-3,
+                                 "the plane let the tip through (z \(tip.z))")
+    }
+
+    /// `SwayColliderMT.CapsuleBridgeHit`: a capsule spanning the collider's
+    /// joint and its `bridgetgt` (the neck-to-shoulder gap on the real rig).
+    func testBridgeCapsulePushesTheTipOut() throws {
+        var rest = [JointPose](repeating: .identity, count: 6)
+        rest[1].translation = SIMD3(0, 0.1, -0.3) // the far end of the bridge
+        rest[3].translation = SIMD3(0, 0, 1)      // HAIR, the up landmark
+        let names = ["BASE", "BASE/FAR", "BASE/skirt_a", "HAIR", "KOSHI", "BASE/unused"]
+        let parents: [Int?] = [nil, 0, 0, nil, nil, 0]
+        let tail = SIMD3<Float>(0, 0, -0.2)       // tip on the bridge's axis
+        let bridge = MotionSway.Collider(
+            joint: "BASE", type: "bridge", radius: 0.09,
+            distance: 0.316, offset: [0, 0, 0], axis: "X",
+            normal: nil, target: "BASE/FAR"
+        )
+        var sway = try XCTUnwrap(MotionSway(
+            configuration: configuration(
+                bones: [bone("BASE/skirt_a", tail: tail, radius: 0.01, colliders: [0])],
+                colliders: [bridge]
+            ),
+            joints: names, rest: rest
+        ))
+        var poses = rest
+        var worst = Float.greatestFiniteMagnitude
+        for _ in 0..<120 {
+            poses = rest
+            sway.apply(&poses, dt: 1 / 60)
+            let world = JointWorld.transforms(poses, parents: parents)
+            let tip = worldTip(of: 2, poses: poses, parents: parents, tail: tail)
+            let a = world[0].position
+            let b = world[1].position
+            let ab = b - a
+            let t = simd_clamp(simd_dot(tip - a, ab) / simd_dot(ab, ab), 0, 1)
+            worst = min(worst, distance(from: tip, to: a + ab * t, a + ab * t))
+        }
+        XCTAssertGreaterThanOrEqual(
+            worst, 0.09 + 0.01 - 1e-3,
+            "the bridge capsule let the tip through (closest \(worst))"
+        )
+    }
+
     /// `minYAngle`/`maxYAngle`/`minZAngle`/`maxZAngle` are the window the game
     /// clamps the panel's direction to, measured in the parent's frame. Without
     /// them a panel is free to rotate all the way into the legs.

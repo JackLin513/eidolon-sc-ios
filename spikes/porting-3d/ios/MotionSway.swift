@@ -75,6 +75,30 @@ struct MotionSway {
         /// The game's `sideSpringForce`; 0 or absent turns the link off.
         let sideSpring: Float?
         let antiFold: AntiFold?
+        /// `SwayBone.hitTwice`: a second `SwayHit` pass on the pushed tip.
+        let hitTwice: Bool?
+        /// `SwayBone.useLinkHit`: also collide with the side-linked bone's set.
+        let useLinkHit: Bool?
+
+        init(name: String, family: String, tail: [Float], radius: Float? = nil,
+             spring: Spring? = nil, follow: Float? = nil, limit: Limit? = nil,
+             colliders: [Int]? = nil, sideLink: String? = nil,
+             sideSpring: Float? = nil, antiFold: AntiFold? = nil,
+             hitTwice: Bool? = nil, useLinkHit: Bool? = nil) {
+            self.name = name
+            self.family = family
+            self.tail = tail
+            self.radius = radius
+            self.spring = spring
+            self.follow = follow
+            self.limit = limit
+            self.colliders = colliders
+            self.sideLink = sideLink
+            self.sideSpring = sideSpring
+            self.antiFold = antiFold
+            self.hitTwice = hitTwice
+            self.useLinkHit = useLinkHit
+        }
     }
 
     struct Limit: Decodable {
@@ -101,6 +125,23 @@ struct MotionSway {
         let distance: Float
         let offset: [Float]
         let axis: String?
+        /// Plane only: the plane's normal in the joint's local frame.
+        let normal: [Float]?
+        /// Bridge only: the joint at the far end of the capsule.
+        let target: String?
+
+        init(joint: String, type: String, radius: Float, distance: Float,
+             offset: [Float], axis: String?,
+             normal: [Float]? = nil, target: String? = nil) {
+            self.joint = joint
+            self.type = type
+            self.radius = radius
+            self.distance = distance
+            self.offset = offset
+            self.axis = axis
+            self.normal = normal
+            self.target = target
+        }
     }
 
     static let format = "eidolon.sway/2"
@@ -127,21 +168,34 @@ struct MotionSway {
         let sideLinkPath: String?
         let sideSpring: Float
         let antiFold: AntiFold?
+        /// The game's `hitTwice`: run `SwayHit` a second time on the pushed tip.
+        let hitTwice: Bool
+        /// The game's `useLinkHit`: also test the side-linked bone's colliders.
+        let useLinkHit: Bool
     }
 
+    private enum BoundKind { case sphere, capsule, plane, bridge }
+
     private struct Bounds {
+        let kind: BoundKind
         let joint: Int
-        let isSphere: Bool
         let radius: Float
         let halfLength: Float
         let offset: SIMD3<Float>
         /// Local axis the capsule runs along; unused for spheres.
         let axis: SIMD3<Float>
+        /// Plane only: the normal in the joint's local frame.
+        let normal: SIMD3<Float>
+        /// Bridge only: the joint at the far end of the capsule.
+        let target: Int?
     }
 
     private let pendulums: [Pendulum]
     /// `sideLink` resolved to an index after the parent-before-child sort.
     private let sideLinks: [Int?]
+    /// The colliders each bone is tested against: its own, plus the linked
+    /// bone's when `useLinkHit` is on.
+    private let testColliders: [[Int]]
     private let bounds: [Bounds]
     private let parents: [Int?]
     /// The solver works in world space, where the rest skeleton's up is +Z —
@@ -197,18 +251,35 @@ struct MotionSway {
                   let joint = byPath[entry.joint],
                   entry.radius > 0
             else { continue }
-            let isSphere = entry.type.lowercased() != "capsule"
             var axis = SIMD3<Float>(1, 0, 0)
             switch entry.axis?.uppercased() {
             case "Y": axis = SIMD3(0, 1, 0)
             case "Z": axis = SIMD3(0, 0, 1)
             default: break
             }
+            var normal = SIMD3<Float>(0, 0, 1)
+            if let raw = entry.normal, raw.count == 3 {
+                normal = SIMD3(raw[0], raw[1], raw[2])
+                if simd_length(normal) > 1e-6 { normal = simd_normalize(normal) }
+            }
+            var target: Int?
+            let kind: BoundKind
+            switch entry.type.lowercased() {
+            case "capsule": kind = .capsule
+            case "plane":
+                guard entry.normal?.count == 3 else { continue }
+                kind = .plane
+            case "bridge":
+                guard let name = entry.target, let far = byPath[name] else { continue }
+                target = far
+                kind = .bridge
+            default: kind = .sphere
+            }
             bounds.append(Bounds(
-                joint: joint, isSphere: isSphere, radius: entry.radius,
+                kind: kind, joint: joint, radius: entry.radius,
                 halfLength: max(entry.distance, 0) / 2,
                 offset: SIMD3(entry.offset[0], entry.offset[1], entry.offset[2]),
-                axis: axis
+                axis: axis, normal: normal, target: target
             ))
         }
 
@@ -229,7 +300,9 @@ struct MotionSway {
                 follow: min(max(bone.follow ?? 1, 0), 1),
                 limit: bone.limit, colliders: colliders,
                 sideLinkPath: bone.sideLink, sideSpring: bone.sideSpring ?? 0,
-                antiFold: bone.antiFold
+                antiFold: bone.antiFold,
+                hitTwice: bone.hitTwice ?? false,
+                useLinkHit: bone.useLinkHit ?? false
             ))
         }
         guard !pendulums.isEmpty else { return nil }
@@ -247,6 +320,16 @@ struct MotionSway {
 
         self.pendulums = pendulums
         self.sideLinks = sideLinks
+        let testColliders = pendulums.indices.map { index -> [Int] in
+            var list = pendulums[index].colliders
+            if pendulums[index].useLinkHit, let link = sideLinks[index] {
+                for collider in pendulums[link].colliders where !list.contains(collider) {
+                    list.append(collider)
+                }
+            }
+            return list
+        }
+        self.testColliders = testColliders
         self.bounds = bounds
         self.parents = parents
         self.up = Self.upAxis(joints: joints, rest: rest, parents: parents)
@@ -343,9 +426,20 @@ struct MotionSway {
             // inside). Relax the summed violation first, then, if the panel is
             // wedged, search the tangent circle around the current direction —
             // the escape there is a few degrees sideways (4° on this dance).
-            let resolved = resolvingCollisions(
-                direction: springDirection, base: base, pendulum: pendulum, world: world
+            var resolved = resolvingCollisions(
+                direction: springDirection, base: base, pendulum: pendulum,
+                colliders: testColliders[index], world: world
             )
+            // `SwayBoneMT`'s job calls `SwayHit` a second time when `hitTwice`
+            // is set; the second pass starts from the tip the first one pushed
+            // out and catches whatever lies behind it.
+            if pendulum.hitTwice {
+                let second = resolvingCollisions(
+                    direction: resolved.direction, base: base, pendulum: pendulum,
+                    colliders: testColliders[index], world: world
+                )
+                resolved = (second.direction, resolved.hit || second.hit)
+            }
             hitLastFrame[index] = resolved.hit
             tips[index] = base + resolved.direction * pendulum.length
             let direction = clampedDirection(
@@ -380,15 +474,16 @@ struct MotionSway {
     /// resolved direction, which is `direction` itself when nothing was hit.
     private func resolvingCollisions(
         direction: SIMD3<Float>, base: SIMD3<Float>, pendulum: Pendulum,
+        colliders: [Int],
         world: [(position: SIMD3<Float>, rotation: SIMD4<Float>)]
     ) -> (direction: SIMD3<Float>, hit: Bool) {
-        guard !pendulum.colliders.isEmpty else { return (direction, false) }
+        guard !colliders.isEmpty else { return (direction, false) }
         var resolved = direction
 
         func correction(at candidate: SIMD3<Float>) -> SIMD3<Float> {
             let point = base + candidate * pendulum.length
             var correction = SIMD3<Float>.zero
-            for collider in pendulum.colliders {
+            for collider in colliders {
                 if let (normal, depth) = violation(
                     of: point, with: bounds[collider], world: world,
                     radius: pendulum.radius
@@ -475,22 +570,54 @@ struct MotionSway {
         // half a millimetre in.
         let limit = bound.radius + radius + Self.surfaceMargin
 
-        var closest = centre
-        if !bound.isSphere {
-            let axis = simd_normalize(QuaternionMath.rotate(joint.rotation, bound.axis))
-            let along = simd_clamp(
-                simd_dot(tip - centre, axis), -bound.halfLength, bound.halfLength
-            )
-            closest = centre + axis * along
-        }
+        switch bound.kind {
+        case .plane:
+            // `SwayColliderMT.CheckPlane`: a half-space through the collider's
+            // offset point. The bone's own radius is the margin the game
+            // takes from that plane (FixedParams.n_radius).
+            let normal = simd_normalize(QuaternionMath.rotate(joint.rotation, bound.normal))
+            let signed = simd_dot(tip - centre, normal)
+            let margin = radius + Self.surfaceMargin
+            guard signed < margin else { return nil }
+            return (normal, margin - signed)
 
-        let delta = tip - closest
-        let distance = simd_length(delta)
-        guard distance < limit else { return nil }
-        let normal = distance > 1e-5
-            ? delta / distance
-            : simd_normalize(QuaternionMath.rotate(joint.rotation, SIMD3(1, 0, 0)))
-        return (normal, limit - distance)
+        case .bridge:
+            // `CapsuleBridgeHit`: a capsule spanning this joint and the
+            // `bridgetgt` joint, exactly like a normal capsule otherwise.
+            guard let far = bound.target else { return nil }
+            let other = world[far].position
+            let span = other - joint.position
+            let spanLength = simd_length(span)
+            guard spanLength > 1e-5 else { return nil }
+            let axis = span / spanLength
+            let midpoint = joint.position + span * 0.5
+            let half = min(bound.halfLength > 0 ? bound.halfLength : spanLength / 2,
+                           spanLength / 2)
+            let along = simd_clamp(simd_dot(tip - midpoint, axis), -half, half)
+            let closest = midpoint + axis * along
+            let delta = tip - closest
+            let distance = simd_length(delta)
+            guard distance < limit else { return nil }
+            let normal = distance > 1e-5 ? delta / distance : axis
+            return (normal, limit - distance)
+
+        case .sphere, .capsule:
+            var closest = centre
+            if bound.kind == .capsule {
+                let axis = simd_normalize(QuaternionMath.rotate(joint.rotation, bound.axis))
+                let along = simd_clamp(
+                    simd_dot(tip - centre, axis), -bound.halfLength, bound.halfLength
+                )
+                closest = centre + axis * along
+            }
+            let delta = tip - closest
+            let distance = simd_length(delta)
+            guard distance < limit else { return nil }
+            let normal = distance > 1e-5
+                ? delta / distance
+                : simd_normalize(QuaternionMath.rotate(joint.rotation, SIMD3(1, 0, 0)))
+            return (normal, limit - distance)
+        }
     }
 
     /// The game's angle window. `CalcRotate` measures the tip in the bone's

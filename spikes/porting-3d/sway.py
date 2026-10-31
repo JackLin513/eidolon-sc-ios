@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import math
 import re
 import struct
 from pathlib import Path
@@ -240,6 +241,43 @@ def parse_sway_text(text: str):
     return managers, bones, colliders
 
 
+PLANE_AXES = {
+    "plusx": (1.0, 0.0, 0.0), "minusx": (-1.0, 0.0, 0.0),
+    "plusy": (0.0, 1.0, 0.0), "minusy": (0.0, -1.0, 0.0),
+    "plusz": (0.0, 0.0, 1.0), "minusz": (0.0, 0.0, -1.0),
+}
+
+
+def plane_normal(values: dict) -> tuple:
+    """The plane's normal in the joint's local frame, game space → app space.
+
+    `planeAxis` picks the local axis; `planeRotEuler` tilts it in Unity's
+    Quaternion.Euler order (Z, then X, then Y). The result is mirrored like
+    every other local vector, so the runtime needs no Euler convention.
+    """
+    # `CheckPlane` keeps the tip on the side the axis names *away* from: a
+    # `minusY` plane pushes towards +Y until the tip is `n_radius` past the
+    # offset (and `plusY` towards −Y). The runtime only needs that push
+    # direction, so flip the sampled axis.
+    axis = PLANE_AXES.get(values.get("planeAxis", "plusX").lower(), (1.0, 0.0, 0.0))
+    axis = tuple(-component for component in axis)
+    if values.get("planeRotOn", "False").lower() != "true":
+        return mirror(axis)
+    euler = vector(values, "planeRotEuler")
+    x, y, z = (math.radians(value) for value in euler)
+    # Column-vector R = Ry · Rx · Rz (Unity's ZXY order).
+    def rotate(vector_):
+        vx, vy, vz = vector_
+        # Rz
+        vx, vy = vx * math.cos(z) - vy * math.sin(z), vx * math.sin(z) + vy * math.cos(z)
+        # Rx
+        vy, vz = vy * math.cos(x) - vz * math.sin(x), vy * math.sin(x) + vz * math.cos(x)
+        # Ry
+        vx, vz = vx * math.cos(y) + vz * math.sin(y), -vx * math.sin(y) + vz * math.cos(y)
+        return (vx, vy, vz)
+    return mirror(rotate(axis))
+
+
 def number(values: dict, key: str, default: float = 0.0) -> float:
     try:
         return float(values.get(key, default))
@@ -348,18 +386,26 @@ def build(gltf: Path, sway_texts: list[Path] | None = None) -> dict:
         ordinals[joint] = ordinal + 1
         values = stanza["values"]
         kind = values.get("type", "Sphere")
-        if kind not in ("Sphere", "Capsule"):
-            continue  # planes and bridges are not modelled yet
+        if kind not in ("Sphere", "Capsule", "Plane", "Bridge"):
+            continue
         ortho = vector(values, "offset")
-        collider_index[(joint, ordinal)] = len(collider_entries)
-        collider_entries.append({
+        entry = {
             "joint": joint,
             "type": kind.lower(),
             "radius": round(number(values, "radius"), 6),
             "distance": round(number(values, "distance"), 6),
             "offset": [round(value, 6) for value in mirror(ortho)],
             "axis": values.get("axis", "X").upper(),
-        })
+        }
+        if kind == "Plane":
+            entry["normal"] = [round(value, 6) for value in plane_normal(values)]
+        elif kind == "Bridge":
+            target = values.get("bridgetgt", "")
+            if not target:
+                continue
+            entry["target"] = runtime_path(target)
+        collider_index[(joint, ordinal)] = len(collider_entries)
+        collider_entries.append(entry)
 
     entries = []
     used_colliders: list[int] = []
@@ -385,6 +431,10 @@ def build(gltf: Path, sway_texts: list[Path] | None = None) -> dict:
             group_values = (group or {}).get("values", {})
             entry["radius"] = round(number(values, "radius"), 6)
             entry["spring"] = spring_from(values, group)
+            if values.get("hitTwice", "False") == "True":
+                entry["hitTwice"] = True
+            if values.get("useLinkHit", "False") == "True":
+                entry["useLinkHit"] = True
             source = values if values.get("refParam", "Self") == "Self" else group_values
             follow = source.get("followForce", values.get("followForce"))
             if follow is not None:
