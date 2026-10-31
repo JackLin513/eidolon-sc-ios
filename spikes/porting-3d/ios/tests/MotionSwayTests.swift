@@ -47,13 +47,15 @@ final class MotionSwayTests: XCTestCase {
         colliders: [Int]? = nil,
         sideLink: String? = nil,
         sideSpring: Float? = nil,
-        antiFold: MotionSway.AntiFold? = nil
+        antiFold: MotionSway.AntiFold? = nil,
+        hitTwice: Bool? = nil,
+        useLinkHit: Bool? = nil
     ) -> MotionSway.Bone {
         MotionSway.Bone(
             name: path, family: "skirt", tail: [tail.x, tail.y, tail.z],
             radius: radius, spring: spring, follow: follow, limit: limit,
             colliders: colliders, sideLink: sideLink, sideSpring: sideSpring,
-            antiFold: antiFold
+            antiFold: antiFold, hitTwice: hitTwice, useLinkHit: useLinkHit
         )
     }
 
@@ -547,6 +549,52 @@ final class MotionSwayTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(
             worst, 0.09 + 0.01 - 1e-3,
             "the bridge capsule let the tip through (closest \(worst))"
+        )
+    }
+
+    /// `CheckSideLine`: a panel and its `sideLink` neighbour are not two
+    /// independent tips. The game tests the *segment between the two tips*
+    /// against the colliders, so a pair can straddle a leg even when both of
+    /// its tips are already clear of it — the gap a big skirt opens when the
+    /// dance swings it between the thighs.
+    func testSideLinkKeepsThePairOutOfTheCapsule() throws {
+        var rest = [JointPose](repeating: .identity, count: 6)
+        rest[1].translation = SIMD3(0.3, 0, -0.05) // the leg, under the pair
+        rest[4].translation = SIMD3(0, 0, 1)       // HAIR, the up landmark
+        let names = ["BASE", "BASE/MOMO_L", "BASE/skirt_a", "BASE/skirt_b", "HAIR", "KOSHI"]
+        let parents: [Int?] = [nil, 0, 0, 0, nil, nil]
+        let leg = MotionSway.Collider(
+            joint: "BASE/MOMO_L", type: "capsule", radius: 0.03,
+            distance: 0, offset: [0, 0, 0], axis: "Z"
+        )
+        let tails = [SIMD3<Float>(0.3, 0.08, 0), SIMD3<Float>(0.3, -0.08, 0)]
+        var sway = try XCTUnwrap(MotionSway(
+            configuration: configuration(bones: [
+                bone("BASE/skirt_a", tail: tails[0], radius: 0.04, colliders: [0],
+                     sideLink: "BASE/skirt_b", useLinkHit: true),
+                bone("BASE/skirt_b", tail: tails[1], radius: 0.04, colliders: [0],
+                     sideLink: "BASE/skirt_a", useLinkHit: true)
+            ], colliders: [leg]),
+            joints: names, rest: rest
+        ))
+
+        // Each tip is 94 mm from the leg's centre, past its own 70 mm limit,
+        // so the point hit alone leaves the pair alone; only the side line
+        // sees the segment cut across the leg 50 mm from its centre.
+        let wants: Float = 0.03 + 0.9 * 0.04
+        var poses = rest
+        var worst = Float.greatestFiniteMagnitude
+        for _ in 0..<180 {
+            poses = rest
+            sway.apply(&poses, dt: 1 / 60)
+            let world = JointWorld.transforms(poses, parents: parents)
+            let a = world[2].position + QuaternionMath.rotate(world[2].rotation, tails[0])
+            let b = world[3].position + QuaternionMath.rotate(world[3].rotation, tails[1])
+            worst = min(worst, distance(from: world[1].position, to: a, b))
+        }
+        XCTAssertGreaterThanOrEqual(
+            worst, wants - 2e-3,
+            "the side line let the pair through the leg (closest \(worst))"
         )
     }
 

@@ -193,9 +193,6 @@ struct MotionSway {
     private let pendulums: [Pendulum]
     /// `sideLink` resolved to an index after the parent-before-child sort.
     private let sideLinks: [Int?]
-    /// The colliders each bone is tested against: its own, plus the linked
-    /// bone's when `useLinkHit` is on.
-    private let testColliders: [[Int]]
     private let bounds: [Bounds]
     private let parents: [Int?]
     /// The solver works in world space, where the rest skeleton's up is +Z —
@@ -320,16 +317,6 @@ struct MotionSway {
 
         self.pendulums = pendulums
         self.sideLinks = sideLinks
-        let testColliders = pendulums.indices.map { index -> [Int] in
-            var list = pendulums[index].colliders
-            if pendulums[index].useLinkHit, let link = sideLinks[index] {
-                for collider in pendulums[link].colliders where !list.contains(collider) {
-                    list.append(collider)
-                }
-            }
-            return list
-        }
-        self.testColliders = testColliders
         self.bounds = bounds
         self.parents = parents
         self.up = Self.upAxis(joints: joints, rest: rest, parents: parents)
@@ -426,9 +413,19 @@ struct MotionSway {
             // inside). Relax the summed violation first, then, if the panel is
             // wedged, search the tangent circle around the current direction —
             // the escape there is a few degrees sideways (4° on this dance).
+            // `CheckSideLine`: with `useLinkHit` on, the game tests the
+            // segment between this tip and its `sideLink` neighbour as well —
+            // a pair can straddle a leg with both tips still clear of it.
+            var sideTip: SIMD3<Float>?
+            var sideRadius: Float = 0
+            if pendulum.useLinkHit, let link = sideLinks[index], seeded[link] {
+                sideTip = tips[link]
+                sideRadius = pendulums[link].radius
+            }
             var resolved = resolvingCollisions(
                 direction: springDirection, base: base, pendulum: pendulum,
-                colliders: testColliders[index], world: world
+                colliders: pendulum.colliders, sideTip: sideTip,
+                sideRadius: sideRadius, world: world
             )
             // `SwayBoneMT`'s job calls `SwayHit` a second time when `hitTwice`
             // is set; the second pass starts from the tip the first one pushed
@@ -436,7 +433,8 @@ struct MotionSway {
             if pendulum.hitTwice {
                 let second = resolvingCollisions(
                     direction: resolved.direction, base: base, pendulum: pendulum,
-                    colliders: testColliders[index], world: world
+                    colliders: pendulum.colliders, sideTip: sideTip,
+                    sideRadius: sideRadius, world: world
                 )
                 resolved = (second.direction, resolved.hit || second.hit)
             }
@@ -474,7 +472,7 @@ struct MotionSway {
     /// resolved direction, which is `direction` itself when nothing was hit.
     private func resolvingCollisions(
         direction: SIMD3<Float>, base: SIMD3<Float>, pendulum: Pendulum,
-        colliders: [Int],
+        colliders: [Int], sideTip: SIMD3<Float>? = nil, sideRadius: Float = 0,
         world: [(position: SIMD3<Float>, rotation: SIMD4<Float>)]
     ) -> (direction: SIMD3<Float>, hit: Bool) {
         guard !colliders.isEmpty else { return (direction, false) }
@@ -487,6 +485,12 @@ struct MotionSway {
                 if let (normal, depth) = violation(
                     of: point, with: bounds[collider], world: world,
                     radius: pendulum.radius
+                ) {
+                    correction += normal * depth
+                }
+                if let sideTip, let (normal, depth) = sideViolation(
+                    of: point, link: sideTip, radius: pendulum.radius,
+                    linkRadius: sideRadius, with: bounds[collider], world: world
                 ) {
                     correction += normal * depth
                 }
@@ -618,6 +622,98 @@ struct MotionSway {
                 : simd_normalize(QuaternionMath.rotate(joint.rotation, SIMD3(1, 0, 0)))
             return (normal, limit - distance)
         }
+    }
+
+    /// `CheckSideLine`: the segment between this tip and its `sideLink`
+    /// neighbour — `SwayBoneMT` works from the tips' midpoint, half their
+    /// separation long each way — is tested against the same colliders as a
+    /// capsule `0.9 x` the smaller bone radius thick. Two panels either side
+    /// of a thigh can straddle it with both tips already outside, which is the
+    /// gap a wide skirt opens when the dance swings it between the legs.
+    ///
+    /// The game also branches this check per collider type; no shipped costume
+    /// links a plane or bridge (`useLinkHit` in the corpus only ever names the
+    /// thigh capsules), so those two keep the point hit only.
+    private func sideViolation(
+        of tip: SIMD3<Float>, link: SIMD3<Float>,
+        radius: Float, linkRadius: Float, with bound: Bounds,
+        world: [(position: SIMD3<Float>, rotation: SIMD4<Float>)]
+    ) -> (SIMD3<Float>, Float)? {
+        guard bound.kind == .sphere || bound.kind == .capsule else { return nil }
+        let joint = world[bound.joint]
+        let centre = joint.position + QuaternionMath.rotate(joint.rotation, bound.offset)
+        // `SwayCollider.SideLineHitRadius`: 0.9 x the smaller of the two bone
+        // radii on top of the collider's own surface.
+        let limit = bound.radius + 0.9 * min(radius, linkRadius)
+
+        let delta = tip - link
+        let span = simd_length(delta)
+        guard span > 1e-5 else { return nil }
+        let midpoint = (tip + link) * 0.5
+        let axis = delta / span
+        let half = span * 0.5
+
+        var capsuleAxis = SIMD3<Float>.zero
+        var capsuleHalf: Float = 0
+        if bound.kind == .capsule {
+            capsuleAxis = simd_normalize(QuaternionMath.rotate(joint.rotation, bound.axis))
+            capsuleHalf = bound.halfLength
+        }
+        let (onSide, onCollider) = Self.closestPoints(
+            midpoint - axis * half, midpoint + axis * half,
+            centre - capsuleAxis * capsuleHalf, centre + capsuleAxis * capsuleHalf
+        )
+        let push = onSide - onCollider
+        let distance = simd_length(push)
+        guard distance < limit else { return nil }
+        let fallback = abs(axis.z) < 0.9 ? SIMD3<Float>(0, 0, 1) : SIMD3<Float>(1, 0, 0)
+        let normal = distance > 1e-5
+            ? push / distance
+            : simd_normalize(simd_cross(axis, fallback))
+        return (normal, limit - distance)
+    }
+
+    /// Closest points on two segments (Ericson, *Real-Time Collision
+    /// Detection*, 5.1.9), returned as one point on each.
+    private static func closestPoints(
+        _ p1: SIMD3<Float>, _ q1: SIMD3<Float>,
+        _ p2: SIMD3<Float>, _ q2: SIMD3<Float>
+    ) -> (SIMD3<Float>, SIMD3<Float>) {
+        let d1 = q1 - p1
+        let d2 = q2 - p2
+        let r = p1 - p2
+        let a = simd_dot(d1, d1)
+        let e = simd_dot(d2, d2)
+        let f = simd_dot(d2, r)
+        let epsilon: Float = 1e-7
+        if a <= epsilon && e <= epsilon { return (p1, p2) }
+        var s: Float
+        var t: Float
+        if a <= epsilon {
+            s = 0
+            t = simd_clamp(f / e, 0, 1)
+        } else {
+            let c = simd_dot(d1, r)
+            if e <= epsilon {
+                t = 0
+                s = simd_clamp(-c / a, 0, 1)
+            } else {
+                let b = simd_dot(d1, d2)
+                let denominator = a * e - b * b
+                s = denominator > epsilon
+                    ? simd_clamp((b * f - c * e) / denominator, 0, 1)
+                    : 0
+                t = (b * s + f) / e
+                if t < 0 {
+                    t = 0
+                    s = simd_clamp(-c / a, 0, 1)
+                } else if t > 1 {
+                    t = 1
+                    s = simd_clamp((b - c) / a, 0, 1)
+                }
+            }
+        }
+        return (p1 + d1 * s, p2 + d2 * t)
     }
 
     /// The game's angle window. `CalcRotate` measures the tip in the bone's
