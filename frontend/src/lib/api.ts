@@ -232,6 +232,22 @@ export type ProducerProfile = {
   gender: Gender | null;
   timezone: string | null;
   birthday: Birthday | null;
+  /** Where the producer is, as `/api/cities` found it (GLOSSARY.md「制作人档案」). */
+  city?: City | null;
+};
+
+/** The profile as the backend answers with it, and whether the deployer can find cities
+ * (has a QWeather account): without, the city is neither shown nor any use. */
+export type SavedProfile = ProducerProfile & { cities: boolean };
+
+/** A city, district or county, as QWeather names it in Chinese, and where it is. */
+export type City = {
+  name: string;
+  adm2: string;
+  adm1: string;
+  country: string;
+  latitude: number;
+  longitude: number;
 };
 
 /** The producer's birthday: month and day only, no year. */
@@ -889,11 +905,23 @@ export async function checkDataPackageExport(include: readonly string[]): Promis
   await expectNoContent(await api(`/api/account/data-package/export-check?${query}`));
 }
 
-export async function getProfile(): Promise<ProducerProfile> {
+export async function getProfile(): Promise<SavedProfile> {
   return json(await api("/api/profile"));
 }
 
-export async function saveProfile(profile: ProducerProfile): Promise<ProducerProfile> {
+/** The cities by `name`, the likeliest first, on the deployer's QWeather account. */
+export async function searchCities(name: string): Promise<City[]> {
+  const query = new URLSearchParams({ q: name });
+  return (await json<{ cities: City[] }>(await api(`/api/cities?${query}`))).cities;
+}
+
+/** The city nearest where the browser says the user is; null if none. The spot is not kept. */
+export async function nearestCity(latitude: number, longitude: number): Promise<City | null> {
+  const query = new URLSearchParams({ latitude: String(latitude), longitude: String(longitude) });
+  return (await json<{ city: City | null }>(await api(`/api/cities/nearest?${query}`))).city;
+}
+
+export async function saveProfile(profile: ProducerProfile): Promise<SavedProfile> {
   return json(
     await api("/api/profile", {
       method: "PUT",

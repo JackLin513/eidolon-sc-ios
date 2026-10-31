@@ -31,6 +31,7 @@ export type ItemName =
   | "affinity"
   | "reach_outs"
   | "moments"
+  | "qweather"
   | "schedule"
   | "cycles"
   | "bar"
@@ -81,6 +82,7 @@ export const CONFIG_TABS = [
   "models",
   "voice",
   "image",
+  "weather",
   "network",
   "status",
   "limits",
@@ -99,6 +101,7 @@ export const TAB_ITEMS: Record<ConfigTab, ItemName[]> = {
   models: ["chat_llm", "memory_llm", "judge", "judge_thresholds", "rerank"],
   voice: ["tts", "stt"],
   image: ["image"],
+  weather: ["qweather"],
   network: ["proxy"],
   status: ["service_status"],
   limits: ["limits", "affinity", "reach_outs", "moments", "schedule", "cycles", "bar"],
@@ -369,6 +372,20 @@ export const ITEM_SPECS: Record<ItemName, ItemSpec> = {
       { name: "replies_per_day", kind: "positive" },
     ],
     tried: false,
+  },
+  // 和风天气（GLOSSARY.md「制作人档案」）：找制作人的城市、查那边的预警用的账号，JWT 认证的五样都要填。
+  // 保存前按坐标反查一次北京。
+  qweather: {
+    rows: ["host", "developer_id", "project_id", "key_id", "private_key"],
+    secrets: ["private_key"],
+    form: [
+      { name: "host", kind: "text" },
+      { name: "developer_id", kind: "text" },
+      { name: "project_id", kind: "text" },
+      { name: "key_id", kind: "text" },
+      { name: "private_key", kind: "secret" },
+    ],
+    tried: true,
   },
   // 日程（GLOSSARY.md「日程」）：只有一个开关。不试调。
   schedule: {

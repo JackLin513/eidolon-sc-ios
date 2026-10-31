@@ -15,6 +15,7 @@ import asyncio
 import base64
 import json
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -45,11 +46,10 @@ TRIED_AT = (39.92, 116.41)
 
 def private_key_body(value: str) -> str:
     """The private key as it may be written, in PEM (its line breaks maybe written `\\n`) or
-    its base64 alone, as its base64 alone: what is kept, its last 4 characters shown."""
-    value = value.replace("\\n", "\n")
-    return "".join(
-        line.strip() for line in value.splitlines() if not line.strip().startswith("-----")
-    )
+    its base64 alone, as its base64 alone: what is kept, its last 4 characters shown. Pasted
+    into one line, as a browser's input field has it, its line breaks are gone."""
+    value = re.sub(r"-----(?:BEGIN|END)[A-Z ]*-----", " ", value.replace("\\n", "\n"))
+    return "".join(value.split())
 
 
 def private_key_pem(value: str) -> str:

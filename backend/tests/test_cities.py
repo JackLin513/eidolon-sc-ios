@@ -15,7 +15,7 @@ import pytest
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 from eidolon.config import Settings
-from eidolon.qweather import private_key_body
+from eidolon.qweather import private_key_body, private_key_pem
 from tests.conftest import (
     ClientFactory,
     FakeIdentityProvider,
@@ -281,3 +281,21 @@ async def test_a_private_key_that_is_none_is_refused_before_anything_is_asked(
 
     assert res.status_code == 422 and "私钥" in res.json()["detail"]
     assert qweather.requests == []
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        lambda pem: pem,
+        lambda pem: pem.replace("\n", ""),  # pasted into one line, its breaks gone
+        lambda pem: pem.replace("\n", "\n"),
+        lambda pem: private_key_body(pem),
+    ],
+    ids=["pem", "one-line", "escaped-breaks", "base64-alone"],
+)
+def test_the_private_key_is_read_however_it_was_pasted(written):
+    pem = account().private_key
+    body = "".join(pem.splitlines()[1:-1])
+
+    assert private_key_body(written(pem)) == body
+    assert load_pem_private_key(private_key_pem(written(pem)).encode(), None)

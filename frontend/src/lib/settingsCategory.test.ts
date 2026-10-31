@@ -89,7 +89,15 @@ describe("旧地址和不认识的地址换成哪个路径", () => {
 });
 
 describe("一级列表上的摘要", () => {
-  const blank: Draft = { formOfAddress: "", gender: "", timezone: "", birthMonth: null, birthDay: null };
+  const blank: Draft = {
+    formOfAddress: "",
+    gender: "",
+    timezone: "",
+    birthMonth: null,
+    birthDay: null,
+    city: null,
+    cities: false,
+  };
   const loading: SettingsValues = {
     profile: null,
     detectedTimezone: "Asia/Shanghai",
