@@ -28,7 +28,7 @@
   - 打开朋友圈页，点消失；
   - 停在朋友圈页时再造一条，它一分钟内出现在页面上；
   - 切到后台标签页时不拉，切回前台马上拉。
-- [ ] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
+- [x] `sh scripts/affected-tests.sh <基点>` 通过，推送后 CI 全绿。
 
 ## Comments
 
