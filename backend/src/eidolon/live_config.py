@@ -88,6 +88,9 @@ from eidolon.config import (
     STATUS_WINDOWS,
     ProxiedService,
     ProxySettings,
+    QWEATHER_FIELDS,
+    QWeatherSettings,
+    qweather_host,
     MomentSettings,
     ReachOutSettings,
     Registration,
@@ -126,6 +129,7 @@ from eidolon.judge import (
 from eidolon.llm import ChatLLM, ChatModels, LLMError
 from eidolon.llm.providers import check_chat_llm, check_chat_models
 from eidolon.own_keys import DeployerKeys, DeployerLease, KeyCheck, OwnKeyRejected
+from eidolon.qweather import QWeather, QWeatherFailed, private_key_body
 from eidolon.proxy import ProxyRoutes, Unreachable, reach as reach_provider
 from eidolon.rerank import DEFAULT_THRESHOLDS, RerankThresholds, thresholds_for
 from eidolon.retrieval import ModelRetrievalJudge, Need
@@ -154,6 +158,7 @@ SCHEDULE = "schedule"
 CYCLES = "cycles"
 BAR = "bar"
 PROXY = "proxy"
+QWEATHER = "qweather"
 SERVICE_STATUS = "service_status"
 REGISTRATION = "registration"
 
@@ -787,6 +792,53 @@ class _Moments(_Item):
         return current | change
 
 
+class _QWeather(_Item):
+    """The deployer's QWeather account (和风天气), for where the producer is: its own API
+    host, the developer's, the project's and the credential's ids, and the Ed25519 private
+    key, all of them or none (`.env`'s none, to begin with). A change is tried by finding the
+    city at Beijing, unless it changes nothing; it is not tried again as the server starts,
+    QWeather's being no service a turn waits on."""
+
+    name = QWEATHER
+    fields = QWEATHER_FIELDS
+    secrets = frozenset({"private_key"})
+
+    def env(self) -> Values:
+        qweather = self.c.settings.qweather
+        if qweather is None:
+            return dict.fromkeys(QWEATHER_FIELDS)
+        return asdict(qweather) | {"private_key": private_key_body(qweather.private_key)}
+
+    def normalized(self, change: Values) -> Values:
+        """Each as it may be written: the host with or without `https://`, the private key
+        in PEM or its base64 alone, kept as the base64 alone."""
+        change = {
+            f: v.strip() if isinstance(v, str) else v for f, v in change.items()
+        }
+        if isinstance(change.get("host"), str):
+            change["host"] = qweather_host(change["host"])
+        if isinstance(change.get("private_key"), str):
+            change["private_key"] = private_key_body(change["private_key"])
+        return change
+
+    def candidate(self, current: Values, change: Values) -> Values:
+        for field, value in change.items():
+            if not isinstance(value, str) or not value:
+                raise ConfigInvalid(f"和风天气的 {field} 不能为空")
+        return current | change
+
+    async def tried(self, values: Values) -> tuple[Values, Any]:
+        if values == self.c.effective(self.name):
+            return values, None
+        if missing := [f for f in QWEATHER_FIELDS if not values[f]]:
+            raise ConfigRejected(f"和风天气还缺 {'、'.join(missing)}，请填写")
+        try:
+            await self.c.qweather.tried(_qweather(values))
+        except QWeatherFailed as e:
+            raise ConfigRejected(str(e)[:MAX_REASON_LENGTH]) from None
+        return values, None
+
+
 class _Schedule(_Item):
     """Whether each week's jobs are published for producers to schedule (GLOSSARY.md「日程」),
     as `.env` has it (on by default); not tried."""
@@ -998,13 +1050,15 @@ class LiveConfig:
         routes: ProxyRoutes | None = None,
         reach: Reach = reach_provider,
         image_client: httpx.AsyncClient | None = None,
+        qweather_transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         """The overrides are kept in the database `db` is on. The chat, memory and judge
         models are made by `clients`, each question to the judge model recorded in
         `activity`; `speech` tries the keys for speech synthesis
         and recognition. Each service goes through the proxy or direct as `routes` have
         it, kept to the proxy settings in effect; a change to them is tried by `reach`.
-        Image generation is on `image_client`, by default the routes' for it."""
+        Image generation is on `image_client`, by default the routes' for it; QWeather is
+        asked over `qweather_transport`, by default its own (`qweather`)."""
         self.settings = settings
         self._clients = clients
         self._routes = routes or ProxyRoutes(settings.proxy)
@@ -1018,13 +1072,15 @@ class LiveConfig:
         self._changing = asyncio.Lock()
         self._listeners: list[Callable[[], Awaitable[None]]] = []
         self._rows = db.prepare(_open)
+        self.qweather = QWeather(lambda: self.qweather_settings, clock, qweather_transport)
+        """The deployer's QWeather account as in effect now, for where the producer is."""
         self._items: dict[str, _Item] = {
             item.name: item
             for item in (
                 # The proxy first: as the server starts, the services are tried through it.
                 _Proxy(self), _ChatLLM(self), _MemoryLLM(self), _TTS(self), _STT(self),
                 _Image(self), _Judge(self), _JudgeThresholds(self), _Rerank(self),
-                _Limits(self), _Affinity(self), _ReachOuts(self), _Moments(self), _Schedule(self),
+                _Limits(self), _Affinity(self), _ReachOuts(self), _Moments(self), _QWeather(self), _Schedule(self),
                 _Cycles(self), _Bar(self), _ServiceStatus(self), _Registration(self),
             )
         }
@@ -1139,6 +1195,12 @@ class LiveConfig:
         return MomentSettings(
             values["enabled"], values["per_day"], values["map"], values["replies_per_day"]
         )
+
+    @property
+    def qweather_settings(self) -> QWeatherSettings | None:
+        """The deployer's QWeather account in effect now; None without one."""
+        values = self.effective(QWEATHER)
+        return _qweather(values) if all(values.get(f) for f in QWEATHER_FIELDS) else None
 
     @property
     def schedule_on(self) -> bool:
@@ -1464,6 +1526,7 @@ class LiveConfig:
             await self._delete(JUDGE_THRESHOLDS)
 
     async def aclose(self) -> None:
+        await self.qweather.aclose()
         await self._chat.aclose()
         await self._memory.aclose()
         if self._judge is not None:
@@ -1832,6 +1895,10 @@ def _llm(values: Values) -> LLMSettings:
 
 def _image(values: Values) -> ImageSettings:
     return ImageSettings(**{field: values[field] for field in _Image.fields})
+
+
+def _qweather(values: Values) -> QWeatherSettings:
+    return QWeatherSettings(**{f: values[f] for f in QWEATHER_FIELDS})
 
 
 def _chat_model(values: Values) -> ChatModelSettings:

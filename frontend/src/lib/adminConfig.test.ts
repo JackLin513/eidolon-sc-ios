@@ -353,7 +353,7 @@ describe("tried", () => {
     const tried = Object.entries(ITEM_SPECS)
       .filter(([, spec]) => spec.tried)
       .map(([name]) => name);
-    expect(tried).toEqual(["chat_llm", "memory_llm", "tts", "stt", "judge", "image", "proxy"]);
+    expect(tried).toEqual(["chat_llm", "memory_llm", "tts", "stt", "judge", "image", "qweather", "proxy"]);
   });
 });
 

@@ -18,6 +18,7 @@ import pytest
 
 from eidolon import data_package
 from eidolon.config import Settings
+from tests.test_producer_profile import NO_CITY
 from tests.conftest import ClientFactory
 from tests.fakes import (
     FAKE_JUDGE,
@@ -504,7 +505,7 @@ async def test_an_import_failing_halfway_leaves_nothing_behind(
         await import_package(client, package, "conversations,memories,profile")
 
     assert await hers(client) == []
-    assert (await client.get("/api/profile")).json() == EMPTY_PROFILE
+    assert (await client.get("/api/profile")).json() == {**EMPTY_PROFILE, **NO_CITY}
     assert await memories(client) == []
     monkeypatch.undo()
     for _ in range(3):  # nor did it count as one of today's

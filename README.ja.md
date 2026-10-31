@@ -119,6 +119,7 @@ Eidolon-SC では、**283プロのプロデューサー**として原作のア�
 - 🍸 **VA-283**：彼女がバーに来店し、あなたは注文どおりにドリンクを作ります。毎日最初に最後まで遊んだ来店で抽選が 1 回もらえ、彼女との距離も縮まります。初めて来たときは、はづきが作り方を教えてくれます。画面と作り方は『VA-11 HALL-A』へのオマージュです。
 - 💌 **声かけ**：しばらく来ないと、会話の中でアイドルのほうから話しかけてくれます。親しいほど早く来ます（[設定ガイド](docs/configuration.ja.md#声かけ)）。
 - 🌅 **モーメンツ**：話したことのあるアイドルがあなたのモーメンツに投稿します。画像がつくことが多く、地名と東京の天気も添えられ、ほかのアイドルがいいねやコメントをします。あなたもいいねやコメントができ、アイドルが返事をくれます（[設定ガイド](docs/configuration.ja.md#モーメンツ)）。
+- 🌦️ **天気**：彼女は東京のいまの天気を知っています。プロフィールで所在地を設定すると、あなたのところの天気と警報も知っていて、しばらくぶりのときや天気がいつもと違うときにはひとこと気づかってくれます（[設定ガイド](docs/configuration.ja.md#天気)）。
 
 **彼女が覚えていること**
 
@@ -302,7 +303,8 @@ eidolon-sc/
 - [縫合像素（Fusion Pixel）](https://github.com/TakWolf/fusion-pixel-font)：バーのピクセルフォント
 - [im@sparql](https://sparql.crssnky.xyz/imas/)、Lantis、ふじわらはじめ、imas-db、wikiwiki：世界設定のアイドル・CD・ライブのデータ
 - [OpenStreetMap](https://www.openstreetmap.org/copyright) 貢献者（ODbL）、[Wikidata](https://www.wikidata.org/)：モーメンツの場所の名前と座標
-- [Open-Meteo](https://open-meteo.com/)（CC BY 4.0）：モーメンツの天気
+- [Open-Meteo](https://open-meteo.com/)（CC BY 4.0）：モーメンツと会話の天気
+- [和風天気（QWeather）](https://www.qweather.com/)：プロデューサーの所在地の都市と、そこの気象警報
 - [LINUX DO](https://linux.do/)：技術選定から開発、デプロイと運用まで、多くの知見をここでの共有から得ました
 
 <div align="center">

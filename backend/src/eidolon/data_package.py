@@ -51,8 +51,10 @@ from eidolon.memory import (
     add_carried,
 )
 from eidolon.producer import (
+    MAX_CITY_PART_LENGTH,
     MAX_FORM_OF_ADDRESS_LENGTH,
     Birthday,
+    City,
     Gender,
     ProducerProfile,
     is_day_of_the_year,
@@ -75,10 +77,11 @@ from eidolon.store import (
     write_profile,
 )
 
-FORMAT = 3
+FORMAT = 4
 """The newest format this version reads, and the one it exports. Changing the format adds
 one to it, and keeps reading the older ones: 2 added her reach-outs (`reach_outs`), 3 her
-being unwell among the events (`unwell`) and the periods the user wrote down (`cycles`)."""
+being unwell among the events (`unwell`) and the periods the user wrote down (`cycles`), 4
+the producer's city in the profile (`city`)."""
 
 REACH_OUTS_SINCE = 2
 """The format whose conversations first held her reach-outs: before it, none may."""
@@ -88,6 +91,9 @@ UNWELL_SINCE = 3
 
 CYCLES_SINCE = 3
 """The format whose packages first held the periods the user wrote down: before it, none may."""
+
+CITY_SINCE = 4
+"""The format whose profiles first held the producer's city: before it, none may."""
 
 Category = Literal["conversations", "photos", "memories", "profile", "cycles"]
 CATEGORIES: tuple[Category, ...] = get_args(Category)
@@ -185,6 +191,20 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
+CityPart = Annotated[str, Field(max_length=MAX_CITY_PART_LENGTH)]
+
+
+class PackagedCity(_Strict):
+    """The producer's city, as QWeather found it (`producer.City`)."""
+
+    name: Annotated[str, Field(min_length=1, max_length=MAX_CITY_PART_LENGTH)]
+    adm2: CityPart
+    adm1: CityPart
+    country: CityPart
+    latitude: Annotated[float, Field(ge=-90, le=90)]
+    longitude: Annotated[float, Field(ge=-180, le=180)]
+
+
 class PackagedProfile(_Strict):
     form_of_address: Annotated[str, Field(max_length=MAX_FORM_OF_ADDRESS_LENGTH)] | None
     gender: Gender | None
@@ -193,6 +213,8 @@ class PackagedProfile(_Strict):
     (`producer.effective_timezone`)."""
     birthday_month: int | None
     birthday_day: int | None
+    city: PackagedCity | None = None
+    """Since format 4 (`CITY_SINCE`)."""
 
     @model_validator(mode="after")
     def _birthday(self) -> "PackagedProfile":
@@ -212,6 +234,7 @@ class PackagedProfile(_Strict):
             timezone=profile.timezone,
             birthday_month=birthday and birthday.month,
             birthday_day=birthday and birthday.day,
+            city=PackagedCity(**asdict(profile.city)) if profile.city else None,
         )
 
     def profile(self) -> ProducerProfile:
@@ -220,8 +243,9 @@ class PackagedProfile(_Strict):
             if self.birthday_month is not None and self.birthday_day is not None
             else None
         )
+        city = City(**self.city.model_dump()) if self.city else None
         return ProducerProfile(
-            self.form_of_address or None, self.gender, self.timezone or None, birthday
+            self.form_of_address or None, self.gender, self.timezone or None, birthday, city
         )
 
 
@@ -973,6 +997,8 @@ def _read(zipped: zipfile.ZipFile) -> tuple[Manifest, PackageData, dict[str, byt
             raise BrokenPackage("her being unwell in a format before it")
         if manifest.format < CYCLES_SINCE and data.cycles is not None:
             raise BrokenPackage("periods written down in a format before them")
+        if manifest.format < CITY_SINCE and data.profile is not None and data.profile.city:
+            raise BrokenPackage("the producer's city in a format before it")
         listed = set(manifest.categories)
         held = {c for c in CATEGORIES if c != "photos" and getattr(data, c) is not None}
         photos = data.photos()

@@ -47,14 +47,17 @@ from eidolon.own_keys import (
     named_services,
 )
 from eidolon.producer import (
+    MAX_CITY_PART_LENGTH,
     MAX_FORM_OF_ADDRESS_LENGTH,
     Birthday,
+    City,
     Gender,
     ProducerProfile,
     is_day_of_the_year,
     is_timezone,
 )
 from eidolon.account_api import OwnKeysInput, add_account_routes
+from eidolon.cities_api import add_city_routes
 from eidolon.admin_api import add_admin_routes
 from eidolon.admin_backup_api import add_admin_backup_routes
 from eidolon.dashboard import add_dashboard_routes
@@ -147,6 +150,17 @@ class BirthdayInput(BaseModel):
         return self
 
 
+class CityInput(BaseModel):
+    """The producer's city, as `/api/cities` found it."""
+
+    name: str = Field(min_length=1, max_length=MAX_CITY_PART_LENGTH)
+    adm2: str = Field("", max_length=MAX_CITY_PART_LENGTH)
+    adm1: str = Field("", max_length=MAX_CITY_PART_LENGTH)
+    country: str = Field("", max_length=MAX_CITY_PART_LENGTH)
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+
 class ProfileInput(BaseModel):
     """The whole producer profile; a field left out or empty returns to its default."""
 
@@ -154,6 +168,7 @@ class ProfileInput(BaseModel):
     gender: Gender | None = None
     timezone: str | None = None
     birthday: BirthdayInput | None = None
+    city: CityInput | None = None
 
     @field_validator("form_of_address")
     @classmethod
@@ -429,6 +444,7 @@ def create_app(backend: Backend) -> FastAPI:
     add_schedule_routes(app, backend)
     add_cycle_routes(app, backend)
     add_moment_routes(app, backend)
+    add_city_routes(app, backend)
     add_bar_routes(app, backend)
     add_photo_routes(app, backend)
     add_sponsor_routes(app, backend)
@@ -481,16 +497,24 @@ def create_app(backend: Backend) -> FastAPI:
         await calls.add_candidates(user_id, body.pc_id, candidates)
         return {"ok": True}
 
+    def shown_profile(profile: ProducerProfile) -> dict:
+        """The profile, and whether the deployer can find cities (`finds_cities`, with a
+        QWeather account): without, the city is not shown, nor is it any use."""
+        return asdict(profile) | {"finds_cities": backend.config.qweather.on}
+
     @app.get("/api/profile")
     async def get_profile(user_id: UserId) -> dict:
-        return asdict(await store.get_profile(user_id))
+        return shown_profile(await store.get_profile(user_id))
 
     @app.put("/api/profile")
     async def update_profile(body: ProfileInput, user_id: UserId) -> dict:
         birthday = body.birthday and Birthday(body.birthday.month, body.birthday.day)
-        profile = ProducerProfile(body.form_of_address, body.gender, body.timezone, birthday)
+        city = body.city and City(**body.city.model_dump())
+        profile = ProducerProfile(
+            body.form_of_address, body.gender, body.timezone, birthday, city
+        )
         await store.save_profile(user_id, profile)
-        return asdict(profile)
+        return shown_profile(profile)
 
     @app.get("/api/characters")
     def list_characters() -> list[dict]:

@@ -131,6 +131,7 @@ from eidolon.gift_catalog import Gift
 from eidolon.happenings import Happenings, Rewarded
 from eidolon.her_cycle import HerDay, Period, Premenstrual
 from eidolon.her_now import HerNow, KnownNow, Occasion
+from eidolon.her_weather import KnownWeather
 from eidolon.judge import JudgeError
 from eidolon.llm import ChatLLM, ChatMessage, Reasoning, Tool, ToolCall, TurnLLMs
 from eidolon.memory import Memories, last_turn_query
@@ -240,6 +241,8 @@ class InCall:
 
     out_of_line: int = 0
     hurts: tuple[float, ...] = ()
+    connected_at: datetime | None = None
+    """When the call connected, as the clock told: they were last in touch before it."""
 
 
 @dataclass(frozen=True)
@@ -396,7 +399,8 @@ class _BeforeAsking:
     whether she has ended the conversation, her character, the conversation's record, when
     the user and she were last in touch (None in a call, where she knows they are talking),
     her affinity as it begins, what it may send for a photo (None for a reach-out), and the
-    producer profile."""
+    producer profile; and when they were last in touch apart, as the weather has it
+    (`her_weather`): in a call, before it connected (None if never)."""
 
     ended: bool
     character: Character
@@ -405,6 +409,7 @@ class _BeforeAsking:
     affinity: Status | None
     eligibility: Eligibility | None
     profile: ProducerProfile
+    last_apart: datetime | None = None
 
 
 @dataclass
@@ -700,7 +705,7 @@ class ConversationEngine:
             conversation.user_id, conversation.character_id, device_timezone, occasion
         )
         read = await self._db.read(
-            self._before_turn, conversation, in_call is not None, photo.own, self._affinity_on
+            self._before_turn, conversation, in_call, photo.own, self._affinity_on
         )
         if read.ended:
             yield TurnRejected(ENDED)
@@ -709,6 +714,10 @@ class ConversationEngine:
             read.character, read.record, read.last_contact, read.affinity, read.eligibility,
             read.profile,
         )
+        # Fetched as she is retrieved for, and waited on only then.
+        weather = asyncio.ensure_future(self._her_now.weather(
+            occasion, profile.city, self._clock(), read.last_apart
+        ))
         # Said after reading the record, so an event this turn's prompt does not tell of
         # comes before the turn, and is told of with its words from the next turn on.
         said_at = timestamp()
@@ -745,9 +754,12 @@ class ConversationEngine:
                 await judged_apart if judged_apart is not None
                 else (retrieved.judged, retrieved.photo)
             )
+            known_weather = await weather
         finally:
             if judged_apart is not None and not judged_apart.done():
                 judged_apart.cancel()
+            if not weather.done():
+                weather.cancel()
         now = self._clock()
         cools = await self._cools(conversation, judged)
         if in_call is not None:
@@ -784,7 +796,8 @@ class ConversationEngine:
             narrations(record, self._gift_catalog, timezone, her_days),
             [
                 self._now_section(
-                    known, occasion, now, timezone, profile, last_contact, affinity_lines
+                    known, occasion, now, timezone, profile, last_contact, affinity_lines,
+                    known_weather,
                 ),
                 *_moments_told(known, now, timezone, affinity),
                 *([about_photo] if about_photo else []),
@@ -919,6 +932,7 @@ class ConversationEngine:
         messages = [entry for entry in record if isinstance(entry, Message)]
         timezone = effective_timezone(profile, None)
         now = self._clock()
+        known_weather = await self._her_now.weather("apart", profile.city, now, last_contact)
         world_prompt = (
             self._world.prompt(character.name, local_date(now, timezone)) if self._world else None
         )
@@ -934,7 +948,8 @@ class ConversationEngine:
             chat_history(messages, self._history_turns()), told,
             [
                 self._now_section(
-                    known, "apart", now, timezone, profile, last_contact, tier_prompt(affinity)
+                    known, "apart", now, timezone, profile, last_contact, tier_prompt(affinity),
+                    known_weather,
                 ),
                 *moments,
             ],
@@ -962,7 +977,7 @@ class ConversationEngine:
         self,
         db: sqlite3.Connection,
         conversation: Conversation,
-        in_call: bool,
+        in_call: InCall | None,
         own_image: ImageSettings | None,
         affinity_on: bool,
     ) -> _BeforeAsking:
@@ -970,8 +985,9 @@ class ConversationEngine:
         read: `in_call` if it is taken in one, bringing the user's `own_image` generation if
         any, her affinity if `affinity_on`."""
         return self._read_before_asking(
-            db, conversation, in_call=in_call, own_image=own_image, sends_photo=True,
-            affinity_on=affinity_on,
+            db, conversation, in_call=in_call is not None, own_image=own_image,
+            sends_photo=True, affinity_on=affinity_on,
+            connected_at=in_call.connected_at if in_call is not None else None,
         )
 
     def _before_reaching_out(
@@ -993,21 +1009,29 @@ class ConversationEngine:
         own_image: ImageSettings | None,
         sends_photo: bool,
         affinity_on: bool,
+        connected_at: datetime | None = None,
     ) -> _BeforeAsking:
         """What a turn or a reach-out in `conversation` reads before she is asked, through
         `db`: what it may send for a photo only if it `sends_photo`, her affinity only if
-        `affinity_on`, as told on the event loop as it was handed in."""
+        `affinity_on`, as told on the event loop as it was handed in; in a call that
+        `connected_at` then, when they were last in touch before it."""
         character = self._characters[conversation.character_id]
+        user_id, character_id = conversation.user_id, conversation.character_id
+        last_contact = None if in_call else read_last_contact(db, user_id, character_id)
+        last_apart = (
+            read_last_contact(db, user_id, character_id, before=connected_at)
+            if in_call and connected_at is not None else last_contact
+        )
         return _BeforeAsking(
             read_ended(db, conversation.id) is not None,
             character,
             read_record(db, conversation.id),
-            None if in_call
-            else read_last_contact(db, conversation.user_id, conversation.character_id),
+            last_contact,
             self._affinity(db, conversation) if affinity_on else None,
             self._photo_eligibility(db, conversation, character, own_image)
             if sends_photo else None,
             read_profile(db, conversation.user_id),
+            last_apart,
         )
 
     def _photo_eligibility(
@@ -1158,10 +1182,12 @@ class ConversationEngine:
         profile: ProducerProfile,
         last_contact: datetime | None,
         affinity_lines: Sequence[str],
+        known_weather: KnownWeather | None = None,
     ) -> str:
         """The prompt section of what she knows of now on `occasion` (`HerNow.lines`)."""
         return "\n".join(self._her_now.lines(
-            known, occasion, now, timezone, profile, last_contact, affinity_lines
+            known, occasion, now, timezone, profile, last_contact, affinity_lines,
+            known_weather=known_weather,
         ))
 
     def _prompt(

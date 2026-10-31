@@ -24,7 +24,7 @@ from eidolon.database import (
     tables,
 )
 from eidolon.delivery_cues import without_cues
-from eidolon.producer import Birthday, ProducerProfile
+from eidolon.producer import Birthday, City, ProducerProfile
 from eidolon.reply_format import Segment
 
 Admit = Callable[[sqlite3.Connection, str], None]
@@ -78,7 +78,14 @@ CREATE TABLE IF NOT EXISTS producer_profiles (
     timezone TEXT,
     updated_at TEXT NOT NULL,
     birthday_month INTEGER,
-    birthday_day INTEGER
+    birthday_day INTEGER,
+    -- Where the producer is, as QWeather found it (`producer.City`): NULL for nowhere set.
+    city_name TEXT,
+    city_adm2 TEXT,
+    city_adm1 TEXT,
+    city_country TEXT,
+    city_latitude REAL,
+    city_longitude REAL
 );
 -- `title` is its conversation title (`titles`), NULL until it is named, if ever.
 CREATE TABLE IF NOT EXISTS conversations (
@@ -885,6 +892,10 @@ def _open(db: sqlite3.Connection) -> None:
         db.execute("UPDATE users SET name = id")
     _add_missing_columns(db, "users", ("consented_at", "banned_at", "ban_note"), "TEXT")
     _add_missing_columns(db, "producer_profiles", ("birthday_month", "birthday_day"), "INTEGER")
+    _add_missing_columns(
+        db, "producer_profiles", ("city_name", "city_adm2", "city_adm1", "city_country"), "TEXT"
+    )
+    _add_missing_columns(db, "producer_profiles", ("city_latitude", "city_longitude"), "REAL")
     _add_missing_columns(db, "messages", ("affinity",), "TEXT")
     _add_missing_columns(db, "messages", ("hurt",), "REAL")
     _add_missing_columns(db, "messages", ("out_of_line",), "INTEGER")
@@ -1163,7 +1174,8 @@ def read_profile(db: sqlite3.Connection, user_id: str) -> ProducerProfile:
     """The user's producer profile, read through `db`: what `Store.get_profile` reads, and
     what other modules read in their own transactions; all defaults until they save one."""
     row = by_name(db).execute(
-        "SELECT form_of_address, gender, timezone, birthday_month, birthday_day"
+        "SELECT form_of_address, gender, timezone, birthday_month, birthday_day, city_name,"
+        " city_adm2, city_adm1, city_country, city_latitude, city_longitude"
         " FROM producer_profiles WHERE user_id = ?",
         (user_id,),
     ).fetchone()
@@ -1174,20 +1186,35 @@ def read_profile(db: sqlite3.Connection, user_id: str) -> ProducerProfile:
         if row["birthday_month"] is not None and row["birthday_day"] is not None
         else None
     )
-    return ProducerProfile(row["form_of_address"], row["gender"], row["timezone"], birthday)
+    city = (
+        City(
+            row["city_name"], row["city_adm2"] or "", row["city_adm1"] or "",
+            row["city_country"] or "", row["city_latitude"], row["city_longitude"],
+        )
+        if row["city_name"] is not None and row["city_latitude"] is not None
+        and row["city_longitude"] is not None
+        else None
+    )
+    return ProducerProfile(
+        row["form_of_address"], row["gender"], row["timezone"], birthday, city
+    )
 
 
 def write_profile(db: sqlite3.Connection, user_id: str, profile: ProducerProfile) -> None:
     """Save the user's whole producer profile through `db`, in the caller's transaction: what
     `Store.save_profile` does, and importing a data package in its write task."""
-    birthday = profile.birthday
+    birthday, city = profile.birthday, profile.city
     db.execute(
         "INSERT INTO producer_profiles"
         " (user_id, form_of_address, gender, timezone, birthday_month, birthday_day,"
-        " updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        " city_name, city_adm2, city_adm1, city_country, city_latitude, city_longitude,"
+        " updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         " ON CONFLICT (user_id) DO UPDATE SET form_of_address = excluded.form_of_address,"
         " gender = excluded.gender, timezone = excluded.timezone,"
         " birthday_month = excluded.birthday_month, birthday_day = excluded.birthday_day,"
+        " city_name = excluded.city_name, city_adm2 = excluded.city_adm2,"
+        " city_adm1 = excluded.city_adm1, city_country = excluded.city_country,"
+        " city_latitude = excluded.city_latitude, city_longitude = excluded.city_longitude,"
         " updated_at = excluded.updated_at",
         (
             user_id,
@@ -1196,6 +1223,12 @@ def write_profile(db: sqlite3.Connection, user_id: str, profile: ProducerProfile
             profile.timezone,
             birthday and birthday.month,
             birthday and birthday.day,
+            city and city.name,
+            city and city.adm2,
+            city and city.adm1,
+            city and city.country,
+            city and city.latitude,
+            city and city.longitude,
             _now(),
         ),
     )
@@ -1742,16 +1775,18 @@ def read_current_conversation(
 
 
 def read_last_contact(
-    db: sqlite3.Connection, user_id: str, character_id: str
+    db: sqlite3.Connection, user_id: str, character_id: str, before: datetime | None = None
 ) -> datetime | None:
     """When the user and the character were last in touch, in any of their conversations,
     read through `db`: her last turn recorded, or a call that connected ending, whichever
-    was later; None before either."""
+    was later, and earlier than `before` if given; None before either."""
+    until = () if before is None else (before.astimezone(UTC).isoformat(),)
     [last_turn] = db.execute(
         "SELECT MAX(m.created_at) FROM messages m"
         " JOIN conversations c ON c.id = m.conversation_id"
-        " WHERE c.user_id = ? AND c.character_id = ?",
-        (user_id, character_id),
+        " WHERE c.user_id = ? AND c.character_id = ?"
+        + ("" if before is None else " AND m.created_at < ?"),
+        (user_id, character_id, *until),
     ).fetchone()
     calls = db.execute(
         "SELECT k.connected_at, k.duration_s FROM calls k"
@@ -1759,6 +1794,8 @@ def read_last_contact(
         " WHERE c.user_id = ? AND c.character_id = ?",
         (user_id, character_id),
     ).fetchall()
+    if before is not None:
+        calls = [call for call in calls if _call_ended(*call) < before]
     return _last_contact(last_turn, calls)
 
 

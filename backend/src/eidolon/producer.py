@@ -20,7 +20,7 @@ from functools import cache
 from typing import Literal
 from zoneinfo import ZoneInfo, available_timezones
 
-from eidolon.weather import Weather, weather_line
+from eidolon.weather import Spot, Weather, weather_line
 
 Gender = Literal["male", "female"]
 Talking = Literal["typing", "in_call", "apart"]
@@ -29,6 +29,8 @@ Talking = Literal["typing", "in_call", "apart"]
 DEFAULT_TIMEZONE = "Asia/Shanghai"
 _TOKYO = ZoneInfo("Asia/Tokyo")
 MAX_FORM_OF_ADDRESS_LENGTH = 20
+MAX_CITY_PART_LENGTH = 40
+"""How long each part of a city's name may be, in characters."""
 
 _GENDER_NAMES: dict[Gender, str] = {"male": "男性", "female": "女性"}
 _WEEKDAYS = "一二三四五六日"
@@ -63,11 +65,47 @@ def is_birthday(birthday: Birthday, today: date) -> bool:
 
 
 @dataclass(frozen=True)
+class City:
+    """A city, a district or a county, as QWeather names it in Chinese: its `name`, the city
+    it is in (`adm2`), the province or the like (`adm1`), the country, and where it is, in
+    WGS-84."""
+
+    name: str
+    adm2: str
+    adm1: str
+    country: str
+    latitude: float
+    longitude: float
+
+    def parts(self) -> list[str]:
+        """Its name, then each of what it is in that is not as good as said already (东城,
+        北京, 中国 for 东城 in 北京 in 北京市)."""
+        kept: list[str] = []
+        for part in (self.name, self.adm2, self.adm1, self.country):
+            if part and not any(k.startswith(part) or part.startswith(k) for k in kept):
+                kept.append(part)
+        return kept
+
+    @property
+    def told(self) -> str:
+        """How she is told it: 东城（北京，中国）."""
+        name, *rest = self.parts()
+        return f"{name}（{'，'.join(rest)}）" if rest else name
+
+    @property
+    def spot(self) -> Spot:
+        return Spot(self.latitude, self.longitude)
+
+
+@dataclass(frozen=True)
 class ProducerProfile:
     form_of_address: str | None = None
     gender: Gender | None = None
     timezone: str | None = None
     birthday: Birthday | None = None
+    city: City | None = None
+    """Where the producer is, as QWeather found it; she knows of it only while the deployer
+    has a QWeather account (`qweather`)."""
 
 
 @cache

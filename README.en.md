@@ -119,6 +119,7 @@ All **28 idols** from the game's eight units, plus the office clerk Nanakusa Haz
 - 🍸 **VA-283**: She drops by the bar and you mix drinks to her order. The first visit you finish each day gives a draw and brings her closer to you; on your first time in, Hazuki shows you how to mix. The look and the mixing pay tribute to *VA-11 HALL-A*.
 - 💌 **She reaches out**: When you've been away a while, she says a few words first in your conversation; the closer you are, the sooner she does ([configuration guide](docs/configuration.en.md#reach-outs)).
 - 🌅 **Moments**: The characters you've talked with post to your moments, often with a picture, along with a real place and the weather in Tokyo; other idols like and comment, and so can you, and she replies to yours ([configuration guide](docs/configuration.en.md#moments)).
+- 🌦️ **Weather**: She knows the weather in Tokyo right now; set your city in your profile and she knows the weather and any warnings where you are too, and says a caring word about it when it's been a while or the weather is out of the ordinary ([configuration guide](docs/configuration.en.md#weather)).
 
 **What she remembers**
 
@@ -302,7 +303,8 @@ The license covers only the code and documentation in the repository. The follow
 - [Fusion Pixel](https://github.com/TakWolf/fusion-pixel-font): the bar's pixel font
 - [im@sparql](https://sparql.crssnky.xyz/imas/), Lantis, ふじわらはじめ, imas-db, wikiwiki: the idols, releases and lives in the world setting
 - [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL), [Wikidata](https://www.wikidata.org/): the names and coordinates of the places in moments
-- [Open-Meteo](https://open-meteo.com/) (CC BY 4.0): the weather in moments
+- [Open-Meteo](https://open-meteo.com/) (CC BY 4.0): the weather in moments and conversations
+- [QWeather](https://www.qweather.com/): the producer's city and the weather warnings there
 - [LINUX DO](https://linux.do/): much of what went into building and running this project was learned from the community's shared experience
 
 <div align="center">

@@ -20,6 +20,7 @@ This guide explains how to turn on and tune each feature, and how the characters
 > | Cycles | Nothing (the switch is on by default) |
 > | Reach-outs | `EIDOLON_REACH_OUTS=1` (off by default) |
 > | Moments | `EIDOLON_MOMENTS=1` (off by default) |
+> | Weather in conversations | Nothing for Tokyo's; the producer's needs QWeather's five settings: `QWEATHER_*` |
 > | Bar | Nothing (the switch is on by default) |
 > | Stands and the landing page's greetings | `EIDOLON_STAND_ASSETS_URL`, and a bucket holding the assets |
 > | Google / GitHub sign-in | `GOOGLE_CLIENT_*`, `GITHUB_CLIENT_*` |
@@ -43,6 +44,7 @@ This guide explains how to turn on and tune each feature, and how the characters
 - [Photos](#photos)
 - [Reach-outs](#reach-outs)
 - [Moments](#moments)
+- [Weather](#weather)
 - [Bar](#bar)
 - [Sign-in, users and usage limits](#sign-in-users-and-usage-limits)
 - [Bring your own keys](#bring-your-own-keys)
@@ -472,6 +474,28 @@ An item in the navigation alongside conversations, play and settings, one for ea
 - **Weather**: From [Open-Meteo](https://open-meteo.com/), with no key needed; when it can't be had, no weather is shown.
 - **Place pool**: In [`characters/places.toml`](../characters/places.toml); see the comments at the top of the file. Restart the backend after editing; if something is wrong, the backend won't start. Which kinds of places a job goes to are in the `places` of `jobs.toml`, and which kinds each idol likes are in the `place_likes` of `characters.toml`. Posts already made keep showing the place names they had.
 - **Cost**: Posts, their pictures and her replies to comments all use the deployer's chat model and image generation (`NOVELAI_API_KEY`), at the deployer's expense, even for users who bring their own keys. They don't count towards users' usage limits. Without image generation she posts text only.
+
+## Weather
+
+While texting, on calls and when reaching out, the character knows the weather in Tokyo right now (she lives in Tokyo): what it's like now, whether it will rain or snow later today, today's high and low, and whether it's colder or warmer than yesterday. When the user has set 「所在城市」 (City) in their producer profile, she also knows where the producer is, the weather there and any weather warnings in effect. Asked, she can always answer, but she brings it up herself only once, and only when it has been 3 hours or more since they last talked, when the weather stands out (rain or snow, or 8°C or more colder or warmer than yesterday), or when there's a warning where the producer is; once it has come up in the conversation, she doesn't bring it up again. The weather isn't shown anywhere on screen.
+
+- **Tokyo's weather**: From [Open-Meteo](https://open-meteo.com/), with no key needed; there's nothing to configure.
+- **City**: Needs the deployer to configure [QWeather](https://dev.qweather.com/). Once it is, 「制作人档案」 (Producer profile) in settings gains 「所在城市」 (City), where users can search by name or find the nearest city from their current location (the coordinates the browser gives are used only to find the city and aren't kept); the city's name and its centre coordinates are stored in the producer profile and go into data packages. Without QWeather the field isn't there; a city already saved stays, unused, and is used again once QWeather is configured again. The weather where the producer is also comes from Open-Meteo; QWeather is used only to find cities and look up warnings.
+- **Getting QWeather**:
+  1. Sign up on the [QWeather console](https://console.qweather.com) and create a project under 「项目管理」 (Project management).
+  2. Generate an Ed25519 key pair (the openssl that comes with Git Bash will do):
+
+     ```sh
+     openssl genpkey -algorithm ED25519 -out ed25519-private.pem
+     openssl pkey -pubout -in ed25519-private.pem > ed25519-public.pem
+     ```
+
+  3. In the project, choose 「添加凭据」 (Add credential), pick JSON Web Token as the authentication method, and paste in the whole of `ed25519-public.pem`.
+  4. Fill in five settings in `.env`: `QWEATHER_API_HOST` (the API Host under 「设置」 (Settings) in the console), `QWEATHER_DEVELOPER_ID` (on the same page, starting with Q), `QWEATHER_PROJECT_ID`, `QWEATHER_KEY_ID` (the credential ID), and `QWEATHER_PRIVATE_KEY` (the middle line of `ed25519-private.pem`). You can also fill them in under 「天气」 (Weather) on the admin console's config page, which looks up Beijing by coordinates once as a check before saving. Set all five or none: with only some of them set, the backend won't start.
+  - JWT rather than an API KEY, because from 2027 QWeather limits how many requests an API KEY can make a day.
+- **Quota**: The first 50,000 requests a month on QWeather are free. They're used only when users search for a city or use their current location, and to look up warnings (at most once an hour per city).
+- **When it can't be had**: Each turn waits at most 1.5 seconds for the weather and the warnings; if they can't be had, she isn't told that turn and doesn't bring it up, with no error. All of it goes direct, not through the proxy, and none of it is in service status or the activity records.
+- **Attribution**: QWeather requires that wherever its content is shown, it says 「天气服务由和风天气驱动」 (Weather service powered by QWeather), and that wherever warnings are used, their source is shown as it is. This project puts the attribution in the privacy policy's 「这些数据会交给哪些第三方处理」 (Which third parties process this data) section and adds none to the settings page; warnings are only given to the character to put in her own words, not shown on screen, so their source isn't shown either. The terms don't cover use that only a model sees; if that concerns you, you can ask QWeather.
 
 ## Bar
 
