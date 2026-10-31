@@ -197,17 +197,12 @@ struct StandResolver: Sendable {
     func stand(for config: StandConfig) -> CharacterStand? {
         let fileManager = FileManager.default
         for root in roots {
+            guard Self.isAvailable(config, in: root, fileManager: fileManager) else { continue }
             let defaultDirectory = root.appendingPathComponent(
                 config.defaultOutfitPath,
                 isDirectory: true
             )
             let listURL = root.appendingPathComponent(config.outfitListPath)
-            let hasDefault = OutfitList.files.allSatisfy {
-                fileManager.fileExists(atPath: defaultDirectory.appendingPathComponent($0).path)
-            }
-            let hasList = fileManager.fileExists(atPath: listURL.path)
-            guard hasDefault || hasList else { continue }
-
             let list = (try? Data(contentsOf: listURL)).flatMap { data in
                 OutfitList(data: data, at: listURL, fileManager: fileManager)
             }
@@ -221,5 +216,32 @@ struct StandResolver: Sendable {
             )
         }
         return nil
+    }
+
+    /// Whether she has a stand under any root, using the same condition as `stand(for:)`
+    /// but without reading the outfit list. The chat page reads this in a batch before it
+    /// lays out its toolbar (spec #44), so the answer must never disagree with `stand(for:)`.
+    func hasStand(for config: StandConfig) -> Bool {
+        let fileManager = FileManager.default
+        return roots.contains { Self.isAvailable(config, in: $0, fileManager: fileManager) }
+    }
+
+    /// A stand is available when her default outfit has all its files or her outfit list
+    /// is present (upstream tolerance for a partially fetched tree).
+    private static func isAvailable(
+        _ config: StandConfig,
+        in root: URL,
+        fileManager: FileManager
+    ) -> Bool {
+        let defaultDirectory = root.appendingPathComponent(
+            config.defaultOutfitPath,
+            isDirectory: true
+        )
+        let listURL = root.appendingPathComponent(config.outfitListPath)
+        let hasDefault = OutfitList.files.allSatisfy {
+            fileManager.fileExists(atPath: defaultDirectory.appendingPathComponent($0).path)
+        }
+        let hasList = fileManager.fileExists(atPath: listURL.path)
+        return hasDefault || hasList
     }
 }

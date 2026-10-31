@@ -11,8 +11,8 @@ struct ChatView: View {
     @State private var didAutoSend = false
     @State private var showHistory = false
     @State private var showCall = false
-    /// Her stand, only so the toolbar can offer her clothes from here (spec #35): the chat
-    /// page draws none of it. Nil while it has not been read, or when she has none.
+    /// Her stand, read only to open the outfit picker (spec #35). Whether the button exists
+    /// is decided by the already-published snapshot, never by this on-page read (spec #44).
     @State private var outfitsStand: CharacterStand?
     @State private var outfitsChecked = false
     @State private var showsOutfits = false
@@ -42,10 +42,10 @@ struct ChatView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if outfitsStand != nil {
+            if app.hasStand(for: character.id) {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        showsOutfits = true
+                        openOutfits()
                     } label: {
                         Image(systemName: "tshirt")
                     }
@@ -131,12 +131,32 @@ struct ChatView: View {
             #endif
         }
         .task {
-            // The clothes button only exists for a character who has a stand to dress
-            // (spec #35); reading it is no use on the chat page otherwise.
+            // This prefetch only feeds the outfit picker now. Whether the button exists
+            // comes from the snapshot AppModel published before this page was built
+            // (spec #44).
             guard !outfitsChecked else { return }
             outfitsChecked = true
-            outfitsStand = await app.core.stand(for: character.id)
+            await loadOutfitsStand()
         }
+    }
+
+    /// Opens her clothes. If the prefetch has not landed yet, it is finished first so a
+    /// quick tap never shows an empty cover (spec #44).
+    private func openOutfits() {
+        if outfitsStand != nil {
+            showsOutfits = true
+            return
+        }
+        Task {
+            await loadOutfitsStand()
+            if outfitsStand != nil { showsOutfits = true }
+        }
+    }
+
+    /// Reads her stand for the picker; whether the button exists comes from AppModel's
+    /// snapshot, not from this lookup (spec #44).
+    private func loadOutfitsStand() async {
+        outfitsStand = await app.core.stand(for: character.id)
     }
 
     /// Development aid: `SIMCTL_CHILD_EIDOLON_SEND_TEXT` sends one line on opening, so

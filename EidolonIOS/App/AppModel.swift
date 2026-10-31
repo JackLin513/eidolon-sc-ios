@@ -15,6 +15,9 @@ enum AppPhase: Equatable {
 final class AppModel {
     private(set) var phase: AppPhase = .loading
     private(set) var characters: [CharacterConfig] = []
+    /// Who has a stand, answered before `characters` is published so the chat page's
+    /// toolbar can settle on its first frame (spec #44).
+    private(set) var standCharacterIDs: Set<String> = []
     private(set) var latest: [String: LatestActivity] = [:]
     private(set) var bundleInfo: ContentBundleInfo?
     private(set) var standInfo: StandBundleInfo?
@@ -568,6 +571,7 @@ final class AppModel {
         #endif
         do {
             standInfo = try await core.installStand(bundleAt: url)
+            await refreshStandCharacterIDs()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -673,6 +677,7 @@ final class AppModel {
             standInfo = try await core.installStand(bundleAt: copy) { [weak self] progress in
                 Task { @MainActor in self?.importProgress = progress }
             }
+            await refreshStandCharacterIDs()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -738,8 +743,24 @@ final class AppModel {
         avatars[characterID]
     }
 
+    /// Whether the chat page may offer dressing her. Read from the snapshot taken with the
+    /// character list, never from an on-page lookup, so the toolbar does not change after
+    /// its first layout (spec #44).
+    func hasStand(for characterID: String) -> Bool {
+        standCharacterIDs.contains(characterID)
+    }
+
+    /// Re-reads who can be dressed after a stand package changed (spec #44).
+    private func refreshStandCharacterIDs() async {
+        standCharacterIDs = await core.characterIDsWithStands()
+    }
+
     private func load() async throws {
-        characters = try await core.characters()
+        let characters = try await core.characters()
+        // Publish the stand snapshot first: a view observing `characters` then sees a
+        // consistent "who can be dressed" answer on the very first frame.
+        await refreshStandCharacterIDs()
+        self.characters = characters
         latest = try await core.latestActivities()
         standInfo = try await core.installedStandInfo()
         barInfo = try await core.installedBarInfo()

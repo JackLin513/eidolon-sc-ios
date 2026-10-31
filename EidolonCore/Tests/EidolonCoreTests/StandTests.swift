@@ -116,6 +116,16 @@ final class StandTests: XCTestCase {
         XCTAssertNil(hiori)
     }
 
+    // MARK: - Which characters have a stand
+
+    func testCharacterIDsWithStandsListsTheCharactersWhoseStandCanBeOpened() async throws {
+        let eidolon = try await installedEidolon()
+
+        let ids = await eidolon.characterIDsWithStands()
+
+        XCTAssertEqual(ids, ["mano"])
+    }
+
     /// The lookup can be pointed at more than one root, so a separate stand package can
     /// be tried before the legacy content bundle. Nothing is found under a missing root;
     /// the next one is used.
