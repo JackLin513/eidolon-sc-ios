@@ -107,6 +107,8 @@ struct MotionSway {
     static let legacyFormat = "eidolon.sway/1"
     /// The game solves at a fixed 1/60 s (`SwayManager.FIXED_DELTA`).
     static let framesPerSecond: Float = 60
+    /// How far outside a collider a panel is settled (metres).
+    private static let surfaceMargin: Float = 0.001
 
     private struct Pendulum {
         let joint: Int
@@ -267,9 +269,16 @@ struct MotionSway {
 
         for (index, pendulum) in pendulums.enumerated() {
             let parent = pendulum.parent
-            let base = parent.map { world[$0].position } ?? .zero
+            let parentPosition = parent.map { world[$0].position } ?? .zero
             let parentRotation = parent.map { world[$0].rotation }
                 ?? SIMD4<Float>(0, 0, 0, 1)
+            // The bone turns about its own origin, which is not the parent's:
+            // group nodes (`skirt_GP`, `ribbon_GP`, …) carry metre-sized
+            // compensation offsets, so using the parent's position as the base
+            // put the tip a whole unit away from the bone and turned the panel
+            // into spaghetti.
+            let base = parentPosition
+                + QuaternionMath.rotate(parentRotation, poses[pendulum.joint].translation)
             let rigid = QuaternionMath.multiply(parentRotation, pendulum.restRotation)
             let restDirection = QuaternionMath.rotate(rigid, pendulum.tail)
             let aim = base + restDirection
@@ -322,17 +331,17 @@ struct MotionSway {
                 of: tips[index], from: base, parentRotation: parentRotation,
                 restDirection: restDirection, limit: pendulum.limit
             )
-            for _ in 0..<8 {
-                var point = base + direction * pendulum.length
-                var moved = false
-                for collider in pendulum.colliders {
-                    moved = push(&point, outOf: bounds[collider], world: world,
-                                 radius: pendulum.radius) || moved
-                }
-                guard moved else { break }
-                hitLastFrame[index] = true
-                direction = simd_normalize(point - base)
-            }
+            // Two thigh capsules can push against each other: a panel
+            // between them gets opposite normals that cancel, so a plain
+            // push does nothing (measured on the real dance: still 17 mm
+            // inside). Relax the summed violation first, then, if the panel is
+            // wedged, search the tangent circle around the current direction —
+            // the escape there is a few degrees sideways (4° on this dance).
+            let resolved = resolvingCollisions(
+                direction: direction, base: base, pendulum: pendulum, world: world
+            )
+            direction = resolved.direction
+            hitLastFrame[index] = resolved.hit
             tips[index] = base + direction * pendulum.length
 
             let turned = QuaternionMath.multiply(
@@ -357,14 +366,74 @@ struct MotionSway {
 
     // MARK: - The game's judgements
 
-    /// Push a tip out of a sphere or capsule. Returns whether it touched.
-    private func push(
-        _ tip: inout SIMD3<Float>, outOf bound: Bounds,
+
+    /// Push the bone's direction out of every collider it lists. Returns the
+    /// resolved direction, which is `direction` itself when nothing was hit.
+    private func resolvingCollisions(
+        direction: SIMD3<Float>, base: SIMD3<Float>, pendulum: Pendulum,
+        world: [(position: SIMD3<Float>, rotation: SIMD4<Float>)]
+    ) -> (direction: SIMD3<Float>, hit: Bool) {
+        guard !pendulum.colliders.isEmpty else { return (direction, false) }
+        var resolved = direction
+
+        func correction(at candidate: SIMD3<Float>) -> SIMD3<Float> {
+            let point = base + candidate * pendulum.length
+            var correction = SIMD3<Float>.zero
+            for collider in pendulum.colliders {
+                if let (normal, depth) = violation(
+                    of: point, with: bounds[collider], world: world,
+                    radius: pendulum.radius
+                ) {
+                    correction += normal * depth
+                }
+            }
+            return correction
+        }
+
+        for _ in 0..<32 {
+            let sum = correction(at: resolved)
+            guard simd_length(sum) > 1e-6 else {
+                return (resolved, resolved != direction)
+            }
+            resolved = simd_normalize(resolved + sum)
+        }
+
+        // Wedged between two capsules: walk out around the tangent circle.
+        let sum = correction(at: resolved)
+        guard simd_length(sum) > 1e-6 else { return (resolved, true) }
+        var tangent = simd_cross(resolved, sum)
+        if simd_length(tangent) < 1e-5 {
+            tangent = simd_cross(resolved, SIMD3(0, 0, 1))
+        }
+        if simd_length(tangent) < 1e-5 { return (resolved, true) }
+        tangent = simd_normalize(tangent)
+        let bitangent = simd_cross(resolved, tangent)
+        for step in 1...12 {
+            let angle = Float(step) * 6 * .pi / 180
+            for index in 0..<12 {
+                let around = Float(index) * .pi / 6
+                let offset = tangent * cos(around) + bitangent * sin(around)
+                let candidate = simd_normalize(resolved + offset * sin(angle))
+                if simd_length(correction(at: candidate)) <= 1e-6 {
+                    return (candidate, true)
+                }
+            }
+        }
+        return (resolved, true)
+    }
+
+    /// How far a tip is inside a sphere or capsule, with the normal that
+    /// pushes it out. `nil` when it is outside.
+    private func violation(
+        of tip: SIMD3<Float>, with bound: Bounds,
         world: [(position: SIMD3<Float>, rotation: SIMD4<Float>)], radius: Float
-    ) -> Bool {
+    ) -> (SIMD3<Float>, Float)? {
         let joint = world[bound.joint]
         let centre = joint.position + QuaternionMath.rotate(joint.rotation, bound.offset)
-        let limit = bound.radius + radius
+        // Aim a hair outside the surface: the relaxation approaches the
+        // boundary asymptotically, and landing exactly on it leaves the panel
+        // half a millimetre in.
+        let limit = bound.radius + radius + Self.surfaceMargin
 
         var closest = centre
         if !bound.isSphere {
@@ -377,12 +446,11 @@ struct MotionSway {
 
         let delta = tip - closest
         let distance = simd_length(delta)
-        guard distance < limit else { return false }
+        guard distance < limit else { return nil }
         let normal = distance > 1e-5
             ? delta / distance
             : simd_normalize(QuaternionMath.rotate(joint.rotation, SIMD3(1, 0, 0)))
-        tip = closest + normal * limit
-        return true
+        return (normal, limit - distance)
     }
 
     /// The game's angle window. `CalcRotate` measures the tip in the bone's
