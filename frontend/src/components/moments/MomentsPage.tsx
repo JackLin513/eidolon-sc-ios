@@ -19,8 +19,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { copy } from "@/i18n";
 import {
   ApiError,
@@ -43,7 +43,7 @@ import {
   type MomentAction,
   type Reactions,
 } from "@/lib/moments";
-import { LikesIcon, MoreIcon, SendIcon } from "@/theme/icons";
+import { CommentIcon, LikesIcon, MoreIcon, TrashIcon } from "@/theme/icons";
 import { Ja } from "@/theme/Ja";
 
 const t = copy.moments;
@@ -111,8 +111,16 @@ export function MomentsPage() {
   );
 }
 
-/** 时间线的一行：左边她的头像；右边名字（行尾「⋯」）、日语正文、一行字幕（同对话气泡）、配图的缩略图（有的话）、
- * Meta 字号的「时间 · 地名 · 天气」，有赞或评论时再下面一块，正在评论时最下面是评论输入。地名点开在新标签页打开地图，
+/** 行尾「⋯」弹出的每一项前面的图标。 */
+const ACTION_ICONS: Record<MomentAction["action"], typeof LikesIcon> = {
+  like: LikesIcon,
+  unlike: LikesIcon,
+  comment: CommentIcon,
+  uncomment: TrashIcon,
+};
+
+/** 时间线的一行：左边她的头像；右边名字、日语正文、一行字幕（同对话气泡）、配图的缩略图（有的话）、
+ * Meta 字号的「时间 · 地名 · 天气」（行尾「⋯」），有赞或评论时再下面一块，正在评论时最下面是评论输入。地名点开在新标签页打开地图，
  * 不把本站地址带过去。别的偶像的名字从 `nameOf` 取。赞、评论、删评论成功后用 `onChange` 改这一条；
  * 赞、取消赞、删评论失败时这一行最下面一条提示。 */
 function MomentRow({
@@ -130,6 +138,7 @@ function MomentRow({
 }) {
   const name = character?.name ?? moment.character_id;
   const block = reactions(moment, nameOf, name);
+  const [acting, setActing] = useState(false);
   const [commenting, setCommenting] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
@@ -163,23 +172,7 @@ function MomentRow({
     <article className="flex gap-3 py-4">
       <MarkedAvatar name={name} src={character?.avatar_url} size="lg" />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex items-start justify-between gap-2">
-          <span className="text-row-name">{name}</span>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={<Button variant="ghost" size="icon-lg" className="-my-2 -mr-2" aria-label={t.actions.open} />}
-            >
-              <MoreIcon className="size-5" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {momentActions(moment).map(({ action, label, disabled }) => (
-                <DropdownMenuItem key={action} disabled={disabled} onClick={() => void act(action)}>
-                  {label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <span className="text-row-name">{name}</span>
         <div className="flex flex-col gap-0.5">
           <p className="text-body whitespace-pre-wrap">
             <Ja>{moment.ja}</Ja>
@@ -187,34 +180,62 @@ function MomentRow({
           {moment.zh && <p className="text-subtitle text-muted-foreground">{moment.zh}</p>}
         </div>
         {moment.image && <Picture src={moment.image} />}
-        <p className="text-meta text-muted-foreground">
-          {metaParts(moment, now).map((part, i) => (
-            <Fragment key={i}>
-              {i > 0 && " · "}
-              {part.kind === "weather" ? (
-                <span className="whitespace-nowrap">
-                  <part.icon role="img" aria-label={part.label} className="mr-1 inline size-3.5 align-middle" />
-                  {part.text}
-                </span>
-              ) : part.kind === "place" ? (
-                <a
-                  href={part.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-sm underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
-                >
-                  {part.text}
-                </a>
-              ) : (
-                <time dateTime={moment.posted_at}>{part.text}</time>
-              )}
-            </Fragment>
-          ))}
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="min-w-0 text-meta text-muted-foreground">
+            {metaParts(moment, now).map((part, i) => (
+              <Fragment key={i}>
+                {i > 0 && " · "}
+                {part.kind === "weather" ? (
+                  <span className="whitespace-nowrap">
+                    <part.icon role="img" aria-label={part.label} className="mr-1 inline size-3.5 align-middle" />
+                    {part.text}
+                  </span>
+                ) : part.kind === "place" ? (
+                  <a
+                    href={part.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-sm underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    {part.text}
+                  </a>
+                ) : (
+                  <time dateTime={moment.posted_at}>{part.text}</time>
+                )}
+              </Fragment>
+            ))}
+          </p>
+          <Popover open={acting} onOpenChange={setActing}>
+            <PopoverTrigger render={<Button variant="secondary" size="icon-sm" aria-label={t.actions.open} />}>
+              <MoreIcon aria-hidden />
+            </PopoverTrigger>
+            <PopoverContent side="left" className="flex w-auto flex-row gap-1 p-1">
+              {momentActions(moment).map(({ action, label, disabled }) => {
+                const Icon = ACTION_ICONS[action];
+                return (
+                  <Button
+                    key={action}
+                    variant="ghost"
+                    size="sm"
+                    disabled={disabled}
+                    onClick={() => {
+                      setActing(false);
+                      void act(action);
+                    }}
+                  >
+                    <Icon aria-hidden />
+                    {label}
+                  </Button>
+                );
+              })}
+            </PopoverContent>
+          </Popover>
+        </div>
         {block && <ReactionsBlock reactions={block} />}
         {commenting && moment.producer_comment === null && (
           <CommentBox
             momentId={moment.id}
+            herName={name}
             onSent={(kept) => {
               setCommenting(false);
               onChange({ producer_comment: kept, reply: null });
@@ -246,15 +267,17 @@ function MomentRow({
   );
 }
 
-/** 一条动态下面的评论输入：`composer` 样式的输入框（一行起、随字数长高）加发送键，打开时就聚焦。回车发送，
- * Shift+回车换行，Esc 收起。去掉首尾空白后 1 到 140 个字才能发，超了在下面一行 destructive 的「141/140」。
+/** 一条动态下面的评论输入（同原型 A）：单行输入框（占位「评论<她的名字>的动态」）加「发送」，打开时就聚焦。
+ * 回车发送，Esc 收起。去掉首尾空白后 1 到 140 个字才能发，超了在下面一行 destructive 的「141/140」。
  * 发不出去时保留打的字，上面一条提示原因。 */
 function CommentBox({
   momentId,
+  herName,
   onSent,
   onClose,
 }: {
   momentId: number;
+  herName: string;
   onSent: (kept: ProducerComment) => void;
   onClose: () => void;
 }) {
@@ -285,26 +308,21 @@ function CommentBox({
       }}
     >
       {failure && <FailureNotice failure={failure} />}
-      <div className="flex items-end gap-2">
-        <Textarea
-          variant="composer"
-          rows={1}
+      <div className="flex items-center gap-2">
+        <Input
           autoFocus
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            // 回车发送，Shift+回车换行；输入法选字时的回车不算。
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              void send();
-            } else if (e.key === "Escape" && !e.nativeEvent.isComposing) onClose();
+            // 回车由表单发送；Esc 收起，输入法选字时的不算。
+            if (e.key === "Escape" && !e.nativeEvent.isComposing) onClose();
           }}
-          placeholder={t.commentBox.placeholder}
+          placeholder={t.commentBox.placeholder(herName)}
           aria-label={t.commentBox.label}
-          className="flex-1"
+          className="h-9 flex-1"
         />
-        <Button type="submit" size="icon-lg" aria-label={t.commentBox.send} disabled={!canSend}>
-          <SendIcon className="size-5" />
+        <Button type="submit" size="lg" disabled={!canSend}>
+          {t.commentBox.send}
         </Button>
       </div>
       {length > COMMENT_LENGTH && (

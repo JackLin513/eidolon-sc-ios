@@ -84,8 +84,10 @@ export {
 } from "lucide-react";
 export { Gift as GiftIcon } from "lucide-react";
 
-// 朋友圈页一条动态下面那一块里，赞的人那一行打头的心形。
+// 朋友圈页一条动态下面那一块里，赞的人那一行打头的心形；也是行尾「⋯」弹出的「赞」。
 export { Heart as LikesIcon } from "lucide-react";
+// 朋友圈页行尾「⋯」弹出的「评论」。
+export { MessageCircle as CommentIcon } from "lucide-react";
 
 // 日历：玩法页第一级「日历」卡；筛选、月视图和这一天的清单里我的生日（蛋糕，角色生日的蛋糕是她的颜色）和节假日（旗子）。
 export { CalendarDays as CalendarIcon } from "lucide-react";

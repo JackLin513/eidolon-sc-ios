@@ -58,11 +58,16 @@ export const zh = {
     producer: "制作人",
     repliedBy: (name: string) => `${name} 回复 制作人：`,
     /** 行尾「⋯」：读屏读的按钮名和里面的几项。 */
-    actions: { open: "更多操作", like: "赞", unlike: "取消赞", comment: "评论", uncomment: "删除评论" },
+    actions: { open: "赞或评论", like: "赞", unlike: "取消赞", comment: "评论", uncomment: "删除评论" },
     /** 「删除评论」先确认：她的回复会一起删。 */
     uncomment: { title: "删除评论？", description: "她的回复也会一起删掉。", confirm: "删除" },
     /** 评论输入：输入框读屏读的名字、占位、发送键，几个字（超了才显示）。 */
-    commentBox: { label: "评论", placeholder: "评论", send: "发送", count: (n: number, most: number) => `${n}/${most}` },
+    commentBox: {
+      label: "评论",
+      placeholder: (name: string) => `评论${name}的动态`,
+      send: "发送",
+      count: (n: number, most: number) => `${n}/${most}`,
+    },
     /** 配图的缩略图：读屏读的按钮名、图的替代文字，放大后弹窗的名字。 */
     picture: { open: "放大配图", alt: "她的配图", viewer: "配图" },
   },
