@@ -20,6 +20,8 @@ struct ConversationListView: View {
     /// The moment the list writes its times against; refreshed every minute while it is
     /// open, so an old 昨天 turns into a date and today's times keep up (spec #35).
     @State private var now = Date()
+    /// The character a tap asked to enter while another call is under way (spec #46).
+    @State private var pendingCharacter: CharacterConfig?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -29,13 +31,34 @@ struct ConversationListView: View {
                 }
                 Section {
                     ForEach(filtered, id: \.id) { character in
-                        NavigationLink(value: character) {
-                            row(character)
+                        if app.call.isLive, !app.call.isCalling(character.id) {
+                            // Entering another character hangs the call up: ask first
+                            // (spec #46).
+                            Button {
+                                pendingCharacter = character
+                            } label: {
+                                HStack(spacing: 8) {
+                                    row(character)
+                                    Image(systemName: "chevron.right")
+                                        .font(.footnote.weight(.semibold))
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.primary)
+                        } else {
+                            NavigationLink(value: character) {
+                                row(character)
+                            }
                         }
                     }
                 }
             }
             .listStyle(.plain)
+            // The folded call's bar sits at the top of every page (spec #46).
+            .safeAreaInset(edge: .top, spacing: 0) {
+                CallBar()
+            }
             .searchable(text: $query, prompt: "搜中文名、假名、罗马字或组合")
             .navigationTitle("对话")
             .refreshable { await app.refresh() }
@@ -45,6 +68,26 @@ struct ConversationListView: View {
             // 酒吧整屏呈现，而不是推进 NavigationStack：栈里的 destination 会把安全区的大小
             // 当成布局的槽，画面再 `.ignoresSafeArea()` 也只扩到绘制的边（实测仍量到 776×400），
             // 上下就贴不满。整屏呈现时它自己就是窗口，画框能真正铺到屏幕边上。
+            .confirmationDialog(
+                "结束通话并进入？",
+                isPresented: Binding(
+                    get: { pendingCharacter != nil },
+                    set: { if !$0 { pendingCharacter = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: pendingCharacter
+            ) { character in
+                Button("结束通话并进入", role: .destructive) {
+                    pendingCharacter = nil
+                    app.call.hangUpAndLeave()
+                    path.append(character)
+                }
+                Button("取消", role: .cancel) {
+                    pendingCharacter = nil
+                }
+            } message: { _ in
+                Text("进入别的角色的对话会挂断这通电话。")
+            }
             .fullScreenCover(isPresented: $isBarShown) {
                 BarRoomView(
                     settings: BarSettings.stored(app.barSettingsValue),

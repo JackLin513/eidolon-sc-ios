@@ -50,6 +50,9 @@ struct ConversationHistoryView: View {
                 }
             }
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            CallBar()
+        }
         .navigationTitle("对话记录")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -62,6 +65,11 @@ struct ConversationHistoryView: View {
         // page underneath is already showing it (spec #37).
         .onChange(of: app.conversationRevision) {
             dismiss()
+        }
+        // Returning to the call brings the layer over every page; the history gets out of
+        // its way (spec #46).
+        .onChange(of: app.call.layer) { _, layer in
+            if layer == .expanded { dismiss() }
         }
         .confirmationDialog(
             "删除这段对话？",

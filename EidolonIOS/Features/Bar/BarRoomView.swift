@@ -96,6 +96,12 @@ struct BarRoomView: View {
                 ProgressView().tint(BarInk.sub)
             }
         }
+        .overlay(alignment: .top) {
+            CallBar()
+                .onChange(of: app.call.layer) { _, layer in
+                    if layer == .expanded { dismiss() }
+                }
+        }
         .ignoresSafeArea()
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)

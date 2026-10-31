@@ -14,7 +14,6 @@ struct ChatView: View {
     @State private var store: ChatStore?
     @State private var didAutoSend = false
     @State private var showHistory = false
-    @State private var showCall = false
     /// Her stand, read only to open the outfit picker (spec #35). Whether the button exists
     /// is decided by the already-published snapshot, never by this on-page read (spec #44).
     @State private var outfitsStand: CharacterStand?
@@ -25,6 +24,9 @@ struct ChatView: View {
         Group {
             if let store {
                 VStack(spacing: 0) {
+                    // Her conversation keeps the folded call's bar under the navigation bar,
+                    // without repeating her name (spec #46).
+                    CallBar(showsName: !app.call.isCalling(character.id))
                     transcript(store)
                     if store.isPast {
                         pastBar
@@ -48,11 +50,19 @@ struct ChatView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    showCall = true
+                    // Her call is already under way: this key brings the layer back.
+                    // Otherwise it dials her (spec #46).
+                    if app.call.isCalling(character.id) {
+                        app.call.expand()
+                    } else {
+                        app.readAloud.stop()
+                        Task { await app.call.start(character) }
+                    }
                 } label: {
-                    Image(systemName: "phone")
+                    Image(systemName: showsReturnToCall ? "phone.fill" : "phone")
                 }
-                .disabled(store?.readOnly == true || store?.affinity.cooling == true)
+                .disabled(phoneDisabled)
+                .accessibilityLabel(showsReturnToCall ? "回到通话" : "打电话")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 // Upstream's order: 新对话, 历史对话, 换衣装. Items are greyed, never
@@ -87,18 +97,18 @@ struct ChatView: View {
                 }
             }
         }
-        .onChange(of: showCall) { _, isCalling in
-            // A call has her voice; 朗读 lets go of it the moment one starts.
-            if isCalling { app.readAloud.stop() }
-        }
         .onChange(of: conversationID) { app.readAloud.stop() }
+        // What the call wrote is shown at once: its turns, her hang-up, the affinity and
+        // any cooldown (spec「返回刷新」, spec #46).
+        .onChange(of: app.call.state) { _, next in
+            guard case .ended = next else { return }
+            Task { await store?.load() }
+        }
         .onChange(of: app.conversationRevision) {
             Task { await store?.load() }
         }
         .onDisappear {
             app.readAloud.stop()
-            // Leaving the chat page also lets the call's sounds go (spec #35).
-            app.callTones.silence()
         }
         .fullScreenCover(isPresented: $showsOutfits) {
             if let stand = outfitsStand {
@@ -111,14 +121,6 @@ struct ChatView: View {
                     onClose: { showsOutfits = false }
                 )
             }
-        }
-        .fullScreenCover(isPresented: $showCall, onDismiss: {
-            // What the call wrote is shown at once: its turns, her hang-up, the affinity and
-            // any cooldown (spec「返回刷新」).
-            Task { await store?.load() }
-        }) {
-            CallView(character: character)
-                .environment(app)
         }
         .sheet(isPresented: $showHistory) {
             NavigationStack {
@@ -141,7 +143,9 @@ struct ChatView: View {
             autoSendIfRequested(created)
             #if DEBUG
             if app.debugShowsHistory { showHistory = true }
-            if app.debugOpensCall, !created.readOnly { showCall = true }
+            if app.debugOpensCall, !created.readOnly {
+                Task { await app.call.start(character) }
+            }
             #endif
         }
         .task {
@@ -196,12 +200,26 @@ struct ChatView: View {
         #endif
     }
 
+    /// Her own call is the one this page's phone key opens again.
+    private var showsReturnToCall: Bool {
+        app.call.isCalling(character.id) && !(store?.readOnly ?? true)
+    }
+
+    /// A call is under way with someone else, or this conversation can no longer be called:
+    /// the key does nothing. In her own live call it is the way back to it.
+    private var phoneDisabled: Bool {
+        guard let store else { return true }
+        if store.readOnly || store.affinity.cooling { return true }
+        guard app.call.isLive else { return false }
+        return !showsReturnToCall
+    }
+
     /// 新对话 is unusable with nothing to leave behind, while a reply is being written,
     /// or during a call. In a past conversation it is usable unless the current page is
     /// still waiting on a reply: it goes back to the current one and starts another
     /// (spec #37).
     private var newConversationIsEnabled: Bool {
-        guard let store, !showCall, store.canStartNewConversation else { return false }
+        guard let store, !app.call.isCalling(character.id), store.canStartNewConversation else { return false }
         return !store.isPast || !currentTurnInFlight
     }
 
@@ -469,7 +487,8 @@ struct ChatView: View {
                         }
                     }
                 }
-                if let line, let speech = ReadAloud.speech(
+                // Her voice is the call's while one is up; 朗读 waits for it to end.
+                if let line, !app.call.isLive, let speech = ReadAloud.speech(
                     of: segments, model: app.chatSettings.fishModel
                 ), let voice = app.readAloudVoice(for: character) {
                     readAloudButton(speech, line: line, voice: voice)
@@ -537,6 +556,7 @@ struct ChatView: View {
 
     private func inputBar(_ store: ChatStore) -> some View {
         @Bindable var store = store
+        let calling = app.call.isCalling(character.id)
         return VStack(spacing: 8) {
             if !app.chatSettings.isConfigured {
                 Text("先在设置里填写对话模型，才能开始对话。")
@@ -548,7 +568,7 @@ struct ChatView: View {
                 TextField("说点什么", text: $store.input, axis: .vertical)
                     .lineLimit(1...5)
                     .textFieldStyle(.plain)
-                    .disabled(store.affinity.cooling)
+                    .disabled(store.affinity.cooling || calling)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
@@ -574,7 +594,8 @@ struct ChatView: View {
                     !store.isStreaming
                         && (store.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             || !app.chatSettings.isConfigured
-                            || store.affinity.cooling)
+                            || store.affinity.cooling
+                            || calling)
                 )
             }
         }

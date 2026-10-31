@@ -21,6 +21,7 @@
 		3B581C7316F3F7567E6CF0E1 /* StandThumbnails.swift in Sources */ = {isa = PBXBuildFile; fileRef = F51D53D2BDB3163C8344025C /* StandThumbnails.swift */; };
 		410F91B39B617580D97D62F3 /* hang-up.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 3426738E4DA43CD7060B7095 /* hang-up.mp3 */; };
 		4235DD89FDB9280BFC39D5E1 /* BarCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85A4199D7AAE978829BFEC9 /* BarCanvas.swift */; };
+		4712F704044E74983A1AF649 /* CallController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CFD4688849D1738F874DEB1 /* CallController.swift */; };
 		4B6C40186ED37643BD5ED1EE /* BarSound.swift in Sources */ = {isa = PBXBuildFile; fileRef = D97FA6838C4D87D4724543C3 /* BarSound.swift */; };
 		502DA124FF6C85F5C69F0991 /* connect.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 31FDC61716128573E91E0E66 /* connect.m4a */; };
 		50FF16442DF243C8411FF741 /* SonioxRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */; };
@@ -34,6 +35,7 @@
 		9221A0F68F374BAAA5282CCE /* MemoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B94AA6A4C5655585B24D2400 /* MemoryListView.swift */; };
 		92E1F6607762968CB4BD184B /* BarRoomBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B9D77576080818CADE3BD64 /* BarRoomBackground.swift */; };
 		99CF59ED1AC1CDDA579652C8 /* BarDoor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22B001CEBA8E13B70A91DA53 /* BarDoor.swift */; };
+		9A5CB0693E72A1A500267358 /* CallBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D6B5CE0ADDE78E895BA3509 /* CallBar.swift */; };
 		9C1DDAAE28F34ADE34D50C28 /* CallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A530040A28709F9772A80A94 /* CallView.swift */; };
 		9DE409627BE4363A227DD407 /* ConversationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40B7B5AA3042F29A949E938 /* ConversationListView.swift */; };
 		9E2C6AC25E575F7C295ADD54 /* BarVisitState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74FD1739419C49E74E2FE9D0 /* BarVisitState.swift */; };
@@ -84,8 +86,10 @@
 		38B53BAD43DC896CF33D1635 /* BarCounter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarCounter.swift; sourceTree = "<group>"; };
 		3E8A9D366A002F554C2BAE80 /* CREDITS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CREDITS.md; sourceTree = "<group>"; };
 		4472CA53E92E225069B1D652 /* FishSynthesis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FishSynthesis.swift; sourceTree = "<group>"; };
+		4D6B5CE0ADDE78E895BA3509 /* CallBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallBar.swift; sourceTree = "<group>"; };
 		502579B7DFF941BAC28ADE49 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		54B11631789B9A8BDAE83193 /* stand-player.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "stand-player.js"; sourceTree = "<group>"; };
+		5CFD4688849D1738F874DEB1 /* CallController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallController.swift; sourceTree = "<group>"; };
 		68007D7CBD92A33E2B3D28B0 /* ringback.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = ringback.mp3; sourceTree = "<group>"; };
 		699260EC8FFFC02E174467D0 /* ChatReadAloud.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatReadAloud.swift; sourceTree = "<group>"; };
 		6B9D77576080818CADE3BD64 /* BarRoomBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarRoomBackground.swift; sourceTree = "<group>"; };
@@ -179,6 +183,8 @@
 		625C6D73570D8E7071EBD5D4 /* Call */ = {
 			isa = PBXGroup;
 			children = (
+				4D6B5CE0ADDE78E895BA3509 /* CallBar.swift */,
+				5CFD4688849D1738F874DEB1 /* CallController.swift */,
 				A530040A28709F9772A80A94 /* CallView.swift */,
 			);
 			path = Call;
@@ -508,6 +514,8 @@
 				4B6C40186ED37643BD5ED1EE /* BarSound.swift in Sources */,
 				8F700315EAE8C6E59429BD0F /* BarTextBox.swift in Sources */,
 				9E2C6AC25E575F7C295ADD54 /* BarVisitState.swift in Sources */,
+				9A5CB0693E72A1A500267358 /* CallBar.swift in Sources */,
+				4712F704044E74983A1AF649 /* CallController.swift in Sources */,
 				BBCD2E47044DFC5DAB92ED57 /* CallSettingsError.swift in Sources */,
 				2CAA8739C8F32538D08118CF /* CallTonesPlayer.swift in Sources */,
 				9C1DDAAE28F34ADE34D50C28 /* CallView.swift in Sources */,

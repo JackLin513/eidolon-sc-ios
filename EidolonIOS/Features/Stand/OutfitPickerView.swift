@@ -20,6 +20,7 @@ struct OutfitPickerView: View {
     /// dismiss can reach past this sheet to the call (and the chat under it).
     let onClose: () -> Void
 
+    @Environment(AppModel.self) private var app
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -77,6 +78,10 @@ struct OutfitPickerView: View {
 
             VStack(spacing: 0) {
                 titleBar
+                CallBar()
+                    .onChange(of: app.call.layer) { _, layer in
+                        if layer == .expanded { onClose() }
+                    }
                 ScrollView {
                     VStack(spacing: 22) {
                         preview
