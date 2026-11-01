@@ -3,7 +3,8 @@ what admins change in the admin console (ADR-0013). It is the admin console's on
 read and change the configuration.
 
 The configuration is in items, each a few fields saved and restored together: the chat
-and memory models, speech synthesis and recognition, image generation (`_Image`), the
+and memory models, speech synthesis and recognition, image generation (`_Image`) and GPT
+Image beside it (`_GptImage`), the
 judge model and its thresholds,
 the reranker's thresholds, and the limits (per hour, per call, and the turns each prompt
 carries, with the exempting keys), whether affinity and gifts are on, whether characters
@@ -75,6 +76,7 @@ from eidolon.config import (
     FISH_AUDIO_MODELS,
     BailianJudgeSettings,
     CloudflareJudgeSettings,
+    GptImageSettings,
     ImageSettings,
     JevSettings,
     JudgeSettings,
@@ -112,8 +114,11 @@ from eidolon.affinity_judge import ModelAffinityJudge
 from eidolon.emotion import EmotionJudging, ModelEmotionJudge
 from eidolon.image_generation import (
     GENERATION_TIMEOUT,
+    GPT_GENERATION_TIMEOUT,
+    GptImageGenerator,
     ImageFailed,
     ImageGenerator,
+    try_gpt_image,
     try_image_service,
 )
 from eidolon.judge import (
@@ -147,6 +152,7 @@ MEMORY_LLM = "memory_llm"
 TTS = "tts"
 STT = "stt"
 IMAGE = "image"
+GPT_IMAGE = "gpt_image"
 JUDGE = "judge"
 JUDGE_THRESHOLDS = "judge_thresholds"
 RERANK = "rerank"
@@ -520,6 +526,41 @@ class _Image(_Item):
             raise ConfigRejected("还没有生图的 key，请填写")
         try:
             await try_image_service(ImageGenerator(_image(values), self.c._images))
+        except ImageFailed as e:
+            raise ConfigRejected(e.detail[:MAX_REASON_LENGTH]) from None
+        return values, None
+
+
+class _GptImage(_Item):
+    """GPT Image (GLOSSARY.md「生图」), for moments' pictures no one is in: where, with which
+    key and model, at which quality, in which art style; off without a key. Tried as image
+    generation is, on one picture of fixed scenery."""
+
+    name = GPT_IMAGE
+    fields = ("base_url", "api_key", "model", "quality", "style")
+    secrets = frozenset({"api_key"})
+
+    def env(self) -> Values:
+        gpt = self.c.settings.gpt_image
+        values = asdict(gpt or GptImageSettings(""))
+        return values | {"api_key": gpt.api_key if gpt else None}
+
+    def normalized(self, change: Values) -> Values:
+        """An address without its trailing slash; an art style left out or empty is the
+        default one."""
+        style = (change.get("style") or "").strip()
+        change = change | {"style": style or GptImageSettings("").style}
+        if "base_url" in change:
+            change["base_url"] = change["base_url"].rstrip("/")
+        return change
+
+    async def tried(self, values: Values) -> tuple[Values, Any]:
+        if values == self.c.effective(self.name):
+            return values, None
+        if not values["api_key"]:
+            raise ConfigRejected("还没有 GPT Image 的 key，请填写")
+        try:
+            await try_gpt_image(GptImageGenerator(_gpt_image(values), self.c._gpt_images))
         except ImageFailed as e:
             raise ConfigRejected(e.detail[:MAX_REASON_LENGTH]) from None
         return values, None
@@ -913,6 +954,7 @@ PROXY_LABELS: dict[ProxiedService, str] = {
     "tts": "语音合成",
     "stt": "语音识别",
     "image": "生图",
+    "gpt_image": "GPT Image",
     "own_llm": "自带的 LLM",
     "own_tts": "自带的语音合成",
     "own_stt": "自带的语音识别",
@@ -1067,6 +1109,7 @@ class LiveConfig:
         routes: ProxyRoutes | None = None,
         reach: Reach = reach_provider,
         image_client: httpx.AsyncClient | None = None,
+        gpt_image_client: httpx.AsyncClient | None = None,
         qweather_transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         """The overrides are kept in the database `db` is on. The chat, memory and judge
@@ -1074,12 +1117,16 @@ class LiveConfig:
         `activity`; `speech` tries the keys for speech synthesis
         and recognition. Each service goes through the proxy or direct as `routes` have
         it, kept to the proxy settings in effect; a change to them is tried by `reach`.
-        Image generation is on `image_client`, by default the routes' for it; QWeather is
+        Image generation is on `image_client`, GPT Image on `gpt_image_client`, by default
+        the routes' for each; QWeather is
         asked over `qweather_transport`, by default its own (`qweather`)."""
         self.settings = settings
         self._clients = clients
         self._routes = routes or ProxyRoutes(settings.proxy)
         self._images = image_client or self._routes.client("image", GENERATION_TIMEOUT)
+        self._gpt_images = gpt_image_client or self._routes.client(
+            "gpt_image", GPT_GENERATION_TIMEOUT
+        )
         self._reach = reach
         self._clock = clock
         self._speech = speech
@@ -1096,7 +1143,7 @@ class LiveConfig:
             for item in (
                 # The proxy first: as the server starts, the services are tried through it.
                 _Proxy(self), _ChatLLM(self), _MemoryLLM(self), _TTS(self), _STT(self),
-                _Image(self), _Judge(self), _JudgeThresholds(self), _Rerank(self),
+                _Image(self), _GptImage(self), _Judge(self), _JudgeThresholds(self), _Rerank(self),
                 _Limits(self), _Affinity(self), _ReachOuts(self), _Letters(self), _Moments(self), _QWeather(self), _Schedule(self),
                 _Cycles(self), _Bar(self), _ServiceStatus(self), _Registration(self),
             )
@@ -1314,6 +1361,25 @@ class LiveConfig:
         """The deployer's image generation in effect now, to generate on; None without it."""
         settings = self.image_settings
         return None if settings is None else ImageGenerator(settings, self._images)
+
+    @property
+    def gpt_image_settings(self) -> GptImageSettings | None:
+        """GPT Image in effect now; None without its key."""
+        values = self.effective(GPT_IMAGE)
+        return _gpt_image(values) if values["api_key"] else None
+
+    @property
+    def gpt_image_style(self) -> str:
+        """The art style GPT Image draws in now, configured or not."""
+        return self.effective(GPT_IMAGE)["style"]
+
+    def gpt_image_generator(self) -> GptImageGenerator | None:
+        """GPT Image in effect now, to generate moments' pictures no one is in on, only
+        beside the deployer's image generation; None without either."""
+        settings = self.gpt_image_settings
+        if settings is None or self.image_settings is None:
+            return None
+        return GptImageGenerator(settings, self._gpt_images)
 
     @property
     def registration(self) -> Registration:
@@ -1640,6 +1706,8 @@ class LiveConfig:
             targets["stt"] = PROVIDER_URLS[where]
         if (image := self.image_settings) is not None:
             targets["image"] = image.base_url
+        if (gpt := self.gpt_image_settings) is not None:
+            targets["gpt_image"] = gpt.base_url
         return targets
 
     async def _reach_changed(self, before: ProxySettings, after: ProxySettings) -> None:
@@ -1917,6 +1985,10 @@ def _llm(values: Values) -> LLMSettings:
 
 def _image(values: Values) -> ImageSettings:
     return ImageSettings(**{field: values[field] for field in _Image.fields})
+
+
+def _gpt_image(values: Values) -> GptImageSettings:
+    return GptImageSettings(**{field: values[field] for field in _GptImage.fields})
 
 
 def _qweather(values: Values) -> QWeatherSettings:

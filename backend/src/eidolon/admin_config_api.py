@@ -15,6 +15,7 @@ from eidolon.config import (
     MAX_IMAGE_CONCURRENCY,
     BailianRegion,
     FishAudioModel,
+    GptImageQuality,
     ImageFormat,
     JudgeProvider,
     LLMProtocol,
@@ -26,6 +27,7 @@ from eidolon.live_config import (
     BAR,
     CHAT_LLM,
     CYCLES,
+    GPT_IMAGE,
     IMAGE,
     JUDGE,
     JUDGE_THRESHOLDS,
@@ -121,6 +123,20 @@ class ImageInput(BaseModel):
     api_key: str | None = ApiKey
 
     _trim = field_validator("base_url", "model")(_trimmed)
+
+
+class GptImageInput(BaseModel):
+    """GPT Image; without `api_key`, its key stays as it is. An art style left out or empty
+    is the default one."""
+
+    base_url: str = Field(min_length=1, max_length=500)
+    model: str = Field(min_length=1, max_length=200)
+    quality: GptImageQuality
+    style: str | None = Field(None, max_length=1000)
+    api_key: str | None = ApiKey
+
+    _trim = field_validator("model")(_trimmed)
+    _base_url = field_validator("base_url")(checked_base_url)
 
 
 class JudgeInput(BaseModel):
@@ -251,6 +267,7 @@ class ProxyInput(BaseModel):
     tts: StrictBool
     stt: StrictBool
     image: StrictBool
+    gpt_image: StrictBool
     own_llm: StrictBool
     own_tts: StrictBool
     own_stt: StrictBool
@@ -284,6 +301,7 @@ INPUTS: dict[str, type[BaseModel]] = {
     TTS: TTSInput,
     STT: STTInput,
     IMAGE: ImageInput,
+    GPT_IMAGE: GptImageInput,
     JUDGE: JudgeInput,
     JUDGE_THRESHOLDS: JudgeThresholdsInput,
     RERANK: RerankInput,

@@ -353,7 +353,7 @@ describe("tried", () => {
     const tried = Object.entries(ITEM_SPECS)
       .filter(([, spec]) => spec.tried)
       .map(([name]) => name);
-    expect(tried).toEqual(["chat_llm", "memory_llm", "tts", "stt", "judge", "image", "qweather", "proxy"]);
+    expect(tried).toEqual(["chat_llm", "memory_llm", "tts", "stt", "judge", "image", "gpt_image", "qweather", "proxy"]);
   });
 });
 
@@ -442,6 +442,43 @@ describe("image", () => {
     const listed = image.form.find((field) => field.name === "model")?.options ?? [];
     expect(modelChoice(listed, "nai-diffusion-4-5-full")).toBe("nai-diffusion-4-5-full");
     expect(modelChoice(listed, "relay-model")).toBe(CUSTOM_MODEL);
+  });
+});
+
+describe("GPT Image", () => {
+  const gpt = ITEM_SPECS.gpt_image;
+  const effective: Shown = {
+    base_url: "https://api.openai.com/v1",
+    api_key_last4: "9876",
+    model: "gpt-image-2",
+    quality: "medium",
+    style: "Flat cel-shaded anime background art.",
+  };
+  const form = formOf(gpt, effective);
+
+  it("sits beside image generation, with a proxy switch of its own after it", () => {
+    expect(TAB_ITEMS.image).toEqual(["image", "gpt_image"]);
+    expect(PROXIED_SERVICES.indexOf("gpt_image")).toBe(PROXIED_SERVICES.indexOf("image") + 1);
+  });
+
+  it("sends the address, the model, a quality chosen and the art style, an emptied one as none", () => {
+    expect(form).toEqual({
+      base_url: "https://api.openai.com/v1",
+      model: "gpt-image-2",
+      quality: "medium",
+      style: "Flat cel-shaded anime background art.",
+      api_key: "",
+    });
+    expect(changeOf(gpt, { ...form, quality: "high", style: " ", api_key: "sk-new" }, true)).toEqual({
+      change: {
+        base_url: "https://api.openai.com/v1",
+        model: "gpt-image-2",
+        quality: "high",
+        style: null,
+        api_key: "sk-new",
+      },
+    });
+    expect(changeOf(gpt, { ...form, model: " " }, true)).toEqual({ problems: [{ field: "model", reason: "required" }] });
   });
 });
 

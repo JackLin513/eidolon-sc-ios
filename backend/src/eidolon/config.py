@@ -54,12 +54,13 @@ REGISTRATIONS: tuple[Registration, ...] = get_args(Registration)
 
 ProxiedService = Literal[
     "chat_llm", "memory_llm", "judge", "embedding", "rerank", "tts", "stt", "image",
-    "own_llm", "own_tts", "own_stt", "own_image",
+    "gpt_image", "own_llm", "own_tts", "own_stt", "own_image",
 ]
 """What may reach its provider through the proxy (GLOSSARY.md「网络代理」): the deployer's
 services, the chat model, in text turns and calls alike; the memory model; the judge
 model, whichever; the embedding service and the reranker; Fish Audio; the speech
-recognition chosen; image generation, wherever it is. Then users' own keys, apart from the
+recognition chosen; image generation, wherever it is, and GPT Image apart from it, OpenAI
+wanting a proxy where a relay of NovelAI may not. Then users' own keys, apart from the
 deployer's, their providers being their own: their LLMs, background models too, though only
 to a known provider's host (GLOSSARY.md「已知服务商」, ADR-0022); Fish Audio; the speech
 recognition they chose; image generation, though only to NovelAI's own address."""
@@ -252,6 +253,20 @@ format, as other relays do. Chosen by whoever configures it, never found out."""
 IMAGE_FORMATS: tuple[ImageFormat, ...] = get_args(ImageFormat)
 MAX_IMAGE_CONCURRENCY = 10
 """The most photos the deployer's image key may be set to generate at a time."""
+
+DEFAULT_GPT_IMAGE_BASE_URL = "https://api.openai.com/v1"
+DEFAULT_GPT_IMAGE_MODEL = "gpt-image-2"
+GptImageQuality = Literal["low", "medium", "high", "auto", "xhigh", "max"]
+"""How carefully GPT Image draws: what OpenAI takes, `xhigh` and `max` from its 2.5 models on."""
+GPT_IMAGE_QUALITIES: tuple[GptImageQuality, ...] = get_args(GptImageQuality)
+DEFAULT_GPT_IMAGE_QUALITY: GptImageQuality = "medium"
+DEFAULT_GPT_IMAGE_STYLE = (
+    "Flat cel-shaded anime background art, like a background painting from a TV anime:"
+    " clean line art, cel shading, simplified shapes and details, soft flat colors. It must"
+    " look hand-drawn, never photographic: no lens effects, no HDR, no photo-real textures."
+)
+"""The art style GPT Image draws a moment's picture no one is in in, unless the deployer
+writes another."""
 
 DEFAULT_ICE_SERVERS: list[IceServer] = [{"urls": ["stun:stun.l.google.com:19302"]}]
 
@@ -463,6 +478,8 @@ class Settings:
     """The deployer's QWeather account, for where the producer is; None without it."""
     image: "ImageSettings | None" = None
     """The deployer's image generation (GLOSSARY.md「生图」), for photos; None without it."""
+    gpt_image: "GptImageSettings | None" = None
+    """GPT Image, for moments' pictures no one is in, beside `image`; None without it."""
     judge: "JudgeSettings | None" = None
     """The judge model (`JUDGE_PROVIDER`). Retrieval needs the embedding service, the
     reranker and the judge model; without any of them, turns go unretrieved. Without the
@@ -599,6 +616,7 @@ class Settings:
             embedding=EmbeddingSettings.from_env(),
             rerank=RerankSettings.from_env(),
             image=ImageSettings.from_env(),
+            gpt_image=GptImageSettings.from_env(),
             qweather=QWeatherSettings.from_env(),
             judge=judge_from_env(),
             emotion=EmotionSettings.from_env(),
@@ -1037,6 +1055,46 @@ class ImageSettings:
             concurrency=int(concurrency),
             style=(os.environ.get("NOVELAI_STYLE") or "").strip(),
         )
+
+
+@dataclass(frozen=True)
+class GptImageSettings:
+    """GPT Image (GLOSSARY.md「生图」), for moments' pictures no one is in: in OpenAI's image
+    format, `base_url` up to `/v1` (`/images/generations`), gpt-image-2 or later, which take
+    any size; at `quality`, in the art style `style`, a sentence opening every prompt. One at
+    a time, always."""
+
+    api_key: str
+    base_url: str = DEFAULT_GPT_IMAGE_BASE_URL
+    model: str = DEFAULT_GPT_IMAGE_MODEL
+    quality: GptImageQuality = DEFAULT_GPT_IMAGE_QUALITY
+    style: str = DEFAULT_GPT_IMAGE_STYLE
+
+    @classmethod
+    def from_env(cls) -> "GptImageSettings | None":
+        """`GPT_IMAGE_API_KEY`, without which there is none, `GPT_IMAGE_BASE_URL`,
+        `GPT_IMAGE_MODEL`, `GPT_IMAGE_QUALITY` and `GPT_IMAGE_STYLE`."""
+        api_key = (os.environ.get("GPT_IMAGE_API_KEY") or "").strip()
+        if not api_key:
+            return None
+        quality = (os.environ.get("GPT_IMAGE_QUALITY") or "").strip() or DEFAULT_GPT_IMAGE_QUALITY
+        if quality not in GPT_IMAGE_QUALITIES:
+            raise RuntimeError(
+                f"环境变量 GPT_IMAGE_QUALITY 只能是 {'、'.join(GPT_IMAGE_QUALITIES)}，而不是 {quality}"
+            )
+        return cls(
+            api_key=api_key,
+            base_url=(os.environ.get("GPT_IMAGE_BASE_URL") or "").strip().rstrip("/")
+            or DEFAULT_GPT_IMAGE_BASE_URL,
+            model=(os.environ.get("GPT_IMAGE_MODEL") or "").strip() or DEFAULT_GPT_IMAGE_MODEL,
+            quality=quality,  # pyright: ignore[reportArgumentType]  # checked above
+            style=gpt_image_style_from_env(),
+        )
+
+
+def gpt_image_style_from_env() -> str:
+    """`GPT_IMAGE_STYLE`, or the default art style for GPT Image, with a key or without."""
+    return (os.environ.get("GPT_IMAGE_STYLE") or "").strip() or DEFAULT_GPT_IMAGE_STYLE
 
 
 @dataclass(frozen=True)
