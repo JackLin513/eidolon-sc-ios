@@ -25,8 +25,8 @@ final class ChatStore {
     private(set) var ended = false
     /// A past conversation, opened to look at: read-only, always.
     private(set) var isPast = false
-    /// The conversation this store shows; nil for the current one.
-    private let conversationID: String?
+    /// The past conversation this store was opened with; nil for the current one.
+    private let pastConversationID: String?
     /// The conversation the page is actually on: the past one it was opened with, or the
     /// current one it resolved. nil before there has ever been a conversation. The debug
     /// page works on this one (spec #62).
@@ -41,7 +41,7 @@ final class ChatStore {
     init(character: CharacterConfig, core: Eidolon, conversationID: String? = nil) {
         self.character = character
         self.core = core
-        self.conversationID = conversationID
+        self.pastConversationID = conversationID
     }
 
     var readOnly: Bool { isPast || ended }
@@ -78,7 +78,7 @@ final class ChatStore {
         var reading = Snapshot()
         do {
             var conversation: String?
-            if let conversationID, let past = try await core.conversation(id: conversationID) {
+            if let pastConversationID, let past = try await core.conversation(id: pastConversationID) {
                 reading.messages = past.messages
                 reading.ended = past.ended
                 reading.isPast = true

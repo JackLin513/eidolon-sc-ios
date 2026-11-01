@@ -597,6 +597,33 @@ extension Eidolon {
 
     // MARK: - Affinity
 
+    /// Writes her affinity and the day's gain counters in one upsert. A turn and the
+    /// debug page both do exactly this; the bar and the schedule raise her without
+    /// touching the day's allowance, so they keep their own statement.
+    static func writeAffinity(
+        _ db: Database,
+        characterID: String,
+        value: Double,
+        cooling: Bool,
+        updatedAt: String,
+        gainedToday: Double,
+        gainedOn: String?
+    ) throws {
+        try db.execute(
+            sql: """
+                INSERT INTO affinities(character_id, value, cooling, updated_at, gained_today, gained_on)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(character_id) DO UPDATE SET
+                    value = excluded.value, cooling = excluded.cooling,
+                    updated_at = excluded.updated_at,
+                    gained_today = excluded.gained_today, gained_on = excluded.gained_on
+                """,
+            arguments: [
+                characterID, value, cooling ? 1 : 0, updatedAt, gainedToday, gainedOn,
+            ]
+        )
+    }
+
     func readAffinity(characterID: String, now: Date) throws -> Affinity {
         try userQueue.read { db in
             try Self.readAffinity(db, characterID: characterID, now: now)
@@ -989,19 +1016,14 @@ extension Eidolon {
             let change = before.change(to: after)
             let rose = max(after.value - before.value, 0)
             let gainedToday = gainedBefore + min(max(step, 0), rose)
-            try db.execute(
-                sql: """
-                    INSERT INTO affinities(character_id, value, cooling, updated_at, gained_today, gained_on)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(character_id) DO UPDATE SET
-                        value = excluded.value, cooling = excluded.cooling,
-                        updated_at = excluded.updated_at,
-                        gained_today = excluded.gained_today, gained_on = excluded.gained_on
-                    """,
-                arguments: [
-                    characterID, after.value, after.cooling ? 1 : 0, replyStamp,
-                    gainedToday, day,
-                ]
+            try Self.writeAffinity(
+                db,
+                characterID: characterID,
+                value: after.value,
+                cooling: after.cooling,
+                updatedAt: replyStamp,
+                gainedToday: gainedToday,
+                gainedOn: day
             )
 
             // What this turn took off her is a typed turn's to record: a call keeps it

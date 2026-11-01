@@ -22,18 +22,14 @@ extension Eidolon {
         let clamped = min(max(value, AffinityRules.lowest), AffinityRules.highest)
         let cooling = clamped <= AffinityRules.lowest
         try userQueue.write { db in
-            try db.execute(
-                sql: """
-                    INSERT INTO affinities(character_id, value, cooling, updated_at, gained_today, gained_on)
-                    VALUES (?, ?, ?, ?, 0, NULL)
-                    ON CONFLICT(character_id) DO UPDATE SET
-                        value = excluded.value, cooling = excluded.cooling,
-                        updated_at = excluded.updated_at,
-                        gained_today = excluded.gained_today, gained_on = excluded.gained_on
-                    """,
-                arguments: [
-                    characterID, clamped, cooling ? 1 : 0, Self.timestamp(now),
-                ]
+            try Self.writeAffinity(
+                db,
+                characterID: characterID,
+                value: clamped,
+                cooling: cooling,
+                updatedAt: Self.timestamp(now),
+                gainedToday: 0,
+                gainedOn: nil
             )
         }
     }
@@ -122,18 +118,8 @@ extension Eidolon {
     public func debugDeleteMemories(ids: [String]) async throws -> Int {
         guard !ids.isEmpty else { return 0 }
         await settleMemories()
-        let marks = Array(repeating: "?", count: ids.count).joined(separator: ",")
-        let arguments = StatementArguments(ids)
         return try await userQueue.write { db in
-            try db.execute(
-                sql: "DELETE FROM memory_vectors WHERE memory_id IN (\(marks))",
-                arguments: arguments
-            )
-            try db.execute(
-                sql: "DELETE FROM memories WHERE id IN (\(marks))",
-                arguments: arguments
-            )
-            return db.changesCount
+            try Self.deleteMemoryRows(db, ids: ids)
         }
     }
 

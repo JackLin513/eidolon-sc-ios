@@ -40,6 +40,7 @@ public enum AffinityTier: String, Codable, Sendable, CaseIterable, Hashable {
         }
     }
 
+    /// The tier a value falls in; the debug page uses it for the value under the slider.
     public static func of(_ value: Double) -> AffinityTier {
         AffinityTier.allCases.last { value >= $0.start } ?? .cold
     }

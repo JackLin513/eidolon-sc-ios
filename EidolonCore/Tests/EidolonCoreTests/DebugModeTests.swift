@@ -195,6 +195,31 @@ final class DebugModeTests: XCTestCase {
         XCTAssertEqual(stillLeft.map(\.text), ["制作人喜欢咖啡"])
     }
 
+    // MARK: - Current pointer
+
+    func testCreatingAConversationPointsAtIt() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("こんにちは", provider: reply(), on: eidolon)
+        let firstSnapshot = try await eidolon.currentConversation(characterID: "mano")
+        let first = try XCTUnwrap(firstSnapshot)
+        let firstPointer: String? = try await eidolon.userQueue.read { db in
+            try String.fetchOne(
+                db,
+                sql: "SELECT conversation_id FROM current_conversations WHERE character_id = 'mano'"
+            )
+        }
+        XCTAssertEqual(firstPointer, first.id)
+
+        let secondID = try await eidolon.beginNewConversation(characterID: "mano")
+        let secondPointer: String? = try await eidolon.userQueue.read { db in
+            try String.fetchOne(
+                db,
+                sql: "SELECT conversation_id FROM current_conversations WHERE character_id = 'mano'"
+            )
+        }
+        XCTAssertEqual(secondPointer, secondID)
+    }
+
     // MARK: - Conversations
 
     func testDebugReopenMakesAnEndedConversationWritableAgain() async throws {
@@ -313,4 +338,117 @@ final class DebugModeTests: XCTestCase {
         let written = try await eidolon.conversation(id: ended.id)
         XCTAssertEqual(written?.messages.count, ended.messages.count + 2)
     }
+
+    func testDebugAffinityLeavesTheStoryAlone() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("こんにちは", provider: reply(), on: eidolon)
+        let snapshotValue = try await eidolon.currentConversation(characterID: "mano")
+        let snapshot = try XCTUnwrap(snapshotValue)
+        let beforeMessages = snapshot.messages.count
+        let beforeRecord = try await eidolon.conversationRecord(conversationID: snapshot.id)
+        let beforeEvents = beforeRecord.filter { line in
+            if case .event = line { return true }
+            return false
+        }.count
+        let beforeTraces = try await eidolon.turnTraces().count
+
+        try await eidolon.debugSetAffinity(characterID: "mano", value: 90)
+
+        let afterValue = try await eidolon.conversation(id: snapshot.id)
+        let after = try XCTUnwrap(afterValue)
+        XCTAssertEqual(after.messages.count, beforeMessages)
+        let afterRecord = try await eidolon.conversationRecord(conversationID: snapshot.id)
+        let afterEvents = afterRecord.filter { line in
+            if case .event = line { return true }
+            return false
+        }.count
+        XCTAssertEqual(afterEvents, beforeEvents)
+        let afterTraces = try await eidolon.turnTraces().count
+        XCTAssertEqual(afterTraces, beforeTraces)
+    }
+
+    func testANewConversationAfterADebugMoveBecomesCurrent() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("最初の話", provider: reply(), on: eidolon)
+        let firstSnapshot = try await eidolon.currentConversation(characterID: "mano")
+        let first = try XCTUnwrap(firstSnapshot)
+        let secondID = try await eidolon.beginNewConversation(characterID: "mano")
+
+        let moved = try await eidolon.debugSetCurrentConversation(characterID: "mano", id: first.id)
+        XCTAssertTrue(moved)
+        let thirdID = try await eidolon.beginNewConversation(characterID: "mano")
+
+        XCTAssertNotEqual(thirdID, secondID)
+        let current = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertEqual(current?.id, thirdID)
+        let summaries = try await eidolon.conversations(characterID: "mano")
+        XCTAssertEqual(summaries.first?.id, thirdID)
+        XCTAssertTrue(summaries.first?.isCurrent == true)
+        XCTAssertEqual(summaries.first { $0.id == first.id }?.isCurrent, false)
+    }
+
+    func testDebugSetCurrentRefusesAConversationOfAnotherCharacter() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("やあ", to: "mano", provider: reply(), on: eidolon)
+        let handoverValue = try await eidolon.currentConversation(characterID: "mano")
+        let handover = try XCTUnwrap(handoverValue)
+
+        let moved = try await eidolon.debugSetCurrentConversation(
+            characterID: "hiori", id: handover.id
+        )
+        XCTAssertFalse(moved)
+        let current = try await eidolon.currentConversation(characterID: "mano")
+        XCTAssertEqual(current?.id, handover.id)
+    }
+
+    func testDebugMemoriesWaitsForAMemoryStillBeingWritten() async throws {
+        let eidolon = try await installedEidolon()
+        let provider = SlowMemoryChatProvider(
+            memory: #"{"memories": [{"text": "制作人养了一只猫"}]}"#,
+            delay: .milliseconds(200)
+        )
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano",
+            text: "猫を飼ってるんだ",
+            provider: provider,
+            embedder: FakeEmbedding(vector: [1, 0, 0, 0]),
+            reranker: FakeRerank(scores: [0.9])
+        ) {}
+        let snapshotValue = try await eidolon.currentConversation(characterID: "mano")
+        let snapshot = try XCTUnwrap(snapshotValue)
+
+        // Nothing settles the job first: the debug list's own wait has to bring it in.
+        let memories = try await eidolon.debugMemories(conversationID: snapshot.id)
+        XCTAssertEqual(memories.map(\.text), ["制作人养了一只猫"])
+    }
 }
+
+/// Answers the chat at once and the background memory only after `delay`, so a test can
+/// catch the memory while it is still being written.
+private final class SlowMemoryChatProvider: ChatProvider, @unchecked Sendable {
+    private let memory: String
+    private let delay: Duration
+
+    init(memory: String, delay: Duration) {
+        self.memory = memory
+        self.delay = delay
+    }
+
+    func stream(messages: [PromptMessage]) -> AsyncThrowingStream<String, Error> {
+        let extraction = messages.contains {
+            $0.role == .system && $0.content.contains("你负责替")
+        }
+        let text = extraction ? memory : "<ja>うん</ja><zh>嗯</zh>"
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                if extraction {
+                    try? await Task.sleep(for: delay)
+                }
+                continuation.yield(text)
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+}
+
