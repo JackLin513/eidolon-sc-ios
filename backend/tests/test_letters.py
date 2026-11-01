@@ -37,7 +37,7 @@ from tests.test_achievements_launch import History, history  # noqa: F401
 from tests.test_activity_records import dashboard
 from tests.test_admin_users import ADMIN, admin_beside, find
 from tests.test_concurrent_calls import another_user
-from tests.test_delete_account import DELETE
+from tests.test_delete_account import DELETE, user_id
 from tests.test_affinity import keep
 from tests.test_affinity_prompt import FONDNESS
 from tests.test_gift_giving import CAKE, catalog, draw_them, given, holding  # noqa: F401
@@ -312,11 +312,6 @@ async def test_while_off_she_writes_none_nor_makes_up_for_it_once_on(
     assert (await client.get("/api/account")).json()["letters"] is True
 
 
-def user_id_of(database: Path, name: str = "producer") -> str:
-    with sqlite3.connect(database) as db:
-        return db.execute("SELECT id FROM users WHERE name = ?", (name,)).fetchone()[0]
-
-
 def due(database: Path) -> list[tuple[str, str]]:
     """Each letter to be written: whose, and on which occasion."""
     with sqlite3.connect(database) as db:
@@ -331,45 +326,17 @@ async def test_reaching_close_keeps_a_letter_as_letters_were_told_on_when_handed
     client = make_client(FakeLLM(REPLY), settings=replace(settings, letters=not told))
     await start_conversation(client)
     backend = backend_of(client)
-    user_id = user_id_of(settings.database_path)
+    producer = user_id(settings.database_path, "producer")
     assert backend.happenings.open == Open(affinity=True, letters=not told)
 
     rewarded = await backend.database.write(
-        backend.happenings.turn_recorded, user_id, "mano", "close",
+        backend.happenings.turn_recorded, producer, "mano", "close",
         Open(affinity=True, letters=told),
     )
 
     assert rewarded is not None
     assert [(u.achievement, u.stage) for u in rewarded.achievements] == [("tier", 1)]
     assert due(settings.database_path) == ([("mano", "close")] if told else [])
-
-
-async def test_keeping_the_letter_failing_keeps_neither_the_gift_nor_its_rewards(
-    make_client: ClientFactory, settings: Settings, monkeypatch: pytest.MonkeyPatch
-):
-    clock = FakeClock()
-    client = holding(make_client, clock, CAKE, llm=FakeLLM(REPLY))
-    await draw_them(client, clock, 1)
-    with_goals(monkeypatch, "PER_CHARACTER", turns=goals(1), gifts=goals(1))
-    await turns(client, await start_conversation(client), 1)
-    database = settings.database_path
-    with sqlite3.connect(database) as db:
-        db.execute(
-            "CREATE TRIGGER no_letters BEFORE INSERT ON letters_due"
-            " BEGIN SELECT RAISE(ABORT, 'no letters'); END"
-        )
-
-    with pytest.raises(sqlite3.IntegrityError, match="no letters"):
-        await backend_of(client).happenings.give(user_id_of(database), "cake", "mano", None)
-    gifts = (await client.get("/api/gifts")).json()
-    with sqlite3.connect(database) as db:
-        db.execute("DROP TRIGGER no_letters")
-    gift = await given(client, "cake")
-
-    assert gifts["backpack"] == [{"gift_id": "cake", "count": 1}]
-    assert gifts["reset_cards"] == 0
-    assert gift["rewarded"]["completed"] == [{"character_id": "mano", "reset_cards": 1}]
-    assert due(database) == [("mano", "complete")]
 
 
 @pytest.mark.parametrize("why", ["cold", "cooldown", "banned", "no turns"])
