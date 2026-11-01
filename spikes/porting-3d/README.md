@@ -86,9 +86,19 @@ $V spikes/porting-3d/export_pose_library.py --index build/mltd-animations.jsonl 
 
 `sync_cache.py` 把「索引 → 扫动作 → 导姿势 → 导衣装」串成一件事，`--loop 900` 可以挂在后台：游戏自己下载进缓存的新包会被自动接手（CDN 现在拒绝匿名下载，只有游戏本身能取）。
 
-### 资源下载的现状
+### 资源下载
 
-`td-assets.bn765.com/<版本>/production/2018/<平台>/<哈希>.unity3d` 现在一律 403：桶 `assetbundles-theaterdays` 已经不允许匿名读，所有版本、iOS/Android 都一样。唯一的合法取用路径是游戏自己（它带着会话去要），所以新资源只能通过在游戏里触发（写真棚、剧场、衣装一览、游戏内下载）进缓存，再由上面的脚本接手。
+```sh
+$V spikes/porting-3d/fetch_assets.py --manifest <manifest .data> \
+   --version 1078400 --platform ios --out build/mltd-spike/assets \
+   --prefix chr_anim_ --prefix cb_ --prefix ch_ --prefix ca_ --jobs 8
+```
+
+清单是 msgpack：`资源名 → [哈希, <哈希>.unity3d, 字节数]`；CDN 地址是 `<版本>/production/2018/<平台>/<文件名>`，需要带游戏的 `X-Unity-Version: 2020.3.32f1` 和 UnityWebRequest UA。下载器按前缀挑、断点续跑（大小不符才重下）、并发可调。
+
+**坑（2026-11-01 踩了两小时）**：同样的 URL 曾一律 403 `AccessDenied`，原因不是桶权限，而是本机 DNS 被 Tailscale MagicDNS 接管、上游解析被污染，请求打到了黑洞 IP；关掉 “Use Tailscale DNS” 后立刻 200。另外部分对象在某个版本里本来就不存在，也会报同一个 403——按报错里的对象名去当前清单里对一下哈希再判断。
+
+清单本身：`curl https://api.matsurihi.me/mltd/v1/version/assets` 给出每个版本的 `indexName`，清单地址是 `<版本>/production/2018/<平台>/<indexName>`。
 
 ### 测试
 

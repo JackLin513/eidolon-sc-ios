@@ -104,5 +104,8 @@ iOS 缓存 bundle (UnityFS)
 - `photo_pose.py` 把这套解成 `eidolon.motion/1`，端上用现有 `MotionPlayback` 就能放。
 
 已验证 `pho_standd_ver01..03` 九段（base 循环 + check/gretng 待机小动作）在模拟器里
-姿势自然、能播放。遗留：其他动作包（cherup、phone、gift、umbre…）还没进缓存，
-要先在游戏里触发对应拍照姿势；`birth_*`、`straw_*` 这些同尺寸包是道具模型。
+姿势自然、能播放。注意 `birth_*`、`straw_*` 这些同尺寸包是道具模型，不是动作。
+
+2026-11-01 追加：CDN 能直连了（之前 403 是 DNS 污染），`fetch_assets.py` 已把
+`chr_anim_*` 全量拉下来（com 653、the 447、pho 189、lgn 32），配合缓存里的
+同名前缀，姿势库从 2,070 条继续往 3,000+ 走。
