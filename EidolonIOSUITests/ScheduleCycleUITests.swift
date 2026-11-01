@@ -49,6 +49,18 @@ final class ScheduleCycleUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["她的日程"].waitForExistence(timeout: 10), "board did not open")
         XCTAssertTrue(app.staticTexts["上午"].exists, "board has no slots")
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS '待排'")).firstMatch.exists,
+            "board has no pending summary"
+        )
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS '还能排'")).firstMatch.exists,
+            "board has no free-cell count"
+        )
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS '24 点后作废'")).firstMatch.exists,
+            "board has no expiry line"
+        )
         let card = app.buttons.matching(identifier: "schedule.card").firstMatch
         guard card.waitForExistence(timeout: 5) else {
             XCTAssertTrue(

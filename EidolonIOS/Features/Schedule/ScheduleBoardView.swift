@@ -149,7 +149,7 @@ struct ScheduleBoardView: View {
                         emptyCard(title: "这周没有工作", body: "这一周没有抽到工作，下周再来看看。")
                     } else {
                         weekGrid(planner)
-                        progressLine(planner)
+                        pendingSummary(planner)
                         cardList(planner)
                         if planner.pendingCount == planner.board.jobs.count, !planner.hasDrafts {
                             Text("还没排工作：点一张工作卡，再点一个空闲的格子。")
@@ -261,12 +261,6 @@ struct ScheduleBoardView: View {
                 Text(character.map { ($0.nameZh ?? $0.name) + "的工作" } ?? "工作")
                     .font(.headline)
                 Spacer()
-                if let planner {
-                    Text("还剩 \(planner.pendingCount) 项")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
             }
         }
     }
@@ -432,19 +426,45 @@ struct ScheduleBoardView: View {
         }
     }
 
-    private func progressLine(_ planner: SchedulePlanner) -> some View {
-        HStack(spacing: 10) {
-            Text("\(planner.board.jobs.count - planner.pendingCount)/\(planner.board.jobs.count) 已排")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-            if planner.hasDrafts {
-                Text("\(planner.drafts.count) 项草稿未保存")
+    /// The pending count, the free cells left, and when the unsaved work expires (spec #59):
+    /// a full week keeps its pending jobs, so the zero free cells explain why they stay.
+    private func pendingSummary(_ planner: SchedulePlanner) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                Text("待排 \(planner.pendingCount) 项")
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+                Text("还能排 \(planner.freeCellCount) 格")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            HStack(spacing: 10) {
+                Text(planner.pendingExpiresTonight ? "今晚 24 点后作废" : "周日 24 点后作废")
+                    .font(.caption)
+                    .foregroundStyle(planner.pendingExpiresTonight ? .primary : .secondary)
+                    .accessibilityIdentifier("schedule.expiry")
+                if planner.hasDrafts {
+                    Text("\(planner.drafts.count) 项草稿未保存")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                Spacer(minLength: 0)
+            }
+            if planner.pendingCount == 0 {
+                Text("本周的工作都排好了")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if planner.selectedJobID != nil, planner.availableCells().isEmpty {
+                Text("这周没有放得下的时间段")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("schedule.noRoom")
+            }
         }
+        .accessibilityIdentifier("schedule.pendingSummary")
     }
 
     private func cardList(_ planner: SchedulePlanner) -> some View {

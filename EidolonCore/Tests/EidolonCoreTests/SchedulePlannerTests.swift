@@ -9,9 +9,11 @@ final class SchedulePlannerTests: XCTestCase {
     private let now = ISO8601DateFormatter().date(from: "2026-11-02T00:00:00Z")! // 09:00 JST
 
     private func job(
-        _ id: String, name: String = "工作", length: Int = 1, slots: [ScheduleSlot]? = nil
+        _ id: String, name: String = "工作", length: Int = 1, slots: [ScheduleSlot]? = nil,
+        week: CalendarDay? = nil
     ) -> WeeklyJob {
-        WeeklyJob(
+        let week = week ?? self.week
+        return WeeklyJob(
             id: "\(week.stamp):\(id)", week: week, characterID: "mano", listedID: id,
             name: name, note: "说明。", category: .practice, length: length, slots: slots
         )
@@ -20,20 +22,23 @@ final class SchedulePlannerTests: XCTestCase {
     private func planner(
         jobs: [WeeklyJob], placements: [SchedulePlacement] = [],
         drafts: [PlacementInput] = [], selected: String? = nil,
-        reasons: [String: String] = [:]
+        reasons: [String: String] = [:], boardWeek: CalendarDay? = nil,
+        now: Date? = nil
     ) -> SchedulePlanner {
         let board = ScheduleBoard(
-            week: week, isCurrent: true, jobs: jobs, placements: placements
+            week: boardWeek ?? week, isCurrent: true, jobs: jobs, placements: placements
         )
         return SchedulePlanner(
-            board: board, now: now, timeZone: tokyo, thisWeek: week,
+            board: board, now: now ?? self.now, timeZone: tokyo, thisWeek: week,
             drafts: drafts, selectedJobID: selected, reasons: reasons
         )
     }
 
-    private func placement(_ job: WeeklyJob, day: Int, slot: Int) -> SchedulePlacement {
+    private func placement(
+        _ job: WeeklyJob, day: Int, slot: Int, week: CalendarDay? = nil
+    ) -> SchedulePlacement {
         SchedulePlacement(
-            week: week, jobID: job.id, characterID: "mano", day: day, slot: slot,
+            week: week ?? self.week, jobID: job.id, characterID: "mano", day: day, slot: slot,
             savedAt: "2026-11-01T00:00:00.000000Z"
         )
     }
@@ -74,6 +79,59 @@ final class SchedulePlannerTests: XCTestCase {
         let plan = planner(jobs: [morning], selected: morning.id)
         XCTAssertEqual(plan.cell(day: 1, slot: 1).state, .cannot)
         XCTAssertEqual(plan.cell(day: 1, slot: 0).state, .empty)
+    }
+
+    // MARK: - Pending and free cells (spec #59)
+
+    func testFreeCellCountCountsFutureCellsWithoutAnOccupant() {
+        let plan = planner(jobs: [])
+        // Monday morning is under way at 09:00 JST; the other twenty cells are to come.
+        XCTAssertEqual(plan.freeCellCount, 20)
+
+        let saved = job("saved", length: 2)
+        let withSaved = planner(jobs: [saved], placements: [placement(saved, day: 1, slot: 0)])
+        XCTAssertEqual(withSaved.freeCellCount, 18)
+    }
+
+    func testFreeCellCountFollowsDraftsAndDoesNotFollowTheSelectedCard() {
+        let first = job("a", length: 2)
+        let second = job("b")
+        var plan = planner(jobs: [first, second])
+        plan.select(first.id)
+        XCTAssertEqual(plan.freeCellCount, 20, "selecting a card does not take a cell")
+        XCTAssertTrue(plan.tap(day: 1, slot: 0))
+        XCTAssertEqual(plan.freeCellCount, 18, "a two-slot draft takes two cells")
+        plan.removeDraft(jobID: first.id)
+        XCTAssertEqual(plan.freeCellCount, 20)
+    }
+
+    func testAJobWithNoRoomAnywhereStaysPending() {
+        let next = week.adding(days: 7)
+        let extra = job("extra", week: next)
+        let fills = (0..<7).map { day in
+            job("fill\(day)", length: 3, week: next)
+        }
+        let plan = planner(
+            jobs: [extra] + fills,
+            placements: fills.enumerated().map { index, job in
+                placement(job, day: index, slot: 0, week: next)
+            },
+            selected: extra.id,
+            boardWeek: next
+        )
+        XCTAssertEqual(plan.freeCellCount, 0)
+        XCTAssertEqual(plan.pendingCount, 1)
+        XCTAssertTrue(plan.availableCells().isEmpty)
+    }
+
+    func testPendingExpiresTonightOnlyOnThisLocalSunday() {
+        let sunday = ISO8601DateFormatter().date(from: "2026-11-08T00:00:00Z")! // 09:00 JST
+        XCTAssertTrue(planner(jobs: [], now: sunday).pendingExpiresTonight)
+        XCTAssertFalse(planner(jobs: []).pendingExpiresTonight)
+        XCTAssertFalse(
+            planner(jobs: [], boardWeek: week.adding(days: 7), now: sunday)
+                .pendingExpiresTonight
+        )
     }
 
     // MARK: - Drafts
