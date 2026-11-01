@@ -18,6 +18,9 @@ final class ScheduleCycleUITests: XCTestCase {
         settings.tap()
 
         let cycles = app.buttons["查看周期"]
+        for _ in 0..<4 where !cycles.exists {
+            app.swipeUp()
+        }
         XCTAssertTrue(cycles.waitForExistence(timeout: 10), "settings has no 查看周期 row")
         cycles.tap()
 
@@ -38,16 +41,15 @@ final class ScheduleCycleUITests: XCTestCase {
         XCTAssertTrue(calendar.waitForExistence(timeout: 10), "conversation list has no calendar button")
         calendar.tap()
 
-        let weekly = app.buttons["本周工作"]
+        let weekly = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS '本周工作'")
+        ).firstMatch
         XCTAssertTrue(weekly.waitForExistence(timeout: 10), "calendar has no 本周工作 row")
         weekly.tap()
 
         XCTAssertTrue(app.navigationBars["她的日程"].waitForExistence(timeout: 10), "board did not open")
         XCTAssertTrue(app.staticTexts["上午"].exists, "board has no slots")
-
-        let card = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS '待排'")
-        ).firstMatch
+        let card = app.buttons.matching(identifier: "schedule.card").firstMatch
         guard card.waitForExistence(timeout: 5) else {
             XCTAssertTrue(
                 app.staticTexts["这周没有工作"].exists,
@@ -56,6 +58,7 @@ final class ScheduleCycleUITests: XCTestCase {
             return
         }
         card.tap()
+        XCTAssertEqual(card.value as? String, "已选中", "card was not selected")
 
         let free = app.buttons.matching(
             NSPredicate(format: "label CONTAINS '空闲'")
