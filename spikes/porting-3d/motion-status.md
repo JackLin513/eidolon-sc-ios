@@ -87,3 +87,22 @@ iOS 缓存 bundle (UnityFS)
 1. 先在 harness 里复现并量化（`audit` 看裙摆离群、`hair` 看朝上与插头），再改求解器。
 2. 改动后必须跑：全部单测、全语料扫描、至少一个模拟器截图 A/B。
 3. 尾点、限位、碰撞的每个判据都在 `MotionSwayTests` 里有一条用例，改判据就先改用例。
+
+## 八、原地动作（照相模式，2026-11-01 追加）
+
+`chr_anim_pho_*` 的格式和 `/motion` 里那些都不一样，但**不需要 Unity 编辑器**：
+
+- 它是普通 Generic `AnimationClip`（`isHumanMotion == false`），60 条
+  `m_ClipBindingConstant.genericBindings` 用**路径 CRC32** 指向骨骼——Unity 的
+  `Animator.StringToHash` 对 Transform 路径就是 CRC32，所以 Python 能用
+  `zlib.crc32` 反查 MLTD 的 58 条规范路径。
+- 曲线键在 `m_MuscleClip.m_Clip` 的容器里：一帧 = `float time` + `int32 keyCount`
+  + keyCount × (`int32 曲线号` + 4 个 float Bezier 系数，第 4 个是值)。首帧时间
+  -3.4e38 是「之前」哨兵，末帧 `inf`。每个 binding 三条曲线：位置（attribute 1）
+  是 Unity 单位，旋转（attribute 4）是欧拉角、度和舞蹈同一套 Z-X-Y 约定——同一
+  根骨的数值与 `.imo` 对得上（`BASE` 都在 -97° 附近）。
+- `photo_pose.py` 把这套解成 `eidolon.motion/1`，端上用现有 `MotionPlayback` 就能放。
+
+已验证 `pho_standd_ver01..03` 九段（base 循环 + check/gretng 待机小动作）在模拟器里
+姿势自然、能播放。遗留：其他动作包（cherup、phone、gift、umbre…）还没进缓存，
+要先在游戏里触发对应拍照姿势；`birth_*`、`straw_*` 这些同尺寸包是道具模型。

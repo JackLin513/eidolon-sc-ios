@@ -65,13 +65,24 @@ $V spikes/porting-3d/compress_motion.py \
 
 把 `CharacterImasMotionAsset` 的曲线压成端上格式 `eidolon.motion/1`：30 fps 统一网格、折叠常量、通道增量编码、1/100° 与 1/4000 单位量化。`--verify` 会用原始曲线重新采样对照，报告真实误差。语义（欧拉顺序、各 key_type 的采样与插值）已用 IDA 反编译确认，见 `notes.md` 的 2026-10-31 一节。端上解码器是 `ios/MotionDance.swift`，纯值类型，不依赖 RealityKit。
 
+### 原地动作（照相模式）
+
+```sh
+$V spikes/porting-3d/photo_pose.py --bundle <chr_anim_pho_*.reduc.unity3d> --list
+$V spikes/porting-3d/photo_pose.py --bundle <...> --output build/mltd-spike/out/poses/
+```
+
+相片/剧场的原地动作不是 Humanoid 肌肉曲线，也不是 `.imo`，而是普通 Generic `AnimationClip`：binding 用**路径 CRC32**（`Animator.StringToHash` 就是 CRC32）指向骨骼，键在 `m_MuscleClip.m_Clip` 的 streamed / dense / constant 三个容器里。UnityPy 原样给出容器，脚本自己解（帧 = `float time` + `int32 keyCount` + key × (`int32 曲线号` + 4 个 Bezier 系数)），再拼成和舞蹈同一个 `eidolon.motion/1`，端上不用改播放器。
+
+已验证 `pho_standd_ver01..03` 的 base / check / gretng 九段在模拟器里正常播放。注意同尺寸的 `chr_anim_pho_birth_*`、`straw_*` 包是道具模型（SkinnedMesh + Avatar），不是动作；其他动作包需要先在游戏里触发对应姿势才会进缓存。
+
 ### 测试
 
 ```sh
 $V -m unittest discover -s spikes/porting-3d/tests
 ```
 
-67 个纯函数单测（解码、手性、材质参数、曲线语义、压缩格式、资源定位、摆动尾点），不联网。
+80 个纯函数单测（解码、手性、材质参数、曲线语义、压缩格式、资源定位、摆动尾点），不联网。
 
 Swift 单测（`Eidolon3DSpikeTests`，74 个，从 scheme `Eidolon3DSpike` 跑）：
 
