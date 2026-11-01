@@ -29,3 +29,6 @@
   - 文件传到立绘的存储桶（`EIDOLON_STAND_S3_*`）的 `letters/music/` 下，要配好 `EIDOLON_STAND_ASSETS_URL`，存储桶要对浏览器回 CORS 头（和酒吧音频一样）。
   - 不传就没有配乐，信照样能看。
 
+### 票 07 交接
+
+- 回合和搭话读的是 `letters` 表本身（`letter_prompt.read_earlier`），导入的信进了表就会被她记得，不用另做。

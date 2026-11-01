@@ -33,11 +33,11 @@ held only while she does: nothing counts towards the user's limits. What she wri
 read beforehand (`letter_prompt.LetterMaterial`): the tier she writes in, that reached for a
 letter on it, else hers then; the day they first talked and how many turns they have had; her
 own `MEMORIES` latest memories of the producer not superseded; their `MESSAGES` latest
-messages across every conversation; the `EARLIER` letters she wrote them last. A body longer
-than `LONGEST` she is asked once to write shorter; still longer, it is kept as it is. Each
-letter has an activity record of its own (`letter`), on the deployer's keys, its service
-calls under it; one the model fails, or writes no letter in, is recorded failed, and tried
-again after each of `RETRIES` in turn, then passed over.
+messages across every conversation; the `letter_prompt.EARLIER` letters she wrote them last.
+A body longer than `LONGEST` she is asked once to write shorter; still longer, it is kept
+as it is. Each letter has an activity record of its own (`letter`), on the deployer's keys,
+its service calls under it; one the model fails, or writes no letter in, is recorded failed,
+and tried again after each of `RETRIES` in turn, then passed over.
 
 Written, she says it in her voice on the deployer's speech synthesis, with the model it has
 then, whoever's key the user brings, requested as a read-aloud is (`read_aloud`), but kept
@@ -70,16 +70,17 @@ from eidolon.letter_music import Music, music_of
 from eidolon.letter_prompt import (
     ANNIVERSARY_DAYS,
     OCCASIONS,
-    Earlier,
     LetterMaterial,
     Occasion,
-    Paragraph,
     Said,
     Written,
     letter_prompt,
     parse_letter,
+    read_earlier,
     shorter_prompt,
     shown,
+    stored_occasions,
+    stored_written,
 )
 from eidolon.live_config import LiveConfig
 from eidolon.llm import ChatLLM
@@ -110,9 +111,6 @@ MEMORIES = 30
 
 MESSAGES = 60
 """How many of their latest messages she writes with."""
-
-EARLIER = 3
-"""How many of the letters she wrote the producer last she writes with."""
 
 ACTIVE = timedelta(days=30)
 """How recently the user must have been in touch, by a turn with anyone or a call that
@@ -598,15 +596,6 @@ class Letters:
             words = shown(ja or "") if role == "character" else (text or "").strip()
             if words:
                 said.append(Said(_day_of(at, zone), role == "character", words))
-        earlier = [
-            Earlier(date.fromisoformat(day), _occasions(occasions), _written(salutation, body))
-            for day, occasions, salutation, body in db.execute(
-                "SELECT day, occasions, salutation, paragraphs FROM letters"
-                " WHERE user_id = ? AND character_id = ? ORDER BY written_at DESC, id DESC"
-                " LIMIT ?",
-                (user_id, character_id, EARLIER),
-            )
-        ]
         return LetterMaterial(
             self._characters[character_id],
             read_profile(db, user_id),
@@ -615,7 +604,7 @@ class Letters:
             turns or 0,
             memories[::-1],
             said[::-1],
-            earlier[::-1],
+            read_earlier(db, user_id, character_id),
             due.occasions,
             due.day,
         )
@@ -632,14 +621,6 @@ def _utc(at: datetime) -> str:
 
 def _day_of(at: str, zone: ZoneInfo) -> date:
     return datetime.fromisoformat(at).astimezone(zone).date()
-
-
-def _occasions(stored: str) -> tuple[Occasion, ...]:
-    return tuple(json.loads(stored))
-
-
-def _written(salutation: str, paragraphs: str) -> Written:
-    return Written(salutation, tuple(Paragraph(p["ja"], p["zh"]) for p in json.loads(paragraphs)))
 
 
 def _comes_round(first: date, day: date) -> bool:
@@ -753,7 +734,7 @@ def _recorded_as(db: sqlite3.Connection, letter_id: int, record_id: int | None) 
 
 def _listed(db: sqlite3.Connection, user_id: str) -> list[Listed]:
     return [
-        Listed(id, character_id, _occasions(occasions), date.fromisoformat(day),
+        Listed(id, character_id, stored_occasions(occasions), date.fromisoformat(day),
                read_at is not None, popped_at is not None)
         for id, character_id, occasions, day, read_at, popped_at in db.execute(
             "SELECT id, character_id, occasions, day, read_at, popped_at FROM letters"
@@ -777,8 +758,8 @@ def _letter(db: sqlite3.Connection, user_id: str, letter_id: int) -> Letter | No
         "SELECT COUNT(*) FROM letter_voices WHERE letter_id = ?", (letter_id,)
     ).fetchone()
     return Letter(
-        letter_id, character_id, _occasions(occasions), date.fromisoformat(day),
-        _written(salutation, paragraphs), character_id, blocks,
+        letter_id, character_id, stored_occasions(occasions), date.fromisoformat(day),
+        stored_written(salutation, paragraphs), character_id, blocks,
     )
 
 

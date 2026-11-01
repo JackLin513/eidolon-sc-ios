@@ -15,9 +15,14 @@ The model writes one JSON object: a salutation, three to five paragraphs, each i
 with its Chinese, and where each thing between them came from. The sources only hold the
 model to what happened; they are not kept. Delivery cues in the Chinese are taken out here;
 those in the Japanese are kept, for reading it aloud, and taken out wherever it is shown
-(`shown`)."""
+(`shown`).
+
+The letters she wrote last (`read_earlier`) she writes with, and is told of besides, typing,
+in a call and reaching out (`letters_section`): the table read is the one `letters` keeps,
+read here, below it, for the turns to read, which `letters` itself is above."""
 
 import json
+import sqlite3
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -64,6 +69,17 @@ _RECALLED: dict[Occasion, str] = {
     "anniversary": "认识的纪念日",
 }
 """Each occasion as she recalls a letter written on it."""
+
+EARLIER = 3
+"""How many of the letters she wrote the producer last she writes with, and is told of."""
+
+LETTERS_HEADING = "# 你写给制作人的信"
+"""What the section telling her of her letters, as she talks with the producer, opens with."""
+
+_LETTERS_TOLD = (
+    "这些是你亲手写给制作人的信。他提起时，你记得自己哪天、为什么写了什么；"
+    "不用主动提起，也不要整段照念。"
+)
 
 ANNIVERSARY_DAYS = 100
 """How many days after they first talked their first anniversary is; then every year."""
@@ -155,6 +171,41 @@ def shown(text: str) -> str:
     return without_written_cues(text)
 
 
+def stored_occasions(stored: str) -> tuple[Occasion, ...]:
+    """A letter's occasions as the letters table keeps them, a JSON array."""
+    return tuple(json.loads(stored))
+
+
+def stored_written(salutation: str, paragraphs: str) -> Written:
+    """What a letter says as the letters table keeps it: the salutation, and the paragraphs
+    a JSON array of {"ja", "zh"}."""
+    return Written(salutation, tuple(Paragraph(p["ja"], p["zh"]) for p in json.loads(paragraphs)))
+
+
+def read_earlier(db: sqlite3.Connection, user_id: str, character_id: str) -> list[Earlier]:
+    """The latest `EARLIER` letters the character wrote the user, the earliest first."""
+    rows = db.execute(
+        "SELECT day, occasions, salutation, paragraphs FROM letters"
+        " WHERE user_id = ? AND character_id = ? ORDER BY written_at DESC, id DESC LIMIT ?",
+        (user_id, character_id, EARLIER),
+    ).fetchall()
+    return [
+        Earlier(
+            date.fromisoformat(day), stored_occasions(occasions), stored_written(salutation, body)
+        )
+        for day, occasions, salutation, body in reversed(rows)
+    ]
+
+
+def letters_section(earlier: Sequence[Earlier]) -> str | None:
+    """The section telling her of the letters she wrote the producer, `earlier`, as she talks
+    with them: each with its day, its occasions and what it says, without delivery cues;
+    None without any."""
+    if not earlier:
+        return None
+    return "\n\n".join([f"{LETTERS_HEADING}\n{_LETTERS_TOLD}", *map(_recalled, earlier)])
+
+
 def letter_prompt(material: LetterMaterial) -> list[ChatMessage]:
     """The prompt she writes the letter on."""
     character = material.character
@@ -241,15 +292,19 @@ def _said(said: Sequence[Said]) -> str:
 
 
 def _earlier(earlier: Sequence[Earlier]) -> str:
-    letters = []
-    for each in earlier:
-        on = "、".join(_RECALLED[o] for o in each.occasions)
-        body = "\n".join(shown(p.ja) for p in each.written.paragraphs)
-        letters.append(f"## {_date(each.day)}（{on}）\n{shown(each.written.salutation)}\n{body}")
     return (
         "# 你以前写给这位制作人的信\n"
-        "这次不要重复以前写过的事，开头和结尾也不要和以前一样。\n\n" + "\n\n".join(letters)
+        "这次不要重复以前写过的事，开头和结尾也不要和以前一样。\n\n"
+        + "\n\n".join(map(_recalled, earlier))
     )
+
+
+def _recalled(letter: Earlier) -> str:
+    """`letter` as she reads it back: its day and occasions, then what it says, without
+    delivery cues."""
+    on = "、".join(_RECALLED[o] for o in letter.occasions)
+    body = "\n".join(shown(p.ja) for p in letter.written.paragraphs)
+    return f"## {_date(letter.day)}（{on}）\n{shown(letter.written.salutation)}\n{body}"
 
 
 def _date(day: date) -> str:
