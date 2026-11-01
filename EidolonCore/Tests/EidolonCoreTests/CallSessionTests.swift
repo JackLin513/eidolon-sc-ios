@@ -695,9 +695,11 @@ final class CallSessionTests: XCTestCase {
         try? FileManager.default.removeItem(at: root)
     }
 
-    private func installedEidolon() async throws -> Eidolon {
+    private func installedEidolon(manoAge: Int = 16) async throws -> Eidolon {
         let eidolon = try Eidolon(location: .init(root: root.appendingPathComponent("app")))
-        try await eidolon.install(bundleAt: try Fixture.makeBundle(in: root))
+        var options = Fixture.Options()
+        options.manoAge = manoAge
+        try await eidolon.install(bundleAt: try Fixture.makeBundle(in: root, options: options))
         return eidolon
     }
 
@@ -715,6 +717,7 @@ final class CallSessionTests: XCTestCase {
         connectTimeout: Duration = .seconds(30),
         tones: any CallTones = SilentTones(),
         voiceModel: String = "s2.1-pro-free",
+        adultMode: Bool = false,
         prepare: (@Sendable (CallSession) async -> Void)? = nil
     ) async throws -> (CallSession, EventLog, FakeCapture) {
         let setup = CallSetup(
@@ -730,7 +733,8 @@ final class CallSessionTests: XCTestCase {
             historyTurns: historyTurns,
             reconnectDelay: .milliseconds(10),
             connectTimeout: connectTimeout,
-            tones: tones
+            tones: tones,
+            adultMode: adultMode
         )
         let session = try await eidolon.beginCall(characterID: "mano", setup: setup)
         let log = EventLog()
@@ -3318,6 +3322,65 @@ final class CallSessionTests: XCTestCase {
             return nil
         }
         XCTAssertEqual(captions, ["うん"])
+        await session.hangUp()
+    }
+
+    /// Adult mode reaches the judge on a call only for an adult character (spec #61).
+    func testACallOnAnAdultCharacterPassesAdultModeToTheJudge() async throws {
+        let eidolon = try await installedEidolon(manoAge: 18)
+        let recognition = FakeRecognition([.hang])
+        let judge = RecordingAdultModeJudge()
+        let provider = ReplyScriptProvider([["<ja>うん</ja><zh>嗯</zh>"]])
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            judge: judge,
+            adultMode: true
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("the judge answered") { !judge.modes.isEmpty }
+        XCTAssertEqual(judge.modes, [true])
+        await session.hangUp()
+    }
+
+    func testACallOnAMinorNeverPassesAdultModeToTheJudge() async throws {
+        let eidolon = try await installedEidolon(manoAge: 17)
+        let recognition = FakeRecognition([.hang])
+        let judge = RecordingAdultModeJudge()
+        let provider = ReplyScriptProvider([["<ja>うん</ja><zh>嗯</zh>"]])
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            judge: judge,
+            adultMode: true
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("the judge answered") { !judge.modes.isEmpty }
+        XCTAssertEqual(judge.modes, [false])
+        await session.hangUp()
+    }
+
+    /// Typing in a call on an adult character passes adult mode just like speaking does.
+    func testATypedCallTurnOnAnAdultCharacterPassesAdultModeToTheJudge() async throws {
+        let eidolon = try await installedEidolon(manoAge: 18)
+        let recognition = FakeRecognition([.hang])
+        let judge = RecordingAdultModeJudge()
+        let provider = ReplyScriptProvider([["<ja>こんばんは</ja><zh>晚上好</zh>"]])
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            judge: judge,
+            adultMode: true
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        await session.say("こんばんは")
+        try await waitFor("the judge answered") { !judge.modes.isEmpty }
+        XCTAssertEqual(judge.modes, [true])
         await session.hangUp()
     }
 

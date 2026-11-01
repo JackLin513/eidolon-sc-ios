@@ -8,7 +8,7 @@ final class CallTypingUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "mano"
+        app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
         app.launchEnvironment["EIDOLON_OPEN_CALL"] = "1"
         app.launchEnvironment["EIDOLON_FAKE_CHAT"] = "1"
         app.launchEnvironment["EIDOLON_CALL_FAKE_SPEECH"] = "你好"

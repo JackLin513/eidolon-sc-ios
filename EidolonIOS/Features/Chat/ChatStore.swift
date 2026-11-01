@@ -142,7 +142,8 @@ final class ChatStore {
         reranker: (any RerankProvider)?,
         historyTurns: Int = 20,
         tracing: TurnTracing = .on,
-        replyStyle: ReplyStyle = .text
+        replyStyle: ReplyStyle = .text,
+        adultMode: Bool = false
     ) async {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !affinity.cooling, !readOnly else { return }
@@ -176,7 +177,8 @@ final class ChatStore {
             reranker: reranker,
             historyTurns: historyTurns,
             tracing: tracing,
-            replyStyle: replyStyle
+            replyStyle: replyStyle,
+            adultMode: adultMode
         )
         let turn = Task { @MainActor [weak self] in
             guard let self else { return }

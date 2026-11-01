@@ -320,6 +320,9 @@ public struct CallSetup: Sendable {
     public var limits: CallLimits
     /// How many turns of the conversation she is told before each one, from the settings.
     public var historyTurns: Int
+    /// Whether adult mode is in effect for this call's character; the core re-checks her
+    /// age when each turn is sent (spec #61).
+    public var adultMode: Bool
     /// How long to wait before listening again after the recognizer's connection dropped.
     public var reconnectDelay: Duration
     /// How long the recognizer may take to become ready; a call that never does is given up
@@ -347,6 +350,7 @@ public struct CallSetup: Sendable {
         reconnectDelay: Duration = .seconds(1),
         connectTimeout: Duration = .seconds(30),
         tones: any CallTones = SilentTones(),
+        adultMode: Bool = false,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.capture = capture
@@ -365,6 +369,7 @@ public struct CallSetup: Sendable {
         self.reconnectDelay = reconnectDelay
         self.connectTimeout = connectTimeout
         self.tones = tones
+        self.adultMode = adultMode
         self.now = now
     }
 }
@@ -961,7 +966,8 @@ public actor CallSession {
                 inCall: CallScope(outOfLine: callOutOfLine, hurts: callHurts),
                 stop: stop,
                 voicedBy: setup.voiceModel,
-                replyStyle: .call
+                replyStyle: .call,
+                adultMode: setup.adultMode
             ) {
                 if finished || Task.isCancelled { break }
                 switch event {

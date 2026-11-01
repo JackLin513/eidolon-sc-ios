@@ -10,6 +10,9 @@ struct ChatSettings {
     var historyTurns: Int = 20
     /// 文字氛围模式: text turns may use longer lines and scene blocks; calls never do.
     var atmosphericText: Bool = true
+    /// Adult mode: consensual intimacy is not out of line, but only for characters whose
+    /// content age is 18 or older (spec #61).
+    var adultMode: Bool = false
     var extraBody: String = ""
 
     var judgeBaseURL: String = ""
@@ -66,6 +69,7 @@ struct ChatSettings {
     private static let modelKey = "chat.model"
     private static let historyKey = "chat.historyTurns"
     private static let atmosphericTextKey = "chat.atmosphericText"
+    private static let adultModeKey = "chat.adultMode"
     private static let extraBodyKey = "chat.extraBody"
     private static let keychainAccount = "chat.apiKey"
 
@@ -110,6 +114,7 @@ struct ChatSettings {
             apiKey: Keychain.string(account: keychainAccount) ?? "",
             historyTurns: defaults.object(forKey: historyKey) as? Int ?? 20,
             atmosphericText: defaults.object(forKey: atmosphericTextKey) as? Bool ?? true,
+            adultMode: defaults.object(forKey: adultModeKey) as? Bool ?? false,
             extraBody: defaults.string(forKey: extraBodyKey) ?? "",
             judgeBaseURL: judgeBaseURL,
             judgeModel: judgeModel,
@@ -162,6 +167,7 @@ struct ChatSettings {
         defaults.set(model.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.modelKey)
         defaults.set(historyTurns, forKey: Self.historyKey)
         defaults.set(atmosphericText, forKey: Self.atmosphericTextKey)
+        defaults.set(adultMode, forKey: Self.adultModeKey)
         defaults.set(extraBody.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.extraBodyKey)
         defaults.set(judgeBaseURL.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.judgeBaseURLKey)
         defaults.set(judgeModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.judgeModelKey)

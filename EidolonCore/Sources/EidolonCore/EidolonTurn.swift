@@ -117,7 +117,8 @@ extension Eidolon {
         inCall: CallScope? = nil,
         stop: CallTurnStop? = nil,
         voicedBy model: String? = nil,
-        replyStyle: ReplyStyle = .text
+        replyStyle: ReplyStyle = .text,
+        adultMode: Bool = false
     ) -> AsyncThrowingStream<TurnEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -137,7 +138,8 @@ extension Eidolon {
                         inCall: inCall,
                         stop: stop,
                         voicedBy: model,
-                        replyStyle: replyStyle
+                        replyStyle: replyStyle,
+                        adultMode: adultMode
                     ) { continuation.yield($0) }
                     continuation.yield(.finished(record))
                     continuation.finish()
@@ -205,6 +207,7 @@ extension Eidolon {
         stop: CallTurnStop?,
         voicedBy model: String?,
         replyStyle: ReplyStyle,
+        adultMode: Bool,
         emit: (TurnEvent) -> Void
     ) async throws -> TurnRecord {
         // Where the turn's time goes, for the trace (ADR-0012): the producer waits through
@@ -218,6 +221,7 @@ extension Eidolon {
         guard let character = characters.first(where: { $0.id == characterID }) else {
             throw EidolonError.invalidContent("找不到角色 \(characterID)")
         }
+        let effectiveAdultMode = adultMode && character.isAdult
         let affinity = try readAffinity(characterID: characterID, now: now)
         if let until = affinity.cooldownUntil {
             throw EidolonError.coolingDown(until)
@@ -261,7 +265,8 @@ extension Eidolon {
                     let answer = try await tracingJudge.judgedWithRaw(
                         characterName: character.name,
                         history: PromptAssembler.judgeHistory(history),
-                        said: text
+                        said: text,
+                        adultMode: effectiveAdultMode
                     )
                     raw = answer.raw
                     tokens = answer.inputTokens
@@ -270,7 +275,8 @@ extension Eidolon {
                     verdict = try await judge.judge(
                         characterName: character.name,
                         history: PromptAssembler.judgeHistory(history),
-                        said: text
+                        said: text,
+                        adultMode: effectiveAdultMode
                     )
                 }
             } catch {
@@ -381,6 +387,8 @@ extension Eidolon {
             today: Self.isoDay(now, in: zone),
             nowSection: nowSection,
             formatInstructions: replyStyle.formatInstructions(voiceModel: model),
+            adultMode: effectiveAdultMode,
+            affinityTier: affinity.tier,
             narration: record.narration,
             currentNarration: record.trailingNarration
         )
@@ -500,7 +508,8 @@ extension Eidolon {
                     retrieval: retrievalElapsed.inSeconds,
                     firstToken: firstTokenAt.map { ($0 - chatStarted).inSeconds },
                     total: (ContinuousClock.now - turnStarted).inSeconds
-                )
+                ),
+                adultMode: effectiveAdultMode
             )
             try? writeTrace(
                 trace,
@@ -1192,6 +1201,11 @@ struct PromptAssembler {
     /// The reply format: the variant the voice model reads (ADR-0015's call turns pass
     /// the model; text turns pass none).
     var formatInstructions: String = ReplyFormatInstructions.text
+    /// Whether adult mode is in effect for this character; the core has already checked
+    /// her age. Adds the adult section to the shared prompt (spec #61).
+    var adultMode: Bool = false
+    /// Her current tier, for how adult mode asks her to respond.
+    var affinityTier: AffinityTier = .trust
     /// What she is told before each user message, by its id: the events and her own
     /// reach-outs since the last thing said (upstream `engine.narrations`).
     var narration: [String: String] = [:]
@@ -1219,6 +1233,9 @@ struct PromptAssembler {
             shared.append(world.prompt(name: character.name, today: today))
         }
         shared.append(formatInstructions)
+        if adultMode {
+            shared.append(AdultModePrompt.section(tier: affinityTier))
+        }
 
         var messages = [
             PromptMessage(.system, shared.joined(separator: "\n\n")),

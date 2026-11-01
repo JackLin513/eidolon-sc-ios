@@ -415,10 +415,25 @@ public struct SystemOneJudgeProvider: TracingJudgeProvider {
         history: [PromptMessage],
         said: String
     ) async throws -> JudgeVerdict {
+        try await judge(
+            characterName: characterName,
+            history: history,
+            said: said,
+            adultMode: false
+        )
+    }
+
+    public func judge(
+        characterName: String,
+        history: [PromptMessage],
+        said: String,
+        adultMode: Bool
+    ) async throws -> JudgeVerdict {
         try await judgedWithRaw(
             characterName: characterName,
             history: history,
-            said: said
+            said: said,
+            adultMode: adultMode
         ).verdict
     }
 
@@ -427,10 +442,24 @@ public struct SystemOneJudgeProvider: TracingJudgeProvider {
         history: [PromptMessage],
         said: String
     ) async throws -> JudgeAnswer {
+        try await judgedWithRaw(
+            characterName: characterName,
+            history: history,
+            said: said,
+            adultMode: false
+        )
+    }
+
+    public func judgedWithRaw(
+        characterName: String,
+        history: [PromptMessage],
+        said: String,
+        adultMode: Bool
+    ) async throws -> JudgeAnswer {
         let reply = try await send([
             "model": config.model,
             "state": Self.state(characterName: characterName, history: history, said: said),
-            "questions": JudgeQuestions.payload(),
+            "questions": JudgeQuestions.payload(adultMode: adultMode),
         ])
         return JudgeAnswer(
             verdict: try Self.read(answers: reply.answers, thresholds: config.thresholds),

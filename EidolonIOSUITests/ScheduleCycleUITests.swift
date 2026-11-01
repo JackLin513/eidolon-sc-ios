@@ -48,7 +48,20 @@ final class ScheduleCycleUITests: XCTestCase {
         weekly.tap()
 
         XCTAssertTrue(app.navigationBars["她的日程"].waitForExistence(timeout: 10), "board did not open")
-        XCTAssertTrue(app.staticTexts["上午"].exists, "board has no slots")
+        // The default character may have no jobs in a week the draw has already made, so
+        // look at next week too. A week without jobs shows its empty card instead of a grid.
+        let nextWeek = app.buttons["schedule.week.next"]
+        nextWeek.tap()
+        XCTAssertTrue(nextWeek.isSelected, "next week did not switch")
+        let card = app.buttons.matching(identifier: "schedule.card").firstMatch
+        if !card.waitForExistence(timeout: 10) {
+            XCTAssertTrue(
+                app.staticTexts["这周没有工作"].waitForExistence(timeout: 5),
+                "no job cards, and not the empty week either"
+            )
+            return
+        }
+        XCTAssertTrue(app.staticTexts["上午"].waitForExistence(timeout: 5), "board has no slots")
         XCTAssertTrue(
             app.staticTexts.matching(NSPredicate(format: "label CONTAINS '待排'")).firstMatch.exists,
             "board has no pending summary"
@@ -61,18 +74,6 @@ final class ScheduleCycleUITests: XCTestCase {
             app.staticTexts.matching(NSPredicate(format: "label CONTAINS '24 点后作废'")).firstMatch.exists,
             "board has no expiry line"
         )
-        // Next week is wholly to come, so a card always has somewhere to go.
-        let nextWeek = app.buttons["schedule.week.next"]
-        nextWeek.tap()
-        XCTAssertTrue(nextWeek.isSelected, "next week did not switch")
-        let card = app.buttons.matching(identifier: "schedule.card").firstMatch
-        if !card.waitForExistence(timeout: 10) {
-            XCTAssertTrue(
-                app.staticTexts["这周没有工作"].exists,
-                "no job cards, and not the empty week either"
-            )
-            return
-        }
         let loaded = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "isEnabled == true"), object: card
         )

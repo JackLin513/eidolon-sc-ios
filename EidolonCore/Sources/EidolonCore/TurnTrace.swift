@@ -179,6 +179,9 @@ public struct TurnTrace: Codable, Sendable, Hashable {
     /// The call's own replies, on the trace written when the call ends; nil on a turn's
     /// trace and on calls recorded before this was kept.
     public var callTimings: CallTimings?
+    /// Whether adult mode was in effect for this turn; nil on traces written before the
+    /// mode existed (spec #61).
+    public var adultMode: Bool?
 
     public init(
         characterID: String,
@@ -190,7 +193,8 @@ public struct TurnTrace: Codable, Sendable, Hashable {
         degradation: [String] = [],
         error: String? = nil,
         timings: TurnTimings? = nil,
-        callTimings: CallTimings? = nil
+        callTimings: CallTimings? = nil,
+        adultMode: Bool? = nil
     ) {
         self.characterID = characterID
         self.prompts = prompts
@@ -202,6 +206,7 @@ public struct TurnTrace: Codable, Sendable, Hashable {
         self.error = error
         self.timings = timings
         self.callTimings = callTimings
+        self.adultMode = adultMode
     }
 }
 
@@ -339,4 +344,26 @@ public protocol TracingJudgeProvider: JudgeProvider {
         history: [PromptMessage],
         said: String
     ) async throws -> JudgeAnswer
+
+    func judgedWithRaw(
+        characterName: String,
+        history: [PromptMessage],
+        said: String,
+        adultMode: Bool
+    ) async throws -> JudgeAnswer
+}
+
+extension TracingJudgeProvider {
+    public func judgedWithRaw(
+        characterName: String,
+        history: [PromptMessage],
+        said: String,
+        adultMode: Bool
+    ) async throws -> JudgeAnswer {
+        try await judgedWithRaw(
+            characterName: characterName,
+            history: history,
+            said: said
+        )
+    }
 }

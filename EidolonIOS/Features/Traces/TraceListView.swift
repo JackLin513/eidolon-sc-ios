@@ -180,6 +180,9 @@ struct TraceDetailView: View {
                 if let verdict = trace.verdict {
                     LabeledContent("判断", value: verdict)
                 }
+                if let adultMode = trace.adultMode {
+                    LabeledContent("成人模式", value: adultMode ? "开" : "关")
+                }
             }
 
             if !trace.degradation.isEmpty {
