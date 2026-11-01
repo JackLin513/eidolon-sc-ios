@@ -74,9 +74,11 @@ $V spikes/porting-3d/photo_pose.py --bundle <...> --output build/mltd-spike/out/
 
 相片/剧场的原地动作不是 Humanoid 肌肉曲线，也不是 `.imo`，而是普通 Generic `AnimationClip`：binding 用**路径 CRC32**（`Animator.StringToHash` 就是 CRC32）指向骨骼，键在 `m_MuscleClip.m_Clip` 的 streamed / dense / constant 三个容器里。UnityPy 原样给出容器，脚本自己解（帧 = `float time` + `int32 keyCount` + key × (`int32 曲线号` + 4 个 Bezier 系数)），再拼成和舞蹈同一个 `eidolon.motion/1`，端上不用改播放器。
 
-已验证 `pho_standd_ver01..03` 的 base / check / gretng 九段、以及剧场待机 `the_stdcac_*` 在模拟器里正常播放。注意同尺寸的 `chr_anim_pho_birth_*`、`straw_*` 包是道具模型（SkinnedMesh + Avatar），不是动作——按尺寸找包会踩到，按内容找才对。
+已验证 `pho_standd_ver01..03` 的 base / check / gretng 九段、剧场待机 `the_stdcac_*`、以及四元数曲线混排的 `the_wnd_hap_all` 在模拟器里正常播放。注意同尺寸的 `chr_anim_pho_birth_*`、`straw_*` 包是道具模型（SkinnedMesh + Avatar），不是动作——按尺寸找包会踩到，按内容找才对。
 
-缓存里已经有一整套动作，不用下载：`scan_animations.py` 按内容扫一遍（缓存文件名是哈希，只能打开看），2026-11-01 的结果是 1,110 个含 clip 的 bundle、4,085 条 clip，其中姿势类 2,662 条（`the_*` 527、`com_*` 2,102、`lgn_*` 24、`pho_*` 9）：
+曲线布局按 AssetStudio 的 `ReadCurveData` 对齐：`attribute` 1=位移(3 条)、2=四元数旋转(4 条)、3=缩放(3 条)、4=欧拉旋转(3 条)；容器顺序是 streamed → dense → constant。四元数会转换成欧拉角，缩放丢弃；同一根骨的位置与旋转合并成一条记录。
+
+动作来源有两处：游戏缓存和 `fetch_assets.py` 直连下载的 `chr_anim_*`。`scan_animations.py` 按内容扫一遍（缓存文件名是哈希，只能打开看），`export_pose_library.py` 解码导出，跨两个来源去重后 2026-11-01 共 **2,925 条**（`com_*` 1,595、`the_*` 989、`pho_*` 316、`lgn_*` 25），0 骨骼产物、空占位 clip 592 条已跳过：
 
 ```sh
 $V spikes/porting-3d/scan_animations.py --root <Documents> --out build/mltd-animations.jsonl
