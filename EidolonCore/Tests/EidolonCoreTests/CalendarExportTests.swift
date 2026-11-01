@@ -36,9 +36,8 @@ final class CalendarExportTests: XCTestCase {
                 ),
             ],
             producerBirthday: Birthday(month: 2, day: 11),
-            jobs: [
-                CalendarExportJob(job: mano, placement: placement, characterName: "櫻木真乃"),
-            ],
+            saved: [SavedPlacement(job: mano, placement: placement)],
+            characterNames: ["mano": "櫻木真乃", "hiori": "風野灯織"],
             timeZone: tokyo
         )
     }
@@ -51,7 +50,7 @@ final class CalendarExportTests: XCTestCase {
 
     // MARK: - What should be in the calendar
 
-    func testBirthdaysAndSavedJobsBecomeEvents() throws {
+    func testBirthdaysAndSavedPlacementsBecomeEvents() throws {
         let events = CalendarExportBuilder.events(from: source())
         XCTAssertEqual(events.count, 4)
 
@@ -145,7 +144,7 @@ final class CalendarExportTests: XCTestCase {
         XCTAssertTrue(plan.updates.isEmpty)
 
         var moved = normalized
-        moved.allDayKey = "03-01"
+        moved.allDayBirthday = Birthday(month: 3, day: 1)
         let movedPlan = CalendarExportPlanner.plan(
             expected: [birthday],
             existing: [CalendarExportStoredEvent(id: "birthday", event: moved)]

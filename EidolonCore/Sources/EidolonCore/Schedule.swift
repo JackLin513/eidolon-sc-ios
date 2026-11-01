@@ -163,7 +163,7 @@ public struct ScheduleSave: Sendable, Hashable {
 }
 
 /// One saved placement with the job it places, across every week and character (spec #56).
-public struct SavedJob: Sendable, Hashable, Identifiable {
+public struct SavedPlacement: Sendable, Hashable, Identifiable {
     public var job: WeeklyJob
     public var placement: SchedulePlacement
 
@@ -612,13 +612,14 @@ extension Eidolon {
 
     /// Every saved placement with its job, across all weeks and characters, for the system
     /// calendar export (spec #56). Drafts are not in the database and so are not here.
-    public func savedJobs() throws -> [SavedJob] {
+    public func savedPlacements() throws -> [SavedPlacement] {
         try userQueue.read { db in
             try Row.fetchAll(
                 db,
                 sql: """
-                    SELECT p.week AS placement_week, p.job_id, p.day, p.slot, p.saved_at,
-                           p.counted_at, j.id AS job_id, j.week AS job_week,
+                    SELECT p.week AS placement_week, p.job_id AS placement_job_id,
+                           p.day, p.slot, p.saved_at, p.counted_at,
+                           j.id AS job_id, j.week AS job_week,
                            j.character_id, j.listed_id, j.name, j.note, j.category,
                            j.length, j.slots
                     FROM schedule_placements p
@@ -644,14 +645,14 @@ extension Eidolon {
                 )
                 let placement = SchedulePlacement(
                     week: placementWeek,
-                    jobID: row["job_id"],
+                    jobID: row["placement_job_id"],
                     characterID: row["character_id"],
                     day: row["day"],
                     slot: row["slot"],
                     savedAt: row["saved_at"],
                     countedAt: row["counted_at"]
                 )
-                return SavedJob(job: job, placement: placement)
+                return SavedPlacement(job: job, placement: placement)
             }
         }
     }
