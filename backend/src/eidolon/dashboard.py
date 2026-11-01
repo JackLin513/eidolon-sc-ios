@@ -21,6 +21,8 @@ written down any period of any character (GLOSSARY.md「周期」, `recorded_cyc
 likewise, where the deployer has cycles on. How many times characters
 reached out (GLOSSARY.md「搭话」), how many times that failed, and the share answered
 (`reach_outs`), where the deployer has them on or any were recorded in the range. How many
+letters characters wrote (GLOSSARY.md「信」) and how many times writing one failed (`letters`),
+where the deployer has them on or any were recorded in the range. How many
 visits to the bar were begun, done and failed (GLOSSARY.md「光顾」, `bar`), where the bar is
 open or any were recorded in the range. How many moments were posted and failed, and how many
 of the producer's comments she replied to and failed to (GLOSSARY.md「朋友圈」, `moments`), a
@@ -113,10 +115,11 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
         start = range_start(now - span.length)
         starts = stretches(now, span, _zone(timezone))
         tally = await backend.activity.tally(start, starts)
-        # Reach-outs, achievements, visits and moments are no turns nor calls, nor counted as
-        # taken by any user; their service calls count.
+        # Reach-outs, letters, achievements, visits and moments are no turns nor calls, nor
+        # counted as taken by any user; their service calls count.
         records = [r for r in tally.records if r.kind in ("turn", "call")]
         reach_out_records = [r for r in tally.records if r.kind == "reach_out"]
+        letter_records = [r for r in tally.records if r.kind == "letter"]
         visit_records = [r for r in tally.records if r.kind == "visit"]
         achievement_records = [r for r in tally.records if r.kind == "achievement"]
         moment_records = [r for r in tally.records if r.kind in ("moment", "moment_reply")]
@@ -148,6 +151,10 @@ def add_dashboard_routes(app: FastAPI, backend: Backend) -> None:
             "reach_outs": (
                 reach_outs(reach_out_records)
                 if backend.config.reach_outs.enabled or reach_out_records else None
+            ),
+            "letters": (
+                letters(letter_records)
+                if backend.config.letters_on or letter_records else None
             ),
             "bar": bar(visit_records) if backend.config.bar_on or visit_records else None,
             "moments": (
@@ -405,6 +412,15 @@ def reach_outs(records: Sequence[RecordGroup]) -> dict:
         "answered_share": (
             _count(r for r in succeeded if r.answered) / _count(succeeded) if succeeded else None
         ),
+    }
+
+
+def letters(records: Sequence[RecordGroup]) -> dict[str, int]:
+    """How many letters characters wrote, and how many times writing one failed; not by
+    character."""
+    return {
+        "succeeded": _count(r for r in records if r.result == "success"),
+        "failed": _count(r for r in records if r.result == "failed"),
     }
 
 

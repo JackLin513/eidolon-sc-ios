@@ -913,6 +913,10 @@ export type DataPackageImported = {
   cycles: number;
   /** Those not: of a character not here, out of bounds, after today, or overlapping another. */
   cycles_skipped: number;
+  /** The letters she wrote that were imported (GLOSSARY.md「信」): only those not here already. */
+  letters: number;
+  /** Those not: of a character not here. */
+  letters_skipped: number;
 };
 
 /** Import a data package, the file itself as the body, streamed: the categories `include` names

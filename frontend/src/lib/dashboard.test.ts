@@ -24,6 +24,7 @@ import {
   dashboardHref,
   dashboardTabs,
   labelledStretches,
+  letterTiles,
   momentTiles,
   rangeFromQuery,
   reachOutTiles,
@@ -288,6 +289,19 @@ describe("affinityRows", () => {
     expect(many.end).toBe("加分 40% · 减分 12.5%");
     expect(few.end).toBe("加分 — · 减分 —");
     expect(many.details).toBe("判断过 1,200 个回合 · 冷却 2 · 挂断或结束对话 3");
+  });
+});
+
+describe("letterTiles", () => {
+  it("are none where the section is empty", () => {
+    expect(letterTiles(null)).toEqual([]);
+  });
+
+  it("count the letters written and the times writing one failed", () => {
+    expect(letterTiles({ succeeded: 1200, failed: 3 }).map((tile) => [tile.label, tile.value])).toEqual([
+      ["写了", "1,200"],
+      ["失败", "3"],
+    ]);
   });
 });
 

@@ -19,6 +19,7 @@ This guide explains how to turn on and tune each feature, and how the characters
 > | Schedules | Nothing (the switch is on by default) |
 > | Cycles | Nothing (the switch is on by default) |
 > | Reach-outs | `EIDOLON_REACH_OUTS=1` (off by default) |
+> | Letters | `EIDOLON_LETTERS=1` (off by default); the music is uploaded separately, see Letters |
 > | Moments | `EIDOLON_MOMENTS=1` (off by default) |
 > | Weather in conversations | Nothing for Tokyo's; the producer's needs QWeather's five settings: `QWEATHER_*` |
 > | Bar | Nothing (the switch is on by default) |
@@ -43,6 +44,7 @@ This guide explains how to turn on and tune each feature, and how the characters
 - [Cycles](#cycles)
 - [Photos](#photos)
 - [Reach-outs](#reach-outs)
+- [Letters](#letters)
 - [Moments](#moments)
 - [Weather](#weather)
 - [Bar](#bar)
@@ -465,6 +467,14 @@ When a user has been away a while, the character says a few words first in the c
 - **Daily limit**: By default each user is reached out to at most 3 times a day (the day going by the time zone in their producer profile, or Beijing time if none is set); change it in the same card.
 - **Cost**: Generated with the deployer's chat model, at the deployer's expense, even for users who bring their own LLM. It doesn't count towards users' usage limits.
 
+## Letters
+
+On special days the character writes the producer a letter: when her affinity first reaches close or intimate, when she's complete, on the producer's birthday, on her birthday, and 100 days after they first talked and every year after that. She reads it aloud in her own voice over music; users receive and reread letters from the envelope button at the top of the conversation list.
+
+- **Switch**: Off by default. Set `EIDOLON_LETTERS=1` in `.env`, or turn it on in the 「信」 (Letters) card under 「限额与玩法」 (Limits and play) on the admin console's config page, which takes precedence. Days that pass while it's off aren't made up for, and letters already written can still be read.
+- **Cost**: She writes with the deployer's chat model and reads with the deployer's speech synthesis (`FISH_AUDIO_API_KEY`), at the deployer's expense; the same goes for users who bring their own keys, and it doesn't count towards usage limits. Without speech synthesis there are only the words and the music.
+- **Music**: Not in the repository; upload it to the stands' bucket with `eidolon letter-music upload <dir>`, with `EIDOLON_STAND_ASSETS_URL` and the bucket's CORS set up; under docker compose, mount the directory into the backend container first. Which files to upload and at which second each climax starts are in [`characters/letter_music.toml`](../characters/letter_music.toml); without them there's no music, and letters can still be read.
+
 ## Moments
 
 An item in the navigation alongside conversations, play and settings, one for each user that only they can see. The characters who have talked with them post there: in Japanese with Chinese subtitles, possibly with a picture, a real place and the weather in Tokyo when she posted; other idols like and comment. The user can like and comment, and a while later she replies once. Only users who have had a turn or a connected call with any character in the last 7 days get posts; the closer she is, the more often she posts, and while cold, distant or in cooldown she neither posts nor replies to comments. Users can turn it off on the settings page's 「朋友圈」 (Moments) tab. Each post is deleted automatically after 30 days, and posts don't go into data packages.
@@ -622,13 +632,13 @@ List the admins' sign-in method identifiers in `EIDOLON_ADMINS` in `.env` (like 
 
 | Page | What it does |
 |---|---|
-| Dashboard (`/admin`) | Calls, error rate and latency per service; active users, the number and trend of turns and calls, usage per character, calls in progress; with affinity on, totals of judgements and cooldowns, plus per character the shares raised and lowered, cooldowns, and the calls she hung up or conversations she ended, as well as 「成就」 (Achievements): how many achievement stages were unlocked, and the draws and reset cards they gave; with schedules on, the number of users with a schedule this week; with reach-outs on, how many there were, how many failed and the share answered; with moments on, how many were posted and how many failed, how many replies to comments there were and how many failed, and the share of the last 30 days' posts the producer liked or commented on; with the bar on, how many visits there were, how many finished and how many failed; the deployer's cost estimated from unit prices |
-| Config (`/admin/config`) | Change the LLMs for playing the character and extracting memories, speech synthesis, speech recognition, image generation, the judge, rerank thresholds, usage limits, exempting keys, per-call caps, history turns, the affinity and gifts switch (and granting every user a reset card), the schedules switch, the reach-outs switch and daily limit, the moments switch, daily limits and map, the bar switch, the proxy, the service status and unit prices |
+| Dashboard (`/admin`) | Calls, error rate and latency per service; active users, the number and trend of turns and calls, usage per character, calls in progress; with affinity on, totals of judgements and cooldowns, plus per character the shares raised and lowered, cooldowns, and the calls she hung up or conversations she ended, as well as 「成就」 (Achievements): how many achievement stages were unlocked, and the draws and reset cards they gave; with schedules on, the number of users with a schedule this week; with reach-outs on, how many there were, how many failed and the share answered; with letters on, how many were written and how many times writing one failed; with moments on, how many were posted and how many failed, how many replies to comments there were and how many failed, and the share of the last 30 days' posts the producer liked or commented on; with the bar on, how many visits there were, how many finished and how many failed; the deployer's cost estimated from unit prices |
+| Config (`/admin/config`) | Change the LLMs for playing the character and extracting memories, speech synthesis, speech recognition, image generation, the judge, rerank thresholds, usage limits, exempting keys, per-call caps, history turns, the affinity and gifts switch (and granting every user a reset card), the schedules switch, the reach-outs switch and daily limit, the letters switch, the moments switch, daily limits and map, the bar switch, the proxy, the service status and unit prices |
 | Users (`/admin/users`) | Search users, see their sign-in methods and recent usage; ban, unban, set an individual usage limit, delete |
 
 - **Overrides `.env`**: Items changed in the admin console are stored in the database and take precedence over `.env`, with no restart needed. Each change is tried before saving and not saved if the try fails. A call in progress finishes on the configuration it connected with.
 - **Only changeable in `.env`**: The admin list, `EIDOLON_SECRET_KEY`, OAuth, the domain, WebRTC/TURN, backups, paths and embedding.
-- **Not visible**: The admin console shows no one's conversations, memories, producer profile, affinity, gifts, draws, achievements, schedules, visit records or moments; the dashboard only has totals across all users. The dashboard's numbers come from activity records (which hold no conversation content), kept for 90 days.
+- **Not visible**: The admin console shows no one's conversations, memories, producer profile, affinity, gifts, draws, achievements, schedules, visit records, moments or letters; the dashboard only has totals across all users. The dashboard's numbers come from activity records (which hold no conversation content), kept for 90 days.
 
 For how to turn it on and what to do when you can't get into the admin console, see "后台" in [`deploy.md`](deploy.md) (Chinese).
 
@@ -644,6 +654,7 @@ The backend's command line is `eidolon`. Under docker compose, use `docker compo
 | `character draft-sheet <id>` | Draft a character sheet with the background model |
 | `reading draft` | Fill in phonemes in the readings table (local only) |
 | `greeting upload` | Synthesize and upload the landing page's greetings |
+| `letter-music upload <dir>` | Upload the music under letters |
 | `stand fetch` / `outfits` / `upload` | The three steps for stand assets, usually chained by `deploy/stand-sync.sh` |
 | `reembed` | Re-embed after switching embedding service, model or dimensions |
 | `eval rerank` / `judge` / `memory` | Calibrate rerank thresholds and judge thresholds, evaluate memory |

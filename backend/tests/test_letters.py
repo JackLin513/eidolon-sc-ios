@@ -502,14 +502,24 @@ async def test_turned_off_the_letters_written_stay_to_be_read(
 async def test_deleting_the_user_deletes_their_letters(
     make_client: ClientFactory, settings: Settings
 ):
-    client, _, _, _ = await close_with_mano(make_client, settings, written())
+    """Those written, in her voice, and those to be written."""
+    client, _, clock, conversation = await close_with_mano(
+        make_client, settings, written(), REPLY
+    )
     await backend_of(client).letters.run_due()
+    keep(settings.database_path, "producer", 84.9, clock.now)
+    await turns(client, conversation, 1)  # intimate, put off to the next day
+    await backend_of(client).letters.run_due()
+    tables = ("letters", "letter_voices", "letters_due")
+    with sqlite3.connect(settings.database_path) as db:
+        before = [db.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in tables]
 
     res = await client.post("/api/account/delete", json=DELETE)
 
     assert res.status_code == 204, res.text
+    assert before == [1, 3, 1]
     with sqlite3.connect(settings.database_path) as db:
-        assert db.execute("SELECT COUNT(*) FROM letters").fetchone() == (0,)
+        assert [db.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in tables] == [0] * 3
 
 
 async def test_what_was_reached_before_the_achievements_launched_is_no_occasion(

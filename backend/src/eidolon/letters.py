@@ -49,7 +49,8 @@ voice at all, its activity record saying so (`NOT_VOICED`), and is no less a let
 The user's letters are theirs alone to read (`listed`, `letter`, `voice`), the latest first; reading
 one has it read, on every device (`mark_read`). Turned off, the deployer's letters stay to be
 read. Deleting the user deletes them (`database.USER_DATA`); deleting a conversation does
-not."""
+not. A data package carries them without her voice (`read_carried`, `add_carried`): imported,
+they are read and popped up already."""
 
 import asyncio
 import json
@@ -233,6 +234,63 @@ class Letter:
             "voice": voice or None,
             "music": self.music,
         }
+
+
+@dataclass(frozen=True)
+class Carried:
+    """A letter as a data package carries it (GLOSSARY.md「数据包」): whose, on what, the day,
+    when it was written, and what it says, delivery cues and all; not her voice."""
+
+    character_id: str
+    occasions: tuple[Occasion, ...]
+    day: date
+    written_at: datetime
+    written: Written
+
+
+def read_carried(db: sqlite3.Connection, user_id: str) -> list[Carried]:
+    """The user's letters as a data package carries them, in the order they were written."""
+    return [
+        Carried(
+            character_id, stored_occasions(occasions), date.fromisoformat(day),
+            datetime.fromisoformat(written_at), stored_written(salutation, paragraphs),
+        )
+        for character_id, occasions, day, written_at, salutation, paragraphs in db.execute(
+            "SELECT character_id, occasions, day, written_at, salutation, paragraphs"
+            " FROM letters WHERE user_id = ? ORDER BY written_at, id",
+            (user_id,),
+        )
+    ]
+
+
+def add_carried(
+    db: sqlite3.Connection, user_id: str, carried: Sequence[Carried], now: datetime
+) -> int:
+    """Add the letters a data package carries to the user's through `db`, in the caller's
+    transaction, read and popped up `now`, without her voice; how many were added. One the
+    user has already, by her written at the same time, is taken for it and not added again."""
+    added = 0
+    for letter in carried:
+        if any(
+            datetime.fromisoformat(at) == letter.written_at
+            for (at,) in db.execute(
+                "SELECT written_at FROM letters WHERE user_id = ? AND character_id = ?"
+                " AND day = ?",
+                (user_id, letter.character_id, letter.day.isoformat()),
+            )
+        ):
+            continue
+        db.execute(
+            "INSERT INTO letters (user_id, character_id, occasions, day, written_at, salutation,"
+            " paragraphs, read_at, popped_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                user_id, letter.character_id, _stored_occasions(letter.occasions),
+                letter.day.isoformat(), _utc(letter.written_at), letter.written.salutation,
+                _stored_paragraphs(letter.written), _utc(now), _utc(now),
+            ),
+        )
+        added += 1
+    return added
 
 
 @dataclass(frozen=True)
@@ -714,9 +772,8 @@ def _add_letter(
         "INSERT INTO letters (user_id, character_id, occasions, day, written_at, salutation,"
         " paragraphs) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
-            due.user_id, due.character_id, json.dumps(list(due.occasions)), due.day.isoformat(),
-            at, written.salutation,
-            json.dumps([{"ja": p.ja, "zh": p.zh} for p in written.paragraphs], ensure_ascii=False),
+            due.user_id, due.character_id, _stored_occasions(due.occasions), due.day.isoformat(),
+            at, written.salutation, _stored_paragraphs(written),
         ),
     ).lastrowid
     db.executemany(
@@ -726,6 +783,18 @@ def _add_letter(
     _drop(db, due.ids)
     assert letter_id is not None
     return letter_id
+
+
+def _stored_occasions(occasions: Sequence[Occasion]) -> str:
+    """A letter's occasions as the letters table keeps them (`stored_occasions`)."""
+    return json.dumps(list(occasions))
+
+
+def _stored_paragraphs(written: Written) -> str:
+    """The paragraphs of what she wrote as the letters table keeps them (`stored_written`)."""
+    return json.dumps(
+        [{"ja": p.ja, "zh": p.zh} for p in written.paragraphs], ensure_ascii=False
+    )
 
 
 def _recorded_as(db: sqlite3.Connection, letter_id: int, record_id: int | None) -> None:
