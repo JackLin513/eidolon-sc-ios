@@ -1,12 +1,13 @@
 """Letters (GLOSSARY.md「信」): what she writes the producer on an occasion between them, for
 the producer to keep and read again.
 
-Only where the deployer turns them on (`LiveConfig.letters_on`). Some occasions the
-achievements tell (`Happenings`): her affinity first reaching close, first reaching intimate,
-and her being complete. Each is kept, in the transaction the achievement is, as a letter to be
-written that day where the producer is, in the profile's time zone (or `Asia/Shanghai`), from
-then on (`happened`); none while the deployer has letters off, and none for what was reached
-before the achievements launched.
+Only where the deployer turns them on (`LiveConfig.letters_on`). Some occasions are what the
+achievements unlock (`Happenings`): her affinity first reaching close, first reaching
+intimate (the first two stages of the tier reached), and her being complete. Each is kept, in
+the transaction the achievement is, as a letter to be written that day where the producer is,
+in the profile's time zone (or `Asia/Shanghai`), from then on (`reached`); none while the
+deployer has letters off, as told on the event loop before the transaction was handed in
+(`on`), and none for what was reached before the achievements launched.
 
 The others are days that come round, where the producer is: the producer's birthday, written
 on by one alone, the one of those they have had a turn with, in trust or above and in no
@@ -62,6 +63,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo
 
+from eidolon.achievements import Completed, Unlocked
 from eidolon.activity import ActivityLog
 from eidolon.affinity import BELOW_TRUST, TIERS, Affinities, Tier
 from eidolon.characters import Character, signature_url
@@ -129,6 +131,9 @@ NOT_VOICED = "voice"
 
 _RANKS: dict[Tier, int] = {t: i for i, (t, _) in enumerate(TIERS)}
 """Each tier's place, lowest first, to tell which of two is higher."""
+
+_TIER_OCCASIONS: dict[int, Occasion] = {1: "close", 2: "intimate"}
+"""The occasion for a letter of each stage of the tier reached unlocked."""
 
 _SCHEMA = """
 -- A letter she wrote the user (GLOSSARY.md「信」): on what (a JSON array of occasions), the
@@ -378,17 +383,25 @@ class Letters:
                 log.exception("a letter to user %s failed", due.user_id)
                 await self._db.write(_drop, due.ids)
 
-    def happened(
+    @property
+    def on(self) -> bool:
+        """Whether the deployer has letters on now: told on the event loop, before handing in
+        the write task what is `reached` is kept in."""
+        return self._config.letters_on
+
+    def reached(
         self,
         db: sqlite3.Connection,
         user_id: str,
-        occasions: Sequence[tuple[str, Occasion]],
+        what: Sequence[Unlocked | Completed],
         now: datetime,
     ) -> None:
-        """Each character of `occasions` has her occasion with the user `now`: kept, through
-        `db`, in the transaction it happened in, as a letter to be written that day where the
-        producer is; none while the deployer has letters off."""
-        if not occasions or not self._config.letters_on:
+        """The user unlocked each stage and completed each character of `what` `now`, letters
+        `on` as the write task was handed in: each that is an occasion for a letter kept,
+        through `db`, in the transaction it was reached in, as a letter to be written that day
+        where the producer is."""
+        occasions = [o for w in what if (o := _occasion(w))]
+        if not occasions:
             return
         day = local_date(now, effective_timezone(read_profile(db, user_id), None))
         db.executemany(
@@ -670,6 +683,16 @@ class Letters:
 
 def _open(db: sqlite3.Connection) -> None:
     db.executescript(_SCHEMA)
+
+
+def _occasion(what: Unlocked | Completed) -> tuple[str, Occasion] | None:
+    """The occasion for a letter a stage unlocked or a character complete is, and whose; None
+    for none."""
+    if isinstance(what, Completed):
+        return what.character_id, "complete"
+    if what.achievement == "tier" and what.character_id and what.stage in _TIER_OCCASIONS:
+        return what.character_id, _TIER_OCCASIONS[what.stage]
+    return None
 
 
 def _utc(at: datetime) -> str:

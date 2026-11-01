@@ -18,6 +18,7 @@ import httpx
 import pytest
 
 from eidolon.config import Settings
+from eidolon.happenings import Open
 from eidolon.letter_prompt import SHORTER, WRITE
 from eidolon.llm import LLMError
 from tests.conftest import KOGANE_SHEET, MANO_SHEET, SIGNATURE, CharacterConfig, ClientFactory
@@ -36,7 +37,7 @@ from tests.test_achievements_launch import History, history  # noqa: F401
 from tests.test_activity_records import dashboard
 from tests.test_admin_users import ADMIN, admin_beside, find
 from tests.test_concurrent_calls import another_user
-from tests.test_delete_account import DELETE
+from tests.test_delete_account import DELETE, user_id
 from tests.test_affinity import keep
 from tests.test_affinity_prompt import FONDNESS
 from tests.test_gift_giving import CAKE, catalog, draw_them, given, holding  # noqa: F401
@@ -309,6 +310,33 @@ async def test_while_off_she_writes_none_nor_makes_up_for_it_once_on(
     assert len(llm.prompts) == 2  # the two turns
     assert account_off["letters"] is False
     assert (await client.get("/api/account")).json()["letters"] is True
+
+
+def due(database: Path) -> list[tuple[str, str]]:
+    """Each letter to be written: whose, and on which occasion."""
+    with sqlite3.connect(database) as db:
+        return db.execute("SELECT character_id, occasion FROM letters_due").fetchall()
+
+
+@pytest.mark.parametrize("told", [True, False])
+async def test_reaching_close_keeps_a_letter_as_letters_were_told_on_when_handed_in(
+    make_client: ClientFactory, settings: Settings, told: bool
+):
+    """Whatever the deployer has by the time the write task runs (ADR-0028)."""
+    client = make_client(FakeLLM(REPLY), settings=replace(settings, letters=not told))
+    await start_conversation(client)
+    backend = backend_of(client)
+    producer = user_id(settings.database_path, "producer")
+    assert backend.happenings.open == Open(affinity=True, letters=not told)
+
+    rewarded = await backend.database.write(
+        backend.happenings.turn_recorded, producer, "mano", "close",
+        Open(affinity=True, letters=told),
+    )
+
+    assert rewarded is not None
+    assert [(u.achievement, u.stage) for u in rewarded.achievements] == [("tier", 1)]
+    assert due(settings.database_path) == ([("mano", "close")] if told else [])
 
 
 @pytest.mark.parametrize("why", ["cold", "cooldown", "banned", "no turns"])

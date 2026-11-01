@@ -454,7 +454,7 @@ def build(
         letter_music, settings.stand_assets_url,
     )
     happenings = Happenings(
-        database, lambda: config.affinity_on, gifts, activity, letters.happened
+        database, lambda: config.affinity_on, gifts, activity, letters
     )
     schedules = Schedules(
         database, clock, lambda: config.schedule_on, idols_of(characters, world), job_list,
