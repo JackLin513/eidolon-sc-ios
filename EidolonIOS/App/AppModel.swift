@@ -49,10 +49,19 @@ final class AppModel {
     /// call page and a redial cuts whatever the last call left playing (spec #35).
     let callTones = CallTonesPlayer()
 
+    /// Whether the debug chat provider is answering instead of a configured model.
+    var isUsingFakeChat: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["EIDOLON_FAKE_CHAT"] == "1"
+        #else
+        false
+        #endif
+    }
+
     var chatProvider: (any ChatProvider)? {
         #if DEBUG
         // Development aid: open the call and chat pages without a model key.
-        if ProcessInfo.processInfo.environment["EIDOLON_FAKE_CHAT"] == "1" {
+        if isUsingFakeChat {
             return DebugChatProvider()
         }
         #endif

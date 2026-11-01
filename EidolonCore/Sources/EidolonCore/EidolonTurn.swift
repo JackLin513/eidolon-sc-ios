@@ -529,16 +529,7 @@ extension Eidolon {
         }
         var blocks = parser.blocks.filter { !$0.isEmpty }
         if let keepComplete {
-            var kept: [ReplyBlock] = []
-            var lines = 0
-            for block in blocks {
-                if case .line = block {
-                    if lines >= keepComplete { break }
-                    lines += 1
-                }
-                kept.append(block)
-            }
-            blocks = kept
+            blocks = blocks.keepingCompleteLines(keepComplete)
         }
         let segments = blocks.compactMap(\.line).filter { !$0.isEmpty }
         // Stopped before she said anything: there is no reply to keep, and upstream
@@ -1273,5 +1264,32 @@ struct PromptAssembler {
             }
             return PromptMessage(.assistant, ReplyCues.shown(message.segments.map(\.ja).joined()))
         }
+    }
+}
+
+extension Array where Element == ReplyBlock {
+    /// What survives when a call is interrupted after `count` complete spoken lines: the
+    /// lines up to that count and the scenes that belong with them. A scene written after
+    /// the last kept line leads into the line that was cut off, so it goes too.
+    func keepingCompleteLines(_ count: Int) -> [ReplyBlock] {
+        var kept: [ReplyBlock] = []
+        var lines = 0
+        var cut = false
+        for block in self {
+            if case .line = block {
+                guard lines < count else {
+                    cut = true
+                    break
+                }
+                lines += 1
+            }
+            kept.append(block)
+        }
+        if cut {
+            while let last = kept.last, case .scene = last {
+                kept.removeLast()
+            }
+        }
+        return kept
     }
 }

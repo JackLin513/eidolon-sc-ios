@@ -724,6 +724,41 @@ final class TurnTests: XCTestCase {
         let data = try JSONEncoder().encode(blocks)
         XCTAssertEqual(try JSONDecoder().decode([ReplyBlock].self, from: data), blocks)
     }
+
+    func testLegacyMessageWithoutBlocksReadsAsLines() {
+        let legacy = StoredMessage(
+            id: "reply",
+            role: "character",
+            text: nil,
+            segments: [ReplySegment(ja: "……おかえり。", zh: "……欢迎回来。")]
+        )
+        XCTAssertEqual(legacy.replyBlocks, [
+            .line(ReplySegment(ja: "……おかえり。", zh: "……欢迎回来。")),
+        ])
+    }
+
+    func testInterruptionDropsScenesThatLeadIntoTheCutLine() {
+        let first = ReplySegment(ja: "ひとつ", zh: "一")
+        let second = ReplySegment(ja: "ふたつ", zh: "二")
+        let blocks: [ReplyBlock] = [
+            .scene("她把杯子放下。"),
+            .line(first),
+            .scene("她抬眼。"),
+            .line(second),
+            .scene("她别过脸。"),
+        ]
+        XCTAssertEqual(
+            blocks.keepingCompleteLines(1),
+            [.scene("她把杯子放下。"), .line(first)]
+        )
+        XCTAssertEqual(blocks.keepingCompleteLines(2), blocks)
+    }
+
+    func testInterruptionKeepsASceneAfterTheLastCompleteLine() {
+        let line = ReplyBlock.line(ReplySegment(ja: "ひとつ", zh: "一"))
+        let blocks: [ReplyBlock] = [line, .scene("她别过脸。")]
+        XCTAssertEqual(blocks.keepingCompleteLines(1), blocks)
+    }
 }
 
 /// A provider that never answers and says when it was asked: the reply can be stopped

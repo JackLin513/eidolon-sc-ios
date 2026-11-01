@@ -92,6 +92,7 @@ struct SettingsView: View {
                         .autocorrectionDisabled()
                     Stepper("历史回合：\(historyTurns)", value: $historyTurns, in: 1...100)
                     Toggle("文字氛围模式", isOn: $atmosphericText)
+                        .accessibilityIdentifier("settings.atmosphericText")
                     TextField("额外参数（JSON，可空）", text: $extraBody, axis: .vertical)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()

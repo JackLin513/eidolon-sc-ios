@@ -110,7 +110,8 @@ func main() async throws {
             provider: provider,
             now: start,
             timeZone: zone,
-            tracing: .off
+            tracing: .off,
+            replyStyle: .text
         ) {}
     }
     for try await _ in eidolon.sendTurn(
@@ -121,7 +122,8 @@ func main() async throws {
         timeZone: zone,
         tracing: .off,
         talking: scenario.talking == "inCall" ? .inCall : .typing,
-        voicedBy: scenario.voiceModel
+        voicedBy: scenario.voiceModel,
+        replyStyle: scenario.talking == "inCall" ? .call : .text
     ) {}
 
     let prompt = provider.prompts.last ?? []

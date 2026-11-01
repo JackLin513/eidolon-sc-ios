@@ -614,6 +614,7 @@ struct ChatView: View {
             }
             HStack(alignment: .bottom, spacing: 8) {
                 TextField("说点什么", text: $store.input, axis: .vertical)
+                    .accessibilityIdentifier("chat.input")
                     .lineLimit(1...5)
                     .textFieldStyle(.plain)
                     .disabled(store.affinity.cooling || calling)
@@ -639,10 +640,11 @@ struct ChatView: View {
                     Image(systemName: store.isStreaming ? "stop.circle.fill" : "arrow.up.circle.fill")
                         .font(.system(size: 30))
                 }
+                .accessibilityIdentifier("chat.send")
                 .disabled(
                     !store.isStreaming
                         && (store.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            || !app.chatSettings.isConfigured
+                            || (!app.chatSettings.isConfigured && !app.isUsingFakeChat)
                             || store.affinity.cooling
                             || calling)
                 )

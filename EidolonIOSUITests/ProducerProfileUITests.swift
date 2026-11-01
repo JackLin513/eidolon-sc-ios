@@ -24,6 +24,10 @@ final class ProducerProfileUITests: XCTestCase {
         setSwitch(toggle, on: true)
 
         let picker = app.datePickers["settings.birthday"].firstMatch
+        // The form is lazy: a picker below the fold may not exist until it is scrolled to.
+        for _ in 0..<3 where !picker.exists {
+            app.swipeUp()
+        }
         XCTAssertTrue(picker.waitForExistence(timeout: 5), "no birthday picker")
         for _ in 0..<4 where !picker.isHittable {
             app.swipeUp()
@@ -108,8 +112,9 @@ final class ProducerProfileUITests: XCTestCase {
 
     private func setSwitch(_ toggle: XCUIElement, on: Bool) {
         let wanted = on ? "1" : "0"
+        let knob = toggle.switches.firstMatch.exists ? toggle.switches.firstMatch : toggle
         for _ in 0..<3 where (toggle.value as? String) != wanted {
-            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
+            knob.tap()
             sleep(1)
         }
         XCTAssertEqual(toggle.value as? String, wanted)

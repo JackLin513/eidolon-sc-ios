@@ -467,4 +467,33 @@ final class ConversationLifecycleTests: XCTestCase {
         }.first)
         XCTAssertNil(reply.affinityChange)
     }
+
+    func testALegacyReplyWithoutBlocksReadsAsLines() async throws {
+        let eidolon = try await installedEidolon()
+        let segments = #"[{"ja":"……おかえり。","zh":"……欢迎回来。"}]"#
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO conversations(id, character_id, created_at)
+                    VALUES ('old', 'mano', '2020-01-01T00:00:00.000000Z')
+                    """
+            )
+            try db.execute(
+                sql: """
+                    INSERT INTO messages(
+                        id, conversation_id, role, ja, zh, segments, created_at
+                    ) VALUES ('old-reply', 'old', 'character', '……おかえり。', '……欢迎回来。',
+                              ?, '2020-01-01T00:00:01.000000Z')
+                    """,
+                arguments: [segments]
+            )
+        }
+
+        let conversation = try await eidolon.currentConversation(characterID: "mano")
+        let reply = try XCTUnwrap(conversation?.messages.last)
+        XCTAssertNil(reply.blocks)
+        XCTAssertEqual(reply.replyBlocks, [
+            .line(ReplySegment(ja: "……おかえり。", zh: "……欢迎回来。")),
+        ])
+    }
 }

@@ -3294,6 +3294,33 @@ final class CallSessionTests: XCTestCase {
         await session.hangUp()
     }
 
+    /// A scene block that leaks into a call is neither shown nor voiced: calls ask for the
+    /// short format, and a stray `<scene>` must not become a caption or a sound.
+    func testSceneBlocksInACallAreNeitherShownNorVoiced() async throws {
+        let eidolon = try await installedEidolon()
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([
+            ["<scene>[softly] 她低下头。</scene><ja>うん</ja><zh>嗯</zh>"],
+        ])
+        let synthesis = FakeSynthesis()
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            synthesis: synthesis
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("ねえ")
+        try await waitFor("voiced") { !synthesis.texts.isEmpty }
+        XCTAssertEqual(synthesis.texts, ["うん"])
+        let captions = log.all.compactMap { event -> String? in
+            if case let .segment(_, _, ja, _) = event { return ja }
+            return nil
+        }
+        XCTAssertEqual(captions, ["うん"])
+        await session.hangUp()
+    }
+
     // MARK: - 只看文字 and 麦克风静音
 
     /// 只看文字: her reply goes on the card at her pace and the voice service is never

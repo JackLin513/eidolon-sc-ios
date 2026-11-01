@@ -104,6 +104,40 @@ final class ReplyParserBlockTests: XCTestCase {
         XCTAssertTrue(parser.segments.isEmpty)
     }
 
+    func testSceneBlocksAreShownWithoutDeliveryCues() {
+        var parser = ReplyParser()
+        var shown = ""
+        for event in parser.feed("<scene>[softly] 她低下头。</scene>") {
+            if case let .sceneDelta(_, text) = event { shown += text }
+        }
+        _ = parser.finish()
+        XCTAssertEqual(shown, "她低下头。")
+        XCTAssertEqual(parser.blocks, [.scene("她低下头。")])
+    }
+
+    func testUntaggedReplyStillVoicesItsWords() {
+        var parser = ReplyParser()
+        var shown = ""
+        var voiced = ""
+        for event in parser.feed("[shyly] ありがとう") {
+            switch event {
+            case let .delta(_, _, text): shown += text
+            case let .speechDelta(_, text): voiced += text
+            case .sceneDelta: break
+            }
+        }
+        for event in parser.finish() {
+            switch event {
+            case let .delta(_, _, text): shown += text
+            case let .speechDelta(_, text): voiced += text
+            case .sceneDelta: break
+            }
+        }
+        XCTAssertEqual(parser.blocks, [.line(ReplySegment(ja: "[shyly] ありがとう", zh: ""))])
+        XCTAssertEqual(shown, "ありがとう")
+        XCTAssertTrue(voiced.contains("ありがとう"), "a call would not voice an untagged reply")
+    }
+
     func testOldFormatHasOnlyLineBlocks() {
         var parser = ReplyParser()
         _ = parser.feed("<ja>ひとつ</ja><zh>一</zh>")
