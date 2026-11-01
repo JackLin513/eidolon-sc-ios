@@ -14,23 +14,103 @@ public struct ReplySegment: Codable, Sendable, Hashable {
         self.ja = ja
         self.zh = zh
     }
+
+    public var isEmpty: Bool {
+        ja.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && zh.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
+/// One ordered piece of her reply: a spoken line (Japanese with its subtitle) or a scene
+/// block (Chinese description that is shown but never voiced). Blocks keep the order the
+/// model wrote them in, so a scene can come before, between, or after lines.
+public enum ReplyBlock: Codable, Sendable, Hashable {
+    case line(ReplySegment)
+    case scene(String)
+
+    public var line: ReplySegment? {
+        if case let .line(line) = self { return line }
+        return nil
+    }
+
+    public var scene: String? {
+        if case let .scene(scene) = self { return scene }
+        return nil
+    }
+
+    public var isEmpty: Bool {
+        switch self {
+        case let .line(line): line.isEmpty
+        case let .scene(scene):
+            scene.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case line
+        case scene
+    }
+
+    private enum Kind: String, Codable {
+        case line
+        case scene
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(Kind.self, forKey: .kind) {
+        case .line:
+            self = .line(try container.decode(ReplySegment.self, forKey: .line))
+        case .scene:
+            self = .scene(try container.decode(String.self, forKey: .scene))
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case let .line(line):
+            try container.encode(Kind.line, forKey: .kind)
+            try container.encode(line, forKey: .line)
+        case let .scene(scene):
+            try container.encode(Kind.scene, forKey: .kind)
+            try container.encode(scene, forKey: .scene)
+        }
+    }
 }
 
 public enum ReplyParserEvent: Sendable, Hashable {
-    /// More of `segment`'s text, with delivery cues stripped for display.
-    case delta(segment: Int, language: ReplyLanguage, text: String)
-    /// More of `segment`'s Japanese as it is to be voiced: delivery cues kept, as the
-    /// voice model is given them.
-    case speechDelta(segment: Int, text: String)
+    /// More of a line's text, with delivery cues stripped for display.
+    case delta(block: Int, language: ReplyLanguage, text: String)
+    /// More of a line's Japanese as it is to be voiced: delivery cues kept, as the voice
+    /// model is given them.
+    case speechDelta(block: Int, text: String)
+    /// More of a scene block's Chinese description; never voiced.
+    case sceneDelta(block: Int, text: String)
 }
 
-/// Turns the model's stream into per-segment deltas, as upstream's `ReplyParser` does for
-/// the `<ja>…</ja><zh>…</zh>` format. Photo tags are out of scope in v1 and are not parsed.
+/// Turns the model's stream into per-block deltas, as upstream's `ReplyParser` does for
+/// the `<ja>…</ja><zh>…</zh>` format, plus this repository's `<scene>…</scene>` blocks.
 public struct ReplyParser: Sendable {
-    public private(set) var segments: [ReplySegment] = []
+    /// Every block, in the order it was written. Empty line and scene blocks are left in
+    /// while streaming and filtered by the caller when the reply is recorded.
+    public private(set) var blocks: [ReplyBlock] = []
+
+    /// Just the spoken lines, in order: what read-aloud, judgement, memory and the legacy
+    /// columns use.
+    public var segments: [ReplySegment] {
+        blocks.compactMap(\.line)
+    }
+
+    private enum Inside {
+        case ja(Int)
+        case zh(Int)
+        case scene(Int)
+    }
 
     private var buffer = ""
-    private var inside: ReplyLanguage?
+    private var inside: Inside?
     private var stray = ""
     private var filter = CueFilter()
 
@@ -38,7 +118,9 @@ public struct ReplyParser: Sendable {
     private static let jaClose = "</ja>"
     private static let zhOpen = "<zh>"
     private static let zhClose = "</zh>"
-    private static let tags = [jaOpen, jaClose, zhOpen, zhClose]
+    private static let sceneOpen = "<scene>"
+    private static let sceneClose = "</scene>"
+    private static let tags = [jaOpen, jaClose, zhOpen, zhClose, sceneOpen, sceneClose]
 
     public init() {}
 
@@ -46,7 +128,7 @@ public struct ReplyParser: Sendable {
         buffer += chunk
         var events: [ReplyParserEvent] = []
         while true {
-            guard let language = inside else {
+            guard let inside else {
                 guard let (index, tag, next) = nextOpenTag() else {
                     stray += drainedStray()
                     return events
@@ -54,28 +136,48 @@ public struct ReplyParser: Sendable {
                 let start = buffer.index(buffer.startIndex, offsetBy: index)
                 stray += String(buffer[buffer.startIndex..<start])
                 buffer = String(buffer[buffer.index(start, offsetBy: tag.count)...])
-                if next == .ja || segments.isEmpty || !(segments.last?.zh.isEmpty ?? true) {
-                    segments.append(ReplySegment())
+                switch next {
+                case .ja:
+                    let block = blocks.count
+                    blocks.append(.line(ReplySegment()))
+                    self.inside = .ja(block)
+                case .zh:
+                    let block = lineBlockForSubtitle()
+                    self.inside = .zh(block)
+                case .scene:
+                    let block = blocks.count
+                    blocks.append(.scene(""))
+                    self.inside = .scene(block)
                 }
-                inside = next
                 filter = CueFilter()
                 continue
             }
 
-            let close = language == .ja ? Self.jaClose : Self.zhClose
-            let openTag = language == .ja ? Self.jaOpen : Self.zhOpen
+            let close: String
+            switch inside {
+            case .ja: close = Self.jaClose
+            case .zh: close = Self.zhClose
+            case .scene: close = Self.sceneClose
+            }
             if let range = buffer.range(of: close) {
                 if range.lowerBound > buffer.startIndex {
-                    append(language, String(buffer[buffer.startIndex..<range.lowerBound]), &events)
+                    append(
+                        inside,
+                        String(buffer[buffer.startIndex..<range.lowerBound]),
+                        &events
+                    )
                 }
                 buffer = String(buffer[range.upperBound...])
-                endLine(language, &events)
-                inside = nil
+                endBlock(inside, &events)
+                self.inside = nil
             } else {
-                let keep = partialSuffix(buffer, [close, openTag])
+                let keep = partialSuffix(
+                    buffer,
+                    [close, Self.jaOpen, Self.zhOpen, Self.sceneOpen]
+                )
                 let take = String(buffer.dropLast(keep))
                 if !take.isEmpty {
-                    append(language, take, &events)
+                    append(inside, take, &events)
                     buffer = String(buffer.suffix(keep))
                 }
                 return events
@@ -85,14 +187,27 @@ public struct ReplyParser: Sendable {
 
     public mutating func finish() -> [ReplyParserEvent] {
         var events: [ReplyParserEvent] = []
-        if let language = inside {
-            let keep = partialSuffix(buffer, [language == .ja ? Self.jaClose : Self.zhClose])
+        if let inside {
+            let close: String
+            switch inside {
+            case .ja: close = Self.jaClose
+            case .zh: close = Self.zhClose
+            case .scene: close = Self.sceneClose
+            }
+            let keep = partialSuffix(buffer, [close])
             let text = String(buffer.dropLast(keep))
-            if !text.isEmpty { append(language, text, &events) }
-            endLine(language, &events)
-        } else if segments.isEmpty, !(stray + buffer).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            append(.ja, (stray + buffer).trimmingCharacters(in: .whitespacesAndNewlines), &events)
-            endLine(.ja, &events)
+            if !text.isEmpty { append(inside, text, &events) }
+            endBlock(inside, &events)
+        } else if blocks.isEmpty,
+                  !(stray + buffer).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let block = blocks.count
+            blocks.append(.line(ReplySegment(ja: (stray + buffer)
+                .trimmingCharacters(in: .whitespacesAndNewlines))))
+            events.append(.delta(
+                block: block,
+                language: .ja,
+                text: (stray + buffer).trimmingCharacters(in: .whitespacesAndNewlines)
+            ))
         }
         buffer = ""
         stray = ""
@@ -100,17 +215,84 @@ public struct ReplyParser: Sendable {
         return events
     }
 
+    // MARK: - Blocks
+
+    /// A `<zh>` without a line of its own still needs a line block; if the previous block
+    /// is a line whose subtitle has not started, this is that line's subtitle.
+    private mutating func lineBlockForSubtitle() -> Int {
+        if let last = blocks.indices.last, case let .line(line) = blocks[last], line.zh.isEmpty {
+            return last
+        }
+        let block = blocks.count
+        blocks.append(.line(ReplySegment()))
+        return block
+    }
+
+    private mutating func append(
+        _ inside: Inside,
+        _ text: String,
+        _ events: inout [ReplyParserEvent]
+    ) {
+        switch inside {
+        case let .ja(block):
+            guard case var .line(line) = blocks[block] else { return }
+            line.ja += text
+            blocks[block] = .line(line)
+            let (shown, voiced) = filter.feed(text)
+            if !shown.isEmpty {
+                events.append(.delta(block: block, language: .ja, text: shown))
+            }
+            if !voiced.isEmpty {
+                events.append(.speechDelta(block: block, text: voiced))
+            }
+        case let .zh(block):
+            guard case var .line(line) = blocks[block] else { return }
+            line.zh += text
+            blocks[block] = .line(line)
+            // Subtitles are not voiced and carry no delivery cues.
+            events.append(.delta(block: block, language: .zh, text: text))
+        case let .scene(block):
+            guard case var .scene(scene) = blocks[block] else { return }
+            scene += text
+            blocks[block] = .scene(scene)
+            events.append(.sceneDelta(block: block, text: text))
+        }
+    }
+
+    private mutating func endBlock(
+        _ inside: Inside,
+        _ events: inout [ReplyParserEvent]
+    ) {
+        switch inside {
+        case let .ja(block):
+            let (shown, voiced) = filter.finish()
+            if !shown.isEmpty {
+                events.append(.delta(block: block, language: .ja, text: shown))
+            }
+            if !voiced.isEmpty {
+                events.append(.speechDelta(block: block, text: voiced))
+            }
+            filter = CueFilter()
+        case .zh, .scene:
+            break
+        }
+    }
+
     // MARK: - Plumbing
 
-    /// The earliest opening tag in the buffer, with its index and the language it opens.
+    /// The earliest opening tag in the buffer, with its index and the block it opens.
     /// Anything before it is stray text, which the format says there should not be.
-    private func nextOpenTag() -> (Int, String, ReplyLanguage)? {
-        var found: (Int, String, ReplyLanguage)?
-        for (tag, language) in [(Self.jaOpen, ReplyLanguage.ja), (Self.zhOpen, .zh)] {
+    private func nextOpenTag() -> (Int, String, Inside)? {
+        var found: (Int, String, Inside)?
+        for (tag, block) in [
+            (Self.jaOpen, Inside.ja(0)),
+            (Self.zhOpen, Inside.zh(0)),
+            (Self.sceneOpen, Inside.scene(0)),
+        ] {
             if let range = buffer.range(of: tag) {
                 let index = buffer.distance(from: buffer.startIndex, to: range.lowerBound)
                 if found == nil || index < found!.0 {
-                    found = (index, tag, language)
+                    found = (index, tag, block)
                 }
             }
         }
@@ -122,38 +304,6 @@ public struct ReplyParser: Sendable {
         let strayed = String(buffer.dropLast(keep))
         buffer = String(buffer.suffix(keep))
         return strayed
-    }
-
-    private mutating func append(
-        _ language: ReplyLanguage,
-        _ text: String,
-        _ events: inout [ReplyParserEvent]
-    ) {
-        if segments.isEmpty { segments.append(ReplySegment()) }
-        let index = segments.count - 1
-        switch language {
-        case .ja: segments[index].ja += text
-        case .zh: segments[index].zh += text
-        }
-        let (shown, voiced) = filter.feed(text)
-        if !shown.isEmpty {
-            events.append(.delta(segment: index, language: language, text: shown))
-        }
-        // Only her Japanese is voiced, with its cues as the voice model reads them.
-        if language == .ja, !voiced.isEmpty {
-            events.append(.speechDelta(segment: index, text: voiced))
-        }
-    }
-
-    private mutating func endLine(_ language: ReplyLanguage, _ events: inout [ReplyParserEvent]) {
-        let (shown, voiced) = filter.finish()
-        if !shown.isEmpty, !segments.isEmpty {
-            events.append(.delta(segment: segments.count - 1, language: language, text: shown))
-        }
-        if language == .ja, !voiced.isEmpty, !segments.isEmpty {
-            events.append(.speechDelta(segment: segments.count - 1, text: voiced))
-        }
-        filter = CueFilter()
     }
 
     /// Length of the longest suffix of `text` that could be the start of one of `tags`.

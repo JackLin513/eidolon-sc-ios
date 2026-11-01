@@ -17,16 +17,21 @@ public enum TurnInput {
 }
 
 public enum TurnEvent: Sendable {
-    case delta(segment: Int, language: ReplyLanguage, text: String)
+    case delta(block: Int, language: ReplyLanguage, text: String)
     /// Her Japanese as it is to be voiced, delivery cues kept (a call voices it per
-    /// segment; a text turn ignores it).
-    case speechDelta(segment: Int, text: String)
+    /// block; a text turn ignores it).
+    case speechDelta(block: Int, text: String)
+    /// A scene block's Chinese description; shown, never voiced.
+    case sceneDelta(block: Int, text: String)
     case finished(TurnRecord)
 }
 
 public struct TurnRecord: Sendable, Hashable {
     public var conversationID: String
     public var segments: [ReplySegment]
+    /// The reply as it was written, in order: lines and scene blocks. `segments` is the
+    /// spoken subset, kept for call and legacy consumers.
+    public var blocks: [ReplyBlock] = []
     /// The reply was cut short because the producer said something else.
     public var stopped: Bool
     public var affinityTier: AffinityTier
@@ -61,12 +66,19 @@ public struct ChatMessageRecord: Sendable, Hashable, Identifiable {
     public var role: String
     public var text: String?
     public var segments: [ReplySegment]
+    /// The reply as it was written; nil on a message recorded before scene blocks existed.
+    public var blocks: [ReplyBlock]? = nil
     public var createdAt: String
     /// How the reply changed her affinity; nil for the producer's lines and for a turn
     /// that changed nothing (spec #38).
     public var affinityChange: AffinityChange? = nil
 
     public var isFromCharacter: Bool { role == "character" }
+
+    /// The reply as it is shown: the stored blocks, or the old segments read as lines.
+    public var replyBlocks: [ReplyBlock] {
+        blocks ?? segments.map(ReplyBlock.line)
+    }
     /// One of her reach-outs, kept apart from her turns in the record (`reach:` ids).
     public var isReachOut: Bool { id.hasPrefix("reach:") }
 
@@ -104,7 +116,8 @@ extension Eidolon {
         // apart from the conversation's typed turns.
         inCall: CallScope? = nil,
         stop: CallTurnStop? = nil,
-        voicedBy model: String? = nil
+        voicedBy model: String? = nil,
+        replyStyle: ReplyStyle = .text
     ) -> AsyncThrowingStream<TurnEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -123,7 +136,8 @@ extension Eidolon {
                         talking: talking,
                         inCall: inCall,
                         stop: stop,
-                        voicedBy: model
+                        voicedBy: model,
+                        replyStyle: replyStyle
                     ) { continuation.yield($0) }
                     continuation.yield(.finished(record))
                     continuation.finish()
@@ -190,6 +204,7 @@ extension Eidolon {
         inCall: CallScope?,
         stop: CallTurnStop?,
         voicedBy model: String?,
+        replyStyle: ReplyStyle,
         emit: (TurnEvent) -> Void
     ) async throws -> TurnRecord {
         // Where the turn's time goes, for the trace (ADR-0012): the producer waits through
@@ -365,7 +380,7 @@ extension Eidolon {
             producer: producer,
             today: Self.isoDay(now, in: zone),
             nowSection: nowSection,
-            formatInstructions: ReplyFormatInstructions.forVoice(model: model),
+            formatInstructions: replyStyle.formatInstructions(voiceModel: model),
             narration: record.narration,
             currentNarration: record.trailingNarration
         )
@@ -377,10 +392,12 @@ extension Eidolon {
         func shown(_ events: [ReplyParserEvent]) {
             for event in events {
                 switch event {
-                case let .delta(segment, language, text):
-                    emit(.delta(segment: segment, language: language, text: text))
-                case let .speechDelta(segment, text):
-                    emit(.speechDelta(segment: segment, text: text))
+                case let .delta(block, language, text):
+                    emit(.delta(block: block, language: language, text: text))
+                case let .speechDelta(block, text):
+                    emit(.speechDelta(block: block, text: text))
+                case let .sceneDelta(block, text):
+                    emit(.sceneDelta(block: block, text: text))
                 }
             }
         }
@@ -510,17 +527,28 @@ extension Eidolon {
             else { throw CancellationError() }
             keepComplete = count
         }
-        var segments = parser.segments.filter { !($0.ja.isEmpty && $0.zh.isEmpty) }
+        var blocks = parser.blocks.filter { !$0.isEmpty }
         if let keepComplete {
-            segments = Array(segments.prefix(keepComplete))
+            var kept: [ReplyBlock] = []
+            var lines = 0
+            for block in blocks {
+                if case .line = block {
+                    if lines >= keepComplete { break }
+                    lines += 1
+                }
+                kept.append(block)
+            }
+            blocks = kept
         }
+        let segments = blocks.compactMap(\.line).filter { !$0.isEmpty }
         // Stopped before she said anything: there is no reply to keep, and upstream
         // records none — not an empty bubble, not a blank assistant message in the
-        // history (upstream raises `EmptyReply` before `_keep`).
-        if segments.isEmpty, stopped {
+        // history (upstream raises `EmptyReply` before `_keep`). A scene-only reply is
+        // still something she wrote, so it counts as a reply.
+        if blocks.isEmpty, stopped {
             throw CancellationError()
         }
-        if segments.isEmpty {
+        if blocks.isEmpty {
             recordTrace(existingConversation, error: "她说的话是空的")
             throw EidolonError.turnFailed
         }
@@ -533,6 +561,7 @@ extension Eidolon {
             characterID: characterID,
             userText: text,
             segments: segments,
+            blocks: blocks,
             judged: judged,
             ending: ending,
             typed: call == nil,
@@ -559,6 +588,7 @@ extension Eidolon {
         return TurnRecord(
             conversationID: recorded.conversationID,
             segments: segments,
+            blocks: blocks,
             stopped: stopped,
             affinityTier: recorded.affinity.tier,
             cooldownUntil: recorded.affinity.cooldownUntil,
@@ -694,6 +724,7 @@ extension Eidolon {
                     role: message.role,
                     text: message.text,
                     segments: message.segments,
+                    blocks: message.blocks,
                     createdAt: message.createdAt
                 )
                 if message.isReachOut {
@@ -762,6 +793,7 @@ extension Eidolon {
                 role: message.role,
                 text: message.text,
                 segments: message.segments,
+                blocks: message.blocks,
                 createdAt: message.createdAt
             )
         }
@@ -866,6 +898,7 @@ extension Eidolon {
         characterID: String,
         userText: String,
         segments: [ReplySegment],
+        blocks: [ReplyBlock],
         judged: Judged?,
         ending: EndsReason?,
         typed: Bool,
@@ -877,6 +910,7 @@ extension Eidolon {
         let stamp = Self.timestamp(microseconds: nowMicros)
         let replyStamp = Self.timestamp(microseconds: replyMicros)
         let segmentsJSON = try Self.encodeSegments(segments)
+        let blocksJSON = try Self.encodeBlocks(blocks)
         let userID = UUID().uuidString
         let replyID = UUID().uuidString
         let day = Self.beijingDay(now)
@@ -947,16 +981,16 @@ extension Eidolon {
             try db.execute(
                 sql: """
                     INSERT INTO messages(
-                        id, conversation_id, role, ja, zh, segments, created_at,
+                        id, conversation_id, role, ja, zh, segments, blocks, created_at,
                         affinity, hurt, out_of_line, typed,
                         affinity_up, affinity_tier_changed, affinity_cooldown
-                    ) VALUES (?, ?, 'character', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, 'character', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                 arguments: [
                     replyID, conversationID,
                     segments.map(\.ja).joined(),
                     segments.map(\.zh).joined(),
-                    segmentsJSON, replyStamp,
+                    segmentsJSON, blocksJSON, replyStamp,
                     after.tier.rawValue,
                     hurt,
                     outOfLine ? 1 : 0,
@@ -1097,6 +1131,16 @@ extension Eidolon {
         let data = try JSONEncoder().encode(segments)
         return String(decoding: data, as: UTF8.self)
     }
+
+    static func decodeBlocks(_ json: String?) -> [ReplyBlock]? {
+        guard let json, let data = json.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode([ReplyBlock].self, from: data)
+    }
+
+    static func encodeBlocks(_ blocks: [ReplyBlock]) throws -> String {
+        let data = try JSONEncoder().encode(blocks)
+        return String(decoding: data, as: UTF8.self)
+    }
 }
 
 struct StoredMessage: Sendable {
@@ -1104,13 +1148,26 @@ struct StoredMessage: Sendable {
     var role: String
     var text: String?
     var segments: [ReplySegment]
+    var blocks: [ReplyBlock]?
     var createdAt: String
 
-    init(id: String, role: String, text: String?, segments: [ReplySegment], createdAt: String = "") {
+    var replyBlocks: [ReplyBlock] {
+        blocks ?? segments.map(ReplyBlock.line)
+    }
+
+    init(
+        id: String,
+        role: String,
+        text: String?,
+        segments: [ReplySegment],
+        blocks: [ReplyBlock]? = nil,
+        createdAt: String = ""
+    ) {
         self.id = id
         self.role = role
         self.text = text
         self.segments = segments
+        self.blocks = blocks
         self.createdAt = createdAt
     }
 
@@ -1119,6 +1176,7 @@ struct StoredMessage: Sendable {
         role = row["role"]
         text = row["text"]
         segments = Eidolon.decodeSegments(row["segments"])
+        blocks = Eidolon.decodeBlocks(row["blocks"])
         createdAt = row["created_at"]
     }
 }
@@ -1182,7 +1240,7 @@ struct PromptAssembler {
                     (narration[message.id] ?? "") + (message.text ?? "")
                 ))
             } else {
-                messages.append(PromptMessage(.assistant, Self.formatReply(message.segments)))
+                messages.append(PromptMessage(.assistant, Self.formatReply(message.replyBlocks)))
             }
         }
         if let nowSection {
@@ -1193,7 +1251,18 @@ struct PromptAssembler {
     }
 
     static func formatReply(_ segments: [ReplySegment]) -> String {
-        segments.map { "<ja>\($0.ja)</ja><zh>\($0.zh)</zh>" }.joined()
+        formatReply(segments.map(ReplyBlock.line))
+    }
+
+    static func formatReply(_ blocks: [ReplyBlock]) -> String {
+        blocks.map { block in
+            switch block {
+            case let .line(line):
+                return "<ja>\(line.ja)</ja><zh>\(line.zh)</zh>"
+            case let .scene(scene):
+                return "<scene>\(scene)</scene>"
+            }
+        }.joined()
     }
 
     /// What the judge model is told of the history: her replies without their cues.

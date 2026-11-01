@@ -11,6 +11,7 @@ struct SettingsView: View {
     @State private var model = ""
     @State private var apiKey = ""
     @State private var historyTurns = 20
+    @State private var atmosphericText = true
     @State private var extraBody = ""
     @State private var judgeBaseURL = ""
     @State private var judgeModel = ""
@@ -90,6 +91,7 @@ struct SettingsView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     Stepper("历史回合：\(historyTurns)", value: $historyTurns, in: 1...100)
+                    Toggle("文字氛围模式", isOn: $atmosphericText)
                     TextField("额外参数（JSON，可空）", text: $extraBody, axis: .vertical)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -97,7 +99,7 @@ struct SettingsView: View {
                 } header: {
                     Text("对话模型")
                 } footer: {
-                    Text("任何 OpenAI 兼容的 /chat/completions 服务都可以。密钥保存在钥匙串，地址和模型名存在偏好设置。")
+                    Text("任何 OpenAI 兼容的 /chat/completions 服务都可以。密钥保存在钥匙串，地址和模型名存在偏好设置。文字氛围模式让文字回合的台词更长、并显示动作与环境描写；通话和搭话不受影响。")
                 }
 
                 Section {
@@ -648,6 +650,7 @@ struct SettingsView: View {
         model = settings.model
         apiKey = settings.apiKey
         historyTurns = settings.historyTurns
+        atmosphericText = settings.atmosphericText
         extraBody = settings.extraBody
         judgeBaseURL = settings.judgeBaseURL
         judgeModel = settings.judgeModel
@@ -710,6 +713,7 @@ struct SettingsView: View {
             model: model,
             apiKey: apiKey,
             historyTurns: historyTurns,
+            atmosphericText: atmosphericText,
             extraBody: extraBody,
             judgeBaseURL: judgeBaseURL,
             judgeModel: judgeModel,

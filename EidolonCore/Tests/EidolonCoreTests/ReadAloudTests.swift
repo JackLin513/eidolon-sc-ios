@@ -46,7 +46,7 @@ final class ReadAloudTests: XCTestCase {
 
     /// Nothing to read: no speech at all.
     func testNothingToReadIsNoSpeech() {
-        XCTAssertNil(ReadAloud.speech(of: [], model: "drama-3"))
+        XCTAssertNil(ReadAloud.speech(of: [ReplySegment](), model: "drama-3"))
         XCTAssertNil(ReadAloud.speech(of: [her(" "), her("")], model: nil))
     }
 
@@ -165,5 +165,18 @@ final class ReadAloudPlaybackTests: XCTestCase {
         XCTAssertNil(playback.reading)
         XCTAssertNil(playback.phase)
         XCTAssertEqual(playback.voiced("おはよう。"), .none)
+    }
+}
+
+final class ReadAloudSceneTests: XCTestCase {
+    /// 场景块只是画面，不朗读；只有场景块时没有可读的内容。
+    func testSceneBlocksAreNotReadAloud() {
+        let blocks: [ReplyBlock] = [
+            .scene("她把杯子放下。"),
+            .line(ReplySegment(ja: "……おかえり。", zh: "……欢迎回来。")),
+            .scene("她别过脸。"),
+        ]
+        XCTAssertEqual(ReadAloud.speech(of: blocks, model: "drama-3"), "……おかえり。")
+        XCTAssertNil(ReadAloud.speech(of: [.scene("她只是看着窗外。")], model: "drama-3"))
     }
 }

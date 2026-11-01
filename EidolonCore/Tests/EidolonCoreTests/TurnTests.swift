@@ -87,6 +87,8 @@ final class TurnTests: XCTestCase {
                 deltas.append(text)
             case .speechDelta:
                 break
+            case .sceneDelta:
+                break
             case let .finished(finished):
                 record = finished
             }
@@ -620,6 +622,107 @@ final class TurnTests: XCTestCase {
             second.prompts.first?.map(\.content).joined().contains("# 世界设定") ?? false,
             "the world was not read again"
         )
+    }
+
+    func testRichTextTurnUsesRichInstructionsAndKeepsSceneBlocks() async throws {
+        let eidolon = try await installedEidolon()
+        let provider = RecordingChatProvider(
+            chunks: ["<scene>她把杯子放下。</scene><ja>……おかえり。</ja><zh>……欢迎回来。</zh>"]
+        )
+
+        var record: TurnRecord?
+        for try await event in eidolon.sendTurn(
+            characterID: "mano",
+            text: "やあ",
+            provider: provider,
+            replyStyle: .richText
+        ) {
+            if case let .finished(finished) = event { record = finished }
+        }
+
+        XCTAssertTrue(provider.prompts.first?.map(\.content).joined().contains("场景块") ?? false)
+        let finished = try XCTUnwrap(record)
+        XCTAssertEqual(finished.blocks, [
+            .scene("她把杯子放下。"),
+            .line(ReplySegment(ja: "……おかえり。", zh: "……欢迎回来。")),
+        ])
+        XCTAssertEqual(finished.segments, [ReplySegment(ja: "……おかえり。", zh: "……欢迎回来。")])
+
+        let snapshot = try await eidolon.currentConversation(characterID: "mano")
+        let reply = try XCTUnwrap(snapshot?.messages.last)
+        XCTAssertEqual(reply.japanese, "……おかえり。")
+        XCTAssertEqual(reply.replyBlocks, finished.blocks)
+    }
+
+    func testSceneBlocksGoIntoTheNextAssistantHistory() async throws {
+        let eidolon = try await installedEidolon()
+        let first = RecordingChatProvider(
+            chunks: ["<scene>她把杯子放下。</scene><ja>……おかえり。</ja><zh>……欢迎回来。</zh>"]
+        )
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano", text: "やあ", provider: first, replyStyle: .richText
+        ) {}
+
+        let second = RecordingChatProvider(chunks: ["<ja>うん</ja><zh>嗯</zh>"])
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano", text: "元気？", provider: second
+        ) {}
+
+        let assistant = second.prompts.first?.last { $0.role == .assistant }
+        XCTAssertTrue(assistant?.content.contains("<scene>她把杯子放下。</scene>") ?? false)
+    }
+
+    func testDefaultTextTurnDoesNotAskForScenes() async throws {
+        let eidolon = try await installedEidolon()
+        let provider = RecordingChatProvider(chunks: ["<ja>うん</ja><zh>嗯</zh>"])
+        for try await _ in eidolon.sendTurn(characterID: "mano", text: "やあ", provider: provider) {}
+        XCTAssertFalse(provider.prompts.first?.map(\.content).joined().contains("场景块") ?? true)
+    }
+
+    func testSceneOnlyReplyIsStillRecorded() async throws {
+        let eidolon = try await installedEidolon()
+        let provider = RecordingChatProvider(chunks: ["<scene>她只是看着窗外。</scene>"])
+        var record: TurnRecord?
+        for try await event in eidolon.sendTurn(
+            characterID: "mano", text: "やあ", provider: provider, replyStyle: .richText
+        ) {
+            if case let .finished(finished) = event { record = finished }
+        }
+
+        let finished = try XCTUnwrap(record)
+        XCTAssertEqual(finished.blocks, [.scene("她只是看着窗外。")])
+        XCTAssertTrue(finished.segments.isEmpty)
+
+        let snapshot = try await eidolon.currentConversation(characterID: "mano")
+        let reply = try XCTUnwrap(snapshot?.messages.last)
+        XCTAssertEqual(reply.replyBlocks, [.scene("她只是看着窗外。")])
+        XCTAssertEqual(reply.japanese, "")
+    }
+
+    func testJudgeHistoryKeepsOnlySpokenLines() {
+        let message = StoredMessage(
+            id: "reply",
+            role: "character",
+            text: nil,
+            segments: [ReplySegment(ja: "……おかえり。", zh: "……欢迎回来。")],
+            blocks: [
+                .scene("她把杯子放下。"),
+                .line(ReplySegment(ja: "……おかえり。", zh: "……欢迎回来。")),
+            ]
+        )
+        let history = PromptAssembler.judgeHistory([message])
+        XCTAssertEqual(history.count, 1)
+        XCTAssertTrue(history[0].content.contains("おかえり"))
+        XCTAssertFalse(history[0].content.contains("她把杯子放下"))
+    }
+
+    func testReplyBlocksRoundTripThroughJSON() throws {
+        let blocks: [ReplyBlock] = [
+            .scene("她把杯子放下。"),
+            .line(ReplySegment(ja: "……おかえり。", zh: "……欢迎回来。")),
+        ]
+        let data = try JSONEncoder().encode(blocks)
+        XCTAssertEqual(try JSONDecoder().decode([ReplyBlock].self, from: data), blocks)
     }
 }
 

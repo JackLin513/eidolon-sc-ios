@@ -18,6 +18,11 @@ public enum ReadAloud {
         return lines.joined(separator: "\n")
     }
 
+    /// The spoken subset of a reply: scene blocks are shown but never read aloud.
+    public static func speech(of blocks: [ReplyBlock], model: String?) -> String? {
+        speech(of: blocks.compactMap(\.line), model: model)
+    }
+
     /// Fish Audio's best quality, slower to start than a call's: nobody is waiting on the line
     /// (upstream `read_aloud.LATENCY`).
     public static let latency = "normal"

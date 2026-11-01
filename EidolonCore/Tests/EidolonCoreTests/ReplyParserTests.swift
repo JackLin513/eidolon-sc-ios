@@ -8,8 +8,8 @@ final class ReplyParserTests: XCTestCase {
 
         for chunk in ["<ja>こん", "にちは</ja><zh>你", "好</zh>"] {
             for event in parser.feed(chunk) {
-                if case let .delta(segment, language, text) = event {
-                    XCTAssertEqual(segment, 0)
+                if case let .delta(block, language, text) = event {
+                    XCTAssertEqual(block, 0)
                     _ = language
                     deltas.append(text)
                 }
@@ -54,5 +54,60 @@ final class ReplyParserTests: XCTestCase {
             parser.segments,
             [ReplySegment(ja: "ひとつ", zh: "一"), ReplySegment(ja: "ふたつ", zh: "二")]
         )
+    }
+}
+
+final class ReplyParserBlockTests: XCTestCase {
+    func testSceneBlocksKeepTheirOrder() {
+        var parser = ReplyParser()
+        var events: [String] = []
+        for event in parser.feed(
+            "<scene>她把杯子放下。</scene><ja>……おかえり。</ja><zh>……欢迎回来。</zh><scene>她别过脸。</scene>"
+        ) {
+            switch event {
+            case let .sceneDelta(block, text): events.append("scene\(block):\(text)")
+            case let .delta(block, language, text): events.append("\(language.rawValue)\(block):\(text)")
+            case .speechDelta: break
+            }
+        }
+        XCTAssertEqual(events, [
+            "scene0:她把杯子放下。",
+            "ja1:……おかえり。",
+            "zh1:……欢迎回来。",
+            "scene2:她别过脸。",
+        ])
+        XCTAssertEqual(parser.blocks, [
+            .scene("她把杯子放下。"),
+            .line(ReplySegment(ja: "……おかえり。", zh: "……欢迎回来。")),
+            .scene("她别过脸。"),
+        ])
+        XCTAssertEqual(parser.segments, [ReplySegment(ja: "……おかえり。", zh: "……欢迎回来。")])
+    }
+
+    func testSceneAcrossChunksAndFinish() {
+        var parser = ReplyParser()
+        for chunk in ["<sce", "ne>她低下", "头。</sc", "ene><ja>うん</ja><zh>嗯</zh>"] {
+            _ = parser.feed(chunk)
+        }
+        _ = parser.finish()
+        XCTAssertEqual(parser.blocks, [
+            .scene("她低下头。"),
+            .line(ReplySegment(ja: "うん", zh: "嗯")),
+        ])
+    }
+
+    func testSceneOnlyReplyHasNoSegments() {
+        var parser = ReplyParser()
+        _ = parser.feed("<scene>她只是看着窗外。</scene>")
+        _ = parser.finish()
+        XCTAssertEqual(parser.blocks, [.scene("她只是看着窗外。")])
+        XCTAssertTrue(parser.segments.isEmpty)
+    }
+
+    func testOldFormatHasOnlyLineBlocks() {
+        var parser = ReplyParser()
+        _ = parser.feed("<ja>ひとつ</ja><zh>一</zh>")
+        _ = parser.finish()
+        XCTAssertEqual(parser.blocks, [.line(ReplySegment(ja: "ひとつ", zh: "一"))])
     }
 }

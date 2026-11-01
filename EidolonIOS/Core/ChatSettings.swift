@@ -8,6 +8,8 @@ struct ChatSettings {
     var model: String = ""
     var apiKey: String = ""
     var historyTurns: Int = 20
+    /// 文字氛围模式: text turns may use longer lines and scene blocks; calls never do.
+    var atmosphericText: Bool = true
     var extraBody: String = ""
 
     var judgeBaseURL: String = ""
@@ -63,6 +65,7 @@ struct ChatSettings {
     private static let baseURLKey = "chat.baseURL"
     private static let modelKey = "chat.model"
     private static let historyKey = "chat.historyTurns"
+    private static let atmosphericTextKey = "chat.atmosphericText"
     private static let extraBodyKey = "chat.extraBody"
     private static let keychainAccount = "chat.apiKey"
 
@@ -106,6 +109,7 @@ struct ChatSettings {
             model: defaults.string(forKey: modelKey) ?? "",
             apiKey: Keychain.string(account: keychainAccount) ?? "",
             historyTurns: defaults.object(forKey: historyKey) as? Int ?? 20,
+            atmosphericText: defaults.object(forKey: atmosphericTextKey) as? Bool ?? true,
             extraBody: defaults.string(forKey: extraBodyKey) ?? "",
             judgeBaseURL: judgeBaseURL,
             judgeModel: judgeModel,
@@ -157,6 +161,7 @@ struct ChatSettings {
         defaults.set(baseURL.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.baseURLKey)
         defaults.set(model.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.modelKey)
         defaults.set(historyTurns, forKey: Self.historyKey)
+        defaults.set(atmosphericText, forKey: Self.atmosphericTextKey)
         defaults.set(extraBody.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.extraBodyKey)
         defaults.set(judgeBaseURL.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.judgeBaseURLKey)
         defaults.set(judgeModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.judgeModelKey)
