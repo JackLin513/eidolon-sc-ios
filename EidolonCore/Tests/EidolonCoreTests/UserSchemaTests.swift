@@ -26,6 +26,13 @@ final class UserSchemaTests: XCTestCase {
                 """)
             // The tables the later migrations touch.
             try db.execute(sql: """
+                CREATE TABLE conversations (
+                    id TEXT PRIMARY KEY,
+                    character_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    title TEXT,
+                    ended_at TEXT
+                );
                 CREATE TABLE memories (
                     id TEXT PRIMARY KEY,
                     source_character_id TEXT,
@@ -126,6 +133,13 @@ final class UserSchemaTests: XCTestCase {
                 )
             }
             try db.execute(sql: """
+                CREATE TABLE conversations (
+                    id TEXT PRIMARY KEY,
+                    character_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    title TEXT,
+                    ended_at TEXT
+                );
                 CREATE TABLE messages (
                     id TEXT PRIMARY KEY,
                     conversation_id TEXT NOT NULL,
@@ -154,5 +168,47 @@ final class UserSchemaTests: XCTestCase {
             return Eidolon.decodeAffinityChange(row)
         }
         XCTAssertNil(change)
+    }
+
+    /// v14 made the current conversation an explicit pointer instead of "the newest one".
+    /// An upgraded library points each character at the newest conversation she had then
+    /// (spec #62).
+    func testUpgradingToV14PointsAtEachCharactersNewestConversation() throws {
+        let queue = try DatabaseQueue()
+        try queue.write { db in
+            try db.execute(sql: "CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY)")
+            for version in ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13"] {
+                try db.execute(
+                    sql: "INSERT INTO grdb_migrations(identifier) VALUES (?)",
+                    arguments: [version]
+                )
+            }
+            try db.execute(sql: """
+                CREATE TABLE conversations (
+                    id TEXT PRIMARY KEY,
+                    character_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    title TEXT,
+                    ended_at TEXT
+                )
+                """)
+            try db.execute(sql: """
+                INSERT INTO conversations(id, character_id, created_at) VALUES
+                    ('mano-old', 'mano', '2026-01-01T00:00:00.000000Z'),
+                    ('mano-new', 'mano', '2026-02-01T00:00:00.000000Z'),
+                    ('hiori-only', 'hiori', '2026-01-15T00:00:00.000000Z')
+                """)
+        }
+
+        try UserSchema.migrate(queue)
+
+        let pointers = try queue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: "SELECT character_id, conversation_id FROM current_conversations ORDER BY character_id"
+            ).map { (row: Row) in (row["character_id"] as String, row["conversation_id"] as String) }
+        }
+        XCTAssertEqual(pointers.map(\.0), ["hiori", "mano"])
+        XCTAssertEqual(pointers.map(\.1), ["hiori-only", "mano-new"])
     }
 }

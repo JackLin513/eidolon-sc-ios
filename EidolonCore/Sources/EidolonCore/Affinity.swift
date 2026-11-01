@@ -40,7 +40,7 @@ public enum AffinityTier: String, Codable, Sendable, CaseIterable, Hashable {
         }
     }
 
-    static func of(_ value: Double) -> AffinityTier {
+    public static func of(_ value: Double) -> AffinityTier {
         AffinityTier.allCases.last { value >= $0.start } ?? .cold
     }
 }

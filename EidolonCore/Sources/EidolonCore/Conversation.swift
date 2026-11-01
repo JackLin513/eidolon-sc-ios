@@ -208,6 +208,7 @@ extension Eidolon {
     /// ones — those with nothing in them are not listed as past.
     public func conversations(characterID: String) throws -> [ConversationSummary] {
         try userQueue.read { db in
+            let currentID = try Eidolon.currentConversationID(db, characterID: characterID)
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -227,19 +228,20 @@ extension Eidolon {
                          ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) AS reach_at
                     FROM conversations c
                     WHERE c.character_id = ?
-                    ORDER BY c.created_at DESC, c.rowid DESC
+                    ORDER BY (c.id = ?) DESC, c.created_at DESC, c.rowid DESC
                     """,
-                arguments: [characterID]
+                arguments: [characterID, currentID ?? ""]
             )
-            return rows.enumerated().compactMap { index, row -> ConversationSummary? in
+            return rows.compactMap { row -> ConversationSummary? in
                 let records: Int = row["records"]
-                let isCurrent = index == 0
+                let id: String = row["id"]
+                let isCurrent = id == currentID
                 guard isCurrent || records > 0 else { return nil }
                 let saidAt: String? = row["said_at"]
                 let reachAt: String? = row["reach_at"]
                 let reachIsLatest = (reachAt ?? "") > (saidAt ?? "")
                 return ConversationSummary(
-                    id: row["id"],
+                    id: id,
                     title: row["title"],
                     createdAt: row["created_at"],
                     ended: (row["ended_at"] as String?) != nil,
@@ -304,14 +306,7 @@ extension Eidolon {
                 sql: "SELECT character_id FROM conversations WHERE id = ?",
                 arguments: [id]
             ) else { return }
-            let current = try String.fetchOne(
-                db,
-                sql: """
-                    SELECT id FROM conversations WHERE character_id = ?
-                    ORDER BY created_at DESC, rowid DESC LIMIT 1
-                    """,
-                arguments: [characterID]
-            )
+            let current = try Eidolon.currentConversationID(db, characterID: characterID)
             guard current != id else { throw EidolonError.conversationIsCurrent }
             // She remembers what she was told there; the conversation it came from is gone.
             try db.execute(

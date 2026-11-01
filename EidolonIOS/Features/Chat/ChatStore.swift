@@ -27,6 +27,10 @@ final class ChatStore {
     private(set) var isPast = false
     /// The conversation this store shows; nil for the current one.
     private let conversationID: String?
+    /// The conversation the page is actually on: the past one it was opened with, or the
+    /// current one it resolved. nil before there has ever been a conversation. The debug
+    /// page works on this one (spec #62).
+    private(set) var activeConversationID: String?
     var input = ""
     var errorMessage: String?
 
@@ -64,6 +68,7 @@ final class ChatStore {
         var ended = false
         var isPast = false
         var affinity = AffinityStatus(tier: .trust, cooldownUntil: nil)
+        var conversationID: String?
     }
 
     /// Reads the sources into a snapshot instead of putting them on screen: a turn takes the
@@ -86,6 +91,7 @@ final class ChatStore {
             }
             if let conversation {
                 reading.lines = try await core.conversationRecord(conversationID: conversation)
+                reading.conversationID = conversation
             }
             reading.affinity = try await core.affinityStatus(characterID: character.id)
             if let conversation, !reading.isPast, !reading.ended {
@@ -104,6 +110,7 @@ final class ChatStore {
         ended = reading.ended
         isPast = reading.isPast
         affinity = reading.affinity
+        activeConversationID = reading.conversationID
     }
 
     /// Whether 新对话 can be used: there is something in this conversation to leave

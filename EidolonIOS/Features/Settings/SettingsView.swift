@@ -437,6 +437,18 @@ struct SettingsView: View {
                 } footer: {
                     Text("内容包只带剧情，不含立绘；立绘在立绘包里单独导入。导入失败时保留当前内容包；对话、记忆和好感度不受影响。")
                 }
+
+                Section {
+                    Toggle("调试模式", isOn: Binding(
+                        get: { app.debugMode },
+                        set: { app.setDebugMode($0) }
+                    ))
+                    .accessibilityIdentifier("settings.debugMode")
+                } header: {
+                    Text("调试")
+                } footer: {
+                    Text("开启后，角色对话页的「⋯」菜单会出现「调试」：可以删除这段对话的记忆、修改好感度、恢复已结束的对话或把历史对话设为当前。改动立即写入本机数据，不能撤销；平时请保持关闭。")
+                }
             }
             .safeAreaInset(edge: .top, spacing: 0) {
                 CallBar()

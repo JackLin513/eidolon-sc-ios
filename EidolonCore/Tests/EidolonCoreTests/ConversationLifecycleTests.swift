@@ -159,14 +159,7 @@ final class ConversationLifecycleTests: XCTestCase {
         try await say("やあ", provider: reply(), on: eidolon)
         let traces = try await eidolon.turnTraces()
         let old = try XCTUnwrap(traces.first?.conversationID)
-        try await eidolon.userQueue.write { db in
-            try db.execute(
-                sql: """
-                    INSERT INTO conversations(id, character_id, created_at)
-                    VALUES ('newer', 'mano', '2099-01-01T00:00:00.000000Z')
-                    """
-            )
-        }
+        _ = try await eidolon.beginNewConversation(characterID: "mano")
 
         try await eidolon.deleteConversation(id: old)
 

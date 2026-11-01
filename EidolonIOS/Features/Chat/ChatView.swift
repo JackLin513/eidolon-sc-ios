@@ -21,6 +21,7 @@ struct ChatView: View {
     @State private var showsOutfits = false
     @State private var showsAffinity = false
     @State private var showsSchedule = false
+    @State private var showsDebug = false
     @State private var scheduleBook = ScheduleDraftBook()
 
     var body: some View {
@@ -87,6 +88,13 @@ struct ChatView: View {
                         showsSchedule = true
                     }
                     .disabled(!app.hasJobList)
+                    if app.debugMode {
+                        Divider()
+                        Button("调试") {
+                            showsDebug = true
+                        }
+                        .accessibilityIdentifier("chat.debug")
+                    }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
@@ -154,6 +162,12 @@ struct ChatView: View {
             )
             }
             .environment(app)
+        }
+        .sheet(isPresented: $showsDebug) {
+            if let store {
+                DebugView(character: character, store: store)
+                    .environment(app)
+            }
         }
         .task {
             guard store == nil else { return }
@@ -255,7 +269,7 @@ struct ChatView: View {
         guard let store else { return }
         Task {
             if await store.startNewConversation(), store.isPast {
-                app.noteConversationStarted()
+                app.noteConversationChanged()
             }
         }
     }
