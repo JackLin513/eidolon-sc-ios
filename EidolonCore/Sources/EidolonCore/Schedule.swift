@@ -162,6 +162,19 @@ public struct ScheduleSave: Sendable, Hashable {
     }
 }
 
+/// One saved placement with the job it places, across every week and character (spec #56).
+public struct SavedJob: Sendable, Hashable, Identifiable {
+    public var job: WeeklyJob
+    public var placement: SchedulePlacement
+
+    public var id: String { job.id }
+
+    public init(job: WeeklyJob, placement: SchedulePlacement) {
+        self.job = job
+        self.placement = placement
+    }
+}
+
 /// One of her saved jobs, with the week and slot it sits in (upstream `HerJob`).
 public struct HerJob: Sendable, Hashable {
     public var job: WeeklyJob
@@ -597,6 +610,52 @@ extension Eidolon {
         }
     }
 
+    /// Every saved placement with its job, across all weeks and characters, for the system
+    /// calendar export (spec #56). Drafts are not in the database and so are not here.
+    public func savedJobs() throws -> [SavedJob] {
+        try userQueue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT p.week AS placement_week, p.job_id, p.day, p.slot, p.saved_at,
+                           p.counted_at, j.id AS job_id, j.week AS job_week,
+                           j.character_id, j.listed_id, j.name, j.note, j.category,
+                           j.length, j.slots
+                    FROM schedule_placements p
+                    JOIN weekly_jobs j ON j.id = p.job_id
+                    ORDER BY p.week, p.day, p.slot, p.character_id, j.rowid
+                    """
+            ).map { row in
+                let placementWeek = Self.calendarDay(row["placement_week"])
+                let jobWeek = Self.calendarDay(row["job_week"])
+                let slots = (row["slots"] as String?)?.split(separator: ",").compactMap {
+                    Int($0).flatMap(ScheduleSlot.init(rawValue:))
+                }
+                let job = WeeklyJob(
+                    id: row["job_id"],
+                    week: jobWeek,
+                    characterID: row["character_id"],
+                    listedID: row["listed_id"],
+                    name: row["name"],
+                    note: row["note"],
+                    category: ListedJob.Category(rawValue: row["category"]) ?? .private,
+                    length: row["length"],
+                    slots: row["slots"] == nil ? nil : slots
+                )
+                let placement = SchedulePlacement(
+                    week: placementWeek,
+                    jobID: row["job_id"],
+                    characterID: row["character_id"],
+                    day: row["day"],
+                    slot: row["slot"],
+                    savedAt: row["saved_at"],
+                    countedAt: row["counted_at"]
+                )
+                return SavedJob(job: job, placement: placement)
+            }
+        }
+    }
+
     /// Saves what can be of `placements` into `week`; the rest come back with why.
     public func saveSchedule(
         characterID: String, week: CalendarDay, placements inputs: [PlacementInput],
@@ -766,19 +825,23 @@ extension Eidolon {
     }
 
     static func placement(from row: Row) -> SchedulePlacement {
-        let parts = (row["week"] as String).split(separator: "-").compactMap { Int($0) }
-        return SchedulePlacement(
-            week: CalendarDay(
-                year: parts.count == 3 ? parts[0] : 0,
-                month: parts.count == 3 ? parts[1] : 1,
-                day: parts.count == 3 ? parts[2] : 1
-            ),
+        SchedulePlacement(
+            week: calendarDay(row["week"]),
             jobID: row["job_id"],
             characterID: row["character_id"],
             day: row["day"],
             slot: row["slot"],
             savedAt: row["saved_at"],
             countedAt: row["counted_at"]
+        )
+    }
+
+    static func calendarDay(_ value: String) -> CalendarDay {
+        let parts = value.split(separator: "-").compactMap { Int($0) }
+        return CalendarDay(
+            year: parts.count == 3 ? parts[0] : 0,
+            month: parts.count == 3 ? parts[1] : 1,
+            day: parts.count == 3 ? parts[2] : 1
         )
     }
 

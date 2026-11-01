@@ -34,6 +34,9 @@ public struct Birthday: Sendable, Hashable {
         String(format: "%02d-%02d", month, day)
     }
 
+    /// Month and day without a year, for an event that repeats every year.
+    public var key: String { text }
+
     /// The days each month has in a year that has February 29, as upstream reckons them.
     private static let daysInMonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 }

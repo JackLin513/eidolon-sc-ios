@@ -29,6 +29,8 @@
 	</dict>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>和她打电话时需要使用麦克风。</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>把她的生日和排好的工作写进系统日历的 Eidolon 日历。</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

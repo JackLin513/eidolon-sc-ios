@@ -249,6 +249,7 @@ struct ScheduleBoardView: View {
                             }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier(offset == 0 ? "schedule.week.this" : "schedule.week.next")
                     .accessibilityAddTraits(chosen ? .isSelected : [])
                 }
                 Spacer()
@@ -642,7 +643,7 @@ struct ScheduleBoardView: View {
         notice = nil
         defer { saving = false }
         do {
-            let result = try await app.core.saveSchedule(
+            let result = try await app.saveSchedule(
                 characterID: key.characterID, week: key.week,
                 placements: planner.drafts, now: Date(), timeZone: app.producerTimeZone
             )

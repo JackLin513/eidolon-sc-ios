@@ -260,6 +260,48 @@ final class ScheduleTests: XCTestCase {
         XCTAssertEqual(save.refused.map(\.reason), ["这一周不能排"])
     }
 
+    func testAllSavedJobsAcrossWeeksAndCharactersAreReadForExport() async throws {
+        let eidolon = try await installed()
+        let week = CalendarDay(year: 2026, month: 11, day: 2)
+        let next = week.adding(days: 7)
+        try await insertWeek(eidolon, week: week, jobs: [("vocal", "声乐课", 1, nil)])
+        try await insertWeek(eidolon, week: next, jobs: [("dance", "舞蹈课", 2, nil)])
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO weekly_jobs(
+                        id, week, character_id, listed_id, name, note, category, length, slots
+                    ) VALUES (?, ?, 'hiori', 'photo', '拍摄', '拍照。', 'appearance', 1, NULL)
+                    """,
+                arguments: ["\(week.stamp):photo", week.stamp]
+            )
+            for (week, job, character, day, slot) in [
+                (week, "vocal", "mano", 1, 0),
+                (next, "dance", "mano", 2, 1),
+                (week, "photo", "hiori", 3, 2),
+            ] {
+                try db.execute(
+                    sql: """
+                        INSERT INTO schedule_placements(
+                            week, job_id, character_id, day, slot, saved_at
+                        ) VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                    arguments: [
+                        week.stamp, "\(week.stamp):\(job)", character, day, slot,
+                        "2026-11-02T00:00:00.000000Z",
+                    ]
+                )
+            }
+        }
+
+        let saved = try await eidolon.savedJobs()
+        XCTAssertEqual(saved.map(\.job.name), ["声乐课", "拍摄", "舞蹈课"])
+        XCTAssertEqual(saved.map(\.placement.characterID), ["mano", "hiori", "mano"])
+        XCTAssertEqual(saved.map(\.placement.day), [1, 3, 2])
+        XCTAssertEqual(saved.map(\.placement.slot), [0, 2, 1])
+        XCTAssertEqual(saved.map(\.job.length), [1, 1, 2])
+    }
+
     // MARK: - Done jobs
 
     /// A done job raises her affinity once, as the schedule is read (upstream

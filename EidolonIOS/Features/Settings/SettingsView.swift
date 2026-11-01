@@ -1,5 +1,6 @@
 import EidolonCore
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 struct SettingsView: View {
@@ -63,6 +64,7 @@ struct SettingsView: View {
     @State private var showStandPreview = false
     @State private var standIndexURL: URL?
     @State private var confirmingPackageCleanup = false
+    @State private var confirmingCalendarDelete = false
     @State private var showCycles = false
 
     private enum ImportKind {
@@ -278,6 +280,53 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("导出到系统日历", isOn: Binding(
+                        get: { app.calendarExport.enabled },
+                        set: { on in Task { await app.setCalendarExportEnabled(on) } }
+                    ))
+                    .accessibilityIdentifier("settings.calendarExport")
+                    Button {
+                        Task { await app.syncCalendarExport() }
+                    } label: {
+                        HStack {
+                            Text("立即同步")
+                            if app.calendarExport.syncing {
+                                Spacer(minLength: 0)
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(app.calendarExport.syncing || !app.calendarExport.enabled)
+                    .accessibilityIdentifier("settings.calendarExport.sync")
+                    if let last = app.calendarExport.lastSyncedAt {
+                        Text("上次同步：\(last.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let error = app.calendarExport.lastError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                        if app.calendarExport.authorizationDenied {
+                            Button("去系统设置") {
+                                if let url = URL(string: UIApplication.openSettingsURLString) {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                        }
+                    }
+                    Button("删除 Eidolon 日历事件", role: .destructive) {
+                        confirmingCalendarDelete = true
+                    }
+                    .disabled(app.calendarExport.deleting || app.calendarExport.syncing)
+                    .accessibilityIdentifier("settings.calendarExport.delete")
+                } header: {
+                    Text("系统日历")
+                } footer: {
+                    Text("打开后把她的生日、你的生日和所有已保存的排班写进单独的「Eidolon」日历。同步是单向的：只写不读，不碰你自己的事件；手动改过或删掉的导出事件下次同步会恢复。关掉开关只停止同步，保留已写入的事件。")
+                }
+
+                Section {
                     Toggle("周期", isOn: Binding(
                         get: { app.cyclesEnabled },
                         set: { on in Task { await app.setCyclesEnabled(on) } }
@@ -461,6 +510,16 @@ struct SettingsView: View {
                 }
             } message: {
                 Text("只删除 Documents 里的 .eidolonpkg 文件；已安装的内容和立绘不受影响。")
+            }
+            .confirmationDialog(
+                "删除 Eidolon 日历事件？",
+                isPresented: $confirmingCalendarDelete
+            ) {
+                Button("删除", role: .destructive) {
+                    Task { await app.deleteCalendarExportEvents() }
+                }
+            } message: {
+                Text("只删除带 Eidolon 标记的事件；你自己的日历事件不会被删。")
             }
             .alert("判断模型可用", isPresented: judgeCheckBinding) {
                 Button("好") { judgeCheck = nil }

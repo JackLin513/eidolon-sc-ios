@@ -38,6 +38,10 @@ final class AppModel {
     /// The chat's 朗读: one for the whole app, so only one line ever plays (spec #32).
     let readAloud = ChatReadAloud()
 
+    /// The system-calendar export (spec #56): its switch and last result, and the EventKit
+    /// store behind the core synchronizer.
+    let calendarExport = CalendarExportController()
+
     /// This phone's roster tidy choices (spec #48); not part of the user library.
     private(set) var roster = RosterStore.load()
 
@@ -366,6 +370,62 @@ final class AppModel {
         let saved = try await core.producerProfile()
         producerProfile = saved
         aboutProducer = saved.prompt
+        await calendarExport.syncIfEnabled(source: await calendarExportSource())
+    }
+
+    /// What the system-calendar export should mirror (spec #56): every character's birthday,
+    /// the producer's, and every saved job across all weeks and characters.
+    func calendarExportSource() async -> CalendarExportSource {
+        let saved = (try? await core.savedJobs()) ?? []
+        let names = Dictionary(
+            uniqueKeysWithValues: characters.map { ($0.id, $0.nameZh ?? $0.name) }
+        )
+        return CalendarExportSource(
+            characters: characters.map {
+                CalendarExportCharacter(
+                    id: $0.id, name: $0.nameZh ?? $0.name, birthday: $0.birthday
+                )
+            },
+            producerBirthday: producerProfile.birthday.map {
+                Birthday(month: $0.month, day: $0.day)
+            },
+            jobs: saved.map {
+                CalendarExportJob(
+                    job: $0.job,
+                    placement: $0.placement,
+                    characterName: names[$0.placement.characterID] ?? $0.job.characterID
+                )
+            },
+            timeZone: producerTimeZone
+        )
+    }
+
+    func setCalendarExportEnabled(_ on: Bool) async {
+        await calendarExport.setEnabled(on, source: await calendarExportSource())
+    }
+
+    func syncCalendarExport() async {
+        await calendarExport.sync(source: await calendarExportSource())
+    }
+
+    func deleteCalendarExportEvents() async {
+        await calendarExport.deleteEvents(source: await calendarExportSource())
+    }
+
+    /// Saves a week's drafts through the core and mirrors a successful save to the system
+    /// calendar when the export is on (spec #56).
+    func saveSchedule(
+        characterID: String, week: CalendarDay, placements: [PlacementInput],
+        now: Date, timeZone: TimeZone
+    ) async throws -> ScheduleSave {
+        let result = try await core.saveSchedule(
+            characterID: characterID, week: week, placements: placements,
+            now: now, timeZone: timeZone
+        )
+        if !result.saved.isEmpty {
+            await calendarExport.syncIfEnabled(source: await calendarExportSource())
+        }
+        return result
     }
 
     func loadMemories() async {

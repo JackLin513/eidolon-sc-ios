@@ -61,14 +61,22 @@ final class ScheduleCycleUITests: XCTestCase {
             app.staticTexts.matching(NSPredicate(format: "label CONTAINS '24 点后作废'")).firstMatch.exists,
             "board has no expiry line"
         )
+        // Next week is wholly to come, so a card always has somewhere to go.
+        let nextWeek = app.buttons["schedule.week.next"]
+        nextWeek.tap()
+        XCTAssertTrue(nextWeek.isSelected, "next week did not switch")
         let card = app.buttons.matching(identifier: "schedule.card").firstMatch
-        guard card.waitForExistence(timeout: 5) else {
+        if !card.waitForExistence(timeout: 10) {
             XCTAssertTrue(
                 app.staticTexts["这周没有工作"].exists,
                 "no job cards, and not the empty week either"
             )
             return
         }
+        let loaded = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "isEnabled == true"), object: card
+        )
+        XCTAssertEqual(XCTWaiter().wait(for: [loaded], timeout: 10), .completed)
         card.tap()
         XCTAssertEqual(card.value as? String, "已选中", "card was not selected")
 
