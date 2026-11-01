@@ -17,6 +17,8 @@ public enum EidolonError: LocalizedError, Equatable {
     case conversationEnded
     /// The current conversation cannot be deleted; only past ones can.
     case conversationIsCurrent
+    /// The producer profile carries a birthday no year has, or only one of month and day.
+    case invalidProducerBirthday
     /// The producer sent nothing to answer (upstream `BLANK`).
     case blankInput
     /// The producer's line is longer than `TurnInput.maxLength` (upstream `TOO_LONG`).
@@ -64,6 +66,8 @@ public enum EidolonError: LocalizedError, Equatable {
             return "这段对话已经结束了，只能翻看；想接着聊就开一段新对话"
         case .conversationIsCurrent:
             return "当前对话不能删除，先开一段新对话"
+        case .invalidProducerBirthday:
+            return "生日日期不合法：请选一个一年里有的日子"
         case .blankInput:
             return "没有收到要说的话。"
         case .inputTooLong(let limit):

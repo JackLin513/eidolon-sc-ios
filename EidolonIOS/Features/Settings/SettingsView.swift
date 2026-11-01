@@ -52,8 +52,8 @@ struct SettingsView: View {
     @State private var gender = "default"
     @State private var profileTimezone = ""
     @State private var birthdayOn = false
-    @State private var birthdayMonth = 1
-    @State private var birthdayDay = 1
+    @State private var birthdayDate = SettingsView.dateIn2024(month: 1, day: 1, timeZone: .current)
+    @State private var birthdayError: String?
     @State private var tracingEnabled = true
     @State private var traceRetention = 200
     @State private var isPicking = false
@@ -255,16 +255,20 @@ struct SettingsView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     Toggle("设置生日", isOn: $birthdayOn)
+                        .accessibilityIdentifier("settings.birthdayOn")
                     if birthdayOn {
-                        Picker("生日月份", selection: $birthdayMonth) {
-                            ForEach(1...12, id: \.self) { month in
-                                Text("\(month) 月").tag(month)
-                            }
-                        }
-                        Picker("生日日期", selection: $birthdayDay) {
-                            ForEach(1...31, id: \.self) { day in
-                                Text("\(day) 日").tag(day)
-                            }
+                        DatePicker(
+                            "生日",
+                            selection: $birthdayDate,
+                            in: birthdayRange,
+                            displayedComponents: .date
+                        )
+                        .environment(\.timeZone, birthdayTimeZone)
+                        .accessibilityIdentifier("settings.birthday")
+                        if let birthdayError {
+                            Text(birthdayError)
+                                .font(.caption)
+                                .foregroundStyle(.red)
                         }
                     }
                 } header: {
@@ -621,8 +625,19 @@ struct SettingsView: View {
             gender = profile.gender?.rawValue ?? "default"
             profileTimezone = profile.timezone ?? ""
             birthdayOn = profile.birthdayMonth != nil && profile.birthdayDay != nil
-            birthdayMonth = profile.birthdayMonth ?? 1
-            birthdayDay = profile.birthdayDay ?? 1
+            let zone = TimeZone(identifier: profile.timezone ?? "") ?? .current
+            if let month = profile.birthdayMonth, let day = profile.birthdayDay {
+                if Birthday.valid(month: month, day: day) {
+                    birthdayDate = Self.dateIn2024(month: month, day: day, timeZone: zone)
+                    birthdayError = nil
+                } else {
+                    birthdayDate = Self.dateIn2024(month: 1, day: 1, timeZone: zone)
+                    birthdayError = "原来的生日日期不合法，请重新选择"
+                }
+            } else {
+                birthdayDate = Self.dateIn2024(month: 1, day: 1, timeZone: zone)
+                birthdayError = nil
+            }
         }
     }
 
@@ -688,10 +703,20 @@ struct SettingsView: View {
         }
         do {
             try app.saveChatSettings(settings)
+            birthdayError = nil
             let zone = profileTimezone.trimmingCharacters(in: .whitespacesAndNewlines)
             if !zone.isEmpty, TimeZone(identifier: zone) == nil {
                 saveError = "时区无法识别：\(zone)"
                 return
+            }
+            var birthday: (month: Int, day: Int)?
+            if birthdayOn {
+                let parts = Self.parts(of: birthdayDate, timeZone: birthdayTimeZone)
+                guard Birthday.valid(month: parts.month, day: parts.day) else {
+                    birthdayError = "生日日期不合法：请选一个一年里有的日子"
+                    return
+                }
+                birthday = parts
             }
             let address = formOfAddress.trimmingCharacters(in: .whitespacesAndNewlines)
             try await app.saveProducerProfile(
@@ -699,8 +724,8 @@ struct SettingsView: View {
                     formOfAddress: address.isEmpty ? nil : address,
                     gender: gender == "male" ? .male : gender == "female" ? .female : nil,
                     timezone: zone.isEmpty ? nil : zone,
-                    birthdayMonth: birthdayOn ? birthdayMonth : nil,
-                    birthdayDay: birthdayOn ? birthdayDay : nil
+                    birthdayMonth: birthday?.month,
+                    birthdayDay: birthday?.day
                 )
             )
             savedNotice = true
@@ -766,6 +791,32 @@ struct SettingsView: View {
             get: { judgeCheckError != nil },
             set: { if !$0 { judgeCheckError = nil } }
         )
+    }
+
+    private var birthdayTimeZone: TimeZone {
+        TimeZone(identifier: profileTimezone.trimmingCharacters(in: .whitespacesAndNewlines))
+            ?? .current
+    }
+
+    private var birthdayRange: ClosedRange<Date> {
+        Self.dateIn2024(month: 1, day: 1, timeZone: birthdayTimeZone)
+            ... Self.dateIn2024(month: 12, day: 31, timeZone: birthdayTimeZone)
+    }
+
+    /// A day in the leap year 2024, so February 29 can be picked; only month and day are kept.
+    private static func dateIn2024(month: Int, day: Int, timeZone: TimeZone) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return calendar.date(
+            from: DateComponents(year: 2024, month: month, day: day, hour: 12)
+        )!
+    }
+
+    private static func parts(of date: Date, timeZone: TimeZone) -> (month: Int, day: Int) {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let parts = calendar.dateComponents([.month, .day], from: date)
+        return (parts.month ?? 1, parts.day ?? 1)
     }
 
     private var saveErrorBinding: Binding<Bool> {

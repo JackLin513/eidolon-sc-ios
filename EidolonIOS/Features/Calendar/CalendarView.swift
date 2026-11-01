@@ -70,6 +70,13 @@ struct CalendarView: View {
         return ScrollView {
             VStack(spacing: 16) {
                 monthBar(month)
+                if let birthday = app.producerProfile.birthday {
+                    Text("你的生日：\(birthday.month)月\(birthday.day)日")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("calendar.producerBirthday")
+                }
                 scheduleRow
                 filters
                 weekdays

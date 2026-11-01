@@ -362,6 +362,10 @@ final class AppModel {
 
     func saveProducerProfile(_ profile: ProducerProfile) async throws {
         try await core.updateProducerProfile(profile)
+        // The calendar, prompts and time zone read this copy, not the database (spec #55).
+        let saved = try await core.producerProfile()
+        producerProfile = saved
+        aboutProducer = saved.prompt
     }
 
     func loadMemories() async {

@@ -337,6 +337,14 @@ extension Eidolon {
     /// zone their days go by and their birthday (GLOSSARY.md「制作人档案」). It reaches the
     /// next turn's prompt; it never rewrites the story.
     public func updateProducerProfile(_ profile: ProducerProfile) throws {
+        switch (profile.birthdayMonth, profile.birthdayDay) {
+        case let (month?, day?) where Birthday.valid(month: month, day: day):
+            break
+        case (nil, nil):
+            break
+        default:
+            throw EidolonError.invalidProducerBirthday
+        }
         try userQueue.write { db in
             try db.execute(
                 sql: """
