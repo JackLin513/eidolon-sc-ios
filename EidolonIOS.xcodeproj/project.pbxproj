@@ -51,6 +51,7 @@
 		A1B405F9250C7DCD499A4A7E /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77736DA8D3A8B0B2407A626B /* ChatView.swift */; };
 		A84B266827D901F32D324DA5 /* StandRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B65BE210B02CA6A488C94D /* StandRenderer.swift */; };
 		AFCB1D4E31B67D5555622131 /* ScheduleCycleUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3E123E7FAC64C8170D6CDFE /* ScheduleCycleUITests.swift */; };
+		AFE29FA91C362A3D8DC4BAE7 /* DebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 206921654182FEC10EDD1B36 /* DebugView.swift */; };
 		B2DF1A14F646EDBA6EAECF48 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2610401DD1C29D8D7AB56C /* SettingsView.swift */; };
 		B3AF831F701054AEEE1CCABB /* CyclesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 189051D482A540C18583A79E /* CyclesView.swift */; };
 		BBCD2E47044DFC5DAB92ED57 /* CallSettingsError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */; };
@@ -93,6 +94,7 @@
 		17CCE5274F40A022DD05DD08 /* CalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarView.swift; sourceTree = "<group>"; };
 		189051D482A540C18583A79E /* CyclesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CyclesView.swift; sourceTree = "<group>"; };
 		1C41FC4F60852CC263CFA152 /* EidolonIOSUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = EidolonIOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		206921654182FEC10EDD1B36 /* DebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugView.swift; sourceTree = "<group>"; };
 		22B001CEBA8E13B70A91DA53 /* BarDoor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarDoor.swift; sourceTree = "<group>"; };
 		31FDC61716128573E91E0E66 /* connect.m4a */ = {isa = PBXFileReference; path = connect.m4a; sourceTree = "<group>"; };
 		32A8C4CAB5DC57A55588F5D0 /* AffinityCue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AffinityCue.swift; sourceTree = "<group>"; };
@@ -307,6 +309,7 @@
 				6DA937E9DC437925E1DD0673 /* ChatStore.swift */,
 				77736DA8D3A8B0B2407A626B /* ChatView.swift */,
 				B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */,
+				206921654182FEC10EDD1B36 /* DebugView.swift */,
 			);
 			path = Chat;
 			sourceTree = "<group>";
@@ -607,6 +610,7 @@
 				B3AF831F701054AEEE1CCABB /* CyclesView.swift in Sources */,
 				3683109ABC50AB71E6D512A8 /* DebugChatProvider.swift in Sources */,
 				0EFF31521A69C5A7C7949BCB /* DebugRecognition.swift in Sources */,
+				AFE29FA91C362A3D8DC4BAE7 /* DebugView.swift in Sources */,
 				27EE9A61F1EA6DD131D5D03F /* EidolonIOSApp.swift in Sources */,
 				D87D5EF9B85BB39DEBD561FB /* FishSynthesis.swift in Sources */,
 				03D1D9AFAE21C9348078853C /* ImportGuideView.swift in Sources */,

@@ -4,7 +4,7 @@ import GRDB
 /// The writable user library (ADR-0002). Its schema evolves with the app, not
 /// with the content bundle, and is therefore managed by GRDB migrations.
 enum UserSchema {
-    static let version = 13
+    static let version = 14
 
     static func migrate(_ dbQueue: DatabaseQueue) throws {
         var migrator = DatabaseMigrator()
@@ -279,6 +279,26 @@ enum UserSchema {
             // A reply's ordered blocks: spoken lines and scene blocks (spec #60). Old rows
             // have no value and are read from `segments` as lines.
             try db.execute(sql: "ALTER TABLE messages ADD COLUMN blocks TEXT")
+        }
+        migrator.registerMigration("v14") { db in
+            // The current conversation is a pointer, not "the newest one" any more: a
+            // debug action can put an older one back in use without rewriting its start
+            // time (spec #62). An upgraded library points at what it showed before.
+            try db.execute(sql: """
+                CREATE TABLE current_conversations (
+                    character_id TEXT PRIMARY KEY,
+                    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE
+                );
+                INSERT INTO current_conversations(character_id, conversation_id)
+                SELECT c.character_id, c.id
+                FROM conversations c
+                WHERE c.rowid = (
+                    SELECT c2.rowid FROM conversations c2
+                    WHERE c2.character_id = c.character_id
+                    ORDER BY c2.created_at DESC, c2.rowid DESC
+                    LIMIT 1
+                );
+                """)
         }
         try migrator.migrate(dbQueue)
         try dbQueue.write { db in

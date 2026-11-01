@@ -160,27 +160,11 @@ extension Eidolon {
         return try conversation(id: conversationID)
     }
 
-    /// The newest conversation with her, ended or not: what the app keeps showing after
+    /// The current conversation with her, ended or not: what the app keeps showing after
     /// she ends one, until the next message starts another.
     public func lastConversation(characterID: String) throws -> ConversationSnapshot? {
-        let row = try userQueue.read { db in
-            try Row.fetchOne(
-                db,
-                sql: """
-                    SELECT id, ended_at FROM conversations
-                    WHERE character_id = ?
-                    ORDER BY created_at DESC, rowid DESC LIMIT 1
-                    """,
-                arguments: [characterID]
-            )
-        }
-        guard let row else { return nil }
-        let id: String = row["id"]
-        return ConversationSnapshot(
-            id: id,
-            messages: try messages(conversationID: id),
-            ended: (row["ended_at"] as String?) != nil
-        )
+        guard let id = try currentConversationID(characterID) else { return nil }
+        return try conversation(id: id)
     }
 
     /// What the app shows: the tier, and when a cooldown ends if there is one.
@@ -654,28 +638,72 @@ extension Eidolon {
 
     // MARK: - User library
 
-    /// The newest conversation with her, the one records go into; it stays current after
-    /// she ends it, until a new one is started (GLOSSARY.md「当前对话」).
+    /// The conversation records go into; it stays current after she ends it, until a new
+    /// one is started (GLOSSARY.md「当前对话」). It is a stored pointer, not "the newest
+    /// one": the debug page can put an older conversation back in use (spec #62).
     func currentConversationID(_ characterID: String) throws -> String? {
         try userQueue.read { db in
-            try String.fetchOne(
-                db,
-                sql: """
-                    SELECT id FROM conversations
-                    WHERE character_id = ?
-                    ORDER BY created_at DESC, rowid DESC LIMIT 1
-                    """,
-                arguments: [characterID]
-            )
+            try Self.currentConversationID(db, characterID: characterID)
         }
+    }
+
+    /// The pointer, or the newest conversation when a library written before the pointer
+    /// (or a test that wrote one row directly) has none.
+    static func currentConversationID(_ db: Database, characterID: String) throws -> String? {
+        if let pointed = try String.fetchOne(
+            db,
+            sql: "SELECT conversation_id FROM current_conversations WHERE character_id = ?",
+            arguments: [characterID]
+        ) {
+            return pointed
+        }
+        return try String.fetchOne(
+            db,
+            sql: """
+                SELECT id FROM conversations
+                WHERE character_id = ?
+                ORDER BY created_at DESC, rowid DESC LIMIT 1
+                """,
+            arguments: [characterID]
+        )
+    }
+
+    /// Points the character at `id`. Called wherever a conversation is created, and by the
+    /// debug page when it puts an older one back in use.
+    static func pointCurrentConversation(_ db: Database, characterID: String, id: String) throws {
+        try db.execute(
+            sql: """
+                INSERT INTO current_conversations(character_id, conversation_id)
+                VALUES (?, ?)
+                ON CONFLICT(character_id) DO UPDATE SET
+                    conversation_id = excluded.conversation_id
+                """,
+            arguments: [characterID, id]
+        )
+    }
+
+    /// Creates a conversation and makes it current in the same transaction.
+    static func insertConversation(
+        _ db: Database,
+        id: String,
+        characterID: String,
+        createdAt: String
+    ) throws {
+        try db.execute(
+            sql: "INSERT INTO conversations(id, character_id, created_at) VALUES (?, ?, ?)",
+            arguments: [id, characterID, createdAt]
+        )
+        try pointCurrentConversation(db, characterID: characterID, id: id)
     }
 
     func createConversation(characterID: String, now: Date) throws -> String {
         let id = UUID().uuidString
         try userQueue.write { db in
-            try db.execute(
-                sql: "INSERT INTO conversations(id, character_id, created_at) VALUES (?, ?, ?)",
-                arguments: [id, characterID, Self.timestamp(now)]
+            try Self.insertConversation(
+                db,
+                id: id,
+                characterID: characterID,
+                createdAt: Self.timestamp(now)
             )
         }
         return id
@@ -918,9 +946,11 @@ extension Eidolon {
         return try userQueue.write { db in
             let conversationID = try conversationID ?? {
                 let id = UUID().uuidString
-                try db.execute(
-                    sql: "INSERT INTO conversations(id, character_id, created_at) VALUES (?, ?, ?)",
-                    arguments: [id, characterID, stamp]
+                try Self.insertConversation(
+                    db,
+                    id: id,
+                    characterID: characterID,
+                    createdAt: stamp
                 )
                 return id
             }()

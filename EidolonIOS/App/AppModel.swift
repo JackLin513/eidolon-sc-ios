@@ -45,6 +45,12 @@ final class AppModel {
     /// This phone's roster tidy choices (spec #48); not part of the user library.
     private(set) var roster = RosterStore.load()
 
+    /// Whether the debug page is offered on a character's chat page (spec #62). It lives
+    /// on this phone, is off by default, and exists in every build.
+    private(set) var debugMode = UserDefaults.standard.bool(forKey: AppModel.debugModeKey)
+
+    private static let debugModeKey = "debug.mode"
+
     /// The phone's own call sounds: one for the whole app, so a hang-up tone outlives the
     /// call page and a redial cuts whatever the last call left playing (spec #35).
     let callTones = CallTonesPlayer()
@@ -461,6 +467,54 @@ final class AppModel {
         await loadMemories()
     }
 
+    // MARK: - Debug mode (spec #62)
+
+    func setDebugMode(_ on: Bool) {
+        debugMode = on
+        UserDefaults.standard.set(on, forKey: Self.debugModeKey)
+    }
+
+    func debugAffinity(characterID: String) async throws -> Affinity {
+        try await core.debugAffinity(characterID: characterID)
+    }
+
+    func setDebugAffinity(characterID: String, value: Double) async throws {
+        try await core.debugSetAffinity(characterID: characterID, value: value)
+    }
+
+    func debugMemories(conversationID: String) async throws -> [MemoryRecord] {
+        try await core.debugMemories(conversationID: conversationID)
+    }
+
+    @discardableResult
+    func deleteDebugMemories(ids: [String]) async throws -> Int {
+        let deleted = try await core.debugDeleteMemories(ids: ids)
+        await loadMemories()
+        return deleted
+    }
+
+    @discardableResult
+    func reopenDebugConversation(id: String) async throws -> Bool {
+        try await core.debugReopenConversation(id: id)
+    }
+
+    @discardableResult
+    func setDebugCurrentConversation(
+        characterID: String,
+        id: String,
+        reopen: Bool
+    ) async throws -> Bool {
+        let moved = try await core.debugSetCurrentConversation(
+            characterID: characterID,
+            id: id,
+            reopen: reopen
+        )
+        if moved {
+            noteConversationChanged()
+        }
+        return moved
+    }
+
     func saveChatSettings(_ settings: ChatSettings) throws {
         try settings.save()
         chatSettings = settings
@@ -862,8 +916,10 @@ final class AppModel {
         return removed
     }
 
-    /// A new conversation was started elsewhere: let the page and the history sheet hear it.
-    func noteConversationStarted() {
+    /// The current conversation moved somewhere other than the page that shows it — a
+    /// new one from the history sheet, or a debug move back to an older one (spec #37,
+    /// #62). The current page reloads and the sheet closes.
+    func noteConversationChanged() {
         conversationRevision += 1
     }
 
