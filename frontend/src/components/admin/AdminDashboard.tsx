@@ -69,6 +69,7 @@ import {
   healthSummary,
   isDashboardRange,
   isDashboardTab,
+  letterTiles,
   momentTiles,
   reachOutTiles,
   scheduleTiles,
@@ -438,6 +439,7 @@ function DashboardBody({
             <CharactersTable board={board} />
           </DashboardCard>
           <ReachOutTiles board={board} />
+          <LetterTiles board={board} />
           <BarTiles board={board} />
           <MomentTiles board={board} />
         </DashboardGroup>
@@ -763,6 +765,19 @@ function ReachOutTiles({ board }: { board: Dashboard }) {
   if (tiles.length === 0) return null;
   return (
     <TileGroup caption={t.reachOuts.title} grid="grid-cols-2 md:grid-cols-3">
+      {tiles.map((tile) => (
+        <StatTile key={tile.id} label={tile.label} value={tile.value} />
+      ))}
+    </TileGroup>
+  );
+}
+
+/** 「用量」里的「信」一小节：写了、失败两张数字卡；为空时（总开关关着、范围内也没有记录）不显示。 */
+function LetterTiles({ board }: { board: Dashboard }) {
+  const tiles = letterTiles(board.letters);
+  if (tiles.length === 0) return null;
+  return (
+    <TileGroup caption={t.letters.title} grid="grid-cols-2 md:grid-cols-3">
       {tiles.map((tile) => (
         <StatTile key={tile.id} label={tile.label} value={tile.value} />
       ))}

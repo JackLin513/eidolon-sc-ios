@@ -26,6 +26,7 @@ from eidolon.config import LLMSettings, Settings
 from eidolon.data_access import Database
 from eidolon.drink_catalog import DRINKS_FILE
 from eidolon.gift_catalog import GIFTS_FILE
+from eidolon.letter_music import LETTER_MUSIC_FILE
 from eidolon.identity import Identity
 from eidolon.job_list import JOBS_FILE
 from eidolon.place_pool import PLACES_FILE
@@ -133,7 +134,9 @@ MANO_PHOTO = ("sakuragi mano", "brown hair, medium hair, brown eyes")
 AVATAR = b"\x89PNG\r\n\x1a\n fake avatar"
 SCSP_AVATAR = b"\xff\xd8\xff fake SCSP avatar"
 BACKGROUND = b"\xff\xd8\xff fake background"
+SIGNATURE = b"RIFF\x00\x00\x00\x00WEBP fake signature"
 REPO_GIFTS = Path(__file__).parents[2] / "characters" / GIFTS_FILE
+REPO_LETTER_MUSIC = Path(__file__).parents[2] / "characters" / LETTER_MUSIC_FILE
 REPO_JOBS = Path(__file__).parents[2] / "characters" / JOBS_FILE
 REPO_DRINKS = Path(__file__).parents[2] / "characters" / DRINKS_FILE
 REPO_BAR_VISITS = Path(__file__).parents[2] / "characters" / BAR_VISITS_FILE
@@ -149,9 +152,10 @@ wanting one without alcohol."""
 
 class CharacterConfig:
     """Writes a character configuration directory, the way an administrator would, with the
-    repository's gift catalog, job list, drink catalog, bar reasons and topics, bar lines and
-    place pool beside it unless a test writes its own (`gifts.toml`, `jobs.toml`,
-    `drinks.toml`, `bar_visits.toml`, `bar_lines.toml`, `places.toml`). The reasons and
+    repository's gift catalog, job list, drink catalog, bar reasons and topics, bar lines,
+    place pool and letters' music list beside it unless a test writes its own (`gifts.toml`,
+    `jobs.toml`, `drinks.toml`, `bar_visits.toml`, `bar_lines.toml`, `places.toml`,
+    `letter_music.toml`). The reasons and
     topics are written for every character, none left out (`not_for`), and the places for
     no one (`idols`), as the repository's name characters a test may not have."""
 
@@ -174,6 +178,7 @@ class CharacterConfig:
         birthday: str | None = "07-07",
         age: int | str | None = 20,
         background: bytes | None = None,
+        signature: bytes | None = None,
         speakers: list[str] | None = None,
         facts: str | None = None,
         idol_id: int | None = None,
@@ -215,6 +220,9 @@ class CharacterConfig:
         if background is not None:
             self.write(f"backgrounds/{id}.jpg", background)
             entry += f'background = "backgrounds/{id}.jpg"\n'
+        if signature is not None:
+            self.write(f"signatures/{id}.webp", signature)
+            entry += f'signature = "signatures/{id}.webp"\n'
         if facts is not None:
             self.write(f"facts/{id}.md", facts)
             entry += f'facts = "facts/{id}.md"\n'
@@ -265,6 +273,8 @@ class CharacterConfig:
             repository = REPO_PLACES.read_text(encoding="utf-8")
             anyones = re.sub(r"^idols = \[[^]]*\]\n", "", repository, flags=re.M)
             places.write_text(anyones, encoding="utf-8")
+        if not (music := self.directory / LETTER_MUSIC_FILE).exists():
+            music.write_bytes(REPO_LETTER_MUSIC.read_bytes())
         return self
 
     def write(self, relative: str, content: str | bytes) -> None:
@@ -278,13 +288,14 @@ class CharacterConfig:
 
 @pytest.fixture
 def characters(tmp_path: Path) -> CharacterConfig:
-    """Mano (with both avatars, a background, a stand and her photo tags) and Kogane (with none
-    of them)."""
+    """Mano (with both avatars, a background, a signature, a stand and her photo tags) and
+    Kogane (with none of them)."""
     return (
         CharacterConfig(tmp_path / "characters")
         .add(
             "mano", "櫻木真乃", MANO_SHEET, intro="illumination STARS 的中心", avatar=AVATAR,
-            scsp_avatar=SCSP_AVATAR, color="#ffbad6", background=BACKGROUND, speakers=["真乃"],
+            scsp_avatar=SCSP_AVATAR, color="#ffbad6", background=BACKGROUND, signature=SIGNATURE,
+            speakers=["真乃"],
             voice_id="mano-voice", idol_id=1, default_outfit="stand/1030010010", photo=MANO_PHOTO,
             birthday="04-25", age=16,
         )

@@ -250,6 +250,8 @@ export type Dashboard = {
   affinity: AffinitySection | null;
   /** Her reach-outs (GLOSSARY「搭话」); null where they are off and none were made in the range. */
   reach_outs: ReachOutsSection | null;
+  /** Her letters (GLOSSARY「信」); null where they are off and none were recorded in the range. */
+  letters: LettersSection | null;
   /** Visits to the bar (GLOSSARY「光顾」); null where the bar is closed and none were made in the
    * range. */
   bar: BarSection | null;
@@ -284,6 +286,20 @@ export function reachOutTiles(section: ReachOutsSection | null): { id: string; l
       label: words.answered,
       value: section.answered_share === null ? NONE : formatPercent(section.answered_share),
     },
+  ];
+}
+
+/** The dashboard's「信」section: how many letters were written, and how many times writing one
+ * failed. */
+export type LettersSection = { succeeded: number; failed: number };
+
+/** The section's tiles, as the page shows them; none where it is empty. */
+export function letterTiles(section: LettersSection | null): { id: string; label: string; value: string }[] {
+  if (section === null) return [];
+  const words = copy.admin.dashboard.letters.tiles;
+  return [
+    { id: "succeeded", label: words.succeeded, value: formatCount(section.succeeded) },
+    { id: "failed", label: words.failed, value: formatCount(section.failed) },
   ];
 }
 

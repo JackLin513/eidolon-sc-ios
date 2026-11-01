@@ -22,10 +22,11 @@ told as past or still to come by the day it is where the user is, the day the pr
 The two open the prompt, with how she is to format her reply, as a system message of their
 own, the same for every user's turns with her that day, marked for the service to cache;
 who the producer is follows in another, then the conversation so far. What changes from
-turn to turn (the time, her affinity, what retrieval found) comes after the conversation,
-in a system message just before what the user is saying now, and is not carried into the
-turns after it: so each turn's prompt opens as the one before it did, up to the end of the
-conversation so far, marked for the service to cache too (ADR-0020).
+turn to turn (the time, her affinity, the letters she wrote the producer last, what retrieval
+found) comes after the conversation, in a system message just before what the user is saying
+now, and is not carried into the turns after it: so each turn's prompt opens as the one
+before it did, up to the end of the conversation so far, marked for the service to cache too
+(ADR-0020).
 
 The chat model reads at least as many of the latest turns as the deployer says, but they
 are cut back only every so often, so what it reads opens the same way for a while
@@ -133,6 +134,7 @@ from eidolon.her_cycle import HerDay, Period, Premenstrual
 from eidolon.her_now import HerNow, KnownNow, Occasion
 from eidolon.her_weather import KnownWeather
 from eidolon.judge import JudgeError
+from eidolon.letter_prompt import Earlier, letters_section, read_earlier
 from eidolon.llm import ChatLLM, ChatMessage, Reasoning, Tool, ToolCall, TurnLLMs
 from eidolon.memory import Memories, last_turn_query
 from eidolon.own_keys import OwnKeyFailed
@@ -400,7 +402,8 @@ class _BeforeAsking:
     the user and she were last in touch (None in a call, where she knows they are talking),
     her affinity as it begins, what it may send for a photo (None for a reach-out), and the
     producer profile; and when they were last in touch apart, as the weather has it
-    (`her_weather`): in a call, before it connected (None if never)."""
+    (`her_weather`): in a call, before it connected (None if never); and the letters she
+    wrote the user last, the earliest first (`letter_prompt.read_earlier`)."""
 
     ended: bool
     character: Character
@@ -410,6 +413,7 @@ class _BeforeAsking:
     eligibility: Eligibility | None
     profile: ProducerProfile
     last_apart: datetime | None = None
+    letters: Sequence[Earlier] = ()
 
 
 @dataclass
@@ -554,6 +558,13 @@ def _moments_told(
     """The section telling her of her latest moments `known` (`recent_moments`), if any, at
     `now`, the producer in `timezone`, she as `affinity` has her."""
     section = moments_section(known.moments, now, timezone, affinity and affinity.tier)
+    return [section] if section else []
+
+
+def _letters_told(letters: Sequence[Earlier]) -> list[str]:
+    """The section telling her of the letters she wrote the producer (`letters_section`), if
+    any."""
+    section = letters_section(letters)
     return [section] if section else []
 
 
@@ -800,6 +811,7 @@ class ConversationEngine:
                     known_weather,
                 ),
                 *_moments_told(known, now, timezone, affinity),
+                *_letters_told(read.letters),
                 *([about_photo] if about_photo else []),
             ],
             [p for p in (retrieved.memories_prompt, retrieved.prompt) if p],
@@ -916,10 +928,10 @@ class ConversationEngine:
         prompt is laid out as a text turn's (ADR-0020), and opens as the next one's will, but
         for what changes from turn to turn: she is told what time it is and that they are not
         talking and when they last were, how she speaks in her tier, her latest moments, if any
-        (`recent_moments`), the memories she reaches out with (`Memories.for_reaching_out`), and
-        how to reach out, about her moments too if told of any; then, where the user's
-        words would be, the events and her reach-outs since the last turn and that she wants
-        to say something first. Nothing else is retrieved, no tool offered, nothing judged.
+        (`recent_moments`), the letters she wrote them last, if any, the memories she reaches
+        out with (`Memories.for_reaching_out`), and how to reach out, about her moments too if
+        told of any; then, where the user's words would be, the events and her reach-outs
+        since the last turn and that she wants to say something first. Nothing else is retrieved, no tool offered, nothing judged.
         Raises EmptyReply if the model says nothing she could say, and whatever the model
         raises."""
         known = await self._her_now.read(
@@ -952,6 +964,7 @@ class ConversationEngine:
                     known_weather,
                 ),
                 *moments,
+                *_letters_told(read.letters),
             ],
             [
                 *([memories] if memories else []),
@@ -1032,6 +1045,7 @@ class ConversationEngine:
             if sends_photo else None,
             read_profile(db, conversation.user_id),
             last_apart,
+            read_earlier(db, user_id, character_id),
         )
 
     def _photo_eligibility(

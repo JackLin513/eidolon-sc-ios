@@ -166,6 +166,9 @@ class Character:
     scsp_avatar: Path | None = None
     """Her avatar in SCSP's set, which users can switch to in settings; None, and they see
     her usual avatar either way."""
+    signature: Path | None = None
+    """Her handwritten signature, at the end of her letters; None, and she signs with her
+    name in the letter's hand."""
     speakers: tuple[str, ...] = ()
     """Names her lines are credited to in story scripts, e.g. 真乃."""
     facts: tuple[Fact, ...] = ()
@@ -320,6 +323,7 @@ def _parse_character(
     avatar = _optional_file(entry, "avatar", base, label)
     background = _optional_file(entry, "background", base, label)
     scsp_avatar = _optional_file(entry, "scsp_avatar", base, label)
+    signature = _optional_file(entry, "signature", base, label)
 
     idol_id = entry.get("idol_id")
     # bool is an int in Python, but `idol_id = true` is a mistake all the same.
@@ -349,6 +353,7 @@ def _parse_character(
         age=age,
         background=background,
         scsp_avatar=scsp_avatar,
+        signature=signature,
         speakers=tuple(speakers),
         facts=facts,
         sheet_path=sheet_path,
@@ -457,6 +462,11 @@ def _optional_file(entry: dict, field: str, base: Path, label: str) -> Path | No
         log.warning("%s %s of character %s is missing; showing none", field, path, label)
         return None
     return path
+
+
+def signature_url(character: Character) -> str | None:
+    """Where the browser gets her signature; None without one."""
+    return f"/api/characters/{character.id}/signature" if character.signature else None
 
 
 def is_draft(sheet: str) -> bool:
