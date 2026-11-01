@@ -22,6 +22,9 @@ public struct CharacterConfig: Sendable, Hashable {
     /// Her default outfit and outfit list, when the bundle carries her stand.
     public var stand: StandConfig?
     public var birthday: Birthday?
+    /// Her age as the content pack states it; nil when the bundle does not say. Adult
+    /// mode only ever uses this field, never the persona text (spec #61).
+    public var age: Int?
     public var raw: [String: JSONValue]
 
     public init(
@@ -42,6 +45,7 @@ public struct CharacterConfig: Sendable, Hashable {
         idolID: Int? = nil,
         stand: StandConfig? = nil,
         birthday: Birthday? = nil,
+        age: Int? = nil,
         raw: [String: JSONValue] = [:]
     ) {
         self.id = id
@@ -61,6 +65,7 @@ public struct CharacterConfig: Sendable, Hashable {
         self.idolID = idolID
         self.stand = stand
         self.birthday = birthday
+        self.age = age
         self.raw = raw
     }
 
@@ -111,12 +116,18 @@ public struct CharacterConfig: Sendable, Hashable {
             idolID: idolID,
             stand: stand,
             birthday: birthday,
+            age: object["age"]?.intValue,
             raw: object
         )
     }
 }
 
 extension CharacterConfig {
+    /// Whether adult mode may apply to her. Missing or under-18 ages fail closed.
+    public var isAdult: Bool {
+        age.map { $0 >= 18 } ?? false
+    }
+
     /// The line under her name in the list: the first alias there is, else her unit.
     public var subtitle: String {
         [nameZh, nameKana, nameRomaji].compactMap { $0 }.first ?? unit ?? ""

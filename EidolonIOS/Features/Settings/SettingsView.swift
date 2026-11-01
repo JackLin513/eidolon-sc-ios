@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var apiKey = ""
     @State private var historyTurns = 20
     @State private var atmosphericText = true
+    @State private var adultMode = false
     @State private var extraBody = ""
     @State private var judgeBaseURL = ""
     @State private var judgeModel = ""
@@ -101,6 +102,15 @@ struct SettingsView: View {
                     Text("对话模型")
                 } footer: {
                     Text("任何 OpenAI 兼容的 /chat/completions 服务都可以。密钥保存在钥匙串，地址和模型名存在偏好设置。文字氛围模式让文字回合的台词更长、并显示动作与环境描写；通话和搭话不受影响。")
+                }
+
+                Section {
+                    Toggle("成人模式", isOn: $adultMode)
+                        .accessibilityIdentifier("settings.adultMode")
+                } header: {
+                    Text("成人模式")
+                } footer: {
+                    Text("只对内容包中 18 岁及以上的角色生效，未成年角色不受影响。开启后，双方愿意的亲密内容不会被判越界，也不会因此结束对话；真正的骚扰、威胁、辱骂仍然会结束对话。")
                 }
 
                 Section {
@@ -652,6 +662,7 @@ struct SettingsView: View {
         apiKey = settings.apiKey
         historyTurns = settings.historyTurns
         atmosphericText = settings.atmosphericText
+        adultMode = settings.adultMode
         extraBody = settings.extraBody
         judgeBaseURL = settings.judgeBaseURL
         judgeModel = settings.judgeModel
@@ -715,6 +726,7 @@ struct SettingsView: View {
             apiKey: apiKey,
             historyTurns: historyTurns,
             atmosphericText: atmosphericText,
+            adultMode: adultMode,
             extraBody: extraBody,
             judgeBaseURL: judgeBaseURL,
             judgeModel: judgeModel,

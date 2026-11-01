@@ -79,6 +79,12 @@ final class AppModel {
         chatSettings.atmosphericText ? .richText : .text
     }
 
+    /// Adult mode only ever applies to a character whose content age is 18 or older.
+    /// Missing ages fail closed (spec #61).
+    func adultMode(for character: CharacterConfig) -> Bool {
+        chatSettings.adultMode && character.isAdult
+    }
+
     var embeddingProvider: (any EmbeddingProvider)? {
         chatSettings.embeddingConfig.map { SiliconFlowEmbedding(config: $0) as any EmbeddingProvider }
     }
@@ -226,6 +232,7 @@ final class AppModel {
             historyTurns: chatSettings.historyTurns,
             reconnectDelay: debugReconnectDelay,
             tones: callTones,
+            adultMode: adultMode(for: character),
             now: { Date() }
         )
         return try await core.beginCall(characterID: character.id, setup: setup, now: now)
@@ -471,6 +478,7 @@ final class AppModel {
 
     func bootstrap() async {
         #if DEBUG
+        applyDebugAdultMode()
         applyDebugChatSettings()
         applyDebugBailianSettings()
         await importBundleForDebuggingIfRequested()
@@ -522,6 +530,20 @@ final class AppModel {
         // A setting this seeding does not carry (atmospheric text, phone texture, the
         // judge) stays as the device had it.
         try? saveChatSettings(settings)
+    }
+
+    /// Development aid: `SIMCTL_CHILD_EIDOLON_ADULT_MODE=1` turns adult mode on without
+    /// the settings page. It stands alone, unlike the model settings below, which need a
+    /// chat key.
+    private func applyDebugAdultMode() {
+        let environment = ProcessInfo.processInfo.environment
+        guard let adultMode = environment["EIDOLON_ADULT_MODE"] else { return }
+        var settings = ChatSettings.load()
+        settings.adultMode = adultMode == "1"
+        // The UI-test build is unsigned and Keychain writes can fail; the toggle itself
+        // is UserDefaults, which is written before the Keychain step, so keep it in memory.
+        try? settings.save()
+        chatSettings = settings
     }
 
     /// Development aid: `EIDOLON_BAILIAN_WORKSPACE/_REGION/_MODEL/_API_KEY` fill in the

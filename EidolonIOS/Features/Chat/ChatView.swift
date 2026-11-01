@@ -220,7 +220,8 @@ struct ChatView: View {
                             reranker: app.rerankProvider,
                             historyTurns: app.chatSettings.historyTurns,
                             tracing: app.tracing,
-                            replyStyle: app.replyStyle
+                            replyStyle: app.replyStyle,
+                            adultMode: app.adultMode(for: character)
                         ) }
         #endif
     }
@@ -633,7 +634,8 @@ struct ChatView: View {
                             reranker: app.rerankProvider,
                             historyTurns: app.chatSettings.historyTurns,
                             tracing: app.tracing,
-                            replyStyle: app.replyStyle
+                            replyStyle: app.replyStyle,
+                            adultMode: app.adultMode(for: character)
                         ) }
                     }
                 } label: {
@@ -726,7 +728,8 @@ struct ChatView: View {
                             reranker: app.rerankProvider,
                             historyTurns: app.chatSettings.historyTurns,
                             tracing: app.tracing,
-                            replyStyle: app.replyStyle
+                            replyStyle: app.replyStyle,
+                            adultMode: app.adultMode(for: character)
                         ) }
                 }
                 .font(.footnote.weight(.semibold))

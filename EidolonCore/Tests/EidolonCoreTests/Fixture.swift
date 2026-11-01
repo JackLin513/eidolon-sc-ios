@@ -49,6 +49,10 @@ enum Fixture {
         var includeReadings = false
         /// Writes `characters/jobs.json` with a few jobs.
         var includeJobs = false
+        /// Ages the fixture characters carry; nil leaves the field out, as an older
+        /// bundle does. Adult mode is only for 18+.
+        var manoAge: Int? = nil
+        var hioriAge: Int? = nil
     }
 
     static func makeBundle(in parent: URL, options: Options = Options()) throws -> URL {
@@ -82,6 +86,7 @@ enum Fixture {
             "idol_id": .int(1),
             "birthday": .string("04-25"),
         ]
+        if let age = options.manoAge { mano["age"] = .int(age) }
         if options.facts {
             mano["facts"] = .string("characters/facts/mano.md")
         }
@@ -94,16 +99,18 @@ enum Fixture {
                 "outfits": .string("stand/outfits/1.json"),
             ])
         }
+        var hiori: [String: JSONValue] = [
+            "id": .string("hiori"),
+            "name": .string("風野灯織"),
+            "sheet": .string("characters/sheets/hiori.md"),
+            "speakers": .array([.string("灯織")]),
+            "idol_id": .int(2),
+            "birthday": .string("03-04"),
+        ]
+        if let age = options.hioriAge { hiori["age"] = .int(age) }
         let characters: [JSONValue] = [
             .object(mano),
-            .object([
-                "id": .string("hiori"),
-                "name": .string("風野灯織"),
-                "sheet": .string("characters/sheets/hiori.md"),
-                "speakers": .array([.string("灯織")]),
-                "idol_id": .int(2),
-                "birthday": .string("03-04"),
-            ]),
+            .object(hiori),
         ]
         let charactersData = try JSONEncoder().encode(characters)
         try charactersData.write(to: charactersDirectory.appendingPathComponent("characters.json"))
