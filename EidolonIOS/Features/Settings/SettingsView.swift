@@ -53,7 +53,9 @@ struct SettingsView: View {
     @State private var gender = "default"
     @State private var profileTimezone = ""
     @State private var birthdayOn = false
-    @State private var birthdayDate = SettingsView.dateIn2024(month: 1, day: 1, timeZone: .current)
+    @State private var birthdayDate = SettingsView.date(
+        year: 2024, month: 1, day: 1, timeZone: .current
+    )
     @State private var birthdayError: String?
     @State private var tracingEnabled = true
     @State private var traceRetention = 200
@@ -276,7 +278,7 @@ struct SettingsView: View {
                 } header: {
                     Text("制作人档案")
                 } footer: {
-                    Text("只影响她当下怎么对待你，不改写剧情。生日只在当天被她主动提起。")
+                    Text("只影响她当下怎么对待你，不改写剧情。生日只在当天被她主动提起。年份只用来选日期，不会保存。")
                 }
 
                 Section {
@@ -687,14 +689,14 @@ struct SettingsView: View {
             let zone = TimeZone(identifier: profile.timezone ?? "") ?? .current
             if let month = profile.birthdayMonth, let day = profile.birthdayDay {
                 if Birthday.valid(month: month, day: day) {
-                    birthdayDate = Self.dateIn2024(month: month, day: day, timeZone: zone)
+                    birthdayDate = Self.date(year: 2024, month: month, day: day, timeZone: zone)
                     birthdayError = nil
                 } else {
-                    birthdayDate = Self.dateIn2024(month: 1, day: 1, timeZone: zone)
+                    birthdayDate = Self.date(year: 2024, month: 1, day: 1, timeZone: zone)
                     birthdayError = "原来的生日日期不合法，请重新选择"
                 }
             } else {
-                birthdayDate = Self.dateIn2024(month: 1, day: 1, timeZone: zone)
+                birthdayDate = Self.date(year: 2024, month: 1, day: 1, timeZone: zone)
                 birthdayError = nil
             }
         }
@@ -857,17 +859,23 @@ struct SettingsView: View {
             ?? .current
     }
 
+    /// Any birth year up to this one. The year is only there to pick the date; saving keeps
+    /// the month and day, as the profile has no use for the year.
     private var birthdayRange: ClosedRange<Date> {
-        Self.dateIn2024(month: 1, day: 1, timeZone: birthdayTimeZone)
-            ... Self.dateIn2024(month: 12, day: 31, timeZone: birthdayTimeZone)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = birthdayTimeZone
+        let thisYear = calendar.component(.year, from: Date())
+        return Self.date(year: 1900, month: 1, day: 1, timeZone: birthdayTimeZone)
+            ... Self.date(year: thisYear, month: 12, day: 31, timeZone: birthdayTimeZone)
     }
 
-    /// A day in the leap year 2024, so February 29 can be picked; only month and day are kept.
-    private static func dateIn2024(month: Int, day: Int, timeZone: TimeZone) -> Date {
+    private static func date(
+        year: Int, month: Int, day: Int, timeZone: TimeZone
+    ) -> Date {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         return calendar.date(
-            from: DateComponents(year: 2024, month: month, day: day, hour: 12)
+            from: DateComponents(year: year, month: month, day: day, hour: 12)
         )!
     }
 
