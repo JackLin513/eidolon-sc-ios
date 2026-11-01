@@ -65,6 +65,11 @@ final class AppModel {
         TurnTracing(enabled: chatSettings.tracingEnabled, retention: chatSettings.traceRetention)
     }
 
+    /// What a typed turn is asked to write; calls pass their own style.
+    var replyStyle: ReplyStyle {
+        chatSettings.atmosphericText ? .richText : .text
+    }
+
     var embeddingProvider: (any EmbeddingProvider)? {
         chatSettings.embeddingConfig.map { SiliconFlowEmbedding(config: $0) as any EmbeddingProvider }
     }
@@ -491,23 +496,22 @@ final class AppModel {
     private func applyDebugChatSettings() {
         let environment = ProcessInfo.processInfo.environment
         guard let key = environment["EIDOLON_CHAT_API_KEY"], !key.isEmpty else { return }
-        let settings = ChatSettings(
-            baseURL: environment["EIDOLON_CHAT_BASE_URL"] ?? "https://api.siliconflow.cn/v1",
-            model: environment["EIDOLON_CHAT_MODEL"] ?? "",
-            apiKey: key,
-            historyTurns: 20,
-            extraBody: environment["EIDOLON_CHAT_EXTRA_BODY"] ?? "",
-            retrievalBaseURL: environment["EIDOLON_RETRIEVAL_BASE_URL"] ?? "",
-            embeddingModel: environment["EIDOLON_EMBEDDING_MODEL"] ?? "",
-            rerankModel: environment["EIDOLON_RERANK_MODEL"] ?? "",
-            retrievalAPIKey: environment["EIDOLON_RETRIEVAL_API_KEY"] ?? "",
-            sonioxAPIKey: environment["EIDOLON_SONIOX_API_KEY"] ?? "",
-            sonioxModel: environment["EIDOLON_SONIOX_MODEL"] ?? "stt-rt-v5",
-            fishAPIKey: environment["EIDOLON_FISH_API_KEY"] ?? "",
-            fishModel: environment["EIDOLON_FISH_MODEL"] ?? "s2.1-pro-free",
-            // A setting this seeding does not carry stays as the device had it.
-            phoneTexture: ChatSettings.load().phoneTexture
-        )
+        var settings = ChatSettings.load()
+        settings.baseURL = environment["EIDOLON_CHAT_BASE_URL"] ?? "https://api.siliconflow.cn/v1"
+        settings.model = environment["EIDOLON_CHAT_MODEL"] ?? ""
+        settings.apiKey = key
+        settings.historyTurns = 20
+        settings.extraBody = environment["EIDOLON_CHAT_EXTRA_BODY"] ?? ""
+        settings.retrievalBaseURL = environment["EIDOLON_RETRIEVAL_BASE_URL"] ?? ""
+        settings.embeddingModel = environment["EIDOLON_EMBEDDING_MODEL"] ?? ""
+        settings.rerankModel = environment["EIDOLON_RERANK_MODEL"] ?? ""
+        settings.retrievalAPIKey = environment["EIDOLON_RETRIEVAL_API_KEY"] ?? ""
+        settings.sonioxAPIKey = environment["EIDOLON_SONIOX_API_KEY"] ?? ""
+        settings.sonioxModel = environment["EIDOLON_SONIOX_MODEL"] ?? "stt-rt-v5"
+        settings.fishAPIKey = environment["EIDOLON_FISH_API_KEY"] ?? ""
+        settings.fishModel = environment["EIDOLON_FISH_MODEL"] ?? "s2.1-pro-free"
+        // A setting this seeding does not carry (atmospheric text, phone texture, the
+        // judge) stays as the device had it.
         try? saveChatSettings(settings)
     }
 

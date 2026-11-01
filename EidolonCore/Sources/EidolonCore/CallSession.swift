@@ -960,14 +960,19 @@ public actor CallSession {
                 talking: .inCall,
                 inCall: CallScope(outOfLine: callOutOfLine, hurts: callHurts),
                 stop: stop,
-                voicedBy: setup.voiceModel
+                voicedBy: setup.voiceModel,
+                replyStyle: .call
             ) {
                 if finished || Task.isCancelled { break }
                 switch event {
-                case let .speechDelta(segment, spoken):
-                    appendSpoken(segment, spoken)
-                case let .delta(segment, language, shown):
-                    appendCaption(segment, language, shown)
+                case let .speechDelta(block, spoken):
+                    appendSpoken(block, spoken)
+                case let .delta(block, language, shown):
+                    appendCaption(block, language, shown)
+                case .sceneDelta:
+                    // A call never asks for scene blocks; if one leaks through, it is
+                    // neither shown nor voiced.
+                    break
                 case let .finished(record):
                     replyRecordedAt[reply] = ContinuousClock.now
                     replyRecorded = true

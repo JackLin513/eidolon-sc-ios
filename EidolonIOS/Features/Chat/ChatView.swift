@@ -219,7 +219,8 @@ struct ChatView: View {
                             embedder: app.embeddingProvider,
                             reranker: app.rerankProvider,
                             historyTurns: app.chatSettings.historyTurns,
-                            tracing: app.tracing
+                            tracing: app.tracing,
+                            replyStyle: app.replyStyle
                         ) }
         #endif
     }
@@ -386,7 +387,7 @@ struct ChatView: View {
             HerMessageRow(character: character, first: row.first) {
                 HStack(alignment: .bottom, spacing: 6) {
                     ReplyBubble(
-                        segments: message.segments,
+                        blocks: message.replyBlocks,
                         character: character,
                         line: message.id,
                         joinsPrevious: !row.first,
@@ -433,7 +434,7 @@ struct ChatView: View {
         var body: some View {
             if !store.streaming.isEmpty {
                 HerMessageRow(character: character) {
-                    ReplyBubble(segments: store.streaming, character: character, cuesShown: true)
+                    ReplyBubble(blocks: store.streaming, character: character, cuesShown: true)
                 }
                 .padding(.top, 8)
             }
@@ -502,7 +503,7 @@ struct ChatView: View {
     /// what 朗读 is for. The line still being written has none, and it arrives with its cues
     /// already taken out, so it is shown as it is rather than filtered a second time (spec #42).
     private struct ReplyBubble: View {
-        let segments: [ReplySegment]
+        let blocks: [ReplyBlock]
         let character: CharacterConfig
         var line: String? = nil
         var cuesShown = false
@@ -514,20 +515,29 @@ struct ChatView: View {
 
         var body: some View {
             VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(shown(segment.ja))
-                            .font(.body)
-                        if !segment.zh.isEmpty {
-                            Text(shown(segment.zh))
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
+                ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                    switch block {
+                    case let .line(segment):
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(shown(segment.ja))
+                                .font(.body)
+                            if !segment.zh.isEmpty {
+                                Text(shown(segment.zh))
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                    case let .scene(scene):
+                        Text(scene)
+                            .font(.callout)
+                            .italic()
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("reply.scene")
                     }
                 }
                 // Her voice is the call's while one is up; 朗读 waits for it to end.
                 if let line, !app.call.isLive, let speech = ReadAloud.speech(
-                    of: segments, model: app.chatSettings.fishModel
+                    of: blocks, model: app.chatSettings.fishModel
                 ), let voice = app.readAloudVoice(for: character) {
                     readAloudButton(speech, line: line, voice: voice)
                         .id(line)
@@ -621,7 +631,8 @@ struct ChatView: View {
                             embedder: app.embeddingProvider,
                             reranker: app.rerankProvider,
                             historyTurns: app.chatSettings.historyTurns,
-                            tracing: app.tracing
+                            tracing: app.tracing,
+                            replyStyle: app.replyStyle
                         ) }
                     }
                 } label: {
@@ -712,7 +723,8 @@ struct ChatView: View {
                             embedder: app.embeddingProvider,
                             reranker: app.rerankProvider,
                             historyTurns: app.chatSettings.historyTurns,
-                            tracing: app.tracing
+                            tracing: app.tracing,
+                            replyStyle: app.replyStyle
                         ) }
                 }
                 .font(.footnote.weight(.semibold))

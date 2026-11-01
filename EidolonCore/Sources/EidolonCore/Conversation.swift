@@ -67,7 +67,7 @@ extension Eidolon {
             let messages = try Row.fetchAll(
                 db,
                 sql: """
-                    SELECT rowid, id, role, text, segments, created_at,
+                    SELECT rowid, id, role, text, segments, blocks, created_at,
                         affinity, affinity_up, affinity_tier_changed, affinity_cooldown
                     FROM messages WHERE conversation_id = ?
                     """,
@@ -82,6 +82,7 @@ extension Eidolon {
                         role: row["role"],
                         text: row["text"],
                         segments: Self.decodeSegments(row["segments"]),
+                        blocks: Self.decodeBlocks(row["blocks"]),
                         createdAt: createdAt,
                         affinityChange: Self.decodeAffinityChange(row)
                     ))

@@ -51,7 +51,9 @@ def find_reply(history: dict[str, str]) -> list[str]:
 
 async def run(upstream: Path, scenario: dict) -> list[dict[str, str]]:
     sys.path.insert(0, str(upstream / "backend" / "src"))
+    import sqlite3
     import eidolon.engine
+    import eidolon.letters
     import eidolon.store
     from eidolon.characters import load_characters
     from eidolon.data_access import Database
@@ -71,6 +73,10 @@ async def run(upstream: Path, scenario: dict) -> list[dict[str, str]]:
     try:
         database = workdir / "eidolon.db"
         shutil.copy(upstream / "backend" / "data" / "eidolon.db", database)
+        # The shipped content database predates letters; the engine reads their tables even
+        # when the scenario has none. Add the empty schema before opening it.
+        with sqlite3.connect(database) as schema:
+            schema.executescript(eidolon.letters._SCHEMA)
         db = Database(database)
         try:
             store = Store(db)

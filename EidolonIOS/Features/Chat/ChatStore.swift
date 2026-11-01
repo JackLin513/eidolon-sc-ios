@@ -14,7 +14,7 @@ final class ChatStore {
     /// The conversation in the database's order: turns, her reach-outs and what happened
     /// around them (GLOSSARY.md「对话事件」). Nothing here is reordered.
     private(set) var lines: [ConversationLine] = []
-    private(set) var streaming: [ReplySegment] = []
+    private(set) var streaming: [ReplyBlock] = []
     /// The line being answered; recorded only when the turn finishes, but shown at once.
     private(set) var pendingUser: String?
     private(set) var isStreaming = false
@@ -141,7 +141,8 @@ final class ChatStore {
         embedder: (any EmbeddingProvider)?,
         reranker: (any RerankProvider)?,
         historyTurns: Int = 20,
-        tracing: TurnTracing = .on
+        tracing: TurnTracing = .on,
+        replyStyle: ReplyStyle = .text
     ) async {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !affinity.cooling, !readOnly else { return }
@@ -174,15 +175,18 @@ final class ChatStore {
             embedder: embedder,
             reranker: reranker,
             historyTurns: historyTurns,
-            tracing: tracing
+            tracing: tracing,
+            replyStyle: replyStyle
         )
         let turn = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
                 for try await event in stream {
                     switch event {
-                    case let .delta(segment, language, shown):
-                        append(segment: segment, language: language, text: shown)
+                    case let .delta(block, language, shown):
+                        append(block: block, language: language, text: shown)
+                    case let .sceneDelta(block, shown):
+                        appendScene(block: block, text: shown)
                     case .speechDelta:
                         break
                     case let .finished(record):
@@ -238,13 +242,28 @@ final class ChatStore {
         }
     }
 
-    private func append(segment: Int, language: ReplyLanguage, text: String) {
-        while streaming.count <= segment {
-            streaming.append(ReplySegment())
+    private func append(block: Int, language: ReplyLanguage, text: String) {
+        while streaming.count <= block {
+            streaming.append(.line(ReplySegment()))
         }
+        guard case var .line(line) = streaming[block] else { return }
         switch language {
-        case .ja: streaming[segment].ja += text
-        case .zh: streaming[segment].zh += text
+        case .ja: line.ja += text
+        case .zh: line.zh += text
+        }
+        streaming[block] = .line(line)
+    }
+
+    private func appendScene(block: Int, text: String) {
+        while streaming.count <= block {
+            streaming.append(.line(ReplySegment()))
+        }
+        switch streaming[block] {
+        case var .scene(scene):
+            scene += text
+            streaming[block] = .scene(scene)
+        case .line:
+            streaming[block] = .scene(text)
         }
     }
 

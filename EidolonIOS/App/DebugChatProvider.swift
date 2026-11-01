@@ -13,8 +13,11 @@ struct DebugChatProvider: ChatProvider {
         } else if system.contains("你负责给") {
             answer = ""
         } else {
-            answer = "<ja>こんばんは。今日はどうしたの？</ja>"
+            let line = "<ja>こんばんは。今日はどうしたの？</ja>"
                 + "<zh>晚上好。今天怎么了？</zh>"
+            answer = system.contains("场景块")
+                ? "<scene>她把杯子放下，抬眼看过来。</scene>" + line
+                : line
         }
         return AsyncThrowingStream { continuation in
             continuation.yield(answer)
