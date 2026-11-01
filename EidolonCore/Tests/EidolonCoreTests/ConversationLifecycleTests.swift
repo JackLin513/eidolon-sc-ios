@@ -218,6 +218,20 @@ final class ConversationLifecycleTests: XCTestCase {
         XCTAssertTrue(cleared.contains("制作人是男性，和原作一致。"))
     }
 
+    func testAnImpossibleBirthdayIsNotSaved() async throws {
+        let eidolon = try await installedEidolon()
+        do {
+            try await eidolon.updateProducerProfile(
+                ProducerProfile(birthdayMonth: 2, birthdayDay: 30)
+            )
+            XCTFail("February 30 was saved")
+        } catch let error as EidolonError {
+            XCTAssertEqual(error, .invalidProducerBirthday)
+        }
+        let saved = try await eidolon.producerProfile()
+        XCTAssertNil(saved.birthday)
+    }
+
     func testSummariesCarryTheTitleOnceNamed() async throws {
         let eidolon = try await installedEidolon()
         let provider = KindChatProvider()

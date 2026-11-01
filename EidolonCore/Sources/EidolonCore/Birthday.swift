@@ -20,10 +20,14 @@ public struct Birthday: Sendable, Hashable {
               parts.allSatisfy({ $0.allSatisfy { $0.isASCII && $0.isNumber } }),
               let month = Int(parts[0]),
               let day = Int(parts[1]),
-              (1...12).contains(month),
-              (1...Birthday.daysInMonth[month - 1]).contains(day)
+              Birthday.valid(month: month, day: day)
         else { return nil }
         self.init(month: month, day: day)
+    }
+
+    /// Whether some year has this day: February 29 yes, February 30 and April 31 no.
+    public static func valid(month: Int, day: Int) -> Bool {
+        (1...12).contains(month) && (1...daysInMonth[month - 1]).contains(day)
     }
 
     public var text: String {
