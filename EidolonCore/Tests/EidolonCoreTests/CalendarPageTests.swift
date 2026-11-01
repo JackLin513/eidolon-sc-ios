@@ -58,9 +58,10 @@ final class CalendarPageTests: XCTestCase {
         )
         XCTAssertEqual(leapEvent.map(\.day.day), [29, 29])
         let ordinaryEvent = CalendarPage.events(
-            in: ordinary, characters: [character], producerBirthday: nil, holidays: nil
+            in: ordinary, characters: [character], producerBirthday: (2, 29), holidays: nil
         )
-        XCTAssertEqual(ordinaryEvent.map(\.day.day), [28])
+        XCTAssertEqual(ordinaryEvent.map(\.day.day), [28, 28])
+        XCTAssertEqual(ordinaryEvent.map(\.kind), [.character, .producer])
     }
 
     func testAMonthWithNothingIsEmpty() {

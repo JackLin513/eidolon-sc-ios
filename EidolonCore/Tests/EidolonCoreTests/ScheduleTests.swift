@@ -260,7 +260,13 @@ final class ScheduleTests: XCTestCase {
         XCTAssertEqual(save.refused.map(\.reason), ["这一周不能排"])
     }
 
-    func testAllSavedJobsAcrossWeeksAndCharactersAreReadForExport() async throws {
+    func testNoSavedPlacementsAreExportedBeforeAnythingIsSaved() async throws {
+        let eidolon = try await installed()
+        let saved = try await eidolon.savedPlacements()
+        XCTAssertTrue(saved.isEmpty)
+    }
+
+    func testAllSavedPlacementsAcrossWeeksAndCharactersAreReadForExport() async throws {
         let eidolon = try await installed()
         let week = CalendarDay(year: 2026, month: 11, day: 2)
         let next = week.adding(days: 7)
@@ -294,7 +300,7 @@ final class ScheduleTests: XCTestCase {
             }
         }
 
-        let saved = try await eidolon.savedJobs()
+        let saved = try await eidolon.savedPlacements()
         XCTAssertEqual(saved.map(\.job.name), ["声乐课", "拍摄", "舞蹈课"])
         XCTAssertEqual(saved.map(\.placement.characterID), ["mano", "hiori", "mano"])
         XCTAssertEqual(saved.map(\.placement.day), [1, 3, 2])

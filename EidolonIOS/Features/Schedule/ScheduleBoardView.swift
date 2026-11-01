@@ -454,7 +454,7 @@ struct ScheduleBoardView: View {
                 Spacer(minLength: 0)
             }
             if planner.pendingCount == 0 {
-                Text("本周的工作都排好了")
+                Text(weekOffset == 0 ? "本周的工作都排好了" : "下周的工作都排好了")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

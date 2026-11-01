@@ -51,18 +51,9 @@ actor EventKitCalendarStore: CalendarExportStore {
     func storedEvents(for expected: [CalendarExportEvent]) async throws -> [CalendarExportStoredEvent] {
         try await requestAccess()
         let calendar = try ensureCalendar()
-        var seen = Set<String>()
         var events: [CalendarExportStoredEvent] = []
-        for year in queryYears(for: expected) {
-            for occurrence in store.events(matching: predicate(in: calendar, year: year)) {
-                let id = occurrence.calendarItemIdentifier
-                guard seen.insert(id).inserted else { continue }
-                let event = (store.calendarItem(withIdentifier: id) as? EKEvent) ?? occurrence
-                guard let marker = event.url?.absoluteString,
-                      marker.hasPrefix(CalendarExportEvent.markerPrefix)
-                else { continue }
-                events.append(CalendarExportStoredEvent(id: id, event: converted(event)))
-            }
+        for marked in markedEvents(for: expected, in: calendar) {
+            events.append(CalendarExportStoredEvent(id: marked.id, event: converted(marked.event)))
         }
         return events.sorted { $0.event.marker < $1.event.marker }
     }
@@ -76,9 +67,7 @@ actor EventKitCalendarStore: CalendarExportStore {
 
     func update(id: String, to event: CalendarExportEvent) async throws {
         try await requestAccess()
-        guard let item = (store.calendarItem(withIdentifier: id) as? EKEvent)
-            ?? store.event(withIdentifier: id)
-        else {
+        guard let item = item(id: id) else {
             throw CalendarExportError.eventGone
         }
         apply(event, to: item, calendar: try ensureCalendar())
@@ -88,9 +77,7 @@ actor EventKitCalendarStore: CalendarExportStore {
 
     func delete(id: String) async throws {
         try await requestAccess()
-        guard let item = (store.calendarItem(withIdentifier: id) as? EKEvent)
-            ?? store.event(withIdentifier: id)
-        else { return }
+        guard let item = item(id: id) else { return }
         let span: EKSpan = item.recurrenceRules?.isEmpty == false ? .futureEvents : .thisEvent
         try store.remove(item, span: span, commit: true)
     }
@@ -99,19 +86,12 @@ actor EventKitCalendarStore: CalendarExportStore {
     func deleteMarkedEvents(for expected: [CalendarExportEvent]) async throws -> Int {
         try await requestAccess()
         let calendar = try ensureCalendar()
-        var seen = Set<String>()
         var removed = 0
-        for year in queryYears(for: expected) {
-            for occurrence in store.events(matching: predicate(in: calendar, year: year)) {
-                let id = occurrence.calendarItemIdentifier
-                guard seen.insert(id).inserted else { continue }
-                let item = (store.calendarItem(withIdentifier: id) as? EKEvent) ?? occurrence
-                guard item.url?.absoluteString.hasPrefix(CalendarExportEvent.markerPrefix) == true
-                else { continue }
-                let span: EKSpan = item.recurrenceRules?.isEmpty == false ? .futureEvents : .thisEvent
-                try store.remove(item, span: span, commit: true)
-                removed += 1
-            }
+        for marked in markedEvents(for: expected, in: calendar) {
+            let span: EKSpan = marked.event.recurrenceRules?.isEmpty == false
+                ? .futureEvents : .thisEvent
+            try store.remove(marked.event, span: span, commit: true)
+            removed += 1
         }
         return removed
     }
@@ -152,6 +132,30 @@ actor EventKitCalendarStore: CalendarExportStore {
         calendar = made
         defaults.set(made.calendarIdentifier, forKey: CalendarExportPreferences.calendarIDKey)
         return made
+    }
+
+    /// The marked events in the calendar, one entry per calendar item even when a yearly
+    /// event has several occurrences in a year.
+    private func markedEvents(
+        for expected: [CalendarExportEvent], in calendar: EKCalendar
+    ) -> [(id: String, event: EKEvent)] {
+        var seen = Set<String>()
+        var events: [(id: String, event: EKEvent)] = []
+        for year in queryYears(for: expected) {
+            for occurrence in store.events(matching: predicate(in: calendar, year: year)) {
+                let id = occurrence.calendarItemIdentifier
+                guard seen.insert(id).inserted else { continue }
+                let event = item(id: id) ?? occurrence
+                guard event.url?.absoluteString.hasPrefix(CalendarExportEvent.markerPrefix) == true
+                else { continue }
+                events.append((id, event))
+            }
+        }
+        return events
+    }
+
+    private func item(id: String) -> EKEvent? {
+        (store.calendarItem(withIdentifier: id) as? EKEvent) ?? store.event(withIdentifier: id)
     }
 
     /// The years worth reading: every expected event's year, plus this one and the next for
@@ -203,12 +207,14 @@ actor EventKitCalendarStore: CalendarExportStore {
     }
 
     private func converted(_ event: EKEvent) -> CalendarExportEvent {
-        var allDayKey: String?
+        var allDayBirthday: Birthday?
         if event.isAllDay {
             var calendar = Calendar(identifier: .gregorian)
             calendar.timeZone = event.timeZone ?? .current
             let parts = calendar.dateComponents([.month, .day], from: event.startDate)
-            allDayKey = String(format: "%02d-%02d", parts.month ?? 0, parts.day ?? 0)
+            if let month = parts.month, let day = parts.day, Birthday.valid(month: month, day: day) {
+                allDayBirthday = Birthday(month: month, day: day)
+            }
         }
         return CalendarExportEvent(
             marker: event.url?.absoluteString ?? "",
@@ -220,7 +226,7 @@ actor EventKitCalendarStore: CalendarExportStore {
             repeatsYearly: event.recurrenceRules?.contains {
                 $0.frequency == .yearly && $0.interval == 1
             } ?? false,
-            allDayKey: allDayKey
+            allDayBirthday: allDayBirthday
         )
     }
 }
@@ -238,14 +244,25 @@ final class CalendarExportController {
 
     private let store: EventKitCalendarStore
     private let defaults = UserDefaults.standard
+    /// A sync asked for while one is already running; it runs as soon as that one ends.
+    private var queuedSource: CalendarExportSource?
 
     init(store: EventKitCalendarStore = EventKitCalendarStore()) {
         self.store = store
-        enabled = defaults.bool(forKey: CalendarExportPreferences.enabledKey)
+        let status = EKEventStore.authorizationStatus(for: .event)
+        let storedEnabled = defaults.bool(forKey: CalendarExportPreferences.enabledKey)
+        // A permission revoked in the system settings leaves the switch off, as it would
+        // after a refused request (spec #56).
+        enabled = storedEnabled && status == .fullAccess
         lastSyncedAt = defaults.object(forKey: CalendarExportPreferences.lastSyncKey) as? Date
         lastError = defaults.string(forKey: CalendarExportPreferences.lastErrorKey)
-        let status = EKEventStore.authorizationStatus(for: .event)
-        authorizationDenied = status == .denied || status == .restricted
+        authorizationDenied = status == .denied || status == .restricted || status == .writeOnly
+        if storedEnabled && !enabled {
+            defaults.set(false, forKey: CalendarExportPreferences.enabledKey)
+            if authorizationDenied, lastError == nil {
+                lastError = CalendarExportError.accessDenied.localizedDescription
+            }
+        }
     }
 
     func setEnabled(_ on: Bool, source: CalendarExportSource) async {
@@ -273,9 +290,22 @@ final class CalendarExportController {
     }
 
     func sync(source: CalendarExportSource) async {
-        guard enabled, !syncing else { return }
+        guard enabled else { return }
+        if syncing || deleting {
+            queuedSource = source
+            return
+        }
         syncing = true
         defer { syncing = false }
+        var current: CalendarExportSource? = source
+        while let next = current, enabled {
+            queuedSource = nil
+            await performSync(next)
+            current = queuedSource
+        }
+    }
+
+    private func performSync(_ source: CalendarExportSource) async {
         do {
             let expected = CalendarExportBuilder.events(from: source)
             try await CalendarExportSynchronizer.sync(expected: expected, store: store)
@@ -289,15 +319,13 @@ final class CalendarExportController {
             if error as? CalendarExportError == .accessDenied {
                 enabled = false
                 defaults.set(false, forKey: CalendarExportPreferences.enabledKey)
-                authorizationDenied = true
             }
         }
     }
 
     func deleteEvents(source: CalendarExportSource) async {
-        guard !deleting else { return }
+        guard !deleting, !syncing else { return }
         deleting = true
-        defer { deleting = false }
         do {
             try await store.requestAccess()
             let expected = CalendarExportBuilder.events(from: source)
@@ -307,9 +335,11 @@ final class CalendarExportController {
             defaults.removeObject(forKey: CalendarExportPreferences.lastErrorKey)
         } catch {
             record(error)
-            if error as? CalendarExportError == .accessDenied {
-                authorizationDenied = true
-            }
+        }
+        deleting = false
+        if let queued = queuedSource {
+            queuedSource = nil
+            await sync(source: queued)
         }
     }
 

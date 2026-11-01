@@ -772,7 +772,7 @@ struct SettingsView: View {
             if birthdayOn {
                 let parts = Self.parts(of: birthdayDate, timeZone: birthdayTimeZone)
                 guard Birthday.valid(month: parts.month, day: parts.day) else {
-                    birthdayError = "生日日期不合法：请选一个一年里有的日子"
+                    birthdayError = EidolonError.invalidProducerBirthday.localizedDescription
                     return
                 }
                 birthday = parts

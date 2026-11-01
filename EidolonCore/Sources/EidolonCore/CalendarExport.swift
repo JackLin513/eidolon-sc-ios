@@ -13,35 +13,26 @@ public struct CalendarExportCharacter: Sendable, Hashable {
     }
 }
 
-/// One saved placement and the job it places, with her name for the event title.
-public struct CalendarExportJob: Sendable, Hashable {
-    public var job: WeeklyJob
-    public var placement: SchedulePlacement
-    public var characterName: String
-
-    public init(job: WeeklyJob, placement: SchedulePlacement, characterName: String) {
-        self.job = job
-        self.placement = placement
-        self.characterName = characterName
-    }
-}
-
 /// Everything the export should mirror: her birthdays, the producer's, and every saved job.
 public struct CalendarExportSource: Sendable, Hashable {
     public var characters: [CalendarExportCharacter]
     public var producerBirthday: Birthday?
-    public var jobs: [CalendarExportJob]
+    public var saved: [SavedPlacement]
+    /// The names the events use, by character id; an unknown id falls back to the job's.
+    public var characterNames: [String: String]
     public var timeZone: TimeZone
 
     public init(
         characters: [CalendarExportCharacter],
         producerBirthday: Birthday?,
-        jobs: [CalendarExportJob],
+        saved: [SavedPlacement],
+        characterNames: [String: String],
         timeZone: TimeZone
     ) {
         self.characters = characters
         self.producerBirthday = producerBirthday
-        self.jobs = jobs
+        self.saved = saved
+        self.characterNames = characterNames
         self.timeZone = timeZone
     }
 }
@@ -55,14 +46,14 @@ public struct CalendarExportEvent: Sendable, Hashable {
     public var end: Date
     public var isAllDay: Bool
     public var repeatsYearly: Bool
-    /// For an all-day birthday: the month and day as `MM-DD`, which is what repeats. System
-    /// calendars normalize an all-day event's dates to local midnight and 23:59:59, so the
-    /// absolute dates are not compared for these.
-    public var allDayKey: String?
+    /// For an all-day birthday: the month and day, which is what repeats. System calendars
+    /// normalize an all-day event's dates to local midnight and 23:59:59, so absolute dates
+    /// are not compared for these.
+    public var allDayBirthday: Birthday?
 
     public init(
         marker: String, title: String, notes: String = "", start: Date, end: Date,
-        isAllDay: Bool, repeatsYearly: Bool, allDayKey: String? = nil
+        isAllDay: Bool, repeatsYearly: Bool, allDayBirthday: Birthday? = nil
     ) {
         self.marker = marker
         self.title = title
@@ -71,7 +62,7 @@ public struct CalendarExportEvent: Sendable, Hashable {
         self.end = end
         self.isAllDay = isAllDay
         self.repeatsYearly = repeatsYearly
-        self.allDayKey = allDayKey
+        self.allDayBirthday = allDayBirthday
     }
 
     /// Whether this event is one Eidolon wrote, rather than the producer's own.
@@ -145,7 +136,7 @@ public enum CalendarExportBuilder {
                 end: end,
                 isAllDay: true,
                 repeatsYearly: true,
-                allDayKey: birthday.key
+                allDayBirthday: birthday
             ))
         }
         if let birthday = source.producerBirthday,
@@ -158,23 +149,28 @@ public enum CalendarExportBuilder {
                 end: end,
                 isAllDay: true,
                 repeatsYearly: true,
-                allDayKey: birthday.key
+                allDayBirthday: birthday
             ))
         }
-        for saved in source.jobs {
+        for saved in source.saved {
             let placement = saved.placement
+            let characterName = source.characterNames[placement.characterID]
+                ?? saved.job.characterID
             guard (0..<3).contains(placement.slot),
                   (1...3).contains(saved.job.length),
                   let start = day(
                       placement.week.year, placement.week.month,
                       placement.week.day + placement.day,
-                      hour: 6 + placement.slot * 6, in: source.timeZone
+                      hour: ScheduleRules.slotHours * (placement.slot + 1),
+                      in: source.timeZone
                   )
             else { continue }
-            let end = start.addingTimeInterval(TimeInterval(saved.job.length * 6 * 3600))
+            let end = start.addingTimeInterval(
+                TimeInterval(saved.job.length * ScheduleRules.slotHours * 3600)
+            )
             events.append(CalendarExportEvent(
                 marker: marker("/schedule/\(saved.job.id)"),
-                title: "\(saved.characterName) · \(saved.job.name)",
+                title: "\(characterName) · \(saved.job.name)",
                 notes: "\(saved.job.note)\n\n制作人排的工作",
                 start: start,
                 end: end,
@@ -244,7 +240,7 @@ public enum CalendarExportPlanner {
               left.repeatsYearly == right.repeatsYearly
         else { return false }
         if left.isAllDay {
-            return left.allDayKey == right.allDayKey
+            return left.allDayBirthday == right.allDayBirthday
         }
         return left.start == right.start && left.end == right.end
     }

@@ -367,7 +367,8 @@ final class AppModel {
     func saveProducerProfile(_ profile: ProducerProfile) async throws {
         try await core.updateProducerProfile(profile)
         // The calendar, prompts and time zone read this copy, not the database (spec #55).
-        let saved = try await core.producerProfile()
+        // A failed re-read must not turn a successful write into a failed save.
+        let saved = (try? await core.producerProfile()) ?? profile
         producerProfile = saved
         aboutProducer = saved.prompt
         await calendarExport.syncIfEnabled(source: await calendarExportSource())
@@ -376,7 +377,7 @@ final class AppModel {
     /// What the system-calendar export should mirror (spec #56): every character's birthday,
     /// the producer's, and every saved job across all weeks and characters.
     func calendarExportSource() async -> CalendarExportSource {
-        let saved = (try? await core.savedJobs()) ?? []
+        let saved = (try? await core.savedPlacements()) ?? []
         let names = Dictionary(
             uniqueKeysWithValues: characters.map { ($0.id, $0.nameZh ?? $0.name) }
         )
@@ -389,13 +390,8 @@ final class AppModel {
             producerBirthday: producerProfile.birthday.map {
                 Birthday(month: $0.month, day: $0.day)
             },
-            jobs: saved.map {
-                CalendarExportJob(
-                    job: $0.job,
-                    placement: $0.placement,
-                    characterName: names[$0.placement.characterID] ?? $0.job.characterID
-                )
-            },
+            saved: saved,
+            characterNames: names,
             timeZone: producerTimeZone
         )
     }

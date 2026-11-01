@@ -21,9 +21,7 @@ final class ProducerProfileUITests: XCTestCase {
             app.swipeUp()
         }
         XCTAssertTrue(toggle.waitForExistence(timeout: 5), "no birthday toggle")
-        if (toggle.value as? String) != "1" {
-            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
-        }
+        setSwitch(toggle, on: true)
 
         let picker = app.datePickers["settings.birthday"].firstMatch
         XCTAssertTrue(picker.waitForExistence(timeout: 5), "no birthday picker")
@@ -67,6 +65,57 @@ final class ProducerProfileUITests: XCTestCase {
             "calendar has no birthday hint"
         )
 
+        showNextFebruary()
+        XCTAssertTrue(
+            app.buttons.matching(
+                NSPredicate(format: "label CONTAINS '制作人的生日'")
+            ).firstMatch.waitForExistence(timeout: 5),
+            "the producer's birthday is not on the calendar"
+        )
+
+        // Turning it off removes both the hint and the event without a restart.
+        app.buttons["完成"].tap()
+        let settingsAgain = app.buttons["设置"]
+        XCTAssertTrue(settingsAgain.waitForExistence(timeout: 10))
+        settingsAgain.tap()
+        let toggleAgain = app.switches["settings.birthdayOn"].firstMatch
+        for _ in 0..<8 where !toggleAgain.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(toggleAgain.waitForExistence(timeout: 5))
+        setSwitch(toggleAgain, on: false)
+        app.buttons["保存"].tap()
+        let savedAgain = app.alerts["已保存"]
+        XCTAssertTrue(savedAgain.waitForExistence(timeout: 10), "turning the birthday off did not save")
+        savedAgain.buttons["好"].tap()
+        app.buttons["完成"].tap()
+
+        let calendarAgain = app.buttons["日历"]
+        XCTAssertTrue(calendarAgain.waitForExistence(timeout: 10))
+        calendarAgain.tap()
+        XCTAssertFalse(
+            app.staticTexts["你的生日：2月29日"].waitForExistence(timeout: 2),
+            "the birthday hint is still there after turning it off"
+        )
+        showNextFebruary()
+        XCTAssertFalse(
+            app.buttons.matching(
+                NSPredicate(format: "label CONTAINS '制作人的生日'")
+            ).firstMatch.exists,
+            "the birthday event is still there after turning it off"
+        )
+    }
+
+    private func setSwitch(_ toggle: XCUIElement, on: Bool) {
+        let wanted = on ? "1" : "0"
+        for _ in 0..<3 where (toggle.value as? String) != wanted {
+            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
+            sleep(1)
+        }
+        XCTAssertEqual(toggle.value as? String, wanted)
+    }
+
+    private func showNextFebruary() {
         let month = app.staticTexts.matching(
             NSPredicate(format: "label MATCHES '[0-9]{4}年[0-9]+月'")
         ).firstMatch
@@ -77,12 +126,6 @@ final class ProducerProfileUITests: XCTestCase {
             app.buttons["下个月"].tap()
         }
         XCTAssertEqual(month.label, target)
-        XCTAssertTrue(
-            app.buttons.matching(
-                NSPredicate(format: "label CONTAINS '制作人的生日'")
-            ).firstMatch.waitForExistence(timeout: 5),
-            "the producer's birthday is not on the calendar"
-        )
     }
 
     private static func monthNumber(_ text: String) -> Int {
