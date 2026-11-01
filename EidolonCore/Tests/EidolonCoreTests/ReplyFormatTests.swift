@@ -1,9 +1,22 @@
+import Foundation
 import XCTest
 @testable import EidolonCore
 
 /// The three ways a turn can be asked to write (spec #60): the old short spoken lines,
 /// the text atmospheric mode, and a call.
 final class ReplyFormatTests: XCTestCase {
+    func testRichTextPromptMatchesItsGolden() throws {
+        let url = try XCTUnwrap(
+            Bundle.module.url(
+                forResource: "format-instructions-rich-text",
+                withExtension: "txt",
+                subdirectory: "Resources"
+            )
+        )
+        let expected = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertEqual(ReplyFormatInstructions.richText, expected)
+    }
+
     func testRichTextAsksForSceneBlocksAndLongerLines() {
         let prompt = ReplyFormatInstructions.richText
         XCTAssertTrue(prompt.contains("<scene>"))

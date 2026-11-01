@@ -107,6 +107,21 @@ public struct ReplyParser: Sendable {
         case ja(Int)
         case zh(Int)
         case scene(Int)
+
+        var closeTag: String {
+            switch self {
+            case .ja: ReplyParser.jaClose
+            case .zh: ReplyParser.zhClose
+            case .scene: ReplyParser.sceneClose
+            }
+        }
+    }
+
+    /// The tag an opening tag opens, before it has a block.
+    private enum OpenTag {
+        case ja
+        case zh
+        case scene
     }
 
     private var buffer = ""
@@ -153,12 +168,7 @@ public struct ReplyParser: Sendable {
                 continue
             }
 
-            let close: String
-            switch inside {
-            case .ja: close = Self.jaClose
-            case .zh: close = Self.zhClose
-            case .scene: close = Self.sceneClose
-            }
+            let close = inside.closeTag
             if let range = buffer.range(of: close) {
                 if range.lowerBound > buffer.startIndex {
                     append(
@@ -188,26 +198,21 @@ public struct ReplyParser: Sendable {
     public mutating func finish() -> [ReplyParserEvent] {
         var events: [ReplyParserEvent] = []
         if let inside {
-            let close: String
-            switch inside {
-            case .ja: close = Self.jaClose
-            case .zh: close = Self.zhClose
-            case .scene: close = Self.sceneClose
-            }
-            let keep = partialSuffix(buffer, [close])
+            let keep = partialSuffix(buffer, [inside.closeTag])
             let text = String(buffer.dropLast(keep))
             if !text.isEmpty { append(inside, text, &events) }
             endBlock(inside, &events)
-        } else if blocks.isEmpty,
-                  !(stray + buffer).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let block = blocks.count
-            blocks.append(.line(ReplySegment(ja: (stray + buffer)
-                .trimmingCharacters(in: .whitespacesAndNewlines))))
-            events.append(.delta(
-                block: block,
-                language: .ja,
-                text: (stray + buffer).trimmingCharacters(in: .whitespacesAndNewlines)
-            ))
+        } else if blocks.isEmpty {
+            let text = (stray + buffer)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty {
+                let block = blocks.count
+                blocks.append(.line(ReplySegment()))
+                // The untagged reply is a line with no tags, so it goes through the same
+                // cue filter as one: what people see has no cues, what is voiced keeps them.
+                append(.ja(block), text, &events)
+                endBlock(.ja(block), &events)
+            }
         }
         buffer = ""
         stray = ""
@@ -253,9 +258,13 @@ public struct ReplyParser: Sendable {
             events.append(.delta(block: block, language: .zh, text: text))
         case let .scene(block):
             guard case var .scene(scene) = blocks[block] else { return }
-            scene += text
+            // Scene blocks are shown without delivery cues too; they are never voiced.
+            let (shown, _) = filter.feed(text)
+            scene += shown
             blocks[block] = .scene(scene)
-            events.append(.sceneDelta(block: block, text: text))
+            if !shown.isEmpty {
+                events.append(.sceneDelta(block: block, text: shown))
+            }
         }
     }
 
@@ -273,7 +282,17 @@ public struct ReplyParser: Sendable {
                 events.append(.speechDelta(block: block, text: voiced))
             }
             filter = CueFilter()
-        case .zh, .scene:
+        case let .scene(block):
+            let (shown, _) = filter.finish()
+            if case var .scene(scene) = blocks[block] {
+                scene += shown
+                blocks[block] = .scene(scene)
+            }
+            if !shown.isEmpty {
+                events.append(.sceneDelta(block: block, text: shown))
+            }
+            filter = CueFilter()
+        case .zh:
             break
         }
     }
@@ -282,12 +301,12 @@ public struct ReplyParser: Sendable {
 
     /// The earliest opening tag in the buffer, with its index and the block it opens.
     /// Anything before it is stray text, which the format says there should not be.
-    private func nextOpenTag() -> (Int, String, Inside)? {
-        var found: (Int, String, Inside)?
+    private func nextOpenTag() -> (Int, String, OpenTag)? {
+        var found: (Int, String, OpenTag)?
         for (tag, block) in [
-            (Self.jaOpen, Inside.ja(0)),
-            (Self.zhOpen, Inside.zh(0)),
-            (Self.sceneOpen, Inside.scene(0)),
+            (Self.jaOpen, OpenTag.ja),
+            (Self.zhOpen, OpenTag.zh),
+            (Self.sceneOpen, OpenTag.scene),
         ] {
             if let range = buffer.range(of: tag) {
                 let index = buffer.distance(from: buffer.startIndex, to: range.lowerBound)
