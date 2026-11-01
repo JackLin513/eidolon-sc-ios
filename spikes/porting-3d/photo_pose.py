@@ -18,10 +18,14 @@ What the containers hold, confirmed against the shipped clips:
   ``m_SampleRate`` grid, covering the curves after the constant ones.
 - ``m_ConstantClip`` is one float per curve, covering the first curves.
 
-Each binding owns three curves. Position bindings (attribute 1) are Unity
-units; rotation bindings (attribute 4) are Euler degrees in the same
-Z-then-X-then-Y convention the dance decoder documents, which is why the
-decoded values line up with the ``.imo`` curves for the same bones.
+Bindings say which property they drive through ``attribute`` (the same switch
+AssetStudio's ``ReadCurveData`` implements): 1 translation (three curves, Unity
+units), 2 quaternion rotation (four), 3 scale (three), 4 Euler rotation (three,
+degrees, in the same Z-then-X-then-Y convention the dance decoder documents —
+which is why they line up with the ``.imo`` curves for the same bones).
+Quaternion bindings are converted to Euler so the packed motion format stays
+single-shaped; scale is decoded but dropped.
+
 
     V=build/mltd-spike/venv/bin/python
     $V spikes/porting-3d/photo_pose.py --bundle chr_anim_pho_standd_ver01.reduc.unity3d --list
@@ -33,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import struct
 import sys
 import zlib
@@ -117,8 +122,22 @@ ROTATION_CHANNELS = ("AngleX", "AngleY", "AngleZ")
 POSITION_CHANNELS = ("PositionX", "PositionY", "PositionZ")
 
 #: ``attribute`` in ``m_ClipBindingConstant`` tells which property a binding
-#: drives. Both kinds take three curves.
-ATTRIBUTE_CHANNELS = {1: POSITION_CHANNELS, 4: ROTATION_CHANNELS}
+#: drives, and how many curves that property owns. Most bundles only use 1 and
+#: 4; the theater ``wnd``/``bok``/``sit`` clips mix quaternion and Euler
+#: rotation curves in one clip.
+ATTRIBUTE_CHANNELS = {
+    1: POSITION_CHANNELS,
+    2: ("RotationX", "RotationY", "RotationZ", "RotationW"),
+    3: ("ScaleX", "ScaleY", "ScaleZ"),
+    4: ROTATION_CHANNELS,
+}
+
+#: Rotation stored as four quaternion curves instead of three Euler ones.
+QUATERNION_ATTRIBUTE = 2
+#: Local scale; the packed motion format has no channel for it.
+SCALE_ATTRIBUTE = 3
+#: A property we do not model still owns exactly one curve.
+UNKNOWN_ATTRIBUTE_CURVES = 1
 
 SENTINEL_BEFORE = -3.4028234663852886e38
 
@@ -220,63 +239,105 @@ class PoseClip:
         return [index * SOURCE_FRAME for index in range(frames)]
 
 
+def _quaternion_to_euler(x: float, y: float, z: float, w: float) -> tuple[float, float, float]:
+    """Unity's ``Quaternion.eulerAngles``: the inverse of ``Internal_FromEulerRad``.
+
+    Unity applies z, then x, then y, so the matrix is ``Ry Rx Rz`` and the
+    angles read back as ``x = asin(-R12)``, ``y = atan2(R02, R22)``,
+    ``z = atan2(R10, R11)``. Checked by round-tripping through the forward
+    formula the Swift player uses.
+    """
+    norm = math.sqrt(x * x + y * y + z * z + w * w) or 1.0
+    x, y, z, w = x / norm, y / norm, z / norm, w / norm
+    r02 = 2 * (x * z + w * y)
+    r12 = 2 * (y * z - w * x)
+    r22 = 1 - 2 * (x * x + y * y)
+    r10 = 2 * (x * y + w * z)
+    r11 = 1 - 2 * (x * x + z * z)
+    ex = math.asin(max(-1.0, min(1.0, -r12)))
+    ey = math.atan2(r02, r22)
+    ez = math.atan2(r10, r11)
+    return tuple(math.degrees(value) for value in (ex, ey, ez))
+
+
 def decode_clip(clip, paths: list[str] | None = None) -> PoseClip:
     """Decode one UnityPy ``AnimationClip`` into per-bone 60 fps curves."""
     names = {path_hash(path): path for path in (paths or BONE_PATHS)}
     container = clip.m_MuscleClip.m_Clip.data
 
-    streamed = _streamed_curves(container.m_StreamedClip.data)
     constant_values = list(container.m_ConstantClip.data)
     dense = container.m_DenseClip
+    streamed = _streamed_curves(container.m_StreamedClip.data)
+    streamed_count = container.m_StreamedClip.curveCount
+    dense_count = int(dense.m_CurveCount)
 
-    curves: dict[int, list[Key]] = _constant_curves(constant_values)
-    offset = len(constant_values)
+    # Streamed first, then dense, then constant.
+    curves: dict[int, list[Key]] = dict(streamed)
     curves.update(
         _dense_curves(
-            dense.m_FrameCount, dense.m_CurveCount, dense.m_SampleRate,
-            dense.m_BeginTime, list(dense.m_SampleArray), offset,
+            dense.m_FrameCount, dense_count, dense.m_SampleRate,
+            dense.m_BeginTime, list(dense.m_SampleArray), streamed_count,
         )
     )
-    # Streamed keys carry absolute curve indices, which is why the index range
-    # of the shipped clips is exactly 0..curveCount-1 even though the first
-    # curves could have lived in the constant and dense containers.
-    for index, keys in streamed.items():
-        curves[index] = keys
+    base = streamed_count + dense_count
+    for index, value in enumerate(constant_values):
+        curves[base + index] = [Key(0.0, value)]
 
     bindings = list(clip.m_ClipBindingConstant.genericBindings)
-    total = container.m_StreamedClip.curveCount
-    per_binding = 3
-    if total != per_binding * len(bindings):
+    total = base + len(constant_values)
+    expected = sum(
+        len(ATTRIBUTE_CHANNELS.get(b.attribute, (UNKNOWN_ATTRIBUTE_CURVES,)))
+        for b in bindings
+    )
+    if total != expected:
         raise ValueError(
             f"{clip.m_Name}: {total} curves for {len(bindings)} bindings, "
-            f"expected {per_binding} each"
+            f"expected {expected}"
         )
 
-    times = None
-    decoded: dict[str, dict[str, list[float]]] = {}
-    missing: list[int] = []
-    for order, binding in enumerate(bindings):
-        path = names.get(binding.path & 0xFFFFFFFF)
-        channels = ATTRIBUTE_CHANNELS.get(binding.attribute)
-        if path is None or channels is None:
-            missing.append(order)
-            continue
-        axis_values = {}
-        for axis, channel in enumerate(channels):
-            keys = curves.get(order * per_binding + axis, [])
-            if times is None:
-                frames = int(round(clip.m_MuscleClip.m_StopTime * SOURCE_FPS)) + 1
-                times = [index * SOURCE_FRAME for index in range(frames)]
-            axis_values[channel] = [sample(keys, time) for time in times]
-        decoded[path] = axis_values
+    stop = float(clip.m_MuscleClip.m_StopTime)
+    frames = int(round(stop * SOURCE_FPS)) + 1
+    times = [index * SOURCE_FRAME for index in range(frames)]
 
-    if missing:
+    decoded: dict[str, dict[str, list[float]]] = {}
+    unknown: list[int] = []
+    unresolved: list[str] = []
+    cursor = 0
+    for order, binding in enumerate(bindings):
+        channels = ATTRIBUTE_CHANNELS.get(binding.attribute)
+        if channels is None:
+            unknown.append(order)
+            channels = (UNKNOWN_ATTRIBUTE_CURVES,)
+        values = [
+            [sample(curves.get(cursor + axis, []), time) for time in times]
+            for axis in range(len(channels))
+        ]
+        path = names.get(binding.path & 0xFFFFFFFF)
+        if path is None:
+            unresolved.append(f"{binding.path & 0xFFFFFFFF:08x}")
+        elif binding.attribute == QUATERNION_ATTRIBUTE:
+            euler = [_quaternion_to_euler(*components) for components in zip(*values)]
+            decoded.setdefault(path, {}).update({
+                channel: [angle[axis] for angle in euler]
+                for axis, channel in enumerate(ROTATION_CHANNELS)
+            })
+        elif binding.attribute != SCALE_ATTRIBUTE:
+            decoded.setdefault(path, {}).update(dict(zip(channels, values)))
+        cursor += len(channels)
+
+    if unknown:
         print(
-            f"warning: {clip.m_Name} has {len(missing)} bindings with no known "
-            f"path or property (orders {missing[:8]})",
+            f"warning: {clip.m_Name} has bindings with an unknown attribute "
+            f"(orders {unknown[:8]})",
             file=sys.stderr,
         )
-    return PoseClip(clip.m_Name, float(clip.m_MuscleClip.m_StopTime), decoded)
+    if unresolved:
+        print(
+            f"warning: {clip.m_Name} binds {len(unresolved)} paths not in the "
+            f"canonical table ({unresolved[:4]})",
+            file=sys.stderr,
+        )
+    return PoseClip(clip.m_Name, stop, decoded)
 
 
 def to_motion_asset(clip: PoseClip) -> dict:

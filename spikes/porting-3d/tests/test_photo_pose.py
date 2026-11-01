@@ -6,6 +6,7 @@ from the game is the path hash, pinned below because every binding depends on
 it.
 """
 
+import math
 import struct
 import sys
 import unittest
@@ -94,17 +95,19 @@ class SampleTests(unittest.TestCase):
 
 
 def fake_clip(
-    bindings: list[tuple[int, int]], stop: float, words: list[int], curve_count: int | None = None,
+    bindings: list[tuple[int, int]], stop: float, words: list[int],
+    curve_count: int | None = None, constants: list[float] | None = None,
 ):
     """A duck-typed stand-in for the UnityPy AnimationClip subtree."""
+    owned = sum(len(photo_pose.ATTRIBUTE_CHANNELS.get(attribute, ())) for _, attribute in bindings)
     streamed = SimpleNamespace(
-        data=words, curveCount=curve_count if curve_count is not None else len(bindings) * 3
+        data=words, curveCount=curve_count if curve_count is not None else owned
     )
     dense = SimpleNamespace(
         m_FrameCount=0, m_CurveCount=0, m_SampleRate=60.0,
         m_BeginTime=0.0, m_SampleArray=[],
     )
-    constant = SimpleNamespace(data=[])
+    constant = SimpleNamespace(data=list(constants or []))
     container = SimpleNamespace(
         m_StreamedClip=streamed, m_DenseClip=dense, m_ConstantClip=constant
     )
@@ -142,6 +145,52 @@ class DecodeClipTests(unittest.TestCase):
             decode_clip(
                 fake_clip([(path_hash("MODEL_00"), 4)], 0.0, frame(0.0, [(0, 1.0)]), curve_count=2)
             )
+
+
+class AttributeTests(unittest.TestCase):
+    def test_quaternion_bindings_become_euler_degrees(self) -> None:
+        path = "MODEL_00/BODY_SCALE/BASE/MUNE1"
+        # 30 degrees about Z, written as its quaternion.
+        q = (0.0, 0.0, 0.25881904510252074, 0.9659258262890683)
+        words = frame(0.0, [(0, q[0]), (1, q[1]), (2, q[2]), (3, q[3])])
+        clip = decode_clip(fake_clip([(path_hash(path), 2)], 0.0, words))
+        angles = clip.curves[path]
+        self.assertAlmostEqual(angles["AngleX"][0], 0.0, places=5)
+        self.assertAlmostEqual(angles["AngleY"][0], 0.0, places=5)
+        self.assertAlmostEqual(angles["AngleZ"][0], 30.0, places=5)
+
+    def test_scale_is_skipped_but_still_consumes_curves(self) -> None:
+        path = "MODEL_00/BODY_SCALE/BASE/MUNE1"
+        words = frame(0.0, [(0, 1.0), (1, 1.0), (2, 1.0), (3, 12.0), (4, 0.0), (5, 0.0)])
+        clip = decode_clip(fake_clip([(path_hash(path), 3), (path_hash(path), 4)], 0.0, words))
+        self.assertEqual(clip.curves[path]["AngleX"], [12.0])
+        self.assertNotIn("ScaleX", clip.curves[path])
+
+    def test_constant_curves_come_after_the_streamed_ones(self) -> None:
+        path = "MODEL_00/BODY_SCALE/BASE/MUNE1"
+        # Unity lays curves out streamed, then dense, then constant; the
+        # position's three curves are constant and live at the end.
+        words = frame(0.0, [(0, 0.0), (1, 0.0), (2, 7.0)])
+        clip = decode_clip(fake_clip(
+            [(path_hash(path), 4), (path_hash(path), 1)], 0.0, words,
+            curve_count=3, constants=[1.5, 2.5, 3.5],
+        ))
+        self.assertEqual(clip.curves[path]["AngleZ"], [7.0])
+        self.assertEqual(clip.curves[path]["PositionX"], [1.5])
+
+    def test_quaternion_to_euler_round_trips(self) -> None:
+        for degrees in ((10.0, 20.0, 30.0), (0.0, 90.0, 0.0), (-30.0, 15.0, -80.0)):
+            x, y, z = [math.radians(value) / 2 for value in degrees]
+            sx, cx, sy, cy, sz, cz = math.sin(x), math.cos(x), math.sin(y), math.cos(y), math.sin(z), math.cos(z)
+            q = (
+                cy * sx * cz + sy * cx * sz,
+                sy * cx * cz - cy * sx * sz,
+                cy * cx * sz - sy * sx * cz,
+                cy * cx * cz + sy * sx * sz,
+            )
+            result = photo_pose._quaternion_to_euler(*q)
+            for got, want in zip(result, degrees):
+                self.assertAlmostEqual(got, want, places=4)
 
 
 class MotionAssetTests(unittest.TestCase):

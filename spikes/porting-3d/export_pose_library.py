@@ -43,6 +43,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--catalog", type=Path)
     parser.add_argument("--fps", type=int, default=motion.TARGET_FPS)
     parser.add_argument("--prefix", action="append", help="只看这些前缀，可重复")
+    parser.add_argument("--force", action="store_true", help="重解已有产物")
     args = parser.parse_args(argv)
 
     prefixes = tuple(args.prefix) if args.prefix else POSE_PREFIXES
@@ -79,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
                 continue  # the same clip can sit in several bundles
             seen.add(name)
             target = args.out / f"{name}.motion.json"
-            if target.exists():
+            if target.exists() and not args.force:
                 skipped += 1
                 catalog.append({"clip": name, "bundle": record["file"], "file": str(target),
                                 "state": "cached"})
