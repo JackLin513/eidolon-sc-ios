@@ -30,6 +30,9 @@ export type ItemName =
   | "limits"
   | "affinity"
   | "reach_outs"
+  | "letters"
+  | "moments"
+  | "qweather"
   | "schedule"
   | "cycles"
   | "bar"
@@ -80,6 +83,7 @@ export const CONFIG_TABS = [
   "models",
   "voice",
   "image",
+  "weather",
   "network",
   "status",
   "limits",
@@ -98,9 +102,10 @@ export const TAB_ITEMS: Record<ConfigTab, ItemName[]> = {
   models: ["chat_llm", "memory_llm", "judge", "judge_thresholds", "rerank"],
   voice: ["tts", "stt"],
   image: ["image"],
+  weather: ["qweather"],
   network: ["proxy"],
   status: ["service_status"],
-  limits: ["limits", "affinity", "reach_outs", "schedule", "cycles", "bar"],
+  limits: ["limits", "affinity", "reach_outs", "letters", "moments", "schedule", "cycles", "bar"],
   registration: ["registration"],
   sponsor: [],
   prices: [],
@@ -209,6 +214,9 @@ export function modelChoice(options: readonly string[], model: string): string {
 
 /** Who may sign up (GLOSSARY.md「注册方式」): anyone, or only those who bring an invite link. */
 export const REGISTRATIONS = ["open", "invite"] as const;
+
+/** Where a moment's place links to on the map (GLOSSARY.md「地点」): OpenStreetMap, Google Maps or Amap. */
+export const MAP_SITES = ["osm", "google", "amap"] as const;
 
 /** How many of the latest minutes the service status may go by, as the backend takes them. */
 export const STATUS_WINDOWS = ["10", "30", "60"] as const;
@@ -353,6 +361,39 @@ export const ITEM_SPECS: Record<ItemName, ItemSpec> = {
       { name: "per_day", kind: "positive" },
     ],
     tried: false,
+  },
+  // 信（GLOSSARY.md「信」）：只有一个总开关。不试调。
+  letters: {
+    rows: ["enabled"],
+    secrets: [],
+    form: [{ name: "enabled", kind: "switch" }],
+    tried: false,
+  },
+  // 朋友圈（GLOSSARY.md「朋友圈」）：总开关，每位用户每天合计最多几条，地名点开跳哪家地图，每位用户每天她最多回几条评论。不试调。
+  moments: {
+    rows: ["enabled", "per_day", "map", "replies_per_day"],
+    secrets: [],
+    form: [
+      { name: "enabled", kind: "switch" },
+      { name: "per_day", kind: "positive" },
+      { name: "map", kind: "select", options: MAP_SITES },
+      { name: "replies_per_day", kind: "positive" },
+    ],
+    tried: false,
+  },
+  // 和风天气（GLOSSARY.md「制作人档案」）：找制作人的城市、查那边的预警用的账号，JWT 认证的五样都要填。
+  // 保存前按坐标反查一次北京。
+  qweather: {
+    rows: ["host", "developer_id", "project_id", "key_id", "private_key"],
+    secrets: ["private_key"],
+    form: [
+      { name: "host", kind: "text" },
+      { name: "developer_id", kind: "text" },
+      { name: "project_id", kind: "text" },
+      { name: "key_id", kind: "text" },
+      { name: "private_key", kind: "secret" },
+    ],
+    tried: true,
   },
   // 日程（GLOSSARY.md「日程」）：只有一个开关。不试调。
   schedule: {

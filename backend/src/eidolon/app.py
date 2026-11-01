@@ -25,7 +25,7 @@ from eidolon.call import (
     SessionDescription,
     StillPlacing,
 )
-from eidolon.characters import Character, ScriptedLine, in_idol_order
+from eidolon.characters import Character, ScriptedLine, in_idol_order, signature_url
 from eidolon.config import FishAudioModel
 from eidolon.database import readable
 from eidolon.engine import ENDED, TurnJudged, shown
@@ -47,14 +47,17 @@ from eidolon.own_keys import (
     named_services,
 )
 from eidolon.producer import (
+    MAX_CITY_PART_LENGTH,
     MAX_FORM_OF_ADDRESS_LENGTH,
     Birthday,
+    City,
     Gender,
     ProducerProfile,
     is_day_of_the_year,
     is_timezone,
 )
 from eidolon.account_api import OwnKeysInput, add_account_routes
+from eidolon.cities_api import add_city_routes
 from eidolon.admin_api import add_admin_routes
 from eidolon.admin_backup_api import add_admin_backup_routes
 from eidolon.dashboard import add_dashboard_routes
@@ -66,6 +69,8 @@ from eidolon.announcements_api import add_announcement_routes
 from eidolon.bar_api import add_bar_routes
 from eidolon.calendar_api import add_calendar_routes
 from eidolon.cycles_api import add_cycle_routes
+from eidolon.letters_api import add_letter_routes
+from eidolon.moments_api import add_moment_routes
 from eidolon.gifts_api import add_gift_routes
 from eidolon.invites_api import add_invite_routes
 from eidolon.photos_api import add_photo_routes
@@ -90,10 +95,20 @@ _PICTURE_CACHE = {"Cache-Control": "public, max-age=86400"}
 day, then revalidate by ETag, so lists showing every avatar don't download them each visit."""
 
 
+_PICTURE_TYPES = {".webp": "image/webp"}
+"""Types FileResponse cannot guess: Python 3.11 knows no .webp (signatures), nor does a slim
+image without /etc/mime.types. Others it guesses from the suffix."""
+
+
 def _picture(path: Path, request: Request) -> Response:
-    """An avatar or call background, or a 304 when the browser's copy is still current;
-    FileResponse sets the ETag but, unlike StaticFiles, never answers 304 itself."""
-    response = FileResponse(path, headers=_PICTURE_CACHE, stat_result=path.stat())
+    """An avatar, call background or signature, or a 304 when the browser's copy is still
+    current; FileResponse sets the ETag but, unlike StaticFiles, never answers 304 itself."""
+    response = FileResponse(
+        path,
+        headers=_PICTURE_CACHE,
+        media_type=_PICTURE_TYPES.get(path.suffix.lower()),
+        stat_result=path.stat(),
+    )
     etag = response.headers["etag"]
     cached_etags = request.headers.get("if-none-match", "")
     if etag in (tag.strip() for tag in cached_etags.split(",")):
@@ -146,6 +161,17 @@ class BirthdayInput(BaseModel):
         return self
 
 
+class CityInput(BaseModel):
+    """The producer's city, as `/api/cities` found it."""
+
+    name: str = Field(min_length=1, max_length=MAX_CITY_PART_LENGTH)
+    adm2: str = Field("", max_length=MAX_CITY_PART_LENGTH)
+    adm1: str = Field("", max_length=MAX_CITY_PART_LENGTH)
+    country: str = Field("", max_length=MAX_CITY_PART_LENGTH)
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+
 class ProfileInput(BaseModel):
     """The whole producer profile; a field left out or empty returns to its default."""
 
@@ -153,6 +179,7 @@ class ProfileInput(BaseModel):
     gender: Gender | None = None
     timezone: str | None = None
     birthday: BirthdayInput | None = None
+    city: CityInput | None = None
 
     @field_validator("form_of_address")
     @classmethod
@@ -427,6 +454,9 @@ def create_app(backend: Backend) -> FastAPI:
     add_calendar_routes(app)
     add_schedule_routes(app, backend)
     add_cycle_routes(app, backend)
+    add_moment_routes(app, backend)
+    add_letter_routes(app, backend)
+    add_city_routes(app, backend)
     add_bar_routes(app, backend)
     add_photo_routes(app, backend)
     add_sponsor_routes(app, backend)
@@ -479,16 +509,24 @@ def create_app(backend: Backend) -> FastAPI:
         await calls.add_candidates(user_id, body.pc_id, candidates)
         return {"ok": True}
 
+    def shown_profile(profile: ProducerProfile) -> dict:
+        """The profile, and whether the deployer can find cities (`finds_cities`, with a
+        QWeather account): without, the city is not shown, nor is it any use."""
+        return asdict(profile) | {"finds_cities": backend.config.qweather.on}
+
     @app.get("/api/profile")
     async def get_profile(user_id: UserId) -> dict:
-        return asdict(await store.get_profile(user_id))
+        return shown_profile(await store.get_profile(user_id))
 
     @app.put("/api/profile")
     async def update_profile(body: ProfileInput, user_id: UserId) -> dict:
         birthday = body.birthday and Birthday(body.birthday.month, body.birthday.day)
-        profile = ProducerProfile(body.form_of_address, body.gender, body.timezone, birthday)
+        city = body.city and City(**body.city.model_dump())
+        profile = ProducerProfile(
+            body.form_of_address, body.gender, body.timezone, birthday, city
+        )
         await store.save_profile(user_id, profile)
-        return asdict(profile)
+        return shown_profile(profile)
 
     @app.get("/api/characters")
     def list_characters() -> list[dict]:
@@ -505,6 +543,7 @@ def create_app(backend: Backend) -> FastAPI:
                 "color": c.color,
                 "birthday": f"{c.birthday.month:02}-{c.birthday.day:02}",
                 "background_url": f"/api/characters/{c.id}/background" if c.background else None,
+                "signature_url": signature_url(c),
                 "stand": _stand(c, backend.settings.stand_assets_url),
                 "idol_id": c.idol_id,
                 "short_name": c.short_name,
@@ -551,6 +590,14 @@ def create_app(backend: Backend) -> FastAPI:
         if character is None or character.background is None:
             raise HTTPException(404, "没有这位角色的通话背景图")
         return _picture(character.background, request)
+
+    @app.get("/api/characters/{character_id}/signature")
+    def character_signature(character_id: str, request: Request) -> Response:
+        """Her handwritten signature, at the end of her letters, served like her avatar."""
+        character = characters.get(character_id)
+        if character is None or character.signature is None:
+            raise HTTPException(404, "没有这位角色的签名图")
+        return _picture(character.signature, request)
 
     @app.get("/api/characters/{character_id}/affinity")
     async def affinity(character_id: str, user_id: UserId) -> dict | None:
@@ -608,7 +655,9 @@ def create_app(backend: Backend) -> FastAPI:
     async def latest_conversations(user_id: UserId) -> list[dict]:
         """For the conversation list: each character's newest conversation with the user, the
         last thing in it, a message, a conversation event or a reach-out (null while it has
-        none), and whether it has a reach-out the user has not seen, in one request."""
+        none), whether it has a reach-out the user has not seen, and whether she has a letter
+        to the user they have not read, in one request."""
+        unread = await backend.letters.unread_from(user_id)
         return [
             {
                 "character_id": c.character_id,
@@ -616,6 +665,7 @@ def create_app(backend: Backend) -> FastAPI:
                 "created_at": c.created_at,
                 "last_message": last_shown(last),
                 "unseen_reach_out": unseen,
+                "unread_letter": c.character_id in unread,
             }
             for c, last, unseen in await store.latest_conversations(user_id)
         ]

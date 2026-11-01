@@ -51,6 +51,7 @@ from eidolon.happenings import Happenings
 from eidolon.her_now import HerNow
 from eidolon.hot_words import hot_words
 from eidolon.job_list import jobs_path, load_job_list
+from eidolon.place_pool import check_job_places, check_place_likes, load_place_pool, places_path
 from eidolon.housekeeping import keep_tidy
 from eidolon.loop_lag import watch_the_loop
 from eidolon.randomness import Random, secure_random
@@ -73,9 +74,13 @@ from eidolon.prices import Prices
 from eidolon.own_keys import LLMService, OwnImageService, OwnKeys, ProviderLLMService
 from eidolon.photos import Photos
 from eidolon.proxy import ProxyRoutes
+from eidolon.letter_music import letter_music_path, load_letter_music
+from eidolon.letters import Letters
+from eidolon.moments import Moments
 from eidolon.reach_outs import ReachOuts
 from eidolon.read_aloud import ReadAloud
 from eidolon.readings import load_readings, readings_path
+from eidolon.recent_moments import RecentMoments
 from eidolon.rerank import (
     FALLBACK_MODEL,
     KNOWN_THRESHOLDS,
@@ -92,6 +97,8 @@ from eidolon.sponsor import Sponsor
 from eidolon.store import Store
 from eidolon.titles import Titles
 from eidolon.usage import UsageLimiter
+from eidolon.her_weather import HerWeather
+from eidolon.weather import Weathers
 from eidolon.world import World, load_world, world_path
 
 log = logging.getLogger(__name__)
@@ -161,6 +168,10 @@ class Backend:
     """Exports users' data packages, and imports them."""
     reach_outs: ReachOuts
     """Has characters reach out to users once their time comes."""
+    letters: Letters
+    """Has characters write letters on their occasions, and shows them."""
+    moments: Moments
+    """Has characters post moments to users once their time comes, and shows them."""
     schedules: Schedules
     """Each week's jobs and every producer's schedule, where schedules are on."""
     cycles: Cycles
@@ -177,6 +188,8 @@ class Backend:
     _keeping_fresh: asyncio.Task[None] | None = field(default=None, repr=False)
     _probing: asyncio.Task[None] | None = field(default=None, repr=False)
     _reaching_out: asyncio.Task[None] | None = field(default=None, repr=False)
+    _posting: asyncio.Task[None] | None = field(default=None, repr=False)
+    _writing: asyncio.Task[None] | None = field(default=None, repr=False)
     _sweeping: asyncio.Task[None] | None = field(default=None, repr=False)
     _tidying: asyncio.Task[None] | None = field(default=None, repr=False)
     _watching: asyncio.Task[None] | None = field(default=None, repr=False)
@@ -186,10 +199,10 @@ class Backend:
         """What is done as the server starts, on its event loop: try the overrides of the
         configuration, falling back to `.env` where one fails; keep the price catalogs
         fresh from now on, fetching them in the background, try the services without
-        calls for their status, have characters reach out once their time comes, do away
-        with visits to the bar left untouched, delete what ages out (`housekeeping`), watch
-        how far behind the loop runs (`loop_lag`), and load the story corpus's vectors to
-        search in the background."""
+        calls for their status, have characters reach out and post moments once their time
+        comes, do away with visits to the bar left untouched, delete what ages out
+        (`housekeeping`), watch how far behind the loop runs (`loop_lag`), and load the story
+        corpus's vectors to search in the background."""
         asyncio.get_running_loop().set_default_executor(
             ThreadPoolExecutor(THREADS, thread_name_prefix="eidolon")
         )
@@ -197,8 +210,12 @@ class Backend:
         self._keeping_fresh = asyncio.create_task(self.prices.catalog.keep_fresh())
         self._probing = asyncio.create_task(self.service_status.keep_probing())
         self._reaching_out = asyncio.create_task(self.reach_outs.keep_reaching_out())
+        self._posting = asyncio.create_task(self.moments.keep_posting())
+        self._writing = asyncio.create_task(self.letters.keep_writing())
         self._sweeping = asyncio.create_task(self.bar.keep_sweeping())
-        self._tidying = asyncio.create_task(keep_tidy(self.usage.forget_old, self.activity.forget_old))
+        self._tidying = asyncio.create_task(
+            keep_tidy(self.usage.forget_old, self.activity.forget_old, self.moments.forget_old)
+        )
         self._watching = asyncio.create_task(watch_the_loop(lambda: self.calls.in_progress))
         if self.corpus is not None:
             self._loading_stories = asyncio.create_task(self.corpus.load())
@@ -208,7 +225,8 @@ class Backend:
         tasks = [
             task
             for task in (
-                self._keeping_fresh, self._probing, self._reaching_out, self._sweeping,
+                self._keeping_fresh, self._probing, self._reaching_out, self._posting, self._writing,
+                self._sweeping,
                 self._tidying, self._watching, self._loading_stories,
             )
             if task is not None
@@ -236,24 +254,30 @@ def build(
     backup_transport: httpx.AsyncBaseTransport | None = None,
     image_transport: httpx.AsyncBaseTransport | None = None,
     fish_transport: httpx.AsyncBaseTransport | None = None,
+    weather_transport: httpx.AsyncBaseTransport | None = None,
+    qweather_transport: httpx.AsyncBaseTransport | None = None,
     random: Random | None = None,
     reach: Reach | None = None,
 ) -> Backend:
     """The backend `settings` describe, with any of the outside services passed in
     used instead of made. Raises RuntimeError, having opened nothing, if the character
     configuration (her liked gifts, her bar tastes and all), the world setting, the gift
-    catalog, the job list, the drink catalog or the bar's reasons and topics or its fixed lines
-    is broken, or a character is none of its idols and none of its staff."""
+    catalog, the job list, the place pool, the drink catalog, the bar's reasons and topics or its fixed lines,
+    or the letters' music list is broken, or a character is none of its idols and none of its staff."""
     characters = load_characters(settings.characters_path)
     gift_catalog = load_gift_catalog(gifts_path(settings.characters_path))
     check_liked_gifts(characters, gift_catalog)
     job_list = load_job_list(jobs_path(settings.characters_path))
+    places = load_place_pool(places_path(settings.characters_path), characters)
+    check_job_places(job_list)
+    check_place_likes(characters)
     drink_catalog = load_drink_catalog(drinks_path(settings.characters_path))
     check_bar_tastes(characters, drink_catalog)
     bar_visits = load_bar_visits(bar_visits_path(settings.characters_path))
     check_bar_visits(characters, bar_visits)
     bar_lines = load_bar_lines(bar_lines_path(settings.characters_path))
     check_bar_lines(bar_lines, drink_catalog)
+    letter_music = load_letter_music(letter_music_path(settings.characters_path))
     world = load_world(path := world_path(settings.characters_path))
     if world is None:
         log.info(
@@ -305,6 +329,7 @@ def build(
     config = LiveConfig(
         settings, clients or ProviderClients(routes), clock, db=database, activity=activity,
         speech=speech, routes=routes, image_client=image_client,
+        qweather_transport=qweather_transport,
         **({"reach": reach} if reach is not None else {}),
     )
     closers.append(config.aclose)
@@ -408,20 +433,33 @@ def build(
         database, clock, lambda: config.affinity_on, affinities, characters, gift_catalog,
         random or secure_random, cycles,
     )
-    happenings = Happenings(database, lambda: config.affinity_on, gifts, activity)
+    own_keys = OwnKeys(
+        own_llm_service, config, activity, speech, exempting=lambda: config.exempting_keys,
+        image_service=own_images,
+    )
+    read_aloud = ReadAloud(own_keys, usage, activity, readings, routes, fish_transport)
+    letters = Letters(
+        database, characters, config, affinities, activity, read_aloud, clock,
+        letter_music, settings.stand_assets_url,
+    )
+    happenings = Happenings(
+        database, lambda: config.affinity_on, gifts, activity, letters.happened
+    )
     schedules = Schedules(
         database, clock, lambda: config.schedule_on, idols_of(characters, world), job_list,
         affinities,
     )
-    her_now = HerNow(characters, world, schedules, cycles, affinities)
+    weathers = Weathers(clock, weather_transport)
+    closers.append(weathers.aclose)
+    her_now = HerNow(
+        characters, world, schedules, cycles, affinities,
+        RecentMoments(database, clock, lambda: config.moments.enabled),
+        HerWeather(weathers, config.qweather),
+    )
     engine = ConversationEngine(
         database, store, characters, gift_catalog, memories, titles, clock, her_now, retrieval,
         lambda: config.history_turns, world, affinities, config.affinity_judge(), photos,
         happenings,
-    )
-    own_keys = OwnKeys(
-        own_llm_service, config, activity, speech, exempting=lambda: config.exempting_keys,
-        image_service=own_images,
     )
     admissions = Admissions(
         usage, activity, own_keys, cooldown_until=affinities.cooldown_until
@@ -451,6 +489,10 @@ def build(
         database, store, engine, characters, config, affinities, activity,
         calls.in_call, clock, random or secure_random,
     )
+    moments = Moments(
+        database, characters, config, affinities, activity, memories, her_now, clock,
+        random or secure_random, weathers, schedules, photos, world, places,
+    )
     config.on_change(gifts.notice)
     return Backend(
         settings=settings,
@@ -467,7 +509,7 @@ def build(
         calls=calls,
         speech=speech,
         own_keys=own_keys,
-        read_aloud=ReadAloud(own_keys, usage, activity, readings, routes, fish_transport),
+        read_aloud=read_aloud,
         admissions=admissions,
         accounts=Accounts(
             store, clock, memories, calls, invites, lambda: config.registration,
@@ -488,6 +530,8 @@ def build(
         service_status=service_status,
         data_packages=DataPackages(database, store, memories, characters, gift_catalog, clock),
         reach_outs=reach_outs,
+        letters=letters,
+        moments=moments,
         schedules=schedules,
         cycles=cycles,
         her_now=her_now,

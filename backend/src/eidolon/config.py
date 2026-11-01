@@ -109,6 +109,35 @@ class ReachOutSettings:
     per_day: int
 
 
+DEFAULT_MOMENTS_PER_DAY = 3
+"""How many moments each user may have a day, of all characters together, unless the admin
+console says otherwise."""
+
+DEFAULT_MOMENT_REPLIES_PER_DAY = 10
+"""How many of each user's comments a day the characters reply to at most, of them all
+together, unless the admin console says otherwise."""
+
+MapSite = Literal["osm", "google", "amap"]
+"""Where a moment's place links to on the map: OpenStreetMap, Google Maps or Amap (高德)."""
+
+MAP_SITES: tuple[MapSite, ...] = get_args(MapSite)
+
+DEFAULT_MAP_SITE: MapSite = "osm"
+
+
+@dataclass(frozen=True)
+class MomentSettings:
+    """Whether characters post moments to users' moments (GLOSSARY.md「朋友圈」), off unless
+    `.env` turns it on, how many moments each user may have a day, which map their places
+    link to, the same for everyone, and how many of each user's comments a day they reply to;
+    the admin console may override them all."""
+
+    enabled: bool
+    per_day: int
+    map: MapSite = DEFAULT_MAP_SITE
+    replies_per_day: int = DEFAULT_MOMENT_REPLIES_PER_DAY
+
+
 @dataclass(frozen=True)
 class ProxySettings:
     """The proxy what is in `services` reaches its providers through, if it is
@@ -430,6 +459,8 @@ class Settings:
     fish_audio_model: FishAudioModel = DEFAULT_FISH_AUDIO_MODEL
     embedding: "EmbeddingSettings | None" = None
     rerank: "RerankSettings | None" = None
+    qweather: "QWeatherSettings | None" = None
+    """The deployer's QWeather account, for where the producer is; None without it."""
     image: "ImageSettings | None" = None
     """The deployer's image generation (GLOSSARY.md「生图」), for photos; None without it."""
     judge: "JudgeSettings | None" = None
@@ -450,6 +481,13 @@ class Settings:
     reach_outs: bool = False
     """Whether characters reach out to users (GLOSSARY.md「搭话」), on the deployer's chat
     model; off unless `.env` turns it on, and the admin console may override it."""
+    letters: bool = False
+    """Whether characters write letters on their occasions (GLOSSARY.md「信」), on the
+    deployer's chat model; off unless `.env` turns it on, and the admin console may override
+    it."""
+    moments: bool = False
+    """Whether characters post moments (GLOSSARY.md「朋友圈」), on the deployer's chat model;
+    off unless `.env` turns it on, and the admin console may override it."""
     schedule: bool = True
     """Whether each week's jobs are published for producers to schedule (GLOSSARY.md「日程」);
     on unless `.env` turns it off, and the admin console may override it."""
@@ -561,6 +599,7 @@ class Settings:
             embedding=EmbeddingSettings.from_env(),
             rerank=RerankSettings.from_env(),
             image=ImageSettings.from_env(),
+            qweather=QWeatherSettings.from_env(),
             judge=judge_from_env(),
             emotion=EmotionSettings.from_env(),
             usage_limits=UsageLimits.from_env(),
@@ -568,6 +607,8 @@ class Settings:
             exempting_keys=exempting_keys_from_env(),
             affinity_and_gifts=_switch("EIDOLON_AFFINITY_AND_GIFTS", default=True),
             reach_outs=_switch("EIDOLON_REACH_OUTS"),
+            letters=_switch("EIDOLON_LETTERS"),
+            moments=_switch("EIDOLON_MOMENTS"),
             schedule=_switch("EIDOLON_SCHEDULE", default=True),
             cycles=_switch("EIDOLON_CYCLES", default=True),
             bar=_switch("EIDOLON_BAR", default=True),
@@ -904,6 +945,49 @@ class JevSettings:
             model=os.environ.get("JEV_MODEL") or DEFAULT_JEV_MODEL,
             base_url=os.environ.get("JEV_BASE_URL") or DEFAULT_JEV_BASE_URL,
         )
+
+
+QWEATHER_FIELDS = ("host", "developer_id", "project_id", "key_id", "private_key")
+"""What the deployer's QWeather account takes, all of them, or it is none."""
+
+
+@dataclass(frozen=True)
+class QWeatherSettings:
+    """The deployer's QWeather (和风天气) account, for where the producer is (`qweather`): its
+    own API `host`, the developer's id (`iss`), the project's (`sub`), the credential's
+    (`kid`), and the Ed25519 private key it was made with, in PEM or its base64 alone."""
+
+    host: str
+    developer_id: str
+    project_id: str
+    key_id: str
+    private_key: str
+
+    @classmethod
+    def from_env(cls) -> "QWeatherSettings | None":
+        """`QWEATHER_API_HOST`, `QWEATHER_DEVELOPER_ID`, `QWEATHER_PROJECT_ID`,
+        `QWEATHER_KEY_ID` and `QWEATHER_PRIVATE_KEY`: none if all are unset; some set and
+        not the others, the server does not start."""
+        names = {
+            "host": "QWEATHER_API_HOST", "developer_id": "QWEATHER_DEVELOPER_ID",
+            "project_id": "QWEATHER_PROJECT_ID", "key_id": "QWEATHER_KEY_ID",
+            "private_key": "QWEATHER_PRIVATE_KEY",
+        }
+        values = {f: (os.environ.get(n) or "").strip() for f, n in names.items()}
+        if not any(values.values()):
+            return None
+        if missing := [names[f] for f, v in values.items() if not v]:
+            raise RuntimeError(f"和风天气还缺环境变量 {'、'.join(missing)}，要么都填，要么都不填")
+        values["host"] = qweather_host(values["host"])
+        return cls(**values)
+
+
+def qweather_host(value: str) -> str:
+    """The API host as it may be written: with or without `https://` and a trailing slash."""
+    value = value.strip()
+    for prefix in ("https://", "http://"):
+        value = value.removeprefix(prefix)
+    return value.rstrip("/")
 
 
 @dataclass(frozen=True)
