@@ -63,7 +63,7 @@ from zoneinfo import ZoneInfo
 
 from eidolon.activity import ActivityLog
 from eidolon.affinity import BELOW_TRUST, TIERS, Affinities, Tier
-from eidolon.characters import Character
+from eidolon.characters import Character, signature_url
 from eidolon.clock import Clock
 from eidolon.data_access import Database
 from eidolon.letter_music import Music, music_of
@@ -205,7 +205,8 @@ class Listed:
 @dataclass(frozen=True)
 class Letter:
     """A letter as the user reads it: whose, on what, the day, what it says, the name she
-    signs it with, and how many blocks of it she says in her voice, none without a voice."""
+    signs it with and where her signature is (None without one), and how many blocks of it
+    she says in her voice, none without a voice."""
 
     id: int
     character_id: str
@@ -214,13 +215,14 @@ class Letter:
     written: Written
     signed: str
     voice_blocks: int
+    signature_url: str | None = None
     music: dict | None = None
     """The music under it, as the browser is told it (`letter_music.Music.shown`)."""
 
     def shown(self) -> dict:
         """As the browser is told it: without delivery cues; where each block in her voice is,
-        or None without a voice; the music under it, or None; and her name written out for
-        her signature."""
+        or None without a voice; the music under it, or None; and her signature, with her
+        name to write out where there is no picture of it."""
         voice = [f"/api/letters/{self.id}/voice/{block}" for block in range(self.voice_blocks)]
         return {
             "id": self.id,
@@ -229,7 +231,7 @@ class Letter:
             "day": self.day.isoformat(),
             "salutation": shown(self.written.salutation),
             "paragraphs": [{"ja": shown(p.ja), "zh": p.zh} for p in self.written.paragraphs],
-            "signature": {"image": None, "text": self.signed},
+            "signature": {"image": self.signature_url, "text": self.signed},
             "voice": voice or None,
             "music": self.music,
         }
@@ -353,7 +355,9 @@ class Letters:
         if music is not None and self._assets_url is not None:
             letter = replace(letter, music=music.shown(self._assets_url))
         character = self._characters.get(letter.character_id)
-        return replace(letter, signed=character.name) if character is not None else letter
+        if character is None:
+            return letter
+        return replace(letter, signed=character.name, signature_url=signature_url(character))
 
     async def voice(self, user_id: str, letter_id: int, block: int) -> bytes | None:
         """The block of the user's letter in her voice, as mp3; None if the letter is not

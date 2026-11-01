@@ -110,6 +110,7 @@ greeting_subtitle = "呼哇……你就是制作人吗？请多指教！"
 - **`age`**：她在原作里的年龄，整数，和角色资料第三行写的一致。只用来决定她的周期按未满 18 岁还是成年算。缺这一项或不是正整数时，后端拒绝启动。
 - **`short_name`**（可选）：她的短名，取 `name` 末尾的一段（比如「真乃」），日历里排日程的地方写它，没配时写全名。不是 `name` 末尾的一段时，后端拒绝启动。
 - **`background`**（可选）：通话层的背景图，放在 `characters/backgrounds/`。没配时用印象色的渐变代替。
+- **`signature`**（可选）：她的手写签名图，放在 `characters/signatures/`，信末从左到右显出来。没配时信末用信上的字体写她的名字。
 - **人设**：缺人设文件时后端拒绝启动，并指出缺哪一份。docker compose 把 `characters/` 只读挂载进后端容器。
 - **`liked_gifts`**：她喜欢的礼物，写礼物目录 [`characters/gifts.toml`](../characters/gifts.toml) 里的 `id`，1–3 件，不能全是稀有。每一件都要在她的出处文件（`facts/<标识>.sources.md`）的「喜欢的礼物」一节写明剧情出处。没配、礼物不在目录里、件数不对或全是稀有时，后端拒绝启动。
 - **酒吧的口味**：`bar_flavors` 是喜欢的口味（1–2 种），`bar_kind` 是喜欢的种类（可不填），`bar_favorites` 是爱喝的饮品（1–3 款，写饮品目录 [`characters/drinks.toml`](../characters/drinks.toml) 里的 `id`），`bar_disliked_flavor` 是讨厌的口味（可不填，不能和喜欢的重合，爱喝的饮品也不能是这个口味），`bar_tolerance` 是酒量（`weak`、`medium`、`strong`）。每一条的依据写在出处文件的「酒吧口味」一节。缺必填项或取值不对时，后端拒绝启动；自己维护角色配置的，升级时要一并补上这几项。

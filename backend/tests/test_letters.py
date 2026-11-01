@@ -20,7 +20,7 @@ import pytest
 from eidolon.config import Settings
 from eidolon.letter_prompt import SHORTER, WRITE
 from eidolon.llm import LLMError
-from tests.conftest import KOGANE_SHEET, MANO_SHEET, CharacterConfig, ClientFactory
+from tests.conftest import KOGANE_SHEET, MANO_SHEET, SIGNATURE, CharacterConfig, ClientFactory
 from tests.fakes import (
     DEPLOYER_KEY,
     FAKE_JUDGE,
@@ -140,7 +140,7 @@ async def test_first_reaching_close_she_writes_a_letter_the_user_reads(
             {"ja": "いつもありがとうございます。", "zh": "一直以来谢谢你。"},
             {"ja": "これからもよろしくお願いします。", "zh": "今后也请多关照。"},
         ],
-        "signature": {"image": None, "text": "櫻木真乃"},
+        "signature": {"image": "/api/characters/mano/signature", "text": "櫻木真乃"},
         "voice": [f"/api/letters/{listed['id']}/voice/{block}" for block in range(3)],
         "music": None,
     }
@@ -156,10 +156,10 @@ FACTS = "# 经历\n真乃和制作人一起去看过鸽子。"
 
 @pytest.fixture
 def characters(tmp_path: Path) -> CharacterConfig:
-    """Mano, with her facts, and Kogane."""
+    """Mano, with her facts and her signature, and Kogane."""
     return (
         CharacterConfig(tmp_path / "characters")
-        .add("mano", "櫻木真乃", MANO_SHEET, birthday="04-25", facts=FACTS)
+        .add("mano", "櫻木真乃", MANO_SHEET, birthday="04-25", facts=FACTS, signature=SIGNATURE)
         .add("kogane", "月岡恋鐘", KOGANE_SHEET, birthday="02-25")
     )
 

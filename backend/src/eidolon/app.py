@@ -25,7 +25,7 @@ from eidolon.call import (
     SessionDescription,
     StillPlacing,
 )
-from eidolon.characters import Character, ScriptedLine, in_idol_order
+from eidolon.characters import Character, ScriptedLine, in_idol_order, signature_url
 from eidolon.config import FishAudioModel
 from eidolon.database import readable
 from eidolon.engine import ENDED, TurnJudged, shown
@@ -95,10 +95,20 @@ _PICTURE_CACHE = {"Cache-Control": "public, max-age=86400"}
 day, then revalidate by ETag, so lists showing every avatar don't download them each visit."""
 
 
+_PICTURE_TYPES = {".webp": "image/webp"}
+"""Types FileResponse cannot guess: Python 3.11 knows no .webp (signatures), nor does a slim
+image without /etc/mime.types. Others it guesses from the suffix."""
+
+
 def _picture(path: Path, request: Request) -> Response:
-    """An avatar or call background, or a 304 when the browser's copy is still current;
-    FileResponse sets the ETag but, unlike StaticFiles, never answers 304 itself."""
-    response = FileResponse(path, headers=_PICTURE_CACHE, stat_result=path.stat())
+    """An avatar, call background or signature, or a 304 when the browser's copy is still
+    current; FileResponse sets the ETag but, unlike StaticFiles, never answers 304 itself."""
+    response = FileResponse(
+        path,
+        headers=_PICTURE_CACHE,
+        media_type=_PICTURE_TYPES.get(path.suffix.lower()),
+        stat_result=path.stat(),
+    )
     etag = response.headers["etag"]
     cached_etags = request.headers.get("if-none-match", "")
     if etag in (tag.strip() for tag in cached_etags.split(",")):
@@ -533,6 +543,7 @@ def create_app(backend: Backend) -> FastAPI:
                 "color": c.color,
                 "birthday": f"{c.birthday.month:02}-{c.birthday.day:02}",
                 "background_url": f"/api/characters/{c.id}/background" if c.background else None,
+                "signature_url": signature_url(c),
                 "stand": _stand(c, backend.settings.stand_assets_url),
                 "idol_id": c.idol_id,
                 "short_name": c.short_name,
@@ -579,6 +590,14 @@ def create_app(backend: Backend) -> FastAPI:
         if character is None or character.background is None:
             raise HTTPException(404, "没有这位角色的通话背景图")
         return _picture(character.background, request)
+
+    @app.get("/api/characters/{character_id}/signature")
+    def character_signature(character_id: str, request: Request) -> Response:
+        """Her handwritten signature, at the end of her letters, served like her avatar."""
+        character = characters.get(character_id)
+        if character is None or character.signature is None:
+            raise HTTPException(404, "没有这位角色的签名图")
+        return _picture(character.signature, request)
 
     @app.get("/api/characters/{character_id}/affinity")
     async def affinity(character_id: str, user_id: UserId) -> dict | None:

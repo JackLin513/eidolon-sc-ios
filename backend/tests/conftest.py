@@ -134,6 +134,7 @@ MANO_PHOTO = ("sakuragi mano", "brown hair, medium hair, brown eyes")
 AVATAR = b"\x89PNG\r\n\x1a\n fake avatar"
 SCSP_AVATAR = b"\xff\xd8\xff fake SCSP avatar"
 BACKGROUND = b"\xff\xd8\xff fake background"
+SIGNATURE = b"RIFF\x00\x00\x00\x00WEBP fake signature"
 REPO_GIFTS = Path(__file__).parents[2] / "characters" / GIFTS_FILE
 REPO_LETTER_MUSIC = Path(__file__).parents[2] / "characters" / LETTER_MUSIC_FILE
 REPO_JOBS = Path(__file__).parents[2] / "characters" / JOBS_FILE
@@ -177,6 +178,7 @@ class CharacterConfig:
         birthday: str | None = "07-07",
         age: int | str | None = 20,
         background: bytes | None = None,
+        signature: bytes | None = None,
         speakers: list[str] | None = None,
         facts: str | None = None,
         idol_id: int | None = None,
@@ -218,6 +220,9 @@ class CharacterConfig:
         if background is not None:
             self.write(f"backgrounds/{id}.jpg", background)
             entry += f'background = "backgrounds/{id}.jpg"\n'
+        if signature is not None:
+            self.write(f"signatures/{id}.webp", signature)
+            entry += f'signature = "signatures/{id}.webp"\n'
         if facts is not None:
             self.write(f"facts/{id}.md", facts)
             entry += f'facts = "facts/{id}.md"\n'
@@ -283,13 +288,14 @@ class CharacterConfig:
 
 @pytest.fixture
 def characters(tmp_path: Path) -> CharacterConfig:
-    """Mano (with both avatars, a background, a stand and her photo tags) and Kogane (with none
-    of them)."""
+    """Mano (with both avatars, a background, a signature, a stand and her photo tags) and
+    Kogane (with none of them)."""
     return (
         CharacterConfig(tmp_path / "characters")
         .add(
             "mano", "櫻木真乃", MANO_SHEET, intro="illumination STARS 的中心", avatar=AVATAR,
-            scsp_avatar=SCSP_AVATAR, color="#ffbad6", background=BACKGROUND, speakers=["真乃"],
+            scsp_avatar=SCSP_AVATAR, color="#ffbad6", background=BACKGROUND, signature=SIGNATURE,
+            speakers=["真乃"],
             voice_id="mano-voice", idol_id=1, default_outfit="stand/1030010010", photo=MANO_PHOTO,
             birthday="04-25", age=16,
         )
