@@ -23,10 +23,8 @@ struct ScheduleBoardView: View {
     @State private var switching = false
     @State private var notice: String?
     @State private var inspected: ScheduleCell?
-    /// At least 44pt a cell, scaled with the text size; seven days may scroll on a narrow
-    /// phone rather than shrink below it.
+    /// A cell's height, scaled with the text size; the seven days share a row's width.
     @ScaledMetric(relativeTo: .caption2) private var cellHeight = 48
-    @ScaledMetric(relativeTo: .caption2) private var dayWidth = 46
 
     private var thisWeek: CalendarDay { ScheduleRules.week(of: Date()) }
     private var week: CalendarDay { thisWeek.adding(days: ScheduleRules.days * weekOffset) }
@@ -279,39 +277,35 @@ struct ScheduleBoardView: View {
     }
 
     private func weekGrid(_ planner: SchedulePlanner) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 4) {
-                VStack(spacing: 4) {
-                    Color.clear.frame(height: 28)
-                    ForEach(0..<3, id: \.self) { slot in
-                        Text(ScheduleSlot(rawValue: slot)?.name ?? "")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .frame(height: cellHeight)
-                    }
-                }
-                .frame(width: 26)
+        let today = ScheduleRules.localWeekday(now: Date(), timeZone: app.producerTimeZone)
+        return VStack(spacing: 4) {
+            HStack(spacing: 4) {
+                Color.clear.frame(width: 26, height: 28)
                 ForEach(0..<ScheduleRules.days, id: \.self) { day in
-                    let today = ScheduleRules.localWeekday(
-                        now: Date(), timeZone: app.producerTimeZone
-                    )
-                    VStack(spacing: 4) {
-                        VStack(spacing: 0) {
-                            Text(dayName(day))
-                                .font(.caption2.weight(
-                                    day == today && weekOffset == 0 ? .bold : .regular
-                                ))
-                            Text(dateLabel(day))
-                                .font(.caption2)
-                                .monospacedDigit()
-                        }
-                        .foregroundStyle(.secondary)
-                        .frame(height: 28)
-                        ForEach(0..<3, id: \.self) { slot in
-                            cellButton(planner.cell(day: day, slot: slot))
-                        }
+                    VStack(spacing: 0) {
+                        Text(dayName(day))
+                            .font(.caption2.weight(
+                                day == today && weekOffset == 0 ? .bold : .regular
+                            ))
+                        Text(dateLabel(day))
+                            .font(.caption2)
+                            .monospacedDigit()
                     }
-                    .frame(width: dayWidth)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 28)
+                }
+            }
+            ForEach(0..<3, id: \.self) { slot in
+                HStack(spacing: 4) {
+                    Text(ScheduleSlot(rawValue: slot)?.name ?? "")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 26, height: cellHeight)
+                    ForEach(0..<ScheduleRules.days, id: \.self) { day in
+                        cellButton(planner.cell(day: day, slot: slot))
+                            .frame(maxWidth: .infinity)
+                    }
                 }
             }
         }
@@ -330,29 +324,29 @@ struct ScheduleBoardView: View {
         Button {
             tap(cell)
         } label: {
-            cellLabel(cell)
-                .frame(maxWidth: .infinity)
-                .frame(height: cellHeight)
-                .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(cellColor(cell.state))
+                cellLabel(cell)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: cellHeight)
+            .overlay {
+                if cell.state.isDraft {
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(cellColor(cell.state))
+                        .strokeBorder(
+                            Color.accentColor,
+                            style: StrokeStyle(lineWidth: 1.2, dash: [3, 2])
+                        )
+                } else if isAvailable(cell, planner: planner) {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(Color.accentColor, lineWidth: 1.2)
+                } else if !cell.state.isSaved {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(cellBorderColor(cell.state), lineWidth: 1)
                 }
-                .overlay {
-                    if cell.state.isDraft {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .strokeBorder(
-                                Color.accentColor,
-                                style: StrokeStyle(lineWidth: 1.2, dash: [3, 2])
-                            )
-                    } else if isAvailable(cell, planner: planner) {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .strokeBorder(Color.accentColor, lineWidth: 1.2)
-                    } else if !cell.state.isSaved {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .strokeBorder(cellBorderColor(cell.state), lineWidth: 1)
-                    }
-                }
-                .contentShape(Rectangle())
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibility(cell))
@@ -519,10 +513,12 @@ struct ScheduleBoardView: View {
         }
         .buttonStyle(.plain)
         .disabled(!selectable)
+        .accessibilityIdentifier("schedule.card")
         .accessibilityLabel(
             "\(card.job.name)，\(status(card.placement))"
                 + (planner.reasons[card.job.id].map { "，\($0)" } ?? "")
         )
+        .accessibilityValue(selected ? "已选中" : "未选中")
         .accessibilityHint(selectable ? "选中后点一个空闲格子" : "已经排好")
     }
 
