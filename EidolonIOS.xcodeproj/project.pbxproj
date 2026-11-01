@@ -19,6 +19,7 @@
 		2CAA8739C8F32538D08118CF /* CallTonesPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE4CA93A98A82A36915C5E19 /* CallTonesPlayer.swift */; };
 		2CF24EECC30E051467FA4D35 /* MicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */; };
 		3361C9CBA23EC466560C4FBB /* ChatReadAloud.swift in Sources */ = {isa = PBXBuildFile; fileRef = 699260EC8FFFC02E174467D0 /* ChatReadAloud.swift */; };
+		3683109ABC50AB71E6D512A8 /* DebugChatProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDB63104EE3509F94360E5EF /* DebugChatProvider.swift */; };
 		36C86D8435661F4A422CF168 /* BarSettingsBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4EC9179658A248DC6D0E540 /* BarSettingsBox.swift */; };
 		3B581C7316F3F7567E6CF0E1 /* StandThumbnails.swift in Sources */ = {isa = PBXBuildFile; fileRef = F51D53D2BDB3163C8344025C /* StandThumbnails.swift */; };
 		410F91B39B617580D97D62F3 /* hang-up.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 3426738E4DA43CD7060B7095 /* hang-up.mp3 */; };
@@ -56,6 +57,7 @@
 		C7D9B29CBBADC895872095A7 /* TexturedAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D7CC6AFCA2A05909641B10 /* TexturedAudio.swift */; };
 		CABF61FA71D8DD24099824B3 /* ConversationHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */; };
 		CD54EB8286C493A259743A6D /* SpeechPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362E0BAAF16B958F406E1E08 /* SpeechPlayback.swift */; };
+		CE87D4AD7E46D813BFAA4BC5 /* CallTypingUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98D2780F46613402EB78186A /* CallTypingUITests.swift */; };
 		CE9A6DFCD019D9A5DEBFC3CA /* BarPixelViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D2BD6185831DEBBED2FA62 /* BarPixelViews.swift */; };
 		CF99DB2C76A1A363E3D2BC16 /* BarRecipeBookView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71EFAE07EB12013AF146132A /* BarRecipeBookView.swift */; };
 		D080D9792F63EBF71440173B /* EidolonCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0BE53CDEEF5BB1E157A83EC1 /* EidolonCore */; };
@@ -117,6 +119,7 @@
 		7B8F3B95D300DF671C5E5C20 /* BarTextBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarTextBox.swift; sourceTree = "<group>"; };
 		7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportGuideView.swift; sourceTree = "<group>"; };
 		889A8316C35EBB240F4D78A2 /* BarGuest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarGuest.swift; sourceTree = "<group>"; };
+		98D2780F46613402EB78186A /* CallTypingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallTypingUITests.swift; sourceTree = "<group>"; };
 		A2D79D1CDB4D74AADF0D731E /* AffinityViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AffinityViews.swift; sourceTree = "<group>"; };
 		A3A3CDE40EDED61EECF1DBF1 /* BarJukeboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarJukeboxView.swift; sourceTree = "<group>"; };
 		A3D7CC6AFCA2A05909641B10 /* TexturedAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TexturedAudio.swift; sourceTree = "<group>"; };
@@ -127,6 +130,7 @@
 		B4EC9179658A248DC6D0E540 /* BarSettingsBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarSettingsBox.swift; sourceTree = "<group>"; };
 		B94AA6A4C5655585B24D2400 /* MemoryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryListView.swift; sourceTree = "<group>"; };
 		BD7263A570545913D16486F1 /* OutfitPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutfitPickerView.swift; sourceTree = "<group>"; };
+		BDB63104EE3509F94360E5EF /* DebugChatProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugChatProvider.swift; sourceTree = "<group>"; };
 		BF8FFBE106A62A61CD0A8867 /* ObjCExceptionCatcher.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ObjCExceptionCatcher.m; sourceTree = "<group>"; };
 		C3363DDA773D810C71B70EE3 /* stand.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = stand.html; sourceTree = "<group>"; };
 		C40B7B5AA3042F29A949E938 /* ConversationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationListView.swift; sourceTree = "<group>"; };
@@ -313,6 +317,7 @@
 			isa = PBXGroup;
 			children = (
 				17A409D36FC5F7C23FD61FFB /* BarTutorialUITests.swift */,
+				98D2780F46613402EB78186A /* CallTypingUITests.swift */,
 				B3E123E7FAC64C8170D6CDFE /* ScheduleCycleUITests.swift */,
 			);
 			path = EidolonIOSUITests;
@@ -330,6 +335,7 @@
 			isa = PBXGroup;
 			children = (
 				38579B2A473B296EC588CBD6 /* AppModel.swift */,
+				BDB63104EE3509F94360E5EF /* DebugChatProvider.swift */,
 				F6567288D9C69EE4C18792B6 /* EidolonIOSApp.swift */,
 				14A72BB12039666C937D7C04 /* RootView.swift */,
 			);
@@ -589,6 +595,7 @@
 				CABF61FA71D8DD24099824B3 /* ConversationHistoryView.swift in Sources */,
 				9DE409627BE4363A227DD407 /* ConversationListView.swift in Sources */,
 				B3AF831F701054AEEE1CCABB /* CyclesView.swift in Sources */,
+				3683109ABC50AB71E6D512A8 /* DebugChatProvider.swift in Sources */,
 				0EFF31521A69C5A7C7949BCB /* DebugRecognition.swift in Sources */,
 				27EE9A61F1EA6DD131D5D03F /* EidolonIOSApp.swift in Sources */,
 				D87D5EF9B85BB39DEBD561FB /* FishSynthesis.swift in Sources */,
@@ -619,6 +626,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				2AB7F50E81201BDD5EE6B1EC /* BarTutorialUITests.swift in Sources */,
+				CE87D4AD7E46D813BFAA4BC5 /* CallTypingUITests.swift in Sources */,
 				AFCB1D4E31B67D5555622131 /* ScheduleCycleUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

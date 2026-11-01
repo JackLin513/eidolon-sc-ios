@@ -46,7 +46,15 @@ final class AppModel {
     let callTones = CallTonesPlayer()
 
     var chatProvider: (any ChatProvider)? {
-        chatSettings.config.map { OpenAICompatibleChatProvider(config: $0) as any ChatProvider }
+        #if DEBUG
+        // Development aid: open the call and chat pages without a model key.
+        if ProcessInfo.processInfo.environment["EIDOLON_FAKE_CHAT"] == "1" {
+            return DebugChatProvider()
+        }
+        #endif
+        return chatSettings.config.map {
+            OpenAICompatibleChatProvider(config: $0) as any ChatProvider
+        }
     }
 
     var tracing: TurnTracing {

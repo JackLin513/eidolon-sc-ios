@@ -58,17 +58,27 @@ struct CallView: View {
     @State private var standViewport = CGSize.zero
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                background(size: geometry.size)
-                    .ignoresSafeArea()
-                if let renderer, !standFailed {
-                    standStage(renderer, size: geometry.size)
+        ZStack {
+            // Her likeness and stand keep the whole screen when the keyboard is up; only the
+            // words and the bottom row rise above it.
+            GeometryReader { geometry in
+                ZStack {
+                    background(size: geometry.size)
+                        .ignoresSafeArea()
+                    if let renderer, !standFailed {
+                        standStage(renderer, size: geometry.size)
+                    }
                 }
-                bottomShade(size: geometry.size)
-                content
+                .frame(width: geometry.size.width, height: geometry.size.height)
             }
-            .frame(width: geometry.size.width, height: geometry.size.height)
+            .ignoresSafeArea(.keyboard)
+            GeometryReader { geometry in
+                ZStack {
+                    bottomShade(size: geometry.size)
+                    content
+                }
+                .frame(width: geometry.size.width, height: geometry.size.height)
+            }
         }
         .background(Color.black)
         .preferredColorScheme(.dark)
@@ -660,13 +670,14 @@ struct CallView: View {
         }
     }
 
-    /// The bottom of the call: the typing row when it is open, then the dock. The keyboard
-    /// takes the space below; mute, 打字, and 挂断 stay reachable (spec #47).
+    /// The bottom of the call: the typing row once it is open, else the dock, as upstream
+    /// (`TypingBar` replaces `Dock`). The keyboard takes the space below; closing the row
+    /// brings mute and 挂断 back.
+    @ViewBuilder
     private var bottomControls: some View {
-        VStack(spacing: 8) {
-            if typing, !isEnded {
-                typingRow
-            }
+        if typing, !isEnded {
+            typingRow
+        } else {
             dock
         }
     }
@@ -683,6 +694,7 @@ struct CallView: View {
                     .frame(width: 44, height: 44)
             }
             .accessibilityLabel("收起键盘")
+            .accessibilityIdentifier("call.closeTyping")
             TextField("打字给她…", text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 17))
@@ -698,6 +710,7 @@ struct CallView: View {
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .fill(.white.opacity(0.16))
                 }
+                .accessibilityIdentifier("call.typingField")
                 .onAppear { typingFocused = true }
             Button(action: sendTyped) {
                 Image(systemName: "arrow.up.circle.fill")
@@ -705,6 +718,7 @@ struct CallView: View {
                     .foregroundStyle(.white)
             }
             .accessibilityLabel("发送")
+            .accessibilityIdentifier("call.send")
             .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding(.horizontal, 12)
@@ -755,6 +769,7 @@ struct CallView: View {
                         .background(Circle().fill(.white.opacity(0.15)))
                 }
                 .accessibilityLabel("打字")
+                .accessibilityIdentifier("call.openTyping")
                 .disabled(isConnecting || session == nil)
                 .opacity(isConnecting ? 0.35 : 1)
             }
@@ -776,6 +791,7 @@ struct CallView: View {
                 .background(Capsule().fill(Color(hex: "#c8283c")))
             }
             .accessibilityLabel("挂断")
+            .accessibilityIdentifier("call.hangUp")
             .disabled(session == nil)
         }
         .padding(8)
