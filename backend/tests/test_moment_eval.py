@@ -4,7 +4,7 @@ run's moment or reply, its picture's prompt as it would be sent, and the parts m
 without, marked, written into a page for the maintainer to read, and summed up on one line.
 Nothing passes or fails: only the command going wrong exits non-zero."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -220,6 +220,38 @@ async def test_a_moment_with_no_picture_to_have_says_so_of_one_written(
     assert run.post is not None and run.post.likes == ["mano"] and run.image is None
     assert run.flags == ("这次不带图，却写了 <image>（没读）",)
     assert "<image>" not in llm.prompts[0][2].content
+
+
+async def test_a_picture_no_one_is_in_shows_gpt_images_prompt_beside_its_tags(
+    tmp_path: Path, config: dict[str, Character], characters: CharacterConfig
+):
+    moment_eval = load(tmp_path, config, characters, EVAL)
+    work = moment_eval.posts[0]
+    llm = FakeLLM(["""\
+<post><ja>雨の渋谷</ja><zh>下雨的涩谷</zh></post>
+<image>
+composition: scenery
+place: street, rain
+action: umbrella, crosswalk
+note: 雨里的中心街
+</image>
+<place>shibuya-center-gai</place><likes>kogane</likes>"""])
+
+    results = await evaluate(
+        MomentEval((work,), ()), llm, progress=lambda _: None, gpt_style="Cel style."
+    )
+    page = render_html(results, "m", 1, datetime(2026, 11, 3, tzinfo=UTC))
+
+    [(_, (run,))] = results.posts
+    assert run.image is not None and run.gpt is not None
+    assert run.gpt.size == (1216, 832)
+    lines = run.gpt.text.splitlines()
+    assert lines[0] == "Cel style." and lines[1].startswith("Subject: scenery")
+    assert "What the picture shows (follow this): 雨里的中心街" in run.gpt.text
+    assert "Details: street, rain, umbrella, crosswalk" in run.gpt.text
+    assert "When: November, night, rainy." in run.gpt.text  # 19:40 in Tokyo
+    assert "GPT Image 提示词 · 1216×832" in page
+    assert "Cel style." in page
 
 
 SCENARIO = """

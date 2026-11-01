@@ -66,7 +66,7 @@ from eidolon.embedding import EMBEDDING_TIMEOUT, Embedder, open_embedder
 from eidolon.facts import CharacterFacts
 from eidolon.engine import ConversationEngine
 from eidolon.identity import IdentityProvider, ProviderName, open_identity_providers
-from eidolon.image_generation import GENERATION_TIMEOUT
+from eidolon.image_generation import GENERATION_TIMEOUT, GPT_GENERATION_TIMEOUT
 from eidolon.live_config import LiveConfig, Reach
 from eidolon.memory import Memories
 from eidolon.price_catalog import Catalog
@@ -253,6 +253,7 @@ def build(
     catalog_transport: httpx.AsyncBaseTransport | None = None,
     backup_transport: httpx.AsyncBaseTransport | None = None,
     image_transport: httpx.AsyncBaseTransport | None = None,
+    gpt_image_transport: httpx.AsyncBaseTransport | None = None,
     fish_transport: httpx.AsyncBaseTransport | None = None,
     weather_transport: httpx.AsyncBaseTransport | None = None,
     qweather_transport: httpx.AsyncBaseTransport | None = None,
@@ -326,9 +327,16 @@ def build(
             transport=image_transport, timeout=GENERATION_TIMEOUT, trust_env=False
         )
         closers.append(image_client.aclose)
+    gpt_image_client = None
+    if gpt_image_transport is not None:
+        gpt_image_client = httpx.AsyncClient(
+            transport=gpt_image_transport, timeout=GPT_GENERATION_TIMEOUT, trust_env=False
+        )
+        closers.append(gpt_image_client.aclose)
     config = LiveConfig(
         settings, clients or ProviderClients(routes), clock, db=database, activity=activity,
         speech=speech, routes=routes, image_client=image_client,
+        gpt_image_client=gpt_image_client,
         qweather_transport=qweather_transport,
         **({"reach": reach} if reach is not None else {}),
     )
@@ -426,7 +434,10 @@ def build(
         style=lambda: config.image_style, transport=image_transport,
     )
     closers.append(own_images.aclose)
-    photos = Photos(store, config.image_generator, activity, usage, own_images.generator)
+    photos = Photos(
+        store, config.image_generator, activity, usage, own_images.generator,
+        config.gpt_image_generator,
+    )
     closers.append(photos.aclose)  # closed before the database, so no photo is still kept
     cycles = Cycles(database, characters, settings.secret_key, lambda: config.cycles_on)
     gifts = Gifts(

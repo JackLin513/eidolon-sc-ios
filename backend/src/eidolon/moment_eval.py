@@ -10,7 +10,8 @@ be at, and the compositions her picture may be in, if it may have one, on NovelA
 A reply's has the moment, its note, the comments of her circle shown, whether he liked it,
 the latest turns, and his comment. Both are asked and read as the background loop asks and
 reads them (`moment_prompt`); a picture is never generated, its prompt is written out
-instead, cleaned as it would be sent.
+instead, cleaned as it would be sent; of one no one is in, GPT Image's too
+(`gpt_image_prompt`), at the scenario's time, weather and place, any missing left out.
 
 Nothing passes or fails: what can be counted is marked for the reader (`PostRun.flags`, the
 parts made do without and why; `PostRun.over`, what is longer than she is told), and summed
@@ -54,6 +55,8 @@ from eidolon.moment_prompt import (
     recalled,
     reply_prompt,
 )
+from eidolon.config import DEFAULT_GPT_IMAGE_STYLE
+from eidolon.gpt_image_prompt import GptPrompt, gpt_picture_prompt
 from eidolon.moments import relations, said_to_chat, written_whole
 from eidolon.photo_prompt import (
     UNPEOPLED,
@@ -114,6 +117,9 @@ class PostCase:
     tier: Tier
     material: PostMaterial
     novelai: bool
+    at: datetime | None = None
+    """When she posts, for GPT Image's prompt."""
+    weather: Weather | None = None
 
 
 @dataclass(frozen=True)
@@ -331,7 +337,9 @@ def _post(scenario: _Scenario, entry: dict, places: Mapping[str, Place]) -> Post
         candidates, jobs, [Member(c, related.get(c.id)) for c in circle],
         compositions,  # pyright: ignore[reportArgumentType]  # checked above
     )
-    return PostCase(scenario.id, scenario.about, scenario.tier, material, novelai)
+    return PostCase(
+        scenario.id, scenario.about, scenario.tier, material, novelai, scenario.at, weather
+    )
 
 
 def _reply(scenario: _Scenario, entry: dict) -> ReplyCase:
@@ -397,8 +405,8 @@ def _strings(entry: dict, field: str, where: str) -> list[str]:
 class PostRun:
     """One run of a moment's scenario: what the model wrote (None if it failed, `error`
     saying why), what was read of it (None for nothing to post), its picture's prompts as they
-    would be sent (None for no picture), the parts made do without and why (`flags`), and
-    what is longer than she is told (`over`)."""
+    would be sent (None for no picture), GPT Image's for one no one is in (None for none), the
+    parts made do without and why (`flags`), and what is longer than she is told (`over`)."""
 
     written: str | None
     error: str | None = None
@@ -406,6 +414,7 @@ class PostRun:
     image: ImagePrompt | None = None
     flags: tuple[str, ...] = ()
     over: tuple[str, ...] = ()
+    gpt: GptPrompt | None = None
 
     @property
     def failed(self) -> bool:
@@ -439,10 +448,11 @@ async def evaluate(
     style: str = "",
     progress: Callable[[str], None] = lambda _: None,
     at_a_time: int = AT_A_TIME,
+    gpt_style: str = DEFAULT_GPT_IMAGE_STYLE,
 ) -> MomentResults:
     """Every scenario of `moment_eval` asked of `llm` `runs` times, `at_a_time` at once, its
-    pictures' prompts in the art style `style`; `progress` told each scenario's id as it is
-    done."""
+    pictures' prompts in the art style `style`, GPT Image's in `gpt_style`; `progress` told
+    each scenario's id as it is done."""
     turns = asyncio.Semaphore(at_a_time)
 
     async def written(prompt: list[ChatMessage]) -> tuple[str | None, str | None]:
@@ -457,7 +467,8 @@ async def evaluate(
         done = await asyncio.gather(*(written(prompt) for _ in range(runs)))
         progress(case.id)
         return case, tuple(
-            check_post(text, case.material, style) if text is not None else PostRun(None, error)
+            check_post(text, case.material, style, case, gpt_style) if text is not None
+            else PostRun(None, error)
             for text, error in done
         )
 
@@ -480,9 +491,16 @@ _LIKES = re.compile(r"<likes>(.*?)</likes>", re.DOTALL)
 _PLACE = re.compile(r"<place>(.*?)</place>", re.DOTALL)
 
 
-def check_post(written: str, material: PostMaterial, style: str = "") -> PostRun:
+def check_post(
+    written: str,
+    material: PostMaterial,
+    style: str = "",
+    case: PostCase | None = None,
+    gpt_style: str = DEFAULT_GPT_IMAGE_STYLE,
+) -> PostRun:
     """What `written` posts as she was given `material`, read as the background loop reads it,
-    its picture's prompts in the art style `style`, and marked for the reader."""
+    its picture's prompts in the art style `style`, and marked for the reader; of a picture no
+    one is in, GPT Image's prompt in `gpt_style` too, at the time and weather of `case`."""
     post = parse_post(written, material)
     if post is None:
         return PostRun(written, flags=("没有能发的正文（缺 <post>、日语或字幕）",))
@@ -503,9 +521,13 @@ def check_post(written: str, material: PostMaterial, style: str = "") -> PostRun
     image = _IMAGE.search(written)
     if not material.compositions and image is not None:
         flags.append("这次不带图，却写了 <image>（没读）")
-    picture = None
+    picture = gpt = None
     if post.picture is not None:
         picture = picture_prompt(material.character, post.picture.tag, style)
+        if post.picture.tag.composition in UNPEOPLED and case is not None and case.at:
+            gpt = gpt_picture_prompt(
+                post.picture.tag, post.picture.note, post.place, case.at, case.weather, gpt_style
+            )
         written_likes = {names.get(name, name) for name in listed}
         for other in post.picture.tag.others:
             if other.id not in written_likes:
@@ -517,7 +539,7 @@ def check_post(written: str, material: PostMaterial, style: str = "") -> PostRun
         if len(comment.ja) > COMMENT_MOST:
             name = _member_name(material, comment.character_id)
             over.append(f"{name}的评论 {len(comment.ja)} 字，超过 {COMMENT_MOST}")
-    return PostRun(written, None, post, picture, tuple(flags), tuple(over))
+    return PostRun(written, None, post, picture, tuple(flags), tuple(over), gpt)
 
 
 def _names(material: PostMaterial) -> dict[str, str]:
@@ -646,6 +668,11 @@ def _post_section(case: PostCase, runs: Sequence[PostRun]) -> str:
                 )
                 for box in run.image.characters:
                     parts.append(f"<pre>角色框：{_e(box)}</pre>")
+                if run.gpt is not None:
+                    parts.append(
+                        f"<p>GPT Image 提示词 · {run.gpt.size[0]}×{run.gpt.size[1]}</p>"
+                        f"<pre class=\"gpt\">{_e(run.gpt.text)}</pre>"
+                    )
         if run.flags or run.over:
             parts.append(
                 "<ul class=\"flags\">" + "".join(f"<li>{_e(f)}</li>" for f in (*run.flags, *run.over))

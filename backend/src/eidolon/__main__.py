@@ -1035,7 +1035,7 @@ async def _eval_memory(args: argparse.Namespace) -> int:
 
 async def _eval_moments(args: argparse.Namespace) -> int:
     from eidolon.characters import load_characters
-    from eidolon.config import ImageSettings, LLMSettings
+    from eidolon.config import ImageSettings, LLMSettings, gpt_image_style_from_env
     from eidolon.llm.providers import open_llm
     from eidolon.moment_eval import (
         MomentEvalError,
@@ -1072,6 +1072,7 @@ async def _eval_moments(args: argparse.Namespace) -> int:
         results = await evaluate(
             moment_eval, llm, args.runs, image.style if image is not None else "",
             lambda case: print(case, file=sys.stderr, flush=True),
+            gpt_style=gpt_image_style_from_env(),
         )
     finally:
         await llm.aclose()

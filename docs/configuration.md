@@ -484,7 +484,22 @@ flowchart LR
 - **地图**：点开地名默认跳到 OpenStreetMap。大陆不开代理打不开 OpenStreetMap，可以在同一张卡里换成高德或 Google 地图，整个部署用同一家。
 - **天气**：来自 [Open-Meteo](https://open-meteo.com/)，不要 key；取不到时不写天气。
 - **地点池**：在 [`characters/places.toml`](../characters/places.toml)，写法见文件开头的注释，改完重启后端，写错了后端起不来。工作会去哪类地方写在 `jobs.toml` 的 `places`，偶像偏好哪几类写在 `characters.toml` 的 `place_likes`。已经发出的动态照旧显示原来的地名。
-- **费用**：动态、配图和她回的评论都用部署者的对话模型和生图（`NOVELAI_API_KEY`），花费由部署者出；用户自带了密钥也一样。不计入用户的限额。没配生图时只发纯文字。
+- **费用**：动态、配图和她回的评论都用部署者的对话模型和生图（`NOVELAI_API_KEY`，配了的话无人配图用 GPT Image），花费由部署者出；用户自带了密钥也一样。不计入用户的限额。没配生图时只发纯文字。
+- **无人配图（GPT Image，可选）**：风景、食物、物品这三种没人的配图，可以另配一个 OpenAI 图像格式的服务（GPT Image 系列）来出，它认得真实的地点和日文招牌。只在配了上面的生图时生效；没配 `GPT_IMAGE_API_KEY` 时一切照旧。有人的配图和对话里的照片不走它。它没在 4 分钟内（含排队）出图、报错、返回的不是图或被审核拦下时，马上改用上面的生图照原样出，用 10 分钟里剩下的时间；那边也失败就发纯文字。改用了的那条动态在运行记录里记一次 `picture_fallback`。
+
+  | 环境变量 | 默认值 | 说明 |
+  |---|---|---|
+  | `GPT_IMAGE_API_KEY` | 空 | OpenAI 的 key，或中转给的 key。不填就不启用 |
+  | `GPT_IMAGE_BASE_URL` | `https://api.openai.com/v1` | 填到 `/v1`，请求 `{地址}/images/generations` |
+  | `GPT_IMAGE_MODEL` | `gpt-image-2` | 要 gpt-image-2 或更新的模型：更早的只认几种预设尺寸，会被拒，每次都改用上面的生图 |
+  | `GPT_IMAGE_QUALITY` | `medium` | `low`、`medium`、`high`、`auto`，2.5 系列还有 `xhigh`、`max`；其他值启动时报错 |
+  | `GPT_IMAGE_STYLE` | 赛璐璐动画背景的一句英文 | 风格句，放在提示词第一行。空着用默认的那句 |
+
+  - **发什么**：服务器用英文句子拼提示词：风格句、构图、地点的原名、所在区和地点介绍（标明只是背景）、她写的配图说明（note）、她写的景物 tag、东京时间的月份和时段、发动态时东京的天气。只发 `model`、`prompt`、`size`、`quality`、`n`，不发负面词和 `response_format`；收 `b64_json` 或 `url`。
+  - **尺寸**：直接要目标尺寸，风景 1216×832，食物、物品 832×1216。返回的尺寸不对（有的中转总回 1448×1086，或者横竖反了）时按目标比例居中裁剪、再缩放到目标尺寸，不算失败。
+  - **网络**：走不走代理单独选（`EIDOLON_PROXY_SERVICES` 的 `gpt_image`），和生图的 `image` 分开。
+  - **后台**：配置页「生图」标签里的「无人配图（GPT Image）」卡可以改上面五项。保存时用固定内容真生成一张风景来检查，不通不保存；这张图要花钱，但不计用量、不进运行记录。
+  - **费用**：按张估算，`api.openai.com` 的 `gpt-image-2` 预设每张 0.041 美元（medium、1536×1024 一档，2026-11-01 查 OpenAI 图像生成指南）；其他质量和中转没有预设，在后台自己填。看板上它和生图分成两行。
 
 ## 天气
 
@@ -607,6 +622,7 @@ EIDOLON_PROXY_SERVICES=chat_llm,tts,stt
 | `tts` | 语音合成（Fish Audio） |
 | `stt` | 语音识别（Soniox 或阿里云百炼） |
 | `image` | 生图（官方或中转都走） |
+| `gpt_image` | 朋友圈无人配图的 GPT Image |
 | `own_llm` | 用户自带的 LLM（连同自带的后台模型），只在服务地址属于已知服务商时 |
 | `own_tts` | 用户自带的语音合成 |
 | `own_stt` | 用户自带的语音识别（用户自己选的那家） |

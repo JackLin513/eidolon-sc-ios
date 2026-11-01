@@ -95,6 +95,7 @@ from eidolon.clock import Clock
 from eidolon.config import (
     BailianJudgeSettings,
     CloudflareJudgeSettings,
+    GptImageSettings,
     ImageSettings,
     JudgeSettings,
     LLMSettings,
@@ -1743,9 +1744,9 @@ def metered_retrieval(
     return embedder, reranker
 
 
-def image_origin(settings: ImageSettings) -> Origin:
-    """The deployer's image generation `settings` describe, as its service calls are
-    recorded."""
+def image_origin(settings: ImageSettings | GptImageSettings) -> Origin:
+    """The deployer's image generation `settings` describe, or GPT Image, as its service
+    calls are recorded: each at its own host and model."""
     return Origin("image", host(settings.base_url), settings.model)
 
 

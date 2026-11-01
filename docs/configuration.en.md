@@ -484,7 +484,22 @@ An item in the navigation alongside conversations, play and settings, one for ea
 - **Map**: Tapping a place opens OpenStreetMap by default. OpenStreetMap can't be reached from mainland China without a proxy, so you can switch to Amap (高德) or Google Maps in the same card; the whole deployment uses the same one.
 - **Weather**: From [Open-Meteo](https://open-meteo.com/), with no key needed; when it can't be had, no weather is shown.
 - **Place pool**: In [`characters/places.toml`](../characters/places.toml); see the comments at the top of the file. Restart the backend after editing; if something is wrong, the backend won't start. Which kinds of places a job goes to are in the `places` of `jobs.toml`, and which kinds each idol likes are in the `place_likes` of `characters.toml`. Posts already made keep showing the place names they had.
-- **Cost**: Posts, their pictures and her replies to comments all use the deployer's chat model and image generation (`NOVELAI_API_KEY`), at the deployer's expense, even for users who bring their own keys. They don't count towards users' usage limits. Without image generation she posts text only.
+- **Cost**: Posts, their pictures and her replies to comments all use the deployer's chat model and image generation (`NOVELAI_API_KEY`, and GPT Image for pictures with no one in them if configured), at the deployer's expense, even for users who bring their own keys. They don't count towards users' usage limits. Without image generation she posts text only.
+- **Pictures with no one in them (GPT Image, optional)**: Scenery, food and objects, the three compositions with no one in them, can be drawn by a separate service in OpenAI's image format (the GPT Image series), which knows real places and Japanese signs. It only takes effect alongside the image generation above; without `GPT_IMAGE_API_KEY`, nothing changes. Pictures with people in them and photos in conversations never go to it. When it has no picture within 4 minutes (waiting included), answers with an error or with what is not a picture, or its moderation blocks it, the picture is drawn by the image generation above as before, in what is left of the 10 minutes; if that fails too, she posts text only. A post that fell back is counted once as `picture_fallback` in the activity records.
+
+  | Environment variable | Default | Description |
+  |---|---|---|
+  | `GPT_IMAGE_API_KEY` | Empty | An OpenAI key, or a relay's. Left empty, it is off |
+  | `GPT_IMAGE_BASE_URL` | `https://api.openai.com/v1` | Up to `/v1`; requests go to `{address}/images/generations` |
+  | `GPT_IMAGE_MODEL` | `gpt-image-2` | gpt-image-2 or later: earlier models take only a few preset sizes and refuse, so every picture would fall back |
+  | `GPT_IMAGE_QUALITY` | `medium` | `low`, `medium`, `high`, `auto`, and for the 2.5 series `xhigh` and `max`; anything else fails at startup |
+  | `GPT_IMAGE_STYLE` | An English sentence for cel-shaded anime background art | The style sentence, the prompt's first line. Left empty, the default one |
+
+  - **What is sent**: The server writes the prompt in English sentences: the style sentence, the composition, the place's own name, its area and what it is (marked as background only), the note she wrote for the picture, the tags she wrote for what is in it, the month and time of day in Tokyo, and Tokyo's weather as she posts. Only `model`, `prompt`, `size`, `quality` and `n` are sent, no negative prompt nor `response_format`; `b64_json` or `url` is taken.
+  - **Size**: The size kept is asked for directly: 1216×832 for scenery, 832×1216 for food and objects. A picture of another size (some relays always answer 1448×1086, or turn it the other way) is cropped about its middle to the shape asked for and scaled to it, not counted as a failure.
+  - **Network**: Whether it goes through the proxy is its own switch (`gpt_image` in `EIDOLON_PROXY_SERVICES`), apart from image generation's `image`.
+  - **Admin console**: The 「无人配图（GPT Image）」 card on the config page's 「生图」 (image) tab changes the five above. Saving generates one picture of fixed scenery to check it and keeps nothing if it fails; that picture costs money but counts towards no usage and goes into no activity records.
+  - **Cost**: Estimated per picture: `gpt-image-2` at `api.openai.com` is preset at $0.041 a picture (medium, the 1536×1024 tier, from OpenAI's image generation guide on 2026-11-01); other qualities and relays have no preset, so set one in the admin console. The dashboard shows it on a row of its own beside image generation.
 
 ## Weather
 
@@ -601,6 +616,7 @@ EIDOLON_PROXY_SERVICES=chat_llm,tts,stt
 | `tts` | Speech synthesis (Fish Audio) |
 | `stt` | Speech recognition (Soniox or Alibaba Cloud Model Studio) |
 | `image` | Image generation (NovelAI or a relay alike) |
+| `gpt_image` | GPT Image, for pictures with no one in them in moments |
 | `own_llm` | Users' own LLMs (with their own background models), only at a known provider's address |
 | `own_tts` | Users' own speech synthesis |
 | `own_stt` | Users' own speech recognition (whichever service they chose) |

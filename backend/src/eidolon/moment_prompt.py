@@ -31,7 +31,7 @@ is left out (`OUTSIDE_LIKER`), as is a comment by one, or without its Japanese o
 Where her moment may have a picture (GLOSSARY.md「配图」), she is told last in what compositions
 (`PostMaterial.compositions`, `COMPOSITIONS_OPENING`), and writes it as a photo tag is written,
 `<image>…</image>`, its composition among its fields, and a note in Chinese of what is in it,
-never sent: kept with the moment, what her latest moments are recalled by (`recalled`). One
+never sent to NovelAI (GPT Image is sent it, `gpt_image_prompt`): kept with the moment, what her latest moments are recalled by (`recalled`). One
 not written, in a composition she was not given, of an object with nothing in it, or that
 cannot be read, is made do without: the moment is posted without a picture, and it is told
 (`IMAGE`). One she writes where she was not told she may is not read. A framing not of its
@@ -214,6 +214,10 @@ BROKEN_COMMENT = "comment"
 
 LIKES_OVER, COMMENTS_OVER = "likes_over", "comments_over"
 """What `Post.degraded` names likes and comments over as many as are kept by."""
+
+PICTURE_FALLBACK = "picture_fallback"
+"""What a moment's record names, beside `Post.degraded`, a picture no one is in that GPT
+Image did not generate by, image generation tried instead (`moments`)."""
 
 
 @dataclass(frozen=True)

@@ -24,6 +24,7 @@ export type ItemName =
   | "tts"
   | "stt"
   | "image"
+  | "gpt_image"
   | "judge"
   | "judge_thresholds"
   | "rerank"
@@ -101,7 +102,7 @@ export type ConfigTab = (typeof CONFIG_TABS)[number];
 export const TAB_ITEMS: Record<ConfigTab, ItemName[]> = {
   models: ["chat_llm", "memory_llm", "judge", "judge_thresholds", "rerank"],
   voice: ["tts", "stt"],
-  image: ["image"],
+  image: ["image", "gpt_image"],
   weather: ["qweather"],
   network: ["proxy"],
   status: ["service_status"],
@@ -168,6 +169,7 @@ export const PROXIED_SERVICES = [
   "tts",
   "stt",
   "image",
+  "gpt_image",
   "own_llm",
   "own_tts",
   "own_stt",
@@ -211,6 +213,9 @@ export const CUSTOM_MODEL = "custom";
 export function modelChoice(options: readonly string[], model: string): string {
   return options.includes(model) ? model : CUSTOM_MODEL;
 }
+
+/** How carefully GPT Image draws, as OpenAI takes it: `xhigh` and `max` from its 2.5 models on. */
+export const GPT_IMAGE_QUALITIES = ["low", "medium", "high", "auto", "xhigh", "max"] as const;
 
 /** Who may sign up (GLOSSARY.md「注册方式」): anyone, or only those who bring an invite link. */
 export const REGISTRATIONS = ["open", "invite"] as const;
@@ -329,6 +334,19 @@ export const ITEM_SPECS: Record<ItemName, ItemSpec> = {
       { name: "base_url", kind: "text" },
       { name: "model", kind: "modelChoice", options: IMAGE_MODELS },
       { name: "concurrency", kind: "count" },
+      { name: "style", kind: "clearableText" },
+      { name: "api_key", kind: "secret" },
+    ],
+    tried: true,
+  },
+  // 无人配图的 GPT Image（GLOSSARY.md「生图」）：地址、key、模型、质量、风格句（清空是默认的那句）。保存前真生成一张风景来检查。
+  gpt_image: {
+    rows: ["base_url", "model", "quality", "style", "api_key"],
+    secrets: ["api_key"],
+    form: [
+      { name: "base_url", kind: "text" },
+      { name: "model", kind: "text" },
+      { name: "quality", kind: "select", options: GPT_IMAGE_QUALITIES },
       { name: "style", kind: "clearableText" },
       { name: "api_key", kind: "secret" },
     ],
