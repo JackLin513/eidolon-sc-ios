@@ -74,7 +74,21 @@ $V spikes/porting-3d/photo_pose.py --bundle <...> --output build/mltd-spike/out/
 
 相片/剧场的原地动作不是 Humanoid 肌肉曲线，也不是 `.imo`，而是普通 Generic `AnimationClip`：binding 用**路径 CRC32**（`Animator.StringToHash` 就是 CRC32）指向骨骼，键在 `m_MuscleClip.m_Clip` 的 streamed / dense / constant 三个容器里。UnityPy 原样给出容器，脚本自己解（帧 = `float time` + `int32 keyCount` + key × (`int32 曲线号` + 4 个 Bezier 系数)），再拼成和舞蹈同一个 `eidolon.motion/1`，端上不用改播放器。
 
-已验证 `pho_standd_ver01..03` 的 base / check / gretng 九段在模拟器里正常播放。注意同尺寸的 `chr_anim_pho_birth_*`、`straw_*` 包是道具模型（SkinnedMesh + Avatar），不是动作；其他动作包需要先在游戏里触发对应姿势才会进缓存。
+已验证 `pho_standd_ver01..03` 的 base / check / gretng 九段、以及剧场待机 `the_stdcac_*` 在模拟器里正常播放。注意同尺寸的 `chr_anim_pho_birth_*`、`straw_*` 包是道具模型（SkinnedMesh + Avatar），不是动作——按尺寸找包会踩到，按内容找才对。
+
+缓存里已经有一整套动作，不用下载：`scan_animations.py` 按内容扫一遍（缓存文件名是哈希，只能打开看），2026-11-01 的结果是 1,110 个含 clip 的 bundle、4,085 条 clip，其中姿势类 2,662 条（`the_*` 527、`com_*` 2,102、`lgn_*` 24、`pho_*` 9）：
+
+```sh
+$V spikes/porting-3d/scan_animations.py --root <Documents> --out build/mltd-animations.jsonl
+$V spikes/porting-3d/export_pose_library.py --index build/mltd-animations.jsonl \
+   --out build/poses --catalog build/poses.json
+```
+
+`sync_cache.py` 把「索引 → 扫动作 → 导姿势 → 导衣装」串成一件事，`--loop 900` 可以挂在后台：游戏自己下载进缓存的新包会被自动接手（CDN 现在拒绝匿名下载，只有游戏本身能取）。
+
+### 资源下载的现状
+
+`td-assets.bn765.com/<版本>/production/2018/<平台>/<哈希>.unity3d` 现在一律 403：桶 `assetbundles-theaterdays` 已经不允许匿名读，所有版本、iOS/Android 都一样。唯一的合法取用路径是游戏自己（它带着会话去要），所以新资源只能通过在游戏里触发（写真棚、剧场、衣装一览、游戏内下载）进缓存，再由上面的脚本接手。
 
 ### 测试
 
