@@ -49,7 +49,8 @@ def main(argv: list[str] | None = None) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
 
     catalog: list[dict] = []
-    written = skipped = failed = 0
+    seen: set[str] = set()
+    written = skipped = failed = empty = 0
     for line in args.index.read_text().splitlines():
         if not line.strip():
             continue
@@ -74,6 +75,9 @@ def main(argv: list[str] | None = None) -> int:
             failed += 1
             continue
         for name in wanted:
+            if name in seen:
+                continue  # the same clip can sit in several bundles
+            seen.add(name)
             target = args.out / f"{name}.motion.json"
             if target.exists():
                 skipped += 1
@@ -86,11 +90,16 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             try:
                 decoded = photo_pose.decode_clip(clip)
-                packed = motion.build_motion(photo_pose.to_motion_asset(decoded), fps=args.fps)
             except Exception as error:  # noqa: BLE001
                 print(f"{name}: {error}", file=sys.stderr)
                 failed += 1
                 continue
+            if not decoded.curves:
+                # Commu bundles carry one-second placeholder clips with no
+                # bindings at all; writing them would only add empty files.
+                empty += 1
+                continue
+            packed = motion.build_motion(photo_pose.to_motion_asset(decoded), fps=args.fps)
             target.write_text(json.dumps(packed, separators=(",", ":"), ensure_ascii=False))
             written += 1
             catalog.append({"clip": name, "bundle": record["file"], "file": str(target),
@@ -101,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.catalog:
         args.catalog.parent.mkdir(parents=True, exist_ok=True)
         args.catalog.write_text(json.dumps(catalog, indent=1, ensure_ascii=False))
-    print(f"写出 {written}，跳过 {skipped}，失败 {failed}")
+    print(f"写出 {written}，跳过 {skipped}，空 clip {empty}，失败 {failed}")
     return 0
 
 
