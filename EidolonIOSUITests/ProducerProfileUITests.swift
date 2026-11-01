@@ -27,11 +27,24 @@ final class ProducerProfileUITests: XCTestCase {
 
         let picker = app.datePickers["settings.birthday"].firstMatch
         XCTAssertTrue(picker.waitForExistence(timeout: 5), "no birthday picker")
-        picker.tap()
-
-        if !((picker.value as? String) ?? "").contains("2月29日") {
-            app.buttons["下个月"].tap()
+        for _ in 0..<4 where !picker.isHittable {
+            app.swipeUp()
         }
+        XCTAssertTrue(picker.isHittable, "birthday picker is not on screen")
+        picker.tap()
+        sleep(1)
+
+        let monthHeader = app.buttons["DatePicker.Show"]
+        XCTAssertTrue(monthHeader.waitForExistence(timeout: 5), "the date picker did not open")
+        for _ in 0..<12 where !((monthHeader.value as? String) ?? "").contains("年2月") {
+            let number = Self.monthNumber((monthHeader.value as? String) ?? "")
+            if number > 2 {
+                app.buttons["DatePicker.PreviousMonth"].tap()
+            } else {
+                app.buttons["DatePicker.NextMonth"].tap()
+            }
+        }
+        XCTAssertTrue(((monthHeader.value as? String) ?? "").contains("年2月"))
         let day = app.buttons.matching(NSPredicate(format: "label BEGINSWITH '2月29日'")).firstMatch
         XCTAssertTrue(day.waitForExistence(timeout: 5), "February 29 is not selectable")
         day.tap()
@@ -70,5 +83,11 @@ final class ProducerProfileUITests: XCTestCase {
             ).firstMatch.waitForExistence(timeout: 5),
             "the producer's birthday is not on the calendar"
         )
+    }
+
+    private static func monthNumber(_ text: String) -> Int {
+        text.split(separator: "年").last?
+            .split(separator: "月").first
+            .flatMap { Int($0) } ?? 0
     }
 }

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1E2DC076A7D3725C9556BF17 /* CalendarExportController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEADD60D630691A9520DCA1D /* CalendarExportController.swift */; };
 		61DE1A91F31664B3B045CA62 /* ProducerProfileUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C36DF5CDDD3A3FD87F429530 /* ProducerProfileUITests.swift */; };
 		03D1D9AFAE21C9348078853C /* ImportGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */; };
 		0EFF31521A69C5A7C7949BCB /* DebugRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCD1CD149AFF0049C2EE0F58 /* DebugRecognition.swift */; };
@@ -84,6 +85,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		CEADD60D630691A9520DCA1D /* CalendarExportController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarExportController.swift; sourceTree = "<group>"; };
 		C36DF5CDDD3A3FD87F429530 /* ProducerProfileUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProducerProfileUITests.swift; sourceTree = "<group>"; };
 		04FF4244E9E83A9501C1F19E /* EidolonCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = EidolonCore; path = EidolonCore; sourceTree = SOURCE_ROOT; };
 		0E396CD6E4C64449524CEC32 /* EidolonIOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = EidolonIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -350,6 +352,7 @@
 			children = (
 				32A8C4CAB5DC57A55588F5D0 /* AffinityCue.swift */,
 				730259B31CD6DBF3CA44FC75 /* ChatSettings.swift */,
+				CEADD60D630691A9520DCA1D /* CalendarExportController.swift */,
 				F1FF6012F255268462E4A685 /* Keychain.swift */,
 				CE21F722ED79A2089F060B7F /* Theme.swift */,
 				ED8BC68D17B14C4A10AA4A37 /* Call */,
@@ -604,6 +607,7 @@
 				D87D5EF9B85BB39DEBD561FB /* FishSynthesis.swift in Sources */,
 				03D1D9AFAE21C9348078853C /* ImportGuideView.swift in Sources */,
 				C375B67690EAE8B5B255A1B3 /* Keychain.swift in Sources */,
+				1E2DC076A7D3725C9556BF17 /* CalendarExportController.swift in Sources */,
 				9221A0F68F374BAAA5282CCE /* MemoryListView.swift in Sources */,
 				2CF24EECC30E051467FA4D35 /* MicrophoneCapture.swift in Sources */,
 				F0779B69941B95753CFA7C62 /* ObjCExceptionCatcher.m in Sources */,
