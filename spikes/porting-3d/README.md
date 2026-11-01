@@ -97,6 +97,27 @@ $V spikes/porting-3d/export_idol.py --assets build/mltd-spike/assets \
 
 `sync_cache.py` 把「索引 → 扫动作 → 导姿势 → 导衣装」串成一件事，`--loop 900` 可以挂在后台：游戏自己下载进缓存的新包会被自动接手（CDN 现在拒绝匿名下载，只有游戏本身能取）。
 
+### 摆动与根运动
+
+裙摆、头发、飘带按游戏的 `SwayManager` V01 解算：`SwayMove`（跟随 + 弹簧 + 重力）→ `SwayHit`（碰撞）→ `CalcRotate`（角度窗）。2026-11-01 查清并修掉的三件事：
+
+- **碰撞每帧只取最深的那个，推一次。** 游戏 `SwayHit` 对骨列出的碰撞体逐个算穿深，只拿最大的那个把尾点推出去；端上原来把几个推挤量**相加**，再用切向圆最多走 90° 直到「脱离所有碰撞体」。腿一抬，前侧裙片本来就在大腿胶囊里，这条路径就把整圈裙片甩平成一个水平圆盘——就是"伞骨"。现在 `resolvingCollisions` 就是游戏那一步。
+- **角度窗按解算器的 up 轴量。** `CalcRotate` 把尾点方向换成相对绑定方向的 yaw（绕身体侧摆）/pitch（在自己径向平面里抬起）。端上原来用 Unity 的 `+Y`-up 公式，而解算世界是 `+Z`-up，下垂的裙片两个角被互换，`1°` 的 yaw 限位形同虚设，横向推挤直接逃出窗口。现在按 `up` 和尾点自己的径向平面分解，直下的骨用绑定 roll（游戏 `m_offset_rot`）兜底。
+- **`BASE` 的平移是舞台摆位，不是身体动作。** 全语料 2,919 条里水平通道恒为 0，只有 Y；`com_*` 剧情段最大抬 4.7 个单位（把角色摆进镜头），端上原样加到根骨上就是"飘在空中"。`MotionSampler` 现在把竖直分量限制在 `maxRootLift`（0.5 单位，舞蹈起伏的 90 分位是 0.15）。
+
+`EIDOLON_3D_SWAY_PENETRATION_TOLERANCE=<0..1>` 让尾点允许停在碰撞体里多少（占 `碰撞体半径 + 骨半径` 的比例），默认 0 = 贴在碰撞面上。调大会更"垂坠"，但腿会从裙面穿出来。
+
+`harness/main.swift` 是不依赖 RealityKit 的离线回放器：读容器的 `rest.json`、`poses/*.motion.json`、`*.sway.json`，按 60 Hz 跑同一套 `MotionSampler`/`MotionSway`，打印每片裙骨的峰值角、尾点、yaw/pitch 偏差、脚底最低点和前抬角。诊断与回归用，2 秒出结果：
+
+```sh
+swiftc -O -o /tmp/sway_probe spikes/porting-3d/harness/main.swift \
+  spikes/porting-3d/ios/MotionPose.swift spikes/porting-3d/ios/MotionDance.swift \
+  spikes/porting-3d/ios/MotionJointMap.swift spikes/porting-3d/ios/MotionAssist.swift \
+  spikes/porting-3d/ios/MotionSway.swift
+/tmp/sway_probe <Documents>/rest.json <Documents>/poses/the_standd_appear_lop_ver01.motion.json \
+  <Documents>/001har-pr001/001har-pr001.sway.json 3
+```
+
 ### 资源下载
 
 ```sh
@@ -154,6 +175,7 @@ xcodebuild -project EidolonIOS.xcodeproj -scheme Eidolon3DSpike \
 - `EIDOLON_3D_NO_OUTLINE=1`：关描边壳，用于 A/B；
 - `EIDOLON_3D_PAUSE_AT=<秒>`：停在该时刻的姿势，方便截图对比；
 - `EIDOLON_3D_NO_SWAY_COLLIDERS=1`：裙摆/头发不做碰撞，用于 A/B；
+- `EIDOLON_3D_SWAY_PENETRATION_TOLERANCE=<0..1>`：允许的穿深比例（默认 0），用于 A/B 裙摆垂坠；
 - `EIDOLON_3D_POSE=<名字或前缀>`：启动时直接挂上某个动作，例如 `the_standd_appear_lop_ver01`；
 - `EIDOLON_3D_SHOW_POSES=1`：启动后直接弹出动作选择器（截图/演示用）；
 - `EIDOLON_3D_LOG_MATERIALS=1`：写 `frame.log`（取景诊断）；
@@ -161,6 +183,8 @@ xcodebuild -project EidolonIOS.xcodeproj -scheme Eidolon3DSpike \
 
 ## 已确认的坑
 
+- 摆动解算的世界是 **+Z-up**（USDZ 管线的根转换落在这里），不是 Unity 的 +Y；角度限位按错轴量等于没有限位。
+- `BASE` 的旋转是身体，`BASE` 的平移是舞台摆位；两者混着用就是"飘在空中"和"角色明明在跳舞却阳伞化"。
 - 四元数手性共轭是 `(-x, -y, z, w)`，不是 `(x, y, -z, w)`；写错静止姿势就爆。
 - glTF 的 `scenes[0].nodes` 必须是真正的根节点索引。
 - Blender 会为骨骼造 42 顶点 Icosphere，取景按「有 Armature 修改器的网格」过滤。

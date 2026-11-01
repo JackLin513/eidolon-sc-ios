@@ -173,6 +173,11 @@ struct MotionSampler {
     /// and 87° from `rootFrame · mirror(BASE · KOSHI at frame 0)`. So the dance
     /// has to reach the roots as a delta from frame 0, not as an absolute turn,
     /// or the body would face 87° the wrong way on the first frame.
+    /// How far `BASE`'s translation may lift the figure before it is treated
+    /// as stage placement and clipped. Dance bobs sit well under this (the
+    /// corpus median is 9 mm, the 90th percentile 150 mm).
+    static let maxRootLift: Float = 0.5
+
     private struct BaseMotion {
         /// `BASE`'s rotation per frame, mirrored into app space.
         let rotations: [SIMD4<Float>]
@@ -271,10 +276,18 @@ struct MotionSampler {
             QuaternionMath.multiply(UnityHandedness.rootFrame, delta),
             QuaternionMath.inverse(UnityHandedness.rootFrame)
         )
-        let translation = base.translations.map {
-            QuaternionMath.rotate(
-                UnityHandedness.rootFrame, UnityHandedness.translation($0[frame] - $0[0])
+        // `BASE`'s translation is stage placement, not body motion: the `com_*`
+        // story clips move it by up to 4.7 units so the character stands where
+        // the cut needs her. Nothing else is staged — across the 2,919 clips in
+        // the corpus the horizontal channels never move at all — so a lift past
+        // a hand's width is scenery, and letting it through floated the model
+        // metres above the preview floor.
+        let translation = base.translations.map { value -> SIMD3<Float> in
+            var delta = QuaternionMath.rotate(
+                UnityHandedness.rootFrame, UnityHandedness.translation(value[frame] - value[0])
             )
+            delta.z = min(max(delta.z, -Self.maxRootLift), Self.maxRootLift)
+            return delta
         }
         for root in map.roots {
             // The BASE delta is a rigid turn of the whole model about its

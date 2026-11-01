@@ -230,6 +230,16 @@ struct MotionSway {
         let skirtGuardOffset: Float
     }
 
+    /// How much of a collider's reach a tip may stay inside before `SwayHit`
+    /// corrects it, as a fraction of `collider.radius + bone.radius`.
+    ///
+    /// Zero — the game's own semantics — settles every panel on the collider's
+    /// surface. Raising it lets panels sink into the thighs and the cloth take
+    /// the leg through it, which the preview showed as the leg cutting the
+    /// skirt; it exists for A/B (`EIDOLON_3D_SWAY_PENETRATION_TOLERANCE`).
+    static let allowedPenetration: Float =
+        Float(ProcessInfo.processInfo.environment["EIDOLON_3D_SWAY_PENETRATION_TOLERANCE"] ?? "0") ?? 0
+
     private let pendulums: [Pendulum]
     /// `sideLink` resolved to an index after the parent-before-child sort.
     private let sideLinks: [Int?]
@@ -501,7 +511,8 @@ struct MotionSway {
             tips[index] = base + resolved.direction * pendulum.length
             let direction = clampedDirection(
                 of: tips[index], from: base, parentRotation: parentRotation,
-                restDirection: restDirection, limit: pendulum.limit
+                restDirection: restDirection, restRotation: rigid,
+                limit: pendulum.limit
             )
             // `CalcRotate`'s `HitMuteForce`: on a hit frame the remembered
             // tip is moved off the pushed one by `1 - HitMuteRate` of the
@@ -540,8 +551,18 @@ struct MotionSway {
     // MARK: - The game's judgements
 
 
-    /// Push the bone's direction out of every collider it lists. Returns the
-    /// resolved direction, which is `direction` itself when nothing was hit.
+    /// `SwayHit`: push the bone's direction out of the deepest collider it
+    /// lists, once per frame. Returns the resolved direction, which is
+    /// `direction` itself when nothing was hit.
+    ///
+    /// The game asks every collider of the bone how far the tip is inside,
+    /// keeps the deepest answer and moves the tip out along that normal
+    /// (`SwayBoneMT.SwayHit` at RVA 0x1C68C3C). It does not add the pushes
+    /// together and it never searches for a direction that is clear of *all*
+    /// of them: when a thigh swings through the front of the skirt there is no
+    /// such direction within 90 degrees, and walking the tip to one is what
+    /// turned the hem into a flat umbrella. `CalcRotate`'s angle window and
+    /// the next frame's spring decide the rest.
     private func resolvingCollisions(
         direction: SIMD3<Float>, base: SIMD3<Float>, pendulum: Pendulum,
         colliders: [Int], sideTip: SIMD3<Float>? = nil, sideRadius: Float = 0,
@@ -549,89 +570,33 @@ struct MotionSway {
         world: [(position: SIMD3<Float>, rotation: SIMD4<Float>)]
     ) -> (direction: SIMD3<Float>, hit: Bool) {
         guard !colliders.isEmpty else { return (direction, false) }
-        var resolved = direction
-
-        func correction(at candidate: SIMD3<Float>) -> SIMD3<Float> {
-            let point = base + candidate * pendulum.length
-            var correction = SIMD3<Float>.zero
-            for collider in colliders {
-                if let (normal, depth) = violation(
-                    of: point, with: bounds[collider], world: world,
-                    radius: pendulum.radius, skirt: skirt
-                ) {
-                    correction += normal * depth
-                }
-                if let sideTip, let (normal, depth) = sideViolation(
-                    of: point, link: sideTip, radius: pendulum.radius,
-                    linkRadius: sideRadius, with: bounds[collider], world: world
-                ) {
-                    correction += normal * depth
-                }
+        let point = base + direction * pendulum.length
+        var normal = SIMD3<Float>.zero
+        var depth: Float = 0
+        func consider(_ candidate: SIMD3<Float>, _ amount: Float) {
+            if amount > depth {
+                normal = candidate
+                depth = amount
             }
-            return correction
         }
-
-        // Small tangential steps, not one normalised jump towards the summed
-        // correction: when two capsules push from opposite sides the big step
-        // overshoots into the other one and bounces between them forever. At
-        // rest the skirt panels start ~4 cm inside the thigh capsules (the bind
-        // pose is authored that way), so this loop runs on every frame and any
-        // instability shows up as the skirt flapping in a wind.
-        let stepAngle: Float = 0.5 * .pi / 180
-        for _ in 0..<180 {
-            let sum = correction(at: resolved)
-            guard simd_length(sum) > 1e-6 else {
-                return (resolved, resolved != direction)
+        for collider in colliders {
+            if let (push, amount) = violation(
+                of: point, with: bounds[collider], world: world,
+                radius: pendulum.radius, skirt: skirt
+            ) {
+                consider(push, amount)
             }
-            var tangential = sum - resolved * simd_dot(sum, resolved)
-            if simd_length(tangential) < 1e-7 { tangential = sum }
-            let way = simd_normalize(tangential)
-            resolved = simd_normalize(resolved + way * sin(stepAngle))
-        }
-
-        // Wedged between two capsules: walk out around the tangent circle.
-        let sum = correction(at: resolved)
-        guard simd_length(sum) > 1e-6 else { return (resolved, true) }
-        var tangent = simd_cross(resolved, sum)
-        if simd_length(tangent) < 1e-5 {
-            tangent = simd_cross(resolved, SIMD3(0, 0, 1))
-        }
-        if simd_length(tangent) < 1e-5 { return (resolved, true) }
-        tangent = simd_normalize(tangent)
-        let bitangent = simd_cross(resolved, tangent)
-        var found: SIMD3<Float>?
-        for step in 1...12 {
-            let angle = Float(step) * 6 * .pi / 180
-            for index in 0..<12 {
-                let around = Float(index) * .pi / 6
-                let offset = tangent * cos(around) + bitangent * sin(around)
-                let candidate = simd_normalize(resolved + offset * sin(angle))
-                if simd_length(correction(at: candidate)) <= 1e-6 {
-                    found = candidate
-                    break
-                }
+            if let sideTip, let (push, amount) = sideViolation(
+                of: point, link: sideTip, radius: pendulum.radius,
+                linkRadius: sideRadius, with: bounds[collider], world: world
+            ) {
+                consider(push, amount)
             }
-            if found != nil { break }
         }
-        // The grid is coarse on purpose — it only has to find *a* way out. Bisect
-        // back to the boundary before returning it, so a panel that lands here
-        // does not snap by a whole 6 degree cell between frames.
-        if var best = found {
-            var low: Float = 0
-            var high: Float = 1
-            for _ in 0..<12 {
-                let mid = (low + high) / 2
-                let probe = simd_normalize(resolved + (best - resolved) * mid)
-                if simd_length(correction(at: probe)) <= 1e-6 {
-                    high = mid
-                    best = probe
-                } else {
-                    low = mid
-                }
-            }
-            return (best, true)
-        }
-        return (resolved, true)
+        guard depth > 0 else { return (direction, false) }
+        let delta = (point + normal * depth) - base
+        guard simd_length(delta) > 1e-6 else { return (direction, true) }
+        return (simd_normalize(delta), true)
     }
 
     /// How far a tip is inside a sphere or capsule, with the normal that
@@ -643,10 +608,11 @@ struct MotionSway {
     ) -> (SIMD3<Float>, Float)? {
         let joint = world[bound.joint]
         let centre = joint.position + QuaternionMath.rotate(joint.rotation, bound.offset)
-        // Aim a hair outside the surface: the relaxation approaches the
-        // boundary asymptotically, and landing exactly on it leaves the panel
-        // half a millimetre in.
-        let limit = bound.radius + radius + Self.surfaceMargin
+        // `allowedPenetration` is normally zero, so the tip settles on the
+        // collider's surface; the knob exists so a run can leave some overlap
+        // in place when comparing silhouettes.
+        let reach = bound.radius + radius
+        let limit = reach * (1 - Self.allowedPenetration) + Self.surfaceMargin
 
         switch bound.kind {
         case .plane:
@@ -745,8 +711,10 @@ struct MotionSway {
         let joint = world[bound.joint]
         let centre = joint.position + QuaternionMath.rotate(joint.rotation, bound.offset)
         // `SwayCollider.SideLineHitRadius`: 0.9 x the smaller of the two bone
-        // radii on top of the collider's own surface.
-        let limit = bound.radius + 0.9 * min(radius, linkRadius)
+        // radii on top of the collider's own surface, with the same
+        // penetration tolerance the point hit allows.
+        let limit = (bound.radius + 0.9 * min(radius, linkRadius))
+            * (1 - Self.allowedPenetration)
 
         let delta = tip - link
         let span = simd_length(delta)
@@ -818,55 +786,64 @@ struct MotionSway {
         return (p1 + d1 * s, p2 + d2 * t)
     }
 
-    /// The game's angle window. `CalcRotate` measures the tip in the bone's
-    /// bind frame (`m_offset_rot`, the `useBindDir` direction), so the limits
-    /// are **deviations from the rest direction**, not absolute world angles:
-    /// `minZAngle … maxZAngle` is how far the panel may swing down from where
-    /// the costume was modelled, `minYAngle … maxYAngle` how far sideways.
+    /// The game's angle window (`CalcRotate`): `minYAngle … maxYAngle` is how
+    /// far a panel may swing **sideways** around the body, `minZAngle …
+    /// maxZAngle` how far it may lift or droop inside its own radial plane.
+    ///
+    /// Both angles are deviations from the panel's rest direction, and they
+    /// are measured against the solver's up axis. The first version measured
+    /// them with Unity's `(x, −y, z)` convention, i.e. against +Y while the
+    /// solver's world is +Z-up; for a panel that hangs down that swapped yaw
+    /// and pitch, so a 1° yaw window never bound anything and every collision
+    /// push escaped sideways — the flat "umbrella" hem.
     private func clampedDirection(
         of tip: SIMD3<Float>, from base: SIMD3<Float>,
         parentRotation: SIMD4<Float>, restDirection: SIMD3<Float>,
-        limit: Limit?
+        restRotation: SIMD4<Float>, limit: Limit?
     ) -> SIMD3<Float> {
         let offset = tip - base
         let length = simd_length(offset)
         guard length > 1e-6 else { return simd_normalize(restDirection) }
-        let local = QuaternionMath.rotate(
-            QuaternionMath.inverse(parentRotation), offset
-        ) / length
-
-        guard let limit else {
-            return simd_normalize(QuaternionMath.rotate(parentRotation, local))
+        let direction = offset / length
+        guard let limit else { return direction }
+        let rest = simd_normalize(restDirection)
+        // The panel's own radial plane: `up` plus the outward direction its
+        // rest pose points at. A panel whose rest direction is vertical has no
+        // radial, so it stays unclamped rather than picking one.
+        var radial = rest - up * simd_dot(rest, up)
+        if simd_length(radial) < 1e-3 {
+            // A chain that hangs straight down has no outward component of its
+            // own; its rest roll still names a side (`m_offset_rot` is the
+            // game's answer to the same question), so take that instead of
+            // leaving the bone unclamped.
+            let side = QuaternionMath.rotate(restRotation, SIMD3(0, 1, 0))
+            radial = side - up * simd_dot(side, up)
         }
-        let rest = QuaternionMath.rotate(
-            QuaternionMath.inverse(parentRotation), restDirection
+        guard simd_length(radial) > 1e-4 else { return direction }
+        let outward = simd_normalize(radial)
+        let tangent = simd_cross(up, outward)
+        func angles(_ v: SIMD3<Float>) -> (yaw: Float, pitch: Float) {
+            let horizontal = SIMD2(simd_dot(v, outward), simd_dot(v, tangent))
+            return (
+                atan2(horizontal.y, horizontal.x) * 180 / .pi,
+                -atan2(simd_dot(v, up), simd_length(horizontal)) * 180 / .pi
+            )
+        }
+        let restAngles = angles(rest)
+        let candidate = angles(direction)
+        let yaw = Self.wrap(candidate.yaw - restAngles.yaw)
+        let pitch = candidate.pitch - restAngles.pitch
+        let clampedYaw = min(max(yaw, limit.minY), limit.maxY)
+        let clampedPitch = min(max(pitch, limit.minZ), limit.maxZ)
+        let yawRadians = (restAngles.yaw + clampedYaw) * .pi / 180
+        let pitchRadians = (restAngles.pitch + clampedPitch) * .pi / 180
+        return simd_normalize(
+            outward * (cos(pitchRadians) * cos(yawRadians))
+                + tangent * (cos(pitchRadians) * sin(yawRadians))
+                - up * sin(pitchRadians)
         )
-        let (restYaw, restPitch) = Self.angles(of: rest)
-        var (yaw, pitch) = Self.angles(of: local)
-        yaw = Self.wrap(yaw - restYaw) + restYaw
-        pitch -= restPitch
-        yaw = restYaw + min(max(yaw - restYaw, limit.minY), limit.maxY)
-        pitch = restPitch + min(max(pitch, limit.minZ), limit.maxZ)
-        let yawRadians = yaw * .pi / 180
-        let pitchRadians = pitch * .pi / 180
-        let clamped = SIMD3(
-            cos(pitchRadians) * sin(yawRadians),
-            -sin(pitchRadians),
-            -cos(pitchRadians) * cos(yawRadians)
-        )
-        return simd_normalize(QuaternionMath.rotate(parentRotation, clamped))
     }
 
-    /// The game's two angles: yaw about the up axis, pitch towards −up.
-    private static func angles(of direction: SIMD3<Float>) -> (Float, Float) {
-        let yaw = atan2(direction.x, -direction.z) * 180 / .pi
-        let pitch = -atan2(direction.y, simd_length(SIMD2(direction.x, direction.z)))
-            * 180 / .pi
-        return (yaw, pitch)
-    }
-
-    /// Keep a yaw difference on the same turn of the circle so a panel near
-    /// ±180° does not read as a full revolution.
     private static func wrap(_ degrees: Float) -> Float {
         var value = degrees
         while value > 180 { value -= 360 }

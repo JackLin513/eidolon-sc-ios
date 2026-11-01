@@ -386,8 +386,11 @@ final class MotionSwayTests: XCTestCase {
                                         to: centre - axis * halfLength,
                                         centre + axis * halfLength))
         }
+        // `SwayHit` corrects once per frame, so the tip settles on the
+        // collider's surface with part of the bone's own radius still
+        // overlapping — what it may not do is stay inside the collider.
         XCTAssertGreaterThanOrEqual(
-            worst, 0.088 + 0.04 - 1e-3,
+            worst, 0.088 - 2e-3,
             "a skirt panel stayed inside the thigh capsule (closest \(worst))"
         )
     }
@@ -602,7 +605,7 @@ final class MotionSwayTests: XCTestCase {
             worst = min(worst, distance(from: tip, to: a + ab * t, a + ab * t))
         }
         XCTAssertGreaterThanOrEqual(
-            worst, 0.09 + 0.01 - 1e-3,
+            worst, 0.09 - 2e-3,
             "the bridge capsule let the tip through (closest \(worst))"
         )
     }
@@ -636,7 +639,7 @@ final class MotionSwayTests: XCTestCase {
         // Each tip is 94 mm from the leg's centre, past its own 70 mm limit,
         // so the point hit alone leaves the pair alone; only the side line
         // sees the segment cut across the leg 50 mm from its centre.
-        let wants: Float = 0.03 + 0.9 * 0.04
+        let wants: Float = 0.03
         var poses = rest
         var worst = Float.greatestFiniteMagnitude
         for _ in 0..<180 {
@@ -717,21 +720,63 @@ final class MotionSwayTests: XCTestCase {
             poses = rest
             sway.apply(&poses, dt: 1 / 60)
         }
+        // The window is measured against the solver's up axis (+Z here) and
+        // as a deviation from the bind direction, which is +X: yaw is the
+        // sideways swing around +Z, pitch the lift out of the panel's own
+        // radial plane (`CalcRotate`).
         let world = JointWorld.transforms(poses, parents: skirtParents)
-        let local = QuaternionMath.rotate(
-            QuaternionMath.inverse(world[0].rotation),
+        let direction = simd_normalize(
             worldTip(of: 2, poses: poses, parents: skirtParents, tail: SIMD3(0.18, 0, 0))
                 - world[2].position
         )
-        // The window is a deviation from the bind direction: the panel rests
-        // along +X (yaw 90°, pitch 0°), so it may turn ±5° sideways and
-        // 5…80° down.
-        let yaw = atan2(local.x, -local.z) * 180 / .pi
-        let pitch = -atan2(local.y, simd_length(SIMD2(local.x, local.z))) * 180 / .pi
-        XCTAssertLessThanOrEqual(yaw, 90 + 5 + 1e-3, "panel yaw escaped its window (\(yaw))")
-        XCTAssertGreaterThanOrEqual(yaw, 90 - 5 - 1e-3)
+        let yaw = atan2(direction.y, direction.x) * 180 / .pi
+        let pitch = -atan2(direction.z, simd_length(SIMD2(direction.x, direction.y))) * 180 / .pi
+        XCTAssertLessThanOrEqual(yaw, 5 + 1e-3, "panel yaw escaped its window (\(yaw))")
+        XCTAssertGreaterThanOrEqual(yaw, -5 - 1e-3, "panel yaw escaped its window (\(yaw))")
         XCTAssertLessThanOrEqual(pitch, -5 + 1e-3, "panel pitch escaped its window (\(pitch))")
         XCTAssertGreaterThanOrEqual(pitch, -80 - 1e-3)
+    }
+
+    /// A panel hanging straight down still has a usable angle window, and the
+    /// window is measured around the solver's up axis. The first version
+    /// measured yaw/pitch with Unity's `+Y`-up convention while the solver's
+    /// world is `+Z`-up; for a hanging panel that swapped the two, so the 1°
+    /// yaw window never bound and a sideways capsule push escaped it — the
+    /// whole skirt flared into a flat "umbrella" on the dance.
+    func testSidewaysPushStaysInsideTheYawWindow() throws {
+        var rest = [JointPose](repeating: .identity, count: 5)
+        rest[1].translation = SIMD3(0.06, 0, -0.2) // the leg, right beside the panel
+        rest[3].translation = SIMD3(0, 0, 1)       // HAIR, the up landmark
+        let names = ["BASE", "BASE/MOMO_L", "BASE/skirt_a", "HAIR", "KOSHI"]
+        let parents: [Int?] = [nil, 0, 0, nil, nil]
+        let tail = SIMD3<Float>(0, 0, -0.2)        // hangs straight down
+        var sway = try XCTUnwrap(MotionSway(
+            configuration: configuration(
+                bones: [bone("BASE/skirt_a", tail: tail, radius: 0.04,
+                             limit: MotionSway.Limit(minY: -2, maxY: 2, minZ: -80, maxZ: 0),
+                             colliders: [0])],
+                colliders: [MotionSway.Collider(
+                    joint: "BASE/MOMO_L", type: "capsule", radius: 0.09,
+                    distance: 0, offset: [0, 0, 0], axis: "Z"
+                )]
+            ),
+            joints: names, rest: rest
+        ))
+
+        var poses = rest
+        var worstSideways: Float = 0
+        for _ in 0..<120 {
+            poses = rest
+            sway.apply(&poses, dt: 1 / 60)
+            let world = JointWorld.transforms(poses, parents: parents)
+            let tip = worldTip(of: 2, poses: poses, parents: parents, tail: tail)
+                - world[2].position
+            // The panel's radial plane is YZ (its own +Y rest axis); a push
+            // from the leg beside it must not move the tip along X.
+            worstSideways = max(worstSideways, abs(tip.x))
+        }
+        XCTAssertLessThan(worstSideways, 0.02,
+                          "the panel escaped its yaw window (\(worstSideways) sideways)")
     }
 
     /// The game's `antiFoldForce`: two neighbours folded tighter than

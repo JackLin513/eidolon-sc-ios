@@ -182,6 +182,33 @@ final class MotionPoseTests: XCTestCase {
         XCTAssertEqual(pose[1].translation.z, 0.147 - 0.11125, accuracy: 1e-5)
     }
 
+    /// `BASE`'s translation is stage placement, not body motion: the story
+    /// clips move it by up to 4.7 units so the character stands where the cut
+    /// needs her, which floated the preview model metres above the floor.
+    private let liftFixture = """
+    {"format":"eidolon.motion/1","fps":30,"frames":2,"time_length":0.0333333,
+     "angle_scale":100,"position_scale":4000,
+     "bones":[{"path":"MODEL_00/BODY_SCALE/BASE","rot":[0,0,0],
+               "pos":[0,[0,16000],0]},
+              {"path":"MODEL_00/HIPS","rot":[0,0,0]}]}
+    """
+
+    /// 16000/4000 = 4 units of lift, clipped to `maxRootLift`; the size a
+    /// dance bob reaches (the corpus median is 9 mm) still goes through.
+    func testBaseLiftIsClippedToThePreviewFloor() throws {
+        let dance = try JSONDecoder().decode(MotionDance.self, from: Data(liftFixture.utf8))
+        let names = ["HIPS", "KOSHI"]
+        let map = MotionJointMap.resolve(paths: dance.bones.map(\.path), joints: names)
+        let sampler = MotionSampler(dance: dance, map: map, rest: rootRest, joints: names)
+
+        let pose = sampler.pose(atFrame: 1)
+        for root in 0..<2 {
+            XCTAssertEqual(
+                pose[root].translation.z, 0.147 + MotionSampler.maxRootLift, accuracy: 1e-5
+            )
+        }
+    }
+
     func testDanceWithoutABaseTrackReportsNoRootMotion() throws {
         XCTAssertFalse(try sampler().hasRootMotion)
         XCTAssertTrue(try rootMotionSampler().hasRootMotion)
