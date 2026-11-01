@@ -165,8 +165,12 @@ struct ChatView: View {
         }
         .sheet(isPresented: $showsDebug) {
             if let store {
-                DebugView(character: character, store: store)
-                    .environment(app)
+                DebugView(
+                    character: character,
+                    store: store,
+                    currentTurnInFlight: currentTurnInFlight
+                )
+                .environment(app)
             }
         }
         .task {

@@ -9,33 +9,62 @@ import SwiftUI
 struct DebugView: View {
     let character: CharacterConfig
     let store: ChatStore
+    /// A reply is being written on the page that opened this one. A past conversation's
+    /// own store cannot see it, so the page passes it down (spec #62).
+    let currentTurnInFlight: Bool
 
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
 
     @State private var affinity: Affinity?
     @State private var draftValue = AffinityRules.normal
+    @State private var memoryCount: Int?
     @State private var isSaving = false
     @State private var confirmingReopen = false
     @State private var confirmingMakeCurrent = false
     @State private var errorMessage: String?
 
-    private var busy: Bool { store.isStreaming || app.call.isLive }
+    private static let affinityStep = 0.1
 
-    private var dirty: Bool {
-        guard let affinity else { return false }
-        return abs(draftValue - affinity.value) > 0.05
+    private var busy: Bool { store.isStreaming || currentTurnInFlight || app.call.isLive }
+
+    private enum ConversationState {
+        case none
+        case currentOngoing
+        case currentEnded
+        case pastOngoing
+        case pastEnded
+    }
+
+    private var conversationState: ConversationState {
+        guard store.activeConversationID != nil else { return .none }
+        if store.isPast { return store.ended ? .pastEnded : .pastOngoing }
+        return store.ended ? .currentEnded : .currentOngoing
     }
 
     private var stateText: String {
-        guard store.activeConversationID != nil else { return "还没有对话" }
-        let kind = store.isPast ? "历史对话" : "当前对话"
-        return store.ended ? "\(kind) · 已结束" : kind
+        switch conversationState {
+        case .none: "还没有对话"
+        case .currentOngoing: "当前对话 · 进行中"
+        case .currentEnded: "当前对话 · 已结束"
+        case .pastOngoing: "历史对话 · 未结束"
+        case .pastEnded: "历史对话 · 已结束"
+        }
+    }
+
+    private var dirty: Bool {
+        guard let affinity else { return false }
+        return abs(draftValue - affinity.value) >= Self.affinityStep / 2
     }
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    LabeledContent("角色", value: character.name)
+                    LabeledContent("这段对话", value: stateText)
+                }
+
                 memorySection
                 affinitySection
                 conversationSection
@@ -47,12 +76,8 @@ struct DebugView: View {
                     Button("完成") { dismiss() }
                 }
             }
-            .task { await loadAffinity() }
-            .alert("出错了", isPresented: errorBinding) {
-                Button("好") { errorMessage = nil }
-            } message: {
-                Text(errorMessage ?? "")
-            }
+            .task { await load() }
+            .debugErrorAlert($errorMessage)
             .confirmationDialog(
                 "恢复这段对话？",
                 isPresented: $confirmingReopen,
@@ -86,9 +111,17 @@ struct DebugView: View {
         Section {
             if let conversationID = store.activeConversationID {
                 NavigationLink {
-                    DebugMemoryListView(store: store, conversationID: conversationID)
+                    DebugMemoryListView(
+                        store: store,
+                        conversationID: conversationID,
+                        currentTurnInFlight: currentTurnInFlight,
+                        memoryCount: $memoryCount
+                    )
                 } label: {
-                    Text("清除这段对话的记忆")
+                    LabeledContent(
+                        "清除这段对话的记忆",
+                        value: memoryCount.map { "\($0) 条" } ?? "…"
+                    )
                 }
             } else {
                 Text("还没有对话，也没有这段对话的记忆。")
@@ -118,19 +151,27 @@ struct DebugView: View {
                             .foregroundStyle(.blue)
                     }
                 }
-                Slider(value: $draftValue, in: 0...100, step: 0.1) {
+                Slider(value: $draftValue, in: 0...100, step: Self.affinityStep) {
                     Text("好感度")
                 }
                 .accessibilityLabel("好感度")
-                .accessibilityValue(String(format: "%.1f，%@", draftValue, AffinityTier.of(draftValue).title))
+                .accessibilityValue(
+                    String(
+                        format: "%.1f，%@",
+                        draftValue,
+                        AffinityTier.of(draftValue).title
+                    )
+                )
                 HStack {
                     Text("设为 \(String(format: "%.1f", draftValue))")
                         .monospacedDigit()
                     Text(AffinityTier.of(draftValue).title)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Button("回到 50") { draftValue = AffinityRules.normal }
-                        .disabled(busy)
+                    Button("回到 \(Int(AffinityRules.normal))") {
+                        draftValue = AffinityRules.normal
+                    }
+                    .disabled(busy)
                 }
                 Button("保存") {
                     Task { await saveAffinity() }
@@ -143,7 +184,11 @@ struct DebugView: View {
         } header: {
             Text("好感度")
         } footer: {
-            Text("设到 0 会开始冷却，设到 0 以上会结束冷却。保存只改本机数值，不产生回合、对话事件或好感度变化记录。")
+            Text(
+                busy
+                    ? "她正在回复或通话中，保存暂时不可用。设到 0 会开始冷却，设到 0 以上会结束冷却。"
+                    : "设到 0 会开始冷却，设到 0 以上会结束冷却。保存只改本机数值，不产生回合、对话事件或好感度变化记录。"
+            )
         }
     }
 
@@ -151,22 +196,28 @@ struct DebugView: View {
 
     private var conversationSection: some View {
         Section {
-            LabeledContent("这段对话", value: stateText)
+            switch conversationState {
+            case .none:
+                Text("还没有对话。")
+                    .foregroundStyle(.secondary)
+            case .pastOngoing, .pastEnded:
+                Button("设为当前对话") { confirmingMakeCurrent = true }
+                    .disabled(busy)
+            case .currentEnded:
+                Button("恢复这段对话") { confirmingReopen = true }
+                    .disabled(busy)
+            case .currentOngoing:
+                Text("这段对话没有结束。")
+                    .foregroundStyle(.secondary)
+            }
+            if busy {
+                Text("她正在回复或通话中，写操作等她这一轮结束再做。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
             if let conversationID = store.activeConversationID {
-                if store.isPast {
-                    Button("设为当前对话") { confirmingMakeCurrent = true }
-                        .disabled(busy)
-                } else if store.ended {
-                    Button("恢复这段对话") { confirmingReopen = true }
-                        .disabled(busy)
-                }
-                if busy {
-                    Text("她正在回复或通话中，写操作等她这一轮结束再做。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                // The id is shown only to make it unmistakable which conversation the
-                // debug actions land on; it is not part of the normal page.
+                // Shown only to make it unmistakable which conversation the debug actions
+                // land on; it is not part of the normal page.
                 Text(conversationID)
                     .font(.caption2.monospaced())
                     .foregroundStyle(.tertiary)
@@ -175,23 +226,45 @@ struct DebugView: View {
         } header: {
             Text("对话")
         } footer: {
-            if store.isPast {
-                Text("设为当前后，下一句会写进这段；原来那段原样变成历史。")
-            } else if store.ended {
-                Text("恢复后下一句会写进这段，和从未结束过一样。")
-            } else if store.activeConversationID != nil {
-                Text("这段对话没有被她结束。")
-            }
+            conversationFooter
+        }
+    }
+
+    @ViewBuilder
+    private var conversationFooter: some View {
+        switch conversationState {
+        case .pastOngoing, .pastEnded:
+            Text("设为当前后，下一句会写进这段；原来那段原样变成历史。如果这段已结束，会同时解除结束。")
+        case .currentEnded:
+            Text("恢复后下一句会写进这段，和从未结束过一样。")
+        case .currentOngoing:
+            Text("只有被她结束的当前对话需要恢复；历史对话可以设为当前。")
+        case .none:
+            EmptyView()
         }
     }
 
     // MARK: - Actions
+
+    private func load() async {
+        await loadAffinity()
+        await loadMemoryCount()
+    }
 
     private func loadAffinity() async {
         do {
             let loaded = try await app.debugAffinity(characterID: character.id)
             affinity = loaded
             draftValue = loaded.value
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func loadMemoryCount() async {
+        guard let conversationID = store.activeConversationID else { return }
+        do {
+            memoryCount = try await app.debugMemories(conversationID: conversationID).count
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -212,7 +285,11 @@ struct DebugView: View {
     private func reopen() async {
         guard let id = store.activeConversationID else { return }
         do {
-            _ = try await app.reopenDebugConversation(id: id)
+            let reopened = try await app.reopenDebugConversation(id: id)
+            guard reopened else {
+                errorMessage = "这段对话已经不在了。"
+                return
+            }
             await store.load()
         } catch {
             errorMessage = error.localizedDescription
@@ -237,11 +314,29 @@ struct DebugView: View {
         }
     }
 
-    private var errorBinding: Binding<Bool> {
-        Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )
+}
+
+private struct DebugErrorAlert: ViewModifier {
+    @Binding var message: String?
+
+    func body(content: Content) -> some View {
+        content.alert(
+            "出错了",
+            isPresented: Binding(
+                get: { message != nil },
+                set: { if !$0 { message = nil } }
+            )
+        ) {
+            Button("好") { message = nil }
+        } message: {
+            Text(message ?? "")
+        }
+    }
+}
+
+private extension View {
+    func debugErrorAlert(_ message: Binding<String?>) -> some View {
+        modifier(DebugErrorAlert(message: message))
     }
 }
 
@@ -249,6 +344,8 @@ struct DebugView: View {
 struct DebugMemoryListView: View {
     let store: ChatStore
     let conversationID: String
+    let currentTurnInFlight: Bool
+    @Binding var memoryCount: Int?
 
     @Environment(AppModel.self) private var app
     @State private var memories: [MemoryRecord] = []
@@ -258,7 +355,7 @@ struct DebugMemoryListView: View {
     @State private var confirmingDelete = false
     @State private var errorMessage: String?
 
-    private var busy: Bool { store.isStreaming || app.call.isLive }
+    private var busy: Bool { store.isStreaming || currentTurnInFlight || app.call.isLive }
 
     private var names: [String: String] {
         Dictionary(uniqueKeysWithValues: app.characters.map { ($0.id, $0.name) })
@@ -300,11 +397,7 @@ struct DebugMemoryListView: View {
         } message: {
             Text("记忆是跨角色共享的，删除后所有偶像都不再想起；不能撤销。")
         }
-        .alert("出错了", isPresented: errorBinding) {
-            Button("好") { errorMessage = nil }
-        } message: {
-            Text(errorMessage ?? "")
-        }
+        .debugErrorAlert($errorMessage)
     }
 
     private func row(_ memory: MemoryRecord) -> some View {
@@ -337,7 +430,10 @@ struct DebugMemoryListView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(memory.text)，\(sourceName(memory))，\(Self.day(memory.createdAt))\(memory.holds ? "" : "，已被取代")")
+        .accessibilityLabel(
+            "\(memory.text)，\(sourceName(memory))，\(Self.day(memory.createdAt))"
+                + (memory.holds ? "" : "，已被取代")
+        )
         .accessibilityAddTraits(picked ? .isSelected : [])
     }
 
@@ -368,6 +464,7 @@ struct DebugMemoryListView: View {
     private func load() async {
         do {
             memories = try await app.debugMemories(conversationID: conversationID)
+            memoryCount = memories.count
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -397,10 +494,4 @@ struct DebugMemoryListView: View {
         return date.formatted(date: .abbreviated, time: .omitted)
     }
 
-    private var errorBinding: Binding<Bool> {
-        Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )
-    }
 }

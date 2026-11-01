@@ -230,7 +230,7 @@ extension Eidolon {
                     WHERE c.character_id = ?
                     ORDER BY (c.id = ?) DESC, c.created_at DESC, c.rowid DESC
                     """,
-                arguments: [characterID, currentID ?? ""]
+                arguments: [characterID, currentID]
             )
             return rows.compactMap { row -> ConversationSummary? in
                 let records: Int = row["records"]

@@ -185,13 +185,25 @@ extension Eidolon {
         // settles first, so it cannot bring the memory back afterwards.
         await settleMemories()
         return try await userQueue.write { db in
-            try db.execute(
-                sql: "DELETE FROM memory_vectors WHERE memory_id = ?",
-                arguments: [id]
-            )
-            try db.execute(sql: "DELETE FROM memories WHERE id = ?", arguments: [id])
-            return db.changesCount > 0
+            try Self.deleteMemoryRows(db, ids: [id]) > 0
         }
+    }
+
+    /// Deletes the memories and the vectors that would find them, in one write. Says how
+    /// many memory rows were really deleted; ids that are already gone are not errors.
+    static func deleteMemoryRows(_ db: Database, ids: [String]) throws -> Int {
+        guard !ids.isEmpty else { return 0 }
+        let marks = Array(repeating: "?", count: ids.count).joined(separator: ",")
+        let arguments = StatementArguments(ids)
+        try db.execute(
+            sql: "DELETE FROM memory_vectors WHERE memory_id IN (\(marks))",
+            arguments: arguments
+        )
+        try db.execute(
+            sql: "DELETE FROM memories WHERE id IN (\(marks))",
+            arguments: arguments
+        )
+        return db.changesCount
     }
 
     /// Forgets everything, including what turns so far are still writing down (upstream
