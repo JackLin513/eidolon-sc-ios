@@ -84,10 +84,13 @@ def main(argv: list[str] | None = None) -> int:
                         help="重导已有的模型（换了导出逻辑时需要）")
     args = parser.parse_args(argv)
 
+    # Files may only supply the body of the costume being exported, or the
+    # base `pr001` head/bundle a costume without its own head falls back to.
+    wanted_costs = {args.costume, "pr001"}
     by_idol: dict[str, list[str]] = {}
     for line in args.index.read_text().splitlines():
         record = json.loads(line)
-        if args.costume in record["costumes"]:
+        if wanted_costs & set(record["costumes"]):
             for idol in record["idols"]:
                 by_idol.setdefault(idol, []).append(record["file"])
 
