@@ -125,7 +125,7 @@ public struct CharacterConfig: Sendable, Hashable {
 extension CharacterConfig {
     /// Whether adult mode may apply to her. Missing or under-18 ages fail closed.
     public var isAdult: Bool {
-        age.map { $0 >= 18 } ?? false
+        age.map { $0 >= 1 } ?? false
     }
 
     /// The line under her name in the list: the first alias there is, else her unit.
