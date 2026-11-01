@@ -86,6 +86,15 @@ $V spikes/porting-3d/export_pose_library.py --index build/mltd-animations.jsonl 
    --out build/poses --catalog build/poses.json
 ```
 
+单个角色的全衣装可以直接按资源名导，不经过缓存索引：
+
+```sh
+$V spikes/porting-3d/export_idol.py --assets build/mltd-spike/assets \
+   --idol 001har --out build/mltd-corpus --blender ...
+```
+
+本体取 `cb_<衣装>_<角色>.unity3d`，头优先 `ch_<衣装>_<角色>`（有 face 材质才算），否则回落到 `ch_pr001_<角色>`。
+
 `sync_cache.py` 把「索引 → 扫动作 → 导姿势 → 导衣装」串成一件事，`--loop 900` 可以挂在后台：游戏自己下载进缓存的新包会被自动接手（CDN 现在拒绝匿名下载，只有游戏本身能取）。
 
 ### 资源下载
@@ -145,6 +154,8 @@ xcodebuild -project EidolonIOS.xcodeproj -scheme Eidolon3DSpike \
 - `EIDOLON_3D_NO_OUTLINE=1`：关描边壳，用于 A/B；
 - `EIDOLON_3D_PAUSE_AT=<秒>`：停在该时刻的姿势，方便截图对比；
 - `EIDOLON_3D_NO_SWAY_COLLIDERS=1`：裙摆/头发不做碰撞，用于 A/B；
+- `EIDOLON_3D_POSE=<名字或前缀>`：启动时直接挂上某个动作，例如 `the_standd_appear_lop_ver01`；
+- `EIDOLON_3D_SHOW_POSES=1`：启动后直接弹出动作选择器（截图/演示用）；
 - `EIDOLON_3D_LOG_MATERIALS=1`：写 `frame.log`（取景诊断）；
 - `EIDOLON_3D_DEBUG_ALPHA` / `_ALBEDO` / `_MASTER` / `_ISOLATE_ROW=n`：材质探针。
 

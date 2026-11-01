@@ -34,6 +34,18 @@ struct Model3DPreview: View {
     /// Drives the decoded dance curves; attached only when a motion file sits
     /// beside the model (or `EIDOLON_3D_MOTION` names one).
     @State private var playback = MotionPlayback()
+    /// Every action found in `Documents/poses`, grouped for the picker.
+    @State private var poseClips: [PoseClip] = []
+    @State private var showingPosePicker = false
+    /// Name of the action currently attached, for the button's label.
+    @State private var currentPose: String?
+    /// URL of the model on screen; the sway sidecar and replay paths hang off it.
+    @State private var loadedModelURL: URL?
+
+    /// `EIDOLON_3D_POSE`: name (or prefix) of the action to attach on launch.
+    private static var startingPose: String? {
+        ProcessInfo.processInfo.environment["EIDOLON_3D_POSE"]
+    }
 
     /// Framing the loader chose, before any inspection gesture moves it.
     @State private var baseScale: Float = 1
@@ -128,6 +140,19 @@ struct Model3DPreview: View {
         }
         .task(id: outfit) { await load(outfit) }
         .task { await scheduleDebugSwap() }
+        .task {
+            // Screenshot runs cannot tap, so let the environment open the
+            // picker: `EIDOLON_3D_SHOW_POSES=1`.
+            guard ProcessInfo.processInfo.environment["EIDOLON_3D_SHOW_POSES"] != nil
+            else { return }
+            poseClips = PoseCatalog.load(documents: URL.documentsDirectory)
+            showingPosePicker = true
+        }
+        .sheet(isPresented: $showingPosePicker) {
+            PosePickerView(clips: poseClips) { clip in
+                playPose(clip)
+            }
+        }
         .safeAreaInset(edge: .bottom) {
             if phase == .loaded {
                 controls
@@ -177,6 +202,18 @@ struct Model3DPreview: View {
                 Image(systemName: dragMode == .rotate
                       ? "rotate.3d"
                       : "arrow.up.left.and.arrow.down.right")
+                    .padding(.horizontal, 6)
+            }
+            .buttonStyle(.bordered)
+            .tint(.white)
+
+            Button {
+                if poseClips.isEmpty {
+                    poseClips = PoseCatalog.load(documents: URL.documentsDirectory)
+                }
+                showingPosePicker = true
+            } label: {
+                Image(systemName: "figure.walk")
                     .padding(.horizontal, 6)
             }
             .buttonStyle(.bordered)
@@ -347,6 +384,7 @@ struct Model3DPreview: View {
             return
         }
 
+        loadedModelURL = url
         isLoading = true
         if entity == nil { phase = .loading }
         defer { isLoading = false }
@@ -445,7 +483,16 @@ struct Model3DPreview: View {
             entity = loaded
             applyInspection()
             addGround(to: container, floorY: drawnFloorY ?? 0)
-            startMotion(for: selected, beside: url)
+            if let wanted = Self.startingPose {
+                // `EIDOLON_3D_POSE=<name prefix>`: pick an action without a tap.
+                let clips = PoseCatalog.load(documents: URL.documentsDirectory)
+                if let clip = clips.first(where: { $0.name == wanted })
+                    ?? clips.first(where: { $0.name.hasPrefix(wanted) }) {
+                    playPose(clip)
+                }
+            } else {
+                startMotion(for: selected, beside: url)
+            }
 
             loadError = nil
             phase = .loaded
@@ -487,6 +534,29 @@ struct Model3DPreview: View {
             } else {
                 playback.play()
             }
+        } catch {
+            loadError = "动作读不了：\(error.localizedDescription)"
+        }
+    }
+
+    /// Play one action from the picker on the model that is already loaded.
+    /// Attaching replaces whatever was running; the sway setup is re-read for
+    /// the current outfit so the skirt keeps moving.
+    private func playPose(_ clip: PoseClip) {
+        guard let modelURL = loadedModelURL else { return }
+        do {
+            let dance = try JSONDecoder().decode(
+                MotionDance.self, from: Data(contentsOf: clip.url)
+            )
+            guard playback.attach(
+                dance: dance, to: container,
+                sway: swayConfiguration(for: outfit, beside: modelURL)
+            ) else {
+                loadError = playback.status
+                return
+            }
+            currentPose = clip.name
+            playback.play()
         } catch {
             loadError = "动作读不了：\(error.localizedDescription)"
         }
@@ -713,4 +783,143 @@ struct Model3DPreview: View {
 private struct BoundsSidecar: Decodable {
     let min: [Float]
     let max: [Float]
+}
+
+
+// MARK: - Action catalogue
+
+/// One action file on disk, as the picker lists it.
+struct PoseClip: Identifiable, Hashable {
+    enum Category: String, CaseIterable, Identifiable {
+        case standby = "待机"
+        case theatre = "剧场"
+        case commu = "剧情"
+        case photo = "照相"
+        case login = "登录"
+        case other = "其他"
+
+        var id: String { rawValue }
+    }
+
+    /// Clip name, e.g. `the_stdcac_coach_lop_102mis`.
+    let name: String
+    let url: URL
+    let seconds: Double
+    let bones: Int
+
+    var id: String { name }
+
+    /// Which shelf the clip belongs on. The prefixes are the game's own:
+    /// `the_` theatre (the standby loops carry `standd`/`stdcac`), `com_` commu,
+    /// `pho_` photo studio, `lgn_` login.
+    static func category(of name: String) -> Category {
+        if name.hasPrefix("pho_") { return .photo }
+        if name.hasPrefix("lgn_") { return .login }
+        if name.hasPrefix("com_") { return .commu }
+        if name.hasPrefix("the_") {
+            return name.contains("standd") || name.contains("stdcac") ? .standby : .theatre
+        }
+        return .other
+    }
+
+    var category: Category { Self.category(of: name) }
+}
+
+/// Reads what is on disk: the exported `library.json` when present, otherwise
+/// the pose folder itself. Everything is name-sorted so the list is stable.
+enum PoseCatalog {
+    private struct Library: Decodable {
+        struct Entry: Decodable {
+            let clip: String
+            let file: String
+            let seconds: Double?
+            let bones: Int?
+        }
+        let poses: [Entry]
+    }
+
+    static func load(documents: URL) -> [PoseClip] {
+        let poses = documents.appending(path: "poses")
+        let library = documents.appending(path: "library.json")
+        if let data = try? Data(contentsOf: library),
+           let decoded = try? JSONDecoder().decode(Library.self, from: data) {
+            let clips = decoded.poses.map { entry in
+                PoseClip(
+                    name: entry.clip,
+                    url: poses.appending(path: entry.file),
+                    seconds: entry.seconds ?? 0,
+                    bones: entry.bones ?? 0
+                )
+            }
+            if !clips.isEmpty { return clips.sorted { $0.name < $1.name } }
+        }
+        return scan(poses)
+    }
+
+    static func scan(_ directory: URL) -> [PoseClip] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        return names
+            .filter { $0.hasSuffix(".motion.json") }
+            .map { name in
+                PoseClip(
+                    name: String(name.dropLast(".motion.json".count)),
+                    url: directory.appending(path: name),
+                    seconds: 0,
+                    bones: 0
+                )
+            }
+            .sorted { $0.name < $1.name }
+    }
+}
+
+/// The action picker: sections per shelf, searchable by name.
+struct PosePickerView: View {
+    let clips: [PoseClip]
+    let choose: (PoseClip) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+
+    private var filtered: [PoseClip] {
+        guard !query.isEmpty else { return clips }
+        return clips.filter { $0.name.localizedCaseInsensitiveContains(query) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(PoseClip.Category.allCases) { category in
+                    let items = filtered.filter { $0.category == category }
+                    if !items.isEmpty {
+                        Section("\(category.rawValue)（\(items.count)）") {
+                            ForEach(items) { clip in
+                                Button {
+                                    choose(clip)
+                                    dismiss()
+                                } label: {
+                                    HStack {
+                                        Text(clip.name)
+                                            .lineLimit(1)
+                                        Spacer()
+                                        if clip.seconds > 0 {
+                                            Text(String(format: "%.1fs", clip.seconds))
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .searchable(text: $query, prompt: "按名字过滤")
+            .navigationTitle("动作（\(clips.count)）")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("关闭") { dismiss() }
+                }
+            }
+        }
+    }
 }

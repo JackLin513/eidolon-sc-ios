@@ -71,6 +71,33 @@ def pair(idol: str, files: list[str], args_costume: str = "pr001") -> tuple[str 
     return choose_pair(idol, args_costume, {path: materials_in(path) for path in files})
 
 
+def export_one(
+    name: str, body: str, head: str, target: Path, blender: str
+) -> tuple[bool, str]:
+    """glTF → usdc → usdz for one outfit; returns (ok, failure message)."""
+    step = subprocess.run(
+        [sys.executable, str(HERE / "export_character.py"),
+         "--body", body, "--head", head, "--out", str(target), "--name", name],
+        capture_output=True, text=True,
+    )
+    if step.returncode != 0:
+        return False, f"glTF 失败 {step.stderr.strip()[-200:]}"
+    subprocess.run(
+        [blender, "--background", "--python", str(HERE / "gltf_to_usdz.py"),
+         "--", str(target / f"{name}.gltf"), str(target / f"{name}.usdc")],
+        capture_output=True, text=True,
+    )
+    step = subprocess.run(
+        ["uv", "run", "--quiet", "--with", "usd-core",
+         "python", str(HERE / "pack_usd.py"), "--",
+         str(target / f"{name}.usdc"), str(target / f"{name}.usdz")],
+        capture_output=True, text=True,
+    )
+    if step.returncode != 0:
+        return False, f"打包失败 {step.stderr.strip()[-200:]}"
+    return True, ""
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--index", type=Path, required=True)
@@ -117,30 +144,9 @@ def main(argv: list[str] | None = None) -> int:
             failed += 1
             continue
         target.mkdir(parents=True, exist_ok=True)
-
-        step = subprocess.run(
-            [sys.executable, str(HERE / "export_character.py"),
-             "--body", body, "--head", head, "--out", str(target), "--name", name],
-            capture_output=True, text=True,
-        )
-        if step.returncode != 0:
-            print(f"[{index}/{len(idols)}] {idol} glTF 失败 {step.stderr.strip()[-200:]}")
-            failed += 1
-            continue
-
-        subprocess.run(
-            [args.blender, "--background", "--python", str(HERE / "gltf_to_usdz.py"),
-             "--", str(target / f"{name}.gltf"), str(target / f"{name}.usdc")],
-            capture_output=True, text=True,
-        )
-        step = subprocess.run(
-            ["uv", "run", "--quiet", "--with", "usd-core",
-             "python", str(HERE / "pack_usd.py"), "--",
-             str(target / f"{name}.usdc"), str(target / f"{name}.usdz")],
-            capture_output=True, text=True,
-        )
-        if step.returncode != 0:
-            print(f"[{index}/{len(idols)}] {idol} 打包失败 {step.stderr.strip()[-200:]}")
+        ok, message = export_one(name, body, head, target, args.blender)
+        if not ok:
+            print(f"[{index}/{len(idols)}] {idol} {message}")
             failed += 1
             continue
         done += 1
