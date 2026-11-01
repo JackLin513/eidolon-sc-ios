@@ -129,7 +129,7 @@ from eidolon.config import FishAudioModel, ImageSettings
 from eidolon.cycles import HerDays
 from eidolon.data_access import Database
 from eidolon.gift_catalog import Gift
-from eidolon.happenings import Happenings, Rewarded
+from eidolon.happenings import Happenings, Open, Rewarded
 from eidolon.her_cycle import HerDay, Period, Premenstrual
 from eidolon.her_now import HerNow, KnownNow, Occasion
 from eidolon.her_weather import KnownWeather
@@ -1119,7 +1119,7 @@ class ConversationEngine:
                 self._record,
                 conversation, text, said_at, reply, judged, affinity, typed, ends_conversation,
                 NewPhoto(photo.id, photo.tag) if photo.id else None,
-                self._happenings is not None and self._happenings.open, her_day,
+                self._happenings and self._happenings.open, her_day,
             )
         except Exception:
             if photo.id is not None and self._photos is not None:
@@ -1149,7 +1149,7 @@ class ConversationEngine:
         typed: Typed | None,
         ends_conversation: bool,
         photo: NewPhoto | None,
-        happenings_open: bool,
+        happenings_open: Open | None,
         her_day: HerDay,
     ) -> tuple[Message, Status | None, Rewarded | None, ConversationEvent | None]:
         """Record the turn, as said at `said_at`, through `db`, in one transaction with all
@@ -1157,7 +1157,8 @@ class ConversationEngine:
         it be the user's first turn with her in it (`add_unwell`), her affinity as `judged`
         says, if judged, with what a typed turn came to, her ending the conversation after
         it if she does, the photo she sends with it if any, and what it counts towards
-        (`Happenings.turn_recorded`), if `happenings_open`, all of it or none.
+        (`Happenings.turn_recorded`), with what is `happenings_open` as it was handed in,
+        all of it or none.
         The reply, her affinity after it (`affinity`, as the turn began, if not judged),
         what it was rewarded with, and her being unwell, if recorded."""
         unwell = (
@@ -1172,9 +1173,12 @@ class ConversationEngine:
         message = add_turn(
             db, conversation.id, text, reply, change, said_at, typed, ends_conversation, photo
         )
-        rewarded = self._happenings and self._happenings.turn_recorded(
-            db, conversation.user_id, conversation.character_id, affinity and affinity.tier,
-            happenings_open,
+        rewarded = (
+            self._happenings.turn_recorded(
+                db, conversation.user_id, conversation.character_id,
+                affinity and affinity.tier, happenings_open,
+            )
+            if self._happenings is not None and happenings_open is not None else None
         )
         return message, affinity, rewarded, unwell
 
