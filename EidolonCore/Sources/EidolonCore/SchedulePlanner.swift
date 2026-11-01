@@ -126,6 +126,26 @@ public struct SchedulePlanner: Sendable {
 
     public var hasDrafts: Bool { !drafts.isEmpty }
 
+    /// The future cells no saved or drafted job covers, whether or not the selected card
+    /// could start there (upstream `freeSlots`). A job with several slots takes all of them.
+    public var freeCellCount: Int {
+        cells.filter { cell in
+            guard coveringJob(day: cell.day, slot: cell.slot) == nil else { return false }
+            return ScheduleRules.timeOf(
+                local: now, timeZone: timeZone, thisWeek: thisWeek,
+                week: board.week, day: cell.day, slot: cell.slot
+            ) == .future
+        }.count
+    }
+
+    /// Whether the unplaced work expires tonight: the board shows this week and it is Sunday
+    /// where the producer is. Every other week's work expires on its own Sunday.
+    public var pendingExpiresTonight: Bool {
+        board.week == thisWeek
+            && ScheduleRules.localWeekday(now: now, timeZone: timeZone)
+                == ScheduleRules.days - 1
+    }
+
     public func selectedJob() -> WeeklyJob? {
         guard let selectedJobID else { return nil }
         return board.jobs.first { $0.id == selectedJobID }
