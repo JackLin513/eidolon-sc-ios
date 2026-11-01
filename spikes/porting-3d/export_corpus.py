@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -35,22 +36,39 @@ def materials_in(path: str) -> set[str]:
     return {o.read().m_Name for o in env.objects if o.type.name == "Material"} - {""}
 
 
-def pair(idol: str, files: list[str], args_costume: str = "pr001") -> tuple[str | None, str | None]:
+def choose_pair(
+    idol: str, costume: str, materials: dict[str, set[str]]
+) -> tuple[str | None, str | None]:
+    """Pick the body and head bundle for one costume out of the idol's bundles.
+
+    Bodies are unambiguous: `cb_<costume>_<idol>_01_m` only appears in that
+    costume's body. Heads are not — the eye materials are always named
+    `ch_pr001_*`, and accessory bundles can carry another costume's parts — so
+    a head is ranked by (does it carry this costume's face, how many foreign
+    parts, how many parts) and the best one wins. A base `pr001` head is the
+    fallback when the costume has no head of its own.
+    """
     body: str | None = None
-    heads: list[tuple[int, str]] = []
-    for path in files:
-        mats = materials_in(path)
-        if f"cb_{args_costume}_{idol}_01_m" in mats and body is None:
+    heads: list[tuple[int, int, int, str]] = []
+    for path, mats in materials.items():
+        if f"cb_{costume}_{idol}_01_m" in mats and body is None:
             body = path
-        if f"ch_pr001_{idol}_face_m" in mats and not any(m.startswith("cb_") for m in mats):
-            # A head bundle can carry an accessory belonging to another costume
-            # (`ex007_acc01`, `ss010_acc01`). Those meshes are single-bone props
-            # and have no place on the model, so prefer a bundle whose parts all
-            # belong to the costume being exported.
-            foreign = [m for m in mats if m.startswith("ch_") and f"_{args_costume}_" not in m]
-            heads.append((len(foreign), len(mats), path))
-    head = min(heads)[2] if heads else None
-    return body, head
+        faces = {m for m in mats if m.endswith("_face_m")}
+        exact = f"ch_{costume}_{idol}_face_m" in faces
+        base = f"ch_pr001_{idol}_face_m" in faces
+        if not (exact or base):
+            continue
+        foreign = [
+            m for m in mats
+            if m.startswith("ch_") and f"_{costume}_" not in m
+            and not re.match(r"ch_pr001_\w+_eye[lr]_m$", m)
+        ]
+        heads.append((0 if exact else 1, len(foreign), len(mats), path))
+    return body, (min(heads)[3] if heads else None)
+
+
+def pair(idol: str, files: list[str], args_costume: str = "pr001") -> tuple[str | None, str | None]:
+    return choose_pair(idol, args_costume, {path: materials_in(path) for path in files})
 
 
 def main(argv: list[str] | None = None) -> int:
