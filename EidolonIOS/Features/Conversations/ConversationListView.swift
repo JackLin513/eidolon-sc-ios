@@ -147,10 +147,16 @@ struct ConversationListView: View {
                 if app.openDebugSettingsIfRequested() {
                     showSettings = true
                 }
-                if path.isEmpty,
-                   let id = app.debugCharacterID,
-                   let character = app.characters.first(where: { $0.id == id }) {
-                    path.append(character)
+                if let id = app.debugCharacterID {
+                    // The launch flag may run before the bundle's characters are
+                    // published; wait briefly instead of dropping the request.
+                    for _ in 0..<50 {
+                        if let character = app.characters.first(where: { $0.id == id }) {
+                            if path.isEmpty { path.append(character) }
+                            break
+                        }
+                        try? await Task.sleep(for: .milliseconds(100))
+                    }
                 }
                 if path.isEmpty, app.debugBarRequested {
                     isBarShown = true
