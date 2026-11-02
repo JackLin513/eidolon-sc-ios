@@ -5,7 +5,6 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var app
-    @Environment(\.dismiss) private var dismiss
 
     @State private var baseURL = ""
     @State private var model = ""
@@ -453,11 +452,6 @@ struct SettingsView: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 CallBar()
             }
-            // Returning to the call brings the layer over every page; settings gets out of
-            // its way (spec #46).
-            .onChange(of: app.call.layer) { _, layer in
-                if layer == .expanded { dismiss() }
-            }
             .navigationTitle("设置")
             .navigationDestination(isPresented: $showMemories) {
                 MemoryListView()
@@ -482,9 +476,6 @@ struct SettingsView: View {
                 #endif
             }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("完成") { dismiss() }
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("保存") { Task { await save() } }
                         .fontWeight(.semibold)

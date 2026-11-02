@@ -1,23 +1,18 @@
 import EidolonCore
 import SwiftUI
 
-/// The roster: who she is, the latest thing she said, and whether she reached
-/// out while you were away, and the bar at its top (ADR-0021).
-
-/// What the bar's row says under its name.
-enum BarEntry {
-    /// Before its package is in: the bar cannot be drawn without it.
-    static let importHint = "还没有导入酒吧素材包，进设置导入"
-    static let rewardToday = "今天第一次光顾有奖励"
-    static let rewardTaken = "今天的奖励领过了"
-}
+/// The roster: who she is and the latest thing she said (spec #64: the bar moved to the
+/// play tab).
 struct ConversationListView: View {
     @Environment(AppModel.self) private var app
     @State private var query = ""
-    @State private var showSettings = false
     @State private var showCalendar = false
-    @State private var isBarShown = false
-    @State private var path = NavigationPath()
+
+    /// The conversation tab's stack lives in `AppModel` so another tab can open her chat
+    /// (spec #64).
+    private var conversationPath: Binding<NavigationPath> {
+        Binding(get: { app.conversationPath }, set: { app.conversationPath = $0 })
+    }
     /// The moment the list writes its times against; refreshed every minute while it is
     /// open, so an old 昨天 turns into a date and today's times keep up (spec #35).
     @State private var now = Date()
@@ -27,11 +22,8 @@ struct ConversationListView: View {
     @State private var showingHidden = false
 
     var body: some View {
-        NavigationStack(path: $path) {
+        NavigationStack(path: conversationPath) {
             List {
-                Section {
-                    barEntry
-                }
                 Section {
                     ForEach(filtered, id: \.id) { character in
                         Group {
@@ -105,9 +97,6 @@ struct ConversationListView: View {
             .navigationDestination(for: CharacterConfig.self) { character in
                 ChatView(character: character)
             }
-            // 酒吧整屏呈现，而不是推进 NavigationStack：栈里的 destination 会把安全区的大小
-            // 当成布局的槽，画面再 `.ignoresSafeArea()` 也只扩到绘制的边（实测仍量到 776×400），
-            // 上下就贴不满。整屏呈现时它自己就是窗口，画框能真正铺到屏幕边上。
             .confirmationDialog(
                 "结束通话并进入？",
                 isPresented: Binding(
@@ -120,20 +109,13 @@ struct ConversationListView: View {
                 Button("结束通话并进入", role: .destructive) {
                     pendingCharacter = nil
                     app.call.hangUpAndLeave()
-                    path.append(character)
+                    app.conversationPath.append(character)
                 }
                 Button("取消", role: .cancel) {
                     pendingCharacter = nil
                 }
             } message: { _ in
                 Text("进入别的角色的对话会挂断这通电话。")
-            }
-            .fullScreenCover(isPresented: $isBarShown) {
-                BarRoomView(
-                    settings: BarSettings.stored(app.barSettingsValue),
-                    jukebox: app.barJukeboxState,
-                    tutorialWalked: app.barTutorialDone
-                )
             }
             .task { await app.refresh() }
             .task {
@@ -144,22 +126,25 @@ struct ConversationListView: View {
             }
             .task {
                 #if DEBUG
-                if app.openDebugSettingsIfRequested() {
-                    showSettings = true
+                let wantsSettings = app.openDebugSettingsIfRequested()
+                if wantsSettings, app.debugCharacterID == nil {
+                    app.selectedTab = .settings
                 }
                 if let id = app.debugCharacterID {
                     // The launch flag may run before the bundle's characters are
                     // published; wait briefly instead of dropping the request.
                     for _ in 0..<50 {
                         if let character = app.characters.first(where: { $0.id == id }) {
-                            if path.isEmpty { path.append(character) }
+                            if app.conversationPath.isEmpty {
+                                app.conversationPath.append(character)
+                            }
                             break
                         }
                         try? await Task.sleep(for: .milliseconds(100))
                     }
                 }
-                if path.isEmpty, app.debugBarRequested {
-                    isBarShown = true
+                if app.debugBarRequested {
+                    app.selectedTab = .play
                 }
                 #endif
             }
@@ -172,23 +157,9 @@ struct ConversationListView: View {
                     }
                     .accessibilityLabel("日历")
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        #if DEBUG
-                        app.markSettingsOpenedManually()
-                        #endif
-                        showSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-                    .accessibilityLabel("设置")
-                }
             }
             .sheet(isPresented: $showCalendar) {
                 CalendarView()
-            }
-            .sheet(isPresented: $showSettings) {
-                SettingsView()
             }
             .overlay {
                 if app.characters.isEmpty {
@@ -205,53 +176,6 @@ struct ConversationListView: View {
                 Text(app.errorMessage ?? "")
             }
         }
-    }
-
-    /// 酒吧 at the top of the roster: the door in, or the way to bring its package in first.
-    /// Without its package the screen cannot be drawn, so the row leads to settings rather
-    /// than into an empty room (ADR-0021).
-    @ViewBuilder
-    private var barEntry: some View {
-        if app.barInfo == nil {
-            Button { showSettings = true } label: { barRow }
-                .buttonStyle(.plain)
-                .foregroundStyle(.primary)
-        } else {
-            Button { isBarShown = true } label: { barRow }
-                .buttonStyle(.plain)
-                .foregroundStyle(.primary)
-        }
-    }
-
-    private var barRow: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "wineglass")
-                .font(.title3)
-                .frame(width: 46, height: 46)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color(hex: "#3c2a4d"))
-                )
-                .foregroundStyle(Color(hex: "#ffb8d8"))
-            VStack(alignment: .leading, spacing: 3) {
-                Text("酒吧")
-                    .font(.headline)
-                Text(barSubtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 4)
-        .contentShape(.rect)
-    }
-
-    /// The bar's line under its name: the way to bring its package in, today's reward, or
-    /// that today's has been taken.
-    private var barSubtitle: String {
-        guard app.barInfo != nil else { return BarEntry.importHint }
-        return app.barRewardToday ? BarEntry.rewardToday : BarEntry.rewardTaken
     }
 
     private var filtered: [CharacterConfig] {

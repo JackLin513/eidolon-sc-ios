@@ -72,7 +72,7 @@ struct RootView: View {
         case .needsContentBundle:
             ImportGuideView()
         case .ready:
-            ConversationListView()
+            MainTabsView(app: app)
         case .failed(let message):
             ContentUnavailableView(
                 "存储不可用",

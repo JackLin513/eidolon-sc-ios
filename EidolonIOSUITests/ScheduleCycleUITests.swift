@@ -13,8 +13,8 @@ final class ScheduleCycleUITests: XCTestCase {
     }
 
     func testCyclePageOpensFromSettingsAndTheRecordForm() throws {
-        let settings = app.buttons["设置"]
-        XCTAssertTrue(settings.waitForExistence(timeout: 10), "conversation list has no settings button")
+        let settings = app.tabBars.buttons["设置"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 10), "no settings tab")
         settings.tap()
 
         let cycles = app.buttons["查看周期"]

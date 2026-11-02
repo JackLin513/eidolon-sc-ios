@@ -78,7 +78,7 @@ struct OutfitPickerView: View {
 
             VStack(spacing: 0) {
                 titleBar
-                CallBar()
+                CallBar(returnsToConversation: false)
                     .onChange(of: app.call.layer) { _, layer in
                         if layer == .expanded { onClose() }
                     }

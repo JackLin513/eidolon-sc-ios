@@ -10,6 +10,9 @@ struct CallBar: View {
     /// Her conversation already has her name in the navigation bar, so its bar leaves it
     /// out; every other page says whose call this is.
     var showsName = true
+    /// Whether a tap also brings the conversation tab forward. The bar room and the
+    /// outfit picker are already over the call, so they only expand it (spec #64).
+    var returnsToConversation = true
 
     /// How long the dialling dot takes to blink once.
     private static let blink = 0.8
@@ -17,6 +20,7 @@ struct CallBar: View {
     var body: some View {
         if app.call.showsBar, let character = app.call.character {
             Button {
+                if returnsToConversation { app.selectedTab = .conversation }
                 app.call.expand()
             } label: {
                 HStack(spacing: 8) {
@@ -43,7 +47,7 @@ struct CallBar: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("回到通话")
-            .accessibilityHint("展开通话")
+            .accessibilityHint(returnsToConversation ? "展开通话并回到对话" : "展开通话")
         }
     }
 

@@ -94,8 +94,8 @@ final class AtmosphericTextUITests: XCTestCase {
     }
 
     private func openSettings() {
-        let settings = app.buttons["设置"]
-        XCTAssertTrue(settings.waitForExistence(timeout: 10), "no settings button")
+        let settings = app.tabBars.buttons["设置"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 10), "no settings tab")
         settings.tap()
     }
 
@@ -194,8 +194,8 @@ final class AdultModeUITests: XCTestCase {
     }
 
     private func openSettings() {
-        let settings = app.buttons["设置"]
-        XCTAssertTrue(settings.waitForExistence(timeout: 10), "no settings button")
+        let settings = app.tabBars.buttons["设置"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 10), "no settings tab")
         settings.tap()
     }
 

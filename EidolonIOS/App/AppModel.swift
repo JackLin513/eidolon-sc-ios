@@ -1,6 +1,7 @@
 import EidolonCore
 import Foundation
 import Observation
+import SwiftUI
 import UIKit
 
 enum AppPhase: Equatable {
@@ -34,6 +35,16 @@ final class AppModel {
     /// shows it — a past conversation in the history sheet. The current page reloads to
     /// the new one and the sheet closes (spec #37).
     private(set) var conversationRevision = 0
+
+    /// The first-level page the app is on (spec #64). Not persisted: a launch starts
+    /// in conversations.
+    var selectedTab: MainTab = .conversation
+    /// Each tab keeps its own stack, so another tab can open a page in it (spec #64).
+    var conversationPath = NavigationPath()
+    var playPath = NavigationPath()
+    /// The character the gift page should preselect when it is opened from her chat
+    /// (spec #64; the gift page itself arrives in #65).
+    var giftPreselection: String?
 
     /// The chat's 朗读: one for the whole app, so only one line ever plays (spec #32).
     let readAloud = ChatReadAloud()
@@ -569,6 +580,62 @@ final class AppModel {
         }
     }
 
+    /// Development aid: `SIMCTL_CHILD_EIDOLON_CALL_RECONNECT_MS` slows reconnection so the
+    /// 「重连中」 state can be seen in the simulator.
+    var debugReconnectDelay: Duration {
+        #if DEBUG
+        if let milliseconds = ProcessInfo.processInfo.environment["EIDOLON_CALL_RECONNECT_MS"],
+           let value = Int(milliseconds), value >= 0 {
+            return .milliseconds(value)
+        }
+        #endif
+        return .seconds(1)
+    }
+
+    /// Takes the debug bar request once, so opening the play tab later does not reopen
+    /// the bar (spec #64).
+    func consumeDebugBarRequest() -> Bool {
+        #if DEBUG
+        guard !didConsumeDebugBarRequest, debugBarRequested else { return false }
+        didConsumeDebugBarRequest = true
+        return true
+        #else
+        false
+        #endif
+    }
+
+
+    private var didConsumeDebugBarRequest = false
+
+    /// Opens her chat from another tab or page (spec #64): the conversation tab, its
+    /// stack reset to her.
+    func openConversation(characterID: String) {
+        selectedTab = .conversation
+        guard let character = characters.first(where: { $0.id == characterID }) else {
+            return
+        }
+        conversationPath = NavigationPath()
+        conversationPath.append(character)
+    }
+
+    /// Opens the gift page from her chat (spec #64): the play tab, its stack reset to
+    /// gifts, with her preselected. A direct visit from the play hub clears it.
+    func openGifts(characterID: String? = nil) {
+        selectedTab = .play
+        giftPreselection = characterID
+        playPath = NavigationPath()
+        playPath.append(PlayRoute.gifts)
+    }
+
+    /// Opens settings as a manual visit, so debug destinations are not consumed.
+    func openSettings() {
+        #if DEBUG
+        markSettingsOpenedManually()
+        #endif
+        selectedTab = .settings
+    }
+
+
     #if DEBUG
     /// Development aid: `SIMCTL_CHILD_EIDOLON_CHAT_BASE_URL/_MODEL/_API_KEY` seed the
     /// chat settings so the simulator can talk to a real model without the keyboard.
@@ -659,18 +726,6 @@ final class AppModel {
         return nil
     }
 
-    /// Development aid: `SIMCTL_CHILD_EIDOLON_CALL_RECONNECT_MS` slows reconnection so the
-    /// 「重连中」 state can be seen in the simulator.
-    var debugReconnectDelay: Duration {
-        #if DEBUG
-        if let milliseconds = ProcessInfo.processInfo.environment["EIDOLON_CALL_RECONNECT_MS"],
-           let value = Int(milliseconds), value >= 0 {
-            return .milliseconds(value)
-        }
-        #endif
-        return .seconds(1)
-    }
-
     /// Development aid: `SIMCTL_CHILD_EIDOLON_OPEN_CALL=1` starts a call on opening a chat.
     var debugOpensCall: Bool {
         #if DEBUG
@@ -709,14 +764,14 @@ final class AppModel {
     private var didAutoOpenDebugSettings = false
     private var didConsumeDebugSettingsDestinations = false
     private var didConsumeDebugLatestTrace = false
-    /// True only for a Settings sheet opened by a debug launch flag, not the gear button.
+    /// True only for the settings tab opened by a debug launch flag, not a tap on the tab.
     private(set) var settingsOpenedByDebug = false
 
     private var hasDebugSettingsEntry: Bool {
         debugShowsMemories || debugShowsTraces || debugShowsStandPreview
     }
 
-    /// The launch flag may auto-open Settings once; pressing the gear later must not
+    /// The launch flag may auto-open Settings once; opening the tab later must not
     /// keep re-opening the debug destination on every appearance.
     func openDebugSettingsIfRequested() -> Bool {
         guard !didAutoOpenDebugSettings, hasDebugSettingsEntry else { return false }
