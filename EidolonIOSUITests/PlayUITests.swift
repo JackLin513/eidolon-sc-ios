@@ -70,6 +70,31 @@ final class PlayUITests: XCTestCase {
         XCTAssertTrue(app.buttons["更多"].waitForExistence(timeout: 5), "did not return to her chat")
     }
 
+    func testChatHidesTheTabBar() throws {
+        app.terminate()
+        app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
+        app.launch()
+
+        XCTAssertTrue(app.buttons["更多"].waitForExistence(timeout: 20), "chat did not open")
+        XCTAssertFalse(app.tabBars.buttons["对话"].exists, "tab bar is still visible in the chat")
+        XCTAssertFalse(app.tabBars.buttons["玩法"].exists, "tab bar is still visible in the chat")
+
+        let back = app.navigationBars.buttons["对话"]
+        XCTAssertTrue(
+            back.waitForExistence(timeout: 5),
+            "chat has no back button: \(app.navigationBars.buttons.debugDescription)"
+        )
+        back.tap()
+        XCTAssertFalse(
+            app.buttons["更多"].waitForExistence(timeout: 2),
+            "back did not leave the chat"
+        )
+        XCTAssertTrue(
+            app.tabBars.buttons["对话"].waitForExistence(timeout: 5),
+            "tab bar did not come back after leaving the chat"
+        )
+    }
+
     func testCallBarFollowsToThePlayTab() throws {
         app.terminate()
         app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"

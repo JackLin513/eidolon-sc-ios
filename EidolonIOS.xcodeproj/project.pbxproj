@@ -75,6 +75,7 @@
 		E0F9B1FA2BA982860CDD2BC3 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A72BB12039666C937D7C04 /* RootView.swift */; };
 		EF42004562B67CC87DFCF565 /* StandWebRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1AD0F6ABD451EB0C733277C /* StandWebRenderer.swift */; };
 		F0779B69941B95753CFA7C62 /* ObjCExceptionCatcher.m in Sources */ = {isa = PBXBuildFile; fileRef = BF8FFBE106A62A61CD0A8867 /* ObjCExceptionCatcher.m */; };
+		F6461ECD032B95DDDAF98B4B /* TabBarHides.swift in Sources */ = {isa = PBXBuildFile; fileRef = 957D8B0F7007CD039844150D /* TabBarHides.swift */; };
 		FA5A10686839158B2C50E21D /* BarCounter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38B53BAD43DC896CF33D1635 /* BarCounter.swift */; };
 		FB74EA11C1B5E34D38ED3937 /* ChatStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA937E9DC437925E1DD0673 /* ChatStore.swift */; };
 		FE5F343DF7059BBB3A98E62E /* StandSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74AACADEE8C7E3D7A4110BBE /* StandSchemeHandler.swift */; };
@@ -131,6 +132,7 @@
 		7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportGuideView.swift; sourceTree = "<group>"; };
 		805B1BB0D7E3061C6B957E32 /* ProducerProfileUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProducerProfileUITests.swift; sourceTree = "<group>"; };
 		889A8316C35EBB240F4D78A2 /* BarGuest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarGuest.swift; sourceTree = "<group>"; };
+		957D8B0F7007CD039844150D /* TabBarHides.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabBarHides.swift; sourceTree = "<group>"; };
 		9642E415565176749C5D2D54 /* PlayHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayHubView.swift; sourceTree = "<group>"; };
 		98D2780F46613402EB78186A /* CallTypingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallTypingUITests.swift; sourceTree = "<group>"; };
 		A2D79D1CDB4D74AADF0D731E /* AffinityViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AffinityViews.swift; sourceTree = "<group>"; };
@@ -369,6 +371,7 @@
 				F4A469720C393AAAFE8185A4 /* MainTab.swift */,
 				E95BF2FA018AF3E7B92AABD6 /* MainTabsView.swift */,
 				14A72BB12039666C937D7C04 /* RootView.swift */,
+				957D8B0F7007CD039844150D /* TabBarHides.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -652,6 +655,7 @@
 				FE5F343DF7059BBB3A98E62E /* StandSchemeHandler.swift in Sources */,
 				3B581C7316F3F7567E6CF0E1 /* StandThumbnails.swift in Sources */,
 				EF42004562B67CC87DFCF565 /* StandWebRenderer.swift in Sources */,
+				F6461ECD032B95DDDAF98B4B /* TabBarHides.swift in Sources */,
 				C7D9B29CBBADC895872095A7 /* TexturedAudio.swift in Sources */,
 				791DD675A29C48B88185FACE /* Theme.swift in Sources */,
 				28E1D1F65D00588EA9601DA3 /* TraceListView.swift in Sources */,
