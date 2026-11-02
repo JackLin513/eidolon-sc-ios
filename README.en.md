@@ -304,8 +304,8 @@ The license covers only the code and documentation in the repository. The follow
 - [Fusion Pixel](https://github.com/TakWolf/fusion-pixel-font): the bar's pixel font
 - [im@sparql](https://sparql.crssnky.xyz/imas/), Lantis, ふじわらはじめ, imas-db, wikiwiki: the idols, releases and lives in the world setting
 - [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL), [Wikidata](https://www.wikidata.org/): the names and coordinates of the places in moments
-- [Open-Meteo](https://open-meteo.com/) (CC BY 4.0): the weather in moments and conversations
-- [QWeather](https://www.qweather.com/): the producer's city and the weather warnings there
+- [Open-Meteo](https://open-meteo.com/) (CC BY 4.0): Tokyo's weather in moments and conversations
+- [QWeather](https://www.qweather.com/): the producer's city, and the weather and weather warnings there
 - [LINUX DO](https://linux.do/): much of what went into building and running this project was learned from the community's shared experience
 
 <div align="center">

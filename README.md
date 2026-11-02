@@ -321,8 +321,8 @@ eidolon-sc/
 - [缝合像素](https://github.com/TakWolf/fusion-pixel-font)：酒吧的像素字体
 - [im@sparql](https://sparql.crssnky.xyz/imas/)、Lantis、ふじわらはじめ、imas-db、wikiwiki：世界设定里的偶像、唱片和演出资料
 - [OpenStreetMap](https://www.openstreetmap.org/copyright) 贡献者（ODbL）、[Wikidata](https://www.wikidata.org/)：朋友圈里地点的名字和坐标
-- [Open-Meteo](https://open-meteo.com/)（CC BY 4.0）：朋友圈和对话里的天气
-- [和风天气](https://www.qweather.com/)：制作人所在的城市和那边的气象预警
+- [Open-Meteo](https://open-meteo.com/)（CC BY 4.0）：朋友圈和对话里东京的天气
+- [和风天气](https://www.qweather.com/)：制作人所在的城市，那边的天气和气象预警
 - [LINUX DO](https://linux.do/)：从技术选型、开发到部署运维，许多经验来自这里的分享
 
 <div align="center">

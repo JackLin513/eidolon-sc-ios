@@ -1,9 +1,10 @@
-"""The weather, from Open-Meteo, which wants no key: Tokyo's as a moment is posted
-(GLOSSARY.md「动态」), the hourly WMO weather code and temperature at one spot in Tokyo, where its
-model is the JMA's MSM (`Weathers.at`); and the day's, Tokyo's or where the producer is, as
-she talks (GLOSSARY.md「此刻」): the weather now, whether it rains or snows later in the day,
-and the day's highest and lowest beside yesterday's (`Weathers.today`). Should Open-Meteo be
-gone for good, MET Norway's Locationforecast is the one to turn to.
+"""Tokyo's weather, from Open-Meteo, which wants no key, its model the JMA's MSM: as a moment
+is posted (GLOSSARY.md「动态」), the hourly WMO weather code and temperature at one spot in Tokyo
+(`Weathers.at`); and the day's, as she talks (GLOSSARY.md「此刻」): the weather now, whether it
+rains or snows later in the day, and the day's highest and lowest beside yesterday's
+(`Weathers.today`, `Today`). Where the producer is, the day's weather is QWeather's
+(`qweather`), as the weather apps in China have it. Should Open-Meteo be gone for good, MET
+Norway's Locationforecast is the one to turn to.
 
 Fetched as the price catalogs are (`price_catalog`): direct, never through the proxy, not a
 service the status page or activity records know of. For a moment, each fetch asks for
@@ -17,6 +18,7 @@ the seven kinds (`KINDS`)."""
 
 import asyncio
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Literal, get_args
@@ -114,9 +116,8 @@ Later = Literal["rain", "snow"]
 @dataclass(frozen=True)
 class Today:
     """A day's weather where a spot is, as of an hour in it: the weather `now`; whether it
-    rains or snows `later`, in the hours left of the day (snow if both, thunder as rain; None
-    if neither); the day's `high` and `low`, and yesterday's (None if unknown), in whole
-    degrees Celsius."""
+    rains or snows `later` in the day (`later_of`); the day's `high` and `low`, and
+    yesterday's (None if unknown), in whole degrees Celsius."""
 
     now: Weather
     later: Later | None
@@ -167,21 +168,32 @@ class _Forecast:
         high, low = self.highs[day], self.lows[day]
         if weather is None or not isinstance(high, int | float) or not isinstance(low, int | float):
             return None
-        later = {
-            kind for i, start in enumerate(self.hours)
+        left: list[Kind | None] = [
+            _kind(self.codes[i]) for i, start in enumerate(self.hours)
             if self.hours[hour] < start < self._day_end(day)
-            and (kind := _kind(self.codes[i])) in WET
-        }
+        ]
         return Today(
-            weather,
-            "snow" if "snow" in later else "rain" if later else None,
-            round(high), round(low),
+            weather, later_of(weather, left), round(high), round(low),
             _whole(self.highs[day - 1]) if day > 0 else None,
             _whole(self.lows[day - 1]) if day > 0 else None,
         )
 
     def _day_end(self, day: int) -> float:
         return self.days[day + 1] if day + 1 < len(self.days) else self.days[day] + 86400
+
+
+def later_of(now: Weather, left: Iterable[Kind | None]) -> Later | None:
+    """Whether it rains or snows later in the day, by the kinds of the hours left of it after
+    this one, in order (None for one unknown): snow if both, thunder as rain, None if neither.
+    Raining, snowing or thundering now, the spell under way is left out, so that rain about to
+    stop is not had as rain to come."""
+    wet: set[Kind] = set()
+    under_way = now.wet
+    for kind in left:
+        under_way = under_way and kind in WET
+        if not under_way and kind in WET:
+            wet.add(kind)
+    return "snow" if "snow" in wet else "rain" if wet else None
 
 
 def _whole(degrees: object) -> int | None:

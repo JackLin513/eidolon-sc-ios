@@ -96,6 +96,7 @@
 
 import argparse
 import asyncio
+import io
 import logging
 import os
 import sys
@@ -122,6 +123,10 @@ from eidolon.usage import Tally, UsageLimiter
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    for stream in (sys.stdout, sys.stderr):
+        # a Windows console's code page (GBK) has no ✓ nor ✗: shown as ?, not failed on
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(errors="replace")
     parser = _parser()
     args = parser.parse_args(argv)
     if args.command in (None, "serve"):
