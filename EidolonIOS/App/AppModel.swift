@@ -590,8 +590,11 @@ final class AppModel {
         settings.fishAPIKey = environment["EIDOLON_FISH_API_KEY"] ?? ""
         settings.fishModel = environment["EIDOLON_FISH_MODEL"] ?? "s2.1-pro-free"
         // A setting this seeding does not carry (atmospheric text, phone texture, the
-        // judge) stays as the device had it.
+        // judge) stays as the device had it. The UI-test build is unsigned and Keychain
+        // writes can fail; the server just seeded must still answer this run, so the
+        // in-memory settings are set even when saving the key did not work.
         try? saveChatSettings(settings)
+        chatSettings = settings
     }
 
     /// Development aid: `SIMCTL_CHILD_EIDOLON_ADULT_MODE=1` turns adult mode on without
