@@ -3027,6 +3027,48 @@ final class CallSessionTests: XCTestCase {
         await session.hangUp()
     }
 
+    /// The debug shield keeps a call's prompt from asking her to warn that she will hang
+    /// up (spec #75, #77): the turn still reacts, but the ending direction is gone.
+    func testTheDebugShieldKeepsTheHangUpDirectionOutOfTheCallPrompt() async throws {
+        let eidolon = try await installedEidolon()
+        let firstReply = ReplyScriptProvider([["<ja>うん</ja><zh>嗯</zh>"]])
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano",
+            text: "こんにちは",
+            provider: firstReply
+        ) {}
+        let snapshotValue = try await eidolon.currentConversation(characterID: "mano")
+        let snapshot = try XCTUnwrap(snapshotValue)
+        try await eidolon.setDebugNoEnding(conversationID: snapshot.id, on: true)
+
+        let harsh = FixedJudge(judged: Judged(level: 0, outOfLine: true))
+        let recognition = FakeRecognition([.hang])
+        let provider = ReplyScriptProvider([["<ja>うん</ja><zh>嗯</zh>"]])
+        let playback = FakePlayback()
+        let (session, _, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            playback: playback,
+            judge: harsh
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+
+        await session.say("ひどい")
+        try await waitFor("her answer played") { playback.audio.count == 1 }
+        await session.hangUp()
+
+        let prompts = try await eidolon.turnTraces()
+            .first { !$0.trace.prompts.isEmpty }?
+            .trace.prompts
+            .flatMap { $0.map(\.content) }
+            .joined(separator: "\n") ?? ""
+        XCTAssertTrue(prompts.contains("有点不舒服，但你还愿意继续听"), prompts)
+        XCTAssertFalse(prompts.contains("很受伤、很生气"), prompts)
+        XCTAssertFalse(prompts.contains("你就要挂电话了"), prompts)
+        XCTAssertFalse(prompts.contains("你快受不了了"), prompts)
+    }
+
     /// The call's own trace says how long her reply and her first voice took: from the end
     /// of the producer's line to the reply, to the first line, and to the first voice.
     func testTheCallTraceSaysHowLongTheReplyAndVoiceTook() async throws {
