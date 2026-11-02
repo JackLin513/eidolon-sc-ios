@@ -20,66 +20,69 @@ struct PlayHubView: View {
     }
 
     var body: some View {
-        NavigationStack(path: playPath) {
-            List {
-                Section {
-                    card(
-                        icon: "gift",
-                        title: "礼物",
-                        subtitle: "抽奖、背包和送她的礼物"
-                    ) {
-                        app.openGifts()
-                    }
-                    .accessibilityIdentifier("play.gifts")
+        // The folded call's bar stands on top of the tab's navigation, not inside its
+        // scroll view: inside, the iOS 26 navigation bar tints itself with the bar's dark
+        // background and the title disappears (spec #64).
+        VStack(spacing: 0) {
+            CallBar()
+            NavigationStack(path: playPath) {
+                List {
+                    Section {
+                        card(
+                            icon: "gift",
+                            title: "礼物",
+                            subtitle: "抽奖、背包和送她的礼物"
+                        ) {
+                            app.openGifts()
+                        }
+                        .accessibilityIdentifier("play.gifts")
 
-                    card(
-                        icon: "trophy",
-                        title: "成就",
-                        subtitle: "和她们的进度"
-                    ) {
-                        app.playPath = NavigationPath()
-                        app.playPath.append(PlayRoute.achievements)
-                    }
-                    .accessibilityIdentifier("play.achievements")
+                        card(
+                            icon: "trophy",
+                            title: "成就",
+                            subtitle: "和她们的进度"
+                        ) {
+                            app.playPath = NavigationPath()
+                            app.playPath.append(PlayRoute.achievements)
+                        }
+                        .accessibilityIdentifier("play.achievements")
 
-                    card(
-                        icon: "wineglass",
-                        title: "酒吧",
-                        subtitle: barSubtitle
-                    ) {
-                        openBar()
+                        card(
+                            icon: "wineglass",
+                            title: "酒吧",
+                            subtitle: barSubtitle
+                        ) {
+                            openBar()
+                        }
+                        .accessibilityIdentifier("play.bar")
                     }
-                    .accessibilityIdentifier("play.bar")
                 }
-            }
-            .listStyle(.plain)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                CallBar()
-            }
-            .navigationTitle("玩法")
-            .navigationDestination(for: PlayRoute.self) { route in
-                switch route {
-                case .gifts:
-                    GiftsPlaceholderView()
-                case .achievements:
-                    PlayPlaceholderView(
-                        title: "成就",
-                        systemImage: "trophy",
-                        description: "成就页会在后续版本接入。"
+                .listStyle(.plain)
+                .navigationTitle("玩法")
+                .navigationDestination(for: PlayRoute.self) { route in
+                    switch route {
+                    case .gifts:
+                        GiftsPlaceholderView()
+                    case .achievements:
+                        PlayPlaceholderView(
+                            title: "成就",
+                            systemImage: "trophy",
+                            description: "成就页会在后续版本接入。"
+                        )
+                    }
+                }
+                // 酒吧整屏呈现：面包屑、横向画面和它的安全区都留在酒吧自己手里。
+                .fullScreenCover(isPresented: $isBarShown) {
+                    BarRoomView(
+                        settings: BarSettings.stored(app.barSettingsValue),
+                        jukebox: app.barJukeboxState,
+                        tutorialWalked: app.barTutorialDone
                     )
                 }
-            }
-            // 酒吧整屏呈现：面包屑、横向画面和它的安全区都留在酒吧自己手里。
-            .fullScreenCover(isPresented: $isBarShown) {
-                BarRoomView(
-                    settings: BarSettings.stored(app.barSettingsValue),
-                    jukebox: app.barJukeboxState,
-                    tutorialWalked: app.barTutorialDone
-                )
-            }
-            .task {
-                if app.consumeDebugBarRequest() {
-                    isBarShown = true
+                .task {
+                    if app.consumeDebugBarRequest() {
+                        isBarShown = true
+                    }
                 }
             }
         }
@@ -168,9 +171,6 @@ struct GiftsPlaceholderView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle("礼物")
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            CallBar()
-        }
     }
 }
 
@@ -188,8 +188,5 @@ struct PlayPlaceholderView: View {
         )
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            CallBar()
-        }
     }
 }

@@ -7,22 +7,18 @@ struct MainTabsView: View {
     @Bindable var app: AppModel
 
     var body: some View {
+        // The `Tab` form lets the same tab set become a sidebar on iPad and the new
+        // floating tab bar on iPhone (spec #64, page design direction: latest system).
         TabView(selection: selection) {
-            ConversationListView()
-                .tabItem {
-                    Label("对话", systemImage: "bubble.left.and.bubble.right")
-                }
-                .tag(MainTab.conversation)
-            PlayHubView()
-                .tabItem {
-                    Label("玩法", systemImage: "sparkles")
-                }
-                .tag(MainTab.play)
-            SettingsView()
-                .tabItem {
-                    Label("设置", systemImage: "gearshape")
-                }
-                .tag(MainTab.settings)
+            Tab("对话", systemImage: "bubble.left.and.bubble.right", value: MainTab.conversation) {
+                ConversationListView()
+            }
+            Tab("玩法", systemImage: "sparkles", value: MainTab.play) {
+                PlayHubView()
+            }
+            Tab("设置", systemImage: "gearshape", value: MainTab.settings) {
+                SettingsView()
+            }
         }
     }
 

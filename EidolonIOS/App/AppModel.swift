@@ -592,6 +592,20 @@ final class AppModel {
         return .seconds(1)
     }
 
+    /// Takes the debug character request once: after the producer leaves the chat the
+    /// roster is the debug launch's destination, not the chat again (spec #62).
+    func consumeDebugCharacterRequest() -> String? {
+        #if DEBUG
+        guard !didConsumeDebugCharacterRequest, let id = debugCharacterID else { return nil }
+        didConsumeDebugCharacterRequest = true
+        return id
+        #else
+        nil
+        #endif
+    }
+
+    private var didConsumeDebugCharacterRequest = false
+
     /// Takes the debug bar request once, so opening the play tab later does not reopen
     /// the bar (spec #64).
     func consumeDebugBarRequest() -> Bool {

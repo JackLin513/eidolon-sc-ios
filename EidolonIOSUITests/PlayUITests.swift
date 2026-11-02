@@ -95,6 +95,52 @@ final class PlayUITests: XCTestCase {
         )
     }
 
+    func testCollapsedCallBannerStaysAboveEachTabsTitle() throws {
+        app.terminate()
+        app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
+        app.launchEnvironment["EIDOLON_OPEN_CALL"] = "1"
+        app.launchEnvironment["EIDOLON_FAKE_CHAT"] = "1"
+        app.launchEnvironment["EIDOLON_CALL_FAKE_SPEECH"] = "你好"
+        app.launch()
+
+        XCTAssertTrue(app.buttons["call.hangUp"].waitForExistence(timeout: 20), "call did not start")
+        app.buttons["收起"].firstMatch.tap()
+
+        // Leave her chat for the roster: the debug launch must only open it once, or the
+        // back button immediately reopens the chat (spec #62).
+        let back = app.navigationBars.buttons["对话"]
+        XCTAssertTrue(back.waitForExistence(timeout: 5), "chat has no back to the roster")
+        back.tap()
+        let calendar = app.buttons["日历"]
+        XCTAssertTrue(calendar.waitForExistence(timeout: 5), "back did not reach the roster")
+
+        // The folded call's banner is a band above the tab's navigation, not inside it:
+        // inside the list, the iOS 26 navigation bar tints itself with the banner's dark
+        // colour and the title disappears (spec #64).
+        let bar = app.buttons["回到通话"].firstMatch
+        XCTAssertTrue(bar.waitForExistence(timeout: 5), "no folded call banner on the roster")
+        XCTAssertGreaterThan(
+            calendar.frame.minY, bar.frame.maxY,
+            "the roster's navigation is under the call banner"
+        )
+
+        app.tabBars.buttons["玩法"].tap()
+        let playTitle = app.staticTexts["玩法"].firstMatch
+        XCTAssertTrue(playTitle.waitForExistence(timeout: 5), "play title is missing")
+        XCTAssertGreaterThan(
+            playTitle.frame.minY, bar.frame.maxY,
+            "the play title is under the call banner"
+        )
+
+        app.tabBars.buttons["设置"].tap()
+        let settingsTitle = app.staticTexts["设置"].firstMatch
+        XCTAssertTrue(settingsTitle.waitForExistence(timeout: 5), "settings title is missing")
+        XCTAssertGreaterThan(
+            settingsTitle.frame.minY, bar.frame.maxY,
+            "the settings title is under the call banner"
+        )
+    }
+
     func testCallBarFollowsToThePlayTab() throws {
         app.terminate()
         app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
