@@ -148,6 +148,16 @@ final class AffinityTests: XCTestCase {
 
         let warning = AffinityPrompt.lines(tier: .trust, judged: nil, warning: .parts)
         XCTAssertEqual(warning, [AffinityPrompt.warnings[.parts]!])
+
+        let outOfLine = Judged(level: 0, outOfLine: true)
+        XCTAssertEqual(
+            AffinityPrompt.lines(tier: .trust, judged: outOfLine),
+            [AffinityPrompt.outOfLineFeeling]
+        )
+        XCTAssertEqual(
+            AffinityPrompt.lines(tier: .trust, judged: outOfLine, shielded: true),
+            [AffinityPrompt.shieldedOutOfLineFeeling]
+        )
     }
 
     func testJudgeParsesItsContract() throws {

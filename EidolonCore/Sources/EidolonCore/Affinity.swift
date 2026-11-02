@@ -288,6 +288,10 @@ public enum AffinityPrompt {
 
     static let outOfLineFeeling = "制作人刚才说的话让你很受伤、很生气；你可以明确表示不能接受。"
 
+    /// What she is told instead while a conversation's debug shield keeps it from ending:
+    /// the reaction stays, the invitation to refuse or threaten to leave does not.
+    static let shieldedOutOfLineFeeling = "制作人刚才说的话让你有点不舒服，但你还愿意继续听。"
+
     static let warnings: [Parting: String] = [
         .parts: "你快受不了了。先回应，再用你自己的方式表明：制作人再这样下去你就不想聊了。",
         .hangsUp: "你快受不了了。先回应，再用你自己的方式表明：制作人再这样下去你就要挂电话了。",
@@ -302,7 +306,8 @@ public enum AffinityPrompt {
         tier: AffinityTier,
         judged: Judged?,
         parting: Parting? = nil,
-        warning: Parting? = nil
+        warning: Parting? = nil,
+        shielded: Bool = false
     ) -> [String] {
         var lines: [String] = []
         if tier != .trust {
@@ -313,7 +318,11 @@ public enum AffinityPrompt {
             lines.append(whateverTheTier)
         }
         if let feeling = judged?.feeling {
-            lines.append(feeling)
+            lines.append(
+                shielded && (judged?.outOfLine ?? false)
+                    ? shieldedOutOfLineFeeling
+                    : feeling
+            )
         }
         if let parting {
             lines.append(partings[parting]!)

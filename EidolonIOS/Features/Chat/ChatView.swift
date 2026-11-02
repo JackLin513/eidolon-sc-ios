@@ -337,6 +337,10 @@ struct ChatView: View {
                     // line, so it carries her avatar and name (spec #40).
                     StreamingReply(store: store, character: character)
                 }
+                // The producer can keep a line: long press selects her Japanese, its
+                // subtitle, the producer's own words, scenes, names and times, with the
+                // system copy menu (spec #75, #76).
+                .textSelection(.enabled)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
