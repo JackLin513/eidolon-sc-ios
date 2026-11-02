@@ -51,6 +51,9 @@ struct ChatView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        // A conversation is a page of its own: the three first-level tabs stay behind it
+        // (spec #64). A live call is the exception, so the play tab stays within reach.
+        .background { TabBarHides(hidden: !app.call.isLive) }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
