@@ -81,7 +81,10 @@ struct CallView: View {
             }
         }
         .background(Color.black)
-        .preferredColorScheme(.dark)
+        // Only the open layer is dark. Folded away, it must not drag the pages behind it
+        // into dark mode: the tab pages keep the system's appearance, and the call bar is
+        // dark on its own (spec #46).
+        .preferredColorScheme(call.layer == .collapsed ? nil : .dark)
         .task {
             loadBackdrop()
             // Her stand does not wait on the call: it is there even when the call cannot be
