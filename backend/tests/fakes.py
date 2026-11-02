@@ -10,7 +10,7 @@ import secrets
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 import zipfile
 import zlib
@@ -1921,11 +1921,11 @@ class FakeWeather:
     `code` and `temperature` (the code None, as MSM leaves an hour it has not forecast).
     Asked for days (her day's, `daily`), it answers yesterday, today and tomorrow where the
     spot is (an hour ahead of UTC for each 15 degrees east), as of `clock` (without which it
-    fails): every hour `code` and `temperature`, but for those left of today, `later_code`
-    if set; each day's highest `high` and lowest `low` (3 degrees off the temperature by
-    default), yesterday's `yesterday_high` and `yesterday_low` if set; any of these set apart
-    for a spot in `spots`, by its latitude as asked. Either way, failing with 503 if
-    `failing`. Records the query of each request (`requests`)."""
+    fails): every hour `code` and `temperature`, but for those after this one, the codes
+    `ahead` in turn, then `later_code` if set; each day's highest `high` and lowest `low` (3
+    degrees off the temperature by default), yesterday's `yesterday_high` and `yesterday_low`
+    if set. Either way, failing with 503 if `failing`. Records the query of each request
+    (`requests`)."""
 
     def __init__(
         self,
@@ -1934,15 +1934,15 @@ class FakeWeather:
         *,
         failing: bool = False,
         clock: "Callable[[], datetime] | None" = None,
+        ahead: Sequence[int] = (),
         later_code: int | None = None,
         high: float | None = None,
         low: float | None = None,
         yesterday_high: float | None = None,
         yesterday_low: float | None = None,
-        spots: "dict[str, dict[str, Any]] | None" = None,
     ) -> None:
-        self.spots = spots or {}
         self.code = code
+        self.ahead = list(ahead)
         self.temperature = temperature
         self.failing = failing
         self.clock = clock
@@ -1985,12 +1985,9 @@ class FakeWeather:
     def _days(self, query: dict[str, str]) -> httpx.Response:
         if self.clock is None:
             return httpx.Response(503, json={"error": True, "reason": "no clock"})
-        apart = self.spots.get(query["latitude"], {})
-        code, temperature = apart.get("code", self.code), apart.get("temperature", self.temperature)
-        later_code = apart.get("later_code", self.later_code)
-        high, low = apart.get("high", self.high), apart.get("low", self.low)
-        yesterday_high = apart.get("yesterday_high", self.yesterday_high)
-        yesterday_low = apart.get("yesterday_low", self.yesterday_low)
+        code, temperature, later_code = self.code, self.temperature, self.later_code
+        high, low = self.high, self.low
+        yesterday_high, yesterday_low = self.yesterday_high, self.yesterday_low
         offset = timedelta(hours=round(float(query["longitude"]) / 15))
         now = self.clock()
         local = (now + offset).replace(tzinfo=None)
@@ -1998,10 +1995,13 @@ class FakeWeather:
         days = [today - timedelta(days=1), today, today + timedelta(days=1)]
         hours = [days[0] + timedelta(hours=i) for i in range(72)]
         this_hour = now.replace(minute=0, second=0, microsecond=0)
-        codes = [
-            later_code if later_code is not None and this_hour < h < days[2] else code
-            for h in hours
-        ]
+        def code_at(h: datetime) -> int | None:
+            after = int((h - this_hour) / timedelta(hours=1)) - 1
+            if 0 <= after < len(self.ahead):
+                return self.ahead[after]
+            return later_code if later_code is not None and this_hour < h < days[2] else code
+
+        codes = [code_at(h) for h in hours]
         high = temperature + 3 if high is None else high
         low = temperature - 3 if low is None else low
         return httpx.Response(200, json={
@@ -2023,19 +2023,19 @@ class FakeWeather:
 
 HARBIN = {
     "name": "哈尔滨", "id": "101050101", "lat": "45.80298", "lon": "126.53505",
-    "adm2": "哈尔滨", "adm1": "黑龙江省", "country": "中国", "tz": "Asia/Shanghai",
+    "adm2": "哈尔滨", "adm1": "黑龙江省", "country": "中国", "tz": "Asia/Shanghai", "utcOffset": "+08:00",
 }
 """Harbin, as QWeather finds it."""
 
 DONGCHENG = {
     "name": "东城", "id": "101011600", "lat": "39.91755", "lon": "116.41876",
-    "adm2": "北京", "adm1": "北京市", "country": "中国", "tz": "Asia/Shanghai",
+    "adm2": "北京", "adm1": "北京市", "country": "中国", "tz": "Asia/Shanghai", "utcOffset": "+08:00",
 }
 """Dongcheng, in Beijing, as QWeather finds it."""
 
 SHINJUKU = {
     "name": "新宿", "id": "B00176", "lat": "35.69384", "lon": "139.70355",
-    "adm2": "东京", "adm1": "东京都", "country": "日本", "tz": "Asia/Tokyo",
+    "adm2": "东京", "adm1": "东京都", "country": "日本", "tz": "Asia/Tokyo", "utcOffset": "+09:00",
 }
 """Shinjuku, in Tokyo, as QWeather finds it."""
 
@@ -2044,7 +2044,15 @@ class FakeQWeather:
     """QWeather (和风天气) on the account's own host, as `qweather` asks it over HTTP
     (`transport`): looking a city up answers with `cities` (404 for none), the warnings at
     a spot with `alerts`; failing as an account it does not know, 401, if `failing`.
-    Records each request's path, query and token (`requests`)."""
+    Asked for the weather at a spot, it answers as of `clock` (without which it fails), the
+    spot 8 hours ahead of UTC: now, `icon` and `temperature`; the 24 hours after this one,
+    the icons `ahead` in turn, then `later_icon` (`icon` if unset) for those left of today and
+    `icon` for tomorrow's; today and the next two days, the highest `high` and lowest `low` (3
+    degrees off the temperature by default); asked for yesterday's records, yesterday's
+    `yesterday_high` and `yesterday_low` (as today's if unset), failing with 400, as for a day
+    QWeather has no records of, if `no_records`; the days from yesterday, as just after
+    midnight before they have turned, if `days_not_turned`. Records each request's path, query and token
+    (`requests`)."""
 
     def __init__(
         self,
@@ -2052,10 +2060,32 @@ class FakeQWeather:
         alerts: Sequence[dict] = (),
         *,
         failing: bool = False,
+        clock: "Callable[[], datetime] | None" = None,
+        icon: str = "100",
+        temperature: int = 18,
+        ahead: Sequence[str] = (),
+        later_icon: str | None = None,
+        high: int | None = None,
+        low: int | None = None,
+        yesterday_high: int | None = None,
+        yesterday_low: int | None = None,
+        no_records: bool = False,
+        days_not_turned: bool = False,
     ) -> None:
         self.cities = list(cities)
         self.alerts = list(alerts)
         self.failing = failing
+        self.clock = clock
+        self.icon = icon
+        self.temperature = temperature
+        self.ahead = list(ahead)
+        self.later_icon = later_icon
+        self.high = high
+        self.low = low
+        self.yesterday_high = yesterday_high
+        self.yesterday_low = yesterday_low
+        self.no_records = no_records
+        self.days_not_turned = days_not_turned
         self.requests: list[tuple[str, dict[str, str], str]] = []
 
     def transport(self) -> httpx.MockTransport:
@@ -2066,6 +2096,10 @@ class FakeQWeather:
 
     def warnings_asked(self) -> list[str]:
         return [path for path, _, _ in self.requests if path.startswith("/weatheralert/")]
+
+    def asked(self, path: str) -> list[dict[str, str]]:
+        """The queries of the requests to `path`."""
+        return [q for at, q, _ in self.requests if at == path]
 
     def _handle(self, request: httpx.Request) -> httpx.Response:
         auth = request.headers.get("authorization", "")
@@ -2087,13 +2121,67 @@ class FakeQWeather:
                 "metadata": {"tag": "t", "zeroResult": not self.alerts},
                 "alerts": self.alerts,
             })
+        if request.url.path.startswith(("/v7/weather/", "/v7/historical/")):
+            return self._weather(request.url.path, dict(request.url.params))
         return httpx.Response(404, json={"error": {"status": 404, "title": "Not Found"}})
 
+    def _weather(self, path: str, query: dict[str, str]) -> httpx.Response:
+        if self.clock is None:
+            return httpx.Response(503, json={"error": {"status": 503, "title": "no clock"}})
+        zone = timezone(timedelta(hours=8))
+        now = self.clock().astimezone(zone)
+        today = now.date()
+        high = self.temperature + 3 if self.high is None else self.high
+        low = self.temperature - 3 if self.low is None else self.low
+        if path == "/v7/weather/now":
+            observed = now.replace(second=0, microsecond=0) - timedelta(minutes=10)
+            return httpx.Response(200, json={"code": "200", "now": {
+                "obsTime": observed.isoformat(timespec="minutes"), "temp": str(self.temperature),
+                "icon": self.icon, "text": "",
+            }})
+        if path == "/v7/weather/24h":
+            this_hour = now.replace(minute=0, second=0, microsecond=0)
+            hours = [this_hour + timedelta(hours=i + 1) for i in range(24)]
+            icons = [
+                self.ahead[i] if i < len(self.ahead)
+                else (self.later_icon or self.icon) if h.date() == today else self.icon
+                for i, h in enumerate(hours)
+            ]
+            return httpx.Response(200, json={"code": "200", "hourly": [
+                {"fxTime": h.isoformat(timespec="minutes"), "temp": str(self.temperature),
+                 "icon": icon, "pop": "0"}
+                for h, icon in zip(hours, icons, strict=True)
+            ]})
+        if path == "/v7/weather/3d":
+            first = -1 if self.days_not_turned else 0
+            return httpx.Response(200, json={"code": "200", "daily": [
+                {"fxDate": (today + timedelta(days=i)).isoformat(),
+                 "tempMax": str(self.yesterday_high if i < 0 and self.yesterday_high else high),
+                 "tempMin": str(low)}
+                for i in range(first, first + 3)
+            ]})
+        if self.no_records:
+            return httpx.Response(400, json={"error": {
+                "status": 400, "title": "Invalid Parameter",
+                "detail": "Invalid parameter, please check your request.",
+            }})
+        yesterday = today - timedelta(days=1)
+        assert query.get("date") == f"{yesterday:%Y%m%d}", query
+        return httpx.Response(200, json={"code": "200", "weatherDaily": {
+            "date": yesterday.isoformat(),
+            "tempMax": str(high if self.yesterday_high is None else self.yesterday_high),
+            "tempMin": str(low if self.yesterday_low is None else self.yesterday_low),
+        }})
 
-def alert(headline: str, code: str = "alert") -> dict:
-    """A weather warning, as QWeather tells of one in force (or cancelled, `cancel`)."""
+
+def alert(
+    headline: str, code: str = "alert", *, id: str = "1", supersedes: Sequence[str] = ()
+) -> dict:
+    """A weather warning, as QWeather tells of one in force (or cancelled, `cancel`; or in
+    force anew, `update`, superseding those by their IDs `supersedes`)."""
     return {
-        "id": "1", "senderName": "哈尔滨市气象台", "messageType": {"code": code},
+        "id": id, "senderName": "哈尔滨市气象台",
+        "messageType": {"code": code, "supersedes": list(supersedes)},
         "eventType": {"name": "寒潮", "code": "1009"}, "severity": "minor",
         "color": {"code": "blue"}, "headline": headline,
     }

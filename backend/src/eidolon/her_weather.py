@@ -1,9 +1,9 @@
 """The weather she knows of as she talks (GLOSSARY.md「此刻」): typing, in a call or reaching out,
 Tokyo's, where she is, and, where the producer has a city in their profile and the deployer a
 QWeather account, the producer's: the weather now, whether it rains or snows later in the day,
-the day's highest and lowest beside yesterday's (`weather.Today`), and there the weather
-warnings in force (`qweather`). What cannot be had in `WAIT` she is not told, nor is she told
-it is missing.
+the day's highest and lowest beside yesterday's (`weather.Today`; Tokyo's from Open-Meteo, the
+producer's from QWeather, `qweather`), and there the weather warnings in force. What cannot be
+had in `WAIT` she is not told, nor is she told it is missing.
 
 She is always told it, so that she can answer if asked; she may bring it up herself only if
 they have not been in touch for `LONG_APART` (in a call, until it connected), or the day stands
@@ -68,7 +68,8 @@ class KnownWeather:
 
 
 class HerWeather:
-    """The weather from `weathers`, the producer's city found on `qweather` (None without)."""
+    """Tokyo's weather from `weathers`; the producer's city, and its weather and warnings,
+    from `qweather` (None without)."""
 
     def __init__(self, weathers: Weathers, qweather: QWeather | None = None) -> None:
         self._weathers = weathers
@@ -86,7 +87,7 @@ class HerWeather:
         there = city if city is not None and not same else None
         tokyo, there_day, warnings = await asyncio.gather(
             self._weathers.today(TOKYO, WAIT),
-            self._weathers.today(there.spot, WAIT) if there else _none(),
+            self._qweather.today(there.spot, WAIT) if there and self._qweather else _none(),
             self._qweather.warnings(city.spot, WAIT) if city and self._qweather else _none(),
         )
         warnings = warnings or ()
