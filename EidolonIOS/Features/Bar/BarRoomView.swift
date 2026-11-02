@@ -97,7 +97,7 @@ struct BarRoomView: View {
             }
         }
         .overlay(alignment: .top) {
-            CallBar()
+            CallBar(returnsToConversation: false)
                 .onChange(of: app.call.layer) { _, layer in
                     if layer == .expanded { dismiss() }
                 }

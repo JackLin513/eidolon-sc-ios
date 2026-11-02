@@ -84,6 +84,10 @@ struct ChatView: View {
                             openOutfits()
                         }
                     }
+                    Button("送她一件礼物") {
+                        app.openGifts(characterID: character.id)
+                    }
+                    .accessibilityIdentifier("chat.gifts")
                     Button("她的日程") {
                         showsSchedule = true
                     }
