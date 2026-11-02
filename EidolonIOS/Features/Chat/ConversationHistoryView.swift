@@ -47,6 +47,25 @@ struct ConversationHistoryView: View {
                             }
                         }
                     }
+                    // Debug mode's shortcut (spec #62): a past conversation can be put
+                    // back in use without opening it and going through the debug sheet.
+                    // The swipe is the deliberate act; the history closes when the
+                    // revision changes and the base page shows the new current.
+                    .swipeActions(edge: .leading) {
+                        if app.debugMode, !conversation.isCurrent,
+                           !currentTurnInFlight, !app.call.isLive {
+                            Button {
+                                Task { await restore(conversation) }
+                            } label: {
+                                Label(
+                                    conversation.ended ? "恢复为当前" : "设为当前",
+                                    systemImage: conversation.ended
+                                        ? "arrow.uturn.backward" : "pin"
+                                )
+                            }
+                            .tint(.accentColor)
+                        }
+                    }
                 }
             }
         }
@@ -141,6 +160,25 @@ struct ConversationHistoryView: View {
         do {
             try await app.core.deleteConversation(id: conversation.id)
             await load()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// The debug shortcut: the swiped conversation becomes the current one, and an
+    /// ended one is opened again in the same move. The old current falls into history
+    /// untouched; the revision change closes this sheet and the page below reloads.
+    private func restore(_ conversation: ConversationSummary) async {
+        do {
+            let moved = try await app.setDebugCurrentConversation(
+                characterID: character.id,
+                id: conversation.id,
+                reopen: conversation.ended
+            )
+            guard moved else {
+                error = "这段对话不属于这位角色，没有切换。"
+                return
+            }
         } catch {
             self.error = error.localizedDescription
         }
