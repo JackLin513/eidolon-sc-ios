@@ -19,6 +19,7 @@ struct DebugView: View {
     @State private var affinity: Affinity?
     @State private var draftValue = AffinityRules.normal
     @State private var memoryCount: Int?
+    @State private var noEnding = false
     @State private var isSaving = false
     @State private var confirmingReopen = false
     @State private var confirmingMakeCurrent = false
@@ -67,6 +68,7 @@ struct DebugView: View {
 
                 memorySection
                 affinitySection
+                keepOpenSection
                 conversationSection
             }
             .navigationTitle("调试")
@@ -192,6 +194,35 @@ struct DebugView: View {
         }
     }
 
+    // MARK: - Keeping this conversation open
+
+    private var keepOpenSection: some View {
+        Section {
+            if store.activeConversationID != nil {
+                Toggle("不因好感度下降而结束", isOn: Binding(
+                    get: { noEnding },
+                    set: { on in
+                        noEnding = on
+                        Task { await saveNoEnding(on) }
+                    }
+                ))
+                .disabled(busy)
+                .accessibilityIdentifier("debug.noEnding")
+            } else {
+                Text("还没有对话。")
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("保持对话")
+        } footer: {
+            Text(
+                "开启后，这段对话不会因为冷却、两次越界或累计伤害而结束；通话也不会因此挂断。"
+                    + "好感度照常下降，只对这一条对话有效，新对话默认关闭。"
+                    + (busy ? "她正在回复或通话中，先等这一轮结束。" : "")
+            )
+        }
+    }
+
     // MARK: - Conversation
 
     private var conversationSection: some View {
@@ -214,14 +245,6 @@ struct DebugView: View {
                 Text("她正在回复或通话中，写操作等她这一轮结束再做。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-            }
-            if let conversationID = store.activeConversationID {
-                // Shown only to make it unmistakable which conversation the debug actions
-                // land on; it is not part of the normal page.
-                Text(conversationID)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.tertiary)
-                    .textSelection(.enabled)
             }
         } header: {
             Text("对话")
@@ -249,6 +272,7 @@ struct DebugView: View {
     private func load() async {
         await loadAffinity()
         await loadMemoryCount()
+        await loadNoEnding()
     }
 
     private func loadAffinity() async {
@@ -267,6 +291,26 @@ struct DebugView: View {
             memoryCount = try await app.debugMemories(conversationID: conversationID).count
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func loadNoEnding() async {
+        guard let conversationID = store.activeConversationID else { return }
+        do {
+            noEnding = try await app.debugNoEnding(conversationID: conversationID)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func saveNoEnding(_ on: Bool) async {
+        guard let conversationID = store.activeConversationID else { return }
+        do {
+            try await app.setDebugNoEnding(conversationID: conversationID, on: on)
+            noEnding = on
+        } catch {
+            errorMessage = error.localizedDescription
+            await loadNoEnding()
         }
     }
 

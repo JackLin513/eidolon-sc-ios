@@ -1570,14 +1570,7 @@ extension Eidolon {
     /// ending: `currentConversationID` is actor-isolated, and a call is an actor of its own.
     nonisolated func currentConversationIDNow(_ characterID: String) throws -> String? {
         try userQueue.read { db in
-            try String.fetchOne(
-                db,
-                sql: """
-                    SELECT id FROM conversations WHERE character_id = ?
-                    ORDER BY created_at DESC, rowid DESC LIMIT 1
-                    """,
-                arguments: [characterID]
-            )
+            try Self.currentConversationID(db, characterID: characterID)
         }
     }
 

@@ -4,7 +4,7 @@ import GRDB
 /// The writable user library (ADR-0002). Its schema evolves with the app, not
 /// with the content bundle, and is therefore managed by GRDB migrations.
 enum UserSchema {
-    static let version = 14
+    static let version = 15
 
     static func migrate(_ dbQueue: DatabaseQueue) throws {
         var migrator = DatabaseMigrator()
@@ -298,6 +298,14 @@ enum UserSchema {
                     ORDER BY c2.created_at DESC, c2.rowid DESC
                     LIMIT 1
                 );
+                """)
+        }
+        migrator.registerMigration("v15") { db in
+            // A debug conversation can keep going after the affinity that would have
+            // ended it (spec #62). Off for every conversation until the debug page turns
+            // it on; a new conversation starts off.
+            try db.execute(sql: """
+                ALTER TABLE conversations ADD COLUMN debug_no_ending INTEGER NOT NULL DEFAULT 0
                 """)
         }
         try migrator.migrate(dbQueue)

@@ -112,6 +112,82 @@ final class DebugModeTests: XCTestCase {
         XCTAssertNil(normal.cooldownUntil)
     }
 
+    // MARK: - Keeping a conversation open
+
+    func testDebugNoEndingKeepsAnOffendedConversationOpen() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("こんにちは", provider: reply(), on: eidolon)
+        let snapshotValue = try await eidolon.currentConversation(characterID: "mano")
+        let snapshot = try XCTUnwrap(snapshotValue)
+        try await eidolon.setDebugNoEnding(conversationID: snapshot.id, on: true)
+
+        let harsh = FixedJudge(judged: Judged(level: 0, outOfLine: true))
+        let first = try await say("ひどい", provider: reply(), judge: harsh, on: eidolon)
+        XCTAssertFalse(first?.ended == true)
+        let second = try await say("もう一度ひどい", provider: reply(), judge: harsh, on: eidolon)
+        XCTAssertFalse(second?.ended == true)
+        XCTAssertNil(second?.hangUp)
+
+        let afterValue = try await eidolon.conversation(id: snapshot.id)
+        let after = try XCTUnwrap(afterValue)
+        XCTAssertFalse(after.ended)
+        let record = try await eidolon.conversationRecord(conversationID: snapshot.id)
+        XCTAssertFalse(record.contains { line in
+            if case let .event(event) = line { return event.kind == "ended" }
+            return false
+        })
+        let status = try await eidolon.affinityStatus(characterID: "mano")
+        XCTAssertFalse(status.cooling)
+
+        let third = try await say("まだ話せる", provider: reply(), on: eidolon)
+        XCTAssertNotNil(third)
+        XCTAssertFalse(third?.ended == true)
+    }
+
+    func testDebugNoEndingSuppressesTheCooldownThatWouldStopTheTurn() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("こんにちは", provider: reply(), on: eidolon)
+        let snapshotValue = try await eidolon.currentConversation(characterID: "mano")
+        let snapshot = try XCTUnwrap(snapshotValue)
+        try await eidolon.debugSetAffinity(characterID: "mano", value: 5)
+        try await eidolon.setDebugNoEnding(conversationID: snapshot.id, on: true)
+
+        let harsh = FixedJudge(judged: Judged(level: 0, outOfLine: true))
+        let record = try await say("ひどい", provider: reply(), judge: harsh, on: eidolon)
+
+        XCTAssertFalse(record?.ended == true)
+        XCTAssertNil(record?.hangUp)
+        let status = try await eidolon.affinityStatus(characterID: "mano")
+        XCTAssertFalse(status.cooling)
+        XCTAssertNil(status.cooldownUntil)
+        let afterValue = try await eidolon.conversation(id: snapshot.id)
+        XCTAssertFalse(afterValue?.ended == true)
+    }
+
+    func testDebugNoEndingIsPerConversationAndPersists() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("こんにちは", provider: reply(), on: eidolon)
+        let firstValue = try await eidolon.currentConversation(characterID: "mano")
+        let first = try XCTUnwrap(firstValue)
+        try await eidolon.setDebugNoEnding(conversationID: first.id, on: true)
+        let firstShielded = try await eidolon.debugNoEnding(conversationID: first.id)
+        XCTAssertTrue(firstShielded)
+
+        let secondID = try await eidolon.beginNewConversation(characterID: "mano")
+        let secondShielded = try await eidolon.debugNoEnding(conversationID: secondID)
+        XCTAssertFalse(secondShielded)
+
+        let reopened = try Eidolon(location: .init(root: root.appendingPathComponent("app")))
+        let firstAfterReopen = try await reopened.debugNoEnding(conversationID: first.id)
+        XCTAssertTrue(firstAfterReopen)
+        let secondAfterReopen = try await reopened.debugNoEnding(conversationID: secondID)
+        XCTAssertFalse(secondAfterReopen)
+
+        try await reopened.setDebugNoEnding(conversationID: first.id, on: false)
+        let cleared = try await reopened.debugNoEnding(conversationID: first.id)
+        XCTAssertFalse(cleared)
+    }
+
     // MARK: - Memories
 
     func testDebugMemoriesListsOnlyThatConversationsWritesNewestFirst() async throws {
@@ -296,6 +372,9 @@ final class DebugModeTests: XCTestCase {
         XCTAssertEqual(firstAfter?.messages.count, 4)
         let secondAfter = try await eidolon.conversation(id: secondID)
         XCTAssertEqual(secondAfter?.messages.count, 2)
+
+        let callPath = try eidolon.currentConversationIDNow("mano")
+        XCTAssertEqual(callPath, first.id, "the call path reads the same pointer")
 
         let reopened = try Eidolon(location: .init(root: root.appendingPathComponent("app")))
         let reopenedCurrent = try await reopened.currentConversation(characterID: "mano")

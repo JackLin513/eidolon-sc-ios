@@ -123,4 +123,30 @@ extension Eidolon {
         }
     }
 
+    // MARK: - Keeping this conversation open
+
+    /// Whether this conversation is shielded from the affinity-driven endings: the two
+    /// out-of-line turns, the accumulated hurt, and the cooldown that would begin. The
+    /// affinity itself still falls; only ending the conversation is held back.
+    public func debugNoEnding(conversationID: String) throws -> Bool {
+        try userQueue.read { db in
+            try Bool.fetchOne(
+                db,
+                sql: "SELECT debug_no_ending FROM conversations WHERE id = ?",
+                arguments: [conversationID]
+            ) ?? false
+        }
+    }
+
+    /// Turns the shield on or off for this conversation. Only this row changes; a new
+    /// conversation starts off, and the normal rules come back when it is turned off.
+    public func setDebugNoEnding(conversationID: String, on: Bool) throws {
+        try userQueue.write { db in
+            try db.execute(
+                sql: "UPDATE conversations SET debug_no_ending = ? WHERE id = ?",
+                arguments: [on ? 1 : 0, conversationID]
+            )
+        }
+    }
+
 }

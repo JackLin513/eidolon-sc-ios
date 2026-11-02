@@ -211,4 +211,42 @@ final class UserSchemaTests: XCTestCase {
         XCTAssertEqual(pointers.map(\.0), ["hiori", "mano"])
         XCTAssertEqual(pointers.map(\.1), ["hiori-only", "mano-new"])
     }
+
+    /// v15's debug shield is off for every conversation an older library already had.
+    func testUpgradingToV15LeavesTheDebugShieldOff() throws {
+        let queue = try DatabaseQueue()
+        try queue.write { db in
+            try db.execute(sql: "CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY)")
+            for version in [
+                "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12",
+                "v13", "v14",
+            ] {
+                try db.execute(
+                    sql: "INSERT INTO grdb_migrations(identifier) VALUES (?)",
+                    arguments: [version]
+                )
+            }
+            try db.execute(sql: """
+                CREATE TABLE conversations (
+                    id TEXT PRIMARY KEY,
+                    character_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    title TEXT,
+                    ended_at TEXT
+                );
+                INSERT INTO conversations(id, character_id, created_at)
+                VALUES ('c1', 'mano', '2026-01-01T00:00:00.000000Z')
+                """)
+        }
+
+        try UserSchema.migrate(queue)
+
+        let shielded = try queue.read { db in
+            try Bool.fetchOne(
+                db,
+                sql: "SELECT debug_no_ending FROM conversations WHERE id = 'c1'"
+            )
+        }
+        XCTAssertEqual(shielded, false)
+    }
 }
