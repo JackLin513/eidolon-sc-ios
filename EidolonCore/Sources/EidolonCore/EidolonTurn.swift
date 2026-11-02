@@ -298,7 +298,12 @@ extension Eidolon {
         // A call's turns count apart from the conversation's typed ones: what it holds
         // comes from the call, not from the messages (upstream `in_call`).
         let call = inCall ?? (talking == .inCall ? CallScope() : nil)
-        let cools = try forecastCooling(characterID: characterID, judged: judged, now: now)
+        let noEnding = try existingConversation.map {
+            try debugNoEnding(conversationID: $0)
+        } ?? false
+        let cools = noEnding
+            ? false
+            : try forecastCooling(characterID: characterID, judged: judged, now: now)
         let outOfLineBefore: Int
         let hurtBefore: [Double]
         if let call {
@@ -312,13 +317,13 @@ extension Eidolon {
                 .filter(\.outOfLine).count
             hurtBefore = recent.map(\.hurt)
         }
-        let ending = ends(
+        let ending = noEnding ? nil : ends(
             judged: judged,
             cools: cools,
             outOfLineBefore: outOfLineBefore,
             hurtBefore: hurtBefore
         )
-        let warning = warns(
+        let warning = noEnding ? false : warns(
             judged: judged,
             cools: cools,
             outOfLineBefore: outOfLineBefore,
@@ -549,6 +554,7 @@ extension Eidolon {
             judged: judged,
             ending: ending,
             typed: call == nil,
+            noEnding: noEnding,
             now: now,
             replyAt: replyAt
         )
@@ -957,6 +963,7 @@ extension Eidolon {
         judged: Judged?,
         ending: EndsReason?,
         typed: Bool,
+        noEnding: Bool,
         now: Date,
         replyAt: Date
     ) throws -> RecordedTurn {
@@ -1012,7 +1019,12 @@ extension Eidolon {
                 ? (gainRow?["gained_today"] as Double? ?? 0)
                 : 0
             step = AffinityRules.limited(step, left: AffinityRules.gainsPerDay - gainedBefore)
-            let after = before.stepped(step)
+            let stepped = before.stepped(step)
+            // The debug shield holds back the cooldown too: with it on, a value that would
+            // have reached the lowest is kept at the lowest without cooling.
+            let after = noEnding
+                ? Affinity(value: stepped.value, at: stepped.at, cooling: false)
+                : stepped
             let change = before.change(to: after)
             let rose = max(after.value - before.value, 0)
             let gainedToday = gainedBefore + min(max(step, 0), rose)
@@ -1053,7 +1065,7 @@ extension Eidolon {
                 ]
             )
 
-            if typed, ending != nil {
+            if typed, ending != nil, !noEnding {
                 // Written after the reply it ends, as upstream writes it (`_now()`).
                 let endedStamp = Self.timestamp(microseconds: replyMicros + 1)
                 try db.execute(

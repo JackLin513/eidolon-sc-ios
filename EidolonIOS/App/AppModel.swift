@@ -498,6 +498,14 @@ final class AppModel {
         try await core.debugReopenConversation(id: id)
     }
 
+    func debugNoEnding(conversationID: String) async throws -> Bool {
+        try await core.debugNoEnding(conversationID: conversationID)
+    }
+
+    func setDebugNoEnding(conversationID: String, on: Bool) async throws {
+        try await core.setDebugNoEnding(conversationID: conversationID, on: on)
+    }
+
     @discardableResult
     func setDebugCurrentConversation(
         characterID: String,
