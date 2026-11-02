@@ -82,6 +82,10 @@ final class AffinityTests: XCTestCase {
         XCTAssertEqual(Judged(level: 4).feeling, "制作人刚才说的话让你很开心，觉得被在意。")
         XCTAssertNil(Judged(level: 2).feeling)
         XCTAssertEqual(Judged(level: 0, outOfLine: true).feeling, AffinityPrompt.outOfLineFeeling)
+        XCTAssertEqual(
+            Judged(level: 0, outOfLine: true).feeling(shielded: true),
+            AffinityPrompt.shieldedOutOfLineFeeling
+        )
     }
 
     func testEndsAndWarns() {
@@ -157,6 +161,16 @@ final class AffinityTests: XCTestCase {
         XCTAssertEqual(
             AffinityPrompt.lines(tier: .trust, judged: outOfLine, shielded: true),
             [AffinityPrompt.shieldedOutOfLineFeeling]
+        )
+        XCTAssertEqual(
+            AffinityPrompt.lines(
+                tier: .trust,
+                judged: outOfLine,
+                warning: .hangsUp,
+                shielded: true
+            ),
+            [AffinityPrompt.shieldedOutOfLineFeeling],
+            "the shield must not let a caller add a hang-up warning"
         )
     }
 

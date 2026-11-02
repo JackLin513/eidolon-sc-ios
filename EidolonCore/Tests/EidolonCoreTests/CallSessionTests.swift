@@ -3058,15 +3058,11 @@ final class CallSessionTests: XCTestCase {
         try await waitFor("her answer played") { playback.audio.count == 1 }
         await session.hangUp()
 
-        let prompts = try await eidolon.turnTraces()
-            .first { !$0.trace.prompts.isEmpty }?
-            .trace.prompts
-            .flatMap { $0.map(\.content) }
-            .joined(separator: "\n") ?? ""
+        let prompts = try await latestPrompt(on: eidolon)
         XCTAssertTrue(prompts.contains("有点不舒服，但你还愿意继续听"), prompts)
-        XCTAssertFalse(prompts.contains("很受伤、很生气"), prompts)
-        XCTAssertFalse(prompts.contains("你就要挂电话了"), prompts)
-        XCTAssertFalse(prompts.contains("你快受不了了"), prompts)
+        XCTAssertFalse(prompts.contains(AffinityPrompt.outOfLineFeeling), prompts)
+        XCTAssertFalse(prompts.contains(AffinityPrompt.warnings[.hangsUp]!), prompts)
+        XCTAssertFalse(prompts.contains(AffinityPrompt.partings[.hangsUp]!), prompts)
     }
 
     /// The call's own trace says how long her reply and her first voice took: from the end

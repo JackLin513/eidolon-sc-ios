@@ -53,13 +53,6 @@ final class DebugModeTests: XCTestCase {
         return record
     }
 
-    private func latestPrompt(on eidolon: Eidolon) async throws -> String {
-        let traces = try await eidolon.turnTraces()
-        return traces.first?.trace.prompts
-            .flatMap { $0.map(\.content) }
-            .joined(separator: "\n") ?? ""
-    }
-
     private func endConversation(on eidolon: Eidolon, characterID: String = "mano") async throws {
         let harsh = FixedJudge(judged: Judged(level: 0, outOfLine: true))
         try await say("ひどいことを言う", to: characterID, provider: reply(), judge: harsh, on: eidolon)
@@ -183,21 +176,20 @@ final class DebugModeTests: XCTestCase {
 
         let prompt = try await latestPrompt(on: eidolon)
         XCTAssertTrue(prompt.contains("有点不舒服，但你还愿意继续听"), prompt)
-        XCTAssertFalse(prompt.contains("很受伤、很生气"), prompt)
-        XCTAssertFalse(prompt.contains("可以明确表示不能接受"), prompt)
-        XCTAssertFalse(prompt.contains("你快受不了了"), prompt)
-        XCTAssertFalse(prompt.contains("你就不想聊了"), prompt)
-        XCTAssertFalse(prompt.contains("你暂时不想再和制作人说话了"), prompt)
+        XCTAssertFalse(prompt.contains(AffinityPrompt.outOfLineFeeling), prompt)
+        XCTAssertFalse(prompt.contains(AffinityPrompt.warnings[.parts]!), prompt)
+        XCTAssertFalse(prompt.contains(AffinityPrompt.partings[.parts]!), prompt)
     }
 
-    func testWithoutTheShieldTheOutOfLineFeelingStaysStrong() async throws {
+    func testWithoutTheShieldTheOutOfLineTurnWarns() async throws {
         let eidolon = try await installedEidolon()
         let harsh = FixedJudge(judged: Judged(level: 0, outOfLine: true))
         _ = try await say("ひどい", provider: reply(), judge: harsh, on: eidolon)
 
         let prompt = try await latestPrompt(on: eidolon)
-        XCTAssertTrue(prompt.contains("很受伤、很生气"), prompt)
-        XCTAssertFalse(prompt.contains("有点不舒服，但你还愿意继续听"), prompt)
+        XCTAssertTrue(prompt.contains(AffinityPrompt.outOfLineFeeling), prompt)
+        XCTAssertTrue(prompt.contains(AffinityPrompt.warnings[.parts]!), prompt)
+        XCTAssertFalse(prompt.contains(AffinityPrompt.shieldedOutOfLineFeeling), prompt)
     }
 
     func testDebugNoEndingIsPerConversationAndPersists() async throws {

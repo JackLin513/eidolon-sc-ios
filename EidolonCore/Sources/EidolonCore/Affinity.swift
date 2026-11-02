@@ -177,8 +177,16 @@ public struct Judged: Sendable, Hashable {
     }
 
     /// How what was said makes her feel, as she is told it.
-    public var feeling: String? {
-        if outOfLine { return AffinityPrompt.outOfLineFeeling }
+    public var feeling: String? { feeling(shielded: false) }
+
+    /// The same feeling with the conversation's debug shield in mind: out-of-line still
+    /// stings, but she is not invited to refuse or threaten to leave (spec #75/#77).
+    public func feeling(shielded: Bool) -> String? {
+        if outOfLine {
+            return shielded
+                ? AffinityPrompt.shieldedOutOfLineFeeling
+                : AffinityPrompt.outOfLineFeeling
+        }
         if manipulation && level > AffinityRules.noEffect { return nil }
         guard (0..<AffinityPrompt.feelings.count).contains(level) else { return nil }
         return AffinityPrompt.feelings[level]
@@ -317,16 +325,14 @@ public enum AffinityPrompt {
             }
             lines.append(whateverTheTier)
         }
-        if let feeling = judged?.feeling {
-            lines.append(
-                shielded && (judged?.outOfLine ?? false)
-                    ? shieldedOutOfLineFeeling
-                    : feeling
-            )
+        if let feeling = judged?.feeling(shielded: shielded) {
+            lines.append(feeling)
         }
-        if let parting {
+        // The shield owns the ending decision: a caller cannot reintroduce a warning or
+        // a parting while it is on.
+        if !shielded, let parting {
             lines.append(partings[parting]!)
-        } else if let warning {
+        } else if !shielded, let warning {
             lines.append(warnings[warning]!)
         }
         return lines

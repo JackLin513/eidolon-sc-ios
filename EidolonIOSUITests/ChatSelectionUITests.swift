@@ -16,8 +16,18 @@ final class ChatSelectionUITests: XCTestCase {
         app.terminate()
     }
 
-    func testTranscriptTextShowsTheSelectionMenuOnLongPress() throws {
-        // Start from an empty conversation so the known fake reply is the only line to press.
+    func testHerJapaneseLineShowsTheSelectionMenu() throws {
+        openNewFakeChat()
+        assertSelectionMenu(containing: "こんばんは。今日はどうしたの？")
+    }
+
+    func testHerChineseSubtitleShowsTheSelectionMenu() throws {
+        openNewFakeChat()
+        assertSelectionMenu(containing: "晚上好。今天怎么了？")
+    }
+
+    /// Starts from an empty conversation so the known fake reply is the only line to press.
+    private func openNewFakeChat() {
         let more = app.buttons["更多"]
         XCTAssertTrue(more.waitForExistence(timeout: 10), "no chat menu")
         more.tap()
@@ -35,14 +45,27 @@ final class ChatSelectionUITests: XCTestCase {
         sleep(1)
         input.typeText("你好")
         app.buttons["chat.send"].tap()
+    }
 
-        let line = app.staticTexts["晚上好。今天怎么了？"]
-        XCTAssertTrue(line.waitForExistence(timeout: 20), "her line did not appear")
-        line.press(forDuration: 1.2)
+    private func assertSelectionMenu(containing text: String) {
+        // The scene, her line and the subtitle are one text view, so the bubble that
+        // contains the wanted run is the element to press (spec #76).
+        let bubble = app.staticTexts
+            .containing(NSPredicate(format: "label CONTAINS %@", text))
+            .firstMatch
+        XCTAssertTrue(bubble.waitForExistence(timeout: 20), "\(text) did not appear")
+        XCTAssertTrue(bubble.label.contains(text), "bubble label is missing \(text): \(bubble.label)")
+        bubble.press(forDuration: 1.2)
         XCTAssertTrue(
             app.menuItems.firstMatch.waitForExistence(timeout: 5),
-            "long press did not show the system text menu"
+            "long press did not show the system text menu for \(text)"
         )
+
+        // The menu is not modal: the chat is still there, and scrolling still works.
+        let input = app.textFields["chat.input"]
         XCTAssertTrue(input.exists, "text selection left the chat")
+        input.tap()
+        app.swipeUp()
+        XCTAssertTrue(input.exists, "the chat stopped responding after text selection")
     }
 }
