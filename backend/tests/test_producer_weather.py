@@ -1,8 +1,9 @@
 """The weather she knows of as she talks (GLOSSARY.md「此刻」), typing, in a call or reaching out:
 Tokyo's always, from Open-Meteo, and where the producer has a city in their profile and the
-deployer a QWeather account, where the producer is and the weather and the warnings there. She
-is always told it, but may bring it up herself only after they have long been apart, or on a
-day that stands out, or with a warning in force; nothing of it she cannot have in time.
+deployer a QWeather account, where the producer is and the weather and the warnings there,
+from QWeather. She is always told it, but may bring it up herself only after they have long
+been apart, or on a day that stands out, or with a warning in force; nothing of it she cannot
+have in time.
 
 Driven through text turns as the producer takes them, Open-Meteo and QWeather stood in for
 over their transports (`FakeWeather`, `FakeQWeather`), on a clock the tests move; the
@@ -30,6 +31,7 @@ from eidolon.her_weather import (
     TOKYO_SIDE,
     may_bring_up_only,
 )
+from eidolon.qweather import QWeather
 from eidolon.store import read_last_contact
 from eidolon.weather import TOKYO, Spot, Today, Weather, Weathers
 from tests.conftest import ClientFactory
@@ -89,11 +91,13 @@ async def talk(
     each, the model, the client and the conversation."""
     clock = clock or FakeClock(NOON)
     weather.clock = clock
+    qweather = qweather or FakeQWeather()
+    qweather.clock = clock
     llm = FakeLLM(*[REPLY] * 5)
     extra = {"settings": settings} if settings is not None else {}
     client = make_client(
         llm, clock=clock, weather_transport=weather.transport(),
-        qweather_transport=(qweather or FakeQWeather()).transport(), **extra,
+        qweather_transport=qweather.transport(), **extra,
     )
     if city is not None:
         assert (await client.put("/api/profile", json={"city": city})).status_code == 200
@@ -146,7 +150,7 @@ async def test_soon_after_they_last_talked_on_a_day_like_any_other_she_only_keep
     [
         (FakeWeather(code=2, later_code=61), "多云，18°C；今天 15～21°C，今天晚些时候还会下雨。"),
         (FakeWeather(code=2, later_code=73), "今天晚些时候还会下雪。"),
-        (FakeWeather(code=95), "雷雨，18°C；今天 15～21°C，今天晚些时候还会下雨。"),
+        (FakeWeather(code=95), "雷雨，18°C；今天 15～21°C。"),
         (FakeWeather(code=1, yesterday_high=30.4), "比昨天冷了不少（最高气温低了 9°C）。"),
         (FakeWeather(code=1, yesterday_low=7.4), "比昨天热了不少（最低气温高了 8°C）。"),
     ],
@@ -164,6 +168,29 @@ async def test_on_a_day_that_stands_out_she_may_bring_it_up_however_lately_they_
     told = context_of(llm.prompts[-1])
     assert said in told
     assert MAY_BRING_UP in told
+
+
+@pytest.mark.parametrize(
+    ("weather", "said"),
+    [
+        (FakeWeather(code=61, ahead=[61, 61], later_code=0), "雨，18°C；今天 15～21°C。"),
+        (
+            FakeWeather(code=61, ahead=[61, 0], later_code=61),
+            "雨，18°C；今天 15～21°C，今天晚些时候还会下雨。",
+        ),
+        (
+            FakeWeather(code=0, ahead=[61], later_code=0),
+            "晴，18°C；今天 15～21°C，今天晚些时候还会下雨。",
+        ),
+    ],
+    ids=["about-to-stop", "again-after-it-stops", "within-the-hour"],
+)
+async def test_rain_later_is_rain_to_come_not_the_rain_now_about_to_stop(
+    make_client: ClientFactory, weather: FakeWeather, said: str
+):
+    [told], *_ = await talk(make_client, weather)
+
+    assert f"东京（你这边）这会儿：{said}" in told
 
 
 async def test_a_swing_under_eight_degrees_does_not_stand_out(
@@ -184,8 +211,8 @@ async def test_with_a_city_she_knows_where_the_producer_is_and_the_weather_and_w
     make_client: ClientFactory, settings: Settings
 ):
     clock = FakeClock(NOON)
-    weather = FakeWeather(code=3, temperature=-4.6, high=-1, low=-8)
-    qweather = FakeQWeather(alerts=[
+    weather = FakeWeather(code=0)
+    qweather = FakeQWeather(icon="104", temperature=-5, high=-1, low=-8, alerts=[
         alert("哈尔滨市气象台发布寒潮蓝色预警信号"),
         alert("哈尔滨市气象台解除大风蓝色预警信号", code="cancel"),
         alert("哈尔滨市气象台发布道路结冰黄色预警信号"),
@@ -208,46 +235,75 @@ async def test_with_a_city_she_knows_where_the_producer_is_and_the_weather_and_w
     # a warning in force there, though they talked just now; Tokyo's day is like any other
     assert may_bring_up_only(THERE_SIDE, TOKYO_SIDE) in told.splitlines()
     assert told.index("制作人在哈尔滨") < told.index("东京（你这边）") < told.index("制作人那边（")
-    harbin = [q for q in weather.days_asked() if q["latitude"] == "45.80298"]
-    assert harbin and "models" not in harbin[0]
+    assert len(weather.days_asked()) == 1  # Tokyo's alone: there, QWeather's
+    for path in ("/v7/weather/now", "/v7/weather/24h", "/v7/weather/3d"):
+        assert qweather.asked(path) == [{"location": "126.54,45.80"}]  # kept an hour
+    assert qweather.asked("/v7/historical/weather") == [{"location": "101050101", "date": "20261030"}]
     assert qweather.warnings_asked()[0] == "/weatheralert/v1/current/45.80/126.54"
     assert len(qweather.warnings_asked()) == 1  # kept an hour
 
 
 @pytest.mark.parametrize(
-    ("spots", "free", "kept"),
+    ("weather", "qweather", "said", "free", "kept"),
     [
-        ({"45.80298": {"later_code": 61}}, THERE_SIDE, TOKYO_SIDE),
-        ({"35.6895": {"code": 61}}, TOKYO_SIDE, THERE_SIDE),
+        (
+            FakeWeather(code=1), FakeQWeather(later_icon="305"),
+            "制作人那边（哈尔滨）这会儿：晴，18°C；今天 15～21°C，今天晚些时候还会下雨。",
+            THERE_SIDE, TOKYO_SIDE,
+        ),
+        (
+            FakeWeather(code=61), FakeQWeather(),
+            "制作人那边（哈尔滨）这会儿：晴，18°C；今天 15～21°C。", TOKYO_SIDE, THERE_SIDE,
+        ),
     ],
     ids=["rain-there", "rain-in-tokyo"],
 )
 async def test_a_day_that_stands_out_on_one_side_frees_her_to_bring_up_that_side_alone(
-    make_client: ClientFactory, settings: Settings, spots: dict, free: str, kept: str
+    make_client: ClientFactory, settings: Settings, weather: FakeWeather,
+    qweather: FakeQWeather, said: str, free: str, kept: str,
 ):
     clock = FakeClock(NOON)
-    weather = FakeWeather(code=1, spots=spots)
     _, llm, client, conversation = await talk(
-        make_client, weather, city=city_of(HARBIN), clock=clock
+        make_client, weather, qweather, city=city_of(HARBIN), clock=clock
     )
     last_contact(settings.database_path, conversation, NOON - timedelta(minutes=5))
 
     await send_turn(client, conversation, "还在吗")
 
     told = context_of(llm.prompts[-1])
+    assert said in told
     assert may_bring_up_only(free, kept) in told.splitlines()
+
+
+async def test_each_warning_is_told_once_without_its_full_stop_doubled(
+    make_client: ClientFactory,
+):
+    qweather = FakeQWeather(alerts=[
+        alert("哈尔滨市气象台2026年10月31日10时发布大风蓝色预警信号。", id="2"),
+        alert("哈尔滨市气象台发布寒潮蓝色预警信号", id="3"),
+        alert("哈尔滨市气象台发布寒潮黄色预警信号", code="update", id="4", supersedes=["3"]),
+        alert("哈尔滨市气象台2026年10月31日10时发布大风蓝色预警信号", id="5"),
+    ])
+
+    [told], *_ = await talk(make_client, FakeWeather(), qweather, city=city_of(HARBIN))
+
+    assert (
+        "制作人那边正生效的气象预警：哈尔滨市气象台2026年10月31日10时发布大风蓝色预警信号；"
+        "哈尔滨市气象台发布寒潮黄色预警信号。\n"
+    ) in told
 
 
 async def test_in_tokyo_too_tokyos_weather_is_told_once_as_theirs_both(
     make_client: ClientFactory,
 ):
     weather = FakeWeather(code=0)
+    qweather = FakeQWeather(cities=[SHINJUKU])
 
-    [told], *_ = await talk(make_client, weather, city=city_of(SHINJUKU))
+    [told], *_ = await talk(make_client, weather, qweather, city=city_of(SHINJUKU))
 
     assert "你和制作人都在东京一带，东京这会儿：晴" in told
     assert "制作人那边（" not in told and "东京（你这边）" not in told
-    assert len(weather.days_asked()) == 1
+    assert len(weather.days_asked()) == 1 and qweather.asked("/v7/weather/now") == []
 
 
 async def test_without_the_deployers_qweather_the_city_is_neither_told_nor_used(
@@ -381,3 +437,113 @@ async def test_a_spots_day_is_kept_three_hours_and_after_failing_none_is_asked_f
         assert len(weather.requests) == 4
     finally:
         await weathers.aclose()
+
+
+HARBIN_AT = Spot(45.80298, 126.53505)
+
+
+def qweather_on(fake: FakeQWeather, clock: FakeClock) -> QWeather:
+    fake.clock = clock
+    settings = account()
+    return QWeather(lambda: settings, clock, fake.transport())
+
+
+async def test_the_producers_day_is_kept_an_hour_no_longer_than_the_day_there_and_after_failing_none_is_asked_for_ten_minutes():
+    clock = FakeClock(NOON)  # 11:20 in Harbin
+    fake = FakeQWeather()
+    qweather = qweather_on(fake, clock)
+    try:
+        assert await qweather.today(HARBIN_AT, 1) == Today(Weather("clear", 18), None, 21, 15, 21, 15)
+        clock.advance(minutes=59)
+        assert await qweather.today(HARBIN_AT, 1) is not None
+        assert len(fake.asked("/v7/weather/now")) == 1
+
+        clock.advance(minutes=1)
+        assert await qweather.today(HARBIN_AT, 1) is not None
+        assert len(fake.asked("/v7/weather/now")) == 2
+        assert len(fake.asked("/v7/historical/weather")) == 1  # yesterday's kept
+
+        clock.advance(hours=11, minutes=20)  # 23:40 in Harbin
+        assert await qweather.today(HARBIN_AT, 1) is not None
+        clock.advance(minutes=30)  # the day after there, within the hour
+        assert await qweather.today(HARBIN_AT, 1) is not None
+        assert len(fake.asked("/v7/weather/now")) == 4
+        assert [q["date"] for q in fake.asked("/v7/historical/weather")] == ["20261030", "20261031"]
+        assert len(fake.lookups()) == 1  # the city's ID kept for good
+
+        clock.advance(hours=1)
+        fake.failing = True
+        assert await qweather.today(HARBIN_AT, 1) is None
+        clock.advance(minutes=9)
+        assert await qweather.today(HARBIN_AT, 1) is None
+        assert len(fake.asked("/v7/weather/now")) == 5
+
+        fake.failing = False
+        clock.advance(minutes=1)
+        assert await qweather.today(HARBIN_AT, 1) is not None
+    finally:
+        await qweather.aclose()
+
+
+@pytest.mark.parametrize(
+    "fake", [FakeQWeather(no_records=True), FakeQWeather(cities=[])], ids=["no-records", "no-city"]
+)
+async def test_without_yesterdays_records_the_producers_day_goes_without_them(fake: FakeQWeather):
+    qweather = qweather_on(fake, FakeClock(NOON))
+    try:
+        assert await qweather.today(HARBIN_AT, 1) == Today(Weather("clear", 18), None, 21, 15)
+    finally:
+        await qweather.aclose()
+
+
+@pytest.mark.parametrize(
+    ("fake", "now", "later"),
+    [
+        (FakeQWeather(icon="150", later_icon="456"), Weather("clear", 18), "snow"),
+        (FakeQWeather(icon="302"), Weather("thunder", 18), None),
+        (FakeQWeather(icon="511"), Weather("overcast", 18), None),
+    ],
+    ids=["snow-later", "thunder", "haze"],
+)
+async def test_the_producers_day_is_of_qweathers_icons(
+    fake: FakeQWeather, now: Weather, later: str | None
+):
+    qweather = qweather_on(fake, FakeClock(NOON))
+    try:
+        today = await qweather.today(HARBIN_AT, 1)
+        assert today is not None and (today.now, today.later) == (now, later)
+    finally:
+        await qweather.aclose()
+
+
+async def test_the_producers_day_is_todays_where_the_spot_is_though_the_days_told_have_not_turned():
+    fake = FakeQWeather(days_not_turned=True, yesterday_high=30)
+    qweather = qweather_on(fake, FakeClock(NOON))
+    try:
+        today = await qweather.today(HARBIN_AT, 1)
+        assert today is not None and (today.high, today.yesterday_high) == (21, 30)
+    finally:
+        await qweather.aclose()
+
+
+async def test_the_producers_day_is_none_for_an_icon_of_none_of_the_kinds():
+    qweather = qweather_on(FakeQWeather(icon="999"), FakeClock(NOON))
+    try:
+        assert await qweather.today(HARBIN_AT, 1) is None
+    finally:
+        await qweather.aclose()
+
+
+async def test_the_producers_day_is_waited_on_no_longer_than_asked_and_kept_once_fetched():
+    clock = FakeClock(NOON)
+    fake = FakeQWeather(clock=clock)
+    slow = _Slow(fake.transport())
+    settings = account()
+    qweather = QWeather(lambda: settings, clock, slow)
+    try:
+        assert await qweather.today(HARBIN_AT, 0.01) is None
+        slow.go.set()
+        await asyncio.sleep(0.05)
+        assert await qweather.today(HARBIN_AT, 0) is not None
+    finally:
+        await qweather.aclose()
