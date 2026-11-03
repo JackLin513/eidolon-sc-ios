@@ -80,6 +80,7 @@ struct ProbeStatusRow: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .accessibilityElement(children: .combine)
         .accessibilityIdentifier("api.probe.result")
     }
 }

@@ -711,8 +711,10 @@ struct APISettingsView: View {
         switch probes[key] {
         case let .success(result):
             ProbeStatusRow(result: result)
+                .accessibilityIdentifier("api.probe.\(key)")
         case let .failure(result):
             ProbeStatusRow(result: result)
+                .accessibilityIdentifier("api.probe.\(key)")
         default:
             EmptyView()
         }
@@ -915,90 +917,9 @@ struct APISettingsView: View {
     }
 
     private func apply(_ report: EnvImportReport) {
-        let values = report.values
-        if let value = values.chatProtocol { settings.apiProtocol = value }
-        if let value = values.chatBaseURL { settings.baseURL = value }
-        if let value = values.chatAPIKey {
-            settings.apiKey = value
-            cleared.remove(.chat)
-        }
-        if let value = values.chatModel { settings.model = value }
-        if let value = values.chatMaxTokens { settings.maxTokens = value }
-        if let value = values.chatReasoningEffort { settings.textReasoningEffort = value }
-        if let value = values.chatCallReasoningEffort { settings.callReasoningEffort = value }
-        if let value = values.chatExtraBody {
-            settings.extraBody = Self.jsonText(value)
-        }
-
-        if let value = values.backgroundProtocol { settings.backgroundProtocol = value }
-        if let value = values.backgroundBaseURL { settings.backgroundBaseURL = value }
-        if let value = values.backgroundAPIKey {
-            settings.backgroundAPIKey = value
-            cleared.remove(.background)
-        }
-        if let value = values.backgroundModel { settings.backgroundModel = value }
-        if let value = values.backgroundMaxTokens { settings.backgroundMaxTokens = value }
-        if let value = values.backgroundReasoningEffort {
-            settings.backgroundTextReasoningEffort = value
-        }
-        if let value = values.backgroundExtraBody {
-            settings.backgroundExtraBody = Self.jsonText(value)
-        }
-
-        if let value = values.judgeService { settings.judgeService = value }
-        if let value = values.jevAPIKey {
-            settings.jevAPIKey = value
-            cleared.remove(.jev)
-        }
-        if let value = values.jevModel { settings.jevModel = value }
-        if let value = values.jevBaseURL { settings.jevBaseURL = value }
-        if let value = values.cloudflareAPIKey {
-            settings.cloudflareAPIKey = value
-            cleared.remove(.cloudflare)
-        }
-        if let value = values.cloudflareAccountID { settings.cloudflareAccountID = value }
-        if let value = values.cloudflareModel { settings.cloudflareModel = value }
-        if let value = values.bailianJudgeAPIKey {
-            settings.bailianAPIKey = value
-            cleared.remove(.bailian)
-        }
-        if let value = values.bailianWorkspace { settings.bailianWorkspace = value }
-        if let value = values.bailianRegion { settings.bailianRegion = value }
-        if let value = values.bailianModel { settings.bailianModel = value }
-        if let value = values.emotionMinProbability {
-            settings.emotionMinProbability = value
-            emotionProbability.wrappedValue = Self.numberText(value)
-        }
-        if let value = values.emotionTimeout {
-            settings.emotionTimeout = value
-            emotionTimeout.wrappedValue = Self.numberText(value)
-        }
-
-        if let value = values.siliconflowAPIKey {
-            settings.retrievalAPIKey = value
-            cleared.remove(.retrieval)
-        }
-        if let value = values.siliconflowBaseURL { settings.retrievalBaseURL = value }
-        if let value = values.embeddingModel { settings.embeddingModel = value }
-        if let value = values.embeddingDimensions { settings.embeddingDimensions = value }
-        if let value = values.rerankModel { settings.rerankModel = value }
-
-        if let value = values.sonioxAPIKey {
-            settings.sonioxAPIKey = value
-            cleared.remove(.soniox)
-        }
-        if let value = values.fishAPIKey {
-            settings.fishAPIKey = value
-            cleared.remove(.fish)
-        }
-        if let value = values.fishModel { settings.fishModel = value }
-    }
-
-    private static func jsonText(_ value: [String: JSONValue]) -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        guard let data = try? encoder.encode(value) else { return "{}" }
-        return String(decoding: data, as: UTF8.self)
+        settings.apply(report.values)
+        // Imported secrets are no longer "cleared"; an explicit clear is undone.
+        cleared.removeAll()
     }
 
     // MARK: - Models

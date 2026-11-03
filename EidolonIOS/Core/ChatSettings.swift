@@ -345,6 +345,62 @@ struct ChatSettings: Equatable {
             : SystemOneSegmentEmotionJudge.defaultTimeout
     }
 
+    /// Applies the values an imported `.env` carries; a nil value leaves the setting as
+    /// it was. The caller saves afterwards.
+    mutating func apply(_ values: EnvAPISettings) {
+        if let value = values.chatProtocol { apiProtocol = value }
+        if let value = values.chatBaseURL { baseURL = value }
+        if let value = values.chatAPIKey { apiKey = value }
+        if let value = values.chatModel { model = value }
+        if let value = values.chatMaxTokens { maxTokens = value }
+        if let value = values.chatReasoningEffort { textReasoningEffort = value }
+        if let value = values.chatCallReasoningEffort { callReasoningEffort = value }
+        if let value = values.chatExtraBody { extraBody = Self.jsonText(value) }
+
+        if let value = values.backgroundProtocol { backgroundProtocol = value }
+        if let value = values.backgroundBaseURL { backgroundBaseURL = value }
+        if let value = values.backgroundAPIKey { backgroundAPIKey = value }
+        if let value = values.backgroundModel { backgroundModel = value }
+        if let value = values.backgroundMaxTokens { backgroundMaxTokens = value }
+        if let value = values.backgroundReasoningEffort {
+            backgroundTextReasoningEffort = value
+        }
+        if let value = values.backgroundExtraBody {
+            backgroundExtraBody = Self.jsonText(value)
+        }
+
+        if let value = values.judgeService { judgeService = value }
+        if let value = values.jevAPIKey { jevAPIKey = value }
+        if let value = values.jevModel { jevModel = value }
+        if let value = values.jevBaseURL { jevBaseURL = value }
+        if let value = values.cloudflareAPIKey { cloudflareAPIKey = value }
+        if let value = values.cloudflareAccountID { cloudflareAccountID = value }
+        if let value = values.cloudflareModel { cloudflareModel = value }
+        if let value = values.bailianJudgeAPIKey { bailianAPIKey = value }
+        if let value = values.bailianWorkspace { bailianWorkspace = value }
+        if let value = values.bailianRegion { bailianRegion = value }
+        if let value = values.bailianModel { bailianModel = value }
+        if let value = values.emotionMinProbability { emotionMinProbability = value }
+        if let value = values.emotionTimeout { emotionTimeout = value }
+
+        if let value = values.siliconflowAPIKey { retrievalAPIKey = value }
+        if let value = values.siliconflowBaseURL { retrievalBaseURL = value }
+        if let value = values.embeddingModel { embeddingModel = value }
+        if let value = values.embeddingDimensions { embeddingDimensions = value }
+        if let value = values.rerankModel { rerankModel = value }
+
+        if let value = values.sonioxAPIKey { sonioxAPIKey = value }
+        if let value = values.fishAPIKey { fishAPIKey = value }
+        if let value = values.fishModel { fishModel = value }
+    }
+
+    private static func jsonText(_ value: [String: JSONValue]) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(value) else { return "{}" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
     // MARK: - Model configs
 
     /// The provider config for typed turns, or nil while something still has to be filled
