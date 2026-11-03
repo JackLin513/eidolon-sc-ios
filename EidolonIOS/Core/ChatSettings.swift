@@ -397,19 +397,26 @@ struct ChatSettings: Equatable {
     /// Whether the producer filled in any background field.
     var hasBackgroundModel: Bool {
         backgroundProtocol != nil
-            || !Self.trimmed(backgroundBaseURL).isEmpty
-            || !Self.trimmed(backgroundModel).isEmpty
-            || !Self.trimmed(backgroundAPIKey).isEmpty
+            || !backgroundBaseURL.trimmed.isEmpty
+            || !backgroundModel.trimmed.isEmpty
+            || !backgroundAPIKey.trimmed.isEmpty
             || backgroundMaxTokens != nil
             || backgroundTextReasoningEffort != nil
-            || !Self.trimmed(backgroundExtraBody).isEmpty
+            || !backgroundExtraBody.trimmed.isEmpty
     }
 
     /// Memories and titles: the background model with the chat model's missing fields, or
-    /// the chat model itself when the background model is blank.
+    /// the chat model itself when the background model is blank. Without a chat model the
+    /// background model has to be complete on its own — the placeholder never supplies an
+    /// address for a real request.
     var backgroundConfig: ChatModelConfig? {
-        guard background?.isEnabled == true else { return config }
-        return background?.config(inheriting: config ?? .placeholder)
+        guard let background, background.isEnabled else { return config }
+        if let config { return background.config(inheriting: config) }
+        guard background.baseURL != nil,
+              background.model != nil,
+              background.apiKey != nil
+        else { return nil }
+        return background.config(inheriting: .placeholder)
     }
 
     /// The judge's config: its own when filled in, else the chat model's. The chat judge is
@@ -510,12 +517,8 @@ struct ChatSettings: Equatable {
         }
     }
 
-    private static func trimmed(_ text: String) -> String {
-        text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     private static func value(_ text: String) -> String? {
-        let trimmed = trimmed(text)
+        let trimmed = text.trimmed
         return trimmed.isEmpty ? nil : trimmed
     }
 

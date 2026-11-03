@@ -97,6 +97,26 @@ public protocol ToolChatProvider: ChatProvider {
     ) -> AsyncThrowingStream<ChatStreamEvent, Error>
 }
 
+extension ToolChatProvider {
+    /// A text-only call is the same stream with no tools offered.
+    public func stream(messages: [PromptMessage]) -> AsyncThrowingStream<String, Error> {
+        let events = stream(messages: messages, tools: [], forbidCalls: false)
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    for try await event in events {
+                        if case let .text(text) = event { continuation.yield(text) }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
+    }
+}
+
 public struct ChatModelConfig: Sendable, Hashable {
     public var baseURL: URL
     public var model: String
@@ -227,25 +247,6 @@ public struct OpenAICompatibleChatProvider: ChatProvider {
         self.mergeLeadingSystemMessages = mergeLeadingSystemMessages
     }
 
-    public func stream(messages: [PromptMessage]) -> AsyncThrowingStream<String, Error> {
-        let events = stream(messages: messages, tools: [], forbidCalls: false)
-        return AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    for try await event in events {
-                        if case let .text(text) = event {
-                            continuation.yield(text)
-                        }
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
-    }
-
     /// Services that take one system message only get every system block, in order, at the
     /// front. Upstream puts the per-turn section after the history; the content is the same,
     /// its position is not.
@@ -278,7 +279,7 @@ public struct OpenAICompatibleChatProvider: ChatProvider {
     }
 
     /// The request this adapter would send, for the settings page's probe as well.
-    public func request(
+    func request(
         messages: [PromptMessage],
         tools: [ChatTool],
         forbidCalls: Bool
@@ -336,12 +337,7 @@ public struct OpenAICompatibleChatProvider: ChatProvider {
         let request = try request(messages: messages, tools: tools, forbidCalls: forbidCalls)
         let response = try await transport.send(request)
         guard (200..<300).contains(response.statusCode) else {
-            var detail = ""
-            for try await line in response.lines {
-                detail += line
-                if detail.count > 400 { break }
-            }
-            throw ChatProviderError.status(response.statusCode, detail)
+            throw await ChatStreamSupport.failure(response.statusCode, lines: response.lines)
         }
 
         var calls = ToolCallAssembly()
@@ -388,6 +384,36 @@ extension OpenAICompatibleChatProvider: ToolChatProvider {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+}
+
+enum ChatStreamSupport {
+    /// The system messages a prompt opens with; a system message later in the conversation
+    /// is part of the conversation's own items.
+    static func openingSystem(
+        _ messages: [PromptMessage]
+    ) -> (opening: [PromptMessage], rest: [PromptMessage]) {
+        var index = 0
+        while index < messages.count, messages[index].role == .system { index += 1 }
+        return (Array(messages[..<index]), Array(messages[index...]))
+    }
+
+    /// Reads an error answer up to a sensible length, so the producer sees what the
+    /// service actually said.
+    static func failure(
+        _ statusCode: Int,
+        lines: AsyncThrowingStream<String, Error>
+    ) async -> ChatProviderError {
+        var detail = ""
+        do {
+            for try await line in lines {
+                detail += line
+                if detail.count > 400 { break }
+            }
+        } catch {
+            // The status is the useful part; a broken error body is not.
+        }
+        return .status(statusCode, detail)
     }
 }
 

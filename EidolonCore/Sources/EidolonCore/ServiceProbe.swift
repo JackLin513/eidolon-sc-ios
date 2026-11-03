@@ -91,10 +91,8 @@ public struct ServiceProbe: Sendable {
     /// the protocol's streaming shape and that the service accepts tools in one go.
     public func chatModel(_ config: ChatModelConfig) async -> ProbeResult {
         var probe = config
+        // Small enough to be quick, but otherwise exactly what the page will use.
         probe.maxTokens = 16
-        // The probe must stay small and quick even when the producer wants deep thinking.
-        probe.reasoningEffort = .some(.none)
-        probe.extraBody = nil
         return await stream(
             probe,
             messages: [
@@ -109,8 +107,6 @@ public struct ServiceProbe: Sendable {
     public func backgroundModel(_ config: ChatModelConfig) async -> ProbeResult {
         var probe = config
         probe.maxTokens = 16
-        probe.reasoningEffort = .some(.none)
-        probe.extraBody = nil
         return await stream(
             probe,
             messages: [

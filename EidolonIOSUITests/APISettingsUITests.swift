@@ -92,6 +92,10 @@ final class APISettingsUITests: XCTestCase {
             "no import preview"
         )
         XCTAssertTrue(app.staticTexts["将改动"].firstMatch.exists)
+        XCTAssertTrue(
+            app.staticTexts["preview-model"].firstMatch.exists,
+            "the preview does not show the value that will be written"
+        )
         XCTAssertTrue(app.staticTexts["EIDOLON_DOMAIN"].firstMatch.exists)
         XCTAssertTrue(app.staticTexts["UNKNOWN_SETTING"].firstMatch.exists)
 
@@ -116,6 +120,38 @@ final class APISettingsUITests: XCTestCase {
         let result = app.staticTexts["失败"].firstMatch
         XCTAssertTrue(result.waitForExistence(timeout: 10), "no probe result")
         XCTAssertTrue(app.staticTexts["调试注入：密钥无效"].firstMatch.exists)
+    }
+
+    func testClearingAKeySavesTheClearedValue() {
+        openAPIPage()
+
+        XCTAssertTrue(scroll(to: "api.clearSecret.chat"))
+        let clear = app.buttons["api.clearSecret.chat"]
+        XCTAssertTrue(clear.exists, "no clear-key button")
+        clear.tap()
+
+        app.buttons["api.save"].tap()
+        let saved = app.alerts["已保存"]
+        XCTAssertTrue(saved.waitForExistence(timeout: 10), "the page did not save")
+        saved.buttons["好"].tap()
+
+        app.buttons["api.back"].tap()
+        let api = app.buttons["settings.api"].firstMatch
+        XCTAssertTrue(api.waitForExistence(timeout: 5))
+        api.tap()
+
+        XCTAssertTrue(scroll(to: "api.chat.key"))
+        let key = app.secureTextFields["api.chat.key"]
+        XCTAssertTrue(key.exists)
+        let shown = (key.value as? String) ?? ""
+        XCTAssertTrue(
+            shown.isEmpty || shown.contains("留空保留"),
+            "the cleared key still shows a value: \(shown)"
+        )
+        XCTAssertFalse(
+            app.buttons["api.clearSecret.chat"].waitForExistence(timeout: 2),
+            "a cleared key still offers the clear button"
+        )
     }
 
     @discardableResult

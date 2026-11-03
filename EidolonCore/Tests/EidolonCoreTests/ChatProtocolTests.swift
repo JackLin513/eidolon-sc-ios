@@ -69,6 +69,21 @@ final class ChatProtocolTests: XCTestCase {
         XCTAssertEqual((sent["thinking"] as? [String: Any])?["type"] as? String, "disabled")
     }
 
+    func testNestedExtraObjectsMerge() {
+        let body: [String: Any] = [
+            "reasoning": ["effort": "low", "summary": "auto"],
+            "metadata": ["a": 1],
+        ]
+        let merged = ChatRequestExtras.merged(
+            ["reasoning": .object(["effort": .string("high")])],
+            into: body
+        )
+        let reasoning = try! XCTUnwrap(merged["reasoning"] as? [String: Any])
+        XCTAssertEqual(reasoning["effort"] as? String, "high")
+        XCTAssertEqual(reasoning["summary"] as? String, "auto")
+        XCTAssertEqual((merged["metadata"] as? [String: Any])?["a"] as? Int, 1)
+    }
+
     func testReservedExtraKeysAreRefused() {
         XCTAssertThrowsError(
             try ChatRequestExtras.decode(#"{"model":"other"}"#)
@@ -326,6 +341,20 @@ final class ChatProtocolTests: XCTestCase {
         XCTAssertNil(resolved.maxTokens, "the cap is the background model's own")
         XCTAssertNil(resolved.reasoningEffort, "the effort is the background model's own")
         XCTAssertNil(resolved.extraBody, "the extra body is the background model's own")
+    }
+
+    func testOnlyABackgroundModelKeepsTheChatService() throws {
+        let chat = ChatModelConfig(
+            baseURL: URL(string: "https://chat.example/v1")!,
+            model: "chat-model", apiKey: "chat-key"
+        )
+        let resolved = try XCTUnwrap(
+            BackgroundChatConfig(model: "cheap-model").config(inheriting: chat)
+        )
+        XCTAssertEqual(resolved.baseURL, chat.baseURL)
+        XCTAssertEqual(resolved.apiKey, chat.apiKey)
+        XCTAssertEqual(resolved.apiProtocol, chat.apiProtocol)
+        XCTAssertEqual(resolved.model, "cheap-model")
     }
 
     func testABackgroundWithEveryFieldFilledUsesThemAll() throws {

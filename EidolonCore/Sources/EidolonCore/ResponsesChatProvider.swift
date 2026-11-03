@@ -16,31 +16,6 @@ public struct ResponsesChatProvider: ChatProvider {
         self.transport = transport
     }
 
-    public func stream(messages: [PromptMessage]) -> AsyncThrowingStream<String, Error> {
-        let events = stream(messages: messages, tools: [], forbidCalls: false)
-        return AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    for try await event in events {
-                        if case let .text(text) = event { continuation.yield(text) }
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { @Sendable _ in task.cancel() }
-        }
-    }
-
-    /// The system messages the prompt opens with are the instructions; a system message
-    /// later in the conversation is an input item where it is.
-    private static func openingSystem(_ messages: [PromptMessage]) -> (opening: [PromptMessage], rest: [PromptMessage]) {
-        var index = 0
-        while index < messages.count, messages[index].role == .system { index += 1 }
-        return (Array(messages[..<index]), Array(messages[index...]))
-    }
-
     private static func value(_ object: Any) -> JSONValue? {
         guard JSONSerialization.isValidJSONObject(object),
               let data = try? JSONSerialization.data(withJSONObject: object)
@@ -74,7 +49,7 @@ public struct ResponsesChatProvider: ChatProvider {
         return items
     }
 
-    public func request(
+    func request(
         messages: [PromptMessage],
         tools: [ChatTool],
         forbidCalls: Bool
@@ -86,7 +61,7 @@ public struct ResponsesChatProvider: ChatProvider {
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 120
 
-        let (opening, rest) = Self.openingSystem(messages)
+        let (opening, rest) = ChatStreamSupport.openingSystem(messages)
         var body: [String: Any] = [
             "model": config.model,
             "stream": true,
@@ -135,12 +110,7 @@ public struct ResponsesChatProvider: ChatProvider {
         let request = try request(messages: messages, tools: tools, forbidCalls: forbidCalls)
         let response = try await transport.send(request)
         guard (200..<300).contains(response.statusCode) else {
-            var detail = ""
-            for try await line in response.lines {
-                detail += line
-                if detail.count > 400 { break }
-            }
-            throw ChatProviderError.status(response.statusCode, detail)
+            throw await ChatStreamSupport.failure(response.statusCode, lines: response.lines)
         }
 
         var calls: [Int: (id: String, name: String, arguments: String)] = [:]

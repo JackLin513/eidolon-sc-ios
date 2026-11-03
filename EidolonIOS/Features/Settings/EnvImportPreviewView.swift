@@ -38,9 +38,10 @@ struct EnvImportPreviewView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Text(entry.secret ? "将设置" : "将更新")
-                                    .font(.caption)
+                                Text(entry.secret ? "将设置" : (value(for: entry.key) ?? "将更新"))
+                                    .font(entry.secret ? .caption : .caption.monospaced())
                                     .foregroundStyle(.secondary)
+                                    .lineLimit(1)
                             }
                         }
                     }
@@ -136,6 +137,56 @@ struct EnvImportPreviewView: View {
                 }
             }
         }
+    }
+
+    /// A non-secret value, as the page will write it; secrets never reach the screen.
+    private func value(for key: String) -> String? {
+        let values = report.values
+        switch key {
+        case "CHAT_LLM_PROTOCOL": return values.chatProtocol?.rawValue
+        case "CHAT_LLM_BASE_URL": return values.chatBaseURL
+        case "CHAT_LLM_MODEL": return values.chatModel
+        case "CHAT_LLM_MAX_TOKENS": return values.chatMaxTokens.map(String.init)
+        case "CHAT_LLM_REASONING_EFFORT": return values.chatReasoningEffort?.rawValue
+        case "CHAT_LLM_CALL_REASONING_EFFORT": return values.chatCallReasoningEffort?.rawValue
+        case "CHAT_LLM_EXTRA_BODY": return Self.jsonText(values.chatExtraBody)
+        case "BACKGROUND_LLM_PROTOCOL": return values.backgroundProtocol?.rawValue
+        case "BACKGROUND_LLM_BASE_URL": return values.backgroundBaseURL
+        case "BACKGROUND_LLM_MODEL": return values.backgroundModel
+        case "BACKGROUND_LLM_MAX_TOKENS": return values.backgroundMaxTokens.map(String.init)
+        case "BACKGROUND_LLM_REASONING_EFFORT":
+            return values.backgroundReasoningEffort?.rawValue
+        case "BACKGROUND_LLM_EXTRA_BODY": return Self.jsonText(values.backgroundExtraBody)
+        case "JUDGE_PROVIDER": return values.judgeService?.rawValue
+        case "JEV_MODEL": return values.jevModel
+        case "JEV_BASE_URL": return values.jevBaseURL
+        case "CLOUDFLARE_ACCOUNT_ID": return values.cloudflareAccountID
+        case "CLOUDFLARE_JUDGE_MODEL": return values.cloudflareModel
+        case "BAILIAN_JUDGE_WORKSPACE_ID": return values.bailianWorkspace
+        case "BAILIAN_JUDGE_REGION": return values.bailianRegion?.rawValue
+        case "BAILIAN_JUDGE_MODEL": return values.bailianModel
+        case "JUDGE_EMOTION_MIN_PROBABILITY":
+            return values.emotionMinProbability.map(Self.numberText)
+        case "JUDGE_EMOTION_TIMEOUT": return values.emotionTimeout.map(Self.numberText)
+        case "SILICONFLOW_BASE_URL": return values.siliconflowBaseURL
+        case "EMBEDDING_MODEL": return values.embeddingModel
+        case "EMBEDDING_DIMENSIONS": return values.embeddingDimensions.map(String.init)
+        case "RERANK_MODEL": return values.rerankModel
+        case "FISH_AUDIO_MODEL": return values.fishModel
+        default: return nil
+        }
+    }
+
+    private static func jsonText(_ value: [String: JSONValue]?) -> String? {
+        guard let value else { return nil }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(value) else { return nil }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private static func numberText(_ value: Double) -> String {
+        String(format: "%g", locale: Locale(identifier: "en_US_POSIX"), arguments: [value])
     }
 
     private func unsupportedNote(_ key: String) -> String {
