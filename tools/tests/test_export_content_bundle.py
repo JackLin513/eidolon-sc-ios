@@ -473,5 +473,73 @@ class BarAudioInContentBundleTests(unittest.TestCase):
         self.assertIn(Path("bar_audio.json"), files)
 
 
+class GiftIllustrationTests(unittest.TestCase):
+    """The exporter packages each gift's picture and the reset card (spec #65)."""
+
+    def setUp(self) -> None:
+        self.scratch = tempfile.TemporaryDirectory()
+        self.root = Path(self.scratch.name)
+        self.characters = self.root / "characters"
+        self.art = self.root / "frontend" / "public" / "gifts"
+        self.reset = self.root / "frontend" / "public" / "reset-card"
+        for directory in (self.characters, self.art, self.reset):
+            directory.mkdir(parents=True)
+
+    def tearDown(self) -> None:
+        self.scratch.cleanup()
+
+    def write_gifts(self, ids: list[str]) -> None:
+        (self.characters / "gifts.toml").write_text(
+            "\n".join(
+                f'[[gifts]]\nid = "{gift_id}"\nname = "{gift_id}"\n'
+                'category = "food"\nrarity = "common"\n'
+                for gift_id in ids
+            ),
+            encoding="utf-8",
+        )
+
+    def testEveryGiftAndTheResetCardArePackaged(self) -> None:
+        self.write_gifts(["cake", "black-tea"])
+        for gift_id in ("cake", "black-tea"):
+            (self.art / f"{gift_id}.webp").write_bytes(b"gift")
+        (self.reset / "reset-card.webp").write_bytes(b"reset")
+
+        files = exporter.gift_illustrations(self.characters)
+
+        self.assertEqual(
+            files,
+            {
+                "gifts/cake.webp": self.art / "cake.webp",
+                "gifts/black-tea.webp": self.art / "black-tea.webp",
+                "gifts/reset-card.webp": self.reset / "reset-card.webp",
+            },
+        )
+
+    def testARetiredGiftMayHaveNoIllustration(self) -> None:
+        (self.characters / "gifts.toml").write_text(
+            '[[gifts]]\nid = "cake"\nname = "蛋糕"\ncategory = "food"\n'
+            'rarity = "common"\n\n'
+            '[[gifts]]\nid = "old-cake"\nname = "旧蛋糕"\ncategory = "food"\n'
+            'rarity = "common"\nretired = true\n',
+            encoding="utf-8",
+        )
+        (self.art / "cake.webp").write_bytes(b"gift")
+        (self.reset / "reset-card.webp").write_bytes(b"reset")
+
+        files = exporter.gift_illustrations(self.characters)
+
+        self.assertEqual(sorted(files), ["gifts/cake.webp", "gifts/reset-card.webp"])
+
+    def testAMissingGiftIllustrationStopsTheExport(self) -> None:
+        self.write_gifts(["cake"])
+        (self.reset / "reset-card.webp").write_bytes(b"reset")
+
+        with self.assertRaises(SystemExit):
+            exporter.gift_illustrations(self.characters)
+
+    def testAnUpstreamWithoutGiftsHasNoArt(self) -> None:
+        self.assertEqual(exporter.gift_illustrations(self.characters), {})
+
+
 if __name__ == "__main__":
     unittest.main()

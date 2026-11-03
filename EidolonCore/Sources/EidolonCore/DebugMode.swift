@@ -34,6 +34,51 @@ extension Eidolon {
         }
     }
 
+    // MARK: - Gifts
+
+    /// Puts the gift page in a known state for UI tests: a number of chances and cards,
+    /// and an empty backpack. Like the rest of this file it is not on a normal path.
+    public func debugSetGiftBalance(
+        draws: Int,
+        resetCards: Int = 0,
+        now: Date = Date()
+    ) throws {
+        let today = GiftRules.day(now)
+        try userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO gift_balances (id, draws, given_on, reset_cards)
+                    VALUES (1, ?, ?, ?)
+                    ON CONFLICT (id) DO UPDATE SET
+                        draws = excluded.draws,
+                        given_on = excluded.given_on,
+                        reset_cards = excluded.reset_cards
+                    """,
+                arguments: [max(0, draws), today, max(0, resetCards)]
+            )
+            try db.execute(sql: "DELETE FROM gift_backpack")
+        }
+    }
+
+    /// Adds draw chances, with no cap, for trying the gift page in debug mode. It gives
+    /// the day's chances first, as opening the page would; it does not draw anything, so
+    /// nothing goes into the backpack and the draw achievements do not move.
+    public func debugAddGiftDraws(_ count: Int, now: Date = Date()) throws -> Int {
+        try userQueue.write { db in
+            try Self.giveDueGiftDraws(db, at: now)
+            if count > 0 {
+                try db.execute(
+                    sql: "UPDATE gift_balances SET draws = draws + ? WHERE id = 1",
+                    arguments: [count]
+                )
+            }
+            return try Int.fetchOne(
+                db,
+                sql: "SELECT draws FROM gift_balances WHERE id = 1"
+            ) ?? 0
+        }
+    }
+
     // MARK: - Conversations
 
     /// Opens an ended conversation again. The event that ended it goes with the flag: the

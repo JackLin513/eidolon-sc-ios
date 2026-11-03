@@ -212,6 +212,95 @@ final class UserSchemaTests: XCTestCase {
         XCTAssertEqual(pointers.map(\.1), ["hiori-only", "mano-new"])
     }
 
+    /// v16 adds the gift, achievement and reward tables and the gift columns, without
+    /// touching what the producer already had (spec #63, #65).
+    func testUpgradingToV16AddsGiftsAndKeepsOldCallsAndEvents() throws {
+        let queue = try DatabaseQueue()
+        try queue.write { db in
+            try db.execute(sql: "CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY)")
+            for version in [
+                "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12",
+                "v13", "v14", "v15",
+            ] {
+                try db.execute(
+                    sql: "INSERT INTO grdb_migrations(identifier) VALUES (?)",
+                    arguments: [version]
+                )
+            }
+            try db.execute(sql: """
+                CREATE TABLE conversations (
+                    id TEXT PRIMARY KEY,
+                    character_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    title TEXT,
+                    ended_at TEXT
+                );
+                INSERT INTO conversations(id, character_id, created_at)
+                VALUES ('c1', 'mano', '2026-01-01T00:00:00.000000Z');
+                CREATE TABLE call_ends (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    conversation_id TEXT NOT NULL,
+                    character_id TEXT NOT NULL,
+                    ended_at TEXT NOT NULL
+                );
+                INSERT INTO call_ends(conversation_id, character_id, ended_at)
+                VALUES ('c1', 'mano', '2026-01-01T00:10:00.000000Z');
+                CREATE TABLE conversation_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    conversation_id TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                INSERT INTO conversation_events(conversation_id, kind, created_at)
+                VALUES ('c1', 'ended', '2026-01-01T00:10:00.000000Z');
+                """)
+        }
+
+        try UserSchema.migrate(queue)
+
+        let tables = try queue.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"
+            )
+        }
+        for table in [
+            "gift_balances", "gift_backpack", "gift_rewards", "achievement_progress",
+            "achievement_stages", "achievements_launched",
+        ] {
+            XCTAssertTrue(tables.contains(table), "\(table) was not created")
+        }
+        let call = try queue.read { db in
+            try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT character_id, connected_at, duration_s FROM call_ends
+                    WHERE conversation_id = 'c1'
+                    """
+            )
+        }
+        XCTAssertEqual(call?["character_id"] as String?, "mano")
+        XCTAssertNil(call?["connected_at"] as String?, "an old call has no connected_at")
+        XCTAssertNil(call?["duration_s"] as Double?, "an old call has no length")
+        let event = try queue.read { db in
+            try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT kind, gift_id, liked, affinity FROM conversation_events
+                    WHERE conversation_id = 'c1'
+                    """
+            )
+        }
+        XCTAssertEqual(event?["kind"] as String?, "ended")
+        XCTAssertNil(event?["gift_id"] as String?)
+        XCTAssertNil(event?["liked"] as Int?)
+        XCTAssertNil(event?["affinity"] as String?)
+        let conversations = try queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM conversations") ?? 0
+        }
+        XCTAssertEqual(conversations, 1)
+    }
+
     /// v15's debug shield is off for every conversation an older library already had.
     func testUpgradingToV15LeavesTheDebugShieldOff() throws {
         let queue = try DatabaseQueue()

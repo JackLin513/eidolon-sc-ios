@@ -568,7 +568,7 @@ public actor Eidolon {
 
     // MARK: - Plumbing
 
-    private func requireContent() throws {
+    func requireContent() throws {
         guard try usableContentInfo() != nil else {
             throw EidolonError.contentNotInstalled
         }
