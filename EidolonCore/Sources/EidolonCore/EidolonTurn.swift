@@ -334,7 +334,8 @@ extension Eidolon {
             tier: affinity.tier,
             judged: judged,
             parting: (ending != nil || cools) ? way : nil,
-            warning: warning ? way : nil
+            warning: warning ? way : nil,
+            shielded: noEnding
         )
         let todayLines = TodayPrompt.lines(
             now: now,
