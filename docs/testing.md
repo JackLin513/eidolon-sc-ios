@@ -33,6 +33,8 @@ tools/oracle/run.sh                          # 与上游逐字对照提示词（
 - `EIDOLON_API_ENV_TEXT`：同上，但内容直接写在环境变量里（UI 测试用，不经过文件选择器）
 - `EIDOLON_API_MODEL_LIST=a,b,c`：让「获取模型」用这份固定列表，不访问网络
 - `EIDOLON_API_PROBE=success` / `failure`：让服务测试按钮返回注入的成功或失败结果，不访问网络
+- `EIDOLON_GEMINI_API_KEY`：预置 Gemini 向量化密钥（配合 `EIDOLON_CHAT_API_KEY`）
+- `EIDOLON_FAKE_GEMINI_BUNDLE=1`：让设置页按「内容包需要 Gemini 向量」显示，不改变真实内容包
 
 真机上这些变量用 `xcrun devicectl device process launch --environment-variables` 传入（键值写成 JSON）。
 
