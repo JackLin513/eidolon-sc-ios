@@ -70,9 +70,13 @@ struct ChatSettings: Equatable {
 
     // MARK: Calls
 
-    /// Calls: the recognizer's key and model, and the voice model her speech is made on.
+    /// Calls: which recognizer hears the producer, its key and model, and the voice model
+    /// her speech is made on.
+    var speechToText: SpeechToTextService = .soniox
     var sonioxAPIKey: String = ""
     var sonioxModel: String = "stt-rt-v5"
+    var dashscopeAPIKey: String = ""
+    var bailianSTTModel: String = BailianSTTConfiguration.defaultModel
     var fishAPIKey: String = ""
     var fishModel: String = "s2.1-pro-free"
 
@@ -140,8 +144,11 @@ struct ChatSettings: Equatable {
     private static let reachOutByTierKey = "reachOut.byTier"
     private static let tracingEnabledKey = "trace.enabled"
     private static let traceRetentionKey = "trace.retention"
+    private static let speechToTextKey = "call.sttProvider"
     private static let sonioxModelKey = "call.sonioxModel"
     private static let sonioxKeychainAccount = "call.sonioxKey"
+    private static let dashscopeKeychainAccount = "call.dashscopeKey"
+    private static let bailianSTTModelKey = "call.bailianSTTModel"
     private static let fishModelKey = "call.fishModel"
     private static let fishKeychainAccount = "call.fishKey"
     private static let callMinutesKey = "call.minutes"
@@ -209,8 +216,14 @@ struct ChatSettings: Equatable {
             reachOutByTier: defaults.object(forKey: reachOutByTierKey) as? Bool ?? true,
             tracingEnabled: defaults.object(forKey: tracingEnabledKey) as? Bool ?? true,
             traceRetention: defaults.object(forKey: traceRetentionKey) as? Int ?? 200,
+            speechToText: SpeechToTextService(
+                rawValue: defaults.string(forKey: speechToTextKey) ?? ""
+            ) ?? .soniox,
             sonioxAPIKey: Keychain.string(account: sonioxKeychainAccount) ?? "",
             sonioxModel: defaults.string(forKey: sonioxModelKey) ?? "stt-rt-v5",
+            dashscopeAPIKey: Keychain.string(account: dashscopeKeychainAccount) ?? "",
+            bailianSTTModel: defaults.string(forKey: bailianSTTModelKey)
+                ?? BailianSTTConfiguration.defaultModel,
             fishAPIKey: Keychain.string(account: fishKeychainAccount) ?? "",
             fishModel: defaults.string(forKey: fishModelKey) ?? "s2.1-pro-free",
             callMinutes: defaults.object(forKey: callMinutesKey) as? Int ?? 10,
@@ -322,12 +335,18 @@ struct ChatSettings: Equatable {
         defaults.set(reachOutByTier, forKey: Self.reachOutByTierKey)
         defaults.set(tracingEnabled, forKey: Self.tracingEnabledKey)
         defaults.set(traceRetention, forKey: Self.traceRetentionKey)
+        defaults.set(speechToText.rawValue, forKey: Self.speechToTextKey)
         defaults.set(sonioxModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.sonioxModelKey)
+        defaults.set(
+            bailianSTTModel.trimmingCharacters(in: .whitespacesAndNewlines),
+            forKey: Self.bailianSTTModelKey
+        )
         defaults.set(fishModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.fishModelKey)
         defaults.set(max(0, callMinutes), forKey: Self.callMinutesKey)
         defaults.set(max(0, callTurns), forKey: Self.callTurnsKey)
         defaults.set(phoneTexture, forKey: Self.phoneTextureKey)
         try Self.store(sonioxAPIKey, account: Self.sonioxKeychainAccount)
+        try Self.store(dashscopeAPIKey, account: Self.dashscopeKeychainAccount)
         try Self.store(fishAPIKey, account: Self.fishKeychainAccount)
         defaults.set(judgeService.rawValue, forKey: Self.judgeServiceKey)
         defaults.set(
@@ -419,13 +438,28 @@ struct ChatSettings: Equatable {
         if let value = values.geminiAPIKey { geminiAPIKey = value }
         if let value = values.geminiBaseURL { geminiBaseURL = value }
 
+        if let value = values.speechToText { speechToText = value }
         if let value = values.sonioxAPIKey { sonioxAPIKey = value }
+        if let value = values.dashscopeAPIKey { dashscopeAPIKey = value }
+        if let value = values.bailianSTTModel { bailianSTTModel = value }
         if let value = values.fishAPIKey { fishAPIKey = value }
         if let value = values.fishModel { fishModel = value }
 
         // DeepSeek serves its Anthropic surface under /anthropic; an upstream `.env`
         // written for the OpenAI surfaces names only the root.
         baseURL = APIServiceRouting.baseURLForImportedSettings(baseURL, protocol: apiProtocol)
+    }
+
+    /// The recognizer chosen, and whether its key is filled in: the call needs both.
+    var recognitionKey: String {
+        switch speechToText {
+        case .soniox: sonioxAPIKey
+        case .bailian: dashscopeAPIKey
+        }
+    }
+
+    var recognitionIsConfigured: Bool {
+        !recognitionKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private static func jsonText(_ value: [String: JSONValue]) -> String {
