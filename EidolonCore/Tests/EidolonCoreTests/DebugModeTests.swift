@@ -164,6 +164,34 @@ final class DebugModeTests: XCTestCase {
         XCTAssertFalse(afterValue?.ended == true)
     }
 
+    func testDebugNoEndingReplacesTheOutOfLineFeelingInThePrompt() async throws {
+        let eidolon = try await installedEidolon()
+        try await say("こんにちは", provider: reply(), on: eidolon)
+        let snapshotValue = try await eidolon.currentConversation(characterID: "mano")
+        let snapshot = try XCTUnwrap(snapshotValue)
+        try await eidolon.setDebugNoEnding(conversationID: snapshot.id, on: true)
+
+        let harsh = FixedJudge(judged: Judged(level: 0, outOfLine: true))
+        _ = try await say("ひどい", provider: reply(), judge: harsh, on: eidolon)
+
+        let prompt = try await latestPrompt(on: eidolon)
+        XCTAssertTrue(prompt.contains("有点不舒服，但你还愿意继续听"), prompt)
+        XCTAssertFalse(prompt.contains(AffinityPrompt.outOfLineFeeling), prompt)
+        XCTAssertFalse(prompt.contains(AffinityPrompt.warnings[.parts]!), prompt)
+        XCTAssertFalse(prompt.contains(AffinityPrompt.partings[.parts]!), prompt)
+    }
+
+    func testWithoutTheShieldTheOutOfLineTurnWarns() async throws {
+        let eidolon = try await installedEidolon()
+        let harsh = FixedJudge(judged: Judged(level: 0, outOfLine: true))
+        _ = try await say("ひどい", provider: reply(), judge: harsh, on: eidolon)
+
+        let prompt = try await latestPrompt(on: eidolon)
+        XCTAssertTrue(prompt.contains(AffinityPrompt.outOfLineFeeling), prompt)
+        XCTAssertTrue(prompt.contains(AffinityPrompt.warnings[.parts]!), prompt)
+        XCTAssertFalse(prompt.contains(AffinityPrompt.shieldedOutOfLineFeeling), prompt)
+    }
+
     func testDebugNoEndingIsPerConversationAndPersists() async throws {
         let eidolon = try await installedEidolon()
         try await say("こんにちは", provider: reply(), on: eidolon)

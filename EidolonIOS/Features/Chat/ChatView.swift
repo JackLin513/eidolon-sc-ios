@@ -337,6 +337,10 @@ struct ChatView: View {
                     // line, so it carries her avatar and name (spec #40).
                     StreamingReply(store: store, character: character)
                 }
+                // The producer can keep a line: long press selects her Japanese, its
+                // subtitle, the producer's own words, scenes, names and times, with the
+                // system copy menu (spec #75, #76).
+                .textSelection(.enabled)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
@@ -534,26 +538,12 @@ struct ChatView: View {
 
         var body: some View {
             VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                    switch block {
-                    case let .line(segment):
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(shown(segment.ja))
-                                .font(.body)
-                            if !segment.zh.isEmpty {
-                                Text(shown(segment.zh))
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    case let .scene(scene):
-                        Text(scene)
-                            .font(.callout)
-                            .italic()
-                            .foregroundStyle(.secondary)
-                            .accessibilityIdentifier("reply.scene")
-                    }
-                }
+                // One text view for the whole bubble: with several Text views only the last
+                // one gets a selection container, so her Japanese and the scene would not be
+                // selectable (spec #76).
+                Text(bubbleText)
+                    .font(.body)
+                    .textSelection(.enabled)
                 // Her voice is the call's while one is up; 朗读 waits for it to end.
                 if let line, !app.call.isLive, let speech = ReadAloud.speech(
                     of: blocks, model: app.chatSettings.fishModel
@@ -579,6 +569,33 @@ struct ChatView: View {
         /// out here; a line still being written arrives without them.
         private func shown(_ text: String) -> String {
             cuesShown ? text : ReplyCues.shown(text)
+        }
+
+        /// The bubble's scene, Japanese and subtitle as one attributed run, so the whole
+        /// bubble can be selected and copied (spec #76).
+        private var bubbleText: AttributedString {
+            var result = AttributedString()
+            for (index, block) in blocks.enumerated() {
+                if index > 0 { result += AttributedString("\n") }
+                switch block {
+                case let .line(segment):
+                    var japanese = AttributedString(shown(segment.ja))
+                    japanese.font = .body
+                    result += japanese
+                    if !segment.zh.isEmpty {
+                        var subtitle = AttributedString("\n" + shown(segment.zh))
+                        subtitle.font = .callout
+                        subtitle.foregroundColor = .secondary
+                        result += subtitle
+                    }
+                case let .scene(scene):
+                    var narration = AttributedString(scene)
+                    narration.font = .callout.italic()
+                    narration.foregroundColor = .secondary
+                    result += narration
+                }
+            }
+            return result
         }
 
         /// 朗读: one tap voices the line, a second stops it; preparing wears a spinner, and a
