@@ -41,22 +41,6 @@ final class SonioxRecognition: SpeechRecognition, @unchecked Sendable {
         return VoiceServiceFailure(service: "Soniox", detail: detail)
     }
 
-    /// Makes the connection, failing if it cannot be made in `connectTimeout`. Once it is
-    /// made, nothing else times the socket out: an idle connection stays up.
-    private static func withConnectTimeout(
-        _ connect: @escaping @Sendable () async throws -> Void
-    ) async throws {
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask { try await connect() }
-            group.addTask {
-                try await Task.sleep(for: connectTimeout)
-                throw URLError(.timedOut)
-            }
-            defer { group.cancelAll() }
-            try await group.next()
-        }
-    }
-
     private func run(
         audio: AsyncThrowingStream<Data, Error>,
         emit: AsyncThrowingStream<SpeechEvent, Error>.Continuation
@@ -80,7 +64,7 @@ final class SonioxRecognition: SpeechRecognition, @unchecked Sendable {
             session.invalidateAndCancel()
         }
 
-        let writer = SocketWriter(socket)
+        let writer = WebSocketWriter(socket)
         do {
             let configuration = SonioxConfiguration(
                 apiKey: apiKey,
@@ -90,7 +74,7 @@ final class SonioxRecognition: SpeechRecognition, @unchecked Sendable {
             // Connecting is bounded once for each attempt; receiving is not, so an idle
             // connection is not mistaken for one that never opened.
             let message = try configuration.message()
-            try await Self.withConnectTimeout {
+            try await withWebSocketConnectTimeout(Self.connectTimeout) {
                 try await writer.sendText(message)
             }
         } catch {
@@ -168,24 +152,6 @@ final class SonioxRecognition: SpeechRecognition, @unchecked Sendable {
         } catch {
             emit.finish(throwing: error)
         }
-    }
-}
-
-/// Sends over one websocket one message at a time: the audio pump and the keepalive would
-/// otherwise interleave sends on the same connection.
-private actor SocketWriter {
-    private let socket: URLSessionWebSocketTask
-
-    init(_ socket: URLSessionWebSocketTask) {
-        self.socket = socket
-    }
-
-    func sendData(_ data: Data) async throws {
-        try await socket.send(.data(data))
-    }
-
-    func sendText(_ text: String) async throws {
-        try await socket.send(.string(text))
     }
 }
 

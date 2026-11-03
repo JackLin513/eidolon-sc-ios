@@ -6,7 +6,7 @@
 
 - 仓库：`~/Developer/IdeaProjects/eidolon-sc-ios`（GitHub `JackLin513/eidolon-sc-ios`，私有，AGPL-3.0，自用不上架）。
 - 上游参考实现：`~/Developer/IdeaProjects/eidolon-sc`（Sallyn0225/eidolon-sc，FastAPI + Pipecat + Next.js）。**上游 checkout 只读**，只作参考和离线数据准备，App 运行时不依赖它。
-- 形态：手机独立运行的 iOS 原生客户端。剧情索引、对话引擎、记忆、好感、立绘、通话状态机都在端上；运行时只直连外部模型 API（对话 LLM、判断模型、embedding/rerank、Soniox STT、Fish Audio TTS）。
+- 形态：手机独立运行的 iOS 原生客户端。剧情索引、对话引擎、记忆、好感、立绘、通话状态机都在端上；运行时只直连外部模型 API（对话 LLM、判断模型、embedding/rerank、Soniox/百炼 STT、Fish Audio TTS）。
 - 唯一分支 `main`，默认分支也是它。交接时 tip = `47a455e`（README 的两处状态修正）。
 - 已验证绿：`swift test --package-path EidolonCore` 404 tests / 1 skipped / 0 failures；oracle 六场景全部 `identical`；iOS 模拟器与真机构建都 `BUILD SUCCEEDED`，新包已装到 iPhone Air。
 - 唯一未完成的验收：**#18**，一次 5 分钟以上的真机长通话，需要用户的耳朵，**不许替跑或伪造结论**。
@@ -46,7 +46,7 @@
 - 检索：`Retrieval.swift`、`RetrievalStore.swift`、`Embedding.swift`
 - 记忆：`Memory.swift`（提取、取代、删除/清空、队列补跑）
 - 搭话 / 标题 / 事件：`ReachOut.swift`、`Title.swift`、`ConversationEventKind.swift`、`Conversation.swift`
-- 通话状态机：`CallSession.swift`（音频与语音服务注入，ADR-0015）、`CallClock.swift`、`SonioxKeepalive.swift`、`SonioxTranscript.swift`、`CallHotWords.swift`、`Readings.swift`、`FishSynthesisError.swift`、`CueFilter.swift`、`DurationSeconds.swift`
+- 通话状态机：`CallSession.swift`（音频与语音服务注入，ADR-0015）、`CallClock.swift`、`SonioxKeepalive.swift`、`SonioxTranscript.swift`、`BailianSTT.swift`、`CallHotWords.swift`、`Readings.swift`、`FishSynthesisError.swift`、`CueFilter.swift`、`DurationSeconds.swift`
 - 内容包：`ContentBundleInstaller.swift`、`ContentManifest.swift`、`OutfitThumbnails.swift`、`StandOutfits.swift`
 - 存储：`UserSchema.swift`（当前 v7）、`Eidolon.swift`
 - 对照与追踪：`Sources/PromptOracle`、回合追踪相关
@@ -54,7 +54,7 @@
 `EidolonIOS/`（SwiftUI，xcodegen 生成工程，改文件后跑 `xcodegen generate`）
 
 - `App/`：入口、`AppModel.swift`
-- `Core/Call/`：`SonioxRecognition.swift`、`MicrophoneCapture.swift`、`FishSynthesis.swift`、`SpeechPlayback.swift`、`DebugRecognition.swift`
+- `Core/Call/`：`SonioxRecognition.swift`、`BailianRecognition.swift`、`MicrophoneCapture.swift`、`FishSynthesis.swift`、`SpeechPlayback.swift`、`DebugRecognition.swift`
 - `Features/`：`Chat`、`Call`、`Stand`（`StandWebRenderer`、`StandThumbnails`、`OutfitPickerView`）、`Settings`、`Memories`、`Traces`、`Conversations`、`Import`
 
 `tools/`：`export_content_bundle.py`（Mac 上导出 `.eidolonpkg`）、`sync_stand_runtime.sh`（构建时取 Spine 运行时）、`oracle/run.sh`、`tests/`。

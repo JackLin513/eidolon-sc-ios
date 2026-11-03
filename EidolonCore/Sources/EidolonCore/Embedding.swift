@@ -27,6 +27,40 @@ public struct EmbeddingConfig: Sendable, Hashable {
     }
 }
 
+public struct GeminiEmbeddingConfig: Sendable, Hashable {
+    public var baseURL: URL
+    public var model: String
+    public var apiKey: String
+    public var dimensions: Int
+
+    public init(baseURL: URL, model: String, apiKey: String, dimensions: Int) {
+        self.baseURL = baseURL
+        self.model = model
+        self.apiKey = apiKey
+        self.dimensions = dimensions
+    }
+}
+
+/// The embedding service the content bundle (or, before a bundle, the settings) asks for.
+public enum RetrievalEmbeddingConfig: Sendable, Hashable {
+    case siliconFlow(EmbeddingConfig)
+    case gemini(GeminiEmbeddingConfig)
+
+    public var model: String {
+        switch self {
+        case let .siliconFlow(config): config.model
+        case let .gemini(config): config.model
+        }
+    }
+
+    public var dimensions: Int? {
+        switch self {
+        case .siliconFlow: nil
+        case let .gemini(config): config.dimensions
+        }
+    }
+}
+
 public struct RerankConfig: Sendable, Hashable {
     public var baseURL: URL
     public var model: String
@@ -106,6 +140,117 @@ public struct SiliconFlowEmbedding: EmbeddingProvider {
             throw RetrievalServiceError.status(code, String(decoding: data.prefix(200), as: UTF8.self))
         }
         return data
+    }
+}
+
+/// Gemini's native embedding API: one `batchEmbedContents` request carries the texts and
+/// asks for the content bundle's dimensionality.
+public struct GeminiEmbedding: EmbeddingProvider {
+    private let config: GeminiEmbeddingConfig
+    private let transport: any HTTPTransport
+    private static let batchLimit = 100
+
+    public init(config: GeminiEmbeddingConfig, session: URLSession = .shared) {
+        self.init(config: config, transport: URLSessionHTTPTransport(session: session))
+    }
+
+    public init(config: GeminiEmbeddingConfig, transport: any HTTPTransport) {
+        self.config = config
+        self.transport = transport
+    }
+
+    public var model: String { config.model }
+
+    public func embedQuery(_ text: String) async throws -> [Float] {
+        guard let vector = try await embed([text]).first else {
+            throw RetrievalServiceError.invalidResponse("没有返回向量")
+        }
+        return vector
+    }
+
+    public func embed(_ texts: [String]) async throws -> [[Float]] {
+        guard !texts.isEmpty else { return [] }
+        var vectors: [[Float]] = []
+        var start = 0
+        while start < texts.count {
+            let end = min(start + Self.batchLimit, texts.count)
+            vectors += try await embedBatch(Array(texts[start..<end]))
+            start = end
+        }
+        return vectors
+    }
+
+    private func embedBatch(_ texts: [String]) async throws -> [[Float]] {
+        guard !config.apiKey.isEmpty else {
+            throw GeminiEmbeddingError.notConfigured
+        }
+        let model = config.model.hasPrefix("models/")
+            ? String(config.model.dropFirst("models/".count))
+            : config.model
+        guard let url = URL(
+            string: config.baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                + "/models/\(model):batchEmbedContents"
+        ) else {
+            throw GeminiEmbeddingError.invalidResponse("接口地址无效")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(config.apiKey, forHTTPHeaderField: "x-goog-api-key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 60
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "requests": texts.map { text in
+                [
+                    "model": "models/\(model)",
+                    "content": ["parts": [["text": text]]],
+                    "outputDimensionality": config.dimensions,
+                ] as [String: Any]
+            },
+        ])
+        let (data, http) = try await transport.send(request)
+        guard (200..<300).contains(http.statusCode) else {
+            throw GeminiEmbeddingError.status(
+                http.statusCode,
+                String(decoding: data.prefix(300), as: UTF8.self)
+            )
+        }
+        struct Answer: Decodable {
+            struct Item: Decodable { let values: [Float] }
+            let embeddings: [Item]?
+        }
+        guard let answer = try? JSONDecoder().decode(Answer.self, from: data),
+              let embeddings = answer.embeddings,
+              embeddings.count == texts.count
+        else {
+            throw GeminiEmbeddingError.invalidResponse("向量数量不符")
+        }
+        for item in embeddings where item.values.count != config.dimensions {
+            throw GeminiEmbeddingError.dimensionMismatch(
+                expected: config.dimensions,
+                actual: item.values.count
+            )
+        }
+        return embeddings.map(\.values)
+    }
+}
+
+public enum GeminiEmbeddingError: LocalizedError, Equatable {
+    case notConfigured
+    case status(Int, String)
+    case invalidResponse(String)
+    case dimensionMismatch(expected: Int, actual: Int)
+
+    public var errorDescription: String? {
+        switch self {
+        case .notConfigured:
+            "还没有填写 Gemini 密钥"
+        case let .status(code, detail):
+            detail.isEmpty ? "Gemini 返回 \(code)" : "Gemini 返回 \(code)：\(detail)"
+        case let .invalidResponse(reason):
+            "Gemini 的返回无法解析：\(reason)"
+        case let .dimensionMismatch(expected, actual):
+            "模型维度与内容包不符：返回 \(actual)，内容包 \(expected)"
+        }
     }
 }
 
