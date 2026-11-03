@@ -39,6 +39,10 @@ public protocol JudgeProvider: Sendable {
     /// Whether the model is read by Jev's thresholds because its family is unknown, so
     /// the trace and the settings can say so (ADR-0016).
     var judgeUncalibrated: Bool { get }
+
+    /// Asks the service one yes-or-no question. A requirement, not an extension-only
+    /// member: through `any JudgeProvider` the concrete provider's version must be read.
+    func checkJudge() async throws -> JudgeCheck
 }
 
 extension JudgeProvider {
