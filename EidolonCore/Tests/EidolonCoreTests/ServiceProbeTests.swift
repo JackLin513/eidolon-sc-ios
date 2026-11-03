@@ -2,6 +2,22 @@ import Foundation
 import XCTest
 @testable import EidolonCore
 
+private actor StubBailianStarter: BailianTaskStarter {
+    let refused: Set<BailianRegion>
+    private(set) var seen: [BailianRegion] = []
+
+    init(refused: Set<BailianRegion> = []) {
+        self.refused = refused
+    }
+
+    func startTask(apiKey: String, model: String, region: BailianRegion) async throws {
+        seen.append(region)
+        if refused.contains(region) {
+            throw ProbeError.transport("key 不被接受（HTTP 401）")
+        }
+    }
+}
+
 final class ServiceProbeTests: XCTestCase {
     private func chatConfig(_ apiProtocol: ChatProtocol = .chatCompletions) -> ChatModelConfig {
         ChatModelConfig(
@@ -96,6 +112,52 @@ final class ServiceProbeTests: XCTestCase {
             "https://api.soniox.com/v1/models",
             "https://api.fish.audio/wallet/self/api-credit",
         ])
+    }
+
+    func testABailianProbeFallsBackToTheOtherRegion() async {
+        let starter = StubBailianStarter(refused: [.beijing])
+        let probe = ServiceProbe(
+            http: StubHTTPTransport { _ in (Data(), probeHTTP(200)) },
+            chat: StubChatTransport(lines: []),
+            bailian: starter
+        )
+        let result = await probe.bailianSTT(
+            apiKey: "key",
+            model: BailianSTTConfiguration.defaultModel
+        )
+        XCTAssertTrue(result.ok, result.detail)
+        XCTAssertTrue(result.detail.contains("新加坡"), result.detail)
+        let seen = await starter.seen
+        XCTAssertEqual(seen, [.beijing, .singapore])
+    }
+
+    func testABailianProbeReportsARefusedKey() async {
+        let starter = StubBailianStarter(refused: [.beijing, .singapore])
+        let probe = ServiceProbe(
+            http: StubHTTPTransport { _ in (Data(), probeHTTP(200)) },
+            chat: StubChatTransport(lines: []),
+            bailian: starter
+        )
+        let result = await probe.bailianSTT(
+            apiKey: "key",
+            model: BailianSTTConfiguration.defaultModel
+        )
+        XCTAssertFalse(result.ok)
+        XCTAssertTrue(result.detail.contains("HTTP 401"), result.detail)
+    }
+
+    func testABailianProbeNeedsAKey() async {
+        let starter = StubBailianStarter()
+        let probe = ServiceProbe(
+            http: StubHTTPTransport { _ in (Data(), probeHTTP(200)) },
+            chat: StubChatTransport(lines: []),
+            bailian: starter
+        )
+        let result = await probe.bailianSTT(apiKey: " ", model: BailianSTTConfiguration.defaultModel)
+        XCTAssertFalse(result.ok)
+        XCTAssertTrue(result.detail.contains("百炼"), result.detail)
+        let seen = await starter.seen
+        XCTAssertTrue(seen.isEmpty)
     }
 
     func testATimeoutIsReportedAsSuch() async {

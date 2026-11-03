@@ -642,7 +642,7 @@ public enum EnvImporter {
     ]
 
     private static let unsupportedPrefixes = [
-        "EIDOLON_", "GEMINI_", "NOVELAI_", "GPT_IMAGE_",
+        "EIDOLON_", "GEMINI_", "NOVELAI_", "GPT_IMAGE_", "DASHSCOPE_",
         "QWEATHER_", "GITHUB_", "GOOGLE_",
     ]
 

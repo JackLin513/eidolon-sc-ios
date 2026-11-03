@@ -46,6 +46,22 @@ final class BailianSTTTests: XCTestCase {
         XCTAssertEqual(vocabulary["283"], 4, "numbers are ordinary hot words")
     }
 
+    func testRepeatedHotWordsDoNotDuplicate() throws {
+        let vocabulary = BailianSTTConfiguration.vocabulary(for: ["田中", "田中", "L'Antica"])
+        XCTAssertEqual(vocabulary, ["田中": 4, "L'Antica": 50])
+    }
+
+    func testEachRegionHasItsRealTimeAddress() {
+        XCTAssertEqual(
+            BailianSTTEndpoint.url(for: .beijing).absoluteString,
+            "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+        )
+        XCTAssertEqual(
+            BailianSTTEndpoint.url(for: .singapore).absoluteString,
+            "wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference"
+        )
+    }
+
     func testNoVocabularyIsSentWithoutHotWords() throws {
         let message = try BailianSTTConfiguration().runTaskMessage(taskID: "task-1")
         let root = try object(message)

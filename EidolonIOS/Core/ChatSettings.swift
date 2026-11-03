@@ -439,13 +439,6 @@ struct ChatSettings: Equatable {
         !recognitionKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    var recognitionModel: String {
-        switch speechToText {
-        case .soniox: sonioxModel
-        case .bailian: bailianSTTModel
-        }
-    }
-
     private static func jsonText(_ value: [String: JSONValue]) -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]

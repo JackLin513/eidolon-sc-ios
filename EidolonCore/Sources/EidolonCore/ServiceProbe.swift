@@ -28,6 +28,89 @@ public struct ProbeResult: Sendable, Hashable {
     }
 }
 
+/// Starts one Bailian recognition task and finishes it at once, for the test button. A
+/// seam of its own because the other probes' HTTP transport cannot carry a websocket.
+public protocol BailianTaskStarter: Sendable {
+    func startTask(apiKey: String, model: String, region: BailianRegion) async throws
+}
+
+public struct URLSessionBailianTaskStarter: BailianTaskStarter {
+    public init() {}
+
+    /// One region, one task: `task-started` is success; `task-failed` says why.
+    public func startTask(apiKey: String, model: String, region: BailianRegion) async throws {
+        var request = URLRequest(url: BailianSTTEndpoint.url(for: region))
+        request.setValue("bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        let session = URLSession(configuration: .default)
+        let socket = session.webSocketTask(with: request)
+        defer {
+            socket.cancel(with: .normalClosure, reason: nil)
+            session.invalidateAndCancel()
+        }
+        socket.resume()
+        let taskID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        let configuration = BailianSTTConfiguration(model: model)
+        do {
+            try await withTimeout(seconds: 10) {
+                try await socket.send(.string(configuration.runTaskMessage(taskID: taskID)))
+                while true {
+                    let message = try await socket.receive()
+                    let data: Data? = switch message {
+                    case let .string(text): Data(text.utf8)
+                    case let .data(bytes): bytes
+                    @unknown default: nil
+                    }
+                    guard let data,
+                          let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let header = object["header"] as? [String: Any],
+                          let event = header["event"] as? String
+                    else { continue }
+                    switch event {
+                    case "task-started":
+                        try await socket.send(.string(
+                            BailianSTTConfiguration.finishTaskMessage(taskID: taskID)
+                        ))
+                        return
+                    case "task-failed":
+                        throw ProbeError.transport(
+                            "启动不了 \(model) 的识别任务（"
+                                + "\(header["error_code"] as? String ?? "")："
+                                + "\(header["error_message"] as? String ?? "")）；"
+                                + "如果还没开通这个模型，去阿里云百炼控制台开通 \(model)"
+                        )
+                    default:
+                        continue
+                    }
+                }
+            }
+        } catch {
+            let status = (socket.response as? HTTPURLResponse)?.statusCode
+            if status == 401 || status == 403 {
+                throw ProbeError.transport("key 不被接受（HTTP \(status ?? 0)）")
+            }
+            if let status {
+                throw ProbeError.status(status, "百炼拒绝了连接")
+            }
+            throw error
+        }
+    }
+
+    private func withTimeout(
+        seconds: TimeInterval,
+        _ operation: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(for: .seconds(seconds))
+                throw ProbeError.timeout
+            }
+            defer { group.cancelAll() }
+            try await group.next()
+        }
+    }
+}
+
 public enum ProbeError: LocalizedError, Equatable {
     case notConfigured(String)
     case timeout
@@ -70,6 +153,7 @@ private struct CapturingChatTransport: ChatTransport {
 public struct ServiceProbe: Sendable {
     private let http: any HTTPTransport
     private let chat: any ChatTransport
+    private let bailian: any BailianTaskStarter
     private static let pingTool = ChatTool(
         name: "ping",
         description: "A test tool. No need to call it.",
@@ -81,10 +165,12 @@ public struct ServiceProbe: Sendable {
 
     public init(
         http: any HTTPTransport = URLSessionHTTPTransport(),
-        chat: any ChatTransport = URLSessionChatTransport()
+        chat: any ChatTransport = URLSessionChatTransport(),
+        bailian: any BailianTaskStarter = URLSessionBailianTaskStarter()
     ) {
         self.http = http
         self.chat = chat
+        self.bailian = bailian
     }
 
     /// A tiny streamed request with a `ping` tool offered: it proves the key, the address,
@@ -276,7 +362,7 @@ public struct ServiceProbe: Sendable {
         var lastError: (any Error)?
         for region in BailianRegion.allCases {
             do {
-                try await Self.startAndFinishBailianTask(
+                try await bailian.startTask(
                     apiKey: apiKey,
                     model: model,
                     region: region
@@ -291,64 +377,11 @@ public struct ServiceProbe: Sendable {
                 lastError = error
             }
         }
-        if let urlError = lastError as? URLError,
-           urlError.code == .badServerResponse {
-            lastError = ProbeError.transport("key 在北京和新加坡都不被接受")
-        }
         return failure(
             lastError ?? ProbeError.transport("连不上阿里云百炼"),
             since: started,
             model: model
         )
-    }
-
-    /// One region, one task: `task-started` is success; `task-failed` says why.
-    private static func startAndFinishBailianTask(
-        apiKey: String,
-        model: String,
-        region: BailianRegion
-    ) async throws {
-        var request = URLRequest(url: BailianSTTEndpoint.url(for: region))
-        request.setValue("bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        let session = URLSession(configuration: .default)
-        let socket = session.webSocketTask(with: request)
-        defer {
-            socket.cancel(with: .normalClosure, reason: nil)
-            session.invalidateAndCancel()
-        }
-        socket.resume()
-        let taskID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        let configuration = BailianSTTConfiguration(model: model)
-        try await Self.withTimeout(seconds: 10) {
-            try await socket.send(.string(configuration.runTaskMessage(taskID: taskID)))
-            while true {
-                let message = try await socket.receive()
-                let data: Data? = switch message {
-                case let .string(text): Data(text.utf8)
-                case let .data(bytes): bytes
-                @unknown default: nil
-                }
-                guard let data,
-                      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let header = object["header"] as? [String: Any],
-                      let event = header["event"] as? String
-                else { continue }
-                switch event {
-                case "task-started":
-                    try await socket.send(.string(
-                        BailianSTTConfiguration.finishTaskMessage(taskID: taskID)
-                    ))
-                    return
-                case "task-failed":
-                    throw ProbeError.transport(
-                        "任务启动失败：\(header["error_code"] as? String ?? "")："
-                            + "\(header["error_message"] as? String ?? "")"
-                    )
-                default:
-                    continue
-                }
-            }
-        }
     }
 
     /// Fish Audio's balance endpoint needs no synthesis and refuses a bad key.
