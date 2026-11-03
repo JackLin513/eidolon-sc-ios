@@ -573,8 +573,13 @@ final class AppModel {
     }
 
     func saveChatSettings(_ settings: ChatSettings) throws {
-        try settings.save()
-        chatSettings = settings
+        var normalized = settings
+        normalized.baseURL = APIServiceRouting.baseURLForImportedSettings(
+            normalized.baseURL,
+            protocol: normalized.apiProtocol
+        )
+        try normalized.save()
+        chatSettings = normalized
     }
 
     let core: Eidolon
@@ -656,6 +661,9 @@ final class AppModel {
         var settings = ChatSettings.load()
         settings.baseURL = environment["EIDOLON_CHAT_BASE_URL"] ?? "https://api.siliconflow.cn/v1"
         settings.model = environment["EIDOLON_CHAT_MODEL"] ?? ""
+        settings.apiProtocol = ChatProtocol(
+            rawValue: environment["EIDOLON_CHAT_PROTOCOL"] ?? ""
+        ) ?? .chatCompletions
         settings.apiKey = key
         settings.historyTurns = 20
         settings.extraBody = environment["EIDOLON_CHAT_EXTRA_BODY"] ?? ""

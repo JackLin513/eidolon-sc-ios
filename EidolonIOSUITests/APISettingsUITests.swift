@@ -18,12 +18,14 @@ final class APISettingsUITests: XCTestCase {
         fakeProbe: String? = nil,
         envText: String? = nil,
         chatBaseURL: String = "https://api.example.com/v1",
+        chatProtocol: String = "chat-completions",
         retrievalAPIKey: String? = nil
     ) {
         // A configured chat model makes the page's fetch and test buttons usable without
         // typing a key.
         app.launchEnvironment["EIDOLON_CHAT_API_KEY"] = "ui-test-key"
         app.launchEnvironment["EIDOLON_CHAT_BASE_URL"] = chatBaseURL
+        app.launchEnvironment["EIDOLON_CHAT_PROTOCOL"] = chatProtocol
         app.launchEnvironment["EIDOLON_CHAT_MODEL"] = "model-a"
         app.launchEnvironment["EIDOLON_API_MODEL_LIST"] = "model-a,model-b,another-model"
         if let fakeProbe {
@@ -153,6 +155,20 @@ final class APISettingsUITests: XCTestCase {
         XCTAssertTrue(chatCompletions.waitForExistence(timeout: 5))
         chatCompletions.tap()
         XCTAssertEqual(baseURL.value as? String, "https://api.deepseek.com")
+    }
+
+    func testAStoredDeepSeekAnthropicAddressIsHealedOnLoad() {
+        openAPIPage(
+            chatBaseURL: "https://api.deepseek.com",
+            chatProtocol: "anthropic"
+        )
+        let baseURL = app.textFields["api.chat.baseURL"]
+        XCTAssertTrue(baseURL.waitForExistence(timeout: 5))
+        XCTAssertEqual(
+            baseURL.value as? String,
+            "https://api.deepseek.com/anthropic",
+            "an older saved Anthropic config should be moved on load"
+        )
     }
 
     func testTheRetrievalFetchButtonWorksWithTheDefaultAddress() {

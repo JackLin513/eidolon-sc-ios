@@ -154,7 +154,7 @@ struct ChatSettings: Equatable {
         let judgeBaseURL = defaults.string(forKey: judgeBaseURLKey) ?? ""
         let judgeModel = defaults.string(forKey: judgeModelKey) ?? ""
         let judgeAPIKey = Keychain.string(account: JudgeService.chat.keychainAccount) ?? ""
-        return ChatSettings(
+        var settings = ChatSettings(
             baseURL: defaults.string(forKey: baseURLKey) ?? "",
             model: defaults.string(forKey: modelKey) ?? "",
             apiKey: Keychain.string(account: keychainAccount) ?? "",
@@ -226,6 +226,13 @@ struct ChatSettings: Equatable {
                 defaults.object(forKey: emotionTimeoutKey) as? Double ?? 1.5
             )
         )
+        // A build before the routing fix could have saved Anthropic on DeepSeek's root
+        // address; reading it back moves it, so chat works without opening settings.
+        settings.baseURL = APIServiceRouting.baseURLForImportedSettings(
+            settings.baseURL,
+            protocol: settings.apiProtocol
+        )
+        return settings
     }
 
     func save() throws {
@@ -419,7 +426,8 @@ struct ChatSettings: Equatable {
     }
 
     private func modelConfig(reasoningEffort: ReasoningEffort?) -> ChatModelConfig? {
-        guard let url = Self.url(baseURL),
+        let base = APIServiceRouting.baseURLForImportedSettings(baseURL, protocol: apiProtocol)
+        guard let url = Self.url(base),
               let name = Self.value(model),
               let key = Self.value(apiKey),
               let extra = Self.extra(extraBody)
@@ -443,9 +451,13 @@ struct ChatSettings: Equatable {
         // Nil and unusable extra JSON both make the background model unusable; blank is
         // no extra body.
         guard let extra = Self.extra(backgroundExtraBody) else { return nil }
+        let base = APIServiceRouting.baseURLForImportedSettings(
+            backgroundBaseURL,
+            protocol: backgroundProtocol ?? apiProtocol
+        )
         return BackgroundChatConfig(
             apiProtocol: backgroundProtocol,
-            baseURL: Self.url(backgroundBaseURL),
+            baseURL: Self.url(base),
             model: Self.value(backgroundModel),
             apiKey: Self.value(backgroundAPIKey),
             maxTokens: backgroundMaxTokens,
