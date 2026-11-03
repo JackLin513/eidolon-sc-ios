@@ -309,6 +309,9 @@ public struct CallSetup: Sendable {
     /// The Fish Audio model her voice is spoken on; `drama-3` reads delivery cues.
     public var voiceModel: String
     public var provider: any ChatProvider
+    /// Writes memories and names the conversation after a call turn; nil uses the chat
+    /// provider, as before.
+    public var background: (any ChatProvider)?
     public var judge: (any JudgeProvider)?
     /// Judges each segment's emotion for her stand; nil when the judge is the chat model,
     /// which has no probabilities to read (spec「情绪判断」).
@@ -340,6 +343,7 @@ public struct CallSetup: Sendable {
         synthesis: any SpeechSynthesis,
         voiceModel: String,
         provider: any ChatProvider,
+        background: (any ChatProvider)? = nil,
         judge: (any JudgeProvider)? = nil,
         emotionJudge: (any SegmentEmotionJudge)? = nil,
         embedder: (any EmbeddingProvider)? = nil,
@@ -359,6 +363,7 @@ public struct CallSetup: Sendable {
         self.synthesis = synthesis
         self.voiceModel = voiceModel
         self.provider = provider
+        self.background = background
         self.judge = judge
         self.emotionJudge = emotionJudge
         self.embedder = embedder
@@ -956,6 +961,7 @@ public actor CallSession {
                 characterID: characterID,
                 text: text,
                 provider: setup.provider,
+                background: setup.background,
                 judge: setup.judge,
                 embedder: setup.embedder,
                 reranker: setup.reranker,

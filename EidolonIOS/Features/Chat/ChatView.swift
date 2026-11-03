@@ -233,6 +233,7 @@ struct ChatView: View {
         store.input = text
         Task { await store.send(
                             provider: provider,
+                            background: app.backgroundProvider,
                             judge: app.judgeProvider,
                             embedder: app.embeddingProvider,
                             reranker: app.rerankProvider,
@@ -664,6 +665,7 @@ struct ChatView: View {
                     } else if let provider = app.chatProvider {
                         Task { await store.send(
                             provider: provider,
+                            background: app.backgroundProvider,
                             judge: app.judgeProvider,
                             embedder: app.embeddingProvider,
                             reranker: app.rerankProvider,
@@ -758,6 +760,7 @@ struct ChatView: View {
                 Button("重试") {
                     Task { await store.send(
                             provider: provider,
+                            background: app.backgroundProvider,
                             judge: app.judgeProvider,
                             embedder: app.embeddingProvider,
                             reranker: app.rerankProvider,

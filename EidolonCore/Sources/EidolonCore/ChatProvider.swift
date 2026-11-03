@@ -14,17 +14,23 @@ public struct PromptMessage: Sendable, Hashable {
     public var toolCalls: [ToolCall]
     /// The call this tool message answers.
     public var toolCallID: String?
+    /// What the model thought before it made these calls, as its service sent it, to be
+    /// given back in the next round: Responses' reasoning items or Anthropic's thinking
+    /// blocks. Opaque here — only the adapter that wrote it reads it.
+    public var reasoning: [JSONValue]
 
     public init(
         _ role: Role,
         _ content: String,
         toolCalls: [ToolCall] = [],
-        toolCallID: String? = nil
+        toolCallID: String? = nil,
+        reasoning: [JSONValue] = []
     ) {
         self.role = role
         self.content = content
         self.toolCalls = toolCalls
         self.toolCallID = toolCallID
+        self.reasoning = reasoning
     }
 }
 
@@ -69,6 +75,9 @@ public struct ChatTool: Sendable, Hashable {
 /// ended without answering.
 public enum ChatStreamEvent: Sendable, Hashable {
     case text(String)
+    /// What the model thought, to be handed back if it calls a tool. Only the Responses
+    /// and Anthropic protocols round-trip this.
+    case reasoning([JSONValue])
     case toolCalls([ToolCall])
 }
 
@@ -94,6 +103,11 @@ public struct ChatModelConfig: Sendable, Hashable {
     public var apiKey: String
     public var historyTurns: Int
     public var maxTokens: Int?
+    /// Which interface the address speaks; chat-completions unless chosen otherwise.
+    public var apiProtocol: ChatProtocol
+    /// Sent as the protocol's own thinking parameter; nil sends nothing and lets the
+    /// service use its default.
+    public var reasoningEffort: ReasoningEffort?
     /// Extra fields merged into the request body, as upstream's `CHAT_LLM_EXTRA_BODY`
     /// does (for example `{"enable_thinking": false}`).
     public var extraBody: [String: JSONValue]?
@@ -104,6 +118,8 @@ public struct ChatModelConfig: Sendable, Hashable {
         apiKey: String,
         historyTurns: Int = 20,
         maxTokens: Int? = nil,
+        apiProtocol: ChatProtocol = .chatCompletions,
+        reasoningEffort: ReasoningEffort? = nil,
         extraBody: [String: JSONValue]? = nil
     ) {
         self.baseURL = baseURL
@@ -111,7 +127,54 @@ public struct ChatModelConfig: Sendable, Hashable {
         self.apiKey = apiKey
         self.historyTurns = historyTurns
         self.maxTokens = maxTokens
+        self.apiProtocol = apiProtocol
+        self.reasoningEffort = reasoningEffort
         self.extraBody = extraBody
+    }
+}
+
+/// What a chat request reads: the service's status and a stream of its SSE lines. Injected
+/// so adapters can be tested without a network.
+public struct ChatHTTPResponse: Sendable {
+    public var statusCode: Int
+    public var lines: AsyncThrowingStream<String, Error>
+
+    public init(statusCode: Int, lines: AsyncThrowingStream<String, Error>) {
+        self.statusCode = statusCode
+        self.lines = lines
+    }
+}
+
+public protocol ChatTransport: Sendable {
+    func send(_ request: URLRequest) async throws -> ChatHTTPResponse
+}
+
+public struct URLSessionChatTransport: ChatTransport {
+    private let session: URLSession
+
+    public init(session: URLSession = .shared) {
+        self.session = session
+    }
+
+    public func send(_ request: URLRequest) async throws -> ChatHTTPResponse {
+        let (bytes, response) = try await session.bytes(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw ChatProviderError.invalidResponse("没有收到 HTTP 响应")
+        }
+        let lines = AsyncThrowingStream<String, Error> { continuation in
+            let task = Task {
+                do {
+                    for try await line in bytes.lines {
+                        continuation.yield(line)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
+        return ChatHTTPResponse(statusCode: http.statusCode, lines: lines)
     }
 }
 
@@ -136,7 +199,7 @@ public enum ChatProviderError: LocalizedError, Equatable {
 /// An OpenAI-compatible `/chat/completions` streaming client.
 public struct OpenAICompatibleChatProvider: ChatProvider {
     private let config: ChatModelConfig
-    private let session: URLSession
+    private let transport: any ChatTransport
     /// Some OpenAI-compatible services (SiliconFlow among them) accept only one system
     /// message and only at the front. Merging the leading system blocks keeps the text
     /// and its order exactly as upstream sends it, just as one message.
@@ -147,8 +210,20 @@ public struct OpenAICompatibleChatProvider: ChatProvider {
         session: URLSession = .shared,
         mergeLeadingSystemMessages: Bool = true
     ) {
+        self.init(
+            config: config,
+            transport: URLSessionChatTransport(session: session),
+            mergeLeadingSystemMessages: mergeLeadingSystemMessages
+        )
+    }
+
+    public init(
+        config: ChatModelConfig,
+        transport: any ChatTransport,
+        mergeLeadingSystemMessages: Bool = true
+    ) {
         self.config = config
-        self.session = session
+        self.transport = transport
         self.mergeLeadingSystemMessages = mergeLeadingSystemMessages
     }
 
@@ -202,15 +277,12 @@ public struct OpenAICompatibleChatProvider: ChatProvider {
         return object
     }
 
-    private func run(
+    /// The request this adapter would send, for the settings page's probe as well.
+    public func request(
         messages: [PromptMessage],
         tools: [ChatTool],
-        forbidCalls: Bool,
-        _ emit: (ChatStreamEvent) -> Void
-    ) async throws {
-        guard !config.apiKey.isEmpty, !config.model.isEmpty else {
-            throw ChatProviderError.notConfigured
-        }
+        forbidCalls: Bool
+    ) throws -> URLRequest {
         let url = config.baseURL.appendingPathComponent("chat/completions")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -244,33 +316,39 @@ public struct OpenAICompatibleChatProvider: ChatProvider {
         if let maxTokens = config.maxTokens {
             body["max_tokens"] = maxTokens
         }
-        if let extraBody = config.extraBody {
-            for (key, value) in extraBody {
-                body[key] = value.jsonObject
-            }
+        if let effort = config.reasoningEffort {
+            body["reasoning_effort"] = effort.rawValue
         }
+        body = ChatRequestExtras.merged(config.extraBody, into: body)
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return request
+    }
 
-        let (bytes, response) = try await session.bytes(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw ChatProviderError.invalidResponse("没有收到 HTTP 响应")
+    private func run(
+        messages: [PromptMessage],
+        tools: [ChatTool],
+        forbidCalls: Bool,
+        _ emit: (ChatStreamEvent) -> Void
+    ) async throws {
+        guard !config.apiKey.isEmpty, !config.model.isEmpty else {
+            throw ChatProviderError.notConfigured
         }
-        guard (200..<300).contains(http.statusCode) else {
+        let request = try request(messages: messages, tools: tools, forbidCalls: forbidCalls)
+        let response = try await transport.send(request)
+        guard (200..<300).contains(response.statusCode) else {
             var detail = ""
-            for try await line in bytes.lines {
+            for try await line in response.lines {
                 detail += line
                 if detail.count > 400 { break }
             }
-            throw ChatProviderError.status(http.statusCode, detail)
+            throw ChatProviderError.status(response.statusCode, detail)
         }
 
         var calls = ToolCallAssembly()
-        for try await line in bytes.lines {
+        for try await line in response.lines {
             try Task.checkCancellation()
-            guard line.hasPrefix("data:") else { continue }
-            let payload = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
+            guard let payload = SSE.payload(line) else { continue }
             if payload == "[DONE]" { break }
-            guard !payload.isEmpty else { continue }
             guard let data = payload.data(using: .utf8) else { continue }
             guard let chunk = try? JSONDecoder().decode(StreamChunk.self, from: data) else {
                 continue
@@ -309,6 +387,40 @@ extension OpenAICompatibleChatProvider: ToolChatProvider {
                 }
             }
             continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+}
+
+/// The payload of an SSE line, or nil for a line that is not one.
+enum SSE {
+    static func payload(_ line: String) -> String? {
+        guard line.hasPrefix("data:") else { return nil }
+        let payload = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
+        return payload.isEmpty ? nil : payload
+    }
+}
+
+/// The adapter the settings' protocol asks for. The turn engine still sees only
+/// `ToolChatProvider`.
+public enum ChatProviderFactory {
+    public static func make(
+        config: ChatModelConfig,
+        session: URLSession = .shared
+    ) -> any ToolChatProvider {
+        make(config: config, transport: URLSessionChatTransport(session: session))
+    }
+
+    public static func make(
+        config: ChatModelConfig,
+        transport: any ChatTransport
+    ) -> any ToolChatProvider {
+        switch config.apiProtocol {
+        case .chatCompletions:
+            return OpenAICompatibleChatProvider(config: config, transport: transport)
+        case .responses:
+            return ResponsesChatProvider(config: config, transport: transport)
+        case .anthropic:
+            return AnthropicChatProvider(config: config, transport: transport)
         }
     }
 }
