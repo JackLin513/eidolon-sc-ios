@@ -49,10 +49,16 @@ struct ChatSettings: Equatable {
     // MARK: Retrieval
 
     var retrievalBaseURL: String = ""
+    /// Which embedding service to use before a content bundle names one.
+    var embeddingProvider: EmbeddingService = .siliconflow
     var embeddingModel: String = ""
     var embeddingDimensions: Int?
     var rerankModel: String = ""
     var retrievalAPIKey: String = ""
+    /// Gemini's key and address, kept apart from SiliconFlow's: a Gemini bundle still
+    /// reranks on SiliconFlow.
+    var geminiAPIKey: String = ""
+    var geminiBaseURL: String = ""
     /// How long she waits before saying something first, when she does not go by her tier
     /// (ADR-0009).
     var reachOutHours: Int = 6
@@ -123,10 +129,13 @@ struct ChatSettings: Equatable {
     private static let judgeExtraBodyKey = "judge.extraBody"
 
     private static let retrievalBaseURLKey = "retrieval.baseURL"
+    private static let embeddingProviderKey = "retrieval.provider"
     private static let embeddingModelKey = "retrieval.embeddingModel"
     private static let embeddingDimensionsKey = "retrieval.embeddingDimensions"
     private static let rerankModelKey = "retrieval.rerankModel"
     private static let retrievalKeychainAccount = "retrieval.apiKey"
+    private static let geminiKeychainAccount = "retrieval.geminiKey"
+    private static let geminiBaseURLKey = "retrieval.geminiBaseURL"
     private static let reachOutHoursKey = "reachOut.hours"
     private static let reachOutByTierKey = "reachOut.byTier"
     private static let tracingEnabledKey = "trace.enabled"
@@ -187,10 +196,15 @@ struct ChatSettings: Equatable {
             judgeAPIKey: judgeAPIKey,
             judgeExtraBody: defaults.string(forKey: judgeExtraBodyKey) ?? "",
             retrievalBaseURL: defaults.string(forKey: retrievalBaseURLKey) ?? "",
+            embeddingProvider: EmbeddingService(
+                rawValue: defaults.string(forKey: embeddingProviderKey) ?? ""
+            ) ?? .siliconflow,
             embeddingModel: defaults.string(forKey: embeddingModelKey) ?? "",
             embeddingDimensions: defaults.object(forKey: embeddingDimensionsKey) as? Int,
             rerankModel: defaults.string(forKey: rerankModelKey) ?? "",
             retrievalAPIKey: Keychain.string(account: retrievalKeychainAccount) ?? "",
+            geminiAPIKey: Keychain.string(account: geminiKeychainAccount) ?? "",
+            geminiBaseURL: defaults.string(forKey: geminiBaseURLKey) ?? "",
             reachOutHours: defaults.object(forKey: reachOutHoursKey) as? Int ?? 6,
             reachOutByTier: defaults.object(forKey: reachOutByTierKey) as? Bool ?? true,
             tracingEnabled: defaults.object(forKey: tracingEnabledKey) as? Bool ?? true,
@@ -290,6 +304,7 @@ struct ChatSettings: Equatable {
         defaults.set(judgeExtraBody.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.judgeExtraBodyKey)
         try Self.store(judgeAPIKey, account: JudgeService.chat.keychainAccount)
         defaults.set(retrievalBaseURL.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.retrievalBaseURLKey)
+        defaults.set(embeddingProvider.rawValue, forKey: Self.embeddingProviderKey)
         defaults.set(embeddingModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.embeddingModelKey)
         if let embeddingDimensions {
             defaults.set(embeddingDimensions, forKey: Self.embeddingDimensionsKey)
@@ -298,6 +313,11 @@ struct ChatSettings: Equatable {
         }
         defaults.set(rerankModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.rerankModelKey)
         try Self.store(retrievalAPIKey, account: Self.retrievalKeychainAccount)
+        try Self.store(geminiAPIKey, account: Self.geminiKeychainAccount)
+        defaults.set(
+            geminiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+            forKey: Self.geminiBaseURLKey
+        )
         defaults.set(reachOutHours, forKey: Self.reachOutHoursKey)
         defaults.set(reachOutByTier, forKey: Self.reachOutByTierKey)
         defaults.set(tracingEnabled, forKey: Self.tracingEnabledKey)
@@ -392,9 +412,12 @@ struct ChatSettings: Equatable {
 
         if let value = values.siliconflowAPIKey { retrievalAPIKey = value }
         if let value = values.siliconflowBaseURL { retrievalBaseURL = value }
+        if let value = values.embeddingService { embeddingProvider = value }
         if let value = values.embeddingModel { embeddingModel = value }
         if let value = values.embeddingDimensions { embeddingDimensions = value }
         if let value = values.rerankModel { rerankModel = value }
+        if let value = values.geminiAPIKey { geminiAPIKey = value }
+        if let value = values.geminiBaseURL { geminiBaseURL = value }
 
         if let value = values.sonioxAPIKey { sonioxAPIKey = value }
         if let value = values.fishAPIKey { fishAPIKey = value }
@@ -548,26 +571,43 @@ struct ChatSettings: Equatable {
 
     // MARK: - Retrieval
 
-    /// The retrieval services. The installed content bundle is the authority for the
-    /// embedding space (spec #80): when there is one, its model is the only one that can
-    /// pair with its passages. Nil without a key or a service this build speaks.
-    func embeddingConfig(for bundle: ContentEmbeddingSpace?) -> EmbeddingConfig? {
-        guard let key = Self.value(retrievalAPIKey) else { return nil }
-        let model = bundle?.model ?? Self.value(embeddingModel)
-            ?? EmbeddingService.defaultSiliconFlowModel
-        let service = bundle?.service ?? EmbeddingService(model: model)
-        // Gemini's client is its own ticket (#89); until then a bundle made with it keeps
-        // retrieval off rather than pairing a SiliconFlow query with Gemini passages.
-        guard service == .siliconflow else { return nil }
-        guard let url = Self.url(retrievalBaseURL)
-            ?? URL(string: APIServiceRouting.siliconFlowBaseURL)
-        else { return nil }
-        return EmbeddingConfig(baseURL: url, model: model, apiKey: key)
+    /// Which embedding service the content bundle names, or the setting before a bundle.
+    func retrievalService(for bundle: ContentEmbeddingSpace?) -> EmbeddingService {
+        bundle?.service ?? embeddingProvider
     }
 
-    /// Retrieval without a bundle (older callers): the embedding model as written.
-    var embeddingConfig: EmbeddingConfig? {
-        embeddingConfig(for: nil)
+    /// The embedding config the installed bundle asks for, or the setting before one.
+    /// Nil without the service's key.
+    func retrievalEmbeddingConfig(for bundle: ContentEmbeddingSpace?) -> RetrievalEmbeddingConfig? {
+        let service = retrievalService(for: bundle)
+        switch service {
+        case .siliconflow:
+            guard let key = Self.value(retrievalAPIKey) else { return nil }
+            let model = bundle?.model ?? Self.value(embeddingModel)
+                ?? EmbeddingService.defaultSiliconFlowModel
+            let base = APIServiceRouting.retrievalBaseURL(retrievalBaseURL)
+            guard let url = URL(string: base) else { return nil }
+            return .siliconFlow(EmbeddingConfig(baseURL: url, model: model, apiKey: key))
+        case .gemini:
+            guard let key = Self.value(geminiAPIKey) else { return nil }
+            let model = bundle?.model ?? Self.value(embeddingModel)
+                ?? EmbeddingService.defaultGeminiModel
+            let dimensions = bundle?.dimensions ?? embeddingDimensions ?? 1536
+            let base = Self.value(geminiBaseURL)
+                ?? "https://generativelanguage.googleapis.com/v1beta"
+            guard let url = URL(string: base) else { return nil }
+            return .gemini(GeminiEmbeddingConfig(
+                baseURL: url,
+                model: model,
+                apiKey: key,
+                dimensions: dimensions
+            ))
+        }
+    }
+
+    /// The embedding config before a bundle, for older callers.
+    var embeddingConfig: RetrievalEmbeddingConfig? {
+        retrievalEmbeddingConfig(for: nil)
     }
 
     var rerankConfig: RerankConfig? {

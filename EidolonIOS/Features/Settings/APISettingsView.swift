@@ -25,7 +25,7 @@ struct APISettingsView: View {
     @State private var probes: [ProbeKey: ProbeStatus] = [:]
 
     private enum SecretField: Hashable {
-        case chat, background, judge, retrieval, soniox, fish, bailian, jev, cloudflare
+        case chat, background, judge, retrieval, gemini, soniox, fish, bailian, jev, cloudflare
     }
 
     private enum FetchKey: Hashable {
@@ -84,6 +84,9 @@ struct APISettingsView: View {
         }
         .onChange(of: settings.retrievalAPIKey) { _, value in
             if !value.isEmpty { cleared.remove(.retrieval) }
+        }
+        .onChange(of: settings.geminiAPIKey) { _, value in
+            if !value.isEmpty { cleared.remove(.gemini) }
         }
         .onChange(of: settings.sonioxAPIKey) { _, value in
             if !value.isEmpty { cleared.remove(.soniox) }
@@ -158,7 +161,7 @@ struct APISettingsView: View {
             SummaryRow(title: "判断模型", configured: app.judgeProvider(for: settings) != nil)
             SummaryRow(
                 title: "检索",
-                configured: settings.embeddingConfig(for: app.contentEmbeddingSpace) != nil,
+                configured: settings.retrievalEmbeddingConfig(for: app.contentEmbeddingSpace) != nil,
                 note: app.retrievalUnavailableReason
             )
             SummaryRow(
@@ -450,15 +453,13 @@ struct APISettingsView: View {
 
     private var retrievalSection: some View {
         Section {
+            let service = settings.retrievalService(for: app.contentEmbeddingSpace)
             if let space = app.contentEmbeddingSpace {
                 LabeledContent("当前内容包", value: "\(space.model) / \(space.dimensions) 维")
                 LabeledContent("对应服务", value: space.service.title)
                 TextField(
                     "向量化模型（由内容包决定）",
-                    text: Binding(
-                        get: { space.model },
-                        set: { _ in }
-                    )
+                    text: Binding(get: { space.model }, set: { _ in })
                 )
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -468,11 +469,77 @@ struct APISettingsView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else {
-                TextField("向量化模型（默认 Qwen/Qwen3-Embedding-0.6B）", text: $settings.embeddingModel)
+                Picker("向量化服务", selection: $settings.embeddingProvider) {
+                    ForEach(EmbeddingService.allCases) { provider in
+                        Text(provider.title).tag(provider)
+                    }
+                }
+                .accessibilityIdentifier("api.retrieval.provider")
+                TextField("向量化模型", text: $settings.embeddingModel)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("api.retrieval.embeddingModel")
+                if settings.embeddingProvider == .gemini {
+                    TextField("向量维度（默认 1536）", value: $settings.embeddingDimensions, format: .number)
+                        .keyboardType(.numberPad)
+                }
             }
+
+            if service == .gemini {
+                SecureField("Gemini 密钥", text: $settings.geminiAPIKey)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("api.retrieval.geminiKey")
+                clearSecretButton(.gemini, hasStored: !saved.geminiAPIKey.trimmed.isEmpty) {
+                    settings.geminiAPIKey = ""
+                }
+                TextField(
+                    "Gemini 接口地址（默认 https://generativelanguage.googleapis.com/v1beta）",
+                    text: $settings.geminiBaseURL
+                )
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                if app.contentEmbeddingSpace == nil {
+                    modelRow(
+                        title: "向量化模型",
+                        text: $settings.embeddingModel,
+                        key: nil,
+                        identifier: "api.retrieval.geminiModel"
+                    ) {
+                        picker = ModelPickerRequest(
+                            title: "Gemini 向量化模型",
+                            models: ["gemini-embedding-2", "gemini-embedding-001"],
+                            current: settings.embeddingModel
+                        ) { settings.embeddingModel = $0 }
+                    }
+                }
+            } else {
+                SecureField("硅基流动密钥（向量化）", text: $settings.retrievalAPIKey)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                clearSecretButton(.retrieval, hasStored: !saved.retrievalAPIKey.trimmed.isEmpty) {
+                    settings.retrievalAPIKey = ""
+                }
+                TextField(
+                    "硅基流动接口地址（默认 https://api.siliconflow.cn/v1）",
+                    text: $settings.retrievalBaseURL
+                )
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                fetchButton(.embedding, title: "获取向量化模型") {
+                    fetch(
+                        key: .embedding,
+                        service: .openAICompatible,
+                        baseURL: APIServiceRouting.retrievalBaseURL(settings.retrievalBaseURL),
+                        apiKey: settings.retrievalAPIKey,
+                        allows: embeddingModelAllowed
+                    ) { settings.embeddingModel = $0 }
+                }
+                fetchError(.embedding)
+            }
+
             modelRow(
                 title: "重排模型（默认 Qwen/Qwen3-Reranker-0.6B）",
                 text: $settings.rerankModel,
@@ -486,26 +553,32 @@ struct APISettingsView: View {
                     apiKey: settings.retrievalAPIKey
                 ) { settings.rerankModel = $0 }
             }
-            TextField("接口地址（默认 https://api.siliconflow.cn/v1）", text: $settings.retrievalBaseURL)
+            if service == .gemini {
+                SecureField("硅基流动密钥（重排用）", text: $settings.retrievalAPIKey)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                clearSecretButton(.retrieval, hasStored: !saved.retrievalAPIKey.trimmed.isEmpty) {
+                    settings.retrievalAPIKey = ""
+                }
+                TextField(
+                    "硅基流动接口地址（默认 https://api.siliconflow.cn/v1）",
+                    text: $settings.retrievalBaseURL
+                )
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
-            SecureField("检索密钥", text: $settings.retrievalAPIKey)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            clearSecretButton(.retrieval, hasStored: !saved.retrievalAPIKey.trimmed.isEmpty) {
-                settings.retrievalAPIKey = ""
             }
-            fetchButton(.embedding, title: "获取向量化模型") {
-                fetch(
-                    key: .embedding,
-                    service: .openAICompatible,
-                    baseURL: APIServiceRouting.retrievalBaseURL(settings.retrievalBaseURL),
-                    apiKey: settings.retrievalAPIKey,
-                    allows: embeddingModelAllowed
-                ) { settings.embeddingModel = $0 }
+            if service == .gemini {
+                fetchButton(.rerank, title: "获取重排模型") {
+                    fetch(
+                        key: .rerank,
+                        service: .openAICompatible,
+                        baseURL: APIServiceRouting.retrievalBaseURL(settings.retrievalBaseURL),
+                        apiKey: settings.retrievalAPIKey
+                    ) { settings.rerankModel = $0 }
+                }
             }
-            fetchError(.embedding)
+
             probeButton(.embedding, title: "测试向量化") { await testEmbedding() }
             probeStatus(.embedding)
             probeButton(.rerank, title: "测试重排") { await testRerank() }
@@ -518,10 +591,11 @@ struct APISettingsView: View {
         } header: {
             APIStatusHeader(
                 title: "检索（向量化与重排）",
-                configured: settings.embeddingConfig(for: app.contentEmbeddingSpace) != nil
+                configured: settings.retrievalEmbeddingConfig(for: app.contentEmbeddingSpace) != nil
             )
         } footer: {
-            Text("内容包的向量化模型决定查询向量；换模型或维度必须重新导出内容包。没有密钥时不做检索。")
+            Text("内容包的向量化模型决定查询向量；换模型或维度必须重新导出内容包。"
+                + "Gemini 只做向量化，重排仍在硅基流动，所以两个 key 都要有。没有密钥时不做检索。")
         }
     }
 
@@ -816,6 +890,9 @@ struct APISettingsView: View {
         if !cleared.contains(.retrieval), draft.retrievalAPIKey.trimmed.isEmpty {
             draft.retrievalAPIKey = saved.retrievalAPIKey
         }
+        if !cleared.contains(.gemini), draft.geminiAPIKey.trimmed.isEmpty {
+            draft.geminiAPIKey = saved.geminiAPIKey
+        }
         if !cleared.contains(.soniox), draft.sonioxAPIKey.trimmed.isEmpty {
             draft.sonioxAPIKey = saved.sonioxAPIKey
         }
@@ -1103,13 +1180,21 @@ struct APISettingsView: View {
 
     private func testEmbedding() async {
         await runProbe(.embedding) {
-            guard let config = settings.embeddingConfig(for: app.contentEmbeddingSpace) else {
-                return ProbeResult(ok: false, milliseconds: 0, detail: "检索还没填齐或服务暂未接入")
+            guard let config = settings.retrievalEmbeddingConfig(for: app.contentEmbeddingSpace) else {
+                return ProbeResult(ok: false, milliseconds: 0, detail: "检索还没填齐")
             }
-            return await ServiceProbe().embedding(
-                config,
-                expectedDimensions: app.contentEmbeddingSpace?.dimensions
-            )
+            switch config {
+            case let .siliconFlow(config):
+                return await ServiceProbe().embedding(
+                    config,
+                    expectedDimensions: app.contentEmbeddingSpace?.dimensions
+                )
+            case let .gemini(config):
+                return await ServiceProbe().geminiEmbedding(
+                    config,
+                    expectedDimensions: app.contentEmbeddingSpace?.dimensions
+                )
+            }
         }
     }
 

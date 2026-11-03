@@ -64,6 +64,38 @@ final class ServiceProbeTests: XCTestCase {
         XCTAssertEqual(match.model, "Qwen/Qwen3-Embedding-0.6B")
     }
 
+    func testAGeminiEmbeddingProbeChecksTheDimension() async {
+        let transport = StubHTTPTransport { request in
+            XCTAssertEqual(
+                request.url?.absoluteString,
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent"
+            )
+            XCTAssertEqual(request.value(forHTTPHeaderField: "x-goog-api-key"), "key")
+            return (
+                try! JSONSerialization.data(withJSONObject: [
+                    "embedding": ["values": [0.1, 0.2, 0.3]],
+                ]),
+                probeHTTP(200)
+            )
+        }
+        let probe = ServiceProbe(http: transport, chat: StubChatTransport(lines: []))
+        let config = GeminiEmbeddingConfig(
+            baseURL: URL(string: "https://generativelanguage.googleapis.com/v1beta")!,
+            model: "gemini-embedding-2",
+            apiKey: "key",
+            dimensions: 3
+        )
+        let ok = await probe.geminiEmbedding(config, expectedDimensions: 3)
+        XCTAssertTrue(ok.ok, ok.detail)
+        XCTAssertEqual(ok.model, "gemini-embedding-2")
+
+        let mismatch = await probe.geminiEmbedding(config, expectedDimensions: 4)
+        XCTAssertFalse(mismatch.ok)
+        XCTAssertTrue(mismatch.dimensionMismatch)
+        XCTAssertTrue(mismatch.detail.contains("3"))
+        XCTAssertTrue(mismatch.detail.contains("4"))
+    }
+
     func testARerankProbeReadsTheScores() async {
         let transport = StubHTTPTransport { request in
             XCTAssertEqual(request.url?.absoluteString, "https://api.example.com/v1/rerank")

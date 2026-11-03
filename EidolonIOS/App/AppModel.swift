@@ -103,6 +103,13 @@ final class AppModel {
     /// The installed bundle's vector space: retrieval's query vector must live in it
     /// (spec #80).
     var contentEmbeddingSpace: ContentEmbeddingSpace? {
+        #if DEBUG
+        // Development aid for the settings page: show the Gemini branch without a
+        // Gemini-vector content bundle.
+        if ProcessInfo.processInfo.environment["EIDOLON_FAKE_GEMINI_BUNDLE"] == "1" {
+            return ContentEmbeddingSpace(model: "gemini-embedding-2", dimensions: 1536)
+        }
+        #endif
         guard let info = bundleInfo else { return nil }
         return ContentEmbeddingSpace(
             model: info.embeddingModel,
@@ -111,34 +118,41 @@ final class AppModel {
     }
 
     var embeddingProvider: (any EmbeddingProvider)? {
-        chatSettings.embeddingConfig(for: contentEmbeddingSpace).map {
-            SiliconFlowEmbedding(config: $0) as any EmbeddingProvider
+        switch chatSettings.retrievalEmbeddingConfig(for: contentEmbeddingSpace) {
+        case let .siliconFlow(config):
+            return SiliconFlowEmbedding(config: config)
+        case let .gemini(config):
+            return GeminiEmbedding(config: config)
+        case nil:
+            return nil
         }
     }
 
     /// Why retrieval is off, in the producer's terms; nil when it is on. A bundle made with
     /// a service this build does not speak keeps retrieval off without blocking chat.
-    /// The one reason worth telling the producer on the chat page: this bundle cannot be
-    /// embedded by any service this build speaks.
+    /// The one reason worth telling the producer on the chat page: this bundle's service
+    /// has no key in this build, or the address is unusable.
     var contentBundleRetrievalWarning: String? {
-        guard let space = contentEmbeddingSpace, space.service != .siliconflow else {
-            return nil
-        }
+        guard let space = contentEmbeddingSpace,
+              chatSettings.retrievalEmbeddingConfig(for: space) == nil
+        else { return nil }
         return "这个内容包需要 \(space.service.title) 的向量，检索暂不可用"
     }
 
     var retrievalUnavailableReason: String? {
         if let warning = contentBundleRetrievalWarning { return warning }
-        if contentEmbeddingSpace == nil,
-           EmbeddingService(model: chatSettings.embeddingModel) == .gemini {
-            return "Gemini embedding 暂未接入，检索暂不可用"
+        let service = chatSettings.retrievalService(for: contentEmbeddingSpace)
+        guard chatSettings.retrievalEmbeddingConfig(for: contentEmbeddingSpace) == nil else {
+            return nil
         }
-        if chatSettings.embeddingConfig(for: contentEmbeddingSpace) == nil {
-            return chatSettings.retrievalAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? "还没有填写检索密钥，检索关闭"
-                : "检索的接口地址或密钥不完整"
+        let key: String
+        switch service {
+        case .siliconflow: key = chatSettings.retrievalAPIKey
+        case .gemini: key = chatSettings.geminiAPIKey
         }
-        return nil
+        return key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "还没有填写\(service.title)密钥，检索关闭"
+            : "检索的接口地址或密钥不完整"
     }
 
     var rerankProvider: (any RerankProvider)? {
@@ -671,6 +685,7 @@ final class AppModel {
         settings.embeddingModel = environment["EIDOLON_EMBEDDING_MODEL"] ?? ""
         settings.rerankModel = environment["EIDOLON_RERANK_MODEL"] ?? ""
         settings.retrievalAPIKey = environment["EIDOLON_RETRIEVAL_API_KEY"] ?? ""
+        settings.geminiAPIKey = environment["EIDOLON_GEMINI_API_KEY"] ?? ""
         settings.sonioxAPIKey = environment["EIDOLON_SONIOX_API_KEY"] ?? ""
         settings.sonioxModel = environment["EIDOLON_SONIOX_MODEL"] ?? "stt-rt-v5"
         settings.fishAPIKey = environment["EIDOLON_FISH_API_KEY"] ?? ""

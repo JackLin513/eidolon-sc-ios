@@ -204,6 +204,8 @@ public struct EnvAPISettings: Sendable, Hashable {
     public var embeddingModel: String?
     public var embeddingDimensions: Int?
     public var rerankModel: String?
+    public var geminiAPIKey: String?
+    public var geminiBaseURL: String?
 
     public var speechToText: SpeechToTextService?
     public var sonioxAPIKey: String?
@@ -508,18 +510,25 @@ public enum EnvImporter {
                 if values.siliconflowBaseURL != nil { note(key, "检索接口地址") }
             case "EMBEDDING_PROVIDER":
                 if let raw = text(key) {
-                    if raw.lowercased() == EmbeddingService.siliconflow.rawValue {
-                        // The service is implied by the content bundle; there is no
-                        // setting of its own to change, so it is not shown as one.
-                        values.embeddingService = .siliconflow
-                    } else if raw.lowercased() == EmbeddingService.gemini.rawValue {
-                        unsupported.append(entry)
-                    } else {
+                    let service = EmbeddingService(rawValue: raw.lowercased())
+                    guard let service else {
                         invalid.append(.init(
                             key: key,
                             line: entry.line,
-                            message: "目前只支持 siliconflow"
+                            message: "只能是 siliconflow 或 gemini"
                         ))
+                        continue
+                    }
+                    if let contentEmbedding, contentEmbedding.service != service {
+                        conflicts.append(.init(
+                            key: key,
+                            line: entry.line,
+                            message: "内容包用的是 \(contentEmbedding.service.title) 的向量，"
+                                + "不能换成 \(service.title)"
+                        ))
+                    } else {
+                        values.embeddingService = service
+                        note(key, "向量化服务")
                     }
                 }
             case "EMBEDDING_MODEL":
@@ -550,6 +559,12 @@ public enum EnvImporter {
             case "RERANK_MODEL":
                 values.rerankModel = text(key)
                 if values.rerankModel != nil { note(key, "重排模型") }
+            case "GEMINI_API_KEY":
+                values.geminiAPIKey = text(key)
+                if values.geminiAPIKey != nil { note(key, "Gemini 密钥", secret: true) }
+            case "GEMINI_BASE_URL":
+                values.geminiBaseURL = text(key)
+                if values.geminiBaseURL != nil { note(key, "Gemini 接口地址") }
 
             case "STT_PROVIDER":
                 if let raw = text(key) {
@@ -628,7 +643,7 @@ public enum EnvImporter {
     ]
 
     private static let unsupportedPrefixes = [
-        "EIDOLON_", "GEMINI_", "NOVELAI_", "GPT_IMAGE_", "DASHSCOPE_",
+        "EIDOLON_", "NOVELAI_", "GPT_IMAGE_", "DASHSCOPE_",
         "QWEATHER_", "GITHUB_", "GOOGLE_",
     ]
 

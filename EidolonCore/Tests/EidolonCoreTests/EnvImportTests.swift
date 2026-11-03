@@ -143,7 +143,6 @@ final class EnvImportTests: XCTestCase {
         let report = EnvImporter.map(EnvParser.parse(text: """
             EIDOLON_CALL_MINUTES=10
             EIDOLON_DOMAIN=example.com
-            GEMINI_API_KEY=gem
             NOVELAI_API_KEY=nai
             GPT_IMAGE_MODEL=gpt-image-2
             DASHSCOPE_API_KEY=dash
@@ -154,7 +153,7 @@ final class EnvImportTests: XCTestCase {
         XCTAssertEqual(
             Set(report.unsupported.map(\.key)),
             [
-                "EIDOLON_CALL_MINUTES", "EIDOLON_DOMAIN", "GEMINI_API_KEY",
+                "EIDOLON_CALL_MINUTES", "EIDOLON_DOMAIN",
                 "NOVELAI_API_KEY", "GPT_IMAGE_MODEL", "DASHSCOPE_API_KEY",
                 "BAILIAN_STT_MODEL", "RERANK_MIN_RELEVANCE",
             ]
@@ -253,14 +252,36 @@ final class EnvImportTests: XCTestCase {
         XCTAssertEqual(report.blockingError, .empty)
     }
 
-    func testGeminiEmbeddingAndBailianSTTAreUnsupportedValues() {
+    func testGeminiEmbeddingIsImportedAndBailianSTTIsStillUnsupported() {
         let report = EnvImporter.map(EnvParser.parse(text: """
             EMBEDDING_PROVIDER=gemini
+            GEMINI_API_KEY=gem
+            GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+            EMBEDDING_MODEL=gemini-embedding-2
+            EMBEDDING_DIMENSIONS=1536
             STT_PROVIDER=bailian
             """))
-        XCTAssertEqual(Set(report.unsupported.map(\.key)), ["EMBEDDING_PROVIDER", "STT_PROVIDER"])
-        XCTAssertNil(report.values.embeddingService)
+        XCTAssertEqual(report.values.embeddingService, .gemini)
+        XCTAssertEqual(report.values.geminiAPIKey, "gem")
+        XCTAssertEqual(report.values.geminiBaseURL, "https://generativelanguage.googleapis.com/v1beta")
+        XCTAssertEqual(report.values.embeddingModel, "gemini-embedding-2")
+        XCTAssertEqual(report.values.embeddingDimensions, 1536)
+        XCTAssertEqual(report.unsupported.map(\.key), ["STT_PROVIDER"])
         XCTAssertNil(report.values.speechToText)
+    }
+
+    func testGeminiProviderConflictingWithTheBundleIsNotApplied() {
+        let bundle = ContentEmbeddingSpace(
+            model: "Qwen/Qwen3-Embedding-0.6B",
+            dimensions: 1024
+        )
+        let report = EnvImporter.map(EnvParser.parse(text: """
+            EMBEDDING_PROVIDER=gemini
+            GEMINI_API_KEY=gem
+            """), contentEmbedding: bundle)
+        XCTAssertNil(report.values.embeddingService)
+        XCTAssertEqual(report.values.geminiAPIKey, "gem")
+        XCTAssertEqual(report.conflicts.map(\.key), ["EMBEDDING_PROVIDER"])
     }
 
     func testSiliconFlowProviderIsAccepted() {

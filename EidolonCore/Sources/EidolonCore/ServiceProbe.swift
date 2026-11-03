@@ -210,6 +210,69 @@ public struct ServiceProbe: Sendable {
         }
     }
 
+    /// Gemini's native embedding endpoint, with the content bundle's dimensionality.
+    public func geminiEmbedding(
+        _ config: GeminiEmbeddingConfig,
+        expectedDimensions: Int?
+    ) async -> ProbeResult {
+        let started = ContinuousClock.now
+        do {
+            var base = config.baseURL.absoluteString
+            while base.hasSuffix("/") { base.removeLast() }
+            let model = config.model.hasPrefix("models/")
+                ? String(config.model.dropFirst("models/".count))
+                : config.model
+            guard let endpoint = URL(string: base + "/models/\(model):embedContent") else {
+                throw ProbeError.notConfigured("接口地址")
+            }
+            var request = URLRequest(url: endpoint)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 20
+            request.setValue(config.apiKey, forHTTPHeaderField: "x-goog-api-key")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "model": "models/\(model)",
+                "content": ["parts": [["text": "检索测试"]]],
+                "outputDimensionality": config.dimensions,
+            ])
+            let (data, response) = try await send(request)
+            guard (200..<300).contains(response.statusCode) else {
+                throw ProbeError.status(response.statusCode, ModelCatalog.said(data))
+            }
+            struct Answer: Decodable {
+                struct Embedding: Decodable { let values: [Double] }
+                let embedding: Embedding?
+            }
+            guard let answer = try? JSONDecoder().decode(Answer.self, from: data),
+                  let vector = answer.embedding?.values,
+                  !vector.isEmpty
+            else {
+                throw ProbeError.invalidResponse("没有返回向量")
+            }
+            let latency = milliseconds(since: started)
+            let expected = expectedDimensions ?? config.dimensions
+            if vector.count != expected {
+                return ProbeResult(
+                    ok: false,
+                    milliseconds: latency,
+                    statusCode: response.statusCode,
+                    model: config.model,
+                    detail: "模型维度与内容包不符：返回 \(vector.count)，内容包 \(expected)",
+                    dimensionMismatch: true
+                )
+            }
+            return ProbeResult(
+                ok: true,
+                milliseconds: latency,
+                statusCode: response.statusCode,
+                model: config.model,
+                detail: "返回 \(vector.count) 维向量"
+            )
+        } catch {
+            return failure(error, since: started, model: config.model)
+        }
+    }
+
     public func rerank(_ config: RerankConfig) async -> ProbeResult {
         let started = ContinuousClock.now
         do {
