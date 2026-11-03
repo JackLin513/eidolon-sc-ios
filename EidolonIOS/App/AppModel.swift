@@ -590,6 +590,7 @@ final class AppModel {
     func bootstrap() async {
         #if DEBUG
         applyDebugAdultMode()
+        applyDebugMode()
         applyDebugChatSettings()
         applyDebugBailianSettings()
         await importBundleForDebuggingIfRequested()
@@ -715,6 +716,12 @@ final class AppModel {
         // in-memory settings are set even when saving the key did not work.
         try? saveChatSettings(settings)
         chatSettings = settings
+    }
+
+    /// Development aid: `EIDOLON_DEBUG_MODE=1` turns the debug pages on for UI tests.
+    private func applyDebugMode() {
+        guard ProcessInfo.processInfo.environment["EIDOLON_DEBUG_MODE"] == "1" else { return }
+        setDebugMode(true)
     }
 
     /// Development aid: `EIDOLON_GIFT_DRAWS` (and optional `EIDOLON_GIFT_RESET_CARDS`)

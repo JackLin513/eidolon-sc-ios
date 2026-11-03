@@ -9,6 +9,7 @@ struct GiftsView: View {
     @Environment(AppModel.self) private var app
     @State private var filter: GiftCategory?
     @State private var alert: GiftAlert?
+    @State private var isDebuggingDraws = false
     @State private var isLoading = true
 
     private var chosen: CharacterConfig? {
@@ -37,6 +38,23 @@ struct GiftsView: View {
         }
         .navigationTitle("礼物")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if app.debugMode {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isDebuggingDraws = true
+                    } label: {
+                        Image(systemName: "hammer")
+                    }
+                    .accessibilityLabel("调试抽奖次数")
+                    .accessibilityIdentifier("gifts.debug")
+                }
+            }
+        }
+        .sheet(isPresented: $isDebuggingDraws) {
+            GiftDrawDebugSheet()
+                .environment(app)
+        }
         .task { await load() }
         .refreshable { await load() }
         .alert(item: $alert) { alert in
@@ -96,6 +114,7 @@ struct GiftsView: View {
                         Text("\(state.draws) / \(state.maxDraws)")
                             .font(.system(.largeTitle, design: .rounded, weight: .bold))
                             .monospacedDigit()
+                            .accessibilityIdentifier("gifts.draws")
                     }
                     Spacer()
                     Text("每天 0 点补 2 次，最多攒 \(state.maxDraws) 次")
@@ -371,6 +390,87 @@ struct GiftsView: View {
         case .drink: "cup.and.saucer.fill"
         case .flower: "leaf.fill"
         case .trinket: "sparkles"
+        }
+    }
+}
+
+/// The gift page's debug sheet (only reachable while debug mode is on): adds draw
+/// chances with no cap, without drawing anything.
+private struct GiftDrawDebugSheet: View {
+    @Environment(AppModel.self) private var app
+    @Environment(\.dismiss) private var dismiss
+    @State private var draws: Int?
+    @State private var amount = 1
+    @State private var isAdding = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    HStack {
+                        Text("剩余抽奖次数")
+                        Spacer()
+                        Text(draws.map(String.init) ?? "…")
+                            .monospacedDigit()
+                            .accessibilityIdentifier("gifts.debug.draws")
+                    }
+                }
+                Section {
+                    Button("加 1 次") { add(1) }
+                        .disabled(isAdding)
+                        .accessibilityIdentifier("gifts.debug.addOne")
+                    Button("加 10 次") { add(10) }
+                        .disabled(isAdding)
+                        .accessibilityIdentifier("gifts.debug.addTen")
+                    Stepper(value: $amount, in: 1...1000) {
+                        Text("自定义 \(amount) 次")
+                    }
+                    Button("追加 \(amount) 次") { add(amount) }
+                        .disabled(isAdding)
+                        .accessibilityIdentifier("gifts.debug.addCustom")
+                } footer: {
+                    Text("只追加次数，不抽奖、不进背包，也不计入「抽过的奖」成就；不限上限。")
+                }
+            }
+            .navigationTitle("调试：抽奖次数")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { dismiss() }
+                }
+            }
+            .task {
+                do {
+                    draws = try await app.debugGiftDraws()
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+            .alert(
+                "调试",
+                isPresented: Binding(
+                    get: { errorMessage != nil },
+                    set: { if !$0 { errorMessage = nil } }
+                )
+            ) {
+                Button("好") { errorMessage = nil }
+            } message: {
+                Text(errorMessage ?? "")
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func add(_ count: Int) {
+        Task {
+            isAdding = true
+            defer { isAdding = false }
+            do {
+                draws = try await app.debugAddGiftDraws(count)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }
