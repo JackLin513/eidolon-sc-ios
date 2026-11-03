@@ -320,6 +320,19 @@ final class AppModel {
     private(set) var lastGiftDraw: GiftDraw?
     private(set) var isGiftWorking = false
 
+    /// The debug page's view of the global draw balance.
+    func debugGiftDraws() async throws -> Int {
+        try await core.giftState().draws
+    }
+
+    /// Adds draw chances from the debug page, with no cap; the gift page's state follows.
+    @discardableResult
+    func debugAddGiftDraws(_ count: Int) async throws -> Int {
+        let draws = try await core.debugAddGiftDraws(count)
+        giftState = try await core.giftState()
+        return draws
+    }
+
     func refreshGifts() async throws {
         giftCatalog = try await core.giftCatalog()
         giftState = try await core.giftState()

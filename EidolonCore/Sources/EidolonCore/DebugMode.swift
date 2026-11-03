@@ -60,6 +60,25 @@ extension Eidolon {
         }
     }
 
+    /// Adds draw chances, with no cap, for trying the gift page in debug mode. It gives
+    /// the day's chances first, as opening the page would; it does not draw anything, so
+    /// nothing goes into the backpack and the draw achievements do not move.
+    public func debugAddGiftDraws(_ count: Int, now: Date = Date()) throws -> Int {
+        try userQueue.write { db in
+            try Self.giveDueGiftDraws(db, at: now)
+            if count > 0 {
+                try db.execute(
+                    sql: "UPDATE gift_balances SET draws = draws + ? WHERE id = 1",
+                    arguments: [count]
+                )
+            }
+            return try Int.fetchOne(
+                db,
+                sql: "SELECT draws FROM gift_balances WHERE id = 1"
+            ) ?? 0
+        }
+    }
+
     // MARK: - Conversations
 
     /// Opens an ended conversation again. The event that ended it goes with the flag: the

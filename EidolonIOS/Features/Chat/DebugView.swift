@@ -19,6 +19,9 @@ struct DebugView: View {
     @State private var affinity: Affinity?
     @State private var draftValue = AffinityRules.normal
     @State private var memoryCount: Int?
+    @State private var giftDraws: Int?
+    @State private var drawAddition = 1
+    @State private var isAddingDraws = false
     @State private var noEnding = false
     @State private var isSaving = false
     @State private var confirmingReopen = false
@@ -68,6 +71,7 @@ struct DebugView: View {
 
                 memorySection
                 affinitySection
+                giftDrawSection
                 keepOpenSection
                 conversationSection
             }
@@ -194,6 +198,45 @@ struct DebugView: View {
         }
     }
 
+    // MARK: - Draw chances
+
+    private var giftDrawSection: some View {
+        Section {
+            if let giftDraws {
+                LabeledContent("剩余抽奖次数", value: "\(giftDraws)")
+                HStack {
+                    Button("+1") {
+                        Task { await addDraws(1) }
+                    }
+                    .accessibilityIdentifier("debug.gift.addOne")
+                    Button("+10") {
+                        Task { await addDraws(10) }
+                    }
+                    .accessibilityIdentifier("debug.gift.addTen")
+                    Spacer()
+                    if isAddingDraws {
+                        ProgressView()
+                    }
+                }
+                .disabled(isAddingDraws)
+                Stepper(value: $drawAddition, in: 1...1000) {
+                    Text("自定义 \(drawAddition) 次")
+                }
+                Button("追加 \(drawAddition) 次") {
+                    Task { await addDraws(drawAddition) }
+                }
+                .disabled(isAddingDraws)
+                .accessibilityIdentifier("debug.gift.addCustom")
+            } else {
+                ProgressView()
+            }
+        } header: {
+            Text("抽奖")
+        } footer: {
+            Text("只追加抽奖次数，不限上限；不会抽奖，不进背包，也不计入「抽过的奖」成就。")
+        }
+    }
+
     // MARK: - Keeping this conversation open
 
     private var keepOpenSection: some View {
@@ -273,7 +316,26 @@ struct DebugView: View {
     private func load() async {
         await loadAffinity()
         await loadMemoryCount()
+        await loadGiftDraws()
         await loadNoEnding()
+    }
+
+    private func loadGiftDraws() async {
+        do {
+            giftDraws = try await app.debugGiftDraws()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func addDraws(_ count: Int) async {
+        isAddingDraws = true
+        defer { isAddingDraws = false }
+        do {
+            giftDraws = try await app.debugAddGiftDraws(count)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func loadAffinity() async {
