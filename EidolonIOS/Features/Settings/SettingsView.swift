@@ -420,7 +420,9 @@ struct SettingsView: View {
             configured += 1
         }
         if app.judgeProvider != nil { configured += 1 }
-        if settings.embeddingConfig(for: app.contentEmbeddingSpace) != nil { configured += 1 }
+        if settings.retrievalEmbeddingConfig(for: app.contentEmbeddingSpace) != nil {
+            configured += 1
+        }
         if settings.recognitionIsConfigured,
            !settings.fishAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             configured += 1
