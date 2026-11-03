@@ -1,6 +1,7 @@
 import EidolonCore
 import Foundation
 import Observation
+import OSLog
 import UIKit
 
 enum AppPhase: Equatable {
@@ -71,9 +72,17 @@ final class AppModel {
             return DebugChatProvider()
         }
         #endif
-        return chatSettings.config.map {
-            OpenAICompatibleChatProvider(config: $0) as any ChatProvider
-        }
+        guard let config = chatSettings.config else { return nil }
+        return ChatProviderFactory.make(config: config)
+    }
+
+    /// What writes memories and names conversations (spec #80): the background model with
+    /// the chat model's missing fields, or the chat model itself when none is set — no
+    /// second provider is built then.
+    var backgroundProvider: (any ChatProvider)? {
+        guard chatSettings.hasBackgroundModel else { return chatProvider }
+        guard let config = chatSettings.backgroundConfig else { return nil }
+        return ChatProviderFactory.make(config: config)
     }
 
     var tracing: TurnTracing {
@@ -91,8 +100,45 @@ final class AppModel {
         chatSettings.adultMode && character.isAdult
     }
 
+    /// The installed bundle's vector space: retrieval's query vector must live in it
+    /// (spec #80).
+    var contentEmbeddingSpace: ContentEmbeddingSpace? {
+        guard let info = bundleInfo else { return nil }
+        return ContentEmbeddingSpace(
+            model: info.embeddingModel,
+            dimensions: info.embeddingDimensions
+        )
+    }
+
     var embeddingProvider: (any EmbeddingProvider)? {
-        chatSettings.embeddingConfig.map { SiliconFlowEmbedding(config: $0) as any EmbeddingProvider }
+        chatSettings.embeddingConfig(for: contentEmbeddingSpace).map {
+            SiliconFlowEmbedding(config: $0) as any EmbeddingProvider
+        }
+    }
+
+    /// Why retrieval is off, in the producer's terms; nil when it is on. A bundle made with
+    /// a service this build does not speak keeps retrieval off without blocking chat.
+    /// The one reason worth telling the producer on the chat page: this bundle cannot be
+    /// embedded by any service this build speaks.
+    var contentBundleRetrievalWarning: String? {
+        guard let space = contentEmbeddingSpace, space.service != .siliconflow else {
+            return nil
+        }
+        return "这个内容包需要 \(space.service.title) 的向量，检索暂不可用"
+    }
+
+    var retrievalUnavailableReason: String? {
+        if let warning = contentBundleRetrievalWarning { return warning }
+        if contentEmbeddingSpace == nil,
+           EmbeddingService(model: chatSettings.embeddingModel) == .gemini {
+            return "Gemini embedding 暂未接入，检索暂不可用"
+        }
+        if chatSettings.embeddingConfig(for: contentEmbeddingSpace) == nil {
+            return chatSettings.retrievalAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "还没有填写检索密钥，检索关闭"
+                : "检索的接口地址或密钥不完整"
+        }
+        return nil
     }
 
     var rerankProvider: (any RerankProvider)? {
@@ -157,7 +203,7 @@ final class AppModel {
     /// Writing down what the producer said is cut short when the app is closed; those
     /// jobs run again here, before anything else is said.
     private func resumeMemoryJobs() {
-        guard let provider = chatProvider else { return }
+        guard let provider = backgroundProvider else { return }
         let embedder = embeddingProvider
         Task { [core] in
             await core.resumePendingMemories(provider: provider, embedder: embedder)
@@ -212,7 +258,9 @@ final class AppModel {
     /// A call with her, on the services the settings name. The microphone and the
     /// recognizer are the app's; everything else is the core's (ADR-0015).
     func beginCall(for character: CharacterConfig, now: Date = Date()) async throws -> CallSession {
-        guard let provider = chatProvider else {
+        guard let provider = chatSettings.callConfig.map({
+            ChatProviderFactory.make(config: $0)
+        }) else {
             throw ChatProviderError.notConfigured
         }
         if let missing = CallSettingsError.missingSonioxKeyWhenNeeded(chatSettings) {
@@ -229,6 +277,7 @@ final class AppModel {
             synthesis: speechSynthesis(readings: readings),
             voiceModel: chatSettings.fishModel,
             provider: provider,
+            background: backgroundProvider,
             judge: judge,
             emotionJudge: judge == nil ? nil : emotionJudgeProvider,
             embedder: embeddingProvider,
@@ -524,8 +573,13 @@ final class AppModel {
     }
 
     func saveChatSettings(_ settings: ChatSettings) throws {
-        try settings.save()
-        chatSettings = settings
+        var normalized = settings
+        normalized.baseURL = APIServiceRouting.baseURLForImportedSettings(
+            normalized.baseURL,
+            protocol: normalized.apiProtocol
+        )
+        try normalized.save()
+        chatSettings = normalized
     }
 
     let core: Eidolon
@@ -553,6 +607,9 @@ final class AppModel {
                 _ = try? await core.migrateLegacyStandIfNeeded()
                 try await load()
                 phase = .ready
+                #if DEBUG
+                importAPIEnvForDebuggingIfRequested()
+                #endif
                 resumeMemoryJobs()
                 await catchUpReachOuts()
             } else {
@@ -570,6 +627,32 @@ final class AppModel {
     }
 
     #if DEBUG
+    /// Development aid: `EIDOLON_API_ENV_FILE` names an `.env` in Documents (or an
+    /// absolute path). It is applied and saved once at launch, then removed so the keys
+    /// do not stay in the app container. Used to set up a device without typing keys.
+    private func importAPIEnvForDebuggingIfRequested() {
+        let environment = ProcessInfo.processInfo.environment
+        guard let name = environment["EIDOLON_API_ENV_FILE"], !name.isEmpty else { return }
+        let url = name.hasPrefix("/")
+            ? URL(fileURLWithPath: name)
+            : URL.documentsDirectory.appending(path: name)
+        guard let data = try? Data(contentsOf: url),
+              let file = try? EnvParser.parse(data: data)
+        else { return }
+        let report = EnvImporter.map(file, contentEmbedding: contentEmbeddingSpace)
+        guard report.blockingError == nil else { return }
+        var settings = chatSettings
+        settings.apply(report.values)
+        // An unsigned UI-test build can fail the Keychain write; this run still needs the
+        // values, as the other debug seeding does.
+        try? saveChatSettings(settings)
+        chatSettings = settings
+        try? FileManager.default.removeItem(at: url)
+        Logger(subsystem: "com.jacklin.eidolon", category: "settings").notice(
+            "imported .env: \(report.mapped.count) mapped, \(report.unsupported.count) unsupported, \(report.unknown.count) unknown"
+        )
+    }
+
     /// Development aid: `SIMCTL_CHILD_EIDOLON_CHAT_BASE_URL/_MODEL/_API_KEY` seed the
     /// chat settings so the simulator can talk to a real model without the keyboard.
     private func applyDebugChatSettings() {
@@ -578,6 +661,9 @@ final class AppModel {
         var settings = ChatSettings.load()
         settings.baseURL = environment["EIDOLON_CHAT_BASE_URL"] ?? "https://api.siliconflow.cn/v1"
         settings.model = environment["EIDOLON_CHAT_MODEL"] ?? ""
+        settings.apiProtocol = ChatProtocol(
+            rawValue: environment["EIDOLON_CHAT_PROTOCOL"] ?? ""
+        ) ?? .chatCompletions
         settings.apiKey = key
         settings.historyTurns = 20
         settings.extraBody = environment["EIDOLON_CHAT_EXTRA_BODY"] ?? ""

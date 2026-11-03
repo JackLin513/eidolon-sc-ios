@@ -3,7 +3,9 @@ import Foundation
 
 /// The chat and judge model settings: addresses and model names in UserDefaults, keys in
 /// the Keychain (ADR-0010). A chat judge left blank uses the chat model's settings.
-struct ChatSettings {
+struct ChatSettings: Equatable {
+    // MARK: Chat model
+
     var baseURL: String = ""
     var model: String = ""
     var apiKey: String = ""
@@ -13,15 +15,42 @@ struct ChatSettings {
     /// Adult mode: consensual intimacy is not out of line, but only for characters whose
     /// content age is 18 or older (spec #61).
     var adultMode: Bool = false
+    /// The interface the address speaks (spec #80): chat-completions, Responses or
+    /// Anthropic Messages.
+    var apiProtocol: ChatProtocol = .chatCompletions
+    /// The reply cap; nil means the protocol's own default (Anthropic 16384, the other
+    /// two no cap).
+    var maxTokens: Int?
+    /// How hard the model thinks on typed turns.
+    var textReasoningEffort: ReasoningEffort?
+    /// How hard the model thinks in a call; separate so a call can answer sooner.
+    var callReasoningEffort: ReasoningEffort?
     var extraBody: String = ""
+
+    // MARK: Background model (memories and titles)
+
+    /// Empty fields fall back to the chat model's; the reply cap, the effort and the extra
+    /// body are the background model's own, as upstream has them.
+    var backgroundProtocol: ChatProtocol?
+    var backgroundBaseURL: String = ""
+    var backgroundModel: String = ""
+    var backgroundAPIKey: String = ""
+    var backgroundMaxTokens: Int?
+    var backgroundTextReasoningEffort: ReasoningEffort?
+    var backgroundExtraBody: String = ""
+
+    // MARK: Judge
 
     var judgeBaseURL: String = ""
     var judgeModel: String = ""
     var judgeAPIKey: String = ""
     var judgeExtraBody: String = ""
 
+    // MARK: Retrieval
+
     var retrievalBaseURL: String = ""
     var embeddingModel: String = ""
+    var embeddingDimensions: Int?
     var rerankModel: String = ""
     var retrievalAPIKey: String = ""
     /// How long she waits before saying something first, when she does not go by her tier
@@ -32,6 +61,8 @@ struct ChatSettings {
     /// Whether a turn leaves a trace, and how many are kept (ADR-0012).
     var tracingEnabled: Bool = true
     var traceRetention: Int = 200
+
+    // MARK: Calls
 
     /// Calls: the recognizer's key and model, and the voice model her speech is made on.
     var sonioxAPIKey: String = ""
@@ -65,13 +96,27 @@ struct ChatSettings {
     /// How long a segment may take to be judged before it goes unjudged, in seconds.
     var emotionTimeout: Double = 1.5
 
+    // MARK: Keys
+
     private static let baseURLKey = "chat.baseURL"
     private static let modelKey = "chat.model"
     private static let historyKey = "chat.historyTurns"
     private static let atmosphericTextKey = "chat.atmosphericText"
     private static let adultModeKey = "chat.adultMode"
+    private static let protocolKey = "chat.protocol"
+    private static let maxTokensKey = "chat.maxTokens"
+    private static let textEffortKey = "chat.reasoningEffort"
+    private static let callEffortKey = "chat.callReasoningEffort"
     private static let extraBodyKey = "chat.extraBody"
     private static let keychainAccount = "chat.apiKey"
+
+    private static let backgroundProtocolKey = "background.protocol"
+    private static let backgroundBaseURLKey = "background.baseURL"
+    private static let backgroundModelKey = "background.model"
+    private static let backgroundMaxTokensKey = "background.maxTokens"
+    private static let backgroundEffortKey = "background.reasoningEffort"
+    private static let backgroundExtraBodyKey = "background.extraBody"
+    private static let backgroundKeychainAccount = "background.apiKey"
 
     private static let judgeBaseURLKey = "judge.baseURL"
     private static let judgeModelKey = "judge.model"
@@ -79,6 +124,7 @@ struct ChatSettings {
 
     private static let retrievalBaseURLKey = "retrieval.baseURL"
     private static let embeddingModelKey = "retrieval.embeddingModel"
+    private static let embeddingDimensionsKey = "retrieval.embeddingDimensions"
     private static let rerankModelKey = "retrieval.rerankModel"
     private static let retrievalKeychainAccount = "retrieval.apiKey"
     private static let reachOutHoursKey = "reachOut.hours"
@@ -108,20 +154,41 @@ struct ChatSettings {
         let judgeBaseURL = defaults.string(forKey: judgeBaseURLKey) ?? ""
         let judgeModel = defaults.string(forKey: judgeModelKey) ?? ""
         let judgeAPIKey = Keychain.string(account: JudgeService.chat.keychainAccount) ?? ""
-        return ChatSettings(
+        var settings = ChatSettings(
             baseURL: defaults.string(forKey: baseURLKey) ?? "",
             model: defaults.string(forKey: modelKey) ?? "",
             apiKey: Keychain.string(account: keychainAccount) ?? "",
             historyTurns: defaults.object(forKey: historyKey) as? Int ?? 20,
             atmosphericText: defaults.object(forKey: atmosphericTextKey) as? Bool ?? true,
             adultMode: defaults.object(forKey: adultModeKey) as? Bool ?? false,
+            apiProtocol: ChatProtocol(rawValue: defaults.string(forKey: protocolKey) ?? "")
+                ?? .chatCompletions,
+            maxTokens: defaults.object(forKey: maxTokensKey) as? Int,
+            textReasoningEffort: ReasoningEffort.parse(
+                defaults.string(forKey: textEffortKey) ?? ""
+            ),
+            callReasoningEffort: ReasoningEffort.parse(
+                defaults.string(forKey: callEffortKey) ?? ""
+            ),
             extraBody: defaults.string(forKey: extraBodyKey) ?? "",
+            backgroundProtocol: ChatProtocol(
+                rawValue: defaults.string(forKey: backgroundProtocolKey) ?? ""
+            ),
+            backgroundBaseURL: defaults.string(forKey: backgroundBaseURLKey) ?? "",
+            backgroundModel: defaults.string(forKey: backgroundModelKey) ?? "",
+            backgroundAPIKey: Keychain.string(account: backgroundKeychainAccount) ?? "",
+            backgroundMaxTokens: defaults.object(forKey: backgroundMaxTokensKey) as? Int,
+            backgroundTextReasoningEffort: ReasoningEffort.parse(
+                defaults.string(forKey: backgroundEffortKey) ?? ""
+            ),
+            backgroundExtraBody: defaults.string(forKey: backgroundExtraBodyKey) ?? "",
             judgeBaseURL: judgeBaseURL,
             judgeModel: judgeModel,
             judgeAPIKey: judgeAPIKey,
             judgeExtraBody: defaults.string(forKey: judgeExtraBodyKey) ?? "",
             retrievalBaseURL: defaults.string(forKey: retrievalBaseURLKey) ?? "",
             embeddingModel: defaults.string(forKey: embeddingModelKey) ?? "",
+            embeddingDimensions: defaults.object(forKey: embeddingDimensionsKey) as? Int,
             rerankModel: defaults.string(forKey: rerankModelKey) ?? "",
             retrievalAPIKey: Keychain.string(account: retrievalKeychainAccount) ?? "",
             reachOutHours: defaults.object(forKey: reachOutHoursKey) as? Int ?? 6,
@@ -159,6 +226,13 @@ struct ChatSettings {
                 defaults.object(forKey: emotionTimeoutKey) as? Double ?? 1.5
             )
         )
+        // A build before the routing fix could have saved Anthropic on DeepSeek's root
+        // address; reading it back moves it, so chat works without opening settings.
+        settings.baseURL = APIServiceRouting.baseURLForImportedSettings(
+            settings.baseURL,
+            protocol: settings.apiProtocol
+        )
+        return settings
     }
 
     func save() throws {
@@ -168,15 +242,61 @@ struct ChatSettings {
         defaults.set(historyTurns, forKey: Self.historyKey)
         defaults.set(atmosphericText, forKey: Self.atmosphericTextKey)
         defaults.set(adultMode, forKey: Self.adultModeKey)
+        defaults.set(apiProtocol.rawValue, forKey: Self.protocolKey)
+        if let maxTokens {
+            defaults.set(maxTokens, forKey: Self.maxTokensKey)
+        } else {
+            defaults.removeObject(forKey: Self.maxTokensKey)
+        }
+        if let textReasoningEffort {
+            defaults.set(textReasoningEffort.rawValue, forKey: Self.textEffortKey)
+        } else {
+            defaults.removeObject(forKey: Self.textEffortKey)
+        }
+        if let callReasoningEffort {
+            defaults.set(callReasoningEffort.rawValue, forKey: Self.callEffortKey)
+        } else {
+            defaults.removeObject(forKey: Self.callEffortKey)
+        }
         defaults.set(extraBody.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.extraBodyKey)
+        if let backgroundProtocol {
+            defaults.set(backgroundProtocol.rawValue, forKey: Self.backgroundProtocolKey)
+        } else {
+            defaults.removeObject(forKey: Self.backgroundProtocolKey)
+        }
+        defaults.set(
+            backgroundBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+            forKey: Self.backgroundBaseURLKey
+        )
+        defaults.set(backgroundModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.backgroundModelKey)
+        if let backgroundMaxTokens {
+            defaults.set(backgroundMaxTokens, forKey: Self.backgroundMaxTokensKey)
+        } else {
+            defaults.removeObject(forKey: Self.backgroundMaxTokensKey)
+        }
+        if let backgroundTextReasoningEffort {
+            defaults.set(backgroundTextReasoningEffort.rawValue, forKey: Self.backgroundEffortKey)
+        } else {
+            defaults.removeObject(forKey: Self.backgroundEffortKey)
+        }
+        defaults.set(
+            backgroundExtraBody.trimmingCharacters(in: .whitespacesAndNewlines),
+            forKey: Self.backgroundExtraBodyKey
+        )
+        try Self.store(apiKey, account: Self.keychainAccount)
+        try Self.store(backgroundAPIKey, account: Self.backgroundKeychainAccount)
         defaults.set(judgeBaseURL.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.judgeBaseURLKey)
         defaults.set(judgeModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.judgeModelKey)
         defaults.set(judgeExtraBody.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.judgeExtraBodyKey)
-        try Self.store(apiKey, account: Self.keychainAccount)
+        try Self.store(judgeAPIKey, account: JudgeService.chat.keychainAccount)
         defaults.set(retrievalBaseURL.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.retrievalBaseURLKey)
         defaults.set(embeddingModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.embeddingModelKey)
+        if let embeddingDimensions {
+            defaults.set(embeddingDimensions, forKey: Self.embeddingDimensionsKey)
+        } else {
+            defaults.removeObject(forKey: Self.embeddingDimensionsKey)
+        }
         defaults.set(rerankModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.rerankModelKey)
-        try Self.store(judgeAPIKey, account: JudgeService.chat.keychainAccount)
         try Self.store(retrievalAPIKey, account: Self.retrievalKeychainAccount)
         defaults.set(reachOutHours, forKey: Self.reachOutHoursKey)
         defaults.set(reachOutByTier, forKey: Self.reachOutByTierKey)
@@ -232,9 +352,82 @@ struct ChatSettings {
             : SystemOneSegmentEmotionJudge.defaultTimeout
     }
 
-    /// The provider config, or nil while something still has to be filled in.
+    /// Applies the values an imported `.env` carries; a nil value leaves the setting as
+    /// it was. The caller saves afterwards.
+    mutating func apply(_ values: EnvAPISettings) {
+        if let value = values.chatProtocol { apiProtocol = value }
+        if let value = values.chatBaseURL { baseURL = value }
+        if let value = values.chatAPIKey { apiKey = value }
+        if let value = values.chatModel { model = value }
+        if let value = values.chatMaxTokens { maxTokens = value }
+        if let value = values.chatReasoningEffort { textReasoningEffort = value }
+        if let value = values.chatCallReasoningEffort { callReasoningEffort = value }
+        if let value = values.chatExtraBody { extraBody = Self.jsonText(value) }
+
+        if let value = values.backgroundProtocol { backgroundProtocol = value }
+        if let value = values.backgroundBaseURL { backgroundBaseURL = value }
+        if let value = values.backgroundAPIKey { backgroundAPIKey = value }
+        if let value = values.backgroundModel { backgroundModel = value }
+        if let value = values.backgroundMaxTokens { backgroundMaxTokens = value }
+        if let value = values.backgroundReasoningEffort {
+            backgroundTextReasoningEffort = value
+        }
+        if let value = values.backgroundExtraBody {
+            backgroundExtraBody = Self.jsonText(value)
+        }
+
+        if let value = values.judgeService { judgeService = value }
+        if let value = values.jevAPIKey { jevAPIKey = value }
+        if let value = values.jevModel { jevModel = value }
+        if let value = values.jevBaseURL { jevBaseURL = value }
+        if let value = values.cloudflareAPIKey { cloudflareAPIKey = value }
+        if let value = values.cloudflareAccountID { cloudflareAccountID = value }
+        if let value = values.cloudflareModel { cloudflareModel = value }
+        if let value = values.bailianJudgeAPIKey { bailianAPIKey = value }
+        if let value = values.bailianWorkspace { bailianWorkspace = value }
+        if let value = values.bailianRegion { bailianRegion = value }
+        if let value = values.bailianModel { bailianModel = value }
+        if let value = values.emotionMinProbability { emotionMinProbability = value }
+        if let value = values.emotionTimeout { emotionTimeout = value }
+
+        if let value = values.siliconflowAPIKey { retrievalAPIKey = value }
+        if let value = values.siliconflowBaseURL { retrievalBaseURL = value }
+        if let value = values.embeddingModel { embeddingModel = value }
+        if let value = values.embeddingDimensions { embeddingDimensions = value }
+        if let value = values.rerankModel { rerankModel = value }
+
+        if let value = values.sonioxAPIKey { sonioxAPIKey = value }
+        if let value = values.fishAPIKey { fishAPIKey = value }
+        if let value = values.fishModel { fishModel = value }
+
+        // DeepSeek serves its Anthropic surface under /anthropic; an upstream `.env`
+        // written for the OpenAI surfaces names only the root.
+        baseURL = APIServiceRouting.baseURLForImportedSettings(baseURL, protocol: apiProtocol)
+    }
+
+    private static func jsonText(_ value: [String: JSONValue]) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(value) else { return "{}" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    // MARK: - Model configs
+
+    /// The provider config for typed turns, or nil while something still has to be filled
+    /// in.
     var config: ChatModelConfig? {
-        guard let url = Self.url(baseURL),
+        modelConfig(reasoningEffort: textReasoningEffort)
+    }
+
+    /// What a call's turns use: the same model, with the call's own thinking effort.
+    var callConfig: ChatModelConfig? {
+        modelConfig(reasoningEffort: callReasoningEffort)
+    }
+
+    private func modelConfig(reasoningEffort: ReasoningEffort?) -> ChatModelConfig? {
+        let base = APIServiceRouting.baseURLForImportedSettings(baseURL, protocol: apiProtocol)
+        guard let url = Self.url(base),
               let name = Self.value(model),
               let key = Self.value(apiKey),
               let extra = Self.extra(extraBody)
@@ -244,14 +437,63 @@ struct ChatSettings {
             model: name,
             apiKey: key,
             historyTurns: historyTurns,
+            maxTokens: maxTokens,
+            apiProtocol: apiProtocol,
+            reasoningEffort: reasoningEffort,
             extraBody: extra
         )
     }
 
     var isConfigured: Bool { config != nil }
 
-    /// The judge's config: its own when filled in, else the chat model's. Nil when neither
-    /// is usable, in which case turns go unjudged.
+    /// The background model as the producer wrote it, before the empty fields fall back.
+    var background: BackgroundChatConfig? {
+        // Nil and unusable extra JSON both make the background model unusable; blank is
+        // no extra body.
+        guard let extra = Self.extra(backgroundExtraBody) else { return nil }
+        let base = APIServiceRouting.baseURLForImportedSettings(
+            backgroundBaseURL,
+            protocol: backgroundProtocol ?? apiProtocol
+        )
+        return BackgroundChatConfig(
+            apiProtocol: backgroundProtocol,
+            baseURL: Self.url(base),
+            model: Self.value(backgroundModel),
+            apiKey: Self.value(backgroundAPIKey),
+            maxTokens: backgroundMaxTokens,
+            reasoningEffort: backgroundTextReasoningEffort,
+            extraBody: extra
+        )
+    }
+
+    /// Whether the producer filled in any background field.
+    var hasBackgroundModel: Bool {
+        backgroundProtocol != nil
+            || !backgroundBaseURL.trimmed.isEmpty
+            || !backgroundModel.trimmed.isEmpty
+            || !backgroundAPIKey.trimmed.isEmpty
+            || backgroundMaxTokens != nil
+            || backgroundTextReasoningEffort != nil
+            || !backgroundExtraBody.trimmed.isEmpty
+    }
+
+    /// Memories and titles: the background model with the chat model's missing fields, or
+    /// the chat model itself when the background model is blank. Without a chat model the
+    /// background model has to be complete on its own — the placeholder never supplies an
+    /// address for a real request.
+    var backgroundConfig: ChatModelConfig? {
+        guard let background, background.isEnabled else { return config }
+        if let config { return background.config(inheriting: config) }
+        guard background.baseURL != nil,
+              background.model != nil,
+              background.apiKey != nil
+        else { return nil }
+        return background.config(inheriting: .placeholder)
+    }
+
+    /// The judge's config: its own when filled in, else the chat model's. The chat judge is
+    /// always chat-completions, so it never silently inherits a Responses or Anthropic
+    /// chat model (spec #80).
     func judgeConfig(chat: ChatModelConfig?) -> JudgeConfig? {
         if let url = Self.url(judgeBaseURL),
            let name = Self.value(judgeModel),
@@ -260,7 +502,7 @@ struct ChatSettings {
         {
             return JudgeConfig(baseURL: url, model: name, apiKey: key, extraBody: extra)
         }
-        guard let chat else { return nil }
+        guard apiProtocol == .chatCompletions, let chat else { return nil }
         return JudgeConfig(
             baseURL: chat.baseURL,
             model: chat.model,
@@ -304,18 +546,33 @@ struct ChatSettings {
         CallLimits(minutes: max(0, callMinutes), turns: max(0, callTurns))
     }
 
-    /// The retrieval services: SiliconFlow's Qwen embedding and reranker unless filled in
-    /// otherwise. Nil without a key, and then retrieval is off.
-    var embeddingConfig: EmbeddingConfig? {
-        guard let url = Self.url(retrievalBaseURL) ?? URL(string: "https://api.siliconflow.cn/v1"),
-              let key = Self.value(retrievalAPIKey)
+    // MARK: - Retrieval
+
+    /// The retrieval services. The installed content bundle is the authority for the
+    /// embedding space (spec #80): when there is one, its model is the only one that can
+    /// pair with its passages. Nil without a key or a service this build speaks.
+    func embeddingConfig(for bundle: ContentEmbeddingSpace?) -> EmbeddingConfig? {
+        guard let key = Self.value(retrievalAPIKey) else { return nil }
+        let model = bundle?.model ?? Self.value(embeddingModel)
+            ?? EmbeddingService.defaultSiliconFlowModel
+        let service = bundle?.service ?? EmbeddingService(model: model)
+        // Gemini's client is its own ticket (#89); until then a bundle made with it keeps
+        // retrieval off rather than pairing a SiliconFlow query with Gemini passages.
+        guard service == .siliconflow else { return nil }
+        guard let url = Self.url(retrievalBaseURL)
+            ?? URL(string: APIServiceRouting.siliconFlowBaseURL)
         else { return nil }
-        let model = Self.value(embeddingModel) ?? "Qwen/Qwen3-Embedding-0.6B"
         return EmbeddingConfig(baseURL: url, model: model, apiKey: key)
     }
 
+    /// Retrieval without a bundle (older callers): the embedding model as written.
+    var embeddingConfig: EmbeddingConfig? {
+        embeddingConfig(for: nil)
+    }
+
     var rerankConfig: RerankConfig? {
-        guard let url = Self.url(retrievalBaseURL) ?? URL(string: "https://api.siliconflow.cn/v1"),
+        guard let url = Self.url(retrievalBaseURL)
+            ?? URL(string: APIServiceRouting.siliconFlowBaseURL),
               let key = Self.value(retrievalAPIKey)
         else { return nil }
         let model = Self.value(rerankModel) ?? "Qwen/Qwen3-Reranker-0.6B"
@@ -334,7 +591,7 @@ struct ChatSettings {
     }
 
     private static func value(_ text: String) -> String? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = text.trimmed
         return trimmed.isEmpty ? nil : trimmed
     }
 
@@ -349,9 +606,20 @@ struct ChatSettings {
     private static func extra(_ text: String) -> [String: JSONValue]?? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return .some(nil) }
-        guard let data = trimmed.data(using: .utf8),
-              let decoded = try? JSONDecoder().decode([String: JSONValue].self, from: data)
-        else { return nil }
-        return .some(decoded)
+        do {
+            return .some(try ChatRequestExtras.decode(trimmed))
+        } catch {
+            return nil
+        }
     }
+}
+
+private extension ChatModelConfig {
+    /// Stands in for the chat model while resolving a background config that has every
+    /// required field of its own; never used to call.
+    static let placeholder = ChatModelConfig(
+        baseURL: URL(string: "https://placeholder.invalid")!,
+        model: "",
+        apiKey: ""
+    )
 }

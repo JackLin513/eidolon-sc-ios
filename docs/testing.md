@@ -29,6 +29,10 @@ tools/oracle/run.sh                          # 与上游逐字对照提示词（
 - `EIDOLON_OPEN_OUTFITS=1`：配合预览直接打开换衣装面板
 - `EIDOLON_PREVIEW_WEAR=<outfit id>`：预览打开后直接换到这套衣装（回归检查用）
 - `EIDOLON_BAILIAN_WORKSPACE` / `_REGION` / `_MODEL` / `_API_KEY`：预置百炼判断配置，其余设置不动；真机也能用 `xcrun devicectl device process launch --environment-variables` 传入
+- `EIDOLON_API_ENV_FILE`：启动后直接打开「API 与模型」，并用这个 `.env` 文件的内容打开导入预览
+- `EIDOLON_API_ENV_TEXT`：同上，但内容直接写在环境变量里（UI 测试用，不经过文件选择器）
+- `EIDOLON_API_MODEL_LIST=a,b,c`：让「获取模型」用这份固定列表，不访问网络
+- `EIDOLON_API_PROBE=success` / `failure`：让服务测试按钮返回注入的成功或失败结果，不访问网络
 
 真机上这些变量用 `xcrun devicectl device process launch --environment-variables` 传入（键值写成 JSON）。
 
