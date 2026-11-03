@@ -39,7 +39,7 @@ struct RootView: View {
                     description: Text(startupError)
                 )
             } else {
-                ProgressView("正在打开…")
+                opening
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -58,6 +58,13 @@ struct RootView: View {
         }
     }
 
+    /// The opening spinner fills the screen, so it is centred rather than squeezed into
+    /// the top-left corner by the group's intrinsic size.
+    private var opening: some View {
+        ProgressView("正在打开…")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     /// The layer paints past the safe area, so it has to clear the whole screen, not just
     /// the part the pages are laid out in.
     private func screenHeight(_ geometry: GeometryProxy) -> CGFloat {
@@ -68,7 +75,7 @@ struct RootView: View {
     private func content(for app: AppModel) -> some View {
         switch app.phase {
         case .loading:
-            ProgressView("正在打开…")
+            opening
         case .needsContentBundle:
             ImportGuideView()
         case .ready:
