@@ -66,6 +66,13 @@ struct APISettingsView: View {
             }
         }
         .task { await load() }
+        .onChange(of: settings.apiProtocol) { old, new in
+            settings.baseURL = APIServiceRouting.baseURL(
+                settings.baseURL,
+                movingTo: new,
+                from: old
+            )
+        }
         .onChange(of: settings.apiKey) { _, value in
             if !value.isEmpty { cleared.remove(.chat) }
         }
@@ -193,6 +200,12 @@ struct APISettingsView: View {
             Text(settings.apiProtocol.path)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
+            if settings.apiProtocol == .anthropic {
+                Text("Anthropic 地址要写到服务商的 Anthropic 前缀；DeepSeek 用 "
+                    + APIServiceRouting.deepSeekAnthropicBaseURL)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             TextField("接口地址，例如 https://api.siliconflow.cn/v1", text: $settings.baseURL)
                 .textInputAutocapitalization(.never)
@@ -466,8 +479,12 @@ struct APISettingsView: View {
                 key: .rerank,
                 identifier: "api.retrieval.rerankModel"
             ) {
-                fetch(key: .rerank, service: .openAICompatible, baseURL: settings.retrievalBaseURL,
-                      apiKey: settings.retrievalAPIKey) { settings.rerankModel = $0 }
+                fetch(
+                    key: .rerank,
+                    service: .openAICompatible,
+                    baseURL: APIServiceRouting.retrievalBaseURL(settings.retrievalBaseURL),
+                    apiKey: settings.retrievalAPIKey
+                ) { settings.rerankModel = $0 }
             }
             TextField("接口地址（默认 https://api.siliconflow.cn/v1）", text: $settings.retrievalBaseURL)
                 .textInputAutocapitalization(.never)
@@ -480,9 +497,13 @@ struct APISettingsView: View {
                 settings.retrievalAPIKey = ""
             }
             fetchButton(.embedding, title: "获取向量化模型") {
-                fetch(key: .embedding, service: .openAICompatible,
-                      baseURL: settings.retrievalBaseURL, apiKey: settings.retrievalAPIKey,
-                      allows: embeddingModelAllowed) { settings.embeddingModel = $0 }
+                fetch(
+                    key: .embedding,
+                    service: .openAICompatible,
+                    baseURL: APIServiceRouting.retrievalBaseURL(settings.retrievalBaseURL),
+                    apiKey: settings.retrievalAPIKey,
+                    allows: embeddingModelAllowed
+                ) { settings.embeddingModel = $0 }
             }
             fetchError(.embedding)
             probeButton(.embedding, title: "测试向量化") { await testEmbedding() }
@@ -880,9 +901,7 @@ struct APISettingsView: View {
             base = settings.jevBaseURL
             apiKey = settings.jevAPIKey
         case .embedding, .rerank:
-            base = settings.retrievalBaseURL.trimmed.isEmpty
-                ? "https://api.siliconflow.cn/v1"
-                : settings.retrievalBaseURL
+            base = APIServiceRouting.retrievalBaseURL(settings.retrievalBaseURL)
             apiKey = settings.retrievalAPIKey
         case .cloudflare, .bailian:
             return true
@@ -1034,7 +1053,12 @@ struct APISettingsView: View {
             guard let config = settings.config else {
                 return ProbeResult(ok: false, milliseconds: 0, detail: "还差地址、模型名或密钥")
             }
-            return await ServiceProbe().chatModel(config)
+            var result = await ServiceProbe().chatModel(config)
+            if !result.ok, result.statusCode == 404, settings.apiProtocol == .anthropic {
+                result.detail += "（Anthropic 地址一般要写到服务商的 Anthropic 前缀，"
+                    + "例如 DeepSeek 是 \(APIServiceRouting.deepSeekAnthropicBaseURL)）"
+            }
+            return result
         }
     }
 

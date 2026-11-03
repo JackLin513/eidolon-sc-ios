@@ -14,11 +14,16 @@ final class APISettingsUITests: XCTestCase {
         app.terminate()
     }
 
-    private func openAPIPage(fakeProbe: String? = nil, envText: String? = nil) {
+    private func openAPIPage(
+        fakeProbe: String? = nil,
+        envText: String? = nil,
+        chatBaseURL: String = "https://api.example.com/v1",
+        retrievalAPIKey: String? = nil
+    ) {
         // A configured chat model makes the page's fetch and test buttons usable without
         // typing a key.
         app.launchEnvironment["EIDOLON_CHAT_API_KEY"] = "ui-test-key"
-        app.launchEnvironment["EIDOLON_CHAT_BASE_URL"] = "https://api.example.com/v1"
+        app.launchEnvironment["EIDOLON_CHAT_BASE_URL"] = chatBaseURL
         app.launchEnvironment["EIDOLON_CHAT_MODEL"] = "model-a"
         app.launchEnvironment["EIDOLON_API_MODEL_LIST"] = "model-a,model-b,another-model"
         if let fakeProbe {
@@ -26,6 +31,9 @@ final class APISettingsUITests: XCTestCase {
         }
         if let envText {
             app.launchEnvironment["EIDOLON_API_ENV_TEXT"] = envText
+        }
+        if let retrievalAPIKey {
+            app.launchEnvironment["EIDOLON_RETRIEVAL_API_KEY"] = retrievalAPIKey
         }
         app.launch()
 
@@ -122,6 +130,46 @@ final class APISettingsUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["调试注入：密钥无效"].firstMatch.exists)
     }
 
+    func testSwitchingToAnthropicMovesTheDeepSeekAddress() {
+        openAPIPage(chatBaseURL: "https://api.deepseek.com")
+
+        let picker = app.buttons["api.chat.protocol"].firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 5), "no protocol picker")
+        picker.tap()
+        let anthropic = app.buttons["Anthropic Messages"].firstMatch
+        XCTAssertTrue(anthropic.waitForExistence(timeout: 5), "no Anthropic option")
+        anthropic.tap()
+
+        let baseURL = app.textFields["api.chat.baseURL"]
+        XCTAssertTrue(baseURL.waitForExistence(timeout: 5))
+        XCTAssertEqual(
+            baseURL.value as? String,
+            "https://api.deepseek.com/anthropic",
+            "the Anthropic surface of DeepSeek is under /anthropic"
+        )
+
+        picker.tap()
+        let chatCompletions = app.buttons["Chat Completions"].firstMatch
+        XCTAssertTrue(chatCompletions.waitForExistence(timeout: 5))
+        chatCompletions.tap()
+        XCTAssertEqual(baseURL.value as? String, "https://api.deepseek.com")
+    }
+
+    func testTheRetrievalFetchButtonWorksWithTheDefaultAddress() {
+        openAPIPage(retrievalAPIKey: "ui-test-retrieval")
+
+        XCTAssertTrue(scroll(to: "api.retrieval.embeddingModel"))
+        XCTAssertTrue(scroll(to: "api.fetch.embedding"))
+        let fetch = app.buttons["api.fetch.embedding"]
+        XCTAssertTrue(fetch.exists)
+        XCTAssertTrue(fetch.isEnabled, "the default SiliconFlow address should be usable")
+        fetch.tap()
+        XCTAssertTrue(
+            app.buttons["api.model.model-b"].firstMatch.waitForExistence(timeout: 10),
+            "the model picker did not open with the default address"
+        )
+    }
+
     func testClearingAKeySavesTheClearedValue() {
         openAPIPage()
 
@@ -157,9 +205,19 @@ final class APISettingsUITests: XCTestCase {
     @discardableResult
     private func scroll(to identifier: String) -> Bool {
         let element = app.descendants(matching: .any)[identifier]
-        for _ in 0..<10 where !element.isHittable {
-            app.swipeUp()
+        let form = app.collectionViews.firstMatch
+        func onScreen() -> Bool {
+            guard element.exists, element.frame.height > 1 else { return false }
+            let mid = element.frame.midY
+            return mid > 150 && mid < 930
         }
-        return element.exists
+        for _ in 0..<30 where !onScreen() {
+            if element.exists, element.frame.height > 1, element.frame.midY < 150 {
+                form.swipeDown(velocity: .slow)
+            } else {
+                form.swipeUp(velocity: .slow)
+            }
+        }
+        return onScreen()
     }
 }
