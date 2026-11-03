@@ -104,6 +104,7 @@ extension Eidolon {
         characterID: String,
         text: String,
         provider: any ChatProvider,
+        background: (any ChatProvider)? = nil,
         judge: (any JudgeProvider)? = nil,
         embedder: (any EmbeddingProvider)? = nil,
         reranker: (any RerankProvider)? = nil,
@@ -127,6 +128,7 @@ extension Eidolon {
                         characterID: characterID,
                         text: text,
                         provider: provider,
+                        background: background,
                         judge: judge,
                         embedder: embedder,
                         reranker: reranker,
@@ -179,6 +181,7 @@ extension Eidolon {
         characterID: String,
         text: String,
         provider: any ChatProvider,
+        background: (any ChatProvider)?,
         judge: (any JudgeProvider)?,
         embedder: (any EmbeddingProvider)?,
         reranker: (any RerankProvider)?,
@@ -419,6 +422,7 @@ extension Eidolon {
                 let forbidden = toolRounds >= 1 || recalled
                 var said = ""
                 var calls: [ToolCall] = []
+                var reasoning: [JSONValue] = []
                 if let toolProvider, !tools.isEmpty {
                     for try await event in toolProvider.stream(
                         messages: prompt,
@@ -431,6 +435,8 @@ extension Eidolon {
                             if firstTokenAt == nil { firstTokenAt = ContinuousClock.now }
                             said += chunk
                             shown(parser.feed(chunk))
+                        case let .reasoning(items):
+                            reasoning += items
                         case let .toolCalls(made):
                             calls += made
                         }
@@ -454,7 +460,9 @@ extension Eidolon {
                 #endif
                 if calls.isEmpty || tools.isEmpty || forbidden { break }
                 toolCalls += calls.map { "\($0.name)(\($0.arguments))" }
-                prompt.append(PromptMessage(.assistant, said, toolCalls: calls))
+                prompt.append(
+                    PromptMessage(.assistant, said, toolCalls: calls, reasoning: reasoning)
+                )
                 for call in calls {
                     let result = await self.toolResult(call, retrieval: retrieval)
                         + "\n\n" + RecallStoryTool.lastRoundNote
@@ -568,13 +576,15 @@ extension Eidolon {
                userMessageID: recorded.userMessageID,
                now: now
            ) {
-            scheduleMemoryJob(job, provider: provider, embedder: embedder)
+            // What the producer said is written down by the cheaper background model when
+            // one is set; the reply itself was still the chat model's.
+            scheduleMemoryJob(job, provider: background ?? provider, embedder: embedder)
         }
         nameConversationIfDue(
             conversationID: recorded.conversationID,
             characterID: characterID,
             turn: recorded.turn,
-            provider: provider
+            provider: background ?? provider
         )
         return TurnRecord(
             conversationID: recorded.conversationID,

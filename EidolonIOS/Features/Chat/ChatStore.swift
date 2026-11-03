@@ -144,6 +144,7 @@ final class ChatStore {
     /// what she already said is kept, as upstream does when the producer types again.
     func send(
         provider: any ChatProvider,
+        background: (any ChatProvider)? = nil,
         judge: (any JudgeProvider)?,
         embedder: (any EmbeddingProvider)?,
         reranker: (any RerankProvider)?,
@@ -179,6 +180,7 @@ final class ChatStore {
             characterID: character.id,
             text: text,
             provider: provider,
+            background: background,
             judge: judge,
             embedder: embedder,
             reranker: reranker,
