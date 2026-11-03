@@ -259,6 +259,20 @@ final class GiftTests: XCTestCase {
         XCTAssertEqual(state.draws, 7)
     }
 
+    func testDebugAddingDrawsHasNoCapAndDoesNotDraw() async throws {
+        let eidolon = try await installedEidolon()
+        let now = try noon("2026-03-10")
+
+        var draws = try await eidolon.debugAddGiftDraws(10, now: now)
+        XCTAssertEqual(draws, 12, "the day's two chances are given first, then ten added")
+        draws = try await eidolon.debugAddGiftDraws(1, now: now)
+        XCTAssertEqual(draws, 13)
+
+        let state = try await eidolon.giftState(at: now)
+        XCTAssertEqual(state.draws, 13, "a later read never brings a debug balance down")
+        XCTAssertTrue(state.backpack.isEmpty, "adding chances does not draw")
+    }
+
     // MARK: - Drawing
 
     func testADrawUsesTheScriptedNumberAndStacksInTheBackpack() async throws {
