@@ -131,7 +131,7 @@ public struct ServiceProbe: Sendable {
                 config: config,
                 transport: CapturingChatTransport(inner: chat, status: status)
             )
-            try await withTimeout(seconds: 25) {
+            try await Self.withTimeout(seconds: 25) {
                 for try await event in provider.stream(
                     messages: messages,
                     tools: tools ? [Self.pingTool] : [],
@@ -261,6 +261,96 @@ public struct ServiceProbe: Sendable {
         )
     }
 
+    /// Bailian real-time recognition: starts a task on the key and finishes it at once,
+    /// with no audio, trying Beijing first and then Singapore because a key works only in
+    /// its region (upstream `find_region`). Saying whether the task started is the test.
+    public func bailianSTT(apiKey: String, model: String) async -> ProbeResult {
+        let started = ContinuousClock.now
+        guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return failure(
+                ProbeError.notConfigured("阿里云百炼密钥"),
+                since: started,
+                model: model
+            )
+        }
+        var lastError: (any Error)?
+        for region in BailianRegion.allCases {
+            do {
+                try await Self.startAndFinishBailianTask(
+                    apiKey: apiKey,
+                    model: model,
+                    region: region
+                )
+                return ProbeResult(
+                    ok: true,
+                    milliseconds: milliseconds(since: started),
+                    model: model,
+                    detail: "任务能启动（\(region.title)）"
+                )
+            } catch {
+                lastError = error
+            }
+        }
+        if let urlError = lastError as? URLError,
+           urlError.code == .badServerResponse {
+            lastError = ProbeError.transport("key 在北京和新加坡都不被接受")
+        }
+        return failure(
+            lastError ?? ProbeError.transport("连不上阿里云百炼"),
+            since: started,
+            model: model
+        )
+    }
+
+    /// One region, one task: `task-started` is success; `task-failed` says why.
+    private static func startAndFinishBailianTask(
+        apiKey: String,
+        model: String,
+        region: BailianRegion
+    ) async throws {
+        var request = URLRequest(url: BailianSTTEndpoint.url(for: region))
+        request.setValue("bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        let session = URLSession(configuration: .default)
+        let socket = session.webSocketTask(with: request)
+        defer {
+            socket.cancel(with: .normalClosure, reason: nil)
+            session.invalidateAndCancel()
+        }
+        socket.resume()
+        let taskID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        let configuration = BailianSTTConfiguration(model: model)
+        try await Self.withTimeout(seconds: 10) {
+            try await socket.send(.string(configuration.runTaskMessage(taskID: taskID)))
+            while true {
+                let message = try await socket.receive()
+                let data: Data? = switch message {
+                case let .string(text): Data(text.utf8)
+                case let .data(bytes): bytes
+                @unknown default: nil
+                }
+                guard let data,
+                      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let header = object["header"] as? [String: Any],
+                      let event = header["event"] as? String
+                else { continue }
+                switch event {
+                case "task-started":
+                    try await socket.send(.string(
+                        BailianSTTConfiguration.finishTaskMessage(taskID: taskID)
+                    ))
+                    return
+                case "task-failed":
+                    throw ProbeError.transport(
+                        "任务启动失败：\(header["error_code"] as? String ?? "")："
+                            + "\(header["error_message"] as? String ?? "")"
+                    )
+                default:
+                    continue
+                }
+            }
+        }
+    }
+
     /// Fish Audio's balance endpoint needs no synthesis and refuses a bad key.
     public func fish(apiKey: String) async -> ProbeResult {
         await get(
@@ -337,7 +427,7 @@ public struct ServiceProbe: Sendable {
     }
 
     /// Runs `operation`, failing with `ProbeError.timeout` if it has not finished in time.
-    private func withTimeout(
+    private static func withTimeout(
         seconds: TimeInterval,
         _ operation: @escaping @Sendable () async throws -> Void
     ) async throws {
