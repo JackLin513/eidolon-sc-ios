@@ -17,6 +17,10 @@
      --out ../../eidolon-sc-ios/build/eidolon-content.eidolonpkg
    ```
 
+   内容包里已经写好了它用的向量化模型和维度。App 的「API 与模型 → 检索」以内容包为准，
+   查询向量必须用同一个模型；换模型或维度只能先用上游工具重新向量化、再重新导出内容包，
+   不能只改 App 里的设置。
+
    立绘包先用上游的 `eidolon stand fetch` 和 `eidolon stand outfits` 把素材整理到
    `build/stand`（`EIDOLON_STAND_BUILD_PATH` 指到这里），再单独导出。立绘包默认全量：
 
@@ -52,7 +56,7 @@
 
    构建时 `tools/sync_stand_runtime.sh` 从上游 checkout（默认 `../eidolon-sc`，可用 `EIDOLON_UPSTREAM` 指定）把 `spine-webgl.js` 拷进 App 资源。运行时是第三方代码，不进仓库；没有 checkout 或运行时缺失时脚本只打印一条警告，App 照常编译，只是立绘显示「没有立绘」。
 
-3. **运行**：选一个 iPhone 模拟器，首次启动点「选择内容包」导入内容包；再在设置 →「立绘包」导入立绘包（全量一次，之后可导入增量包）。然后在设置里填对话模型、向量化/重排，以及通话用的 Soniox 与 Fish Audio 密钥（密钥存钥匙串）。
+3. **运行**：选一个 iPhone 模拟器，首次启动点「选择内容包」导入内容包；再在设置 →「立绘包」导入立绘包（全量一次，之后可导入增量包）。然后在设置 →「API 与模型」里填对话模型、判断、向量化/重排，以及通话用的识别服务（Soniox 或百炼）与 Fish Audio 密钥（密钥存钥匙串），也可以直接导入上游的 `.env`。
 
 4. **上真机（可选）**：
 

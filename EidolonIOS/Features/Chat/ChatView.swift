@@ -240,6 +240,7 @@ struct ChatView: View {
         store.input = text
         Task { await store.send(
                             provider: provider,
+                            background: app.backgroundProvider,
                             judge: app.judgeProvider,
                             embedder: app.embeddingProvider,
                             reranker: app.rerankProvider,
@@ -655,6 +656,12 @@ struct ChatView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            if let warning = app.contentBundleRetrievalWarning {
+                Text(warning)
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             HStack(alignment: .bottom, spacing: 8) {
                 TextField("说点什么", text: $store.input, axis: .vertical)
                     .accessibilityIdentifier("chat.input")
@@ -671,6 +678,7 @@ struct ChatView: View {
                     } else if let provider = app.chatProvider {
                         Task { await store.send(
                             provider: provider,
+                            background: app.backgroundProvider,
                             judge: app.judgeProvider,
                             embedder: app.embeddingProvider,
                             reranker: app.rerankProvider,
@@ -765,6 +773,7 @@ struct ChatView: View {
                 Button("重试") {
                     Task { await store.send(
                             provider: provider,
+                            background: app.backgroundProvider,
                             judge: app.judgeProvider,
                             embedder: app.embeddingProvider,
                             reranker: app.rerankProvider,

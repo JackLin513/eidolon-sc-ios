@@ -5,6 +5,20 @@ import XCTest
 // MARK: - Jev
 
 final class JevJudgeTests: XCTestCase {
+    /// The test button reads `checkJudge` through `any JudgeProvider`; an extension-only
+    /// method would call the default and always say the service cannot be tested.
+    func testCheckJudgeIsReadFromTheConcreteProvider() async throws {
+        let provider: any JudgeProvider = SystemOneJudgeProvider(
+            config: try XCTUnwrap(JevJudgeConfig(apiKey: "secret").systemOne),
+            transport: StubJudgeTransport { _ in
+                (try systemOneBody(systemOneAnswers()), http(200))
+            }
+        )
+        let check = try await provider.checkJudge()
+        XCTAssertEqual(check.service, "Jev")
+        XCTAssertEqual(check.model, "typesafe/jev-1.13")
+    }
+
     func testTheAddressIsTheBaseWithoutTrailingSlashesPlusSystemone() throws {
         XCTAssertEqual(JevJudgeConfig.defaultBaseURL, "https://openrouter.ai/api/v1")
         XCTAssertEqual(JevJudgeConfig.defaultModel, "typesafe/jev-1.13")

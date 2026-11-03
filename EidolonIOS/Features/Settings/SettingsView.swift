@@ -6,43 +6,9 @@ import UniformTypeIdentifiers
 struct SettingsView: View {
     @Environment(AppModel.self) private var app
 
-    @State private var baseURL = ""
-    @State private var model = ""
-    @State private var apiKey = ""
     @State private var historyTurns = 20
     @State private var atmosphericText = true
     @State private var adultMode = false
-    @State private var extraBody = ""
-    @State private var judgeBaseURL = ""
-    @State private var judgeModel = ""
-    @State private var judgeAPIKey = ""
-    @State private var judgeExtraBody = ""
-    @State private var judgeService: JudgeService = .bailian
-    @State private var bailianWorkspace = ""
-    @State private var bailianRegion: BailianRegion = .beijing
-    @State private var bailianModel = "decision-model-preview"
-    @State private var bailianAPIKey = ""
-    @State private var jevBaseURL = JevJudgeConfig.defaultBaseURL
-    @State private var jevModel = JevJudgeConfig.defaultModel
-    @State private var jevAPIKey = ""
-    @State private var cloudflareAccountID = ""
-    @State private var cloudflareModel = CloudflareJudgeConfig.defaultModel
-    @State private var cloudflareAPIKey = ""
-    /// The judge's minimum probability, blank for the model family's own; and how long a
-    /// segment's emotion may take, in seconds (spec「情绪判断」).
-    @State private var emotionMinProbability = ""
-    @State private var emotionTimeout = "1.5"
-    @State private var isTestingJudge = false
-    @State private var judgeCheck: JudgeCheck?
-    @State private var judgeCheckError: String?
-    @State private var retrievalBaseURL = ""
-    @State private var embeddingModel = ""
-    @State private var rerankModel = ""
-    @State private var retrievalAPIKey = ""
-    @State private var sonioxAPIKey = ""
-    @State private var sonioxModel = "stt-rt-v5"
-    @State private var fishAPIKey = ""
-    @State private var fishModel = "s2.1-pro-free"
     @State private var callMinutes = 10
     @State private var callTurns = 40
     @State private var phoneTexture = false
@@ -85,27 +51,26 @@ struct SettingsView: View {
             NavigationStack {
                 Form {
                     Section {
-                        TextField("接口地址，例如 https://api.siliconflow.cn/v1", text: $baseURL)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .keyboardType(.URL)
-                        TextField("模型名", text: $model)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        SecureField("密钥", text: $apiKey)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
+                        NavigationLink {
+                            APISettingsView()
+                        } label: {
+                            LabeledContent("API 与模型", value: apiSummary)
+                        }
+                        .accessibilityIdentifier("settings.api")
+                    } header: {
+                        Text("外部服务")
+                    } footer: {
+                        Text("对话、后台、判断、检索和通话的地址、模型与密钥都在这里。")
+                    }
+
+                    Section {
                         Stepper("历史回合：\(historyTurns)", value: $historyTurns, in: 1...100)
                         Toggle("文字氛围模式", isOn: $atmosphericText)
                             .accessibilityIdentifier("settings.atmosphericText")
-                        TextField("额外参数（JSON，可空）", text: $extraBody, axis: .vertical)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .font(.footnote.monospaced())
                     } header: {
-                        Text("对话模型")
+                        Text("对话")
                     } footer: {
-                        Text("任何 OpenAI 兼容的 /chat/completions 服务都可以。密钥保存在钥匙串，地址和模型名存在偏好设置。文字氛围模式让文字回合的台词更长、并显示动作与环境描写；通话和搭话不受影响。")
+                        Text("文字氛围模式让文字回合的台词更长、并显示动作与环境描写；通话和搭话不受影响。")
                     }
 
                     Section {
@@ -118,150 +83,16 @@ struct SettingsView: View {
                     }
 
                     Section {
-                        Picker("判断服务", selection: $judgeService) {
-                            ForEach(JudgeService.allCases) { service in
-                                Text(service.title).tag(service)
-                            }
-                        }
-                        switch judgeService {
-                        case .bailian:
-                            TextField("业务空间 ID", text: $bailianWorkspace)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                            Picker("地域", selection: $bailianRegion) {
-                                ForEach(BailianRegion.allCases, id: \.self) { region in
-                                    Text(region.title).tag(region)
-                                }
-                            }
-                            TextField("模型名（默认 decision-model-preview）", text: $bailianModel)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                            SecureField("百炼密钥", text: $bailianAPIKey)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                        case .jev:
-                            TextField(
-                                "接口地址（默认 https://openrouter.ai/api/v1）",
-                                text: $jevBaseURL
-                            )
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .keyboardType(.URL)
-                            TextField("模型名（默认 typesafe/jev-1.13）", text: $jevModel)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                            SecureField("Jev 密钥", text: $jevAPIKey)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                        case .cloudflare:
-                            TextField("账号 ID", text: $cloudflareAccountID)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                            TextField("模型名（默认 clef-flash）", text: $cloudflareModel)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                            SecureField("Cloudflare 密钥", text: $cloudflareAPIKey)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                        case .chat:
-                            TextField("接口地址", text: $judgeBaseURL)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .keyboardType(.URL)
-                            TextField("模型名", text: $judgeModel)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                            SecureField("密钥", text: $judgeAPIKey)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                            TextField("额外参数（JSON，可空）", text: $judgeExtraBody, axis: .vertical)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .font(.footnote.monospaced())
-                        }
-                        if judgeService != .chat {
-                            TextField("最低概率（0–1，留空按模型阈值）", text: $emotionMinProbability)
-                                .keyboardType(.decimalPad)
-                            TextField("超时（秒，默认 1.5）", text: $emotionTimeout)
-                                .keyboardType(.decimalPad)
-                            Text("她每说完一段，用同一个服务判断这一段的表情和点头；概率低于阈值时按平静演，超时或失败就不判断。")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                        if let note = judgeUncalibratedNote {
-                            Text(note)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                        Button {
-                            Task { await testJudge() }
-                        } label: {
-                            HStack {
-                                Text("测试判断模型")
-                                if isTestingJudge {
-                                    Spacer()
-                                    ProgressView()
-                                }
-                            }
-                        }
-                        .disabled(isTestingJudge)
-                    } header: {
-                        Text("判断模型")
-                    } footer: {
-                        switch judgeService {
-                        case .bailian:
-                            Text("每回合用百炼的 System One 一次问完六道题，按这个模型所属一族的阈值读概率。业务空间 ID、地域和密钥要互相对应；密钥保存在钥匙串。")
-                        case .jev:
-                            Text("每回合用 Jev 的 System One 一次问完六道题，地址是接口地址加 /systemone。默认借 OpenRouter 调 typesafe/jev-1.13，按 jev 的阈值读概率；密钥保存在钥匙串。")
-                        case .cloudflare:
-                            Text("每回合用 Workers AI 上的 clef 或 clef-flash 一次问完六道题，地址由账号 ID 和模型名拼出，模型名只写裸名。clef 与 clef-flash 各自按自己的阈值读概率；每天免费的 1 万 neurons 用完后要等第二天。")
-                        case .chat:
-                            Text("每回合判断这句话对好感度的影响。留空则使用对话模型；都不可用时不做判断，好感度不变。")
-                        }
-                    }
-
-                    Section {
-                        TextField("接口地址（默认 https://api.siliconflow.cn/v1）", text: $retrievalBaseURL)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .keyboardType(.URL)
-                        TextField("向量化模型（默认 Qwen/Qwen3-Embedding-0.6B）", text: $embeddingModel)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        TextField("重排模型（默认 Qwen/Qwen3-Reranker-0.6B）", text: $rerankModel)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        SecureField("密钥", text: $retrievalAPIKey)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                    } header: {
-                        Text("检索（向量化与重排）")
-                    } footer: {
-                        Text("内容包的向量是用 Qwen3-Embedding-0.6B 算的，换模型需要重新向量化并重新导出内容包。没有密钥时不做检索。")
-                    }
-
-                    Section {
-                        SecureField("Soniox 密钥", text: $sonioxAPIKey)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        TextField("识别模型（默认 stt-rt-v5）", text: $sonioxModel)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        SecureField("Fish Audio 密钥", text: $fishAPIKey)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        TextField("语音模型（默认 s2.1-pro-free）", text: $fishModel)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
                         TextField("时长上限（分钟，0 为不限）", value: $callMinutes, format: .number)
                             .keyboardType(.numberPad)
                         TextField("回合上限（她的回合数，0 为不限）", value: $callTurns, format: .number)
                             .keyboardType(.numberPad)
                         Toggle("电话质感", isOn: $phoneTexture)
                     } header: {
-                        Text("通话")
+                        Text("通话行为")
                     } footer: {
-                        Text("Soniox 负责实时识别你说的话，Fish Audio 负责她的声音。密钥保存在钥匙串。默认每通电话最多 10 分钟、她最多 40 个回合，从接通起算；时长与回合都到点时先按时长算。电话质感让角色的声音像隔着电话听筒，改完从下一通电话开始生效。")
+                        Text("默认每通电话最多 10 分钟、她最多 40 个回合，从接通起算；时长与回合都到点时先按时长算。"
+                            + "电话质感让角色的声音像隔着电话听筒，改完从下一通电话开始生效。Soniox 与 Fish Audio 的密钥在「API 与模型」。")
                     }
 
 
@@ -454,6 +285,8 @@ struct SettingsView: View {
                         Text("开启后，角色对话页的「⋯」菜单会出现「调试」：可以删除这段对话的记忆、修改好感度、恢复已结束的对话或把历史对话设为当前。改动立即写入本机数据，不能撤销；平时请保持关闭。")
                     }
                 }
+                // Returning to the call brings the layer over every page; settings gets out of
+                // its way (spec #46).
                 .navigationTitle("设置")
                 .navigationDestination(isPresented: $showMemories) {
                     MemoryListView()
@@ -541,16 +374,6 @@ struct SettingsView: View {
                 } message: {
                     Text("只删除带 Eidolon 标记的事件；你自己的日历事件不会被删。")
                 }
-                .alert("判断模型可用", isPresented: judgeCheckBinding) {
-                    Button("好") { judgeCheck = nil }
-                } message: {
-                    Text(judgeCheck.map(judgeCheckSummary) ?? "")
-                }
-                .alert("判断模型不可用", isPresented: judgeCheckErrorBinding) {
-                    Button("好") { judgeCheckError = nil }
-                } message: {
-                    Text(judgeCheckError ?? "")
-                }
                 .fileImporter(
                     isPresented: $isPicking,
                     allowedContentTypes: [.eidolonPackage, .data],
@@ -586,6 +409,23 @@ struct SettingsView: View {
 
     private var heldMemoryCount: Int {
         app.memories.filter(\.holds).count
+    }
+
+    /// How many of the five API groups are filled in, for the entry row.
+    private var apiSummary: String {
+        let settings = app.chatSettings
+        var configured = 0
+        if settings.isConfigured { configured += 1 }
+        if settings.hasBackgroundModel ? settings.backgroundConfig != nil : settings.isConfigured {
+            configured += 1
+        }
+        if app.judgeProvider != nil { configured += 1 }
+        if settings.embeddingConfig(for: app.contentEmbeddingSpace) != nil { configured += 1 }
+        if settings.recognitionIsConfigured,
+           !settings.fishAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            configured += 1
+        }
+        return "已配置 \(configured) / 5"
     }
 
     @ViewBuilder
@@ -663,38 +503,9 @@ struct SettingsView: View {
 
     private func load() async {
         let settings = app.chatSettings
-        baseURL = settings.baseURL
-        model = settings.model
-        apiKey = settings.apiKey
         historyTurns = settings.historyTurns
         atmosphericText = settings.atmosphericText
         adultMode = settings.adultMode
-        extraBody = settings.extraBody
-        judgeBaseURL = settings.judgeBaseURL
-        judgeModel = settings.judgeModel
-        judgeAPIKey = settings.judgeAPIKey
-        judgeExtraBody = settings.judgeExtraBody
-        judgeService = settings.judgeService
-        bailianWorkspace = settings.bailianWorkspace
-        bailianRegion = settings.bailianRegion
-        bailianModel = settings.bailianModel
-        bailianAPIKey = settings.bailianAPIKey
-        jevBaseURL = settings.jevBaseURL
-        jevModel = settings.jevModel
-        jevAPIKey = settings.jevAPIKey
-        cloudflareAccountID = settings.cloudflareAccountID
-        cloudflareModel = settings.cloudflareModel
-        cloudflareAPIKey = settings.cloudflareAPIKey
-        emotionMinProbability = settings.emotionMinProbability.map(Self.numberText) ?? ""
-        emotionTimeout = Self.numberText(settings.emotionTimeout)
-        retrievalBaseURL = settings.retrievalBaseURL
-        embeddingModel = settings.embeddingModel
-        rerankModel = settings.rerankModel
-        retrievalAPIKey = settings.retrievalAPIKey
-        sonioxAPIKey = settings.sonioxAPIKey
-        sonioxModel = settings.sonioxModel
-        fishAPIKey = settings.fishAPIKey
-        fishModel = settings.fishModel
         callMinutes = settings.callMinutes
         callTurns = settings.callTurns
         phoneTexture = settings.phoneTexture
@@ -723,68 +534,25 @@ struct SettingsView: View {
         }
     }
 
-    /// The settings as they are on screen: what saving writes, and what the trial request
-    /// is made with, so the test asks exactly what will be used.
+    /// The settings as they are on screen: the API page's values, with this page's
+    /// behavior fields applied over them.
     private var draft: ChatSettings {
-        ChatSettings(
-            baseURL: baseURL,
-            model: model,
-            apiKey: apiKey,
-            historyTurns: historyTurns,
-            atmosphericText: atmosphericText,
-            adultMode: adultMode,
-            extraBody: extraBody,
-            judgeBaseURL: judgeBaseURL,
-            judgeModel: judgeModel,
-            judgeAPIKey: judgeAPIKey,
-            judgeExtraBody: judgeExtraBody,
-            retrievalBaseURL: retrievalBaseURL,
-            embeddingModel: embeddingModel,
-            rerankModel: rerankModel,
-            retrievalAPIKey: retrievalAPIKey,
-            reachOutHours: reachOutHours,
-            reachOutByTier: reachOutByTier,
-            tracingEnabled: tracingEnabled,
-            traceRetention: traceRetention,
-            sonioxAPIKey: sonioxAPIKey,
-            sonioxModel: sonioxModel,
-            fishAPIKey: fishAPIKey,
-            fishModel: fishModel,
-            callMinutes: callMinutes,
-            callTurns: callTurns,
-            phoneTexture: phoneTexture,
-            judgeService: judgeService,
-            bailianWorkspace: bailianWorkspace,
-            bailianRegion: bailianRegion,
-            bailianModel: bailianModel,
-            bailianAPIKey: bailianAPIKey,
-            jevBaseURL: jevBaseURL,
-            jevModel: jevModel,
-            jevAPIKey: jevAPIKey,
-            cloudflareAccountID: cloudflareAccountID,
-            cloudflareModel: cloudflareModel,
-            cloudflareAPIKey: cloudflareAPIKey,
-            emotionMinProbability: Self.number(emotionMinProbability),
-            emotionTimeout: Self.number(emotionTimeout) ?? 1.5
-        )
+        var settings = app.chatSettings
+        settings.historyTurns = historyTurns
+        settings.atmosphericText = atmosphericText
+        settings.adultMode = adultMode
+        settings.callMinutes = callMinutes
+        settings.callTurns = callTurns
+        settings.phoneTexture = phoneTexture
+        settings.reachOutHours = reachOutHours
+        settings.reachOutByTier = reachOutByTier
+        settings.tracingEnabled = tracingEnabled
+        settings.traceRetention = traceRetention
+        return settings
     }
 
     private func save() async {
         let settings = draft
-        if judgeService != .chat {
-            let probability = emotionMinProbability.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !probability.isEmpty,
-               !(Self.number(probability).map { (0...1).contains($0) } ?? false) {
-                saveError = "最低概率需要是 0 到 1 之间的数"
-                return
-            }
-            let timeout = emotionTimeout.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !timeout.isEmpty,
-               !(Self.number(timeout).map { SystemOneSegmentEmotionJudge.timeoutRange.contains($0) } ?? false) {
-                saveError = "超时需要是 0.1 到 10 之间的数（秒）"
-                return
-            }
-        }
         do {
             try app.saveChatSettings(settings)
             birthdayError = nil
@@ -816,65 +584,6 @@ struct SettingsView: View {
         } catch {
             saveError = error.localizedDescription
         }
-    }
-
-    /// Asks the chosen service one yes-or-no question with the fields as they are now, and
-    /// says what answered — or which part of the configuration the service refused.
-    private func testJudge() async {
-        guard let provider = app.judgeProvider(for: draft) else {
-            judgeCheckError = "这个服务还没填完：地址（或账号）、模型名和密钥都要有。"
-            return
-        }
-        isTestingJudge = true
-        defer { isTestingJudge = false }
-        do {
-            judgeCheck = try await provider.checkJudge()
-        } catch {
-            judgeCheckError = error.localizedDescription
-        }
-    }
-
-    private func judgeCheckSummary(_ check: JudgeCheck) -> String {
-        var lines = ["服务：\(check.service)", "模型：\(check.model)"]
-        if let family = check.family {
-            lines.append("阈值：\(family.rawValue)")
-        }
-        if check.uncalibrated {
-            lines.append(JudgeCalibration.uncalibratedNote)
-        }
-        if let tokens = check.inputTokens {
-            lines.append("输入 tokens：\(tokens)")
-        }
-        return lines.joined(separator: "\n")
-    }
-
-    /// The note when the chosen service's model has no calibration of its own; nil
-    /// otherwise, the chat judge included — it reads no thresholds at all.
-    private var judgeUncalibratedNote: String? {
-        let model: String
-        switch judgeService {
-        case .bailian: model = bailianModel
-        case .jev: model = jevModel
-        case .cloudflare: model = cloudflareModel
-        case .chat: return nil
-        }
-        let name = model.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, JudgeFamilies.family(of: name) == nil else { return nil }
-        return JudgeCalibration.uncalibratedNote
-    }
-
-    private var judgeCheckBinding: Binding<Bool> {
-        Binding(
-            get: { judgeCheck != nil },
-            set: { if !$0 { judgeCheck = nil } }
-        )
-    }
-
-    private var judgeCheckErrorBinding: Binding<Bool> {
-        Binding(
-            get: { judgeCheckError != nil },
-            set: { if !$0 { judgeCheckError = nil } }
-        )
     }
 
     private var birthdayTimeZone: TimeZone {
