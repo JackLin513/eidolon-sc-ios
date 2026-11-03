@@ -915,6 +915,10 @@ struct APISettingsView: View {
            !backgroundProtocol.supports(effort) {
             return "Anthropic 接口没有 \(effort.rawValue) 这一档思考强度"
         }
+        if draft.speechToText == .bailian,
+           draft.bailianSTTModel.trimmed != BailianSTTConfiguration.defaultModel {
+            return "百炼识别模型目前只能是 \(BailianSTTConfiguration.defaultModel)"
+        }
         do {
             _ = try ChatRequestExtras.decode(draft.extraBody)
             _ = try ChatRequestExtras.decode(draft.judgeExtraBody)

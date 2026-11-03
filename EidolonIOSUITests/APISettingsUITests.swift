@@ -142,6 +142,35 @@ final class APISettingsUITests: XCTestCase {
             app.textFields["api.call.sonioxModel"].exists,
             "Soniox fields must not show while Bailian is chosen"
         )
+
+        let provider = app.buttons["api.call.sttProvider"].firstMatch
+        XCTAssertTrue(provider.exists, "no recognition provider picker")
+        provider.tap()
+        let soniox = app.buttons["Soniox"].firstMatch
+        XCTAssertTrue(soniox.waitForExistence(timeout: 5), "no Soniox option")
+        soniox.tap()
+        XCTAssertTrue(scroll(to: "api.call.sonioxModel"))
+        XCTAssertFalse(
+            app.secureTextFields["api.call.dashscopeKey"].exists,
+            "Bailian fields must not show while Soniox is chosen"
+        )
+    }
+
+    func testBailianProbeShowsItsResult() {
+        openAPIPage(
+            fakeProbe: "failure",
+            sttProvider: "bailian",
+            dashscopeAPIKey: "ui-test-dashscope"
+        )
+
+        XCTAssertTrue(scroll(to: "api.test.bailianSTT"))
+        let test = app.buttons["api.test.bailianSTT"]
+        XCTAssertTrue(test.exists)
+        test.tap()
+
+        let result = app.staticTexts["失败"].firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 10), "no Bailian probe result")
+        XCTAssertTrue(app.staticTexts["调试注入：密钥无效"].firstMatch.exists)
     }
 
     func testAProbeResultShowsBesideItsButton() {

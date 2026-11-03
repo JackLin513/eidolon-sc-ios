@@ -83,8 +83,18 @@ final class BailianRecognition: SpeechRecognition, @unchecked Sendable {
                     try await writer.send(chunk)
                 }
             } catch {
-                // The microphone ended or failed; the receive loop ends too.
+                // The microphone ended or failed; finish what was heard.
             }
+            guard !Task.isCancelled else { return }
+            // Tell the task to finish so the sentence still open is transcribed; wait a
+            // little for it, then close (upstream `_finish_task`, 3 s).
+            do {
+                try await writer.finish(taskID: connection.taskID)
+            } catch {
+                connection.socket.cancel(with: .normalClosure, reason: nil)
+                return
+            }
+            try? await Task.sleep(for: .seconds(3))
             connection.socket.cancel(with: .normalClosure, reason: nil)
         }
         // DashScope ends a task sent nothing for 23 seconds; while her voice keeps the
@@ -145,9 +155,11 @@ final class BailianRecognition: SpeechRecognition, @unchecked Sendable {
         let socket: URLSessionWebSocketTask
         let session: URLSession
         let taskID: String
-        let region: BailianRegion
-        let writer: SocketWriter
+        let writer: WebSocketWriter
     }
+
+    /// The region's handshake refusing the key (401/403), which the other region may take.
+    private struct RegionRefused: Error {}
 
     /// Opens a task in the remembered region, or in Beijing and then Singapore. A task
     /// that fails to start is refused outright; a handshake that refuses the key moves on
@@ -162,23 +174,27 @@ final class BailianRecognition: SpeechRecognition, @unchecked Sendable {
         let taskID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         let runTask = try configuration.runTaskMessage(taskID: taskID)
 
-        var handshakeErrors: [any Error] = []
+        var refused = false
+        var lastError: (any Error)?
         for region in regions {
             do {
                 let connection = try await open(region: region, taskID: taskID, runTask: runTask)
                 remember(region)
                 return connection
+            } catch is RegionRefused {
+                refused = true
             } catch let error as BailianError {
                 // `task-failed` is the task itself: the other region would say the same.
                 throw error
             } catch {
-                handshakeErrors.append(error)
+                // A handshake failure without a refusal status is a connection to retry.
+                lastError = error
             }
         }
-        if !handshakeErrors.isEmpty, handshakeErrors.allSatisfy(Self.looksRefused) {
+        if refused {
             throw BailianError.service("", "key 在北京和新加坡都不被接受")
         }
-        throw handshakeErrors.last ?? BailianError.service("", "连不上阿里云百炼")
+        throw lastError ?? BailianError.service("", "连不上阿里云百炼")
     }
 
     private func open(
@@ -193,9 +209,9 @@ final class BailianRecognition: SpeechRecognition, @unchecked Sendable {
         request.setValue("bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         let socket = session.webSocketTask(with: request)
         socket.resume()
-        let writer = SocketWriter(socket)
+        let writer = WebSocketWriter(socket)
         do {
-            try await Self.withConnectTimeout {
+            try await withWebSocketConnectTimeout(Self.connectTimeout) {
                 try await writer.sendText(runTask)
                 while true {
                     let message = try await socket.receive()
@@ -220,45 +236,25 @@ final class BailianRecognition: SpeechRecognition, @unchecked Sendable {
                 }
             }
         } catch {
+            let status = (socket.response as? HTTPURLResponse)?.statusCode
             socket.cancel(with: .normalClosure, reason: nil)
             session.invalidateAndCancel()
+            if status == 401 || status == 403 { throw RegionRefused() }
             throw error
         }
-        return Connection(socket: socket, session: session, taskID: taskID, region: region, writer: writer)
+        return Connection(socket: socket, session: session, taskID: taskID, writer: writer)
     }
 
-    /// A handshake refusal looks like this: URLSession does not expose the HTTP status,
-    /// so a bad response or an authentication error stands for the key being refused.
-    private static func looksRefused(_ error: any Error) -> Bool {
-        guard let urlError = error as? URLError else { return false }
-        return urlError.code == .badServerResponse
-            || urlError.code == .userAuthenticationRequired
-            || urlError.code == .noPermissionsToReadFile
-    }
-
-    private static func withConnectTimeout(
-        _ connect: @escaping @Sendable () async throws -> Void
-    ) async throws {
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask { try await connect() }
-            group.addTask {
-                try await Task.sleep(for: connectTimeout)
-                throw URLError(.timedOut)
-            }
-            defer { group.cancelAll() }
-            try await group.next()
-        }
-    }
 }
 
 /// Sends over one websocket one message at a time, and owns the audio packetizer so the
 /// pump and the keepalive do not interleave a partial packet.
 private actor PacketWriter {
-    private let socket: SocketWriter
+    private let socket: WebSocketWriter
     private var packets = BailianAudioPackets()
     private var lastAudio = Date()
 
-    init(socket: SocketWriter) {
+    init(socket: WebSocketWriter) {
         self.socket = socket
     }
 
@@ -275,21 +271,12 @@ private actor PacketWriter {
         try await socket.sendData(packet)
         lastAudio = Date()
     }
-}
 
-/// Sends over one websocket one message at a time.
-private actor SocketWriter {
-    private let socket: URLSessionWebSocketTask
-
-    init(_ socket: URLSessionWebSocketTask) {
-        self.socket = socket
-    }
-
-    func sendData(_ data: Data) async throws {
-        try await socket.send(.data(data))
-    }
-
-    func sendText(_ text: String) async throws {
-        try await socket.send(.string(text))
+    func finish(taskID: String) async throws {
+        if let packet = packets.drainPadded() {
+            try await socket.sendData(packet)
+        }
+        try await socket.sendText(BailianSTTConfiguration.finishTaskMessage(taskID: taskID))
+        lastAudio = Date()
     }
 }
