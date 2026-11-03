@@ -20,6 +20,8 @@ final class APISettingsUITests: XCTestCase {
         chatBaseURL: String = "https://api.example.com/v1",
         chatProtocol: String = "chat-completions",
         retrievalAPIKey: String? = nil,
+        geminiAPIKey: String? = nil,
+        fakeGeminiBundle: Bool = false,
         sttProvider: String? = nil,
         dashscopeAPIKey: String? = nil
     ) {
@@ -38,6 +40,12 @@ final class APISettingsUITests: XCTestCase {
         }
         if let retrievalAPIKey {
             app.launchEnvironment["EIDOLON_RETRIEVAL_API_KEY"] = retrievalAPIKey
+        }
+        if let geminiAPIKey {
+            app.launchEnvironment["EIDOLON_GEMINI_API_KEY"] = geminiAPIKey
+        }
+        if fakeGeminiBundle {
+            app.launchEnvironment["EIDOLON_FAKE_GEMINI_BUNDLE"] = "1"
         }
         app.launchEnvironment["EIDOLON_STT_PROVIDER"] = sttProvider ?? "soniox"
         if let dashscopeAPIKey {
@@ -238,6 +246,22 @@ final class APISettingsUITests: XCTestCase {
             app.buttons["api.model.model-b"].firstMatch.waitForExistence(timeout: 10),
             "the model picker did not open with the default address"
         )
+    }
+
+    func testAGeminiBundleShowsGeminiFieldsAndLocksItsModel() {
+        openAPIPage(
+            retrievalAPIKey: "ui-test-siliconflow",
+            geminiAPIKey: "ui-test-gemini",
+            fakeGeminiBundle: true
+        )
+
+        XCTAssertTrue(scroll(to: "api.retrieval.geminiKey"))
+        XCTAssertTrue(app.secureTextFields["api.retrieval.geminiKey"].exists)
+        XCTAssertTrue(scroll(to: "api.retrieval.embeddingModel"))
+        let model = app.textFields["api.retrieval.embeddingModel"]
+        XCTAssertTrue(model.exists)
+        XCTAssertFalse(model.isEnabled, "the bundle decides the embedding model")
+        XCTAssertEqual(model.value as? String, "gemini-embedding-2")
     }
 
     func testClearingAKeySavesTheClearedValue() {
