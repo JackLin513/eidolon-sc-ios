@@ -207,6 +207,8 @@ public struct EnvAPISettings: Sendable, Hashable {
 
     public var speechToText: SpeechToTextService?
     public var sonioxAPIKey: String?
+    public var dashscopeAPIKey: String?
+    public var bailianSTTModel: String?
     public var fishAPIKey: String?
     public var fishModel: String?
 
@@ -553,11 +555,9 @@ public enum EnvImporter {
 
             case "STT_PROVIDER":
                 if let raw = text(key) {
-                    if raw.lowercased() == SpeechToTextService.soniox.rawValue {
-                        // Soniox is the only recognizer in this build; nothing changes.
-                        values.speechToText = .soniox
-                    } else if raw.lowercased() == SpeechToTextService.bailian.rawValue {
-                        unsupported.append(entry)
+                    if let service = SpeechToTextService(rawValue: raw.lowercased()) {
+                        values.speechToText = service
+                        note(key, "语音识别")
                     } else {
                         invalid.append(.init(
                             key: key,
@@ -569,6 +569,21 @@ public enum EnvImporter {
             case "SONIOX_API_KEY":
                 values.sonioxAPIKey = text(key)
                 if values.sonioxAPIKey != nil { note(key, "Soniox 密钥", secret: true) }
+            case "DASHSCOPE_API_KEY":
+                values.dashscopeAPIKey = text(key)
+                if values.dashscopeAPIKey != nil { note(key, "阿里云百炼密钥", secret: true) }
+            case "BAILIAN_STT_MODEL":
+                guard let model = text(key) else { break }
+                if model == BailianSTTConfiguration.defaultModel {
+                    values.bailianSTTModel = model
+                    note(key, "百炼识别模型")
+                } else {
+                    invalid.append(.init(
+                        key: key,
+                        line: entry.line,
+                        message: "目前只能是 \(BailianSTTConfiguration.defaultModel)"
+                    ))
+                }
             case "FISH_AUDIO_API_KEY":
                 values.fishAPIKey = text(key)
                 if values.fishAPIKey != nil { note(key, "Fish Audio 密钥", secret: true) }
@@ -621,14 +636,13 @@ public enum EnvImporter {
     }
 
     private static let unsupportedKeys: Set<String> = [
-        "BAILIAN_STT_MODEL",
         "RERANK_MIN_RELEVANCE",
         "RERANK_MEMORY_MIN_RELEVANCE",
         "GEMINI_BILLING_ENABLED",
     ]
 
     private static let unsupportedPrefixes = [
-        "EIDOLON_", "GEMINI_", "NOVELAI_", "GPT_IMAGE_", "DASHSCOPE_",
+        "EIDOLON_", "GEMINI_", "NOVELAI_", "GPT_IMAGE_",
         "QWEATHER_", "GITHUB_", "GOOGLE_",
     ]
 

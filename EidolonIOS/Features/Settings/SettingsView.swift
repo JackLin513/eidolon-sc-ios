@@ -425,7 +425,7 @@ struct SettingsView: View {
         }
         if app.judgeProvider != nil { configured += 1 }
         if settings.embeddingConfig(for: app.contentEmbeddingSpace) != nil { configured += 1 }
-        if !settings.sonioxAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        if settings.recognitionIsConfigured,
            !settings.fishAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             configured += 1
         }

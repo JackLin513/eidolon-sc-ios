@@ -25,7 +25,7 @@ struct APISettingsView: View {
     @State private var probes: [ProbeKey: ProbeStatus] = [:]
 
     private enum SecretField: Hashable {
-        case chat, background, judge, retrieval, soniox, fish, bailian, jev, cloudflare
+        case chat, background, judge, retrieval, soniox, dashscope, fish, bailian, jev, cloudflare
     }
 
     private enum FetchKey: Hashable {
@@ -33,7 +33,7 @@ struct APISettingsView: View {
     }
 
     private enum ProbeKey: Hashable {
-        case chat, background, judge, embedding, rerank, soniox, fish
+        case chat, background, judge, embedding, rerank, soniox, bailianSTT, fish
     }
 
     private struct ImportedEnvFile: Identifiable {
@@ -87,6 +87,9 @@ struct APISettingsView: View {
         }
         .onChange(of: settings.sonioxAPIKey) { _, value in
             if !value.isEmpty { cleared.remove(.soniox) }
+        }
+        .onChange(of: settings.dashscopeAPIKey) { _, value in
+            if !value.isEmpty { cleared.remove(.dashscope) }
         }
         .onChange(of: settings.fishAPIKey) { _, value in
             if !value.isEmpty { cleared.remove(.fish) }
@@ -162,8 +165,8 @@ struct APISettingsView: View {
                 note: app.retrievalUnavailableReason
             )
             SummaryRow(
-                title: "通话（Soniox + Fish）",
-                configured: !settings.sonioxAPIKey.trimmed.isEmpty
+                title: "通话（\(settings.speechToText.title) + Fish）",
+                configured: settings.recognitionIsConfigured
                     && !settings.fishAPIKey.trimmed.isEmpty
             )
         } header: {
@@ -527,23 +530,17 @@ struct APISettingsView: View {
 
     private var callSection: some View {
         Section {
-            SecureField("Soniox 密钥", text: $settings.sonioxAPIKey)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            clearSecretButton(.soniox, hasStored: !saved.sonioxAPIKey.trimmed.isEmpty) {
-                settings.sonioxAPIKey = ""
+            Picker("语音识别", selection: $settings.speechToText) {
+                ForEach(SpeechToTextService.allCases) { service in
+                    Text(service.title).tag(service)
+                }
             }
-            modelRow(
-                title: "识别模型（默认 stt-rt-v5）",
-                text: $settings.sonioxModel,
-                key: nil,
-                identifier: "api.call.sonioxModel"
-            ) {
-                picker = ModelPickerRequest(
-                    title: "Soniox 识别模型",
-                    models: ["stt-rt-v5"],
-                    current: settings.sonioxModel
-                ) { settings.sonioxModel = $0 }
+            .accessibilityIdentifier("api.call.sttProvider")
+            switch settings.speechToText {
+            case .soniox:
+                sonioxRows
+            case .bailian:
+                bailianRows
             }
             SecureField("Fish Audio 密钥", text: $settings.fishAPIKey)
                 .textInputAutocapitalization(.never)
@@ -563,20 +560,68 @@ struct APISettingsView: View {
                     current: settings.fishModel
                 ) { settings.fishModel = $0 }
             }
-            probeButton(.soniox, title: "测试 Soniox") { await testSoniox() }
-            probeStatus(.soniox)
             probeButton(.fish, title: "测试 Fish Audio") { await testFish() }
             probeStatus(.fish)
         } header: {
             APIStatusHeader(
                 title: "通话",
-                configured: !settings.sonioxAPIKey.trimmed.isEmpty
+                configured: settings.recognitionIsConfigured
                     && !settings.fishAPIKey.trimmed.isEmpty
             )
         } footer: {
-            Text("Soniox 负责实时识别，Fish Audio 负责她的声音。两项密钥都填了才能语音通话；"
-                + "测试只验证密钥和地址，不产生合成或识别费用。通话时长、回合与电话质感仍在设置页。")
+            Text("\(settings.speechToText.title)负责实时识别，Fish Audio 负责她的声音。"
+                + "识别和 Fish 的密钥都填了才能语音通话；测试只验证密钥和地址，"
+                + "不产生识别或合成费用。通话时长、回合与电话质感仍在设置页。")
         }
+    }
+
+    @ViewBuilder
+    private var sonioxRows: some View {
+        SecureField("Soniox 密钥", text: $settings.sonioxAPIKey)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+        clearSecretButton(.soniox, hasStored: !saved.sonioxAPIKey.trimmed.isEmpty) {
+            settings.sonioxAPIKey = ""
+        }
+        modelRow(
+            title: "识别模型（默认 stt-rt-v5）",
+            text: $settings.sonioxModel,
+            key: nil,
+            identifier: "api.call.sonioxModel"
+        ) {
+            picker = ModelPickerRequest(
+                title: "Soniox 识别模型",
+                models: ["stt-rt-v5"],
+                current: settings.sonioxModel
+            ) { settings.sonioxModel = $0 }
+        }
+        probeButton(.soniox, title: "测试 Soniox") { await testSoniox() }
+        probeStatus(.soniox)
+    }
+
+    @ViewBuilder
+    private var bailianRows: some View {
+        SecureField("阿里云百炼密钥（DASHSCOPE_API_KEY）", text: $settings.dashscopeAPIKey)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .accessibilityIdentifier("api.call.dashscopeKey")
+        clearSecretButton(.dashscope, hasStored: !saved.dashscopeAPIKey.trimmed.isEmpty) {
+            settings.dashscopeAPIKey = ""
+        }
+        modelRow(
+            title: "识别模型（默认 \(BailianSTTConfiguration.defaultModel)）",
+            text: $settings.bailianSTTModel,
+            key: nil,
+            identifier: "api.call.bailianSTTModel"
+        ) {
+            picker = ModelPickerRequest(
+                title: "百炼识别模型",
+                models: [BailianSTTConfiguration.defaultModel],
+                current: settings.bailianSTTModel
+            ) { settings.bailianSTTModel = $0 }
+        }
+        probeButton(.bailianSTT, title: "测试百炼识别") { await testBailianSTT() }
+        probeStatus(.bailianSTT)
     }
 
     // MARK: - Rows
@@ -818,6 +863,9 @@ struct APISettingsView: View {
         }
         if !cleared.contains(.soniox), draft.sonioxAPIKey.trimmed.isEmpty {
             draft.sonioxAPIKey = saved.sonioxAPIKey
+        }
+        if !cleared.contains(.dashscope), draft.dashscopeAPIKey.trimmed.isEmpty {
+            draft.dashscopeAPIKey = saved.dashscopeAPIKey
         }
         if !cleared.contains(.fish), draft.fishAPIKey.trimmed.isEmpty {
             draft.fishAPIKey = saved.fishAPIKey
@@ -1125,6 +1173,15 @@ struct APISettingsView: View {
     private func testSoniox() async {
         await runProbe(.soniox) {
             await ServiceProbe().soniox(apiKey: settings.sonioxAPIKey)
+        }
+    }
+
+    private func testBailianSTT() async {
+        await runProbe(.bailianSTT) {
+            await ServiceProbe().bailianSTT(
+                apiKey: settings.dashscopeAPIKey,
+                model: settings.bailianSTTModel
+            )
         }
     }
 

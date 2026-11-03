@@ -146,8 +146,6 @@ final class EnvImportTests: XCTestCase {
             GEMINI_API_KEY=gem
             NOVELAI_API_KEY=nai
             GPT_IMAGE_MODEL=gpt-image-2
-            DASHSCOPE_API_KEY=dash
-            BAILIAN_STT_MODEL=qwen-audio-3.1-asr-flash-streaming
             RERANK_MIN_RELEVANCE=0.3
             SOMETHING_ELSE=1
             """))
@@ -155,8 +153,7 @@ final class EnvImportTests: XCTestCase {
             Set(report.unsupported.map(\.key)),
             [
                 "EIDOLON_CALL_MINUTES", "EIDOLON_DOMAIN", "GEMINI_API_KEY",
-                "NOVELAI_API_KEY", "GPT_IMAGE_MODEL", "DASHSCOPE_API_KEY",
-                "BAILIAN_STT_MODEL", "RERANK_MIN_RELEVANCE",
+                "NOVELAI_API_KEY", "GPT_IMAGE_MODEL", "RERANK_MIN_RELEVANCE",
             ]
         )
         XCTAssertEqual(report.unknown.map(\.key), ["SOMETHING_ELSE"])
@@ -242,9 +239,10 @@ final class EnvImportTests: XCTestCase {
         let report = EnvImporter.map(EnvParser.parse(text: """
             CHAT_LLM_API_KEY=secret
             SONIOX_API_KEY=secret2
+            DASHSCOPE_API_KEY=secret3
             """))
         XCTAssertEqual(Set(report.mapped.filter(\.secret).map(\.key)), [
-            "CHAT_LLM_API_KEY", "SONIOX_API_KEY",
+            "CHAT_LLM_API_KEY", "SONIOX_API_KEY", "DASHSCOPE_API_KEY",
         ])
     }
 
@@ -253,14 +251,29 @@ final class EnvImportTests: XCTestCase {
         XCTAssertEqual(report.blockingError, .empty)
     }
 
-    func testGeminiEmbeddingAndBailianSTTAreUnsupportedValues() {
-        let report = EnvImporter.map(EnvParser.parse(text: """
-            EMBEDDING_PROVIDER=gemini
-            STT_PROVIDER=bailian
-            """))
-        XCTAssertEqual(Set(report.unsupported.map(\.key)), ["EMBEDDING_PROVIDER", "STT_PROVIDER"])
+    func testGeminiEmbeddingIsAnUnsupportedValue() {
+        let report = EnvImporter.map(EnvParser.parse(text: "EMBEDDING_PROVIDER=gemini"))
+        XCTAssertEqual(report.unsupported.map(\.key), ["EMBEDDING_PROVIDER"])
         XCTAssertNil(report.values.embeddingService)
-        XCTAssertNil(report.values.speechToText)
+    }
+
+    func testBailianRecognitionAndItsKeysMap() {
+        let report = EnvImporter.map(EnvParser.parse(text: """
+            STT_PROVIDER=bailian
+            DASHSCOPE_API_KEY=dash
+            BAILIAN_STT_MODEL=qwen-audio-3.1-asr-flash-streaming
+            """))
+        XCTAssertEqual(report.values.speechToText, .bailian)
+        XCTAssertEqual(report.values.dashscopeAPIKey, "dash")
+        XCTAssertEqual(report.values.bailianSTTModel, "qwen-audio-3.1-asr-flash-streaming")
+        XCTAssertTrue(report.unsupported.isEmpty)
+        XCTAssertTrue(report.invalid.isEmpty, "\(report.invalid)")
+    }
+
+    func testAnUnknownBailianModelIsReportedAndNotApplied() {
+        let report = EnvImporter.map(EnvParser.parse(text: "BAILIAN_STT_MODEL=fun-asr-realtime"))
+        XCTAssertEqual(report.invalid.map(\.key), ["BAILIAN_STT_MODEL"])
+        XCTAssertNil(report.values.bailianSTTModel)
     }
 
     func testSiliconFlowProviderIsAccepted() {

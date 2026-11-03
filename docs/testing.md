@@ -14,7 +14,8 @@ tools/oracle/run.sh                          # 与上游逐字对照提示词（
 - `EIDOLON_CHAT_BASE_URL` / `_MODEL` / `_API_KEY` / `_EXTRA_BODY`：预置对话模型，并顺带保存下面这些设置；只在传了 `EIDOLON_CHAT_API_KEY` 时生效
 - `EIDOLON_ADULT_MODE=1`：单独预置成人模式开关，不依赖对话模型密钥（只对内容包中 18 岁及以上的角色生效）
 - `EIDOLON_RETRIEVAL_BASE_URL` / `_API_KEY`、`EIDOLON_EMBEDDING_MODEL`、`EIDOLON_RERANK_MODEL`：预置检索、向量化与重排
-- `EIDOLON_SONIOX_API_KEY` / `_MODEL`、`EIDOLON_FISH_API_KEY` / `_MODEL`：预置识别与配音
+- `EIDOLON_STT_PROVIDER=soniox` / `bailian`：选实时识别服务（默认沿用已保存的设置）
+- `EIDOLON_SONIOX_API_KEY` / `_MODEL`、`EIDOLON_DASHSCOPE_API_KEY`、`EIDOLON_BAILIAN_STT_MODEL`、`EIDOLON_FISH_API_KEY` / `_MODEL`：预置识别与配音
 - `EIDOLON_CALL_FAKE_SPEECH='一行|另一行'`：不打开麦克风，按行注入识别结果
 - `EIDOLON_CALL_SPEECH_INTERVAL_MS`：注入的句子按间隔重复，用来排练长通话
 - `EIDOLON_CALL_DROP_ONCE=1`、`EIDOLON_CALL_RECONNECT_MS`：让首次识别连接断开、放慢重连
