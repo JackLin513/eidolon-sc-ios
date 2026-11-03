@@ -392,6 +392,10 @@ struct ChatSettings: Equatable {
         if let value = values.sonioxAPIKey { sonioxAPIKey = value }
         if let value = values.fishAPIKey { fishAPIKey = value }
         if let value = values.fishModel { fishModel = value }
+
+        // DeepSeek serves its Anthropic surface under /anthropic; an upstream `.env`
+        // written for the OpenAI surfaces names only the root.
+        baseURL = APIServiceRouting.baseURLForImportedSettings(baseURL, protocol: apiProtocol)
     }
 
     private static func jsonText(_ value: [String: JSONValue]) -> String {
@@ -544,7 +548,7 @@ struct ChatSettings: Equatable {
         // retrieval off rather than pairing a SiliconFlow query with Gemini passages.
         guard service == .siliconflow else { return nil }
         guard let url = Self.url(retrievalBaseURL)
-            ?? URL(string: "https://api.siliconflow.cn/v1")
+            ?? URL(string: APIServiceRouting.siliconFlowBaseURL)
         else { return nil }
         return EmbeddingConfig(baseURL: url, model: model, apiKey: key)
     }
@@ -555,7 +559,8 @@ struct ChatSettings: Equatable {
     }
 
     var rerankConfig: RerankConfig? {
-        guard let url = Self.url(retrievalBaseURL) ?? URL(string: "https://api.siliconflow.cn/v1"),
+        guard let url = Self.url(retrievalBaseURL)
+            ?? URL(string: APIServiceRouting.siliconFlowBaseURL),
               let key = Self.value(retrievalAPIKey)
         else { return nil }
         let model = Self.value(rerankModel) ?? "Qwen/Qwen3-Reranker-0.6B"
