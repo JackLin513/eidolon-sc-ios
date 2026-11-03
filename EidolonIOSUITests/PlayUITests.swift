@@ -30,10 +30,6 @@ final class PlayUITests: XCTestCase {
 
         app.buttons["play.gifts"].tap()
         XCTAssertTrue(app.navigationBars["礼物"].waitForExistence(timeout: 5), "gift page did not open")
-        XCTAssertTrue(
-            app.staticTexts["礼物、抽奖和背包会在下一张票接入。"].waitForExistence(timeout: 5),
-            "gift placeholder did not show"
-        )
         app.navigationBars.buttons["玩法"].tap()
         XCTAssertTrue(app.navigationBars["玩法"].waitForExistence(timeout: 5))
 
@@ -49,6 +45,89 @@ final class PlayUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5), "settings tab did not open")
         conversation.tap()
         XCTAssertTrue(app.navigationBars["对话"].waitForExistence(timeout: 5), "conversation tab did not return")
+    }
+
+    func testGiftPageShowsTheEmptyBackpackAndNoChances() throws {
+        launchGiftPage(draws: 0)
+
+        let noDraws = app.staticTexts["今天的次数用完了"]
+        XCTAssertTrue(noDraws.waitForExistence(timeout: 10), "no no-chances state")
+        XCTAssertTrue(app.staticTexts["背包还是空的"].exists, "no empty backpack state")
+        XCTAssertFalse(app.buttons["gifts.drawOne"].isEnabled, "a draw is offered with no chances")
+        XCTAssertTrue(app.staticTexts["我的礼物"].exists, "no gift-list section")
+        XCTAssertTrue(app.staticTexts["重置卡"].exists, "no reset card section")
+    }
+
+    func testDrawingRevealsAResultAndKeepsThePage() throws {
+        launchGiftPage(draws: 2)
+
+        let draw = app.buttons["gifts.drawOne"]
+        XCTAssertTrue(draw.waitForExistence(timeout: 10), "no draw button")
+        XCTAssertTrue(draw.isEnabled, "the draw button is disabled with two chances")
+        draw.tap()
+
+        XCTAssertTrue(
+            app.staticTexts["这次抽到"].waitForExistence(timeout: 10),
+            "the draw did not reveal a result"
+        )
+        let result = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "gifts.result."))
+            .firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 5), "no result card")
+        XCTAssertTrue(app.buttons["gifts.drawOne"].exists, "the gift page left after drawing")
+    }
+
+    private func waitForLabel(_ element: XCUIElement, _ label: String) -> Bool {
+        let predicate = NSPredicate(format: "label == %@", label)
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
+        return XCTWaiter().wait(for: [expectation], timeout: 5) == .completed
+    }
+
+    /// Launches with a known number of chances (debug injection) and opens the gift page.
+    private func launchGiftPage(draws: Int, debugMode: Bool = false) {
+        app.terminate()
+        app.launchEnvironment = ["EIDOLON_GIFT_DRAWS": "\(draws)"]
+        if debugMode {
+            app.launchEnvironment["EIDOLON_DEBUG_MODE"] = "1"
+        }
+        app.launch()
+        let play = app.tabBars.buttons["玩法"]
+        XCTAssertTrue(play.waitForExistence(timeout: 10), "no play tab")
+        play.tap()
+        let gifts = app.buttons["play.gifts"]
+        XCTAssertTrue(gifts.waitForExistence(timeout: 10), "no gift card")
+        gifts.tap()
+        XCTAssertTrue(app.navigationBars["礼物"].waitForExistence(timeout: 5), "gift page did not open")
+    }
+
+    func testDebugModeAddsDrawsFromTheGiftPagesCorner() throws {
+        launchGiftPage(draws: 0, debugMode: true)
+
+        let debug = app.buttons["gifts.debug"]
+        XCTAssertTrue(debug.waitForExistence(timeout: 5), "no debug button on the gift page")
+        debug.tap()
+        XCTAssertTrue(
+            app.navigationBars["调试：抽奖次数"].waitForExistence(timeout: 5),
+            "the debug sheet did not open"
+        )
+        let sheetDraws = app.staticTexts["gifts.debug.draws"]
+        XCTAssertTrue(sheetDraws.waitForExistence(timeout: 5), "no draw count in the sheet")
+        XCTAssertEqual(sheetDraws.label, "0", "the debug launch did not start from zero")
+        app.buttons["gifts.debug.addTen"].tap()
+        XCTAssertTrue(
+            NSPredicate(format: "label == %@", "10").evaluate(with: sheetDraws)
+                || waitForLabel(sheetDraws, "10"),
+            "the sheet did not show ten after adding: \(sheetDraws.label)"
+        )
+        app.buttons["完成"].tap()
+
+        let pageDraws = app.staticTexts["gifts.draws"]
+        XCTAssertTrue(pageDraws.waitForExistence(timeout: 5), "no draw count on the gift page")
+        XCTAssertEqual(
+            pageDraws.label,
+            "10 / 7",
+            "the gift page did not pick up the added chances"
+        )
     }
 
     func testGiftRouteFromChatPreselectsHerAndComesBack() throws {
@@ -68,6 +147,25 @@ final class PlayUITests: XCTestCase {
         XCTAssertTrue(go.waitForExistence(timeout: 5), "no preselected character to go back to")
         go.tap()
         XCTAssertTrue(app.buttons["更多"].waitForExistence(timeout: 5), "did not return to her chat")
+    }
+
+    func testBarTurnsLandscapeAndComesBackUpright() throws {
+        app.tabBars.buttons["玩法"].tap()
+        let bar = app.buttons["play.bar"]
+        XCTAssertTrue(bar.waitForExistence(timeout: 10), "no bar card")
+        bar.tap()
+
+        let door = app.buttons["点一下进门"]
+        XCTAssertTrue(door.waitForExistence(timeout: 10), "bar did not open")
+        let sideways = app.windows.firstMatch.frame
+        XCTAssertGreaterThan(sideways.width, sideways.height, "bar did not turn landscape")
+
+        let leave = app.buttons["离开"]
+        XCTAssertTrue(leave.waitForExistence(timeout: 5), "no leave control")
+        leave.tap()
+
+        let upright = app.windows.firstMatch.frame
+        XCTAssertGreaterThan(upright.height, upright.width, "did not return to portrait")
     }
 
     func testChatHidesTheTabBar() throws {

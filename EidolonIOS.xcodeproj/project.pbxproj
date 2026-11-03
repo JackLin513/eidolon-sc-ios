@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		03D1D9AFAE21C9348078853C /* ImportGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */; };
+		040D13EBDCF7224BE38785D1 /* GiftsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3FDDF38468E86F1EF7C7A6 /* GiftsView.swift */; };
 		0EFF31521A69C5A7C7949BCB /* DebugRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCD1CD149AFF0049C2EE0F58 /* DebugRecognition.swift */; };
 		10BA2565084D529C4152A890 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38579B2A473B296EC588CBD6 /* AppModel.swift */; };
 		113F1FAAA8A9FE0C88AB1FC5 /* AffinityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2D79D1CDB4D74AADF0D731E /* AffinityViews.swift */; };
@@ -142,6 +143,7 @@
 		78A39D03BFDD50261F07F298 /* StandPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandPreviewView.swift; sourceTree = "<group>"; };
 		7B8F3B95D300DF671C5E5C20 /* BarTextBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarTextBox.swift; sourceTree = "<group>"; };
 		7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportGuideView.swift; sourceTree = "<group>"; };
+		7F3FDDF38468E86F1EF7C7A6 /* GiftsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GiftsView.swift; sourceTree = "<group>"; };
 		7FB135685AEF80F60C0388E2 /* APISettingsSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APISettingsSupport.swift; sourceTree = "<group>"; };
 		805B1BB0D7E3061C6B957E32 /* ProducerProfileUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProducerProfileUITests.swift; sourceTree = "<group>"; };
 		889A8316C35EBB240F4D78A2 /* BarGuest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarGuest.swift; sourceTree = "<group>"; };
@@ -217,6 +219,7 @@
 		1963BD6A440B8224EF15AAED /* Play */ = {
 			isa = PBXGroup;
 			children = (
+				7F3FDDF38468E86F1EF7C7A6 /* GiftsView.swift */,
 				9642E415565176749C5D2D54 /* PlayHubView.swift */,
 			);
 			path = Play;
@@ -665,6 +668,7 @@
 				27EE9A61F1EA6DD131D5D03F /* EidolonIOSApp.swift in Sources */,
 				B519D97732DE729A2D3696A7 /* EnvImportPreviewView.swift in Sources */,
 				D87D5EF9B85BB39DEBD561FB /* FishSynthesis.swift in Sources */,
+				040D13EBDCF7224BE38785D1 /* GiftsView.swift in Sources */,
 				03D1D9AFAE21C9348078853C /* ImportGuideView.swift in Sources */,
 				C375B67690EAE8B5B255A1B3 /* Keychain.swift in Sources */,
 				B09389AFD2D0B4A3AA0CB8D3 /* MainTab.swift in Sources */,

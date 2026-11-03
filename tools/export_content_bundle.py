@@ -284,6 +284,37 @@ def load_characters(characters_dir: Path) -> tuple[list[dict], set[Path]]:
     return normalized, files
 
 
+def gift_illustrations(
+    characters_dir: Path, upstream: Path | None = None
+) -> dict[str, Path]:
+    """Each gift's illustration and the reset card, from upstream's frontend, keyed by
+    the path they take in the bundle. An upstream without gifts has none."""
+    gifts_path = characters_dir / "gifts.toml"
+    if not gifts_path.is_file():
+        return {}
+    with gifts_path.open("rb") as handle:
+        entries = tomllib.load(handle).get("gifts", [])
+    if not isinstance(entries, list):
+        die(f"{gifts_path} 里的 gifts 应当是 [[gifts]] 段")
+    upstream = upstream if upstream is not None else characters_dir.parent
+    art_dir = upstream / "frontend" / "public" / "gifts"
+    files: dict[str, Path] = {}
+    for entry in entries:
+        gift_id = entry.get("id") if isinstance(entry, dict) else None
+        if not isinstance(gift_id, str) or not gift_id:
+            die(f"礼物目录 {gifts_path} 里有礼物没有 id")
+        source = art_dir / f"{gift_id}.webp"
+        if source.is_file():
+            files[f"gifts/{gift_id}.webp"] = source
+        elif not entry.get("retired", False):
+            die(f"礼物 {gift_id} 的插画 {source} 不存在")
+    reset = upstream / "frontend" / "public" / "reset-card" / "reset-card.webp"
+    if not reset.is_file():
+        die(f"重置卡的插画 {reset} 不存在")
+    files["gifts/reset-card.webp"] = reset
+    return files
+
+
 def json_ready(value):
     """tomllib gives dates and arrays; JSON needs plain values."""
     if isinstance(value, dict):
@@ -623,6 +654,7 @@ def write_bundle(
     character_files: set[Path],
     characters_dir: Path,
     stand: StandAssets | None = None,
+    gift_art: dict[str, Path] | None = None,
 ) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as scratch:
@@ -689,6 +721,9 @@ def write_bundle(
                         archive.write(source, target)
                     continue
                 archive.write(source, f"characters/{relative.as_posix()}")
+
+            for package_path, source in sorted((gift_art or {}).items()):
+                archive.write(source, package_path)
 
             if stand is not None:
                 for package_path in sorted(stand.files):
@@ -841,6 +876,7 @@ def main() -> int:
         all_outfits=args.stand_all_outfits,
     )
     out = (args.out or Path("build/eidolon-content.eidolonpkg")).resolve()
+    gift_art = gift_illustrations(characters_dir, upstream)
     write_bundle(
         out,
         source_db,
@@ -848,6 +884,7 @@ def main() -> int:
         character_files,
         characters_dir,
         stand,
+        gift_art,
     )
     return 0
 

@@ -18,7 +18,7 @@ Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agen
 
 本仓库是自用的 iOS 原生实验客户端，不打算上架。目标形态是**手机独立运行**：
 
-- 最终数据、剧情索引、对话引擎、记忆都在 iPhone 上，不依赖 FastAPI / Next.js / WebRTC；礼物、统计等属于后续范围。
+- 最终数据、剧情索引、对话引擎、记忆都在 iPhone 上，不依赖 FastAPI / Next.js / WebRTC；礼物、成就等玩法正在实现，统计等属于后续范围。
 - 手机直接调用这些外部 API：对话 LLM、Fish Audio TTS、Soniox 或百炼 STT、硅基流动 embedding/rerank、判断模型、NovelAI。
 - 剧情同步和 embedding 仍在 Mac 上用上游的 Python 工具跑，产出 SQLite/索引后导入手机；手机运行时不需要 Python。
 
@@ -30,7 +30,7 @@ Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agen
 
 - 把除对话 LLM 以外的模型全部搬到端上代价很大（TTS 音色、生图质量），所以版本 1 允许手机直连多个模型 API。
 - TTS 音色是端上化最大的降级点：全本地只能用系统语音或自训练音色；版本 1 仍用 Fish Audio。
-- 首版范围：文字对话 + 通话 MVP。照片、礼物、每日任务、成就、统计、数据包先不做。
+- 首版范围：文字对话 + 通话 MVP，之后是礼物、抽奖与成就（#63）。照片、每日任务、统计、数据包先不做。
 - 不做登录、OAuth、多用户和后台；密钥存 Keychain。
 
 领域词汇见 `GLOSSARY.md`（从上游复制）；架构决策写在 `docs/adr/`，由 `/grill-with-docs` 逐步产生。

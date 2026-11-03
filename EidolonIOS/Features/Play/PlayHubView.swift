@@ -1,5 +1,6 @@
 import EidolonCore
 import SwiftUI
+import UIKit
 
 /// What the bar's card says under its name.
 enum BarEntry {
@@ -9,11 +10,17 @@ enum BarEntry {
     static let rewardTaken = "今天的奖励领过了"
 }
 
-/// The play tab's first page (spec #64): the bar, which moved here from the roster, and
-/// the gift and achievement pages that the following tickets fill in.
+/// The play tab's first page (spec #64): the bar, which moved here from the roster, the
+/// gift page, and the achievement page that a later ticket fills in.
 struct PlayHubView: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.barOrientation) private var barOrientation
     @State private var isBarShown = false
+    /// The bar is a landscape screen. The play page turns first and is covered while it
+    /// does, so the bar never appears half-turned; on the way back it stays covered until
+    /// the page is upright again.
+    @State private var isEnteringBar = false
+    @State private var isLeavingBar = false
 
     private var playPath: Binding<NavigationPath> {
         Binding(get: { app.playPath }, set: { app.playPath = $0 })
@@ -62,7 +69,7 @@ struct PlayHubView: View {
                 .navigationDestination(for: PlayRoute.self) { route in
                     switch route {
                     case .gifts:
-                        GiftsPlaceholderView()
+                        GiftsView()
                     case .achievements:
                         PlayPlaceholderView(
                             title: "成就",
@@ -72,17 +79,32 @@ struct PlayHubView: View {
                     }
                 }
                 // 酒吧整屏呈现：面包屑、横向画面和它的安全区都留在酒吧自己手里。
-                .fullScreenCover(isPresented: $isBarShown) {
+                .fullScreenCover(
+                    isPresented: $isBarShown,
+                    onDismiss: { finishLeavingBar() }
+                ) {
                     BarRoomView(
                         settings: BarSettings.stored(app.barSettingsValue),
                         jukebox: app.barJukeboxState,
-                        tutorialWalked: app.barTutorialDone
+                        tutorialWalked: app.barTutorialDone,
+                        onLeaving: { beginLeavingBar() }
                     )
                 }
                 .task {
                     if app.consumeDebugBarRequest() {
-                        isBarShown = true
+                        openBar()
                     }
+                }
+            }
+        }
+        .background { TabBarHides(hidden: isEnteringBar || isLeavingBar) }
+        .overlay {
+            if isEnteringBar || isLeavingBar {
+                ZStack {
+                    Color.black.ignoresSafeArea()
+                    ProgressView(isEnteringBar ? "正在进入酒吧…" : "正在返回…")
+                        .tint(.white)
+                        .foregroundStyle(.white)
                 }
             }
         }
@@ -93,7 +115,50 @@ struct PlayHubView: View {
             app.openSettings()
             return
         }
-        isBarShown = true
+        guard !isBarShown, !isEnteringBar, !isLeavingBar else { return }
+        isEnteringBar = true
+        barOrientation.landscape()
+        Task {
+            await waitForOrientation(landscape: true)
+            isBarShown = true
+            // The cover is up now; the black page behind it can go.
+            try? await Task.sleep(for: .milliseconds(450))
+            isEnteringBar = false
+        }
+    }
+
+    /// Called as the bar starts to go away, before its dismissal animation reveals the
+    /// play page (and again from its `onDisappear` if a call took it away).
+    private func beginLeavingBar() {
+        isLeavingBar = true
+    }
+
+    /// The cover is gone: turn the page back, keeping it covered until upright.
+    private func finishLeavingBar() {
+        isLeavingBar = true
+        barOrientation.portrait()
+        Task {
+            await waitForOrientation(landscape: false)
+            isLeavingBar = false
+        }
+    }
+
+    /// Waits for the window to take the turn it was asked for; `requestGeometryUpdate`
+    /// has no completion, and the interface orientation lags the request by the animation.
+    private func waitForOrientation(landscape: Bool) async {
+        for _ in 0..<30 {
+            let orientation = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .first?
+                .interfaceOrientation
+            if let orientation,
+               orientation != .unknown,
+               orientation.isLandscape == landscape
+            {
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
     }
 
     /// The bar's line under its name: the way to bring its package in, today's reward, or
@@ -137,40 +202,6 @@ struct PlayHubView: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
-    }
-}
-
-/// The gift page's stand-in until the gift tickets land (spec #64). It already shows whom
-/// the page was opened for and can go back to her chat, so the cross-tab route is testable.
-struct GiftsPlaceholderView: View {
-    @Environment(AppModel.self) private var app
-
-    private var chosen: CharacterConfig? {
-        guard let id = app.giftPreselection else { return nil }
-        return app.characters.first { $0.id == id }
-    }
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "gift")
-                .font(.system(size: 44))
-                .foregroundStyle(.secondary)
-            Text(chosen.map { "给\($0.name)挑一件礼物" } ?? "礼物")
-                .font(.title2.weight(.semibold))
-            Text("礼物、抽奖和背包会在下一张票接入。")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            if let chosen {
-                Button("去对话") {
-                    app.openConversation(characterID: chosen.id)
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("gifts.goToConversation")
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationTitle("礼物")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

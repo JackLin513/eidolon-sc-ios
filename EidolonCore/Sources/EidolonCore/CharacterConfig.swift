@@ -25,6 +25,8 @@ public struct CharacterConfig: Sendable, Hashable {
     /// Her age as the content pack states it; nil when the bundle does not say. Adult
     /// mode only ever uses this field, never the persona text (spec #61).
     public var age: Int?
+    /// The gifts she likes (`liked_gifts`), from the bundle's gift catalog.
+    public var likedGifts: [String]
     public var raw: [String: JSONValue]
 
     public init(
@@ -46,6 +48,7 @@ public struct CharacterConfig: Sendable, Hashable {
         stand: StandConfig? = nil,
         birthday: Birthday? = nil,
         age: Int? = nil,
+        likedGifts: [String] = [],
         raw: [String: JSONValue] = [:]
     ) {
         self.id = id
@@ -66,6 +69,7 @@ public struct CharacterConfig: Sendable, Hashable {
         self.stand = stand
         self.birthday = birthday
         self.age = age
+        self.likedGifts = likedGifts
         self.raw = raw
     }
 
@@ -117,6 +121,7 @@ public struct CharacterConfig: Sendable, Hashable {
             stand: stand,
             birthday: birthday,
             age: object["age"]?.intValue,
+            likedGifts: object["liked_gifts"]?.arrayValue?.compactMap(\.stringValue) ?? [],
             raw: object
         )
     }
