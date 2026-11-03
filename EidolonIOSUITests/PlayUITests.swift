@@ -149,6 +149,25 @@ final class PlayUITests: XCTestCase {
         XCTAssertTrue(app.buttons["更多"].waitForExistence(timeout: 5), "did not return to her chat")
     }
 
+    func testBarTurnsLandscapeAndComesBackUpright() throws {
+        app.tabBars.buttons["玩法"].tap()
+        let bar = app.buttons["play.bar"]
+        XCTAssertTrue(bar.waitForExistence(timeout: 10), "no bar card")
+        bar.tap()
+
+        let door = app.buttons["点一下进门"]
+        XCTAssertTrue(door.waitForExistence(timeout: 10), "bar did not open")
+        let sideways = app.windows.firstMatch.frame
+        XCTAssertGreaterThan(sideways.width, sideways.height, "bar did not turn landscape")
+
+        let leave = app.buttons["离开"]
+        XCTAssertTrue(leave.waitForExistence(timeout: 5), "no leave control")
+        leave.tap()
+
+        let upright = app.windows.firstMatch.frame
+        XCTAssertGreaterThan(upright.height, upright.width, "did not return to portrait")
+    }
+
     func testChatHidesTheTabBar() throws {
         app.terminate()
         app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"

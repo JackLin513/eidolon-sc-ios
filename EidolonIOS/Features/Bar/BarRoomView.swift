@@ -12,7 +12,6 @@ import SwiftUI
 struct BarRoomView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.barOrientation) private var barOrientation
 
     /// The block the screen is fitted into, and where it lands in it. Kept in a reference box:
     /// a `@State` pair written from the geometry reader would be one change too many while the
@@ -61,10 +60,21 @@ struct BarRoomView: View {
 
     @Environment(\.dismiss) private var dismiss
 
-    init(settings: BarSettings.Stored, jukebox: BarJukebox.State, tutorialWalked: Bool) {
+    /// The page is leaving: the play page puts its cover up before the dismissal starts, so
+    /// the return turn is never shown over a moving page. Called before `dismiss` and again
+    /// when the cover goes away, whichever path took it.
+    let onLeaving: () -> Void
+
+    init(
+        settings: BarSettings.Stored,
+        jukebox: BarJukebox.State,
+        tutorialWalked: Bool,
+        onLeaving: @escaping () -> Void = {}
+    ) {
         _settings = State(initialValue: settings)
         _jukebox = State(initialValue: jukebox)
         _tutorialWalked = State(initialValue: tutorialWalked)
+        self.onLeaving = onLeaving
     }
 
     var body: some View {
@@ -106,17 +116,17 @@ struct BarRoomView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .statusBarHidden(true)
+        .interactiveDismissDisabled()
         .task {
-            barOrientation.landscape()
             await load()
             await tick()
         }
         .onDisappear {
-            // 页面不在了：这一趟就算走了，手机也转回去。
+            // 页面不在了：这一趟就算走了；转回竖屏由打开它的页面在退场后统一做。
+            onLeaving()
             left()
             voidVisit()
             sound?.stop()
-            barOrientation.portrait()
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
@@ -693,6 +703,7 @@ struct BarRoomView: View {
     /// 离开: the visit is over and the page goes back to the roster (upstream `leaveBar`:
     /// `leave()` 之后 `router.push(playHref())` —— 只清光顾、不退页面，人就困在酒吧里了).
     private func exitBar() {
+        onLeaving()
         leaveBar()
         dismiss()
     }
