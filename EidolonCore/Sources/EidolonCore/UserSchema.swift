@@ -4,7 +4,7 @@ import GRDB
 /// The writable user library (ADR-0002). Its schema evolves with the app, not
 /// with the content bundle, and is therefore managed by GRDB migrations.
 enum UserSchema {
-    static let version = 16
+    static let version = 18
 
     static func migrate(_ dbQueue: DatabaseQueue) throws {
         var migrator = DatabaseMigrator()
@@ -363,6 +363,29 @@ enum UserSchema {
                 try db.execute(sql: "ALTER TABLE conversation_events ADD COLUMN liked INTEGER")
                 try db.execute(sql: "ALTER TABLE conversation_events ADD COLUMN affinity TEXT")
             }
+        }
+        migrator.registerMigration("v17") { db in
+            // Which achievement stages and rewards the producer has looked at, for the
+            // new marks and the play tab's dot (spec #63, #69/#70); and what the one-time
+            // launch notice says (spec #72).
+            try db.execute(sql: """
+                ALTER TABLE achievement_stages ADD COLUMN seen INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE gift_rewards ADD COLUMN seen INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE achievements_launched ADD COLUMN notice_stages INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE achievements_launched ADD COLUMN notice_draws INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE achievements_launched ADD COLUMN notice_reset_cards INTEGER NOT NULL DEFAULT 0;
+                """)
+        }
+        migrator.registerMigration("v18") { db in
+            // When the play tab's dot was last cleared (spec #70). A moment of its own,
+            // apart from the per-scope seen marks, so opening the achievements page or the
+            // gift page clears the dot without clearing the other page's new marks.
+            try db.execute(sql: """
+                CREATE TABLE achievement_play_seen (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    seen_at TEXT NOT NULL
+                );
+                """)
         }
         try migrator.migrate(dbQueue)
         try dbQueue.write { db in

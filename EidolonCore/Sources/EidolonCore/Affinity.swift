@@ -141,6 +141,17 @@ public struct Affinity: Sendable, Hashable {
         )
     }
 
+    /// Raised by a gift: beyond the day's limit, and out of a cooldown at the thaw line,
+    /// as upstream `Affinities._raise` does. Never lowers.
+    public func raised(_ step: Double, at now: Date) -> Affinity {
+        let value = min(max(self.value + max(step, 0), AffinityRules.lowest), AffinityRules.highest)
+        return Affinity(
+            value: value,
+            at: now,
+            cooling: cooling && value < AffinityRules.thaw
+        )
+    }
+
     public var tier: AffinityTier { AffinityTier.of(value) }
 
     /// How becoming `after` changed her affinity; nil when the value did not move.

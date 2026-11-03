@@ -270,6 +270,10 @@ struct ConversationListView: View {
     private func preview(_ character: CharacterConfig) -> String {
         guard let activity = app.latest[character.id] else { return character.intro ?? "" }
         // The last thing in the conversation may be something that happened, not said.
+        if let giftID = activity.lastGiftID {
+            let name = app.giftCatalog?.gift(id: giftID)?.name ?? "礼物"
+            return GiftText.given(characterName: character.name, giftName: name)
+        }
         if let kind = activity.lastEventKind { return Self.eventPreview(kind) }
         return activity.lastMessagePreview ?? "还没聊过"
     }

@@ -71,11 +71,7 @@ struct PlayHubView: View {
                     case .gifts:
                         GiftsView()
                     case .achievements:
-                        PlayPlaceholderView(
-                            title: "成就",
-                            systemImage: "trophy",
-                            description: "成就页会在后续版本接入。"
-                        )
+                        AllAchievementsView()
                     }
                 }
                 // 酒吧整屏呈现：面包屑、横向画面和它的安全区都留在酒吧自己手里。
@@ -91,6 +87,7 @@ struct PlayHubView: View {
                     )
                 }
                 .task {
+                    await app.refreshAchievementBadge()
                     if app.consumeDebugBarRequest() {
                         openBar()
                     }

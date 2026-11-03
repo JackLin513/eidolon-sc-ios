@@ -33,6 +33,8 @@ final class ChatStore {
     private(set) var activeConversationID: String?
     var input = ""
     var errorMessage: String?
+    /// What a finished turn unlocked, for the toast (spec #69).
+    var onRewards: (([AchievementReward]) -> Void)?
 
     private var task: Task<Void, Never>?
     private var cueTask: Task<Void, Never>?
@@ -208,6 +210,7 @@ final class ChatStore {
                         if let change = record.affinityChange {
                             showAffinityCue(change)
                         }
+                        onRewards?(record.achievements)
                         ended = record.ended
                     }
                 }

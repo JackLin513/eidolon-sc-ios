@@ -60,6 +60,19 @@ extension Eidolon {
         }
     }
 
+    /// Puts gifts in the backpack for UI tests, replacing it.
+    public func debugSetGiftBackpack(_ gifts: [String: Int]) throws {
+        try userQueue.write { db in
+            try db.execute(sql: "DELETE FROM gift_backpack")
+            for (id, count) in gifts where count > 0 {
+                try db.execute(
+                    sql: "INSERT INTO gift_backpack(gift_id, count) VALUES (?, ?)",
+                    arguments: [id, count]
+                )
+            }
+        }
+    }
+
     /// Adds draw chances, with no cap, for trying the gift page in debug mode. It gives
     /// the day's chances first, as opening the page would; it does not draw anything, so
     /// nothing goes into the backpack and the draw achievements do not move.

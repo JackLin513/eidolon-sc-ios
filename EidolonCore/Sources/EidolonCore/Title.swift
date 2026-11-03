@@ -42,7 +42,11 @@ enum ConversationTitles {
         return said
     }
 
-    static func prompt(characterName: String, record: [ConversationLine]) -> [PromptMessage] {
+    static func prompt(
+        characterName: String,
+        record: [ConversationLine],
+        giftNames: [String: String] = [:]
+    ) -> [PromptMessage] {
         var lines = ["# 制作人和\(characterName)的对话"]
         for line in firstTurns(record) {
             switch line {
@@ -53,7 +57,9 @@ enum ConversationTitles {
                     lines.append("\(characterName)：\(cut(shown(message)))")
                 }
             case let .event(event):
-                if let said = eventLine(event, characterName: characterName) {
+                if let said = eventLine(
+                    event, characterName: characterName, giftNames: giftNames
+                ) {
                     lines.append(said)
                 }
             }
@@ -65,11 +71,18 @@ enum ConversationTitles {
     }
 
     /// What happened, as upstream `_event_line` writes it for the title's input.
-    static func eventLine(_ event: ConversationEventRecord, characterName: String) -> String? {
+    static func eventLine(
+        _ event: ConversationEventRecord,
+        characterName: String,
+        giftNames: [String: String]
+    ) -> String? {
         switch ConversationEventKind(stored: event.kind) {
-        case .hungUp: "（\(characterName)挂断了电话）"
-        case .ended: "（\(characterName)结束了对话）"
-        case .other: nil
+        case .hungUp: return "（\(characterName)挂断了电话）"
+        case .ended: return "（\(characterName)结束了对话）"
+        case .gift:
+            let name = event.giftID.flatMap { giftNames[$0] } ?? "礼物"
+            return "（制作人送给\(characterName)一份\(name)）"
+        case .other: return nil
         }
     }
 
@@ -130,9 +143,13 @@ extension Eidolon {
               let character = (try? characters())?.first(where: { $0.id == characterID }),
               let record = try? conversationRecord(conversationID: conversationID)
         else { return }
+        let giftNames = ((try? giftCatalog())?.gifts ?? []).reduce(into: [String: String]()) {
+            $0[$1.id] = $1.name
+        }
         let prompt = ConversationTitles.prompt(
             characterName: character.name,
-            record: record
+            record: record,
+            giftNames: giftNames
         )
         var answer = ""
         do {

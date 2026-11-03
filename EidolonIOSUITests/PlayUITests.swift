@@ -36,9 +36,10 @@ final class PlayUITests: XCTestCase {
         app.buttons["play.achievements"].tap()
         XCTAssertTrue(app.navigationBars["成就"].waitForExistence(timeout: 5), "achievement page did not open")
         XCTAssertTrue(
-            app.staticTexts["成就页会在后续版本接入。"].waitForExistence(timeout: 5),
-            "achievement placeholder did not show"
+            app.descendants(matching: .any)["achievement.characters"].waitForExistence(timeout: 5),
+            "the combined achievements did not show"
         )
+        XCTAssertTrue(app.descendants(matching: .any)["achievement.draws"].exists)
         app.navigationBars.buttons["玩法"].tap()
 
         app.tabBars.buttons["设置"].tap()
@@ -84,9 +85,16 @@ final class PlayUITests: XCTestCase {
     }
 
     /// Launches with a known number of chances (debug injection) and opens the gift page.
-    private func launchGiftPage(draws: Int, debugMode: Bool = false) {
+    private func launchGiftPage(
+        draws: Int,
+        debugMode: Bool = false,
+        backpack: String? = nil
+    ) {
         app.terminate()
         app.launchEnvironment = ["EIDOLON_GIFT_DRAWS": "\(draws)"]
+        if let backpack {
+            app.launchEnvironment["EIDOLON_GIFT_BACKPACK"] = backpack
+        }
         if debugMode {
             app.launchEnvironment["EIDOLON_DEBUG_MODE"] = "1"
         }
@@ -128,6 +136,47 @@ final class PlayUITests: XCTestCase {
             "10 / 7",
             "the gift page did not pick up the added chances"
         )
+    }
+
+    func testGivingAGiftFromTheBackpackShowsTheResult() throws {
+        launchGiftPage(draws: 0, backpack: "cake:1")
+
+        let cake = app.buttons["gifts.backpack.cake"]
+        XCTAssertTrue(cake.waitForExistence(timeout: 10), "the injected cake is not in the backpack")
+        cake.tap()
+        XCTAssertTrue(app.navigationBars["送礼物"].waitForExistence(timeout: 5), "no gift panel")
+        let send = app.buttons["gifts.send"]
+        XCTAssertTrue(send.waitForExistence(timeout: 5), "no send button")
+        XCTAssertTrue(send.isEnabled, "the first character should be selected")
+        send.tap()
+
+        XCTAssertTrue(
+            app.alerts["送给蛋糕了"].waitForExistence(timeout: 10),
+            "the gift was not acknowledged"
+        )
+        app.alerts["送给蛋糕了"].buttons["好"].tap()
+    }
+
+    func testHerAchievementsOpenFromTheChatMenu() throws {
+        app.terminate()
+        app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
+        app.launch()
+
+        let more = app.buttons["更多"]
+        XCTAssertTrue(more.waitForExistence(timeout: 10), "chat did not open")
+        more.tap()
+        let achievements = app.buttons["成就"]
+        XCTAssertTrue(achievements.waitForExistence(timeout: 5), "chat has no achievements")
+        achievements.tap()
+
+        let title = app.navigationBars
+            .matching(NSPredicate(format: "identifier ENDSWITH %@", "的成就"))
+            .firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 5), "her achievements did not open")
+        XCTAssertTrue(
+            app.descendants(matching: .any)["achievement.turns"].waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.descendants(matching: .any)["achievement.complete"].exists)
     }
 
     func testGiftRouteFromChatPreselectsHerAndComesBack() throws {

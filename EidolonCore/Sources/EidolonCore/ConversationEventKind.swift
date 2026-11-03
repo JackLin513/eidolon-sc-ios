@@ -10,6 +10,8 @@ public enum ConversationEventKind: Sendable, Hashable {
     case hungUp
     /// She ended the conversation (only read by a turn it will reject, upstream `ended`).
     case ended
+    /// A gift the producer gave her; hers to respond to in the next turn or reach-out.
+    case gift
     /// A kind this build does not know: the words are generic and she is not told of it.
     case other(String)
 
@@ -17,6 +19,7 @@ public enum ConversationEventKind: Sendable, Hashable {
         switch kind {
         case "hung_up": self = .hungUp
         case "ended": self = .ended
+        case "gift": self = .gift
         default: self = .other(kind)
         }
     }
@@ -26,6 +29,7 @@ public enum ConversationEventKind: Sendable, Hashable {
         switch self {
         case .hungUp: "hung_up"
         case .ended: "ended"
+        case .gift: "gift"
         case let .other(kind): kind
         }
     }
@@ -35,6 +39,7 @@ public enum ConversationEventKind: Sendable, Hashable {
         switch self {
         case .hungUp: "她挂断了电话"
         case .ended: "她结束了对话"
+        case .gift: "礼物"
         case .other: "通话结束"
         }
     }
@@ -45,6 +50,7 @@ public enum ConversationEventKind: Sendable, Hashable {
         switch self {
         case .hungUp: "（你挂断了制作人的电话。）"
         case .ended: "（你结束了和制作人的对话。）"
+        case .gift: nil
         case .other: nil
         }
     }
@@ -54,6 +60,7 @@ public enum ConversationEventKind: Sendable, Hashable {
         switch self {
         case .hungUp: "phone.down"
         case .ended: "moon.zzz"
+        case .gift: "gift"
         case .other: "phone.down"
         }
     }

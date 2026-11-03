@@ -16,8 +16,40 @@ struct MainTabsView: View {
             Tab("玩法", systemImage: "sparkles", value: MainTab.play) {
                 PlayHubView()
             }
+            .badge(app.achievementBadge ? 1 : 0)
             Tab("设置", systemImage: "gearshape", value: MainTab.settings) {
                 SettingsView()
+            }
+        }
+        .overlay(alignment: .top) {
+            if let toast = app.achievementToast {
+                Text(toast)
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.regularMaterial, in: Capsule())
+                    .shadow(radius: 8, y: 4)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .accessibilityIdentifier("achievement.toast")
+            }
+        }
+        .animation(.snappy, value: app.achievementToast)
+        .alert(
+            "成就补算",
+            isPresented: Binding(
+                get: { app.achievementLaunch != nil },
+                set: { if !$0 { app.dismissAchievementLaunch() } }
+            )
+        ) {
+            Button("知道了") {}
+        } message: {
+            if let summary = app.achievementLaunch {
+                Text(
+                    "解锁 \(summary.stages) 个阶段，到账 \(summary.draws) 次抽奖"
+                        + (summary.resetCards > 0 ? "、\(summary.resetCards) 张重置卡" : "")
+                        + "。通话时长从这次更新后开始计，抽过的奖从 0 起。"
+                )
             }
         }
     }

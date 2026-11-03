@@ -173,6 +173,8 @@ final class CallController {
                 affinityCue = nil
                 cueTask?.cancel()
                 if !leaving { layer = layer.ended() }
+                // The call's length counts towards her achievement (spec #71).
+                Task { await app?.refreshAchievementBadge() }
             }
         case let .hearing(text):
             hearing = text.isEmpty ? nil : text

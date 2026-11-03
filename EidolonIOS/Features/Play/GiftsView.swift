@@ -8,9 +8,13 @@ import UIKit
 struct GiftsView: View {
     @Environment(AppModel.self) private var app
     @State private var filter: GiftCategory?
-    @State private var alert: GiftAlert?
+    @State private var pageAlert: GiftPageAlert?
     @State private var isDebuggingDraws = false
     @State private var isLoading = true
+    @State private var giftToGive: Gift?
+    @State private var pendingSent: GiftSentNotice?
+    @State private var resetTargets: [ResetCardTarget] = []
+    @State private var confirmingReset = false
 
     private var chosen: CharacterConfig? {
         guard let id = app.giftPreselection else { return nil }
@@ -55,21 +59,60 @@ struct GiftsView: View {
             GiftDrawDebugSheet()
                 .environment(app)
         }
+        .sheet(item: $giftToGive, onDismiss: {
+            if let pendingSent {
+                self.pendingSent = nil
+                pageAlert = .sent(pendingSent)
+            }
+        }) { gift in
+            GiftRecipientSheet(gift: gift, preselected: chosen?.id) { given in
+                pendingSent = GiftSentNotice(given: given)
+            }
+            .environment(app)
+        }
+        .alert(item: $pageAlert) { alert in
+            switch alert {
+            case let .simple(title, message):
+                Alert(
+                    title: Text(title),
+                    message: Text(message),
+                    dismissButton: .default(Text("好"))
+                )
+            case let .sent(notice):
+                Alert(
+                    title: Text("送给\(notice.name)了"),
+                    message: Text(notice.message),
+                    primaryButton: .default(Text("去对话")) {
+                        app.openConversation(characterID: notice.given.characterID)
+                        Task { await load() }
+                    },
+                    secondaryButton: .cancel(Text("好")) {
+                        Task { await load() }
+                    }
+                )
+            case let .reset(message):
+                Alert(
+                    title: Text("重置卡"),
+                    message: Text(message),
+                    dismissButton: .default(Text("好"))
+                )
+            }
+        }
         .task { await load() }
         .refreshable { await load() }
-        .alert(item: $alert) { alert in
-            Alert(
-                title: Text(alert.title),
-                message: Text(alert.message),
-                dismissButton: .default(Text("好"))
-            )
-        }
     }
 
     // MARK: - Sections
 
     private func content(_ state: GiftState) -> some View {
         List {
+            if app.call.isLive {
+                Section {
+                    Label("通话中，挂断后才能送礼", systemImage: "phone.down")
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("gifts.callNotice")
+                }
+            }
             if let chosen {
                 preselection(chosen)
             }
@@ -271,42 +314,93 @@ struct GiftsView: View {
     }
 
     private func backpackRow(_ stack: GiftStack) -> some View {
-        HStack(spacing: 12) {
-            GiftArtwork(
-                url: app.core.giftArtURL(for: stack.gift.id),
-                symbol: symbol(stack.gift.category),
-                size: 48
-            )
-            VStack(alignment: .leading, spacing: 2) {
-                Text(stack.gift.name)
-                    .font(.body)
-                HStack(spacing: 4) {
-                    Text(stack.gift.category.title)
-                    Text("·")
-                    Text(stack.gift.rarity.title)
+        Button {
+            giftToGive = stack.gift
+        } label: {
+            HStack(spacing: 12) {
+                GiftArtwork(
+                    url: app.core.giftArtURL(for: stack.gift.id),
+                    symbol: symbol(stack.gift.category),
+                    size: 48
+                )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(stack.gift.name)
+                        .font(.body)
+                    HStack(spacing: 4) {
+                        Text(stack.gift.category.title)
+                        Text("·")
+                        Text(stack.gift.rarity.title)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                Text("×\(stack.count)")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
-            Spacer(minLength: 8)
-            Text("×\(stack.count)")
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
+            .contentShape(.rect)
         }
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .disabled(app.call.isLive)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("gifts.backpack.\(stack.gift.id)")
     }
 
     private func resetCards(_ state: GiftState) -> some View {
         Section {
-            LabeledContent("持有", value: "\(state.resetCards) 张")
-            Label("抽奖有 1% 的机会得到重置卡", systemImage: "arrow.counterclockwise.circle")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 12) {
+                GiftArtwork(
+                    url: app.core.resetCardArtURL(),
+                    symbol: "arrow.counterclockwise.circle.fill",
+                    size: 48
+                )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("重置卡 ×\(state.resetCards)")
+                        .font(.headline)
+                    Text(
+                        resetTargets.isEmpty
+                            ? "现在没有需要拉回的角色"
+                            : "现在用会拉回 \(resetTargets.count) 位"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Button("使用") {
+                    confirmingReset = true
+                }
+                .buttonStyle(.bordered)
+                .disabled(state.resetCards == 0 || resetTargets.isEmpty || app.isGiftWorking)
+                .accessibilityIdentifier("gifts.useResetCard")
+            }
+            if state.resetCards == 0 {
+                Label("抽奖有 1% 的机会得到重置卡", systemImage: "arrow.counterclockwise.circle")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         } header: {
             Text("重置卡")
         } footer: {
-            Text("重置卡不占背包；抽到后会存在这里。")
+            Text("把所有低于信任（冷淡、疏远）的角色拉回 50 并解除冷却；信任及以上不动。不写对话，也不触发成就。")
+        }
+        .confirmationDialog(
+            "把她们拉回信任？",
+            isPresented: $confirmingReset,
+            titleVisibility: .visible
+        ) {
+            Button("使用一张重置卡") { useResetCard() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text(
+                resetTargets.map {
+                    "\($0.name)：\($0.tier.title)" + ($0.cooling ? "（冷却中）" : "") + " → 信任"
+                }.joined(separator: "\n")
+            )
         }
     }
 
@@ -340,8 +434,29 @@ struct GiftsView: View {
         defer { isLoading = false }
         do {
             try await app.refreshGifts()
+            resetTargets = try await app.resetCardTargets()
+            await app.markGiftRewardsSeen()
+            await app.markPlaySeen()
         } catch {
-            alert = GiftAlert(title: "礼物", message: error.localizedDescription)
+            pageAlert = .simple("礼物", error.localizedDescription)
+        }
+    }
+
+    private func useResetCard() {
+        Task {
+            do {
+                let use = try await app.useResetCard()
+                resetTargets = try await app.resetCardTargets()
+                pageAlert = .reset(
+                    "已把 \(use.restored.count) 位拉回信任。还剩 \(use.resetCardsLeft) 张。"
+                )
+            } catch {
+                // The card was not taken, but what can still be pulled back may have
+                // changed while the dialog was up.
+                try? await app.refreshGifts()
+                resetTargets = (try? await app.resetCardTargets()) ?? resetTargets
+                pageAlert = .reset(error.localizedDescription)
+            }
         }
     }
 
@@ -350,7 +465,7 @@ struct GiftsView: View {
             do {
                 _ = try await app.drawGifts(all: all)
             } catch {
-                alert = GiftAlert(title: "礼物", message: error.localizedDescription)
+                pageAlert = .simple("礼物", error.localizedDescription)
             }
         }
     }
@@ -390,6 +505,159 @@ struct GiftsView: View {
         case .drink: "cup.and.saucer.fill"
         case .flower: "leaf.fill"
         case .trinket: "sparkles"
+        }
+    }
+}
+
+private struct GiftSentNotice: Identifiable {
+    let id = UUID()
+    let given: GiftGiven
+    var name: String {
+        given.gift.name
+    }
+    var message: String {
+        let feeling: String
+        if given.stillCooling {
+            feeling = "她还在冷却。"
+        } else if given.change != nil {
+            feeling = "好感度上升了，现在是\(given.tier.title)。"
+        } else {
+            feeling = "她收下了。"
+        }
+        return "\(feeling)背包里还剩 \(given.remaining) 件。"
+    }
+}
+
+/// The characters a gift may go to, in the roster's order, with her tier and cooldown;
+/// what she likes is never shown (spec #66).
+private struct GiftRecipientSheet: View {
+    let gift: Gift
+    let preselected: String?
+    let onGiven: (GiftGiven) -> Void
+    @Environment(AppModel.self) private var app
+    @Environment(\.dismiss) private var dismiss
+    @State private var recipients: [GiftRecipient] = []
+    @State private var selected: String?
+    @State private var isLoading = true
+    @State private var isSending = false
+    @State private var errorMessage: String?
+
+    private var ordered: [GiftRecipient] {
+        // The preselected one first, both groups keeping the roster's order.
+        recipients.filter { $0.characterID == preselected }
+            + recipients.filter { $0.characterID != preselected }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    HStack(spacing: 12) {
+                        GiftArtwork(
+                            url: app.core.giftArtURL(for: gift.id),
+                            symbol: "gift",
+                            size: 54
+                        )
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(gift.name)
+                                .font(.headline)
+                            Text("\(gift.category.title) · \(gift.rarity.title)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                if app.call.isLive {
+                    Section {
+                        Label("通话中，挂断后才能送礼", systemImage: "phone.down")
+                            .foregroundStyle(.orange)
+                    }
+                }
+                Section {
+                    if isLoading {
+                        ProgressView()
+                    } else {
+                        ForEach(ordered) { recipient in
+                            Button {
+                                selected = recipient.characterID
+                            } label: {
+                                HStack(spacing: 10) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(recipient.name)
+                                            .foregroundStyle(.primary)
+                                        Text(
+                                            recipient.cooling
+                                                ? "\(recipient.tier.title) · 冷却中"
+                                                : recipient.tier.title
+                                        )
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    }
+                                    Spacer(minLength: 0)
+                                    if selected == recipient.characterID {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(Color.accentColor)
+                                    }
+                                }
+                                .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(app.call.isLive)
+                            .accessibilityIdentifier("gifts.recipient.\(recipient.characterID)")
+                        }
+                    }
+                } header: {
+                    Text("送给谁")
+                } footer: {
+                    Text("看不到她喜欢什么；送出后才会知道。")
+                }
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+            }
+            .navigationTitle("送礼物")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSending ? "送出中…" : "送出") { send() }
+                        .disabled(
+                            selected == nil || isSending || isLoading || app.call.isLive
+                        )
+                        .accessibilityIdentifier("gifts.send")
+                }
+            }
+            .task { await load() }
+        }
+    }
+
+    private func load() async {
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            recipients = try await app.giftRecipients()
+            selected = preselected ?? recipients.first?.characterID
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func send() {
+        guard let selected else { return }
+        Task {
+            isSending = true
+            defer { isSending = false }
+            do {
+                let given = try await app.giveGift(giftID: gift.id, characterID: selected)
+                onGiven(given)
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }
@@ -510,8 +778,16 @@ private struct GiftArtwork: View {
     }
 }
 
-private struct GiftAlert: Identifiable {
-    let id = UUID()
-    let title: String
-    let message: String
+private enum GiftPageAlert: Identifiable {
+    case simple(String, String)
+    case sent(GiftSentNotice)
+    case reset(String)
+
+    var id: String {
+        switch self {
+        case let .simple(title, message): "simple:\(title):\(message)"
+        case let .sent(notice): "sent:\(notice.id)"
+        case let .reset(message): "reset:\(message)"
+        }
+    }
 }

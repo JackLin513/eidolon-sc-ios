@@ -149,6 +149,7 @@ struct BarDoor: View {
 /// got, or only that she left, and the card's two buttons.
 struct BarEndCard: View {
     let affinityUp: Bool
+    let drawGiven: Bool
     let herName: String?
     let herColor: Color
     let onAgain: () -> Void
@@ -178,19 +179,29 @@ struct BarEndCard: View {
     }
 
     @ViewBuilder private var centered: some View {
-        if !affinityUp {
+        if !affinityUp && !drawGiven {
             BarPixelText(
                 BarCopy.End.left(herName), x: Self.card.x, y: Self.oneRowY, color: BarInk.uiSub,
                 width: Self.card.width, align: .center
             )
         } else {
-            BarPixelText(
-                runs: [
-                    BarFont.Run(text: BarCopy.End.heart, color: UIColor(herColor)),
-                    BarFont.Run(text: BarCopy.End.affinityUp, color: BarInk.uiText),
-                ],
-                x: Self.card.x, y: Self.oneRowY, width: Self.card.width, align: .center
-            )
+            VStack(spacing: 2) {
+                if affinityUp {
+                    BarPixelText(
+                        runs: [
+                            BarFont.Run(text: BarCopy.End.heart, color: UIColor(herColor)),
+                            BarFont.Run(text: BarCopy.End.affinityUp, color: BarInk.uiText),
+                        ],
+                        x: Self.card.x, y: Self.oneRowY, width: Self.card.width, align: .center
+                    )
+                }
+                if drawGiven {
+                    BarPixelText(
+                        BarCopy.End.draw, x: Self.card.x, y: Self.oneRowY + 18,
+                        color: BarInk.uiText, width: Self.card.width, align: .center
+                    )
+                }
+            }
         }
     }
 

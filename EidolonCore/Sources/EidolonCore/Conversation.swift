@@ -21,6 +21,10 @@ public struct ConversationEventRecord: Sendable, Hashable, Identifiable {
     public var id: Int64
     public var kind: String
     public var createdAt: String
+    /// A gift event's gift, whether she likes it, and how it changed her affinity.
+    public var giftID: String? = nil
+    public var liked: Bool? = nil
+    public var affinity: AffinityChange? = nil
 }
 
 /// One row of a conversation as it is shown: a turn, her reach-out, or something that
@@ -95,7 +99,8 @@ extension Eidolon {
             let events = try Row.fetchAll(
                 db,
                 sql: """
-                    SELECT id, kind, created_at FROM conversation_events
+                    SELECT id, kind, created_at, gift_id, liked, affinity
+                    FROM conversation_events
                     WHERE conversation_id = ?
                     """,
                 arguments: [conversationID]
@@ -105,11 +110,7 @@ extension Eidolon {
                     at: Self.parseTimestamp(createdAt) ?? .distantPast,
                     reachOut: false,
                     written: row["id"],
-                    line: .event(ConversationEventRecord(
-                        id: row["id"],
-                        kind: row["kind"],
-                        createdAt: createdAt
-                    ))
+                    line: .event(Self.eventRecord(row))
                 )
             }
 
@@ -165,6 +166,20 @@ extension Eidolon {
 }
 
 extension Eidolon {
+    static func eventRecord(_ row: Row) -> ConversationEventRecord {
+        let raw: String? = row["affinity"]
+        return ConversationEventRecord(
+            id: row["id"],
+            kind: row["kind"],
+            createdAt: row["created_at"],
+            giftID: row["gift_id"],
+            liked: (row["liked"] as Int?).map { $0 == 1 },
+            affinity: raw.flatMap { Data($0.utf8) }.flatMap {
+                try? JSONDecoder().decode(AffinityChange.self, from: $0)
+            }
+        )
+    }
+
     /// How a reply changed her affinity, as v9 writes it; nil for old rows and for turns
     /// that changed nothing.
     static func decodeAffinityChange(_ row: Row) -> AffinityChange? {
@@ -189,25 +204,22 @@ extension Eidolon {
             try Row.fetchAll(
                 db,
                 sql: """
-                    SELECT id, kind, created_at FROM conversation_events
+                    SELECT id, kind, created_at, gift_id, liked, affinity
+                    FROM conversation_events
                     WHERE conversation_id = ?
                     ORDER BY created_at, id
                     """,
                 arguments: [conversationID]
-            ).map { row in
-                ConversationEventRecord(
-                    id: row["id"],
-                    kind: row["kind"],
-                    createdAt: row["created_at"]
-                )
-            }
+            ).map(Self.eventRecord)
         }
     }
 
     /// Her conversations, newest first: the current one, ended or not, then the past
     /// ones — those with nothing in them are not listed as past.
     public func conversations(characterID: String) throws -> [ConversationSummary] {
-        try userQueue.read { db in
+        let catalog = try? GiftCatalog.load(in: location.contentDirectory)
+        let herName = (try? characters().first { $0.id == characterID }?.name) ?? "她"
+        return try userQueue.read { db in
             let currentID = try Eidolon.currentConversationID(db, characterID: characterID)
             let rows = try Row.fetchAll(
                 db,
@@ -215,6 +227,8 @@ extension Eidolon {
                     SELECT c.id, c.title, c.created_at, c.ended_at,
                         (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id)
                             + (SELECT COUNT(*) FROM reach_outs r WHERE r.conversation_id = c.id)
+                            + (SELECT COUNT(*) FROM conversation_events e
+                               WHERE e.conversation_id = c.id)
                             AS records,
                         (SELECT COALESCE(NULLIF(m.zh, ''), NULLIF(m.ja, ''), NULLIF(m.text, ''))
                          FROM messages m WHERE m.conversation_id = c.id
@@ -225,7 +239,13 @@ extension Eidolon {
                          FROM reach_outs r WHERE r.conversation_id = c.id
                          ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) AS reach_preview,
                         (SELECT r.created_at FROM reach_outs r WHERE r.conversation_id = c.id
-                         ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) AS reach_at
+                         ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) AS reach_at,
+                        (SELECT e.gift_id FROM conversation_events e
+                         WHERE e.conversation_id = c.id AND e.kind = 'gift'
+                         ORDER BY e.created_at DESC, e.id DESC LIMIT 1) AS gift_id,
+                        (SELECT e.created_at FROM conversation_events e
+                         WHERE e.conversation_id = c.id AND e.kind = 'gift'
+                         ORDER BY e.created_at DESC, e.id DESC LIMIT 1) AS gift_at
                     FROM conversations c
                     WHERE c.character_id = ?
                     ORDER BY (c.id = ?) DESC, c.created_at DESC, c.rowid DESC
@@ -239,15 +259,30 @@ extension Eidolon {
                 guard isCurrent || records > 0 else { return nil }
                 let saidAt: String? = row["said_at"]
                 let reachAt: String? = row["reach_at"]
-                let reachIsLatest = (reachAt ?? "") > (saidAt ?? "")
+                let giftAt: String? = row["gift_at"]
+                let giftID: String? = row["gift_id"]
+                let latest = max(saidAt ?? "", reachAt ?? "", giftAt ?? "")
+                let preview: String?
+                let at: String?
+                if giftAt == latest, giftAt != nil {
+                    let name = giftID.flatMap { catalog?.gift(id: $0)?.name } ?? "礼物"
+                    preview = GiftText.given(characterName: herName, giftName: name)
+                    at = giftAt
+                } else if reachAt == latest, reachAt != nil {
+                    preview = row["reach_preview"]
+                    at = reachAt
+                } else {
+                    preview = row["said_preview"]
+                    at = saidAt
+                }
                 return ConversationSummary(
                     id: id,
                     title: row["title"],
                     createdAt: row["created_at"],
                     ended: (row["ended_at"] as String?) != nil,
                     records: records,
-                    lastPreview: reachIsLatest ? row["reach_preview"] : row["said_preview"],
-                    lastAt: reachIsLatest ? reachAt : saidAt,
+                    lastPreview: preview,
+                    lastAt: at,
                     isCurrent: isCurrent
                 )
             }

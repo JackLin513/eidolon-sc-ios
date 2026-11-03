@@ -289,6 +289,7 @@ struct BarRoomView: View {
     @ViewBuilder private var endCard: some View {
         BarEndCard(
             affinityUp: scene.reward?.affinityUp ?? false,
+            drawGiven: scene.reward?.drawGiven ?? false,
             herName: her?.name,
             herColor: herColor,
             onAgain: { again() },
