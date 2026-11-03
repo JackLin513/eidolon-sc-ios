@@ -13,6 +13,7 @@
 		113F1FAAA8A9FE0C88AB1FC5 /* AffinityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2D79D1CDB4D74AADF0D731E /* AffinityViews.swift */; };
 		17CAADABE8FCFE23334C6C09 /* stand.html in Resources */ = {isa = PBXBuildFile; fileRef = C3363DDA773D810C71B70EE3 /* stand.html */; };
 		18C6C6CFCBBB69A854EB81E9 /* CalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17CCE5274F40A022DD05DD08 /* CalendarView.swift */; };
+		26F5E5C4D4F191FC8B32A126 /* APISettingsSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FB135685AEF80F60C0388E2 /* APISettingsSupport.swift */; };
 		27EE9A61F1EA6DD131D5D03F /* EidolonIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6567288D9C69EE4C18792B6 /* EidolonIOSApp.swift */; };
 		28E1D1F65D00588EA9601DA3 /* TraceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D48DCFB6F0FC0D93BD033FC6 /* TraceListView.swift */; };
 		2AB7F50E81201BDD5EE6B1EC /* BarTutorialUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A409D36FC5F7C23FD61FFB /* BarTutorialUITests.swift */; };
@@ -34,8 +35,10 @@
 		502DA124FF6C85F5C69F0991 /* connect.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 31FDC61716128573E91E0E66 /* connect.m4a */; };
 		50FF16442DF243C8411FF741 /* SonioxRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */; };
 		58D49346C2362E8BD2497083 /* BarRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F84087F773F0C23692413FF7 /* BarRoomView.swift */; };
+		5D56B7DEA553EFFF531FE9A9 /* BailianRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F578A9048CFEEA99905CC19 /* BailianRecognition.swift */; };
 		5F55056A446CF6F4D61A7E16 /* BarJukeboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3A3CDE40EDED61EECF1DBF1 /* BarJukeboxView.swift */; };
 		6ADC1F5313FCC7F5003E1676 /* stand-player.js in Resources */ = {isa = PBXBuildFile; fileRef = 54B11631789B9A8BDAE83193 /* stand-player.js */; };
+		71F9D2D2A2CE1C9A213F29AA /* APISettingsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB451726D31E16340EB84E2 /* APISettingsUITests.swift */; };
 		791DD675A29C48B88185FACE /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE21F722ED79A2089F060B7F /* Theme.swift */; };
 		8ABC906B631EDC9CC6BC2529 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 502579B7DFF941BAC28ADE49 /* AppIcon.icon */; };
 		8F700315EAE8C6E59429BD0F /* BarTextBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B8F3B95D300DF671C5E5C20 /* BarTextBox.swift */; };
@@ -56,14 +59,18 @@
 		B09389AFD2D0B4A3AA0CB8D3 /* MainTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A469720C393AAAFE8185A4 /* MainTab.swift */; };
 		B2DF1A14F646EDBA6EAECF48 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2610401DD1C29D8D7AB56C /* SettingsView.swift */; };
 		B3AF831F701054AEEE1CCABB /* CyclesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 189051D482A540C18583A79E /* CyclesView.swift */; };
+		B519D97732DE729A2D3696A7 /* EnvImportPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F47E892DE490E8FC25FBAE /* EnvImportPreviewView.swift */; };
+		B6BE9BFD3E39D4998319B6F0 /* APIModelPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FD60D136AC80DDE9C750A6 /* APIModelPicker.swift */; };
 		B735177E66946109DB42D254 /* PlayUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71934BAD4C67636EC0DCD9F1 /* PlayUITests.swift */; };
 		BBCD2E47044DFC5DAB92ED57 /* CallSettingsError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */; };
 		BEB47246CC69F57123F84743 /* CREDITS.md in Resources */ = {isa = PBXBuildFile; fileRef = 3E8A9D366A002F554C2BAE80 /* CREDITS.md */; };
 		C375B67690EAE8B5B255A1B3 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1FF6012F255268462E4A685 /* Keychain.swift */; };
+		C49847C1C908EFA4FDF3BE9F /* WebSocketSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 909079B25647A871FFBB6DEC /* WebSocketSupport.swift */; };
 		C5B1C51FBA6F57968A704048 /* StandPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A39D03BFDD50261F07F298 /* StandPreviewView.swift */; };
 		C7D9B29CBBADC895872095A7 /* TexturedAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D7CC6AFCA2A05909641B10 /* TexturedAudio.swift */; };
 		CABF61FA71D8DD24099824B3 /* ConversationHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */; };
 		CD54EB8286C493A259743A6D /* SpeechPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362E0BAAF16B958F406E1E08 /* SpeechPlayback.swift */; };
+		CE00D8377D2438104442130D /* APISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CB7C29B8A1FAC27F45659C8 /* APISettingsView.swift */; };
 		CE87D4AD7E46D813BFAA4BC5 /* CallTypingUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98D2780F46613402EB78186A /* CallTypingUITests.swift */; };
 		CE9A6DFCD019D9A5DEBFC3CA /* BarPixelViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D2BD6185831DEBBED2FA62 /* BarPixelViews.swift */; };
 		CF99DB2C76A1A363E3D2BC16 /* BarRecipeBookView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71EFAE07EB12013AF146132A /* BarRecipeBookView.swift */; };
@@ -110,8 +117,11 @@
 		38579B2A473B296EC588CBD6 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		38B53BAD43DC896CF33D1635 /* BarCounter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarCounter.swift; sourceTree = "<group>"; };
 		3B062B423FB9FC2174A88CBC /* AtmosphericTextUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtmosphericTextUITests.swift; sourceTree = "<group>"; };
+		3CB7C29B8A1FAC27F45659C8 /* APISettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APISettingsView.swift; sourceTree = "<group>"; };
 		3E8A9D366A002F554C2BAE80 /* CREDITS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CREDITS.md; sourceTree = "<group>"; };
 		4472CA53E92E225069B1D652 /* FishSynthesis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FishSynthesis.swift; sourceTree = "<group>"; };
+		48F47E892DE490E8FC25FBAE /* EnvImportPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvImportPreviewView.swift; sourceTree = "<group>"; };
+		4AB451726D31E16340EB84E2 /* APISettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APISettingsUITests.swift; sourceTree = "<group>"; };
 		4D6B5CE0ADDE78E895BA3509 /* CallBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallBar.swift; sourceTree = "<group>"; };
 		502579B7DFF941BAC28ADE49 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		54B11631789B9A8BDAE83193 /* stand-player.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "stand-player.js"; sourceTree = "<group>"; };
@@ -132,11 +142,14 @@
 		78A39D03BFDD50261F07F298 /* StandPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandPreviewView.swift; sourceTree = "<group>"; };
 		7B8F3B95D300DF671C5E5C20 /* BarTextBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarTextBox.swift; sourceTree = "<group>"; };
 		7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportGuideView.swift; sourceTree = "<group>"; };
+		7FB135685AEF80F60C0388E2 /* APISettingsSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APISettingsSupport.swift; sourceTree = "<group>"; };
 		805B1BB0D7E3061C6B957E32 /* ProducerProfileUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProducerProfileUITests.swift; sourceTree = "<group>"; };
 		889A8316C35EBB240F4D78A2 /* BarGuest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarGuest.swift; sourceTree = "<group>"; };
+		909079B25647A871FFBB6DEC /* WebSocketSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketSupport.swift; sourceTree = "<group>"; };
 		957D8B0F7007CD039844150D /* TabBarHides.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabBarHides.swift; sourceTree = "<group>"; };
 		9642E415565176749C5D2D54 /* PlayHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayHubView.swift; sourceTree = "<group>"; };
 		98D2780F46613402EB78186A /* CallTypingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallTypingUITests.swift; sourceTree = "<group>"; };
+		9F578A9048CFEEA99905CC19 /* BailianRecognition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BailianRecognition.swift; sourceTree = "<group>"; };
 		A2D79D1CDB4D74AADF0D731E /* AffinityViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AffinityViews.swift; sourceTree = "<group>"; };
 		A3A3CDE40EDED61EECF1DBF1 /* BarJukeboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarJukeboxView.swift; sourceTree = "<group>"; };
 		A3D7CC6AFCA2A05909641B10 /* TexturedAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TexturedAudio.swift; sourceTree = "<group>"; };
@@ -156,6 +169,7 @@
 		CE21F722ED79A2089F060B7F /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		CE4CA93A98A82A36915C5E19 /* CallTonesPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallTonesPlayer.swift; sourceTree = "<group>"; };
 		D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneCapture.swift; sourceTree = "<group>"; };
+		D3FD60D136AC80DDE9C750A6 /* APIModelPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIModelPicker.swift; sourceTree = "<group>"; };
 		D48DCFB6F0FC0D93BD033FC6 /* TraceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceListView.swift; sourceTree = "<group>"; };
 		D97FA6838C4D87D4724543C3 /* BarSound.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarSound.swift; sourceTree = "<group>"; };
 		DC2610401DD1C29D8D7AB56C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -338,6 +352,10 @@
 		8FC025C14471CB5AB9B8E831 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				D3FD60D136AC80DDE9C750A6 /* APIModelPicker.swift */,
+				7FB135685AEF80F60C0388E2 /* APISettingsSupport.swift */,
+				3CB7C29B8A1FAC27F45659C8 /* APISettingsView.swift */,
+				48F47E892DE490E8FC25FBAE /* EnvImportPreviewView.swift */,
 				DC2610401DD1C29D8D7AB56C /* SettingsView.swift */,
 			);
 			path = Settings;
@@ -346,6 +364,7 @@
 		991D60CA2AEEBFDA342B90D9 /* EidolonIOSUITests */ = {
 			isa = PBXGroup;
 			children = (
+				4AB451726D31E16340EB84E2 /* APISettingsUITests.swift */,
 				3B062B423FB9FC2174A88CBC /* AtmosphericTextUITests.swift */,
 				17A409D36FC5F7C23FD61FFB /* BarTutorialUITests.swift */,
 				98D2780F46613402EB78186A /* CallTypingUITests.swift */,
@@ -463,6 +482,7 @@
 		ED8BC68D17B14C4A10AA4A37 /* Call */ = {
 			isa = PBXGroup;
 			children = (
+				9F578A9048CFEEA99905CC19 /* BailianRecognition.swift */,
 				6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */,
 				CE4CA93A98A82A36915C5E19 /* CallTonesPlayer.swift */,
 				FCD1CD149AFF0049C2EE0F58 /* DebugRecognition.swift */,
@@ -471,6 +491,7 @@
 				E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */,
 				362E0BAAF16B958F406E1E08 /* SpeechPlayback.swift */,
 				A3D7CC6AFCA2A05909641B10 /* TexturedAudio.swift */,
+				909079B25647A871FFBB6DEC /* WebSocketSupport.swift */,
 			);
 			path = Call;
 			sourceTree = "<group>";
@@ -604,9 +625,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B6BE9BFD3E39D4998319B6F0 /* APIModelPicker.swift in Sources */,
+				26F5E5C4D4F191FC8B32A126 /* APISettingsSupport.swift in Sources */,
+				CE00D8377D2438104442130D /* APISettingsView.swift in Sources */,
 				90BA232DAFE04205D280A5AF /* AffinityCue.swift in Sources */,
 				113F1FAAA8A9FE0C88AB1FC5 /* AffinityViews.swift in Sources */,
 				10BA2565084D529C4152A890 /* AppModel.swift in Sources */,
+				5D56B7DEA553EFFF531FE9A9 /* BailianRecognition.swift in Sources */,
 				4235DD89FDB9280BFC39D5E1 /* BarCanvas.swift in Sources */,
 				FA5A10686839158B2C50E21D /* BarCounter.swift in Sources */,
 				99CF59ED1AC1CDDA579652C8 /* BarDoor.swift in Sources */,
@@ -638,6 +663,7 @@
 				0EFF31521A69C5A7C7949BCB /* DebugRecognition.swift in Sources */,
 				AFE29FA91C362A3D8DC4BAE7 /* DebugView.swift in Sources */,
 				27EE9A61F1EA6DD131D5D03F /* EidolonIOSApp.swift in Sources */,
+				B519D97732DE729A2D3696A7 /* EnvImportPreviewView.swift in Sources */,
 				D87D5EF9B85BB39DEBD561FB /* FishSynthesis.swift in Sources */,
 				03D1D9AFAE21C9348078853C /* ImportGuideView.swift in Sources */,
 				C375B67690EAE8B5B255A1B3 /* Keychain.swift in Sources */,
@@ -662,6 +688,7 @@
 				C7D9B29CBBADC895872095A7 /* TexturedAudio.swift in Sources */,
 				791DD675A29C48B88185FACE /* Theme.swift in Sources */,
 				28E1D1F65D00588EA9601DA3 /* TraceListView.swift in Sources */,
+				C49847C1C908EFA4FDF3BE9F /* WebSocketSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -669,6 +696,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				71F9D2D2A2CE1C9A213F29AA /* APISettingsUITests.swift in Sources */,
 				4A89D538AE34E8640D373968 /* AtmosphericTextUITests.swift in Sources */,
 				2AB7F50E81201BDD5EE6B1EC /* BarTutorialUITests.swift in Sources */,
 				CE87D4AD7E46D813BFAA4BC5 /* CallTypingUITests.swift in Sources */,
