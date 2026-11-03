@@ -34,6 +34,13 @@ final class EnvImportTests: XCTestCase {
         XCTAssertEqual(file.entries[1].value, "line\\nquote")
     }
 
+    func testABOMAndWindowsLineEndingsAreRead() {
+        let file = EnvParser.parse(text: "\u{FEFF}CHAT_LLM_MODEL=one\r\nSONIOX_API_KEY=two\r\n")
+        XCTAssertEqual(file.entries.map(\.key), ["CHAT_LLM_MODEL", "SONIOX_API_KEY"])
+        XCTAssertEqual(file.entries[1].value, "two")
+        XCTAssertTrue(file.issues.isEmpty)
+    }
+
     func testANonUTF8FileIsRefused() {
         let data = Data([0xFF, 0xFE, 0x00])
         XCTAssertThrowsError(try EnvParser.parse(data: data)) { error in
@@ -99,6 +106,25 @@ final class EnvImportTests: XCTestCase {
         XCTAssertEqual(values.fishModel, "drama-3")
         XCTAssertTrue(report.invalid.isEmpty, "\(report.invalid)")
         XCTAssertTrue(report.unknown.isEmpty, "\(report.unknown)")
+    }
+
+    func testCloudflareAndBailianJudgeKeysMap() {
+        let report = EnvImporter.map(EnvParser.parse(text: """
+            CLOUDFLARE_API_TOKEN=cf-key
+            CLOUDFLARE_ACCOUNT_ID=acc
+            CLOUDFLARE_JUDGE_MODEL=clef
+            BAILIAN_JUDGE_API_KEY=bl-key
+            BAILIAN_JUDGE_WORKSPACE_ID=llm-1
+            BAILIAN_JUDGE_REGION=singapore
+            BAILIAN_JUDGE_MODEL=decision-model-preview
+            """))
+        XCTAssertEqual(report.values.cloudflareAPIKey, "cf-key")
+        XCTAssertEqual(report.values.cloudflareAccountID, "acc")
+        XCTAssertEqual(report.values.cloudflareModel, "clef")
+        XCTAssertEqual(report.values.bailianJudgeAPIKey, "bl-key")
+        XCTAssertEqual(report.values.bailianWorkspace, "llm-1")
+        XCTAssertEqual(report.values.bailianRegion, .singapore)
+        XCTAssertEqual(report.values.bailianModel, "decision-model-preview")
     }
 
     func testBlankValuesDoNotOverwrite() {

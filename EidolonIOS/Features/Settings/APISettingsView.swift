@@ -18,6 +18,7 @@ struct APISettingsView: View {
     @State private var isPickingEnv = false
     @State private var imported: ImportedEnvFile?
     @State private var importError: String?
+    @State private var didAutoImport = false
     @State private var picker: ModelPickerRequest?
     @State private var fetching: Set<FetchKey> = []
     @State private var fetchErrors: [FetchKey: String] = [:]
@@ -235,7 +236,7 @@ struct APISettingsView: View {
             }
             probeStatus(.chat)
         } header: {
-            Text("对话模型")
+            APIStatusHeader(title: "对话模型", configured: settings.isConfigured)
         } footer: {
             Text(footerChat)
         }
@@ -286,7 +287,13 @@ struct APISettingsView: View {
             }
             probeStatus(.background)
         } header: {
-            Text("后台模型（记忆与标题）")
+            APIStatusHeader(
+                title: "后台模型（记忆与标题）",
+                configured: settings.hasBackgroundModel
+                    ? settings.backgroundConfig != nil
+                    : settings.isConfigured,
+                note: settings.hasBackgroundModel ? nil : "沿用对话模型"
+            )
         } footer: {
             Text("记忆抽取和对话标题用它；角色回复和通话仍用对话模型。协议、地址、模型和密钥留空时逐项沿用对话模型；"
                 + "max tokens、思考强度和额外参数是它自己的，不沿用。全部留空时不启用。")
@@ -417,7 +424,10 @@ struct APISettingsView: View {
             }
             probeStatus(.judge)
         } header: {
-            Text("判断模型")
+            APIStatusHeader(
+                title: "判断模型",
+                configured: app.judgeProvider(for: settings) != nil
+            )
         } footer: {
             Text("每回合判断好感度、越界和检索需要；通话里逐段判断情绪。"
                 + "Jev / Cloudflare / 百炼使用各家自己的 System One 接口；"
@@ -430,11 +440,17 @@ struct APISettingsView: View {
             if let space = app.contentEmbeddingSpace {
                 LabeledContent("当前内容包", value: "\(space.model) / \(space.dimensions) 维")
                 LabeledContent("对应服务", value: space.service.title)
-                TextField("向量化模型（由内容包决定）", text: $settings.embeddingModel)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .disabled(true)
-                    .accessibilityIdentifier("api.retrieval.embeddingModel")
+                TextField(
+                    "向量化模型（由内容包决定）",
+                    text: Binding(
+                        get: { space.model },
+                        set: { _ in }
+                    )
+                )
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .disabled(true)
+                .accessibilityIdentifier("api.retrieval.embeddingModel")
                 Text("要换向量化模型，先在 Mac 上用上游工具重新向量化并重新导出内容包。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -479,7 +495,10 @@ struct APISettingsView: View {
                     .foregroundStyle(.orange)
             }
         } header: {
-            Text("检索（向量化与重排）")
+            APIStatusHeader(
+                title: "检索（向量化与重排）",
+                configured: settings.embeddingConfig(for: app.contentEmbeddingSpace) != nil
+            )
         } footer: {
             Text("内容包的向量化模型决定查询向量；换模型或维度必须重新导出内容包。没有密钥时不做检索。")
         }
@@ -528,7 +547,11 @@ struct APISettingsView: View {
             probeButton(.fish, title: "测试 Fish Audio") { await testFish() }
             probeStatus(.fish)
         } header: {
-            Text("通话")
+            APIStatusHeader(
+                title: "通话",
+                configured: !settings.sonioxAPIKey.trimmed.isEmpty
+                    && !settings.fishAPIKey.trimmed.isEmpty
+            )
         } footer: {
             Text("Soniox 负责实时识别，Fish Audio 负责她的声音。两项密钥都填了才能语音通话；"
                 + "测试只验证密钥和地址，不产生合成或识别费用。通话时长、回合与电话质感仍在设置页。")
@@ -707,7 +730,9 @@ struct APISettingsView: View {
         settings = app.chatSettings
         #if DEBUG
         // UI tests load a sample without a file picker; the text lives only in the
-        // launch environment, never in the app's storage.
+        // launch environment, never in the app's storage. Only the first appearance.
+        guard !didAutoImport else { return }
+        didAutoImport = true
         if let text = ProcessInfo.processInfo.environment["EIDOLON_API_ENV_TEXT"],
            !text.isEmpty {
             let file = EnvParser.parse(text: text)
@@ -779,8 +804,6 @@ struct APISettingsView: View {
         if !cleared.contains(.cloudflare), draft.cloudflareAPIKey.trimmed.isEmpty {
             draft.cloudflareAPIKey = saved.cloudflareAPIKey
         }
-        // A cleared field should look cleared on screen too.
-        if cleared.contains(.chat) { draft.apiKey = "" }
         return draft
     }
 
@@ -1188,73 +1211,5 @@ struct APISettingsView: View {
 
     private static func numberText(_ value: Double) -> String {
         String(format: "%g", locale: Locale(identifier: "en_US_POSIX"), arguments: [value])
-    }
-}
-
-private struct SummaryRow: View {
-    let title: String
-    let configured: Bool
-    var note: String?
-
-    var body: some View {
-        LabeledContent {
-            HStack(spacing: 6) {
-                if let note {
-                    Text(note)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Image(systemName: configured ? "checkmark.circle.fill" : "circle.dashed")
-                    .foregroundStyle(configured ? Color.green : Color.secondary)
-            }
-        } label: {
-            Text(title)
-        }
-    }
-}
-
-enum ProbeStatus {
-    case running
-    case success(ProbeResult)
-    case failure(ProbeResult)
-}
-
-struct ProbeStatusRow: View {
-    let result: ProbeResult
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                Image(systemName: result.ok ? "checkmark.circle.fill" : "xmark.circle.fill")
-                    .foregroundStyle(result.ok ? Color.green : Color.red)
-                Text(result.ok ? "成功" : "失败")
-                    .font(.footnote.weight(.semibold))
-                Text("\(result.milliseconds) ms")
-                    .font(.footnote.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                if let status = result.statusCode {
-                    Text("HTTP \(status)")
-                        .font(.footnote.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-            }
-            if !result.detail.isEmpty {
-                Text(result.detail)
-                    .font(.caption)
-                    .foregroundStyle(result.ok ? Color.secondary : Color.red)
-            }
-            if let model = result.model, !model.isEmpty {
-                Text("模型：\(model)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .accessibilityIdentifier("api.probe.result")
-    }
-}
-
-extension String {
-    var trimmed: String {
-        trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

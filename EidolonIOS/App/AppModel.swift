@@ -117,10 +117,17 @@ final class AppModel {
 
     /// Why retrieval is off, in the producer's terms; nil when it is on. A bundle made with
     /// a service this build does not speak keeps retrieval off without blocking chat.
-    var retrievalUnavailableReason: String? {
-        if let space = contentEmbeddingSpace, space.service != .siliconflow {
-            return "这个内容包需要 \(space.service.title) 的向量，检索暂不可用"
+    /// The one reason worth telling the producer on the chat page: this bundle cannot be
+    /// embedded by any service this build speaks.
+    var contentBundleRetrievalWarning: String? {
+        guard let space = contentEmbeddingSpace, space.service != .siliconflow else {
+            return nil
         }
+        return "这个内容包需要 \(space.service.title) 的向量，检索暂不可用"
+    }
+
+    var retrievalUnavailableReason: String? {
+        if let warning = contentBundleRetrievalWarning { return warning }
         if contentEmbeddingSpace == nil,
            EmbeddingService(model: chatSettings.embeddingModel) == .gemini {
             return "Gemini embedding 暂未接入，检索暂不可用"

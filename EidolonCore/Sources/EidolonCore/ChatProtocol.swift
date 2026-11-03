@@ -26,19 +26,10 @@ public enum ChatProtocol: String, Sendable, Codable, CaseIterable, Identifiable 
         }
     }
 
-    /// The address the form fills in the first time this protocol is chosen, when the
-    /// producer has not written one.
-    public var suggestedBaseURL: String? {
-        self == .anthropic ? "https://api.anthropic.com/v1" : nil
-    }
-
     /// Anthropic has no `minimal` (upstream refuses it for that protocol).
     public func supports(_ effort: ReasoningEffort) -> Bool {
         !(self == .anthropic && effort == .minimal)
     }
-
-    /// The cap an Anthropic request must carry even when the producer left it blank.
-    public static let anthropicDefaultMaxTokens = 16384
 }
 
 /// How hard the model is asked to think, sent as the protocol's own parameter

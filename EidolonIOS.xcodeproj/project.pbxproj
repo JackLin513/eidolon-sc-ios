@@ -13,6 +13,7 @@
 		113F1FAAA8A9FE0C88AB1FC5 /* AffinityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2D79D1CDB4D74AADF0D731E /* AffinityViews.swift */; };
 		17CAADABE8FCFE23334C6C09 /* stand.html in Resources */ = {isa = PBXBuildFile; fileRef = C3363DDA773D810C71B70EE3 /* stand.html */; };
 		18C6C6CFCBBB69A854EB81E9 /* CalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17CCE5274F40A022DD05DD08 /* CalendarView.swift */; };
+		26F5E5C4D4F191FC8B32A126 /* APISettingsSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FB135685AEF80F60C0388E2 /* APISettingsSupport.swift */; };
 		27EE9A61F1EA6DD131D5D03F /* EidolonIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6567288D9C69EE4C18792B6 /* EidolonIOSApp.swift */; };
 		28E1D1F65D00588EA9601DA3 /* TraceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D48DCFB6F0FC0D93BD033FC6 /* TraceListView.swift */; };
 		2AB7F50E81201BDD5EE6B1EC /* BarTutorialUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A409D36FC5F7C23FD61FFB /* BarTutorialUITests.swift */; };
@@ -133,6 +134,7 @@
 		78A39D03BFDD50261F07F298 /* StandPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandPreviewView.swift; sourceTree = "<group>"; };
 		7B8F3B95D300DF671C5E5C20 /* BarTextBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarTextBox.swift; sourceTree = "<group>"; };
 		7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportGuideView.swift; sourceTree = "<group>"; };
+		7FB135685AEF80F60C0388E2 /* APISettingsSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APISettingsSupport.swift; sourceTree = "<group>"; };
 		805B1BB0D7E3061C6B957E32 /* ProducerProfileUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProducerProfileUITests.swift; sourceTree = "<group>"; };
 		889A8316C35EBB240F4D78A2 /* BarGuest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarGuest.swift; sourceTree = "<group>"; };
 		98D2780F46613402EB78186A /* CallTypingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallTypingUITests.swift; sourceTree = "<group>"; };
@@ -328,6 +330,7 @@
 			isa = PBXGroup;
 			children = (
 				D3FD60D136AC80DDE9C750A6 /* APIModelPicker.swift */,
+				7FB135685AEF80F60C0388E2 /* APISettingsSupport.swift */,
 				3CB7C29B8A1FAC27F45659C8 /* APISettingsView.swift */,
 				48F47E892DE490E8FC25FBAE /* EnvImportPreviewView.swift */,
 				DC2610401DD1C29D8D7AB56C /* SettingsView.swift */,
@@ -594,6 +597,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B6BE9BFD3E39D4998319B6F0 /* APIModelPicker.swift in Sources */,
+				26F5E5C4D4F191FC8B32A126 /* APISettingsSupport.swift in Sources */,
 				CE00D8377D2438104442130D /* APISettingsView.swift in Sources */,
 				90BA232DAFE04205D280A5AF /* AffinityCue.swift in Sources */,
 				113F1FAAA8A9FE0C88AB1FC5 /* AffinityViews.swift in Sources */,

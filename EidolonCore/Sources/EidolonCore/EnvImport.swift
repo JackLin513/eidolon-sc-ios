@@ -23,7 +23,7 @@ public enum EmbeddingService: String, Sendable, Codable, CaseIterable, Identifia
     public var id: String { rawValue }
 
     public init(model: String) {
-        self = model.lowercased().contains("gemini") ? .gemini : .siliconflow
+        self = model.lowercased().hasPrefix("gemini") ? .gemini : .siliconflow
     }
 
     public var title: String {
@@ -509,8 +509,9 @@ public enum EnvImporter {
             case "EMBEDDING_PROVIDER":
                 if let raw = text(key) {
                     if raw.lowercased() == EmbeddingService.siliconflow.rawValue {
+                        // The service is implied by the content bundle; there is no
+                        // setting of its own to change, so it is not shown as one.
                         values.embeddingService = .siliconflow
-                        note(key, "向量化服务")
                     } else if raw.lowercased() == EmbeddingService.gemini.rawValue {
                         unsupported.append(entry)
                     } else {
@@ -553,8 +554,8 @@ public enum EnvImporter {
             case "STT_PROVIDER":
                 if let raw = text(key) {
                     if raw.lowercased() == SpeechToTextService.soniox.rawValue {
+                        // Soniox is the only recognizer in this build; nothing changes.
                         values.speechToText = .soniox
-                        note(key, "语音识别服务")
                     } else if raw.lowercased() == SpeechToTextService.bailian.rawValue {
                         unsupported.append(entry)
                     } else {

@@ -5,6 +5,9 @@ import Foundation
 /// system as `system`, and thinking blocks handed back with the calls they came with.
 public struct AnthropicChatProvider: ChatProvider {
     public static let apiVersion = "2023-06-01"
+    /// The Messages interface requires a cap; a reply may run to several thousand tokens
+    /// of prose and thinking.
+    public static let defaultMaxTokens = 16384
 
     private let config: ChatModelConfig
     private let transport: any ChatTransport
@@ -16,29 +19,6 @@ public struct AnthropicChatProvider: ChatProvider {
     public init(config: ChatModelConfig, transport: any ChatTransport) {
         self.config = config
         self.transport = transport
-    }
-
-    public func stream(messages: [PromptMessage]) -> AsyncThrowingStream<String, Error> {
-        let events = stream(messages: messages, tools: [], forbidCalls: false)
-        return AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    for try await event in events {
-                        if case let .text(text) = event { continuation.yield(text) }
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { @Sendable _ in task.cancel() }
-        }
-    }
-
-    private static func openingSystem(_ messages: [PromptMessage]) -> (opening: [PromptMessage], rest: [PromptMessage]) {
-        var index = 0
-        while index < messages.count, messages[index].role == .system { index += 1 }
-        return (Array(messages[..<index]), Array(messages[index...]))
     }
 
     private static func arguments(_ text: String) -> Any {
@@ -97,7 +77,7 @@ public struct AnthropicChatProvider: ChatProvider {
         return turns
     }
 
-    public func request(
+    func request(
         messages: [PromptMessage],
         tools: [ChatTool],
         forbidCalls: Bool
@@ -110,13 +90,13 @@ public struct AnthropicChatProvider: ChatProvider {
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 120
 
-        let (opening, rest) = Self.openingSystem(messages)
+        let (opening, rest) = ChatStreamSupport.openingSystem(messages)
         var body: [String: Any] = [
             "model": config.model,
             "stream": true,
             // The Messages interface requires a cap; a reply may run to several thousand
             // tokens of prose and thinking.
-            "max_tokens": config.maxTokens ?? ChatProtocol.anthropicDefaultMaxTokens,
+            "max_tokens": config.maxTokens ?? Self.defaultMaxTokens,
             "messages": Self.messages(rest),
         ]
         let system = opening.map(\.content).filter { !$0.isEmpty }.joined(separator: "\n\n")
@@ -156,12 +136,7 @@ public struct AnthropicChatProvider: ChatProvider {
         let request = try request(messages: messages, tools: tools, forbidCalls: forbidCalls)
         let response = try await transport.send(request)
         guard (200..<300).contains(response.statusCode) else {
-            var detail = ""
-            for try await line in response.lines {
-                detail += line
-                if detail.count > 400 { break }
-            }
-            throw ChatProviderError.status(response.statusCode, detail)
+            throw await ChatStreamSupport.failure(response.statusCode, lines: response.lines)
         }
 
         var calls: [Int: (id: String, name: String, json: String, input: Any?)] = [:]
