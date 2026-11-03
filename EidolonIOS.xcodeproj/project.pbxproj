@@ -73,6 +73,7 @@
 		F0779B69941B95753CFA7C62 /* ObjCExceptionCatcher.m in Sources */ = {isa = PBXBuildFile; fileRef = BF8FFBE106A62A61CD0A8867 /* ObjCExceptionCatcher.m */; };
 		FA5A10686839158B2C50E21D /* BarCounter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38B53BAD43DC896CF33D1635 /* BarCounter.swift */; };
 		FB74EA11C1B5E34D38ED3937 /* ChatStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA937E9DC437925E1DD0673 /* ChatStore.swift */; };
+		FDB0475CDE701EBBE395CFFE /* ChatSelectionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CCFC142CC2535CA115A8402 /* ChatSelectionUITests.swift */; };
 		FE5F343DF7059BBB3A98E62E /* StandSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74AACADEE8C7E3D7A4110BBE /* StandSchemeHandler.swift */; };
 /* End PBXBuildFile section */
 
@@ -96,6 +97,7 @@
 		1C41FC4F60852CC263CFA152 /* EidolonIOSUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = EidolonIOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		206921654182FEC10EDD1B36 /* DebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugView.swift; sourceTree = "<group>"; };
 		22B001CEBA8E13B70A91DA53 /* BarDoor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarDoor.swift; sourceTree = "<group>"; };
+		2CCFC142CC2535CA115A8402 /* ChatSelectionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSelectionUITests.swift; sourceTree = "<group>"; };
 		31FDC61716128573E91E0E66 /* connect.m4a */ = {isa = PBXFileReference; path = connect.m4a; sourceTree = "<group>"; };
 		32A8C4CAB5DC57A55588F5D0 /* AffinityCue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AffinityCue.swift; sourceTree = "<group>"; };
 		3426738E4DA43CD7060B7095 /* hang-up.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "hang-up.mp3"; sourceTree = "<group>"; };
@@ -328,6 +330,7 @@
 				3B062B423FB9FC2174A88CBC /* AtmosphericTextUITests.swift */,
 				17A409D36FC5F7C23FD61FFB /* BarTutorialUITests.swift */,
 				98D2780F46613402EB78186A /* CallTypingUITests.swift */,
+				2CCFC142CC2535CA115A8402 /* ChatSelectionUITests.swift */,
 				805B1BB0D7E3061C6B957E32 /* ProducerProfileUITests.swift */,
 				B3E123E7FAC64C8170D6CDFE /* ScheduleCycleUITests.swift */,
 			);
@@ -642,6 +645,7 @@
 				4A89D538AE34E8640D373968 /* AtmosphericTextUITests.swift in Sources */,
 				2AB7F50E81201BDD5EE6B1EC /* BarTutorialUITests.swift in Sources */,
 				CE87D4AD7E46D813BFAA4BC5 /* CallTypingUITests.swift in Sources */,
+				FDB0475CDE701EBBE395CFFE /* ChatSelectionUITests.swift in Sources */,
 				2B42C556DEF0163A11EA4F46 /* ProducerProfileUITests.swift in Sources */,
 				AFCB1D4E31B67D5555622131 /* ScheduleCycleUITests.swift in Sources */,
 			);

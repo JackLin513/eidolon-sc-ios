@@ -50,9 +50,18 @@ final class AtmosphericTextUITests: XCTestCase {
         launchFakeChat()
         startNewConversation()
         send("你好")
-        let scenes = app.staticTexts.matching(identifier: "reply.scene")
-        XCTAssertTrue(scenes.firstMatch.waitForExistence(timeout: 20), "scene block did not appear")
-        XCTAssertEqual(scenes.firstMatch.label, "她把杯子放下，抬眼看过来。")
+        let bubble = app.staticTexts
+            .containing(NSPredicate(format: "label CONTAINS %@", "她把杯子放下，抬眼看过来。"))
+            .firstMatch
+        XCTAssertTrue(bubble.waitForExistence(timeout: 20), "scene block did not appear")
+        let label = bubble.label
+        let sceneRange = label.range(of: "她把杯子放下，抬眼看过来。")
+        let lineRange = label.range(of: "こんばんは。今日はどうしたの？")
+        XCTAssertNotNil(sceneRange, "scene is missing from \(label)")
+        XCTAssertNotNil(lineRange, "line is missing from \(label)")
+        if let sceneRange, let lineRange {
+            XCTAssertLessThan(sceneRange.lowerBound, lineRange.lowerBound, "scene is not before the line")
+        }
     }
 
     func testTurningTheModeOffShowsOnlyTheLine() throws {
@@ -83,13 +92,21 @@ final class AtmosphericTextUITests: XCTestCase {
         startNewConversation()
         send("你好")
 
-        XCTAssertTrue(
-            app.staticTexts["晚上好。今天怎么了？"].waitForExistence(timeout: 20),
-            "the line did not appear"
-        )
+        let bubble = app.staticTexts
+            .containing(NSPredicate(format: "label CONTAINS %@", "晚上好。今天怎么了？"))
+            .firstMatch
+        XCTAssertTrue(bubble.waitForExistence(timeout: 20), "the line did not appear")
+        XCTAssertTrue(bubble.label.contains("こんばんは。今日はどうしたの？"), "Japanese line is missing")
         XCTAssertFalse(
-            app.staticTexts.matching(identifier: "reply.scene").firstMatch.exists,
+            bubble.label.contains("她把杯子放下，抬眼看过来。"),
             "the mode is off but a scene block still appeared"
+        )
+
+        // The bubble is one selectable run; long press anywhere in it (spec #75, #76).
+        bubble.press(forDuration: 1.2)
+        XCTAssertTrue(
+            app.menuItems.firstMatch.waitForExistence(timeout: 5),
+            "long press on her line did not show the selection menu"
         )
     }
 

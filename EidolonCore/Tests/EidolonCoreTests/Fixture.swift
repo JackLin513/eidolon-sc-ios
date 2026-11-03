@@ -464,3 +464,13 @@ enum Fixture {
         return destination
     }
 }
+
+/// The latest turn's actual prompt, as one string, for tests that inspect what the model
+/// read. Traces without prompts (a call's ending trace) are skipped.
+func latestPrompt(on eidolon: Eidolon) async throws -> String {
+    let traces = try await eidolon.turnTraces()
+    return traces.first { !$0.trace.prompts.isEmpty }?
+        .trace.prompts
+        .flatMap { $0.map(\.content) }
+        .joined(separator: "\n") ?? ""
+}
