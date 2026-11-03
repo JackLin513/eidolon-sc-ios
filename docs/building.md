@@ -21,6 +21,12 @@
    查询向量必须用同一个模型；换模型或维度只能先用上游工具重新向量化、再重新导出内容包，
    不能只改 App 里的设置。
 
+   换 Gemini 向量化时，在上游的 `.env` 里设 `EMBEDDING_PROVIDER=gemini`、`GEMINI_API_KEY`、
+   `EMBEDDING_MODEL=gemini-embedding-2`、`EMBEDDING_DIMENSIONS=1536`，先在 `backend` 目录运行
+   `uv run --env-file=../.env eidolon reembed` 把库里的剧情段落重新向量化，再用上面的导出命令
+   重新导出内容包。App 里还要填 Gemini 密钥；重排仍然在硅基流动，所以 `SILICONFLOW_API_KEY`
+   也要留着。Gemini 免费层有每分钟/每天的向量化条数限制，全量重新向量化可能要跑很久。
+
    立绘包先用上游的 `eidolon stand fetch` 和 `eidolon stand outfits` 把素材整理到
    `build/stand`（`EIDOLON_STAND_BUILD_PATH` 指到这里），再单独导出。立绘包默认全量：
 
