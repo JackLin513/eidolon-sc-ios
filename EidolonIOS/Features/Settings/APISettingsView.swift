@@ -751,6 +751,10 @@ struct APISettingsView: View {
     private func load() async {
         saved = app.chatSettings
         settings = app.chatSettings
+        settings.baseURL = APIServiceRouting.baseURLForImportedSettings(
+            settings.baseURL,
+            protocol: settings.apiProtocol
+        )
         #if DEBUG
         // UI tests load a sample without a file picker; the text lives only in the
         // launch environment, never in the app's storage. Only the first appearance.
