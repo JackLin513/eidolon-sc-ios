@@ -1,6 +1,7 @@
 import EidolonCore
 import Foundation
 import Observation
+import OSLog
 import UIKit
 
 enum AppPhase: Equatable {
@@ -601,6 +602,9 @@ final class AppModel {
                 _ = try? await core.migrateLegacyStandIfNeeded()
                 try await load()
                 phase = .ready
+                #if DEBUG
+                importAPIEnvForDebuggingIfRequested()
+                #endif
                 resumeMemoryJobs()
                 await catchUpReachOuts()
             } else {
@@ -618,6 +622,32 @@ final class AppModel {
     }
 
     #if DEBUG
+    /// Development aid: `EIDOLON_API_ENV_FILE` names an `.env` in Documents (or an
+    /// absolute path). It is applied and saved once at launch, then removed so the keys
+    /// do not stay in the app container. Used to set up a device without typing keys.
+    private func importAPIEnvForDebuggingIfRequested() {
+        let environment = ProcessInfo.processInfo.environment
+        guard let name = environment["EIDOLON_API_ENV_FILE"], !name.isEmpty else { return }
+        let url = name.hasPrefix("/")
+            ? URL(fileURLWithPath: name)
+            : URL.documentsDirectory.appending(path: name)
+        guard let data = try? Data(contentsOf: url),
+              let file = try? EnvParser.parse(data: data)
+        else { return }
+        let report = EnvImporter.map(file, contentEmbedding: contentEmbeddingSpace)
+        guard report.blockingError == nil else { return }
+        var settings = chatSettings
+        settings.apply(report.values)
+        // An unsigned UI-test build can fail the Keychain write; this run still needs the
+        // values, as the other debug seeding does.
+        try? saveChatSettings(settings)
+        chatSettings = settings
+        try? FileManager.default.removeItem(at: url)
+        Logger(subsystem: "com.jacklin.eidolon", category: "settings").notice(
+            "imported .env: \(report.mapped.count) mapped, \(report.unsupported.count) unsupported, \(report.unknown.count) unknown"
+        )
+    }
+
     /// Development aid: `SIMCTL_CHILD_EIDOLON_CHAT_BASE_URL/_MODEL/_API_KEY` seed the
     /// chat settings so the simulator can talk to a real model without the keyboard.
     private func applyDebugChatSettings() {
