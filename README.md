@@ -62,7 +62,7 @@
 
 **和她说话**
 
-- 🎙️ **实时语音通话**：拨号等铃、接通和挂断都有提示音；Soniox 实时识别（角色名作热词随连接发出），同一套回合引擎按「通话模式」作答；Fish Audio 逐段合成，上一段播放时预取下一段。
+- 🎙️ **实时语音通话**：拨号等铃、接通和挂断都有提示音；Soniox 或阿里云百炼实时识别（角色名作热词随连接发出），同一套回合引擎按「通话模式」作答；Fish Audio 逐段合成，上一段播放时预取下一段。
 - 🇯🇵 **日语原声 + 中文字幕**：她按日语的说话方式写，每句附中文字幕，逐段流式到达；专有名词按读音表念对。
 - 🎭 **会动的立绘**：通话层用原作的 Spine 3.6 素材，说话时张嘴、你说话时看镜头、说完点头；每段台词后判断一次情绪，按情绪换表情与动作。
 - 👗 **换衣装**：29 个角色、1522 张卡、2034 套衣装随立绘包分发，端上渲染缩略图并缓存，每个角色记住一套。
@@ -111,7 +111,7 @@ xcrun devicectl device process launch --device <UDID> \
   -e '{"EIDOLON_IMPORT_BUNDLE":"eidolon-content.eidolonpkg"}' com.jacklin.eidolon
 ```
 
-第一次进 App 也可以在设置里选包导入。然后在设置里填对话模型、向量化和重排的地址与密钥；要用通话再填 Soniox 与 Fish Audio 的。哪些服务配了才有什么功能、判断模型怎么选，见[配置](docs/configuration.md)；导出、构建、上真机的完整步骤见[构建与安装](docs/building.md)。
+第一次进 App 也可以在设置里选包导入。然后在设置里填对话模型、向量化和重排的地址与密钥；要用通话再填识别服务（Soniox 或百炼）与 Fish Audio 的。哪些服务配了才有什么功能、判断模型怎么选，见[配置](docs/configuration.md)；导出、构建、上真机的完整步骤见[构建与安装](docs/building.md)。
 
 ## 🧩 架构
 
@@ -124,7 +124,7 @@ flowchart LR
         Pkg[("内容包 · 立绘包")]
     end
 
-    UI <-- "实时识别 + 逐段合成" --> STT["Soniox · Fish Audio"]
+    UI <-- "实时识别 + 逐段合成" --> STT["Soniox / 百炼 · Fish Audio"]
     UI --> Engine
     Engine --> DB
     Engine -. "读" .-> Pkg
