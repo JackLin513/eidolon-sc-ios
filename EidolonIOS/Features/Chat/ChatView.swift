@@ -21,6 +21,7 @@ struct ChatView: View {
     @State private var showsOutfits = false
     @State private var showsAffinity = false
     @State private var showsSchedule = false
+    @State private var showsAchievements = false
     @State private var showsDebug = false
     @State private var scheduleBook = ScheduleDraftBook()
 
@@ -95,6 +96,10 @@ struct ChatView: View {
                         showsSchedule = true
                     }
                     .disabled(!app.hasJobList)
+                    Button("成就") {
+                        showsAchievements = true
+                    }
+                    .accessibilityIdentifier("chat.achievements")
                     if app.debugMode {
                         Divider()
                         Button("调试") {
@@ -144,6 +149,12 @@ struct ChatView: View {
         .onDisappear {
             app.readAloud.stop()
         }
+        .sheet(isPresented: $showsAchievements) {
+            NavigationStack {
+                HerAchievementsView(characterID: character.id, characterName: character.name)
+            }
+            .environment(app)
+        }
         .sheet(isPresented: $showsSchedule) {
             ScheduleBoardView(
                 initialCharacterID: character.id, book: $scheduleBook
@@ -187,6 +198,7 @@ struct ChatView: View {
                 core: app.core,
                 conversationID: conversationID
             )
+            created.onRewards = { rewards in app.showAchievementRewards(rewards) }
             await created.load()
             store = created
             autoSendIfRequested(created)
@@ -390,7 +402,7 @@ struct ChatView: View {
             HStack(spacing: 6) {
                 Image(systemName: eventIcon(event.kind))
                     .font(.caption2)
-                Text(eventText(event.kind))
+                Text(eventText(event))
                     .font(.caption2)
             }
             .foregroundStyle(.secondary)
@@ -405,8 +417,12 @@ struct ChatView: View {
         ConversationEventKind(stored: kind).icon
     }
 
-    private func eventText(_ kind: String) -> String {
-        ConversationEventKind(stored: kind).displayText
+    private func eventText(_ event: ConversationEventRecord) -> String {
+        if ConversationEventKind(stored: event.kind) == .gift {
+            let name = event.giftID.flatMap { app.giftCatalog?.gift(id: $0)?.name } ?? "礼物"
+            return GiftText.given(characterName: character.name, giftName: name)
+        }
+        return ConversationEventKind(stored: event.kind).displayText
     }
 
     /// One message as the bubble-group rule draws it: her group's first line carries her

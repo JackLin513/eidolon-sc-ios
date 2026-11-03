@@ -382,6 +382,27 @@ final class AppModel {
     private(set) var giftCatalog: GiftCatalog?
     private(set) var lastGiftDraw: GiftDraw?
     private(set) var isGiftWorking = false
+    /// The numbers draws come from; `EIDOLON_GIFT_SEED` fixes them for a debug launch.
+    private let giftRandom: any GiftRandom = {
+        #if DEBUG
+        if let raw = ProcessInfo.processInfo.environment["EIDOLON_GIFT_SEED"],
+           let seed = UInt64(raw)
+        {
+            return SeededGiftRandom(seed: seed)
+        }
+        #endif
+        return SystemGiftRandom()
+    }()
+
+    // MARK: - Achievements (spec #69–#72)
+
+    /// The play tab's dot: a stage or reward the producer has not looked at.
+    private(set) var achievementBadge = false
+    /// The one-time backfill summary, until its alert is dismissed.
+    private(set) var achievementLaunch: AchievementLaunchSummary?
+    /// The toast after a turn, gift or draw unlocked something.
+    private(set) var achievementToast: String?
+    private var toastTask: Task<Void, Never>?
 
     /// The debug page's view of the global draw balance.
     func debugGiftDraws() async throws -> Int {
@@ -405,10 +426,91 @@ final class AppModel {
     func drawGifts(all: Bool) async throws -> GiftDraw {
         isGiftWorking = true
         defer { isGiftWorking = false }
-        let draw = try await core.drawGifts(all: all)
+        let draw = try await core.drawGifts(all: all, random: giftRandom)
         lastGiftDraw = draw
         giftState = try await core.giftState()
+        showAchievementRewards(draw.rewards)
         return draw
+    }
+
+    /// The roster the gift panel lists, with her tier and cooldown, never what she likes.
+    func giftRecipients() async throws -> [GiftRecipient] {
+        try await core.giftRecipients()
+    }
+
+    @discardableResult
+    func giveGift(giftID: String, characterID: String) async throws -> GiftGiven {
+        let given = try await core.giveGift(giftID: giftID, characterID: characterID)
+        giftState = try await core.giftState()
+        showAchievementRewards(given.rewards)
+        return given
+    }
+
+    func resetCardTargets() async throws -> [ResetCardTarget] {
+        try await core.resetCardTargets()
+    }
+
+    @discardableResult
+    func useResetCard() async throws -> ResetCardUse {
+        let use = try await core.useResetCard()
+        giftState = try await core.giftState()
+        await refreshAchievementBadge()
+        return use
+    }
+
+    func herAchievements(characterID: String) async throws -> HerAchievements {
+        try await core.herAchievements(characterID: characterID)
+    }
+
+    func allAchievements() async throws -> AllAchievements {
+        try await core.allAchievements()
+    }
+
+    func markAchievementsSeen(characterID: String?) async {
+        try? await core.markAchievementsSeen(characterID: characterID)
+        await refreshAchievementBadge()
+    }
+
+    func markGiftRewardsSeen() async {
+        try? await core.markGiftRewardsSeen()
+        await refreshAchievementBadge()
+    }
+
+    func refreshAchievementBadge() async {
+        achievementBadge = (try? await core.achievementBadge()) ?? false
+    }
+
+    /// Clears the play tab's dot once the achievements page or the gift page was opened.
+    func markPlaySeen() async {
+        try? await core.markPlaySeen()
+        await refreshAchievementBadge()
+    }
+
+    /// Shows what an action unlocked and keeps the tab dot current.
+    func showAchievementRewards(_ rewards: [AchievementReward]) {
+        guard !rewards.isEmpty else {
+            Task { await refreshAchievementBadge() }
+            return
+        }
+        achievementToast = AchievementReward.toast(for: rewards) ?? "成就解锁"
+        if let achievementToast {
+            UIAccessibility.post(notification: .announcement, argument: achievementToast)
+        }
+        toastTask?.cancel()
+        toastTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            self?.achievementToast = nil
+        }
+        Task { await refreshAchievementBadge() }
+    }
+
+    func dismissAchievementLaunch() {
+        achievementLaunch = nil
+        Task {
+            try? await core.markAchievementLaunchSeen()
+            await refreshAchievementBadge()
+        }
     }
 
 
@@ -682,6 +784,9 @@ final class AppModel {
                 #if DEBUG
                 importAPIEnvForDebuggingIfRequested()
                 #endif
+                _ = try? await core.launchAchievements()
+                achievementLaunch = try? await core.achievementLaunchSummary()
+                await refreshAchievementBadge()
                 resumeMemoryJobs()
                 await catchUpReachOuts()
             } else {
@@ -842,9 +947,19 @@ final class AppModel {
     /// puts the gift page in a known state, with an empty backpack, for UI tests.
     private func applyDebugGiftState() async {
         let environment = ProcessInfo.processInfo.environment
-        guard let raw = environment["EIDOLON_GIFT_DRAWS"], let draws = Int(raw) else { return }
-        let cards = Int(environment["EIDOLON_GIFT_RESET_CARDS"] ?? "") ?? 0
-        try? await core.debugSetGiftBalance(draws: draws, resetCards: cards)
+        if let raw = environment["EIDOLON_GIFT_DRAWS"], let draws = Int(raw) {
+            let cards = Int(environment["EIDOLON_GIFT_RESET_CARDS"] ?? "") ?? 0
+            try? await core.debugSetGiftBalance(draws: draws, resetCards: cards)
+        }
+        if let raw = environment["EIDOLON_GIFT_BACKPACK"], !raw.isEmpty {
+            var gifts: [String: Int] = [:]
+            for pair in raw.split(separator: ",") {
+                let parts = pair.split(separator: ":")
+                guard parts.count == 2, let count = Int(parts[1]) else { continue }
+                gifts[String(parts[0])] = count
+            }
+            try? await core.debugSetGiftBackpack(gifts)
+        }
     }
 
     /// Development aid: `SIMCTL_CHILD_EIDOLON_ADULT_MODE=1` turns adult mode on without
@@ -1241,6 +1356,7 @@ final class AppModel {
         standInfo = try await core.installedStandInfo()
         barInfo = try await core.installedBarInfo()
         barRewardToday = (try? await core.barRewardToday()) ?? true
+        giftCatalog = try? await core.giftCatalog()
 
         var images: [String: UIImage] = [:]
         for character in characters {

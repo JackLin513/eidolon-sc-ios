@@ -12,6 +12,17 @@ public enum GiftRules {
     public static let rarePercent = AffinityRules.rarePercent
     /// The identifier a reset card is shown under; not a gift.
     public static let resetCardID = "reset_card"
+    /// How much a gift raises affinity by its rarity (upstream `GIFT_STEPS`).
+    public static func step(_ rarity: GiftRarity) -> Double {
+        switch rarity {
+        case .common: 0.3
+        case .uncommon: 0.5
+        case .rare: 0.7
+        }
+    }
+    public static let likedStep = 0.3
+    public static let warmStep = 0.3
+    public static let cooldownStep = 3.0
 
     /// The Beijing day `now` is in, as the balance keeps it (`yyyy-MM-dd`).
     public static func day(_ now: Date) -> String {
@@ -55,6 +66,26 @@ public struct SystemGiftRandom: GiftRandom {
     public func int(below bound: Int) -> Int {
         precondition(bound > 0, "a random bound must be positive")
         return Int.random(in: 0..<bound)
+    }
+}
+
+/// The numbers from a seed, the same sequence each launch, for a debug draw whose result
+/// can be looked at twice (spec #73). Locked because draws may come from more than one
+/// task, though the actor serializes them today.
+public final class SeededGiftRandom: GiftRandom, @unchecked Sendable {
+    private var state: UInt64
+    private let lock = NSLock()
+
+    public init(seed: UInt64) {
+        state = seed
+    }
+
+    public func int(below bound: Int) -> Int {
+        precondition(bound > 0, "a random bound must be positive")
+        lock.lock()
+        defer { lock.unlock() }
+        state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+        return Int((state >> 33) % UInt64(bound))
     }
 }
 
@@ -115,6 +146,19 @@ public struct GiftDraw: Sendable, Hashable {
     public let results: [GiftDrawResult]
     public let drawsLeft: Int
     public let resetCards: Int
+    public let rewards: [AchievementReward]
+
+    public init(
+        results: [GiftDrawResult],
+        drawsLeft: Int,
+        resetCards: Int,
+        rewards: [AchievementReward] = []
+    ) {
+        self.results = results
+        self.drawsLeft = drawsLeft
+        self.resetCards = resetCards
+        self.rewards = rewards
+    }
 }
 
 extension Eidolon {
@@ -219,7 +263,18 @@ extension Eidolon {
                 db,
                 sql: "SELECT reset_cards FROM gift_balances WHERE id = 1"
             ) ?? 0
-            return GiftDraw(results: results, drawsLeft: left, resetCards: resetCards)
+            let rewards = try AchievementStore.keep(
+                db,
+                now: now,
+                today: GiftRules.day(now),
+                draws: count
+            )
+            return GiftDraw(
+                results: results,
+                drawsLeft: left,
+                resetCards: resetCards,
+                rewards: rewards
+            )
         }
     }
 
@@ -313,5 +368,313 @@ extension Eidolon {
             throw EidolonError.invalidBundle("抽奖随机源越界")
         }
         return .gift(pool[index])
+    }
+}
+
+/// One character the gift page may give to, with how she feels now, never what she likes.
+public struct GiftRecipient: Sendable, Hashable, Identifiable {
+    public var characterID: String
+    public var name: String
+    public var tier: AffinityTier
+    public var cooling: Bool
+
+    public var id: String { characterID }
+}
+
+/// What giving a gift did: where it was recorded, how it changed her, and what is left.
+public struct GiftGiven: Sendable, Hashable {
+    public var gift: Gift
+    public var characterID: String
+    public var conversationID: String
+    public var tier: AffinityTier
+    /// Nil when nothing changed to show.
+    public var change: AffinityChange?
+    public var stillCooling: Bool
+    public var remaining: Int
+    public var rewards: [AchievementReward]
+}
+
+/// A character a reset card would bring back below trust, as the confirmation lists her.
+public struct ResetCardTarget: Sendable, Hashable, Identifiable {
+    public var characterID: String
+    public var name: String
+    public var tier: AffinityTier
+    public var cooling: Bool
+
+    public var id: String { characterID }
+}
+
+/// How the gift is written wherever it is spoken of: her chat, the roster's preview, and
+/// the list of conversations.
+public enum GiftText {
+    public static func given(characterName: String, giftName: String?) -> String {
+        "你送给\(characterName)一份\(giftName ?? "礼物")"
+    }
+}
+
+/// What using a reset card did: who came back, and how many cards are left.
+public struct ResetCardUse: Sendable, Hashable {
+    public var restored: [ResetCardTarget]
+    public var resetCardsLeft: Int
+}
+
+extension Eidolon {
+    /// The characters the gift page lists, in the conversation list's order, with her tier
+    /// and whether she is cooling; never her liked gifts.
+    public func giftRecipients(now: Date = Date()) throws -> [GiftRecipient] {
+        let ordered = ConversationOrder.byRecency(
+            try characters(), latest: try latestActivities()
+        )
+        return try ordered.map { character in
+            let status = try affinityStatus(characterID: character.id, now: now)
+            return GiftRecipient(
+                characterID: character.id,
+                name: character.name,
+                tier: status.tier,
+                cooling: status.cooling
+            )
+        }
+    }
+
+    /// Gives the character one of the gift: taken from the backpack, raising her affinity
+    /// as upstream `gifts.give` does, recorded as a `gift` conversation event, and counted
+    /// towards the achievements, all in one transaction.
+    public func giveGift(
+        giftID: String,
+        characterID: String,
+        now: Date = Date()
+    ) throws -> GiftGiven {
+        guard let catalog = try giftCatalog() else { throw EidolonError.giftCatalogMissing }
+        guard let gift = catalog.gift(id: giftID) else { throw EidolonError.noSuchGift }
+        let characters = try characters()
+        guard let character = characters.first(where: { $0.id == characterID }) else {
+            throw EidolonError.invalidContent("找不到角色 \(characterID)")
+        }
+        let timeZone = try producerTimeZone()
+        let warmed = try warms(gift, characterID: characterID, now: now, timeZone: timeZone)
+        let liked = character.likedGifts.contains(giftID)
+        return try userQueue.write { db in
+            try db.execute(
+                sql: "UPDATE gift_backpack SET count = count - 1 WHERE gift_id = ? AND count > 0",
+                arguments: [giftID]
+            )
+            guard db.changesCount > 0 else { throw EidolonError.noSuchGift }
+            let remaining = try Int.fetchOne(
+                db,
+                sql: "SELECT count FROM gift_backpack WHERE gift_id = ?",
+                arguments: [giftID]
+            ) ?? 0
+
+            let before = try Self.readAffinity(db, characterID: characterID, now: now)
+            let step = gift.coolingStep(
+                affinityCooling: before.cooling,
+                liked: liked,
+                warmed: warmed
+            )
+            let after = before.raised(step, at: now)
+            let change: AffinityChange?
+            if before.cooling, !after.cooling {
+                change = AffinityChange(
+                    up: true,
+                    tierChanged: after.tier != before.tier,
+                    tier: after.tier,
+                    cooldown: false,
+                    thawed: true
+                )
+            } else if !after.cooling, after.value != before.value {
+                change = AffinityChange(
+                    up: after.value > before.value,
+                    tierChanged: after.tier != before.tier,
+                    tier: after.tier,
+                    cooldown: after.cooling && !before.cooling
+                )
+            } else {
+                change = nil
+            }
+            try db.execute(
+                sql: """
+                    INSERT INTO affinities(character_id, value, cooling, updated_at, gained_today, gained_on)
+                    VALUES (?, ?, ?, ?, 0, NULL)
+                    ON CONFLICT(character_id) DO UPDATE SET
+                        value = excluded.value, cooling = excluded.cooling,
+                        updated_at = excluded.updated_at
+                    """,
+                arguments: [characterID, after.value, after.cooling ? 1 : 0, Self.timestamp(now)]
+            )
+
+            let conversationID: String
+            let current = try Self.currentConversationID(db, characterID: characterID)
+            let ended: String? = try current.flatMap {
+                try String.fetchOne(
+                    db,
+                    sql: "SELECT ended_at FROM conversations WHERE id = ?",
+                    arguments: [$0]
+                )
+            }
+            if let current, ended == nil {
+                conversationID = current
+            } else {
+                conversationID = UUID().uuidString
+                try Self.insertConversation(
+                    db,
+                    id: conversationID,
+                    characterID: characterID,
+                    createdAt: Self.timestamp(now)
+                )
+            }
+            let affinityJSON = change.flatMap { try? JSONEncoder().encode($0) }
+                .map { String(decoding: $0, as: UTF8.self) }
+            try db.execute(
+                sql: """
+                    INSERT INTO conversation_events
+                        (conversation_id, kind, created_at, gift_id, liked, affinity)
+                    VALUES (?, 'gift', ?, ?, ?, ?)
+                    """,
+                arguments: [
+                    conversationID, Self.timestamp(now), giftID, liked ? 1 : 0, affinityJSON,
+                ]
+            )
+            let rewards = try AchievementStore.keep(
+                db,
+                characterID: characterID,
+                now: now,
+                today: GiftRules.day(now),
+                gifts: 1,
+                tier: after.tier
+            )
+            return GiftGiven(
+                gift: gift,
+                characterID: characterID,
+                conversationID: conversationID,
+                tier: after.tier,
+                change: change,
+                stillCooling: after.cooling,
+                remaining: remaining,
+                rewards: rewards
+            )
+        }
+    }
+
+    /// Who a reset card would bring back now, in roster order, below trust and cooling or not.
+    public func resetCardTargets(now: Date = Date()) throws -> [ResetCardTarget] {
+        try characters().compactMap { character in
+            let status = try affinityStatus(characterID: character.id, now: now)
+            guard status.tier.start < AffinityTier.trust.start else { return nil }
+            return ResetCardTarget(
+                characterID: character.id,
+                name: character.name,
+                tier: status.tier,
+                cooling: status.cooling
+            )
+        }
+    }
+
+    /// Uses one reset card, bringing every character below trust back to 50 and out of any
+    /// cooldown, in one transaction; no one to bring back or no card leaves it unspent.
+    public func useResetCard(now: Date = Date()) throws -> ResetCardUse {
+        let characters = try characters()
+        return try userQueue.write { db in
+            let cards = try Int.fetchOne(
+                db, sql: "SELECT reset_cards FROM gift_balances WHERE id = 1"
+            ) ?? 0
+            guard cards > 0 else { throw EidolonError.noResetCards }
+            var restored: [ResetCardTarget] = []
+            for character in characters {
+                let affinity = try Self.readAffinity(
+                    db, characterID: character.id, now: now
+                )
+                guard affinity.tier.start < AffinityTier.trust.start else { continue }
+                restored.append(ResetCardTarget(
+                    characterID: character.id,
+                    name: character.name,
+                    tier: affinity.tier,
+                    cooling: affinity.cooling
+                ))
+                try db.execute(
+                    sql: """
+                        UPDATE affinities SET value = ?, updated_at = ?, cooling = 0
+                        WHERE character_id = ?
+                        """,
+                    arguments: [AffinityRules.normal, Self.timestamp(now), character.id]
+                )
+            }
+            guard !restored.isEmpty else { throw EidolonError.noOneToReset }
+            try db.execute(
+                sql: "UPDATE gift_balances SET reset_cards = reset_cards - 1 WHERE id = 1"
+            )
+            return ResetCardUse(restored: restored, resetCardsLeft: cards - 1)
+        }
+    }
+
+    private func warms(
+        _ gift: Gift,
+        characterID: String,
+        now: Date,
+        timeZone: TimeZone
+    ) throws -> Bool {
+        guard gift.warm else { return false }
+        return try herCycle(
+            characterID: characterID,
+            now: now,
+            timeZone: timeZone
+        ) != nil
+    }
+
+    private func producerTimeZone() throws -> TimeZone {
+        try producerProfile().timezone.flatMap(TimeZone.init(identifier:)) ?? .current
+    }
+}
+
+extension Gift {
+    /// How much giving this gift raises her affinity: `COOLDOWN_GIFT_STEP` in a cooldown,
+    /// else rarity plus liking and warmth (upstream `_gift_step`).
+    func coolingStep(affinityCooling: Bool, liked: Bool, warmed: Bool) -> Double {
+        if affinityCooling { return GiftRules.cooldownStep }
+        return GiftRules.step(rarity) + (liked ? GiftRules.likedStep : 0)
+            + (warmed ? GiftRules.warmStep : 0)
+    }
+}
+
+/// The gift claiming rules shared by giving, achievements and the bar's draw.
+enum GiftStore {
+    /// Gives a reward once by its key: draw chances, over the day's cap, and reset cards.
+    /// Whether it was given now.
+    static func creditReward(
+        _ db: Database,
+        key: String,
+        draws: Int,
+        resetCards: Int,
+        at now: Date
+    ) throws -> Bool {
+        try Eidolon.giveDueGiftDraws(db, at: now)
+        try db.execute(
+            sql: """
+                INSERT INTO gift_rewards(key, draws, reset_cards, rewarded_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT DO NOTHING
+                """,
+            arguments: [key, draws, resetCards, Eidolon.timestamp(now)]
+        )
+        guard db.changesCount > 0 else { return false }
+        try db.execute(
+            sql: """
+                UPDATE gift_balances
+                SET draws = draws + ?, reset_cards = reset_cards + ?
+                WHERE id = 1
+                """,
+            arguments: [draws, resetCards]
+        )
+        return true
+    }
+
+    /// The bar's first visit done gives one draw, held to the day's most: only if it was
+    /// under the cap when the visit finished, recorded once by its key.
+    static func creditBarDraw(_ db: Database, key: String, at now: Date) throws -> Bool {
+        try Eidolon.giveDueGiftDraws(db, at: now)
+        let draws = try Int.fetchOne(
+            db, sql: "SELECT draws FROM gift_balances WHERE id = 1"
+        ) ?? 0
+        guard draws < GiftRules.maxDraws else { return false }
+        return try creditReward(db, key: key, draws: 1, resetCards: 0, at: now)
     }
 }

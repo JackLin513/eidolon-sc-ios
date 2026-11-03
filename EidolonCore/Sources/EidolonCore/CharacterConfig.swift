@@ -164,6 +164,8 @@ public struct LatestActivity: Sendable, Hashable {
     /// The kind of the latest conversation event, when that is the latest thing rather
     /// than something said (GLOSSARY.md「对话事件」).
     public var lastEventKind: String?
+    /// The gift of the latest gift event, when that is the latest thing.
+    public var lastGiftID: String?
     public var unseenReachOut: Bool
 
     public init(
@@ -171,12 +173,14 @@ public struct LatestActivity: Sendable, Hashable {
         lastMessageRole: String? = nil,
         lastMessageAt: String? = nil,
         lastEventKind: String? = nil,
+        lastGiftID: String? = nil,
         unseenReachOut: Bool = false
     ) {
         self.lastMessagePreview = lastMessagePreview
         self.lastMessageRole = lastMessageRole
         self.lastMessageAt = lastMessageAt
         self.lastEventKind = lastEventKind
+        self.lastGiftID = lastGiftID
         self.unseenReachOut = unseenReachOut
     }
 }

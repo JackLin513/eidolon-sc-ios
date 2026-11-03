@@ -34,6 +34,10 @@ tools/oracle/run.sh                          # 与上游逐字对照提示词（
 - `EIDOLON_API_ENV_TEXT`：同上，但内容直接写在环境变量里（UI 测试用，不经过文件选择器）
 - `EIDOLON_API_MODEL_LIST=a,b,c`：让「获取模型」用这份固定列表，不访问网络
 - `EIDOLON_API_PROBE=success` / `failure`：让服务测试按钮返回注入的成功或失败结果，不访问网络
+- `EIDOLON_GIFT_DRAWS` / `EIDOLON_GIFT_RESET_CARDS`：把抽奖次数和重置卡设成固定值，背包清空（仅 DEBUG）
+- `EIDOLON_GIFT_BACKPACK=cake:2,black-tea:1`：把礼物放进背包（仅 DEBUG）
+- `EIDOLON_GIFT_SEED=42`：让抽奖用固定种子的随机序列，同一种子每次启动给出同样的结果（仅 DEBUG）
+- 玩法页真机验收：抽单抽/全抽、送礼分隔线与她的回应、重置卡确认框、她的成就面板、玩法成就页、补算汇总、通话中切玩法（抽奖可用、送礼禁用）、VoiceOver/大字号/暗色/减少动态效果
 - `EIDOLON_GEMINI_API_KEY`：预置 Gemini 向量化密钥（配合 `EIDOLON_CHAT_API_KEY`）
 - `EIDOLON_FAKE_GEMINI_BUNDLE=1`：让设置页按「内容包需要 Gemini 向量」显示，不改变真实内容包
 

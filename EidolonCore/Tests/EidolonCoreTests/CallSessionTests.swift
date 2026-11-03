@@ -1439,10 +1439,25 @@ final class CallSessionTests: XCTestCase {
             return false
         }
 
-        let characters = try await eidolon.userQueue.read { db in
-            try String.fetchAll(db, sql: "SELECT character_id FROM call_ends")
+        let calls = try await eidolon.userQueue.read { db -> [(String, String?, Double?)] in
+            try Row.fetchAll(
+                db,
+                sql: "SELECT character_id, connected_at, duration_s FROM call_ends"
+            ).map { ($0["character_id"], $0["connected_at"], $0["duration_s"]) }
         }
-        XCTAssertEqual(characters, ["mano"])
+        XCTAssertEqual(calls.map(\.0), ["mano"])
+        XCTAssertNotNil(calls.first?.1)
+        XCTAssertGreaterThanOrEqual(calls.first?.2 ?? -1, 0)
+        let progress = try await eidolon.userQueue.read { db in
+            try Double.fetchOne(
+                db,
+                sql: """
+                    SELECT count FROM achievement_progress
+                    WHERE achievement = 'call_time' AND character_id = 'mano'
+                    """
+            )
+        }
+        XCTAssertNotNil(progress, "a connected call moves the call-time achievement")
     }
 
     /// Hanging up stops her voice before it closes the microphone, and the segment playing

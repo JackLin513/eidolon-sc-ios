@@ -67,6 +67,7 @@
 		BEB47246CC69F57123F84743 /* CREDITS.md in Resources */ = {isa = PBXBuildFile; fileRef = 3E8A9D366A002F554C2BAE80 /* CREDITS.md */; };
 		C375B67690EAE8B5B255A1B3 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1FF6012F255268462E4A685 /* Keychain.swift */; };
 		C49847C1C908EFA4FDF3BE9F /* WebSocketSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 909079B25647A871FFBB6DEC /* WebSocketSupport.swift */; };
+		C4A367A529E4989B63B0939E /* AchievementsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC72E9FAE9DD7A41CB65A1D2 /* AchievementsView.swift */; };
 		C5B1C51FBA6F57968A704048 /* StandPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A39D03BFDD50261F07F298 /* StandPreviewView.swift */; };
 		C7D9B29CBBADC895872095A7 /* TexturedAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D7CC6AFCA2A05909641B10 /* TexturedAudio.swift */; };
 		CABF61FA71D8DD24099824B3 /* ConversationHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */; };
@@ -175,6 +176,7 @@
 		D48DCFB6F0FC0D93BD033FC6 /* TraceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceListView.swift; sourceTree = "<group>"; };
 		D97FA6838C4D87D4724543C3 /* BarSound.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarSound.swift; sourceTree = "<group>"; };
 		DC2610401DD1C29D8D7AB56C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		DC72E9FAE9DD7A41CB65A1D2 /* AchievementsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchievementsView.swift; sourceTree = "<group>"; };
 		E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxRecognition.swift; sourceTree = "<group>"; };
 		E34EF8A94AAE4F85069E98B0 /* ScheduleBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleBoardView.swift; sourceTree = "<group>"; };
 		E826CF3E4888BCFD5A270D64 /* ObjCExceptionCatcher.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ObjCExceptionCatcher.h; sourceTree = "<group>"; };
@@ -219,6 +221,7 @@
 		1963BD6A440B8224EF15AAED /* Play */ = {
 			isa = PBXGroup;
 			children = (
+				DC72E9FAE9DD7A41CB65A1D2 /* AchievementsView.swift */,
 				7F3FDDF38468E86F1EF7C7A6 /* GiftsView.swift */,
 				9642E415565176749C5D2D54 /* PlayHubView.swift */,
 			);
@@ -631,6 +634,7 @@
 				B6BE9BFD3E39D4998319B6F0 /* APIModelPicker.swift in Sources */,
 				26F5E5C4D4F191FC8B32A126 /* APISettingsSupport.swift in Sources */,
 				CE00D8377D2438104442130D /* APISettingsView.swift in Sources */,
+				C4A367A529E4989B63B0939E /* AchievementsView.swift in Sources */,
 				90BA232DAFE04205D280A5AF /* AffinityCue.swift in Sources */,
 				113F1FAAA8A9FE0C88AB1FC5 /* AffinityViews.swift in Sources */,
 				10BA2565084D529C4152A890 /* AppModel.swift in Sources */,
