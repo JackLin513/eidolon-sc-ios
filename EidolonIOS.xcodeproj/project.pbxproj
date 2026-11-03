@@ -34,6 +34,7 @@
 		502DA124FF6C85F5C69F0991 /* connect.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 31FDC61716128573E91E0E66 /* connect.m4a */; };
 		50FF16442DF243C8411FF741 /* SonioxRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */; };
 		58D49346C2362E8BD2497083 /* BarRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F84087F773F0C23692413FF7 /* BarRoomView.swift */; };
+		5D56B7DEA553EFFF531FE9A9 /* BailianRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F578A9048CFEEA99905CC19 /* BailianRecognition.swift */; };
 		5F55056A446CF6F4D61A7E16 /* BarJukeboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3A3CDE40EDED61EECF1DBF1 /* BarJukeboxView.swift */; };
 		6ADC1F5313FCC7F5003E1676 /* stand-player.js in Resources */ = {isa = PBXBuildFile; fileRef = 54B11631789B9A8BDAE83193 /* stand-player.js */; };
 		71F9D2D2A2CE1C9A213F29AA /* APISettingsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB451726D31E16340EB84E2 /* APISettingsUITests.swift */; };
@@ -61,6 +62,7 @@
 		BBCD2E47044DFC5DAB92ED57 /* CallSettingsError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */; };
 		BEB47246CC69F57123F84743 /* CREDITS.md in Resources */ = {isa = PBXBuildFile; fileRef = 3E8A9D366A002F554C2BAE80 /* CREDITS.md */; };
 		C375B67690EAE8B5B255A1B3 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1FF6012F255268462E4A685 /* Keychain.swift */; };
+		C49847C1C908EFA4FDF3BE9F /* WebSocketSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 909079B25647A871FFBB6DEC /* WebSocketSupport.swift */; };
 		C5B1C51FBA6F57968A704048 /* StandPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A39D03BFDD50261F07F298 /* StandPreviewView.swift */; };
 		C7D9B29CBBADC895872095A7 /* TexturedAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D7CC6AFCA2A05909641B10 /* TexturedAudio.swift */; };
 		CABF61FA71D8DD24099824B3 /* ConversationHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */; };
@@ -137,7 +139,9 @@
 		7FB135685AEF80F60C0388E2 /* APISettingsSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APISettingsSupport.swift; sourceTree = "<group>"; };
 		805B1BB0D7E3061C6B957E32 /* ProducerProfileUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProducerProfileUITests.swift; sourceTree = "<group>"; };
 		889A8316C35EBB240F4D78A2 /* BarGuest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarGuest.swift; sourceTree = "<group>"; };
+		909079B25647A871FFBB6DEC /* WebSocketSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketSupport.swift; sourceTree = "<group>"; };
 		98D2780F46613402EB78186A /* CallTypingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallTypingUITests.swift; sourceTree = "<group>"; };
+		9F578A9048CFEEA99905CC19 /* BailianRecognition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BailianRecognition.swift; sourceTree = "<group>"; };
 		A2D79D1CDB4D74AADF0D731E /* AffinityViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AffinityViews.swift; sourceTree = "<group>"; };
 		A3A3CDE40EDED61EECF1DBF1 /* BarJukeboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarJukeboxView.swift; sourceTree = "<group>"; };
 		A3D7CC6AFCA2A05909641B10 /* TexturedAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TexturedAudio.swift; sourceTree = "<group>"; };
@@ -455,6 +459,7 @@
 		ED8BC68D17B14C4A10AA4A37 /* Call */ = {
 			isa = PBXGroup;
 			children = (
+				9F578A9048CFEEA99905CC19 /* BailianRecognition.swift */,
 				6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */,
 				CE4CA93A98A82A36915C5E19 /* CallTonesPlayer.swift */,
 				FCD1CD149AFF0049C2EE0F58 /* DebugRecognition.swift */,
@@ -463,6 +468,7 @@
 				E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */,
 				362E0BAAF16B958F406E1E08 /* SpeechPlayback.swift */,
 				A3D7CC6AFCA2A05909641B10 /* TexturedAudio.swift */,
+				909079B25647A871FFBB6DEC /* WebSocketSupport.swift */,
 			);
 			path = Call;
 			sourceTree = "<group>";
@@ -602,6 +608,7 @@
 				90BA232DAFE04205D280A5AF /* AffinityCue.swift in Sources */,
 				113F1FAAA8A9FE0C88AB1FC5 /* AffinityViews.swift in Sources */,
 				10BA2565084D529C4152A890 /* AppModel.swift in Sources */,
+				5D56B7DEA553EFFF531FE9A9 /* BailianRecognition.swift in Sources */,
 				4235DD89FDB9280BFC39D5E1 /* BarCanvas.swift in Sources */,
 				FA5A10686839158B2C50E21D /* BarCounter.swift in Sources */,
 				99CF59ED1AC1CDDA579652C8 /* BarDoor.swift in Sources */,
@@ -654,6 +661,7 @@
 				C7D9B29CBBADC895872095A7 /* TexturedAudio.swift in Sources */,
 				791DD675A29C48B88185FACE /* Theme.swift in Sources */,
 				28E1D1F65D00588EA9601DA3 /* TraceListView.swift in Sources */,
+				C49847C1C908EFA4FDF3BE9F /* WebSocketSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
