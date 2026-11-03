@@ -263,7 +263,7 @@ final class AppModel {
         }) else {
             throw ChatProviderError.notConfigured
         }
-        if let missing = CallSettingsError.missingSonioxKeyWhenNeeded(chatSettings) {
+        if let missing = CallSettingsError.missingRecognitionKeyWhenNeeded(chatSettings) {
             throw missing
         }
         let hotWords = (try? await core.callHotWords()) ?? []
@@ -397,14 +397,21 @@ final class AppModel {
             )
         }
         #endif
-        return (
-            MicrophoneCapture(),
+        let recognition: any SpeechRecognition = switch chatSettings.speechToText {
+        case .soniox:
             SonioxRecognition(
                 apiKey: chatSettings.sonioxAPIKey,
                 model: chatSettings.sonioxModel,
                 terms: hotWords
             )
-        )
+        case .bailian:
+            BailianRecognition(
+                apiKey: chatSettings.dashscopeAPIKey,
+                model: chatSettings.bailianSTTModel,
+                terms: hotWords
+            )
+        }
+        return (MicrophoneCapture(), recognition)
     }
 
     /// Without a Fish Audio key her words are subtitles only (ADR-0011).
@@ -671,8 +678,14 @@ final class AppModel {
         settings.embeddingModel = environment["EIDOLON_EMBEDDING_MODEL"] ?? ""
         settings.rerankModel = environment["EIDOLON_RERANK_MODEL"] ?? ""
         settings.retrievalAPIKey = environment["EIDOLON_RETRIEVAL_API_KEY"] ?? ""
+        settings.speechToText = SpeechToTextService(
+            rawValue: environment["EIDOLON_STT_PROVIDER"] ?? ""
+        ) ?? settings.speechToText
         settings.sonioxAPIKey = environment["EIDOLON_SONIOX_API_KEY"] ?? ""
         settings.sonioxModel = environment["EIDOLON_SONIOX_MODEL"] ?? "stt-rt-v5"
+        settings.dashscopeAPIKey = environment["EIDOLON_DASHSCOPE_API_KEY"] ?? ""
+        settings.bailianSTTModel = environment["EIDOLON_BAILIAN_STT_MODEL"]
+            ?? BailianSTTConfiguration.defaultModel
         settings.fishAPIKey = environment["EIDOLON_FISH_API_KEY"] ?? ""
         settings.fishModel = environment["EIDOLON_FISH_MODEL"] ?? "s2.1-pro-free"
         // A setting this seeding does not carry (atmospheric text, phone texture, the

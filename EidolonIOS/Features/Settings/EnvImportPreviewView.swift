@@ -193,9 +193,6 @@ struct EnvImportPreviewView: View {
         if key.hasPrefix("GEMINI_") || key == "EMBEDDING_PROVIDER" {
             return "Gemini embedding 暂未接入（#89）"
         }
-        if key.hasPrefix("DASHSCOPE_") || key.hasPrefix("BAILIAN_STT") || key == "STT_PROVIDER" {
-            return "百炼实时识别暂未接入（#90）"
-        }
         if key.hasPrefix("NOVELAI_") || key.hasPrefix("GPT_IMAGE_") {
             return "生图不在首版范围"
         }
