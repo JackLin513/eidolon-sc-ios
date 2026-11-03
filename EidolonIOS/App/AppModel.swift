@@ -71,9 +71,17 @@ final class AppModel {
             return DebugChatProvider()
         }
         #endif
-        return chatSettings.config.map {
-            OpenAICompatibleChatProvider(config: $0) as any ChatProvider
-        }
+        guard let config = chatSettings.config else { return nil }
+        return ChatProviderFactory.make(config: config)
+    }
+
+    /// What writes memories and names conversations (spec #80): the background model with
+    /// the chat model's missing fields, or the chat model itself when none is set — no
+    /// second provider is built then.
+    var backgroundProvider: (any ChatProvider)? {
+        guard chatSettings.hasBackgroundModel else { return chatProvider }
+        guard let config = chatSettings.backgroundConfig else { return nil }
+        return ChatProviderFactory.make(config: config)
     }
 
     var tracing: TurnTracing {
@@ -91,8 +99,38 @@ final class AppModel {
         chatSettings.adultMode && character.isAdult
     }
 
+    /// The installed bundle's vector space: retrieval's query vector must live in it
+    /// (spec #80).
+    var contentEmbeddingSpace: ContentEmbeddingSpace? {
+        guard let info = bundleInfo else { return nil }
+        return ContentEmbeddingSpace(
+            model: info.embeddingModel,
+            dimensions: info.embeddingDimensions
+        )
+    }
+
     var embeddingProvider: (any EmbeddingProvider)? {
-        chatSettings.embeddingConfig.map { SiliconFlowEmbedding(config: $0) as any EmbeddingProvider }
+        chatSettings.embeddingConfig(for: contentEmbeddingSpace).map {
+            SiliconFlowEmbedding(config: $0) as any EmbeddingProvider
+        }
+    }
+
+    /// Why retrieval is off, in the producer's terms; nil when it is on. A bundle made with
+    /// a service this build does not speak keeps retrieval off without blocking chat.
+    var retrievalUnavailableReason: String? {
+        if let space = contentEmbeddingSpace, space.service != .siliconflow {
+            return "这个内容包需要 \(space.service.title) 的向量，检索暂不可用"
+        }
+        if contentEmbeddingSpace == nil,
+           EmbeddingService(model: chatSettings.embeddingModel) == .gemini {
+            return "Gemini embedding 暂未接入，检索暂不可用"
+        }
+        if chatSettings.embeddingConfig(for: contentEmbeddingSpace) == nil {
+            return chatSettings.retrievalAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "还没有填写检索密钥，检索关闭"
+                : "检索的接口地址或密钥不完整"
+        }
+        return nil
     }
 
     var rerankProvider: (any RerankProvider)? {
@@ -157,7 +195,7 @@ final class AppModel {
     /// Writing down what the producer said is cut short when the app is closed; those
     /// jobs run again here, before anything else is said.
     private func resumeMemoryJobs() {
-        guard let provider = chatProvider else { return }
+        guard let provider = backgroundProvider else { return }
         let embedder = embeddingProvider
         Task { [core] in
             await core.resumePendingMemories(provider: provider, embedder: embedder)
@@ -212,7 +250,9 @@ final class AppModel {
     /// A call with her, on the services the settings name. The microphone and the
     /// recognizer are the app's; everything else is the core's (ADR-0015).
     func beginCall(for character: CharacterConfig, now: Date = Date()) async throws -> CallSession {
-        guard let provider = chatProvider else {
+        guard let provider = chatSettings.callConfig.map({
+            ChatProviderFactory.make(config: $0)
+        }) else {
             throw ChatProviderError.notConfigured
         }
         if let missing = CallSettingsError.missingSonioxKeyWhenNeeded(chatSettings) {
@@ -229,6 +269,7 @@ final class AppModel {
             synthesis: speechSynthesis(readings: readings),
             voiceModel: chatSettings.fishModel,
             provider: provider,
+            background: backgroundProvider,
             judge: judge,
             emotionJudge: judge == nil ? nil : emotionJudgeProvider,
             embedder: embeddingProvider,
