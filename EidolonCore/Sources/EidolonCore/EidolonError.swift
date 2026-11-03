@@ -40,6 +40,10 @@ public enum EidolonError: LocalizedError, Equatable {
     case barNotFailed
     /// What the bar counter holds is none of the drinks (upstream `BrokenDrink`).
     case barBrokenDrink
+    /// The installed content bundle is older than gifts: no `characters/gifts.json`.
+    case giftCatalogMissing
+    /// The producer has no draw chances left (upstream `NoDraws`).
+    case noDraws
 
     /// Whether the turn refused the producer's line itself, rather than failing to
     /// answer it: what it says is already the message to show.
@@ -81,6 +85,9 @@ public enum EidolonError: LocalizedError, Equatable {
         case .barNotWaiting: return "她还没在等这一杯"
         case .barNotFailed: return "现在没有要再试的"
         case .barBrokenDrink: return "调坏了，不能上"
+        // Upstream `gifts.py`'s messages, word for word.
+        case .giftCatalogMissing: return "内容包没有礼物目录"
+        case .noDraws: return "没有抽奖次数了"
         case .coolingDown(let until):
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "zh_CN")

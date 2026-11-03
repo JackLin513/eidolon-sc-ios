@@ -30,10 +30,6 @@ final class PlayUITests: XCTestCase {
 
         app.buttons["play.gifts"].tap()
         XCTAssertTrue(app.navigationBars["礼物"].waitForExistence(timeout: 5), "gift page did not open")
-        XCTAssertTrue(
-            app.staticTexts["礼物、抽奖和背包会在下一张票接入。"].waitForExistence(timeout: 5),
-            "gift placeholder did not show"
-        )
         app.navigationBars.buttons["玩法"].tap()
         XCTAssertTrue(app.navigationBars["玩法"].waitForExistence(timeout: 5))
 
@@ -49,6 +45,50 @@ final class PlayUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5), "settings tab did not open")
         conversation.tap()
         XCTAssertTrue(app.navigationBars["对话"].waitForExistence(timeout: 5), "conversation tab did not return")
+    }
+
+    func testGiftPageShowsTheEmptyBackpackAndNoChances() throws {
+        launchGiftPage(draws: 0)
+
+        let noDraws = app.staticTexts["今天的次数用完了"]
+        XCTAssertTrue(noDraws.waitForExistence(timeout: 10), "no no-chances state")
+        XCTAssertTrue(app.staticTexts["背包还是空的"].exists, "no empty backpack state")
+        XCTAssertFalse(app.buttons["gifts.drawOne"].isEnabled, "a draw is offered with no chances")
+        XCTAssertTrue(app.staticTexts["我的礼物"].exists, "no gift-list section")
+        XCTAssertTrue(app.staticTexts["重置卡"].exists, "no reset card section")
+    }
+
+    func testDrawingRevealsAResultAndKeepsThePage() throws {
+        launchGiftPage(draws: 2)
+
+        let draw = app.buttons["gifts.drawOne"]
+        XCTAssertTrue(draw.waitForExistence(timeout: 10), "no draw button")
+        XCTAssertTrue(draw.isEnabled, "the draw button is disabled with two chances")
+        draw.tap()
+
+        XCTAssertTrue(
+            app.staticTexts["这次抽到"].waitForExistence(timeout: 10),
+            "the draw did not reveal a result"
+        )
+        let result = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "gifts.result."))
+            .firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 5), "no result card")
+        XCTAssertTrue(app.buttons["gifts.drawOne"].exists, "the gift page left after drawing")
+    }
+
+    /// Launches with a known number of chances (debug injection) and opens the gift page.
+    private func launchGiftPage(draws: Int) {
+        app.terminate()
+        app.launchEnvironment = ["EIDOLON_GIFT_DRAWS": "\(draws)"]
+        app.launch()
+        let play = app.tabBars.buttons["玩法"]
+        XCTAssertTrue(play.waitForExistence(timeout: 10), "no play tab")
+        play.tap()
+        let gifts = app.buttons["play.gifts"]
+        XCTAssertTrue(gifts.waitForExistence(timeout: 10), "no gift card")
+        gifts.tap()
+        XCTAssertTrue(app.navigationBars["礼物"].waitForExistence(timeout: 5), "gift page did not open")
     }
 
     func testGiftRouteFromChatPreselectsHerAndComesBack() throws {

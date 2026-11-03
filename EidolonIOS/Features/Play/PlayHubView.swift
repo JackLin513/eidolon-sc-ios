@@ -9,8 +9,8 @@ enum BarEntry {
     static let rewardTaken = "今天的奖励领过了"
 }
 
-/// The play tab's first page (spec #64): the bar, which moved here from the roster, and
-/// the gift and achievement pages that the following tickets fill in.
+/// The play tab's first page (spec #64): the bar, which moved here from the roster, the
+/// gift page, and the achievement page that a later ticket fills in.
 struct PlayHubView: View {
     @Environment(AppModel.self) private var app
     @State private var isBarShown = false
@@ -62,7 +62,7 @@ struct PlayHubView: View {
                 .navigationDestination(for: PlayRoute.self) { route in
                     switch route {
                     case .gifts:
-                        GiftsPlaceholderView()
+                        GiftsView()
                     case .achievements:
                         PlayPlaceholderView(
                             title: "成就",
@@ -137,40 +137,6 @@ struct PlayHubView: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
-    }
-}
-
-/// The gift page's stand-in until the gift tickets land (spec #64). It already shows whom
-/// the page was opened for and can go back to her chat, so the cross-tab route is testable.
-struct GiftsPlaceholderView: View {
-    @Environment(AppModel.self) private var app
-
-    private var chosen: CharacterConfig? {
-        guard let id = app.giftPreselection else { return nil }
-        return app.characters.first { $0.id == id }
-    }
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "gift")
-                .font(.system(size: 44))
-                .foregroundStyle(.secondary)
-            Text(chosen.map { "给\($0.name)挑一件礼物" } ?? "礼物")
-                .font(.title2.weight(.semibold))
-            Text("礼物、抽奖和背包会在下一张票接入。")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            if let chosen {
-                Button("去对话") {
-                    app.openConversation(characterID: chosen.id)
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("gifts.goToConversation")
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationTitle("礼物")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

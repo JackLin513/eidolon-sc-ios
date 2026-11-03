@@ -34,6 +34,32 @@ extension Eidolon {
         }
     }
 
+    // MARK: - Gifts
+
+    /// Puts the gift page in a known state for UI tests: a number of chances and cards,
+    /// and an empty backpack. Like the rest of this file it is not on a normal path.
+    public func debugSetGiftBalance(
+        draws: Int,
+        resetCards: Int = 0,
+        now: Date = Date()
+    ) throws {
+        let today = GiftRules.day(now)
+        try userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO gift_balances (id, draws, given_on, reset_cards)
+                    VALUES (1, ?, ?, ?)
+                    ON CONFLICT (id) DO UPDATE SET
+                        draws = excluded.draws,
+                        given_on = excluded.given_on,
+                        reset_cards = excluded.reset_cards
+                    """,
+                arguments: [max(0, draws), today, max(0, resetCards)]
+            )
+            try db.execute(sql: "DELETE FROM gift_backpack")
+        }
+    }
+
     // MARK: - Conversations
 
     /// Opens an ended conversation again. The event that ended it goes with the flag: the

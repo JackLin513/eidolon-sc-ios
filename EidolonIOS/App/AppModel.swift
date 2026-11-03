@@ -311,6 +311,31 @@ final class AppModel {
     /// Whether today's first visit is still rewarded (the roster card's line).
     private(set) var barRewardToday = true
 
+    // MARK: - Gifts (spec #65)
+
+    /// What the gift page shows, and the catalog its names and pictures come from. Read
+    /// when the page opens and after every draw or reset.
+    private(set) var giftState: GiftState?
+    private(set) var giftCatalog: GiftCatalog?
+    private(set) var lastGiftDraw: GiftDraw?
+    private(set) var isGiftWorking = false
+
+    func refreshGifts() async throws {
+        giftCatalog = try await core.giftCatalog()
+        giftState = try await core.giftState()
+    }
+
+    @discardableResult
+    func drawGifts(all: Bool) async throws -> GiftDraw {
+        isGiftWorking = true
+        defer { isGiftWorking = false }
+        let draw = try await core.drawGifts(all: all)
+        lastGiftDraw = draw
+        giftState = try await core.giftState()
+        return draw
+    }
+
+
     /// Reads what the bar's page needs: its package, the music and sound that package holds,
     /// and the preferences kept beside it.
     func loadBar() async {
@@ -557,6 +582,7 @@ final class AppModel {
         await importBundleForDebuggingIfRequested()
         await importStandBundleForDebuggingIfRequested()
         await importBarBundleForDebuggingIfRequested()
+        await applyDebugGiftState()
         #endif
         do {
             if let info = try await core.usableContentInfo() {
@@ -676,6 +702,15 @@ final class AppModel {
         // in-memory settings are set even when saving the key did not work.
         try? saveChatSettings(settings)
         chatSettings = settings
+    }
+
+    /// Development aid: `EIDOLON_GIFT_DRAWS` (and optional `EIDOLON_GIFT_RESET_CARDS`)
+    /// puts the gift page in a known state, with an empty backpack, for UI tests.
+    private func applyDebugGiftState() async {
+        let environment = ProcessInfo.processInfo.environment
+        guard let raw = environment["EIDOLON_GIFT_DRAWS"], let draws = Int(raw) else { return }
+        let cards = Int(environment["EIDOLON_GIFT_RESET_CARDS"] ?? "") ?? 0
+        try? await core.debugSetGiftBalance(draws: draws, resetCards: cards)
     }
 
     /// Development aid: `SIMCTL_CHILD_EIDOLON_ADULT_MODE=1` turns adult mode on without
