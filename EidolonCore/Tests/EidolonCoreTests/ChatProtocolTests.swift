@@ -9,6 +9,88 @@ final class ChatProtocolTests: XCTestCase {
         return events
     }
 
+    // MARK: usage
+
+    func testChatCompletionsAsksForAndReadsTheFinalUsageChunk() async throws {
+        let transport = StubChatTransport(lines: [
+            textChunk("嗯"),
+            event([
+                "choices": [],
+                "usage": [
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "prompt_tokens_details": ["cached_tokens": 2],
+                ],
+            ]),
+            "data: [DONE]",
+        ])
+        let provider = OpenAICompatibleChatProvider(
+            config: ChatModelConfig(
+                baseURL: URL(string: "https://api.deepseek.com/v1")!,
+                model: "deepseek-v4-pro",
+                apiKey: "k"
+            ),
+            transport: transport
+        )
+        _ = try await collect(provider.stream(messages: [.init(.user, "hi")], tools: [], forbidCalls: false))
+        let seen = await transport.seen
+        let sent = try body(try XCTUnwrap(seen.first))
+        XCTAssertEqual((sent["stream_options"] as? [String: Any])?["include_usage"] as? Bool, true)
+        let usage = await provider.takeUsage()
+        XCTAssertEqual(usage, ChatUsage(input: 10, output: 5, cachedInput: 2))
+        XCTAssertEqual(provider.usageProviderHost, "api.deepseek.com")
+        XCTAssertEqual(provider.usageModel, "deepseek-v4-pro")
+    }
+
+    func testAnthropicReadsInputFromMessageStartAndOutputFromMessageDelta() async throws {
+        let transport = StubChatTransport(lines: [
+            event([
+                "type": "message_start",
+                "message": ["usage": [
+                    "input_tokens": 10, "output_tokens": 1,
+                    "cache_read_input_tokens": 3,
+                ]],
+            ]),
+            event(["type": "content_block_delta", "index": 0, "delta": ["type": "text_delta", "text": "嗯"]]),
+            event(["type": "message_delta", "usage": ["output_tokens": 5]]),
+        ])
+        let provider = AnthropicChatProvider(
+            config: ChatModelConfig(
+                baseURL: URL(string: "https://api.anthropic.com/v1")!,
+                model: "claude-sonnet-5-5",
+                apiKey: "k"
+            ),
+            transport: transport
+        )
+        _ = try await collect(provider.stream(messages: [.init(.user, "hi")], tools: [], forbidCalls: false))
+        let usage = await provider.takeUsage()
+        XCTAssertEqual(usage, ChatUsage(input: 10, output: 5, cachedInput: 3))
+    }
+
+    func testResponsesReadsTheCompletedResponseUsage() async throws {
+        let transport = StubChatTransport(lines: [
+            event(["type": "response.output_text.delta", "delta": "嗯"]),
+            event([
+                "type": "response.completed",
+                "response": ["usage": [
+                    "input_tokens": 10, "output_tokens": 5,
+                    "input_tokens_details": ["cached_tokens": 2],
+                ]],
+            ]),
+        ])
+        let provider = ResponsesChatProvider(
+            config: ChatModelConfig(
+                baseURL: URL(string: "https://api.openai.com/v1")!,
+                model: "gpt-6.1-sol",
+                apiKey: "k"
+            ),
+            transport: transport
+        )
+        _ = try await collect(provider.stream(messages: [.init(.user, "hi")], tools: [], forbidCalls: false))
+        let usage = await provider.takeUsage()
+        XCTAssertEqual(usage, ChatUsage(input: 10, output: 5, cachedInput: 2))
+    }
+
     // MARK: chat-completions
 
     func testChatCompletionsSendsTheReplyCapAndReasoningEffort() async throws {

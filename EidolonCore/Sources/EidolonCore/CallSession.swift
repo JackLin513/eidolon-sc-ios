@@ -308,6 +308,9 @@ public struct CallSetup: Sendable {
     public var synthesis: any SpeechSynthesis
     /// The Fish Audio model her voice is spoken on; `drama-3` reads delivery cues.
     public var voiceModel: String
+    /// The recognizer's host and model, for the usage ledger (spec #96).
+    public var recognitionHost: String
+    public var recognitionModel: String
     public var provider: any ChatProvider
     /// Writes memories and names the conversation after a call turn; nil uses the chat
     /// provider, as before.
@@ -342,6 +345,8 @@ public struct CallSetup: Sendable {
         recognition: any SpeechRecognition,
         synthesis: any SpeechSynthesis,
         voiceModel: String,
+        recognitionHost: String = "",
+        recognitionModel: String = "",
         provider: any ChatProvider,
         background: (any ChatProvider)? = nil,
         judge: (any JudgeProvider)? = nil,
@@ -362,6 +367,8 @@ public struct CallSetup: Sendable {
         self.recognition = recognition
         self.synthesis = synthesis
         self.voiceModel = voiceModel
+        self.recognitionHost = recognitionHost
+        self.recognitionModel = recognitionModel
         self.provider = provider
         self.background = background
         self.judge = judge
@@ -387,6 +394,8 @@ public actor CallSession {
     /// How long this call may last, if it has a limit: the call screen counts down the last
     /// minute of it (upstream `callTime.ts`).
     public nonisolated let durationLimit: Duration?
+    /// This call's identity in the usage ledger (spec #96).
+    private nonisolated let callID = UUID().uuidString
 
     private let eidolon: Eidolon
     private let characterName: String
@@ -972,7 +981,9 @@ public actor CallSession {
                 now: setup.now(),
                 tracing: setup.tracing,
                 talking: .inCall,
-                inCall: CallScope(outOfLine: callOutOfLine, hurts: callHurts),
+                inCall: CallScope(
+                    outOfLine: callOutOfLine, hurts: callHurts, callID: callID
+                ),
                 stop: stop,
                 voicedBy: setup.voiceModel,
                 replyStyle: .call,
@@ -1188,7 +1199,15 @@ public actor CallSession {
         )
         let reply = reply
         let task = Task { [weak self] in
+            let started = Date()
             let judged = await judge.emotion(in: question)
+            if let self {
+                let conversationID = (try? self.eidolon.currentConversationIDNow(self.characterID)) ?? nil
+                await self.eidolon.recordEmotionCall(
+                    judge: judge, segment: question, judged: judged,
+                    latency: Date().timeIntervalSince(started), conversationID: conversationID
+                )
+            }
             await self?.emotionJudged(judged, key: key, reply: reply, segment: segment)
         }
         emotionTasks[key] = task
@@ -1477,11 +1496,26 @@ public actor CallSession {
         case .notConnected, .micDenied: return
         default: break
         }
-        guard let conversationID = (try? eidolon.currentConversationIDNow(characterID)) ?? nil else {
-            return
-        }
+        let conversationID = (try? eidolon.currentConversationIDNow(characterID)) ?? nil
         let endedAt = setup.now()
         let duration = connectedAt.map { max(0, endedAt.timeIntervalSince($0)) } ?? 0
+        // What the recognizer heard, in the seconds its service charges for (spec #96).
+        // It is kept even when the call had no conversation of its own to end.
+        if duration > 0, !setup.recognitionHost.isEmpty || !setup.recognitionModel.isEmpty {
+            eidolon.recordServiceCallNow(
+                ServiceCall(
+                    at: connectedAt ?? endedAt, service: .recognition,
+                    provider: setup.recognitionHost, model: setup.recognitionModel,
+                    operation: .recognition, unit: .seconds,
+                    input: Int(duration.rounded()),
+                    // Bailian 3.1 is token-billed; its per-second price is a conversion.
+                    estimated: setup.recognitionHost.contains("dashscope")
+                        && BailianSTTConfiguration.isTokenBilled(setup.recognitionModel),
+                    conversationID: conversationID, callID: callID
+                )
+            )
+        }
+        guard let conversationID else { return }
         try? eidolon.recordCallEnd(
             conversationID: conversationID,
             characterID: characterID,
