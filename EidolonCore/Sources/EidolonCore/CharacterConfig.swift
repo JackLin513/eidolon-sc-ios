@@ -25,6 +25,8 @@ public struct CharacterConfig: Sendable, Hashable {
     /// Her age as the content pack states it; nil when the bundle does not say. Adult
     /// mode only ever uses this field, never the persona text (spec #61).
     public var age: Int?
+    /// The gifts she likes (`liked_gifts`), from the bundle's gift catalog.
+    public var likedGifts: [String]
     public var raw: [String: JSONValue]
 
     public init(
@@ -46,6 +48,7 @@ public struct CharacterConfig: Sendable, Hashable {
         stand: StandConfig? = nil,
         birthday: Birthday? = nil,
         age: Int? = nil,
+        likedGifts: [String] = [],
         raw: [String: JSONValue] = [:]
     ) {
         self.id = id
@@ -66,6 +69,7 @@ public struct CharacterConfig: Sendable, Hashable {
         self.stand = stand
         self.birthday = birthday
         self.age = age
+        self.likedGifts = likedGifts
         self.raw = raw
     }
 
@@ -117,6 +121,7 @@ public struct CharacterConfig: Sendable, Hashable {
             stand: stand,
             birthday: birthday,
             age: object["age"]?.intValue,
+            likedGifts: object["liked_gifts"]?.arrayValue?.compactMap(\.stringValue) ?? [],
             raw: object
         )
     }
@@ -159,6 +164,8 @@ public struct LatestActivity: Sendable, Hashable {
     /// The kind of the latest conversation event, when that is the latest thing rather
     /// than something said (GLOSSARY.md「对话事件」).
     public var lastEventKind: String?
+    /// The gift of the latest gift event, when that is the latest thing.
+    public var lastGiftID: String?
     public var unseenReachOut: Bool
 
     public init(
@@ -166,12 +173,14 @@ public struct LatestActivity: Sendable, Hashable {
         lastMessageRole: String? = nil,
         lastMessageAt: String? = nil,
         lastEventKind: String? = nil,
+        lastGiftID: String? = nil,
         unseenReachOut: Bool = false
     ) {
         self.lastMessagePreview = lastMessagePreview
         self.lastMessageRole = lastMessageRole
         self.lastMessageAt = lastMessageAt
         self.lastEventKind = lastEventKind
+        self.lastGiftID = lastGiftID
         self.unseenReachOut = unseenReachOut
     }
 }

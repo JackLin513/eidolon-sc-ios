@@ -40,6 +40,16 @@ public enum EidolonError: LocalizedError, Equatable {
     case barNotFailed
     /// What the bar counter holds is none of the drinks (upstream `BrokenDrink`).
     case barBrokenDrink
+    /// The installed content bundle is older than gifts: no `characters/gifts.json`.
+    case giftCatalogMissing
+    /// The producer has no draw chances left (upstream `NoDraws`).
+    case noDraws
+    /// The backpack has none of that gift left (upstream `NoneLeft`).
+    case noSuchGift
+    /// No reset card is left (upstream `NoResetCards`).
+    case noResetCards
+    /// No one is below trust, so a reset card would do nothing (upstream `NoOneToReset`).
+    case noOneToReset
 
     /// Whether the turn refused the producer's line itself, rather than failing to
     /// answer it: what it says is already the message to show.
@@ -81,6 +91,12 @@ public enum EidolonError: LocalizedError, Equatable {
         case .barNotWaiting: return "她还没在等这一杯"
         case .barNotFailed: return "现在没有要再试的"
         case .barBrokenDrink: return "调坏了，不能上"
+        // Upstream `gifts.py`'s messages, word for word.
+        case .giftCatalogMissing: return "内容包没有礼物目录"
+        case .noDraws: return "没有抽奖次数了"
+        case .noSuchGift: return "背包里没有这件礼物了"
+        case .noResetCards: return "没有重置卡了"
+        case .noOneToReset: return "没有低于信任、需要拉回的角色"
         case .coolingDown(let until):
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "zh_CN")

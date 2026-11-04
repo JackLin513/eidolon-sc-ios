@@ -2,6 +2,7 @@ import EidolonCore
 import Foundation
 import Observation
 import OSLog
+import SwiftUI
 import UIKit
 
 enum AppPhase: Equatable {
@@ -35,6 +36,16 @@ final class AppModel {
     /// shows it — a past conversation in the history sheet. The current page reloads to
     /// the new one and the sheet closes (spec #37).
     private(set) var conversationRevision = 0
+
+    /// The first-level page the app is on (spec #64). Not persisted: a launch starts
+    /// in conversations.
+    var selectedTab: MainTab = .conversation
+    /// Each tab keeps its own stack, so another tab can open a page in it (spec #64).
+    var conversationPath = NavigationPath()
+    var playPath = NavigationPath()
+    /// The character the gift page should preselect when it is opened from her chat
+    /// (spec #64; the gift page itself arrives in #65).
+    var giftPreselection: String?
 
     /// The chat's 朗读: one for the whole app, so only one line ever plays (spec #32).
     let readAloud = ChatReadAloud()
@@ -363,6 +374,152 @@ final class AppModel {
     /// Whether today's first visit is still rewarded (the roster card's line).
     private(set) var barRewardToday = true
 
+    // MARK: - Gifts (spec #65)
+
+    /// What the gift page shows, and the catalog its names and pictures come from. Read
+    /// when the page opens and after every draw or reset.
+    private(set) var giftState: GiftState?
+    private(set) var giftCatalog: GiftCatalog?
+    private(set) var lastGiftDraw: GiftDraw?
+    private(set) var isGiftWorking = false
+    /// The numbers draws come from; `EIDOLON_GIFT_SEED` fixes them for a debug launch.
+    private let giftRandom: any GiftRandom = {
+        #if DEBUG
+        if let raw = ProcessInfo.processInfo.environment["EIDOLON_GIFT_SEED"],
+           let seed = UInt64(raw)
+        {
+            return SeededGiftRandom(seed: seed)
+        }
+        #endif
+        return SystemGiftRandom()
+    }()
+
+    // MARK: - Achievements (spec #69–#72)
+
+    /// The play tab's dot: a stage or reward the producer has not looked at.
+    private(set) var achievementBadge = false
+    /// Which play card the dot points at: the achievements page or the gift page.
+    private(set) var playBadges = PlayBadges(achievements: false, gifts: false)
+    /// The one-time backfill summary, until its alert is dismissed.
+    private(set) var achievementLaunch: AchievementLaunchSummary?
+    /// The toast after a turn, gift or draw unlocked something.
+    private(set) var achievementToast: String?
+    private var toastTask: Task<Void, Never>?
+
+    /// The debug page's view of the global draw balance.
+    func debugGiftDraws() async throws -> Int {
+        try await core.giftState().draws
+    }
+
+    /// Adds draw chances from the debug page, with no cap; the gift page's state follows.
+    @discardableResult
+    func debugAddGiftDraws(_ count: Int) async throws -> Int {
+        let draws = try await core.debugAddGiftDraws(count)
+        giftState = try await core.giftState()
+        return draws
+    }
+
+    func refreshGifts() async throws {
+        giftCatalog = try await core.giftCatalog()
+        giftState = try await core.giftState()
+    }
+
+    @discardableResult
+    func drawGifts(all: Bool) async throws -> GiftDraw {
+        isGiftWorking = true
+        defer { isGiftWorking = false }
+        let draw = try await core.drawGifts(all: all, random: giftRandom)
+        lastGiftDraw = draw
+        giftState = try await core.giftState()
+        showAchievementRewards(draw.rewards)
+        return draw
+    }
+
+    /// The roster the gift panel lists, with her tier and cooldown, never what she likes.
+    func giftRecipients() async throws -> [GiftRecipient] {
+        try await core.giftRecipients()
+    }
+
+    @discardableResult
+    func giveGift(giftID: String, characterID: String) async throws -> GiftGiven {
+        let given = try await core.giveGift(giftID: giftID, characterID: characterID)
+        giftState = try await core.giftState()
+        // The gift is a line in her conversation: a chat page left open follows it.
+        noteConversationChanged()
+        showAchievementRewards(given.rewards)
+        return given
+    }
+
+    func resetCardTargets() async throws -> [ResetCardTarget] {
+        try await core.resetCardTargets()
+    }
+
+    @discardableResult
+    func useResetCard() async throws -> ResetCardUse {
+        let use = try await core.useResetCard()
+        giftState = try await core.giftState()
+        await refreshAchievementBadge()
+        return use
+    }
+
+    func herAchievements(characterID: String) async throws -> HerAchievements {
+        try await core.herAchievements(characterID: characterID)
+    }
+
+    func allAchievements() async throws -> AllAchievements {
+        try await core.allAchievements()
+    }
+
+    func markAchievementsSeen(characterID: String?) async {
+        try? await core.markAchievementsSeen(characterID: characterID)
+        await refreshAchievementBadge()
+    }
+
+    func markGiftRewardsSeen() async {
+        try? await core.markGiftRewardsSeen()
+        await refreshAchievementBadge()
+    }
+
+    func refreshAchievementBadge() async {
+        achievementBadge = (try? await core.achievementBadge()) ?? false
+        playBadges = (try? await core.playBadges())
+            ?? PlayBadges(achievements: false, gifts: false)
+    }
+
+    /// Clears the play tab's dot once the achievements page or the gift page was opened.
+    func markPlaySeen() async {
+        try? await core.markPlaySeen()
+        await refreshAchievementBadge()
+    }
+
+    /// Shows what an action unlocked and keeps the tab dot current.
+    func showAchievementRewards(_ rewards: [AchievementReward]) {
+        guard !rewards.isEmpty else {
+            Task { await refreshAchievementBadge() }
+            return
+        }
+        achievementToast = AchievementReward.toast(for: rewards) ?? "成就解锁"
+        if let achievementToast {
+            UIAccessibility.post(notification: .announcement, argument: achievementToast)
+        }
+        toastTask?.cancel()
+        toastTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            self?.achievementToast = nil
+        }
+        Task { await refreshAchievementBadge() }
+    }
+
+    func dismissAchievementLaunch() {
+        achievementLaunch = nil
+        Task {
+            try? await core.markAchievementLaunchSeen()
+            await refreshAchievementBadge()
+        }
+    }
+
+
     /// Reads what the bar's page needs: its package, the music and sound that package holds,
     /// and the preferences kept beside it.
     func loadBar() async {
@@ -616,11 +773,13 @@ final class AppModel {
     func bootstrap() async {
         #if DEBUG
         applyDebugAdultMode()
+        applyDebugMode()
         applyDebugChatSettings()
         applyDebugBailianSettings()
         await importBundleForDebuggingIfRequested()
         await importStandBundleForDebuggingIfRequested()
         await importBarBundleForDebuggingIfRequested()
+        await applyDebugGiftState()
         #endif
         do {
             if let info = try await core.usableContentInfo() {
@@ -631,6 +790,9 @@ final class AppModel {
                 #if DEBUG
                 importAPIEnvForDebuggingIfRequested()
                 #endif
+                _ = try? await core.launchAchievements()
+                achievementLaunch = try? await core.achievementLaunchSummary()
+                await refreshAchievementBadge()
                 resumeMemoryJobs()
                 await catchUpReachOuts()
             } else {
@@ -646,6 +808,76 @@ final class AppModel {
             phase = .failed(error.localizedDescription)
         }
     }
+
+    /// Development aid: `SIMCTL_CHILD_EIDOLON_CALL_RECONNECT_MS` slows reconnection so the
+    /// 「重连中」 state can be seen in the simulator.
+    var debugReconnectDelay: Duration {
+        #if DEBUG
+        if let milliseconds = ProcessInfo.processInfo.environment["EIDOLON_CALL_RECONNECT_MS"],
+           let value = Int(milliseconds), value >= 0 {
+            return .milliseconds(value)
+        }
+        #endif
+        return .seconds(1)
+    }
+
+    /// Takes the debug character request once: after the producer leaves the chat the
+    /// roster is the debug launch's destination, not the chat again (spec #62).
+    func consumeDebugCharacterRequest() -> String? {
+        #if DEBUG
+        guard !didConsumeDebugCharacterRequest, let id = debugCharacterID else { return nil }
+        didConsumeDebugCharacterRequest = true
+        return id
+        #else
+        nil
+        #endif
+    }
+
+    private var didConsumeDebugCharacterRequest = false
+
+    /// Takes the debug bar request once, so opening the play tab later does not reopen
+    /// the bar (spec #64).
+    func consumeDebugBarRequest() -> Bool {
+        #if DEBUG
+        guard !didConsumeDebugBarRequest, debugBarRequested else { return false }
+        didConsumeDebugBarRequest = true
+        return true
+        #else
+        false
+        #endif
+    }
+
+
+    private var didConsumeDebugBarRequest = false
+
+    /// Opens her chat from another tab or page (spec #64): the conversation tab, its
+    /// stack reset to her.
+    func openConversation(characterID: String) {
+        selectedTab = .conversation
+        guard let character = characters.first(where: { $0.id == characterID }) else {
+            return
+        }
+        conversationPath = NavigationPath()
+        conversationPath.append(character)
+    }
+
+    /// Opens the gift page from her chat (spec #64): the play tab, its stack reset to
+    /// gifts, with her preselected. A direct visit from the play hub clears it.
+    func openGifts(characterID: String? = nil) {
+        selectedTab = .play
+        giftPreselection = characterID
+        playPath = NavigationPath()
+        playPath.append(PlayRoute.gifts)
+    }
+
+    /// Opens settings as a manual visit, so debug destinations are not consumed.
+    func openSettings() {
+        #if DEBUG
+        markSettingsOpenedManually()
+        #endif
+        selectedTab = .settings
+    }
+
 
     #if DEBUG
     /// Development aid: `EIDOLON_API_ENV_FILE` names an `.env` in Documents (or an
@@ -711,6 +943,31 @@ final class AppModel {
         chatSettings = settings
     }
 
+    /// Development aid: `EIDOLON_DEBUG_MODE=1` turns the debug pages on for UI tests.
+    private func applyDebugMode() {
+        guard ProcessInfo.processInfo.environment["EIDOLON_DEBUG_MODE"] == "1" else { return }
+        setDebugMode(true)
+    }
+
+    /// Development aid: `EIDOLON_GIFT_DRAWS` (and optional `EIDOLON_GIFT_RESET_CARDS`)
+    /// puts the gift page in a known state, with an empty backpack, for UI tests.
+    private func applyDebugGiftState() async {
+        let environment = ProcessInfo.processInfo.environment
+        if let raw = environment["EIDOLON_GIFT_DRAWS"], let draws = Int(raw) {
+            let cards = Int(environment["EIDOLON_GIFT_RESET_CARDS"] ?? "") ?? 0
+            try? await core.debugSetGiftBalance(draws: draws, resetCards: cards)
+        }
+        if let raw = environment["EIDOLON_GIFT_BACKPACK"], !raw.isEmpty {
+            var gifts: [String: Int] = [:]
+            for pair in raw.split(separator: ",") {
+                let parts = pair.split(separator: ":")
+                guard parts.count == 2, let count = Int(parts[1]) else { continue }
+                gifts[String(parts[0])] = count
+            }
+            try? await core.debugSetGiftBackpack(gifts)
+        }
+    }
+
     /// Development aid: `SIMCTL_CHILD_EIDOLON_ADULT_MODE=1` turns adult mode on without
     /// the settings page. It stands alone, unlike the model settings below, which need a
     /// chat key.
@@ -773,18 +1030,6 @@ final class AppModel {
         return nil
     }
 
-    /// Development aid: `SIMCTL_CHILD_EIDOLON_CALL_RECONNECT_MS` slows reconnection so the
-    /// 「重连中」 state can be seen in the simulator.
-    var debugReconnectDelay: Duration {
-        #if DEBUG
-        if let milliseconds = ProcessInfo.processInfo.environment["EIDOLON_CALL_RECONNECT_MS"],
-           let value = Int(milliseconds), value >= 0 {
-            return .milliseconds(value)
-        }
-        #endif
-        return .seconds(1)
-    }
-
     /// Development aid: `SIMCTL_CHILD_EIDOLON_OPEN_CALL=1` starts a call on opening a chat.
     var debugOpensCall: Bool {
         #if DEBUG
@@ -823,14 +1068,14 @@ final class AppModel {
     private var didAutoOpenDebugSettings = false
     private var didConsumeDebugSettingsDestinations = false
     private var didConsumeDebugLatestTrace = false
-    /// True only for a Settings sheet opened by a debug launch flag, not the gear button.
+    /// True only for the settings tab opened by a debug launch flag, not a tap on the tab.
     private(set) var settingsOpenedByDebug = false
 
     private var hasDebugSettingsEntry: Bool {
         debugShowsMemories || debugShowsTraces || debugShowsStandPreview
     }
 
-    /// The launch flag may auto-open Settings once; pressing the gear later must not
+    /// The launch flag may auto-open Settings once; opening the tab later must not
     /// keep re-opening the debug destination on every appearance.
     func openDebugSettingsIfRequested() -> Bool {
         guard !didAutoOpenDebugSettings, hasDebugSettingsEntry else { return false }
@@ -1117,6 +1362,7 @@ final class AppModel {
         standInfo = try await core.installedStandInfo()
         barInfo = try await core.installedBarInfo()
         barRewardToday = (try? await core.barRewardToday()) ?? true
+        giftCatalog = try? await core.giftCatalog()
 
         var images: [String: UIImage] = [:]
         for character in characters {

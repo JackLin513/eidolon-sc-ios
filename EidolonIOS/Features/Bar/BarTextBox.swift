@@ -97,6 +97,7 @@ enum BarCopy {
     enum End {
         static let heart = "♥ "
         static let affinityUp = "好感度上升"
+        static let draw = "抽奖机会 +1"
         static func left(_ name: String?) -> String { "\(name ?? "她")走了" }
         static let again = "再营业"
     }

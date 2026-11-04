@@ -66,6 +66,15 @@ public enum AffinityRules {
     /// The day gains are counted on is Beijing's, wherever the producer is (upstream
     /// `DAY_TIMEZONE`).
     public static let dayTimeZone = "Asia/Shanghai"
+    public static var dayZone: TimeZone { TimeZone(identifier: dayTimeZone) ?? .current }
+    /// Draw chances given each day, the most kept, and what a draw gives (upstream
+    /// `DRAWS_PER_DAY`, `MAX_DRAWS`, `DRAW_ODDS`).
+    public static let drawsPerDay = 2
+    public static let maxDraws = 7
+    public static let resetCardPercent = 1
+    public static let commonPercent = 69
+    public static let uncommonPercent = 25
+    public static let rarePercent = 5
     public static let outOfLinePerConversation = 2
     public static let fedUpTurns = 8
     public static let fedUpAt = 12.0
@@ -129,6 +138,17 @@ public struct Affinity: Sendable, Hashable {
             value: value,
             at: at,
             cooling: cooling || value <= AffinityRules.lowest
+        )
+    }
+
+    /// Raised by a gift: beyond the day's limit, and out of a cooldown at the thaw line,
+    /// as upstream `Affinities._raise` does. Never lowers.
+    public func raised(_ step: Double, at now: Date) -> Affinity {
+        let value = min(max(self.value + max(step, 0), AffinityRules.lowest), AffinityRules.highest)
+        return Affinity(
+            value: value,
+            at: now,
+            cooling: cooling && value < AffinityRules.thaw
         )
     }
 

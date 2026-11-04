@@ -443,8 +443,8 @@ public actor Eidolon {
             // The latest thing said or done, her reach-outs and conversation events
             // included: that is what the list shows.
             let latest = try Row.fetchAll(db, sql: """
-                SELECT character_id, role, preview, event_kind, created_at FROM (
-                    SELECT character_id, role, preview, event_kind, created_at,
+                SELECT character_id, role, preview, event_kind, gift_id, created_at FROM (
+                    SELECT character_id, role, preview, event_kind, gift_id, created_at,
                            ROW_NUMBER() OVER (
                                PARTITION BY character_id
                                ORDER BY created_at DESC, written DESC
@@ -454,6 +454,7 @@ public actor Eidolon {
                                m.role AS role,
                                COALESCE(NULLIF(m.zh, ''), NULLIF(m.ja, ''), NULLIF(m.text, '')) AS preview,
                                NULL AS event_kind,
+                               NULL AS gift_id,
                                m.created_at AS created_at,
                                m.rowid AS written
                         FROM messages m
@@ -462,6 +463,7 @@ public actor Eidolon {
                         SELECT c.character_id,
                                'character',
                                COALESCE(NULLIF(r.zh, ''), NULLIF(r.ja, '')),
+                               NULL,
                                NULL,
                                r.created_at,
                                r.rowid
@@ -472,6 +474,7 @@ public actor Eidolon {
                                'event',
                                NULL,
                                e.kind,
+                               e.gift_id,
                                e.created_at,
                                e.id
                         FROM conversation_events e
@@ -486,6 +489,7 @@ public actor Eidolon {
                     lastMessageRole: row["role"],
                     lastMessageAt: row["created_at"],
                     lastEventKind: row["event_kind"],
+                    lastGiftID: row["gift_id"],
                     unseenReachOut: false
                 )
             }
@@ -568,7 +572,7 @@ public actor Eidolon {
 
     // MARK: - Plumbing
 
-    private func requireContent() throws {
+    func requireContent() throws {
         guard try usableContentInfo() != nil else {
             throw EidolonError.contentNotInstalled
         }
