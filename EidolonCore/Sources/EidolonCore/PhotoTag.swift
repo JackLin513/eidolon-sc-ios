@@ -210,7 +210,12 @@ public enum PhotoPromptBuilder {
         let trimmedStyle = style.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedStyle.isEmpty { prompt.append(trimmedStyle) }
         prompt.append(character.photoAppearance.joined(separator: ", "))
-        prompt.append(cleaned.shot == .selfie ? "selfie, looking at viewer" : "looking at viewer")
+        if cleaned.shot == .selfie {
+            prompt.append("selfie, looking at viewer")
+        } else if !cleaned.action.contains(where: { $0.contains("looking at viewer") }) {
+            // Her words already said where she is looking: do not say it twice.
+            prompt.append("looking at viewer")
+        }
         prompt.append(cleaned.framing.listedName)
         prompt.append(cleaned.place.joined(separator: ", "))
         prompt.append(cleaned.outfit.joined(separator: ", "))
@@ -220,8 +225,8 @@ public enum PhotoPromptBuilder {
         return ImageRequest(
             prompt: prompt.joined(separator: ", "),
             negativePrompt: adult ? adultNegative : allAgesNegative,
-            width: 832,
-            height: 1216,
+            width: PhotoGeometry.width,
+            height: PhotoGeometry.height,
             model: model
         )
     }

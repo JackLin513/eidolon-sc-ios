@@ -221,7 +221,6 @@ public struct EnvAPISettings: Sendable, Hashable {
     public var imageStyle: String?
     public var imageHourlyLimit: Int?
     public var novelAIAPIKey: String?
-    public var gptImageEnabled: Bool?
     public var gptImageBaseURL: String?
     public var gptImageModel: String?
     public var gptImageQuality: GPTImageQuality?
@@ -699,9 +698,6 @@ public enum EnvImporter {
             case "EIDOLON_PHOTOS_PER_HOUR":
                 values.imageHourlyLimit = nonNegativeInteger(key)
                 if values.imageHourlyLimit != nil { note(key, "每小时照片上限") }
-            case "GPT_IMAGE_ENABLED":
-                values.gptImageEnabled = boolean(key)
-                if values.gptImageEnabled != nil { note(key, "GPT Image 开关") }
             case "GPT_IMAGE_BASE_URL":
                 values.gptImageBaseURL = text(key)
                 if values.gptImageBaseURL != nil { note(key, "GPT Image 接口地址") }

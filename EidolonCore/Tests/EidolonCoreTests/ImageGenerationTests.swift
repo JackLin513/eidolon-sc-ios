@@ -237,4 +237,51 @@ final class ImageGenerationTests: XCTestCase {
             "https://relay.example/v1/images/generations"
         )
     }
+
+    func testAJobThatRunsOutOfTimeFreesItsPlace() async throws {
+        let queue = ImageQueue()
+        let started = ContinuousClock.now
+        do {
+            _ = try await queue.run(timeout: .milliseconds(100)) {
+                try await Task.sleep(for: .seconds(5))
+                return 1
+            }
+            XCTFail("expected the job to time out")
+        } catch let error as ImageGenerationError {
+            XCTAssertEqual(error, .timeout)
+        }
+        XCTAssertLessThan(ContinuousClock.now - started, .seconds(2))
+        let next = try await queue.run(timeout: .seconds(1)) { 2 }
+        XCTAssertEqual(next, 2)
+    }
+
+    func testAJobThatTimesOutInLineNeverRuns() async throws {
+        let queue = ImageQueue()
+        actor Ran {
+            var values: [Int] = []
+            func record(_ value: Int) { values.append(value) }
+        }
+        let ran = Ran()
+        async let first: Int = queue.run { 
+            try await Task.sleep(for: .milliseconds(300))
+            return 1
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        do {
+            _ = try await queue.run(timeout: .milliseconds(50)) {
+                await ran.record(2)
+                return 2
+            }
+            XCTFail("expected the queued job to time out")
+        } catch let error as ImageGenerationError {
+            XCTAssertEqual(error, .timeout)
+        }
+        let firstValue = try await first
+        XCTAssertEqual(firstValue, 1)
+        // Give a late start every chance to happen before checking it did not.
+        try await Task.sleep(for: .milliseconds(400))
+        let values = await ran.values
+        XCTAssertTrue(values.isEmpty)
+    }
+
 }

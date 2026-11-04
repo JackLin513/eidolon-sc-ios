@@ -369,7 +369,7 @@ struct ChatView: View {
                 // rework the whole transcript (spec #42). It is her next group's first
                 // line, so it carries her avatar and name (spec #40).
                 StreamingReply(store: store, character: character)
-                if let retryAt = store.photoRetryAt {
+                if let retryAt = photoRetryAt {
                     photoUsedUpCapsule(retryAt)
                         .id("photoUsedUp")
                         .padding(.top, 8)
@@ -416,6 +416,23 @@ struct ChatView: View {
         .accessibilityIdentifier("chat.photoUsedUp")
     }
 
+    /// The turn's own notice first; while a call with her is folded here, what the call
+    /// was told (spec #98: the notice reaches the conversation from a call too).
+    private var photoRetryAt: Date? {
+        if let own = store?.photoRetryAt { return own }
+        return app.call.isCalling(character.id) ? app.call.photoRetryAt : nil
+    }
+
+    /// The call's picture until it is recorded: once the reply is in the conversation,
+    /// the recorded row is the one shown (spec #98).
+    private var liveCallPhoto: CallPhoto? {
+        guard let photo = app.call.photo else { return nil }
+        if let store, store.messages.contains(where: { $0.photo?.id == photo.id }) {
+            return nil
+        }
+        return photo
+    }
+
     private var liveBlocks: [ReplyBlock] {
         liveLines.values
             .sorted { $0.segment < $1.segment }
@@ -427,14 +444,14 @@ struct ChatView: View {
         app.call.isCalling(character.id)
             && store?.isPast != true
             && store?.ended != true
-            && (liveHeard != nil || !liveBlocks.isEmpty || app.call.photo != nil)
+            && (liveHeard != nil || !liveBlocks.isEmpty || liveCallPhoto != nil)
     }
 
     @ViewBuilder
     private var liveCallRows: some View {
         // Her picture is the first thing of the live turn, as it will be once recorded
         // (ticket #103).
-        if let photo = app.call.photo {
+        if let photo = liveCallPhoto {
             HerMessageRow(character: character) {
                 PhotoBubble(photo: PhotoReference(
                     id: photo.id,
@@ -748,6 +765,10 @@ struct ChatView: View {
 
         @Environment(AppModel.self) private var app
         @State private var image: UIImage?
+        @State private var viewing = false
+        @State private var blinking = false
+
+        private var width: CGFloat { PhotoGeometry.bubbleWidth }
 
         var body: some View {
             Group {
@@ -755,33 +776,50 @@ struct ChatView: View {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFit()
-                        .frame(maxWidth: 240)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .frame(width: width)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .onTapGesture { viewing = true }
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityLabel("照片")
                         .accessibilityIdentifier("chat.photo")
                 } else if photo.status == .failed {
                     // What went wrong, in one short line; asking again is a new turn, not
                     // a retry here (ticket #102).
-                    Label(Self.failureText(photo.reason), systemImage: "photo.badge.exclamationmark")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-                        .accessibilityIdentifier("chat.photo.failed")
-                } else if photo.status == .pending {
-                    // The same box the finished picture takes, so nothing moves when it
-                    // lands (ticket #101).
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(.tertiarySystemBackground))
-                        .frame(width: 240, height: 350.8)
-                        .overlay {
-                            VStack(spacing: 8) {
-                                ProgressView()
-                                Text("正在冲印…")
-                                    .font(.caption)
+                    HStack(spacing: 8) {
+                        Image(systemName: "photo.badge.exclamationmark")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("照片没发出来")
+                            if let reason = photo.reason {
+                                Text(reason.shortText)
                                     .foregroundStyle(.secondary)
                             }
                         }
+                    }
+                    .font(.caption)
+                    .frame(width: width, alignment: .leading)
+                    .padding(.vertical, 6)
+                    .accessibilityIdentifier("chat.photo.failed")
+                } else {
+                    // The same box the finished picture takes, so nothing moves when it
+                    // lands; faint, a blinking camera and a spinner, no words (spec #98).
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(.tertiarySystemBackground))
+                        .frame(width: width, height: width / PhotoGeometry.aspectRatio)
+                        .overlay {
+                            VStack(spacing: 10) {
+                                Image(systemName: "camera")
+                                    .font(.title2)
+                                    .opacity(blinking ? 0.35 : 1)
+                                ProgressView()
+                            }
+                            .foregroundStyle(.secondary)
+                        }
+                        .onAppear {
+                            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                                blinking = true
+                            }
+                        }
+                        .accessibilityLabel("照片正在生成")
                         .accessibilityIdentifier("chat.photo.pending")
                 }
             }
@@ -789,15 +827,8 @@ struct ChatView: View {
                 guard photo.status == .ready else { return }
                 image = await app.photoImage(photo.id)
             }
-        }
-
-        private static func failureText(_ reason: PhotoFailureReason?) -> String {
-            switch reason {
-            case .timeout: "照片没冲印出来，超时了"
-            case .serviceError: "生图服务出错了，照片没拍成"
-            case .badImage: "生成的图不对，没能存下来"
-            case .usedUp: "这一小时的照片用完了"
-            case nil: "照片没拍成"
+            .fullScreenCover(isPresented: $viewing) {
+                PhotoViewer(id: photo.id)
             }
         }
     }
@@ -820,15 +851,16 @@ struct ChatView: View {
 
         var body: some View {
             VStack(alignment: .leading, spacing: 6) {
+                // The picture is the first block of her reply (spec #98).
+                if let photo {
+                    PhotoBubble(photo: photo)
+                }
                 // One text view for the whole bubble: with several Text views only the last
                 // one gets a selection container, so her Japanese and the scene would not be
                 // selectable (spec #76).
                 Text(bubbleText)
                     .font(.body)
                     .textSelection(.enabled)
-                if let photo {
-                    PhotoBubble(photo: photo)
-                }
                 // Her voice is the call's while one is up; 朗读 waits for it to end.
                 if let line, !app.call.isLive, let speech = ReadAloud.speech(
                     of: blocks, model: app.chatSettings.fishModel

@@ -1775,7 +1775,7 @@ final class CallSessionTests: XCTestCase {
             await session.currentState() == .listening
         }
         let photoEvents = log.all.compactMap { event -> PhotoReference? in
-            guard case let .photo(reference) = event else { return nil }
+            guard case let .photo(_, reference) = event else { return nil }
             return reference
         }
         XCTAssertEqual(photoEvents.first?.status, .pending)

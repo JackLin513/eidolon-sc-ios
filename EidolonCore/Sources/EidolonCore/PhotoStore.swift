@@ -28,14 +28,24 @@ extension Eidolon {
         Task {
             let started = Date()
             do {
-                let data = try await imageQueue.run(priority: .photo) {
+                let data = try await imageQueue.run(
+                    priority: .photo,
+                    timeout: .seconds(90)
+                ) {
                     try await context.generator.generate(request, settings: context.settings)
                 }
                 finishPhoto(id: id, data: data, at: Date())
-                recordImageCall(request: request, settings: context.settings, started: started, error: nil)
+                recordImageCall(
+                    id: id,
+                    request: request,
+                    settings: context.settings,
+                    started: started,
+                    error: nil
+                )
             } catch let error as ImageGenerationError {
                 finishPhoto(id: id, reason: Self.photoReason(error), detail: error.localizedDescription, at: Date())
                 recordImageCall(
+                    id: id,
                     request: request,
                     settings: context.settings,
                     started: started,
@@ -44,6 +54,7 @@ extension Eidolon {
             } catch {
                 finishPhoto(id: id, reason: .serviceError, detail: error.localizedDescription, at: Date())
                 recordImageCall(
+                    id: id,
                     request: request,
                     settings: context.settings,
                     started: started,
@@ -80,7 +91,7 @@ extension Eidolon {
                     INSERT INTO photos(
                         id, conversation_id, message_id, tag, status, reason, file,
                         width, height, started_at, finished_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 832, 1216, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         conversation_id = excluded.conversation_id,
                         message_id = excluded.message_id,
@@ -91,7 +102,8 @@ extension Eidolon {
                     """,
                 arguments: [
                     id, conversationID, messageID, draft.tag.raw, status.rawValue,
-                    reason, file, startedAt, finishedAt,
+                    reason, file, PhotoGeometry.width, PhotoGeometry.height,
+                    startedAt, finishedAt,
                 ]
             )
         }
@@ -126,6 +138,22 @@ extension Eidolon {
         }
         guard let file else { return nil }
         return try? Data(contentsOf: photoFileURL(file))
+    }
+
+    /// When the longest-waiting picture in the window gives its slot back: the oldest
+    /// one's start plus the hour (spec #98's HH:MM).
+    func photoSlotsFreeAt(since start: Date) throws -> Date? {
+        try userQueue.read { db in
+            let oldest: String? = try String.fetchOne(
+                db,
+                sql: """
+                    SELECT MIN(started_at) FROM photos
+                    WHERE started_at >= ? AND status != 'failed'
+                    """,
+                arguments: [Eidolon.timestamp(start)]
+            )
+            return oldest.flatMap(Eidolon.parseTimestamp)
+        }
     }
 
     /// How many photos were started in the given window; used by the hourly allowance.
@@ -192,8 +220,6 @@ extension Eidolon {
                     arguments: [file, Eidolon.timestamp(now), id]
                 )
             }
-            _ = messageID
-            _ = conversationID
         }
         photoDrafts[id] = draft
     }
@@ -226,11 +252,13 @@ extension Eidolon {
     /// One real generation, for the usage page (spec #96, ticket #101): what model, how
     /// many pictures, how long and what went wrong — never the tag she wrote.
     private func recordImageCall(
+        id: String,
         request: ImageRequest,
         settings: ImageServiceSettings,
         started: Date,
         error: String?
     ) {
+        // A picture only costs one when the service returned it (spec #98).
         let call = ServiceCall(
             at: Date(),
             service: .image,
@@ -238,9 +266,10 @@ extension Eidolon {
             model: request.model,
             operation: .image,
             unit: .images,
-            input: 1,
+            input: error == nil ? 1 : 0,
             latency: Date().timeIntervalSince(started),
-            error: error
+            error: error,
+            conversationID: photoDrafts[id]?.conversationID
         )
         try? recordServiceCall(call)
     }

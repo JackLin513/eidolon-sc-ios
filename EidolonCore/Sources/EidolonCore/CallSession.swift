@@ -297,9 +297,9 @@ public enum CallEvent: Sendable, Hashable {
     case typed(String)
     /// The reply being written was dropped for a follow-on: nothing of it is shown.
     case replyDropped
-    /// She is making a picture for this turn. It arrives with its reply, and its file comes
-    /// later through the photo record (ticket #103).
-    case photo(PhotoReference)
+    /// She is making a picture for this turn, numbered like her replies from 0. Its file
+    /// comes later through the photo record (ticket #103).
+    case photo(reply: Int, reference: PhotoReference)
     /// The producer asked for a picture and this hour's allowance is gone.
     case photosUsedUp(retryAt: Date)
 }
@@ -1011,7 +1011,7 @@ public actor CallSession {
                     // neither shown nor voiced.
                     break
                 case let .photo(id, status):
-                    emit(.photo(PhotoReference(id: id, status: status)))
+                    emit(.photo(reply: reply, reference: PhotoReference(id: id, status: status)))
                 case let .photosUsedUp(retryAt):
                     emit(.photosUsedUp(retryAt: retryAt))
                 case let .finished(record):

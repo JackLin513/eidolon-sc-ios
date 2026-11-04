@@ -536,7 +536,6 @@ struct ChatSettings: Equatable {
         if let value = values.imageStyle { imageStyle = value }
         if let value = values.imageHourlyLimit { imageHourlyLimit = value }
         if let value = values.novelAIAPIKey { novelAIAPIKey = value }
-        if let value = values.gptImageEnabled { gptImageEnabled = value }
         if let value = values.gptImageBaseURL { gptImageBaseURL = value }
         if let value = values.gptImageModel { gptImageModel = value }
         if let value = values.gptImageQuality { gptImageQuality = value }

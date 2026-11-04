@@ -25,8 +25,6 @@ public enum GPTImageQuality: String, Codable, Sendable, CaseIterable, Identifiab
     case medium
     case high
     case auto
-    case xhigh
-    case max
 
     public var id: String { rawValue }
     public var title: String { rawValue }
@@ -456,27 +454,87 @@ public enum ImageJobPriority: Int, Sendable, Comparable {
 
 public actor ImageQueue {
     private var running = false
-    private var waiters: [(priority: ImageJobPriority, continuation: CheckedContinuation<Void, Never>)] = []
+    private struct Waiter {
+        let id: UUID
+        let priority: ImageJobPriority
+        let continuation: CheckedContinuation<Bool, Never>
+    }
+    private var waiters: [Waiter] = []
 
     public init() {}
 
+    /// Runs one picture at a time. `timeout` covers the wait in line and the work alike,
+    /// and a job that ran out of time gives its place up (spec #98: 90 seconds for a
+    /// photo, ten minutes for a moments picture).
     public func run<T: Sendable>(
         priority: ImageJobPriority = .photo,
-        _ operation: @Sendable () async throws -> T
+        timeout: Duration? = nil,
+        _ operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
-        await acquire(priority: priority)
-        defer { release() }
-        return try await operation()
+        guard let timeout else {
+            guard await acquire(id: UUID(), priority: priority) else {
+                throw ImageGenerationError.timeout
+            }
+            do {
+                let value = try await operation()
+                release()
+                return value
+            } catch {
+                release()
+                throw error
+            }
+        }
+        let id = UUID()
+        return try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                guard await self.acquire(id: id, priority: priority) else {
+                    throw CancellationError()
+                }
+                do {
+                    let value = try await operation()
+                    await self.release()
+                    return value
+                } catch {
+                    await self.release()
+                    throw error
+                }
+            }
+            group.addTask {
+                try await Task.sleep(for: timeout)
+                throw ImageGenerationError.timeout
+            }
+            defer { group.cancelAll() }
+            guard let value = try await group.next() else {
+                throw ImageGenerationError.timeout
+            }
+            return value
+        }
     }
 
-    private func acquire(priority: ImageJobPriority) async {
+    /// Waits for the one place. A waiter whose task is cancelled leaves the line instead
+    /// of taking the place later and drawing a picture nobody asked for any more.
+    private func acquire(id: UUID, priority: ImageJobPriority) async -> Bool {
         if !running {
             running = true
-            return
+            return true
         }
-        await withCheckedContinuation { continuation in
-            waiters.append((priority, continuation))
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if Task.isCancelled {
+                    continuation.resume(returning: false)
+                } else {
+                    waiters.append(Waiter(id: id, priority: priority, continuation: continuation))
+                }
+            }
+        } onCancel: {
+            Task { await self.cancel(id: id) }
         }
+    }
+
+    private func cancel(id: UUID) {
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        let waiter = waiters.remove(at: index)
+        waiter.continuation.resume(returning: false)
     }
 
     private func release() {
@@ -486,7 +544,7 @@ public actor ImageQueue {
         }
         let index = waiters.indices.max { waiters[$0].priority < waiters[$1].priority }!
         let next = waiters.remove(at: index)
-        next.continuation.resume()
+        next.continuation.resume(returning: true)
     }
 }
 

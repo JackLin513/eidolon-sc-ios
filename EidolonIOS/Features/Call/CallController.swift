@@ -223,7 +223,7 @@ final class CallController {
             previousLine = nil
         case let .affinity(change):
             showAffinityCue(change)
-        case let .photo(reference):
+        case let .photo(_, reference):
             photo = CallPhoto(id: reference.id, status: reference.status, reason: reference.reason)
             if isCollapsed { unseenPhoto = true }
             watchPhoto(id: reference.id)

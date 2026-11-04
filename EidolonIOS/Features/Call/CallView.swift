@@ -88,7 +88,7 @@ struct CallView: View {
         // dark on its own (spec #46).
         .preferredColorScheme(call.layer == .collapsed ? nil : .dark)
         .fullScreenCover(item: $viewingPhoto) { photo in
-            CallPhotoViewer(photo: photo)
+            PhotoViewer(id: photo.id)
         }
         .task {
             loadBackdrop()
@@ -902,16 +902,11 @@ extension CallPhoto {
     /// What the chip says without opening it.
     static func saying(_ photo: CallPhoto) -> String {
         switch photo.status {
-        case .pending: "正在冲印…"
-        case .ready: "她发来一张照片"
+        case .pending: return "正在拍照…"
+        case .ready: return "照片"
         case .failed:
-            switch photo.reason {
-            case .timeout: "照片没冲印出来，超时了"
-            case .serviceError: "生图服务出错了，照片没拍成"
-            case .badImage: "生成的图不对，没能存下来"
-            case .usedUp: "这一小时的照片用完了"
-            case nil: "照片没拍成"
-            }
+            guard let reason = photo.reason else { return "照片没发出来" }
+            return "照片没发出来 · \(reason.shortText)"
         }
     }
 }
@@ -940,7 +935,7 @@ private struct CallPhotoThumbnail: View {
                     .foregroundStyle(.white.opacity(0.8))
             }
         }
-        .aspectRatio(832 / 1216, contentMode: .fit)
+        .aspectRatio(PhotoGeometry.aspectRatio, contentMode: .fit)
         .task(id: photo.status) {
             guard photo.status == .ready else { return }
             image = await app.photoImage(photo.id)
@@ -949,9 +944,9 @@ private struct CallPhotoThumbnail: View {
 }
 
 /// One picture, full screen: tap or the close button puts it away. There is no save or
-/// share — the picture exists only in this conversation (ticket #103).
-private struct CallPhotoViewer: View {
-    let photo: CallPhoto
+/// share — the picture exists only in this conversation (spec #98).
+struct PhotoViewer: View {
+    let id: String
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @State private var image: UIImage?
@@ -978,9 +973,9 @@ private struct CallPhotoViewer: View {
                     .padding(16)
             }
             .accessibilityLabel("关上照片")
-            .accessibilityIdentifier("call.photo.close")
+            .accessibilityIdentifier("photo.close")
         }
-        .task { image = await app.photoImage(photo.id) }
+        .task { image = await app.photoImage(id) }
         .onTapGesture { dismiss() }
     }
 }
