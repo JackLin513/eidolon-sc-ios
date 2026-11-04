@@ -50,13 +50,15 @@ struct ChatView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        // A conversation is a page of its own: the three first-level tabs stay behind it
-        // (spec #64). A live call is the exception, so the play tab stays within reach.
+        // A conversation is a page of its own: the first-level tabs stay behind it, even
+        // when a call is folded away over it (spec #64). Letting a live call bring them
+        // back made the tab bar fight the input bar for the bottom edge and bounce during
+        // push/pop (bug 2026-11-04); the folded call's own bar is the way back to it.
         // The id makes a new controller when the tab comes back into view: switching to
         // the gift page and back does not send this page an appearance callback, and the
         // bar would stay up (spec bug, 2026-11-04).
         .background {
-            TabBarHides(hidden: !app.call.isLive)
+            TabBarHides()
                 .id(app.selectedTab)
         }
         .toolbar {

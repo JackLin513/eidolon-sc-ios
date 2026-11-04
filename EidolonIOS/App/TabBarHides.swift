@@ -9,8 +9,10 @@ import UIKit
 /// page is popped (spec #64). The UIKit property is set by the page itself, so leaving the
 /// page always restores the bar.
 struct TabBarHides: UIViewControllerRepresentable {
-    /// False while a call is live: the call bar promises that the other tabs stay within
-    /// reach, and the player may still draw or reset a card from the play tab (spec #64).
+    /// Always hidden while this page is on screen. Her chat stays full-screen even while a
+    /// call is folded over it: letting the tabs back in made the bottom edge bounce between
+    /// the input bar and the floating tab bar, and the folded call's own bar is the way back
+    /// to the call (bug 2026-11-04).
     var hidden: Bool = true
 
     func makeUIViewController(context: Context) -> Controller { Controller(hidden: hidden) }

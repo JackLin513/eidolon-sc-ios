@@ -410,6 +410,54 @@ final class PlayUITests: XCTestCase {
         )
     }
 
+    func testAFoldedCallKeepsTheTabsOutOfHerChat() throws {
+        app.terminate()
+        app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
+        app.launchEnvironment["EIDOLON_FAKE_CHAT"] = "1"
+        app.launchEnvironment["EIDOLON_CALL_FAKE_SPEECH"] = "你好"
+        app.launch()
+
+        let dial = app.buttons["打电话"]
+        XCTAssertTrue(dial.waitForExistence(timeout: 20), "chat did not open")
+        dial.tap()
+        let hangUp = app.buttons["call.hangUp"]
+        XCTAssertTrue(hangUp.waitForExistence(timeout: 20), "call did not start")
+        let enabled = NSPredicate(format: "isEnabled == true")
+        expectation(for: enabled, evaluatedWith: hangUp)
+        waitForExpectations(timeout: 20)
+        app.buttons["收起"].firstMatch.tap()
+
+        XCTAssertTrue(
+            app.buttons["回到通话"].waitForExistence(timeout: 5),
+            "the folded call has no bar in her chat"
+        )
+        XCTAssertFalse(
+            app.tabBars.buttons["玩法"].exists,
+            "the tabs came back under her chat while the call was folded"
+        )
+
+        let back = app.navigationBars.buttons["对话"]
+        XCTAssertTrue(back.waitForExistence(timeout: 5), "chat has no back to the roster")
+        back.tap()
+        XCTAssertTrue(app.navigationBars["对话"].waitForExistence(timeout: 5), "not on roster")
+        XCTAssertTrue(
+            app.tabBars.buttons["玩法"].waitForExistence(timeout: 5),
+            "the roster lost its tabs"
+        )
+
+        let cells = app.cells
+        XCTAssertGreaterThan(cells.count, 0, "the roster has no characters")
+        cells.element(boundBy: 0).tap()
+        XCTAssertTrue(
+            app.textFields["chat.input"].waitForExistence(timeout: 5),
+            "not back in her chat"
+        )
+        XCTAssertFalse(
+            app.tabBars.buttons["玩法"].exists,
+            "the tabs came back under her chat after returning to it"
+        )
+    }
+
     func testCallBarFollowsToThePlayTab() throws {
         app.terminate()
         app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
@@ -422,6 +470,11 @@ final class PlayUITests: XCTestCase {
         XCTAssertTrue(hangUp.waitForExistence(timeout: 20), "call did not start")
         app.buttons["收起"].firstMatch.tap()
 
+        // Her chat stays full-screen while the call is folded, so the roster is the way
+        // to the other tabs (bug 2026-11-04).
+        let rosterBack = app.navigationBars.buttons["对话"]
+        XCTAssertTrue(rosterBack.waitForExistence(timeout: 5), "chat has no back to the roster")
+        rosterBack.tap()
         let play = app.tabBars.buttons["玩法"]
         XCTAssertTrue(play.waitForExistence(timeout: 5), "no play tab while calling")
         play.tap()
