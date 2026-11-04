@@ -283,11 +283,7 @@ final class AppModel {
     /// A call with her, on the services the settings name. The microphone and the
     /// recognizer are the app's; everything else is the core's (ADR-0015).
     func beginCall(for character: CharacterConfig, now: Date = Date()) async throws -> CallSession {
-        guard let provider = chatSettings.callConfig.map({
-            ChatProviderFactory.make(config: $0)
-        }) else {
-            throw ChatProviderError.notConfigured
-        }
+        let provider = try callChatProvider
         if let missing = CallSettingsError.missingRecognitionKeyWhenNeeded(chatSettings) {
             throw missing
         }
@@ -316,6 +312,22 @@ final class AppModel {
             now: { Date() }
         )
         return try await core.beginCall(characterID: character.id, setup: setup, now: now)
+    }
+
+    /// The model that answers a call. The debug provider answers calls too, so a call page
+    /// and its line card can be walked without a model key (spec #47's UI tests).
+    private var callChatProvider: any ChatProvider {
+        get throws {
+            #if DEBUG
+            if isUsingFakeChat { return DebugChatProvider() }
+            #endif
+            guard let configured = chatSettings.callConfig.map({
+                ChatProviderFactory.make(config: $0)
+            }) else {
+                throw ChatProviderError.notConfigured
+            }
+            return configured
+        }
     }
 
     // MARK: - The bar
@@ -382,6 +394,8 @@ final class AppModel {
     private(set) var giftCatalog: GiftCatalog?
     private(set) var lastGiftDraw: GiftDraw?
     private(set) var isGiftWorking = false
+    /// The play page's five cards and their status lines (spec #94).
+    private(set) var playSummary: PlaySummary?
     /// The numbers draws come from; `EIDOLON_GIFT_SEED` fixes them for a debug launch.
     private let giftRandom: any GiftRandom = {
         #if DEBUG
@@ -398,8 +412,6 @@ final class AppModel {
 
     /// The play tab's dot: a stage or reward the producer has not looked at.
     private(set) var achievementBadge = false
-    /// Which play card the dot points at: the achievements page or the gift page.
-    private(set) var playBadges = PlayBadges(achievements: false, gifts: false)
     /// The one-time backfill summary, until its alert is dismissed.
     private(set) var achievementLaunch: AchievementLaunchSummary?
     /// The toast after a turn, gift or draw unlocked something.
@@ -424,6 +436,19 @@ final class AppModel {
         giftState = try await core.giftState()
     }
 
+    /// Reads the play page's five cards: what the gift page has, the achievements' new and
+    /// unlocked stages, the next calendar event, the cycles, and the bar. False when the
+    /// read failed, so the page can offer a retry instead of staying blank.
+    @discardableResult
+    func refreshPlaySummary() async -> Bool {
+        do {
+            playSummary = try await core.playSummary(now: Date(), timeZone: producerTimeZone)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     @discardableResult
     func drawGifts(all: Bool) async throws -> GiftDraw {
         isGiftWorking = true
@@ -431,6 +456,7 @@ final class AppModel {
         let draw = try await core.drawGifts(all: all, random: giftRandom)
         lastGiftDraw = draw
         giftState = try await core.giftState()
+        await refreshPlaySummary()
         showAchievementRewards(draw.rewards)
         return draw
     }
@@ -446,6 +472,7 @@ final class AppModel {
         giftState = try await core.giftState()
         // The gift is a line in her conversation: a chat page left open follows it.
         noteConversationChanged()
+        await refreshPlaySummary()
         showAchievementRewards(given.rewards)
         return given
     }
@@ -459,6 +486,7 @@ final class AppModel {
         let use = try await core.useResetCard()
         giftState = try await core.giftState()
         await refreshAchievementBadge()
+        await refreshPlaySummary()
         return use
     }
 
@@ -482,8 +510,6 @@ final class AppModel {
 
     func refreshAchievementBadge() async {
         achievementBadge = (try? await core.achievementBadge()) ?? false
-        playBadges = (try? await core.playBadges())
-            ?? PlayBadges(achievements: false, gifts: false)
     }
 
     /// Clears the play tab's dot once the achievements page or the gift page was opened.
@@ -508,7 +534,10 @@ final class AppModel {
             guard !Task.isCancelled else { return }
             self?.achievementToast = nil
         }
-        Task { await refreshAchievementBadge() }
+        Task {
+            await refreshAchievementBadge()
+            await refreshPlaySummary()
+        }
     }
 
     func dismissAchievementLaunch() {
@@ -868,6 +897,14 @@ final class AppModel {
         giftPreselection = characterID
         playPath = NavigationPath()
         playPath.append(PlayRoute.gifts)
+    }
+
+    /// Opens the play tab's calendar, optionally on one character's schedule (spec #94).
+    /// Opens her week's schedule in the play tab, from her chat's menu (spec #94).
+    func openHerSchedule(characterID: String) {
+        selectedTab = .play
+        playPath = NavigationPath()
+        playPath.append(PlayRoute.schedule(characterID: characterID))
     }
 
     /// Opens settings as a manual visit, so debug destinations are not consumed.

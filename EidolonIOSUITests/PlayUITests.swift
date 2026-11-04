@@ -1,8 +1,9 @@
 import XCTest
 
-/// The play tab and the navigation it brought with it (spec #64): the three tabs, the
-/// play hub's cards, the placeholder pages, and the routes between them. Needs a simulator
-/// or device with the content bundle already imported, like the other page-walking tests.
+/// The play tab and the navigation it brought with it (spec #64, #94): the four tabs, the
+/// moments placeholder, the play hub's five cards, and the routes between them. Needs a
+/// simulator or device with the content bundle already imported, like the other
+/// page-walking tests.
 final class PlayUITests: XCTestCase {
     private var app: XCUIApplication!
 
@@ -20,13 +21,49 @@ final class PlayUITests: XCTestCase {
         let conversation = app.tabBars.buttons["对话"]
         XCTAssertTrue(conversation.waitForExistence(timeout: 10), "no conversation tab")
 
+        let labels = (0..<app.tabBars.buttons.count).map {
+            app.tabBars.buttons.element(boundBy: $0).label
+        }
+        XCTAssertEqual(labels, ["对话", "朋友圈", "玩法", "设置"], "tabs are not the upstream order")
+        XCTAssertFalse(app.buttons["日历"].exists, "the conversation list still has a calendar button")
+
+        let moments = app.tabBars.buttons["朋友圈"]
+        moments.tap()
+        XCTAssertTrue(app.navigationBars["朋友圈"].waitForExistence(timeout: 5), "moments did not open")
+        XCTAssertTrue(
+            app.descendants(matching: .any)["moments.placeholder"].waitForExistence(timeout: 5),
+            "moments has no placeholder"
+        )
+
         let play = app.tabBars.buttons["玩法"]
-        XCTAssertTrue(play.exists, "no play tab")
         play.tap()
         XCTAssertTrue(app.navigationBars["玩法"].waitForExistence(timeout: 5), "play hub did not open")
         XCTAssertTrue(app.buttons["play.gifts"].waitForExistence(timeout: 5), "no gift card")
         XCTAssertTrue(app.buttons["play.achievements"].exists, "no achievement card")
+        XCTAssertTrue(app.buttons["play.calendar"].exists, "no calendar card")
+        XCTAssertTrue(app.buttons["play.cycles"].exists, "no cycles card")
         XCTAssertTrue(app.buttons["play.bar"].exists, "no bar card")
+        XCTAssertLessThan(
+            app.buttons["play.gifts"].frame.minY,
+            app.buttons["play.achievements"].frame.minY,
+            "the cards are not in the upstream order"
+        )
+        XCTAssertLessThan(
+            app.buttons["play.calendar"].frame.minY,
+            app.buttons["play.cycles"].frame.minY,
+            "the calendar card is not above the cycles card"
+        )
+        XCTAssertTrue(app.buttons["play.gifts"].label.contains("抽奖"), "the gift card has no status")
+        let achievementsLabel = app.buttons["play.achievements"].label
+        XCTAssertTrue(
+            achievementsLabel.contains("阶段") || achievementsLabel.contains("新解锁"),
+            "the achievement card has no status: \(achievementsLabel)"
+        )
+        let cyclesLabel = app.buttons["play.cycles"].label
+        XCTAssertTrue(
+            cyclesLabel.contains("记过") || cyclesLabel.contains("还没有记录"),
+            "the cycles card has no status: \(cyclesLabel)"
+        )
 
         app.buttons["play.gifts"].tap()
         XCTAssertTrue(app.navigationBars["礼物"].waitForExistence(timeout: 5), "gift page did not open")
@@ -42,8 +79,17 @@ final class PlayUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["achievement.draws"].exists)
         app.navigationBars.buttons["玩法"].tap()
 
+        app.buttons["play.calendar"].tap()
+        XCTAssertTrue(app.navigationBars["日历"].waitForExistence(timeout: 5), "calendar page did not open")
+        app.navigationBars.buttons["玩法"].tap()
+
+        app.buttons["play.cycles"].tap()
+        XCTAssertTrue(app.navigationBars["周期"].waitForExistence(timeout: 5), "cycles page did not open")
+        app.navigationBars.buttons["玩法"].tap()
+
         app.tabBars.buttons["设置"].tap()
         XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5), "settings tab did not open")
+        XCTAssertFalse(app.buttons["查看周期"].exists, "settings still opens the cycle page")
         conversation.tap()
         XCTAssertTrue(app.navigationBars["对话"].waitForExistence(timeout: 5), "conversation tab did not return")
     }
@@ -72,14 +118,43 @@ final class PlayUITests: XCTestCase {
         XCTAssertTrue(sent.waitForExistence(timeout: 10), "the gift was not acknowledged")
         sent.buttons["去对话"].tap()
 
-        let line = app.staticTexts.matching(
+        let lines = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "你送给")
-        ).firstMatch
-        XCTAssertTrue(line.waitForExistence(timeout: 5), "the gift is not in her chat")
+        )
+        XCTAssertTrue(lines.firstMatch.waitForExistence(timeout: 5), "the gift is not in her chat")
+        // The simulator keeps gifts from earlier runs; the one just sent is the newest.
+        let line = lines.element(boundBy: lines.count - 1)
         XCTAssertTrue(line.isHittable, "the chat stayed at the old bottom")
         XCTAssertTrue(
             app.tabBars.buttons["玩法"].waitForNonExistence(timeout: 5),
             "the tab bar came back on the chat page"
+        )
+    }
+
+    func testHerScheduleFromChatOpensThePlayCalendar() throws {
+        app.terminate()
+        app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
+        app.launch()
+
+        let more = app.buttons["更多"]
+        XCTAssertTrue(more.waitForExistence(timeout: 10), "chat did not open")
+        more.tap()
+        let schedule = app.buttons["她的日程"]
+        XCTAssertTrue(schedule.waitForExistence(timeout: 5), "chat has no schedule route")
+        guard schedule.isEnabled else {
+            throw XCTSkip("this content bundle has no job list")
+        }
+        schedule.tap()
+
+        XCTAssertTrue(
+            app.navigationBars["她的日程"].waitForExistence(timeout: 10),
+            "her schedule did not open in the play tab"
+        )
+        XCTAssertTrue(app.tabBars.buttons["玩法"].isSelected, "the play tab is not selected")
+        app.navigationBars.buttons["玩法"].tap()
+        XCTAssertTrue(
+            app.navigationBars["玩法"].waitForExistence(timeout: 5),
+            "back did not reach the play page"
         )
     }
 
@@ -297,8 +372,8 @@ final class PlayUITests: XCTestCase {
         let back = app.navigationBars.buttons["对话"]
         XCTAssertTrue(back.waitForExistence(timeout: 5), "chat has no back to the roster")
         back.tap()
-        let calendar = app.buttons["日历"]
-        XCTAssertTrue(calendar.waitForExistence(timeout: 5), "back did not reach the roster")
+        let roster = app.navigationBars["对话"]
+        XCTAssertTrue(roster.waitForExistence(timeout: 5), "back did not reach the roster")
 
         // The folded call's banner is a band above the tab's navigation, not inside it:
         // inside the list, the iOS 26 navigation bar tints itself with the banner's dark
@@ -306,7 +381,7 @@ final class PlayUITests: XCTestCase {
         let bar = app.buttons["回到通话"].firstMatch
         XCTAssertTrue(bar.waitForExistence(timeout: 5), "no folded call banner on the roster")
         XCTAssertGreaterThan(
-            calendar.frame.minY, bar.frame.maxY,
+            roster.frame.minY, bar.frame.maxY,
             "the roster's navigation is under the call banner"
         )
 
@@ -316,6 +391,14 @@ final class PlayUITests: XCTestCase {
         XCTAssertGreaterThan(
             playTitle.frame.minY, bar.frame.maxY,
             "the play title is under the call banner"
+        )
+
+        app.tabBars.buttons["朋友圈"].tap()
+        let momentsTitle = app.staticTexts["朋友圈"].firstMatch
+        XCTAssertTrue(momentsTitle.waitForExistence(timeout: 5), "moments title is missing")
+        XCTAssertGreaterThan(
+            momentsTitle.frame.minY, bar.frame.maxY,
+            "the moments title is under the call banner"
         )
 
         app.tabBars.buttons["设置"].tap()

@@ -2,19 +2,13 @@ import EidolonCore
 import SwiftUI
 import UIKit
 
-/// What the bar's card says under its name.
-enum BarEntry {
-    /// Before its package is in: the bar cannot be drawn without it.
-    static let importHint = "还没有导入酒吧素材包，进设置导入"
-    static let rewardToday = "今天第一次光顾有奖励"
-    static let rewardTaken = "今天的奖励领过了"
-}
-
-/// The play tab's first page (spec #64): the bar, which moved here from the roster, the
-/// gift page, and the achievement page that a later ticket fills in.
+/// The play tab's first page (spec #64, #94): five cards in the upstream order — gifts,
+/// achievements, calendar, her cycles, the bar — with what each holds read once on the page.
 struct PlayHubView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.barOrientation) private var barOrientation
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var summaryFailed = false
     @State private var isBarShown = false
     /// The bar is a landscape screen. The play page turns first and is covered while it
     /// does, so the bar never appears half-turned; on the way back it stays covered until
@@ -33,40 +27,22 @@ struct PlayHubView: View {
         VStack(spacing: 0) {
             CallBar()
             NavigationStack(path: playPath) {
-                List {
-                    Section {
-                        card(
-                            icon: "gift",
-                            title: "礼物",
-                            subtitle: "抽奖、背包和送她的礼物",
-                            showsNew: app.playBadges.gifts
-                        ) {
-                            app.openGifts()
+                Group {
+                    if let summary = app.playSummary {
+                        cards(summary.cards)
+                    } else if summaryFailed {
+                        ContentUnavailableView {
+                            Label("玩法暂时打不开", systemImage: "sparkles")
+                        } description: {
+                            Text("稍后再试。")
+                        } actions: {
+                            Button("重试") { Task { await load() } }
                         }
-                        .accessibilityIdentifier("play.gifts")
-
-                        card(
-                            icon: "trophy",
-                            title: "成就",
-                            subtitle: "和她们的进度",
-                            showsNew: app.playBadges.achievements
-                        ) {
-                            app.playPath = NavigationPath()
-                            app.playPath.append(PlayRoute.achievements)
-                        }
-                        .accessibilityIdentifier("play.achievements")
-
-                        card(
-                            icon: "wineglass",
-                            title: "酒吧",
-                            subtitle: barSubtitle
-                        ) {
-                            openBar()
-                        }
-                        .accessibilityIdentifier("play.bar")
+                    } else {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
-                .listStyle(.plain)
                 .navigationTitle("玩法")
                 .navigationDestination(for: PlayRoute.self) { route in
                     switch route {
@@ -74,6 +50,12 @@ struct PlayHubView: View {
                         GiftsView()
                     case .achievements:
                         AllAchievementsView()
+                    case .calendar:
+                        CalendarView()
+                    case let .schedule(characterID):
+                        SchedulePageView(characterID: characterID)
+                    case .cycles:
+                        CyclesView()
                     }
                 }
                 // 酒吧整屏呈现：面包屑、横向画面和它的安全区都留在酒吧自己手里。
@@ -89,7 +71,7 @@ struct PlayHubView: View {
                     )
                 }
                 .task {
-                    await app.refreshAchievementBadge()
+                    await load()
                     if app.consumeDebugBarRequest() {
                         openBar()
                     }
@@ -106,6 +88,116 @@ struct PlayHubView: View {
                         .foregroundStyle(.white)
                 }
             }
+        }
+    }
+
+    private func load() async {
+        summaryFailed = !(await app.refreshPlaySummary())
+        await app.refreshAchievementBadge()
+    }
+
+    private func cards(_ cards: [PlayCardStatus]) -> some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                if let first = cards.first {
+                    card(first, filled: true)
+                }
+                LazyVGrid(columns: columns, spacing: 12) {
+                    ForEach(cards.dropFirst()) { status in
+                        card(status, filled: false)
+                    }
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    /// One column on a phone; two on anything wide, never three.
+    private var columns: [GridItem] {
+        sizeClass == .regular
+            ? [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+            : [GridItem(.flexible())]
+    }
+
+    private func card(_ status: PlayCardStatus, filled: Bool) -> some View {
+        Button {
+            open(status.kind)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon(status.kind))
+                    .font(.title3)
+                    .frame(width: 44, height: 44)
+                    .background(
+                        Circle().fill(filled ? Color(.systemBackground) : Color(.secondarySystemBackground))
+                    )
+                    .foregroundStyle(Color.accentColor)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(status.title)
+                            .font(.headline)
+                        if status.isNew {
+                            Circle()
+                                .fill(.red)
+                                .frame(width: 7, height: 7)
+                                .accessibilityLabel("有新内容")
+                        }
+                    }
+                    Text(status.status)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(minHeight: 18, alignment: .leading)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(filled ? Color(.secondarySystemBackground) : Color(.systemBackground))
+            )
+            .overlay {
+                if !filled {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color(.separator), lineWidth: 1)
+                }
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(status.title)，\(status.status)" + (status.isNew ? "，有新内容" : "")
+        )
+        .accessibilityIdentifier("play.\(status.kind.rawValue)")
+    }
+
+    private func icon(_ kind: PlayCardKind) -> String {
+        switch kind {
+        case .gifts: "gift"
+        case .achievements: "trophy"
+        case .calendar: "calendar"
+        case .cycles: "drop"
+        case .bar: "wineglass"
+        }
+    }
+
+    private func open(_ kind: PlayCardKind) {
+        switch kind {
+        case .gifts:
+            app.openGifts()
+        case .achievements:
+            app.playPath = NavigationPath()
+            app.playPath.append(PlayRoute.achievements)
+        case .calendar:
+            app.playPath.append(PlayRoute.calendar)
+        case .cycles:
+            app.playPath.append(PlayRoute.cycles)
+        case .bar:
+            openBar()
         }
     }
 
@@ -159,73 +251,15 @@ struct PlayHubView: View {
             try? await Task.sleep(for: .milliseconds(50))
         }
     }
-
-    /// The bar's line under its name: the way to bring its package in, today's reward, or
-    /// that today's has been taken.
-    private var barSubtitle: String {
-        guard app.barInfo != nil else { return BarEntry.importHint }
-        return app.barRewardToday ? BarEntry.rewardToday : BarEntry.rewardTaken
-    }
-
-    private func card(
-        icon: String,
-        title: String,
-        subtitle: String,
-        showsNew: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.title3)
-                    .frame(width: 46, height: 46)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.accentColor.opacity(0.12))
-                    )
-                    .foregroundStyle(Color.accentColor)
-                    .overlay(alignment: .topTrailing) {
-                        if showsNew {
-                            Circle()
-                                .fill(.red)
-                                .frame(width: 9, height: 9)
-                                .accessibilityLabel("有新内容")
-                        }
-                    }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
-                        .font(.headline)
-                    Text(subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.vertical, 4)
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.primary)
-    }
 }
 
-/// A page in the play tab that later tickets replace.
-struct PlayPlaceholderView: View {
-    let title: String
-    let systemImage: String
-    let description: String
+/// Her weekly schedule as a play page of its own (spec #94): the chat's 「她的日程」 lands
+/// here, with the calendar underneath it.
+private struct SchedulePageView: View {
+    let characterID: String?
+    @State private var book = ScheduleDraftBook()
 
     var body: some View {
-        ContentUnavailableView(
-            "\(title)即将开放",
-            systemImage: systemImage,
-            description: Text(description)
-        )
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
+        ScheduleBoardView(initialCharacterID: characterID, book: $book)
     }
 }
