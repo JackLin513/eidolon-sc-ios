@@ -226,15 +226,23 @@ extension Eidolon {
         }
         let effectiveAdultMode = adultMode && character.isAdult
         let photoTable = try? photoTags()
-        let photoEligible = photo != nil && photoTable != nil && character.canSendPhoto
+        // No judge means nothing can tell whether he asked for a picture: she is told she
+        // cannot send one, exactly as before photos existed (spec #98).
+        let photoEligible = judge != nil
+            && photo != nil
+            && photoTable != nil
+            && character.canSendPhoto
         let photoLimit = photo?.settings.hourlyLimit ?? 0
         let photoCount = photoLimit > 0
             ? (try? photoCount(since: now.addingTimeInterval(-3600))) ?? 0
             : 0
         let photoUsedUp = photoLimit > 0 && photoCount >= photoLimit
+        // The slot comes back when the oldest counted picture turns one hour old, not one
+        // hour from now (spec #98's HH:MM).
         let photoRetryAt: Date? = {
             guard photoUsedUp else { return nil }
-            return now.addingTimeInterval(3600)
+            let oldest = (try? photoSlotsFreeAt(since: now.addingTimeInterval(-3600))) ?? nil
+            return oldest?.addingTimeInterval(3600) ?? now.addingTimeInterval(3600)
         }()
         let affinity = try readAffinity(characterID: characterID, now: now)
         if let until = affinity.cooldownUntil {

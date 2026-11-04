@@ -108,9 +108,12 @@ public struct PhotoTagTable: Sendable {
         return entry.words.contains { tag == $0 || tag.contains($0) }
     }
 
-    /// Whether any blocked category catches the tag, or nil when it is clean.
+    /// Whether any blocked category catches the tag, or nil when it is clean. A tag on
+    /// the allowed list never crosses the line, even when a blocked word is inside it
+    /// (upstream `_TagTable.crossing`).
     public func blockingCategory(of tag: String) -> PhotoTagCategory? {
-        PhotoTagCategory.allCases.first { isBlocked(tag, in: $0) }
+        if allowed.contains(tag) { return nil }
+        return PhotoTagCategory.allCases.first { isBlocked(tag, in: $0) }
     }
 
     private static func stringSet(_ value: JSONValue?, field: String) throws -> Set<String> {

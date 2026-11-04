@@ -179,7 +179,6 @@ struct EnvImportPreviewView: View {
         case "NOVELAI_ADULT_MODEL": return values.imageAdultModel
         case "NOVELAI_STYLE": return values.imageStyle
         case "EIDOLON_PHOTOS_PER_HOUR": return values.imageHourlyLimit.map(String.init)
-        case "GPT_IMAGE_ENABLED": return values.gptImageEnabled.map(String.init)
         case "GPT_IMAGE_BASE_URL": return values.gptImageBaseURL
         case "GPT_IMAGE_MODEL": return values.gptImageModel
         case "GPT_IMAGE_QUALITY": return values.gptImageQuality?.rawValue

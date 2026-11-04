@@ -165,7 +165,6 @@ final class EnvImportTests: XCTestCase {
             NOVELAI_ADULT_MODEL=nai-diffusion-5-full
             NOVELAI_STYLE=0.7::artist:rella::
             EIDOLON_PHOTOS_PER_HOUR=0
-            GPT_IMAGE_ENABLED=true
             GPT_IMAGE_BASE_URL=https://api.openai.com/v1
             GPT_IMAGE_MODEL=gpt-image-2
             GPT_IMAGE_QUALITY=high
@@ -178,7 +177,6 @@ final class EnvImportTests: XCTestCase {
         XCTAssertEqual(report.values.imageAdultModel, "nai-diffusion-5-full")
         XCTAssertEqual(report.values.imageStyle, "0.7::artist:rella::")
         XCTAssertEqual(report.values.imageHourlyLimit, 0)
-        XCTAssertEqual(report.values.gptImageEnabled, true)
         XCTAssertEqual(report.values.gptImageQuality, .high)
         XCTAssertEqual(report.values.gptImageAPIKey, "gpt-key")
         XCTAssertTrue(report.invalid.isEmpty)

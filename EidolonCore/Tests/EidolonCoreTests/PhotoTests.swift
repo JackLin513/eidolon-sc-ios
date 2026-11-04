@@ -162,6 +162,59 @@ final class PhotoTagTests: XCTestCase {
         XCTAssertEqual(request.model, "adult-model")
     }
 
+    func testSomeoneElsesShotOnlyFillsInTheGazeWhenSheDidNot() throws {
+        let table = TestPhotoTagTable.make()
+        let without = try tag("""
+            shot: other
+            framing: portrait
+            place: cafe
+            outfit: casual
+            action: smile
+            """)
+        let filled = try PhotoPromptBuilder.request(
+            tag: without,
+            character: TestPhotoTagTable.character(),
+            style: "",
+            adult: false,
+            table: table,
+            model: "test-model"
+        )
+        XCTAssertTrue(filled.prompt.contains("looking at viewer"))
+        XCTAssertFalse(filled.prompt.contains("selfie"))
+
+        let with = try tag("""
+            shot: other
+            framing: portrait
+            place: cafe
+            outfit: casual
+            action: looking at viewer, smile
+            """)
+        let kept = try PhotoPromptBuilder.request(
+            tag: with,
+            character: TestPhotoTagTable.character(),
+            style: "",
+            adult: false,
+            table: table,
+            model: "test-model"
+        )
+        XCTAssertEqual(
+            kept.prompt.components(separatedBy: "looking at viewer").count - 1,
+            1
+        )
+    }
+
+    func testAnAllowedTagIsNeverStrippedEvenWithABlockedWord() throws {
+        let table = PhotoTagTable(
+            model: "test-image",
+            known: ["white shirt"],
+            rewrites: [:],
+            allowed: ["white shirt"],
+            blocked: [.underwear: .init(tags: [], words: ["shirt"])]
+        )
+        XCTAssertNil(table.blockingCategory(of: "white shirt"))
+        XCTAssertEqual(table.blockingCategory(of: "plaid shirt"), .underwear)
+    }
+
     func testACharacterWithoutPhotoTagsCannotMakeOne() throws {
         let table = TestPhotoTagTable.make()
         let photo = try tag("""
@@ -627,6 +680,77 @@ final class PhotoTurnTests: XCTestCase {
         XCTAssertEqual(used.map(\.apiKey), ["test-key"])
         let photo = try await lastPhoto(eidolon)
         XCTAssertEqual(photo?.status, .failed)
+    }
+
+    func testWithoutAJudgeSheIsToldSheCannotSendAPhoto() async throws {
+        let eidolon = try await installedEidolon()
+        let generator = FakePhotoGenerator()
+        let provider = RecordingChatProvider(chunks: ["<ja>ごめんね。</ja><zh>抱歉。</zh>"])
+        let (ids, record, _) = try await send(
+            eidolon,
+            chunks: provider.chunks,
+            judge: nil,
+            photo: PhotoTurnContext(
+                generator: generator,
+                settings: ImageServiceSettings(apiKey: "test-key")
+            ),
+            provider: provider
+        )
+        XCTAssertTrue(ids.isEmpty)
+        XCTAssertNil(record?.photo)
+        let made = await generator.requests
+        XCTAssertTrue(made.isEmpty)
+        let prompt = try XCTUnwrap(provider.prompts.first)
+        XCTAssertTrue(prompt.contains { $0.content.contains("你发不了照片") })
+    }
+
+    func testTheUsedUpMomentIsWhenTheOldestPictureTurnsAnHourOld() async throws {
+        let eidolon = try await installedEidolon()
+        let generator = FakePhotoGenerator()
+        let judge = PhotoJudge(wants: true)
+        let context = context(generator, hourlyLimit: 1)
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let first = RecordingChatProvider(chunks: [Self.tagChunk + "<ja>はい。</ja><zh>好。</zh>"])
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano",
+            text: "写真送って",
+            provider: first,
+            judge: judge,
+            now: start,
+            adultMode: false,
+            photo: context
+        ) {}
+        let second = RecordingChatProvider(chunks: ["<ja>ごめんね。</ja><zh>抱歉。</zh>"])
+        var retryAt: Date?
+        for try await event in eidolon.sendTurn(
+            characterID: "mano",
+            text: "もう一枚",
+            provider: second,
+            judge: judge,
+            now: start.addingTimeInterval(1800),
+            adultMode: false,
+            photo: context
+        ) {
+            if case let .photosUsedUp(at) = event { retryAt = at }
+        }
+        XCTAssertEqual(retryAt, start.addingTimeInterval(3600))
+    }
+
+    func testAFailedPictureCostsNoImageInTheLedger() async throws {
+        let eidolon = try await installedEidolon()
+        let generator = FakePhotoGenerator(failure: .timeout)
+        let provider = RecordingChatProvider(chunks: [Self.tagChunk + "<ja>はい。</ja><zh>好。</zh>"])
+        _ = try await send(
+            eidolon,
+            chunks: provider.chunks,
+            judge: PhotoJudge(wants: true),
+            photo: context(generator),
+            provider: provider
+        )
+        let calls = try await eidolon.serviceCalls()
+        let imageCall = try XCTUnwrap(calls.first { $0.service == .image })
+        XCTAssertEqual(imageCall.input, 0)
+        XCTAssertNotNil(imageCall.error)
     }
 
     // MARK: - Failures, allowance and lifecycle (ticket #102)

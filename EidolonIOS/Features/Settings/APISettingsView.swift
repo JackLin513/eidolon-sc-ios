@@ -25,6 +25,7 @@ struct APISettingsView: View {
     @State private var fetchErrors: [FetchKey: String] = [:]
     @State private var probes: [ProbeKey: ProbeStatus] = [:]
     @State private var testingImage = false
+    @State private var confirmingImage = false
     @State private var testImage: UIImage?
     @State private var imageTestError: String?
 
@@ -912,7 +913,7 @@ struct APISettingsView: View {
                 Text("每小时最多 \(settings.imageHourlyLimit) 张（0 不限）")
             }
             Button {
-                Task { await testImageGeneration() }
+                confirmingImage = true
             } label: {
                 HStack {
                     Text("试一张")
@@ -921,6 +922,16 @@ struct APISettingsView: View {
             }
             .disabled(testingImage || !settings.imageSettings.isConfigured)
             .accessibilityIdentifier("api.image.try")
+            .confirmationDialog(
+                "试一张会真的生成一张图，并花掉一张的钱。",
+                isPresented: $confirmingImage,
+                titleVisibility: .visible
+            ) {
+                Button("生成一张") {
+                    Task { await testImageGeneration() }
+                }
+                Button("取消", role: .cancel) {}
+            }
             if let testImage {
                 Image(uiImage: testImage)
                     .resizable()
@@ -980,11 +991,16 @@ struct APISettingsView: View {
         imageTestError = nil
         defer { testingImage = false }
         do {
+            // The fixed all-ages try-out, with the style the producer set (spec #98).
+            let style = settings.imageStyle.trimmingCharacters(in: .whitespacesAndNewlines)
+            let prompt = style.isEmpty
+                ? "1girl, solo, smile, simple background"
+                : "1girl, solo, smile, simple background, \(style)"
             let request = ImageRequest(
-                prompt: "1girl, solo, smile, simple background",
+                prompt: prompt,
                 negativePrompt: "nsfw, lowres, bad anatomy, text, watermark",
-                width: 832,
-                height: 1216,
+                width: PhotoGeometry.width,
+                height: PhotoGeometry.height,
                 model: settings.imageModel
             )
             let data = try await RemoteImageGenerator().generate(

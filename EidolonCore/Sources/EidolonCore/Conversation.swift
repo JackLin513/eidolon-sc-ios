@@ -13,6 +13,8 @@ public struct ConversationSummary: Sendable, Hashable, Identifiable {
     public var lastAt: String?
     /// The newest one, where records go, even after she ends it.
     public var isCurrent: Bool
+    /// Whether the latest said message carries a finished picture (spec #98).
+    public var hasPhoto: Bool = false
 }
 
 /// Something that happened in a conversation that is not a turn (GLOSSARY.md「对话事件」):
@@ -187,8 +189,8 @@ extension Eidolon {
         )
     }
 
-    /// How a reply changed her affinity, as v9 writes it; nil for old rows and for turns
-    /// that changed nothing.
+    /// The picture attached to a message, from the left join; nil for a message without
+    /// one.
     static func photoReference(_ row: Row) -> PhotoReference? {
         guard let id: String = row["photo_id"] else { return nil }
         let status = (row["photo_status"] as String?).flatMap(PhotoStatus.init(rawValue:)) ?? .failed
@@ -196,6 +198,8 @@ extension Eidolon {
         return PhotoReference(id: id, status: status, reason: reason)
     }
 
+    /// How a reply changed her affinity, as v9 writes it; nil for old rows and for turns
+    /// that changed nothing.
     static func decodeAffinityChange(_ row: Row) -> AffinityChange? {
         guard let up = row["affinity_up"] as Int?,
               let tierChanged = row["affinity_tier_changed"] as Int?,
@@ -249,6 +253,14 @@ extension Eidolon {
                          ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) AS said_preview,
                         (SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id
                          ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) AS said_at,
+                        EXISTS (
+                            SELECT 1 FROM messages m JOIN photos p ON p.message_id = m.id
+                            WHERE m.conversation_id = c.id AND p.status = 'ready'
+                              AND m.rowid = (SELECT m2.rowid FROM messages m2
+                                             WHERE m2.conversation_id = c.id
+                                             ORDER BY m2.created_at DESC, m2.rowid DESC
+                                             LIMIT 1)
+                        ) AS said_has_photo,
                         (SELECT COALESCE(NULLIF(r.zh, ''), NULLIF(r.ja, ''))
                          FROM reach_outs r WHERE r.conversation_id = c.id
                          ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) AS reach_preview,
@@ -297,7 +309,9 @@ extension Eidolon {
                     records: records,
                     lastPreview: preview,
                     lastAt: at,
-                    isCurrent: isCurrent
+                    isCurrent: isCurrent,
+                    hasPhoto: at == saidAt
+                        && (row["said_has_photo"] as Int? ?? 0) == 1
                 )
             }
         }
