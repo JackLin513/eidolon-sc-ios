@@ -19,6 +19,8 @@ public struct JudgeThresholds: Sendable, Hashable {
     public var emotion: Double
     public var outOfLine: Double
     public var manipulation: Double
+    /// The probability at or above which "he is asking for a photo" counts as yes.
+    public var photo: Double
 
     public init(
         needsRetrieval: Double,
@@ -26,7 +28,8 @@ public struct JudgeThresholds: Sendable, Hashable {
         aboutProducer: Double,
         emotion: Double,
         outOfLine: Double,
-        manipulation: Double
+        manipulation: Double,
+        photo: Double = 0.5
     ) {
         self.needsRetrieval = needsRetrieval
         self.recall = recall
@@ -34,6 +37,7 @@ public struct JudgeThresholds: Sendable, Hashable {
         self.emotion = emotion
         self.outOfLine = outOfLine
         self.manipulation = manipulation
+        self.photo = photo
     }
 }
 
@@ -437,6 +441,22 @@ public struct SystemOneJudgeProvider: TracingJudgeProvider {
         ).verdict
     }
 
+    public func judge(
+        characterName: String,
+        history: [PromptMessage],
+        said: String,
+        adultMode: Bool,
+        askPhoto: Bool
+    ) async throws -> JudgeVerdict {
+        try await judgedWithRaw(
+            characterName: characterName,
+            history: history,
+            said: said,
+            adultMode: adultMode,
+            askPhoto: askPhoto
+        ).verdict
+    }
+
     public func judgedWithRaw(
         characterName: String,
         history: [PromptMessage],
@@ -456,13 +476,33 @@ public struct SystemOneJudgeProvider: TracingJudgeProvider {
         said: String,
         adultMode: Bool
     ) async throws -> JudgeAnswer {
+        try await judgedWithRaw(
+            characterName: characterName,
+            history: history,
+            said: said,
+            adultMode: adultMode,
+            askPhoto: false
+        )
+    }
+
+    public func judgedWithRaw(
+        characterName: String,
+        history: [PromptMessage],
+        said: String,
+        adultMode: Bool,
+        askPhoto: Bool
+    ) async throws -> JudgeAnswer {
         let reply = try await send([
             "model": config.model,
             "state": Self.state(characterName: characterName, history: history, said: said),
-            "questions": JudgeQuestions.payload(adultMode: adultMode),
+            "questions": JudgeQuestions.payload(adultMode: adultMode, askPhoto: askPhoto),
         ])
         return JudgeAnswer(
-            verdict: try Self.read(answers: reply.answers, thresholds: config.thresholds),
+            verdict: try Self.read(
+                answers: reply.answers,
+                thresholds: config.thresholds,
+                askPhoto: askPhoto
+            ),
             raw: reply.raw,
             inputTokens: reply.inputTokens
         )
@@ -631,7 +671,8 @@ public struct SystemOneJudgeProvider: TracingJudgeProvider {
     /// then nothing (upstream `read_judged` and `RetrievalNeed.decide`).
     static func read(
         answers: [String: Any],
-        thresholds: JudgeThresholds
+        thresholds: JudgeThresholds,
+        askPhoto: Bool = false
     ) throws -> JudgeVerdict {
         guard let affinity = answers["affinity"] as? [String: Any],
               let probabilities = affinity["probabilities"] as? [String: Any]
@@ -668,7 +709,13 @@ public struct SystemOneJudgeProvider: TracingJudgeProvider {
         } else {
             need = .nothing
         }
-        return JudgeVerdict(affinity: judged, need: need)
+        let wantsPhoto: Bool
+        if askPhoto {
+            wantsPhoto = try yes("wants_photo", in: answers) >= thresholds.photo
+        } else {
+            wantsPhoto = false
+        }
+        return JudgeVerdict(affinity: judged, need: need, wantsPhoto: wantsPhoto)
     }
 
     static func yes(_ key: String, in answers: [String: Any]) throws -> Double {

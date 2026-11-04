@@ -111,6 +111,30 @@ final class AppModel {
         chatSettings.adultMode && character.isAdult
     }
 
+    /// What a turn needs to try a photo (spec #98). Absent while no image service is set,
+    /// so a turn without one behaves exactly as before.
+    var photoContext: PhotoTurnContext? {
+        guard chatSettings.imageIsConfigured else { return nil }
+        return PhotoTurnContext(
+            generator: RemoteImageGenerator(),
+            settings: chatSettings.imageSettings
+        )
+    }
+
+    /// Records read so far, so a photo already on screen is not read again (the files
+    /// never change once written).
+    private var photoImages: [String: UIImage] = [:]
+
+    /// The image of a recorded photo, or nil while it is still pending or failed.
+    func photoImage(_ id: String) async -> UIImage? {
+        if let image = photoImages[id] { return image }
+        guard let data = try? await core.photoImage(id: id),
+              let image = UIImage(data: data)
+        else { return nil }
+        photoImages[id] = image
+        return image
+    }
+
     /// The installed bundle's vector space: retrieval's query vector must live in it
     /// (spec #80).
     var contentEmbeddingSpace: ContentEmbeddingSpace? {

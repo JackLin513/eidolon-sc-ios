@@ -1,0 +1,228 @@
+import Foundation
+
+public enum PhotoShot: String, Sendable, CaseIterable, Hashable {
+    case selfie
+    case other
+}
+
+public enum PhotoFraming: String, Sendable, CaseIterable, Hashable {
+    case portrait
+    case upperBody = "upper body"
+    case cowboyShot = "cowboy shot"
+    case fullBody = "full body"
+
+    public var listedName: String { rawValue }
+}
+
+public enum PhotoRating: String, Sendable, CaseIterable, Hashable {
+    case general
+    case sensitive
+    case questionable
+    case explicit
+}
+
+public enum PhotoTagError: LocalizedError, Equatable {
+    case malformed(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case let .malformed(detail): "照片标签不对：\(detail)"
+        }
+    }
+}
+
+/// The `<photo>` tag she writes at the front of a reply. It is her description of the
+/// picture; the image service gets the cleaned English tags, while the whole tag stays in
+/// the conversation for her to remember.
+public struct PhotoTag: Sendable, Hashable {
+    public var rating: PhotoRating?
+    public var shot: PhotoShot
+    public var framing: PhotoFraming
+    public var place: [String]
+    public var outfit: [String]
+    public var action: [String]
+    public var note: String
+    /// The tag exactly as she wrote it, without the `<photo>` wrappers.
+    public var raw: String
+
+    public init(
+        rating: PhotoRating? = nil,
+        shot: PhotoShot,
+        framing: PhotoFraming,
+        place: [String],
+        outfit: [String],
+        action: [String],
+        note: String,
+        raw: String
+    ) {
+        self.rating = rating
+        self.shot = shot
+        self.framing = framing
+        self.place = place
+        self.outfit = outfit
+        self.action = action
+        self.note = note
+        self.raw = raw
+    }
+
+    public init(text: String) throws {
+        var fields: [String: String] = [:]
+        for rawLine in text.split(whereSeparator: \.isNewline) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty else { continue }
+            guard let colon = line.firstIndex(of: ":") else {
+                throw PhotoTagError.malformed("这一行没有冒号：\(line)")
+            }
+            let key = line[..<colon].trimmingCharacters(in: .whitespaces).lowercased()
+            let value = line[line.index(after: colon)...]
+                .trimmingCharacters(in: .whitespaces)
+            guard !key.isEmpty else { throw PhotoTagError.malformed("空栏名") }
+            fields[key] = value
+        }
+        guard let shotText = fields["shot"]?.lowercased(),
+              let shot = PhotoShot(rawValue: shotText)
+        else { throw PhotoTagError.malformed("shot 只能是 selfie 或 other") }
+        guard let framingText = fields["framing"]?.lowercased(),
+              let framing = PhotoFraming(rawValue: framingText)
+        else { throw PhotoTagError.malformed("framing 不在四档里") }
+        let rating = fields["rating"].flatMap {
+            PhotoRating(rawValue: $0.lowercased())
+        }
+        var place = Self.tags(fields["place"])
+        var outfit = Self.tags(fields["outfit"])
+        var action = Self.tags(fields["action"])
+        guard !place.isEmpty, !outfit.isEmpty, !action.isEmpty else {
+            throw PhotoTagError.malformed("place、outfit、action 不能全空")
+        }
+        place = Array(place.prefix(4))
+        outfit = Array(outfit.prefix(4))
+        action = Array(action.prefix(4))
+        var total = place.count + outfit.count + action.count
+        if total > 12 {
+            action = Array(action.prefix(max(0, 12 - place.count - outfit.count)))
+            total = place.count + outfit.count + action.count
+        }
+        let effectiveFraming: PhotoFraming = shot == .selfie
+            && (framing == .cowboyShot || framing == .fullBody)
+            ? .upperBody
+            : framing
+        self.init(
+            rating: rating,
+            shot: shot,
+            framing: effectiveFraming,
+            place: place,
+            outfit: outfit,
+            action: action,
+            note: fields["note"] ?? "",
+            raw: text.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+    }
+
+    /// The tag as it goes back into her history, so a later turn sees what she wrote.
+    public var serialized: String {
+        "<photo>\n\(raw)\n</photo>"
+    }
+
+    /// Cleans the three tag columns and applies the table. In all-ages mode every blocked
+    /// category is removed; in adult mode appearance, style and people still are.
+    public func sanitized(using table: PhotoTagTable, adult: Bool) -> PhotoTag {
+        var cleaned = self
+        cleaned.place = Self.clean(place, table: table, adult: adult, fallback: "indoors")
+        cleaned.outfit = Self.clean(outfit, table: table, adult: adult, fallback: "casual")
+        cleaned.action = Self.clean(action, table: table, adult: adult, fallback: "smile")
+        cleaned.rating = adult
+            ? (rating ?? .questionable)
+            : .general
+        return cleaned
+    }
+
+    private static func clean(
+        _ tags: [String],
+        table: PhotoTagTable,
+        adult: Bool,
+        fallback: String
+    ) -> [String] {
+        var seen: Set<String> = []
+        var result: [String] = []
+        for original in tags {
+            let tag = normalized(original)
+            guard !tag.isEmpty else { continue }
+            if let category = table.blockingCategory(of: tag) {
+                let alwaysBlocked = category == .appearance || category == .style || category == .people
+                if !adult || alwaysBlocked { continue }
+            }
+            let rewritten = table.rewrites[tag] ?? tag
+            guard seen.insert(rewritten).inserted else { continue }
+            result.append(rewritten)
+            if result.count == 4 { break }
+        }
+        return result.isEmpty ? [fallback] : result
+    }
+
+    private static func normalized(_ text: String) -> String {
+        var value = text.lowercased()
+            .replacingOccurrences(of: "_", with: " ")
+        for character in ["{", "}", "[", "]", "::", "|", "#", "\"", "'"] {
+            value = value.replacingOccurrences(of: character, with: "")
+        }
+        value = value.replacingOccurrences(of: "text:", with: "")
+        value = value.replacingOccurrences(of: "  ", with: " ")
+        return value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func tags(_ text: String?) -> [String] {
+        guard let text else { return [] }
+        return text.split(separator: ",").map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty }
+    }
+}
+
+public enum PhotoPromptBuilder {
+    public static let allAgesNegative = """
+        nsfw, @_@, mismatched pupils, glowing eyes, bad anatomy, nude, nipples, underwear, \
+        bra, panties, bra strap, strap slip, see-through, pantyshot, cleavage
+        """
+
+    public static let adultNegative = """
+        lowres, bad anatomy, bad hands, text, watermark, child, loli, shota, toddler, aged down
+        """
+
+    public static func request(
+        tag: PhotoTag,
+        character: CharacterConfig,
+        style: String,
+        adult: Bool,
+        table: PhotoTagTable,
+        model: String
+    ) throws -> ImageRequest {
+        guard let characterTag = character.photoTag,
+              !characterTag.isEmpty,
+              !character.photoAppearance.isEmpty
+        else { throw PhotoTagError.malformed("这位角色没有照片 tag 或外貌 tag") }
+        let cleaned = tag.sanitized(using: table, adult: adult)
+        var prompt: [String] = [
+            "1girl",
+            "solo",
+            characterTag,
+            "idolmaster shiny colors",
+        ]
+        let trimmedStyle = style.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedStyle.isEmpty { prompt.append(trimmedStyle) }
+        prompt.append(character.photoAppearance.joined(separator: ", "))
+        prompt.append(cleaned.shot == .selfie ? "selfie, looking at viewer" : "looking at viewer")
+        prompt.append(cleaned.framing.listedName)
+        prompt.append(cleaned.place.joined(separator: ", "))
+        prompt.append(cleaned.outfit.joined(separator: ", "))
+        prompt.append(cleaned.action.joined(separator: ", "))
+        prompt.append("rating:\(cleaned.rating?.rawValue ?? "general")")
+        prompt.append(contentsOf: ["very aesthetic", "masterpiece", "no text"])
+        return ImageRequest(
+            prompt: prompt.joined(separator: ", "),
+            negativePrompt: adult ? adultNegative : allAgesNegative,
+            width: 832,
+            height: 1216,
+            model: model
+        )
+    }
+}

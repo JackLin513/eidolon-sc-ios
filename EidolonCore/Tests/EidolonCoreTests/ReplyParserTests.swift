@@ -67,7 +67,7 @@ final class ReplyParserBlockTests: XCTestCase {
             switch event {
             case let .sceneDelta(block, text): events.append("scene\(block):\(text)")
             case let .delta(block, language, text): events.append("\(language.rawValue)\(block):\(text)")
-            case .speechDelta: break
+            case .speechDelta, .photoTag: break
             }
         }
         XCTAssertEqual(events, [
@@ -123,14 +123,14 @@ final class ReplyParserBlockTests: XCTestCase {
             switch event {
             case let .delta(_, _, text): shown += text
             case let .speechDelta(_, text): voiced += text
-            case .sceneDelta: break
+            case .sceneDelta, .photoTag: break
             }
         }
         for event in parser.finish() {
             switch event {
             case let .delta(_, _, text): shown += text
             case let .speechDelta(_, text): voiced += text
-            case .sceneDelta: break
+            case .sceneDelta, .photoTag: break
             }
         }
         XCTAssertEqual(parser.blocks, [.line(ReplySegment(ja: "[shyly] ありがとう", zh: ""))])

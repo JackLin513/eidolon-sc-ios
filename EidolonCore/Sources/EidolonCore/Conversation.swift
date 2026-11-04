@@ -71,9 +71,14 @@ extension Eidolon {
             let messages = try Row.fetchAll(
                 db,
                 sql: """
-                    SELECT rowid, id, role, text, segments, blocks, created_at,
-                        affinity, affinity_up, affinity_tier_changed, affinity_cooldown
-                    FROM messages WHERE conversation_id = ?
+                    SELECT m.rowid, m.id, m.role, m.text, m.segments, m.blocks,
+                        m.created_at, m.affinity, m.affinity_up,
+                        m.affinity_tier_changed, m.affinity_cooldown,
+                        p.id AS photo_id, p.status AS photo_status,
+                        p.reason AS photo_reason, p.tag AS photo_tag
+                    FROM messages m
+                    LEFT JOIN photos p ON p.message_id = m.id
+                    WHERE m.conversation_id = ?
                     """,
                 arguments: [conversationID]
             ).map { row -> Placed in
@@ -88,7 +93,9 @@ extension Eidolon {
                         segments: Self.decodeSegments(row["segments"]),
                         blocks: Self.decodeBlocks(row["blocks"]),
                         createdAt: createdAt,
-                        affinityChange: Self.decodeAffinityChange(row)
+                        affinityChange: Self.decodeAffinityChange(row),
+                        photo: Self.photoReference(row),
+                        photoTag: row["photo_tag"]
                     ))
                 )
             }.sorted { left, right in
@@ -182,6 +189,13 @@ extension Eidolon {
 
     /// How a reply changed her affinity, as v9 writes it; nil for old rows and for turns
     /// that changed nothing.
+    static func photoReference(_ row: Row) -> PhotoReference? {
+        guard let id: String = row["photo_id"] else { return nil }
+        let status = (row["photo_status"] as String?).flatMap(PhotoStatus.init(rawValue:)) ?? .failed
+        let reason = (row["photo_reason"] as String?).flatMap(PhotoFailureReason.init(rawValue:))
+        return PhotoReference(id: id, status: status, reason: reason)
+    }
+
     static func decodeAffinityChange(_ row: Row) -> AffinityChange? {
         guard let up = row["affinity_up"] as Int?,
               let tierChanged = row["affinity_tier_changed"] as Int?,
