@@ -106,6 +106,24 @@ struct ChatSettings: Equatable {
     /// How long a segment may take to be judged before it goes unjudged, in seconds.
     var emotionTimeout: Double = 1.5
 
+    // MARK: Image service
+
+    var imageAPIFormat: ImageAPIFormat = .novelai
+    var imageBaseURL: String = ImageServiceSettings.defaultBaseURL
+    var imageModel: String = ImageServiceSettings.defaultModel
+    var imageAdultModel: String = ImageServiceSettings.defaultAdultModel
+    var imageStyle: String = ""
+    /// How many photos she may send in a rolling hour; 0 means no limit.
+    var imageHourlyLimit: Int = ImageServiceSettings.defaultHourlyLimit
+    var novelAIAPIKey: String = ""
+
+    var gptImageEnabled: Bool = false
+    var gptImageBaseURL: String = GPTImageSettings.defaultBaseURL
+    var gptImageModel: String = GPTImageSettings.defaultModel
+    var gptImageQuality: GPTImageQuality = .medium
+    var gptImageStyle: String = GPTImageSettings.defaultStyle
+    var gptImageAPIKey: String = ""
+
     // MARK: Keys
 
     private static let baseURLKey = "chat.baseURL"
@@ -164,6 +182,20 @@ struct ChatSettings: Equatable {
     private static let cloudflareModelKey = "judge.cloudflare.model"
     private static let emotionMinProbabilityKey = "judge.emotion.minProbability"
     private static let emotionTimeoutKey = "judge.emotion.timeout"
+
+    private static let imageAPIFormatKey = "image.apiFormat"
+    private static let imageBaseURLKey = "image.baseURL"
+    private static let imageModelKey = "image.model"
+    private static let imageAdultModelKey = "image.adultModel"
+    private static let imageStyleKey = "image.style"
+    private static let imageHourlyLimitKey = "image.hourlyLimit"
+    private static let novelAIKeychainAccount = "image.novelaiKey"
+    private static let gptImageEnabledKey = "gptImage.enabled"
+    private static let gptImageBaseURLKey = "gptImage.baseURL"
+    private static let gptImageModelKey = "gptImage.model"
+    private static let gptImageQualityKey = "gptImage.quality"
+    private static let gptImageStyleKey = "gptImage.style"
+    private static let gptImageKeychainAccount = "image.gptImageKey"
 
     static func load() -> ChatSettings {
         let defaults = UserDefaults.standard
@@ -259,6 +291,30 @@ struct ChatSettings: Equatable {
             settings.baseURL,
             protocol: settings.apiProtocol
         )
+        settings.imageAPIFormat = ImageAPIFormat(
+            rawValue: defaults.string(forKey: imageAPIFormatKey) ?? ""
+        ) ?? .novelai
+        settings.imageBaseURL = defaults.string(forKey: imageBaseURLKey)
+            ?? ImageServiceSettings.defaultBaseURL
+        settings.imageModel = defaults.string(forKey: imageModelKey)
+            ?? ImageServiceSettings.defaultModel
+        settings.imageAdultModel = defaults.string(forKey: imageAdultModelKey)
+            ?? ImageServiceSettings.defaultAdultModel
+        settings.imageStyle = defaults.string(forKey: imageStyleKey) ?? ""
+        settings.imageHourlyLimit = defaults.object(forKey: imageHourlyLimitKey) as? Int
+            ?? ImageServiceSettings.defaultHourlyLimit
+        settings.novelAIAPIKey = Keychain.string(account: novelAIKeychainAccount) ?? ""
+        settings.gptImageEnabled = defaults.object(forKey: gptImageEnabledKey) as? Bool ?? false
+        settings.gptImageBaseURL = defaults.string(forKey: gptImageBaseURLKey)
+            ?? GPTImageSettings.defaultBaseURL
+        settings.gptImageModel = defaults.string(forKey: gptImageModelKey)
+            ?? GPTImageSettings.defaultModel
+        settings.gptImageQuality = GPTImageQuality(
+            rawValue: defaults.string(forKey: gptImageQualityKey) ?? ""
+        ) ?? .medium
+        settings.gptImageStyle = defaults.string(forKey: gptImageStyleKey)
+            ?? GPTImageSettings.defaultStyle
+        settings.gptImageAPIKey = Keychain.string(account: gptImageKeychainAccount) ?? ""
         return settings
     }
 
@@ -380,6 +436,34 @@ struct ChatSettings: Equatable {
             defaults.removeObject(forKey: Self.emotionMinProbabilityKey)
         }
         defaults.set(Self.reasonableTimeout(emotionTimeout), forKey: Self.emotionTimeoutKey)
+        defaults.set(imageAPIFormat.rawValue, forKey: Self.imageAPIFormatKey)
+        defaults.set(
+            imageBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+            forKey: Self.imageBaseURLKey
+        )
+        defaults.set(
+            imageModel.trimmingCharacters(in: .whitespacesAndNewlines),
+            forKey: Self.imageModelKey
+        )
+        defaults.set(
+            imageAdultModel.trimmingCharacters(in: .whitespacesAndNewlines),
+            forKey: Self.imageAdultModelKey
+        )
+        defaults.set(imageStyle, forKey: Self.imageStyleKey)
+        defaults.set(max(0, imageHourlyLimit), forKey: Self.imageHourlyLimitKey)
+        try Self.store(novelAIAPIKey, account: Self.novelAIKeychainAccount)
+        defaults.set(gptImageEnabled, forKey: Self.gptImageEnabledKey)
+        defaults.set(
+            gptImageBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+            forKey: Self.gptImageBaseURLKey
+        )
+        defaults.set(
+            gptImageModel.trimmingCharacters(in: .whitespacesAndNewlines),
+            forKey: Self.gptImageModelKey
+        )
+        defaults.set(gptImageQuality.rawValue, forKey: Self.gptImageQualityKey)
+        defaults.set(gptImageStyle, forKey: Self.gptImageStyleKey)
+        try Self.store(gptImageAPIKey, account: Self.gptImageKeychainAccount)
     }
 
     /// A timeout short enough to be useful and long enough to reach the service: anything
@@ -445,6 +529,20 @@ struct ChatSettings: Equatable {
         if let value = values.fishAPIKey { fishAPIKey = value }
         if let value = values.fishModel { fishModel = value }
 
+        if let value = values.imageAPIFormat { imageAPIFormat = value }
+        if let value = values.imageBaseURL { imageBaseURL = value }
+        if let value = values.imageModel { imageModel = value }
+        if let value = values.imageAdultModel { imageAdultModel = value }
+        if let value = values.imageStyle { imageStyle = value }
+        if let value = values.imageHourlyLimit { imageHourlyLimit = value }
+        if let value = values.novelAIAPIKey { novelAIAPIKey = value }
+        if let value = values.gptImageEnabled { gptImageEnabled = value }
+        if let value = values.gptImageBaseURL { gptImageBaseURL = value }
+        if let value = values.gptImageModel { gptImageModel = value }
+        if let value = values.gptImageQuality { gptImageQuality = value }
+        if let value = values.gptImageStyle { gptImageStyle = value }
+        if let value = values.gptImageAPIKey { gptImageAPIKey = value }
+
         // DeepSeek serves its Anthropic surface under /anthropic; an upstream `.env`
         // written for the OpenAI surfaces names only the root.
         baseURL = APIServiceRouting.baseURLForImportedSettings(baseURL, protocol: apiProtocol)
@@ -468,6 +566,33 @@ struct ChatSettings: Equatable {
         guard let data = try? encoder.encode(value) else { return "{}" }
         return String(decoding: data, as: UTF8.self)
     }
+
+    /// The configured image service, with the key attached only for a request.
+    var imageSettings: ImageServiceSettings {
+        ImageServiceSettings(
+            apiFormat: imageAPIFormat,
+            baseURL: imageBaseURL,
+            model: imageModel,
+            adultModel: imageAdultModel,
+            style: imageStyle,
+            hourlyLimit: max(0, imageHourlyLimit),
+            apiKey: novelAIAPIKey
+        )
+    }
+
+    var gptImageSettings: GPTImageSettings {
+        GPTImageSettings(
+            enabled: gptImageEnabled,
+            baseURL: gptImageBaseURL,
+            model: gptImageModel,
+            quality: gptImageQuality,
+            style: gptImageStyle,
+            apiKey: gptImageAPIKey
+        )
+    }
+
+    var imageIsConfigured: Bool { imageSettings.isConfigured }
+    var gptImageIsConfigured: Bool { gptImageSettings.isConfigured }
 
     // MARK: - Model configs
 
