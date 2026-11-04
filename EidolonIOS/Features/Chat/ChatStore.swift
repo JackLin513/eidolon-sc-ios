@@ -38,6 +38,7 @@ final class ChatStore {
 
     private var task: Task<Void, Never>?
     private var cueTask: Task<Void, Never>?
+    private var photoTask: Task<Void, Never>?
     private var cueKey = 0
 
     init(character: CharacterConfig, core: Eidolon, conversationID: String? = nil) {
@@ -61,6 +62,7 @@ final class ChatStore {
             streaming = []
             pendingUser = nil
         }
+        watchPendingPhotos()
     }
 
     /// One reading of everything the store shows: the turns, the record and how she feels.
@@ -153,7 +155,8 @@ final class ChatStore {
         historyTurns: Int = 20,
         tracing: TurnTracing = .on,
         replyStyle: ReplyStyle = .text,
-        adultMode: Bool = false
+        adultMode: Bool = false,
+        photo: PhotoTurnContext? = nil
     ) async {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !affinity.cooling, !readOnly else { return }
@@ -189,7 +192,8 @@ final class ChatStore {
             historyTurns: historyTurns,
             tracing: tracing,
             replyStyle: replyStyle,
-            adultMode: adultMode
+            adultMode: adultMode,
+            photo: photo
         )
         let turn = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -201,6 +205,12 @@ final class ChatStore {
                     case let .sceneDelta(block, shown):
                         appendScene(block: block, text: shown)
                     case .speechDelta:
+                        break
+                    case .photo, .photosUsedUp:
+                        // The photo's row is written with the reply; what is still pending
+                        // after the turn is followed until it lands (see
+                        // `watchPendingPhotos`). The hourly allowance's message arrives
+                        // with the failure UI (ticket #102).
                         break
                     case let .finished(record):
                         affinity = AffinityStatus(
@@ -232,6 +242,7 @@ final class ChatStore {
                 self.apply(reading)
                 self.streaming = []
                 self.pendingUser = nil
+                self.watchPendingPhotos()
             }
             self.isStreaming = false
         }
@@ -241,6 +252,28 @@ final class ChatStore {
 
     func stop() {
         task?.cancel()
+    }
+
+    /// A photo strays from its reply while the turn is still being read: the image is made
+    /// after the reply is recorded, so the row says pending until it lands. This looks
+    /// again until nothing is pending, so the picture appears without leaving the page.
+    private func watchPendingPhotos() {
+        photoTask?.cancel()
+        guard hasPendingPhoto else { return }
+        photoTask = Task { @MainActor [weak self] in
+            for _ in 0..<180 {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled, let self else { return }
+                guard self.hasPendingPhoto else { return }
+                if let reading = await self.read() {
+                    self.apply(reading)
+                }
+            }
+        }
+    }
+
+    private var hasPendingPhoto: Bool {
+        messages.contains { $0.photo?.status == .pending }
     }
 
     /// Shows the change on the badge for about 2.6 seconds; a second one replaces it and

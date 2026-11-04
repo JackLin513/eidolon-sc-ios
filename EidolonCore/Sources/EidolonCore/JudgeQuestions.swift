@@ -136,6 +136,12 @@ public enum JudgeQuestions {
         no: "寒暄闲聊、问喜好或设定、问身边人物近况，或者只是顺口提到过去"
     )
 
+    public static let wantsPhoto = JudgeQuestion.noul(
+        instructions: "制作人最新的一句话，是不是在要角色发一张照片或图片（拍什么都算）？",
+        yes: "明确要照片、自拍、拍某样东西，或让他看看她今天的衣服、便当等",
+        no: "只问她在干什么、穿什么、想不想见他，或者没有要图片"
+    )
+
     public static let aboutProducer = JudgeQuestion.noul(
         instructions: "角色扮演对话中，角色是《偶像大师 闪耀色彩》283 事务所的偶像（或事务员），"
             + "正在和制作人对话。"
@@ -145,9 +151,13 @@ public enum JudgeQuestions {
         no: "只是打招呼、说偶像自己的事、问原作剧情或角色设定，与制作人自己的生活无关"
     )
 
-    /// All six, by the keys their answers come back under, in the order they are asked.
-    public static func asked(adultMode: Bool) -> [(key: String, question: JudgeQuestion)] {
-        [
+    /// The questions by the keys their answers come back under, in the order they are
+    /// asked. The photo question is only added when the turn could make a photo.
+    public static func asked(
+        adultMode: Bool,
+        askPhoto: Bool = false
+    ) -> [(key: String, question: JudgeQuestion)] {
+        var questions: [(key: String, question: JudgeQuestion)] = [
             ("affinity", affinity(adultMode: adultMode)),
             ("out_of_line", outOfLine(adultMode: adultMode)),
             ("manipulation", manipulation),
@@ -155,10 +165,15 @@ public enum JudgeQuestions {
             ("recall", recall),
             ("about_producer", aboutProducer),
         ]
+        if askPhoto { questions.append(("wants_photo", wantsPhoto)) }
+        return questions
     }
 
-    static func payload(adultMode: Bool) -> [String: Any] {
-        Dictionary(uniqueKeysWithValues: asked(adultMode: adultMode).map { ($0.key, $0.question.json()) })
+    static func payload(adultMode: Bool, askPhoto: Bool = false) -> [String: Any] {
+        Dictionary(uniqueKeysWithValues: asked(
+            adultMode: adultMode,
+            askPhoto: askPhoto
+        ).map { ($0.key, $0.question.json()) })
     }
 }
 

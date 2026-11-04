@@ -999,6 +999,10 @@ public actor CallSession {
                     // A call never asks for scene blocks; if one leaks through, it is
                     // neither shown nor voiced.
                     break
+                case .photo, .photosUsedUp:
+                    // A call's photos arrive on the call's own card (ticket #103); until
+                    // then the turn event has nothing to add here.
+                    break
                 case let .finished(record):
                     replyRecordedAt[reply] = ContinuousClock.now
                     replyRecorded = true

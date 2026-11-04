@@ -197,6 +197,9 @@ public struct LatestActivity: Sendable, Hashable {
     /// The gift of the latest gift event, when that is the latest thing.
     public var lastGiftID: String?
     public var unseenReachOut: Bool
+    /// Whether the latest thing she said came with a picture that finished; the list
+    /// shows a camera for it (ticket #101).
+    public var hasPhoto: Bool
 
     public init(
         lastMessagePreview: String? = nil,
@@ -204,7 +207,8 @@ public struct LatestActivity: Sendable, Hashable {
         lastMessageAt: String? = nil,
         lastEventKind: String? = nil,
         lastGiftID: String? = nil,
-        unseenReachOut: Bool = false
+        unseenReachOut: Bool = false,
+        hasPhoto: Bool = false
     ) {
         self.lastMessagePreview = lastMessagePreview
         self.lastMessageRole = lastMessageRole
@@ -212,6 +216,7 @@ public struct LatestActivity: Sendable, Hashable {
         self.lastEventKind = lastEventKind
         self.lastGiftID = lastGiftID
         self.unseenReachOut = unseenReachOut
+        self.hasPhoto = hasPhoto
     }
 }
 

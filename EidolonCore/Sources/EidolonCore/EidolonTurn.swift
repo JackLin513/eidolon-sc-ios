@@ -24,6 +24,11 @@ public enum TurnEvent: Sendable {
     /// A scene block's Chinese description; shown, never voiced.
     case sceneDelta(block: Int, text: String)
     case finished(TurnRecord)
+    /// The photo she just described is being made. Its id is stable; the image arrives
+    /// later through the photo record.
+    case photo(id: String, status: PhotoStatus)
+    /// She was asked for a photo but this hour's allowance is gone.
+    case photosUsedUp(retryAt: Date)
 }
 
 public struct TurnRecord: Sendable, Hashable {
@@ -49,6 +54,8 @@ public struct TurnRecord: Sendable, Hashable {
     public var affinityChange: AffinityChange?
     /// Achievement stages this turn unlocked, for the toast (spec #69).
     public var achievements: [AchievementReward] = []
+    /// The photo this reply carries, if she wrote one.
+    public var photo: PhotoReference? = nil
 }
 
 public struct AffinityStatus: Sendable, Hashable {
@@ -74,6 +81,10 @@ public struct ChatMessageRecord: Sendable, Hashable, Identifiable {
     /// How the reply changed her affinity; nil for the producer's lines and for a turn
     /// that changed nothing (spec #38).
     public var affinityChange: AffinityChange? = nil
+    /// The photo attached to this reply, if any; the image itself is read separately.
+    public var photo: PhotoReference? = nil
+    /// The `<photo>` tag as she wrote it, for the history prompt.
+    public var photoTag: String? = nil
 
     public var isFromCharacter: Bool { role == "character" }
 
@@ -121,7 +132,8 @@ extension Eidolon {
         stop: CallTurnStop? = nil,
         voicedBy model: String? = nil,
         replyStyle: ReplyStyle = .text,
-        adultMode: Bool = false
+        adultMode: Bool = false,
+        photo: PhotoTurnContext? = nil
     ) -> AsyncThrowingStream<TurnEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -143,7 +155,8 @@ extension Eidolon {
                         stop: stop,
                         voicedBy: model,
                         replyStyle: replyStyle,
-                        adultMode: adultMode
+                        adultMode: adultMode,
+                        photo: photo
                     ) { continuation.yield($0) }
                     continuation.yield(.finished(record))
                     continuation.finish()
@@ -197,6 +210,7 @@ extension Eidolon {
         voicedBy model: String?,
         replyStyle: ReplyStyle,
         adultMode: Bool,
+        photo: PhotoTurnContext?,
         emit: (TurnEvent) -> Void
     ) async throws -> TurnRecord {
         // Where the turn's time goes, for the trace (ADR-0012): the producer waits through
@@ -211,6 +225,17 @@ extension Eidolon {
             throw EidolonError.invalidContent("找不到角色 \(characterID)")
         }
         let effectiveAdultMode = adultMode && character.isAdult
+        let photoTable = try? photoTags()
+        let photoEligible = photo != nil && photoTable != nil && character.canSendPhoto
+        let photoLimit = photo?.settings.hourlyLimit ?? 0
+        let photoCount = photoLimit > 0
+            ? (try? photoCount(since: now.addingTimeInterval(-3600))) ?? 0
+            : 0
+        let photoUsedUp = photoLimit > 0 && photoCount >= photoLimit
+        let photoRetryAt: Date? = {
+            guard photoUsedUp else { return nil }
+            return now.addingTimeInterval(3600)
+        }()
         let affinity = try readAffinity(characterID: characterID, now: now)
         if let until = affinity.cooldownUntil {
             throw EidolonError.coolingDown(until)
@@ -260,7 +285,8 @@ extension Eidolon {
                         characterName: character.name,
                         history: judgeHistory,
                         said: text,
-                        adultMode: effectiveAdultMode
+                        adultMode: effectiveAdultMode,
+                        askPhoto: photoEligible
                     )
                     raw = answer.raw
                     tokens = answer.inputTokens
@@ -270,7 +296,8 @@ extension Eidolon {
                         characterName: character.name,
                         history: judgeHistory,
                         said: text,
-                        adultMode: effectiveAdultMode
+                        adultMode: effectiveAdultMode,
+                        askPhoto: photoEligible
                     )
                 }
             } catch {
@@ -387,9 +414,20 @@ extension Eidolon {
             scheduleLines: scheduleLines,
             cycleLines: cycleLines
         )
-        let nowSection = ([nowText, PromptAssembler.cannotSendPhoto, retrieved.memories, retrieved.references]
+        let wantsPhoto = verdict?.wantsPhoto ?? false
+        let photoSection = PromptAssembler.photoSection(
+            eligible: photoEligible,
+            wants: wantsPhoto,
+            cold: affinity.tier == .cold,
+            usedUp: photoUsedUp,
+            adult: effectiveAdultMode
+        )
+        let nowSection = ([nowText, photoSection, retrieved.memories, retrieved.references]
             .compactMap { $0 }
             .joined(separator: "\n\n"))
+        if photoUsedUp, wantsPhoto {
+            emit(.photosUsedUp(retryAt: photoRetryAt ?? now.addingTimeInterval(3600)))
+        }
 
         let assembler = PromptAssembler(
             bundleDirectory: location.contentDirectory,
@@ -409,6 +447,15 @@ extension Eidolon {
         // Each step is shown in the app as it arrives.
         var parser = ReplyParser()
         var stopped = false
+        var pendingPhotoTag: PhotoTag?
+        var photoID: String?
+        var photoAttached = false
+        let photoAllowed = photoEligible && wantsPhoto && affinity.tier != .cold && !photoUsedUp
+        defer {
+            if let photoID, !photoAttached {
+                discardPhoto(id: photoID)
+            }
+        }
         func shown(_ events: [ReplyParserEvent]) {
             for event in events {
                 switch event {
@@ -418,8 +465,26 @@ extension Eidolon {
                     emit(.speechDelta(block: block, text: text))
                 case let .sceneDelta(block, text):
                     emit(.sceneDelta(block: block, text: text))
+                case let .photoTag(tag):
+                    pendingPhotoTag = tag
                 }
             }
+        }
+        func startPendingPhoto() {
+            guard photoAllowed, photoID == nil, let tag = pendingPhotoTag, let photo else {
+                pendingPhotoTag = nil
+                return
+            }
+            pendingPhotoTag = nil
+            guard let id = beginPhoto(
+                tag: tag,
+                character: character,
+                context: photo,
+                adult: effectiveAdultMode,
+                now: now
+            ) else { return }
+            photoID = id
+            emit(.photo(id: id, status: .pending))
         }
 
         // The tool is offered on every turn retrieval is available, so that what opens
@@ -457,6 +522,7 @@ extension Eidolon {
                             if firstTokenAt == nil { firstTokenAt = ContinuousClock.now }
                             said += chunk
                             shown(parser.feed(chunk))
+                            startPendingPhoto()
                         case let .reasoning(items):
                             reasoning += items
                         case let .toolCalls(made):
@@ -469,9 +535,11 @@ extension Eidolon {
                         if firstTokenAt == nil { firstTokenAt = ContinuousClock.now }
                         said += chunk
                         shown(parser.feed(chunk))
+                        startPendingPhoto()
                     }
                 }
                 shown(parser.finish())
+                startPendingPhoto()
                 allSaid += said
 
                 // A call made when forbidden, or to a tool never offered, is left
@@ -601,6 +669,15 @@ extension Eidolon {
             now: now,
             replyAt: replyAt
         )
+        if let photoID {
+            try? attachPhoto(
+                id: photoID,
+                messageID: recorded.replyMessageID,
+                conversationID: recorded.conversationID,
+                at: Date()
+            )
+            photoAttached = true
+        }
         recordTrace(recorded.conversationID, error: nil)
         // Memory is on with an embedder and a reranker (upstream `_services`): what the
         // producer revealed is written down after the reply, in a task of its own.
@@ -632,7 +709,8 @@ extension Eidolon {
             hangUp: call != nil ? ending : nil,
             ended: call == nil && ending != nil,
             affinityChange: recorded.change,
-            achievements: recorded.rewards
+            achievements: recorded.rewards,
+            photo: photoID.flatMap { try? self.photo(id: $0) } ?? nil
         )
     }
 
@@ -851,7 +929,8 @@ extension Eidolon {
                     text: message.text,
                     segments: message.segments,
                     blocks: message.blocks,
-                    createdAt: message.createdAt
+                    createdAt: message.createdAt,
+                    photoTag: message.photoTag
                 )
                 if message.isReachOut {
                     if let said = Self.reachOutNarration(message, in: timeZone) {
@@ -949,7 +1028,8 @@ extension Eidolon {
                 text: message.text,
                 segments: message.segments,
                 blocks: message.blocks,
-                createdAt: message.createdAt
+                createdAt: message.createdAt,
+                photoTag: message.photoTag
             )
         }
     }
@@ -1044,6 +1124,7 @@ extension Eidolon {
         /// How the turn changed it; nil when it changed nothing.
         var change: AffinityChange?
         var userMessageID: String
+        var replyMessageID: String
         /// Which turn of the conversation this was, counting from 1.
         var turn: Int
         var rewards: [AchievementReward]
@@ -1188,6 +1269,7 @@ extension Eidolon {
                 affinity: after,
                 change: change,
                 userMessageID: userID,
+                replyMessageID: replyID,
                 turn: turn,
                 rewards: rewards
             )
@@ -1319,6 +1401,7 @@ struct StoredMessage: Sendable {
     var segments: [ReplySegment]
     var blocks: [ReplyBlock]?
     var createdAt: String
+    var photoTag: String?
 
     var replyBlocks: [ReplyBlock] {
         blocks ?? segments.map(ReplyBlock.line)
@@ -1330,7 +1413,8 @@ struct StoredMessage: Sendable {
         text: String?,
         segments: [ReplySegment],
         blocks: [ReplyBlock]? = nil,
-        createdAt: String = ""
+        createdAt: String = "",
+        photoTag: String? = nil
     ) {
         self.id = id
         self.role = role
@@ -1338,6 +1422,7 @@ struct StoredMessage: Sendable {
         self.segments = segments
         self.blocks = blocks
         self.createdAt = createdAt
+        self.photoTag = photoTag
     }
 
     init(row: Row) {
@@ -1347,6 +1432,7 @@ struct StoredMessage: Sendable {
         segments = Eidolon.decodeSegments(row["segments"])
         blocks = Eidolon.decodeBlocks(row["blocks"])
         createdAt = row["created_at"]
+        photoTag = nil
     }
 }
 
@@ -1359,6 +1445,51 @@ struct PromptAssembler {
         # 照片
         你发不了照片。制作人要你发照片时，用你自己的话推掉，不要写照片标签。
         """
+
+    static func photoSection(
+        eligible: Bool,
+        wants: Bool,
+        cold: Bool,
+        usedUp: Bool,
+        adult: Bool
+    ) -> String? {
+        guard eligible else { return cannotSendPhoto }
+        guard wants else { return nil }
+        if cold {
+            return """
+                # 照片
+                他在要照片，你现在不想给。用你自己的话推掉，不要写照片标签。
+                """
+        }
+        if usedUp {
+            return """
+                # 照片
+                他在要照片，但你这会儿发不了。用你自己的话推掉，不要写照片标签。
+                """
+        }
+        var rating = ""
+        if adult {
+            rating = "rating: questionable    # 可选：general | sensitive | questionable | explicit；不写就是 questionable\n"
+        }
+        return """
+            # 照片
+            制作人在要照片。你可以在回复最前面写一个照片标签，也可以按人设推掉；一个回合最多一张。
+            标签一行一栏，栏名用英文，写在第一个 <ja> 之前：
+
+            <photo>
+            \(rating)shot: selfie            # selfie 或 other（别人帮你拍）
+            framing: upper body     # portrait | upper body | cowboy shot | full body；自拍只能前两种
+            place: cafe, indoors, afternoon, sunlight
+            outfit: white shirt, cardigan
+            action: peace sign, smile
+            note: 在咖啡店给他拍的自拍
+            </photo>
+
+            place、outfit、action 用英文 tag，三栏合计不超过 12 个；不要写外貌、画风或画师。
+            按现在的时间和对话情境拍；制作人指定的地点、服装在允许范围内照办。
+            越界的要求可以推掉，或者换成全年龄的版本再拍；你不想发就不发。
+            """
+    }
 
     let bundleDirectory: URL
     let character: CharacterConfig
@@ -1417,7 +1548,10 @@ struct PromptAssembler {
                     (narration[message.id] ?? "") + (message.text ?? "")
                 ))
             } else {
-                messages.append(PromptMessage(.assistant, Self.formatReply(message.replyBlocks)))
+                messages.append(PromptMessage(
+                    .assistant,
+                    Self.formatReply(message.replyBlocks, photoTag: message.photoTag)
+                ))
             }
         }
         if let nowSection {
@@ -1431,8 +1565,9 @@ struct PromptAssembler {
         formatReply(segments.map(ReplyBlock.line))
     }
 
-    static func formatReply(_ blocks: [ReplyBlock]) -> String {
-        blocks.map { block in
+    static func formatReply(_ blocks: [ReplyBlock], photoTag: String? = nil) -> String {
+        let tag = photoTag.map { "<photo>\n\($0)\n</photo>" } ?? ""
+        return tag + blocks.map { block in
             switch block {
             case let .line(line):
                 return "<ja>\(line.ja)</ja><zh>\(line.zh)</zh>"

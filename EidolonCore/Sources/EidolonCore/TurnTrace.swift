@@ -351,6 +351,14 @@ public protocol TracingJudgeProvider: JudgeProvider {
         said: String,
         adultMode: Bool
     ) async throws -> JudgeAnswer
+
+    func judgedWithRaw(
+        characterName: String,
+        history: [PromptMessage],
+        said: String,
+        adultMode: Bool,
+        askPhoto: Bool
+    ) async throws -> JudgeAnswer
 }
 
 extension TracingJudgeProvider {
@@ -364,6 +372,21 @@ extension TracingJudgeProvider {
             characterName: characterName,
             history: history,
             said: said
+        )
+    }
+
+    public func judgedWithRaw(
+        characterName: String,
+        history: [PromptMessage],
+        said: String,
+        adultMode: Bool,
+        askPhoto: Bool
+    ) async throws -> JudgeAnswer {
+        try await judgedWithRaw(
+            characterName: characterName,
+            history: history,
+            said: said,
+            adultMode: adultMode
         )
     }
 }

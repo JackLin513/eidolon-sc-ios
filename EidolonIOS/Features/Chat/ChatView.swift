@@ -272,7 +272,8 @@ struct ChatView: View {
                             historyTurns: app.chatSettings.historyTurns,
                             tracing: app.tracing,
                             replyStyle: app.replyStyle,
-                            adultMode: app.adultMode(for: character)
+                            adultMode: app.adultMode(for: character),
+                            photo: app.photoContext
                         ) }
         #endif
     }
@@ -487,7 +488,8 @@ struct ChatView: View {
                         character: character,
                         line: message.id,
                         joinsPrevious: !row.first,
-                        joinsNext: !row.last
+                        joinsNext: !row.last,
+                        photo: message.photo
                     )
                     if row.last {
                         clockText(row.clock)
@@ -695,6 +697,47 @@ struct ChatView: View {
         }
     }
 
+    /// The picture that came with a reply. It is made after the reply is written, so it
+    /// shows a developing frame until the file is there (spec #98).
+    private struct PhotoBubble: View {
+        let photo: PhotoReference
+
+        @Environment(AppModel.self) private var app
+        @State private var image: UIImage?
+
+        var body: some View {
+            Group {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: 240)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .accessibilityIdentifier("chat.photo")
+                } else if photo.status == .pending {
+                    // The same box the finished picture takes, so nothing moves when it
+                    // lands (ticket #101).
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(.tertiarySystemBackground))
+                        .frame(width: 240, height: 350.8)
+                        .overlay {
+                            VStack(spacing: 8) {
+                                ProgressView()
+                                Text("正在冲印…")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .accessibilityIdentifier("chat.photo.pending")
+                }
+            }
+            .task(id: photo.status) {
+                guard photo.status == .ready else { return }
+                image = await app.photoImage(photo.id)
+            }
+        }
+    }
+
     /// Her words in one bubble. `line` is the message's, when it is one that has all arrived:
     /// what 朗读 is for. The line still being written has none, and it arrives with its cues
     /// already taken out, so it is shown as it is rather than filtered a second time (spec #42).
@@ -706,6 +749,8 @@ struct ChatView: View {
         /// Another line of her group sits above / below: the meeting corner is smaller.
         var joinsPrevious = false
         var joinsNext = false
+        /// The picture she sent with this reply, if the turn made one (spec #98).
+        var photo: PhotoReference? = nil
 
         @Environment(AppModel.self) private var app
 
@@ -717,6 +762,9 @@ struct ChatView: View {
                 Text(bubbleText)
                     .font(.body)
                     .textSelection(.enabled)
+                if let photo, photo.status != .failed {
+                    PhotoBubble(photo: photo)
+                }
                 // Her voice is the call's while one is up; 朗读 waits for it to end.
                 if let line, !app.call.isLive, let speech = ReadAloud.speech(
                     of: blocks, model: app.chatSettings.fishModel
@@ -850,7 +898,8 @@ struct ChatView: View {
                             historyTurns: app.chatSettings.historyTurns,
                             tracing: app.tracing,
                             replyStyle: app.replyStyle,
-                            adultMode: app.adultMode(for: character)
+                            adultMode: app.adultMode(for: character),
+                            photo: app.photoContext
                         ) }
                     }
                 } label: {
@@ -945,7 +994,8 @@ struct ChatView: View {
                             historyTurns: app.chatSettings.historyTurns,
                             tracing: app.tracing,
                             replyStyle: app.replyStyle,
-                            adultMode: app.adultMode(for: character)
+                            adultMode: app.adultMode(for: character),
+                            photo: app.photoContext
                         ) }
                 }
                 .font(.footnote.weight(.semibold))

@@ -87,7 +87,7 @@ final class TurnTests: XCTestCase {
                 deltas.append(text)
             case .speechDelta:
                 break
-            case .sceneDelta:
+            case .sceneDelta, .photo, .photosUsedUp:
                 break
             case let .finished(finished):
                 record = finished

@@ -88,6 +88,8 @@ public enum ReplyParserEvent: Sendable, Hashable {
     case speechDelta(block: Int, text: String)
     /// More of a scene block's Chinese description; never voiced.
     case sceneDelta(block: Int, text: String)
+    /// The `<photo>` tag that opened a reply, once it has closed and parsed.
+    case photoTag(PhotoTag)
 }
 
 /// Turns the model's stream into per-block deltas, as upstream's `ReplyParser` does for
@@ -107,12 +109,14 @@ public struct ReplyParser: Sendable {
         case ja(Int)
         case zh(Int)
         case scene(Int)
+        case photo
 
         var closeTag: String {
             switch self {
             case .ja: ReplyParser.jaClose
             case .zh: ReplyParser.zhClose
             case .scene: ReplyParser.sceneClose
+            case .photo: ReplyParser.photoClose
             }
         }
     }
@@ -122,12 +126,16 @@ public struct ReplyParser: Sendable {
         case ja
         case zh
         case scene
+        case photo
     }
 
     private var buffer = ""
     private var inside: Inside?
     private var stray = ""
     private var filter = CueFilter()
+    private var photoBuffer = ""
+    private var capturePhoto = false
+    private var photoSeen = false
 
     private static let jaOpen = "<ja>"
     private static let jaClose = "</ja>"
@@ -135,7 +143,11 @@ public struct ReplyParser: Sendable {
     private static let zhClose = "</zh>"
     private static let sceneOpen = "<scene>"
     private static let sceneClose = "</scene>"
-    private static let tags = [jaOpen, jaClose, zhOpen, zhClose, sceneOpen, sceneClose]
+    private static let photoOpen = "<photo>"
+    private static let photoClose = "</photo>"
+    private static let tags = [
+        jaOpen, jaClose, zhOpen, zhClose, sceneOpen, sceneClose, photoOpen, photoClose,
+    ]
 
     public init() {}
 
@@ -163,6 +175,15 @@ public struct ReplyParser: Sendable {
                     let block = blocks.count
                     blocks.append(.scene(""))
                     self.inside = .scene(block)
+                case .photo:
+                    capturePhoto = !photoSeen
+                        && blocks.isEmpty
+                        && stray.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    if capturePhoto {
+                        photoSeen = true
+                        photoBuffer = ""
+                    }
+                    self.inside = .photo
                 }
                 filter = CueFilter()
                 continue
@@ -183,7 +204,7 @@ public struct ReplyParser: Sendable {
             } else {
                 let keep = partialSuffix(
                     buffer,
-                    [close, Self.jaOpen, Self.zhOpen, Self.sceneOpen]
+                    [close, Self.jaOpen, Self.zhOpen, Self.sceneOpen, Self.photoOpen]
                 )
                 let take = String(buffer.dropLast(keep))
                 if !take.isEmpty {
@@ -265,6 +286,8 @@ public struct ReplyParser: Sendable {
             if !shown.isEmpty {
                 events.append(.sceneDelta(block: block, text: shown))
             }
+        case .photo:
+            if capturePhoto { photoBuffer += text }
         }
     }
 
@@ -294,6 +317,12 @@ public struct ReplyParser: Sendable {
             filter = CueFilter()
         case .zh:
             break
+        case .photo:
+            if capturePhoto, let tag = try? PhotoTag(text: photoBuffer) {
+                events.append(.photoTag(tag))
+            }
+            photoBuffer = ""
+            capturePhoto = false
         }
     }
 
@@ -307,6 +336,7 @@ public struct ReplyParser: Sendable {
             (Self.jaOpen, OpenTag.ja),
             (Self.zhOpen, OpenTag.zh),
             (Self.sceneOpen, OpenTag.scene),
+            (Self.photoOpen, OpenTag.photo),
         ] {
             if let range = buffer.range(of: tag) {
                 let index = buffer.distance(from: buffer.startIndex, to: range.lowerBound)

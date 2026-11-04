@@ -217,10 +217,18 @@ struct ConversationListView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Text(preview(character))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(preview(character))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    if app.latest[character.id]?.hasPhoto == true {
+                        Image(systemName: "camera.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("照片")
+                    }
+                }
             }
 
             Spacer(minLength: 0)
