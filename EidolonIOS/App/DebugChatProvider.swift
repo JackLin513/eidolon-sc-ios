@@ -19,9 +19,20 @@ struct DebugChatProvider: ChatProvider {
                 ? "<scene>她把杯子放下，抬眼看过来。</scene>" + line
                 : line
         }
+        // `EIDOLON_FAKE_CHAT_DELAY_MS` holds the reply open after its text, so the live
+        // call rows can be seen while a turn is still going.
+        let delay = ProcessInfo.processInfo.environment["EIDOLON_FAKE_CHAT_DELAY_MS"]
+            .flatMap(Int.init) ?? 0
         return AsyncThrowingStream { continuation in
             continuation.yield(answer)
-            continuation.finish()
+            guard delay > 0 else {
+                continuation.finish()
+                return
+            }
+            Task {
+                try? await Task.sleep(for: .milliseconds(delay))
+                continuation.finish()
+            }
         }
     }
 }

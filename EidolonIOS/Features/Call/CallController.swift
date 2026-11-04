@@ -29,6 +29,10 @@ final class CallController {
     private(set) var micNotice: MicNotice?
     /// The line the producer just typed; shown on the card until she answers (spec #47).
     private(set) var typed: String?
+    /// What the recognizer last settled on for the producer's line, kept for the folded
+    /// chat page after the call's own card moves on to her reply. Cleared when the next
+    /// line starts being heard or typed.
+    private(set) var recognized: String?
     /// The change her last turn made, shown on the status line for a moment (spec #38).
     private(set) var affinityCue: AffinityCue?
     /// When the call connected, for the status line; nil until it does.
@@ -150,6 +154,7 @@ final class CallController {
         startError = nil
         micNotice = nil
         typed = nil
+        recognized = nil
         connectedAt = nil
         endedAt = nil
         stand = CallStandDirector()
@@ -178,9 +183,13 @@ final class CallController {
             }
         case let .hearing(text):
             hearing = text.isEmpty ? nil : text
-            if !text.isEmpty { typed = nil }
-        case .recognized:
+            if !text.isEmpty {
+                typed = nil
+                recognized = nil
+            }
+        case let .recognized(text):
             hearing = nil
+            recognized = text
             failure = nil
         case let .segment(reply, segment, ja, zh):
             typed = nil
@@ -194,6 +203,7 @@ final class CallController {
             micNotice = notice
         case let .typed(text):
             typed = text
+            if !text.isEmpty { recognized = nil }
         case .replyDropped:
             typed = nil
             line = nil
@@ -304,7 +314,7 @@ final class CallController {
 
 /// Which reply and which segment of it this is, so the call's card can tell a continued
 /// line from the start of a new one.
-struct HerLine {
+struct HerLine: Equatable {
     let reply: Int
     let segment: Int
     let ja: String

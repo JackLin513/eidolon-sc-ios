@@ -545,6 +545,42 @@ final class PlayUITests: XCTestCase {
         )
     }
 
+    func testAFoldedCallShowsTheTurnWhileItIsStillGoing() throws {
+        app.terminate()
+        app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
+        app.launchEnvironment["EIDOLON_OPEN_CALL"] = "1"
+        app.launchEnvironment["EIDOLON_FAKE_CHAT"] = "1"
+        app.launchEnvironment["EIDOLON_CALL_FAKE_SPEECH"] = "实时检查"
+        app.launchEnvironment["EIDOLON_FAKE_CHAT_DELAY_MS"] = "5000"
+        app.launch()
+
+        XCTAssertTrue(app.buttons["call.hangUp"].waitForExistence(timeout: 20), "call did not start")
+        app.buttons["收起"].firstMatch.tap()
+        XCTAssertTrue(app.textFields["chat.input"].waitForExistence(timeout: 5), "not in chat")
+
+        let live = app.descendants(matching: .any)["chat.liveCall"]
+        XCTAssertTrue(
+            live.waitForExistence(timeout: 6),
+            "the call's live turn is not shown while it is still going"
+        )
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS %@", "实时检查")
+            ).firstMatch.exists,
+            "the producer's line is missing from the live turn"
+        )
+        XCTAssertTrue(
+            live.waitForNonExistence(timeout: 10),
+            "the live turn stayed after it became a recorded turn"
+        )
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS %@", "实时检查")
+            ).firstMatch.waitForExistence(timeout: 5),
+            "the recorded turn did not replace the live one"
+        )
+    }
+
     func testTheFoldedCallBarStaysOffPushedPages() throws {
         app.terminate()
         app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
