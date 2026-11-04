@@ -35,6 +35,7 @@ tools/oracle/run.sh                          # 与上游逐字对照提示词（
 - `EIDOLON_API_MODEL_LIST=a,b,c`：让「获取模型」用这份固定列表，不访问网络
 - `EIDOLON_API_PROBE=success` / `failure`：让服务测试按钮返回注入的成功或失败结果，不访问网络
 - `EIDOLON_FAKE_CHAT=1`：对话和通话都用内置的假模型回复，不访问网络（仅 DEBUG）
+- `EIDOLON_FAKE_CHAT_DELAY_MS`：假模型先给文字，隔这么久才结束这一回合，用来看收起通话时的实时行（仅 DEBUG）
 - `EIDOLON_GIFT_DRAWS` / `EIDOLON_GIFT_RESET_CARDS`：把抽奖次数和重置卡设成固定值，背包清空（仅 DEBUG）
 - `EIDOLON_GIFT_BACKPACK=cake:2,black-tea:1`：把礼物放进背包（仅 DEBUG）
 - `EIDOLON_GIFT_SEED=42`：让抽奖用固定种子的随机序列，同一种子每次启动给出同样的结果（仅 DEBUG）
