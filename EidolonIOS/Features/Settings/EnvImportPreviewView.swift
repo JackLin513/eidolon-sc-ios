@@ -173,6 +173,17 @@ struct EnvImportPreviewView: View {
         case "EMBEDDING_DIMENSIONS": return values.embeddingDimensions.map(String.init)
         case "RERANK_MODEL": return values.rerankModel
         case "FISH_AUDIO_MODEL": return values.fishModel
+        case "NOVELAI_API_FORMAT": return values.imageAPIFormat?.rawValue
+        case "NOVELAI_BASE_URL": return values.imageBaseURL
+        case "NOVELAI_MODEL": return values.imageModel
+        case "NOVELAI_ADULT_MODEL": return values.imageAdultModel
+        case "NOVELAI_STYLE": return values.imageStyle
+        case "EIDOLON_PHOTOS_PER_HOUR": return values.imageHourlyLimit.map(String.init)
+        case "GPT_IMAGE_ENABLED": return values.gptImageEnabled.map(String.init)
+        case "GPT_IMAGE_BASE_URL": return values.gptImageBaseURL
+        case "GPT_IMAGE_MODEL": return values.gptImageModel
+        case "GPT_IMAGE_QUALITY": return values.gptImageQuality?.rawValue
+        case "GPT_IMAGE_STYLE": return values.gptImageStyle
         default: return nil
         }
     }
@@ -192,9 +203,6 @@ struct EnvImportPreviewView: View {
     private func unsupportedNote(_ key: String) -> String {
         if key.hasPrefix("GEMINI_") || key == "EMBEDDING_PROVIDER" {
             return "Gemini embedding 暂未接入（#89）"
-        }
-        if key.hasPrefix("NOVELAI_") || key.hasPrefix("GPT_IMAGE_") {
-            return "生图不在首版范围"
         }
         return "上游的部署或行为设置，iOS 的导入不读取"
     }

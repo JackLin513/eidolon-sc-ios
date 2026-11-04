@@ -453,7 +453,8 @@ struct SettingsView: View {
            !settings.fishAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             configured += 1
         }
-        return "已配置 \(configured) / 5"
+        if settings.imageIsConfigured { configured += 1 }
+        return "已配置 \(configured) / 6"
     }
 
     @ViewBuilder

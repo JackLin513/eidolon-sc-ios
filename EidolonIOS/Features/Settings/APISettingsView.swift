@@ -1,5 +1,6 @@
 import EidolonCore
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 /// 设置 → API 与模型 (spec #80): every external service in one page, with an upstream
@@ -23,10 +24,13 @@ struct APISettingsView: View {
     @State private var fetching: Set<FetchKey> = []
     @State private var fetchErrors: [FetchKey: String] = [:]
     @State private var probes: [ProbeKey: ProbeStatus] = [:]
+    @State private var testingImage = false
+    @State private var testImage: UIImage?
+    @State private var imageTestError: String?
 
     private enum SecretField: Hashable {
         case chat, background, judge, retrieval, gemini, soniox, dashscope, fish,
-             bailian, jev, cloudflare
+             bailian, jev, cloudflare, novelAI, gptImage
     }
 
     private enum FetchKey: Hashable {
@@ -52,6 +56,8 @@ struct APISettingsView: View {
             judgeSection
             retrievalSection
             callSection
+            imageSection
+            gptImageSection
         }
         .navigationTitle("API 与模型")
         .navigationBarBackButtonHidden(true)
@@ -106,6 +112,12 @@ struct APISettingsView: View {
         }
         .onChange(of: settings.cloudflareAPIKey) { _, value in
             if !value.isEmpty { cleared.remove(.cloudflare) }
+        }
+        .onChange(of: settings.novelAIAPIKey) { _, value in
+            if !value.isEmpty { cleared.remove(.novelAI) }
+        }
+        .onChange(of: settings.gptImageAPIKey) { _, value in
+            if !value.isEmpty { cleared.remove(.gptImage) }
         }
         .fileImporter(
             isPresented: $isPickingEnv,
@@ -172,6 +184,11 @@ struct APISettingsView: View {
                 title: "通话（\(settings.speechToText.title) + Fish）",
                 configured: settings.recognitionIsConfigured
                     && !settings.fishAPIKey.trimmed.isEmpty
+            )
+            SummaryRow(
+                title: "生图",
+                configured: settings.imageIsConfigured,
+                note: settings.gptImageIsConfigured ? "GPT Image" : nil
             )
         } header: {
             Text("当前配置")
@@ -866,6 +883,123 @@ struct APISettingsView: View {
         return false
     }
 
+    private var imageSection: some View {
+        Section {
+            Picker("接口形式", selection: $settings.imageAPIFormat) {
+                ForEach(ImageAPIFormat.allCases) { format in
+                    Text(format.title).tag(format)
+                }
+            }
+            .accessibilityIdentifier("api.image.format")
+            TextField("接口地址，例如 https://image.novelai.net", text: $settings.imageBaseURL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+            SecureField("NovelAI 密钥（留空保留已存密钥）", text: $settings.novelAIAPIKey)
+            clearSecretButton(.novelAI, hasStored: !saved.novelAIAPIKey.trimmed.isEmpty) {
+                settings.novelAIAPIKey = ""
+            }
+            TextField("普通模型", text: $settings.imageModel)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            TextField("成人模型", text: $settings.imageAdultModel)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            TextField("画风（可选，原样写进提示词）", text: $settings.imageStyle)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Stepper(value: $settings.imageHourlyLimit, in: 0...50) {
+                Text("每小时最多 \(settings.imageHourlyLimit) 张（0 不限）")
+            }
+            Button {
+                Task { await testImageGeneration() }
+            } label: {
+                HStack {
+                    Text("试一张")
+                    if testingImage { Spacer(); ProgressView() }
+                }
+            }
+            .disabled(testingImage || !settings.imageSettings.isConfigured)
+            .accessibilityIdentifier("api.image.try")
+            if let testImage {
+                Image(uiImage: testImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxHeight: 220)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityIdentifier("api.image.tried")
+            }
+            if let imageTestError {
+                Text(imageTestError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        } header: {
+            APIStatusHeader(title: "生图", configured: settings.imageIsConfigured)
+        } footer: {
+            Text("NovelAI 原生格式把地址写到域名根；OpenAI 图像格式写到 /v1。密钥只保存在钥匙串；"
+                + "「试一张」会真的花一张的钱，不计入用量。")
+        }
+    }
+
+    private var gptImageSection: some View {
+        Section {
+            Toggle("用 GPT Image 画无人配图", isOn: $settings.gptImageEnabled)
+                .accessibilityIdentifier("api.gptImage.enabled")
+            if settings.gptImageEnabled {
+                TextField("接口地址", text: $settings.gptImageBaseURL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                SecureField("GPT Image 密钥（留空保留已存密钥）", text: $settings.gptImageAPIKey)
+                clearSecretButton(.gptImage, hasStored: !saved.gptImageAPIKey.trimmed.isEmpty) {
+                    settings.gptImageAPIKey = ""
+                }
+                TextField("模型", text: $settings.gptImageModel)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Picker("质量", selection: $settings.gptImageQuality) {
+                    ForEach(GPTImageQuality.allCases) { quality in
+                        Text(quality.title).tag(quality)
+                    }
+                }
+                TextField("画风", text: $settings.gptImageStyle, axis: .vertical)
+                    .lineLimit(2...5)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+        } header: {
+            APIStatusHeader(title: "GPT Image（可选）", configured: settings.gptImageIsConfigured)
+        } footer: {
+            Text("只给朋友圈里没有人的风景、食物和物品配图；人物、合照和照片始终走 NovelAI。")
+        }
+    }
+
+    private func testImageGeneration() async {
+        testingImage = true
+        imageTestError = nil
+        defer { testingImage = false }
+        do {
+            let request = ImageRequest(
+                prompt: "1girl, solo, smile, simple background",
+                negativePrompt: "nsfw, lowres, bad anatomy, text, watermark",
+                width: 832,
+                height: 1216,
+                model: settings.imageModel
+            )
+            let data = try await RemoteImageGenerator().generate(
+                request,
+                settings: settings.imageSettings
+            )
+            guard let image = UIImage(data: data) else {
+                throw ImageGenerationError.badImage("图片解不开")
+            }
+            testImage = image
+        } catch {
+            imageTestError = error.localizedDescription
+        }
+    }
+
     // MARK: - Loading and leaving
 
     private func load() async {
@@ -957,6 +1091,12 @@ struct APISettingsView: View {
         if !cleared.contains(.cloudflare), draft.cloudflareAPIKey.trimmed.isEmpty {
             draft.cloudflareAPIKey = saved.cloudflareAPIKey
         }
+        if !cleared.contains(.novelAI), draft.novelAIAPIKey.trimmed.isEmpty {
+            draft.novelAIAPIKey = saved.novelAIAPIKey
+        }
+        if !cleared.contains(.gptImage), draft.gptImageAPIKey.trimmed.isEmpty {
+            draft.gptImageAPIKey = saved.gptImageAPIKey
+        }
         return draft
     }
 
@@ -975,6 +1115,14 @@ struct APISettingsView: View {
         }
         if !draft.jevBaseURL.trimmed.isEmpty, !isURL(draft.jevBaseURL) {
             return "Jev 接口地址不是有效的 URL"
+        }
+        if !draft.imageBaseURL.trimmed.isEmpty, !isURL(draft.imageBaseURL) {
+            return "生图接口地址不是有效的 URL"
+        }
+        if draft.gptImageEnabled,
+           !draft.gptImageBaseURL.trimmed.isEmpty,
+           !isURL(draft.gptImageBaseURL) {
+            return "GPT Image 接口地址不是有效的 URL"
         }
         if let maxTokens = draft.maxTokens, maxTokens <= 0 {
             return "max tokens 需要是正整数"
