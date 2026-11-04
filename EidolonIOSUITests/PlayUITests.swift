@@ -513,6 +513,38 @@ final class PlayUITests: XCTestCase {
         )
     }
 
+    func testAFoldedCallShowsItsNewTurnsInTheChat() throws {
+        app.terminate()
+        app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
+        app.launchEnvironment["EIDOLON_OPEN_CALL"] = "1"
+        app.launchEnvironment["EIDOLON_FAKE_CHAT"] = "1"
+        app.launchEnvironment["EIDOLON_CALL_FAKE_SPEECH"] = "先说的检查|收起后的检查"
+        app.launchEnvironment["EIDOLON_CALL_SPEECH_INTERVAL_MS"] = "6000"
+        app.launch()
+
+        XCTAssertTrue(app.buttons["call.hangUp"].waitForExistence(timeout: 20), "call did not start")
+        // The first line becomes a turn while the call is still open.
+        Thread.sleep(forTimeInterval: 4)
+        app.buttons["收起"].firstMatch.tap()
+        XCTAssertTrue(app.textFields["chat.input"].waitForExistence(timeout: 5), "not in chat")
+
+        let beforeCollapse = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "先说的检查")
+        ).firstMatch
+        XCTAssertTrue(
+            beforeCollapse.waitForExistence(timeout: 5),
+            "the turn that finished before the collapse is not in her chat"
+        )
+        // The second line becomes a turn while the call is folded over the chat.
+        let whileFolded = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "收起后的检查")
+        ).firstMatch
+        XCTAssertTrue(
+            whileFolded.waitForExistence(timeout: 15),
+            "the folded call's new turn is not in her chat"
+        )
+    }
+
     func testTheFoldedCallBarStaysOffPushedPages() throws {
         app.terminate()
         app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"

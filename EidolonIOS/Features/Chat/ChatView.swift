@@ -144,9 +144,22 @@ struct ChatView: View {
         }
         .onChange(of: conversationID) { app.readAloud.stop() }
         // What the call wrote is shown at once: its turns, her hang-up, the affinity and
-        // any cooldown (spec「返回刷新」, spec #46).
+        // any cooldown (spec「返回刷新」, spec #46). A fold only changes what covers the
+        // chat, so each finished call turn (the state going back to listening) and each
+        // collapse re-read the record; without that the page kept the turns it loaded
+        // before the call (bug 2026-11-04).
         .onChange(of: app.call.state) { _, next in
-            guard case .ended = next else { return }
+            switch next {
+            case .ended:
+                Task { await store?.load() }
+            case .listening where app.call.isCollapsed:
+                Task { await store?.load() }
+            default:
+                break
+            }
+        }
+        .onChange(of: app.call.layer) { _, layer in
+            guard layer == .collapsed else { return }
             Task { await store?.load() }
         }
         .onChange(of: app.conversationRevision) {
