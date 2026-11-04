@@ -170,10 +170,18 @@ public struct AchievementReward: Sendable, Hashable {
 public struct PlayBadges: Sendable, Hashable {
     public let achievements: Bool
     public let gifts: Bool
+    /// How many stages were unlocked and not looked at, and how many are unlocked in all.
+    public let unseenStages: Int
+    public let unlockedStages: Int
 
-    public init(achievements: Bool, gifts: Bool) {
+    public init(
+        achievements: Bool, gifts: Bool,
+        unseenStages: Int = 0, unlockedStages: Int = 0
+    ) {
         self.achievements = achievements
         self.gifts = gifts
+        self.unseenStages = unseenStages
+        self.unlockedStages = unlockedStages
     }
 
     public var any: Bool { achievements || gifts }
@@ -669,13 +677,21 @@ enum AchievementStore {
     }
 
     static func badges(_ db: Database) throws -> PlayBadges {
-        let stages = try Int.fetchOne(
+        let unseen = try Int.fetchOne(
             db, sql: "SELECT COUNT(*) FROM achievement_stages WHERE seen = 0"
+        ) ?? 0
+        let unlocked = try Int.fetchOne(
+            db, sql: "SELECT COUNT(*) FROM achievement_stages"
         ) ?? 0
         let rewards = try Int.fetchOne(
             db, sql: "SELECT COUNT(*) FROM gift_rewards WHERE seen = 0"
         ) ?? 0
-        return PlayBadges(achievements: stages > 0, gifts: rewards > 0)
+        return PlayBadges(
+            achievements: unseen > 0,
+            gifts: rewards > 0,
+            unseenStages: unseen,
+            unlockedStages: unlocked
+        )
     }
 
     /// Whether anything was unlocked or paid since the play tab was last cleared.

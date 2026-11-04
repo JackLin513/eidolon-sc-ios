@@ -6,12 +6,12 @@ import SwiftUI
 struct ScheduleBoardView: View {
     /// The character the page opens on; nil picks the first.
     var initialCharacterID: String?
-    /// Drafts and save refusals, kept apart by character and week and shared with the
-    /// calendar page so both pages see the same unsaved work.
+    /// Drafts and save refusals, kept apart by character and week. The calendar page passes
+    /// its book so both pages see the same unsaved work; the chat's route to her schedule
+    /// gives it a book of its own.
     @Binding var book: ScheduleDraftBook
 
     @Environment(AppModel.self) private var app
-    @Environment(\.dismiss) private var dismiss
 
     @State private var characterID: String?
     @State private var weekOffset = 0
@@ -38,33 +38,26 @@ struct ScheduleBoardView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if isLoading {
-                    ProgressView()
-                } else if let loadError {
-                    ContentUnavailableView {
-                        Label("读不到日程", systemImage: "exclamationmark.triangle")
-                    } description: {
-                        Text(loadError)
-                    } actions: {
-                        Button("重试") { Task { await load() } }
-                    }
-                } else {
-                    content
+        Group {
+            if isLoading {
+                ProgressView()
+            } else if let loadError {
+                ContentUnavailableView {
+                    Label("读不到日程", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(loadError)
+                } actions: {
+                    Button("重试") { Task { await load() } }
                 }
+            } else {
+                content
             }
-            .navigationTitle("她的日程")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") { dismiss() }
-                }
-            }
-            .safeAreaInset(edge: .bottom) {
-                if let planner, app.hasJobList, !planner.board.jobs.isEmpty {
-                    saveBar(planner)
-                }
+        }
+        .navigationTitle("她的日程")
+        .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom) {
+            if let planner, app.hasJobList, !planner.board.jobs.isEmpty {
+                saveBar(planner)
             }
         }
         .task(id: taskID) { await load() }
