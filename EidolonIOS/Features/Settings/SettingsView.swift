@@ -34,6 +34,9 @@ struct SettingsView: View {
     @State private var standIndexURL: URL?
     @State private var confirmingPackageCleanup = false
     @State private var confirmingCalendarDelete = false
+    /// Whether the settings root is the page on top; its folded call bar floats over the
+    /// large-title header only there (bug 2026-11-04).
+    @State private var settingsRootOnScreen = true
 
     private enum ImportKind {
         case content
@@ -46,7 +49,6 @@ struct SettingsView: View {
         // the iOS 26 navigation bar tints itself with the bar's dark background and its
         // title disappears (spec #64).
         VStack(spacing: 0) {
-            CallBar()
             NavigationStack {
                 Form {
                     Section {
@@ -305,6 +307,8 @@ struct SettingsView: View {
                 // Returning to the call brings the layer over every page; settings gets out of
                 // its way (spec #46).
                 .navigationTitle("设置")
+                .onAppear { settingsRootOnScreen = true }
+                .onDisappear { settingsRootOnScreen = false }
                 .navigationDestination(isPresented: $showMemories) {
                     MemoryListView()
                 }
@@ -405,6 +409,11 @@ struct SettingsView: View {
                         }
                     }
                 }
+            }
+        }
+        .overlay(alignment: .top) {
+            if settingsRootOnScreen {
+                CallBar()
             }
         }
     }

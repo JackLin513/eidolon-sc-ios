@@ -21,12 +21,10 @@ struct PlayHubView: View {
     }
 
     var body: some View {
-        // The folded call's bar stands on top of the tab's navigation, not inside its
-        // scroll view: inside, the iOS 26 navigation bar tints itself with the bar's dark
-        // background and the title disappears (spec #64).
-        VStack(spacing: 0) {
-            CallBar()
-            NavigationStack(path: playPath) {
+        // The folded call's bar floats over the empty part of the large-title header, so
+        // it does not move the title (bug 2026-11-04). Subpages keep their inline
+        // navigation untouched; the bar is only on the first-level page.
+        NavigationStack(path: playPath) {
                 Group {
                     if let summary = app.playSummary {
                         cards(summary.cards)
@@ -77,7 +75,11 @@ struct PlayHubView: View {
                     }
                 }
             }
-        }
+            .overlay(alignment: .top) {
+                if app.playPath.isEmpty {
+                    CallBar()
+                }
+            }
         .background { TabBarHides(hidden: isEnteringBar || isLeavingBar) }
         .overlay {
             if isEnteringBar || isLeavingBar {
