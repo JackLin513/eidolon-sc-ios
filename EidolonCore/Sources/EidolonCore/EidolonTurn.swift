@@ -1217,7 +1217,8 @@ extension Eidolon {
                 gender: gender,
                 timezone: row["timezone"],
                 birthdayMonth: row["birthday_month"],
-                birthdayDay: row["birthday_day"]
+                birthdayDay: row["birthday_day"],
+                birthdayYear: row["birthday_year"]
             )
         }
     }

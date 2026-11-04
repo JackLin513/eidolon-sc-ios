@@ -12,6 +12,7 @@ public struct ProducerProfile: Sendable, Hashable {
     public var formOfAddress: String?
     public var gender: Gender?
     public var timezone: String?
+    public var birthdayYear: Int?
     public var birthdayMonth: Int?
     public var birthdayDay: Int?
 
@@ -20,11 +21,13 @@ public struct ProducerProfile: Sendable, Hashable {
         gender: Gender? = nil,
         timezone: String? = nil,
         birthdayMonth: Int? = nil,
-        birthdayDay: Int? = nil
+        birthdayDay: Int? = nil,
+        birthdayYear: Int? = nil
     ) {
         self.formOfAddress = formOfAddress
         self.gender = gender
         self.timezone = timezone
+        self.birthdayYear = birthdayYear
         self.birthdayMonth = birthdayMonth
         self.birthdayDay = birthdayDay
     }
