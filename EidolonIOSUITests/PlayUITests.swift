@@ -458,6 +458,46 @@ final class PlayUITests: XCTestCase {
         )
     }
 
+    func testTheFoldedCallBarKeepsItsPlaceAcrossHerChatAndTheRoster() throws {
+        app.terminate()
+        app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
+        app.launchEnvironment["EIDOLON_FAKE_CHAT"] = "1"
+        app.launchEnvironment["EIDOLON_CALL_FAKE_SPEECH"] = "你好"
+        app.launch()
+
+        let dial = app.buttons["打电话"]
+        XCTAssertTrue(dial.waitForExistence(timeout: 20), "chat did not open")
+        dial.tap()
+        let hangUp = app.buttons["call.hangUp"]
+        XCTAssertTrue(hangUp.waitForExistence(timeout: 20), "call did not start")
+        let enabled = NSPredicate(format: "isEnabled == true")
+        expectation(for: enabled, evaluatedWith: hangUp)
+        waitForExpectations(timeout: 20)
+        app.buttons["收起"].firstMatch.tap()
+
+        let bar = app.buttons["call.bar"]
+        XCTAssertTrue(bar.waitForExistence(timeout: 5), "the folded call has no bar in her chat")
+        let chatBarY = bar.frame.minY
+        XCTAssertGreaterThan(
+            app.navigationBars.firstMatch.frame.minY,
+            bar.frame.maxY,
+            "the chat navigation is under the call bar"
+        )
+
+        app.navigationBars.buttons["对话"].tap()
+        XCTAssertTrue(app.navigationBars["对话"].waitForExistence(timeout: 5), "not on roster")
+        XCTAssertTrue(bar.waitForExistence(timeout: 5), "the folded call has no bar on the roster")
+        XCTAssertEqual(
+            bar.frame.minY, chatBarY, accuracy: 1,
+            "the call bar moved between her chat and the roster"
+        )
+        XCTAssertGreaterThan(
+            app.navigationBars["对话"].frame.minY,
+            bar.frame.maxY,
+            "the roster navigation is under the call bar"
+        )
+    }
+
     func testCallBarFollowsToThePlayTab() throws {
         app.terminate()
         app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
