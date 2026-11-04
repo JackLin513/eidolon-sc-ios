@@ -140,20 +140,35 @@ final class StatsTests: XCTestCase {
         XCTAssertEqual(stats.range.byHour[12], 4) // noon JST
         XCTAssertEqual(stats.heatmap.last?.day, CalendarDay(year: 2026, month: 11, day: 5))
         XCTAssertEqual(stats.heatmap.last?.count, 1)
-        let weekday = CalendarDay(year: 2026, month: 11, day: 5).weekdayIndex
-        XCTAssertEqual(stats.heatmap.count, 52 * 7 + weekday + 1)
+        XCTAssertEqual(stats.heatmap.first?.day.weekdayIndex, 0)
+        XCTAssertEqual(stats.heatmap.first?.day, CalendarDay(year: 2026, month: 10, day: 26))
+        XCTAssertEqual(stats.heatmap.count, 11) // Oct 26 through Nov 5
     }
 
-    func testTheHeatmapStartsOnAMondayAndCoversWholeWeeks() async throws {
+    func testTheHeatmapFollowsTheRangeAndStartsOnAMonday() async throws {
         let eidolon = try await installed()
         try await conversation(eidolon, id: "c1")
         try await message(eidolon, conversation: "c1", at: "2026-11-05T03:00:00Z")
-        let stats = try await eidolon.statsSummary(range: .all, now: noon("2026-11-05"), timeZone: tokyo)
-        XCTAssertEqual(stats.heatmap.first?.day.weekdayIndex, 0)
-        XCTAssertEqual(
-            stats.heatmap.count % 7,
-            CalendarDay(year: 2026, month: 11, day: 5).weekdayIndex + 1
+        let now = noon("2026-11-05")
+
+        let month = try await eidolon.statsSummary(
+            range: .thirtyDays, now: now, timeZone: tokyo
         )
+        XCTAssertEqual(month.heatmap.first?.day, CalendarDay(year: 2026, month: 10, day: 5))
+        XCTAssertEqual(month.heatmap.last?.day, CalendarDay(year: 2026, month: 11, day: 5))
+        XCTAssertEqual(month.heatmap.count, 32)
+        XCTAssertEqual(month.heatmap.first?.day.weekdayIndex, 0)
+
+        let year = try await eidolon.statsSummary(range: .year, now: now, timeZone: tokyo)
+        XCTAssertEqual(
+            year.heatmap.count,
+            52 * 7 + CalendarDay(year: 2026, month: 11, day: 5).weekdayIndex + 1
+        )
+        XCTAssertEqual(year.heatmap.first?.day.weekdayIndex, 0)
+
+        let all = try await eidolon.statsSummary(range: .all, now: now, timeZone: tokyo)
+        XCTAssertEqual(all.heatmap.first?.day, CalendarDay(year: 2026, month: 11, day: 2))
+        XCTAssertEqual(all.heatmap.count, 4)
     }
 
     func testTheRangeTakesWholeDaysAndOnlyConnectedCalls() async throws {

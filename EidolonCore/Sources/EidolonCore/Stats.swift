@@ -236,19 +236,6 @@ extension Eidolon {
         let daysKnown = rows.first.map { max(1, today.days(since: Self.calendarDay($0, in: timeZone)) + 1) } ?? 0
         let visits = Self.visits(contactDays, today: today)
 
-        let heatmapStart = today.adding(days: -(today.weekdayIndex + 7 * 52))
-        let countsByDay = Dictionary(grouping: rows.contacts, by: {
-            Self.calendarDay($0.at, in: timeZone)
-        }).mapValues(\.count)
-        var heatmap: [StatsHeatmapDay] = []
-        var heatmapDay = heatmapStart
-        while heatmapDay <= today {
-            heatmap.append(
-                StatsHeatmapDay(day: heatmapDay, count: countsByDay[heatmapDay] ?? 0)
-            )
-            heatmapDay = heatmapDay.adding(days: 1)
-        }
-
         let within = rows.contacts.filter {
             let day = Self.calendarDay($0.at, in: timeZone)
             guard day <= today else { return false }
@@ -258,6 +245,37 @@ extension Eidolon {
             let day = Self.calendarDay($0.at, in: timeZone)
             guard day <= today else { return false }
             return start.map { day >= $0 } ?? true
+        }
+
+        // The heatmap follows the range: a month, a year, or everything since the first
+        // contact, aligned to Monday columns. The padding before the range stays blank.
+        let heatmapStart: CalendarDay
+        switch range {
+        case .thirtyDays:
+            let first = today.adding(days: -29)
+            heatmapStart = first.adding(days: -first.weekdayIndex)
+        case .year:
+            heatmapStart = today.adding(days: -(today.weekdayIndex + 7 * 52))
+        case .all:
+            let first = rows.contacts
+                .map { Self.calendarDay($0.at, in: timeZone) }
+                .filter { $0 <= today }
+                .min()
+            heatmapStart = (first ?? today).adding(
+                days: -(first ?? today).weekdayIndex
+            )
+        }
+        let heatmapContacts = range == .all ? rows.contacts : within
+        let countsByDay = Dictionary(grouping: heatmapContacts, by: {
+            Self.calendarDay($0.at, in: timeZone)
+        }).mapValues(\.count)
+        var heatmap: [StatsHeatmapDay] = []
+        var heatmapDay = heatmapStart
+        while heatmapDay <= today {
+            heatmap.append(
+                StatsHeatmapDay(day: heatmapDay, count: countsByDay[heatmapDay] ?? 0)
+            )
+            heatmapDay = heatmapDay.adding(days: 1)
         }
 
         var byHour = Array(repeating: 0, count: 24)
