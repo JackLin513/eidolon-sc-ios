@@ -37,6 +37,7 @@ final class ContentBundleImportTests: XCTestCase {
         XCTAssertEqual(info.episodeCount, 2)
         XCTAssertEqual(info.passageCount, 3)
         XCTAssertEqual(info.characterCount, 2)
+        XCTAssertEqual(info.placeCount, 2)
 
         let needsBundleAfterInstall = try await eidolon.needsContentBundle()
         XCTAssertFalse(needsBundleAfterInstall)
@@ -49,7 +50,18 @@ final class ContentBundleImportTests: XCTestCase {
         XCTAssertEqual(characters.first?.speakers, ["真乃"])
         XCTAssertEqual(characters.first?.birthday, Birthday(month: 4, day: 25))
         XCTAssertEqual(characters.first?.idolID, 1)
+        XCTAssertEqual(characters.first?.photoTag, "sakuragi mano")
+        XCTAssertEqual(characters.first?.photoAppearance, ["brown hair", "brown eyes"])
+        XCTAssertEqual(characters.first?.placeLikes, ["cafe", "park"])
+        XCTAssertTrue(characters.first?.canSendPhoto == true)
         XCTAssertEqual(characters.last?.birthday, Birthday(month: 3, day: 4))
+
+        let places = try await eidolon.places()
+        XCTAssertEqual(places?.places.count, 2)
+        XCTAssertEqual(places?.byID["cafe"]?.category, .cafe)
+        let tags = try await eidolon.photoTags()
+        XCTAssertEqual(tags?.model, "test-image")
+        XCTAssertTrue(tags?.known.contains("smile") == true)
 
         let holidays = try await eidolon.holidayTable()
         XCTAssertEqual(holidays.name(year: 2026, month: 1, day: 1), "元日")
@@ -205,6 +217,86 @@ final class ContentBundleImportTests: XCTestCase {
                 return XCTFail("expected invalidBundle, got \(error)")
             }
             XCTAssertTrue(reason.contains("节假日"), reason)
+        }
+    }
+
+    func testRejectsBundleWithoutPlaces() async throws {
+        let eidolon = try makeEidolon()
+        var options = Fixture.Options()
+        options.includePlaces = false
+        let bundle = try Fixture.makeBundle(in: root, options: options)
+
+        await assertThrows(eidolon, bundle) { error in
+            guard let eidolonError = error as? EidolonError,
+                  case .invalidBundle(let reason) = eidolonError
+            else {
+                return XCTFail("expected invalidBundle, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("places.json"), reason)
+        }
+    }
+
+    func testRejectsBundleWithoutPhotoTags() async throws {
+        let eidolon = try makeEidolon()
+        var options = Fixture.Options()
+        options.includePhotoTags = false
+        let bundle = try Fixture.makeBundle(in: root, options: options)
+
+        await assertThrows(eidolon, bundle) { error in
+            guard let eidolonError = error as? EidolonError,
+                  case .invalidBundle(let reason) = eidolonError
+            else {
+                return XCTFail("expected invalidBundle, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("photo_tags.json"), reason)
+        }
+    }
+
+    func testRejectsBadPlaceCategory() async throws {
+        let eidolon = try makeEidolon()
+        var options = Fixture.Options()
+        options.badPlaceCategory = true
+        let bundle = try Fixture.makeBundle(in: root, options: options)
+
+        await assertThrows(eidolon, bundle) { error in
+            guard let eidolonError = error as? EidolonError,
+                  case .invalidBundle(let reason) = eidolonError
+            else {
+                return XCTFail("expected invalidBundle, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("类别"), reason)
+        }
+    }
+
+    func testRejectsBadPlaceCoordinate() async throws {
+        let eidolon = try makeEidolon()
+        var options = Fixture.Options()
+        options.badPlaceCoordinate = true
+        let bundle = try Fixture.makeBundle(in: root, options: options)
+
+        await assertThrows(eidolon, bundle) { error in
+            guard let eidolonError = error as? EidolonError,
+                  case .invalidBundle(let reason) = eidolonError
+            else {
+                return XCTFail("expected invalidBundle, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("lat"), reason)
+        }
+    }
+
+    func testRejectsBrokenPhotoTagTable() async throws {
+        let eidolon = try makeEidolon()
+        var options = Fixture.Options()
+        options.badPhotoTags = true
+        let bundle = try Fixture.makeBundle(in: root, options: options)
+
+        await assertThrows(eidolon, bundle) { error in
+            guard let eidolonError = error as? EidolonError,
+                  case .invalidBundle(let reason) = eidolonError
+            else {
+                return XCTFail("expected invalidBundle, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("photo_tags.json"), reason)
         }
     }
 

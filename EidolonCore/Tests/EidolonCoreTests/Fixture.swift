@@ -49,6 +49,14 @@ enum Fixture {
         var includeReadings = false
         /// Writes `characters/jobs.json` with a few jobs.
         var includeJobs = false
+        /// Writes the place pool and photo tag table; a format-5 bundle needs both.
+        var includePlaces = true
+        var includePhotoTags = true
+        /// Writes a place with an unknown category / out-of-range coordinate.
+        var badPlaceCategory = false
+        var badPlaceCoordinate = false
+        /// Writes a photo tag table that cannot be parsed.
+        var badPhotoTags = false
         /// Writes the gift catalog, each character's liked gifts, and the art files.
         var includeGifts = false
         /// Leaves one gift's illustration out of a bundle that has gifts.
@@ -91,6 +99,9 @@ enum Fixture {
             "birthday": .string("04-25"),
         ]
         if let age = options.manoAge { mano["age"] = .int(age) }
+        mano["photo_tag"] = .string("sakuragi mano")
+        mano["photo_appearance"] = .string("brown hair, brown eyes")
+        mano["place_likes"] = .array([.string("cafe"), .string("park")])
         if options.includeGifts {
             mano["liked_gifts"] = .array([.string("potted-plant"), .string("black-tea")])
         }
@@ -115,6 +126,9 @@ enum Fixture {
             "birthday": .string("03-04"),
         ]
         if let age = options.hioriAge { hiori["age"] = .int(age) }
+        hiori["photo_tag"] = .string("kazano hiori")
+        hiori["photo_appearance"] = .string("black hair, blue eyes")
+        hiori["place_likes"] = .array([.string("books"), .string("cafe")])
         if options.includeGifts {
             hiori["liked_gifts"] = .array([.string("book"), .string("music-cd")])
         }
@@ -181,6 +195,56 @@ enum Fixture {
             try JSONEncoder().encode(JSONValue.object(["readings": .array(readings)]))
                 .write(to: charactersDirectory.appendingPathComponent("readings.json"))
         }
+        if options.includePlaces {
+            let category = options.badPlaceCategory ? "not-a-category" : "cafe"
+            let latitude = options.badPlaceCoordinate ? 999.0 : 35.6812
+            let places: [JSONValue] = [
+                .object([
+                    "id": .string("cafe"),
+                    "name": .string("テストカフェ"),
+                    "area": .string("東京都千代田区"),
+                    "lat": .double(latitude),
+                    "lon": .double(139.7671),
+                    "category": .string(category),
+                    "note": .string("街角的咖啡馆。"),
+                    "checked": .string("2026-10-31"),
+                ]),
+                .object([
+                    "id": .string("park"),
+                    "name": .string("テスト公園"),
+                    "area": .string("東京都新宿区"),
+                    "lat": .double(35.6896),
+                    "lon": .double(139.7006),
+                    "category": .string("park"),
+                    "note": .string("有长椅的公园。"),
+                    "checked": .string("2026-10-31"),
+                    "idols": .array([.string("mano")]),
+                ]),
+            ]
+            try JSONEncoder().encode(JSONValue.object(["places": .array(places)]))
+                .write(to: charactersDirectory.appendingPathComponent("places.json"))
+        }
+        if options.includePhotoTags {
+            if options.badPhotoTags {
+                try Data("{".utf8)
+                    .write(to: charactersDirectory.appendingPathComponent("photo_tags.json"))
+            } else {
+                let table: [String: JSONValue] = [
+                    "model": .string("test-image"),
+                    "known": .array([.string("smile"), .string("cafe"), .string("indoors")]),
+                    "rewrites": .object([:]),
+                    "allowed": .array([.string("smile")]),
+                    "blocked": .object([
+                        "nudity": .object([
+                            "tags": .array([.string("nude")]),
+                            "words": .array([]),
+                        ]),
+                    ]),
+                ]
+                try JSONEncoder().encode(JSONValue.object(table))
+                    .write(to: charactersDirectory.appendingPathComponent("photo_tags.json"))
+            }
+        }
         if options.includeJobs {
             let jobs: [JSONValue] = [
                 .object([
@@ -197,6 +261,7 @@ enum Fixture {
                     "category": .string("appearance"),
                     "length": .int(2),
                     "slots": .array([.string("morning")]),
+                    "places": .array([.string("mall")]),
                 ]),
                 .object([
                     "id": .string("day-off"),
