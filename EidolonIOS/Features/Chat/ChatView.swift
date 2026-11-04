@@ -9,6 +9,10 @@ struct ChatView: View {
     /// page cannot start another conversation then, since the current page would reload
     /// mid-turn (spec #37).
     var currentTurnInFlight: Bool = false
+    /// Whether this page draws the folded call's bar itself. The conversation tab's shell
+    /// draws it for the current chat; a past chat opened from the history sheet is outside
+    /// that shell and keeps its own.
+    var showsCallBar = true
 
     @Environment(AppModel.self) private var app
     @State private var store: ChatStore?
@@ -27,9 +31,13 @@ struct ChatView: View {
         Group {
             if let store {
                 VStack(spacing: 0) {
-                    // Her conversation keeps the folded call's bar under the navigation bar,
-                    // without repeating her name (spec #46).
-                    CallBar(showsName: !app.call.isCalling(character.id))
+                    // A past conversation opened from the history sheet keeps the folded
+                    // call's bar under its navigation bar, without repeating her name
+                    // (spec #46). The current conversation's bar belongs to the tab shell
+                    // so that returning to the roster cannot move its layout.
+                    if showsCallBar {
+                        CallBar(showsName: !app.call.isCalling(character.id))
+                    }
                     transcript(store)
                     if store.isPast {
                         pastBar
