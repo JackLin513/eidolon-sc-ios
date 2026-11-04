@@ -61,7 +61,7 @@ struct StatsView: View {
     @ViewBuilder
     private func content(_ summary: StatsSummary) -> some View {
         portrait(summary)
-        heatmap(summary.heatmap)
+        heatmap(summary.heatmap, range: summary.range.range)
         affinity(summary.affinity)
         achievements(summary.achievements)
         rangeNumbers(summary.range)
@@ -88,10 +88,10 @@ struct StatsView: View {
         .accessibilityIdentifier("stats.portrait")
     }
 
-    private func heatmap(_ days: [StatsHeatmapDay]) -> some View {
+    private func heatmap(_ days: [StatsHeatmapDay], range: StatsRange) -> some View {
         let busiest = days.map(\.count).max() ?? 0
         return VStack(alignment: .leading, spacing: 8) {
-            Text("过去一年")
+            Text(heatmapTitle(range))
                 .font(.headline)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 3) {
@@ -110,6 +110,17 @@ struct StatsView: View {
                 }
                 .padding(.vertical, 2)
             }
+            HStack(spacing: 4) {
+                Text("少")
+                ForEach(1...4, id: \.self) { level in
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(levelColor(level))
+                        .frame(width: 10, height: 10)
+                }
+                Text("多")
+            }
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
             Text("每周一列，颜色越深往来越多。")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
@@ -315,6 +326,23 @@ struct StatsView: View {
         if app.giftCatalog == nil { try? await app.refreshGifts() }
     }
 
+    private func levelColor(_ level: Int) -> Color {
+        switch level {
+        case 1: Color.green.opacity(0.4)
+        case 2: Color.green.opacity(0.6)
+        case 3: Color.green.opacity(0.8)
+        default: Color.green
+        }
+    }
+
+    private func heatmapTitle(_ range: StatsRange) -> String {
+        switch range {
+        case .thirtyDays: "近 30 天"
+        case .year: "近一年"
+        case .all: "全部"
+        }
+    }
+
     private func weeks(_ days: [StatsHeatmapDay]) -> [[StatsHeatmapDay]] {
         stride(from: 0, to: days.count, by: 7).map { start in
             Array(days[start..<min(start + 7, days.count)])
@@ -324,12 +352,12 @@ struct StatsView: View {
     /// Five shades by how busy the day was against the busiest day, as upstream's
     /// heatmap does: zero is blank, then four quarters of the busiest.
     private func heatColor(_ count: Int, busiest: Int) -> Color {
-        guard count > 0, busiest > 0 else { return Color.secondary.opacity(0.08) }
+        guard count > 0, busiest > 0 else { return Color.secondary.opacity(0.12) }
         let share = Double(count) / Double(busiest)
         return switch share {
-        case ..<0.25: Color.green.opacity(0.28)
-        case ..<0.5: Color.green.opacity(0.45)
-        case ..<0.75: Color.green.opacity(0.65)
+        case ..<0.25: Color.green.opacity(0.4)
+        case ..<0.5: Color.green.opacity(0.6)
+        case ..<0.75: Color.green.opacity(0.8)
         default: Color.green
         }
     }
