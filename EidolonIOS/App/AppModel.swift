@@ -348,6 +348,7 @@ final class AppModel {
             reconnectDelay: debugReconnectDelay,
             tones: callTones,
             adultMode: adultMode(for: character),
+            photo: photoContext,
             now: { Date() }
         )
         return try await core.beginCall(characterID: character.id, setup: setup, now: now)

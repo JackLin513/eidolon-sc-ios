@@ -56,6 +56,8 @@ struct CallView: View {
     @State private var fallbackOutfits: [StandOutfit] = []
     /// The size the stand is laid out at, so a renderer made mid-call frames her the same.
     @State private var standViewport = CGSize.zero
+    /// The picture opened full screen; nothing of it can be saved or shared (ticket #103).
+    @State private var viewingPhoto: CallPhoto?
 
     var body: some View {
         ZStack {
@@ -85,6 +87,9 @@ struct CallView: View {
         // into dark mode: the tab pages keep the system's appearance, and the call bar is
         // dark on its own (spec #46).
         .preferredColorScheme(call.layer == .collapsed ? nil : .dark)
+        .fullScreenCover(item: $viewingPhoto) { photo in
+            CallPhotoViewer(photo: photo)
+        }
         .task {
             loadBackdrop()
             // Her stand does not wait on the call: it is there even when the call cannot be
@@ -388,6 +393,9 @@ struct CallView: View {
                             .multilineTextAlignment(.center)
                             .lineLimit(3)
                             .padding(.horizontal, 24)
+                    }
+                    if let photo = call.photo {
+                        photoChip(photo)
                     }
                     lineCard
                 }
@@ -827,6 +835,51 @@ struct CallView: View {
         }
         .frame(maxHeight: .infinity)
     }
+
+    // MARK: - The picture
+
+    /// The picture she is making or made in this call: a capsule over her words on a
+    /// phone, a wider card on a tablet, above the line card so it covers neither her
+    /// stand nor the keys (ticket #103).
+    private func photoChip(_ photo: CallPhoto) -> some View {
+        Button {
+            if photo.status == .ready { viewingPhoto = photo }
+        } label: {
+            HStack(spacing: 10) {
+                CallPhotoThumbnail(photo: photo)
+                    .frame(width: sizeClass == .regular ? 56 : 30)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(CallPhoto.saying(photo))
+                        .font(sizeClass == .regular ? .subheadline : .footnote)
+                        .foregroundStyle(.white)
+                    if photo.status == .ready {
+                        Text("点开看看")
+                            .font(.caption2)
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                }
+                if sizeClass == .regular {
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.horizontal, sizeClass == .regular ? 16 : 12)
+            .padding(.vertical, sizeClass == .regular ? 12 : 8)
+            .background {
+                let shape = RoundedRectangle(
+                    cornerRadius: sizeClass == .regular ? 20 : 22,
+                    style: .continuous
+                )
+                shape
+                    .fill(.ultraThinMaterial)
+                    .overlay(shape.fill(.white.opacity(0.12)))
+            }
+            .frame(maxWidth: sizeClass == .regular ? 480 : .infinity)
+        }
+        .buttonStyle(.plain)
+        .disabled(photo.status != .ready)
+        .accessibilityIdentifier("call.photo")
+        .accessibilityLabel(CallPhoto.saying(photo))
+    }
 }
 
 /// Upstream's three pulsing dots while the call connects; still with reduced motion.
@@ -842,6 +895,93 @@ private struct DialingDots: View {
                 }
             }
         }
+    }
+}
+
+extension CallPhoto {
+    /// What the chip says without opening it.
+    static func saying(_ photo: CallPhoto) -> String {
+        switch photo.status {
+        case .pending: "正在冲印…"
+        case .ready: "她发来一张照片"
+        case .failed:
+            switch photo.reason {
+            case .timeout: "照片没冲印出来，超时了"
+            case .serviceError: "生图服务出错了，照片没拍成"
+            case .badImage: "生成的图不对，没能存下来"
+            case .usedUp: "这一小时的照片用完了"
+            case nil: "照片没拍成"
+            }
+        }
+    }
+}
+
+/// The chip's picture, or its state while there is none.
+private struct CallPhotoThumbnail: View {
+    let photo: CallPhoto
+    @Environment(AppModel.self) private var app
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(.white.opacity(0.16))
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            } else if photo.status == .pending {
+                ProgressView()
+                    .tint(.white)
+                    .scaleEffect(0.7)
+            } else if photo.status == .failed {
+                Image(systemName: "photo.badge.exclamationmark")
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+        }
+        .aspectRatio(832 / 1216, contentMode: .fit)
+        .task(id: photo.status) {
+            guard photo.status == .ready else { return }
+            image = await app.photoImage(photo.id)
+        }
+    }
+}
+
+/// One picture, full screen: tap or the close button puts it away. There is no save or
+/// share — the picture exists only in this conversation (ticket #103).
+private struct CallPhotoViewer: View {
+    let photo: CallPhoto
+    @Environment(AppModel.self) private var app
+    @Environment(\.dismiss) private var dismiss
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .ignoresSafeArea()
+            } else {
+                ProgressView()
+                    .tint(.white)
+            }
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title2)
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, .black.opacity(0.4))
+                    .padding(16)
+            }
+            .accessibilityLabel("关上照片")
+            .accessibilityIdentifier("call.photo.close")
+        }
+        .task { image = await app.photoImage(photo.id) }
+        .onTapGesture { dismiss() }
     }
 }
 
