@@ -34,7 +34,6 @@ struct SettingsView: View {
     @State private var standIndexURL: URL?
     @State private var confirmingPackageCleanup = false
     @State private var confirmingCalendarDelete = false
-    @State private var showCycles = false
 
     private enum ImportKind {
         case content
@@ -181,7 +180,6 @@ struct SettingsView: View {
                             get: { app.cyclesEnabled },
                             set: { on in Task { await app.setCyclesEnabled(on) } }
                         ))
-                        Button("查看周期") { showCycles = true }
                     } header: {
                         Text("她的周期")
                     } footer: {
@@ -296,9 +294,6 @@ struct SettingsView: View {
                 }
                 .navigationDestination(isPresented: $showStandPreview) {
                     StandPreviewView()
-                }
-                .navigationDestination(isPresented: $showCycles) {
-                    CyclesView()
                 }
                 .task { await app.loadMemories() }
                 .onAppear {

@@ -5,7 +5,6 @@ import SwiftUI
 /// Japan's holidays, with the kinds that matter to the producer kept on this device.
 struct CalendarView: View {
     @Environment(AppModel.self) private var app
-    @Environment(\.dismiss) private var dismiss
 
     @State private var month: CalendarPage.Month?
     @State private var selected: CalendarDay?
@@ -18,22 +17,15 @@ struct CalendarView: View {
     private static let olderKindsKey = "calendar.kinds"
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if let month {
-                    content(month)
-                } else {
-                    ProgressView()
-                }
-            }
-            .navigationTitle("日历")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") { dismiss() }
-                }
+        Group {
+            if let month {
+                content(month)
+            } else {
+                ProgressView()
             }
         }
+        .navigationTitle("日历")
+        .navigationBarTitleDisplayMode(.inline)
         .task {
             guard month == nil else { return }
             let today = CalendarPage.today(now: Date(), timeZone: app.producerTimeZone)
@@ -45,8 +37,13 @@ struct CalendarView: View {
             selected = today
         }
         .task { await loadSchedule() }
-        .sheet(isPresented: $showsSchedule, onDismiss: { Task { await loadSchedule() } }) {
+        .navigationDestination(isPresented: $showsSchedule) {
             ScheduleBoardView(book: $scheduleBook)
+        }
+        // Coming back from the week, what was saved or drafted is on the month again.
+        .onChange(of: showsSchedule) { _, shown in
+            guard !shown else { return }
+            Task { await loadSchedule() }
         }
     }
 

@@ -12,16 +12,13 @@ final class ScheduleCycleUITests: XCTestCase {
         app.launch()
     }
 
-    func testCyclePageOpensFromSettingsAndTheRecordForm() throws {
-        let settings = app.tabBars.buttons["设置"]
-        XCTAssertTrue(settings.waitForExistence(timeout: 10), "no settings tab")
-        settings.tap()
+    func testCyclePageOpensFromPlayAndTheRecordForm() throws {
+        let play = app.tabBars.buttons["玩法"]
+        XCTAssertTrue(play.waitForExistence(timeout: 10), "no play tab")
+        play.tap()
 
-        let cycles = app.buttons["查看周期"]
-        for _ in 0..<4 where !cycles.exists {
-            app.swipeUp()
-        }
-        XCTAssertTrue(cycles.waitForExistence(timeout: 10), "settings has no 查看周期 row")
+        let cycles = app.buttons["play.cycles"]
+        XCTAssertTrue(cycles.waitForExistence(timeout: 10), "play has no cycles card")
         cycles.tap()
 
         XCTAssertTrue(app.navigationBars["周期"].waitForExistence(timeout: 10), "cycle page did not open")
@@ -37,8 +34,9 @@ final class ScheduleCycleUITests: XCTestCase {
     }
 
     func testCalendarWeeklyBoardOpensAndAPlacementCanBeDrafted() throws {
-        let calendar = app.buttons["日历"]
-        XCTAssertTrue(calendar.waitForExistence(timeout: 10), "conversation list has no calendar button")
+        app.tabBars.buttons["玩法"].tap()
+        let calendar = app.buttons["play.calendar"]
+        XCTAssertTrue(calendar.waitForExistence(timeout: 10), "play has no calendar card")
         calendar.tap()
 
         let weekly = app.buttons.matching(
