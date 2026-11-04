@@ -718,6 +718,7 @@ final class CallSessionTests: XCTestCase {
         tones: any CallTones = SilentTones(),
         voiceModel: String = "s2.1-pro-free",
         adultMode: Bool = false,
+        photo: PhotoTurnContext? = nil,
         prepare: (@Sendable (CallSession) async -> Void)? = nil
     ) async throws -> (CallSession, EventLog, FakeCapture) {
         let setup = CallSetup(
@@ -734,7 +735,8 @@ final class CallSessionTests: XCTestCase {
             reconnectDelay: .milliseconds(10),
             connectTimeout: connectTimeout,
             tones: tones,
-            adultMode: adultMode
+            adultMode: adultMode,
+            photo: photo
         )
         let session = try await eidolon.beginCall(characterID: "mano", setup: setup)
         let log = EventLog()
@@ -1730,6 +1732,103 @@ final class CallSessionTests: XCTestCase {
 
     /// The settings' numbers become limits; 0 is no limit on that dimension, as upstream
     /// reads its environment (`config.py`'s `_limit`).
+    private static let photoTagChunk = """
+        <photo>
+        shot: selfie
+        framing: upper body
+        place: cafe
+        outfit: casual
+        action: smile
+        </photo>
+        """
+
+    /// A call turn can make a picture like a typed one: the same tag, the same row on her
+    /// reply (ticket #103).
+    func testACallTurnMakesAPhoto() async throws {
+        let eidolon = try await installedEidolon()
+        let generator = FakePhotoGenerator(data: Data("JPEG".utf8))
+        let provider = ReplyScriptProvider([
+            [Self.photoTagChunk + "<ja>はい。</ja><zh>好。</zh>"],
+        ])
+        let recognition = FakeRecognition()
+        let context = PhotoTurnContext(
+            generator: generator,
+            settings: ImageServiceSettings(apiKey: "test-key")
+        )
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            judge: PhotoJudge(wants: true),
+            photo: context
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("写真送って")
+
+        try await waitFor("a photo event") {
+            log.all.contains { event in
+                if case .photo = event { return true }
+                return false
+            }
+        }
+        try await waitFor("back to listening") {
+            await session.currentState() == .listening
+        }
+        let photoEvents = log.all.compactMap { event -> PhotoReference? in
+            guard case let .photo(reference) = event else { return nil }
+            return reference
+        }
+        XCTAssertEqual(photoEvents.first?.status, .pending)
+
+        let conversation = try await eidolon.currentConversation(characterID: "mano")
+        let reply = try XCTUnwrap(conversation?.messages.last)
+        let reference = try XCTUnwrap(reply.photo)
+        XCTAssertEqual(reference.id, photoEvents.first?.id)
+        await session.hangUp()
+    }
+
+    /// The hour's pictures gone: the call says so and she declines in her own words.
+    func testACallSaysWhenTheHoursPicturesAreGone() async throws {
+        let eidolon = try await installedEidolon()
+        let generator = FakePhotoGenerator()
+        let provider = ReplyScriptProvider([
+            [Self.photoTagChunk + "<ja>はい。</ja><zh>好。</zh>"],
+            ["<ja>ごめんね。</ja><zh>抱歉。</zh>"],
+        ])
+        let recognition = FakeRecognition()
+        let context = PhotoTurnContext(
+            generator: generator,
+            settings: ImageServiceSettings(hourlyLimit: 1, apiKey: "test-key")
+        )
+        let (session, log, _) = try await begin(
+            on: eidolon,
+            provider: provider,
+            recognition: recognition,
+            judge: PhotoJudge(wants: true),
+            photo: context
+        )
+        try await waitFor("listening") { await session.currentState() == .listening }
+        recognition.say("写真送って")
+        try await waitFor("the first photo") {
+            log.all.contains { event in
+                if case .photo = event { return true }
+                return false
+            }
+        }
+        try await waitFor("listening again") { await session.currentState() == .listening }
+        recognition.say("もう一枚")
+        try await waitFor("used up") {
+            log.all.contains { event in
+                if case .photosUsedUp = event { return true }
+                return false
+            }
+        }
+        try await waitFor("listening after") { await session.currentState() == .listening }
+        let made = await generator.requests
+        XCTAssertEqual(made.count, 1)
+        await session.hangUp()
+    }
+
     func testZeroInTheSettingsMeansNoLimitOnThatDimension() {        XCTAssertEqual(
             CallLimits(minutes: 0, turns: 0),
             CallLimits(duration: nil, turns: nil)

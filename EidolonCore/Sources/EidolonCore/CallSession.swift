@@ -297,6 +297,11 @@ public enum CallEvent: Sendable, Hashable {
     case typed(String)
     /// The reply being written was dropped for a follow-on: nothing of it is shown.
     case replyDropped
+    /// She is making a picture for this turn. It arrives with its reply, and its file comes
+    /// later through the photo record (ticket #103).
+    case photo(PhotoReference)
+    /// The producer asked for a picture and this hour's allowance is gone.
+    case photosUsedUp(retryAt: Date)
 }
 
 /// Everything a call is made of: the platform's audio and voice services, the chat model,
@@ -329,6 +334,9 @@ public struct CallSetup: Sendable {
     /// Whether adult mode is in effect for this call's character; the core re-checks her
     /// age when each turn is sent (spec #61).
     public var adultMode: Bool
+    /// What a call turn needs to try a photo (ticket #103); nil while no image service is
+    /// set, and the turn behaves exactly as before.
+    public var photo: PhotoTurnContext?
     /// How long to wait before listening again after the recognizer's connection dropped.
     public var reconnectDelay: Duration
     /// How long the recognizer may take to become ready; a call that never does is given up
@@ -360,6 +368,7 @@ public struct CallSetup: Sendable {
         connectTimeout: Duration = .seconds(30),
         tones: any CallTones = SilentTones(),
         adultMode: Bool = false,
+        photo: PhotoTurnContext? = nil,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.capture = capture
@@ -382,6 +391,7 @@ public struct CallSetup: Sendable {
         self.connectTimeout = connectTimeout
         self.tones = tones
         self.adultMode = adultMode
+        self.photo = photo
         self.now = now
     }
 }
@@ -987,7 +997,8 @@ public actor CallSession {
                 stop: stop,
                 voicedBy: setup.voiceModel,
                 replyStyle: .call,
-                adultMode: setup.adultMode
+                adultMode: setup.adultMode,
+                photo: setup.photo
             ) {
                 if finished || Task.isCancelled { break }
                 switch event {
@@ -999,10 +1010,10 @@ public actor CallSession {
                     // A call never asks for scene blocks; if one leaks through, it is
                     // neither shown nor voiced.
                     break
-                case .photo, .photosUsedUp:
-                    // A call's photos arrive on the call's own card (ticket #103); until
-                    // then the turn event has nothing to add here.
-                    break
+                case let .photo(id, status):
+                    emit(.photo(PhotoReference(id: id, status: status)))
+                case let .photosUsedUp(retryAt):
+                    emit(.photosUsedUp(retryAt: retryAt))
                 case let .finished(record):
                     replyRecordedAt[reply] = ContinuousClock.now
                     replyRecorded = true

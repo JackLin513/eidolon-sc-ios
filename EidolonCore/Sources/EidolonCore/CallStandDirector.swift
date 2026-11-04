@@ -73,7 +73,7 @@ public struct CallStandDirector: Sendable {
                 producing = false
                 finalizedWithoutStart = false
             }
-        case .segment, .failed, .micNotice, .affinity, .typed, .replyDropped:
+        case .segment, .failed, .micNotice, .affinity, .typed, .replyDropped, .photo, .photosUsedUp:
             break
         }
     }

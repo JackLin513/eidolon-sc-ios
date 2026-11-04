@@ -427,11 +427,23 @@ struct ChatView: View {
         app.call.isCalling(character.id)
             && store?.isPast != true
             && store?.ended != true
-            && (liveHeard != nil || !liveBlocks.isEmpty)
+            && (liveHeard != nil || !liveBlocks.isEmpty || app.call.photo != nil)
     }
 
     @ViewBuilder
     private var liveCallRows: some View {
+        // Her picture is the first thing of the live turn, as it will be once recorded
+        // (ticket #103).
+        if let photo = app.call.photo {
+            HerMessageRow(character: character) {
+                PhotoBubble(photo: PhotoReference(
+                    id: photo.id,
+                    status: photo.status,
+                    reason: photo.reason
+                ))
+            }
+            .id("livePhoto-\(photo.id)")
+        }
         if let heard = liveHeard, !heard.isEmpty {
             HStack {
                 Spacer(minLength: 40)
@@ -633,7 +645,15 @@ struct ChatView: View {
                         liveLines[previous.segment] = previous
                     }
                 }
-                .onAppear { seedLiveCall() }
+                // This page is her conversation: a new picture is already on screen as
+                // the live row, so the bar need not say it too (ticket #103).
+                .onChange(of: app.call.photo) { _, _ in
+                    if callBelongsToThisPage { app.call.markPhotoSeen() }
+                }
+                .onAppear {
+                    seedLiveCall()
+                    if callBelongsToThisPage { app.call.markPhotoSeen() }
+                }
         }
 
         /// A chat opened while she is already answering catches up with the call's current

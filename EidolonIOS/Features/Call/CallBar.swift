@@ -30,6 +30,12 @@ struct CallBar: View {
                             .fontWeight(.semibold)
                     }
                     status
+                    if app.call.unseenPhoto {
+                        Label("新照片", systemImage: "camera.fill")
+                            .labelStyle(.titleAndIcon)
+                            .foregroundStyle(Color.accentColor)
+                            .accessibilityIdentifier("call.bar.photo")
+                    }
                     Spacer(minLength: 8)
                     Text("回到通话")
                         .foregroundStyle(.secondary)
