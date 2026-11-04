@@ -35,6 +35,9 @@ struct ContentBundleInstaller {
         let characters = try readCharacters(in: staging)
         try validateCharacters(manifest, characters, in: staging)
         try validateGifts(characters, in: staging)
+        let jobs = try readJobs(in: staging)
+        let placeCount = try validatePlaces(characters: characters, jobs: jobs, in: staging)
+        try validatePhotoTags(in: staging)
 
         let database = try ContentDatabase(contentDirectory: staging, userDatabasePath: userDatabasePath)
         let counts = try validateDatabase(database, manifest: manifest)
@@ -51,7 +54,8 @@ struct ContentBundleInstaller {
             episodeCount: counts["episodes"] ?? 0,
             passageCount: counts["episode_passages"] ?? 0,
             characterCount: characters.count,
-            standOutfitCount: standOutfitCount
+            standOutfitCount: standOutfitCount,
+            placeCount: placeCount
         )
         return info
     }
@@ -256,6 +260,43 @@ struct ContentBundleInstaller {
             )
         }
         try catalog.validateLikedGifts(characters)
+    }
+
+    /// The work list is optional for older bundles, but when it is there its place
+    /// categories are checked against the same place pool as the characters' likes.
+    private func readJobs(in directory: URL) throws -> [ListedJob] {
+        let url = directory.appendingPathComponent("characters/jobs.json")
+        guard fileManager.fileExists(atPath: url.path) else { return [] }
+        struct Document: Decodable { var jobs: [ListedJob] }
+        do {
+            return try JSONDecoder().decode(Document.self, from: Data(contentsOf: url)).jobs
+        } catch {
+            throw EidolonError.invalidBundle(
+                "工作清单 characters/jobs.json 无法解析：\(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func validatePlaces(
+        characters: [CharacterConfig],
+        jobs: [ListedJob],
+        in directory: URL
+    ) throws -> Int {
+        guard let pool = try PlacePool.load(in: directory) else {
+            throw EidolonError.invalidBundle(
+                "缺少 characters/places.json，需要用新版导出脚本重新导出"
+            )
+        }
+        try pool.validate(characters: characters, jobs: jobs)
+        return pool.places.count
+    }
+
+    private func validatePhotoTags(in directory: URL) throws {
+        guard try PhotoTagTable.load(in: directory) != nil else {
+            throw EidolonError.invalidBundle(
+                "缺少 characters/photo_tags.json，需要用新版导出脚本重新导出"
+            )
+        }
     }
 
     private func validateDatabase(

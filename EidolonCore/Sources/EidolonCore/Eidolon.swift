@@ -403,6 +403,18 @@ public actor Eidolon {
         return try values.map(CharacterConfig.init(json:))
     }
 
+    /// The installed bundle's place pool; nil for a bundle before places.
+    public func places() throws -> PlacePool? {
+        try requireContent()
+        return try PlacePool.load(in: location.contentDirectory)
+    }
+
+    /// The installed bundle's photo tag table; nil for a bundle before photos.
+    public func photoTags() throws -> PhotoTagTable? {
+        try requireContent()
+        return try PhotoTagTable.load(in: location.contentDirectory)
+    }
+
     public func episodeCount(characterID: String) throws -> Int {
         try requireContent()
         return try contentDatabase().episodeCount(characterID: characterID)
