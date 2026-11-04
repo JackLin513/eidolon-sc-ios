@@ -369,6 +369,11 @@ struct ChatView: View {
                 // rework the whole transcript (spec #42). It is her next group's first
                 // line, so it carries her avatar and name (spec #40).
                 StreamingReply(store: store, character: character)
+                if let retryAt = store.photoRetryAt {
+                    photoUsedUpCapsule(retryAt)
+                        .id("photoUsedUp")
+                        .padding(.top, 8)
+                }
                 if showsLiveCall {
                     liveCallRows
                         .id("liveCall")
@@ -390,6 +395,25 @@ struct ChatView: View {
         .defaultScrollAnchor(.bottom)
         .defaultScrollAnchor(.bottom, for: .sizeChanges)
         .scrollDismissesKeyboard(.interactively)
+    }
+
+    /// The hour's pictures are gone: said once, where the turn would have been, with the
+    /// time she can be asked again (ticket #102).
+    private func photoUsedUpCapsule(_ retryAt: Date) -> some View {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "HH:mm"
+        return Label(
+            "这一小时的照片用完了，\(formatter.string(from: retryAt)) 以后可以再要",
+            systemImage: "camera.badge.ellipsis"
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(.secondarySystemBackground), in: Capsule())
+        .frame(maxWidth: .infinity, alignment: .center)
+        .accessibilityIdentifier("chat.photoUsedUp")
     }
 
     private var liveBlocks: [ReplyBlock] {
@@ -714,6 +738,16 @@ struct ChatView: View {
                         .frame(maxWidth: 240)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .accessibilityIdentifier("chat.photo")
+                } else if photo.status == .failed {
+                    // What went wrong, in one short line; asking again is a new turn, not
+                    // a retry here (ticket #102).
+                    Label(Self.failureText(photo.reason), systemImage: "photo.badge.exclamationmark")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                        .accessibilityIdentifier("chat.photo.failed")
                 } else if photo.status == .pending {
                     // The same box the finished picture takes, so nothing moves when it
                     // lands (ticket #101).
@@ -734,6 +768,16 @@ struct ChatView: View {
             .task(id: photo.status) {
                 guard photo.status == .ready else { return }
                 image = await app.photoImage(photo.id)
+            }
+        }
+
+        private static func failureText(_ reason: PhotoFailureReason?) -> String {
+            switch reason {
+            case .timeout: "照片没冲印出来，超时了"
+            case .serviceError: "生图服务出错了，照片没拍成"
+            case .badImage: "生成的图不对，没能存下来"
+            case .usedUp: "这一小时的照片用完了"
+            case nil: "照片没拍成"
             }
         }
     }
@@ -762,7 +806,7 @@ struct ChatView: View {
                 Text(bubbleText)
                     .font(.body)
                     .textSelection(.enabled)
-                if let photo, photo.status != .failed {
+                if let photo {
                     PhotoBubble(photo: photo)
                 }
                 // Her voice is the call's while one is up; 朗读 waits for it to end.

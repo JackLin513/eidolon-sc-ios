@@ -33,6 +33,9 @@ final class ChatStore {
     private(set) var activeConversationID: String?
     var input = ""
     var errorMessage: String?
+    /// When she was asked for a picture this hour's allowance was gone: the feed says so
+    /// until the next turn (ticket #102).
+    private(set) var photoRetryAt: Date?
     /// What a finished turn unlocked, for the toast (spec #69).
     var onRewards: (([AchievementReward]) -> Void)?
 
@@ -177,6 +180,7 @@ final class ChatStore {
 
         input = ""
         errorMessage = nil
+        photoRetryAt = nil
         streaming = []
         pendingUser = text
         isStreaming = true
@@ -206,12 +210,13 @@ final class ChatStore {
                         appendScene(block: block, text: shown)
                     case .speechDelta:
                         break
-                    case .photo, .photosUsedUp:
-                        // The photo's row is written with the reply; what is still pending
-                        // after the turn is followed until it lands (see
-                        // `watchPendingPhotos`). The hourly allowance's message arrives
-                        // with the failure UI (ticket #102).
+                    case .photo:
+                        // The photo's row is written with the reply; what is still
+                        // pending after the turn is followed until it lands (see
+                        // `watchPendingPhotos`).
                         break
+                    case let .photosUsedUp(retryAt):
+                        photoRetryAt = retryAt
                     case let .finished(record):
                         affinity = AffinityStatus(
                             tier: record.affinityTier,

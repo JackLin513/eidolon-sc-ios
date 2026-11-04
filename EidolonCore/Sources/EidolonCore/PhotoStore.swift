@@ -142,6 +142,25 @@ extension Eidolon {
         }
     }
 
+    /// Removes picture files no photo row points at: a write that failed after the file
+    /// landed, or a row that went with its conversation (ticket #102).
+    static func removeOrphanPhotoFiles(_ queue: DatabaseQueue, in directory: URL) throws {
+        let photosDirectory = directory.appendingPathComponent("images/photos")
+        guard let names = try? FileManager.default.contentsOfDirectory(
+            at: photosDirectory,
+            includingPropertiesForKeys: nil
+        ) else { return }
+        let known = try queue.read { db in
+            try Set(String.fetchAll(db, sql: "SELECT file FROM photos WHERE file IS NOT NULL"))
+        }
+        for url in names {
+            let relative = "images/photos/\(url.lastPathComponent)"
+            if !known.contains(relative) {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+    }
+
     /// Marks photos left pending by a previous process as timed out.
     static func failPendingPhotos(_ queue: DatabaseQueue) throws {
         try queue.write { db in
@@ -242,7 +261,7 @@ extension Eidolon {
         return PhotoReference(id: row["id"], status: status, reason: reason)
     }
 
-    private func photoFileURL(_ relative: String) -> URL {
+    func photoFileURL(_ relative: String) -> URL {
         location.userDirectory.appendingPathComponent(relative)
     }
 
