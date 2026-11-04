@@ -211,6 +211,25 @@ final class ConversationLifecycleTests: XCTestCase {
         XCTAssertTrue(cleared.contains("制作人是男性，和原作一致。"))
     }
 
+    func testTheBirthYearIsKeptWithoutEnteringThePrompt() async throws {
+        let eidolon = try await installedEidolon()
+        try await eidolon.updateProducerProfile(
+            ProducerProfile(
+                birthdayMonth: 2, birthdayDay: 29, birthdayYear: 1995
+            )
+        )
+        let saved = try await eidolon.producerProfile()
+        XCTAssertEqual(saved.birthdayYear, 1995)
+        XCTAssertEqual(saved.birthdayMonth, 2)
+        XCTAssertEqual(saved.birthdayDay, 29)
+
+        let provider = reply()
+        try await say("やあ", provider: provider, on: eidolon)
+        let prompt = (try XCTUnwrap(provider.prompts.first)).map(\.content).joined(separator: "\n")
+        XCTAssertTrue(prompt.contains("制作人的生日是2月29日"))
+        XCTAssertFalse(prompt.contains("1995"), "the year is not part of the prompt")
+    }
+
     func testAnImpossibleBirthdayIsNotSaved() async throws {
         let eidolon = try await installedEidolon()
         do {

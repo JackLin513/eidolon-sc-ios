@@ -241,7 +241,10 @@ final class AppModel {
     /// Whether she reaches out now (ADR-0009): at launch and whenever the app comes back
     /// to the foreground, for every character whose conversation has been quiet long enough.
     func catchUpReachOuts() async {
-        guard phase == .ready, !isCatchingUp, let provider = chatProvider else { return }
+        guard phase == .ready, !isCatchingUp else { return }
+        let config = chatSettings.config
+        let fake = isUsingFakeChat
+        guard fake || config != nil else { return }
         isCatchingUp = true
         defer { isCatchingUp = false }
         let embedder = embeddingProvider
@@ -262,7 +265,17 @@ final class AppModel {
         var reached = false
         await withTaskGroup(of: Bool.self) { group in
             for character in characters {
-                group.addTask { [core] in
+                group.addTask { [core, config, fake] in
+                    // One provider per reach-out: a shared instance's usage box would
+                    // attribute one character's tokens to another (spec #96).
+                    let provider: any ChatProvider
+                    if fake {
+                        provider = DebugChatProvider()
+                    } else if let config {
+                        provider = ChatProviderFactory.make(config: config)
+                    } else {
+                        return false
+                    }
                     let record = try? await core.reachOutIfDue(
                         characterID: character.id,
                         provider: provider,
@@ -297,6 +310,8 @@ final class AppModel {
             recognition: recognition,
             synthesis: speechSynthesis(readings: readings),
             voiceModel: chatSettings.fishModel,
+            recognitionHost: recognitionHost,
+            recognitionModel: recognitionModel,
             provider: provider,
             background: backgroundProvider,
             judge: judge,
@@ -347,14 +362,15 @@ final class AppModel {
     /// while no chat model is set up — the bar then says so instead of calling.
     var barSetup: BarRoom.Setup? {
         guard let provider = chatProvider else { return nil }
-        let embedder = embeddingProvider
-        let reranker = rerankProvider
+        let embedder = embeddingProvider.map { RecordingEmbedding(base: $0, eidolon: core) }
+        let reranker = rerankProvider.map { RecordingRerank(base: $0, eidolon: core) }
         return BarRoom.Setup(
             chat: provider,
             embedder: embedder,
             reranker: reranker,
             aboutProducer: aboutProducer,
-            clock: { Date() }
+            clock: { Date() },
+            usage: { [core] call in try? await core.recordServiceCall(call) }
         )
     }
 
@@ -447,6 +463,76 @@ final class AppModel {
         } catch {
             return false
         }
+    }
+
+    /// The stats page's read model (spec #96), read when the page opens and when its range
+    /// changes. Nil while it has never loaded; a failed read leaves the page its retry.
+    private(set) var statsSummary: StatsSummary?
+    private(set) var usageStats: UsageStats?
+    private(set) var priceRows: [PriceEditorRow] = []
+
+    @discardableResult
+    func loadStats(range: StatsRange) async -> Bool {
+        do {
+            statsSummary = try await core.statsSummary(
+                range: range, now: Date(), timeZone: producerTimeZone
+            )
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    @discardableResult
+    func loadUsage(range: UsageRange) async -> Bool {
+        #if DEBUG
+        // Development aid: the empty-state UI test clears right before the page reads, so a
+        // launch-time reach-out cannot put a row back into it (spec #96).
+        if ProcessInfo.processInfo.environment["EIDOLON_CLEAR_USAGE"] == "1" {
+            try? await core.clearServiceCalls()
+        }
+        #endif
+        do {
+            usageStats = try await core.usageStats(
+                range: range, now: Date(), timeZone: producerTimeZone
+            )
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    @discardableResult
+    func loadPriceRows() async -> Bool {
+        do {
+            priceRows = try await core.priceEditorRows()
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func clearUsage() async {
+        try? await core.clearServiceCalls()
+    }
+
+    func savePrice(
+        _ key: PriceKey,
+        input: Decimal,
+        output: Decimal?,
+        cachedInput: Decimal?,
+        currency: String
+    ) async throws {
+        try await core.setPriceOverride(
+            key, input: input, output: output, cachedInput: cachedInput,
+            currency: currency, now: Date()
+        )
+        await loadPriceRows()
+    }
+
+    func restorePrice(_ key: PriceKey) async throws {
+        try await core.clearPriceOverride(key)
+        await loadPriceRows()
     }
 
     @discardableResult
@@ -617,7 +703,25 @@ final class AppModel {
     /// Without a Fish Audio key her words are subtitles only (ADR-0011).
     private func speechSynthesis(readings: Readings) -> any SpeechSynthesis {
         guard !chatSettings.fishAPIKey.isEmpty else { return UnvoicedSynthesis() }
-        return FishSynthesis(apiKey: chatSettings.fishAPIKey, readings: readings)
+        return RecordingSpeech(
+            base: FishSynthesis(apiKey: chatSettings.fishAPIKey, readings: readings)
+        ) { [core] call in try? await core.recordServiceCall(call) }
+    }
+
+    /// The recognizer's host and model, for the usage ledger (spec #96). Bailian tries
+    /// Beijing first, then Singapore; the ledger names the service, not one region.
+    private var recognitionHost: String {
+        switch chatSettings.speechToText {
+        case .soniox: "stt-rt.soniox.com"
+        case .bailian: "dashscope.aliyuncs.com"
+        }
+    }
+
+    private var recognitionModel: String {
+        switch chatSettings.speechToText {
+        case .soniox: chatSettings.sonioxModel
+        case .bailian: chatSettings.bailianSTTModel
+        }
     }
 
     // MARK: - 朗读
@@ -639,12 +743,15 @@ final class AppModel {
     func readAloud(_ text: String, voice: CallVoice) async throws -> Data {
         guard !chatSettings.fishAPIKey.isEmpty else { throw FishSynthesisError.missingKey }
         let readings = (try? await core.readings()) ?? Readings()
-        return try await FishSynthesis(
-            apiKey: chatSettings.fishAPIKey,
-            readings: readings,
-            latency: ReadAloud.latency,
-            timeout: ReadAloud.timeout
-        ).synthesize(text, voice: voice)
+        let recorded = RecordingSpeech(
+            base: FishSynthesis(
+                apiKey: chatSettings.fishAPIKey,
+                readings: readings,
+                latency: ReadAloud.latency,
+                timeout: ReadAloud.timeout
+            )
+        ) { [core] call in try? await core.recordServiceCall(call) }
+        return try await recorded.synthesize(text, voice: voice)
     }
 
     func saveProducerProfile(_ profile: ProducerProfile) async throws {
@@ -809,6 +916,7 @@ final class AppModel {
         await importStandBundleForDebuggingIfRequested()
         await importBarBundleForDebuggingIfRequested()
         await applyDebugGiftState()
+        await applyDebugUsageState()
         #endif
         do {
             if let info = try await core.usableContentInfo() {
@@ -978,6 +1086,23 @@ final class AppModel {
         // in-memory settings are set even when saving the key did not work.
         try? saveChatSettings(settings)
         chatSettings = settings
+    }
+
+    /// Development aid: `EIDOLON_CLEAR_USAGE=1` starts the usage page empty, and
+    /// `EIDOLON_SEED_USAGE=1` puts a few fixed calls in it, for UI tests (spec #96).
+    private func applyDebugUsageState() async {
+        #if DEBUG
+        let environment = ProcessInfo.processInfo.environment
+        if environment["EIDOLON_SEED_USAGE"] == "1" {
+            // Seed a known ledger, not whatever an earlier run left: the UI test checks
+            // the three services and their totals.
+            try? await core.clearServiceCalls()
+            try? await core.debugSeedUsage()
+        }
+        if environment["EIDOLON_SEED_STATS"] == "1" {
+            try? await core.debugSeedStats()
+        }
+        #endif
     }
 
     /// Development aid: `EIDOLON_DEBUG_MODE=1` turns the debug pages on for UI tests.

@@ -34,6 +34,9 @@ struct SettingsView: View {
     @State private var standIndexURL: URL?
     @State private var confirmingPackageCleanup = false
     @State private var confirmingCalendarDelete = false
+    /// Whether the settings root is the page on top; its folded call bar floats over the
+    /// large-title header only there (bug 2026-11-04).
+    @State private var settingsRootOnScreen = true
 
     private enum ImportKind {
         case content
@@ -46,7 +49,6 @@ struct SettingsView: View {
         // the iOS 26 navigation bar tints itself with the bar's dark background and its
         // title disappears (spec #64).
         VStack(spacing: 0) {
-            CallBar()
             NavigationStack {
                 Form {
                     Section {
@@ -60,6 +62,25 @@ struct SettingsView: View {
                         Text("外部服务")
                     } footer: {
                         Text("对话、后台、判断、检索和通话的地址、模型与密钥都在这里。")
+                    }
+
+                    Section {
+                        NavigationLink {
+                            StatsView()
+                        } label: {
+                            LabeledContent("统计", value: "⇢")
+                        }
+                        .accessibilityIdentifier("settings.stats")
+                        NavigationLink {
+                            UsageView()
+                        } label: {
+                            LabeledContent("用量与花费", value: "⇢")
+                        }
+                        .accessibilityIdentifier("settings.usage")
+                    } header: {
+                        Text("统计")
+                    } footer: {
+                        Text("统计是和她往来多少；用量与花费是每次外部调用用了多少、按现价大概花了多少。两者都不离开这台手机。")
                     }
 
                     Section {
@@ -125,7 +146,7 @@ struct SettingsView: View {
                     } header: {
                         Text("制作人档案")
                     } footer: {
-                        Text("只影响她当下怎么对待你，不改写剧情。生日只在当天被她主动提起。年份只用来选日期，不会保存。")
+                        Text("只影响她当下怎么对待你，不改写剧情。生日只在当天被她主动提起。年份会保存，但提示词和日历只用到月日。")
                     }
 
                     Section {
@@ -286,6 +307,8 @@ struct SettingsView: View {
                 // Returning to the call brings the layer over every page; settings gets out of
                 // its way (spec #46).
                 .navigationTitle("设置")
+                .onAppear { settingsRootOnScreen = true }
+                .onDisappear { settingsRootOnScreen = false }
                 .navigationDestination(isPresented: $showMemories) {
                     MemoryListView()
                 }
@@ -386,6 +409,11 @@ struct SettingsView: View {
                         }
                     }
                 }
+            }
+        }
+        .overlay(alignment: .top) {
+            if settingsRootOnScreen {
+                CallBar()
             }
         }
     }
@@ -516,16 +544,23 @@ struct SettingsView: View {
             profileTimezone = profile.timezone ?? ""
             birthdayOn = profile.birthdayMonth != nil && profile.birthdayDay != nil
             let zone = TimeZone(identifier: profile.timezone ?? "") ?? .current
+            var year = Self.pickerYear(profile.birthdayYear, timeZone: zone)
+            // February 29 cannot be shown in a non-leap year; keep the month and day by
+            // opening on a leap year rather than letting the calendar roll to March 1.
+            if profile.birthdayMonth == 2, profile.birthdayDay == 29,
+                !Self.isLeapYear(year) {
+                year = Self.pickerYear(nil, timeZone: zone)
+            }
             if let month = profile.birthdayMonth, let day = profile.birthdayDay {
                 if Birthday.valid(month: month, day: day) {
-                    birthdayDate = Self.date(year: 2024, month: month, day: day, timeZone: zone)
+                    birthdayDate = Self.date(year: year, month: month, day: day, timeZone: zone)
                     birthdayError = nil
                 } else {
-                    birthdayDate = Self.date(year: 2024, month: 1, day: 1, timeZone: zone)
+                    birthdayDate = Self.date(year: year, month: 1, day: 1, timeZone: zone)
                     birthdayError = "原来的生日日期不合法，请重新选择"
                 }
             } else {
-                birthdayDate = Self.date(year: 2024, month: 1, day: 1, timeZone: zone)
+                birthdayDate = Self.date(year: year, month: 1, day: 1, timeZone: zone)
                 birthdayError = nil
             }
         }
@@ -558,7 +593,7 @@ struct SettingsView: View {
                 saveError = "时区无法识别：\(zone)"
                 return
             }
-            var birthday: (month: Int, day: Int)?
+            var birthday: (year: Int, month: Int, day: Int)?
             if birthdayOn {
                 let parts = Self.parts(of: birthdayDate, timeZone: birthdayTimeZone)
                 guard Birthday.valid(month: parts.month, day: parts.day) else {
@@ -574,7 +609,8 @@ struct SettingsView: View {
                     gender: gender == "male" ? .male : gender == "female" ? .female : nil,
                     timezone: zone.isEmpty ? nil : zone,
                     birthdayMonth: birthday?.month,
-                    birthdayDay: birthday?.day
+                    birthdayDay: birthday?.day,
+                    birthdayYear: birthday?.year
                 )
             )
             savedNotice = true
@@ -608,11 +644,30 @@ struct SettingsView: View {
         )!
     }
 
-    private static func parts(of date: Date, timeZone: TimeZone) -> (month: Int, day: Int) {
+    private static func parts(
+        of date: Date, timeZone: TimeZone
+    ) -> (year: Int, month: Int, day: Int) {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
-        let parts = calendar.dateComponents([.month, .day], from: date)
-        return (parts.month ?? 1, parts.day ?? 1)
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        return (parts.year ?? 2000, parts.month ?? 1, parts.day ?? 1)
+    }
+
+    /// The year the picker opens on: the saved one, or the most recent leap year when none
+    /// (or an impossible one) was saved, so February 29 can be picked. Once a year is saved
+    /// it is kept; choosing it is not undone on reopen.
+    private static func pickerYear(_ year: Int?, timeZone: TimeZone) -> Int {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let thisYear = calendar.component(.year, from: Date())
+        if let year, (1900...thisYear).contains(year) { return year }
+        var fallback = thisYear
+        while !isLeapYear(fallback) { fallback -= 1 }
+        return fallback
+    }
+
+    private static func isLeapYear(_ year: Int) -> Bool {
+        year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
     }
 
     private var saveErrorBinding: Binding<Bool> {

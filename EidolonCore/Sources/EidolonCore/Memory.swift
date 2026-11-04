@@ -287,8 +287,9 @@ extension Eidolon {
                 sql: "SELECT id FROM pending_jobs WHERE kind = 'memory' ORDER BY id"
             )
         }) ?? []
+        let recordedEmbedder = embedder.map { RecordingEmbedding(base: $0, eidolon: self) }
         for job in jobs {
-            await runMemoryJob(job, provider: provider, embedder: embedder)
+            await runMemoryJob(job, provider: provider, embedder: recordedEmbedder)
         }
     }
 
@@ -306,6 +307,10 @@ extension Eidolon {
             return (row["conversation_id"], row["message_id"], row["attempts"])
         }) else { return }
 
+        var usedPrompt: [PromptMessage]?
+        var answer = ""
+        var usageRecorded = false
+        let started = Date()
         do {
             let conversationID = job.conversation
             let userMessageID = job.message
@@ -329,10 +334,17 @@ extension Eidolon {
                 now: exchange.now,
                 timeZone: exchange.timeZone
             )
-            var answer = ""
+            usedPrompt = prompt
+            answer = ""
             for try await chunk in provider.stream(messages: prompt) {
                 answer += chunk
             }
+            await recordChatCall(
+                provider: provider, operation: .memory, prompts: [prompt], output: answer,
+                latency: Date().timeIntervalSince(started), error: nil,
+                conversationID: conversationID, at: Date()
+            )
+            usageRecorded = true
             guard let written = MemoryExtraction.parse(answer) else {
                 throw MemoryError.unreadableAnswer
             }
@@ -346,6 +358,14 @@ extension Eidolon {
             await embedMemories(added, embedder: embedder)
             try await dropMemoryJob(jobID)
         } catch {
+            if let usedPrompt, !usageRecorded {
+                await recordChatCall(
+                    provider: provider, operation: .memory, prompts: [usedPrompt],
+                    output: answer, latency: Date().timeIntervalSince(started),
+                    error: error.localizedDescription,
+                    conversationID: job.conversation, at: Date()
+                )
+            }
             // Left for the next launch; a model that keeps failing is not retried forever.
             try? await userQueue.write { db in
                 try db.execute(

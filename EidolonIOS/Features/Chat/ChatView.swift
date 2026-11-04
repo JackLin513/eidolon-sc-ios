@@ -22,6 +22,12 @@ struct ChatView: View {
     @State private var showsAffinity = false
     @State private var showsAchievements = false
     @State private var showsDebug = false
+    /// The call's live turn while the call is folded over this page: what the producer
+    /// just said or typed, and her segments as they arrive. The record replaces them when
+    /// the turn is written (spec #46).
+    @State private var liveHeard: String?
+    @State private var liveReply: Int?
+    @State private var liveLines: [Int: HerLine] = [:]
 
     var body: some View {
         Group {
@@ -50,13 +56,15 @@ struct ChatView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        // A conversation is a page of its own: the three first-level tabs stay behind it
-        // (spec #64). A live call is the exception, so the play tab stays within reach.
+        // A conversation is a page of its own: the first-level tabs stay behind it, even
+        // when a call is folded away over it (spec #64). Letting a live call bring them
+        // back made the tab bar fight the input bar for the bottom edge and bounce during
+        // push/pop (bug 2026-11-04); the folded call's own bar is the way back to it.
         // The id makes a new controller when the tab comes back into view: switching to
         // the gift page and back does not send this page an appearance callback, and the
         // bar would stay up (spec bug, 2026-11-04).
         .background {
-            TabBarHides(hidden: !app.call.isLive)
+            TabBarHides()
                 .id(app.selectedTab)
         }
         .toolbar {
@@ -142,11 +150,17 @@ struct ChatView: View {
         }
         .onChange(of: conversationID) { app.readAloud.stop() }
         // What the call wrote is shown at once: its turns, her hang-up, the affinity and
-        // any cooldown (spec「返回刷新」, spec #46).
-        .onChange(of: app.call.state) { _, next in
-            guard case .ended = next else { return }
-            Task { await store?.load() }
-        }
+        // any cooldown (spec「返回刷新」, spec #46). A fold only changes what covers the
+        // chat, so each finished call turn (the state going back to listening) and each
+        // collapse re-read the record; without that the page kept the turns it loaded
+        // before the call (bug 2026-11-04).
+        .modifier(CallTurnObserver(
+            characterID: character.id,
+            store: store,
+            liveHeard: $liveHeard,
+            liveReply: $liveReply,
+            liveLines: $liveLines
+        ))
         .onChange(of: app.conversationRevision) {
             Task { await store?.load() }
         }
@@ -354,6 +368,12 @@ struct ChatView: View {
                 // rework the whole transcript (spec #42). It is her next group's first
                 // line, so it carries her avatar and name (spec #40).
                 StreamingReply(store: store, character: character)
+                if showsLiveCall {
+                    liveCallRows
+                        .id("liveCall")
+                        .accessibilityIdentifier("chat.liveCall")
+                        .padding(.top, 8)
+                }
             }
             // The producer can keep a line: long press selects her Japanese, its
             // subtitle, the producer's own words, scenes, names and times, with the
@@ -369,6 +389,42 @@ struct ChatView: View {
         .defaultScrollAnchor(.bottom)
         .defaultScrollAnchor(.bottom, for: .sizeChanges)
         .scrollDismissesKeyboard(.interactively)
+    }
+
+    private var liveBlocks: [ReplyBlock] {
+        liveLines.values
+            .sorted { $0.segment < $1.segment }
+            .filter { !$0.ja.isEmpty || !$0.zh.isEmpty }
+            .map { .line(ReplySegment(ja: $0.ja, zh: $0.zh)) }
+    }
+
+    private var showsLiveCall: Bool {
+        app.call.isCalling(character.id)
+            && store?.isPast != true
+            && store?.ended != true
+            && (liveHeard != nil || !liveBlocks.isEmpty)
+    }
+
+    @ViewBuilder
+    private var liveCallRows: some View {
+        if let heard = liveHeard, !heard.isEmpty {
+            HStack {
+                Spacer(minLength: 40)
+                producerBubble(heard)
+            }
+        }
+        if !liveBlocks.isEmpty {
+            HerMessageRow(character: character) {
+                ReplyBubble(blocks: liveBlocks, character: character)
+            }
+            .accessibilityIdentifier("chat.liveHer")
+        }
+    }
+
+    private func clearLiveCall() {
+        liveHeard = nil
+        liveReply = nil
+        liveLines = [:]
     }
 
     private func dayPill(_ label: String) -> some View {
@@ -484,6 +540,106 @@ struct ChatView: View {
     /// Her side of a bubble group: the avatar on the left, and her name above the group's
     /// first line. Every line of the group keeps the avatar's width so the bubbles align
     /// (spec #40).
+    /// Watches the one call for this page: reloads the recorded turn when it finishes,
+    /// and shapes the live rows the folded chat shows while it is still going (spec #46).
+    private struct CallTurnObserver: ViewModifier {
+        @Environment(AppModel.self) private var app
+        let characterID: String
+        let store: ChatStore?
+        @Binding var liveHeard: String?
+        @Binding var liveReply: Int?
+        @Binding var liveLines: [Int: HerLine]
+
+        func body(content: Content) -> some View {
+            content
+                .onChange(of: app.call.state) { _, next in
+                    switch next {
+                    case .ended:
+                        Task {
+                            await store?.load()
+                            clearLiveCall()
+                        }
+                    case .thinking:
+                        liveReply = nil
+                        liveLines = [:]
+                    case .listening:
+                        if app.call.isCollapsed {
+                            Task {
+                                await store?.load()
+                                clearLiveCall()
+                            }
+                        } else {
+                            clearLiveCall()
+                        }
+                    default:
+                        break
+                    }
+                }
+                .onChange(of: app.call.layer) { _, layer in
+                    guard layer == .collapsed else { return }
+                    Task { await store?.load() }
+                }
+                .onChange(of: app.call.hearing) { _, text in
+                    guard callBelongsToThisPage, let text, !text.isEmpty else { return }
+                    liveHeard = text
+                }
+                .onChange(of: app.call.recognized) { _, text in
+                    guard callBelongsToThisPage, let text, !text.isEmpty else { return }
+                    liveHeard = text
+                }
+                .onChange(of: app.call.typed) { _, text in
+                    guard callBelongsToThisPage, let text, !text.isEmpty else { return }
+                    liveHeard = text
+                }
+                .onChange(of: app.call.line) { _, line in
+                    guard callBelongsToThisPage else { return }
+                    guard let line else {
+                        liveReply = nil
+                        liveLines = [:]
+                        return
+                    }
+                    if liveReply != line.reply {
+                        liveReply = line.reply
+                        liveLines = [:]
+                    }
+                    liveLines[line.segment] = line
+                    if let previous = app.call.previousLine, previous.reply == line.reply {
+                        liveLines[previous.segment] = previous
+                    }
+                }
+                .onAppear { seedLiveCall() }
+        }
+
+        /// A chat opened while she is already answering catches up with the call's current
+        /// line instead of waiting for the next segment.
+        private func seedLiveCall() {
+            guard callBelongsToThisPage else { return }
+            switch app.call.state {
+            case .thinking, .speaking:
+                break
+            default:
+                return
+            }
+            liveHeard = app.call.recognized ?? app.call.typed ?? app.call.hearing
+            guard let line = app.call.line else { return }
+            liveReply = line.reply
+            liveLines = [line.segment: line]
+            if let previous = app.call.previousLine, previous.reply == line.reply {
+                liveLines[previous.segment] = previous
+            }
+        }
+
+        private var callBelongsToThisPage: Bool {
+            app.call.isCalling(characterID) && store?.isPast != true && store?.ended != true
+        }
+
+        private func clearLiveCall() {
+            liveHeard = nil
+            liveReply = nil
+            liveLines = [:]
+        }
+    }
+
     private struct HerMessageRow<Content: View>: View {
         let character: CharacterConfig
         var first = true

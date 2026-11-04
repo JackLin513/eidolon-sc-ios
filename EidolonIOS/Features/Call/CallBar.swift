@@ -47,6 +47,7 @@ struct CallBar: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("call.bar")
             .accessibilityLabel("回到通话")
             .accessibilityHint(returnsToConversation ? "展开通话并回到对话" : "展开通话")
         }

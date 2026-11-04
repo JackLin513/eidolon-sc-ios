@@ -4,17 +4,17 @@ import SwiftUI
 /// image work in the next branch; until then the tab says so instead of hiding.
 struct MomentsView: View {
     var body: some View {
-        VStack(spacing: 0) {
-            CallBar()
-            NavigationStack {
-                ContentUnavailableView {
-                    Label("朋友圈即将开放", systemImage: "person.2")
-                } description: {
-                    Text("她的动态和照片以后会出现在这里。")
-                }
-                .navigationTitle("朋友圈")
-                .accessibilityIdentifier("moments.placeholder")
+        NavigationStack {
+            ContentUnavailableView {
+                Label("朋友圈即将开放", systemImage: "person.2")
+            } description: {
+                Text("她的动态和照片以后会出现在这里。")
             }
+            .navigationTitle("朋友圈")
+            .accessibilityIdentifier("moments.placeholder")
+        }
+        .overlay(alignment: .top) {
+            CallBar()
         }
     }
 }

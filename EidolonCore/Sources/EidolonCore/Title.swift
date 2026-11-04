@@ -152,13 +152,24 @@ extension Eidolon {
             giftNames: giftNames
         )
         var answer = ""
+        let started = Date()
         do {
             for try await chunk in provider.stream(messages: prompt) {
                 answer += chunk
             }
         } catch {
+            await recordChatCall(
+                provider: provider, operation: .title, prompts: [prompt], output: answer,
+                latency: Date().timeIntervalSince(started), error: error.localizedDescription,
+                conversationID: conversationID, at: Date()
+            )
             return
         }
+        await recordChatCall(
+            provider: provider, operation: .title, prompts: [prompt], output: answer,
+            latency: Date().timeIntervalSince(started), error: nil,
+            conversationID: conversationID, at: Date()
+        )
         guard let title = ConversationTitles.title(from: answer) else { return }
         try? await userQueue.write { db in
             try db.execute(

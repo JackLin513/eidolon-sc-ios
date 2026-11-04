@@ -380,14 +380,16 @@ extension Eidolon {
             try db.execute(
                 sql: """
                     INSERT INTO producer_profile(
-                        id, form_of_address, gender, timezone, birthday_month, birthday_day
-                    ) VALUES (1, ?, ?, ?, ?, ?)
+                        id, form_of_address, gender, timezone, birthday_month, birthday_day,
+                        birthday_year
+                    ) VALUES (1, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         form_of_address = excluded.form_of_address,
                         gender = excluded.gender,
                         timezone = excluded.timezone,
                         birthday_month = excluded.birthday_month,
-                        birthday_day = excluded.birthday_day
+                        birthday_day = excluded.birthday_day,
+                        birthday_year = excluded.birthday_year
                     """,
                 arguments: [
                     profile.formOfAddress?.isEmpty == true ? nil : profile.formOfAddress,
@@ -395,6 +397,7 @@ extension Eidolon {
                     profile.timezone?.isEmpty == true ? nil : profile.timezone,
                     profile.birthdayMonth,
                     profile.birthdayDay,
+                    profile.birthdayYear,
                 ]
             )
         }

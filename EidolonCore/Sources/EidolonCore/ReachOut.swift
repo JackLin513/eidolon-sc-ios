@@ -127,6 +127,8 @@ extension Eidolon {
         // Their days go by the profile's time zone, when they set one.
         let producer = try producerProfile()
         let zone = producer.timezone.flatMap(TimeZone.init(identifier:)) ?? timeZone
+        let recordedEmbedder = embedder.map { RecordingEmbedding(base: $0, eidolon: self) }
+        let recordedReranker = reranker.map { RecordingRerank(base: $0, eidolon: self) }
         guard !ReachOutRules.isNight(now, in: zone) else { return nil }
         guard let contact = try lastContact(conversationID: conversationID) else { return nil }
         guard now.timeIntervalSince(contact) <= ReachOutRules.window else { return nil }
@@ -180,8 +182,8 @@ extension Eidolon {
         let memories = await reachingOutMemories(
             characterID: characterID,
             query: Self.lastTurnQuery(reading.allMessages),
-            embedder: embedder,
-            reranker: reranker,
+            embedder: recordedEmbedder,
+            reranker: recordedReranker,
             now: now,
             timeZone: zone
         )
@@ -204,11 +206,28 @@ extension Eidolon {
         )
 
         var parser = ReplyParser()
-        for try await chunk in provider.stream(messages: prompt) {
-            try Task.checkCancellation()
-            _ = parser.feed(chunk)
+        var answer = ""
+        let started = Date()
+        do {
+            for try await chunk in provider.stream(messages: prompt) {
+                try Task.checkCancellation()
+                answer += chunk
+                _ = parser.feed(chunk)
+            }
+        } catch {
+            await recordChatCall(
+                provider: provider, operation: .reachOut, prompts: [prompt], output: answer,
+                latency: Date().timeIntervalSince(started), error: error.localizedDescription,
+                conversationID: conversationID, at: now
+            )
+            throw error
         }
         _ = parser.finish()
+        await recordChatCall(
+            provider: provider, operation: .reachOut, prompts: [prompt], output: answer,
+            latency: Date().timeIntervalSince(started), error: nil,
+            conversationID: conversationID, at: now
+        )
         let segments = parser.segments.filter { !($0.ja.isEmpty && $0.zh.isEmpty) }
         guard !segments.isEmpty else { return nil }
 

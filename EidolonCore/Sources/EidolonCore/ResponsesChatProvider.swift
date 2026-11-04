@@ -6,6 +6,7 @@ import Foundation
 public struct ResponsesChatProvider: ChatProvider {
     private let config: ChatModelConfig
     private let transport: any ChatTransport
+    private let usageBox = ChatUsageBox()
 
     public init(config: ChatModelConfig, session: URLSession = .shared) {
         self.init(config: config, transport: URLSessionChatTransport(session: session))
@@ -148,6 +149,14 @@ public struct ResponsesChatProvider: ChatProvider {
                 else { break }
                 call.arguments += event["delta"] as? String ?? ""
                 calls[index] = call
+            case "response.completed", "response.incomplete":
+                if let usage = (event["response"] as? [String: Any])?["usage"] as? [String: Any] {
+                    usageBox.add(
+                        input: usage["input_tokens"] as? Int ?? 0,
+                        output: usage["output_tokens"] as? Int ?? 0,
+                        cachedInput: (usage["input_tokens_details"] as? [String: Any])?["cached_tokens"] as? Int
+                    )
+                }
             case "error":
                 let message = event["message"] as? String ?? "\(event)"
                 throw ChatProviderError.invalidResponse("模型在流式输出中报错：\(message)")
@@ -172,6 +181,13 @@ public struct ResponsesChatProvider: ChatProvider {
             }))
         }
     }
+}
+
+extension ResponsesChatProvider: ChatUsageReporting {
+    public var usageProviderHost: String { config.baseURL.host ?? config.baseURL.absoluteString }
+    public var usageModel: String { config.model }
+
+    public func takeUsage() async -> ChatUsage? { usageBox.take() }
 }
 
 extension ResponsesChatProvider: ToolChatProvider {
