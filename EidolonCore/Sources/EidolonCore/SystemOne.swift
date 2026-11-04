@@ -690,3 +690,8 @@ public struct SystemOneJudgeProvider: TracingJudgeProvider {
         (value as? NSNumber)?.doubleValue
     }
 }
+
+extension SystemOneJudgeProvider: ServiceMetadata {
+    public var serviceHost: String? { config.baseURL.host }
+    public var serviceModel: String? { config.model }
+}

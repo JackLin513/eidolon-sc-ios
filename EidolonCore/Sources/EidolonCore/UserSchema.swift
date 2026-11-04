@@ -4,7 +4,7 @@ import GRDB
 /// The writable user library (ADR-0002). Its schema evolves with the app, not
 /// with the content bundle, and is therefore managed by GRDB migrations.
 enum UserSchema {
-    static let version = 18
+    static let version = 20
 
     static func migrate(_ dbQueue: DatabaseQueue) throws {
         var migrator = DatabaseMigrator()
@@ -386,6 +386,52 @@ enum UserSchema {
                     seen_at TEXT NOT NULL
                 );
                 """)
+        }
+        migrator.registerMigration("v19") { db in
+            // Every call to an outside service, for the usage page (spec #96). It is kept
+            // against nothing: a deleted conversation keeps what it cost, and an old
+            // library starts counting from this version rather than being backfilled.
+            try db.execute(sql: """
+                CREATE TABLE service_calls (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    at TEXT NOT NULL,
+                    service TEXT NOT NULL,
+                    provider TEXT NOT NULL DEFAULT '',
+                    model TEXT NOT NULL DEFAULT '',
+                    operation TEXT NOT NULL,
+                    unit TEXT NOT NULL,
+                    input INTEGER NOT NULL DEFAULT 0,
+                    output INTEGER,
+                    cached_input INTEGER,
+                    estimated INTEGER NOT NULL DEFAULT 0,
+                    latency REAL,
+                    error TEXT,
+                    conversation_id TEXT,
+                    call_id TEXT
+                );
+                CREATE INDEX service_calls_by_at ON service_calls(at);
+                CREATE INDEX service_calls_by_service
+                    ON service_calls(service, provider, model, at);
+
+                CREATE TABLE price_overrides (
+                    provider TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    unit TEXT NOT NULL,
+                    input REAL NOT NULL,
+                    output REAL,
+                    cached_input REAL,
+                    currency TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (provider, model, unit)
+                );
+                """)
+        }
+        migrator.registerMigration("v20") { db in
+            // The birth year is kept so the settings date picker shows the year the
+            // producer chose; the prompts and calendar still use only month and day.
+            if try db.tableExists("producer_profile") {
+                try db.execute(sql: "ALTER TABLE producer_profile ADD COLUMN birthday_year INTEGER")
+            }
         }
         try migrator.migrate(dbQueue)
         try dbQueue.write { db in

@@ -381,15 +381,16 @@ final class PlayUITests: XCTestCase {
         let bar = app.buttons["回到通话"].firstMatch
         XCTAssertTrue(bar.waitForExistence(timeout: 5), "no folded call banner on the roster")
         XCTAssertGreaterThan(
-            roster.frame.minY, bar.frame.maxY,
-            "the roster's navigation is under the call banner"
+            roster.staticTexts["对话"].firstMatch.frame.minY, bar.frame.maxY,
+            "the roster's title is under the call banner"
         )
 
         app.tabBars.buttons["玩法"].tap()
         let playTitle = app.staticTexts["玩法"].firstMatch
         XCTAssertTrue(playTitle.waitForExistence(timeout: 5), "play title is missing")
         XCTAssertGreaterThan(
-            playTitle.frame.minY, bar.frame.maxY,
+            app.navigationBars["玩法"].staticTexts["玩法"].firstMatch.frame.minY,
+            bar.frame.maxY,
             "the play title is under the call banner"
         )
 
@@ -397,7 +398,8 @@ final class PlayUITests: XCTestCase {
         let momentsTitle = app.staticTexts["朋友圈"].firstMatch
         XCTAssertTrue(momentsTitle.waitForExistence(timeout: 5), "moments title is missing")
         XCTAssertGreaterThan(
-            momentsTitle.frame.minY, bar.frame.maxY,
+            app.navigationBars["朋友圈"].staticTexts["朋友圈"].firstMatch.frame.minY,
+            bar.frame.maxY,
             "the moments title is under the call banner"
         )
 
@@ -405,8 +407,228 @@ final class PlayUITests: XCTestCase {
         let settingsTitle = app.staticTexts["设置"].firstMatch
         XCTAssertTrue(settingsTitle.waitForExistence(timeout: 5), "settings title is missing")
         XCTAssertGreaterThan(
-            settingsTitle.frame.minY, bar.frame.maxY,
+            app.navigationBars["设置"].staticTexts["设置"].firstMatch.frame.minY,
+            bar.frame.maxY,
             "the settings title is under the call banner"
+        )
+    }
+
+    func testAFoldedCallKeepsTheTabsOutOfHerChat() throws {
+        app.terminate()
+        app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
+        app.launchEnvironment["EIDOLON_FAKE_CHAT"] = "1"
+        app.launchEnvironment["EIDOLON_CALL_FAKE_SPEECH"] = "你好"
+        app.launch()
+
+        let dial = app.buttons["打电话"]
+        XCTAssertTrue(dial.waitForExistence(timeout: 20), "chat did not open")
+        dial.tap()
+        let hangUp = app.buttons["call.hangUp"]
+        XCTAssertTrue(hangUp.waitForExistence(timeout: 20), "call did not start")
+        let enabled = NSPredicate(format: "isEnabled == true")
+        expectation(for: enabled, evaluatedWith: hangUp)
+        waitForExpectations(timeout: 20)
+        app.buttons["收起"].firstMatch.tap()
+
+        XCTAssertTrue(
+            app.buttons["回到通话"].waitForExistence(timeout: 5),
+            "the folded call has no bar in her chat"
+        )
+        XCTAssertFalse(
+            app.tabBars.buttons["玩法"].exists,
+            "the tabs came back under her chat while the call was folded"
+        )
+
+        let back = app.navigationBars.buttons["对话"]
+        XCTAssertTrue(back.waitForExistence(timeout: 5), "chat has no back to the roster")
+        back.tap()
+        XCTAssertTrue(app.navigationBars["对话"].waitForExistence(timeout: 5), "not on roster")
+        XCTAssertTrue(
+            app.tabBars.buttons["玩法"].waitForExistence(timeout: 5),
+            "the roster lost its tabs"
+        )
+
+        let cells = app.cells
+        XCTAssertGreaterThan(cells.count, 0, "the roster has no characters")
+        cells.element(boundBy: 0).tap()
+        XCTAssertTrue(
+            app.textFields["chat.input"].waitForExistence(timeout: 5),
+            "not back in her chat"
+        )
+        XCTAssertFalse(
+            app.tabBars.buttons["玩法"].exists,
+            "the tabs came back under her chat after returning to it"
+        )
+    }
+
+    func testTheFoldedCallBarDoesNotMoveTheLargeTitle() throws {
+        app.terminate()
+        app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
+        app.launchEnvironment["EIDOLON_FAKE_CHAT"] = "1"
+        app.launchEnvironment["EIDOLON_CALL_FAKE_SPEECH"] = "你好"
+        app.launch()
+
+        let dial = app.buttons["打电话"]
+        XCTAssertTrue(dial.waitForExistence(timeout: 20), "chat did not open")
+        dial.tap()
+        let hangUp = app.buttons["call.hangUp"]
+        XCTAssertTrue(hangUp.waitForExistence(timeout: 20), "call did not start")
+        let enabled = NSPredicate(format: "isEnabled == true")
+        expectation(for: enabled, evaluatedWith: hangUp)
+        waitForExpectations(timeout: 20)
+        app.buttons["收起"].firstMatch.tap()
+
+        let back = app.navigationBars.buttons["对话"]
+        XCTAssertTrue(back.waitForExistence(timeout: 5), "chat has no back to the roster")
+        back.tap()
+        let title = app.navigationBars["对话"].staticTexts["对话"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 5), "no large title")
+        let foldedTitleY = title.frame.minY
+        let bar = app.buttons["call.bar"]
+        XCTAssertTrue(bar.waitForExistence(timeout: 5), "the folded call has no bar on the roster")
+        XCTAssertLessThan(
+            bar.frame.maxY, title.frame.minY,
+            "the call bar is not in the empty space above the large title"
+        )
+
+        // Expand and end the call; the bar goes away and the title must not move.
+        bar.tap()
+        let hangUpAgain = app.buttons["call.hangUp"]
+        XCTAssertTrue(hangUpAgain.waitForExistence(timeout: 5), "call did not expand")
+        expectation(for: enabled, evaluatedWith: hangUpAgain)
+        waitForExpectations(timeout: 20)
+        hangUpAgain.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let backToChat = app.buttons["返回"].firstMatch
+        XCTAssertTrue(backToChat.waitForExistence(timeout: 20), "no end card")
+        backToChat.tap()
+        XCTAssertTrue(
+            app.navigationBars["对话"].waitForExistence(timeout: 10),
+            "the call did not return to the roster"
+        )
+        let uprightTitle = app.navigationBars["对话"].staticTexts["对话"].firstMatch
+        XCTAssertTrue(uprightTitle.waitForExistence(timeout: 5), "roster did not come back")
+        XCTAssertEqual(
+            uprightTitle.frame.minY, foldedTitleY, accuracy: 1,
+            "the large title moved when the folded call bar went away"
+        )
+    }
+
+    func testAFoldedCallShowsItsNewTurnsInTheChat() throws {
+        app.terminate()
+        app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
+        app.launchEnvironment["EIDOLON_OPEN_CALL"] = "1"
+        app.launchEnvironment["EIDOLON_FAKE_CHAT"] = "1"
+        app.launchEnvironment["EIDOLON_CALL_FAKE_SPEECH"] = "先说的检查|收起后的检查"
+        app.launchEnvironment["EIDOLON_CALL_SPEECH_INTERVAL_MS"] = "6000"
+        app.launch()
+
+        XCTAssertTrue(app.buttons["call.hangUp"].waitForExistence(timeout: 20), "call did not start")
+        // The first line becomes a turn while the call is still open.
+        Thread.sleep(forTimeInterval: 4)
+        app.buttons["收起"].firstMatch.tap()
+        XCTAssertTrue(app.textFields["chat.input"].waitForExistence(timeout: 5), "not in chat")
+
+        let beforeCollapse = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "先说的检查")
+        ).firstMatch
+        XCTAssertTrue(
+            beforeCollapse.waitForExistence(timeout: 5),
+            "the turn that finished before the collapse is not in her chat"
+        )
+        // The second line becomes a turn while the call is folded over the chat.
+        let whileFolded = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "收起后的检查")
+        ).firstMatch
+        XCTAssertTrue(
+            whileFolded.waitForExistence(timeout: 15),
+            "the folded call's new turn is not in her chat"
+        )
+    }
+
+    func testAFoldedCallShowsTheTurnWhileItIsStillGoing() throws {
+        app.terminate()
+        app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
+        app.launchEnvironment["EIDOLON_OPEN_CALL"] = "1"
+        app.launchEnvironment["EIDOLON_FAKE_CHAT"] = "1"
+        app.launchEnvironment["EIDOLON_CALL_FAKE_SPEECH"] = "实时检查"
+        app.launchEnvironment["EIDOLON_FAKE_CHAT_DELAY_MS"] = "5000"
+        app.launch()
+
+        XCTAssertTrue(app.buttons["call.hangUp"].waitForExistence(timeout: 20), "call did not start")
+        app.buttons["收起"].firstMatch.tap()
+        XCTAssertTrue(app.textFields["chat.input"].waitForExistence(timeout: 5), "not in chat")
+
+        let live = app.descendants(matching: .any)["chat.liveCall"]
+        XCTAssertTrue(
+            live.waitForExistence(timeout: 6),
+            "the call's live turn is not shown while it is still going"
+        )
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS %@", "实时检查")
+            ).firstMatch.exists,
+            "the producer's line is missing from the live turn"
+        )
+        XCTAssertTrue(
+            live.waitForNonExistence(timeout: 10),
+            "the live turn stayed after it became a recorded turn"
+        )
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS %@", "实时检查")
+            ).firstMatch.waitForExistence(timeout: 5),
+            "the recorded turn did not replace the live one"
+        )
+    }
+
+    func testTheFoldedCallBarStaysOffPushedPages() throws {
+        app.terminate()
+        app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
+        app.launchEnvironment["EIDOLON_FAKE_CHAT"] = "1"
+        app.launchEnvironment["EIDOLON_CALL_FAKE_SPEECH"] = "你好"
+        app.launch()
+        XCTAssertTrue(app.buttons["打电话"].waitForExistence(timeout: 20), "chat did not open")
+        app.buttons["打电话"].tap()
+        let hangUp = app.buttons["call.hangUp"]
+        XCTAssertTrue(hangUp.waitForExistence(timeout: 20), "call did not start")
+        app.buttons["收起"].firstMatch.tap()
+        let back = app.navigationBars.buttons["对话"]
+        XCTAssertTrue(back.waitForExistence(timeout: 5), "chat has no back to the roster")
+        back.tap()
+        XCTAssertTrue(app.navigationBars["对话"].waitForExistence(timeout: 5), "not on roster")
+
+        let settingsTab = app.tabBars.buttons["设置"]
+        XCTAssertTrue(settingsTab.waitForExistence(timeout: 5), "no settings tab")
+        settingsTab.tap()
+        XCTAssertTrue(
+            app.buttons["call.bar"].waitForExistence(timeout: 5),
+            "the folded call has no bar on the settings root"
+        )
+        app.buttons["settings.api"].tap()
+        XCTAssertTrue(
+            app.navigationBars["API 与模型"].waitForExistence(timeout: 5),
+            "settings subpage did not open"
+        )
+        XCTAssertFalse(
+            app.buttons["call.bar"].exists,
+            "the call bar covered the settings subpage"
+        )
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(
+            app.buttons["call.bar"].waitForExistence(timeout: 5),
+            "the call bar did not come back on the settings root"
+        )
+
+        app.tabBars.buttons["玩法"].tap()
+        XCTAssertTrue(
+            app.buttons["call.bar"].waitForExistence(timeout: 5),
+            "the folded call has no bar on the play root"
+        )
+        app.buttons["play.gifts"].tap()
+        XCTAssertTrue(app.navigationBars["礼物"].waitForExistence(timeout: 5), "gifts did not open")
+        XCTAssertFalse(
+            app.buttons["call.bar"].exists,
+            "the call bar covered the gifts page"
         )
     }
 
@@ -422,6 +644,11 @@ final class PlayUITests: XCTestCase {
         XCTAssertTrue(hangUp.waitForExistence(timeout: 20), "call did not start")
         app.buttons["收起"].firstMatch.tap()
 
+        // Her chat stays full-screen while the call is folded, so the roster is the way
+        // to the other tabs (bug 2026-11-04).
+        let rosterBack = app.navigationBars.buttons["对话"]
+        XCTAssertTrue(rosterBack.waitForExistence(timeout: 5), "chat has no back to the roster")
+        rosterBack.tap()
         let play = app.tabBars.buttons["玩法"]
         XCTAssertTrue(play.waitForExistence(timeout: 5), "no play tab while calling")
         play.tap()

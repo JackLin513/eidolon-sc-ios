@@ -87,6 +87,65 @@ public protocol ChatProvider: Sendable {
     func stream(messages: [PromptMessage]) -> AsyncThrowingStream<String, Error>
 }
 
+/// What a chat service said it read and wrote, when it reports usage (spec #96). Cached
+/// input is a service's prompt-cache hit, where it has one.
+public struct ChatUsage: Sendable, Hashable {
+    public var input: Int
+    public var output: Int
+    public var cachedInput: Int?
+
+    public init(input: Int, output: Int, cachedInput: Int? = nil) {
+        self.input = input
+        self.output = output
+        self.cachedInput = cachedInput
+    }
+}
+
+/// A provider that can say what the last request(s) used. `takeUsage` resets it, so one
+/// turn or one background request reads only its own numbers (spec #96).
+public protocol ChatUsageReporting: Sendable {
+    var usageProviderHost: String { get }
+    var usageModel: String { get }
+    func takeUsage() async -> ChatUsage?
+}
+
+/// The box a provider keeps its reported usage in across the streaming task and the
+/// caller; it sums the rounds of one turn and is emptied by `takeUsage`.
+final class ChatUsageBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var usage: ChatUsage?
+
+    func reset() {
+        lock.lock()
+        usage = nil
+        lock.unlock()
+    }
+
+    func add(input: Int, output: Int, cachedInput: Int? = nil) {
+        lock.lock()
+        let current = usage ?? ChatUsage(input: 0, output: 0)
+        usage = ChatUsage(
+            input: current.input + input,
+            output: current.output + output,
+            cachedInput: Self.sum(current.cachedInput, cachedInput)
+        )
+        lock.unlock()
+    }
+
+    func take() -> ChatUsage? {
+        lock.lock()
+        defer { lock.unlock() }
+        let taken = usage
+        usage = nil
+        return taken
+    }
+
+    private static func sum(_ left: Int?, _ right: Int?) -> Int? {
+        guard left != nil || right != nil else { return nil }
+        return (left ?? 0) + (right ?? 0)
+    }
+}
+
 /// A provider that can also be offered tools. The turn engine offers the recall-story
 /// tool on every turn when retrieval is configured, and this is what answers.
 public protocol ToolChatProvider: ChatProvider {
@@ -224,6 +283,7 @@ public struct OpenAICompatibleChatProvider: ChatProvider {
     /// message and only at the front. Merging the leading system blocks keeps the text
     /// and its order exactly as upstream sends it, just as one message.
     private let mergeLeadingSystemMessages: Bool
+    private let usageBox = ChatUsageBox()
 
     public init(
         config: ChatModelConfig,
@@ -295,6 +355,9 @@ public struct OpenAICompatibleChatProvider: ChatProvider {
         var body: [String: Any] = [
             "model": config.model,
             "stream": true,
+            // Ask for the final usage chunk where the service supports it (spec #96);
+            // services that do not simply ignore the field.
+            "stream_options": ["include_usage": true],
             "messages": prepared(messages).map(encoded),
         ]
         if !tools.isEmpty {
@@ -349,6 +412,13 @@ public struct OpenAICompatibleChatProvider: ChatProvider {
             guard let chunk = try? JSONDecoder().decode(StreamChunk.self, from: data) else {
                 continue
             }
+            if let usage = chunk.usage {
+                usageBox.add(
+                    input: usage.promptTokens,
+                    output: usage.completionTokens,
+                    cachedInput: usage.promptTokensDetails?.cachedTokens
+                )
+            }
             guard let delta = chunk.choices?.first?.delta else { continue }
             if let text = delta.content, !text.isEmpty {
                 emit(.text(text))
@@ -361,6 +431,13 @@ public struct OpenAICompatibleChatProvider: ChatProvider {
             emit(.toolCalls(calls.done))
         }
     }
+}
+
+extension OpenAICompatibleChatProvider: ChatUsageReporting {
+    public var usageProviderHost: String { config.baseURL.host ?? config.baseURL.absoluteString }
+    public var usageModel: String { config.model }
+
+    public func takeUsage() async -> ChatUsage? { usageBox.take() }
 }
 
 extension OpenAICompatibleChatProvider: ToolChatProvider {
@@ -502,5 +579,23 @@ struct StreamChunk: Decodable {
         let delta: Delta?
     }
 
+    struct Usage: Decodable {
+        struct Details: Decodable {
+            let cachedTokens: Int?
+            enum CodingKeys: String, CodingKey { case cachedTokens = "cached_tokens" }
+        }
+
+        let promptTokens: Int
+        let completionTokens: Int
+        let promptTokensDetails: Details?
+
+        enum CodingKeys: String, CodingKey {
+            case promptTokens = "prompt_tokens"
+            case completionTokens = "completion_tokens"
+            case promptTokensDetails = "prompt_tokens_details"
+        }
+    }
+
     let choices: [Choice]?
+    let usage: Usage?
 }

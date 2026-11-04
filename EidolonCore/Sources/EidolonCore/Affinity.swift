@@ -232,10 +232,13 @@ public enum Parting: Sendable, Hashable {
 public struct CallScope: Sendable, Hashable {
     public var outOfLine: Int
     public var hurts: [Double]
+    /// The call these turns belong to, for the usage ledger (spec #96).
+    public var callID: String?
 
-    public init(outOfLine: Int = 0, hurts: [Double] = []) {
+    public init(outOfLine: Int = 0, hurts: [Double] = [], callID: String? = nil) {
         self.outOfLine = outOfLine
         self.hurts = hurts
+        self.callID = callID
     }
 }
 

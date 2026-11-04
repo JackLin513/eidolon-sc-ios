@@ -21,14 +21,11 @@ struct ConversationListView: View {
     @State private var showingHidden = false
 
     var body: some View {
-        // The folded call's bar stands above the roster's navigation; her chat has its own
-        // bar under its inline navigation bar. Inside the list, the iOS 26 navigation bar
-        // tints itself with the bar's dark background and its title disappears (spec #64).
-        VStack(spacing: 0) {
-            if app.conversationPath.isEmpty {
-                CallBar()
-            }
-            NavigationStack(path: conversationPath) {
+        // The folded call's bar floats over the empty part of the large-title header, so
+        // showing or hiding it does not move the title or the list (bug 2026-11-04). Her
+        // chat keeps its own bar under the inline navigation bar, so the floating one is
+        // only drawn while the roster is the page on top.
+        NavigationStack(path: conversationPath) {
                 List {
                     Section {
                         ForEach(filtered, id: \.id) { character in
@@ -165,7 +162,11 @@ struct ConversationListView: View {
                     Text(app.errorMessage ?? "")
                 }
             }
-        }
+            .overlay(alignment: .top) {
+                if app.conversationPath.isEmpty {
+                    CallBar()
+                }
+            }
     }
 
     private var filtered: [CharacterConfig] {
