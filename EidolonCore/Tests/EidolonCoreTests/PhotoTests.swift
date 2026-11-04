@@ -5,6 +5,7 @@ import XCTest
 /// The image service as a turn sees it: fixed bytes or a failure, and what it was asked.
 actor FakePhotoGenerator: ImageGenerating {
     private(set) var requests: [ImageRequest] = []
+    private(set) var settings: [ImageServiceSettings] = []
     let data: Data
     let failure: ImageGenerationError?
 
@@ -15,6 +16,7 @@ actor FakePhotoGenerator: ImageGenerating {
 
     func generate(_ request: ImageRequest, settings: ImageServiceSettings) async throws -> Data {
         requests.append(request)
+        self.settings.append(settings)
         if let failure { throw failure }
         return data
     }
@@ -271,9 +273,11 @@ final class PhotoTurnTests: XCTestCase {
         try? FileManager.default.removeItem(at: root)
     }
 
-    private func installedEidolon() async throws -> Eidolon {
+    private func installedEidolon(manoAge: Int? = nil) async throws -> Eidolon {
         let eidolon = try Eidolon(location: .init(root: root.appendingPathComponent("app")))
-        let bundle = try Fixture.makeBundle(in: root)
+        var options = Fixture.Options()
+        options.manoAge = manoAge
+        let bundle = try Fixture.makeBundle(in: root, options: options)
         try await eidolon.install(bundleAt: bundle)
         return eidolon
     }
@@ -293,7 +297,8 @@ final class PhotoTurnTests: XCTestCase {
         chunks: [String],
         judge: PhotoJudge?,
         photo: PhotoTurnContext?,
-        provider: RecordingChatProvider
+        provider: RecordingChatProvider,
+        adultMode: Bool = false
     ) async throws -> (ids: [String], record: TurnRecord?, usedUp: [Date]) {
         var ids: [String] = []
         var record: TurnRecord?
@@ -303,6 +308,7 @@ final class PhotoTurnTests: XCTestCase {
             text: "发张照片看看",
             provider: provider,
             judge: judge,
+            adultMode: adultMode,
             photo: photo
         ) {
             switch event {
@@ -469,6 +475,158 @@ final class PhotoTurnTests: XCTestCase {
         )
         XCTAssertTrue(ids.isEmpty)
         XCTAssertNil(record?.photo)
+    }
+
+    // MARK: - Adult mode (ticket #104)
+
+    private func adultContext(_ generator: FakePhotoGenerator) -> PhotoTurnContext {
+        PhotoTurnContext(
+            generator: generator,
+            settings: ImageServiceSettings(
+                model: "curated-model",
+                adultModel: "adult-model",
+                apiKey: "test-key"
+            )
+        )
+    }
+
+    private static let adultTag = """
+        <photo>
+        rating: explicit
+        shot: selfie
+        framing: upper body
+        place: cafe
+        outfit: casual
+        action: smile
+        </photo>
+        """
+
+    func testAdultModeUsesTheAdultModelAndRatingForAnAdult() async throws {
+        let eidolon = try await installedEidolon(manoAge: 20)
+        let generator = FakePhotoGenerator()
+        let provider = RecordingChatProvider(chunks: [Self.adultTag + "<ja>はい。</ja><zh>好。</zh>"])
+        _ = try await send(
+            eidolon,
+            chunks: provider.chunks,
+            judge: PhotoJudge(wants: true),
+            photo: adultContext(generator),
+            provider: provider,
+            adultMode: true
+        )
+        let made = await generator.requests
+        let request = try XCTUnwrap(made.first)
+        XCTAssertEqual(request.model, "adult-model")
+        XCTAssertEqual(request.negativePrompt, PhotoPromptBuilder.adultNegative)
+        XCTAssertTrue(request.prompt.contains("rating:explicit"))
+        let prompt = try XCTUnwrap(provider.prompts.first)
+        XCTAssertTrue(prompt.contains { $0.content.contains("rating: questionable") })
+    }
+
+    func testAdultModeNeverOpensForSomeoneUnderageOrOfUnknownAge() async throws {
+        for age in [16, nil] as [Int?] {
+            let root = FileManager.default.temporaryDirectory
+                .appendingPathComponent("EidolonAdult-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: root) }
+            let eidolon = try Eidolon(location: .init(root: root.appendingPathComponent("app")))
+            var options = Fixture.Options()
+            options.manoAge = age
+            try await eidolon.install(bundleAt: try Fixture.makeBundle(in: root, options: options))
+            let generator = FakePhotoGenerator()
+            let provider = RecordingChatProvider(chunks: [
+                Self.adultTag + "<ja>はい。</ja><zh>好。</zh>",
+            ])
+            _ = try await send(
+                eidolon,
+                chunks: provider.chunks,
+                judge: PhotoJudge(wants: true),
+                photo: adultContext(generator),
+                provider: provider,
+                adultMode: true
+            )
+            let made = await generator.requests
+            let request = try XCTUnwrap(made.first, "\(age as Any)")
+            XCTAssertEqual(request.model, "curated-model", "\(age as Any)")
+            XCTAssertEqual(request.negativePrompt, PhotoPromptBuilder.allAgesNegative)
+            XCTAssertTrue(request.prompt.contains("rating:general"))
+            XCTAssertFalse(request.prompt.contains("rating:explicit"))
+            let prompt = try XCTUnwrap(provider.prompts.first)
+            XCTAssertFalse(prompt.contains { $0.content.contains("rating: questionable") })
+        }
+    }
+
+    func testAnInvalidOrMissingRatingFallsBackToQuestionableInAdultMode() throws {
+        let table = TestPhotoTagTable.make()
+        let invalid = try PhotoTag(text: """
+            rating: spicy
+            shot: selfie
+            framing: upper body
+            place: cafe
+            outfit: casual
+            action: smile
+            """)
+        XCTAssertEqual(invalid.sanitized(using: table, adult: true).rating, .questionable)
+        let missing = try PhotoTag(text: """
+            shot: selfie
+            framing: upper body
+            place: cafe
+            outfit: casual
+            action: smile
+            """)
+        XCTAssertEqual(missing.sanitized(using: table, adult: true).rating, .questionable)
+        XCTAssertEqual(missing.sanitized(using: table, adult: false).rating, .general)
+    }
+
+    func testAdultModeStillStripsAppearanceAndStyleTags() throws {
+        let table = PhotoTagTable(
+            model: "test-image",
+            known: [],
+            rewrites: [:],
+            allowed: [],
+            blocked: [
+                .appearance: .init(tags: ["brown hair"], words: []),
+                .style: .init(tags: ["sketch"], words: []),
+                .people: .init(tags: ["two girls"], words: []),
+                .nudity: .init(tags: ["nude"], words: []),
+            ]
+        )
+        let photo = try PhotoTag(text: """
+            shot: selfie
+            framing: upper body
+            place: cafe
+            outfit: brown hair, sketch, two girls, nude
+            action: smile
+            """)
+        let cleaned = photo.sanitized(using: table, adult: true)
+        XCTAssertEqual(cleaned.outfit, ["nude"])
+        let allAges = photo.sanitized(using: table, adult: false)
+        XCTAssertEqual(allAges.outfit, ["casual"])
+    }
+
+    func testAFailedAdultPictureDoesNotChangeTheModelOrKey() async throws {
+        let eidolon = try await installedEidolon(manoAge: 20)
+        let generator = FakePhotoGenerator(failure: .serviceError("broke"))
+        let provider = RecordingChatProvider(chunks: [
+            Self.adultTag + "<ja>はい。</ja><zh>好。</zh>",
+        ])
+        let context = adultContext(generator)
+        _ = try await send(
+            eidolon,
+            chunks: provider.chunks,
+            judge: PhotoJudge(wants: true),
+            photo: context,
+            provider: provider,
+            adultMode: true
+        )
+        let made = await generator.requests
+        XCTAssertEqual(made.count, 1)
+        XCTAssertEqual(made.first?.model, "adult-model")
+        // No second attempt with another key or the all-ages model.
+        let used = await generator.settings
+        XCTAssertEqual(used.map(\.adultModel), ["adult-model"])
+        XCTAssertEqual(used.map(\.apiKey), ["test-key"])
+        let photo = try await lastPhoto(eidolon)
+        XCTAssertEqual(photo?.status, .failed)
     }
 
     // MARK: - Failures, allowance and lifecycle (ticket #102)
