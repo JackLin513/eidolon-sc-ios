@@ -52,8 +52,23 @@ struct TabBarHides: UIViewControllerRepresentable {
             setBarHidden(false)
         }
 
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            // The controller may appear before the tab bar controller is its parent; by
+            // now it is, so the state set on the way up can be applied for real.
+            setBarHidden(hidden)
+        }
+
         private func setBarHidden(_ hidden: Bool) {
-            tabBarController?.setTabBarHidden(hidden, animated: true)
+            guard let tabBarController else {
+                // Not attached yet: try once after the next layout pass.
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, let tabBarController = self.tabBarController else { return }
+                    tabBarController.setTabBarHidden(hidden, animated: true)
+                }
+                return
+            }
+            tabBarController.setTabBarHidden(hidden, animated: true)
         }
     }
 }

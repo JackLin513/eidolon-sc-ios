@@ -54,7 +54,13 @@ struct ChatView: View {
         .navigationBarTitleDisplayMode(.inline)
         // A conversation is a page of its own: the three first-level tabs stay behind it
         // (spec #64). A live call is the exception, so the play tab stays within reach.
-        .background { TabBarHides(hidden: !app.call.isLive) }
+        // The id makes a new controller when the tab comes back into view: switching to
+        // the gift page and back does not send this page an appearance callback, and the
+        // bar would stay up (spec bug, 2026-11-04).
+        .background {
+            TabBarHides(hidden: !app.call.isLive)
+                .id(app.selectedTab)
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -302,80 +308,74 @@ struct ChatView: View {
 
     private func transcript(_ store: ChatStore) -> some View {
         let now = Date()
-        return ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    // The reply being written is covered by the pending line it answers, so this
-                    // page can stop reading the streaming text and leave the bubble to itself
-                    // (spec #42).
-                    if store.transcript.isEmpty && store.pendingUser == nil {
-                        Text("从一句问候开始吧。")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.top, 40)
-                    }
-                    ForEach(ConversationTranscript.rows(
-                        of: store.transcript,
-                        now: now,
-                        // A reply that changed her affinity puts its capsule after it and
-                        // starts a new group (spec #38, the seam left in spec #40).
-                        splitsAfter: { line in
-                            guard case let .message(message) = line else { return false }
-                            return message.affinityChange != nil
-                        }
-                    )) { row in
-                        VStack(alignment: .leading, spacing: 16) {
-                            if let day = row.day {
-                                dayPill(day)
-                            }
-                            VStack(alignment: .leading, spacing: 8) {
-                                switch row.line {
-                                case let .message(message):
-                                    messageRow(message, row: row)
-                                case let .event(event):
-                                    conversationEvent(event, clock: row.clock)
-                                }
-                                if let change = row.cue {
-                                    AffinityCueCapsule(change: change, name: character.name)
-                                }
-                            }
-                        }
-                        // Eight inside a group, sixteen between groups and around a pill.
-                        .padding(.top, row.day != nil || row.first ? 8 : 0)
-                    }
-                    if let pending = store.pendingUser {
-                        HStack {
-                            Spacer(minLength: 40)
-                            producerBubble(pending)
-                        }
-                        .id("pending")
-                        .padding(.top, 8)
-                    }
-                    // The reply being written draws itself, so a new piece of text does not
-                    // rework the whole transcript (spec #42). It is her next group's first
-                    // line, so it carries her avatar and name (spec #40).
-                    StreamingReply(store: store, character: character)
+        return ScrollView {
+            LazyVStack(alignment: .leading, spacing: 8) {
+                // The reply being written is covered by the pending line it answers, so this
+                // page can stop reading the streaming text and leave the bubble to itself
+                // (spec #42).
+                if store.transcript.isEmpty && store.pendingUser == nil {
+                    Text("从一句问候开始吧。")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 40)
                 }
-                // The producer can keep a line: long press selects her Japanese, its
-                // subtitle, the producer's own words, scenes, names and times, with the
-                // system copy menu (spec #75, #76).
-                .textSelection(.enabled)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                ForEach(ConversationTranscript.rows(
+                    of: store.transcript,
+                    now: now,
+                    // A reply that changed her affinity puts its capsule after it and
+                    // starts a new group (spec #38, the seam left in spec #40).
+                    splitsAfter: { line in
+                        guard case let .message(message) = line else { return false }
+                        return message.affinityChange != nil
+                    }
+                )) { row in
+                    VStack(alignment: .leading, spacing: 16) {
+                        if let day = row.day {
+                            dayPill(day)
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            switch row.line {
+                            case let .message(message):
+                                messageRow(message, row: row)
+                            case let .event(event):
+                                conversationEvent(event, clock: row.clock)
+                            }
+                            if let change = row.cue {
+                                AffinityCueCapsule(change: change, name: character.name)
+                            }
+                        }
+                    }
+                    // Eight inside a group, sixteen between groups and around a pill.
+                    .padding(.top, row.day != nil || row.first ? 8 : 0)
+                }
+                if let pending = store.pendingUser {
+                    HStack {
+                        Spacer(minLength: 40)
+                        producerBubble(pending)
+                    }
+                    .id("pending")
+                    .padding(.top, 8)
+                }
+                // The reply being written draws itself, so a new piece of text does not
+                // rework the whole transcript (spec #42). It is her next group's first
+                // line, so it carries her avatar and name (spec #40).
+                StreamingReply(store: store, character: character)
             }
-            // One way to follow the bottom, never two: the anchor is what carries the view along
-            // as the content grows. With nothing measuring a bubble's own bottom any more, the
-            // list's vertical padding is just padding. The only explicit scroll left is the one
-            // the producer asks for by sending a line (spec #42).
-            .defaultScrollAnchor(.bottom)
-            .defaultScrollAnchor(.bottom, for: .sizeChanges)
-            .scrollDismissesKeyboard(.interactively)
-            .onChange(of: store.pendingUser) { _, text in
-                guard text != nil else { return }
-                proxy.scrollTo("pending", anchor: .bottom)
-            }
+            // The producer can keep a line: long press selects her Japanese, its
+            // subtitle, the producer's own words, scenes, names and times, with the
+            // system copy menu (spec #75, #76).
+            .textSelection(.enabled)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
+        // The page follows its bottom through every size change — the keyboard coming and
+        // going, a line sent, her reply growing — so a new line rises from behind the input
+        // bar instead of leaving a gap. An explicit scroll (spec #42's send scroll) took
+        // that anchor away once the keyboard left, so there is none (bug 2026-11-04).
+        .defaultScrollAnchor(.bottom)
+        .defaultScrollAnchor(.bottom, for: .sizeChanges)
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private func dayPill(_ label: String) -> some View {

@@ -165,6 +165,20 @@ public struct AchievementReward: Sendable, Hashable {
     }
 }
 
+/// What on the play page has something the producer has not looked at yet: a stage on
+/// the achievements page or a reward on the gift page.
+public struct PlayBadges: Sendable, Hashable {
+    public let achievements: Bool
+    public let gifts: Bool
+
+    public init(achievements: Bool, gifts: Bool) {
+        self.achievements = achievements
+        self.gifts = gifts
+    }
+
+    public var any: Bool { achievements || gifts }
+}
+
 /// What the one-time backfill found and awarded.
 public struct AchievementLaunchSummary: Sendable, Hashable {
     public let stages: Int
@@ -644,15 +658,24 @@ enum AchievementStore {
                 arguments: [characterID]
             )
         } else {
-            try db.execute(
-                sql: "UPDATE achievement_stages SET seen = 1 WHERE character_id = ?",
-                arguments: [all]
-            )
+            // The play page's achievements card covers every scope: opening it acknowledges
+            // the per-character stages too, or its dot would never go.
+            try db.execute(sql: "UPDATE achievement_stages SET seen = 1")
         }
     }
 
     static func markRewardsSeen(_ db: Database) throws {
         try db.execute(sql: "UPDATE gift_rewards SET seen = 1")
+    }
+
+    static func badges(_ db: Database) throws -> PlayBadges {
+        let stages = try Int.fetchOne(
+            db, sql: "SELECT COUNT(*) FROM achievement_stages WHERE seen = 0"
+        ) ?? 0
+        let rewards = try Int.fetchOne(
+            db, sql: "SELECT COUNT(*) FROM gift_rewards WHERE seen = 0"
+        ) ?? 0
+        return PlayBadges(achievements: stages > 0, gifts: rewards > 0)
     }
 
     /// Whether anything was unlocked or paid since the play tab was last cleared.
@@ -739,6 +762,13 @@ extension Eidolon {
     public func achievementBadge() throws -> Bool {
         try userQueue.read { db in
             try AchievementStore.hasNew(db)
+        }
+    }
+
+    /// Which play card has something new: a stage (achievements) or a reward (gifts).
+    public func playBadges() throws -> PlayBadges {
+        try userQueue.read { db in
+            try AchievementStore.badges(db)
         }
     }
 

@@ -32,17 +32,18 @@ struct CallBar: View {
                     status
                     Spacer(minLength: 8)
                     Text("回到通话")
-                        .foregroundStyle(.white.opacity(0.7))
+                        .foregroundStyle(.secondary)
                     Image(systemName: "chevron.right")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(.tertiary)
                 }
                 .font(.footnote)
-                .foregroundStyle(.white)
                 .padding(.horizontal, 16)
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .background(Color(hex: "#111111"))
+                // The bar sits above whatever page is showing, so it follows that page's
+                // scheme instead of staying black on a light page.
+                .background(Color(.secondarySystemBackground))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -51,11 +52,11 @@ struct CallBar: View {
         }
     }
 
-    /// White while the call is up; a slow blink until it connects.
+    /// Green while the call is up; a slow blink until it connects.
     private var dot: some View {
         TimelineView(.periodic(from: .now, by: Self.blink)) { context in
             Circle()
-                .fill(.white)
+                .fill(.green)
                 .frame(width: 8, height: 8)
                 .opacity(opacity(at: context.date))
         }

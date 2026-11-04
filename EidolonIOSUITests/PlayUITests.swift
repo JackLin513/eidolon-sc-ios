@@ -48,6 +48,41 @@ final class PlayUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["对话"].waitForExistence(timeout: 5), "conversation tab did not return")
     }
 
+    func testReturningFromAGiftShowsItAtOnce() throws {
+        app.terminate()
+        app.launchEnvironment["EIDOLON_OPEN_CHARACTER"] = "hiori"
+        app.launchEnvironment["EIDOLON_GIFT_BACKPACK"] = "cake:1"
+        app.launch()
+
+        let more = app.buttons["更多"]
+        XCTAssertTrue(more.waitForExistence(timeout: 10), "chat did not open")
+        more.tap()
+        let gifts = app.buttons["送她一件礼物"]
+        XCTAssertTrue(gifts.waitForExistence(timeout: 5), "chat has no gift route")
+        gifts.tap()
+
+        let cake = app.buttons["gifts.backpack.cake"]
+        XCTAssertTrue(cake.waitForExistence(timeout: 10), "the injected cake is not in the backpack")
+        cake.tap()
+        let send = app.buttons["gifts.send"]
+        XCTAssertTrue(send.waitForExistence(timeout: 5), "no send button")
+        send.tap()
+
+        let sent = app.alerts["送给蛋糕了"]
+        XCTAssertTrue(sent.waitForExistence(timeout: 10), "the gift was not acknowledged")
+        sent.buttons["去对话"].tap()
+
+        let line = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "你送给")
+        ).firstMatch
+        XCTAssertTrue(line.waitForExistence(timeout: 5), "the gift is not in her chat")
+        XCTAssertTrue(line.isHittable, "the chat stayed at the old bottom")
+        XCTAssertTrue(
+            app.tabBars.buttons["玩法"].waitForNonExistence(timeout: 5),
+            "the tab bar came back on the chat page"
+        )
+    }
+
     func testGiftPageShowsTheEmptyBackpackAndNoChances() throws {
         launchGiftPage(draws: 0)
 
@@ -196,6 +231,10 @@ final class PlayUITests: XCTestCase {
         XCTAssertTrue(go.waitForExistence(timeout: 5), "no preselected character to go back to")
         go.tap()
         XCTAssertTrue(app.buttons["更多"].waitForExistence(timeout: 5), "did not return to her chat")
+        XCTAssertTrue(
+            app.tabBars.buttons["玩法"].waitForNonExistence(timeout: 5),
+            "the tab bar came back on the chat page"
+        )
     }
 
     func testBarTurnsLandscapeAndComesBackUpright() throws {

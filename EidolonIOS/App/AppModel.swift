@@ -398,6 +398,8 @@ final class AppModel {
 
     /// The play tab's dot: a stage or reward the producer has not looked at.
     private(set) var achievementBadge = false
+    /// Which play card the dot points at: the achievements page or the gift page.
+    private(set) var playBadges = PlayBadges(achievements: false, gifts: false)
     /// The one-time backfill summary, until its alert is dismissed.
     private(set) var achievementLaunch: AchievementLaunchSummary?
     /// The toast after a turn, gift or draw unlocked something.
@@ -442,6 +444,8 @@ final class AppModel {
     func giveGift(giftID: String, characterID: String) async throws -> GiftGiven {
         let given = try await core.giveGift(giftID: giftID, characterID: characterID)
         giftState = try await core.giftState()
+        // The gift is a line in her conversation: a chat page left open follows it.
+        noteConversationChanged()
         showAchievementRewards(given.rewards)
         return given
     }
@@ -478,6 +482,8 @@ final class AppModel {
 
     func refreshAchievementBadge() async {
         achievementBadge = (try? await core.achievementBadge()) ?? false
+        playBadges = (try? await core.playBadges())
+            ?? PlayBadges(achievements: false, gifts: false)
     }
 
     /// Clears the play tab's dot once the achievements page or the gift page was opened.
