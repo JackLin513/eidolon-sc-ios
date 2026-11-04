@@ -4,7 +4,7 @@ import GRDB
 /// The writable user library (ADR-0002). Its schema evolves with the app, not
 /// with the content bundle, and is therefore managed by GRDB migrations.
 enum UserSchema {
-    static let version = 19
+    static let version = 20
 
     static func migrate(_ dbQueue: DatabaseQueue) throws {
         var migrator = DatabaseMigrator()
@@ -425,6 +425,13 @@ enum UserSchema {
                     PRIMARY KEY (provider, model, unit)
                 );
                 """)
+        }
+        migrator.registerMigration("v20") { db in
+            // The birth year is kept so the settings date picker shows the year the
+            // producer chose; the prompts and calendar still use only month and day.
+            if try db.tableExists("producer_profile") {
+                try db.execute(sql: "ALTER TABLE producer_profile ADD COLUMN birthday_year INTEGER")
+            }
         }
         try migrator.migrate(dbQueue)
         try dbQueue.write { db in
