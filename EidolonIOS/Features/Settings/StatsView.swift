@@ -90,26 +90,45 @@ struct StatsView: View {
 
     private func heatmap(_ days: [StatsHeatmapDay], range: StatsRange) -> some View {
         let busiest = days.map(\.count).max() ?? 0
+        let weeks = weeks(days)
+        // A month fits its five weeks comfortably; a year keeps small cells and scrolls.
+        let cell: CGFloat = weeks.count <= 8 ? 18 : 10
+        let contentWidth = CGFloat(weeks.count) * cell
+            + CGFloat(max(0, weeks.count - 1)) * 3
         return VStack(alignment: .leading, spacing: 8) {
             Text(heatmapTitle(range))
                 .font(.headline)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 3) {
-                    ForEach(Array(weeks(days).enumerated()), id: \.offset) { _, week in
-                        VStack(spacing: 3) {
-                            ForEach(week) { day in
-                                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                    .fill(heatColor(day.count, busiest: busiest))
-                                    .frame(width: 10, height: 10)
-                                    .accessibilityLabel(
-                                        "\(day.day.month)月\(day.day.day)日，\(day.count) 次"
-                                    )
+            GeometryReader { geometry in
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 3) {
+                            ForEach(Array(weeks.enumerated()), id: \.offset) { index, week in
+                                VStack(spacing: 3) {
+                                    ForEach(week) { day in
+                                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                            .fill(heatColor(day.count, busiest: busiest))
+                                            .frame(width: cell, height: cell)
+                                            .accessibilityLabel(
+                                                "\(day.day.month)月\(day.day.day)日，\(day.count) 次"
+                                            )
+                                    }
+                                }
+                                .id(index)
                             }
                         }
+                        .frame(
+                            minWidth: geometry.size.width,
+                            alignment: contentWidth < geometry.size.width ? .center : .leading
+                        )
+                        .padding(.vertical, 2)
+                    }
+                    .onAppear { scrollToLatest(proxy, weeks: weeks.count) }
+                    .onChange(of: weeks.count) { _, count in
+                        scrollToLatest(proxy, weeks: count)
                     }
                 }
-                .padding(.vertical, 2)
             }
+            .frame(height: cell * 7 + 18)
             HStack(spacing: 4) {
                 Text("少")
                 ForEach(1...4, id: \.self) { level in
@@ -126,8 +145,17 @@ struct StatsView: View {
                 .foregroundStyle(.tertiary)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("过去一年的来访热力图")
+        .accessibilityLabel("\(heatmapTitle(range))的来访热力图")
         .accessibilityIdentifier("stats.heatmap")
+    }
+
+    /// The newest week is on the right: show it first, so a year of mostly-older cells does
+    /// not open on a blank stretch.
+    private func scrollToLatest(_ proxy: ScrollViewProxy, weeks: Int) {
+        guard weeks > 0 else { return }
+        DispatchQueue.main.async {
+            proxy.scrollTo(weeks - 1, anchor: .trailing)
+        }
     }
 
     private func affinity(_ groups: [StatsAffinityGroup]) -> some View {
@@ -352,7 +380,7 @@ struct StatsView: View {
     /// Five shades by how busy the day was against the busiest day, as upstream's
     /// heatmap does: zero is blank, then four quarters of the busiest.
     private func heatColor(_ count: Int, busiest: Int) -> Color {
-        guard count > 0, busiest > 0 else { return Color.secondary.opacity(0.12) }
+        guard count > 0, busiest > 0 else { return Color.secondary.opacity(0.18) }
         let share = Double(count) / Double(busiest)
         return switch share {
         case ..<0.25: Color.green.opacity(0.4)
