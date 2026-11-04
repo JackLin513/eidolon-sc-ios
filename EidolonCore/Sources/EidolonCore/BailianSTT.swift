@@ -21,6 +21,11 @@ public struct BailianSTTConfiguration: Sendable, Hashable {
     /// transcribed sentence.
     public static let defaultModel = "qwen-audio-3.1-asr-flash-streaming"
     public static let sampleRate = 16_000
+    /// 3.1's real-time transcription is billed in tokens, not seconds (spec #96); the
+    /// price catalog converts its audio-token rate to a per-second estimate.
+    public static func isTokenBilled(_ model: String) -> Bool {
+        model.contains("3.1-asr")
+    }
     /// 100 ms of 16-bit mono audio, which DashScope is sent a packet at a time.
     public static let packetBytes = sampleRate * 2 / 10
     public static let hotWordWeight = 4

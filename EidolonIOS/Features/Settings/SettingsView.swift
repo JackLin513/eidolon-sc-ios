@@ -63,6 +63,25 @@ struct SettingsView: View {
                     }
 
                     Section {
+                        NavigationLink {
+                            StatsView()
+                        } label: {
+                            LabeledContent("统计", value: "⇢")
+                        }
+                        .accessibilityIdentifier("settings.stats")
+                        NavigationLink {
+                            UsageView()
+                        } label: {
+                            LabeledContent("用量与花费", value: "⇢")
+                        }
+                        .accessibilityIdentifier("settings.usage")
+                    } header: {
+                        Text("统计")
+                    } footer: {
+                        Text("统计是和她往来多少；用量与花费是每次外部调用用了多少、按现价大概花了多少。两者都不离开这台手机。")
+                    }
+
+                    Section {
                         Stepper("历史回合：\(historyTurns)", value: $historyTurns, in: 1...100)
                         Toggle("文字氛围模式", isOn: $atmosphericText)
                             .accessibilityIdentifier("settings.atmosphericText")

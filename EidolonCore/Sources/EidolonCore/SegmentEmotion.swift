@@ -210,3 +210,8 @@ public struct SystemOneSegmentEmotionJudge: SegmentEmotionJudge {
         return best.probability >= threshold ? best.value : otherwise
     }
 }
+
+extension SystemOneSegmentEmotionJudge: ServiceMetadata {
+    public var serviceHost: String? { config.baseURL.host }
+    public var serviceModel: String? { config.model }
+}

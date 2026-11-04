@@ -91,6 +91,7 @@ public enum RetrievalServiceError: LocalizedError, Equatable {
 public struct SiliconFlowEmbedding: EmbeddingProvider {
     private let config: EmbeddingConfig
     private let session: URLSession
+    private let usageBox = ChatUsageBox()
 
     public init(config: EmbeddingConfig, session: URLSession = .shared) {
         self.config = config
@@ -116,13 +117,21 @@ public struct SiliconFlowEmbedding: EmbeddingProvider {
         let data = try await post("embeddings", body: body)
         struct Response: Decodable {
             struct Item: Decodable { let embedding: [Float] }
+            struct Usage: Decodable {
+                let promptTokens: Int?
+                enum CodingKeys: String, CodingKey { case promptTokens = "prompt_tokens" }
+            }
             let data: [Item]?
+            let usage: Usage?
         }
         guard let response = try? JSONDecoder().decode(Response.self, from: data),
               let items = response.data,
               items.count == texts.count
         else {
             throw RetrievalServiceError.invalidResponse("向量数量不符")
+        }
+        if let promptTokens = response.usage?.promptTokens {
+            usageBox.add(input: promptTokens, output: 0)
         }
         return items.map(\.embedding)
     }
@@ -234,6 +243,20 @@ public struct GeminiEmbedding: EmbeddingProvider {
     }
 }
 
+extension SiliconFlowEmbedding: ServiceMetadata {
+    public var serviceHost: String? { config.baseURL.host }
+    public var serviceModel: String? { config.model }
+}
+
+extension SiliconFlowEmbedding: EmbeddingUsageReporting {
+    public func takeEmbeddingUsage() async -> ChatUsage? { usageBox.take() }
+}
+
+extension GeminiEmbedding: ServiceMetadata {
+    public var serviceHost: String? { config.baseURL.host }
+    public var serviceModel: String? { config.model }
+}
+
 public enum GeminiEmbeddingError: LocalizedError, Equatable {
     case notConfigured
     case status(Int, String)
@@ -257,6 +280,7 @@ public enum GeminiEmbeddingError: LocalizedError, Equatable {
 public struct SiliconFlowRerank: RerankProvider {
     private let config: RerankConfig
     private let session: URLSession
+    private let usageBox = ChatUsageBox()
 
     public init(config: RerankConfig, session: URLSession = .shared) {
         self.config = config
@@ -294,16 +318,33 @@ public struct SiliconFlowRerank: RerankProvider {
                     case relevanceScore = "relevance_score"
                 }
             }
+            struct Usage: Decodable {
+                let totalTokens: Int?
+                enum CodingKeys: String, CodingKey { case totalTokens = "total_tokens" }
+            }
             let results: [Item]?
+            let usage: Usage?
         }
         guard let response = try? JSONDecoder().decode(Response.self, from: data),
               let results = response.results
         else {
             throw RetrievalServiceError.invalidResponse("没有返回重排结果")
         }
+        if let total = response.usage?.totalTokens {
+            usageBox.add(input: total, output: 0)
+        }
         return results
             .filter { (0..<documents.count).contains($0.index) }
             .map { (index: $0.index, score: $0.relevanceScore) }
             .sorted { $0.score > $1.score }
     }
+}
+
+extension SiliconFlowRerank: ServiceMetadata {
+    public var serviceHost: String? { config.baseURL.host }
+    public var serviceModel: String? { config.model }
+}
+
+extension SiliconFlowRerank: RerankUsageReporting {
+    public func takeRerankUsage() async -> ChatUsage? { usageBox.take() }
 }

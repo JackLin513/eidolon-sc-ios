@@ -236,6 +236,10 @@ extension Eidolon {
             try promptRecord(conversationID: $0, turns: historyTurns, timeZone: zone)
         } ?? PromptRecord()
         let history = record.judgingHistory
+        // Every outside call this turn makes is written down (spec #96); wrapping here also
+        // covers the memory job the turn leaves behind.
+        let recordedEmbedder = embedder.map { RecordingEmbedding(base: $0, eidolon: self) }
+        let recordedReranker = reranker.map { RecordingRerank(base: $0, eidolon: self) }
 
         // The judge is advisory (ADR-0005, ADR-0016): whatever it says, the turn goes on.
         // When it fails — times out, is refused, or answers unreadably — the turn still
@@ -246,6 +250,7 @@ extension Eidolon {
         var judgeTrace: JudgeTrace?
         if let judge {
             let started = Date()
+            let judgeHistory = PromptAssembler.judgeHistory(history)
             var raw: String?
             var tokens: Int?
             var failure: String?
@@ -253,7 +258,7 @@ extension Eidolon {
                 if let tracingJudge = judge as? any TracingJudgeProvider {
                     let answer = try await tracingJudge.judgedWithRaw(
                         characterName: character.name,
-                        history: PromptAssembler.judgeHistory(history),
+                        history: judgeHistory,
                         said: text,
                         adultMode: effectiveAdultMode
                     )
@@ -263,7 +268,7 @@ extension Eidolon {
                 } else {
                     verdict = try await judge.judge(
                         characterName: character.name,
-                        history: PromptAssembler.judgeHistory(history),
+                        history: judgeHistory,
                         said: text,
                         adultMode: effectiveAdultMode
                     )
@@ -273,6 +278,7 @@ extension Eidolon {
                 failure = error.localizedDescription
                 degradation.append("判断模型失败，仍按 references 检索、本回合不动好感：\(failure ?? "")")
             }
+            let latency = Date().timeIntervalSince(started)
             judgeTrace = JudgeTrace(
                 service: judge.judgeService,
                 model: judge.judgeModel,
@@ -280,8 +286,19 @@ extension Eidolon {
                 uncalibrated: judge.judgeUncalibrated ? true : nil,
                 raw: raw,
                 inputTokens: tokens,
-                latency: Date().timeIntervalSince(started),
+                latency: latency,
                 failure: failure
+            )
+            await recordJudgeCall(
+                judge: judge,
+                inputText: judgeHistory.map(\.content).joined(separator: "\n")
+                    + "\n" + text,
+                outputText: raw,
+                inputTokens: tokens,
+                latency: latency,
+                error: failure,
+                conversationID: existingConversation,
+                at: now
             )
         }
         let judged: Judged? = verdict?.affinity
@@ -292,8 +309,8 @@ extension Eidolon {
             eidolon: self,
             character: character,
             world: world,
-            embedder: embedder,
-            reranker: reranker,
+            embedder: recordedEmbedder,
+            reranker: recordedReranker,
             timeZone: zone
         )
         let retrievalStarted = ContinuousClock.now
@@ -408,7 +425,7 @@ extension Eidolon {
         // The tool is offered on every turn retrieval is available, so that what opens
         // each prompt stays the same; the round after a call, and the round after the
         // judge already recalled an episode, are forbidden to call it again.
-        let tools = embedder == nil ? [] : [RecallStoryTool.definition]
+        let tools = recordedEmbedder == nil ? [] : [RecallStoryTool.definition]
         let toolProvider = provider as? any ToolChatProvider
         var prompt = messages
         let recalled = retrieved.recalled
@@ -416,11 +433,14 @@ extension Eidolon {
         var prompts: [[TracedMessage]] = []
         var toolCalls: [String] = []
         var failure: Error?
+        var sentPrompts: [[PromptMessage]] = []
+        var allSaid = ""
         let chatStarted = ContinuousClock.now
         var firstTokenAt: ContinuousClock.Instant?
         do {
             while true {
                 prompts.append(prompt.map(TracedMessage.init))
+                sentPrompts.append(prompt)
                 let forbidden = toolRounds >= 1 || recalled
                 var said = ""
                 var calls: [ToolCall] = []
@@ -452,6 +472,7 @@ extension Eidolon {
                     }
                 }
                 shown(parser.finish())
+                allSaid += said
 
                 // A call made when forbidden, or to a tool never offered, is left
                 // unanswered; the turn goes on with what she said.
@@ -482,6 +503,17 @@ extension Eidolon {
         // A provider whose stream cancelled quietly leaves the loop through its end, not
         // through an error: the turn was still stopped by the producer.
         if Task.isCancelled { stopped = true }
+        await recordChatCall(
+            provider: provider,
+            operation: call == nil ? .chatText : .chatCall,
+            prompts: sentPrompts,
+            output: allSaid,
+            latency: (ContinuousClock.now - chatStarted).inSeconds,
+            error: failure?.localizedDescription,
+            conversationID: existingConversation,
+            callID: call?.callID,
+            at: now
+        )
 
         // What this turn can be gone over by, later: what she was asked, what the judge
         // wrote, what retrieval found and what the fallbacks cost (ADR-0012).
@@ -572,7 +604,7 @@ extension Eidolon {
         recordTrace(recorded.conversationID, error: nil)
         // Memory is on with an embedder and a reranker (upstream `_services`): what the
         // producer revealed is written down after the reply, in a task of its own.
-        if embedder != nil, reranker != nil,
+        if recordedEmbedder != nil, recordedReranker != nil,
            let job = try? enqueueMemoryJob(
                conversationID: recorded.conversationID,
                userMessageID: recorded.userMessageID,
@@ -580,7 +612,7 @@ extension Eidolon {
            ) {
             // What the producer said is written down by the cheaper background model when
             // one is set; the reply itself was still the chat model's.
-            scheduleMemoryJob(job, provider: background ?? provider, embedder: embedder)
+            scheduleMemoryJob(job, provider: background ?? provider, embedder: recordedEmbedder)
         }
         nameConversationIfDue(
             conversationID: recorded.conversationID,

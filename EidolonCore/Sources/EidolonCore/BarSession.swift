@@ -122,19 +122,23 @@ public actor BarRoom {
         public var aboutProducer: String
         /// Now, as the bar keeps the time: what it reads at first, as the visit runs.
         public var clock: @Sendable () -> Date
+        /// Where a call's usage goes (spec #96): the app writes it into the user library.
+        public var usage: (@Sendable (ServiceCall) async -> Void)?
 
         public init(
             chat: any ChatProvider,
             embedder: (any EmbeddingProvider)? = nil,
             reranker: (any RerankProvider)? = nil,
             aboutProducer: String = "",
-            clock: @escaping @Sendable () -> Date = { Date() }
+            clock: @escaping @Sendable () -> Date = { Date() },
+            usage: (@Sendable (ServiceCall) async -> Void)? = nil
         ) {
             self.chat = chat
             self.embedder = embedder
             self.reranker = reranker
             self.aboutProducer = aboutProducer
             self.clock = clock
+            self.usage = usage
         }
     }
 
@@ -599,11 +603,15 @@ public actor BarRoom {
         var said: [BarLine] = []
         var held: [BarLine] = []
         var parser = BarParser()
-        let stream = setup.chat.stream(messages: messages(visit.prompt))
+        let prompt = messages(visit.prompt)
+        let stream = setup.chat.stream(messages: prompt)
+        var answer = ""
+        let started = Date()
         do {
             for try await chunk in stream {
                 try Task.checkCancellation()
                 guard stillUnderWay(call) else { return said }
+                answer += chunk
                 for line in parser.feed(chunk) {
                     for shown in Self.holding(line, &held, ordering) {
                         said.append(shown)
@@ -618,8 +626,15 @@ public actor BarRoom {
                 }
             }
         } catch {
+            await recordBarCall(
+                setup: setup, prompt: prompt, answer: answer, started: started,
+                error: error.localizedDescription
+            )
             throw error
         }
+        await recordBarCall(
+            setup: setup, prompt: prompt, answer: answer, started: started, error: nil
+        )
         if ordering {
             guard !held.isEmpty else { throw BarRules.unwritten }
             if !held.contains(where: \.order) {
@@ -634,6 +649,21 @@ public actor BarRoom {
         }
         guard !said.isEmpty else { throw BarRules.unwritten }
         return said
+    }
+
+    private func recordBarCall(
+        setup: Setup,
+        prompt: [PromptMessage],
+        answer: String,
+        started: Date,
+        error: String?
+    ) async {
+        guard let usage = setup.usage else { return }
+        let call = await UsageRecording.chatCall(
+            provider: setup.chat, operation: .bar, prompts: [prompt], output: answer,
+            latency: Date().timeIntervalSince(started), error: error, at: Date()
+        )
+        await usage(call)
     }
 
     /// `held`, her order and what follows it in a call she orders in, after `said`, with her
@@ -670,19 +700,28 @@ public actor BarRoom {
     private func meet(_ visit: BarVisit, ask: String, setup: Setup) async -> [BarLine] {
         var parser = BarParser()
         var lines: [BarLine] = []
+        let prompt = messages(BarPrompt.prompt(
+            shared: visit.shared, visit: visit.about, written: visit.written, ask: ask
+        ))
+        var answer = ""
+        let started = Date()
         do {
-            for try await chunk in setup.chat.stream(
-                messages: messages(BarPrompt.prompt(
-                    shared: visit.shared, visit: visit.about, written: visit.written, ask: ask
-                ))
-            ) {
+            for try await chunk in setup.chat.stream(messages: prompt) {
                 try Task.checkCancellation()
+                answer += chunk
                 lines += parser.feed(chunk)
             }
             lines += parser.finish()
         } catch {
+            await recordBarCall(
+                setup: setup, prompt: prompt, answer: answer, started: started,
+                error: error.localizedDescription
+            )
             return []
         }
+        await recordBarCall(
+            setup: setup, prompt: prompt, answer: answer, started: started, error: nil
+        )
         let hers = lines.filter { $0.speaker == .her }
         if let marked = hers.first(where: \.order) {
             return [marked]

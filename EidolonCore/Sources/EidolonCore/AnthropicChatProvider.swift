@@ -11,6 +11,7 @@ public struct AnthropicChatProvider: ChatProvider {
 
     private let config: ChatModelConfig
     private let transport: any ChatTransport
+    private let usageBox = ChatUsageBox()
 
     public init(config: ChatModelConfig, session: URLSession = .shared) {
         self.init(config: config, transport: URLSessionChatTransport(session: session))
@@ -149,6 +150,22 @@ public struct AnthropicChatProvider: ChatProvider {
                   let kind = event["type"] as? String
             else { continue }
             switch kind {
+            case "message_start":
+                if let message = event["message"] as? [String: Any],
+                   let usage = message["usage"] as? [String: Any] {
+                    // `message_start` carries the input and a placeholder output; the
+                    // final output count comes with `message_delta`.
+                    usageBox.add(
+                        input: usage["input_tokens"] as? Int ?? 0,
+                        output: 0,
+                        cachedInput: usage["cache_read_input_tokens"] as? Int
+                    )
+                }
+            case "message_delta":
+                if let usage = event["usage"] as? [String: Any],
+                   let output = usage["output_tokens"] as? Int {
+                    usageBox.add(input: 0, output: output)
+                }
             case "content_block_start":
                 guard let block = event["content_block"] as? [String: Any] else { break }
                 let index = event["index"] as? Int ?? thinking.count + calls.count
@@ -230,6 +247,13 @@ public struct AnthropicChatProvider: ChatProvider {
             }))
         }
     }
+}
+
+extension AnthropicChatProvider: ChatUsageReporting {
+    public var usageProviderHost: String { config.baseURL.host ?? config.baseURL.absoluteString }
+    public var usageModel: String { config.model }
+
+    public func takeUsage() async -> ChatUsage? { usageBox.take() }
 }
 
 extension AnthropicChatProvider: ToolChatProvider {

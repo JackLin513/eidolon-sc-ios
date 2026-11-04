@@ -431,3 +431,8 @@ extension ChatJudgeProvider {
         }
     }
 }
+
+extension ChatJudgeProvider: ServiceMetadata {
+    public var serviceHost: String? { config.baseURL.host }
+    public var serviceModel: String? { config.model }
+}
