@@ -21,14 +21,11 @@ struct ConversationListView: View {
     @State private var showingHidden = false
 
     var body: some View {
-        // The folded call's bar stands above the navigation for every page in this tab,
-        // her chat included. Keeping it mounted across a push/pop is what stops the roster
-        // from jumping down when its path empties (bug 2026-11-04). Inside the list, the
-        // iOS 26 navigation bar would tint itself with the bar's dark background, so the
-        // bar stays outside the NavigationStack (spec #64).
-        VStack(spacing: 0) {
-            CallBar(showsName: app.conversationPath.isEmpty)
-            NavigationStack(path: conversationPath) {
+        // The folded call's bar floats over the empty part of the large-title header, so
+        // showing or hiding it does not move the title or the list (bug 2026-11-04). Her
+        // chat keeps its own bar under the inline navigation bar, so the floating one is
+        // only drawn while the roster is the page on top.
+        NavigationStack(path: conversationPath) {
                 List {
                     Section {
                         ForEach(filtered, id: \.id) { character in
@@ -97,7 +94,7 @@ struct ConversationListView: View {
                 .navigationTitle("对话")
                 .refreshable { await app.refresh() }
                 .navigationDestination(for: CharacterConfig.self) { character in
-                    ChatView(character: character, showsCallBar: false)
+                    ChatView(character: character)
                 }
                 .confirmationDialog(
                     "结束通话并进入？",
@@ -165,7 +162,11 @@ struct ConversationListView: View {
                     Text(app.errorMessage ?? "")
                 }
             }
-        }
+            .overlay(alignment: .top) {
+                if app.conversationPath.isEmpty {
+                    CallBar()
+                }
+            }
     }
 
     private var filtered: [CharacterConfig] {
