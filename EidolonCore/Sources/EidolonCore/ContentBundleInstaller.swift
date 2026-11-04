@@ -34,6 +34,7 @@ struct ContentBundleInstaller {
         try validateWorld(in: staging)
         let characters = try readCharacters(in: staging)
         try validateCharacters(manifest, characters, in: staging)
+        try validateGifts(characters, in: staging)
 
         let database = try ContentDatabase(contentDirectory: staging, userDatabasePath: userDatabasePath)
         let counts = try validateDatabase(database, manifest: manifest)
@@ -231,6 +232,30 @@ struct ContentBundleInstaller {
                 }
             }
         }
+    }
+
+    /// The gift catalog is optional: a bundle exported before gifts has none, and the gift
+    /// page says so instead of breaking. When it is there, every character's liked gifts
+    /// must fit it. Its illustrations are not required here: an older export can have the
+    /// catalog without `gifts/`, and the page draws a symbol instead. The exporter is what
+    /// checks a new package has every picture.
+    private func validateGifts(_ characters: [CharacterConfig], in directory: URL) throws {
+        let url = directory.appendingPathComponent("characters/gifts.json")
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        let catalog: GiftCatalog
+        do {
+            guard let loaded = try GiftCatalog.load(in: directory) else {
+                throw EidolonError.invalidBundle("缺少 characters/gifts.json")
+            }
+            catalog = loaded
+        } catch let error as EidolonError {
+            throw error
+        } catch {
+            throw EidolonError.invalidBundle(
+                "礼物目录 characters/gifts.json 无法解析：\(error.localizedDescription)"
+            )
+        }
+        try catalog.validateLikedGifts(characters)
     }
 
     private func validateDatabase(

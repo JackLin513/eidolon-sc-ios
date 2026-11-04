@@ -4,7 +4,7 @@ import GRDB
 /// The writable user library (ADR-0002). Its schema evolves with the app, not
 /// with the content bundle, and is therefore managed by GRDB migrations.
 enum UserSchema {
-    static let version = 15
+    static let version = 18
 
     static func migrate(_ dbQueue: DatabaseQueue) throws {
         var migrator = DatabaseMigrator()
@@ -306,6 +306,85 @@ enum UserSchema {
             // it on; a new conversation starts off.
             try db.execute(sql: """
                 ALTER TABLE conversations ADD COLUMN debug_no_ending INTEGER NOT NULL DEFAULT 0
+                """)
+        }
+        migrator.registerMigration("v16") { db in
+            // Gifts and achievements (spec #63, #65): what the producer has drawn, what is
+            // in the backpack, the rewards already given by their key (so each is given
+            // once), and the achievement stages reached. One producer, so no user column.
+            try db.execute(sql: """
+                CREATE TABLE gift_balances (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    draws INTEGER NOT NULL,
+                    given_on TEXT NOT NULL,
+                    reset_cards INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE TABLE gift_backpack (
+                    gift_id TEXT PRIMARY KEY,
+                    count INTEGER NOT NULL
+                );
+                CREATE TABLE gift_rewards (
+                    key TEXT PRIMARY KEY,
+                    draws INTEGER NOT NULL,
+                    reset_cards INTEGER NOT NULL,
+                    rewarded_at TEXT NOT NULL
+                );
+                CREATE TABLE achievement_progress (
+                    achievement TEXT NOT NULL,
+                    character_id TEXT NOT NULL,
+                    count REAL NOT NULL,
+                    last_day TEXT,
+                    PRIMARY KEY (achievement, character_id)
+                );
+                CREATE TABLE achievement_stages (
+                    achievement TEXT NOT NULL,
+                    character_id TEXT NOT NULL,
+                    stage INTEGER NOT NULL,
+                    unlocked_at TEXT NOT NULL,
+                    PRIMARY KEY (achievement, character_id, stage)
+                );
+                CREATE TABLE achievements_launched (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    launched_at TEXT NOT NULL,
+                    notice_seen INTEGER NOT NULL DEFAULT 0
+                );
+                """)
+            // A connected call's start and length, for the call achievements (spec #63).
+            // Old rows keep NULL, and the one-time backfill reads them as zero. A library
+            // that never ran v6 has no call table, as the partial test libraries show.
+            if try db.tableExists("call_ends") {
+                try db.execute(sql: "ALTER TABLE call_ends ADD COLUMN connected_at TEXT")
+                try db.execute(sql: "ALTER TABLE call_ends ADD COLUMN duration_s REAL")
+            }
+            // A gift given to her, as the conversation event that tells her of it (spec
+            // #63): which gift, whether she likes it, and the affinity change it showed.
+            if try db.tableExists("conversation_events") {
+                try db.execute(sql: "ALTER TABLE conversation_events ADD COLUMN gift_id TEXT")
+                try db.execute(sql: "ALTER TABLE conversation_events ADD COLUMN liked INTEGER")
+                try db.execute(sql: "ALTER TABLE conversation_events ADD COLUMN affinity TEXT")
+            }
+        }
+        migrator.registerMigration("v17") { db in
+            // Which achievement stages and rewards the producer has looked at, for the
+            // new marks and the play tab's dot (spec #63, #69/#70); and what the one-time
+            // launch notice says (spec #72).
+            try db.execute(sql: """
+                ALTER TABLE achievement_stages ADD COLUMN seen INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE gift_rewards ADD COLUMN seen INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE achievements_launched ADD COLUMN notice_stages INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE achievements_launched ADD COLUMN notice_draws INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE achievements_launched ADD COLUMN notice_reset_cards INTEGER NOT NULL DEFAULT 0;
+                """)
+        }
+        migrator.registerMigration("v18") { db in
+            // When the play tab's dot was last cleared (spec #70). A moment of its own,
+            // apart from the per-scope seen marks, so opening the achievements page or the
+            // gift page clears the dot without clearing the other page's new marks.
+            try db.execute(sql: """
+                CREATE TABLE achievement_play_seen (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    seen_at TEXT NOT NULL
+                );
                 """)
         }
         try migrator.migrate(dbQueue)

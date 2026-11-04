@@ -47,6 +47,8 @@ public struct TurnRecord: Sendable, Hashable {
     public var ended: Bool
     /// How this turn changed her affinity; nil when it changed nothing (spec #38).
     public var affinityChange: AffinityChange?
+    /// Achievement stages this turn unlocked, for the toast (spec #69).
+    public var achievements: [AchievementReward] = []
 }
 
 public struct AffinityStatus: Sendable, Hashable {
@@ -597,7 +599,8 @@ extension Eidolon {
             outOfLine: judged?.outOfLine ?? false,
             hangUp: call != nil ? ending : nil,
             ended: call == nil && ending != nil,
-            affinityChange: recorded.change
+            affinityChange: recorded.change,
+            achievements: recorded.rewards
         )
     }
 
@@ -782,12 +785,31 @@ extension Eidolon {
         var record = PromptRecord()
         var pending: [String] = []
         var answering: [StoredMessage] = []
+        var unansweredGift = false
+        let catalog = try? giftCatalog()
+        let characterID: String? = try userQueue.read { db in
+            try String.fetchOne(
+                db,
+                sql: "SELECT character_id FROM conversations WHERE id = ?",
+                arguments: [conversationID]
+            )
+        }
         for line in try conversationRecord(conversationID: conversationID) {
             switch line {
             case let .event(event):
                 // Upstream `_narration_line` ends every line with a newline and joins
                 // them with nothing between: two events in a row read as two lines.
-                if let said = ConversationEventKind(stored: event.kind).narration {
+                if ConversationEventKind(stored: event.kind) == .gift {
+                    if let said = giftNarration(
+                        event,
+                        catalog: catalog,
+                        characterID: characterID,
+                        timeZone: timeZone
+                    ) {
+                        pending.append(said + "\n")
+                    }
+                    unansweredGift = true
+                } else if let said = ConversationEventKind(stored: event.kind).narration {
                     pending.append(said + "\n")
                 }
             case let .message(message):
@@ -803,8 +825,10 @@ extension Eidolon {
                     if let said = Self.reachOutNarration(message, in: timeZone) {
                         pending.append(said + "\n")
                     }
+                    unansweredGift = false
                     answering.append(stored)
                 } else {
+                    if message.role == "character" { unansweredGift = false }
                     answering = []
                     if message.role == "user", !pending.isEmpty {
                         record.narration[message.id] = pending.joined()
@@ -816,8 +840,35 @@ extension Eidolon {
         }
         record.chatHistory = Self.chatHistory(record.allMessages, turns: turns)
         record.judgingHistory = Self.latestTurns(record.allMessages, turns: turns) + answering
+        if unansweredGift {
+            pending.append("（先回应制作人说的话，再在合适的时候用你自己的方式回应收到的礼物，一次就够。）\n")
+        }
         record.trailingNarration = pending.joined()
         return record
+    }
+
+    /// What she is told of a gift: its name, that she likes it, and that it warmed her in
+    /// her days, read again now so a warm gift follows her cycle then (upstream
+    /// `engine._narration`).
+    func giftNarration(
+        _ event: ConversationEventRecord,
+        catalog: GiftCatalog?,
+        characterID: String?,
+        timeZone: TimeZone
+    ) -> String? {
+        guard ConversationEventKind(stored: event.kind) == .gift else { return nil }
+        guard let gift = event.giftID.flatMap({ catalog?.gift(id: $0) }) else {
+            return "（制作人送给你一份礼物。）"
+        }
+        let liked = event.liked == true ? "这是你喜欢的东西。" : ""
+        var warmed = ""
+        if gift.warm, let characterID, let at = Self.parseTimestamp(event.createdAt) {
+            let day = CalendarPage.today(now: at, timeZone: timeZone)
+            if (try? herCycle(characterID: characterID, on: day)) != nil {
+                warmed = "这几天你不太舒服，收到暖的东西，你心里很暖。"
+            }
+        }
+        return "（制作人送给你一份\(gift.name)。\(liked)\(warmed)）"
     }
 
     /// What she is told of her own reach-out: when, then her words as her replies are
@@ -963,6 +1014,7 @@ extension Eidolon {
         var userMessageID: String
         /// Which turn of the conversation this was, counting from 1.
         var turn: Int
+        var rewards: [AchievementReward]
     }
 
     private func recordTurn(
@@ -1091,12 +1143,21 @@ extension Eidolon {
                     arguments: [conversationID, endedStamp]
                 )
             }
+            let rewards = try AchievementStore.keep(
+                db,
+                characterID: characterID,
+                now: now,
+                today: day,
+                turns: 1,
+                tier: after.tier
+            )
             return RecordedTurn(
                 conversationID: conversationID,
                 affinity: after,
                 change: change,
                 userMessageID: userID,
-                turn: turn
+                turn: turn,
+                rewards: rewards
             )
         }
     }

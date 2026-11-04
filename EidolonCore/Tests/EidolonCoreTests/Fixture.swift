@@ -49,6 +49,10 @@ enum Fixture {
         var includeReadings = false
         /// Writes `characters/jobs.json` with a few jobs.
         var includeJobs = false
+        /// Writes the gift catalog, each character's liked gifts, and the art files.
+        var includeGifts = false
+        /// Leaves one gift's illustration out of a bundle that has gifts.
+        var missingGiftArt = false
         /// Ages the fixture characters carry; nil leaves the field out, as an older
         /// bundle does. Adult mode is only for 18+.
         var manoAge: Int? = nil
@@ -87,6 +91,9 @@ enum Fixture {
             "birthday": .string("04-25"),
         ]
         if let age = options.manoAge { mano["age"] = .int(age) }
+        if options.includeGifts {
+            mano["liked_gifts"] = .array([.string("potted-plant"), .string("black-tea")])
+        }
         if options.facts {
             mano["facts"] = .string("characters/facts/mano.md")
         }
@@ -108,6 +115,9 @@ enum Fixture {
             "birthday": .string("03-04"),
         ]
         if let age = options.hioriAge { hiori["age"] = .int(age) }
+        if options.includeGifts {
+            hiori["liked_gifts"] = .array([.string("book"), .string("music-cd")])
+        }
         let characters: [JSONValue] = [
             .object(mano),
             .object(hiori),
@@ -198,6 +208,9 @@ enum Fixture {
             ]
             try JSONEncoder().encode(JSONValue.object(["jobs": .array(jobs)]))
                 .write(to: charactersDirectory.appendingPathComponent("jobs.json"))
+        }
+        if options.includeGifts {
+            try writeGifts(in: staging, options: options)
         }
         try "# 真乃\n".write(
             to: sheetsDirectory.appendingPathComponent("mano.md"),
@@ -319,6 +332,55 @@ enum Fixture {
             "episode_passages": 3,
         ]
         return counts
+    }
+
+    /// The fixture's catalog covers every category and rarity, keeps a retired gift, and
+    /// has two gifts in one rarity so a scripted draw can pick one.
+    static let gifts: [JSONValue] = [
+        gift("cake", "蛋糕", .food, .common),
+        gift("black-tea", "红茶", .drink, .common),
+        gift("pudding", "布丁", .food, .common, retired: true),
+        gift("potted-plant", "盆栽", .flower, .uncommon),
+        gift("book", "书", .trinket, .uncommon),
+        gift("music-cd", "音乐 CD", .trinket, .uncommon),
+        gift("preserved-flower", "永生花", .flower, .rare),
+        gift("plush", "毛绒玩偶", .trinket, .rare),
+    ]
+
+    static func gift(
+        _ id: String,
+        _ name: String,
+        _ category: GiftCategory,
+        _ rarity: GiftRarity,
+        retired: Bool = false,
+        warm: Bool = false
+    ) -> JSONValue {
+        var object: [String: JSONValue] = [
+            "id": .string(id),
+            "name": .string(name),
+            "category": .string(category.rawValue),
+            "rarity": .string(rarity.rawValue),
+        ]
+        if retired { object["retired"] = .bool(true) }
+        if warm { object["warm"] = .bool(true) }
+        return .object(object)
+    }
+
+    private static func writeGifts(in staging: URL, options: Options) throws {
+        let characters = staging.appendingPathComponent("characters", isDirectory: true)
+        let art = staging.appendingPathComponent("gifts", isDirectory: true)
+        try FileManager.default.createDirectory(at: art, withIntermediateDirectories: true)
+        try JSONEncoder().encode(JSONValue.object(["gifts": .array(gifts)]))
+            .write(to: characters.appendingPathComponent("gifts.json"))
+        // The installer only checks that the files are present; a real bundle carries the
+        // exporter's WebP illustrations.
+        let placeholder = Data("RIFF\u{0004}\u{0000}\u{0000}WEBP".utf8)
+        for gift in gifts {
+            guard let id = gift.objectValue?["id"]?.stringValue else { continue }
+            if options.missingGiftArt, id == "preserved-flower" { continue }
+            try placeholder.write(to: art.appendingPathComponent("\(id).webp"))
+        }
+        try placeholder.write(to: art.appendingPathComponent("reset-card.webp"))
     }
 
     /// A stand tree shaped like the exporter writes it: two outfits with three files

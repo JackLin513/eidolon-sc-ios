@@ -21,13 +21,16 @@ public enum BarEvent: Sendable, Hashable {
     case failed(String)
 }
 
-/// What a visit done was rewarded with: whether her affinity rose. The app has no gifts or
-/// draws, so there is no draw chance to give (ADR-0021, upstream `Rewarded`'s other half).
+/// What a visit done was rewarded with: whether her affinity rose, and whether a draw
+/// chance was given (ADR-0021, ADR-0028, upstream `Rewarded`).
 public struct Reward: Sendable, Hashable {
     public var affinityUp: Bool
+    /// The first visit done of the Beijing day also gave a draw chance (spec #68).
+    public var drawGiven: Bool
 
-    public init(affinityUp: Bool) {
+    public init(affinityUp: Bool, drawGiven: Bool = false) {
         self.affinityUp = affinityUp
+        self.drawGiven = drawGiven
     }
 }
 

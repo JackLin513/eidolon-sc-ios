@@ -170,8 +170,9 @@ enum BarRecords {
     /// first done of the day it came in on: what it was rewarded with, or nil (upstream
     /// `Bar._write_down`).
     ///
-    /// Upstream gives a draw and keeps it within the day's most; the app has no gifts or draws
-    /// (ADR-0021), so the reward is her affinity alone and the row says it was rewarded.
+    /// Upstream gives a draw and keeps it within the day's most; the app gives the same,
+    /// counted by the Beijing day and held to the draw cap (ADR-0021, ADR-0028), along
+    /// with her affinity.
     static func writeDown(
         _ visit: BarVisit, leftAt now: Date, day: String, rewarding: Bool,
         catalog: DrinkCatalog, _ db: Database
@@ -181,9 +182,15 @@ enum BarRecords {
             let step = AffinityRules.visitDone(try visit.servings.map { serving in
                 (serving.tier, try BarRules.hasBest(serving.order, visit.character, catalog))
             })
-            reward = Reward(affinityUp: try raiseAffinity(
+            let affinityUp = try raiseAffinity(
                 visit.character.id, by: step, at: now, db
-            ))
+            )
+            let drawGiven = try GiftStore.creditBarDraw(
+                db,
+                key: "bar:\(GiftRules.day(now))",
+                at: now
+            )
+            reward = Reward(affinityUp: affinityUp, drawGiven: drawGiven)
         }
         try insert(
             db, characterID: visit.character.id, enteredAt: visit.enteredAt, leftAt: now,

@@ -402,6 +402,8 @@ public actor CallSession {
     private var connectedNow = false
     /// Whether it has ever been up: the call counts as connected from the first time.
     private var everConnected = false
+    /// When this call first connected, for the call-time achievement (spec #71).
+    private var connectedAt: Date?
     private var tasks: [Task<Void, Never>] = []
     /// The recognizer's current connection loop; it is replaced on foreground, since a
     /// socket can die while the app is away without reporting it.
@@ -817,6 +819,7 @@ public actor CallSession {
         connectedNow = true
         if !everConnected {
             everConnected = true
+            connectedAt = setup.now()
             connectTimeoutTask?.cancel()
             connectTimeoutTask = nil
             if setup.limits.duration != nil {
@@ -1477,10 +1480,14 @@ public actor CallSession {
         guard let conversationID = (try? eidolon.currentConversationIDNow(characterID)) ?? nil else {
             return
         }
+        let endedAt = setup.now()
+        let duration = connectedAt.map { max(0, endedAt.timeIntervalSince($0)) } ?? 0
         try? eidolon.recordCallEnd(
             conversationID: conversationID,
             characterID: characterID,
-            at: setup.now()
+            connectedAt: connectedAt,
+            duration: duration,
+            at: endedAt
         )
     }
 
@@ -1599,16 +1606,34 @@ extension Eidolon {
     nonisolated func recordCallEnd(
         conversationID: String,
         characterID: String,
+        connectedAt: Date? = nil,
+        duration: TimeInterval = 0,
         at moment: Date
     ) throws {
         try userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO call_ends(conversation_id, character_id, ended_at)
-                    VALUES (?, ?, ?)
+                    INSERT INTO call_ends(
+                        conversation_id, character_id, ended_at, connected_at, duration_s
+                    ) VALUES (?, ?, ?, ?, ?)
                     """,
-                arguments: [conversationID, characterID, Self.timestamp(moment)]
+                arguments: [
+                    conversationID,
+                    characterID,
+                    Self.timestamp(moment),
+                    connectedAt.map(Self.timestamp),
+                    duration,
+                ]
             )
+            if duration > 0 {
+                _ = try AchievementStore.keep(
+                    db,
+                    characterID: characterID,
+                    now: moment,
+                    today: GiftRules.day(moment),
+                    callTime: duration
+                )
+            }
         }
     }
 }
