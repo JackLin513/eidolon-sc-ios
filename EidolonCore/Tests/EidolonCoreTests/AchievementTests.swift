@@ -399,6 +399,29 @@ final class AchievementTests: XCTestCase {
         XCTAssertEqual(Array(recipients.map(\.characterID).prefix(2)), ["hiori", "mano"])
     }
 
+    func testThePlayCardsKnowWhichPageHasSomethingNew() async throws {
+        let eidolon = try await installedEidolon()
+        let now = try noon()
+        try await addGift("cake", count: 1, on: eidolon)
+        _ = try await eidolon.giveGift(giftID: "cake", characterID: "mano", now: now)
+
+        let both = try await eidolon.playBadges()
+        XCTAssertTrue(both.achievements)
+        XCTAssertTrue(both.gifts)
+        XCTAssertTrue(both.any)
+
+        try await eidolon.markAchievementsSeen(characterID: nil)
+        let afterAchievements = try await eidolon.playBadges()
+        XCTAssertFalse(afterAchievements.achievements)
+        XCTAssertTrue(afterAchievements.gifts)
+
+        try await eidolon.markGiftRewardsSeen()
+        let afterGifts = try await eidolon.playBadges()
+        XCTAssertFalse(afterGifts.achievements)
+        XCTAssertFalse(afterGifts.gifts)
+        XCTAssertFalse(afterGifts.any)
+    }
+
     func testTheToastKeepsBothRewardsFromOneAction() {
         XCTAssertEqual(
             AchievementReward.toast(for: [

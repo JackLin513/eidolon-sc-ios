@@ -34,6 +34,9 @@ struct MainTabsView: View {
                     .accessibilityIdentifier("achievement.toast")
             }
         }
+        // A conversation is a page of its own: the three first-level tabs stay behind it
+        // (spec #64). A live call is the exception, so the play tab stays within reach.
+        // (The chat page hides the bar itself; see ChatView.)
         .animation(.snappy, value: app.achievementToast)
         .alert(
             "成就补算",

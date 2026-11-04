@@ -38,7 +38,8 @@ struct PlayHubView: View {
                         card(
                             icon: "gift",
                             title: "礼物",
-                            subtitle: "抽奖、背包和送她的礼物"
+                            subtitle: "抽奖、背包和送她的礼物",
+                            showsNew: app.playBadges.gifts
                         ) {
                             app.openGifts()
                         }
@@ -47,7 +48,8 @@ struct PlayHubView: View {
                         card(
                             icon: "trophy",
                             title: "成就",
-                            subtitle: "和她们的进度"
+                            subtitle: "和她们的进度",
+                            showsNew: app.playBadges.achievements
                         ) {
                             app.playPath = NavigationPath()
                             app.playPath.append(PlayRoute.achievements)
@@ -169,6 +171,7 @@ struct PlayHubView: View {
         icon: String,
         title: String,
         subtitle: String,
+        showsNew: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -181,6 +184,14 @@ struct PlayHubView: View {
                             .fill(Color.accentColor.opacity(0.12))
                     )
                     .foregroundStyle(Color.accentColor)
+                    .overlay(alignment: .topTrailing) {
+                        if showsNew {
+                            Circle()
+                                .fill(.red)
+                                .frame(width: 9, height: 9)
+                                .accessibilityLabel("有新内容")
+                        }
+                    }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .font(.headline)
