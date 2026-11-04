@@ -6,7 +6,6 @@ import SwiftUI
 struct ConversationListView: View {
     @Environment(AppModel.self) private var app
     @State private var query = ""
-    @State private var showCalendar = false
 
     /// The conversation tab's stack lives in `AppModel` so another tab can open her chat
     /// (spec #64).
@@ -150,19 +149,6 @@ struct ConversationListView: View {
                         app.selectedTab = .play
                     }
                     #endif
-                }
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            showCalendar = true
-                        } label: {
-                            Image(systemName: "calendar")
-                        }
-                        .accessibilityLabel("日历")
-                    }
-                }
-                .sheet(isPresented: $showCalendar) {
-                    CalendarView()
                 }
                 .overlay {
                     if app.characters.isEmpty {

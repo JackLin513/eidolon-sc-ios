@@ -28,6 +28,7 @@
 		3B581C7316F3F7567E6CF0E1 /* StandThumbnails.swift in Sources */ = {isa = PBXBuildFile; fileRef = F51D53D2BDB3163C8344025C /* StandThumbnails.swift */; };
 		410F91B39B617580D97D62F3 /* hang-up.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 3426738E4DA43CD7060B7095 /* hang-up.mp3 */; };
 		4235DD89FDB9280BFC39D5E1 /* BarCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85A4199D7AAE978829BFEC9 /* BarCanvas.swift */; };
+		4553FBED9DB3008313820C29 /* MomentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A590276F51027472E281D0EB /* MomentsView.swift */; };
 		4712F704044E74983A1AF649 /* CallController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CFD4688849D1738F874DEB1 /* CallController.swift */; };
 		4A89D538AE34E8640D373968 /* AtmosphericTextUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B062B423FB9FC2174A88CBC /* AtmosphericTextUITests.swift */; };
 		4B5D22BE3F2537E0F40BC144 /* ScheduleBoardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E34EF8A94AAE4F85069E98B0 /* ScheduleBoardView.swift */; };
@@ -157,6 +158,7 @@
 		A3A3CDE40EDED61EECF1DBF1 /* BarJukeboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarJukeboxView.swift; sourceTree = "<group>"; };
 		A3D7CC6AFCA2A05909641B10 /* TexturedAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TexturedAudio.swift; sourceTree = "<group>"; };
 		A530040A28709F9772A80A94 /* CallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallView.swift; sourceTree = "<group>"; };
+		A590276F51027472E281D0EB /* MomentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MomentsView.swift; sourceTree = "<group>"; };
 		B1AD0F6ABD451EB0C733277C /* StandWebRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandWebRenderer.swift; sourceTree = "<group>"; };
 		B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationHistoryView.swift; sourceTree = "<group>"; };
 		B3E123E7FAC64C8170D6CDFE /* ScheduleCycleUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleCycleUITests.swift; sourceTree = "<group>"; };
@@ -297,6 +299,7 @@
 				8558628643CC46E4097F4DB9 /* Cycles */,
 				995265C6FFC7B29A269D1355 /* Import */,
 				CFE774A2132F20F0133C7F5E /* Memories */,
+				DFBFDC84855676AFDE28A8E3 /* Moments */,
 				1963BD6A440B8224EF15AAED /* Play */,
 				58AA237FFE5C565A46CEA761 /* Schedule */,
 				8FC025C14471CB5AB9B8E831 /* Settings */,
@@ -475,6 +478,14 @@
 				1C41FC4F60852CC263CFA152 /* EidolonIOSUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		DFBFDC84855676AFDE28A8E3 /* Moments */ = {
+			isa = PBXGroup;
+			children = (
+				A590276F51027472E281D0EB /* MomentsView.swift */,
+			);
+			path = Moments;
 			sourceTree = "<group>";
 		};
 		ED13E42C912E265F1EE4F490 /* Packages */ = {
@@ -679,6 +690,7 @@
 				4F12150EAE57B5502068B36B /* MainTabsView.swift in Sources */,
 				9221A0F68F374BAAA5282CCE /* MemoryListView.swift in Sources */,
 				2CF24EECC30E051467FA4D35 /* MicrophoneCapture.swift in Sources */,
+				4553FBED9DB3008313820C29 /* MomentsView.swift in Sources */,
 				F0779B69941B95753CFA7C62 /* ObjCExceptionCatcher.m in Sources */,
 				D7B2DC33734343A4F40D315A /* OutfitPickerView.swift in Sources */,
 				DAA3C813C467A0A802E9C937 /* PlayHubView.swift in Sources */,

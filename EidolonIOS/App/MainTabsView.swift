@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The app's three first-level pages (spec #64). Each tab keeps its own navigation stack,
+/// The app's four first-level pages (spec #64, #94). Each tab keeps its own navigation stack,
 /// so switching away and back returns to the page the producer left. The call layer stays
 /// above all of them in the root view; the folded bar is drawn by each page.
 struct MainTabsView: View {
@@ -12,6 +12,9 @@ struct MainTabsView: View {
         TabView(selection: selection) {
             Tab("对话", systemImage: "bubble.left.and.bubble.right", value: MainTab.conversation) {
                 ConversationListView()
+            }
+            Tab("朋友圈", systemImage: "person.2", value: MainTab.moments) {
+                MomentsView()
             }
             Tab("玩法", systemImage: "sparkles", value: MainTab.play) {
                 PlayHubView()
@@ -34,7 +37,7 @@ struct MainTabsView: View {
                     .accessibilityIdentifier("achievement.toast")
             }
         }
-        // A conversation is a page of its own: the three first-level tabs stay behind it
+        // A conversation is a page of its own: the four first-level tabs stay behind it
         // (spec #64). A live call is the exception, so the play tab stays within reach.
         // (The chat page hides the bar itself; see ChatView.)
         .animation(.snappy, value: app.achievementToast)

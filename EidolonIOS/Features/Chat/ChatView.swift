@@ -20,10 +20,8 @@ struct ChatView: View {
     @State private var outfitsChecked = false
     @State private var showsOutfits = false
     @State private var showsAffinity = false
-    @State private var showsSchedule = false
     @State private var showsAchievements = false
     @State private var showsDebug = false
-    @State private var scheduleBook = ScheduleDraftBook()
 
     var body: some View {
         Group {
@@ -99,7 +97,7 @@ struct ChatView: View {
                     }
                     .accessibilityIdentifier("chat.gifts")
                     Button("她的日程") {
-                        showsSchedule = true
+                        app.openHerSchedule(characterID: character.id)
                     }
                     .disabled(!app.hasJobList)
                     Button("成就") {
@@ -160,11 +158,6 @@ struct ChatView: View {
                 HerAchievementsView(characterID: character.id, characterName: character.name)
             }
             .environment(app)
-        }
-        .sheet(isPresented: $showsSchedule) {
-            ScheduleBoardView(
-                initialCharacterID: character.id, book: $scheduleBook
-            )
         }
         .fullScreenCover(isPresented: $showsOutfits) {
             if let stand = outfitsStand {

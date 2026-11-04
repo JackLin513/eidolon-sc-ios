@@ -58,10 +58,10 @@ final class ProducerProfileUITests: XCTestCase {
         let saved = app.alerts["已保存"]
         XCTAssertTrue(saved.waitForExistence(timeout: 10), "settings did not save")
         saved.buttons["好"].tap()
-        app.tabBars.buttons["对话"].tap()
+        app.tabBars.buttons["玩法"].tap()
 
-        let calendar = app.buttons["日历"]
-        XCTAssertTrue(calendar.waitForExistence(timeout: 10), "no calendar button")
+        let calendar = app.buttons["play.calendar"]
+        XCTAssertTrue(calendar.waitForExistence(timeout: 10), "no calendar card")
         calendar.tap()
 
         XCTAssertTrue(
@@ -78,7 +78,7 @@ final class ProducerProfileUITests: XCTestCase {
         )
 
         // Turning it off removes both the hint and the event without a restart.
-        app.buttons["完成"].tap()
+        app.navigationBars.buttons["玩法"].tap()
         let settingsAgain = app.tabBars.buttons["设置"]
         XCTAssertTrue(settingsAgain.waitForExistence(timeout: 10))
         settingsAgain.tap()
@@ -92,9 +92,9 @@ final class ProducerProfileUITests: XCTestCase {
         let savedAgain = app.alerts["已保存"]
         XCTAssertTrue(savedAgain.waitForExistence(timeout: 10), "turning the birthday off did not save")
         savedAgain.buttons["好"].tap()
-        app.tabBars.buttons["对话"].tap()
+        app.tabBars.buttons["玩法"].tap()
 
-        let calendarAgain = app.buttons["日历"]
+        let calendarAgain = app.buttons["play.calendar"]
         XCTAssertTrue(calendarAgain.waitForExistence(timeout: 10))
         calendarAgain.tap()
         XCTAssertFalse(

@@ -5,7 +5,6 @@ import SwiftUI
 /// Everything here comes from the producer's records; her true cycle is never shown.
 struct CyclesView: View {
     @Environment(AppModel.self) private var app
-    @Environment(\.dismiss) private var dismiss
 
     @State private var characterID: String?
     @State private var month: CalendarPage.Month?
@@ -47,9 +46,6 @@ struct CyclesView: View {
         .navigationTitle("周期")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                Button("完成") { dismiss() }
-            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     let today = CalendarPage.today(now: Date(), timeZone: timeZone)
