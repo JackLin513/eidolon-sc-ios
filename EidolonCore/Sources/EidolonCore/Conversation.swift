@@ -349,6 +349,19 @@ extension Eidolon {
     /// Deletes a past conversation for good. What she remembered from it stays, as does
     /// the affinity it moved (GLOSSARY.md「历史对话」).
     public func deleteConversation(id: String) throws {
+        // The pictures she sent here go with the conversation; the rows cascade, the
+        // files do not (ticket #102).
+        let files = try userQueue.read { db in
+            try String.fetchAll(
+                db,
+                sql: """
+                    SELECT p.file FROM photos p
+                    JOIN messages m ON m.id = p.message_id
+                    WHERE m.conversation_id = ? AND p.file IS NOT NULL
+                    """,
+                arguments: [id]
+            )
+        }
         try userQueue.write { db in
             guard let characterID = try String.fetchOne(
                 db,
@@ -375,6 +388,9 @@ extension Eidolon {
             try db.execute(sql: "DELETE FROM conversation_events WHERE conversation_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM messages WHERE conversation_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM conversations WHERE id = ?", arguments: [id])
+        }
+        for file in files {
+            try? FileManager.default.removeItem(at: photoFileURL(file))
         }
     }
 

@@ -57,6 +57,7 @@ public actor Eidolon {
         userQueue = try DatabaseQueue(path: location.userDatabase.path)
         try UserSchema.migrate(userQueue)
         try Self.failPendingPhotos(userQueue)
+        try Self.removeOrphanPhotoFiles(userQueue, in: location.userDirectory)
     }
 
     // MARK: - Content bundle

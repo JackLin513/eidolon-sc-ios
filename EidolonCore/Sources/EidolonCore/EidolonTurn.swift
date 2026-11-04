@@ -930,7 +930,8 @@ extension Eidolon {
                     segments: message.segments,
                     blocks: message.blocks,
                     createdAt: message.createdAt,
-                    photoTag: message.photoTag
+                    photoTag: message.photoTag,
+                    photoFailed: message.photo?.status == .failed
                 )
                 if message.isReachOut {
                     if let said = Self.reachOutNarration(message, in: timeZone) {
@@ -1029,7 +1030,8 @@ extension Eidolon {
                 segments: message.segments,
                 blocks: message.blocks,
                 createdAt: message.createdAt,
-                photoTag: message.photoTag
+                photoTag: message.photoTag,
+                photoFailed: message.photo?.status == .failed
             )
         }
     }
@@ -1402,6 +1404,9 @@ struct StoredMessage: Sendable {
     var blocks: [ReplyBlock]?
     var createdAt: String
     var photoTag: String?
+    /// Whether the photo she wrote about failed and never reached the producer; the
+    /// history says so, so she knows it did not arrive (ticket #102).
+    var photoFailed = false
 
     var replyBlocks: [ReplyBlock] {
         blocks ?? segments.map(ReplyBlock.line)
@@ -1414,7 +1419,8 @@ struct StoredMessage: Sendable {
         segments: [ReplySegment],
         blocks: [ReplyBlock]? = nil,
         createdAt: String = "",
-        photoTag: String? = nil
+        photoTag: String? = nil,
+        photoFailed: Bool = false
     ) {
         self.id = id
         self.role = role
@@ -1423,6 +1429,7 @@ struct StoredMessage: Sendable {
         self.blocks = blocks
         self.createdAt = createdAt
         self.photoTag = photoTag
+        self.photoFailed = photoFailed
     }
 
     init(row: Row) {
@@ -1550,7 +1557,11 @@ struct PromptAssembler {
             } else {
                 messages.append(PromptMessage(
                     .assistant,
-                    Self.formatReply(message.replyBlocks, photoTag: message.photoTag)
+                    Self.formatReply(
+                        message.replyBlocks,
+                        photoTag: message.photoTag,
+                        photoFailed: message.photoFailed
+                    )
                 ))
             }
         }
@@ -1565,8 +1576,13 @@ struct PromptAssembler {
         formatReply(segments.map(ReplyBlock.line))
     }
 
-    static func formatReply(_ blocks: [ReplyBlock], photoTag: String? = nil) -> String {
-        let tag = photoTag.map { "<photo>\n\($0)\n</photo>" } ?? ""
+    static func formatReply(
+        _ blocks: [ReplyBlock],
+        photoTag: String? = nil,
+        photoFailed: Bool = false
+    ) -> String {
+        let status = photoFailed ? " status=\"failed\"" : ""
+        let tag = photoTag.map { "<photo\(status)>\n\($0)\n</photo>" } ?? ""
         return tag + blocks.map { block in
             switch block {
             case let .line(line):

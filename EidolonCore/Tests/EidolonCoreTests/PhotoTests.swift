@@ -294,9 +294,10 @@ final class PhotoTurnTests: XCTestCase {
         judge: PhotoJudge?,
         photo: PhotoTurnContext?,
         provider: RecordingChatProvider
-    ) async throws -> (ids: [String], record: TurnRecord?) {
+    ) async throws -> (ids: [String], record: TurnRecord?, usedUp: [Date]) {
         var ids: [String] = []
         var record: TurnRecord?
+        var usedUp: [Date] = []
         for try await event in eidolon.sendTurn(
             characterID: "mano",
             text: "发张照片看看",
@@ -310,11 +311,13 @@ final class PhotoTurnTests: XCTestCase {
                 XCTAssertEqual(status, .pending)
             case let .finished(finished):
                 record = finished
-            case .delta, .speechDelta, .sceneDelta, .photosUsedUp:
+            case let .photosUsedUp(retryAt):
+                usedUp.append(retryAt)
+            case .delta, .speechDelta, .sceneDelta:
                 break
             }
         }
-        return (ids, record)
+        return (ids, record, usedUp)
     }
 
     /// The image lands in its own task; wait for it the way the app's polling does.
@@ -338,7 +341,7 @@ final class PhotoTurnTests: XCTestCase {
             settings: ImageServiceSettings(apiKey: "test-key")
         )
 
-        let (ids, record) = try await send(
+        let (ids, record, _) = try await send(
             eidolon, chunks: provider.chunks, judge: judge, photo: context, provider: provider
         )
         XCTAssertEqual(ids.count, 1)
@@ -414,7 +417,7 @@ final class PhotoTurnTests: XCTestCase {
         let judge = PhotoJudge(wants: true)
         let provider = RecordingChatProvider(chunks: ["<ja>ごめん、写真は送れないの。</ja><zh>抱歉，发不了照片。</zh>"])
 
-        let (ids, record) = try await send(
+        let (ids, record, _) = try await send(
             eidolon, chunks: provider.chunks, judge: judge, photo: nil, provider: provider
         )
         XCTAssertTrue(ids.isEmpty)
@@ -437,7 +440,7 @@ final class PhotoTurnTests: XCTestCase {
             settings: ImageServiceSettings(apiKey: "test-key")
         )
 
-        let (ids, record) = try await send(
+        let (ids, record, _) = try await send(
             eidolon, chunks: provider.chunks, judge: judge, photo: context, provider: provider
         )
         XCTAssertTrue(ids.isEmpty)
@@ -461,11 +464,206 @@ final class PhotoTurnTests: XCTestCase {
         // that matters is `canSendPhoto`, which the fixture only sets on characters with
         // both fields. Nothing to assert about eligibility here beyond the tag never
         // being started without a prompt.
-        let (ids, record) = try await send(
+        let (ids, record, _) = try await send(
             eidolon, chunks: provider.chunks, judge: judge, photo: context, provider: provider
         )
         XCTAssertTrue(ids.isEmpty)
         XCTAssertNil(record?.photo)
+    }
+
+    // MARK: - Failures, allowance and lifecycle (ticket #102)
+
+    private func context(
+        _ generator: FakePhotoGenerator,
+        hourlyLimit: Int = 5
+    ) -> PhotoTurnContext {
+        PhotoTurnContext(
+            generator: generator,
+            settings: ImageServiceSettings(hourlyLimit: hourlyLimit, apiKey: "test-key")
+        )
+    }
+
+    private func lastPhoto(_ eidolon: Eidolon) async throws -> PhotoReference? {
+        let snapshot = try await eidolon.currentConversation(characterID: "mano")
+        return snapshot?.messages.last?.photo
+    }
+
+    func testEachFailureKeepsItsReason() async throws {
+        let cases: [(ImageGenerationError, PhotoFailureReason)] = [
+            (.timeout, .timeout),
+            (.serviceError("broke"), .serviceError),
+            (.badImage("broke"), .badImage),
+        ]
+        for (failure, reason) in cases {
+            let root = FileManager.default.temporaryDirectory
+                .appendingPathComponent("EidolonPhotoFailure-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: root) }
+            let eidolon = try Eidolon(location: .init(root: root.appendingPathComponent("app")))
+            try await eidolon.install(bundleAt: try Fixture.makeBundle(in: root))
+            let generator = FakePhotoGenerator(failure: failure)
+            let provider = RecordingChatProvider(chunks: [Self.tagChunk + "<ja>はい。</ja><zh>好。</zh>"])
+            _ = try await send(
+                eidolon,
+                chunks: provider.chunks,
+                judge: PhotoJudge(wants: true),
+                photo: context(generator),
+                provider: provider
+            )
+            let photo = try await lastPhoto(eidolon)
+            XCTAssertEqual(photo?.status, .failed)
+            XCTAssertEqual(photo?.reason, reason, "\(failure)")
+            let image = try await eidolon.photoImage(id: try XCTUnwrap(photo?.id))
+            XCTAssertNil(image)
+        }
+    }
+
+    func testTheHourlyAllowanceStopsNewPicturesButStillAsksTheJudge() async throws {
+        let eidolon = try await installedEidolon()
+        let generator = FakePhotoGenerator()
+        let judge = PhotoJudge(wants: true)
+        let first = RecordingChatProvider(chunks: [Self.tagChunk + "<ja>はい。</ja><zh>好。</zh>"])
+        let context = context(generator, hourlyLimit: 1)
+        _ = try await send(
+            eidolon, chunks: first.chunks, judge: judge, photo: context, provider: first
+        )
+
+        let second = RecordingChatProvider(chunks: ["<ja>ごめんね。</ja><zh>抱歉。</zh>"])
+        let (ids, record, usedUp) = try await send(
+            eidolon, chunks: second.chunks, judge: judge, photo: context, provider: second
+        )
+        XCTAssertTrue(ids.isEmpty)
+        XCTAssertNil(record?.photo)
+        XCTAssertEqual(usedUp.count, 1)
+        let made = await generator.requests
+        XCTAssertEqual(made.count, 1)
+        // The judge is still asked: she can decline in her own words.
+        let asked = await judge.askedPhoto
+        XCTAssertEqual(asked, [true, true])
+        // She is told to turn the request down without writing a tag.
+        let prompt = try XCTUnwrap(second.prompts.first)
+        let nowSection = try XCTUnwrap(prompt.last {
+            $0.role == .system && $0.content.contains("这会儿发不了")
+        })
+        XCTAssertFalse(nowSection.content.contains("标签一行一栏"))
+    }
+
+    func testAFailedPictureDoesNotUseUpTheHour() async throws {
+        let eidolon = try await installedEidolon()
+        let generator = FakePhotoGenerator(failure: .timeout)
+        let judge = PhotoJudge(wants: true)
+        let first = RecordingChatProvider(chunks: [Self.tagChunk + "<ja>はい。</ja><zh>好。</zh>"])
+        let context = context(generator, hourlyLimit: 1)
+        _ = try await send(
+            eidolon, chunks: first.chunks, judge: judge, photo: context, provider: first
+        )
+
+        let second = RecordingChatProvider(chunks: [Self.tagChunk + "<ja>もう一度。</ja><zh>再来。</zh>"])
+        let (ids, _, usedUp) = try await send(
+            eidolon, chunks: second.chunks, judge: judge, photo: context, provider: second
+        )
+        XCTAssertEqual(ids.count, 1)
+        XCTAssertTrue(usedUp.isEmpty)
+        let made = await generator.requests
+        XCTAssertEqual(made.count, 2)
+    }
+
+    func testZeroMeansNoHourlyLimit() async throws {
+        let eidolon = try await installedEidolon()
+        let generator = FakePhotoGenerator()
+        let judge = PhotoJudge(wants: true)
+        let context = context(generator, hourlyLimit: 0)
+        for _ in 0..<2 {
+            let provider = RecordingChatProvider(chunks: [Self.tagChunk + "<ja>はい。</ja><zh>好。</zh>"])
+            let (ids, _, usedUp) = try await send(
+                eidolon, chunks: provider.chunks, judge: judge, photo: context, provider: provider
+            )
+            XCTAssertEqual(ids.count, 1)
+            XCTAssertTrue(usedUp.isEmpty)
+        }
+        let made = await generator.requests
+        XCTAssertEqual(made.count, 2)
+    }
+
+    func testAPreviousProcessesPendingPictureBecomesTimedOut() async throws {
+        let location = Eidolon.Location(root: root.appendingPathComponent("app"))
+        let first = try Eidolon(location: location)
+        try await first.install(bundleAt: try Fixture.makeBundle(in: root))
+        try await first.userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO photos(id, tag, status, width, height, started_at)
+                    VALUES ('stuck', 'shot: selfie', 'pending', 832, 1216, ?)
+                    """,
+                arguments: [Eidolon.timestamp(Date())]
+            )
+        }
+        let second = try Eidolon(location: location)
+        let found = try await second.photo(id: "stuck")
+        let stuck = try XCTUnwrap(found)
+        XCTAssertEqual(stuck.status, .failed)
+        XCTAssertEqual(stuck.reason, .timeout)
+    }
+
+    func testDeletingAConversationDeletesItsPictureFiles() async throws {
+        let eidolon = try await installedEidolon()
+        let generator = FakePhotoGenerator(data: Data("JPEG".utf8))
+        let provider = RecordingChatProvider(chunks: [Self.tagChunk + "<ja>はい。</ja><zh>好。</zh>"])
+        let (ids, _, _) = try await send(
+            eidolon,
+            chunks: provider.chunks,
+            judge: PhotoJudge(wants: true),
+            photo: context(generator),
+            provider: provider
+        )
+        let id = try XCTUnwrap(ids.first)
+        _ = try await readyImage(eidolon, id: id)
+        let current = try await eidolon.currentConversation(characterID: "mano")
+        let conversation = try XCTUnwrap(current)
+        try await eidolon.beginNewConversation(characterID: "mano")
+        let beforeDelete = try await eidolon.photoImage(id: id)
+        XCTAssertNotNil(beforeDelete)
+        try await eidolon.deleteConversation(id: conversation.id)
+        let afterDelete = try await eidolon.photoImage(id: id)
+        XCTAssertNil(afterDelete)
+        let row = try await eidolon.photo(id: id)
+        XCTAssertNil(row)
+    }
+
+    func testPictureFilesNobodyPointsAtAreCleanedUpOnStartup() async throws {
+        let location = Eidolon.Location(root: root.appendingPathComponent("app"))
+        var eidolon: Eidolon? = try Eidolon(location: location)
+        try await eidolon?.install(bundleAt: try Fixture.makeBundle(in: root))
+        let orphan = location.userDirectory
+            .appendingPathComponent("images/photos/orphan.jpg")
+        try FileManager.default.createDirectory(
+            at: orphan.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("JPEG".utf8).write(to: orphan)
+        eidolon = nil
+        _ = try Eidolon(location: location)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: orphan.path))
+    }
+
+    func testAFailedPictureIsStillInHerHistoryAsFailed() async throws {
+        let eidolon = try await installedEidolon()
+        let generator = FakePhotoGenerator(failure: .serviceError("broke"))
+        let judge = PhotoJudge(wants: true)
+        let first = RecordingChatProvider(chunks: [Self.tagChunk + "<ja>はい。</ja><zh>好。</zh>"])
+        _ = try await send(
+            eidolon, chunks: first.chunks, judge: judge, photo: context(generator), provider: first
+        )
+        let second = RecordingChatProvider(chunks: ["<ja>どうぞ。</ja><zh>请。</zh>"])
+        _ = try await eidolon.sendTurn(
+            characterID: "mano",
+            text: "谢谢",
+            provider: second,
+            judge: judge
+        ).collect()
+        let prompt = try XCTUnwrap(second.prompts.first)
+        XCTAssertTrue(prompt.contains { $0.content.contains("<photo status=\"failed\">") })
+        XCTAssertTrue(prompt.contains { $0.content.contains("outfit: casual") })
     }
 }
 
