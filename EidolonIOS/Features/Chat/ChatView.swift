@@ -546,6 +546,7 @@ struct ChatView: View {
                         photo: message.photo,
                         conversationID: store?.activeConversationID,
                         faceToFace: store?.faceToFace ?? false,
+                        messages: store?.messages ?? [],
                         onPhotoMade: { Task { await store?.load() } }
                     )
                     if row.last {
@@ -853,6 +854,8 @@ struct ChatView: View {
         /// Where the button's picture goes; nil while the reply is still being written.
         var conversationID: String? = nil
         var faceToFace = false
+        /// What the tag draft reads.
+        var messages: [ChatMessageRecord] = []
         /// Reloads the page after the debug button makes a picture.
         var onPhotoMade: (() -> Void)? = nil
 
@@ -891,6 +894,7 @@ struct ChatView: View {
                 if let line, let conversationID {
                     DebugPhotoSheet(
                         character: character,
+                        messages: messages,
                         messageID: line,
                         conversationID: conversationID,
                         faceToFace: faceToFace,
@@ -1203,6 +1207,7 @@ struct ChatView: View {
 /// for this one recorded reply (spec #62). It is not part of a normal turn.
 private struct DebugPhotoSheet: View {
     let character: CharacterConfig
+    let messages: [ChatMessageRecord]
     let messageID: String
     let conversationID: String
     let faceToFace: Bool
@@ -1213,10 +1218,13 @@ private struct DebugPhotoSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var tag: String
     @State private var busy = false
+    @State private var drafting = false
     @State private var errorMessage: String?
+    @State private var draftError: String?
 
     init(
         character: CharacterConfig,
+        messages: [ChatMessageRecord],
         messageID: String,
         conversationID: String,
         faceToFace: Bool,
@@ -1224,6 +1232,7 @@ private struct DebugPhotoSheet: View {
         onMade: @escaping () -> Void
     ) {
         self.character = character
+        self.messages = messages
         self.messageID = messageID
         self.conversationID = conversationID
         self.faceToFace = faceToFace
@@ -1253,6 +1262,26 @@ private struct DebugPhotoSheet: View {
                 } footer: {
                     Text("标签会照内容包的黑名单清洗；成人模式只在角色明确 18 岁以上时生效。")
                 }
+                Section {
+                    Button {
+                        Task { await draft() }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "wand.and.stars")
+                            Text(drafting ? "正在按对话起草…" : "按对话重新起草")
+                            if drafting { Spacer(); ProgressView() }
+                        }
+                    }
+                    .disabled(busy || drafting)
+                    .accessibilityIdentifier("debug.photo.draft")
+                    if let draftError {
+                        Text(draftError)
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                    }
+                } footer: {
+                    Text("用对话模型看一眼最近的对话，只让它写标签；写不合格式时会保留原样，可以手改。")
+                }
                 if let errorMessage {
                     Text(errorMessage)
                         .font(.footnote)
@@ -1280,6 +1309,33 @@ private struct DebugPhotoSheet: View {
                     .accessibilityIdentifier("debug.photo.make")
                 }
             }
+            .task { await draft() }
+        }
+    }
+
+    /// The same chat model a turn uses, asked only for a tag. A draft that does not parse
+    /// leaves the editor as it was, so the producer can fix it by hand.
+    private func draft() async {
+        guard !drafting, !busy else { return }
+        guard let provider = app.chatProvider else {
+            draftError = "先在设置里配置对话模型"
+            return
+        }
+        drafting = true
+        draftError = nil
+        defer { drafting = false }
+        do {
+            let draft = try await app.core.draftPhotoTag(
+                characterID: character.id,
+                conversationID: conversationID,
+                messages: messages,
+                faceToFace: faceToFace,
+                adult: adult,
+                provider: provider
+            )
+            tag = draft.tag.raw
+        } catch {
+            draftError = error.localizedDescription
         }
     }
 
