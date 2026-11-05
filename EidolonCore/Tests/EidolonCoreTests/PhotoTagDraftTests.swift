@@ -44,6 +44,9 @@ final class PhotoTagDraftTests: XCTestCase {
         XCTAssertEqual(draft.tag.framing, .cowboyShot)
         XCTAssertEqual(draft.tag.rating, .explicit)
         XCTAssertEqual(draft.tag.action, ["riding", "looking at viewer"])
+        let sent = try XCTUnwrap(provider.prompts.first)
+        XCTAssertTrue(sent.contains { $0.content.contains("只输出一个 <photo>") })
+        XCTAssertTrue(sent.contains { $0.content.contains("每栏尽量写 2–4 个") })
         let calls = try await eidolon.serviceCalls()
         XCTAssertEqual(calls.filter { $0.service == .chat }.count, 1)
     }
@@ -114,6 +117,19 @@ final class PhotoTagDraftTests: XCTestCase {
         XCTAssertEqual(tag.shot, .other)
         XCTAssertEqual(tag.framing, .fullBody)
         XCTAssertEqual(tag.place, ["office", "on couch"])
+        XCTAssertEqual(tag.action, ["riding"])
+    }
+
+    func testAnExplanationInBracketsIsDroppedFromATag() throws {
+        let tag = try PhotoTag(text: """
+            shot: other
+            framing: upper body
+            place: office (in the afternoon)
+            outfit: black skirt, white blouse (blouse untucked)
+            action: riding (on his lap)
+            """)
+        XCTAssertEqual(tag.place, ["office"])
+        XCTAssertEqual(tag.outfit, ["black skirt", "white blouse"])
         XCTAssertEqual(tag.action, ["riding"])
     }
 

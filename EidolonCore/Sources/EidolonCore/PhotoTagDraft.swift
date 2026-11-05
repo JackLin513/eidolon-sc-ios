@@ -50,6 +50,7 @@ extension Eidolon {
         try Task.checkCancellation()
         do {
             let tag = try Self.photoTagFromAnswer(raw)
+            Self.logDraft(raw, error: nil, in: location.userDirectory)
             await recordChatCall(
                 provider: provider,
                 operation: .chatText,
@@ -63,6 +64,7 @@ extension Eidolon {
             return PhotoTagDraft(tag: tag, raw: raw)
         } catch {
             // A draft that fails still cost a call, and its answer is worth keeping.
+            Self.logDraft(raw, error: error.localizedDescription, in: location.userDirectory)
             await recordChatCall(
                 provider: provider,
                 operation: .chatText,
@@ -93,34 +95,44 @@ extension Eidolon {
         }.joined(separator: "\n")
     }
 
-    private static func photoTagPrompt(characterName: String, faceToFace: Bool, adult: Bool) -> String {
-        var rules = """
+    private static func photoTagPrompt(
+        characterName: String,
+        faceToFace: Bool,
+        adult: Bool
+    ) -> String {
+        // The same words a real turn gives her, then the one difference: this answer is
+        // only the tag.
+        let section = PromptAssembler.photoSection(
+            eligible: true,
+            wants: true,
+            cold: false,
+            usedUp: false,
+            adult: adult,
+            faceToFace: faceToFace
+        ) ?? ""
+        return """
             # 任务
-            你只写照片标签，不写台词，不扮演角色。她会按这个标签生成一张照片。
-            """
-        rules += """
-            # 格式
-            只输出一个 <photo> 标签，一行一栏，栏名用英文：
-            <photo>
-            \(adult ? "rating: questionable    # general | sensitive | questionable | explicit\\n" : "")shot: \(faceToFace ? "other" : "selfie")    # selfie | other
-            framing: upper body    # portrait | upper body | cowboy shot | full body
-            place: cafe, indoors, afternoon, sunlight
-            outfit: white shirt, cardigan
-            action: peace sign, smile
-            note: 一句中文说明
-            </photo>
+            你在替\(characterName)写一张照片的标签：不写台词，不扮演角色，不解释。
+            只输出一个 <photo> 标签，标签外不要有任何文字。每栏尽量写 2–4 个 tag，
+            action 写清楚正在做的事，不要只写表情。
 
-            place、outfit、action 用 Danbooru 的常见英文 tag，三栏合计不超过 12 个；
-            不要写外貌、画风或画师。按对话里此刻的地点、穿着和正在做的事写，
-            不要只写表情。\(faceToFace ? "制作人正和她在一起；他要拍她，所以默认 shot: other，除非他要自拍。" : "")
+            \(section)
             """
-        if adult {
-            rules += """
-                \n成人模式下，rating 写清内容程度；露骨内容要写进 outfit / action 的 tag
-                （例如 nude、topless、sex、riding），光把 rating 写高不会让画面更露骨。
-                """
+    }
+
+    /// The debug page's drafts, kept in the user directory so a bad one can be read back
+    /// from the Mac: never uploaded, and not part of the library.
+    private static func logDraft(_ raw: String, error: String?, in directory: URL) {
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let entry = "\(stamp)\n\(raw)\n--- \(error ?? "ok") ---\n\n"
+        let url = directory.appendingPathComponent("photo-drafts.log")
+        if let handle = try? FileHandle(forWritingTo: url) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data(entry.utf8))
+        } else {
+            try? Data(entry.utf8).write(to: url)
         }
-        return rules.replacingOccurrences(of: "她", with: characterName)
     }
 
     /// The tag out of whatever the model wrote: fenced or not, with or without prose.
