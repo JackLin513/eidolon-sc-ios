@@ -102,14 +102,12 @@ public struct PhotoTag: Sendable, Hashable {
             action = Array(action.prefix(max(0, 12 - place.count - outfit.count)))
             total = place.count + outfit.count + action.count
         }
-        let effectiveFraming: PhotoFraming = shot == .selfie
-            && (framing == .cowboyShot || framing == .fullBody)
-            ? .upperBody
-            : framing
+        // A selfie can be a full-body shot too: the prompt builder calls that a mirror
+        // selfie, which is how it is drawn.
         self.init(
             rating: rating,
             shot: shot,
-            framing: effectiveFraming,
+            framing: framing,
             place: place,
             outfit: outfit,
             action: action,
@@ -211,7 +209,9 @@ public enum PhotoPromptBuilder {
         if !trimmedStyle.isEmpty { prompt.append(trimmedStyle) }
         prompt.append(character.photoAppearance.joined(separator: ", "))
         if cleaned.shot == .selfie {
-            prompt.append("selfie, looking at viewer")
+            // A full-body selfie is drawn as a mirror selfie; an arm-length one is not.
+            let far = cleaned.framing == .cowboyShot || cleaned.framing == .fullBody
+            prompt.append(far ? "mirror selfie, looking at viewer" : "selfie, looking at viewer")
         } else if !cleaned.action.contains(where: { $0.contains("looking at viewer") }) {
             // Her words already said where she is looking: do not say it twice.
             prompt.append("looking at viewer")

@@ -88,7 +88,7 @@ final class PhotoTagTests: XCTestCase {
         XCTAssertEqual(photo.note, "在咖啡店给他拍的自拍")
     }
 
-    func testSelfieCannotBeAFullBodyShot() throws {
+    func testSelfieCanBeAFullBodyShot() throws {
         let photo = try tag("""
             shot: selfie
             framing: full body
@@ -96,7 +96,28 @@ final class PhotoTagTests: XCTestCase {
             outfit: casual
             action: smile
             """)
-        XCTAssertEqual(photo.framing, .upperBody)
+        XCTAssertEqual(photo.framing, .fullBody)
+    }
+
+    func testAFullBodySelfieIsDrawnAsAMirrorSelfie() throws {
+        let table = TestPhotoTagTable.make()
+        let photo = try tag("""
+            shot: selfie
+            framing: full body
+            place: cafe
+            outfit: casual
+            action: smile
+            """)
+        let request = try PhotoPromptBuilder.request(
+            tag: photo,
+            character: TestPhotoTagTable.character(),
+            style: "",
+            adult: false,
+            table: table,
+            model: "test-model"
+        )
+        XCTAssertTrue(request.prompt.contains("mirror selfie, looking at viewer"))
+        XCTAssertTrue(request.prompt.contains("full body"))
     }
 
     func testEveryColumnIsRequired() {
@@ -255,6 +276,37 @@ enum TestPhotoTagTable {
             name: "樱木真乃",
             photoTag: "sakuragi mano",
             photoAppearance: ["brown hair", "brown eyes"]
+        )
+    }
+}
+
+final class PhotoPromptSectionTests: XCTestCase {
+    func testThePhotoSectionAsksForANewTagRatherThanACopy() {
+        let section = PromptAssembler.photoSection(
+            eligible: true,
+            wants: true,
+            cold: false,
+            usedUp: false,
+            adult: true
+        )
+        let text = section ?? ""
+        XCTAssertTrue(text.contains("不要照抄上一张"))
+        XCTAssertTrue(text.contains("rating"))
+        // The rating is not what makes the picture: the tag columns are.
+        XCTAssertTrue(text.contains("画面由 place、outfit、action 的 tag 决定"))
+        XCTAssertTrue(text.contains("Danbooru"))
+    }
+
+    func testNoJudgeLeavesTheOriginalCannotSendText() {
+        XCTAssertEqual(
+            PromptAssembler.photoSection(
+                eligible: false,
+                wants: false,
+                cold: false,
+                usedUp: false,
+                adult: true
+            ),
+            PromptAssembler.cannotSendPhoto
         )
     }
 }
