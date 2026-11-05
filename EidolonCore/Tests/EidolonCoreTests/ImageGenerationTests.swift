@@ -150,6 +150,28 @@ final class ImageGenerationTests: XCTestCase {
         XCTAssertEqual(parameters?["seed"] as? Int, 42)
     }
 
+    func testANovelAIConcurrentLockIsAskedAgain() async throws {
+        let transport = FakeTransport()
+        transport.responses = [
+            .success(ImageHTTPResponse(
+                statusCode: 429,
+                body: Data(#"{"message":"Concurrent generation is locked"}"#.utf8)
+            )),
+            .success(ImageHTTPResponse(
+                statusCode: 200,
+                body: try zip(jpeg(width: 832, height: 1216))
+            )),
+        ]
+        let generator = RemoteImageGenerator(transport: transport, retryDelay: .zero)
+
+        let output = try await generator.generate(request(), settings: settings())
+
+        XCTAssertEqual(transport.requests.count, 2, "the locked request was not retried")
+        let size = try dimensions(output)
+        XCTAssertEqual(size.0, 832)
+        XCTAssertEqual(size.1, 1216)
+    }
+
     func testOpenAIImageFormatReadsBase64() async throws {
         let transport = FakeTransport()
         transport.responses = [.success(ImageHTTPResponse(

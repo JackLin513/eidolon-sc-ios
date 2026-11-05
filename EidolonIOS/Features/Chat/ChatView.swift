@@ -917,11 +917,12 @@ struct ChatView: View {
             )
         }
 
-        /// The debug page's button: only on a recorded reply that has no picture, while an
-        /// image service is configured and no call is up.
+        /// The debug page's button: on a recorded reply that has no picture, or whose
+        /// picture failed, while an image service is configured and no call is up. A
+        /// failure keeps its photo row, so without this the retry button would vanish.
         private var showsDebugPhotoButton: Bool {
             app.debugPhotoButton
-                && photo == nil
+                && (photo == nil || photo?.status == .failed)
                 && line != nil
                 && conversationID != nil
                 && !app.call.isLive

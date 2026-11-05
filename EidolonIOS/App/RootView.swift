@@ -44,7 +44,20 @@ struct RootView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, let app else { return }
-            Task { await app.catchUpReachOuts() }
+            Task {
+                await app.catchUpReachOuts()
+                await app.runMoments()
+                await app.refreshMomentsBadge()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: MomentsNotifications.openMoments)) { _ in
+            app?.selectedTab = .moments
+            MomentsNotifications.pendingOpen = false
+        }
+        .onChange(of: app == nil) { _, loading in
+            guard !loading, MomentsNotifications.pendingOpen else { return }
+            app?.selectedTab = .moments
+            MomentsNotifications.pendingOpen = false
         }
         .task {
             guard app == nil, startupError == nil else { return }

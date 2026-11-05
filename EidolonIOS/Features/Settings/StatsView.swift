@@ -68,6 +68,33 @@ struct StatsView: View {
         topCharacters(summary.range.characters)
         hours(summary.range.byHour)
         gifts(summary.range.gifts)
+        moments(summary.moments)
+    }
+
+    @ViewBuilder
+    private func moments(_ moments: StatsMoments) -> some View {
+        if moments.hasAny {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("朋友圈").font(.headline)
+                HStack(spacing: 16) {
+                    number("动态", "\(moments.posts)")
+                    number("失败", "\(moments.failedPosts)")
+                    number("回评论", "\(moments.replies)")
+                    number("回复失败", "\(moments.failedReplies)")
+                }
+                if moments.posts > 0 {
+                    Text(
+                        "制作人赞过 \(moments.likedPosts)/\(moments.posts)，"
+                            + "评论过 \(moments.commentedPosts)/\(moments.posts)。"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("stats.moments")
+        }
     }
 
     private func portrait(_ summary: StatsSummary) -> some View {

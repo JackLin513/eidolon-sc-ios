@@ -16,6 +16,7 @@ struct MainTabsView: View {
             Tab("朋友圈", systemImage: "person.2", value: MainTab.moments) {
                 MomentsView()
             }
+            .badge(app.momentsBadge ? 1 : 0)
             Tab("玩法", systemImage: "sparkles", value: MainTab.play) {
                 PlayHubView()
             }

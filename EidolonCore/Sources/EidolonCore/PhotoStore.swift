@@ -321,7 +321,8 @@ extension Eidolon {
         guard belongs == conversationID else {
             throw EidolonError.invalidContent("这条回复不在这个对话里")
         }
-        // A reply has at most one picture; a second press keeps the first.
+        // A reply has at most one picture; a second press keeps the first — unless the
+        // first failed, in which case this press is the retry and replaces it.
         let existing: PhotoReference? = try await userQueue.read { db in
             guard let row = try Row.fetchOne(
                 db,
@@ -330,7 +331,15 @@ extension Eidolon {
             ) else { return nil }
             return Self.photoStatus(row)
         }
-        if let existing { return existing }
+        if let existing, existing.status != .failed { return existing }
+        if existing != nil {
+            try await userQueue.write { db in
+                try db.execute(
+                    sql: "DELETE FROM photos WHERE message_id = ?",
+                    arguments: [messageID]
+                )
+            }
+        }
         let request = try PhotoPromptBuilder.request(
             tag: tag,
             character: character,

@@ -72,6 +72,8 @@ public enum ServiceOperation: String, Codable, Sendable, CaseIterable, Hashable 
     case recognition
     case bar
     case image
+    case moment = "moment"
+    case momentReply = "moment_reply"
 
     public var title: String {
         switch self {
@@ -88,6 +90,8 @@ public enum ServiceOperation: String, Codable, Sendable, CaseIterable, Hashable 
         case .recognition: "语音识别"
         case .bar: "酒吧"
         case .image: "生图"
+        case .moment: "朋友圈"
+        case .momentReply: "回评论"
         }
     }
 }

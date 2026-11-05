@@ -10,6 +10,7 @@ public enum PhotoFraming: String, Sendable, CaseIterable, Hashable {
     case upperBody = "upper body"
     case cowboyShot = "cowboy shot"
     case fullBody = "full body"
+    case wideShot = "wide shot"
 
     public var listedName: String { rawValue }
 }
@@ -190,6 +191,7 @@ public struct PhotoTag: Sendable, Hashable {
         case "upper body", "上半身", "半身": return .upperBody
         case "cowboy shot", "cowboy", "七分身", "牛仔镜头": return .cowboyShot
         case "full body", "fullbody", "全身": return .fullBody
+        case "wide shot", "wide", "远景", "大远景": return .wideShot
         default: return nil
         }
     }
@@ -338,6 +340,7 @@ public enum PhotoPromptBuilder {
         if cleaned.shot == .selfie {
             // A full-body selfie is drawn as a mirror selfie; an arm-length one is not.
             let far = cleaned.framing == .cowboyShot || cleaned.framing == .fullBody
+                || cleaned.framing == .wideShot
             rest.append((far ? "mirror selfie" : "selfie") + (noGaze ? "" : ", looking at viewer"))
         } else if !noGaze {
             rest.append("looking at viewer")

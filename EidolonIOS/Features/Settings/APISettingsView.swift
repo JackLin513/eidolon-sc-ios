@@ -28,6 +28,10 @@ struct APISettingsView: View {
     @State private var confirmingImage = false
     @State private var testImage: UIImage?
     @State private var imageTestError: String?
+    @State private var switchToast: String?
+    @State private var editingProfile: ChatModelProfile?
+    @State private var deletingProfile: ChatModelProfile?
+    @State private var profileError: String?
 
     private enum SecretField: Hashable {
         case chat, background, judge, retrieval, gemini, soniox, dashscope, fish,
@@ -50,6 +54,7 @@ struct APISettingsView: View {
 
     var body: some View {
         Form {
+            profilesSection
             summarySection
             importSection
             chatSection
@@ -74,6 +79,17 @@ struct APISettingsView: View {
             }
         }
         .task { await load() }
+        .onChange(of: app.chatSettings) { _, new in
+            // A profile switch or an editor save happens elsewhere; the page follows it
+            // without asking, since the switch itself was already saved.
+            guard new != saved else { return }
+            saved = new
+            settings = new
+            settings.baseURL = APIServiceRouting.baseURLForImportedSettings(
+                settings.baseURL, protocol: settings.apiProtocol
+            )
+            cleared.removeAll()
+        }
         .onChange(of: settings.apiProtocol) { old, new in
             settings.baseURL = APIServiceRouting.baseURL(
                 settings.baseURL,
@@ -138,6 +154,68 @@ struct APISettingsView: View {
         .sheet(item: $picker) { request in
             ModelPickerView(request: request)
         }
+        .sheet(item: $editingProfile) { profile in
+            ChatModelProfileEditor(
+                profile: profile,
+                existingNames: app.chatProfiles
+                    .filter { $0.id != profile.id }
+                    .map(\.name)
+            ) { updated, key in
+                do {
+                    try app.saveChatProfile(updated, apiKey: key)
+                    return nil
+                } catch {
+                    return error.localizedDescription
+                }
+            }
+        }
+        .confirmationDialog(
+            "删除「\(deletingProfile?.name ?? "")」？",
+            isPresented: Binding(
+                get: { deletingProfile != nil },
+                set: { if !$0 { deletingProfile = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("删除", role: .destructive) {
+                guard let profile = deletingProfile else { return }
+                deletingProfile = nil
+                do {
+                    if !(try app.deleteChatProfile(profile.id)) {
+                        profileError = "最后一个配置不能删除。"
+                    }
+                } catch {
+                    profileError = error.localizedDescription
+                }
+            }
+            Button("取消", role: .cancel) { deletingProfile = nil }
+        } message: {
+            Text("密钥也会一并删除，不能撤销。")
+        }
+        .alert("模型配置", isPresented: Binding(
+            get: { profileError != nil },
+            set: { if !$0 { profileError = nil } }
+        )) {
+            Button("好") { profileError = nil }
+        } message: {
+            Text(profileError ?? "")
+        }
+        .overlay(alignment: .top) {
+            if let switchToast {
+                Text(switchToast)
+                    .font(.footnote.weight(.medium))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.top, 8)
+                    .transition(.opacity)
+                    .accessibilityIdentifier("api.profile.toast")
+                    .task(id: switchToast) {
+                        try? await Task.sleep(for: .seconds(1.2))
+                        withAnimation { self.switchToast = nil }
+                    }
+            }
+        }
         .alert("保存失败", isPresented: saveErrorBinding) {
             Button("好") { saveError = nil }
         } message: {
@@ -164,6 +242,78 @@ struct APISettingsView: View {
     }
 
     // MARK: - Sections
+
+    /// The saved chat models (spec #116): one row each, a check on the active one, and
+    /// what is missing when a row is not filled in. Tapping switches and saves at once.
+    private var profilesSection: some View {
+        Section {
+            ForEach(app.chatProfiles) { profile in
+                Button {
+                    switchProfile(profile.id)
+                } label: {
+                    profileRow(profile)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("api.profile.row.\(profile.id)")
+                .accessibilityLabel(profile.name)
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    if app.chatProfiles.count > 1 {
+                        Button(role: .destructive) {
+                            deletingProfile = profile
+                        } label: {
+                            Label("删除", systemImage: "trash")
+                        }
+                    }
+                    Button {
+                        editingProfile = profile
+                    } label: {
+                        Label("编辑", systemImage: "pencil")
+                    }
+                }
+                .contextMenu {
+                    Button("编辑") { editingProfile = profile }
+                    Button("复制") { editingProfile = app.duplicateChatProfile(profile) }
+                    if app.chatProfiles.count > 1 {
+                        Button("删除", role: .destructive) { deletingProfile = profile }
+                    }
+                }
+            }
+            Button {
+                editingProfile = app.addChatProfile()
+            } label: {
+                Label("新建配置", systemImage: "plus")
+            }
+            .accessibilityIdentifier("api.profile.new")
+        } header: {
+            Text("模型配置")
+        } footer: {
+            Text("点一行即切换并立即保存，不用再按「保存」。只换对话模型；后台模型留空时跟着它走，"
+                + "判断、检索、通话和生图不变。左滑或长按可编辑、复制、删除。")
+        }
+    }
+
+    private func profileRow(_ profile: ChatModelProfile) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(profile.name)
+                    .foregroundStyle(.primary)
+                Text(profile.subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if !profile.isComplete {
+                Text("未填完")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            if profile.id == app.activeChatProfileID {
+                Image(systemName: "checkmark")
+                    .foregroundStyle(.tint)
+            }
+        }
+        .contentShape(Rectangle())
+    }
 
     private var summarySection: some View {
         Section {
@@ -216,59 +366,12 @@ struct APISettingsView: View {
 
     private var chatSection: some View {
         Section {
-            Picker("接口协议", selection: $settings.apiProtocol) {
-                ForEach(ChatProtocol.allCases) { chatProtocol in
-                    Text(chatProtocol.title).tag(chatProtocol)
-                }
-            }
-            .accessibilityIdentifier("api.chat.protocol")
-            Text(settings.apiProtocol.path)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-            if settings.apiProtocol == .anthropic {
-                Text("Anthropic 地址要写到服务商的 Anthropic 前缀；DeepSeek 用 "
-                    + APIServiceRouting.deepSeekAnthropicBaseURL)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            TextField("接口地址，例如 https://api.siliconflow.cn/v1", text: $settings.baseURL)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(.URL)
-                .accessibilityIdentifier("api.chat.baseURL")
-
-            modelRow(
-                title: "模型名",
-                text: $settings.model,
-                key: .chat,
-                identifier: "api.chat.model"
-            ) {
-                fetch(key: .chat, service: modelListService, baseURL: settings.baseURL,
-                      apiKey: settings.apiKey) { settings.model = $0 }
-            }
-
-            SecureField("密钥（留空保留已存密钥）", text: $settings.apiKey)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .accessibilityIdentifier("api.chat.key")
-            clearSecretButton(.chat, hasStored: !saved.apiKey.trimmed.isEmpty) {
-                settings.apiKey = ""
-            }
-
-            TextField("max tokens（可空）", value: $settings.maxTokens, format: .number)
-                .keyboardType(.numberPad)
-                .accessibilityIdentifier("api.chat.maxTokens")
-            effortPicker("文字对话思考强度", selection: $settings.textReasoningEffort)
-                .accessibilityIdentifier("api.chat.effort")
-            effortPicker("通话思考强度", selection: $settings.callReasoningEffort)
-                .accessibilityIdentifier("api.chat.callEffort")
-            TextField("额外参数（JSON 对象，可空）", text: $settings.extraBody, axis: .vertical)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .font(.footnote.monospaced())
-                .accessibilityIdentifier("api.chat.extraBody")
-
+            // Four erased chunks, not one big tuple: a single Section content type with
+            // this many rows overflows the device's Swift demangler at launch.
+            AnyView(chatAddressRows)
+            AnyView(chatModelRows)
+            AnyView(chatSecretRows)
+            AnyView(chatExtraRows)
             probeButton(.chat, title: "测试对话模型") {
                 await testChat()
             }
@@ -278,6 +381,83 @@ struct APISettingsView: View {
         } footer: {
             Text(footerChat)
         }
+    }
+
+    @ViewBuilder
+    private var chatAddressRows: some View {
+        Picker("接口协议", selection: $settings.apiProtocol) {
+            ForEach(ChatProtocol.allCases) { chatProtocol in
+                Text(chatProtocol.title).tag(chatProtocol)
+            }
+        }
+        .accessibilityIdentifier("api.chat.protocol")
+        Text(settings.apiProtocol.path)
+            .font(.caption.monospaced())
+            .foregroundStyle(.secondary)
+        if settings.apiProtocol == .anthropic {
+            Text("Anthropic 地址要写到服务商的 Anthropic 前缀；DeepSeek 用 "
+                + APIServiceRouting.deepSeekAnthropicBaseURL)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        TextField("接口地址，例如 https://api.siliconflow.cn/v1", text: $settings.baseURL)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .keyboardType(.URL)
+            .accessibilityIdentifier("api.chat.baseURL")
+        SettingsHint("服务根地址，OpenAI 兼容通常以 /v1 结尾；DeepSeek 是 https://api.deepseek.com/v1。")
+    }
+
+    @ViewBuilder
+    private var chatModelRows: some View {
+        modelRow(
+            title: "模型名",
+            text: $settings.model,
+            key: .chat,
+            identifier: "api.chat.model"
+        ) {
+            fetch(key: .chat, service: modelListService, baseURL: settings.baseURL,
+                  apiKey: settings.apiKey) { settings.model = $0 }
+        }
+        SettingsHint("服务上的模型标识，例如 deepseek-chat；可点「获取模型」从列表里选。")
+    }
+
+    @ViewBuilder
+    private var chatSecretRows: some View {
+        SecureField("密钥（留空保留已存密钥）", text: $settings.apiKey)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .accessibilityIdentifier("api.chat.key")
+        clearSecretButton(.chat, hasStored: !saved.apiKey.trimmed.isEmpty) {
+            settings.apiKey = ""
+        }
+        SettingsHint("只存钥匙串，属于当前这套模型配置；留空保留已存密钥，点「清除密钥」才会删。")
+    }
+
+    @ViewBuilder
+    private var chatExtraRows: some View {
+        TextField("max tokens（可空）", value: $settings.maxTokens, format: .number)
+            .keyboardType(.numberPad)
+            .accessibilityIdentifier("api.chat.maxTokens")
+        SettingsHint(
+            "单次回复最多多少 token；留空用服务默认，不限制。",
+            identifier: "api.hint.chat.maxTokens"
+        )
+        effortPicker("文字对话思考强度", selection: $settings.textReasoningEffort)
+            .accessibilityIdentifier("api.chat.effort")
+        SettingsHint("文字回合想多深；不发送 = 交给模型默认。本地模型想完全关掉思考，用额外参数。")
+        effortPicker("通话思考强度", selection: $settings.callReasoningEffort)
+            .accessibilityIdentifier("api.chat.callEffort")
+        SettingsHint("通话里想多深；想得越久她开口越慢。不发送 = 模型默认。")
+        TextField("额外参数（JSON 对象，可空）", text: $settings.extraBody, axis: .vertical)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .font(.footnote.monospaced())
+            .accessibilityIdentifier("api.chat.extraBody")
+        SettingsHint(
+            "JSON 对象，深合并进请求；不能覆盖 model/stream/messages/tools。例：{\"enable_thinking\": false}",
+            identifier: "api.hint.chat.extraBody"
+        )
     }
 
     private var backgroundSection: some View {
@@ -292,6 +472,7 @@ struct APISettingsView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
+            SettingsHint("留空 = 用对话模型的地址；填了才把记忆和标题发去别处。")
             modelRow(
                 title: "模型名",
                 text: $settings.backgroundModel,
@@ -302,14 +483,17 @@ struct APISettingsView: View {
                       baseURL: effectiveBackgroundBaseURL,
                       apiKey: effectiveBackgroundAPIKey) { settings.backgroundModel = $0 }
             }
+            SettingsHint("留空 = 沿用对话模型的模型名。")
             SecureField("密钥（留空沿用对话模型）", text: $settings.backgroundAPIKey)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+            SettingsHint("留空 = 沿用对话模型的密钥；只存钥匙串。")
             clearSecretButton(.background, hasStored: !saved.backgroundAPIKey.trimmed.isEmpty) {
                 settings.backgroundAPIKey = ""
             }
             TextField("max tokens（可空，不沿用对话模型）", value: $settings.backgroundMaxTokens, format: .number)
                 .keyboardType(.numberPad)
+            SettingsHint("后台模型自己的单次上限；留空 = 不限制，不会沿用对话模型的值。")
             effortPicker(
                 "思考强度",
                 selection: $settings.backgroundTextReasoningEffort,
@@ -319,6 +503,7 @@ struct APISettingsView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .font(.footnote.monospaced())
+            SettingsHint("JSON 对象；留空 = 不加，不会沿用对话模型。")
 
             probeButton(.background, title: "测试后台模型") {
                 await testBackground()
@@ -346,17 +531,23 @@ struct APISettingsView: View {
                 }
             }
             .accessibilityIdentifier("api.judge.service")
+            SettingsHint("每回合判断越界、好感度和检索；通话里逐段判断情绪。没有它也能聊，只是少了这些判断。")
 
             switch settings.judgeService {
             case .bailian:
                 TextField("业务空间 ID", text: $settings.bailianWorkspace)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                SettingsHint(
+                    "阿里云百炼控制台右上角「业务空间」里的 ID；默认空间可以留空。",
+                    identifier: "api.hint.judge.bailianWorkspace"
+                )
                 Picker("地域", selection: $settings.bailianRegion) {
                     ForEach(BailianRegion.allCases, id: \.self) { region in
                         Text(region.title).tag(region)
                     }
                 }
+                SettingsHint("百炼服务所在地域，要和业务空间一致。")
                 modelRow(
                     title: "模型名（默认 decision-model-preview）",
                     text: $settings.bailianModel,
@@ -369,9 +560,11 @@ struct APISettingsView: View {
                         current: settings.bailianModel
                     ) { settings.bailianModel = $0 }
                 }
+                SettingsHint("百炼上的判断模型名，默认 decision-model-preview。")
                 SecureField("百炼密钥", text: $settings.bailianAPIKey)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                SettingsHint("阿里云百炼的 API Key（DASHSCOPE_API_KEY）；只存钥匙串。")
                 clearSecretButton(.bailian, hasStored: !saved.bailianAPIKey.trimmed.isEmpty) {
                     settings.bailianAPIKey = ""
                 }
@@ -380,6 +573,7 @@ struct APISettingsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
+                SettingsHint("Jev 服务地址，默认走 OpenRouter；留空用默认值。")
                 modelRow(
                     title: "模型名（默认 typesafe/jev-1.13）",
                     text: $settings.jevModel,
@@ -389,9 +583,11 @@ struct APISettingsView: View {
                     fetch(key: .jev, service: .openAICompatible, baseURL: settings.jevBaseURL,
                           apiKey: settings.jevAPIKey) { settings.jevModel = $0 }
                 }
+                SettingsHint("用于判断的模型名，默认 typesafe/jev-1.13。")
                 SecureField("Jev 密钥", text: $settings.jevAPIKey)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                SettingsHint("OpenRouter / Jev 的 API Key；只存钥匙串。")
                 clearSecretButton(.jev, hasStored: !saved.jevAPIKey.trimmed.isEmpty) {
                     settings.jevAPIKey = ""
                 }
@@ -399,6 +595,10 @@ struct APISettingsView: View {
                 TextField("账号 ID", text: $settings.cloudflareAccountID)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                SettingsHint(
+                    "Cloudflare 控制台 Workers & Pages 右侧的 Account ID。",
+                    identifier: "api.hint.judge.cloudflareAccount"
+                )
                 modelRow(
                     title: "模型名（默认 clef-flash）",
                     text: $settings.cloudflareModel,
@@ -411,9 +611,11 @@ struct APISettingsView: View {
                         current: settings.cloudflareModel
                     ) { settings.cloudflareModel = $0 }
                 }
+                SettingsHint("Cloudflare Workers AI 上的模型名，默认 clef-flash。")
                 SecureField("Cloudflare 密钥", text: $settings.cloudflareAPIKey)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                SettingsHint("Cloudflare API Token；只存钥匙串。")
                 clearSecretButton(.cloudflare, hasStored: !saved.cloudflareAPIKey.trimmed.isEmpty) {
                     settings.cloudflareAPIKey = ""
                 }
@@ -432,15 +634,18 @@ struct APISettingsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
+                SettingsHint("留空 = 用对话模型的地址；只支持 Chat Completions。")
                 modelRow(
                     title: "模型名",
                     text: $settings.judgeModel,
                     key: nil,
                     identifier: "api.judge.chat.model"
                 ) {}
+                SettingsHint("留空 = 用对话模型的模型名。")
                 SecureField("密钥", text: $settings.judgeAPIKey)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                SettingsHint("留空 = 用对话模型的密钥；只存钥匙串。")
                 clearSecretButton(.judge, hasStored: !saved.judgeAPIKey.trimmed.isEmpty) {
                     settings.judgeAPIKey = ""
                 }
@@ -448,13 +653,16 @@ struct APISettingsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .font(.footnote.monospaced())
+                SettingsHint("JSON 对象，深合并进判断请求；留空不加。")
             }
 
             if settings.judgeService != .chat {
                 TextField("最低概率（0–1，留空按模型阈值）", text: emotionProbability)
                     .keyboardType(.decimalPad)
+                SettingsHint("情绪判断的置信度门槛，0 到 1；留空用模型族自己的默认。")
                 TextField("超时（秒，默认 1.5）", text: emotionTimeout)
                     .keyboardType(.decimalPad)
+                SettingsHint("一段话最多等判断多久；超时就先不标情绪，不拖慢回复。")
             }
 
             probeButton(.judge, title: "测试判断模型") {
@@ -501,9 +709,11 @@ struct APISettingsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("api.retrieval.embeddingModel")
+                SettingsHint("内容包的向量化模型必须和它一致；这里是还没导入内容包时的默认值。")
                 if settings.embeddingProvider == .gemini {
                     TextField("向量维度（默认 1536）", value: $settings.embeddingDimensions, format: .number)
                         .keyboardType(.numberPad)
+                    SettingsHint("向量维度；留空用内容包或服务默认，常见是 1536。")
                 }
             }
 
@@ -512,6 +722,7 @@ struct APISettingsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("api.retrieval.geminiKey")
+                SettingsHint("内容包用 Gemini 向量化时才需要；只存钥匙串。")
                 clearSecretButton(.gemini, hasStored: !saved.geminiAPIKey.trimmed.isEmpty) {
                     settings.geminiAPIKey = ""
                 }
@@ -522,6 +733,7 @@ struct APISettingsView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
+                SettingsHint("留空用默认地址；一般不用改。")
                 if app.contentEmbeddingSpace == nil {
                     modelRow(
                         title: "向量化模型",
@@ -535,11 +747,13 @@ struct APISettingsView: View {
                             current: settings.embeddingModel
                         ) { settings.embeddingModel = $0 }
                     }
+                    SettingsHint("导入内容包后以内容包为准，这里只影响还没有内容包时的检索。")
                 }
             } else {
                 SecureField("硅基流动密钥（向量化）", text: $settings.retrievalAPIKey)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                SettingsHint("硅基流动的 API Key；只存钥匙串。没有它就不做剧情检索。")
                 clearSecretButton(.retrieval, hasStored: !saved.retrievalAPIKey.trimmed.isEmpty) {
                     settings.retrievalAPIKey = ""
                 }
@@ -550,6 +764,7 @@ struct APISettingsView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
+                SettingsHint("留空用默认地址；向量化和重排都走这里。")
                 fetchButton(.embedding, title: "获取向量化模型") {
                     fetch(
                         key: .embedding,
@@ -575,10 +790,12 @@ struct APISettingsView: View {
                     apiKey: settings.retrievalAPIKey
                 ) { settings.rerankModel = $0 }
             }
+            SettingsHint("检索结果的重排模型；留空不重排，只用向量相似度。")
             if service == .gemini {
                 SecureField("硅基流动密钥（重排用）", text: $settings.retrievalAPIKey)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                SettingsHint("重排仍走硅基流动，所以 Gemini 向量化时两个 key 都要有。")
                 clearSecretButton(.retrieval, hasStored: !saved.retrievalAPIKey.trimmed.isEmpty) {
                     settings.retrievalAPIKey = ""
                 }
@@ -589,6 +806,7 @@ struct APISettingsView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
+                SettingsHint("留空用默认地址；向量化和重排都走这里。")
             }
             if service == .gemini {
                 fetchButton(.rerank, title: "获取重排模型") {
@@ -629,6 +847,7 @@ struct APISettingsView: View {
                 }
             }
             .accessibilityIdentifier("api.call.sttProvider")
+            SettingsHint("通话时听你说话的识别服务；选哪家就填哪家的密钥。")
             switch settings.speechToText {
             case .soniox:
                 sonioxRows
@@ -638,6 +857,7 @@ struct APISettingsView: View {
             SecureField("Fish Audio 密钥", text: $settings.fishAPIKey)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+            SettingsHint("Fish Audio 的 API Key；只存钥匙串。没有它通话只有文字，没有声音。")
             clearSecretButton(.fish, hasStored: !saved.fishAPIKey.trimmed.isEmpty) {
                 settings.fishAPIKey = ""
             }
@@ -653,6 +873,7 @@ struct APISettingsView: View {
                     current: settings.fishModel
                 ) { settings.fishModel = $0 }
             }
+            SettingsHint("语音合成模型，默认免费的 s2.1-pro-free。")
             probeButton(.fish, title: "测试 Fish Audio") { await testFish() }
             probeStatus(.fish)
         } header: {
@@ -673,6 +894,7 @@ struct APISettingsView: View {
         SecureField("Soniox 密钥", text: $settings.sonioxAPIKey)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
+        SettingsHint("Soniox 的 API Key；只存钥匙串。")
         clearSecretButton(.soniox, hasStored: !saved.sonioxAPIKey.trimmed.isEmpty) {
             settings.sonioxAPIKey = ""
         }
@@ -688,6 +910,7 @@ struct APISettingsView: View {
                 current: settings.sonioxModel
             ) { settings.sonioxModel = $0 }
         }
+        SettingsHint("实时识别模型，默认 stt-rt-v5；一般不用改。")
         probeButton(.soniox, title: "测试 Soniox") { await testSoniox() }
         probeStatus(.soniox)
     }
@@ -698,6 +921,7 @@ struct APISettingsView: View {
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
             .accessibilityIdentifier("api.call.dashscopeKey")
+        SettingsHint("阿里云百炼的 API Key；只存钥匙串。")
         clearSecretButton(.dashscope, hasStored: !saved.dashscopeAPIKey.trimmed.isEmpty) {
             settings.dashscopeAPIKey = ""
         }
@@ -713,6 +937,7 @@ struct APISettingsView: View {
                 current: settings.bailianSTTModel
             ) { settings.bailianSTTModel = $0 }
         }
+        SettingsHint("百炼实时识别模型，目前固定为默认值。")
         probeButton(.bailianSTT, title: "测试百炼识别") { await testBailianSTT() }
         probeStatus(.bailianSTT)
     }
@@ -892,10 +1117,12 @@ struct APISettingsView: View {
                 }
             }
             .accessibilityIdentifier("api.image.format")
+            SettingsHint("NovelAI 原生接口，或 OpenAI 兼容的图片接口。")
             TextField("接口地址，例如 https://image.novelai.net", text: $settings.imageBaseURL)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
+            SettingsHint("NovelAI 原生格式写到域名根；OpenAI 图像格式写到 /v1。")
             SecureField("NovelAI 密钥（留空保留已存密钥）", text: $settings.novelAIAPIKey)
             clearSecretButton(.novelAI, hasStored: !saved.novelAIAPIKey.trimmed.isEmpty) {
                 settings.novelAIAPIKey = ""
@@ -903,18 +1130,23 @@ struct APISettingsView: View {
             TextField("普通模型", text: $settings.imageModel)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+            SettingsHint("全年龄照片用的 NovelAI 模型名。")
             TextField("成人模型", text: $settings.imageAdultModel)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+            SettingsHint("成人模式且角色 18 岁以上时才用；普通照片不用它。")
             TextField("画风（可选，原样写进提示词）", text: $settings.imageStyle)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+            SettingsHint("风格 tag，原样拼进生图提示词；留空不加。")
             TextField("制作人形象 tag（他入镜时用）", text: $settings.imageProducerTags)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+            SettingsHint("他入镜时的第二个角色提示词，例如西装领带；留空用内置形象。")
             Stepper(value: $settings.imageHourlyLimit, in: 0...50) {
                 Text("每小时最多 \(settings.imageHourlyLimit) 张（0 不限）")
             }
+            SettingsHint("滚动一小时内最多发几张；0 = 不限制。")
             Button {
                 confirmingImage = true
             } label: {
@@ -961,11 +1193,13 @@ struct APISettingsView: View {
         Section {
             Toggle("用 GPT Image 画无人配图", isOn: $settings.gptImageEnabled)
                 .accessibilityIdentifier("api.gptImage.enabled")
+            SettingsHint("只给风景、食物、物品这类没有人的朋友圈配图；人物仍走 NovelAI。")
             if settings.gptImageEnabled {
                 TextField("接口地址", text: $settings.gptImageBaseURL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
+                SettingsHint("OpenAI 兼容的图片接口地址，通常以 /v1 结尾。")
                 SecureField("GPT Image 密钥（留空保留已存密钥）", text: $settings.gptImageAPIKey)
                 clearSecretButton(.gptImage, hasStored: !saved.gptImageAPIKey.trimmed.isEmpty) {
                     settings.gptImageAPIKey = ""
@@ -973,15 +1207,18 @@ struct APISettingsView: View {
                 TextField("模型", text: $settings.gptImageModel)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                SettingsHint("图片模型名，例如 gpt-image-1。")
                 Picker("质量", selection: $settings.gptImageQuality) {
                     ForEach(GPTImageQuality.allCases) { quality in
                         Text(quality.title).tag(quality)
                     }
                 }
+                SettingsHint("质量越高越慢也越贵；朋友圈配图用默认的中档就够。")
                 TextField("画风", text: $settings.gptImageStyle, axis: .vertical)
                     .lineLimit(2...5)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                SettingsHint("文字描述的画面风格，原样拼进提示词；可留空。")
             }
         } header: {
             APIStatusHeader(title: "GPT Image（可选）", configured: settings.gptImageIsConfigured)
@@ -1061,6 +1298,17 @@ struct APISettingsView: View {
 
     // MARK: - Saving
 
+    private func switchProfile(_ id: String) {
+        guard id != app.activeChatProfileID else { return }
+        do {
+            try app.activateChatProfile(id)
+            let name = app.activeChatProfile?.name ?? ""
+            withAnimation { switchToast = "已切换到 \(name)" }
+        } catch {
+            saveError = error.localizedDescription
+        }
+    }
+
     private func save() async {
         guard var draft = resolvedSecrets() else { return }
         if let error = validate(draft) {
@@ -1068,9 +1316,12 @@ struct APISettingsView: View {
             return
         }
         do {
-            try app.saveChatSettings(draft)
-            saved = draft
-            settings = draft
+            let normalized = try app.saveChatSettings(draft)
+            try app.captureActiveChatProfile(
+                from: normalized, clearKey: cleared.contains(.chat)
+            )
+            saved = normalized
+            settings = normalized
             cleared.removeAll()
             savedNotice = true
         } catch {

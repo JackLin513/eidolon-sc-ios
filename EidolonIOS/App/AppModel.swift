@@ -61,7 +61,7 @@ final class AppModel {
     /// on this phone, is off by default, and exists in every build.
     private(set) var debugMode = UserDefaults.standard.bool(forKey: AppModel.debugModeKey)
 
-    private static let debugModeKey = "debug.mode"
+    static let debugModeKey = "debug.mode"
 
     /// Development aid: a reply that skipped its picture gets a 生成照片 button beside 朗读,
     /// which opens a tag editor and makes one (spec #62's debug page).
@@ -130,6 +130,143 @@ final class AppModel {
             generator: RemoteImageGenerator(),
             settings: chatSettings.imageSettings
         )
+    }
+
+    // MARK: Moments (spec #98)
+
+    private(set) var momentsSettings = MomentsSettings.default
+    /// Whether the moments tab has something new behind it.
+    private(set) var momentsBadge = false
+    /// Tokyo's weather for the moments page, shared by every run.
+    let momentWeather = OpenMeteoWeatherClient()
+    private var momentsLoop: Task<Void, Never>?
+    private var momentImages: [String: UIImage] = [:]
+
+    func loadMomentsSettings() async {
+        momentsSettings = (try? await core.momentsSettings()) ?? .default
+        // Ageing out does not wait for the switch: a library turned off for a month
+        // still drops what is past retention.
+        await core.pruneMoments()
+        await refreshMomentsBadge()
+        if momentsSettings.enabled {
+            startMomentsLoop()
+            MomentsBackground.schedule(after: 15 * 60)
+        } else {
+            momentsLoop?.cancel()
+            momentsLoop = nil
+        }
+        MomentsNotifications.requestAuthorizationIfNeeded(moments: momentsSettings)
+    }
+
+    func saveMomentsSettings(_ settings: MomentsSettings) async throws {
+        try await core.setMomentsSettings(settings)
+        momentsSettings = settings
+        if settings.enabled {
+            startMomentsLoop()
+            MomentsBackground.schedule(after: 15 * 60)
+        } else {
+            momentsLoop?.cancel()
+            momentsLoop = nil
+        }
+        MomentsNotifications.requestAuthorizationIfNeeded(moments: settings)
+    }
+
+    func refreshMomentsBadge() async {
+        momentsBadge = (try? await core.momentsBadge()) ?? false
+    }
+
+    /// The providers one moments run needs; nil without a chat model, because nothing can
+    /// be written then.
+    func momentsProviders() -> MomentsProviders? {
+        guard let chat = chatProvider else { return nil }
+        return MomentsProvidersFactory.make(
+            chat: chat, photo: photoContext, settings: chatSettings,
+            weather: momentWeather, debugMode: debugMode
+        )
+    }
+
+    /// Fills in what today has due. No timer here: the app calls this on launch, on
+    /// coming back, once a minute in the foreground, and from the background task.
+    @discardableResult
+    func runMoments(background: Bool = false) async -> MomentsRun? {
+        guard momentsSettings.enabled, let providers = momentsProviders() else {
+            await core.pruneMoments()
+            return nil
+        }
+        let run = await core.runMomentsDue(providers: providers)
+        await refreshMomentsBadge()
+        if background, !run.newPosts.isEmpty || !run.newReplies.isEmpty {
+            MomentsNotifications.post(
+                posts: run.newPosts.count, replies: run.newReplies.count
+            )
+        }
+        return run
+    }
+
+    /// Debug aid: make one moment per chosen character now, with a local notification so
+    /// it is easy to see the result on a real phone. Pictures are made one after another,
+    /// which also keeps NovelAI's one-generation-at-a-time rule happy.
+    @discardableResult
+    func debugGenerateMoments(
+        characterIDs: [String],
+        allowImage: Bool,
+        forceImage: Bool,
+        composition: MomentComposition?,
+        forceAdult: Bool
+    ) async -> Int {
+        guard let providers = momentsProviders() else { return 0 }
+        var made = 0
+        for id in characterIDs.prefix(8) {
+            let post = await core.debugGenerateMoment(
+                characterID: id,
+                providers: providers,
+                allowImage: allowImage,
+                forceImage: forceImage,
+                composition: allowImage ? composition : nil,
+                forceAdult: forceAdult
+            )
+            if post != nil { made += 1 }
+        }
+        if made > 0 {
+            await refreshMomentsBadge()
+            MomentsNotifications.post(posts: made, replies: 0)
+            NotificationCenter.default.post(name: MomentsNotifications.changed, object: nil)
+        }
+        return made
+    }
+
+    func startMomentsLoop() {
+        guard momentsLoop == nil else { return }
+        momentsLoop = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                guard let self, !Task.isCancelled else { return }
+                await self.runMoments()
+            }
+        }
+    }
+
+    /// The moment's picture, read once; nil while it has none or the file is gone.
+    func momentImage(_ record: MomentImageRecord) async -> UIImage? {
+        if let image = momentImages[record.id] { return image }
+        let root = URL.applicationSupportDirectory
+            .appending(path: "Eidolon/User", directoryHint: .isDirectory)
+        guard let data = try? Data(contentsOf: root.appendingPathComponent(record.file)),
+              let image = UIImage(data: data)
+        else { return nil }
+        momentImages[record.id] = image
+        return image
+    }
+
+    func likeMoment(_ id: String) async { _ = try? await core.likeMoment(id) }
+    func unlikeMoment(_ id: String) async { _ = try? await core.unlikeMoment(id) }
+    func commentMoment(_ id: String, text: String) async -> Bool {
+        (try? await core.commentMoment(id, text: text)) ?? false
+    }
+    func deleteMomentComment(_ id: String) async { _ = try? await core.deleteMomentComment(id) }
+    func markMomentsOpened() async {
+        try? await core.markMomentsOpened()
+        momentsBadge = false
     }
 
     /// Records read so far, so a photo already on screen is not read again (the files
@@ -922,14 +1059,141 @@ final class AppModel {
         return moved
     }
 
-    func saveChatSettings(_ settings: ChatSettings) throws {
+    // MARK: Chat model profiles (spec #116)
+
+    /// The saved chat models, and which one the live settings belong to.
+    private(set) var chatProfiles: [ChatModelProfile] = []
+    private(set) var activeChatProfileID: String?
+
+    var activeChatProfile: ChatModelProfile? {
+        chatProfiles.first { $0.id == activeChatProfileID }
+    }
+
+    /// Reads the list, turning the existing single chat settings into 「当前配置」 the
+    /// first time. Only the UI tests' injected chat key resets the list for that run;
+    /// a key that merely exists in the Keychain must never wipe the saved profiles.
+    func loadChatProfiles() {
+        #if DEBUG
+        let injected = ProcessInfo.processInfo.environment["EIDOLON_CHAT_API_KEY"] ?? ""
+        if !injected.isEmpty {
+            let state = ChatModelProfileStore.resetForDebug(settings: chatSettings)
+            chatProfiles = state.profiles
+            activeChatProfileID = state.activeID
+            return
+        }
+        #endif
+        let state = ChatModelProfileStore.load(settings: chatSettings)
+        chatProfiles = state.profiles
+        activeChatProfileID = state.activeID
+        // Requests read `chatSettings`; its key must be the selected profile's, not the
+        // legacy `chat.apiKey` left over from before profiles existed.
+        if let profile = activeChatProfile {
+            chatSettings.apiKey = profile.storedAPIKey
+        }
+    }
+
+    /// Switches to a saved profile and saves immediately: switching is the whole point,
+    /// and forgetting the save button would keep the old model answering.
+    func activateChatProfile(_ id: String) throws {
+        guard var profile = chatProfiles.first(where: { $0.id == id }) else { return }
+        var settings = chatSettings
+        profile.apply(to: &settings)
+        try saveChatSettings(settings)
+        activeChatProfileID = id
+        ChatModelProfileStore.saveActive(id)
+    }
+
+    /// Stores an edited or new profile. When it is the active one, the live settings
+    /// follow it and are saved, so the editor's 保存 is enough.
+    func saveChatProfile(_ profile: ChatModelProfile, apiKey: String) throws {
+        var updated = profile
+        try updated.storeAPIKey(apiKey, clear: false)
+        if let index = chatProfiles.firstIndex(where: { $0.id == updated.id }) {
+            chatProfiles[index] = updated
+        } else {
+            chatProfiles.append(updated)
+        }
+        ChatModelProfileStore.save(chatProfiles, activeID: activeChatProfileID)
+        if updated.id == activeChatProfileID {
+            var settings = chatSettings
+            var applied = updated
+            applied.apply(to: &settings)
+            try saveChatSettings(settings)
+        }
+    }
+
+    /// Adds a blank profile under a name that is not taken, without selecting it.
+    @discardableResult
+    func addChatProfile() -> ChatModelProfile {
+        let profile = ChatModelProfile(name: uniqueProfileName("新配置"))
+        chatProfiles.append(profile)
+        ChatModelProfileStore.save(chatProfiles, activeID: activeChatProfileID)
+        return profile
+    }
+
+    /// Copies a profile's fields (never its key) under a fresh id and name.
+    @discardableResult
+    func duplicateChatProfile(_ profile: ChatModelProfile) -> ChatModelProfile {
+        let copy = ChatModelProfile(
+            name: uniqueProfileName("\(profile.name) 副本"),
+            apiProtocol: profile.apiProtocol,
+            baseURL: profile.baseURL,
+            model: profile.model,
+            maxTokens: profile.maxTokens,
+            extraBody: profile.extraBody
+        )
+        chatProfiles.append(copy)
+        ChatModelProfileStore.save(chatProfiles, activeID: activeChatProfileID)
+        return copy
+    }
+
+    private func uniqueProfileName(_ base: String) -> String {
+        let taken = Set(chatProfiles.map(\.name))
+        guard taken.contains(base) else { return base }
+        var index = 2
+        while taken.contains("\(base) \(index)") { index += 1 }
+        return "\(base) \(index)"
+    }
+
+    /// Deletes a profile, its key, and switches away first when it was the active one.
+    @discardableResult
+    func deleteChatProfile(_ id: String) throws -> Bool {
+        guard chatProfiles.count > 1,
+              let index = chatProfiles.firstIndex(where: { $0.id == id })
+        else { return false }
+        let removed = chatProfiles.remove(at: index)
+        Keychain.remove(account: removed.keyAccount)
+        if activeChatProfileID == id {
+            try activateChatProfile(chatProfiles[0].id)
+        }
+        // activateChatProfile only writes the active id; the shortened list is ours.
+        ChatModelProfileStore.save(chatProfiles, activeID: activeChatProfileID)
+        return true
+    }
+
+    /// Writes the page's current chat fields back into the active profile, so editing
+    /// the page and the profile never drift apart.
+    func captureActiveChatProfile(from settings: ChatSettings, clearKey: Bool) throws {
+        guard var profile = activeChatProfile else { return }
+        profile.capture(from: settings)
+        try profile.storeAPIKey(settings.apiKey, clear: clearKey)
+        chatProfiles = chatProfiles.map { $0.id == profile.id ? profile : $0 }
+        ChatModelProfileStore.save(chatProfiles, activeID: activeChatProfileID)
+    }
+
+    /// Returns the normalized settings, so callers can write the same values back into
+    /// the active profile instead of a pre-normalization draft.
+    @discardableResult
+    func saveChatSettings(_ settings: ChatSettings) throws -> ChatSettings {
         var normalized = settings
         normalized.baseURL = APIServiceRouting.baseURLForImportedSettings(
             normalized.baseURL,
             protocol: normalized.apiProtocol
         )
-        try normalized.save()
+        // Profiles own the chat key now; the legacy account stays as the migration source.
+        try normalized.save(writingChatKey: false)
         chatSettings = normalized
+        return normalized
     }
 
     let core: Eidolon
@@ -959,6 +1223,8 @@ final class AppModel {
                 bundleInfo = info
                 _ = try? await core.migrateLegacyStandIfNeeded()
                 try await load()
+                loadChatProfiles()
+                await loadMomentsSettings()
                 phase = .ready
                 #if DEBUG
                 importAPIEnvForDebuggingIfRequested()
@@ -1079,8 +1345,12 @@ final class AppModel {
         settings.apply(report.values)
         // An unsigned UI-test build can fail the Keychain write; this run still needs the
         // values, as the other debug seeding does.
-        try? saveChatSettings(settings)
-        chatSettings = settings
+        if let saved = try? saveChatSettings(settings) {
+            chatSettings = saved
+            try? captureActiveChatProfile(from: saved, clearKey: false)
+        } else {
+            chatSettings = settings
+        }
         try? FileManager.default.removeItem(at: url)
         Logger(subsystem: "com.jacklin.eidolon", category: "settings").notice(
             "imported .env: \(report.mapped.count) mapped, \(report.unsupported.count) unsupported, \(report.unknown.count) unknown"
@@ -1120,8 +1390,7 @@ final class AppModel {
         // judge) stays as the device had it. The UI-test build is unsigned and Keychain
         // writes can fail; the server just seeded must still answer this run, so the
         // in-memory settings are set even when saving the key did not work.
-        try? saveChatSettings(settings)
-        chatSettings = settings
+        chatSettings = (try? saveChatSettings(settings)) ?? settings
     }
 
     /// Development aid: `EIDOLON_CLEAR_USAGE=1` starts the usage page empty, and
@@ -1176,7 +1445,7 @@ final class AppModel {
         settings.adultMode = adultMode == "1"
         // The UI-test build is unsigned and Keychain writes can fail; the toggle itself
         // is UserDefaults, which is written before the Keychain step, so keep it in memory.
-        try? settings.save()
+        try? settings.save(writingChatKey: false)
         chatSettings = settings
     }
 

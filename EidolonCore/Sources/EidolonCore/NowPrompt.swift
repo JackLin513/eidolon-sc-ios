@@ -37,7 +37,8 @@ public enum NowPrompt {
         birthday: (month: Int, day: Int)?,
         todayLines: [String] = [],
         scheduleLines: [String] = [],
-        cycleLines: [String] = []
+        cycleLines: [String] = [],
+        momentsLines: [String] = []
     ) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
@@ -72,6 +73,7 @@ public enum NowPrompt {
         lines += todayLines
         lines += scheduleLines
         lines += cycleLines
+        lines += momentsLines
         return lines.joined(separator: "\n")
     }
 
