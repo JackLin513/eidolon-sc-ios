@@ -61,7 +61,7 @@ final class AppModel {
     /// on this phone, is off by default, and exists in every build.
     private(set) var debugMode = UserDefaults.standard.bool(forKey: AppModel.debugModeKey)
 
-    private static let debugModeKey = "debug.mode"
+    static let debugModeKey = "debug.mode"
 
     /// Development aid: a reply that skipped its picture gets a 生成照片 button beside 朗读,
     /// which opens a tag editor and makes one (spec #62's debug page).
@@ -144,6 +144,9 @@ final class AppModel {
 
     func loadMomentsSettings() async {
         momentsSettings = (try? await core.momentsSettings()) ?? .default
+        // Ageing out does not wait for the switch: a library turned off for a month
+        // still drops what is past retention.
+        await core.pruneMoments()
         await refreshMomentsBadge()
         if momentsSettings.enabled {
             startMomentsLoop()
@@ -152,7 +155,7 @@ final class AppModel {
             momentsLoop?.cancel()
             momentsLoop = nil
         }
-        MomentsNotifications.refresh(moments: momentsSettings)
+        MomentsNotifications.requestAuthorizationIfNeeded(moments: momentsSettings)
     }
 
     func saveMomentsSettings(_ settings: MomentsSettings) async throws {
@@ -165,7 +168,7 @@ final class AppModel {
             momentsLoop?.cancel()
             momentsLoop = nil
         }
-        MomentsNotifications.refresh(moments: settings)
+        MomentsNotifications.requestAuthorizationIfNeeded(moments: settings)
     }
 
     func refreshMomentsBadge() async {
@@ -176,15 +179,9 @@ final class AppModel {
     /// be written then.
     func momentsProviders() -> MomentsProviders? {
         guard let chat = chatProvider else { return nil }
-        let gpt = chatSettings.gptImageSettings
-        return MomentsProviders(
-            chat: chat,
-            photo: photoContext,
-            weather: momentWeather,
-            gptImage: gpt.enabled ? RemoteGPTImageGenerator() : nil,
-            gptSettings: gpt,
-            adultMode: chatSettings.adultMode,
-            debugMode: debugMode
+        return MomentsProvidersFactory.make(
+            chat: chat, photo: photoContext, settings: chatSettings,
+            weather: momentWeather, debugMode: debugMode
         )
     }
 
@@ -192,7 +189,10 @@ final class AppModel {
     /// coming back, once a minute in the foreground, and from the background task.
     @discardableResult
     func runMoments(background: Bool = false) async -> MomentsRun? {
-        guard momentsSettings.enabled, let providers = momentsProviders() else { return nil }
+        guard momentsSettings.enabled, let providers = momentsProviders() else {
+            await core.pruneMoments()
+            return nil
+        }
         let run = await core.runMomentsDue(providers: providers)
         await refreshMomentsBadge()
         if background, !run.newPosts.isEmpty || !run.newReplies.isEmpty {

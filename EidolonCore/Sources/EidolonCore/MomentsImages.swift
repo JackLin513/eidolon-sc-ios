@@ -120,7 +120,8 @@ public struct MomentImageDraft: Sendable, Hashable {
         case "portrait", "肖像": .portrait
         case "upper body", "上半身": .upperBody
         case "cowboy shot", "七分身": .cowboyShot
-        case "full body", "wide shot", "全身": .fullBody
+        case "full body", "全身": .fullBody
+        case "wide shot", "wide", "远景", "大远景": .wideShot
         default: nil
         }
     }
@@ -271,7 +272,7 @@ extension Eidolon {
             let characterCaption = (["girl", herTag] + appearance).joined(separator: ", ")
             var negativePrompt = negative
             if draft.composition == .candid {
-                negativePrompt += ", looking at viewer"
+                negativePrompt += ", looking at viewer, depth of field"
             }
             return ImageRequest(
                 prompt: (full + rest).joined(separator: ", "),
@@ -294,8 +295,7 @@ extension Eidolon {
         characters: [CharacterConfig],
         now: Date,
         settings: MomentsSettings,
-        providers: MomentsProviders,
-        random: inout SeededRandom
+        providers: MomentsProviders
     ) async -> MomentImageRecord? {
         let others = draft.composition == .group
             ? draft.with.compactMap { wanted in characters.first { $0.id == wanted || $0.name == wanted } }
@@ -305,23 +305,43 @@ extension Eidolon {
             && participants.allSatisfy(\.isAdult)
         let allowPeople = providers.photo != nil
         if draft.composition.hasPeople, !allowPeople { return nil }
-        if draft.composition == .group, !allowPeople { return nil }
+
+        // A group that cannot be drawn — nobody valid to stand next to her, or an OpenAI
+        // image service that has no character prompts — becomes her alone, posed.
+        var effective = draft
+        if draft.composition == .group {
+            let valid = draft.with.compactMap { wanted in
+                characters.first { $0.id == wanted || $0.name == wanted }
+            }.filter { $0.photoTag?.isEmpty == false && !$0.photoAppearance.isEmpty }
+            if valid.isEmpty || providers.photo?.settings.apiFormat == .openai {
+                effective = MomentImageDraft(
+                    composition: .posed, shot: .other, framing: draft.framing,
+                    place: draft.place, outfit: draft.outfit, action: draft.action,
+                    note: draft.note, rating: draft.rating
+                )
+            }
+        }
 
         // The no-human pictures may go to GPT Image when it is configured and on; when
-        // it fails or takes too long, NovelAI draws it with the time that is left.
-        if !draft.composition.hasPeople,
+        // it fails or takes too long, NovelAI draws it with the time that is left — the
+        // whole picture has ten minutes, and GPT's share is at most four.
+        var usedGPT = false
+        if !effective.composition.hasPeople,
            let gpt = providers.gptImage, let gptSettings = providers.gptSettings,
            gptSettings.enabled {
-            let request = momentGPTRequest(draft, settings: gptSettings, now: now)
+            usedGPT = true
+            let request = momentGPTRequest(effective, settings: gptSettings, now: now)
             let started = Date()
             do {
                 let data = try await imageQueue.run(priority: .moment, timeout: .seconds(240)) {
                     try await gpt.generate(request, settings: gptSettings)
                 }
-                if let record = try? storeMomentImage(postID: postID, draft: draft, data: data, now: now) {
+                if let record = try? storeMomentImage(
+                    postID: postID, draft: effective, data: data, now: now
+                ) {
                     recordMomentImageCall(
-                        request: request, settings: providers.photo?.settings
-                            ?? ImageServiceSettings(), started: started, error: nil
+                        request: request, provider: URL(string: gptSettings.baseURL)?.host ?? "",
+                        started: started, error: nil
                     )
                     return record
                 }
@@ -329,10 +349,9 @@ extension Eidolon {
                 // Fall through to NovelAI.
             }
         }
-        _ = random
         guard let photo = providers.photo,
               let request = momentImageRequest(
-                draft, character: character, characters: characters,
+                effective, character: character, characters: characters,
                 settings: photo.settings, adult: adult
               )
         else { return nil }
@@ -340,15 +359,22 @@ extension Eidolon {
         var data: Data?
         var failure: String?
         do {
-            data = try await imageQueue.run(priority: .moment, timeout: .seconds(600)) {
+            data = try await imageQueue.run(
+                priority: .moment, timeout: .seconds(usedGPT ? 360 : 600)
+            ) {
                 try await photo.generator.generate(request, settings: photo.settings)
             }
         } catch {
             failure = error.localizedDescription
         }
-        recordMomentImageCall(request: request, settings: photo.settings, started: started, error: failure)
+        recordMomentImageCall(
+            request: request, provider: URL(string: photo.settings.baseURL)?.host ?? "",
+            started: started, error: failure
+        )
         guard let data else { return nil }
-        return try? storeMomentImage(postID: postID, draft: draft, data: data, now: now)
+        return try? storeMomentImage(
+            postID: postID, draft: effective, data: data, now: now
+        )
     }
 
     /// GPT Image takes a sentence, not a tag list (spec #98): style, the scene, the
@@ -384,11 +410,10 @@ extension Eidolon {
     }
 
     private func recordMomentImageCall(
-        request: ImageRequest, settings: ImageServiceSettings, started: Date, error: String?
+        request: ImageRequest, provider: String, started: Date, error: String?
     ) {
         let call = ServiceCall(
-            at: Date(), service: .image,
-            provider: URL(string: settings.baseURL)?.host ?? "",
+            at: Date(), service: .image, provider: provider,
             model: request.model, operation: .image, unit: .images,
             input: error == nil ? 1 : 0,
             latency: Date().timeIntervalSince(started), error: error, conversationID: nil

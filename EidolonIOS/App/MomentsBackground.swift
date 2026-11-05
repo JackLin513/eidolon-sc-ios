@@ -36,30 +36,26 @@ enum MomentsBackground {
     static func perform() async -> MomentsRun? {
         let root = URL.applicationSupportDirectory
             .appending(path: "Eidolon", directoryHint: .isDirectory)
-        guard let core = try? Eidolon(location: .init(root: root)),
-              let settings = try? await core.momentsSettings(),
-              settings.enabled
+        guard let core = try? Eidolon(location: .init(root: root)) else { return nil }
+        await core.pruneMoments()
+        guard let settings = try? await core.momentsSettings(), settings.enabled
         else { return nil }
         let chatSettings = ChatSettings.load()
         guard let config = chatSettings.config else { return nil }
-        let provider = ChatProviderFactory.make(config: config)
         let photo = chatSettings.imageIsConfigured
             ? PhotoTurnContext(
                 generator: RemoteImageGenerator(), settings: chatSettings.imageSettings
             )
             : nil
-        let gpt = chatSettings.gptImageSettings
-        let providers = MomentsProviders(
-            chat: provider,
+        let providers = MomentsProvidersFactory.make(
+            chat: ChatProviderFactory.make(config: config),
             photo: photo,
+            settings: chatSettings,
             weather: OpenMeteoWeatherClient(),
-            gptImage: gpt.enabled ? RemoteGPTImageGenerator() : nil,
-            gptSettings: gpt,
-            adultMode: chatSettings.adultMode,
-            debugMode: UserDefaults.standard.bool(forKey: "debug.mode")
+            debugMode: UserDefaults.standard.bool(forKey: AppModel.debugModeKey)
         )
         let run = await core.runMomentsDue(providers: providers)
-        if !run.newPosts.isEmpty || !run.newReplies.isEmpty {
+        if settings.notifications, !run.newPosts.isEmpty || !run.newReplies.isEmpty {
             MomentsNotifications.post(posts: run.newPosts.count, replies: run.newReplies.count)
         }
         return run

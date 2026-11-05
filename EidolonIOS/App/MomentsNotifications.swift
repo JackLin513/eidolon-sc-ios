@@ -6,8 +6,11 @@ import UserNotifications
 /// the post in them.
 enum MomentsNotifications {
     static let openMoments = Notification.Name("eidolon.moments.open")
+    /// Set when a notification is tapped while the app is not yet showing its tabs: a
+    /// cold launch has no one listening to `openMoments` yet.
+    @MainActor static var pendingOpen = false
 
-    static func refresh(moments: MomentsSettings) {
+    static func requestAuthorizationIfNeeded(moments: MomentsSettings) {
         guard moments.enabled, moments.notifications else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }

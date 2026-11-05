@@ -58,6 +58,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         guard response.notification.request.content.userInfo["tab"] as? String == "moments"
         else { return }
         await MainActor.run {
+            MomentsNotifications.pendingOpen = true
             NotificationCenter.default.post(name: MomentsNotifications.openMoments, object: nil)
         }
     }

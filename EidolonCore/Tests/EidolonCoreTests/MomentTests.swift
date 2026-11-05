@@ -8,7 +8,7 @@ final class MomentTests: XCTestCase {
 
     private func installed() async throws -> (Eidolon, URL) {
         let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Moments-\\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("Moments-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         addTeardownBlock { [root] in try? FileManager.default.removeItem(at: root) }
         let eidolon = try Eidolon(location: .init(root: root.appendingPathComponent("app")))
@@ -25,7 +25,7 @@ final class MomentTests: XCTestCase {
 
     private func addTurn(_ eidolon: Eidolon, character: String = "mano", at date: Date) async throws {
         try await eidolon.userQueue.write { db in
-            let conversation = "conversation-\\(character)"
+            let conversation = "conversation-\(character)"
             try db.execute(
                 sql: """
                     INSERT OR IGNORE INTO conversations(id, character_id, created_at)
@@ -349,7 +349,7 @@ extension MomentTests {
             random: &random
         )
         XCTAssertTrue(wet.allSatisfy { ["cafe", "books", "mall", "museum", "bath", "venue"]
-            .contains($0.category) })
+            .contains($0.category.rawValue) })
 
         _ = try await insertPost(eidolon, revealAt: now.addingTimeInterval(-3600))
         let used = try await eidolon.momentRecentlyUsedPlaces(now: now)
@@ -544,5 +544,109 @@ extension MomentTests {
         XCTAssertEqual(parsed.composition, .selfie)
         XCTAssertEqual(parsed.framing, .fullBody)
         XCTAssertEqual(parsed.action, ["smile", "peace sign"])
+    }
+}
+
+extension MomentTests {
+    func testTurningItBackOnTodayPlansTheRestOfTheDay() async throws {
+        let (eidolon, _) = try await installed()
+        try await settings(eidolon, enabled: false)
+        try await markPlanned(eidolon, at: now)
+        try await settings(eidolon, enabled: true)
+        let planned = try await eidolon.userQueue.read { db in
+            try String.fetchOne(db, sql: "SELECT planned_day FROM moment_state WHERE id = 1")
+        }
+        XCTAssertNil(planned, "a switch turned back on today plans again")
+    }
+
+    func testPostsOnTheSameDayKeepAnHourApart() async throws {
+        let (eidolon, _) = try await installed()
+        try await settings(eidolon, posts: 10)
+        for id in ["mano", "hiori"] {
+            try await addTurn(eidolon, character: id, at: now)
+        }
+        let existing = now.addingTimeInterval(-60 * 60)
+        _ = try await insertPost(eidolon, revealAt: existing)
+        let value = try await eidolon.momentsSettings()
+        var total = 0
+        for seed in 0..<12 {
+            try await eidolon.userQueue.write { db in
+                try db.execute(sql: "DELETE FROM moment_plans")
+                try db.execute(sql: "UPDATE moment_state SET planned_day = NULL")
+            }
+            var random = SeededRandom(seed: "\(seed)")
+            try await eidolon.ensureMomentsPlans(now: now, settings: value, random: &random)
+            let dues = try await eidolon.userQueue.read { db in
+                try String.fetchAll(db, sql: "SELECT due_at FROM moment_plans")
+            }
+            let dates = dues.compactMap(Eidolon.parseTimestamp)
+            total += dates.count
+            for date in dates {
+                XCTAssertGreaterThanOrEqual(
+                    abs(date.timeIntervalSince(existing)), 3600,
+                    "a new plan keeps an hour clear of the post already out"
+                )
+            }
+            for (index, date) in dates.enumerated() {
+                for other in dates[(index + 1)...] {
+                    XCTAssertGreaterThanOrEqual(abs(date.timeIntervalSince(other)), 3600)
+                }
+            }
+        }
+        XCTAssertGreaterThan(total, 0)
+    }
+
+    func testAGroupPictureBringsItsMembersIntoTheLikes() async throws {
+        let (eidolon, _) = try await installed()
+        let characters = try await eidolon.characters()
+        let circle = characters.filter { $0.id != "mano" }
+        let post = try await insertPost(eidolon, revealAt: now)
+        let draft = Eidolon.MomentDraft(
+            ja: "みんなで撮った。", zh: "大家一起拍的。", placeID: nil, likes: [],
+            comments: [("hiori", "楽しいね。", "真开心。")],
+            image: MomentImageDraft(
+                composition: .group, framing: .wideShot, with: ["hiori"],
+                place: ["studio"], action: ["smile"], note: "合照"
+            )
+        )
+        var random = SeededRandom(seed: "1")
+        await eidolon.insertMomentReactions(
+            postID: post, draft: draft, circle: circle, birthday: false,
+            now: now, random: &random
+        )
+        let likers = try await eidolon.userQueue.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT character_id FROM moment_reactions WHERE post_id = ? AND kind = 'like'",
+                arguments: [post]
+            )
+        }
+        let comments = try await eidolon.userQueue.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT character_id FROM moment_reactions WHERE post_id = ? AND kind = 'comment'",
+                arguments: [post]
+            )
+        }
+        XCTAssertEqual(likers, ["hiori"], "whoever is in the picture likes it")
+        XCTAssertTrue(comments.isEmpty, "one person does not both like and comment")
+    }
+
+    func testAStatsPageShowsMomentsWhileTheSwitchIsOn() async throws {
+        let (eidolon, _) = try await installed()
+        try await settings(eidolon)
+        let summary = try await eidolon.statsSummary(range: .thirtyDays, now: now, timeZone: tokyo)
+        XCTAssertTrue(summary.moments.enabled)
+        XCTAssertTrue(summary.moments.hasAny)
+        XCTAssertEqual(summary.moments.posts, 0)
+    }
+
+    func testWideShotFramingParsesForMoments() throws {
+        let draft = try XCTUnwrap(MomentImageDraft(text: """
+            composition: 风景
+            framing: 远景
+            action: night street
+            """))
+        XCTAssertEqual(draft.framing, .wideShot)
     }
 }

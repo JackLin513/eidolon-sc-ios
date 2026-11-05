@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		006814D0C420AED5E64C35B7 /* MomentsProvidersFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CE28259DA40B1838D61EE57 /* MomentsProvidersFactory.swift */; };
 		03D1D9AFAE21C9348078853C /* ImportGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */; };
 		040D13EBDCF7224BE38785D1 /* GiftsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3FDDF38468E86F1EF7C7A6 /* GiftsView.swift */; };
 		0EFF31521A69C5A7C7949BCB /* DebugRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCD1CD149AFF0049C2EE0F58 /* DebugRecognition.swift */; };
@@ -111,6 +112,7 @@
 
 /* Begin PBXFileReference section */
 		04FF4244E9E83A9501C1F19E /* EidolonCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = EidolonCore; path = EidolonCore; sourceTree = SOURCE_ROOT; };
+		0CE28259DA40B1838D61EE57 /* MomentsProvidersFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MomentsProvidersFactory.swift; sourceTree = "<group>"; };
 		0E396CD6E4C64449524CEC32 /* EidolonIOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = EidolonIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		14A72BB12039666C937D7C04 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		17A409D36FC5F7C23FD61FFB /* BarTutorialUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarTutorialUITests.swift; sourceTree = "<group>"; };
@@ -422,6 +424,7 @@
 				E95BF2FA018AF3E7B92AABD6 /* MainTabsView.swift */,
 				F5C1B7F88E7F97D4335F2722 /* MomentsBackground.swift */,
 				4208DA3B81C99D8B53DC32F2 /* MomentsNotifications.swift */,
+				0CE28259DA40B1838D61EE57 /* MomentsProvidersFactory.swift */,
 				14A72BB12039666C937D7C04 /* RootView.swift */,
 				957D8B0F7007CD039844150D /* TabBarHides.swift */,
 			);
@@ -713,6 +716,7 @@
 				2CF24EECC30E051467FA4D35 /* MicrophoneCapture.swift in Sources */,
 				CBF5FF776C62201A4CD83E96 /* MomentsBackground.swift in Sources */,
 				400272C1EB5DCE6FA78BBF36 /* MomentsNotifications.swift in Sources */,
+				006814D0C420AED5E64C35B7 /* MomentsProvidersFactory.swift in Sources */,
 				62C3F10152A648E5AF4F7222 /* MomentsSettingsView.swift in Sources */,
 				4553FBED9DB3008313820C29 /* MomentsView.swift in Sources */,
 				F0779B69941B95753CFA7C62 /* ObjCExceptionCatcher.m in Sources */,

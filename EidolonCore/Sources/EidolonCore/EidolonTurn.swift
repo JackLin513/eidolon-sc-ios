@@ -1608,18 +1608,13 @@ struct PromptAssembler {
         guard let sheetPath = character.sheet else {
             throw EidolonError.invalidContent("角色 \(character.id) 没有人设文件")
         }
-        let sheetURL = bundleDirectory.appendingPathComponent(sheetPath)
-        guard let contents = try? String(contentsOf: sheetURL, encoding: .utf8) else {
-            throw EidolonError.invalidContent("读不到 \(sheetPath)")
-        }
         // Upstream loads a sheet trimmed; the blank run between sections would differ.
-        var sheet = contents.trimmingCharacters(in: .whitespacesAndNewlines)
         // Our own notes (Chinese name, terms) sit beside the content, not in upstream's
         // sheet: a character without a notes file gets exactly the prompt upstream would.
-        let notesURL = bundleDirectory.appendingPathComponent("characters/\(character.id).notes.md")
-        if let notes = try? String(contentsOf: notesURL, encoding: .utf8) {
-            let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedNotes.isEmpty { sheet += "\n\n" + trimmedNotes }
+        guard let sheet = CharacterSheet.read(
+            characterID: character.id, sheetPath: sheetPath, in: bundleDirectory
+        ) else {
+            throw EidolonError.invalidContent("读不到 \(sheetPath)")
         }
 
         // Everything every turn of hers carries, apart from what the turn is about, in

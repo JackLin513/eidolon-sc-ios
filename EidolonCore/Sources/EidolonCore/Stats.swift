@@ -100,10 +100,11 @@ public struct StatsRangeSummary: Sendable, Hashable {
     public var characters: [StatsCharacterSummary]
 }
 
-/// What the stats page reads in one go (spec #96). Dates and hours are the producer's.
 /// The moments part of the stats page (spec #98): what the range posted, what failed, and
-/// how often the producer liked or commented. None of it is split by character.
+/// how often the producer liked or commented. None of it is split by character. `enabled`
+/// keeps the section on the page while the switch is on, before anything has happened.
 public struct StatsMoments: Sendable, Hashable {
+    public var enabled: Bool
     public var posts: Int
     public var failedPosts: Int
     public var replies: Int
@@ -112,9 +113,10 @@ public struct StatsMoments: Sendable, Hashable {
     public var commentedPosts: Int
 
     public init(
-        posts: Int = 0, failedPosts: Int = 0, replies: Int = 0, failedReplies: Int = 0,
-        likedPosts: Int = 0, commentedPosts: Int = 0
+        enabled: Bool = false, posts: Int = 0, failedPosts: Int = 0, replies: Int = 0,
+        failedReplies: Int = 0, likedPosts: Int = 0, commentedPosts: Int = 0
     ) {
+        self.enabled = enabled
         self.posts = posts
         self.failedPosts = failedPosts
         self.replies = replies
@@ -124,9 +126,11 @@ public struct StatsMoments: Sendable, Hashable {
     }
 
     public var hasAny: Bool {
-        posts > 0 || replies > 0 || failedPosts > 0 || failedReplies > 0
+        enabled || posts > 0 || replies > 0 || failedPosts > 0 || failedReplies > 0
     }
 }
+
+/// What the stats page reads in one go (spec #96). Dates and hours are the producer's.
 
 public struct StatsSummary: Sendable, Hashable {
     /// Days since the first thing still left, counting its day as the first; 0 when
@@ -423,6 +427,7 @@ extension Eidolon {
             "0000-01-01T00:00:00.000000Z"
         }
         let toStamp = Self.timestamp(now.addingTimeInterval(1))
+        let enabled = (try? momentsSettings())?.enabled ?? false
         return try userQueue.read { db in
             let posts = try Int.fetchOne(
                 db,
@@ -472,7 +477,7 @@ extension Eidolon {
                 arguments: [fromStamp, toStamp]
             ) ?? 0
             return StatsMoments(
-                posts: posts, failedPosts: failedPosts, replies: replies,
+                enabled: enabled, posts: posts, failedPosts: failedPosts, replies: replies,
                 failedReplies: failedReplies, likedPosts: liked, commentedPosts: commented
             )
         }

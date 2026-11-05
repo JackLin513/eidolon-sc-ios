@@ -52,6 +52,12 @@ struct RootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: MomentsNotifications.openMoments)) { _ in
             app?.selectedTab = .moments
+            MomentsNotifications.pendingOpen = false
+        }
+        .onChange(of: app == nil) { _, loading in
+            guard !loading, MomentsNotifications.pendingOpen else { return }
+            app?.selectedTab = .moments
+            MomentsNotifications.pendingOpen = false
         }
         .task {
             guard app == nil, startupError == nil else { return }

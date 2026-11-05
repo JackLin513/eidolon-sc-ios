@@ -97,45 +97,6 @@ public struct MomentsSettings: Codable, Sendable, Equatable {
 
 // MARK: - Content
 
-/// One place from the bundle's `characters/places.json`.
-public struct MomentPlace: Codable, Sendable, Hashable, Identifiable {
-    public var id: String
-    public var name: String
-    public var area: String
-    public var lat: Double
-    public var lon: Double
-    public var category: String
-    public var note: String
-    public var seasons: [String]?
-    public var slots: [String]?
-    public var venues: [String]?
-    public var idols: [String]?
-    public var source: String?
-
-    public init(
-        id: String, name: String, area: String, lat: Double, lon: Double, category: String,
-        note: String, seasons: [String]? = nil, slots: [String]? = nil,
-        venues: [String]? = nil, idols: [String]? = nil, source: String? = nil
-    ) {
-        self.id = id
-        self.name = name
-        self.area = area
-        self.lat = lat
-        self.lon = lon
-        self.category = category
-        self.note = note
-        self.seasons = seasons
-        self.slots = slots
-        self.venues = venues
-        self.idols = idols
-        self.source = source
-    }
-
-    var snapshot: MomentPlaceSnapshot {
-        MomentPlaceSnapshot(id: id, name: name, area: area, lat: lat, lon: lon)
-    }
-}
-
 /// The place a post keeps, copied when it is written: changing the bundle later does not
 /// rewrite a post that already went out.
 public struct MomentPlaceSnapshot: Codable, Sendable, Hashable {
@@ -307,6 +268,7 @@ extension Eidolon {
     }
 
     public func setMomentsSettings(_ settings: MomentsSettings) throws {
+        let previous = (try? momentsSettings()) ?? .default
         let data = try JSONEncoder().encode(settings)
         let text = String(decoding: data, as: UTF8.self)
         try userQueue.write { db in
@@ -317,21 +279,12 @@ extension Eidolon {
                     """,
                 arguments: [Self.momentSettingsKey, text]
             )
+            // Turning it back on today plans the rest of the day again: `planned_day`
+            // alone would otherwise make the switch look like it did nothing.
+            if settings.enabled && !previous.enabled {
+                try db.execute(sql: "UPDATE moment_state SET planned_day = NULL WHERE id = 1")
+            }
         }
-    }
-
-    /// Every place the bundle carries, read once.
-    public func momentPlaces() throws -> [MomentPlace] {
-        if let cachedPlaces { return cachedPlaces }
-        let url = location.contentDirectory.appendingPathComponent("characters/places.json")
-        guard let data = try? Data(contentsOf: url) else {
-            cachedPlaces = []
-            return []
-        }
-        struct Document: Decodable { var places: [MomentPlace] }
-        let places = (try? JSONDecoder().decode(Document.self, from: data))?.places ?? []
-        cachedPlaces = places
-        return places
     }
 
     /// The posts revealed by `now`, newest first, with only the reactions that have come
@@ -588,10 +541,16 @@ extension Eidolon {
         try? ensureMomentsPlans(now: now, settings: settings, random: &random)
         let plans = (try? dueMomentPlans(now: now)) ?? []
         for plan in plans {
-            await processMomentPlan(plan, now: now, settings: settings, providers: providers, run: &run, random: &random)
+            await processMomentPlan(plan, now: now, providers: providers, run: &run, random: &random)
         }
         await processMomentReplies(now: now, settings: settings, providers: providers, run: &run)
         return run
+    }
+
+    /// Ages out posts and plans past retention even while the switch is off, so turning
+    /// moments off does not freeze the library. Failures are never surfaced.
+    public func pruneMoments(now: Date = Date()) {
+        try? cleanupMoments(now: now)
     }
 
     // MARK: Planning
@@ -618,17 +577,25 @@ extension Eidolon {
             try String.fetchOne(db, sql: "SELECT planned_day FROM moment_state WHERE id = 1")
         }
         guard planned != day else { return }
+        // Plans older than yesterday are not caught up (spec #98); a work plan may run
+        // past midnight and still belongs to its own day.
+        try userQueue.write { db in
+            try db.execute(
+                sql: "DELETE FROM moment_plans WHERE plan_day < ?",
+                arguments: [Self.isoDay(now.addingTimeInterval(-24 * 3600), in: Self.momentTokyo)]
+            )
+        }
         let characters = try characters()
-        let world = try loadWorld()
         let ids = try momentActiveCharacterIDs(now: now)
+        // Posts already out or planned today, so a new one keeps an hour clear of them.
+        var reserved = try momentReservedDues(now: now)
         let postedToday = try momentPostCounts(day: day)
         var remaining = max(0, settings.dailyPosts - postedToday.values.reduce(0, +))
         var candidates: [(CharacterConfig, Affinity, Bool)] = []
         for character in characters where ids.contains(character.id) {
             if let count = postedToday[character.id], count > 0 { continue }
             let affinity = try readAffinity(characterID: character.id, now: now)
-            guard affinity.tier == .trust || affinity.tier == .close || affinity.tier == .intimate,
-                  affinity.cooldownUntil == nil,
+            guard Self.momentAllowsMoments(affinity),
                   try momentHasHadATurn(character.id)
             else { continue }
             let birthday = Self.isMomentBirthday(character.birthday, now: now)
@@ -641,12 +608,14 @@ extension Eidolon {
             guard random.below(100) < chance else { continue }
             candidates.append((character, affinity, birthday))
         }
+        // A birthday is forced, so it is planned first and never dropped by the daily cap.
         random.shuffle(&candidates)
+        candidates = candidates.filter(\.2) + candidates.filter { !$0.2 }
         for (character, _, birthday) in candidates {
             guard remaining > 0 else { break }
             let work = try momentTodaysWork(characterID: character.id, now: now)
             let kind: MomentPlanKind
-            let due: Date
+            var due: Date
             if let work, !work.isEmpty {
                 kind = .work
                 let lastEnd = work.map(\.end).max() ?? now
@@ -661,12 +630,21 @@ extension Eidolon {
             } else {
                 continue
             }
+            // Same-day posts stay at least an hour apart (spec #98). A birthday may move
+            // later instead of losing its day; anyone else simply waits for tomorrow.
+            var tries = 0
+            while !reserved.allSatisfy({ abs($0.timeIntervalSince(due)) >= 3600 }), tries < 6 {
+                guard birthday else { break }
+                due = due.addingTimeInterval(3600)
+                tries += 1
+            }
+            guard reserved.allSatisfy({ abs($0.timeIntervalSince(due)) >= 3600 }) else { continue }
+            reserved.append(due)
             try insertMomentPlan(
                 characterID: character.id, planDay: day, dueAt: due, kind: kind,
                 birthday: birthday, now: now
             )
             remaining -= 1
-            _ = world
         }
         try userQueue.write { db in
             try db.execute(
@@ -676,6 +654,27 @@ extension Eidolon {
                     """,
                 arguments: [day]
             )
+        }
+    }
+
+    /// When today's posts and plans land (Tokyo's day), for the one-hour spacing rule.
+    func momentReservedDues(now: Date) throws -> [Date] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = Self.momentTokyo
+        let start = calendar.startOfDay(for: now)
+        let end = start.addingTimeInterval(24 * 3600)
+        return try userQueue.read { db in
+            let posts = try String.fetchAll(
+                db,
+                sql: "SELECT reveal_at FROM moment_posts WHERE reveal_at >= ? AND reveal_at < ?",
+                arguments: [Self.timestamp(start), Self.timestamp(end)]
+            )
+            let plans = try String.fetchAll(
+                db,
+                sql: "SELECT due_at FROM moment_plans WHERE due_at >= ? AND due_at < ?",
+                arguments: [Self.timestamp(start), Self.timestamp(end)]
+            )
+            return (posts + plans).compactMap(Self.parseTimestamp)
         }
     }
 
@@ -701,12 +700,16 @@ extension Eidolon {
     func momentTodaysWork(
         characterID: String, now: Date
     ) throws -> [(job: WeeklyJob, end: Date)]? {
-        let her = try schedule(characterID: characterID, now: now, timeZone: Self.momentTokyo)
+        // The day of the post is Tokyo's, but when a job ends is the producer's clock
+        // (spec #98): the schedule board is theirs.
+        let zone = (try? producerProfile())?.timezone.flatMap(TimeZone.init(identifier:))
+            ?? Self.momentTokyo
+        let her = try schedule(characterID: characterID, now: now, timeZone: zone)
         let today = her.localDay.weekdayIndex
         let jobs = her.jobs.filter { $0.week == her.thisWeek && $0.day == today }
         guard !jobs.isEmpty else { return nil }
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = Self.momentTokyo
+        calendar.timeZone = zone
         let start = calendar.startOfDay(for: now)
         return jobs.map { job in
             let endHour = 6 + (job.slot + job.job.length) * 6
@@ -825,6 +828,14 @@ extension Eidolon {
         }
     }
 
+    /// Close enough to post and reply: trust or higher, and not cooling off.
+    static func momentAllowsMoments(_ affinity: Affinity) -> Bool {
+        switch affinity.tier {
+        case .trust, .close, .intimate: affinity.cooldownUntil == nil
+        default: false
+        }
+    }
+
     static func isMomentBirthday(_ birthday: Birthday?, now: Date) -> Bool {
         guard let birthday else { return false }
         var calendar = Calendar(identifier: .gregorian)
@@ -849,7 +860,6 @@ extension Eidolon {
     func processMomentPlan(
         _ plan: MomentPlanRecord,
         now: Date,
-        settings: MomentsSettings,
         providers: MomentsProviders,
         run: inout MomentsRun,
         random: inout SeededRandom
@@ -863,9 +873,9 @@ extension Eidolon {
         }
         let affinity = (try? readAffinity(characterID: plan.characterID, now: now))
             ?? .fresh(at: now)
-        guard affinity.tier == .trust || affinity.tier == .close || affinity.tier == .intimate,
-              affinity.cooldownUntil == nil
-        else { return }
+        guard Self.momentAllowsMoments(affinity) else { return }
+        let today = Self.isoDay(now, in: Self.momentTokyo)
+        if plan.planDay != today, plan.kind != .work { return }
         let counts = (try? momentPostCounts(day: plan.planDay)) ?? [:]
         guard (counts[character.id] ?? 0) == 0 else { return }
         guard counts.values.reduce(0, +) < settingsNow.dailyPosts else { return }
@@ -927,7 +937,10 @@ extension Eidolon {
             character: character, work: work, now: now, todayLines: todayLines,
             wet: weather?.kind.isWet ?? false, random: &random
         )) ?? []
-        let circle = momentCircle(character: character, characters: characters, world: world, birthday: birthday, random: &random)
+        let circle = momentCircle(
+            character: character, characters: characters,
+            birthday: birthday, now: now, random: &random
+        )
         let seeds = work.map { jobs in
             jobs.map { "\($0.job.name)：\($0.job.note)" }
         } ?? momentSeeds(character: character, random: &random)
@@ -944,34 +957,28 @@ extension Eidolon {
         )) ?? []
         guard !prompt.isEmpty else { return nil }
 
-        let started = Date()
-        var raw = ""
-        var failure: String?
-        do {
-            for try await delta in providers.chat.stream(messages: prompt) {
-                raw += delta
-            }
-        } catch {
-            failure = error.localizedDescription
-        }
-        let latency = Date().timeIntervalSince(started)
-        let draft = failure == nil ? Self.parseMomentDraft(raw) : nil
-        if failure == nil && draft == nil {
-            failure = "朋友圈格式不对"
-        }
+        let answer = await momentChatAnswer(prompt, providers: providers)
+        let draft = answer.failure == nil ? Self.parseMomentDraft(answer.raw) : nil
+        let failure = answer.failure ?? (draft == nil ? "朋友圈格式不对" : nil)
         await recordChatCall(
             provider: providers.chat, operation: .moment, prompts: [prompt],
-            output: raw, latency: latency, error: failure, conversationID: nil, at: now
+            output: answer.raw, latency: answer.latency, error: failure,
+            conversationID: nil, at: now
         )
         guard let draft else { return nil }
 
-        var place: MomentPlace?
+        var place: Place?
         if let placeID = draft.placeID,
            let chosen = candidates.first(where: { $0.id == placeID }) {
             place = chosen
         }
         let postID = UUID().uuidString
-        let snapshot = place?.snapshot
+        let snapshot = place.map {
+            MomentPlaceSnapshot(
+                id: $0.id, name: $0.name, area: $0.area,
+                lat: $0.latitude, lon: $0.longitude
+            )
+        }
         try? await userQueue.write { db in
             try db.execute(
                 sql: """
@@ -992,25 +999,30 @@ extension Eidolon {
         if let image = draft.image, compositions.contains(image.composition) {
             _ = await makeMomentImage(
                 postID: postID, draft: image, character: character, characters: characters,
-                now: now, settings: settings, providers: providers, random: &random
+                now: now, settings: settings, providers: providers
             )
         }
         insertMomentReactions(
-            postID: postID, draft: draft, circle: circle, now: now, random: &random
+            postID: postID, draft: draft, circle: circle, birthday: birthday,
+            now: now, random: &random
         )
         return postID
     }
 
     func insertMomentReactions(
         postID: String, draft: MomentDraft, circle: [CharacterConfig],
-        now: Date, random: inout SeededRandom
+        birthday: Bool, now: Date, random: inout SeededRandom
     ) {
         let byID = Dictionary(uniqueKeysWithValues: circle.map { ($0.id, $0) })
         let byName = Dictionary(uniqueKeysWithValues: circle.map { ($0.name, $0) })
+        // The people standing in a group picture were there too, so they like it.
+        let group = draft.image?.composition == .group ? draft.image?.with ?? [] : []
+        let likes = Array((draft.likes + group).prefix(birthday ? 10 : 6))
+        let comments = Array(draft.comments.prefix(birthday ? 6 : 3))
         var position = 0
         var seen = Set<String>()
         try? userQueue.write { db in
-            for raw in draft.likes {
+            for raw in likes {
                 guard let character = byID[raw] ?? byName[raw],
                       seen.insert(character.id).inserted
                 else { continue }
@@ -1028,8 +1040,10 @@ extension Eidolon {
                 )
                 position += 1
             }
-            for comment in draft.comments {
-                guard let character = byID[comment.from] ?? byName[comment.from] else { continue }
+            for comment in comments {
+                guard let character = byID[comment.from] ?? byName[comment.from],
+                      seen.insert(character.id).inserted
+                else { continue }
                 let minutes = 15 + random.below(346)
                 try db.execute(
                     sql: """
@@ -1050,30 +1064,26 @@ extension Eidolon {
 
     // MARK: Places
 
-    static func momentSeason(_ now: Date) -> String {
+    static func momentSeason(_ now: Date) -> PlaceSeason {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = momentTokyo
         let month = calendar.component(.month, from: now)
         switch month {
-        case 3...5: return "spring"
-        case 6...8: return "summer"
-        case 9...11: return "autumn"
-        default: return "winter"
+        case 3...5: return .spring
+        case 6...8: return .summer
+        case 9...11: return .autumn
+        default: return .winter
         }
     }
 
-    static func momentSlot(_ now: Date) -> String {
+    static func momentSlot(_ now: Date) -> PlaceSlot {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = momentTokyo
         let hour = calendar.component(.hour, from: now)
-        if hour >= 5, hour < 12 { return "morning" }
-        if hour >= 12, hour < 18 { return "afternoon" }
-        return "evening"
+        if hour >= 5, hour < 12 { return .morning }
+        if hour >= 12, hour < 18 { return .afternoon }
+        return .evening
     }
-
-    static let momentIndoorCategories: Set<String> = [
-        "cafe", "books", "mall", "museum", "bath", "venue",
-    ]
 
     func momentPlaceCandidates(
         character: CharacterConfig,
@@ -1082,38 +1092,41 @@ extension Eidolon {
         todayLines: [String],
         wet: Bool,
         random: inout SeededRandom
-    ) throws -> [MomentPlace] {
-        let all = try momentPlaces()
+    ) throws -> [Place] {
+        let all = try (places()?.places ?? [])
         guard !all.isEmpty else { return [] }
         let used = try momentRecentlyUsedPlaces(now: now)
         var categories: Set<String>? = nil
         if let work, !work.isEmpty {
             let listed = (try? jobList()) ?? []
             let byID = Dictionary(uniqueKeysWithValues: listed.map { ($0.id, $0) })
-            let wanted = Set(work.compactMap { byID[$0.job.listedID]?.places }.flatMap { $0 })
-            if !wanted.isEmpty { categories = wanted }
+            // Only the categories today's work puts her in; a job that names none leaves
+            // the post without a place rather than a random one.
+            categories = Set(work.compactMap { byID[$0.job.listedID]?.places }.flatMap { $0 })
         }
         let season = Self.momentSeason(now)
         let slot = Self.momentSlot(now)
-        var pool: [(MomentPlace, Int)] = []
+        var pool: [(Place, Int)] = []
         for place in all {
             if used.contains(place.id) { continue }
-            if let categories, !categories.contains(place.category) { continue }
-            if let seasons = place.seasons, !seasons.isEmpty, !seasons.contains(season) {
+            if let categories, !categories.contains(place.category.rawValue) { continue }
+            if !place.seasons.isEmpty, !place.seasons.contains(season) {
                 continue
             }
-            if let slots = place.slots, !slots.isEmpty, !slots.contains(slot) { continue }
-            if wet, !Self.momentIndoorCategories.contains(place.category) { continue }
-            if place.category == "venue", work == nil,
-               !todayLines.contains(where: { $0.contains("出演") || $0.contains("ライブ") }) {
+            if !place.slots.isEmpty, !place.slots.contains(slot) { continue }
+            if wet, !place.category.isIndoor { continue }
+            if place.category == .venue, work == nil,
+               !todayLines.contains(where: {
+                   $0.contains("站上") || $0.contains("演出") || $0.contains("ライブ")
+               }) {
                 continue
             }
             var weight = 1
-            if character.placeLikes.contains(place.category) { weight += 3 }
-            if let idols = place.idols, idols.contains(character.id) { weight += 3 }
+            if character.placeLikes.contains(place.category.rawValue) { weight += 3 }
+            if place.idols.contains(character.id) { weight += 3 }
             pool.append((place, weight))
         }
-        var picked: [MomentPlace] = []
+        var picked: [Place] = []
         while picked.count < 4, !pool.isEmpty {
             let total = pool.reduce(0) { $0 + $1.1 }
             var pick = random.below(total)
@@ -1141,15 +1154,14 @@ extension Eidolon {
     // MARK: Circle, seeds, memories
 
     func momentCircle(
-        character: CharacterConfig, characters: [CharacterConfig], world: WorldSetting?,
-        birthday: Bool, random: inout SeededRandom
+        character: CharacterConfig, characters: [CharacterConfig],
+        birthday: Bool, now: Date, random: inout SeededRandom
     ) -> [CharacterConfig] {
         let target = birthday ? 8 + random.below(3) : 4 + random.below(3)
         var mates: [CharacterConfig] = []
         var others: [CharacterConfig] = []
-        let herUnit = character.unit
         for other in characters where other.id != character.id {
-            if let herUnit, other.unit == herUnit {
+            if let herUnit = character.unit, other.unit == herUnit {
                 mates.append(other)
             } else {
                 others.append(other)
@@ -1157,15 +1169,53 @@ extension Eidolon {
         }
         random.shuffle(&mates)
         random.shuffle(&others)
-        var circle = Array(mates.prefix(target))
+
+        var circle: [CharacterConfig] = []
+        var chosen = Set<String>()
+        func add(_ people: [CharacterConfig]) {
+            for person in people where circle.count < target && chosen.insert(person.id).inserted {
+                circle.append(person)
+            }
+        }
+        // Birthday first, then the people her own facts name in 人物关系, then her unit.
+        add(mates.filter { Self.isMomentBirthday($0.birthday, now: now) })
+        add(momentRelatedCharacters(character, characters: characters))
+        add(mates)
         // One from another unit now and then, so the circle does not close in on itself.
         if circle.count < target, !others.isEmpty, random.below(100) < 40 {
-            circle.append(others.removeFirst())
+            add([others.removeFirst()])
         }
-        let fill = others.filter { $0.photoTag != nil }
-        circle.append(contentsOf: fill.prefix(target - circle.count))
-        _ = world
-        return Array(circle.prefix(target))
+        add(others.filter { $0.photoTag != nil })
+        return circle
+    }
+
+    /// Other characters her facts name under 人物关系: the people she would naturally
+    /// bring into a moment even when they are in another unit.
+    func momentRelatedCharacters(
+        _ character: CharacterConfig, characters: [CharacterConfig]
+    ) -> [CharacterConfig] {
+        guard let facts = character.facts,
+              let text = try? String(
+                contentsOf: location.contentDirectory.appendingPathComponent(facts),
+                encoding: .utf8
+              )
+        else { return [] }
+        var inRelations = false
+        var lines: [String] = []
+        for raw in text.split(whereSeparator: \.isNewline) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("#") {
+                inRelations = line.contains("人物关系") || line.contains("关系")
+                continue
+            }
+            guard inRelations, !line.isEmpty else { continue }
+            lines.append(line)
+        }
+        let relations = lines.joined(separator: "\n")
+        guard !relations.isEmpty else { return [] }
+        return characters.filter {
+            $0.id != character.id && relations.contains($0.name)
+        }
     }
 
     func momentSeeds(character: CharacterConfig, random: inout SeededRandom) -> [String] {
@@ -1222,20 +1272,11 @@ extension Eidolon {
 
 extension Eidolon {
     func momentSheet(_ character: CharacterConfig) -> String {
-        guard let path = character.sheet,
-              let text = try? String(
-                contentsOf: location.contentDirectory.appendingPathComponent(path),
-                encoding: .utf8
-              )
-        else { return "" }
-        var sheet = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let notesURL = location.contentDirectory
-            .appendingPathComponent("characters/\(character.id).notes.md")
-        if let notes = try? String(contentsOf: notesURL, encoding: .utf8) {
-            let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { sheet += "\n\n" + trimmed }
-        }
-        return sheet
+        guard let path = character.sheet else { return "" }
+        return CharacterSheet.read(
+            characterID: character.id, sheetPath: path,
+            in: location.contentDirectory
+        ) ?? ""
     }
 
     func momentPostPrompt(
@@ -1249,7 +1290,7 @@ extension Eidolon {
         memories: [String],
         recent: [String],
         circle: [CharacterConfig],
-        places: [MomentPlace],
+        places: [Place],
         compositions: [MomentComposition] = [],
         work: Bool = false
     ) throws -> [PromptMessage] {
@@ -1326,7 +1367,7 @@ extension Eidolon {
     }
 
     static func momentFormat(
-        places: [MomentPlace], circle: [CharacterConfig], birthday: Bool,
+        places: [Place], circle: [CharacterConfig], birthday: Bool,
         compositions: [MomentComposition] = []
     ) -> String {
         var format = """
@@ -1449,8 +1490,7 @@ extension Eidolon {
             else { continue }
             let affinity = (try? readAffinity(characterID: character.id, now: now))
                 ?? .fresh(at: now)
-            guard affinity.tier == .trust || affinity.tier == .close || affinity.tier == .intimate,
-                  affinity.cooldownUntil == nil,
+            guard Self.momentAllowsMoments(affinity),
                   (try? momentRepliesToday(now: now)) ?? 0 < settings.dailyReplies
             else { continue }
             let reply = await generateMomentReply(
@@ -1480,6 +1520,31 @@ extension Eidolon {
                 run.failed += 1
             }
         }
+    }
+
+    /// One streamed answer from the chat model, timed, for both posts and replies.
+    struct MomentChatAnswer {
+        var raw: String
+        var failure: String?
+        var latency: TimeInterval
+    }
+
+    func momentChatAnswer(
+        _ prompt: [PromptMessage], providers: MomentsProviders
+    ) async -> MomentChatAnswer {
+        let started = Date()
+        var raw = ""
+        var failure: String?
+        do {
+            for try await delta in providers.chat.stream(messages: prompt) {
+                raw += delta
+            }
+        } catch {
+            failure = error.localizedDescription
+        }
+        return MomentChatAnswer(
+            raw: raw, failure: failure, latency: Date().timeIntervalSince(started)
+        )
     }
 
     struct MomentReplyTarget {
@@ -1562,6 +1627,14 @@ extension Eidolon {
     ) async -> (ja: String, zh: String)? {
         let producer = (try? producerProfile()) ?? .default
         let world = try? loadWorld()
+        let characters = (try? characters()) ?? []
+        let todayLines = TodayPrompt.lines(
+            now: now, character: character, characters: characters,
+            unitMates: world?.unitMates(of: character.name) ?? [],
+            herLives: world?.livesOf(character.name) ?? [],
+            holidays: try? holidayTable()
+        )
+        let weather = await providers.weather?.weather(at: now)
         var shared = [momentSheet(character)]
         if let birthday = character.birthday {
             shared.append(TodayPrompt.herBirthday(birthday))
@@ -1575,10 +1648,35 @@ extension Eidolon {
             <ja>日语</ja><zh>中文字幕</zh>
             一两句口语，评论区口吻；不发照片，不带语气提示，不写 # 或 @。
             """)
+        // What is going on right now colors the reply as much as it colors a post.
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = Self.momentTokyo
+        let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute, .weekday], from: now)
+        let clock = String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+        let weekdays = ["日", "一", "二", "三", "四", "五", "六"]
+        let weekday = weekdays[((parts.weekday ?? 1) + 5) % 7]
         var context = [
-            "# 这条动态",
-            target.ja,
+            "# 此刻（朋友圈评论区）",
+            "现在是 \(parts.year ?? 0)年\(parts.month ?? 0)月\(parts.day ?? 0)日（星期\(weekday)）\(clock)（东京）。",
         ]
+        if let weather {
+            context.append("东京此刻的天气：\(weather.kind.title)，\(weather.temperature)℃。")
+        }
+        if !todayLines.isEmpty {
+            context.append("今天：\n" + todayLines.joined(separator: "\n"))
+        }
+        let affinity = (try? readAffinity(characterID: character.id, now: now))
+            ?? .fresh(at: now)
+        context.append(contentsOf: AffinityPrompt.lines(
+            tier: affinity.tier, judged: nil, parting: nil, warning: nil, shielded: false
+        ))
+        if let cycle = try? cycleLines(
+            characterID: character.id, now: now, timeZone: Self.momentTokyo
+        ), !cycle.isEmpty {
+            context.append(contentsOf: cycle)
+        }
+        context.append("# 这条动态")
+        context.append(target.ja)
         if let note = target.imageNote, !note.isEmpty {
             context.append("（配图：\(note)）")
         }
@@ -1602,22 +1700,13 @@ extension Eidolon {
             PromptMessage(.system, context.joined(separator: "\n\n")),
             PromptMessage(.user, "（你在朋友圈回复制作人的评论。）"),
         ]
-        let started = Date()
-        var raw = ""
-        var failure: String?
-        do {
-            for try await delta in providers.chat.stream(messages: prompt) {
-                raw += delta
-            }
-        } catch {
-            failure = error.localizedDescription
-        }
-        let latency = Date().timeIntervalSince(started)
-        let pair = failure == nil ? Self.parseMomentReply(raw) : nil
-        if failure == nil && pair == nil { failure = "回复格式不对" }
+        let answer = await momentChatAnswer(prompt, providers: providers)
+        let pair = answer.failure == nil ? Self.parseMomentReply(answer.raw) : nil
+        let failure = answer.failure ?? (pair == nil ? "回复格式不对" : nil)
         await recordChatCall(
             provider: providers.chat, operation: .momentReply, prompts: [prompt],
-            output: raw, latency: latency, error: failure, conversationID: nil, at: now
+            output: answer.raw, latency: answer.latency, error: failure,
+            conversationID: nil, at: now
         )
         return pair
     }
@@ -1672,35 +1761,40 @@ extension Eidolon {
     /// posts. Failures are the caller's to ignore: cleanup never blocks a launch.
     func cleanupMoments(now: Date) throws {
         let cutoff = Self.timestamp(now.addingTimeInterval(-Self.momentRetention))
-        let files = try userQueue.read { db in
-            try String.fetchAll(
-                db,
-                sql: """
-                    SELECT i.file FROM moment_images i
-                    JOIN moment_posts p ON p.id = i.post_id
-                    WHERE p.reveal_at < ?
-                    """,
-                arguments: [cutoff]
-            )
+        // A few hundred at a time, so a first cleanup on an old library never holds the
+        // database for long.
+        while true {
+            let batch = try userQueue.read { db in
+                try Row.fetchAll(
+                    db,
+                    sql: """
+                        SELECT p.id, i.file FROM moment_posts p
+                        LEFT JOIN moment_images i ON i.post_id = p.id
+                        WHERE p.reveal_at < ? LIMIT 200
+                        """,
+                    arguments: [cutoff]
+                )
+            }
+            guard !batch.isEmpty else { break }
+            let ids = Array(Set(batch.map { $0["id"] as String }))
+            let files = batch.compactMap { $0["file"] as String? }
+            let marks = Array(repeating: "?", count: ids.count).joined(separator: ",")
+            try userQueue.write { db in
+                try db.execute(
+                    sql: "DELETE FROM moment_posts WHERE id IN (\(marks))",
+                    arguments: StatementArguments(ids)
+                )
+            }
+            for file in files {
+                try? FileManager.default.removeItem(
+                    at: location.userDirectory.appendingPathComponent(file)
+                )
+            }
         }
         try userQueue.write { db in
             try db.execute(
-                sql: "DELETE FROM moment_posts WHERE reveal_at < ?", arguments: [cutoff]
-            )
-            try db.execute(
-                sql: """
-                    DELETE FROM moment_plans
-                    WHERE due_at < ? AND plan_day < ?
-                    """,
-                arguments: [
-                    Self.timestamp(now.addingTimeInterval(-48 * 3600)),
-                    Self.isoDay(now.addingTimeInterval(-24 * 3600), in: Self.momentTokyo),
-                ]
-            )
-        }
-        for file in files {
-            try? FileManager.default.removeItem(
-                at: location.userDirectory.appendingPathComponent(file)
+                sql: "DELETE FROM moment_plans WHERE plan_day < ?",
+                arguments: [Self.isoDay(now.addingTimeInterval(-24 * 3600), in: Self.momentTokyo)]
             )
         }
         try removeOrphanMomentImages()
