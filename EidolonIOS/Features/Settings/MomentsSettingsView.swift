@@ -7,6 +7,9 @@ struct MomentsSettingsView: View {
     @Environment(AppModel.self) private var app
     @State private var settings = MomentsSettings.default
     @State private var saveError: String?
+    @State private var debugCharacterID = ""
+    @State private var debugGenerating = false
+    @State private var debugResult: String?
 
     var body: some View {
         Form {
@@ -41,6 +44,36 @@ struct MomentsSettingsView: View {
 
             if app.debugMode {
                 Section {
+                    Picker("调试用角色", selection: $debugCharacterID) {
+                        ForEach(app.characters, id: \.id) { character in
+                            Text(character.nameZh ?? character.name).tag(character.id)
+                        }
+                    }
+                    Button {
+                        generateDebugMoment()
+                    } label: {
+                        HStack {
+                            Text("立即生成一条朋友圈")
+                            if debugGenerating { Spacer(); ProgressView() }
+                        }
+                    }
+                    .disabled(
+                        debugGenerating || !settings.enabled || debugCharacterID.isEmpty
+                    )
+                    .accessibilityIdentifier("moments.debug.generate")
+                    if let debugResult {
+                        Text(debugResult)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("调试：立即发一条")
+                } footer: {
+                    Text("跳过当天的计划、每日上限和好感度门槛，用选中的角色马上生成一条；"
+                        + "成功后切到朋友圈。图片和文字都走正常流程，会花掉正常的一次调用。")
+                }
+
+                Section {
                     Toggle("朋友圈也允许 R 配图", isOn: $settings.debugAdultImages)
                 } header: {
                     Text("调试")
@@ -57,7 +90,12 @@ struct MomentsSettingsView: View {
         }
         .navigationTitle("朋友圈")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { settings = app.momentsSettings }
+        .onAppear {
+            settings = app.momentsSettings
+            if debugCharacterID.isEmpty {
+                debugCharacterID = app.characters.first?.id ?? ""
+            }
+        }
         .onChange(of: settings) { _, value in
             Task {
                 do {
@@ -66,6 +104,22 @@ struct MomentsSettingsView: View {
                 } catch {
                     saveError = error.localizedDescription
                 }
+            }
+        }
+    }
+
+    private func generateDebugMoment() {
+        guard !debugCharacterID.isEmpty, !debugGenerating else { return }
+        debugGenerating = true
+        debugResult = nil
+        Task {
+            let made = await app.debugGenerateMoment(characterID: debugCharacterID)
+            debugGenerating = false
+            if made {
+                debugResult = "已生成一条，正切到朋友圈。"
+                app.selectedTab = .moments
+            } else {
+                debugResult = "没生成出来；去「用量与花费」看这次调用的错误。"
             }
         }
     }

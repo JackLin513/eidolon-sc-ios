@@ -203,6 +203,21 @@ final class AppModel {
         return run
     }
 
+    /// Debug aid: make one moment for the chosen character now, with a local notification
+    /// so it is easy to see the result on a real phone.
+    @discardableResult
+    func debugGenerateMoment(characterID: String) async -> Bool {
+        guard let providers = momentsProviders(),
+              await core.debugGenerateMoment(
+                characterID: characterID, providers: providers
+              ) != nil
+        else { return false }
+        await refreshMomentsBadge()
+        MomentsNotifications.post(posts: 1, replies: 0)
+        NotificationCenter.default.post(name: MomentsNotifications.changed, object: nil)
+        return true
+    }
+
     func startMomentsLoop() {
         guard momentsLoop == nil else { return }
         momentsLoop = Task { [weak self] in

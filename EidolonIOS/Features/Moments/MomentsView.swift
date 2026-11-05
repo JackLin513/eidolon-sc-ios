@@ -60,6 +60,9 @@ struct MomentsView: View {
                 await load()
                 await app.markMomentsOpened()
             }
+            .onReceive(NotificationCenter.default.publisher(for: MomentsNotifications.changed)) { _ in
+                Task { await load() }
+            }
             .alert("评论", isPresented: commentBinding, presenting: commenting) { post in
                 TextField("140 字以内", text: $commentText, axis: .vertical)
                     .lineLimit(1...4)

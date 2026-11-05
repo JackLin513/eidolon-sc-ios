@@ -845,6 +845,28 @@ extension Eidolon {
     }
 }
 
+/// Debug aid: make one moment now for a chosen character, skipping the day's plan,
+/// the caps and the affinity gate. Nothing else changes; the post is a normal one.
+extension Eidolon {
+    public func debugGenerateMoment(
+        characterID: String,
+        now: Date = Date(),
+        providers: MomentsProviders,
+        seed: UInt64 = UInt64.random(in: 0...UInt64.max)
+    ) async -> String? {
+        guard let settings = try? momentsSettings(), settings.enabled,
+              (try? characters().contains { $0.id == characterID }) == true
+        else { return nil }
+        var random = SeededRandom(seed: "\(seed)")
+        return await generateMomentPost(
+            characterID: characterID,
+            planDay: Self.isoDay(now, in: Self.momentTokyo),
+            birthday: false, work: nil, now: now, settings: settings,
+            providers: providers, random: &random
+        )
+    }
+}
+
 // MARK: - Making a post
 
 extension Eidolon {

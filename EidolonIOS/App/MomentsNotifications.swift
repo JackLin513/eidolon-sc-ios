@@ -6,6 +6,8 @@ import UserNotifications
 /// the post in them.
 enum MomentsNotifications {
     static let openMoments = Notification.Name("eidolon.moments.open")
+    /// A debug-generated post, so an open moments page reloads without a pull.
+    static let changed = Notification.Name("eidolon.moments.changed")
     /// Set when a notification is tapped while the app is not yet showing its tabs: a
     /// cold launch has no one listening to `openMoments` yet.
     @MainActor static var pendingOpen = false
