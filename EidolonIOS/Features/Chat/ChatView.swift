@@ -543,7 +543,10 @@ struct ChatView: View {
                         line: message.id,
                         joinsPrevious: !row.first,
                         joinsNext: !row.last,
-                        photo: message.photo
+                        photo: message.photo,
+                        conversationID: store?.activeConversationID,
+                        faceToFace: store?.faceToFace ?? false,
+                        onPhotoMade: { Task { await store?.load() } }
                     )
                     if row.last {
                         clockText(row.clock)
@@ -847,8 +850,14 @@ struct ChatView: View {
         var joinsNext = false
         /// The picture she sent with this reply, if the turn made one (spec #98).
         var photo: PhotoReference? = nil
+        /// Where the button's picture goes; nil while the reply is still being written.
+        var conversationID: String? = nil
+        var faceToFace = false
+        /// Reloads the page after the debug button makes a picture.
+        var onPhotoMade: (() -> Void)? = nil
 
         @Environment(AppModel.self) private var app
+        @State private var editingPhoto = false
 
         var body: some View {
             VStack(alignment: .leading, spacing: 6) {
@@ -863,11 +872,32 @@ struct ChatView: View {
                     .font(.body)
                     .textSelection(.enabled)
                 // Her voice is the call's while one is up; 朗读 waits for it to end.
-                if let line, !app.call.isLive, let speech = ReadAloud.speech(
-                    of: blocks, model: app.chatSettings.fishModel
-                ), let voice = app.readAloudVoice(for: character) {
-                    readAloudButton(speech, line: line, voice: voice)
-                        .id(line)
+                if let line, !app.call.isLive {
+                    HStack(spacing: 12) {
+                        if let speech = ReadAloud.speech(
+                            of: blocks, model: app.chatSettings.fishModel
+                        ), let voice = app.readAloudVoice(for: character) {
+                            readAloudButton(speech, line: line, voice: voice)
+                                .id(line)
+                        }
+                        if showsDebugPhotoButton {
+                            debugPhotoButton
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+            .sheet(isPresented: $editingPhoto) {
+                if let line, let conversationID {
+                    DebugPhotoSheet(
+                        character: character,
+                        messageID: line,
+                        conversationID: conversationID,
+                        faceToFace: faceToFace,
+                        adult: app.adultMode(for: character)
+                    ) {
+                        onPhotoMade?()
+                    }
                 }
             }
             .padding(.horizontal, 14)
@@ -881,6 +911,32 @@ struct ChatView: View {
                     topTrailingRadius: 16
                 )
             )
+        }
+
+        /// The debug page's button: only on a recorded reply that has no picture, while an
+        /// image service is configured and no call is up.
+        private var showsDebugPhotoButton: Bool {
+            app.debugPhotoButton
+                && photo == nil
+                && line != nil
+                && conversationID != nil
+                && !app.call.isLive
+                && app.photoContext != nil
+        }
+
+        private var debugPhotoButton: some View {
+            Button {
+                editingPhoto = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "camera.badge.clock")
+                    Text("生成照片")
+                }
+            }
+            .buttonStyle(.plain)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .accessibilityIdentifier("chat.debugPhoto")
         }
 
         /// What the reader sees. A recorded line keeps its cues in the store, so they are taken
@@ -1142,3 +1198,125 @@ struct ChatView: View {
         .background(Color.orange.opacity(0.12))
     }
 }
+
+/// The debug page's 生成照片 sheet: the producer edits the tag, and the picture is made
+/// for this one recorded reply (spec #62). It is not part of a normal turn.
+private struct DebugPhotoSheet: View {
+    let character: CharacterConfig
+    let messageID: String
+    let conversationID: String
+    let faceToFace: Bool
+    let adult: Bool
+    let onMade: () -> Void
+
+    @Environment(AppModel.self) private var app
+    @Environment(\.dismiss) private var dismiss
+    @State private var tag: String
+    @State private var busy = false
+    @State private var errorMessage: String?
+
+    init(
+        character: CharacterConfig,
+        messageID: String,
+        conversationID: String,
+        faceToFace: Bool,
+        adult: Bool,
+        onMade: @escaping () -> Void
+    ) {
+        self.character = character
+        self.messageID = messageID
+        self.conversationID = conversationID
+        self.faceToFace = faceToFace
+        self.adult = adult
+        self.onMade = onMade
+        _tag = State(initialValue: """
+            rating: \(adult ? "explicit" : "general")
+            shot: \(faceToFace ? "other" : "selfie")
+            framing: upper body
+            place: indoors
+            outfit: casual
+            action: smile
+            """)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextEditor(text: $tag)
+                        .font(.system(.footnote, design: .monospaced))
+                        .frame(minHeight: 180)
+                        .disabled(busy)
+                        .accessibilityIdentifier("debug.photo.tag")
+                } header: {
+                    Text("照片标签")
+                } footer: {
+                    Text("标签会照内容包的黑名单清洗；成人模式只在角色明确 18 岁以上时生效。")
+                }
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+            }
+            .navigationTitle("生成照片")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                        .disabled(busy)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        make()
+                    } label: {
+                        if busy {
+                            ProgressView()
+                        } else {
+                            Text("生成")
+                        }
+                    }
+                    .disabled(busy)
+                    .accessibilityIdentifier("debug.photo.make")
+                }
+            }
+        }
+    }
+
+    private func make() {
+        guard let context = app.photoContext else {
+            errorMessage = "先在设置里配置生图服务"
+            return
+        }
+        do {
+            let parsed = try PhotoTag(text: tag)
+            busy = true
+            errorMessage = nil
+            Task {
+                do {
+                    let made = try await app.core.makePhotoForTesting(
+                        messageID: messageID,
+                        conversationID: conversationID,
+                        characterID: character.id,
+                        tag: parsed,
+                        context: context,
+                        adult: adult
+                    )
+                    busy = false
+                    if made.status == .failed {
+                        errorMessage = made.reason?.shortText ?? "照片没生成出来"
+                        return
+                    }
+                    onMade()
+                    dismiss()
+                } catch {
+                    busy = false
+                    errorMessage = error.localizedDescription
+                }
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+

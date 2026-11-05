@@ -36,7 +36,7 @@ extension Eidolon {
                 }
                 finishPhoto(id: id, data: data, at: Date())
                 recordImageCall(
-                    id: id,
+                    conversationID: photoDrafts[id]?.conversationID,
                     request: request,
                     settings: context.settings,
                     started: started,
@@ -45,7 +45,7 @@ extension Eidolon {
             } catch let error as ImageGenerationError {
                 finishPhoto(id: id, reason: Self.photoReason(error), detail: error.localizedDescription, at: Date())
                 recordImageCall(
-                    id: id,
+                    conversationID: photoDrafts[id]?.conversationID,
                     request: request,
                     settings: context.settings,
                     started: started,
@@ -54,7 +54,7 @@ extension Eidolon {
             } catch {
                 finishPhoto(id: id, reason: .serviceError, detail: error.localizedDescription, at: Date())
                 recordImageCall(
-                    id: id,
+                    conversationID: photoDrafts[id]?.conversationID,
                     request: request,
                     settings: context.settings,
                     started: started,
@@ -252,7 +252,7 @@ extension Eidolon {
     /// One real generation, for the usage page (spec #96, ticket #101): what model, how
     /// many pictures, how long and what went wrong — never the tag she wrote.
     private func recordImageCall(
-        id: String,
+        conversationID: String?,
         request: ImageRequest,
         settings: ImageServiceSettings,
         started: Date,
@@ -269,7 +269,7 @@ extension Eidolon {
             input: error == nil ? 1 : 0,
             latency: Date().timeIntervalSince(started),
             error: error,
-            conversationID: photoDrafts[id]?.conversationID
+            conversationID: conversationID
         )
         try? recordServiceCall(call)
     }
@@ -288,6 +288,104 @@ extension Eidolon {
         let status = PhotoStatus(rawValue: row["status"]) ?? .failed
         let reason = (row["reason"] as String?).flatMap(PhotoFailureReason.init(rawValue:))
         return PhotoReference(id: row["id"], status: status, reason: reason)
+    }
+
+    /// Development aid for this phone: make a picture for a reply that did not get one,
+    /// from a tag the producer writes by hand. It writes the same row, file and usage
+    /// record as a turn does; the tag is cleaned by the same table.
+    @discardableResult
+    public func makePhotoForTesting(
+        messageID: String,
+        conversationID: String,
+        characterID: String,
+        tag: PhotoTag,
+        context: PhotoTurnContext,
+        adult: Bool,
+        now: Date = Date()
+    ) async throws -> PhotoReference {
+        guard context.isConfigured else { throw ImageGenerationError.missingKey }
+        guard let character = try characters().first(where: { $0.id == characterID }),
+              character.canSendPhoto
+        else { throw PhotoTagError.malformed("这位角色不能发自拍") }
+        guard let table = try photoTags() else {
+            throw PhotoTagError.malformed("这份内容包没有照片 tag 表")
+        }
+        let belongs: String? = try await userQueue.read { db in
+            try String.fetchOne(
+                db,
+                sql: "SELECT conversation_id FROM messages WHERE id = ?",
+                arguments: [messageID]
+            )
+        }
+        guard belongs == conversationID else {
+            throw EidolonError.invalidContent("这条回复不在这个对话里")
+        }
+        // A reply has at most one picture; a second press keeps the first.
+        let existing: PhotoReference? = try await userQueue.read { db in
+            guard let row = try Row.fetchOne(
+                db,
+                sql: "SELECT id, status, reason FROM photos WHERE message_id = ?",
+                arguments: [messageID]
+            ) else { return nil }
+            return Self.photoStatus(row)
+        }
+        if let existing { return existing }
+        let request = try PhotoPromptBuilder.request(
+            tag: tag,
+            character: character,
+            style: context.settings.style,
+            adult: adult,
+            table: table,
+            model: adult ? context.settings.adultModel : context.settings.model
+        )
+        let id = UUID().uuidString
+        let started = Date()
+        var data: Data?
+        var reason: PhotoFailureReason?
+        var detail: String?
+        do {
+            data = try await imageQueue.run(priority: .photo, timeout: .seconds(90)) {
+                try await context.generator.generate(request, settings: context.settings)
+            }
+        } catch let error as ImageGenerationError {
+            reason = Self.photoReason(error)
+            detail = error.localizedDescription
+        } catch {
+            reason = .serviceError
+            detail = error.localizedDescription
+        }
+        recordImageCall(
+            conversationID: conversationID,
+            request: request,
+            settings: context.settings,
+            started: started,
+            error: detail
+        )
+        let file: String?
+        if let data {
+            file = try? writePhotoFile(id: id, data: data)
+        } else {
+            file = nil
+        }
+        let status: PhotoStatus = data == nil ? .failed : .ready
+        let reasonValue = reason?.rawValue
+        let statusValue = status.rawValue
+        try await userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO photos(
+                        id, conversation_id, message_id, tag, status, reason, file,
+                        width, height, started_at, finished_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                arguments: [
+                    id, conversationID, messageID, tag.raw, statusValue,
+                    reasonValue, file, PhotoGeometry.width, PhotoGeometry.height,
+                    Eidolon.timestamp(started), Eidolon.timestamp(now),
+                ]
+            )
+        }
+        return PhotoReference(id: id, status: status, reason: reason)
     }
 
     func photoFileURL(_ relative: String) -> URL {

@@ -63,6 +63,17 @@ final class AppModel {
 
     private static let debugModeKey = "debug.mode"
 
+    /// Development aid: a reply that skipped its picture gets a 生成照片 button beside 朗读,
+    /// which opens a tag editor and makes one (spec #62's debug page).
+    var debugPhotoButton = UserDefaults.standard.bool(forKey: AppModel.debugPhotoButtonKey)
+
+    private static let debugPhotoButtonKey = "debug.photoButton"
+
+    func setDebugPhotoButton(_ on: Bool) {
+        debugPhotoButton = on
+        UserDefaults.standard.set(on, forKey: Self.debugPhotoButtonKey)
+    }
+
     /// The phone's own call sounds: one for the whole app, so a hang-up tone outlives the
     /// call page and a redial cuts whatever the last call left playing (spec #35).
     let callTones = CallTonesPlayer()

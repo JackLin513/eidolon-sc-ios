@@ -826,6 +826,62 @@ final class PhotoTurnTests: XCTestCase {
         XCTAssertNotNil(imageCall.error)
     }
 
+    func testTheDebugButtonMakesAPhotoForAReplyThatSkippedIt() async throws {
+        let eidolon = try await installedEidolon()
+        let provider = RecordingChatProvider(chunks: ["<ja>はい。</ja><zh>好。</zh>"])
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano",
+            text: "こんにちは",
+            provider: provider
+        ) {}
+        let current = try await eidolon.currentConversation(characterID: "mano")
+        let conversation = try XCTUnwrap(current)
+        let reply = try XCTUnwrap(conversation.messages.last)
+        XCTAssertNil(reply.photo)
+
+        let generator = FakePhotoGenerator(data: Data("JPEG".utf8))
+        let tag = try PhotoTag(text: """
+            rating: explicit
+            shot: other
+            framing: cowboy shot
+            place: office
+            outfit: casual
+            action: shy smile
+            """)
+        let made = try await eidolon.makePhotoForTesting(
+            messageID: reply.id,
+            conversationID: conversation.id,
+            characterID: "mano",
+            tag: tag,
+            context: PhotoTurnContext(
+                generator: generator,
+                settings: ImageServiceSettings(apiKey: "test-key")
+            ),
+            adult: true
+        )
+        XCTAssertEqual(made.status, .ready)
+        let data = try await eidolon.photoImage(id: made.id)
+        XCTAssertEqual(data, Data("JPEG".utf8))
+        let snapshot = try await eidolon.conversation(id: conversation.id)
+        XCTAssertEqual(snapshot?.messages.last?.photo?.id, made.id)
+
+        // A second press keeps the one already there.
+        let again = try await eidolon.makePhotoForTesting(
+            messageID: reply.id,
+            conversationID: conversation.id,
+            characterID: "mano",
+            tag: tag,
+            context: PhotoTurnContext(
+                generator: generator,
+                settings: ImageServiceSettings(apiKey: "test-key")
+            ),
+            adult: true
+        )
+        XCTAssertEqual(again.id, made.id)
+        let calls = try await eidolon.serviceCalls()
+        XCTAssertEqual(calls.filter { $0.service == .image }.count, 1)
+    }
+
     // MARK: - Failures, allowance and lifecycle (ticket #102)
 
     private func context(
