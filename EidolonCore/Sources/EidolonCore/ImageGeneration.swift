@@ -252,9 +252,16 @@ public protocol GPTImageGenerating: Sendable {
 /// The production client: one request, one checked and re-encoded JPEG.
 public struct RemoteImageGenerator: ImageGenerating {
     private let transport: any ImageHTTPTransport
+    /// How long to wait before asking again after NovelAI says another generation is
+    /// still running. Tests pass `.zero`.
+    private let retryDelay: Duration
 
-    public init(transport: any ImageHTTPTransport = URLSessionImageTransport()) {
+    public init(
+        transport: any ImageHTTPTransport = URLSessionImageTransport(),
+        retryDelay: Duration = .seconds(5)
+    ) {
         self.transport = transport
+        self.retryDelay = retryDelay
     }
 
     public func generate(
@@ -283,7 +290,9 @@ public struct RemoteImageGenerator: ImageGenerating {
 
         let response: ImageHTTPResponse
         do {
-            response = try await transport.send(urlRequest)
+            response = try await Self.send(
+                urlRequest, transport: transport, retryDelay: retryDelay
+            )
         } catch let error as ImageGenerationError {
             throw error
         } catch let error as URLError where error.code == .timedOut {
@@ -359,6 +368,26 @@ public struct RemoteImageGenerator: ImageGenerating {
             "n": 1,
             "response_format": "b64_json",
         ]
+    }
+
+    /// NovelAI allows one generation at a time. If the previous one is still running it
+    /// answers 429 "Concurrent generation is locked"; asking again after a short wait is
+    /// the whole fix, so the producer does not have to.
+    static func send(
+        _ request: URLRequest,
+        transport: any ImageHTTPTransport,
+        retryDelay: Duration
+    ) async throws -> ImageHTTPResponse {
+        for attempt in 1...3 {
+            let response = try await transport.send(request)
+            guard response.statusCode == 429,
+                  String(decoding: response.body.prefix(300), as: UTF8.self)
+                    .contains("Concurrent generation is locked"),
+                  attempt < 3
+            else { return response }
+            try? await Task.sleep(for: retryDelay)
+        }
+        throw ImageGenerationError.serviceError("HTTP 429：Concurrent generation is locked")
     }
 
     static func checkStatus(_ response: ImageHTTPResponse) throws {
