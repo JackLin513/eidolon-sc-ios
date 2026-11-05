@@ -68,6 +68,7 @@ struct DebugView: View {
 
                 memorySection
                 affinitySection
+                photoSection
                 keepOpenSection
                 conversationSection
             }
@@ -195,6 +196,20 @@ struct DebugView: View {
     }
 
     // MARK: - Keeping this conversation open
+
+    private var photoSection: some View {
+        Section {
+            Toggle("回复旁显示「生成照片」", isOn: Binding(
+                get: { app.debugPhotoButton },
+                set: { app.setDebugPhotoButton($0) }
+            ))
+            .accessibilityIdentifier("debug.photoButton")
+        } header: {
+            Text("照片")
+        } footer: {
+            Text("打开后，没生成照片的回复旁会出现一个按钮；点开可以改写照片标签并立刻生成一张，用于测试。")
+        }
+    }
 
     private var keepOpenSection: some View {
         Section {
