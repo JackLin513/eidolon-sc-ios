@@ -273,7 +273,8 @@ struct ChatView: View {
                             tracing: app.tracing,
                             replyStyle: app.replyStyle,
                             adultMode: app.adultMode(for: character),
-                            photo: app.photoContext
+                            photo: app.photoContext,
+                            faceToFace: store.faceToFace
                         ) }
         #endif
     }
@@ -955,6 +956,40 @@ struct ChatView: View {
 
     // MARK: - Input
 
+    /// The row above the field: a place for modes and actions of this conversation. The
+    /// first one is 面对面, which makes the typed turns a conversation in the same room.
+    private func composerToolbar(_ store: ChatStore) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                Task { await store.toggleFaceToFace() }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: store.faceToFace
+                        ? "person.line.dotted.person.fill"
+                        : "person.line.dotted.person")
+                    Text("面对面")
+                }
+                .font(.caption)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .foregroundStyle(store.faceToFace ? Color.accentColor : Color.secondary)
+                .background(
+                    store.faceToFace
+                        ? Color.accentColor.opacity(0.15)
+                        : Color(.secondarySystemBackground),
+                    in: Capsule()
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(store.isStreaming)
+            .accessibilityIdentifier("chat.faceToFace")
+            .accessibilityLabel("面对面")
+            .accessibilityValue(store.faceToFace ? "已开启" : "已关闭")
+            .accessibilityHint("打开后，这段对话按你们当面说话来写")
+            Spacer(minLength: 0)
+        }
+    }
+
     private func inputBar(_ store: ChatStore) -> some View {
         @Bindable var store = store
         let calling = app.call.isCalling(character.id)
@@ -970,6 +1005,9 @@ struct ChatView: View {
                     .font(.footnote)
                     .foregroundStyle(.orange)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if !store.readOnly {
+                composerToolbar(store)
             }
             HStack(alignment: .bottom, spacing: 8) {
                 TextField("说点什么", text: $store.input, axis: .vertical)
@@ -995,7 +1033,8 @@ struct ChatView: View {
                             tracing: app.tracing,
                             replyStyle: app.replyStyle,
                             adultMode: app.adultMode(for: character),
-                            photo: app.photoContext
+                            photo: app.photoContext,
+                            faceToFace: store.faceToFace
                         ) }
                     }
                 } label: {
@@ -1091,7 +1130,8 @@ struct ChatView: View {
                             tracing: app.tracing,
                             replyStyle: app.replyStyle,
                             adultMode: app.adultMode(for: character),
-                            photo: app.photoContext
+                            photo: app.photoContext,
+                            faceToFace: store.faceToFace
                         ) }
                 }
                 .font(.footnote.weight(.semibold))

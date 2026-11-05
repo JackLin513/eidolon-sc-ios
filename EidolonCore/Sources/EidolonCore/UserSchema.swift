@@ -4,7 +4,7 @@ import GRDB
 /// The writable user library (ADR-0002). Its schema evolves with the app, not
 /// with the content bundle, and is therefore managed by GRDB migrations.
 enum UserSchema {
-    static let version = 21
+    static let version = 22
 
     static func migrate(_ dbQueue: DatabaseQueue) throws {
         var migrator = DatabaseMigrator()
@@ -453,6 +453,13 @@ enum UserSchema {
                 CREATE INDEX photos_by_message ON photos(message_id);
                 CREATE INDEX photos_by_started ON photos(started_at);
                 """)
+        }
+        migrator.registerMigration("v22") { db in
+            // Whether this conversation is spoken face to face rather than as messages
+            // (spec #98's follow-up). New conversations start as messages.
+            try db.execute(
+                sql: "ALTER TABLE conversations ADD COLUMN face_to_face INTEGER NOT NULL DEFAULT 0"
+            )
         }
         try migrator.migrate(dbQueue)
         try dbQueue.write { db in

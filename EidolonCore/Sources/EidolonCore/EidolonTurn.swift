@@ -108,6 +108,8 @@ public struct ConversationSnapshot: Sendable, Hashable {
     public var id: String
     public var messages: [ChatMessageRecord]
     public var ended: Bool
+    /// Whether this conversation is spoken face to face rather than as messages.
+    public var faceToFace: Bool = false
 }
 
 extension Eidolon {
@@ -133,6 +135,7 @@ extension Eidolon {
         voicedBy model: String? = nil,
         replyStyle: ReplyStyle = .text,
         adultMode: Bool = false,
+        faceToFace: Bool = false,
         photo: PhotoTurnContext? = nil
     ) -> AsyncThrowingStream<TurnEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -156,6 +159,7 @@ extension Eidolon {
                         voicedBy: model,
                         replyStyle: replyStyle,
                         adultMode: adultMode,
+                        faceToFace: faceToFace,
                         photo: photo
                     ) { continuation.yield($0) }
                     continuation.yield(.finished(record))
@@ -210,6 +214,7 @@ extension Eidolon {
         voicedBy model: String?,
         replyStyle: ReplyStyle,
         adultMode: Bool,
+        faceToFace: Bool,
         photo: PhotoTurnContext?,
         emit: (TurnEvent) -> Void
     ) async throws -> TurnRecord {
@@ -225,6 +230,10 @@ extension Eidolon {
             throw EidolonError.invalidContent("找不到角色 \(characterID)")
         }
         let effectiveAdultMode = adultMode && character.isAdult
+        // A typed conversation can be spoken face to face; a call already is.
+        let effectiveTalking: NowPrompt.Talking = talking == .inCall
+            ? .inCall
+            : (faceToFace ? .inPerson : talking)
         let photoTable = try? photoTags()
         // No judge means nothing can tell whether he asked for a picture: she is told she
         // cannot send one, exactly as before photos existed (spec #98).
@@ -411,10 +420,10 @@ extension Eidolon {
         let nowText = NowPrompt.text(
             now: now,
             timeZone: zone,
-            talking: talking,
+            talking: effectiveTalking,
             affinityLines: affinityLines,
             // In a call they are talking right now: no "last time" to tell her.
-            lastContact: talking == .inCall
+            lastContact: effectiveTalking == .inCall
                 ? nil
                 : try lastContact(characterID: characterID),
             birthday: producer.birthday,
@@ -428,7 +437,8 @@ extension Eidolon {
             wants: wantsPhoto,
             cold: affinity.tier == .cold,
             usedUp: photoUsedUp,
-            adult: effectiveAdultMode
+            adult: effectiveAdultMode,
+            faceToFace: faceToFace
         )
         let nowSection = ([nowText, photoSection, retrieved.memories, retrieved.references]
             .compactMap { $0 }
@@ -674,6 +684,7 @@ extension Eidolon {
             ending: ending,
             typed: call == nil,
             noEnding: noEnding,
+            faceToFace: call == nil ? faceToFace : nil,
             now: now,
             replyAt: replyAt
         )
@@ -852,26 +863,46 @@ extension Eidolon {
         _ db: Database,
         id: String,
         characterID: String,
-        createdAt: String
+        createdAt: String,
+        faceToFace: Bool = false
     ) throws {
         try db.execute(
-            sql: "INSERT INTO conversations(id, character_id, created_at) VALUES (?, ?, ?)",
-            arguments: [id, characterID, createdAt]
+            sql: """
+                INSERT INTO conversations(id, character_id, created_at, face_to_face)
+                VALUES (?, ?, ?, ?)
+                """,
+            arguments: [id, characterID, createdAt, faceToFace ? 1 : 0]
         )
         try pointCurrentConversation(db, characterID: characterID, id: id)
     }
 
-    func createConversation(characterID: String, now: Date) throws -> String {
+    func createConversation(
+        characterID: String,
+        now: Date,
+        faceToFace: Bool = false
+    ) throws -> String {
         let id = UUID().uuidString
         try userQueue.write { db in
             try Self.insertConversation(
                 db,
                 id: id,
                 characterID: characterID,
-                createdAt: Self.timestamp(now)
+                createdAt: Self.timestamp(now),
+                faceToFace: faceToFace
             )
         }
         return id
+    }
+
+    /// Remembers whether this conversation is spoken face to face. The page's switch
+    /// writes it here; a turn also writes what it was given, in case it never did.
+    public func setFaceToFace(_ on: Bool, conversationID: String) throws {
+        try userQueue.write { db in
+            try db.execute(
+                sql: "UPDATE conversations SET face_to_face = ? WHERE id = ?",
+                arguments: [on ? 1 : 0, conversationID]
+            )
+        }
     }
 
     /// What one turn reads of a conversation: its messages, the narration the events and
@@ -1150,6 +1181,7 @@ extension Eidolon {
         ending: EndsReason?,
         typed: Bool,
         noEnding: Bool,
+        faceToFace: Bool?,
         now: Date,
         replyAt: Date
     ) throws -> RecordedTurn {
@@ -1170,10 +1202,19 @@ extension Eidolon {
                     db,
                     id: id,
                     characterID: characterID,
-                    createdAt: stamp
+                    createdAt: stamp,
+                    faceToFace: faceToFace ?? false
                 )
                 return id
             }()
+            // The page's switch is the truth for this turn, even when the conversation
+            // already existed and the toggle never reached the database.
+            if let faceToFace {
+                try db.execute(
+                    sql: "UPDATE conversations SET face_to_face = ? WHERE id = ?",
+                    arguments: [faceToFace ? 1 : 0, conversationID]
+                )
+            }
 
             try db.execute(
                 sql: """
@@ -1461,25 +1502,34 @@ struct PromptAssembler {
         你发不了照片。制作人要你发照片时，用你自己的话推掉，不要写照片标签。
         """
 
+    /// The same, for a conversation spoken face to face: there is no phone between them
+    /// to send a picture with (spec #98's follow-up).
+    static let cannotSendPhotoInPerson = """
+        # 照片
+        你们正面对面，没法拍照。制作人要看或要拍你时，用你自己的话推掉，不要写照片标签。
+        """
+
     static func photoSection(
         eligible: Bool,
         wants: Bool,
         cold: Bool,
         usedUp: Bool,
-        adult: Bool
+        adult: Bool,
+        faceToFace: Bool = false
     ) -> String? {
-        guard eligible else { return cannotSendPhoto }
+        guard eligible else { return faceToFace ? cannotSendPhotoInPerson : cannotSendPhoto }
         guard wants else { return nil }
+        let asked = faceToFace ? "他想看你或拍你" : "他在要照片"
         if cold {
             return """
                 # 照片
-                他在要照片，你现在不想给。用你自己的话推掉，不要写照片标签。
+                \(asked)，你现在不想给。用你自己的话推掉，不要写照片标签。
                 """
         }
         if usedUp {
             return """
                 # 照片
-                他在要照片，但你这会儿发不了。用你自己的话推掉，不要写照片标签。
+                \(asked)，但你这会儿\(faceToFace ? "拍不了" : "发不了")。用你自己的话推掉，不要写照片标签。
                 """
         }
         var rating = ""
@@ -1493,9 +1543,17 @@ struct PromptAssembler {
                 + "他明确要的露骨内容要自己写成英文 tag，光把 rating 写高不会让画面更露骨；"
                 + "常见写法是 nude、topless、completely nude、on bed，不要写 no clothes 这类自造短语。"
             : ""
+        let opening = faceToFace
+            ? "制作人正和你在一起，他想看你或拍你。你可以在回复最前面写一个照片标签，也可以按人设推掉；一个回合最多一张。"
+            : "制作人在要照片。你可以在回复最前面写一个照片标签，也可以按人设推掉；一个回合最多一张。"
+        let lens = faceToFace
+            ? "你们正面对面：他要看你或要拍你的时候写 shot: other，像他拿着相机看着你按快门；他明确要自拍时才写 selfie。"
+            : "他要自拍就写 selfie，别人帮他拍就写 other。"
+        let exampleNote = faceToFace ? "在咖啡店他给你拍的照" : "在咖啡店给他拍的自拍"
         return """
             # 照片
-            制作人在要照片。你可以在回复最前面写一个照片标签，也可以按人设推掉；一个回合最多一张。
+            \(opening)
+            \(lens)
             标签一行一栏，栏名用英文，写在第一个 <ja> 之前：
 
             <photo>
@@ -1504,7 +1562,7 @@ struct PromptAssembler {
             place: cafe, indoors, afternoon, sunlight
             outfit: white shirt, cardigan
             action: peace sign, smile
-            note: 在咖啡店给他拍的自拍
+            note: \(exampleNote)
             </photo>
 
             place、outfit、action 用英文 tag，三栏合计不超过 12 个；不要写外貌、画风或画师。

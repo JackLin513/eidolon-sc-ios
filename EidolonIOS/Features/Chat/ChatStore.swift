@@ -36,6 +36,9 @@ final class ChatStore {
     /// When she was asked for a picture this hour's allowance was gone: the feed says so
     /// until the next turn (ticket #102).
     private(set) var photoRetryAt: Date?
+    /// This conversation is spoken face to face rather than as messages. It belongs to
+    /// the conversation and is kept on this phone.
+    private(set) var faceToFace = false
     /// What a finished turn unlocked, for the toast (spec #69).
     var onRewards: (([AchievementReward]) -> Void)?
 
@@ -76,6 +79,8 @@ final class ChatStore {
         var isPast = false
         var affinity = AffinityStatus(tier: .trust, cooldownUntil: nil)
         var conversationID: String?
+        /// nil when there is no conversation yet, so the page's pending choice stays.
+        var faceToFace: Bool?
     }
 
     /// Reads the sources into a snapshot instead of putting them on screen: a turn takes the
@@ -89,11 +94,13 @@ final class ChatStore {
                 reading.messages = past.messages
                 reading.ended = past.ended
                 reading.isPast = true
+                reading.faceToFace = past.faceToFace
                 conversation = past.id
             } else if let current = try await core.currentConversation(characterID: character.id) {
                 reading.messages = current.messages
                 reading.ended = current.ended
                 reading.isPast = false
+                reading.faceToFace = current.faceToFace
                 conversation = current.id
             }
             if let conversation {
@@ -118,6 +125,9 @@ final class ChatStore {
         isPast = reading.isPast
         affinity = reading.affinity
         activeConversationID = reading.conversationID
+        if let faceToFace = reading.faceToFace {
+            self.faceToFace = faceToFace
+        }
     }
 
     /// Whether 新对话 can be used: there is something in this conversation to leave
@@ -159,7 +169,8 @@ final class ChatStore {
         tracing: TurnTracing = .on,
         replyStyle: ReplyStyle = .text,
         adultMode: Bool = false,
-        photo: PhotoTurnContext? = nil
+        photo: PhotoTurnContext? = nil,
+        faceToFace: Bool = false
     ) async {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !affinity.cooling, !readOnly else { return }
@@ -197,6 +208,7 @@ final class ChatStore {
             tracing: tracing,
             replyStyle: replyStyle,
             adultMode: adultMode,
+            faceToFace: faceToFace,
             photo: photo
         )
         let turn = Task { @MainActor [weak self] in
@@ -257,6 +269,20 @@ final class ChatStore {
 
     func stop() {
         task?.cancel()
+    }
+
+    /// The toolbar's 面对面 switch. It changes the context of the next turn and is kept on
+    /// the conversation; with no conversation yet, the next turn creates one with it.
+    func toggleFaceToFace() async {
+        guard !readOnly else { return }
+        faceToFace.toggle()
+        guard let activeConversationID else { return }
+        do {
+            try await core.setFaceToFace(faceToFace, conversationID: activeConversationID)
+        } catch {
+            faceToFace.toggle()
+            errorMessage = error.localizedDescription
+        }
     }
 
     /// A photo strays from its reply while the turn is still being read: the image is made
