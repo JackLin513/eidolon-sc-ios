@@ -1221,6 +1221,9 @@ private struct DebugPhotoSheet: View {
     @State private var drafting = false
     @State private var errorMessage: String?
     @State private var draftError: String?
+    /// What the model actually wrote when its draft did not parse; shown so it can be
+    /// fixed by hand rather than vanishing.
+    @State private var rawDraft: String?
 
     init(
         character: CharacterConfig,
@@ -1261,6 +1264,18 @@ private struct DebugPhotoSheet: View {
                     Text("照片标签")
                 } footer: {
                     Text("标签会照内容包的黑名单清洗；成人模式只在角色明确 18 岁以上时生效。")
+                }
+                if let rawDraft {
+                    Section {
+                        Text(rawDraft)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .accessibilityIdentifier("debug.photo.raw")
+                    } header: {
+                        Text("模型输出")
+                    } footer: {
+                        Text("这一段没有按格式写出来。找到 <photo> 里的内容，改到上面的编辑框再生成。")
+                    }
                 }
                 Section {
                     Button {
@@ -1323,6 +1338,7 @@ private struct DebugPhotoSheet: View {
         }
         drafting = true
         draftError = nil
+        rawDraft = nil
         defer { drafting = false }
         do {
             let draft = try await app.core.draftPhotoTag(
@@ -1334,6 +1350,12 @@ private struct DebugPhotoSheet: View {
                 provider: provider
             )
             tag = draft.tag.raw
+        } catch let error as PhotoTagDraftError {
+            // Keep what it wrote: the tag body goes straight into the editor, and the
+            // whole answer stays on screen when there was no tag at all.
+            if let body = error.body { tag = body }
+            rawDraft = error.raw
+            draftError = error.detail
         } catch {
             draftError = error.localizedDescription
         }

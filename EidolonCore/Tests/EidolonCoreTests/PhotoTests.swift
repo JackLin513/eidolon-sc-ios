@@ -120,10 +120,15 @@ final class PhotoTagTests: XCTestCase {
         XCTAssertTrue(request.prompt.contains("full body"))
     }
 
-    func testEveryColumnIsRequired() {
-        XCTAssertThrowsError(try tag("shot: selfie\nframing: portrait\nplace: park"))
-        XCTAssertThrowsError(try tag("shot: person\nframing: portrait\nplace: park\noutfit: casual\naction: smile"))
-        XCTAssertThrowsError(try tag("shot: selfie\nframing: extreme wide\nplace: park\noutfit: casual\naction: smile"))
+    func testMissingOrUnknownColumnsFallBackToWhatTheTagRulesAllow() throws {
+        let missing = try tag("shot: selfie\nframing: portrait\nplace: park")
+        XCTAssertTrue(missing.outfit.isEmpty)
+        XCTAssertTrue(missing.action.isEmpty)
+        let unknownShot = try tag("shot: person\nframing: portrait\nplace: park\noutfit: casual\naction: smile")
+        XCTAssertEqual(unknownShot.shot, .selfie)
+        let unknownFraming = try tag("shot: selfie\nframing: extreme wide\nplace: park\noutfit: casual\naction: smile")
+        XCTAssertEqual(unknownFraming.framing, .upperBody)
+        XCTAssertThrowsError(try tag("shot: selfie\nframing: portrait"))
     }
 
     func testSerializedTagGoesBackAsSheWroteIt() throws {

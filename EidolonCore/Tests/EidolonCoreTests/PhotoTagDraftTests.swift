@@ -66,8 +66,10 @@ final class PhotoTagDraftTests: XCTestCase {
                 provider: provider
             )
             XCTFail("expected the draft to fail")
-        } catch let error as PhotoTagError {
-            XCTAssertTrue(error.localizedDescription.contains("<photo>"))
+        } catch let error as PhotoTagDraftError {
+            XCTAssertTrue(error.detail.contains("<photo>"))
+            XCTAssertEqual(error.raw, "这个不好写。")
+            XCTAssertNil(error.body)
         }
     }
 
@@ -85,4 +87,59 @@ final class PhotoTagDraftTests: XCTestCase {
             """)
         XCTAssertEqual(tag.shot, .selfie)
     }
+
+    func testChineseColumnsAndValuesAreRead() throws {
+        let tag = try PhotoTag(text: """
+            拍摄：自拍
+            景别：上半身
+            地点：办公室，沙发
+            服装：裸
+            动作：骑乘
+            """)
+        XCTAssertEqual(tag.shot, .selfie)
+        XCTAssertEqual(tag.framing, .upperBody)
+        XCTAssertEqual(tag.place, ["办公室", "沙发"])
+        XCTAssertEqual(tag.outfit, ["裸"])
+        XCTAssertEqual(tag.action, ["骑乘"])
+    }
+
+    func testBulletsAndFullWidthPunctuationAreTolerated() throws {
+        let tag = try PhotoTag(text: """
+            - shot：other
+            * framing: full-body
+            • place: office, on couch
+            outfit: nude
+            action: riding  # 正在做的事
+            """)
+        XCTAssertEqual(tag.shot, .other)
+        XCTAssertEqual(tag.framing, .fullBody)
+        XCTAssertEqual(tag.place, ["office", "on couch"])
+        XCTAssertEqual(tag.action, ["riding"])
+    }
+
+    func testAMissingColumnFallsBackToTheDefault() throws {
+        let tag = try PhotoTag(text: """
+            shot: other
+            framing: cowboy shot
+            outfit: nude
+            """)
+        XCTAssertTrue(tag.place.isEmpty)
+        XCTAssertEqual(tag.outfit, ["nude"])
+        let cleaned = tag.sanitized(using: TestPhotoTagTable.make(), adult: true)
+        XCTAssertEqual(cleaned.place, ["indoors"])
+        XCTAssertEqual(cleaned.outfit, ["nude"])
+    }
+
+    func testABadTagShowsWhatTheModelWrote() {
+        do {
+            _ = try Eidolon.photoTagFromAnswer("<photo>\nshot: unknown\n</photo>")
+            XCTFail("expected a draft error")
+        } catch let error as PhotoTagDraftError {
+            XCTAssertEqual(error.body?.contains("shot: unknown"), true)
+            XCTAssertFalse(error.raw.isEmpty)
+        } catch {
+            XCTFail("\(error)")
+        }
+    }
+
 }

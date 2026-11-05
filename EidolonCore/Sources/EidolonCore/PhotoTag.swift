@@ -68,30 +68,28 @@ public struct PhotoTag: Sendable, Hashable {
     public init(text: String) throws {
         var fields: [String: String] = [:]
         for rawLine in text.split(whereSeparator: \.isNewline) {
-            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            let line = Self.line(String(rawLine))
             guard !line.isEmpty else { continue }
             guard let colon = line.firstIndex(of: ":") else {
-                throw PhotoTagError.malformed("这一行没有冒号：\(line)")
+                // A line of prose around the tag is not a field; ignore it.
+                continue
             }
-            let key = line[..<colon].trimmingCharacters(in: .whitespaces).lowercased()
-            let value = line[line.index(after: colon)...]
-                .trimmingCharacters(in: .whitespaces)
-            guard !key.isEmpty else { throw PhotoTagError.malformed("空栏名") }
+            let rawKey = line[..<colon].trimmingCharacters(in: .whitespaces).lowercased()
+            guard !rawKey.isEmpty else { continue }
+            let key = Self.columnName(rawKey)
+            let value = Self.value(
+                line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+            )
             fields[key] = value
         }
-        guard let shotText = fields["shot"]?.lowercased(),
-              let shot = PhotoShot(rawValue: shotText)
-        else { throw PhotoTagError.malformed("shot 只能是 selfie 或 other") }
-        guard let framingText = fields["framing"]?.lowercased(),
-              let framing = PhotoFraming(rawValue: framingText)
-        else { throw PhotoTagError.malformed("framing 不在四档里") }
-        let rating = fields["rating"].flatMap {
-            PhotoRating(rawValue: $0.lowercased())
-        }
+        guard !fields.isEmpty else { throw PhotoTagError.malformed("标签是空的") }
+        let shot = fields["shot"].flatMap(Self.shot) ?? .selfie
+        let framing = fields["framing"].flatMap(Self.framing) ?? .upperBody
+        let rating = fields["rating"].flatMap(Self.rating)
         var place = Self.tags(fields["place"])
         var outfit = Self.tags(fields["outfit"])
         var action = Self.tags(fields["action"])
-        guard !place.isEmpty, !outfit.isEmpty, !action.isEmpty else {
+        guard !place.isEmpty || !outfit.isEmpty || !action.isEmpty else {
             throw PhotoTagError.malformed("place、outfit、action 不能全空")
         }
         place = Array(place.prefix(4))
@@ -114,6 +112,79 @@ public struct PhotoTag: Sendable, Hashable {
             note: fields["note"] ?? "",
             raw: text.trimmingCharacters(in: .whitespacesAndNewlines)
         )
+    }
+
+    /// One line as a field line: bullets, backticks and full-width punctuation removed,
+    /// an inline `#` comment dropped.
+    private static func line(_ raw: String) -> String {
+        var line = raw.trimmingCharacters(in: .whitespaces)
+        while let first = line.first, ["-", "*", "•"].contains(first) {
+            line.removeFirst()
+            line = line.trimmingCharacters(in: .whitespaces)
+        }
+        line = line.replacingOccurrences(of: "`", with: "")
+            .replacingOccurrences(of: "：", with: ":")
+        if let hash = line.firstIndex(of: "#") {
+            line = String(line[..<hash])
+        }
+        return line.trimmingCharacters(in: .whitespaces)
+    }
+
+    private static func columnName(_ raw: String) -> String {
+        switch raw {
+        case "拍摄", "镜头", "shot": "shot"
+        case "景别", "构图", "framing": "framing"
+        case "地点", "场所", "place": "place"
+        case "服装", "穿着", "outfit": "outfit"
+        case "动作", "姿势", "action": "action"
+        case "备注", "说明", "note": "note"
+        case "尺度", "评级", "rating": "rating"
+        default: raw
+        }
+    }
+
+    private static func value(_ raw: String) -> String {
+        var value = raw.trimmingCharacters(in: .whitespaces)
+        while let first = value.first, ["\"", "'"].contains(first), value.count > 1 {
+            value.removeFirst()
+            value = value.trimmingCharacters(in: .whitespaces)
+        }
+        return value.replacingOccurrences(of: "\"", with: "")
+            .replacingOccurrences(of: "'", with: "")
+    }
+
+    private static func shot(_ raw: String) -> PhotoShot? {
+        let value = raw.lowercased().replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+        switch value {
+        case "selfie", "自拍", "自拍照", "self portrait", "self shot": return .selfie
+        case "other", "他拍", "别人拍", "他人拍", "third person": return .other
+        default: return nil
+        }
+    }
+
+    private static func framing(_ raw: String) -> PhotoFraming? {
+        let value = raw.lowercased().replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+        switch value {
+        case "portrait", "肖像", "特写": return .portrait
+        case "upper body", "上半身", "半身": return .upperBody
+        case "cowboy shot", "cowboy", "七分身", "牛仔镜头": return .cowboyShot
+        case "full body", "fullbody", "全身": return .fullBody
+        default: return nil
+        }
+    }
+
+    private static func rating(_ raw: String) -> PhotoRating? {
+        switch raw.lowercased().trimmingCharacters(in: .whitespaces) {
+        case "general", "全年龄": return .general
+        case "sensitive", "敏感": return .sensitive
+        case "questionable", "可疑": return .questionable
+        case "explicit", "露骨": return .explicit
+        default: return nil
+        }
     }
 
     /// The tag as it goes back into her history, so a later turn sees what she wrote.
@@ -170,7 +241,10 @@ public struct PhotoTag: Sendable, Hashable {
 
     private static func tags(_ text: String?) -> [String] {
         guard let text else { return [] }
-        return text.split(separator: ",").map {
+        let unified = text
+            .replacingOccurrences(of: "，", with: ",")
+            .replacingOccurrences(of: "、", with: ",")
+        return unified.split(separator: ",").map {
             $0.trimmingCharacters(in: .whitespacesAndNewlines)
         }.filter { !$0.isEmpty }
     }
