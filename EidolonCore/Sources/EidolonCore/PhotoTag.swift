@@ -293,35 +293,48 @@ public enum PhotoPromptBuilder {
               !character.photoAppearance.isEmpty
         else { throw PhotoTagError.malformed("这位角色没有照片 tag 或外貌 tag") }
         let cleaned = tag.sanitized(using: table, adult: adult)
-        var prompt: [String] = [
-            "1girl",
-            "solo",
-            characterTag,
-            "idolmaster shiny colors",
-        ]
+        let appearance = character.photoAppearance
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
         let trimmedStyle = style.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedStyle.isEmpty { prompt.append(trimmedStyle) }
-        prompt.append(character.photoAppearance.joined(separator: ", "))
         // Her words may already say where she is looking (at the camera, away, down):
         // do not add a second gaze that contradicts them.
-        let gaze = cleaned.action.contains { $0.contains("looking") || $0.contains("gaze") }
-            ? ""
-            : ", looking at viewer"
+        var rest: [String] = []
+        let noGaze = cleaned.action.contains { tag in
+            tag.contains("looking") || tag.contains("gaze")
+                || tag.contains("eyes closed") || tag.contains("closed eyes")
+                || tag.contains("eyes shut") || tag.contains("facing viewer")
+        }
         if cleaned.shot == .selfie {
             // A full-body selfie is drawn as a mirror selfie; an arm-length one is not.
             let far = cleaned.framing == .cowboyShot || cleaned.framing == .fullBody
-            prompt.append((far ? "mirror selfie" : "selfie") + gaze)
-        } else if !gaze.isEmpty {
-            prompt.append("looking at viewer")
+            rest.append((far ? "mirror selfie" : "selfie") + (noGaze ? "" : ", looking at viewer"))
+        } else if !noGaze {
+            rest.append("looking at viewer")
         }
-        prompt.append(cleaned.framing.listedName)
-        prompt.append(cleaned.place.joined(separator: ", "))
-        prompt.append(cleaned.outfit.joined(separator: ", "))
-        prompt.append(cleaned.action.joined(separator: ", "))
-        prompt.append("rating:\(cleaned.rating?.rawValue ?? "general")")
-        prompt.append(contentsOf: ["very aesthetic", "masterpiece", "no text"])
+        rest.append(cleaned.framing.listedName)
+        rest.append(cleaned.place.joined(separator: ", "))
+        rest.append(cleaned.outfit.joined(separator: ", "))
+        rest.append(cleaned.action.joined(separator: ", "))
+        rest.append(contentsOf: ["depth of field", "blurry background"])
+        rest.append(contentsOf: ["very aesthetic", "masterpiece", "no text"])
+        rest.append("rating:\(cleaned.rating?.rawValue ?? "general")")
+
+        // NovelAI's V4/V5 captions split scene from character. The numbered subject tag
+        // stays in the base prompt; the character prompt says `girl`, never `1girl`.
+        let series = "idolmaster shiny colors"
+        var base = ["1girl", "solo", series]
+        var full = ["1girl", "solo", characterTag, series]
+        if !trimmedStyle.isEmpty {
+            base.append(trimmedStyle)
+            full.append(trimmedStyle)
+        }
+        full.append(contentsOf: appearance)
+        let characterPrompt = (["girl", characterTag] + appearance).joined(separator: ", ")
         return ImageRequest(
-            prompt: prompt.joined(separator: ", "),
+            prompt: (full + rest).joined(separator: ", "),
+            basePrompt: (base + rest).joined(separator: ", "),
+            characterPrompt: characterPrompt,
             negativePrompt: adult ? adultNegative : allAgesNegative,
             width: PhotoGeometry.width,
             height: PhotoGeometry.height,

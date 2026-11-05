@@ -45,8 +45,11 @@ final class PhotoTagDraftTests: XCTestCase {
         XCTAssertEqual(draft.tag.rating, .explicit)
         XCTAssertEqual(draft.tag.action, ["riding", "looking at viewer"])
         let sent = try XCTUnwrap(provider.prompts.first)
-        XCTAssertTrue(sent.contains { $0.content.contains("只输出一个 <photo>") })
-        XCTAssertTrue(sent.contains { $0.content.contains("每栏尽量写 2–4 个") })
+        // The same prompt a real turn gets, then the one difference: only the tag.
+        XCTAssertTrue(sent.contains { $0.role == .system && $0.content.contains("每栏尽量写 2–4 个") })
+        XCTAssertTrue(sent.contains { $0.content.contains("只输出一个 <photo> 标签") })
+        XCTAssertTrue(sent.contains { $0.content.contains("制作人刚才说的是：「拍张照片」") })
+        XCTAssertEqual(sent.map(\.content).filter { $0 == "（把手机举起来）让我拍一张。" }.count, 1)
         let calls = try await eidolon.serviceCalls()
         XCTAssertEqual(calls.filter { $0.service == .chat }.count, 1)
     }
@@ -118,6 +121,68 @@ final class PhotoTagDraftTests: XCTestCase {
         XCTAssertEqual(tag.framing, .fullBody)
         XCTAssertEqual(tag.place, ["office", "on couch"])
         XCTAssertEqual(tag.action, ["riding"])
+    }
+
+    func testAnOldPhotoTagIsLeftOutOfTheDraftPrompt() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("EidolonDraft-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let eidolon = try Eidolon(location: .init(root: root.appendingPathComponent("app")))
+        try await eidolon.install(bundleAt: try Fixture.makeBundle(in: root))
+        var reply = message("character", "いいよ")
+        reply.photoTag = "rating: explicit\nshot: selfie\nplace: old place marker"
+        let provider = RecordingChatProvider(chunks: ["""
+            <photo>
+            shot: other
+            framing: full body
+            place: office
+            outfit: nude
+            action: lying on back
+            </photo>
+            """])
+        _ = try await eidolon.draftPhotoTag(
+            characterID: "mano",
+            conversationID: nil,
+            messages: [message("user", "拍张照片"), reply],
+            faceToFace: false,
+            adult: true,
+            provider: provider
+        )
+        let sent = try XCTUnwrap(provider.prompts.first)
+        XCTAssertFalse(sent.contains { $0.content.contains("old place marker") })
+        XCTAssertTrue(sent.contains { $0.content.contains("拍张照片") })
+    }
+
+    func testATagWithoutAClosingTagStillParses() throws {
+        let tag = try Eidolon.photoTagFromAnswer("""
+            <photo>
+            shot: other
+            framing: upper body
+            place: living room, indoors, afternoon
+            outfit: white lace bralette
+            action: moaning expression, hand gripping armrest
+            note: 客厅沙发上
+            那、那种表情……别一直看啦。
+            """)
+        XCTAssertEqual(tag.place, ["living room", "indoors", "afternoon"])
+        XCTAssertEqual(tag.action, ["moaning expression", "hand gripping armrest"])
+        XCTAssertEqual(tag.note, "客厅沙发上")
+    }
+
+    func testTheReplyBeforeTheTagIsIgnored() throws {
+        let tag = try Eidolon.photoTagFromAnswer("""
+            拍好了。
+            <photo>
+            shot: selfie
+            framing: upper body
+            place: cafe
+            outfit: casual
+            action: smile
+            </photo>
+            <ja>はい、どうぞ。</ja>
+            """)
+        XCTAssertEqual(tag.place, ["cafe"])
     }
 
     func testAnExplanationInBracketsIsDroppedFromATag() throws {
