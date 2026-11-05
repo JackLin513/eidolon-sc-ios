@@ -6,6 +6,16 @@ public struct PhotoTagDraft: Sendable {
     public var raw: String
 }
 
+/// A draft that did not parse: what the model wrote, the tag body if one was found, and
+/// why it failed, so the debug page can show it and the producer can fix it.
+public struct PhotoTagDraftError: LocalizedError, Sendable {
+    public var raw: String
+    public var body: String?
+    public var detail: String
+
+    public var errorDescription: String? { detail }
+}
+
 extension Eidolon {
     /// Development aid: the same chat model a turn uses, asked only for a photo tag for
     /// the latest reply. It is not a turn: nothing is written to the conversation, but the
@@ -38,18 +48,33 @@ extension Eidolon {
             raw += delta
         }
         try Task.checkCancellation()
-        let tag = try Self.photoTagFromAnswer(raw)
-        await recordChatCall(
-            provider: provider,
-            operation: .chatText,
-            prompts: [prompts],
-            output: raw,
-            latency: nil,
-            error: nil,
-            conversationID: conversationID,
-            at: now
-        )
-        return PhotoTagDraft(tag: tag, raw: raw)
+        do {
+            let tag = try Self.photoTagFromAnswer(raw)
+            await recordChatCall(
+                provider: provider,
+                operation: .chatText,
+                prompts: [prompts],
+                output: raw,
+                latency: nil,
+                error: nil,
+                conversationID: conversationID,
+                at: now
+            )
+            return PhotoTagDraft(tag: tag, raw: raw)
+        } catch {
+            // A draft that fails still cost a call, and its answer is worth keeping.
+            await recordChatCall(
+                provider: provider,
+                operation: .chatText,
+                prompts: [prompts],
+                output: raw,
+                latency: nil,
+                error: error.localizedDescription,
+                conversationID: conversationID,
+                at: now
+            )
+            throw error
+        }
     }
 
     private static func photoTagTranscript(_ messages: [ChatMessageRecord]) -> String {
@@ -103,9 +128,21 @@ extension Eidolon {
         guard let open = raw.range(of: "<photo>"),
               let close = raw.range(of: "</photo>", range: open.upperBound..<raw.endIndex)
         else {
-            throw PhotoTagError.malformed("模型没有写出完整的 <photo> 标签")
+            throw PhotoTagDraftError(
+                raw: raw,
+                body: nil,
+                detail: "模型没有写出完整的 <photo> 标签"
+            )
         }
         let body = String(raw[open.upperBound..<close.lowerBound])
-        return try PhotoTag(text: body)
+        do {
+            return try PhotoTag(text: body)
+        } catch {
+            throw PhotoTagDraftError(
+                raw: raw,
+                body: body,
+                detail: error.localizedDescription
+            )
+        }
     }
 }
