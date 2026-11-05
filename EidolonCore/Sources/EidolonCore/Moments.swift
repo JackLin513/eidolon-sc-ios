@@ -862,7 +862,7 @@ extension Eidolon {
             characterID: characterID,
             planDay: Self.isoDay(now, in: Self.momentTokyo),
             birthday: false, work: nil, now: now, settings: settings,
-            providers: providers, random: &random
+            providers: providers, random: &random, forceImage: true
         )
     }
 }
@@ -940,7 +940,8 @@ extension Eidolon {
         now: Date,
         settings: MomentsSettings,
         providers: MomentsProviders,
-        random: inout SeededRandom
+        random: inout SeededRandom,
+        forceImage: Bool = false
     ) async -> String? {
         guard let character = try? characters().first(where: { $0.id == characterID }) else {
             return nil
@@ -969,7 +970,8 @@ extension Eidolon {
         let memories = momentMemories(characterID: character.id)
         let recent = (try? momentRecentPosts(characterID: character.id, limit: 5)) ?? []
         let allowedCompositions = momentAllowedCompositions(providers: providers)
-        let wantImage = !allowedCompositions.isEmpty && random.below(3) < 2
+        let wantImage = !allowedCompositions.isEmpty
+            && (forceImage || random.below(3) < 2)
         let compositions = wantImage ? allowedCompositions : []
         let prompt = (try? momentPostPrompt(
             character: character, world: world, producer: producer, now: now,
@@ -987,7 +989,19 @@ extension Eidolon {
             output: answer.raw, latency: answer.latency, error: failure,
             conversationID: nil, at: now
         )
-        guard let draft else { return nil }
+        guard var draft else { return nil }
+        // The debug button promises a picture: if the model skipped the <image> block,
+        // make one with sane defaults rather than leaving the post text-only.
+        if forceImage, draft.image == nil, !compositions.isEmpty {
+            let composition = compositions.contains(.selfie) ? MomentComposition.selfie
+                : compositions[0]
+            draft.image = MomentImageDraft(
+                composition: composition,
+                shot: composition == .selfie ? .selfie : .other,
+                framing: .upperBody,
+                note: draft.ja
+            )
+        }
 
         var place: Place?
         if let placeID = draft.placeID,
@@ -1001,6 +1015,8 @@ extension Eidolon {
                 lat: $0.latitude, lon: $0.longitude
             )
         }
+        let postJA = draft.ja
+        let postZH = draft.zh
         try? await userQueue.write { db in
             try db.execute(
                 sql: """
@@ -1011,7 +1027,7 @@ extension Eidolon {
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                 arguments: [
-                    postID, character.id, draft.ja, draft.zh, planDay,
+                    postID, character.id, postJA, postZH, planDay,
                     Self.timestamp(now), Self.timestamp(now),
                     snapshot?.id, snapshot?.name, snapshot?.area, snapshot?.lat, snapshot?.lon,
                     weather.map { $0.kind.rawValue }, weather?.temperature,
