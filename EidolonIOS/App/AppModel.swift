@@ -1038,11 +1038,12 @@ final class AppModel {
     }
 
     /// Reads the list, turning the existing single chat settings into 「当前配置」 the
-    /// first time. A debug-injected chat key owns the list for that run, so UI tests do
-    /// not inherit yesterday's profiles.
+    /// first time. Only the UI tests' injected chat key resets the list for that run;
+    /// a key that merely exists in the Keychain must never wipe the saved profiles.
     func loadChatProfiles() {
         #if DEBUG
-        if !chatSettings.apiKey.trimmed.isEmpty {
+        let injected = ProcessInfo.processInfo.environment["EIDOLON_CHAT_API_KEY"] ?? ""
+        if !injected.isEmpty {
             let state = ChatModelProfileStore.resetForDebug(settings: chatSettings)
             chatProfiles = state.profiles
             activeChatProfileID = state.activeID
