@@ -131,6 +131,11 @@ RealityKit 路线要重写着色与解算，于是另开 `unity-spike/` 验证"�
 
 探针在 `unity-spike/Assets/Editor/`：`BundleProbe`（加载并渲染各 bundle、打印材质与 shader）、`MotionProbe`（列出 AnimationClip 与绑定数、body+head 组装）、`DriveProbe`（读扁平 `EULR` 曲线包按帧写骨骼并截图）。
 
+**播放验证（Play 模式）**：`Assets/Scripts/CharacterBootstrap.cs` 是纯运行时版本——`Start` 里从 bundle 建 body+head、设 shader 全局量、读 `EULR` 曲线包，`Update` 按 30 fps 写 `localRotation/localPosition`；`EidolonMotionClip` 是曲线包读取器。菜单 `MLTD/Play Motion` 建场景并进 Play。实测 `the_standd_appear_lop_ver01`：57 条曲线里 55 条绑上骨骼（未绑的两条是游戏运行时才生成的 `POSITION`、`POSITION/SCALE_POINT` 节点），姿势与 RealityKit 端一致。
+
+- 这个 clip 本身是个很轻的待机循环：最大关节幅度 4.5°（肩锁骨），头前后摆约 13 mm，看上去像呼吸，不是“写得不对”。
+- 想在 Unity 里换别的 clip 得先离线把 muscle 曲线解成 `EULR`：`m_MuscleClip` 走不通——Unity 6 的 `SerializedObject` 只暴露可见属性，`FindProperty("m_MuscleClip")` 返回 null，`GetCurveBindings()` 仍为 0，所以解码只能留在离线 Python 那一步。
+
 ### 资源下载
 
 ```sh
