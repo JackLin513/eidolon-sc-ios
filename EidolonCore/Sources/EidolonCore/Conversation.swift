@@ -320,13 +320,18 @@ extension Eidolon {
     /// One conversation as it reads, ended or not.
     public func conversation(id: String) throws -> ConversationSnapshot? {
         let row = try userQueue.read { db in
-            try Row.fetchOne(db, sql: "SELECT ended_at FROM conversations WHERE id = ?", arguments: [id])
+            try Row.fetchOne(
+                db,
+                sql: "SELECT ended_at, face_to_face FROM conversations WHERE id = ?",
+                arguments: [id]
+            )
         }
         guard let row else { return nil }
         return ConversationSnapshot(
             id: id,
             messages: try messages(conversationID: id),
-            ended: (row["ended_at"] as String?) != nil
+            ended: (row["ended_at"] as String?) != nil,
+            faceToFace: (row["face_to_face"] as Int? ?? 0) == 1
         )
     }
 

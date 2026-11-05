@@ -1,4 +1,5 @@
 import EidolonCore
+import Photos
 import SwiftUI
 import UIKit
 
@@ -950,9 +951,18 @@ struct PhotoViewer: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @State private var image: UIImage?
+    @State private var saveState = SaveState.idle
+
+    private enum SaveState {
+        case idle
+        case saving
+        case saved
+        case failed
+    }
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        // The picture stays in the middle; only the keys sit in the corners.
+        ZStack {
             Color.black.ignoresSafeArea()
             if let image {
                 Image(uiImage: image)
@@ -963,6 +973,8 @@ struct PhotoViewer: View {
                 ProgressView()
                     .tint(.white)
             }
+        }
+        .overlay(alignment: .topTrailing) {
             Button {
                 dismiss()
             } label: {
@@ -975,8 +987,56 @@ struct PhotoViewer: View {
             .accessibilityLabel("关上照片")
             .accessibilityIdentifier("photo.close")
         }
+        .overlay(alignment: .topLeading) {
+            if image != nil {
+                Button {
+                    save()
+                } label: {
+                    Group {
+                        switch saveState {
+                        case .saving:
+                            ProgressView()
+                                .tint(.white)
+                        case .saved:
+                            Image(systemName: "checkmark.circle.fill")
+                        case .failed:
+                            Image(systemName: "exclamationmark.circle.fill")
+                        case .idle:
+                            Image(systemName: "arrow.down.to.line.circle.fill")
+                        }
+                    }
+                    .font(.title2)
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, .black.opacity(0.4))
+                    .padding(16)
+                }
+                .accessibilityLabel(saveState == .saved ? "已保存到相册" : "保存到相册")
+                .accessibilityIdentifier("photo.save")
+            }
+        }
         .task { image = await app.photoImage(id) }
         .onTapGesture { dismiss() }
+    }
+
+    /// Saves the same picture to the system photo library; there is no share sheet.
+    private func save() {
+        guard let image, saveState != .saving else { return }
+        saveState = .saving
+        Task {
+            let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard status == .authorized || status == .limited else {
+                saveState = .failed
+                return
+            }
+            do {
+                try await PHPhotoLibrary.shared().performChanges {
+                    PHAssetChangeRequest.creationRequestForAsset(from: image)
+                }
+                saveState = .saved
+            } catch {
+                saveState = .failed
+            }
+        }
     }
 }
 
