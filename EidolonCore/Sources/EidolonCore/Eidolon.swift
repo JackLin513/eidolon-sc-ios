@@ -35,6 +35,10 @@ public actor Eidolon {
     /// What earlier turns are still writing down, per job, so the next turn can wait a
     /// while for it (ADR-0009).
     var memoryJobs: [Int64: Task<Void, Never>] = [:]
+    /// Photos whose reply has not been written yet, and the one image queue all photos and
+    /// moments share.
+    var photoDrafts: [String: PhotoDraft] = [:]
+    let imageQueue = ImageQueue()
     /// What conversations are being named.
     var titleJobs: [String: Task<Void, Never>] = [:]
     /// The stand package's character map, read once per install.
@@ -52,6 +56,8 @@ public actor Eidolon {
         )
         userQueue = try DatabaseQueue(path: location.userDatabase.path)
         try UserSchema.migrate(userQueue)
+        try Self.failPendingPhotos(userQueue)
+        try Self.removeOrphanPhotoFiles(userQueue, in: location.userDirectory)
     }
 
     // MARK: - Content bundle
@@ -403,6 +409,18 @@ public actor Eidolon {
         return try values.map(CharacterConfig.init(json:))
     }
 
+    /// The installed bundle's place pool; nil for a bundle before places.
+    public func places() throws -> PlacePool? {
+        try requireContent()
+        return try PlacePool.load(in: location.contentDirectory)
+    }
+
+    /// The installed bundle's photo tag table; nil for a bundle before photos.
+    public func photoTags() throws -> PhotoTagTable? {
+        try requireContent()
+        return try PhotoTagTable.load(in: location.contentDirectory)
+    }
+
     public func episodeCount(characterID: String) throws -> Int {
         try requireContent()
         return try contentDatabase().episodeCount(characterID: characterID)
@@ -443,8 +461,10 @@ public actor Eidolon {
             // The latest thing said or done, her reach-outs and conversation events
             // included: that is what the list shows.
             let latest = try Row.fetchAll(db, sql: """
-                SELECT character_id, role, preview, event_kind, gift_id, created_at FROM (
+                SELECT character_id, role, preview, event_kind, gift_id, created_at,
+                       has_photo FROM (
                     SELECT character_id, role, preview, event_kind, gift_id, created_at,
+                           has_photo,
                            ROW_NUMBER() OVER (
                                PARTITION BY character_id
                                ORDER BY created_at DESC, written DESC
@@ -456,7 +476,11 @@ public actor Eidolon {
                                NULL AS event_kind,
                                NULL AS gift_id,
                                m.created_at AS created_at,
-                               m.rowid AS written
+                               m.rowid AS written,
+                               EXISTS (
+                                   SELECT 1 FROM photos p
+                                   WHERE p.message_id = m.id AND p.status = 'ready'
+                               ) AS has_photo
                         FROM messages m
                         JOIN conversations c ON c.id = m.conversation_id
                         UNION ALL
@@ -466,7 +490,8 @@ public actor Eidolon {
                                NULL,
                                NULL,
                                r.created_at,
-                               r.rowid
+                               r.rowid,
+                               0
                         FROM reach_outs r
                         JOIN conversations c ON c.id = r.conversation_id
                         UNION ALL
@@ -476,7 +501,8 @@ public actor Eidolon {
                                e.kind,
                                e.gift_id,
                                e.created_at,
-                               e.id
+                               e.id,
+                               0
                         FROM conversation_events e
                         JOIN conversations c ON c.id = e.conversation_id
                     )
@@ -490,7 +516,8 @@ public actor Eidolon {
                     lastMessageAt: row["created_at"],
                     lastEventKind: row["event_kind"],
                     lastGiftID: row["gift_id"],
-                    unseenReachOut: false
+                    unseenReachOut: false,
+                    hasPhoto: (row["has_photo"] as Int? ?? 0) == 1
                 )
             }
 

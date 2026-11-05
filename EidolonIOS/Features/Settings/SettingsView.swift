@@ -269,6 +269,9 @@ struct SettingsView: View {
                             LabeledContent("剧情", value: "\(info.episodeCount)")
                             LabeledContent("段落", value: "\(info.passageCount)")
                             LabeledContent("角色", value: "\(info.characterCount)")
+                            if info.placeCount > 0 {
+                                LabeledContent("地点", value: "\(info.placeCount)")
+                            }
                             if info.standOutfitCount > 0 {
                                 LabeledContent("内容包内立绘（旧包）", value: "\(info.standOutfitCount) 套")
                             }
@@ -450,7 +453,8 @@ struct SettingsView: View {
            !settings.fishAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             configured += 1
         }
-        return "已配置 \(configured) / 5"
+        if settings.imageIsConfigured { configured += 1 }
+        return "已配置 \(configured) / 6"
     }
 
     @ViewBuilder

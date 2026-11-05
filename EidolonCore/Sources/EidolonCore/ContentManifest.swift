@@ -4,8 +4,9 @@ import Foundation
 public struct ContentManifest: Codable, Sendable, Hashable {
     /// The bundle format this app reads. Version 2 added birthdays, idol numbers and the
     /// holiday table, version 3 the bar's drink catalog, reasons, topics and fixed lines
-    /// (ADR-0021), so an older bundle has to be exported again.
-    public static let supportedFormatVersion = 4
+    /// (ADR-0021), version 4 the bar audio and gifts, and version 5 the photo tags, place
+    /// pool and each job's place categories. An older bundle has to be exported again.
+    public static let supportedFormatVersion = 5
 
     public struct Embedding: Codable, Sendable, Hashable {
         public var model: String
@@ -56,6 +57,8 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
     public var characterCount: Int
     /// How many outfits the bundle carries under `stand/idols/`.
     public var standOutfitCount: Int
+    /// How many places the bundle's place pool carries; zero for a bundle before places.
+    public var placeCount: Int
 
     public init(
         formatVersion: Int,
@@ -66,7 +69,8 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
         episodeCount: Int,
         passageCount: Int,
         characterCount: Int,
-        standOutfitCount: Int = 0
+        standOutfitCount: Int = 0,
+        placeCount: Int = 0
     ) {
         self.formatVersion = formatVersion
         self.contentSchemaVersion = contentSchemaVersion
@@ -77,6 +81,7 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
         self.passageCount = passageCount
         self.characterCount = characterCount
         self.standOutfitCount = standOutfitCount
+        self.placeCount = placeCount
     }
 
     enum CodingKeys: String, CodingKey {
@@ -89,6 +94,7 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
         case passageCount
         case characterCount
         case standOutfitCount
+        case placeCount
     }
 
     /// Bundles installed by an older app have no stand count.
@@ -103,6 +109,7 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
         passageCount = try container.decode(Int.self, forKey: .passageCount)
         characterCount = try container.decode(Int.self, forKey: .characterCount)
         standOutfitCount = try container.decodeIfPresent(Int.self, forKey: .standOutfitCount) ?? 0
+        placeCount = try container.decodeIfPresent(Int.self, forKey: .placeCount) ?? 0
     }
 
     /// Whether this build reads what was installed. A bundle from another format or

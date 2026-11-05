@@ -13,6 +13,8 @@ public struct ConversationSummary: Sendable, Hashable, Identifiable {
     public var lastAt: String?
     /// The newest one, where records go, even after she ends it.
     public var isCurrent: Bool
+    /// Whether the latest said message carries a finished picture (spec #98).
+    public var hasPhoto: Bool = false
 }
 
 /// Something that happened in a conversation that is not a turn (GLOSSARY.md「对话事件」):
@@ -71,9 +73,14 @@ extension Eidolon {
             let messages = try Row.fetchAll(
                 db,
                 sql: """
-                    SELECT rowid, id, role, text, segments, blocks, created_at,
-                        affinity, affinity_up, affinity_tier_changed, affinity_cooldown
-                    FROM messages WHERE conversation_id = ?
+                    SELECT m.rowid, m.id, m.role, m.text, m.segments, m.blocks,
+                        m.created_at, m.affinity, m.affinity_up,
+                        m.affinity_tier_changed, m.affinity_cooldown,
+                        p.id AS photo_id, p.status AS photo_status,
+                        p.reason AS photo_reason, p.tag AS photo_tag
+                    FROM messages m
+                    LEFT JOIN photos p ON p.message_id = m.id
+                    WHERE m.conversation_id = ?
                     """,
                 arguments: [conversationID]
             ).map { row -> Placed in
@@ -88,7 +95,9 @@ extension Eidolon {
                         segments: Self.decodeSegments(row["segments"]),
                         blocks: Self.decodeBlocks(row["blocks"]),
                         createdAt: createdAt,
-                        affinityChange: Self.decodeAffinityChange(row)
+                        affinityChange: Self.decodeAffinityChange(row),
+                        photo: Self.photoReference(row),
+                        photoTag: row["photo_tag"]
                     ))
                 )
             }.sorted { left, right in
@@ -180,6 +189,15 @@ extension Eidolon {
         )
     }
 
+    /// The picture attached to a message, from the left join; nil for a message without
+    /// one.
+    static func photoReference(_ row: Row) -> PhotoReference? {
+        guard let id: String = row["photo_id"] else { return nil }
+        let status = (row["photo_status"] as String?).flatMap(PhotoStatus.init(rawValue:)) ?? .failed
+        let reason = (row["photo_reason"] as String?).flatMap(PhotoFailureReason.init(rawValue:))
+        return PhotoReference(id: id, status: status, reason: reason)
+    }
+
     /// How a reply changed her affinity, as v9 writes it; nil for old rows and for turns
     /// that changed nothing.
     static func decodeAffinityChange(_ row: Row) -> AffinityChange? {
@@ -235,6 +253,14 @@ extension Eidolon {
                          ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) AS said_preview,
                         (SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id
                          ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) AS said_at,
+                        EXISTS (
+                            SELECT 1 FROM messages m JOIN photos p ON p.message_id = m.id
+                            WHERE m.conversation_id = c.id AND p.status = 'ready'
+                              AND m.rowid = (SELECT m2.rowid FROM messages m2
+                                             WHERE m2.conversation_id = c.id
+                                             ORDER BY m2.created_at DESC, m2.rowid DESC
+                                             LIMIT 1)
+                        ) AS said_has_photo,
                         (SELECT COALESCE(NULLIF(r.zh, ''), NULLIF(r.ja, ''))
                          FROM reach_outs r WHERE r.conversation_id = c.id
                          ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) AS reach_preview,
@@ -283,7 +309,9 @@ extension Eidolon {
                     records: records,
                     lastPreview: preview,
                     lastAt: at,
-                    isCurrent: isCurrent
+                    isCurrent: isCurrent,
+                    hasPhoto: at == saidAt
+                        && (row["said_has_photo"] as Int? ?? 0) == 1
                 )
             }
         }
@@ -292,13 +320,18 @@ extension Eidolon {
     /// One conversation as it reads, ended or not.
     public func conversation(id: String) throws -> ConversationSnapshot? {
         let row = try userQueue.read { db in
-            try Row.fetchOne(db, sql: "SELECT ended_at FROM conversations WHERE id = ?", arguments: [id])
+            try Row.fetchOne(
+                db,
+                sql: "SELECT ended_at, face_to_face FROM conversations WHERE id = ?",
+                arguments: [id]
+            )
         }
         guard let row else { return nil }
         return ConversationSnapshot(
             id: id,
             messages: try messages(conversationID: id),
-            ended: (row["ended_at"] as String?) != nil
+            ended: (row["ended_at"] as String?) != nil,
+            faceToFace: (row["face_to_face"] as Int? ?? 0) == 1
         )
     }
 
@@ -335,6 +368,19 @@ extension Eidolon {
     /// Deletes a past conversation for good. What she remembered from it stays, as does
     /// the affinity it moved (GLOSSARY.md「历史对话」).
     public func deleteConversation(id: String) throws {
+        // The pictures she sent here go with the conversation; the rows cascade, the
+        // files do not (ticket #102).
+        let files = try userQueue.read { db in
+            try String.fetchAll(
+                db,
+                sql: """
+                    SELECT p.file FROM photos p
+                    JOIN messages m ON m.id = p.message_id
+                    WHERE m.conversation_id = ? AND p.file IS NOT NULL
+                    """,
+                arguments: [id]
+            )
+        }
         try userQueue.write { db in
             guard let characterID = try String.fetchOne(
                 db,
@@ -361,6 +407,9 @@ extension Eidolon {
             try db.execute(sql: "DELETE FROM conversation_events WHERE conversation_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM messages WHERE conversation_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM conversations WHERE id = ?", arguments: [id])
+        }
+        for file in files {
+            try? FileManager.default.removeItem(at: photoFileURL(file))
         }
     }
 

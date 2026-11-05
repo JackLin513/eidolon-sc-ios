@@ -328,6 +328,51 @@ class BundleManifestTests(unittest.TestCase):
             self.assertEqual(entry["stand"]["default_outfit"]["id"], "stand/1030010010")
             self.assertEqual(entry["stand"]["outfits"], "stand/outfits/1.json")
 
+    def test_archive_carries_places_and_photo_tags(self) -> None:
+        (self.root / "places.toml").write_text(
+            '[[places]]\nid = "cafe"\nname = "テストカフェ"\narea = "東京都千代田区"\n'
+            'lat = 35.0\nlon = 139.0\ncategory = "cafe"\nnote = "街角。"\n'
+            'checked = 2026-10-31\n',
+            encoding="utf-8",
+        )
+        photo_tags = self.root / "photo_tags.json"
+        photo_tags.write_text(
+            json.dumps({
+                "model": "test",
+                "known": ["smile"],
+                "rewrites": {},
+                "allowed": ["smile"],
+                "blocked": {"nudity": {"tags": ["nude"], "words": []}},
+            }),
+            encoding="utf-8",
+        )
+        original_holidays = exporter.build_holidays
+        exporter.build_holidays = lambda: {"2026-01-01": "元日"}
+        try:
+            out = self.root / "format5.eidolonpkg"
+            exporter.write_bundle(
+                out,
+                self.make_content_db(),
+                [character()],
+                {Path("places.toml")},
+                self.root,
+                None,
+                photo_tags=photo_tags,
+            )
+        finally:
+            exporter.build_holidays = original_holidays
+
+        with zipfile.ZipFile(out) as archive:
+            names = set(archive.namelist())
+            manifest = json.loads(archive.read("manifest.json"))
+            places = json.loads(archive.read("characters/places.json"))
+        self.assertEqual(manifest["format_version"], 5)
+        self.assertIn("characters/places.json", names)
+        self.assertIn("characters/photo_tags.json", names)
+        self.assertIn("characters/places.json", manifest["files"])
+        self.assertIn("characters/photo_tags.json", manifest["files"])
+        self.assertEqual(places["places"][0]["id"], "cafe")
+
     def test_delta_contains_only_missing_or_changed_files(self) -> None:
         cards = [card(f"10300100{index}0") for index in range(1, 5)]
         self.stand.write_full_list(1, cards)

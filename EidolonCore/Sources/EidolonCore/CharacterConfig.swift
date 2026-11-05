@@ -25,6 +25,13 @@ public struct CharacterConfig: Sendable, Hashable {
     /// Her age as the content pack states it; nil when the bundle does not say. Adult
     /// mode only ever uses this field, never the persona text (spec #61).
     public var age: Int?
+    /// Her character tag in Danbooru's spelling, for the image service. It is not derived
+    /// from `name_romaji`; nil means the bundle cannot draw her.
+    public var photoTag: String?
+    /// The appearance tags every photo of her carries: hair colour and style, eye colour.
+    public var photoAppearance: [String]
+    /// The place categories she likes, used when the moments page picks a place.
+    public var placeLikes: [String]
     /// The gifts she likes (`liked_gifts`), from the bundle's gift catalog.
     public var likedGifts: [String]
     public var raw: [String: JSONValue]
@@ -48,6 +55,9 @@ public struct CharacterConfig: Sendable, Hashable {
         stand: StandConfig? = nil,
         birthday: Birthday? = nil,
         age: Int? = nil,
+        photoTag: String? = nil,
+        photoAppearance: [String] = [],
+        placeLikes: [String] = [],
         likedGifts: [String] = [],
         raw: [String: JSONValue] = [:]
     ) {
@@ -69,6 +79,9 @@ public struct CharacterConfig: Sendable, Hashable {
         self.stand = stand
         self.birthday = birthday
         self.age = age
+        self.photoTag = photoTag
+        self.photoAppearance = photoAppearance
+        self.placeLikes = placeLikes
         self.likedGifts = likedGifts
         self.raw = raw
     }
@@ -121,6 +134,9 @@ public struct CharacterConfig: Sendable, Hashable {
             stand: stand,
             birthday: birthday,
             age: object["age"]?.intValue,
+            photoTag: object["photo_tag"]?.stringValue,
+            photoAppearance: Self.commaTags(object["photo_appearance"]?.stringValue),
+            placeLikes: object["place_likes"]?.arrayValue?.compactMap(\.stringValue) ?? [],
             likedGifts: object["liked_gifts"]?.arrayValue?.compactMap(\.stringValue) ?? [],
             raw: object
         )
@@ -131,6 +147,20 @@ extension CharacterConfig {
     /// Whether adult mode may apply to her. Missing or under-18 ages fail closed.
     public var isAdult: Bool {
         age.map { $0 >= 18 } ?? false
+    }
+
+    /// Whether the content gives enough for the image service to draw her.
+    public var canSendPhoto: Bool {
+        guard let photoTag, !photoTag.isEmpty, !photoAppearance.isEmpty else { return false }
+        return true
+    }
+
+    /// The appearance column is one comma-separated string in the upstream TOML.
+    private static func commaTags(_ text: String?) -> [String] {
+        guard let text else { return [] }
+        return text.split(separator: ",").map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty }
     }
 
     /// The line under her name in the list: the first alias there is, else her unit.
@@ -167,6 +197,9 @@ public struct LatestActivity: Sendable, Hashable {
     /// The gift of the latest gift event, when that is the latest thing.
     public var lastGiftID: String?
     public var unseenReachOut: Bool
+    /// Whether the latest thing she said came with a picture that finished; the list
+    /// shows a camera for it (ticket #101).
+    public var hasPhoto: Bool
 
     public init(
         lastMessagePreview: String? = nil,
@@ -174,7 +207,8 @@ public struct LatestActivity: Sendable, Hashable {
         lastMessageAt: String? = nil,
         lastEventKind: String? = nil,
         lastGiftID: String? = nil,
-        unseenReachOut: Bool = false
+        unseenReachOut: Bool = false,
+        hasPhoto: Bool = false
     ) {
         self.lastMessagePreview = lastMessagePreview
         self.lastMessageRole = lastMessageRole
@@ -182,6 +216,7 @@ public struct LatestActivity: Sendable, Hashable {
         self.lastEventKind = lastEventKind
         self.lastGiftID = lastGiftID
         self.unseenReachOut = unseenReachOut
+        self.hasPhoto = hasPhoto
     }
 }
 

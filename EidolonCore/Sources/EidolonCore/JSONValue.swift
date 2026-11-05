@@ -59,6 +59,15 @@ public enum JSONValue: Codable, Hashable, Sendable {
         return nil
     }
 
+    /// JSON numbers decode as `Int` when they are whole, so a coordinate reads as either.
+    public var doubleValue: Double? {
+        switch self {
+        case .double(let value): value
+        case .int(let value): Double(value)
+        default: nil
+        }
+    }
+
     public var arrayValue: [JSONValue]? {
         if case .array(let value) = self { return value }
         return nil

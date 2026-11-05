@@ -64,10 +64,12 @@ public struct ListedJob: Codable, Sendable, Hashable, Identifiable {
     public var category: Category
     public var length: Int
     public var slots: [ScheduleSlot]?
+    /// The place categories this job can put her in, for a moments post about it.
+    public var places: [String]?
 
     public init(
         id: String, name: String, note: String, category: Category, length: Int,
-        slots: [ScheduleSlot]? = nil
+        slots: [ScheduleSlot]? = nil, places: [String]? = nil
     ) {
         self.id = id
         self.name = name
@@ -75,6 +77,7 @@ public struct ListedJob: Codable, Sendable, Hashable, Identifiable {
         self.category = category
         self.length = length
         self.slots = slots
+        self.places = places
     }
 }
 

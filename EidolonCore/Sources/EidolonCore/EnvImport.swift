@@ -214,6 +214,19 @@ public struct EnvAPISettings: Sendable, Hashable {
     public var fishAPIKey: String?
     public var fishModel: String?
 
+    public var imageAPIFormat: ImageAPIFormat?
+    public var imageBaseURL: String?
+    public var imageModel: String?
+    public var imageAdultModel: String?
+    public var imageStyle: String?
+    public var imageHourlyLimit: Int?
+    public var novelAIAPIKey: String?
+    public var gptImageBaseURL: String?
+    public var gptImageModel: String?
+    public var gptImageQuality: GPTImageQuality?
+    public var gptImageStyle: String?
+    public var gptImageAPIKey: String?
+
     public init() {}
 }
 
@@ -331,6 +344,64 @@ public enum EnvImporter {
                     line: entry.line,
                     message: positive ? "需要是正整数" : "需要是整数"
                 ))
+                return nil
+            }
+            return value
+        }
+
+        func nonNegativeInteger(_ key: String) -> Int? {
+            guard let raw = text(key), let entry = last[key] else { return nil }
+            guard let value = Int(raw), value >= 0 else {
+                invalid.append(.init(
+                    key: key,
+                    line: entry.line,
+                    message: "需要是 0 或正整数"
+                ))
+                return nil
+            }
+            return value
+        }
+
+        func boolean(_ key: String) -> Bool? {
+            guard let raw = text(key)?.lowercased(), let entry = last[key] else { return nil }
+            switch raw {
+            case "true", "1", "yes", "on": return true
+            case "false", "0", "no", "off": return false
+            default:
+                invalid.append(.init(
+                    key: key,
+                    line: entry.line,
+                    message: "只能是 true / false（或 1 / 0、yes / no、on / off）"
+                ))
+                return nil
+            }
+        }
+
+        func imageFormat(_ key: String) -> ImageAPIFormat? {
+            guard let raw = text(key) else { return nil }
+            guard let value = ImageAPIFormat(rawValue: raw.lowercased()) else {
+                if let entry = last[key] {
+                    invalid.append(.init(
+                        key: key,
+                        line: entry.line,
+                        message: "只能是 novelai 或 openai"
+                    ))
+                }
+                return nil
+            }
+            return value
+        }
+
+        func gptQuality(_ key: String) -> GPTImageQuality? {
+            guard let raw = text(key) else { return nil }
+            guard let value = GPTImageQuality(rawValue: raw.lowercased()) else {
+                if let entry = last[key] {
+                    invalid.append(.init(
+                        key: key,
+                        line: entry.line,
+                        message: "只能是 low、medium、high、auto、xhigh 或 max"
+                    ))
+                }
                 return nil
             }
             return value
@@ -606,6 +677,43 @@ public enum EnvImporter {
                 values.fishModel = text(key)
                 if values.fishModel != nil { note(key, "Fish Audio 模型") }
 
+            case "NOVELAI_API_FORMAT":
+                values.imageAPIFormat = imageFormat(key)
+                if values.imageAPIFormat != nil { note(key, "生图接口形式") }
+            case "NOVELAI_BASE_URL":
+                values.imageBaseURL = text(key)
+                if values.imageBaseURL != nil { note(key, "生图接口地址") }
+            case "NOVELAI_API_KEY":
+                values.novelAIAPIKey = text(key)
+                if values.novelAIAPIKey != nil { note(key, "生图密钥", secret: true) }
+            case "NOVELAI_MODEL":
+                values.imageModel = text(key)
+                if values.imageModel != nil { note(key, "生图模型") }
+            case "NOVELAI_ADULT_MODEL":
+                values.imageAdultModel = text(key)
+                if values.imageAdultModel != nil { note(key, "成人生图模型") }
+            case "NOVELAI_STYLE":
+                values.imageStyle = text(key)
+                if values.imageStyle != nil { note(key, "生图画风") }
+            case "EIDOLON_PHOTOS_PER_HOUR":
+                values.imageHourlyLimit = nonNegativeInteger(key)
+                if values.imageHourlyLimit != nil { note(key, "每小时照片上限") }
+            case "GPT_IMAGE_BASE_URL":
+                values.gptImageBaseURL = text(key)
+                if values.gptImageBaseURL != nil { note(key, "GPT Image 接口地址") }
+            case "GPT_IMAGE_MODEL":
+                values.gptImageModel = text(key)
+                if values.gptImageModel != nil { note(key, "GPT Image 模型") }
+            case "GPT_IMAGE_QUALITY":
+                values.gptImageQuality = gptQuality(key)
+                if values.gptImageQuality != nil { note(key, "GPT Image 质量") }
+            case "GPT_IMAGE_STYLE":
+                values.gptImageStyle = text(key)
+                if values.gptImageStyle != nil { note(key, "GPT Image 画风") }
+            case "GPT_IMAGE_API_KEY":
+                values.gptImageAPIKey = text(key)
+                if values.gptImageAPIKey != nil { note(key, "GPT Image 密钥", secret: true) }
+
             default:
                 if isUnsupported(key) {
                     unsupported.append(entry)
@@ -657,7 +765,7 @@ public enum EnvImporter {
     ]
 
     private static let unsupportedPrefixes = [
-        "EIDOLON_", "NOVELAI_", "GPT_IMAGE_", "DASHSCOPE_",
+        "EIDOLON_", "DASHSCOPE_",
         "QWEATHER_", "GITHUB_", "GOOGLE_",
     ]
 

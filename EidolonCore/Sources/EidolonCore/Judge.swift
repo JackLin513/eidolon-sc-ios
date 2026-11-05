@@ -7,10 +7,14 @@ import Foundation
 public struct JudgeVerdict: Sendable, Hashable {
     public var affinity: Judged
     public var need: RetrievalNeed
+    /// Whether the producer is asking for a photo or picture this turn. It is only asked
+    /// when the turn could make one; every other provider and caller leaves it false.
+    public var wantsPhoto: Bool
 
-    public init(affinity: Judged, need: RetrievalNeed) {
+    public init(affinity: Judged, need: RetrievalNeed, wantsPhoto: Bool = false) {
         self.affinity = affinity
         self.need = need
+        self.wantsPhoto = wantsPhoto
     }
 }
 
@@ -28,6 +32,16 @@ public protocol JudgeProvider: Sendable {
         history: [PromptMessage],
         said: String,
         adultMode: Bool
+    ) async throws -> JudgeVerdict
+
+    /// The same judgment with the photo question, asked only when the turn could make a
+    /// photo. Providers that do not know it keep the adult answer and report no photo.
+    func judge(
+        characterName: String,
+        history: [PromptMessage],
+        said: String,
+        adultMode: Bool,
+        askPhoto: Bool
     ) async throws -> JudgeVerdict
 
     /// What judged the turn, for the trace. Requirements rather than extension-only
@@ -55,6 +69,21 @@ extension JudgeProvider {
         adultMode: Bool
     ) async throws -> JudgeVerdict {
         try await judge(characterName: characterName, history: history, said: said)
+    }
+
+    public func judge(
+        characterName: String,
+        history: [PromptMessage],
+        said: String,
+        adultMode: Bool,
+        askPhoto: Bool
+    ) async throws -> JudgeVerdict {
+        try await judge(
+            characterName: characterName,
+            history: history,
+            said: said,
+            adultMode: adultMode
+        )
     }
 
     /// What the trace says judged the turn: the service, the model and, for a model whose
@@ -187,6 +216,22 @@ public struct ChatJudgeProvider: TracingJudgeProvider {
         ).verdict
     }
 
+    public func judge(
+        characterName: String,
+        history: [PromptMessage],
+        said: String,
+        adultMode: Bool,
+        askPhoto: Bool
+    ) async throws -> JudgeVerdict {
+        try await judgedWithRaw(
+            characterName: characterName,
+            history: history,
+            said: said,
+            adultMode: adultMode,
+            askPhoto: askPhoto
+        ).verdict
+    }
+
     public func judgedWithRaw(
         characterName: String,
         history: [PromptMessage],
@@ -206,6 +251,22 @@ public struct ChatJudgeProvider: TracingJudgeProvider {
         said: String,
         adultMode: Bool
     ) async throws -> JudgeAnswer {
+        try await judgedWithRaw(
+            characterName: characterName,
+            history: history,
+            said: said,
+            adultMode: adultMode,
+            askPhoto: false
+        )
+    }
+
+    public func judgedWithRaw(
+        characterName: String,
+        history: [PromptMessage],
+        said: String,
+        adultMode: Bool,
+        askPhoto: Bool
+    ) async throws -> JudgeAnswer {
         let state = Self.state(characterName: characterName, history: history, said: said)
         let data = try await post([
             "model": config.model,
@@ -213,7 +274,10 @@ public struct ChatJudgeProvider: TracingJudgeProvider {
             "temperature": 0,
             "max_tokens": config.maxTokens,
             "messages": [
-                ["role": "system", "content": Self.instructions(adultMode: adultMode)],
+                [
+                    "role": "system",
+                    "content": Self.instructions(adultMode: adultMode, askPhoto: askPhoto),
+                ],
                 ["role": "user", "content": state],
             ],
         ])
@@ -308,11 +372,18 @@ public struct ChatJudgeProvider: TracingJudgeProvider {
 
     /// The chat judge's instructions in the adult variant. The JSON contract is unchanged;
     /// only what counts as out of line changes (spec #61).
-    static func instructions(adultMode: Bool) -> String {
-        guard adultMode else { return instructionsText }
-        return instructionsText.replacingOccurrences(of: outOfLineBase, with: outOfLineAdult)
-            + "\n\n成人模式：双方愿意的亲密或性内容不要因为内容露骨本身扣分，也不应评为 0 或 1 级；"
-            + "除非她明确表现出不适、拒绝或受到强迫。按她的性格、关系和上文反应评分。"
+    static func instructions(adultMode: Bool, askPhoto: Bool = false) -> String {
+        var text = adultMode
+            ? instructionsText.replacingOccurrences(of: outOfLineBase, with: outOfLineAdult)
+                + "\n\n成人模式：双方愿意的亲密或性内容不要因为内容露骨本身扣分，也不应评为 0 或 1 级；"
+                + "除非她明确表现出不适、拒绝或受到强迫。按她的性格、关系和上文反应评分。"
+            : instructionsText
+        if askPhoto {
+            text += "\n\nwants_photo：制作人最新的一句话是不是在要她发一张照片或图片（拍什么都算）？"
+                + "明确要照片、自拍、拍某样东西，或让他看看她今天的衣服、便当等，都是 true；"
+                + "只问「你在干嘛」「你今天穿什么」「好想见你」不是。"
+        }
+        return text
     }
 
     static func answerText(_ data: Data) throws -> String {
@@ -355,11 +426,13 @@ public struct ChatJudgeProvider: TracingJudgeProvider {
             var outOfLine: Bool?
             var manipulation: Bool?
             var retrieval: String?
+            var wantsPhoto: Bool?
             enum CodingKeys: String, CodingKey {
                 case level
                 case outOfLine = "out_of_line"
                 case manipulation
                 case retrieval
+                case wantsPhoto = "wants_photo"
             }
         }
         guard let answer = try? JSONDecoder().decode(Answer.self, from: data) else {
@@ -384,7 +457,8 @@ public struct ChatJudgeProvider: TracingJudgeProvider {
                 outOfLine: answer.outOfLine ?? false,
                 manipulation: answer.manipulation ?? false
             ),
-            need: need
+            need: need,
+            wantsPhoto: answer.wantsPhoto ?? false
         )
     }
 }

@@ -33,11 +33,18 @@ final class ChatStore {
     private(set) var activeConversationID: String?
     var input = ""
     var errorMessage: String?
+    /// When she was asked for a picture this hour's allowance was gone: the feed says so
+    /// until the next turn (ticket #102).
+    private(set) var photoRetryAt: Date?
+    /// This conversation is spoken face to face rather than as messages. It belongs to
+    /// the conversation and is kept on this phone.
+    private(set) var faceToFace = false
     /// What a finished turn unlocked, for the toast (spec #69).
     var onRewards: (([AchievementReward]) -> Void)?
 
     private var task: Task<Void, Never>?
     private var cueTask: Task<Void, Never>?
+    private var photoTask: Task<Void, Never>?
     private var cueKey = 0
 
     init(character: CharacterConfig, core: Eidolon, conversationID: String? = nil) {
@@ -61,6 +68,7 @@ final class ChatStore {
             streaming = []
             pendingUser = nil
         }
+        watchPendingPhotos()
     }
 
     /// One reading of everything the store shows: the turns, the record and how she feels.
@@ -71,6 +79,8 @@ final class ChatStore {
         var isPast = false
         var affinity = AffinityStatus(tier: .trust, cooldownUntil: nil)
         var conversationID: String?
+        /// nil when there is no conversation yet, so the page's pending choice stays.
+        var faceToFace: Bool?
     }
 
     /// Reads the sources into a snapshot instead of putting them on screen: a turn takes the
@@ -84,11 +94,13 @@ final class ChatStore {
                 reading.messages = past.messages
                 reading.ended = past.ended
                 reading.isPast = true
+                reading.faceToFace = past.faceToFace
                 conversation = past.id
             } else if let current = try await core.currentConversation(characterID: character.id) {
                 reading.messages = current.messages
                 reading.ended = current.ended
                 reading.isPast = false
+                reading.faceToFace = current.faceToFace
                 conversation = current.id
             }
             if let conversation {
@@ -113,6 +125,9 @@ final class ChatStore {
         isPast = reading.isPast
         affinity = reading.affinity
         activeConversationID = reading.conversationID
+        if let faceToFace = reading.faceToFace {
+            self.faceToFace = faceToFace
+        }
     }
 
     /// Whether 新对话 can be used: there is something in this conversation to leave
@@ -153,7 +168,9 @@ final class ChatStore {
         historyTurns: Int = 20,
         tracing: TurnTracing = .on,
         replyStyle: ReplyStyle = .text,
-        adultMode: Bool = false
+        adultMode: Bool = false,
+        photo: PhotoTurnContext? = nil,
+        faceToFace: Bool = false
     ) async {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !affinity.cooling, !readOnly else { return }
@@ -174,6 +191,7 @@ final class ChatStore {
 
         input = ""
         errorMessage = nil
+        photoRetryAt = nil
         streaming = []
         pendingUser = text
         isStreaming = true
@@ -189,7 +207,9 @@ final class ChatStore {
             historyTurns: historyTurns,
             tracing: tracing,
             replyStyle: replyStyle,
-            adultMode: adultMode
+            adultMode: adultMode,
+            faceToFace: faceToFace,
+            photo: photo
         )
         let turn = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -202,6 +222,13 @@ final class ChatStore {
                         appendScene(block: block, text: shown)
                     case .speechDelta:
                         break
+                    case .photo:
+                        // The photo's row is written with the reply; what is still
+                        // pending after the turn is followed until it lands (see
+                        // `watchPendingPhotos`).
+                        break
+                    case let .photosUsedUp(retryAt):
+                        photoRetryAt = retryAt
                     case let .finished(record):
                         affinity = AffinityStatus(
                             tier: record.affinityTier,
@@ -232,6 +259,7 @@ final class ChatStore {
                 self.apply(reading)
                 self.streaming = []
                 self.pendingUser = nil
+                self.watchPendingPhotos()
             }
             self.isStreaming = false
         }
@@ -241,6 +269,42 @@ final class ChatStore {
 
     func stop() {
         task?.cancel()
+    }
+
+    /// The toolbar's 面对面 switch. It changes the context of the next turn and is kept on
+    /// the conversation; with no conversation yet, the next turn creates one with it.
+    func toggleFaceToFace() async {
+        guard !readOnly else { return }
+        faceToFace.toggle()
+        guard let activeConversationID else { return }
+        do {
+            try await core.setFaceToFace(faceToFace, conversationID: activeConversationID)
+        } catch {
+            faceToFace.toggle()
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// A photo strays from its reply while the turn is still being read: the image is made
+    /// after the reply is recorded, so the row says pending until it lands. This looks
+    /// again until nothing is pending, so the picture appears without leaving the page.
+    private func watchPendingPhotos() {
+        photoTask?.cancel()
+        guard hasPendingPhoto else { return }
+        photoTask = Task { @MainActor [weak self] in
+            for _ in 0..<180 {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled, let self else { return }
+                guard self.hasPendingPhoto else { return }
+                if let reading = await self.read() {
+                    self.apply(reading)
+                }
+            }
+        }
+    }
+
+    private var hasPendingPhoto: Bool {
+        messages.contains { $0.photo?.status == .pending }
     }
 
     /// Shows the change on the badge for about 2.6 seconds; a second one replaces it and

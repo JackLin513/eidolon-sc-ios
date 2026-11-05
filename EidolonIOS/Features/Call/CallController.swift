@@ -41,6 +41,13 @@ final class CallController {
     private(set) var endedAt: Date?
     /// What her stand shows; her events move it.
     private(set) var stand = CallStandDirector()
+    /// The picture she is making or made in this call, if any (ticket #103).
+    private(set) var photo: CallPhoto?
+    /// When she was asked for a picture this hour's allowance was gone.
+    private(set) var photoRetryAt: Date?
+    /// A picture landed while the call was folded away: the bar says so until the layer
+    /// is back or her conversation is opened.
+    private(set) var unseenPhoto = false
 
     /// Whether her replies are read as text rather than voiced. It stays on this phone
     /// between calls (spec #43), and is set on the call before it starts.
@@ -49,6 +56,7 @@ final class CallController {
     private weak var app: AppModel?
     private var events: Task<Void, Never>?
     private var cueTask: Task<Void, Never>?
+    private var photoWatch: Task<Void, Never>?
     private var cueKey = 0
     /// The producer left to another character: the end is real, but its card is not shown.
     private var leaving = false
@@ -161,6 +169,11 @@ final class CallController {
         leaving = false
         affinityCue = nil
         cueTask?.cancel()
+        photo = nil
+        photoRetryAt = nil
+        unseenPhoto = false
+        photoWatch?.cancel()
+        photoWatch = nil
     }
 
     private func handle(_ event: CallEvent) {
@@ -210,10 +223,44 @@ final class CallController {
             previousLine = nil
         case let .affinity(change):
             showAffinityCue(change)
+        case let .photo(_, reference):
+            photo = CallPhoto(id: reference.id, status: reference.status, reason: reference.reason)
+            if isCollapsed { unseenPhoto = true }
+            watchPhoto(id: reference.id)
+        case let .photosUsedUp(retryAt):
+            photoRetryAt = retryAt
         case .segmentStarted, .segmentStopped, .emotion:
             break
         }
         stand.apply(event)
+    }
+
+    /// The picture is made after her reply is recorded: look again until it lands, so the
+    /// card and the folded chat show it without leaving the call (ticket #103).
+    private func watchPhoto(id: String) {
+        photoWatch?.cancel()
+        photoWatch = Task { @MainActor [weak self] in
+            for _ in 0..<180 {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled, let self, let app = self.app else { return }
+                guard self.photo?.status == .pending else { return }
+                guard let found = try? await app.core.photo(id: id) else { return }
+                if found.status != .pending {
+                    self.photo = CallPhoto(
+                        id: found.id,
+                        status: found.status,
+                        reason: found.reason
+                    )
+                    if self.isCollapsed { self.unseenPhoto = true }
+                    return
+                }
+            }
+        }
+    }
+
+    /// Her conversation is open, or the call layer is: the new picture is no longer news.
+    func markPhotoSeen() {
+        unseenPhoto = false
     }
 
     /// Says the change on the status line for about 2.6 seconds; a second one replaces it.
@@ -235,6 +282,7 @@ final class CallController {
     }
 
     func expand() {
+        unseenPhoto = false
         layer = layer.expanding(live: isLive)
     }
 
@@ -319,4 +367,11 @@ struct HerLine: Equatable {
     let segment: Int
     let ja: String
     let zh: String
+}
+
+/// The one picture a call is showing: its id, how far it has got and, when it failed, why.
+struct CallPhoto: Identifiable, Equatable {
+    let id: String
+    var status: PhotoStatus
+    var reason: PhotoFailureReason?
 }

@@ -272,7 +272,9 @@ struct ChatView: View {
                             historyTurns: app.chatSettings.historyTurns,
                             tracing: app.tracing,
                             replyStyle: app.replyStyle,
-                            adultMode: app.adultMode(for: character)
+                            adultMode: app.adultMode(for: character),
+                            photo: app.photoContext,
+                            faceToFace: store.faceToFace
                         ) }
         #endif
     }
@@ -368,6 +370,11 @@ struct ChatView: View {
                 // rework the whole transcript (spec #42). It is her next group's first
                 // line, so it carries her avatar and name (spec #40).
                 StreamingReply(store: store, character: character)
+                if let retryAt = photoRetryAt {
+                    photoUsedUpCapsule(retryAt)
+                        .id("photoUsedUp")
+                        .padding(.top, 8)
+                }
                 if showsLiveCall {
                     liveCallRows
                         .id("liveCall")
@@ -391,6 +398,42 @@ struct ChatView: View {
         .scrollDismissesKeyboard(.interactively)
     }
 
+    /// The hour's pictures are gone: said once, where the turn would have been, with the
+    /// time she can be asked again (ticket #102).
+    private func photoUsedUpCapsule(_ retryAt: Date) -> some View {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "HH:mm"
+        return Label(
+            "这一小时的照片用完了，\(formatter.string(from: retryAt)) 以后可以再要",
+            systemImage: "camera.badge.ellipsis"
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(.secondarySystemBackground), in: Capsule())
+        .frame(maxWidth: .infinity, alignment: .center)
+        .accessibilityIdentifier("chat.photoUsedUp")
+    }
+
+    /// The turn's own notice first; while a call with her is folded here, what the call
+    /// was told (spec #98: the notice reaches the conversation from a call too).
+    private var photoRetryAt: Date? {
+        if let own = store?.photoRetryAt { return own }
+        return app.call.isCalling(character.id) ? app.call.photoRetryAt : nil
+    }
+
+    /// The call's picture until it is recorded: once the reply is in the conversation,
+    /// the recorded row is the one shown (spec #98).
+    private var liveCallPhoto: CallPhoto? {
+        guard let photo = app.call.photo else { return nil }
+        if let store, store.messages.contains(where: { $0.photo?.id == photo.id }) {
+            return nil
+        }
+        return photo
+    }
+
     private var liveBlocks: [ReplyBlock] {
         liveLines.values
             .sorted { $0.segment < $1.segment }
@@ -402,11 +445,23 @@ struct ChatView: View {
         app.call.isCalling(character.id)
             && store?.isPast != true
             && store?.ended != true
-            && (liveHeard != nil || !liveBlocks.isEmpty)
+            && (liveHeard != nil || !liveBlocks.isEmpty || liveCallPhoto != nil)
     }
 
     @ViewBuilder
     private var liveCallRows: some View {
+        // Her picture is the first thing of the live turn, as it will be once recorded
+        // (ticket #103).
+        if let photo = liveCallPhoto {
+            HerMessageRow(character: character) {
+                PhotoBubble(photo: PhotoReference(
+                    id: photo.id,
+                    status: photo.status,
+                    reason: photo.reason
+                ))
+            }
+            .id("livePhoto-\(photo.id)")
+        }
         if let heard = liveHeard, !heard.isEmpty {
             HStack {
                 Spacer(minLength: 40)
@@ -487,7 +542,12 @@ struct ChatView: View {
                         character: character,
                         line: message.id,
                         joinsPrevious: !row.first,
-                        joinsNext: !row.last
+                        joinsNext: !row.last,
+                        photo: message.photo,
+                        conversationID: store?.activeConversationID,
+                        faceToFace: store?.faceToFace ?? false,
+                        messages: store?.messages ?? [],
+                        onPhotoMade: { Task { await store?.load() } }
                     )
                     if row.last {
                         clockText(row.clock)
@@ -607,7 +667,15 @@ struct ChatView: View {
                         liveLines[previous.segment] = previous
                     }
                 }
-                .onAppear { seedLiveCall() }
+                // This page is her conversation: a new picture is already on screen as
+                // the live row, so the bar need not say it too (ticket #103).
+                .onChange(of: app.call.photo) { _, _ in
+                    if callBelongsToThisPage { app.call.markPhotoSeen() }
+                }
+                .onAppear {
+                    seedLiveCall()
+                    if callBelongsToThisPage { app.call.markPhotoSeen() }
+                }
         }
 
         /// A chat opened while she is already answering catches up with the call's current
@@ -695,6 +763,81 @@ struct ChatView: View {
         }
     }
 
+    /// The picture that came with a reply. It is made after the reply is written, so it
+    /// shows a developing frame until the file is there (spec #98).
+    private struct PhotoBubble: View {
+        let photo: PhotoReference
+
+        @Environment(AppModel.self) private var app
+        @State private var image: UIImage?
+        @State private var viewing = false
+        @State private var blinking = false
+
+        private var width: CGFloat { PhotoGeometry.bubbleWidth }
+
+        var body: some View {
+            Group {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: width)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .onTapGesture { viewing = true }
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityLabel("照片")
+                        .accessibilityIdentifier("chat.photo")
+                } else if photo.status == .failed {
+                    // What went wrong, in one short line; asking again is a new turn, not
+                    // a retry here (ticket #102).
+                    HStack(spacing: 8) {
+                        Image(systemName: "photo.badge.exclamationmark")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("照片没发出来")
+                            if let reason = photo.reason {
+                                Text(reason.shortText)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .font(.caption)
+                    .frame(width: width, alignment: .leading)
+                    .padding(.vertical, 6)
+                    .accessibilityIdentifier("chat.photo.failed")
+                } else {
+                    // The same box the finished picture takes, so nothing moves when it
+                    // lands; faint, a blinking camera and a spinner, no words (spec #98).
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(.tertiarySystemBackground))
+                        .frame(width: width, height: width / PhotoGeometry.aspectRatio)
+                        .overlay {
+                            VStack(spacing: 10) {
+                                Image(systemName: "camera")
+                                    .font(.title2)
+                                    .opacity(blinking ? 0.35 : 1)
+                                ProgressView()
+                            }
+                            .foregroundStyle(.secondary)
+                        }
+                        .onAppear {
+                            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                                blinking = true
+                            }
+                        }
+                        .accessibilityLabel("照片正在生成")
+                        .accessibilityIdentifier("chat.photo.pending")
+                }
+            }
+            .task(id: photo.status) {
+                guard photo.status == .ready else { return }
+                image = await app.photoImage(photo.id)
+            }
+            .fullScreenCover(isPresented: $viewing) {
+                PhotoViewer(id: photo.id)
+            }
+        }
+    }
+
     /// Her words in one bubble. `line` is the message's, when it is one that has all arrived:
     /// what 朗读 is for. The line still being written has none, and it arrives with its cues
     /// already taken out, so it is shown as it is rather than filtered a second time (spec #42).
@@ -706,11 +849,25 @@ struct ChatView: View {
         /// Another line of her group sits above / below: the meeting corner is smaller.
         var joinsPrevious = false
         var joinsNext = false
+        /// The picture she sent with this reply, if the turn made one (spec #98).
+        var photo: PhotoReference? = nil
+        /// Where the button's picture goes; nil while the reply is still being written.
+        var conversationID: String? = nil
+        var faceToFace = false
+        /// What the tag draft reads.
+        var messages: [ChatMessageRecord] = []
+        /// Reloads the page after the debug button makes a picture.
+        var onPhotoMade: (() -> Void)? = nil
 
         @Environment(AppModel.self) private var app
+        @State private var editingPhoto = false
 
         var body: some View {
             VStack(alignment: .leading, spacing: 6) {
+                // The picture is the first block of her reply (spec #98).
+                if let photo {
+                    PhotoBubble(photo: photo)
+                }
                 // One text view for the whole bubble: with several Text views only the last
                 // one gets a selection container, so her Japanese and the scene would not be
                 // selectable (spec #76).
@@ -718,11 +875,33 @@ struct ChatView: View {
                     .font(.body)
                     .textSelection(.enabled)
                 // Her voice is the call's while one is up; 朗读 waits for it to end.
-                if let line, !app.call.isLive, let speech = ReadAloud.speech(
-                    of: blocks, model: app.chatSettings.fishModel
-                ), let voice = app.readAloudVoice(for: character) {
-                    readAloudButton(speech, line: line, voice: voice)
-                        .id(line)
+                if let line, !app.call.isLive {
+                    HStack(spacing: 12) {
+                        if let speech = ReadAloud.speech(
+                            of: blocks, model: app.chatSettings.fishModel
+                        ), let voice = app.readAloudVoice(for: character) {
+                            readAloudButton(speech, line: line, voice: voice)
+                                .id(line)
+                        }
+                        if showsDebugPhotoButton {
+                            debugPhotoButton
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+            .sheet(isPresented: $editingPhoto) {
+                if let line, let conversationID {
+                    DebugPhotoSheet(
+                        character: character,
+                        messages: messages,
+                        messageID: line,
+                        conversationID: conversationID,
+                        faceToFace: faceToFace,
+                        adult: app.adultMode(for: character)
+                    ) {
+                        onPhotoMade?()
+                    }
                 }
             }
             .padding(.horizontal, 14)
@@ -736,6 +915,32 @@ struct ChatView: View {
                     topTrailingRadius: 16
                 )
             )
+        }
+
+        /// The debug page's button: only on a recorded reply that has no picture, while an
+        /// image service is configured and no call is up.
+        private var showsDebugPhotoButton: Bool {
+            app.debugPhotoButton
+                && photo == nil
+                && line != nil
+                && conversationID != nil
+                && !app.call.isLive
+                && app.photoContext != nil
+        }
+
+        private var debugPhotoButton: some View {
+            Button {
+                editingPhoto = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "camera.badge.clock")
+                    Text("生成照片")
+                }
+            }
+            .buttonStyle(.plain)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .accessibilityIdentifier("chat.debugPhoto")
         }
 
         /// What the reader sees. A recorded line keeps its cues in the store, so they are taken
@@ -811,6 +1016,40 @@ struct ChatView: View {
 
     // MARK: - Input
 
+    /// The row above the field: a place for modes and actions of this conversation. The
+    /// first one is 面对面, which makes the typed turns a conversation in the same room.
+    private func composerToolbar(_ store: ChatStore) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                Task { await store.toggleFaceToFace() }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: store.faceToFace
+                        ? "person.line.dotted.person.fill"
+                        : "person.line.dotted.person")
+                    Text("面对面")
+                }
+                .font(.caption)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .foregroundStyle(store.faceToFace ? Color.accentColor : Color.secondary)
+                .background(
+                    store.faceToFace
+                        ? Color.accentColor.opacity(0.15)
+                        : Color(.secondarySystemBackground),
+                    in: Capsule()
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(store.isStreaming)
+            .accessibilityIdentifier("chat.faceToFace")
+            .accessibilityLabel("面对面")
+            .accessibilityValue(store.faceToFace ? "已开启" : "已关闭")
+            .accessibilityHint("打开后，这段对话按你们当面说话来写")
+            Spacer(minLength: 0)
+        }
+    }
+
     private func inputBar(_ store: ChatStore) -> some View {
         @Bindable var store = store
         let calling = app.call.isCalling(character.id)
@@ -826,6 +1065,9 @@ struct ChatView: View {
                     .font(.footnote)
                     .foregroundStyle(.orange)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if !store.readOnly {
+                composerToolbar(store)
             }
             HStack(alignment: .bottom, spacing: 8) {
                 TextField("说点什么", text: $store.input, axis: .vertical)
@@ -850,7 +1092,9 @@ struct ChatView: View {
                             historyTurns: app.chatSettings.historyTurns,
                             tracing: app.tracing,
                             replyStyle: app.replyStyle,
-                            adultMode: app.adultMode(for: character)
+                            adultMode: app.adultMode(for: character),
+                            photo: app.photoContext,
+                            faceToFace: store.faceToFace
                         ) }
                     }
                 } label: {
@@ -945,7 +1189,9 @@ struct ChatView: View {
                             historyTurns: app.chatSettings.historyTurns,
                             tracing: app.tracing,
                             replyStyle: app.replyStyle,
-                            adultMode: app.adultMode(for: character)
+                            adultMode: app.adultMode(for: character),
+                            photo: app.photoContext,
+                            faceToFace: store.faceToFace
                         ) }
                 }
                 .font(.footnote.weight(.semibold))
@@ -956,3 +1202,199 @@ struct ChatView: View {
         .background(Color.orange.opacity(0.12))
     }
 }
+
+/// The debug page's 生成照片 sheet: the producer edits the tag, and the picture is made
+/// for this one recorded reply (spec #62). It is not part of a normal turn.
+private struct DebugPhotoSheet: View {
+    let character: CharacterConfig
+    let messages: [ChatMessageRecord]
+    let messageID: String
+    let conversationID: String
+    let faceToFace: Bool
+    let adult: Bool
+    let onMade: () -> Void
+
+    @Environment(AppModel.self) private var app
+    @Environment(\.dismiss) private var dismiss
+    @State private var tag: String
+    @State private var busy = false
+    @State private var drafting = false
+    @State private var errorMessage: String?
+    @State private var draftError: String?
+    /// What the model actually wrote when its draft did not parse; shown so it can be
+    /// fixed by hand rather than vanishing.
+    @State private var rawDraft: String?
+
+    init(
+        character: CharacterConfig,
+        messages: [ChatMessageRecord],
+        messageID: String,
+        conversationID: String,
+        faceToFace: Bool,
+        adult: Bool,
+        onMade: @escaping () -> Void
+    ) {
+        self.character = character
+        self.messages = messages
+        self.messageID = messageID
+        self.conversationID = conversationID
+        self.faceToFace = faceToFace
+        self.adult = adult
+        self.onMade = onMade
+        _tag = State(initialValue: """
+            rating: \(adult ? "explicit" : "general")
+            shot: \(faceToFace ? "other" : "selfie")
+            framing: upper body
+            place: indoors
+            outfit: casual
+            action: smile
+            """)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextEditor(text: $tag)
+                        .font(.system(.footnote, design: .monospaced))
+                        .frame(minHeight: 180)
+                        .disabled(busy)
+                        .accessibilityIdentifier("debug.photo.tag")
+                } header: {
+                    Text("照片标签")
+                } footer: {
+                    Text("标签会照内容包的黑名单清洗；成人模式只在角色明确 18 岁以上时生效。")
+                }
+                if let rawDraft {
+                    Section {
+                        Text(rawDraft)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .accessibilityIdentifier("debug.photo.raw")
+                    } header: {
+                        Text("模型输出")
+                    } footer: {
+                        Text("这一段没有按格式写出来。找到 <photo> 里的内容，改到上面的编辑框再生成。")
+                    }
+                }
+                Section {
+                    Button {
+                        Task { await draft() }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "wand.and.stars")
+                            Text(drafting ? "正在按对话起草…" : "按对话重新起草")
+                            if drafting { Spacer(); ProgressView() }
+                        }
+                    }
+                    .disabled(busy || drafting)
+                    .accessibilityIdentifier("debug.photo.draft")
+                    if let draftError {
+                        Text(draftError)
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                    }
+                } footer: {
+                    Text("用对话模型看一眼最近的对话，只让它写标签；写不合格式时会保留原样，可以手改。")
+                }
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+            }
+            .navigationTitle("生成照片")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                        .disabled(busy)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        make()
+                    } label: {
+                        if busy {
+                            ProgressView()
+                        } else {
+                            Text("生成")
+                        }
+                    }
+                    .disabled(busy)
+                    .accessibilityIdentifier("debug.photo.make")
+                }
+            }
+            .task { await draft() }
+        }
+    }
+
+    /// The same chat model a turn uses, asked only for a tag. A draft that does not parse
+    /// leaves the editor as it was, so the producer can fix it by hand.
+    private func draft() async {
+        guard !drafting, !busy else { return }
+        guard let provider = app.chatProvider else {
+            draftError = "先在设置里配置对话模型"
+            return
+        }
+        drafting = true
+        draftError = nil
+        rawDraft = nil
+        defer { drafting = false }
+        do {
+            let draft = try await app.core.draftPhotoTag(
+                characterID: character.id,
+                conversationID: conversationID,
+                messages: messages,
+                faceToFace: faceToFace,
+                adult: adult,
+                provider: provider
+            )
+            tag = draft.tag.raw
+        } catch let error as PhotoTagDraftError {
+            // Keep what it wrote: the tag body goes straight into the editor, and the
+            // whole answer stays on screen when there was no tag at all.
+            if let body = error.body { tag = body }
+            rawDraft = error.raw
+            draftError = error.detail
+        } catch {
+            draftError = error.localizedDescription
+        }
+    }
+
+    private func make() {
+        guard let context = app.photoContext else {
+            errorMessage = "先在设置里配置生图服务"
+            return
+        }
+        do {
+            let parsed = try PhotoTag(text: tag)
+            busy = true
+            errorMessage = nil
+            Task {
+                do {
+                    let made = try await app.core.makePhotoForTesting(
+                        messageID: messageID,
+                        conversationID: conversationID,
+                        characterID: character.id,
+                        tag: parsed,
+                        context: context,
+                        adult: adult
+                    )
+                    busy = false
+                    if made.status == .failed {
+                        errorMessage = made.reason?.shortText ?? "照片没生成出来"
+                        return
+                    }
+                    onMade()
+                    dismiss()
+                } catch {
+                    busy = false
+                    errorMessage = error.localizedDescription
+                }
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+

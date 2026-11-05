@@ -8,6 +8,8 @@ public enum NowPrompt {
     public enum Talking: Sendable {
         case typing
         case inCall
+        /// They are together in the same room; what is typed is spoken, not sent.
+        case inPerson
         case apart
 
         var text: String {
@@ -16,6 +18,8 @@ public enum NowPrompt {
                 "制作人正在用文字和你聊天，你们没有在打电话；不想聊的时候就说不想聊，不要说挂电话或挂断。"
             case .inCall:
                 "制作人正在和你打电话。"
+            case .inPerson:
+                "你和制作人正面对面说话，不是发消息，也不是打电话。"
             case .apart:
                 "你们这会儿没在说话。"
             }

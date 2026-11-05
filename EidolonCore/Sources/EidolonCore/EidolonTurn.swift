@@ -24,6 +24,11 @@ public enum TurnEvent: Sendable {
     /// A scene block's Chinese description; shown, never voiced.
     case sceneDelta(block: Int, text: String)
     case finished(TurnRecord)
+    /// The photo she just described is being made. Its id is stable; the image arrives
+    /// later through the photo record.
+    case photo(id: String, status: PhotoStatus)
+    /// She was asked for a photo but this hour's allowance is gone.
+    case photosUsedUp(retryAt: Date)
 }
 
 public struct TurnRecord: Sendable, Hashable {
@@ -49,6 +54,8 @@ public struct TurnRecord: Sendable, Hashable {
     public var affinityChange: AffinityChange?
     /// Achievement stages this turn unlocked, for the toast (spec #69).
     public var achievements: [AchievementReward] = []
+    /// The photo this reply carries, if she wrote one.
+    public var photo: PhotoReference? = nil
 }
 
 public struct AffinityStatus: Sendable, Hashable {
@@ -74,6 +81,10 @@ public struct ChatMessageRecord: Sendable, Hashable, Identifiable {
     /// How the reply changed her affinity; nil for the producer's lines and for a turn
     /// that changed nothing (spec #38).
     public var affinityChange: AffinityChange? = nil
+    /// The photo attached to this reply, if any; the image itself is read separately.
+    public var photo: PhotoReference? = nil
+    /// The `<photo>` tag as she wrote it, for the history prompt.
+    public var photoTag: String? = nil
 
     public var isFromCharacter: Bool { role == "character" }
 
@@ -97,6 +108,8 @@ public struct ConversationSnapshot: Sendable, Hashable {
     public var id: String
     public var messages: [ChatMessageRecord]
     public var ended: Bool
+    /// Whether this conversation is spoken face to face rather than as messages.
+    public var faceToFace: Bool = false
 }
 
 extension Eidolon {
@@ -121,7 +134,9 @@ extension Eidolon {
         stop: CallTurnStop? = nil,
         voicedBy model: String? = nil,
         replyStyle: ReplyStyle = .text,
-        adultMode: Bool = false
+        adultMode: Bool = false,
+        faceToFace: Bool = false,
+        photo: PhotoTurnContext? = nil
     ) -> AsyncThrowingStream<TurnEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -143,7 +158,9 @@ extension Eidolon {
                         stop: stop,
                         voicedBy: model,
                         replyStyle: replyStyle,
-                        adultMode: adultMode
+                        adultMode: adultMode,
+                        faceToFace: faceToFace,
+                        photo: photo
                     ) { continuation.yield($0) }
                     continuation.yield(.finished(record))
                     continuation.finish()
@@ -197,6 +214,8 @@ extension Eidolon {
         voicedBy model: String?,
         replyStyle: ReplyStyle,
         adultMode: Bool,
+        faceToFace: Bool,
+        photo: PhotoTurnContext?,
         emit: (TurnEvent) -> Void
     ) async throws -> TurnRecord {
         // Where the turn's time goes, for the trace (ADR-0012): the producer waits through
@@ -211,6 +230,29 @@ extension Eidolon {
             throw EidolonError.invalidContent("找不到角色 \(characterID)")
         }
         let effectiveAdultMode = adultMode && character.isAdult
+        // A typed conversation can be spoken face to face; a call already is.
+        let effectiveTalking: NowPrompt.Talking = talking == .inCall
+            ? .inCall
+            : (faceToFace ? .inPerson : talking)
+        let photoTable = try? photoTags()
+        // No judge means nothing can tell whether he asked for a picture: she is told she
+        // cannot send one, exactly as before photos existed (spec #98).
+        let photoEligible = judge != nil
+            && photo != nil
+            && photoTable != nil
+            && character.canSendPhoto
+        let photoLimit = photo?.settings.hourlyLimit ?? 0
+        let photoCount = photoLimit > 0
+            ? (try? photoCount(since: now.addingTimeInterval(-3600))) ?? 0
+            : 0
+        let photoUsedUp = photoLimit > 0 && photoCount >= photoLimit
+        // The slot comes back when the oldest counted picture turns one hour old, not one
+        // hour from now (spec #98's HH:MM).
+        let photoRetryAt: Date? = {
+            guard photoUsedUp else { return nil }
+            let oldest = (try? photoSlotsFreeAt(since: now.addingTimeInterval(-3600))) ?? nil
+            return oldest?.addingTimeInterval(3600) ?? now.addingTimeInterval(3600)
+        }()
         let affinity = try readAffinity(characterID: characterID, now: now)
         if let until = affinity.cooldownUntil {
             throw EidolonError.coolingDown(until)
@@ -260,7 +302,8 @@ extension Eidolon {
                         characterName: character.name,
                         history: judgeHistory,
                         said: text,
-                        adultMode: effectiveAdultMode
+                        adultMode: effectiveAdultMode,
+                        askPhoto: photoEligible
                     )
                     raw = answer.raw
                     tokens = answer.inputTokens
@@ -270,7 +313,8 @@ extension Eidolon {
                         characterName: character.name,
                         history: judgeHistory,
                         said: text,
-                        adultMode: effectiveAdultMode
+                        adultMode: effectiveAdultMode,
+                        askPhoto: photoEligible
                     )
                 }
             } catch {
@@ -376,10 +420,10 @@ extension Eidolon {
         let nowText = NowPrompt.text(
             now: now,
             timeZone: zone,
-            talking: talking,
+            talking: effectiveTalking,
             affinityLines: affinityLines,
             // In a call they are talking right now: no "last time" to tell her.
-            lastContact: talking == .inCall
+            lastContact: effectiveTalking == .inCall
                 ? nil
                 : try lastContact(characterID: characterID),
             birthday: producer.birthday,
@@ -387,9 +431,21 @@ extension Eidolon {
             scheduleLines: scheduleLines,
             cycleLines: cycleLines
         )
-        let nowSection = ([nowText, PromptAssembler.cannotSendPhoto, retrieved.memories, retrieved.references]
+        let wantsPhoto = verdict?.wantsPhoto ?? false
+        let photoSection = PromptAssembler.photoSection(
+            eligible: photoEligible,
+            wants: wantsPhoto,
+            cold: affinity.tier == .cold,
+            usedUp: photoUsedUp,
+            adult: effectiveAdultMode,
+            faceToFace: faceToFace
+        )
+        let nowSection = ([nowText, photoSection, retrieved.memories, retrieved.references]
             .compactMap { $0 }
             .joined(separator: "\n\n"))
+        if photoUsedUp, wantsPhoto {
+            emit(.photosUsedUp(retryAt: photoRetryAt ?? now.addingTimeInterval(3600)))
+        }
 
         let assembler = PromptAssembler(
             bundleDirectory: location.contentDirectory,
@@ -409,6 +465,15 @@ extension Eidolon {
         // Each step is shown in the app as it arrives.
         var parser = ReplyParser()
         var stopped = false
+        var pendingPhotoTag: PhotoTag?
+        var photoID: String?
+        var photoAttached = false
+        let photoAllowed = photoEligible && wantsPhoto && affinity.tier != .cold && !photoUsedUp
+        defer {
+            if let photoID, !photoAttached {
+                discardPhoto(id: photoID)
+            }
+        }
         func shown(_ events: [ReplyParserEvent]) {
             for event in events {
                 switch event {
@@ -418,8 +483,26 @@ extension Eidolon {
                     emit(.speechDelta(block: block, text: text))
                 case let .sceneDelta(block, text):
                     emit(.sceneDelta(block: block, text: text))
+                case let .photoTag(tag):
+                    pendingPhotoTag = tag
                 }
             }
+        }
+        func startPendingPhoto() {
+            guard photoAllowed, photoID == nil, let tag = pendingPhotoTag, let photo else {
+                pendingPhotoTag = nil
+                return
+            }
+            pendingPhotoTag = nil
+            guard let id = beginPhoto(
+                tag: tag,
+                character: character,
+                context: photo,
+                adult: effectiveAdultMode,
+                now: now
+            ) else { return }
+            photoID = id
+            emit(.photo(id: id, status: .pending))
         }
 
         // The tool is offered on every turn retrieval is available, so that what opens
@@ -457,6 +540,7 @@ extension Eidolon {
                             if firstTokenAt == nil { firstTokenAt = ContinuousClock.now }
                             said += chunk
                             shown(parser.feed(chunk))
+                            startPendingPhoto()
                         case let .reasoning(items):
                             reasoning += items
                         case let .toolCalls(made):
@@ -469,9 +553,11 @@ extension Eidolon {
                         if firstTokenAt == nil { firstTokenAt = ContinuousClock.now }
                         said += chunk
                         shown(parser.feed(chunk))
+                        startPendingPhoto()
                     }
                 }
                 shown(parser.finish())
+                startPendingPhoto()
                 allSaid += said
 
                 // A call made when forbidden, or to a tool never offered, is left
@@ -598,9 +684,19 @@ extension Eidolon {
             ending: ending,
             typed: call == nil,
             noEnding: noEnding,
+            faceToFace: call == nil ? faceToFace : nil,
             now: now,
             replyAt: replyAt
         )
+        if let photoID {
+            try? attachPhoto(
+                id: photoID,
+                messageID: recorded.replyMessageID,
+                conversationID: recorded.conversationID,
+                at: Date()
+            )
+            photoAttached = true
+        }
         recordTrace(recorded.conversationID, error: nil)
         // Memory is on with an embedder and a reranker (upstream `_services`): what the
         // producer revealed is written down after the reply, in a task of its own.
@@ -632,7 +728,8 @@ extension Eidolon {
             hangUp: call != nil ? ending : nil,
             ended: call == nil && ending != nil,
             affinityChange: recorded.change,
-            achievements: recorded.rewards
+            achievements: recorded.rewards,
+            photo: photoID.flatMap { try? self.photo(id: $0) } ?? nil
         )
     }
 
@@ -766,26 +863,46 @@ extension Eidolon {
         _ db: Database,
         id: String,
         characterID: String,
-        createdAt: String
+        createdAt: String,
+        faceToFace: Bool = false
     ) throws {
         try db.execute(
-            sql: "INSERT INTO conversations(id, character_id, created_at) VALUES (?, ?, ?)",
-            arguments: [id, characterID, createdAt]
+            sql: """
+                INSERT INTO conversations(id, character_id, created_at, face_to_face)
+                VALUES (?, ?, ?, ?)
+                """,
+            arguments: [id, characterID, createdAt, faceToFace ? 1 : 0]
         )
         try pointCurrentConversation(db, characterID: characterID, id: id)
     }
 
-    func createConversation(characterID: String, now: Date) throws -> String {
+    func createConversation(
+        characterID: String,
+        now: Date,
+        faceToFace: Bool = false
+    ) throws -> String {
         let id = UUID().uuidString
         try userQueue.write { db in
             try Self.insertConversation(
                 db,
                 id: id,
                 characterID: characterID,
-                createdAt: Self.timestamp(now)
+                createdAt: Self.timestamp(now),
+                faceToFace: faceToFace
             )
         }
         return id
+    }
+
+    /// Remembers whether this conversation is spoken face to face. The page's switch
+    /// writes it here; a turn also writes what it was given, in case it never did.
+    public func setFaceToFace(_ on: Bool, conversationID: String) throws {
+        try userQueue.write { db in
+            try db.execute(
+                sql: "UPDATE conversations SET face_to_face = ? WHERE id = ?",
+                arguments: [on ? 1 : 0, conversationID]
+            )
+        }
     }
 
     /// What one turn reads of a conversation: its messages, the narration the events and
@@ -851,7 +968,9 @@ extension Eidolon {
                     text: message.text,
                     segments: message.segments,
                     blocks: message.blocks,
-                    createdAt: message.createdAt
+                    createdAt: message.createdAt,
+                    photoTag: message.photoTag,
+                    photoFailed: message.photo?.status == .failed
                 )
                 if message.isReachOut {
                     if let said = Self.reachOutNarration(message, in: timeZone) {
@@ -949,7 +1068,9 @@ extension Eidolon {
                 text: message.text,
                 segments: message.segments,
                 blocks: message.blocks,
-                createdAt: message.createdAt
+                createdAt: message.createdAt,
+                photoTag: message.photoTag,
+                photoFailed: message.photo?.status == .failed
             )
         }
     }
@@ -1044,6 +1165,7 @@ extension Eidolon {
         /// How the turn changed it; nil when it changed nothing.
         var change: AffinityChange?
         var userMessageID: String
+        var replyMessageID: String
         /// Which turn of the conversation this was, counting from 1.
         var turn: Int
         var rewards: [AchievementReward]
@@ -1059,6 +1181,7 @@ extension Eidolon {
         ending: EndsReason?,
         typed: Bool,
         noEnding: Bool,
+        faceToFace: Bool?,
         now: Date,
         replyAt: Date
     ) throws -> RecordedTurn {
@@ -1079,10 +1202,19 @@ extension Eidolon {
                     db,
                     id: id,
                     characterID: characterID,
-                    createdAt: stamp
+                    createdAt: stamp,
+                    faceToFace: faceToFace ?? false
                 )
                 return id
             }()
+            // The page's switch is the truth for this turn, even when the conversation
+            // already existed and the toggle never reached the database.
+            if let faceToFace {
+                try db.execute(
+                    sql: "UPDATE conversations SET face_to_face = ? WHERE id = ?",
+                    arguments: [faceToFace ? 1 : 0, conversationID]
+                )
+            }
 
             try db.execute(
                 sql: """
@@ -1188,6 +1320,7 @@ extension Eidolon {
                 affinity: after,
                 change: change,
                 userMessageID: userID,
+                replyMessageID: replyID,
                 turn: turn,
                 rewards: rewards
             )
@@ -1319,6 +1452,10 @@ struct StoredMessage: Sendable {
     var segments: [ReplySegment]
     var blocks: [ReplyBlock]?
     var createdAt: String
+    var photoTag: String?
+    /// Whether the photo she wrote about failed and never reached the producer; the
+    /// history says so, so she knows it did not arrive (ticket #102).
+    var photoFailed = false
 
     var replyBlocks: [ReplyBlock] {
         blocks ?? segments.map(ReplyBlock.line)
@@ -1330,7 +1467,9 @@ struct StoredMessage: Sendable {
         text: String?,
         segments: [ReplySegment],
         blocks: [ReplyBlock]? = nil,
-        createdAt: String = ""
+        createdAt: String = "",
+        photoTag: String? = nil,
+        photoFailed: Bool = false
     ) {
         self.id = id
         self.role = role
@@ -1338,6 +1477,8 @@ struct StoredMessage: Sendable {
         self.segments = segments
         self.blocks = blocks
         self.createdAt = createdAt
+        self.photoTag = photoTag
+        self.photoFailed = photoFailed
     }
 
     init(row: Row) {
@@ -1347,6 +1488,7 @@ struct StoredMessage: Sendable {
         segments = Eidolon.decodeSegments(row["segments"])
         blocks = Eidolon.decodeBlocks(row["blocks"])
         createdAt = row["created_at"]
+        photoTag = nil
     }
 }
 
@@ -1359,6 +1501,84 @@ struct PromptAssembler {
         # 照片
         你发不了照片。制作人要你发照片时，用你自己的话推掉，不要写照片标签。
         """
+
+    /// The same, for a conversation spoken face to face: there is no phone between them
+    /// to send a picture with (spec #98's follow-up).
+    static let cannotSendPhotoInPerson = """
+        # 照片
+        你们正面对面，没法拍照。制作人要看或要拍你时，用你自己的话推掉，不要写照片标签。
+        """
+
+    static func photoSection(
+        eligible: Bool,
+        wants: Bool,
+        cold: Bool,
+        usedUp: Bool,
+        adult: Bool,
+        faceToFace: Bool = false
+    ) -> String? {
+        guard eligible else { return faceToFace ? cannotSendPhotoInPerson : cannotSendPhoto }
+        guard wants else { return nil }
+        let asked = faceToFace ? "他想看你或拍你" : "他在要照片"
+        if cold {
+            return """
+                # 照片
+                \(asked)，你现在不想给。用你自己的话推掉，不要写照片标签。
+                """
+        }
+        if usedUp {
+            return """
+                # 照片
+                \(asked)，但你这会儿\(faceToFace ? "拍不了" : "发不了")。用你自己的话推掉，不要写照片标签。
+                """
+        }
+        var rating = ""
+        if adult {
+            rating = "rating: questionable    # 可选：general | sensitive | questionable | explicit；不写就是 questionable\n"
+        }
+        // In adult mode the picture follows the tag columns, not the rating: a mild
+        // outfit stays a mild picture however explicit the rating says it is.
+        let adultNote = adult
+            ? "\nrating 只说明内容程度，画面由 place、outfit、action 的 tag 决定；"
+                + "他明确要的露骨内容要自己写成英文 tag，光把 rating 写高不会让画面更露骨；"
+                + "常见写法是 nude、topless、completely nude、on bed，不要写 no clothes 这类自造短语。"
+            : ""
+        let opening = faceToFace
+            ? "制作人正和你在一起，他想看你或拍你。你可以在回复最前面写一个照片标签，也可以按人设推掉；一个回合最多一张。"
+            : "制作人在要照片。你可以在回复最前面写一个照片标签，也可以按人设推掉；一个回合最多一张。"
+        let lens = faceToFace
+            ? "你们正面对面：他要看你或要拍你的时候写 shot: other，像他拿着相机看着你按快门；他明确要自拍时才写 selfie。"
+                + "你们此刻正在做的事也要写进 action 的 tag（例如 kiss、hugging、lying on back），不要只写表情。"
+                + (adult ? "成人模式下，action 要写清楚你们正在做的性事（例如 sex、lying on back、riding），不要只写表情和手的位置。" : "")
+            : "他要自拍就写 selfie，别人帮他拍就写 other。"
+        let exampleNote = faceToFace ? "在咖啡店他给你拍的照" : "在咖啡店给他拍的自拍"
+        return """
+            # 照片
+            \(opening)
+            \(lens)
+            标签一行一栏，栏名用英文，写在第一个 <ja> 之前：
+
+            <photo>
+            \(rating)shot: selfie            # selfie 或 other（别人帮你拍）
+            framing: upper body     # portrait | upper body | cowboy shot | full body；自拍也可以拍全身
+            with: none              # none | hands | he：只有你写 none；从第一人称拍、只露他的手写 hands；他也在画面里写 he
+            place: cafe, indoors, afternoon, sunlight
+            outfit: white shirt, cardigan
+            action: peace sign, smile
+            note: \(exampleNote)
+            </photo>
+
+            place、outfit、action 用英文 tag，每栏尽量写 2–4 个，三栏合计不超过 12 个；
+            越具体越好，不要写外貌、画风或画师。
+            tag 用 Danbooru 的常见写法（例如 smile、indoors、on bed、looking at viewer），不要自造短语。
+            按现在的时间和对话情境拍；制作人指定的地点、服装在允许范围内照办。
+            拍她一个人（自拍、单人照）写 with: none；他从第一人称拍、画面里只露出手或身体写 with: hands；
+            两人身体有接触或正在做爱、他也出现在画面里时写 with: he。
+            历史里你上一张照片的标签只用来记得自己发过什么：这一张要按此刻的地点、穿着和心情
+            重新写，不要照抄上一张，也不要只改 rating 就交差。\(adultNote)
+            越界的要求可以推掉，或者换成全年龄的版本再拍；你不想发就不发。
+            """
+    }
 
     let bundleDirectory: URL
     let character: CharacterConfig
@@ -1390,7 +1610,14 @@ struct PromptAssembler {
             throw EidolonError.invalidContent("读不到 \(sheetPath)")
         }
         // Upstream loads a sheet trimmed; the blank run between sections would differ.
-        let sheet = contents.trimmingCharacters(in: .whitespacesAndNewlines)
+        var sheet = contents.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Our own notes (Chinese name, terms) sit beside the content, not in upstream's
+        // sheet: a character without a notes file gets exactly the prompt upstream would.
+        let notesURL = bundleDirectory.appendingPathComponent("characters/\(character.id).notes.md")
+        if let notes = try? String(contentsOf: notesURL, encoding: .utf8) {
+            let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedNotes.isEmpty { sheet += "\n\n" + trimmedNotes }
+        }
 
         // Everything every turn of hers carries, apart from what the turn is about, in
         // upstream's order: her sheet, her birthday, the world, the reply format.
@@ -1417,7 +1644,14 @@ struct PromptAssembler {
                     (narration[message.id] ?? "") + (message.text ?? "")
                 ))
             } else {
-                messages.append(PromptMessage(.assistant, Self.formatReply(message.replyBlocks)))
+                messages.append(PromptMessage(
+                    .assistant,
+                    Self.formatReply(
+                        message.replyBlocks,
+                        photoTag: message.photoTag,
+                        photoFailed: message.photoFailed
+                    )
+                ))
             }
         }
         if let nowSection {
@@ -1431,8 +1665,14 @@ struct PromptAssembler {
         formatReply(segments.map(ReplyBlock.line))
     }
 
-    static func formatReply(_ blocks: [ReplyBlock]) -> String {
-        blocks.map { block in
+    static func formatReply(
+        _ blocks: [ReplyBlock],
+        photoTag: String? = nil,
+        photoFailed: Bool = false
+    ) -> String {
+        let status = photoFailed ? " status=\"failed\"" : ""
+        let tag = photoTag.map { "<photo\(status)>\n\($0)\n</photo>" } ?? ""
+        return tag + blocks.map { block in
             switch block {
             case let .line(line):
                 return "<ja>\(line.ja)</ja><zh>\(line.zh)</zh>"

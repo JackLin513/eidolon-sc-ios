@@ -136,10 +136,19 @@ struct ConversationHistoryView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            Text(conversation.lastPreview ?? "（还没有说话）")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            HStack(spacing: 4) {
+                if conversation.hasPhoto {
+                    Image(systemName: "camera")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("照片")
+                }
+                Text(conversation.lastPreview ?? "（还没有说话）")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             Text(Self.day(conversation.lastAt ?? conversation.createdAt))
                 .font(.caption2)
                 .foregroundStyle(.tertiary)

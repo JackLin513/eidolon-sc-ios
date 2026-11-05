@@ -63,6 +63,17 @@ final class AppModel {
 
     private static let debugModeKey = "debug.mode"
 
+    /// Development aid: a reply that skipped its picture gets a 生成照片 button beside 朗读,
+    /// which opens a tag editor and makes one (spec #62's debug page).
+    var debugPhotoButton = UserDefaults.standard.bool(forKey: AppModel.debugPhotoButtonKey)
+
+    private static let debugPhotoButtonKey = "debug.photoButton"
+
+    func setDebugPhotoButton(_ on: Bool) {
+        debugPhotoButton = on
+        UserDefaults.standard.set(on, forKey: Self.debugPhotoButtonKey)
+    }
+
     /// The phone's own call sounds: one for the whole app, so a hang-up tone outlives the
     /// call page and a redial cuts whatever the last call left playing (spec #35).
     let callTones = CallTonesPlayer()
@@ -109,6 +120,30 @@ final class AppModel {
     /// Missing ages fail closed (spec #61).
     func adultMode(for character: CharacterConfig) -> Bool {
         chatSettings.adultMode && character.isAdult
+    }
+
+    /// What a turn needs to try a photo (spec #98). Absent while no image service is set,
+    /// so a turn without one behaves exactly as before.
+    var photoContext: PhotoTurnContext? {
+        guard chatSettings.imageIsConfigured else { return nil }
+        return PhotoTurnContext(
+            generator: RemoteImageGenerator(),
+            settings: chatSettings.imageSettings
+        )
+    }
+
+    /// Records read so far, so a photo already on screen is not read again (the files
+    /// never change once written).
+    private var photoImages: [String: UIImage] = [:]
+
+    /// The image of a recorded photo, or nil while it is still pending or failed.
+    func photoImage(_ id: String) async -> UIImage? {
+        if let image = photoImages[id] { return image }
+        guard let data = try? await core.photoImage(id: id),
+              let image = UIImage(data: data)
+        else { return nil }
+        photoImages[id] = image
+        return image
     }
 
     /// The installed bundle's vector space: retrieval's query vector must live in it
@@ -324,6 +359,7 @@ final class AppModel {
             reconnectDelay: debugReconnectDelay,
             tones: callTones,
             adultMode: adultMode(for: character),
+            photo: photoContext,
             now: { Date() }
         )
         return try await core.beginCall(characterID: character.id, setup: setup, now: now)

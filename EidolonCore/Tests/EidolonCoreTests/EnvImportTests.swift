@@ -150,12 +150,36 @@ final class EnvImportTests: XCTestCase {
             """))
         XCTAssertEqual(
             Set(report.unsupported.map(\.key)),
-            [
-                "EIDOLON_CALL_MINUTES", "EIDOLON_DOMAIN",
-                "NOVELAI_API_KEY", "GPT_IMAGE_MODEL", "RERANK_MIN_RELEVANCE",
-            ]
+            ["EIDOLON_CALL_MINUTES", "EIDOLON_DOMAIN", "RERANK_MIN_RELEVANCE"]
         )
         XCTAssertEqual(report.unknown.map(\.key), ["SOMETHING_ELSE"])
+        XCTAssertEqual(report.values.novelAIAPIKey, "nai")
+        XCTAssertEqual(report.values.gptImageModel, "gpt-image-2")
+    }
+
+    func testImageSettingsComeFromUpstreamEnv() {
+        let report = EnvImporter.map(EnvParser.parse(text: """
+            NOVELAI_API_FORMAT=openai
+            NOVELAI_BASE_URL=https://relay.example/v1
+            NOVELAI_MODEL=nai-diffusion-5-curated
+            NOVELAI_ADULT_MODEL=nai-diffusion-5-full
+            NOVELAI_STYLE=0.7::artist:rella::
+            EIDOLON_PHOTOS_PER_HOUR=0
+            GPT_IMAGE_BASE_URL=https://api.openai.com/v1
+            GPT_IMAGE_MODEL=gpt-image-2
+            GPT_IMAGE_QUALITY=high
+            GPT_IMAGE_STYLE=flat anime
+            GPT_IMAGE_API_KEY=gpt-key
+            """))
+        XCTAssertEqual(report.values.imageAPIFormat, .openai)
+        XCTAssertEqual(report.values.imageBaseURL, "https://relay.example/v1")
+        XCTAssertEqual(report.values.imageModel, "nai-diffusion-5-curated")
+        XCTAssertEqual(report.values.imageAdultModel, "nai-diffusion-5-full")
+        XCTAssertEqual(report.values.imageStyle, "0.7::artist:rella::")
+        XCTAssertEqual(report.values.imageHourlyLimit, 0)
+        XCTAssertEqual(report.values.gptImageQuality, .high)
+        XCTAssertEqual(report.values.gptImageAPIKey, "gpt-key")
+        XCTAssertTrue(report.invalid.isEmpty)
     }
 
     func testInvalidValuesAreReportedAndNotApplied() {

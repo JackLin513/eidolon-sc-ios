@@ -91,6 +91,37 @@ final class ChatProtocolTests: XCTestCase {
         XCTAssertEqual(usage, ChatUsage(input: 10, output: 5, cachedInput: 2))
     }
 
+    /// A history with a mid-conversation system message (the 现在 section) must name every
+    /// item's type: LM Studio's Responses endpoint rejected untyped items outright.
+    func testResponsesSendsTypedMessageItems() async throws {
+        let transport = StubChatTransport(lines: [textChunk("嗯")])
+        let provider = ResponsesChatProvider(
+            config: ChatModelConfig(
+                baseURL: URL(string: "https://example.com/v1")!,
+                model: "local",
+                apiKey: "k"
+            ),
+            transport: transport
+        )
+        let messages: [PromptMessage] = [
+            .init(.system, "人设"),
+            .init(.user, "在吗"),
+            .init(.assistant, "在"),
+            .init(.system, "现在是晚上"),
+            .init(.user, "发张照片"),
+        ]
+        _ = try await collect(provider.stream(messages: messages, tools: [], forbidCalls: false))
+        let seen = await transport.seen
+        let sent = try body(try XCTUnwrap(seen.first))
+        XCTAssertEqual(sent["instructions"] as? String, "人设")
+        let input = try XCTUnwrap(sent["input"] as? [[String: Any]])
+        XCTAssertEqual(input.count, 4)
+        for item in input {
+            XCTAssertEqual(item["type"] as? String, "message")
+        }
+        XCTAssertEqual(input.map { $0["role"] as? String }, ["user", "assistant", "system", "user"])
+    }
+
     // MARK: chat-completions
 
     func testChatCompletionsSendsTheReplyCapAndReasoningEffort() async throws {

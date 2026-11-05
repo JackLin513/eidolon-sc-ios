@@ -45,7 +45,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-FORMAT_VERSION = 4
+FORMAT_VERSION = 5
 CONTENT_SCHEMA_VERSION = 1
 
 # Outfits come from the upstream `stand fetch` / `stand outfits` build directory:
@@ -104,7 +104,7 @@ PATH_FIELDS = ("sheet", "avatar", "scsp_avatar", "background", "facts")
 SHARED_FILES = (
     "world.json", "world-corrections.json", "readings.toml", "gifts.toml",
     "drinks.toml", "bar_visits.toml", "bar_lines.toml", "bar_audio.json",
-    "jobs.toml",
+    "jobs.toml", "places.toml",
 )
 
 
@@ -655,6 +655,7 @@ def write_bundle(
     characters_dir: Path,
     stand: StandAssets | None = None,
     gift_art: dict[str, Path] | None = None,
+    photo_tags: Path | None = None,
 ) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as scratch:
@@ -696,6 +697,12 @@ def write_bundle(
                 "characters/characters.json",
                 json.dumps(json_ready(characters), ensure_ascii=False, indent=2),
             )
+            # Our own per-character notes (Chinese names, terms): appended to the sheet
+            # at prompt time, so upstream's sheet files stay untouched.
+            notes_dir = Path(__file__).resolve().parent.parent / "content" / "character-notes"
+            if notes_dir.is_dir():
+                for note in sorted(notes_dir.glob("*.md")):
+                    archive.writestr(f"characters/{note.stem}.notes.md", note.read_bytes())
             naming = {
                 "world.json": "characters/world.json",
                 "world-corrections.json": "characters/world-corrections.json",
@@ -706,6 +713,7 @@ def write_bundle(
                 "bar_lines.toml": "characters/bar_lines.json",
                 "bar_audio.json": "characters/bar_audio.json",
                 "jobs.toml": "characters/jobs.json",
+                "places.toml": "characters/places.json",
             }
             for relative in sorted(character_files):
                 source = characters_dir / relative
@@ -724,6 +732,11 @@ def write_bundle(
 
             for package_path, source in sorted((gift_art or {}).items()):
                 archive.write(source, package_path)
+
+            if photo_tags is not None:
+                if not photo_tags.is_file():
+                    die(f"找不到照片 tag 表 {photo_tags}")
+                archive.write(photo_tags, "characters/photo_tags.json")
 
             if stand is not None:
                 for package_path in sorted(stand.files):
@@ -877,6 +890,7 @@ def main() -> int:
     )
     out = (args.out or Path("build/eidolon-content.eidolonpkg")).resolve()
     gift_art = gift_illustrations(characters_dir, upstream)
+    photo_tags = upstream / "backend" / "src" / "eidolon" / "photo_tags.json"
     write_bundle(
         out,
         source_db,
@@ -885,6 +899,7 @@ def main() -> int:
         characters_dir,
         stand,
         gift_art,
+        photo_tags,
     )
     return 0
 
