@@ -994,7 +994,7 @@ extension Eidolon {
             character: character, world: world, producer: producer, now: now,
             todayLines: todayLines, weather: weather, seeds: seeds, memories: memories,
             recent: recent, circle: circle, places: candidates,
-            compositions: compositions, work: work != nil
+            compositions: compositions, work: work != nil, forceAdult: forceAdult
         )) ?? []
         guard !prompt.isEmpty else { return nil }
 
@@ -1022,6 +1022,14 @@ extension Eidolon {
                 with: with,
                 note: draft.ja
             )
+        }
+        if forceAdult, var picture = draft.image, picture.composition.hasPeople {
+            // 强制 R 是调试开关：模型自己写的 outfit 往往太保守，这里换成明确的成人向
+            // tag，才能真正看出成人模型的差别；年龄门槛由 makeMomentImage 再查一次。
+            picture.outfit = ["lingerie", "bare shoulders"]
+            picture.action.append("suggestive pose")
+            picture.rating = .explicit
+            draft.image = picture
         }
 
         var place: Place?
@@ -1351,7 +1359,8 @@ extension Eidolon {
         circle: [CharacterConfig],
         places: [Place],
         compositions: [MomentComposition] = [],
-        work: Bool = false
+        work: Bool = false,
+        forceAdult: Bool = false
     ) throws -> [PromptMessage] {
         var shared = [momentSheet(character)]
         if let birthday = character.birthday {
@@ -1414,6 +1423,13 @@ extension Eidolon {
                 "# 地点候选\n"
                     + places.map { "\($0.id)｜\($0.name)（\($0.area)）：\($0.note)" }
                     .joined(separator: "\n")
+            )
+        }
+        if forceAdult, !compositions.isEmpty {
+            context.append(
+                "# 调试配图\n"
+                    + "这是调试用的成人向配图：outfit 和 action 写明确的成人向英文 tag"
+                    + "（例如 lingerie, bare shoulders, suggestive pose）；画面里的人都已满 18 岁。"
             )
         }
 

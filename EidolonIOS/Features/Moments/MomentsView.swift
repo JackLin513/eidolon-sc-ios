@@ -267,18 +267,24 @@ private struct MomentImageView: View {
     var body: some View {
         Group {
             if let image {
+                // Keep the picture's own shape: moment pictures are 832×1216 (portrait)
+                // or 1216×832 (scenery/group), and a fixed 200pt strip cropped them into
+                // a landscape slice.
                 Image(uiImage: image)
                     .resizable()
-                    .scaledToFill()
+                    .scaledToFit()
                     .frame(maxWidth: .infinity)
-                    .frame(height: 200)
-                    .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .onTapGesture { viewing = true }
             } else {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(.quaternary)
-                    .frame(height: 120)
+                    .aspectRatio(
+                        record.width > 0 && record.height > 0
+                            ? CGFloat(record.width) / CGFloat(record.height)
+                            : 3.0 / 4.0,
+                        contentMode: .fit
+                    )
                     .overlay { ProgressView() }
             }
         }
