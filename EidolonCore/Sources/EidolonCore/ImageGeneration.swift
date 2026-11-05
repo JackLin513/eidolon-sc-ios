@@ -146,7 +146,13 @@ public struct GPTImageSettings: Sendable, Equatable {
 }
 
 public struct ImageRequest: Sendable, Equatable {
+    /// The whole prompt, for services that take one string.
     public var prompt: String
+    /// NovelAI's V4/V5 captions split the scene from the character: the base prompt
+    /// carries the scene, style and quality tags, and the character prompt carries only
+    /// her. With one caption every one of those tags is sent twice.
+    public var basePrompt: String?
+    public var characterPrompt: String?
     public var negativePrompt: String
     public var width: Int
     public var height: Int
@@ -155,6 +161,8 @@ public struct ImageRequest: Sendable, Equatable {
 
     public init(
         prompt: String,
+        basePrompt: String? = nil,
+        characterPrompt: String? = nil,
         negativePrompt: String,
         width: Int,
         height: Int,
@@ -162,6 +170,8 @@ public struct ImageRequest: Sendable, Equatable {
         seed: UInt32 = UInt32.random(in: 0...(UInt32.max - 7))
     ) {
         self.prompt = prompt
+        self.basePrompt = basePrompt
+        self.characterPrompt = characterPrompt
         self.negativePrompt = negativePrompt
         self.width = width
         self.height = height
@@ -288,7 +298,10 @@ public struct RemoteImageGenerator: ImageGenerating {
 
     static func novelAIRequest(_ request: ImageRequest) -> [String: Any] {
         let unplaced = [["x": 0, "y": 0]]
-        let positives = [["char_caption": request.prompt, "centers": unplaced]]
+        let positives = [[
+            "char_caption": request.characterPrompt ?? "",
+            "centers": unplaced,
+        ]]
         let negatives = [["char_caption": "", "centers": unplaced]]
         return [
             "input": request.prompt,
@@ -298,7 +311,7 @@ public struct RemoteImageGenerator: ImageGenerating {
                 "params_version": 3,
                 "width": request.width,
                 "height": request.height,
-                "scale": 7,
+                "scale": 6,
                 "sampler": "k_euler_ancestral",
                 "steps": 23,
                 "n_samples": 1,
@@ -310,7 +323,7 @@ public struct RemoteImageGenerator: ImageGenerating {
                 "negative_prompt": request.negativePrompt,
                 "v4_prompt": [
                     "caption": [
-                        "base_caption": request.prompt,
+                        "base_caption": request.basePrompt ?? request.prompt,
                         "char_captions": positives,
                     ],
                     "use_coords": false,

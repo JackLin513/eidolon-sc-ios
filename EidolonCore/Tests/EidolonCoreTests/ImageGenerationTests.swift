@@ -44,6 +44,27 @@ final class ImageGenerationTests: XCTestCase {
         )
     }
 
+    func testNovelAiSendsTheSceneAndTheCharacterCaptionsApart() throws {
+        let split = ImageRequest(
+            prompt: "1girl, solo, mano, smile",
+            basePrompt: "1girl, solo, smile",
+            characterPrompt: "girl, mano",
+            negativePrompt: "nsfw",
+            width: 832,
+            height: 1216,
+            model: "test-model",
+            seed: 42
+        )
+        let body = RemoteImageGenerator.novelAIRequest(split)
+        let parameters = try XCTUnwrap(body["parameters"] as? [String: Any])
+        let v4 = try XCTUnwrap(parameters["v4_prompt"] as? [String: Any])
+        let caption = try XCTUnwrap(v4["caption"] as? [String: Any])
+        XCTAssertEqual(caption["base_caption"] as? String, "1girl, solo, smile")
+        let characters = try XCTUnwrap(caption["char_captions"] as? [[String: Any]])
+        XCTAssertEqual(characters.first?["char_caption"] as? String, "girl, mano")
+        XCTAssertEqual(parameters["scale"] as? Int, 6)
+    }
+
     private func jpeg(width: Int, height: Int, red: CGFloat = 0.5) throws -> Data {
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         guard let context = CGContext(
@@ -124,7 +145,7 @@ final class ImageGenerationTests: XCTestCase {
         XCTAssertEqual(parameters?["width"] as? Int, 832)
         XCTAssertEqual(parameters?["height"] as? Int, 1216)
         XCTAssertEqual(parameters?["steps"] as? Int, 23)
-        XCTAssertEqual(parameters?["scale"] as? Int, 7)
+        XCTAssertEqual(parameters?["scale"] as? Int, 6)
         XCTAssertEqual(parameters?["negative_prompt"] as? String, "nsfw")
         XCTAssertEqual(parameters?["seed"] as? Int, 42)
     }

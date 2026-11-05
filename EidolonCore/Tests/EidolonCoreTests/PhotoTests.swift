@@ -262,6 +262,53 @@ final class PhotoTagTests: XCTestCase {
         XCTAssertFalse(request.prompt.contains("looking at viewer"))
     }
 
+    func testNovelAiGetsTheSceneAndTheCharacterApart() throws {
+        let table = TestPhotoTagTable.make()
+        let photo = try tag("""
+            shot: other
+            framing: upper body
+            place: cafe
+            outfit: casual
+            action: smile
+            """)
+        let request = try PhotoPromptBuilder.request(
+            tag: photo,
+            character: TestPhotoTagTable.character(),
+            style: "soft light",
+            adult: false,
+            table: table,
+            model: "test-model"
+        )
+        let base = try XCTUnwrap(request.basePrompt)
+        let character = try XCTUnwrap(request.characterPrompt)
+        XCTAssertTrue(base.hasPrefix("1girl, solo, idolmaster shiny colors, soft light"))
+        XCTAssertFalse(base.contains("sakuragi mano"))
+        XCTAssertFalse(base.contains("brown hair"))
+        XCTAssertTrue(base.contains("depth of field, blurry background"))
+        XCTAssertEqual(character, "girl, sakuragi mano, brown hair, brown eyes")
+        XCTAssertTrue(request.prompt.contains("sakuragi mano"))
+    }
+
+    func testClosedEyesAreNotGivenALookingAtViewerTag() throws {
+        let table = TestPhotoTagTable.make()
+        let photo = try tag("""
+            shot: other
+            framing: portrait
+            place: cafe
+            outfit: casual
+            action: eyes closed, smile
+            """)
+        let request = try PhotoPromptBuilder.request(
+            tag: photo,
+            character: TestPhotoTagTable.character(),
+            style: "",
+            adult: false,
+            table: table,
+            model: "test-model"
+        )
+        XCTAssertFalse(request.prompt.contains("looking at viewer"))
+    }
+
     func testACharacterWithoutPhotoTagsCannotMakeOne() throws {
         let table = TestPhotoTagTable.make()
         let photo = try tag("""
