@@ -203,19 +203,36 @@ final class AppModel {
         return run
     }
 
-    /// Debug aid: make one moment for the chosen character now, with a local notification
-    /// so it is easy to see the result on a real phone.
+    /// Debug aid: make one moment per chosen character now, with a local notification so
+    /// it is easy to see the result on a real phone. Pictures are made one after another,
+    /// which also keeps NovelAI's one-generation-at-a-time rule happy.
     @discardableResult
-    func debugGenerateMoment(characterID: String) async -> Bool {
-        guard let providers = momentsProviders(),
-              await core.debugGenerateMoment(
-                characterID: characterID, providers: providers
-              ) != nil
-        else { return false }
-        await refreshMomentsBadge()
-        MomentsNotifications.post(posts: 1, replies: 0)
-        NotificationCenter.default.post(name: MomentsNotifications.changed, object: nil)
-        return true
+    func debugGenerateMoments(
+        characterIDs: [String],
+        allowImage: Bool,
+        forceImage: Bool,
+        composition: MomentComposition?,
+        forceAdult: Bool
+    ) async -> Int {
+        guard let providers = momentsProviders() else { return 0 }
+        var made = 0
+        for id in characterIDs.prefix(8) {
+            let post = await core.debugGenerateMoment(
+                characterID: id,
+                providers: providers,
+                allowImage: allowImage,
+                forceImage: forceImage,
+                composition: allowImage ? composition : nil,
+                forceAdult: forceAdult
+            )
+            if post != nil { made += 1 }
+        }
+        if made > 0 {
+            await refreshMomentsBadge()
+            MomentsNotifications.post(posts: made, replies: 0)
+            NotificationCenter.default.post(name: MomentsNotifications.changed, object: nil)
+        }
+        return made
     }
 
     func startMomentsLoop() {

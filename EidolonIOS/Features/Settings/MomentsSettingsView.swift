@@ -7,7 +7,10 @@ struct MomentsSettingsView: View {
     @Environment(AppModel.self) private var app
     @State private var settings = MomentsSettings.default
     @State private var saveError: String?
-    @State private var debugCharacterID = ""
+    @State private var debugCharacterIDs: Set<String> = []
+    @State private var debugImageMode: DebugMomentImageMode = .auto
+    @State private var debugComposition: MomentComposition?
+    @State private var debugForceAdult = false
     @State private var debugGenerating = false
     @State private var debugResult: String?
 
@@ -44,21 +47,55 @@ struct MomentsSettingsView: View {
 
             if app.debugMode {
                 Section {
-                    Picker("调试用角色", selection: $debugCharacterID) {
+                    DisclosureGroup(
+                        "生成角色（已选 \(debugCharacterIDs.count)）"
+                    ) {
                         ForEach(app.characters, id: \.id) { character in
-                            Text(character.nameZh ?? character.name).tag(character.id)
+                            Toggle(
+                                character.nameZh ?? character.name,
+                                isOn: selectedBinding(character.id)
+                            )
+                        }
+                        HStack {
+                            Button("全选") {
+                                debugCharacterIDs = Set(app.characters.map(\.id))
+                            }
+                            Spacer()
+                            Button("全不选") { debugCharacterIDs.removeAll() }
+                        }
+                        .font(.footnote)
+                    }
+
+                    Picker("配图", selection: $debugImageMode) {
+                        ForEach(DebugMomentImageMode.allCases, id: \.self) { mode in
+                            Text(mode.title).tag(mode)
                         }
                     }
+                    if debugImageMode == .forced {
+                        Picker("构图", selection: $debugComposition) {
+                            Text("自动").tag(Optional<MomentComposition>.none)
+                            ForEach(MomentComposition.allCases, id: \.self) { composition in
+                                Text(composition.title).tag(Optional(composition))
+                            }
+                        }
+                        Text("合照会自动拉一位圈子成员一起入镜；风景、食物、物品画面里没有人。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Toggle("强制 R 配图", isOn: $debugForceAdult)
+                        .disabled(!settings.enabled)
+
                     Button {
-                        generateDebugMoment()
+                        generateDebugMoments()
                     } label: {
                         HStack {
-                            Text("立即生成一条朋友圈")
+                            Text("立即生成选了 \(debugCharacterIDs.count) 位的朋友圈")
                             if debugGenerating { Spacer(); ProgressView() }
                         }
                     }
                     .disabled(
-                        debugGenerating || !settings.enabled || debugCharacterID.isEmpty
+                        debugGenerating || !settings.enabled
+                            || debugCharacterIDs.isEmpty
                     )
                     .accessibilityIdentifier("moments.debug.generate")
                     if let debugResult {
@@ -67,10 +104,12 @@ struct MomentsSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 } header: {
-                    Text("调试：立即发一条")
+                    Text("调试：立即生成")
                 } footer: {
-                    Text("跳过当天的计划、每日上限和好感度门槛，用选中的角色马上生成一条；"
-                        + "成功后切到朋友圈。图片和文字都走正常流程，会花掉正常的一次调用。")
+                    Text("跳过当天的计划、每日上限和好感度门槛，给选中的每位各生成一条；"
+                        + "成功后切到朋友圈。图片和文字都走正常流程，会花掉正常调用。"
+                        + "强制 R 仍要求成人模式开着、且画面里所有角色都明确 18 岁以上；"
+                        + "无人的风景/食物/物品始终全年龄。")
                 }
 
                 Section {
@@ -78,7 +117,7 @@ struct MomentsSettingsView: View {
                 } header: {
                     Text("调试")
                 } footer: {
-                    Text("只有成人模式也开着、且画面里出现的所有角色都明确 18 岁以上时才生效；普通朋友圈始终全年龄。")
+                    Text("这是普通朋友圈生成时的开关；上面的「强制 R 配图」只对调试按钮这一次生效。")
                 }
             }
 
@@ -92,8 +131,8 @@ struct MomentsSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             settings = app.momentsSettings
-            if debugCharacterID.isEmpty {
-                debugCharacterID = app.characters.first?.id ?? ""
+            if debugCharacterIDs.isEmpty, let first = app.characters.first {
+                debugCharacterIDs = [first.id]
             }
         }
         .onChange(of: settings) { _, value in
@@ -108,19 +147,50 @@ struct MomentsSettingsView: View {
         }
     }
 
-    private func generateDebugMoment() {
-        guard !debugCharacterID.isEmpty, !debugGenerating else { return }
+    private func selectedBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { debugCharacterIDs.contains(id) },
+            set: { on in
+                if on { debugCharacterIDs.insert(id) } else { debugCharacterIDs.remove(id) }
+            }
+        )
+    }
+
+    private func generateDebugMoments() {
+        guard !debugCharacterIDs.isEmpty, !debugGenerating else { return }
         debugGenerating = true
         debugResult = nil
+        let ids = app.characters.map(\.id).filter { debugCharacterIDs.contains($0) }
+        let mode = debugImageMode
         Task {
-            let made = await app.debugGenerateMoment(characterID: debugCharacterID)
+            let made = await app.debugGenerateMoments(
+                characterIDs: ids,
+                allowImage: mode != .none,
+                forceImage: mode == .forced,
+                composition: mode == .forced ? debugComposition : nil,
+                forceAdult: debugForceAdult
+            )
             debugGenerating = false
-            if made {
-                debugResult = "已生成一条，正切到朋友圈。"
+            if made > 0 {
+                debugResult = "生成了 \(made) 条，正切到朋友圈。"
                 app.selectedTab = .moments
             } else {
                 debugResult = "没生成出来；去「用量与花费」看这次调用的错误。"
             }
+        }
+    }
+}
+
+private enum DebugMomentImageMode: String, CaseIterable, Hashable {
+    case auto
+    case none
+    case forced
+
+    var title: String {
+        switch self {
+        case .auto: "自动（约三分之二）"
+        case .none: "不配图"
+        case .forced: "必带图"
         }
     }
 }

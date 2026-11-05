@@ -295,13 +295,18 @@ extension Eidolon {
         characters: [CharacterConfig],
         now: Date,
         settings: MomentsSettings,
-        providers: MomentsProviders
+        providers: MomentsProviders,
+        forceAdult: Bool = false
     ) async -> MomentImageRecord? {
         let others = draft.composition == .group
             ? draft.with.compactMap { wanted in characters.first { $0.id == wanted || $0.name == wanted } }
             : []
         let participants = [character] + others
-        let adult = settings.debugAdultImages && providers.debugMode && providers.adultMode
+        // No-human pictures stay all-ages and keep the normal model even in debug R
+        // mode; only a picture with people in it can use the adult model.
+        let adult = draft.composition.hasPeople
+            && (settings.debugAdultImages || forceAdult)
+            && providers.debugMode && providers.adultMode
             && participants.allSatisfy(\.isAdult)
         let allowPeople = providers.photo != nil
         if draft.composition.hasPeople, !allowPeople { return nil }

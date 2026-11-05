@@ -852,7 +852,11 @@ extension Eidolon {
         characterID: String,
         now: Date = Date(),
         providers: MomentsProviders,
-        seed: UInt64 = UInt64.random(in: 0...UInt64.max)
+        seed: UInt64 = UInt64.random(in: 0...UInt64.max),
+        allowImage: Bool = true,
+        forceImage: Bool = true,
+        composition: MomentComposition? = nil,
+        forceAdult: Bool = false
     ) async -> String? {
         guard let settings = try? momentsSettings(), settings.enabled,
               (try? characters().contains { $0.id == characterID }) == true
@@ -862,7 +866,9 @@ extension Eidolon {
             characterID: characterID,
             planDay: Self.isoDay(now, in: Self.momentTokyo),
             birthday: false, work: nil, now: now, settings: settings,
-            providers: providers, random: &random, forceImage: true
+            providers: providers, random: &random,
+            allowImage: allowImage, forceImage: forceImage,
+            forceComposition: composition, forceAdult: forceAdult
         )
     }
 }
@@ -941,7 +947,10 @@ extension Eidolon {
         settings: MomentsSettings,
         providers: MomentsProviders,
         random: inout SeededRandom,
-        forceImage: Bool = false
+        allowImage: Bool = true,
+        forceImage: Bool = false,
+        forceComposition: MomentComposition? = nil,
+        forceAdult: Bool = false
     ) async -> String? {
         guard let character = try? characters().first(where: { $0.id == characterID }) else {
             return nil
@@ -970,9 +979,17 @@ extension Eidolon {
         let memories = momentMemories(characterID: character.id)
         let recent = (try? momentRecentPosts(characterID: character.id, limit: 5)) ?? []
         let allowedCompositions = momentAllowedCompositions(providers: providers)
-        let wantImage = !allowedCompositions.isEmpty
-            && (forceImage || random.below(3) < 2)
-        let compositions = wantImage ? allowedCompositions : []
+        let compositions: [MomentComposition]
+        if !allowImage {
+            compositions = []
+        } else if let forceComposition {
+            compositions = allowedCompositions.contains(forceComposition)
+                ? [forceComposition] : []
+        } else if forceImage || (!allowedCompositions.isEmpty && random.below(3) < 2) {
+            compositions = allowedCompositions
+        } else {
+            compositions = []
+        }
         let prompt = (try? momentPostPrompt(
             character: character, world: world, producer: producer, now: now,
             todayLines: todayLines, weather: weather, seeds: seeds, memories: memories,
@@ -992,13 +1009,17 @@ extension Eidolon {
         guard var draft else { return nil }
         // The debug button promises a picture: if the model skipped the <image> block,
         // make one with sane defaults rather than leaving the post text-only.
-        if forceImage, draft.image == nil, !compositions.isEmpty {
-            let composition = compositions.contains(.selfie) ? MomentComposition.selfie
-                : compositions[0]
+        if forceImage || forceComposition != nil, draft.image == nil, !compositions.isEmpty {
+            let composition = forceComposition
+                ?? (compositions.contains(.selfie) ? MomentComposition.selfie : compositions[0])
+            let with = composition == .group
+                ? Array(circle.filter { $0.photoTag?.isEmpty == false }.prefix(1).map(\.id))
+                : []
             draft.image = MomentImageDraft(
                 composition: composition,
                 shot: composition == .selfie ? .selfie : .other,
                 framing: .upperBody,
+                with: with,
                 note: draft.ja
             )
         }
@@ -1037,7 +1058,7 @@ extension Eidolon {
         if let image = draft.image, compositions.contains(image.composition) {
             _ = await makeMomentImage(
                 postID: postID, draft: image, character: character, characters: characters,
-                now: now, settings: settings, providers: providers
+                now: now, settings: settings, providers: providers, forceAdult: forceAdult
             )
         }
         insertMomentReactions(
