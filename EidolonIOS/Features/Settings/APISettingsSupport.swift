@@ -90,3 +90,24 @@ extension String {
         trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
+
+/// One line under an input saying what goes there and what blank means (spec #116).
+struct SettingsHint: View {
+    let text: String
+    let identifier: String?
+
+    init(_ text: String, identifier: String? = nil) {
+        self.text = text
+        self.identifier = identifier
+    }
+
+    var body: some View {
+        // One plain Text, not an `if` branch: dozens of these sit inside the same Form,
+        // and branching here multiplies the view's generic type until the device's Swift
+        // runtime cannot demangle it on launch.
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .accessibilityIdentifier(identifier ?? "")
+    }
+}

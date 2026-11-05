@@ -98,6 +98,7 @@ struct SettingsView: View {
 
                     Section {
                         Stepper("历史回合：\(historyTurns)", value: $historyTurns, in: 1...100)
+                        SettingsHint("每次带上最近多少条对话；越多越记得久，也更花 token。")
                         Toggle("文字氛围模式", isOn: $atmosphericText)
                             .accessibilityIdentifier("settings.atmosphericText")
                     } header: {
@@ -118,8 +119,10 @@ struct SettingsView: View {
                     Section {
                         TextField("时长上限（分钟，0 为不限）", value: $callMinutes, format: .number)
                             .keyboardType(.numberPad)
+                        SettingsHint("一通电话最长多少分钟；0 = 不限制。")
                         TextField("回合上限（她的回合数，0 为不限）", value: $callTurns, format: .number)
                             .keyboardType(.numberPad)
+                        SettingsHint("她在一通电话里最多说多少回合；0 = 不限制。")
                         Toggle("电话质感", isOn: $phoneTexture)
                     } header: {
                         Text("通话行为")
@@ -131,6 +134,7 @@ struct SettingsView: View {
 
                     Section {
                         TextField("称呼（留空沿用默认）", text: $formOfAddress)
+                        SettingsHint("她叫你什么；留空用内容包里的默认称呼。")
                         Picker("性别", selection: $gender) {
                             Text("沿用默认").tag("default")
                             Text("男性").tag("male")
@@ -139,6 +143,7 @@ struct SettingsView: View {
                         TextField("时区（例如 Asia/Shanghai，留空跟随设备）", text: $profileTimezone)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
+                        SettingsHint("制作人的时区，影响日程和搭话时间；留空跟随这台手机。")
                         Toggle("设置生日", isOn: $birthdayOn)
                             .accessibilityIdentifier("settings.birthdayOn")
                         if birthdayOn {
@@ -224,6 +229,7 @@ struct SettingsView: View {
                         Toggle("按好感度随机", isOn: $reachOutByTier)
                         Stepper("搭话间隔：\(reachOutHours) 小时", value: $reachOutHours, in: 1...72)
                             .disabled(reachOutByTier)
+                        SettingsHint("固定间隔：超过这么多小时没说话，她可能先开口；开启随机时按好感度档位抽。")
                     } header: {
                         Text("搭话")
                     } footer: {
@@ -467,7 +473,9 @@ struct SettingsView: View {
             configured += 1
         }
         if settings.imageIsConfigured { configured += 1 }
-        return "已配置 \(configured) / 6"
+        let count = "已配置 \(configured) / 6"
+        guard let name = app.activeChatProfile?.name, !name.isEmpty else { return count }
+        return "\(name) · \(count)"
     }
 
     @ViewBuilder

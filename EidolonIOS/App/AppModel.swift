@@ -1027,14 +1027,140 @@ final class AppModel {
         return moved
     }
 
-    func saveChatSettings(_ settings: ChatSettings) throws {
+    // MARK: Chat model profiles (spec #116)
+
+    /// The saved chat models, and which one the live settings belong to.
+    private(set) var chatProfiles: [ChatModelProfile] = []
+    private(set) var activeChatProfileID: String?
+
+    var activeChatProfile: ChatModelProfile? {
+        chatProfiles.first { $0.id == activeChatProfileID }
+    }
+
+    /// Reads the list, turning the existing single chat settings into 「当前配置」 the
+    /// first time. A debug-injected chat key owns the list for that run, so UI tests do
+    /// not inherit yesterday's profiles.
+    func loadChatProfiles() {
+        #if DEBUG
+        if !chatSettings.apiKey.trimmed.isEmpty {
+            let state = ChatModelProfileStore.resetForDebug(settings: chatSettings)
+            chatProfiles = state.profiles
+            activeChatProfileID = state.activeID
+            return
+        }
+        #endif
+        let state = ChatModelProfileStore.load(settings: chatSettings)
+        chatProfiles = state.profiles
+        activeChatProfileID = state.activeID
+        // Requests read `chatSettings`; its key must be the selected profile's, not the
+        // legacy `chat.apiKey` left over from before profiles existed.
+        if let profile = activeChatProfile {
+            chatSettings.apiKey = profile.storedAPIKey
+        }
+    }
+
+    /// Switches to a saved profile and saves immediately: switching is the whole point,
+    /// and forgetting the save button would keep the old model answering.
+    func activateChatProfile(_ id: String) throws {
+        guard var profile = chatProfiles.first(where: { $0.id == id }) else { return }
+        var settings = chatSettings
+        profile.apply(to: &settings)
+        try saveChatSettings(settings)
+        activeChatProfileID = id
+        ChatModelProfileStore.saveActive(id)
+    }
+
+    /// Stores an edited or new profile. When it is the active one, the live settings
+    /// follow it and are saved, so the editor's 保存 is enough.
+    func saveChatProfile(_ profile: ChatModelProfile, apiKey: String) throws {
+        var updated = profile
+        try updated.storeAPIKey(apiKey, clear: false)
+        if let index = chatProfiles.firstIndex(where: { $0.id == updated.id }) {
+            chatProfiles[index] = updated
+        } else {
+            chatProfiles.append(updated)
+        }
+        ChatModelProfileStore.save(chatProfiles, activeID: activeChatProfileID)
+        if updated.id == activeChatProfileID {
+            var settings = chatSettings
+            var applied = updated
+            applied.apply(to: &settings)
+            try saveChatSettings(settings)
+        }
+    }
+
+    /// Adds a blank profile under a name that is not taken, without selecting it.
+    @discardableResult
+    func addChatProfile() -> ChatModelProfile {
+        let profile = ChatModelProfile(name: uniqueProfileName("新配置"))
+        chatProfiles.append(profile)
+        ChatModelProfileStore.save(chatProfiles, activeID: activeChatProfileID)
+        return profile
+    }
+
+    /// Copies a profile's fields (never its key) under a fresh id and name.
+    @discardableResult
+    func duplicateChatProfile(_ profile: ChatModelProfile) -> ChatModelProfile {
+        let copy = ChatModelProfile(
+            name: uniqueProfileName("\(profile.name) 副本"),
+            apiProtocol: profile.apiProtocol,
+            baseURL: profile.baseURL,
+            model: profile.model,
+            maxTokens: profile.maxTokens,
+            extraBody: profile.extraBody
+        )
+        chatProfiles.append(copy)
+        ChatModelProfileStore.save(chatProfiles, activeID: activeChatProfileID)
+        return copy
+    }
+
+    private func uniqueProfileName(_ base: String) -> String {
+        let taken = Set(chatProfiles.map(\.name))
+        guard taken.contains(base) else { return base }
+        var index = 2
+        while taken.contains("\(base) \(index)") { index += 1 }
+        return "\(base) \(index)"
+    }
+
+    /// Deletes a profile, its key, and switches away first when it was the active one.
+    @discardableResult
+    func deleteChatProfile(_ id: String) throws -> Bool {
+        guard chatProfiles.count > 1,
+              let index = chatProfiles.firstIndex(where: { $0.id == id })
+        else { return false }
+        let removed = chatProfiles.remove(at: index)
+        Keychain.remove(account: removed.keyAccount)
+        if activeChatProfileID == id {
+            try activateChatProfile(chatProfiles[0].id)
+        }
+        // activateChatProfile only writes the active id; the shortened list is ours.
+        ChatModelProfileStore.save(chatProfiles, activeID: activeChatProfileID)
+        return true
+    }
+
+    /// Writes the page's current chat fields back into the active profile, so editing
+    /// the page and the profile never drift apart.
+    func captureActiveChatProfile(from settings: ChatSettings, clearKey: Bool) throws {
+        guard var profile = activeChatProfile else { return }
+        profile.capture(from: settings)
+        try profile.storeAPIKey(settings.apiKey, clear: clearKey)
+        chatProfiles = chatProfiles.map { $0.id == profile.id ? profile : $0 }
+        ChatModelProfileStore.save(chatProfiles, activeID: activeChatProfileID)
+    }
+
+    /// Returns the normalized settings, so callers can write the same values back into
+    /// the active profile instead of a pre-normalization draft.
+    @discardableResult
+    func saveChatSettings(_ settings: ChatSettings) throws -> ChatSettings {
         var normalized = settings
         normalized.baseURL = APIServiceRouting.baseURLForImportedSettings(
             normalized.baseURL,
             protocol: normalized.apiProtocol
         )
-        try normalized.save()
+        // Profiles own the chat key now; the legacy account stays as the migration source.
+        try normalized.save(writingChatKey: false)
         chatSettings = normalized
+        return normalized
     }
 
     let core: Eidolon
@@ -1064,6 +1190,7 @@ final class AppModel {
                 bundleInfo = info
                 _ = try? await core.migrateLegacyStandIfNeeded()
                 try await load()
+                loadChatProfiles()
                 await loadMomentsSettings()
                 phase = .ready
                 #if DEBUG
@@ -1185,8 +1312,12 @@ final class AppModel {
         settings.apply(report.values)
         // An unsigned UI-test build can fail the Keychain write; this run still needs the
         // values, as the other debug seeding does.
-        try? saveChatSettings(settings)
-        chatSettings = settings
+        if let saved = try? saveChatSettings(settings) {
+            chatSettings = saved
+            try? captureActiveChatProfile(from: saved, clearKey: false)
+        } else {
+            chatSettings = settings
+        }
         try? FileManager.default.removeItem(at: url)
         Logger(subsystem: "com.jacklin.eidolon", category: "settings").notice(
             "imported .env: \(report.mapped.count) mapped, \(report.unsupported.count) unsupported, \(report.unknown.count) unknown"
@@ -1226,8 +1357,7 @@ final class AppModel {
         // judge) stays as the device had it. The UI-test build is unsigned and Keychain
         // writes can fail; the server just seeded must still answer this run, so the
         // in-memory settings are set even when saving the key did not work.
-        try? saveChatSettings(settings)
-        chatSettings = settings
+        chatSettings = (try? saveChatSettings(settings)) ?? settings
     }
 
     /// Development aid: `EIDOLON_CLEAR_USAGE=1` starts the usage page empty, and
@@ -1282,7 +1412,7 @@ final class AppModel {
         settings.adultMode = adultMode == "1"
         // The UI-test build is unsigned and Keychain writes can fail; the toggle itself
         // is UserDefaults, which is written before the Keychain step, so keep it in memory.
-        try? settings.save()
+        try? settings.save(writingChatKey: false)
         chatSettings = settings
     }
 

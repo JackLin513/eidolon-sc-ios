@@ -323,7 +323,9 @@ struct ChatSettings: Equatable {
         return settings
     }
 
-    func save() throws {
+    /// `writingChatKey` is false once model profiles own the chat key: each profile keeps
+    /// it in its own Keychain account, and the legacy `chat.apiKey` entry stays untouched.
+    func save(writingChatKey: Bool = true) throws {
         let defaults = UserDefaults.standard
         defaults.set(baseURL.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.baseURLKey)
         defaults.set(model.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.modelKey)
@@ -371,7 +373,9 @@ struct ChatSettings: Equatable {
             backgroundExtraBody.trimmingCharacters(in: .whitespacesAndNewlines),
             forKey: Self.backgroundExtraBodyKey
         )
-        try Self.store(apiKey, account: Self.keychainAccount)
+        if writingChatKey {
+            try Self.store(apiKey, account: Self.keychainAccount)
+        }
         try Self.store(backgroundAPIKey, account: Self.backgroundKeychainAccount)
         defaults.set(judgeBaseURL.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.judgeBaseURLKey)
         defaults.set(judgeModel.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Self.judgeModelKey)

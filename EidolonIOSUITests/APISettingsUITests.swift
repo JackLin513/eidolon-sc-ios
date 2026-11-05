@@ -61,10 +61,14 @@ final class APISettingsUITests: XCTestCase {
         XCTAssertTrue(api.waitForExistence(timeout: 10), "no API row")
         api.tap()
 
-        XCTAssertTrue(
-            app.textFields["api.chat.baseURL"].waitForExistence(timeout: 10),
-            "the API page did not open"
-        )
+        if envText == nil {
+            XCTAssertTrue(
+                scroll(to: "api.chat.baseURL"),
+                "the API page did not open"
+            )
+        }
+        // With a sample .env, the import preview sheet covers the page; that test waits
+        // for the preview itself instead of the field underneath.
     }
 
     func testThePageShowsEveryServiceAndSavesAModelChosenFromTheList() {
@@ -128,8 +132,8 @@ final class APISettingsUITests: XCTestCase {
         XCTAssertTrue(saved.waitForExistence(timeout: 10), "import did not save")
         saved.buttons["好"].tap()
 
+        XCTAssertTrue(scroll(to: "api.chat.model"))
         let model = app.textFields["api.chat.model"]
-        XCTAssertTrue(model.waitForExistence(timeout: 5))
         XCTAssertEqual(model.value as? String, "preview-model")
     }
 
@@ -297,6 +301,134 @@ final class APISettingsUITests: XCTestCase {
     }
 
     @discardableResult
+    func testSwitchingAProfileAppliesAtOnceAndSurvivesRelaunch() {
+        openAPIPage()
+
+        XCTAssertTrue(scrollUp(to: "api.profile.new"), "no new profile button")
+        app.buttons["api.profile.new"].firstMatch.tap()
+
+        replace(app.textFields["api.profile.name"], with: "本地")
+        replace(
+            app.textFields["api.profile.baseURL"],
+            with: "http://192.0.2.10:8080/v1"
+        )
+        replace(app.textFields["api.profile.model"], with: "qwen-local")
+        let save = app.buttons["api.profile.save"].firstMatch
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        save.tap()
+
+        let row = app.buttons["本地"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "the new profile is not listed")
+        XCTAssertTrue(app.staticTexts["未填完"].exists, "a keyless profile is not marked")
+        row.tap()
+
+        // Switching saves on its own: no 保存 tap between the row and this check.
+        XCTAssertTrue(scroll(to: "api.chat.baseURL"))
+        let baseURL = app.textFields["api.chat.baseURL"]
+        XCTAssertEqual(baseURL.value as? String, "http://192.0.2.10:8080/v1")
+        let model = app.textFields["api.chat.model"]
+        XCTAssertEqual(model.value as? String, "qwen-local")
+
+        // Relaunch without the debug seeding: the switch and the profile must both stay.
+        app.launchEnvironment = [:]
+        app.terminate()
+        app.launch()
+        let settings = app.buttons["设置"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        settings.tap()
+        let api = app.buttons["settings.api"].firstMatch
+        XCTAssertTrue(api.waitForExistence(timeout: 10))
+        api.tap()
+        XCTAssertTrue(scroll(to: "api.chat.baseURL"))
+        let again = app.textFields["api.chat.baseURL"]
+        XCTAssertEqual(again.value as? String, "http://192.0.2.10:8080/v1")
+        XCTAssertEqual(app.textFields["api.chat.model"].value as? String, "qwen-local")
+
+        // The other profile is still there, not just the selected one.
+        XCTAssertTrue(scrollUp(to: "api.profile.new"))
+        XCTAssertTrue(
+            app.buttons["当前配置"].waitForExistence(timeout: 5),
+            "the profile that was active before the switch is gone"
+        )
+    }
+
+    func testAProfileCannotTakeAnExistingName() {
+        openAPIPage()
+
+        XCTAssertTrue(scrollUp(to: "api.profile.new"))
+        app.buttons["api.profile.new"].firstMatch.tap()
+        replace(app.textFields["api.profile.name"], with: "当前配置")
+        app.buttons["api.profile.save"].firstMatch.tap()
+        XCTAssertTrue(
+            app.staticTexts["已经有同名配置了，换一个名字。"].waitForExistence(timeout: 5),
+            "a duplicate name is not refused"
+        )
+        app.buttons["api.profile.cancel"].firstMatch.tap()
+    }
+
+    func testTheLastProfileCannotBeDeleted() {
+        openAPIPage()
+
+        XCTAssertTrue(scrollUp(to: "api.profile.new"))
+        let row = app.buttons["当前配置"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.press(forDuration: 1.2)
+        XCTAssertTrue(app.buttons["编辑"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["删除"].exists, "the last profile still offers delete")
+    }
+
+    func testTheFieldsExplainWhatGoesInThem() {
+        openAPIPage()
+
+        XCTAssertTrue(scroll(to: "api.hint.chat.maxTokens"), "no max tokens hint")
+        XCTAssertTrue(app.staticTexts["api.hint.chat.maxTokens"].exists)
+        XCTAssertTrue(scroll(to: "api.hint.chat.extraBody"), "no extra body hint")
+        XCTAssertTrue(app.staticTexts["api.hint.chat.extraBody"].exists)
+        XCTAssertTrue(
+            scroll(to: "api.hint.judge.bailianWorkspace"),
+            "no workspace hint"
+        )
+        XCTAssertTrue(app.staticTexts["api.hint.judge.bailianWorkspace"].exists)
+
+        // Every judge family has its own fields; Cloudflare's account id is the one the
+        // producer is least likely to know by heart.
+        let judge = app.buttons["api.judge.service"].firstMatch
+        XCTAssertTrue(judge.exists)
+        judge.tap()
+        let cloudflare = app.buttons["Cloudflare"].firstMatch
+        XCTAssertTrue(cloudflare.waitForExistence(timeout: 5))
+        cloudflare.tap()
+        XCTAssertTrue(
+            scroll(to: "api.hint.judge.cloudflareAccount"),
+            "no Cloudflare account hint"
+        )
+        XCTAssertTrue(app.staticTexts["api.hint.judge.cloudflareAccount"].exists)
+    }
+
+    private func replace(_ field: XCUIElement, with text: String) {
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        if let value = field.value as? String, !value.isEmpty {
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count))
+        }
+        field.typeText(text)
+    }
+
+    /// The top of the page: the profile rows live above the chat fields.
+    private func scrollUp(to identifier: String) -> Bool {
+        let element = app.descendants(matching: .any)[identifier]
+        let form = app.collectionViews.firstMatch
+        func onScreen() -> Bool {
+            guard element.exists, element.frame.height > 1 else { return false }
+            let mid = element.frame.midY
+            return mid > 150 && mid < 930
+        }
+        for _ in 0..<20 where !onScreen() {
+            form.swipeDown(velocity: .slow)
+        }
+        return onScreen()
+    }
+
     private func scroll(to identifier: String) -> Bool {
         let element = app.descendants(matching: .any)[identifier]
         let form = app.collectionViews.firstMatch
@@ -305,7 +437,7 @@ final class APISettingsUITests: XCTestCase {
             let mid = element.frame.midY
             return mid > 150 && mid < 930
         }
-        for _ in 0..<30 where !onScreen() {
+        for _ in 0..<60 where !onScreen() {
             if element.exists, element.frame.height > 1, element.frame.midY < 150 {
                 form.swipeDown(velocity: .slow)
             } else {
