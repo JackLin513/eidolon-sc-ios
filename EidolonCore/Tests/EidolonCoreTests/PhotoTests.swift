@@ -131,6 +131,15 @@ final class PhotoTagTests: XCTestCase {
         XCTAssertThrowsError(try tag("shot: selfie\nframing: portrait"))
     }
 
+    func testTheWithColumnNamesWhoElseIsInTheFrame() throws {
+        let alone = try tag("shot: other\nframing: portrait\nplace: cafe\noutfit: casual\naction: smile")
+        XCTAssertEqual(alone.partner, .none)
+        let hands = try tag("shot: other\nframing: portrait\nwith: hands\nplace: cafe\noutfit: casual\naction: smile")
+        XCTAssertEqual(hands.partner, .hands)
+        let together = try tag("shot: other\nframing: portrait\n同框：两个人\nplace: cafe\noutfit: casual\naction: smile")
+        XCTAssertEqual(together.partner, .he)
+    }
+
     func testSerializedTagGoesBackAsSheWroteIt() throws {
         let text = "shot: other\nframing: cowboy shot\nplace: park\noutfit: casual\naction: wave"
         let photo = try tag(text)
@@ -280,13 +289,53 @@ final class PhotoTagTests: XCTestCase {
             model: "test-model"
         )
         let base = try XCTUnwrap(request.basePrompt)
-        let character = try XCTUnwrap(request.characterPrompt)
+        let character = try XCTUnwrap(request.characterPrompts.first)
         XCTAssertTrue(base.hasPrefix("1girl, solo, idolmaster shiny colors, soft light"))
         XCTAssertFalse(base.contains("sakuragi mano"))
         XCTAssertFalse(base.contains("brown hair"))
         XCTAssertTrue(base.contains("depth of field, blurry background"))
         XCTAssertEqual(character, "girl, sakuragi mano, brown hair, brown eyes")
         XCTAssertTrue(request.prompt.contains("sakuragi mano"))
+    }
+
+    func testTheProducerIsDrawnOnlyWhenHeIsInTheFrame() throws {
+        let table = TestPhotoTagTable.make()
+        func request(_ with: String) throws -> ImageRequest {
+            let photo = try tag("""
+                shot: other
+                framing: upper body
+                place: cafe
+                outfit: casual
+                action: smile
+                \(with)
+                """)
+            return try PhotoPromptBuilder.request(
+                tag: photo,
+                character: TestPhotoTagTable.character(),
+                style: "",
+                adult: true,
+                table: table,
+                model: "test-model",
+                producerTags: "mature male, black suit, necktie"
+            )
+        }
+        let alone = try request("")
+        XCTAssertTrue(try XCTUnwrap(alone.basePrompt).contains("1girl, solo"))
+        XCTAssertEqual(alone.characterPrompts.count, 1)
+
+        let hands = try request("with: hands")
+        XCTAssertTrue(try XCTUnwrap(hands.basePrompt).contains("1girl, idolmaster"))
+        XCTAssertFalse(try XCTUnwrap(hands.basePrompt).contains("solo"))
+        XCTAssertTrue(hands.prompt.contains("pov"))
+        XCTAssertEqual(hands.characterPrompts.count, 1)
+
+        let together = try request("with: he")
+        let base = try XCTUnwrap(together.basePrompt)
+        XCTAssertTrue(base.hasPrefix("1girl, 1boy"))
+        XCTAssertFalse(base.contains("solo"))
+        XCTAssertEqual(together.characterPrompts.count, 2)
+        XCTAssertEqual(together.characterPrompts[1], "boy, mature male, black suit, necktie")
+        XCTAssertTrue(together.prompt.contains("black suit"))
     }
 
     func testClosedEyesAreNotGivenALookingAtViewerTag() throws {

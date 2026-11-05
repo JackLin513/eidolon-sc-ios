@@ -697,6 +697,12 @@ def write_bundle(
                 "characters/characters.json",
                 json.dumps(json_ready(characters), ensure_ascii=False, indent=2),
             )
+            # Our own per-character notes (Chinese names, terms): appended to the sheet
+            # at prompt time, so upstream's sheet files stay untouched.
+            notes_dir = Path(__file__).resolve().parent.parent / "content" / "character-notes"
+            if notes_dir.is_dir():
+                for note in sorted(notes_dir.glob("*.md")):
+                    archive.writestr(f"characters/{note.stem}.notes.md", note.read_bytes())
             naming = {
                 "world.json": "characters/world.json",
                 "world-corrections.json": "characters/world-corrections.json",

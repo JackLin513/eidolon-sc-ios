@@ -113,6 +113,8 @@ struct ChatSettings: Equatable {
     var imageModel: String = ImageServiceSettings.defaultModel
     var imageAdultModel: String = ImageServiceSettings.defaultAdultModel
     var imageStyle: String = ""
+    /// How the producer looks when he is drawn into a photo; the second character prompt.
+    var imageProducerTags: String = ImageServiceSettings.defaultProducerTags
     /// How many photos she may send in a rolling hour; 0 means no limit.
     var imageHourlyLimit: Int = ImageServiceSettings.defaultHourlyLimit
     var novelAIAPIKey: String = ""
@@ -188,6 +190,7 @@ struct ChatSettings: Equatable {
     private static let imageModelKey = "image.model"
     private static let imageAdultModelKey = "image.adultModel"
     private static let imageStyleKey = "image.style"
+    private static let imageProducerTagsKey = "image.producerTags"
     private static let imageHourlyLimitKey = "image.hourlyLimit"
     private static let novelAIKeychainAccount = "image.novelaiKey"
     private static let gptImageEnabledKey = "gptImage.enabled"
@@ -301,6 +304,8 @@ struct ChatSettings: Equatable {
         settings.imageAdultModel = defaults.string(forKey: imageAdultModelKey)
             ?? ImageServiceSettings.defaultAdultModel
         settings.imageStyle = defaults.string(forKey: imageStyleKey) ?? ""
+        settings.imageProducerTags = defaults.string(forKey: imageProducerTagsKey)
+            ?? ImageServiceSettings.defaultProducerTags
         settings.imageHourlyLimit = defaults.object(forKey: imageHourlyLimitKey) as? Int
             ?? ImageServiceSettings.defaultHourlyLimit
         settings.novelAIAPIKey = Keychain.string(account: novelAIKeychainAccount) ?? ""
@@ -450,6 +455,7 @@ struct ChatSettings: Equatable {
             forKey: Self.imageAdultModelKey
         )
         defaults.set(imageStyle, forKey: Self.imageStyleKey)
+        defaults.set(imageProducerTags, forKey: Self.imageProducerTagsKey)
         defaults.set(max(0, imageHourlyLimit), forKey: Self.imageHourlyLimitKey)
         try Self.store(novelAIAPIKey, account: Self.novelAIKeychainAccount)
         defaults.set(gptImageEnabled, forKey: Self.gptImageEnabledKey)
@@ -574,6 +580,7 @@ struct ChatSettings: Equatable {
             model: imageModel,
             adultModel: imageAdultModel,
             style: imageStyle,
+            producerTags: imageProducerTags,
             hourlyLimit: max(0, imageHourlyLimit),
             apiKey: novelAIAPIKey
         )

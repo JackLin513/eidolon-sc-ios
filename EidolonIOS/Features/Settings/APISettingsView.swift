@@ -909,6 +909,9 @@ struct APISettingsView: View {
             TextField("画风（可选，原样写进提示词）", text: $settings.imageStyle)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+            TextField("制作人形象 tag（他入镜时用）", text: $settings.imageProducerTags)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
             Stepper(value: $settings.imageHourlyLimit, in: 0...50) {
                 Text("每小时最多 \(settings.imageHourlyLimit) 张（0 不限）")
             }

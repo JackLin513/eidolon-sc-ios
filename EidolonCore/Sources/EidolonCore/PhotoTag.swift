@@ -14,6 +14,14 @@ public enum PhotoFraming: String, Sendable, CaseIterable, Hashable {
     public var listedName: String { rawValue }
 }
 
+/// Who else is in the picture: nobody, only the producer's hands (a POV shot), or him
+/// standing in frame with her.
+public enum PhotoPartner: String, Sendable, CaseIterable, Hashable {
+    case none
+    case hands
+    case he
+}
+
 public enum PhotoRating: String, Sendable, CaseIterable, Hashable {
     case general
     case sensitive
@@ -38,6 +46,7 @@ public struct PhotoTag: Sendable, Hashable {
     public var rating: PhotoRating?
     public var shot: PhotoShot
     public var framing: PhotoFraming
+    public var partner: PhotoPartner
     public var place: [String]
     public var outfit: [String]
     public var action: [String]
@@ -49,6 +58,7 @@ public struct PhotoTag: Sendable, Hashable {
         rating: PhotoRating? = nil,
         shot: PhotoShot,
         framing: PhotoFraming,
+        partner: PhotoPartner = .none,
         place: [String],
         outfit: [String],
         action: [String],
@@ -58,6 +68,7 @@ public struct PhotoTag: Sendable, Hashable {
         self.rating = rating
         self.shot = shot
         self.framing = framing
+        self.partner = partner
         self.place = place
         self.outfit = outfit
         self.action = action
@@ -86,6 +97,7 @@ public struct PhotoTag: Sendable, Hashable {
         let shot = fields["shot"].flatMap(Self.shot) ?? .selfie
         let framing = fields["framing"].flatMap(Self.framing) ?? .upperBody
         let rating = fields["rating"].flatMap(Self.rating)
+        let partner = fields["partner"].flatMap(Self.partner) ?? .none
         var place = Self.tags(fields["place"])
         var outfit = Self.tags(fields["outfit"])
         var action = Self.tags(fields["action"])
@@ -106,6 +118,7 @@ public struct PhotoTag: Sendable, Hashable {
             rating: rating,
             shot: shot,
             framing: framing,
+            partner: partner,
             place: place,
             outfit: outfit,
             action: action,
@@ -140,6 +153,7 @@ public struct PhotoTag: Sendable, Hashable {
         case "地点", "场所", "place", "location", "scene", "setting": return "place"
         case "服装", "穿着", "outfit", "clothing", "clothes": return "outfit"
         case "动作", "姿势", "action", "pose", "expression", "gesture": return "action"
+        case "同框", "入镜", "with", "partner", "company", "companion": return "partner"
         case "备注", "说明", "note": return "note"
         case "尺度", "评级", "rating": return "rating"
         default: return key
@@ -176,6 +190,21 @@ public struct PhotoTag: Sendable, Hashable {
         case "upper body", "上半身", "半身": return .upperBody
         case "cowboy shot", "cowboy", "七分身", "牛仔镜头": return .cowboyShot
         case "full body", "fullbody", "全身": return .fullBody
+        default: return nil
+        }
+    }
+
+    private static func partner(_ raw: String) -> PhotoPartner? {
+        let value = raw.lowercased().replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+        switch value {
+        case "none", "no one", "alone", "solo", "无", "没有", "单人", "只有她":
+            return .none
+        case "hands", "hand", "pov", "first person", "手", "只露手", "第一人称":
+            return .hands
+        case "he", "him", "producer", "both", "two", "制作人", "他", "两人", "两个人", "二人", "同框":
+            return .he
         default: return nil
         }
     }
@@ -286,7 +315,8 @@ public enum PhotoPromptBuilder {
         style: String,
         adult: Bool,
         table: PhotoTagTable,
-        model: String
+        model: String,
+        producerTags: String = ImageServiceSettings.defaultProducerTags
     ) throws -> ImageRequest {
         guard let characterTag = character.photoTag,
               !characterTag.isEmpty,
@@ -312,6 +342,10 @@ public enum PhotoPromptBuilder {
         } else if !noGaze {
             rest.append("looking at viewer")
         }
+        if cleaned.partner == .hands {
+            // A POV shot: only his hands or body are in the picture.
+            rest.append("pov")
+        }
         rest.append(cleaned.framing.listedName)
         rest.append(cleaned.place.joined(separator: ", "))
         rest.append(cleaned.outfit.joined(separator: ", "))
@@ -323,18 +357,34 @@ public enum PhotoPromptBuilder {
         // NovelAI's V4/V5 captions split scene from character. The numbered subject tag
         // stays in the base prompt; the character prompt says `girl`, never `1girl`.
         let series = "idolmaster shiny colors"
-        var base = ["1girl", "solo", series]
-        var full = ["1girl", "solo", characterTag, series]
+        // `solo` is only true when nobody else is in the picture; a POV shot shows his
+        // hands, and `he` puts a second character in the frame.
+        let subject = switch cleaned.partner {
+        case .none: ["1girl", "solo"]
+        case .hands: ["1girl"]
+        case .he: ["1girl", "1boy"]
+        }
+        var base = subject + [series]
+        var full = subject + [characterTag, series]
         if !trimmedStyle.isEmpty {
             base.append(trimmedStyle)
             full.append(trimmedStyle)
         }
         full.append(contentsOf: appearance)
-        let characterPrompt = (["girl", characterTag] + appearance).joined(separator: ", ")
+        var characterPrompts = [(["girl", characterTag] + appearance).joined(separator: ", ")]
+        if cleaned.partner == .he {
+            let his = producerTags.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !his.isEmpty {
+                characterPrompts.append("boy, \(his)")
+                full.append(contentsOf: his.split(separator: ",").map {
+                    $0.trimmingCharacters(in: .whitespaces)
+                })
+            }
+        }
         return ImageRequest(
             prompt: (full + rest).joined(separator: ", "),
             basePrompt: (base + rest).joined(separator: ", "),
-            characterPrompt: characterPrompt,
+            characterPrompts: characterPrompts,
             negativePrompt: adult ? adultNegative : allAgesNegative,
             width: PhotoGeometry.width,
             height: PhotoGeometry.height,

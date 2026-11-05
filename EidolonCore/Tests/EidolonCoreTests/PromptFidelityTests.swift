@@ -70,6 +70,40 @@ final class PromptFidelityTests: XCTestCase {
 
     // MARK: - Assembly order
 
+    func testACharacterNoteIsAppendedToHerSheet() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PromptNotes-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sheets = root.appendingPathComponent("characters/sheets", isDirectory: true)
+        try FileManager.default.createDirectory(at: sheets, withIntermediateDirectories: true)
+        try "# 人设\n".write(
+            to: sheets.appendingPathComponent("mano.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "# 称呼\n她的中文名是「樱木真乃」。\n".write(
+            to: root.appendingPathComponent("characters/mano.notes.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let character = CharacterConfig(
+            id: "mano",
+            name: "櫻木真乃",
+            sheet: "characters/sheets/mano.md"
+        )
+        let assembler = PromptAssembler(
+            bundleDirectory: root,
+            character: character,
+            world: nil,
+            producer: .default,
+            today: "2026-10-23",
+            nowSection: nil
+        )
+        let messages = try assembler.prompt(history: [], text: "おはよう")
+        XCTAssertTrue(messages[0].content.contains("# 人设\n\n# 称呼"))
+        XCTAssertFalse(messages[0].content.contains("生产者"))
+    }
+
     func testPromptFollowsUpstreamOrder() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("PromptOrder-\(UUID().uuidString)", isDirectory: true)
