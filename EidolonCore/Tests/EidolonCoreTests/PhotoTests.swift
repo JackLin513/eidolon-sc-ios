@@ -983,6 +983,56 @@ final class PhotoTurnTests: XCTestCase {
         XCTAssertEqual(calls.filter { $0.service == .image }.count, 1)
     }
 
+    func testAFailedDebugPhotoCanBeRetried() async throws {
+        let eidolon = try await installedEidolon()
+        let provider = RecordingChatProvider(chunks: ["<ja>はい。</ja><zh>好。</zh>"])
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano",
+            text: "こんにちは",
+            provider: provider
+        ) {}
+        let current = try await eidolon.currentConversation(characterID: "mano")
+        let conversation = try XCTUnwrap(current)
+        let reply = try XCTUnwrap(conversation.messages.last)
+        let tag = try PhotoTag(text: """
+            shot: other
+            framing: cowboy shot
+            place: office
+            outfit: casual
+            action: shy smile
+            """)
+
+        let first = try await eidolon.makePhotoForTesting(
+            messageID: reply.id,
+            conversationID: conversation.id,
+            characterID: "mano",
+            tag: tag,
+            context: PhotoTurnContext(
+                generator: FakePhotoGenerator(failure: .timeout),
+                settings: ImageServiceSettings(apiKey: "test-key")
+            ),
+            adult: true
+        )
+        XCTAssertEqual(first.status, .failed)
+
+        // The retry must not be swallowed by the "one picture per reply" rule.
+        let second = try await eidolon.makePhotoForTesting(
+            messageID: reply.id,
+            conversationID: conversation.id,
+            characterID: "mano",
+            tag: tag,
+            context: PhotoTurnContext(
+                generator: FakePhotoGenerator(data: Data("JPEG".utf8)),
+                settings: ImageServiceSettings(apiKey: "test-key")
+            ),
+            adult: true
+        )
+        XCTAssertEqual(second.status, .ready)
+        XCTAssertNotEqual(second.id, first.id)
+        let calls = try await eidolon.serviceCalls()
+        XCTAssertEqual(calls.filter { $0.service == .image }.count, 2)
+    }
+
     // MARK: - Failures, allowance and lifecycle (ticket #102)
 
     private func context(
