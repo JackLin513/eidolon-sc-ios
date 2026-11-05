@@ -94,6 +94,8 @@ final class FaceToFaceTests: XCTestCase {
         let prompt = try XCTUnwrap(provider.prompts.first)
         XCTAssertTrue(prompt.contains { $0.content.contains("拿着相机") })
         XCTAssertTrue(prompt.contains { $0.content.contains("shot: other") })
+        // What they are doing now belongs in the picture too, not just a smile.
+        XCTAssertTrue(prompt.contains { $0.content.contains("此刻正在做的事也要写进 action") })
     }
 
     func testInPersonWithoutAPhotoServiceSaysSheCannotTakeOne() async throws {
