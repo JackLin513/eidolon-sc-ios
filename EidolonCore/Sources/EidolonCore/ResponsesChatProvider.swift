@@ -37,7 +37,14 @@ public struct ResponsesChatProvider: ChatProvider {
             return object.mapValues(\.jsonObject)
         }
         if !message.content.isEmpty {
-            items.append(["role": message.role.rawValue, "content": message.content])
+            // Every message item names its type: OpenAI infers it from the role, but
+            // LM Studio's Responses endpoint refuses the whole request without it
+            // ("Cannot determine type of 'item'"), which broke every turn after the first.
+            items.append([
+                "type": "message",
+                "role": message.role.rawValue,
+                "content": message.content,
+            ])
         }
         for call in message.toolCalls {
             items.append([
