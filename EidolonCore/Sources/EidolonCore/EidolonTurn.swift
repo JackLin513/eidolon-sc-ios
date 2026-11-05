@@ -1486,6 +1486,13 @@ struct PromptAssembler {
         if adult {
             rating = "rating: questionable    # 可选：general | sensitive | questionable | explicit；不写就是 questionable\n"
         }
+        // In adult mode the picture follows the tag columns, not the rating: a mild
+        // outfit stays a mild picture however explicit the rating says it is.
+        let adultNote = adult
+            ? "\nrating 只说明内容程度，画面由 place、outfit、action 的 tag 决定；"
+                + "他明确要的露骨内容要自己写成英文 tag，光把 rating 写高不会让画面更露骨；"
+                + "常见写法是 nude、topless、completely nude、on bed，不要写 no clothes 这类自造短语。"
+            : ""
         return """
             # 照片
             制作人在要照片。你可以在回复最前面写一个照片标签，也可以按人设推掉；一个回合最多一张。
@@ -1493,7 +1500,7 @@ struct PromptAssembler {
 
             <photo>
             \(rating)shot: selfie            # selfie 或 other（别人帮你拍）
-            framing: upper body     # portrait | upper body | cowboy shot | full body；自拍只能前两种
+            framing: upper body     # portrait | upper body | cowboy shot | full body；自拍也可以拍全身
             place: cafe, indoors, afternoon, sunlight
             outfit: white shirt, cardigan
             action: peace sign, smile
@@ -1501,7 +1508,10 @@ struct PromptAssembler {
             </photo>
 
             place、outfit、action 用英文 tag，三栏合计不超过 12 个；不要写外貌、画风或画师。
+            tag 用 Danbooru 的常见写法（例如 smile、indoors、on bed、looking at viewer），不要自造短语。
             按现在的时间和对话情境拍；制作人指定的地点、服装在允许范围内照办。
+            历史里你上一张照片的标签只用来记得自己发过什么：这一张要按此刻的地点、穿着和心情
+            重新写，不要照抄上一张，也不要只改 rating 就交差。\(adultNote)
             越界的要求可以推掉，或者换成全年龄的版本再拍；你不想发就不发。
             """
     }
