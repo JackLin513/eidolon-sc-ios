@@ -1549,6 +1549,7 @@ struct PromptAssembler {
         let lens = faceToFace
             ? "你们正面对面：他要看你或要拍你的时候写 shot: other，像他拿着相机看着你按快门；他明确要自拍时才写 selfie。"
                 + "你们此刻正在做的事也要写进 action 的 tag（例如 kiss、hugging、lying on back），不要只写表情。"
+                + (adult ? "成人模式下，action 要写清楚你们正在做的性事（例如 sex、lying on back、riding），不要只写表情和手的位置。" : "")
             : "他要自拍就写 selfie，别人帮他拍就写 other。"
         let exampleNote = faceToFace ? "在咖啡店他给你拍的照" : "在咖啡店给他拍的自拍"
         return """

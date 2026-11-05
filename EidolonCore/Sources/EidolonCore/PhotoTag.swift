@@ -208,8 +208,11 @@ public enum PhotoPromptBuilder {
         let trimmedStyle = style.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedStyle.isEmpty { prompt.append(trimmedStyle) }
         prompt.append(character.photoAppearance.joined(separator: ", "))
-        // Her words may already say where she is looking: do not say it twice.
-        let gaze = cleaned.action.contains { $0.contains("looking at viewer") } ? "" : ", looking at viewer"
+        // Her words may already say where she is looking (at the camera, away, down):
+        // do not add a second gaze that contradicts them.
+        let gaze = cleaned.action.contains { $0.contains("looking") || $0.contains("gaze") }
+            ? ""
+            : ", looking at viewer"
         if cleaned.shot == .selfie {
             // A full-body selfie is drawn as a mirror selfie; an arm-length one is not.
             let far = cleaned.framing == .cowboyShot || cleaned.framing == .fullBody
