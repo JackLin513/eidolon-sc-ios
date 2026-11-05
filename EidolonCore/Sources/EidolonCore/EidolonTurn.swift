@@ -1567,7 +1567,8 @@ struct PromptAssembler {
             note: \(exampleNote)
             </photo>
 
-            place、outfit、action 用英文 tag，三栏合计不超过 12 个；不要写外貌、画风或画师。
+            place、outfit、action 用英文 tag，每栏尽量写 2–4 个，三栏合计不超过 12 个；
+            越具体越好，不要写外貌、画风或画师。
             tag 用 Danbooru 的常见写法（例如 smile、indoors、on bed、looking at viewer），不要自造短语。
             按现在的时间和对话情境拍；制作人指定的地点、服装在允许范围内照办。
             历史里你上一张照片的标签只用来记得自己发过什么：这一张要按此刻的地点、穿着和心情

@@ -131,15 +131,18 @@ public struct PhotoTag: Sendable, Hashable {
     }
 
     private static func columnName(_ raw: String) -> String {
-        switch raw {
-        case "拍摄", "镜头", "shot": "shot"
-        case "景别", "构图", "framing": "framing"
-        case "地点", "场所", "place": "place"
-        case "服装", "穿着", "outfit": "outfit"
-        case "动作", "姿势", "action": "action"
-        case "备注", "说明", "note": "note"
-        case "尺度", "评级", "rating": "rating"
-        default: raw
+        let key = raw.replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: "  ", with: " ")
+        switch key {
+        case "拍摄", "镜头", "shot", "shot type", "camera": return "shot"
+        case "景别", "构图", "framing", "composition": return "framing"
+        case "地点", "场所", "place", "location", "scene", "setting": return "place"
+        case "服装", "穿着", "outfit", "clothing", "clothes": return "outfit"
+        case "动作", "姿势", "action", "pose", "expression", "gesture": return "action"
+        case "备注", "说明", "note": return "note"
+        case "尺度", "评级", "rating": return "rating"
+        default: return key
         }
     }
 
@@ -241,12 +244,29 @@ public struct PhotoTag: Sendable, Hashable {
 
     private static func tags(_ text: String?) -> [String] {
         guard let text else { return [] }
-        let unified = text
+        let unified = removingParentheticals(text)
             .replacingOccurrences(of: "，", with: ",")
             .replacingOccurrences(of: "、", with: ",")
         return unified.split(separator: ",").map {
             $0.trimmingCharacters(in: .whitespacesAndNewlines)
         }.filter { !$0.isEmpty }
+    }
+
+    /// A tag with an explanation in brackets ("white blouse (blouse)") keeps the tag and
+    /// drops the explanation: the image model does not read the latter.
+    private static func removingParentheticals(_ text: String) -> String {
+        var result = ""
+        var depth = 0
+        for character in text {
+            if character == "(" || character == "（" {
+                depth += 1
+            } else if character == ")" || character == "）" {
+                depth = max(0, depth - 1)
+            } else if depth == 0 {
+                result.append(character)
+            }
+        }
+        return result
     }
 }
 
