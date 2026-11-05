@@ -45,6 +45,9 @@ public struct ImageServiceSettings: Sendable, Equatable {
     public static let defaultModel = "nai-diffusion-5-curated"
     public static let defaultAdultModel = "nai-diffusion-5-full"
     public static let defaultHourlyLimit = 5
+    /// What the settings' 试一张 uses on NovelAI: the older, cheaper 4.5 Curated model,
+    /// so confirming the key and the address costs less (spec #98's try-out rule).
+    public static let testModel = "nai-diffusion-4-5-curated"
 
     public init(
         apiFormat: ImageAPIFormat = .novelai,
@@ -82,6 +85,15 @@ public struct ImageServiceSettings: Sendable, Equatable {
         case .openai:
             return base.appendingPathComponent("images/generations")
         }
+    }
+
+    /// The same service with the cheaper model 试一张 draws on. An OpenAI-shaped relay
+    /// names its own models, so there the configured model stays as it is.
+    public var testSettings: ImageServiceSettings {
+        guard apiFormat == .novelai else { return self }
+        var settings = self
+        settings.model = Self.testModel
+        return settings
     }
 }
 

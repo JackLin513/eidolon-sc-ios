@@ -284,4 +284,17 @@ final class ImageGenerationTests: XCTestCase {
         XCTAssertTrue(values.isEmpty)
     }
 
+
+    func testTheTryOutUsesTheCheaperModelOnNovelAIOnly() {
+        var settings = self.settings()
+        settings.model = "nai-diffusion-5-curated"
+        XCTAssertEqual(settings.testSettings.model, "nai-diffusion-4-5-curated")
+        XCTAssertEqual(settings.testSettings.apiKey, settings.apiKey)
+        XCTAssertEqual(settings.testSettings.baseURL, settings.baseURL)
+
+        var relay = self.settings(format: .openai)
+        relay.model = "relay-image-1"
+        XCTAssertEqual(relay.testSettings.model, "relay-image-1")
+    }
+
 }

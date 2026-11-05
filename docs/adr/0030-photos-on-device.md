@@ -12,7 +12,7 @@
 ## 决定
 
 1. **生图是一个适配器接口，不是一次性的请求。** `ImageGenerating` 只有一个 `generate(request, settings)`；两个实现分支：NovelAI 原生格式（`/ai/generate-image`，V4 请求体，返回 ZIP）和 OpenAI 图像格式（`/images/generations`，`b64_json` 或 `url`）。格式由制作人选，不自动探测。另有可选的 GPT Image，只给朋友圈里没有人的配图用，不参与她的照片。
-2. **密钥只进钥匙串。** NovelAI / OpenAI 图像各一份；地址、模型、画风、每小时上限存偏好设置。`.env` 导入按上游的 `NOVELAI_*`、`GPT_IMAGE_*` 与 `EIDOLON_PHOTOS_PER_HOUR` 读入，空值不覆盖。
+2. **密钥只进钥匙串。** NovelAI / OpenAI 图像各一份；地址、模型、画风、每小时上限存偏好设置。`.env` 导入按上游的 `NOVELAI_*`、`GPT_IMAGE_*` 与 `EIDOLON_PHOTOS_PER_HOUR` 读入，空值不覆盖。设置里的「试一张」固定用更便宜的 4.5 Curated 模型（OpenAI 图像格式用制作人填的模型），不写照片行、不写用量，所以不占每小时额度。
 3. **提示词在端上分叉，但来源是内容包。** 判断模型在生图、照片 tag 表和角色 tag 都在时多答一道 `wants_photo`；她在回复最前面写 `<photo>` 标签，标签闭合就开始生成。标签的清洗、改写、黑名单剥除、默认补全和提示词拼装都在端上，表与角色外貌 tag 随内容包格式 5 一起导入（`characters/photo_tags.json`、角色条目的 `photo_tag` / `photo_appearance`）。没有判断模型、没有生图或没有角色 tag 时，她的提示词保持原文「你发不了照片」。
 4. **照片是回合的一部分。** `<photo>` 只在回复最前面生效，不进入台词、字幕、语音、判断和记忆输入；原始标签留在她的历史里，失败的标签带 `status="failed"`，让她知道没送到。图片转成无元数据的 JPEG，存在用户目录的 `images/photos/`，数据库只记挂接、状态和原因。
 5. **一个队列、一个总时限、不自动重试。** 同时只跑一张；用户照片优先于朋友圈配图；照片总时限 90 秒（含排队），超时按失败处理并让出队列位置。真实调用写一条 `unit = images` 的用量记录：出图记 1 张，报错或超时记 0 张，不记标签原文。
