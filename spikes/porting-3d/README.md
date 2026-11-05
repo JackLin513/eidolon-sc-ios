@@ -118,6 +118,19 @@ swiftc -O -o /tmp/sway_probe spikes/porting-3d/harness/main.swift \
   <Documents>/001har-pr001/001har-pr001.sway.json 3
 ```
 
+### Unity 直搬验证（支线）
+
+RealityKit 路线要重写着色与解算，于是另开 `unity-spike/` 验证"直接让 Unity 加载游戏自己的 bundle"。已在 Unity **6000.3.27f2** 实测：
+
+- **能加载、能渲染。** 游戏 bundle（Unity 2020.3.32f1 构建）里的网格、骨骼、材质、贴图，以及五个角色 shader（`Custom/Chr_Basic`、`Chr_Hair`、`Chr_Face`、`Chr_CutOff`、`Custom/BultIn/Bi_CharEye`）全部 `isSupported=True`、无编译错误；材质属性（`_MainTex` 1024×1024、`_OutlineColor`、`_Light (-0.30,-0.40,1.00)`、`_AmbientColor`、`_RimLight`）原样读回；`face` 网格自带 32 个 blend shape。
+- **第一次渲染全黑不是 shader 没编译**，而是两个 C# 运行时全局没设：`_GuradeParams` 与 `_FadeColV` 默认为 0，会把整个角色乘成黑。设 `_GuradeParams=(0,1,0,1)`、`_FadeColV=(1,1,1,1)` 后颜色与游戏一致。
+- **原生动画播放不行**：bundle 里的 `AnimationClip` 能加载（名字、时长正确），但 Unity 6.3 读出来 `GetCurveBindings()` 为 0——2018 代的曲线数据它不再解析。用压好的 `eidolon.motion/1` 按路径写 `localRotation` 即可，姿势与 RealityKit 端一致。
+- **层级只差一节**：clip 路径是 `MODEL_00/BODY_SCALE/BASE/...`，prefab 是 `MODEL_00/BASE/...`，去掉 `BODY_SCALE` 就对上。
+- 游戏同版本的 Unity **2020.3.32f1 在本机激活不了许可证**（LicensingClient code 10 → legacy → "Failed to activate/update license"）；6.3 不需要它也能编译这些 shader。
+- 6.3 未装 iOS 构建模块（没有 `PlaybackEngines/`），上真机前要先 `unity install-modules --module ios`。
+
+探针在 `unity-spike/Assets/Editor/`：`BundleProbe`（加载并渲染各 bundle、打印材质与 shader）、`MotionProbe`（列出 AnimationClip 与绑定数、body+head 组装）、`DriveProbe`（读扁平 `EULR` 曲线包按帧写骨骼并截图）。
+
 ### 资源下载
 
 ```sh
