@@ -48,7 +48,7 @@ final class ImageGenerationTests: XCTestCase {
         let split = ImageRequest(
             prompt: "1girl, solo, mano, smile",
             basePrompt: "1girl, solo, smile",
-            characterPrompt: "girl, mano",
+            characterPrompts: ["girl, mano"],
             negativePrompt: "nsfw",
             width: 832,
             height: 1216,

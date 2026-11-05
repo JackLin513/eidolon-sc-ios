@@ -1561,6 +1561,7 @@ struct PromptAssembler {
             <photo>
             \(rating)shot: selfie            # selfie 或 other（别人帮你拍）
             framing: upper body     # portrait | upper body | cowboy shot | full body；自拍也可以拍全身
+            with: none              # none | hands | he：只有你写 none；从第一人称拍、只露他的手写 hands；他也在画面里写 he
             place: cafe, indoors, afternoon, sunlight
             outfit: white shirt, cardigan
             action: peace sign, smile
@@ -1571,6 +1572,8 @@ struct PromptAssembler {
             越具体越好，不要写外貌、画风或画师。
             tag 用 Danbooru 的常见写法（例如 smile、indoors、on bed、looking at viewer），不要自造短语。
             按现在的时间和对话情境拍；制作人指定的地点、服装在允许范围内照办。
+            拍她一个人（自拍、单人照）写 with: none；他从第一人称拍、画面里只露出手或身体写 with: hands；
+            两人身体有接触或正在做爱、他也出现在画面里时写 with: he。
             历史里你上一张照片的标签只用来记得自己发过什么：这一张要按此刻的地点、穿着和心情
             重新写，不要照抄上一张，也不要只改 rating 就交差。\(adultNote)
             越界的要求可以推掉，或者换成全年龄的版本再拍；你不想发就不发。
@@ -1607,7 +1610,14 @@ struct PromptAssembler {
             throw EidolonError.invalidContent("读不到 \(sheetPath)")
         }
         // Upstream loads a sheet trimmed; the blank run between sections would differ.
-        let sheet = contents.trimmingCharacters(in: .whitespacesAndNewlines)
+        var sheet = contents.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Our own notes (Chinese name, terms) sit beside the content, not in upstream's
+        // sheet: a character without a notes file gets exactly the prompt upstream would.
+        let notesURL = bundleDirectory.appendingPathComponent("characters/\(character.id).notes.md")
+        if let notes = try? String(contentsOf: notesURL, encoding: .utf8) {
+            let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedNotes.isEmpty { sheet += "\n\n" + trimmedNotes }
+        }
 
         // Everything every turn of hers carries, apart from what the turn is about, in
         // upstream's order: her sheet, her birthday, the world, the reply format.

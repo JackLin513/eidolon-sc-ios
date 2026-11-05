@@ -79,7 +79,10 @@ extension Eidolon {
             history: history,
             text: faceToFace ? "（把手机举起来）让我拍一张。" : "现在拍张照片给我。"
         )
-        prompts.append(PromptMessage(.system, Self.photoTagRules(lastAsked: messages.last(where: { $0.role == "user" })?.text)))
+        prompts.append(PromptMessage(.system, Self.photoTagRules(
+            lastAsked: messages.last(where: { $0.role == "user" })?.text,
+            chineseName: character.nameZh
+        )))
         var raw = ""
         for try await delta in provider.stream(messages: prompts) {
             raw += delta
@@ -119,13 +122,15 @@ extension Eidolon {
     /// The one difference from a real turn: this answer is only the tag. Everything
     /// before it is the prompt she would really get, so the tags come from the scene
     /// rather than from a tag-writing persona.
-    private static func photoTagRules(lastAsked: String?) -> String {
+    private static func photoTagRules(lastAsked: String?, chineseName: String?) -> String {
         var rules = """
             # 这一回合只写照片标签
             只输出一个 <photo> 标签，标签外不要写任何文字，也不要写台词。
             按对话最后一轮制作人的要求和此刻正在发生的事写：
             - shot：他拿手机或相机拍你写 other；他要自拍才写 selfie。
             - framing：他说“全身”就写 full body，说“上半身/特写”就写 upper body，没指定再自己选。
+            - with：拍她一个人（自拍、单人照）写 none；他从第一人称拍、画面里只露出他的手或身体写 hands；
+              两人身体有接触或正在做爱、他也出现在画面里时写 he。
             - place：地点 + 1–2 个看得见的道具或背景，再写光线；时间按「此刻」那段写，
               不要沿用历史里的时间；只写 office 太空，写成 office, desk, window, sunlight。
             - outfit：此刻的穿着或裸露状态，写到“脱到哪一步”（例如 white blouse untucked,
@@ -135,7 +140,11 @@ extension Eidolon {
               闭眼写 eyes closed；没看镜头写 facing viewer 或 looking to the side，
               不要写 looking away（已废弃）。
             不要照抄历史里的任何照片标签；以此刻为准。
+            note 用中文：写「制作人」不要写「生产者」；她的名字写中文名，不要写成别的字。
             """
+        if let chineseName, !chineseName.isEmpty {
+            rules += "\n她的中文名是「\(chineseName)」，note 里用这个名字。"
+        }
         if let lastAsked, !lastAsked.isEmpty {
             let quoted = lastAsked.count > 160 ? String(lastAsked.prefix(160)) : lastAsked
             rules += "\n制作人刚才说的是：「\(quoted)」。framing 和地点要按这句话里的要求写。"

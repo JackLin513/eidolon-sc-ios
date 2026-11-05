@@ -38,6 +38,9 @@ public struct ImageServiceSettings: Sendable, Equatable {
     public var model: String
     public var adultModel: String
     public var style: String
+    /// How the producer looks when he is in the picture: a second character prompt for
+    /// NovelAI. Editable, because the default face is deliberately covered.
+    public var producerTags: String
     public var hourlyLimit: Int
     public var apiKey: String
 
@@ -45,6 +48,10 @@ public struct ImageServiceSettings: Sendable, Equatable {
     public static let defaultModel = "nai-diffusion-5-curated"
     public static let defaultAdultModel = "nai-diffusion-5-full"
     public static let defaultHourlyLimit = 5
+    /// The producer in frame: a suit, and no face to draw badly.
+    public static let defaultProducerTags = """
+        mature male, black suit, white dress shirt, necktie, short black hair, faceless male
+        """
     /// What the settings' 试一张 uses on NovelAI: the older, cheaper 4.5 Curated model,
     /// so confirming the key and the address costs less (spec #98's try-out rule).
     public static let testModel = "nai-diffusion-4-5-curated"
@@ -55,6 +62,7 @@ public struct ImageServiceSettings: Sendable, Equatable {
         model: String = ImageServiceSettings.defaultModel,
         adultModel: String = ImageServiceSettings.defaultAdultModel,
         style: String = "",
+        producerTags: String = ImageServiceSettings.defaultProducerTags,
         hourlyLimit: Int = ImageServiceSettings.defaultHourlyLimit,
         apiKey: String = ""
     ) {
@@ -63,6 +71,7 @@ public struct ImageServiceSettings: Sendable, Equatable {
         self.model = model
         self.adultModel = adultModel
         self.style = style
+        self.producerTags = producerTags
         self.hourlyLimit = hourlyLimit
         self.apiKey = apiKey
     }
@@ -152,7 +161,9 @@ public struct ImageRequest: Sendable, Equatable {
     /// carries the scene, style and quality tags, and the character prompt carries only
     /// her. With one caption every one of those tags is sent twice.
     public var basePrompt: String?
-    public var characterPrompt: String?
+    /// One per character, in draw order: hers first, then the producer's when he is in
+    /// the picture. NovelAI keeps each character's tags apart to stop them leaking.
+    public var characterPrompts: [String]
     public var negativePrompt: String
     public var width: Int
     public var height: Int
@@ -162,7 +173,7 @@ public struct ImageRequest: Sendable, Equatable {
     public init(
         prompt: String,
         basePrompt: String? = nil,
-        characterPrompt: String? = nil,
+        characterPrompts: [String] = [],
         negativePrompt: String,
         width: Int,
         height: Int,
@@ -171,7 +182,7 @@ public struct ImageRequest: Sendable, Equatable {
     ) {
         self.prompt = prompt
         self.basePrompt = basePrompt
-        self.characterPrompt = characterPrompt
+        self.characterPrompts = characterPrompts
         self.negativePrompt = negativePrompt
         self.width = width
         self.height = height
@@ -298,10 +309,9 @@ public struct RemoteImageGenerator: ImageGenerating {
 
     static func novelAIRequest(_ request: ImageRequest) -> [String: Any] {
         let unplaced = [["x": 0, "y": 0]]
-        let positives = [[
-            "char_caption": request.characterPrompt ?? "",
-            "centers": unplaced,
-        ]]
+        let positives = request.characterPrompts.isEmpty
+            ? [["char_caption": "", "centers": unplaced]]
+            : request.characterPrompts.map { ["char_caption": $0, "centers": unplaced] }
         let negatives = [["char_caption": "", "centers": unplaced]]
         return [
             "input": request.prompt,
