@@ -134,6 +134,8 @@ RealityKit 路线要重写着色与解算，于是另开 `unity-spike/` 验证"�
 **播放验证（Play 模式）**：`Assets/Scripts/CharacterBootstrap.cs` 是纯运行时版本——`Start` 里从 bundle 建 body+head、设 shader 全局量、读 `EULR` 曲线包，`Update` 按 30 fps 写 `localRotation/localPosition`；`EidolonMotionClip` 是曲线包读取器。菜单 `MLTD/Play Motion` 建场景并进 Play。实测 `the_standd_appear_lop_ver01`：57 条曲线里 55 条绑上骨骼（未绑的两条是游戏运行时才生成的 `POSITION`、`POSITION/SCALE_POINT` 节点），姿势与 RealityKit 端一致。
 
 - 这个 clip 本身是个很轻的待机循环：最大关节幅度 4.5°（肩锁骨），头前后摆约 13 mm，看上去像呼吸，不是“写得不对”。
+- **头部要挂到 ATAMA socket**：head prefab 的骨骼是模型空间坐标（KUBI 在 y=1.277），bind 时与 body 的 KUBI/ATAMA 完全重合，所以停着看没区别；但 clip 会把脊柱压弯（MUNE1 相对 bind 约 29°），头不跟着走就会和脖子脱开、露出躯干颈口内部。正确做法是 bind 那一刻用 `SetParent(atama, worldPositionStays: true)` 挂到 `BASE/MUNE1/MUNE2/KUBI/ATAMA`。
+- **裙子完全是算出来的，不是动画数据**：`the_standd_appear_lop_ver01` 的 57 条曲线里没有任何 `skirt_*`。裙摆顶点权重是 `KOSHI` 154、`MOMO_L/R` 各 49，其余分散在 10 根 `skirt_LA0/LE0/RC0/...` 骨骼上；这 10 根骨骼只有游戏运行时的裙摆解算器会驱动。Unity 里原样播放时裙子只会跟着骨盆刚性转动，大腿就会穿出来——要修只能把 `ios/MotionSway.swift` 那套解算器（904 行）移植成 C#。
 - 想在 Unity 里换别的 clip 得先离线把 muscle 曲线解成 `EULR`：`m_MuscleClip` 走不通——Unity 6 的 `SerializedObject` 只暴露可见属性，`FindProperty("m_MuscleClip")` 返回 null，`GetCurveBindings()` 仍为 0，所以解码只能留在离线 Python 那一步。
 
 ### 资源下载

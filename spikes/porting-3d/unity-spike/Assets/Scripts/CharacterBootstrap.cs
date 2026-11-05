@@ -79,13 +79,13 @@ public sealed class CharacterBootstrap : MonoBehaviour
         bodyInstance.name = "MODEL_00_holder";
         var headInstance = Instantiate(headPrefab, transform);
         headInstance.name = "ch_head";
-        // The head is a self-contained 34-bone rig; it sits beside the body's
-        // MODEL_00, not under the body's ATAMA.
+        // The head is a self-contained 34-bone rig authored in model space, so
+        // at bind pose it lines up with the body with no offset. Attach it to
+        // the body's ATAMA socket at that moment (worldPositionStays) so it
+        // follows the neck when the clip bends the spine.
         var model = bodyInstance.transform.Find("MODEL_00") ?? bodyInstance.transform;
-        headInstance.transform.SetParent(model, false);
-        headInstance.transform.localPosition = Vector3.zero;
-        headInstance.transform.localRotation = Quaternion.identity;
-        headInstance.transform.localScale = Vector3.one;
+        var atama = model.Find("BASE/MUNE1/MUNE2/KUBI/ATAMA");
+        headInstance.transform.SetParent(atama != null ? atama : model, true);
         return true;
     }
 
