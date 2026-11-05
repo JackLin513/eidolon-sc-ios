@@ -641,6 +641,64 @@ extension MomentTests {
         XCTAssertEqual(summary.moments.posts, 0)
     }
 
+    func testTheDailyReplyCapHoldsAcrossPosts() async throws {
+        let (eidolon, _) = try await installed()
+        var value = MomentsSettings.default
+        value.enabled = true
+        value.dailyReplies = 1
+        try await eidolon.setMomentsSettings(value)
+        let commentedAt = Eidolon.timestamp(now.addingTimeInterval(-600))
+        let replyDue = Eidolon.timestamp(now.addingTimeInterval(-60))
+        for id in ["mano", "hiori"] {
+            let post = try await insertPost(
+                eidolon, character: id, revealAt: now.addingTimeInterval(-3600)
+            )
+            try await eidolon.userQueue.write { db in
+                try db.execute(
+                    sql: """
+                        INSERT INTO moment_comments(post_id, text, created_at, reply_reveal_at)
+                        VALUES (?, 'いいね。', ?, ?)
+                        """,
+                    arguments: [post, commentedAt, replyDue]
+                )
+            }
+        }
+        let provider = RecordingChatProvider(chunks: [
+            "<ja>うん。</ja><zh>嗯。</zh>", "<ja>そうだね。</ja><zh>是啊。</zh>",
+        ])
+        _ = await eidolon.runMomentsDue(
+            now: now, providers: MomentsProviders(chat: provider), seed: 1
+        )
+        let replies = try await eidolon.userQueue.read { db in
+            try Int.fetchOne(
+                db, sql: "SELECT COUNT(*) FROM moment_comments WHERE reply_at IS NOT NULL"
+            ) ?? 0
+        }
+        XCTAssertEqual(replies, 1, "the day's reply budget holds")
+    }
+
+    func testABirthdayIsPlannedEvenAtTheDailyCap() async throws {
+        let (eidolon, _) = try await installed()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = tokyo
+        let birthday = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2027, month: 4, day: 25, hour: 20, minute: 0
+        )))
+        try await settings(eidolon, posts: 1)
+        for id in ["mano", "hiori"] {
+            try await addTurn(eidolon, character: id, at: birthday)
+        }
+        let value = try await eidolon.momentsSettings()
+        var random = SeededRandom(seed: "1")
+        try await eidolon.ensureMomentsPlans(now: birthday, settings: value, random: &random)
+        let planned = try await eidolon.userQueue.read { db in
+            try String.fetchAll(
+                db, sql: "SELECT character_id FROM moment_plans WHERE birthday = 1"
+            )
+        }
+        XCTAssertEqual(planned, ["mano"], "the birthday is never dropped by the cap")
+    }
+
     func testWideShotFramingParsesForMoments() throws {
         let draft = try XCTUnwrap(MomentImageDraft(text: """
             composition: 风景
