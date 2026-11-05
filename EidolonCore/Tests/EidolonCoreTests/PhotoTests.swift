@@ -236,6 +236,27 @@ final class PhotoTagTests: XCTestCase {
         XCTAssertEqual(table.blockingCategory(of: "plaid shirt"), .underwear)
     }
 
+    func testAGazeSheWroteIsNotContradicted() throws {
+        let table = TestPhotoTagTable.make()
+        let photo = try tag("""
+            shot: other
+            framing: cowboy shot
+            place: office
+            outfit: casual
+            action: looking away from camera, shy smile
+            """)
+        let request = try PhotoPromptBuilder.request(
+            tag: photo,
+            character: TestPhotoTagTable.character(),
+            style: "",
+            adult: false,
+            table: table,
+            model: "test-model"
+        )
+        XCTAssertTrue(request.prompt.contains("looking away from camera"))
+        XCTAssertFalse(request.prompt.contains("looking at viewer"))
+    }
+
     func testACharacterWithoutPhotoTagsCannotMakeOne() throws {
         let table = TestPhotoTagTable.make()
         let photo = try tag("""
