@@ -101,6 +101,33 @@ public struct StatsRangeSummary: Sendable, Hashable {
 }
 
 /// What the stats page reads in one go (spec #96). Dates and hours are the producer's.
+/// The moments part of the stats page (spec #98): what the range posted, what failed, and
+/// how often the producer liked or commented. None of it is split by character.
+public struct StatsMoments: Sendable, Hashable {
+    public var posts: Int
+    public var failedPosts: Int
+    public var replies: Int
+    public var failedReplies: Int
+    public var likedPosts: Int
+    public var commentedPosts: Int
+
+    public init(
+        posts: Int = 0, failedPosts: Int = 0, replies: Int = 0, failedReplies: Int = 0,
+        likedPosts: Int = 0, commentedPosts: Int = 0
+    ) {
+        self.posts = posts
+        self.failedPosts = failedPosts
+        self.replies = replies
+        self.failedReplies = failedReplies
+        self.likedPosts = likedPosts
+        self.commentedPosts = commentedPosts
+    }
+
+    public var hasAny: Bool {
+        posts > 0 || replies > 0 || failedPosts > 0 || failedReplies > 0
+    }
+}
+
 public struct StatsSummary: Sendable, Hashable {
     /// Days since the first thing still left, counting its day as the first; 0 when
     /// nothing is left.
@@ -116,6 +143,7 @@ public struct StatsSummary: Sendable, Hashable {
     public var range: StatsRangeSummary
     /// Whether any turn or gift is still left; when false the page shows one empty line.
     public var hasContacts: Bool
+    public var moments: StatsMoments = StatsMoments()
 }
 
 extension Eidolon {
@@ -352,7 +380,8 @@ extension Eidolon {
                 ),
                 characters: characterRows
             ),
-            hasContacts: !rows.contacts.isEmpty
+            hasContacts: !rows.contacts.isEmpty,
+            moments: try statsMoments(from: start, timeZone: timeZone, now: now)
         )
     }
 
@@ -376,5 +405,76 @@ extension Eidolon {
             day = day.adding(days: -1)
         }
         return (current, longest)
+    }
+
+    /// The range's moments: posts revealed, replies that came out, and the calls that
+    /// failed, from the ledger. Kept apart from the turn counts on purpose.
+    func statsMoments(
+        from: CalendarDay?, timeZone: TimeZone, now: Date
+    ) throws -> StatsMoments {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let fromStamp: String = if let from,
+            let start = calendar.date(from: DateComponents(
+                year: from.year, month: from.month, day: from.day
+            )) {
+            Self.timestamp(start)
+        } else {
+            "0000-01-01T00:00:00.000000Z"
+        }
+        let toStamp = Self.timestamp(now.addingTimeInterval(1))
+        return try userQueue.read { db in
+            let posts = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM moment_posts WHERE reveal_at >= ? AND reveal_at <= ?",
+                arguments: [fromStamp, toStamp]
+            ) ?? 0
+            let replies = try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM moment_comments
+                    WHERE reply_at IS NOT NULL AND reply_at >= ? AND reply_at <= ?
+                    """,
+                arguments: [fromStamp, toStamp]
+            ) ?? 0
+            let liked = try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM moment_likes l
+                    JOIN moment_posts p ON p.id = l.post_id
+                    WHERE p.reveal_at >= ? AND p.reveal_at <= ?
+                    """,
+                arguments: [fromStamp, toStamp]
+            ) ?? 0
+            let commented = try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM moment_comments c
+                    JOIN moment_posts p ON p.id = c.post_id
+                    WHERE p.reveal_at >= ? AND p.reveal_at <= ?
+                    """,
+                arguments: [fromStamp, toStamp]
+            ) ?? 0
+            let failedPosts = try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM service_calls
+                    WHERE operation = 'moment' AND error IS NOT NULL AND at >= ? AND at <= ?
+                    """,
+                arguments: [fromStamp, toStamp]
+            ) ?? 0
+            let failedReplies = try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM service_calls
+                    WHERE operation = 'moment_reply' AND error IS NOT NULL AND at >= ? AND at <= ?
+                    """,
+                arguments: [fromStamp, toStamp]
+            ) ?? 0
+            return StatsMoments(
+                posts: posts, failedPosts: failedPosts, replies: replies,
+                failedReplies: failedReplies, likedPosts: liked, commentedPosts: commented
+            )
+        }
     }
 }

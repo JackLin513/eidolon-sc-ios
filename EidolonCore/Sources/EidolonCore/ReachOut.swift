@@ -102,6 +102,16 @@ public enum ReachOutRules {
         - 让他好接话，但不必用问句结尾。
         """
 
+    /// The same rules, with her recent moments offered as a reason to reach out when
+    /// there are any (spec #98). Without moments the text is exactly the constant above.
+    static func rules(withMoments: Bool) -> String {
+        guard withMoments else { return rules }
+        return rules.replacingOccurrences(
+            of: "再其次才是现在的时间、他的生日。",
+            with: "再其次是你最近发的朋友圈（如果有）；最后才是现在的时间、他的生日。"
+        )
+    }
+
     /// Where the producer's words would be, so the prompt ends with the user as a turn does.
     static let wantsToReachOut = "（制作人这会儿没在和你说话。你想先给他发几句。）"
 }
@@ -168,6 +178,9 @@ extension Eidolon {
         let cycleLines = (try? cycleLines(
             characterID: characterID, now: now, timeZone: zone
         )) ?? []
+        let momentLines = (try? momentPromptLines(
+            characterID: characterID, now: now, timeZone: zone
+        )) ?? []
         let nowText = NowPrompt.text(
             now: now,
             timeZone: zone,
@@ -177,7 +190,8 @@ extension Eidolon {
             birthday: producer.birthday,
             todayLines: todayLines,
             scheduleLines: scheduleLines,
-            cycleLines: cycleLines
+            cycleLines: cycleLines,
+            momentsLines: momentLines
         )
         let memories = await reachingOutMemories(
             characterID: characterID,
@@ -187,7 +201,7 @@ extension Eidolon {
             now: now,
             timeZone: zone
         )
-        let nowSection = ([nowText, memories, ReachOutRules.rules]
+        let nowSection = ([nowText, memories, ReachOutRules.rules(withMoments: !momentLines.isEmpty)]
             .compactMap { $0 }
             .joined(separator: "\n\n"))
         let assembler = PromptAssembler(

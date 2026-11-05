@@ -32,6 +32,8 @@ public actor Eidolon {
     /// path of every turn otherwise.
     var cachedWorld: WorldSetting?
     var worldCached = false
+    /// The bundle's place pool, parsed once (spec #98).
+    var cachedPlaces: [MomentPlace]?
     /// What earlier turns are still writing down, per job, so the next turn can wait a
     /// while for it (ADR-0009).
     var memoryJobs: [Int64: Task<Void, Never>] = [:]

@@ -429,7 +429,10 @@ extension Eidolon {
             birthday: producer.birthday,
             todayLines: todayLines,
             scheduleLines: scheduleLines,
-            cycleLines: cycleLines
+            cycleLines: cycleLines,
+            momentsLines: (try? momentPromptLines(
+                characterID: characterID, now: now, timeZone: zone
+            )) ?? []
         )
         let wantsPhoto = verdict?.wantsPhoto ?? false
         let photoSection = PromptAssembler.photoSection(

@@ -66,6 +66,19 @@ struct SettingsView: View {
 
                     Section {
                         NavigationLink {
+                            MomentsSettingsView()
+                        } label: {
+                            LabeledContent(
+                                "朋友圈", value: app.momentsSettings.enabled ? "已开启" : "未开启"
+                            )
+                        }
+                        .accessibilityIdentifier("settings.moments")
+                    } header: {
+                        Text("朋友圈")
+                    }
+
+                    Section {
+                        NavigationLink {
                             StatsView()
                         } label: {
                             LabeledContent("统计", value: "⇢")

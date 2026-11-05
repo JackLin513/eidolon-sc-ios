@@ -132,6 +132,111 @@ final class AppModel {
         )
     }
 
+    // MARK: Moments (spec #98)
+
+    private(set) var momentsSettings = MomentsSettings.default
+    /// Whether the moments tab has something new behind it.
+    private(set) var momentsBadge = false
+    /// Tokyo's weather for the moments page, shared by every run.
+    let momentWeather = OpenMeteoWeatherClient()
+    private var momentsLoop: Task<Void, Never>?
+    private var momentImages: [String: UIImage] = [:]
+
+    func loadMomentsSettings() async {
+        momentsSettings = (try? await core.momentsSettings()) ?? .default
+        await refreshMomentsBadge()
+        if momentsSettings.enabled {
+            startMomentsLoop()
+            MomentsBackground.schedule(after: 15 * 60)
+        } else {
+            momentsLoop?.cancel()
+            momentsLoop = nil
+        }
+        MomentsNotifications.refresh(moments: momentsSettings)
+    }
+
+    func saveMomentsSettings(_ settings: MomentsSettings) async throws {
+        try await core.setMomentsSettings(settings)
+        momentsSettings = settings
+        if settings.enabled {
+            startMomentsLoop()
+            MomentsBackground.schedule(after: 15 * 60)
+        } else {
+            momentsLoop?.cancel()
+            momentsLoop = nil
+        }
+        MomentsNotifications.refresh(moments: settings)
+    }
+
+    func refreshMomentsBadge() async {
+        momentsBadge = (try? await core.momentsBadge()) ?? false
+    }
+
+    /// The providers one moments run needs; nil without a chat model, because nothing can
+    /// be written then.
+    func momentsProviders() -> MomentsProviders? {
+        guard let chat = chatProvider else { return nil }
+        let gpt = chatSettings.gptImageSettings
+        return MomentsProviders(
+            chat: chat,
+            photo: photoContext,
+            weather: momentWeather,
+            gptImage: gpt.enabled ? RemoteGPTImageGenerator() : nil,
+            gptSettings: gpt,
+            adultMode: chatSettings.adultMode,
+            debugMode: debugMode
+        )
+    }
+
+    /// Fills in what today has due. No timer here: the app calls this on launch, on
+    /// coming back, once a minute in the foreground, and from the background task.
+    @discardableResult
+    func runMoments(background: Bool = false) async -> MomentsRun? {
+        guard momentsSettings.enabled, let providers = momentsProviders() else { return nil }
+        let run = await core.runMomentsDue(providers: providers)
+        await refreshMomentsBadge()
+        if background, !run.newPosts.isEmpty || !run.newReplies.isEmpty {
+            MomentsNotifications.post(
+                posts: run.newPosts.count, replies: run.newReplies.count
+            )
+        }
+        return run
+    }
+
+    func startMomentsLoop() {
+        guard momentsLoop == nil else { return }
+        momentsLoop = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                guard let self, !Task.isCancelled else { return }
+                await self.runMoments()
+            }
+        }
+    }
+
+    /// The moment's picture, read once; nil while it has none or the file is gone.
+    func momentImage(_ record: MomentImageRecord) async -> UIImage? {
+        if let image = momentImages[record.id] { return image }
+        let root = URL.applicationSupportDirectory
+            .appending(path: "Eidolon/User", directoryHint: .isDirectory)
+        guard let data = try? Data(contentsOf: root.appendingPathComponent(record.file)),
+              let image = UIImage(data: data)
+        else { return nil }
+        momentImages[record.id] = image
+        return image
+    }
+
+    func likeMoment(_ id: String) async { _ = try? await core.likeMoment(id) }
+    func unlikeMoment(_ id: String) async { _ = try? await core.unlikeMoment(id) }
+    func commentMoment(_ id: String, text: String) async -> Bool {
+        (try? await core.commentMoment(id, text: text)) ?? false
+    }
+    func deleteMomentComment(_ id: String) async { _ = try? await core.deleteMomentComment(id) }
+    func markMomentsOpened() async {
+        try? await core.markMomentsOpened()
+        momentsBadge = false
+    }
+
     /// Records read so far, so a photo already on screen is not read again (the files
     /// never change once written).
     private var photoImages: [String: UIImage] = [:]
@@ -959,6 +1064,7 @@ final class AppModel {
                 bundleInfo = info
                 _ = try? await core.migrateLegacyStandIfNeeded()
                 try await load()
+                await loadMomentsSettings()
                 phase = .ready
                 #if DEBUG
                 importAPIEnvForDebuggingIfRequested()

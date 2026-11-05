@@ -4,7 +4,7 @@ import GRDB
 /// The writable user library (ADR-0002). Its schema evolves with the app, not
 /// with the content bundle, and is therefore managed by GRDB migrations.
 enum UserSchema {
-    static let version = 22
+    static let version = 23
 
     static func migrate(_ dbQueue: DatabaseQueue) throws {
         var migrator = DatabaseMigrator()
@@ -460,6 +460,91 @@ enum UserSchema {
             try db.execute(
                 sql: "ALTER TABLE conversations ADD COLUMN face_to_face INTEGER NOT NULL DEFAULT 0"
             )
+        }
+        migrator.registerMigration("v23") { db in
+            // Moments (spec #98, tickets #105–#113): her posts, their pictures and the
+            // other idols' reactions, the producer's like and comment, and the plans that
+            // make today's posts happen. Nothing here is part of the content bundle.
+            try db.execute(sql: """
+                CREATE TABLE moment_posts (
+                    id TEXT PRIMARY KEY,
+                    character_id TEXT NOT NULL,
+                    ja TEXT NOT NULL,
+                    zh TEXT NOT NULL,
+                    plan_day TEXT NOT NULL,
+                    reveal_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    place_id TEXT,
+                    place_name TEXT,
+                    place_area TEXT,
+                    place_lat REAL,
+                    place_lon REAL,
+                    weather_code INTEGER,
+                    weather_temperature INTEGER
+                );
+                CREATE INDEX moment_posts_by_reveal
+                    ON moment_posts(reveal_at);
+                CREATE INDEX moment_posts_by_character
+                    ON moment_posts(character_id, plan_day);
+
+                CREATE TABLE moment_images (
+                    id TEXT PRIMARY KEY,
+                    post_id TEXT NOT NULL REFERENCES moment_posts(id) ON DELETE CASCADE,
+                    file TEXT NOT NULL,
+                    width INTEGER NOT NULL,
+                    height INTEGER NOT NULL,
+                    composition TEXT NOT NULL,
+                    tag TEXT NOT NULL,
+                    note TEXT,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX moment_images_by_post ON moment_images(post_id);
+
+                CREATE TABLE moment_reactions (
+                    id TEXT PRIMARY KEY,
+                    post_id TEXT NOT NULL REFERENCES moment_posts(id) ON DELETE CASCADE,
+                    character_id TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    ja TEXT,
+                    zh TEXT,
+                    position INTEGER NOT NULL DEFAULT 0,
+                    reveal_at TEXT NOT NULL
+                );
+                CREATE INDEX moment_reactions_by_post
+                    ON moment_reactions(post_id, reveal_at);
+
+                CREATE TABLE moment_likes (
+                    post_id TEXT PRIMARY KEY REFERENCES moment_posts(id) ON DELETE CASCADE,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE moment_comments (
+                    post_id TEXT PRIMARY KEY REFERENCES moment_posts(id) ON DELETE CASCADE,
+                    text TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    reply_reveal_at TEXT,
+                    reply_ja TEXT,
+                    reply_zh TEXT,
+                    reply_at TEXT
+                );
+
+                CREATE TABLE moment_plans (
+                    id TEXT PRIMARY KEY,
+                    character_id TEXT NOT NULL,
+                    plan_day TEXT NOT NULL,
+                    due_at TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    birthday INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX moment_plans_by_due ON moment_plans(due_at);
+
+                CREATE TABLE moment_state (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    last_opened_at TEXT,
+                    planned_day TEXT
+                );
+                """)
         }
         try migrator.migrate(dbQueue)
         try dbQueue.write { db in
