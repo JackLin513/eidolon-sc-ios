@@ -48,6 +48,9 @@ public sealed class SwayRig
     public readonly List<Bone> bones = new List<Bone>();
     public readonly List<Collider> colliders = new List<Collider>();
     public readonly List<Bone> skirtBones = new List<Bone>();
+    /// Consecutive skirt panels around the hip, with the rest distance between
+    /// their tips. Keeping that distance is what makes the surface continuous.
+    public readonly List<(Bone a, Bone b, float rest)> skirtRing = new List<(Bone, Bone, float)>();
 
     private readonly Dictionary<string, Transform> byPath = new Dictionary<string, Transform>();
     private readonly Dictionary<string, Bone> bonesByPath = new Dictionary<string, Bone>();
@@ -113,6 +116,34 @@ public sealed class SwayRig
                 bone.sideLink = link;
         }
         return rig;
+    }
+
+    /// Wires the skirt panels into a ring by their rest azimuth around the hip.
+    public void BuildSkirtRing(Vector3 hip)
+    {
+        skirtRing.Clear();
+        if (skirtBones.Count < 3) return;
+        var ordered = new List<Bone>(skirtBones);
+        ordered.Sort((x, y) => Azimuth(x, hip).CompareTo(Azimuth(y, hip)));
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var a = ordered[i];
+            var b = ordered[(i + 1) % ordered.Count];
+            skirtRing.Add((a, b, Vector3.Distance(RestTipOf(a), RestTipOf(b))));
+        }
+    }
+
+    private static float Azimuth(Bone bone, Vector3 hip)
+    {
+        var delta = RestTipOf(bone) - hip;
+        return Mathf.Atan2(delta.z, delta.x);
+    }
+
+    private static Vector3 RestTipOf(Bone bone)
+    {
+        var parent = bone.transform.parent;
+        var parentRotation = parent != null ? parent.rotation : Quaternion.identity;
+        return bone.transform.position + parentRotation * bone.initialLocalRotation * bone.aimVector * bone.swayLength;
     }
 
     private void IndexPaths(Transform root)

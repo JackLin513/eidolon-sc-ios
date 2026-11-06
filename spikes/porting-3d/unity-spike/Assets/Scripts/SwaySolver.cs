@@ -1,3 +1,4 @@
+using System.Linq;
 using UnityEngine;
 
 /// Runs the game's sway/skirt solve on the instantiated character.
@@ -21,6 +22,8 @@ public sealed class SwaySolver : MonoBehaviour
         file = swayFile;
         rig = SwayRig.Build(swayFile, transform);
         Initialize();
+        var hip = rig.bones.FirstOrDefault(x => x.transform.name == "KOSHI");
+        if (hip != null) rig.BuildSkirtRing(hip.transform.position);
     }
 
     private void Initialize()
@@ -41,13 +44,23 @@ public sealed class SwaySolver : MonoBehaviour
     {
         var parentRotation = bone.transform.parent != null ? bone.transform.parent.rotation : Quaternion.identity;
         var restRotation = parentRotation * bone.initialLocalRotation;
-        return bone.transform.position + restRotation * bone.aimVector * bone.swayLength;
+        var direction = restRotation * bone.aimVector;
+
+        // A skirt falls with gravity instead of staying rigid to the tilted
+        // pelvis (the game's SkirtFallFollow); without this the panels swing
+        // back with the hips and uncover the thighs.
+        if (bone.data.isSkirt)
+            direction = Vector3.Slerp(direction, Vector3.down, SkirtFall);
+
+        return bone.transform.position + direction * bone.swayLength;
     }
+
+    public const float SkirtFall = 1f;
 
     private void LateUpdate()
     {
         if (rig == null) return;
-        StepOnce(Time.deltaTime);
+        Drape();
     }
 
     /// One deterministic step, for verification from the editor.
@@ -91,6 +104,24 @@ public sealed class SwaySolver : MonoBehaviour
             bone.curTipPos = tip;
         }
         foreach (var bone in rig.bones) Rotate(bone);
+    }
+
+    /// Neighbouring panels must keep the distance they have at rest, otherwise
+    /// the fabric tears open between two panels that were pushed apart.
+    private void KeepSkirtRingTogether()
+    {
+        for (var pass = 0; pass < 2; pass++)
+        {
+            foreach (var (a, b, rest) in rig.skirtRing)
+            {
+                var delta = b.curTipPos - a.curTipPos;
+                var distance = delta.magnitude;
+                if (distance < 1e-5f) continue;
+                var correction = (distance - rest) * 0.5f * delta / distance;
+                a.curTipPos += correction;
+                b.curTipPos -= correction;
+            }
+        }
     }
 
     /// The panels are pinned at the hip, so a rotation alone cannot move the
