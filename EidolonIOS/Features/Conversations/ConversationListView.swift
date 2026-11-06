@@ -7,6 +7,25 @@ struct ConversationListView: View {
     @Environment(AppModel.self) private var app
     @State private var query = ""
 
+    /// 有没看过的新公告时，铃铛右上角一个小圆点。
+    private var bell: some View {
+        Button {
+            showingAnnouncements = true
+        } label: {
+            Image(systemName: "bell")
+                .overlay(alignment: .topTrailing) {
+                    if app.server.hasUnreadAnnouncements {
+                        Circle()
+                            .fill(.tint)
+                            .frame(width: 7, height: 7)
+                            .offset(x: 3, y: -2)
+                    }
+                }
+        }
+        .accessibilityLabel("公告")
+        .accessibilityIdentifier("conversations.announcements")
+    }
+
     /// The conversation tab's stack lives in `AppModel` so another tab can open her chat
     /// (spec #64).
     private var conversationPath: Binding<NavigationPath> {
@@ -19,6 +38,8 @@ struct ConversationListView: View {
     @State private var pendingCharacter: CharacterConfig?
     /// Whether the roles hidden from the list are being shown (spec #48).
     @State private var showingHidden = false
+    /// 公告的弹窗（#122 把公告从设置搬到了这一页的页首，照上游的铃铛）。
+    @State private var showingAnnouncements = false
 
     var body: some View {
         // The folded call's bar floats over the empty part of the large-title header, so
@@ -93,6 +114,21 @@ struct ConversationListView: View {
                 .searchable(text: $query, prompt: "搜中文名、假名、罗马字或组合")
                 .navigationTitle("对话")
                 .refreshable { await app.refresh() }
+                .toolbar {
+                    if app.server.isSignedIn {
+                        ToolbarItem(placement: .topBarTrailing) { bell }
+                    }
+                }
+                .sheet(isPresented: $showingAnnouncements) {
+                    AnnouncementsView()
+                        .environment(app)
+                }
+                .onChange(of: app.selectedTab) { _, tab in
+                    // 切回这一页再拉一次；拉不到就保持上一次的。
+                    guard tab == .conversation else { return }
+                    Task { await app.server.refreshAnnouncements() }
+                }
+                .task { await app.server.refreshAnnouncements() }
                 .navigationDestination(for: CharacterConfig.self) { character in
                     ChatView(character: character)
                 }

@@ -38,6 +38,19 @@ struct SettingsView: View {
     /// large-title header only there (bug 2026-11-04).
     @State private var settingsRootOnScreen = true
 
+    /// 「账号」那一行右边写什么：没登录就说没登录。
+    private var accountValue: String {
+        guard let session = app.server.session else { return "未登录" }
+        return session.isAdmin ? "\(session.username)（管理员）" : session.username
+    }
+
+    /// 服务器不是 App 的前提：这一行在没登录时也要说清楚。
+    private var downloadedFooter: String {
+        app.server.isSignedIn
+            ? "内容包、公告和管理都在这里。"
+            : "登录以后可以下载内容包、看公告。不登录、没有网，对话和别的功能照旧能用。"
+    }
+
     private enum ImportKind {
         case content
         case stand
@@ -51,6 +64,21 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             NavigationStack {
                 Form {
+                    // 登录以后是账号，没登录时点进去就是登录页（spec #120）。放最上面，
+                    // 不然它和「服务器」一样要找半天。
+                    Section {
+                        NavigationLink {
+                            AccountView()
+                        } label: {
+                            LabeledContent("账号", value: accountValue)
+                        }
+                        .accessibilityIdentifier("settings.account")
+                    } header: {
+                        Text("服务器")
+                    } footer: {
+                        Text(downloadedFooter)
+                    }
+
                     Section {
                         NavigationLink {
                             APISettingsView()

@@ -32,6 +32,10 @@ final class AppModel {
     private(set) var chatSettings = ChatSettings.load()
     /// The one call the app is in, owned here so changing pages does not end it (spec #46).
     let call = CallController()
+
+    /// 那台私有服务器（spec #120）：登录、包、公告、管理。对话页首的铃铛和设置最上面的
+    /// 账号用的是同一份状态，所以它挂在这里而不是某一页上。
+    let server = ServerStore()
     /// Bumped when a conversation is started from somewhere other than the page that
     /// shows it — a past conversation in the history sheet. The current page reloads to
     /// the new one and the sheet closes (spec #37).
@@ -1217,6 +1221,7 @@ final class AppModel {
         await importBarBundleForDebuggingIfRequested()
         await applyDebugGiftState()
         await applyDebugUsageState()
+        seedInstalledPackagesForDebugging()
         #endif
         do {
             if let info = try await core.usableContentInfo() {
@@ -1670,6 +1675,7 @@ final class AppModel {
                 Task { @MainActor in self?.importProgress = progress }
             }
             bundleInfo = info
+            await rememberInstalled("content", fileAt: copy)
             try await load()
             phase = .ready
         } catch {
@@ -1700,6 +1706,7 @@ final class AppModel {
             standInfo = try await core.installStand(bundleAt: copy) { [weak self] progress in
                 Task { @MainActor in self?.importProgress = progress }
             }
+            await rememberInstalled("stand", fileAt: copy)
             await refreshStandCharacterIDs()
         } catch {
             errorMessage = error.localizedDescription
@@ -1726,9 +1733,33 @@ final class AppModel {
             barInfo = try await core.installBar(bundleAt: copy) { [weak self] progress in
                 Task { @MainActor in self?.importProgress = progress }
             }
+            await rememberInstalled("bar", fileAt: copy)
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Development aid: 直接告诉 App 这台手机已经装着哪几份包（spec #120），
+    /// 免得为了让它认出旧安装而重下几百 MB。
+    /// `EIDOLON_INSTALLED_SHA='{"content":"…","stand":"…","bar":"…"}'`
+    private func seedInstalledPackagesForDebugging() {
+        guard let json = ProcessInfo.processInfo.environment["EIDOLON_INSTALLED_SHA"],
+              let data = json.data(using: .utf8),
+              let dictionary = try? JSONDecoder().decode([String: String].self, from: data)
+        else { return }
+        for (kind, sha) in dictionary {
+            InstalledPackages.remember(sha, for: kind)
+        }
+    }
+
+    /// 记下刚导入的这份包的内容指纹（spec #120）：服务器页拿它判断要不要再下一遍。
+    /// 几百 MB 的包算一遍要一两秒，放到后台线程，导入本身已经更久。
+    private func rememberInstalled(_ kind: String, fileAt url: URL) async {
+        let sha = await Task.detached(priority: .utility) {
+            try? PackageDownload.sha256(of: url)
+        }.value
+        guard let sha else { return }
+        InstalledPackages.remember(sha, for: kind)
     }
 
     /// The installed stand index, for sharing with the Mac to build a delta bundle.
