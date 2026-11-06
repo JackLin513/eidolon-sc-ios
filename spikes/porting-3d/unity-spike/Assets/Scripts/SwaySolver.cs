@@ -158,7 +158,10 @@ public sealed class SwaySolver : MonoBehaviour
     {
         contact = Vector3.zero;
         depth = 0f;
-        var radius = collider.data.radius + bone.data.radius;
+        // The capsule already carries the padding the game gives the leg
+        // (the thigh mesh sits at ~0.07 of an 0.088 capsule); adding the sway
+        // bone radius on top turns every panel into a balloon.
+        var radius = collider.data.radius;
 
         switch (collider.data.type)
         {

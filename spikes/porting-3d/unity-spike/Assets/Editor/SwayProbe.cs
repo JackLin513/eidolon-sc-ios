@@ -55,6 +55,50 @@ public static class SwayProbe
     }
 }
 
+public static class SwayWeightProbe
+{
+    /// Dominant bone histogram for the fabric vertices that sit in the front
+    /// lower band, where the skirt is supposed to cover the thighs.
+    public static string Front(SwaySolver solver)
+    {
+        var body = solver.GetComponentsInChildren<SkinnedMeshRenderer>(true).FirstOrDefault(r => r.name == "body");
+        if (body == null) return "no body";
+        var mesh = new Mesh();
+        body.BakeMesh(mesh, true);
+        var matrix = body.transform.localToWorldMatrix;
+        var weights = body.sharedMesh.boneWeights;
+        var bones = body.bones;
+        var histogram = new Dictionary<string, int>();
+        var count = 0;
+        for (var i = 0; i < weights.Length && i < mesh.vertices.Length; i++)
+        {
+            var w = weights[i];
+            var best = -1;
+            var bestWeight = 0f;
+            void Consider(int index, float weight)
+            {
+                if (weight <= bestWeight) return;
+                best = index;
+                bestWeight = weight;
+            }
+            Consider(w.boneIndex0, w.weight0);
+            Consider(w.boneIndex1, w.weight1);
+            Consider(w.boneIndex2, w.weight2);
+            Consider(w.boneIndex3, w.weight3);
+            if (best < 0 || bones[best] == null) continue;
+            var name = bones[best].name;
+            if (!name.StartsWith("skirt_") && !name.StartsWith("COMANECI")) continue;
+            var world = matrix.MultiplyPoint3x4(mesh.vertices[i]);
+            if (world.y > 0.78f) continue;
+            count++;
+            histogram[name] = histogram.ContainsKey(name) ? histogram[name] + 1 : 1;
+        }
+        Object.DestroyImmediate(mesh);
+        var parts = histogram.OrderByDescending(k => k.Value).Take(10).Select(k => k.Key + "=" + k.Value);
+        return "fabric(lower)=" + count + " :: " + string.Join(" ", parts);
+    }
+}
+
 public static class SwayLegProbe
 {
     /// Distances of thigh-weighted mesh vertices to the MOMO capsule axis.
