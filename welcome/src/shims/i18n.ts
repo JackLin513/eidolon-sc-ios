@@ -13,7 +13,7 @@ export const copy = {
   landing: {
     disclaimer: "非官方粉丝作品，角色由 AI 扮演。",
     signIn: "登录",
-    continue: "继续",
+    continue: "进入",
     panelTitle: "登录",
     devSignIn: "开发登录",
     /**
@@ -100,9 +100,9 @@ export const copy = {
       title: "使用须知",
       unofficial: "非官方粉丝作品，和原作版权方无关。角色完全由 AI 驱动。",
       // 下面两句不论免限额密钥是哪几项都要对（落地页静态渲染，不随开关变化），不点名哪几项。
-      limits: "部署服务不向你收费，但每人可能存在使用限额。",
-      ownKey: "支持 BYOK（自带密钥），密钥只保存于本地",
-      memories: "记忆可查看&删除，管理者无法查看",
+      limits: "所有模型都由你自己配置、自己付费。",
+      ownKey: "模型密钥只存在这台手机的钥匙串里",
+      memories: "对话、记忆和好感度只存在这台手机上，可以随时查看和删除",
       affinity: "你的话语会影响她们对你的态度，切勿过于冒犯……",
       signIn: (providers: string) => `现支持 ${providers} 登录`,
       noSignIn: "暂时还不能登录。",
@@ -112,7 +112,7 @@ export const copy = {
     /** 第 7 幕「开始」：每位角色一道光，收拢成一块手机屏幕的白光，出现行动按钮。 */
     act7: {
       title: "她们在屏幕的另一边。",
-      body: "登录以后，挑一位偶像，和她说说话。",
+      body: "挑一位偶像，和她说说话。",
     },
   },
   legal: {

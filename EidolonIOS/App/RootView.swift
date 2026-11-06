@@ -55,12 +55,18 @@ struct RootView: View {
                 let model = try AppModel()
                 app = model
                 await model.bootstrap()
-                // 调试开关：不管看过没有，这次启动先放一遍（`EIDOLON_WELCOME=1`）。
-                showsWelcome = ProcessInfo.processInfo.environment["EIDOLON_WELCOME"] == "1"
-                    || WelcomeLaunch.shouldPresent(
-                        seen: model.welcomeSeen,
-                        hasContentBundle: model.phase == .ready
-                    )
+                // 别的调试注入开着时不放这一页，免得它盖住界面把 UI 用例挡住；
+                // 欢迎页自己的两个开关（`EIDOLON_WELCOME`、`EIDOLON_WELCOME_ACT`）例外。
+                let environment = ProcessInfo.processInfo.environment
+                let ordered = environment["EIDOLON_WELCOME"] == "1"
+                    || environment["EIDOLON_WELCOME_ACT"] != nil
+                let suppressed = environment.keys.contains {
+                    $0.hasPrefix("EIDOLON_") && $0 != "EIDOLON_WELCOME" && $0 != "EIDOLON_WELCOME_ACT"
+                }
+                showsWelcome = ordered || (!suppressed && WelcomeLaunch.shouldPresent(
+                    seen: model.welcomeSeen,
+                    hasContentBundle: model.phase == .ready
+                ))
             } catch {
                 startupError = error.localizedDescription
             }

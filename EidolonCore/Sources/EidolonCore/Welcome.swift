@@ -30,3 +30,19 @@ public enum WelcomeAssetCheck {
         return missing
     }
 }
+
+/// 名册里点名的声音文件（spec #118）：招呼和来电开场白。素材检查按这份名单逐个看。
+public enum WelcomeRosterFiles {
+    public static func audioFiles(in data: Data) -> [String]? {
+        struct Roster: Decodable {
+            struct Unit: Decodable { var idols: [Idol] }
+            struct Idol: Decodable { var greeting: String? }
+            var units: [Unit]
+            var callOpener: String?
+        }
+        guard let roster = try? JSONDecoder().decode(Roster.self, from: data) else { return nil }
+        var files = roster.units.flatMap { $0.idols.compactMap(\.greeting) }
+        if let opener = roster.callOpener { files.append(opener) }
+        return files
+    }
+}

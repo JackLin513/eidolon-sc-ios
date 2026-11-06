@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import react from "@vitejs/plugin-react";
@@ -14,8 +16,14 @@ export default defineConfig({
     react(),
     {
       // 首屏前定档的脚本要同步跑在 <head> 里，和上游 layout 一样。
+      // 必须是外链文件而不是内联：CSP 的 script-src 'self' 会拦掉内联脚本，
+      // 拦掉以后 <html> 上没有档位，整页会退回静止版式（滚动的动画全没了）。
       name: "welcome-tier-script",
-      transformIndexHtml: (html) => html.replace("<!--TIER-->", `<script>${TIER_SCRIPT}</script>`),
+      buildStart() {
+        const file = fileURLToPath(new URL("./public/tier.js", import.meta.url));
+        mkdirSync(dirname(file), { recursive: true });
+        writeFileSync(file, TIER_SCRIPT);
+      },
     },
   ],
   resolve: {

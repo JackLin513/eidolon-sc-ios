@@ -2,6 +2,7 @@
 // 名册和招呼语音都通过 App 的自定义 scheme 读，页面自己不联网。
 import type { Character, LandingAssets } from "./shims/api";
 
+
 type Idol = {
   id: string;
   number: string;
@@ -22,6 +23,7 @@ type Roster = {
   callOpenerJa: string | null;
   callOpenerSubtitle: string | null;
   callPoster: string | null;
+  voxels: string[] | null;
   speaker: string;
 };
 
@@ -29,12 +31,40 @@ export type WelcomeData = { characters: Character[]; assets: LandingAssets };
 
 // 素材在 App 的另一个 host 上（`eidolon-welcome://media/…` → Resources/Welcome）。
 // 用绝对地址：页面自己是 `…://app/index.html`，写成 `/media/…` 会落到页面那个 host 下。
-const media = (path: string) => `eidolon-welcome://media/${path}`;
+// 用浏览器打开调试时走普通路径（vite 的 dev 中间件会把 /media 指到 Resources/Welcome）。
+const scheme = "eidolon-welcome";
+const inApp = location.protocol === `${scheme}:`;
+const media = (path: string) => (inApp ? `${scheme}://media/${path}` : `/media/${path}`);
+
+/**
+ * `<audio>` 在自定义 scheme 下放不出声（WebKit 的媒体加载不走 scheme handler），
+ * 所以先 fetch 成 blob 再交给页面；失败时退回原地址，页面按「没有声音」降级成字幕。
+ */
+async function playable(url: string | null): Promise<string | null> {
+  if (!url || !inApp) return url;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return url;
+    const blob = await response.blob();
+    // 用 data: 而不是 blob:：自定义 scheme 的页面把 blob 交给系统媒体进程时，
+    // WebKit 读不到（play() 会以 NotSupportedError 失败）。data: 是自带的，媒体进程直接就能解码。
+    return await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => resolve(url!);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return url;
+  }
+}
 
 export async function loadWelcome(): Promise<WelcomeData> {
   const response = await fetch(media("welcome.json"));
   if (!response.ok) throw new Error(`welcome.json: ${response.status}`);
   const roster: Roster = await response.json();
+
+  const voxels = new Set(roster.voxels ?? []);
 
   const characters = roster.units.flatMap((unit, order) =>
     unit.idols.map((idol): Character => {
@@ -64,9 +94,21 @@ export async function loadWelcome(): Promise<WelcomeData> {
               }
             : null,
         call_poster_url: speaks && roster.callPoster ? media(`stills/${roster.callPoster}`) : null,
-        voxels_url: null,
+        voxels_url: voxels.has(`${idol.id}.json`) ? media(`voxels/${idol.id}.json`) : null,
         stand: null,
       };
+    }),
+  );
+
+  // 招呼和开场白的声音换成 blob 地址（见 `playable`），一次拉齐，页面拿到就能播。
+  await Promise.all(
+    characters.map(async (character) => {
+      if (character.greeting) {
+        character.greeting.audio_url = await playable(character.greeting.audio_url);
+      }
+      if (character.call_opener) {
+        character.call_opener.audio_url = await playable(character.call_opener.audio_url);
+      }
     }),
   );
 

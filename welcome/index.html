@@ -4,8 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="dark" />
+    <!-- 只许从 App 自己的 scheme 取东西：这一页永远不联网（spec #118）。 -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' eidolon-welcome: blob: data:; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' eidolon-welcome: blob: data:; media-src blob: data: eidolon-welcome:; font-src 'self' eidolon-welcome: data:; connect-src 'self' eidolon-welcome: blob:;"
+    />
     <title>Eidolon</title>
-    <!--TIER-->
+    <script src="./tier.js"></script>
   </head>
   <body>
     <div id="root"></div>

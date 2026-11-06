@@ -11,7 +11,17 @@ import { INITIAL, interactionReducer, type Interaction, type InteractionAction }
 
 type Listener = (prev: Interaction, next: Interaction) => void;
 
-let state: Interaction = INITIAL;
+/** 声音开关只记在这台手机上：从设置里重看这一页时还是上次那个状态。 */
+const SOUND_KEY = "welcome.sound";
+const savedSound = (() => {
+  try {
+    const value = localStorage.getItem(SOUND_KEY);
+    return value === "on" || value === "off" ? value : null;
+  } catch {
+    return null;
+  }
+})();
+let state: Interaction = savedSound ? { ...INITIAL, sound: savedSound } : INITIAL;
 const listeners = new Set<Listener>();
 
 export const interactionStore = {
@@ -19,7 +29,16 @@ export const interactionStore = {
   dispatch(action: InteractionAction): Interaction {
     const prev = state;
     state = interactionReducer(prev, action);
-    if (state !== prev) listeners.forEach((l) => l(prev, state));
+    if (state !== prev) {
+      if (state.sound !== prev.sound && state.sound !== "hidden") {
+        try {
+          localStorage.setItem(SOUND_KEY, state.sound);
+        } catch {
+          /* 存不进去就只在这回有效 */
+        }
+      }
+      listeners.forEach((l) => l(prev, state));
+    }
     return state;
   },
   subscribe(listener: Listener) {

@@ -1660,7 +1660,7 @@ html[data-lp-layout="motion"] .lp-act7-copy:has(:focus-visible) {
     height: min(40%, 124vw);
   }
   .lp-act7-copy {
-    left: var(--lp-gutter);
+    left: 20px;
     right: 20px;
     top: auto;
     bottom: 9%;

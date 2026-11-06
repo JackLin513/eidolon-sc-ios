@@ -20,6 +20,21 @@ final class WelcomeTests: XCTestCase {
         )
     }
 
+    func testTheRosterNamesEveryAudioFile() {
+        let roster = Data("""
+        {"units":[{"idols":[{"greeting":"mano-1.mp3"},{"greeting":"hiori-2.mp3"}]}],
+         "callOpener":"mano-3.mp3"}
+        """.utf8)
+        XCTAssertEqual(
+            WelcomeRosterFiles.audioFiles(in: roster),
+            ["mano-1.mp3", "hiori-2.mp3", "mano-3.mp3"]
+        )
+    }
+
+    func testABrokenRosterNamesNothing() {
+        XCTAssertNil(WelcomeRosterFiles.audioFiles(in: Data("not json".utf8)))
+    }
+
     func testEachMissingPieceIsNamed() {
         XCTAssertEqual(
             WelcomeAssetCheck.missing(page: false, roster: true, greetings: true),

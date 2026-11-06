@@ -58,10 +58,6 @@ export function Landing({
     <div className="lp-root">
       <Rail label={t.rail.label} acts={t.rail.acts.flatMap((name, act) => (builtActs.has(act) ? [{ act, name }] : []))} />
 
-      <header className="lp-top">
-        <EnterButton label={entryLabel} />
-      </header>
-
       <main>
         <section className="lp-act0" aria-labelledby="lp-title" data-lp-section={sectionOf(0).index} data-lp-act="0">
           <div className="lp-beam" aria-hidden />

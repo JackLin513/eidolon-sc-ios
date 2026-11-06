@@ -1,3 +1,7 @@
+/* Tailwind 的 preflight：上游的 globals.css 一上来就 import 它，body 的默认 margin 就是它归零的。
+ * 少了这一段，所有「按视口算出来的位置」都会整体偏一点（真机上是右移 8px）。 */
+@import "tailwindcss/preflight.css";
+
 /*
  * 落地页之外的几样东西：字体（上游的静态子集）、两个 Tailwind 工具类（页面里只用了这两个），
  * 还有右上角那个入口按钮。版式在 landing.css 里。

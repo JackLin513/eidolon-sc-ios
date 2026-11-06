@@ -69,6 +69,8 @@ final class WelcomeSchemeHandler: NSObject, WKURLSchemeHandler {
         case "jpg", "jpeg": "image/jpeg"
         case "woff2": "font/woff2"
         case "mp3": "audio/mpeg"
+        case "ogg": "audio/ogg"
+        case "m4a": "audio/mp4"
         case "gltf": "model/gltf+json"
         case "bin": "application/octet-stream"
         default: "application/octet-stream"

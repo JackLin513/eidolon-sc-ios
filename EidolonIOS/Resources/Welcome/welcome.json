@@ -399,5 +399,11 @@
   "callOpenerJa": "あっ、もしもし……真乃です。えっと、今、お電話だいじょうぶですか？",
   "callOpenerSubtitle": "啊，喂……我是真乃。那个，现在方便接电话吗？",
   "callPoster": "mano.webp",
+  "voxels": [
+    "fuyuko.json",
+    "kaho.json",
+    "kiriko.json",
+    "mano.json"
+  ],
   "speaker": "mano"
 }

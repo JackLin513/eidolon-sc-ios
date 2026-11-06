@@ -64,6 +64,28 @@ private struct WelcomeWebView: UIViewRepresentable {
     let onFinish: () -> Void
     let onFailure: () -> Void
 
+    /// 把 `console.*`、未捕获的异常和未处理的 Promise 拒绝都转给 App。
+    private static let consoleBridge = """
+    (function () {
+      function send(level, parts) {
+        try {
+          window.webkit.messageHandlers.log.postMessage(level + " " + parts.map(String).join(" "));
+        } catch (error) {}
+      }
+      ["log", "warn", "error"].forEach(function (level) {
+        var original = console[level];
+        console[level] = function () {
+          send(level, Array.prototype.slice.call(arguments));
+          original.apply(console, arguments);
+        };
+      });
+      window.addEventListener("error", function (event) { send("error", [event.message]); });
+      window.addEventListener("unhandledrejection", function (event) {
+        send("error", ["unhandled " + String(event.reason)]);
+      });
+    })();
+    """
+
     func makeCoordinator() -> Coordinator {
         Coordinator(onFinish: onFinish, onFailure: onFailure)
     }
@@ -75,9 +97,22 @@ private struct WelcomeWebView: UIViewRepresentable {
             forURLScheme: WelcomeSchemeHandler.scheme
         )
         configuration.userContentController.add(context.coordinator, name: "welcome")
+        // 网页的 console 接到 stdout：`devicectl device process launch --console` 能直接看到，
+        // 不再只能靠页面上的绿字。
+        configuration.userContentController.add(context.coordinator, name: "log")
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: Self.consoleBridge,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         configuration.allowsInlineMediaPlayback = true
-        configuration.mediaTypesRequiringUserActionForPlayback = .audio
+        // 这一页是本地打包的，声音由页面自己在上一个手势之后接着播（接听后的开场白、
+        // 点偶像的招呼）。默认策略会把它们当成「没有手势的自动播放」挡成 NotAllowedError，
+        // 这里对这个 scheme 的页面全部放开。
+        configuration.mediaTypesRequiringUserActionForPlayback = []
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
@@ -94,6 +129,7 @@ private struct WelcomeWebView: UIViewRepresentable {
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "welcome")
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "log")
         webView.stopLoading()
     }
 
@@ -110,6 +146,10 @@ private struct WelcomeWebView: UIViewRepresentable {
             _ controller: WKUserContentController,
             didReceive message: WKScriptMessage
         ) {
+            if message.name == "log" {
+                print("[welcome] \(message.body)")
+                return
+            }
             guard message.name == "welcome",
                   let body = message.body as? [String: Any],
                   body["action"] as? String == "finish"

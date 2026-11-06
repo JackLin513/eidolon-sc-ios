@@ -44,6 +44,8 @@ GREETING = re.compile(r"https://stand\.hmhnk\.top/greetings/(?P<id>[a-z0-9-]+)-[
 # 语气提示（`[shyly] ……`）只给语音合成听，页面上显示的是去掉它以后的原文。
 CUE = re.compile(r"^\s*(?:\[[a-z][a-z ,]*\]\s*)+")
 CALL_OPENER = re.compile(r"https://stand\.hmhnk\.top/call-openers/(?P<id>[a-z0-9-]+)-[0-9a-f]+\.mp3")
+# 第 5 幕浮岛上的体素小人：只有四座岛，每座一位。
+VOXELS = re.compile(r"https://stand\.hmhnk\.top/landing-voxels/(?P<id>[a-z0-9-]+)\.json")
 
 
 def read_page(path: str | None) -> str:
@@ -95,6 +97,7 @@ def roster(page: str, characters: dict[str, dict]) -> dict:
         "callOpenerJa": without_cue(characters["mano"].get("call_opener")),
         "callOpenerSubtitle": characters["mano"].get("call_opener_subtitle"),
         "callPoster": "mano.webp",
+        "voxels": sorted({f"{m.group('id')}.json" for m in VOXELS.finditer(page)}),
         "speaker": "mano",
     }
 
@@ -105,9 +108,16 @@ def without_cue(text: str | None) -> str | None:
 
 def download(page: str, directory: Path) -> None:
     directory.mkdir(parents=True, exist_ok=True)
-    urls = [m.group(0) for m in GREETING.finditer(page)] + [m.group(0) for m in CALL_OPENER.finditer(page)]
+    urls = (
+        [m.group(0) for m in GREETING.finditer(page)]
+        + [m.group(0) for m in CALL_OPENER.finditer(page)]
+        + [m.group(0) for m in VOXELS.finditer(page)]
+    )
     for url in dict.fromkeys(urls):
-        target = directory / Path(url).name
+        # 体素放同级目录：greetings/ 只放声音，voxels/ 只放小人。
+        home = directory.parent / "voxels" if "/landing-voxels/" in url else directory
+        home.mkdir(parents=True, exist_ok=True)
+        target = home / Path(url).name
         if target.exists():
             continue
         print(f"下载 {target.name}", file=sys.stderr)
