@@ -52,6 +52,10 @@ public sealed class SwayRig
     /// their tips. Keeping that distance is what makes the surface continuous.
     public readonly List<(Bone a, Bone b, float rest)> skirtRing = new List<(Bone, Bone, float)>();
 
+    public Transform pelvis;
+    public Transform thighL;
+    public Transform thighR;
+
     private readonly Dictionary<string, Transform> byPath = new Dictionary<string, Transform>();
     private readonly Dictionary<string, Bone> bonesByPath = new Dictionary<string, Bone>();
 
@@ -59,6 +63,9 @@ public sealed class SwayRig
     {
         var rig = new SwayRig();
         rig.IndexPaths(root);
+        rig.pelvis = rig.FindTransform(root, "KOSHI");
+        rig.thighL = rig.FindTransform(root, "MOMO_L");
+        rig.thighR = rig.FindTransform(root, "MOMO_R");
 
         for (var i = 0; i < file.colliders.Count; i++)
         {
@@ -161,6 +168,13 @@ public sealed class SwayRig
             parts.Reverse();
             byPath[string.Join("/", parts)] = transform;
         }
+    }
+
+    private Transform FindTransform(Transform root, string name)
+    {
+        foreach (var transform in root.GetComponentsInChildren<Transform>(true))
+            if (transform.name == name) return transform;
+        return null;
     }
 
     private Transform Resolve(string path)

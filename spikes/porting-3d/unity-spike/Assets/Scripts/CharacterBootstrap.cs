@@ -53,6 +53,28 @@ public sealed class CharacterBootstrap : MonoBehaviour
         }
     }
 
+    /// Re-reads the packed clip and rebuilds the path map (used by the probes
+    /// after a script reload, where Start may not have run again).
+    public bool LoadClip(string path)
+    {
+        if (!File.Exists(path)) return false;
+        clip = EidolonMotionClip.Load(path);
+        byPath = new Dictionary<string, Transform>();
+        foreach (var t in GetComponentsInChildren<Transform>(true))
+        {
+            var key = PathOf(t);
+            if (!string.IsNullOrEmpty(key)) byPath[key] = t;
+        }
+        return true;
+    }
+
+    /// Applies a frame of the loaded clip.
+    public void Seek(int frame)
+    {
+        if (clip == null) return;
+        Apply(frame);
+    }
+
     private void Update()
     {
         if (!play || clip == null) return;

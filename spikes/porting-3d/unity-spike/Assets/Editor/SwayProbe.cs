@@ -87,9 +87,9 @@ public static class SwayWeightProbe
             Consider(w.boneIndex3, w.weight3);
             if (best < 0 || bones[best] == null) continue;
             var name = bones[best].name;
-            if (!name.StartsWith("skirt_") && !name.StartsWith("COMANECI")) continue;
             var world = matrix.MultiplyPoint3x4(mesh.vertices[i]);
-            if (world.y > 0.78f) continue;
+            if (world.y > 0.78f || world.y < 0.55f) continue;
+            if (world.z < 0.02f) continue;
             count++;
             histogram[name] = histogram.ContainsKey(name) ? histogram[name] + 1 : 1;
         }
@@ -217,5 +217,58 @@ public static class SwayMeshProbe
         Object.DestroyImmediate(mesh);
         var max = penetrations.Count == 0 ? 0f : penetrations.Max();
         return $"vertsInside={penetrations.Count} maxDepth={max:F4}";
+    }
+}
+
+/// Renders the game camera straight into a RenderTexture. The Game view in an
+/// unfocused editor can serve a stale frame to a screen capture, which makes a
+/// skinning change look like it did nothing.
+public static class SwayShot
+{
+    private static string pending;
+    private static int pendingSize = 700;
+
+    /// Asks for a shot at the end of the next player-loop frame. Rendering from
+    /// a pipeline command runs outside the frame, where the skinned mesh's
+    /// skinning buffer has not been updated yet and every shot comes out stale.
+    public static string Request(string path, int size = 700)
+    {
+        pending = path;
+        pendingSize = size;
+        Application.onBeforeRender -= Pump;
+        Application.onBeforeRender += Pump;
+        return "queued " + path;
+    }
+
+    public static void Pump()
+    {
+        if (pending == null) return;
+        var path = pending;
+        pending = null;
+        Application.onBeforeRender -= Pump;
+        Render(path, pendingSize);
+    }
+
+    public static string Render(string path, int size = 700)
+    {
+        var camera = Camera.main;
+        if (camera == null) return "no camera";
+        var target = new RenderTexture(size, size, 24);
+        var previous = camera.targetTexture;
+        var previousAspect = camera.aspect;
+        camera.aspect = 1f;
+        camera.targetTexture = target;
+        camera.Render();
+        RenderTexture.active = target;
+        var texture = new Texture2D(size, size, TextureFormat.RGB24, false);
+        texture.ReadPixels(new Rect(0, 0, size, size), 0, 0);
+        texture.Apply();
+        System.IO.File.WriteAllBytes(path, texture.EncodeToPNG());
+        RenderTexture.active = null;
+        camera.targetTexture = previous;
+        camera.aspect = previousAspect;
+        Object.DestroyImmediate(texture);
+        Object.DestroyImmediate(target);
+        return "wrote " + path;
     }
 }

@@ -642,3 +642,18 @@ Unity 里原样播放 `the_standd_appear_lop_ver01` 时裙子完全不跟着腿�
 - 初始化链路：`SwayBone.Init` → `InitSub`（0x1C711A4）→ `SetSkirtParam`（0x1C716D0）→ `SwayBoneMT.InitializeFixedParams`（0x1C69508）。
 - 每帧链路：`SwayBoneMT.SwayMove` → `SwayHit` → `CalcRotate`；侧线 `CalcSideLinkDistance`，抗折叠 `CalcAntiFoldForce`。
 - 游戏里还有一套新的 `Imas.BoneLib.SwayVer02`（`SwayBuilder` / `SwayChain` / `SwayCharacter` / `SwayMaterialData`），但带 `_sway.txt` 的角色走的是 v01，本次按 v01 移植。
+
+## 裙摆修复（2026-11-06）
+
+**根因**：这条 clip 里腿是真实摆动的（MOMO 相对骨盆约 33°、膝盖前移 20 cm），而裙摆布料有一部分（正面下摆 187 个顶点里 `MOMO_L` 45 + `MOMO_R` 41）**直接蒙在大腿上**。腿一走，这部分布料跟着走，蒙在 `skirt_*` 骨上的那部分不动，裙子就在大腿上方被撕开——所以看起来是"大腿穿出裙子"，其实不是碰撞没解，是蒙皮被拉裂。把腿复位到 bind 后裙子立刻完好，可以复现这个结论。
+
+**修法（规则来自游戏自己的骨骼名）**：outfit 的裙摆根骨叫 `COMANECI_L__slerp_MOMO_L__i70_x0` —— 名字里就写着"朝 MOMO_L 做 70% 的 slerp"。于是每块裙摆片按 **对应大腿相对骨盆的旋转 ×70%** 去转：
+
+```
+delta = thigh.rotation * inverse(pelvis.rotation)        // 同侧；F/B 片取左右平均
+bone.rotation = Slerp(identity, delta, 0.7) * (parent.rotation * initialLocalRotation)
+```
+
+参数（70%、左右配对）都来自游戏资源本身，没有手调。修复后整段循环 + 侧面都没有穿模，头也正常。
+
+**踩到的坑（重要）**：未经焦的 Editor 里，`capture game_view` 和 `Camera.Render()` 都可能拿到**旧的蒙皮帧**——转骨骼完全没变化，白白浪费了一轮排查。可靠做法是 `Application.onBeforeRender` 里渲染到 RenderTexture 再存 PNG（`Assets/Editor/SwayProbe.cs` 的 `SwayShot.Request`），这样一定拿到当前帧的蒙皮结果。
