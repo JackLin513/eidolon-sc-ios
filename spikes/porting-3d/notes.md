@@ -657,3 +657,28 @@ bone.rotation = Slerp(identity, delta, 0.7) * (parent.rotation * initialLocalRot
 参数（70%、左右配对）都来自游戏资源本身，没有手调。修复后整段循环 + 侧面都没有穿模，头也正常。
 
 **踩到的坑（重要）**：未经焦的 Editor 里，`capture game_view` 和 `Camera.Render()` 都可能拿到**旧的蒙皮帧**——转骨骼完全没变化，白白浪费了一轮排查。可靠做法是 `Application.onBeforeRender` 里渲染到 RenderTexture 再存 PNG（`Assets/Editor/SwayProbe.cs` 的 `SwayShot.Request`），这样一定拿到当前帧的蒙皮结果。
+
+## 辅助骨与手肘（2026-11-06）
+
+**现象**：手臂弯到 50° 左右时，肘内侧出现一块硬边的深棕色楔形，看上去像"手臂重叠/破了"。
+
+**先证明不是洞**：把 skin 子网格换成 `Unlit/Color` 白材质，同一像素位置渲染出来是连续的白色——没有缺面，楔形是同一条皮肤表面的着色问题。再用 `ArmProbe`（`Assets/Editor/ArmProbe.cs`）把蒙皮后的网格烘焙出来做逐三角形射线求交：该像素最近的交点法线与视线 `n·dir≈-0.97`（正对相机，是正面），但 1–2 cm 见方的空间里有 4–6 层表面——几何在这个关节被压皱了。
+
+**根因**：这块几何的权重里，肘部最主要的变形骨不是 `UDE_L`，而是 `HIJI_L__rot_UDE_L__z50`（权重 17.3，`UDE_L` 只有 4.0，`KATA_L` 3.2）。clip 里只有 `UDE_L` 的轨道，辅助骨停在 bind pose，于是皮肤只有一半跟着弯，另一半不动，褶皱堆成一团。
+
+**游戏怎么算辅助骨**：`Imas.BoneLib.CalcBone` 在 LateUpdate 里按骨骼名逐帧重算，文法 `<我的名字>__<算法>_<参考骨>[__参数]`，算法按 `slerp → twist → const → rot` 顺序判定（详见 `research-mltd-calcbone.md`，那份文档引用反编译代码，不入库）。本模型共 30 根：
+
+| 规则 | 例子 | 权重 |
+| --- | --- | --- |
+| slerp | `WAKI_L__slerp_KATA_L__i30_x0`、`COMANECI_L__slerp_MOMO_L__i70_x0` | 30/50/70% |
+| rot | `HIJI_L__rot_UDE_L__z50`、`HIZOKOZO`、`ASHIKUBI`、`TEKUBI`、`UDE_MD` | 50/100% |
+| twist | `KATA_MD_L__twist_x50`、`MOMO_MD_L__twist_x50` | 50% |
+| const | `MUNE_L__const_KATA_L__rot_SAKOTSU_L__x0` | — |
+
+实现在 `Assets/Scripts/HelperBones.cs`（`[DefaultExecutionOrder(-50)]`，每帧 LateUpdate；`SwaySolver` 排在 -40，裙摆仍由已验证的那条规则收尾）。
+
+**一处必须改掉文档结论的地方**：`research-mltd-calcbone.md` 说 ROT 不使用参数里的轴字母。照那个实现，`HIJI_L__rot_UDE_L__z50` 拿来算的结果**恒为 `initMyRot`**——因为肘部的局部旋转是纯 Z 旋转，`FromToRotation(initRefVec, cur*right)` 恰好还原出同一个旋转，`Inverse(q)*cur` 就是单位四元数。实测 HIJI_L 的 localRotation 一直是 (0,0,0)，弯不弯都一样。
+
+按"参数首字母选参考骨的哪根轴"实现（`x→right / y→up / z→forward`，`initRefVector = initRef * axis`，四个算法统一用这根轴向量）之后：`cur*forward` 在纯 Z 弯曲下不变 → `q = identity` → `R1 = 当前旋转` → HIJI 拿到 63°，正好是肘弯的一半。肘部立刻变成正常圆润的肘尖，深色楔形消失。
+
+其余 ROT 骨的轴字母也自洽：肘/膝用 `z`（铰链轴），腕/踝/前臂中段用 `x`。静止姿态下 ROT 对任意轴都返回 `initMyRot`，所以这个改动不会移动 bind pose。

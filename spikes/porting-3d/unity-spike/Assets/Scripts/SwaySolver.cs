@@ -15,6 +15,7 @@ using UnityEngine;
 /// So every skirt panel takes 70% of its thigh's rotation, measured relative to
 /// the pelvis so the pelvis's own motion is not applied twice. Parameters come
 /// from the game (the 70% rule, the bone-to-thigh pairing); nothing is tuned.
+[DefaultExecutionOrder(-40)]
 public sealed class SwaySolver : MonoBehaviour
 {
     public const float FixedDelta = 0.016666668f;

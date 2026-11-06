@@ -27,6 +27,10 @@ public sealed class CharacterBootstrap : MonoBehaviour
     {
         ApplyGlobals();
         if (!BuildCharacter()) return;
+        // The assist bones read the rest pose, so this has to happen before the
+        // first clip frame is applied.
+        var helpers = gameObject.AddComponent<HelperBones>();
+        helpers.Bind(transform);
         if (File.Exists(clipPath))
         {
             clip = EidolonMotionClip.Load(clipPath);
@@ -52,6 +56,9 @@ public sealed class CharacterBootstrap : MonoBehaviour
             }
         }
     }
+
+    /// The clip currently driving the pose (probes read this).
+    public EidolonMotionClip Clip => clip;
 
     /// Re-reads the packed clip and rebuilds the path map (used by the probes
     /// after a script reload, where Start may not have run again).
