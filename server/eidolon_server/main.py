@@ -23,7 +23,7 @@ from .bootstrap import BootstrapError, ensure_admin
 from .db import connect, now
 from .packages import sync as sync_packages
 from .session import current_user, database
-from .settings import LOGIN_ATTEMPTS, LOGIN_LOCK_MINUTES, Settings
+from .settings import LOGIN_ATTEMPTS, LOGIN_LOCK_MINUTES, MIN_PASSWORD, Settings
 
 USERNAME = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
 
@@ -78,7 +78,9 @@ def create_app(settings: Settings) -> FastAPI:
             ).fetchone()
             if invite is None:
                 raise HTTPException(status_code=409, detail="邀请码不对")
-            if invite["used_by"] is not None:
+            # 「用过」看 used_at，不看 used_by：删掉账号时 used_by 会被置空，
+            # 那条码不该因此又变得能用。
+            if invite["used_at"] is not None:
                 raise HTTPException(status_code=409, detail="邀请码已经被用过了")
             if invite["expires_at"] is not None and invite["expires_at"] <= now():
                 raise HTTPException(status_code=409, detail="邀请码已经过期")
@@ -90,7 +92,7 @@ def create_app(settings: Settings) -> FastAPI:
             except sqlite3.IntegrityError:
                 raise HTTPException(status_code=409, detail="这个用户名已经有人用了")
             claim = db.execute(
-                "UPDATE invites SET used_by = ?, used_at = ? WHERE id = ? AND used_by IS NULL",
+                "UPDATE invites SET used_by = ?, used_at = ? WHERE id = ? AND used_at IS NULL",
                 (cursor.lastrowid, now(), invite["id"]),
             )
             if claim.rowcount != 1:
@@ -240,8 +242,8 @@ def _check_username(username: str) -> None:
 
 
 def _check_password(password: str) -> None:
-    if len(password) < 8:
-        raise HTTPException(status_code=400, detail="密码至少 8 位")
+    if len(password) < MIN_PASSWORD:
+        raise HTTPException(status_code=400, detail=f"密码至少 {MIN_PASSWORD} 位")
 
 
 def _guard_lockout(db: sqlite3.Connection, key: str) -> None:

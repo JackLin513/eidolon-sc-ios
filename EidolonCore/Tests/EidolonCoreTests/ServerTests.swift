@@ -5,15 +5,6 @@ import XCTest
 final class ServerTests: XCTestCase {
     private let base = URL(string: "https://server.example")!
 
-    private func reply(_ status: Int, _ json: String) -> @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse) {
-        { request in
-            (
-                Data(json.utf8),
-                HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
-            )
-        }
-    }
-
     func testLoginPutsTheCredentialsInTheBody() async throws {
         let transport = StubHTTPTransport(
             reply(200, #"{"username":"jack","token":"t0ken","role":"admin","expires_at":"2027-05-06T00:00:00+00:00"}"#)
@@ -83,7 +74,7 @@ final class ServerTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer t0ken")
     }
 
-    func testARefusedRangeIsNotSilentlyTreatedAsTheWholeFile() async throws {
+    func testAnErrorBodyBecomesItsMessage() async throws {
         let transport = StubHTTPTransport(reply(416, #"{"detail":"Range 超出文件"}"#))
         let client = ServerClient(baseURL: base, token: "t0ken", transport: transport)
         await XCTAssertThrowsErrorAsync(try await client.packages()) { error in
@@ -91,10 +82,40 @@ final class ServerTests: XCTestCase {
         }
     }
 
+    // MARK: - 公告游标（spec #120）
+
+    func testNothingIsUnreadBeforeAnythingIsPublished() {
+        let cursor = AnnouncementCursor()
+        XCTAssertTrue(cursor.unread(in: []).isEmpty)
+        XCTAssertFalse(cursor.unread(in: [announcement(1), announcement(2)]).isEmpty)
+    }
+
+    func testOnlyWhatIsNewerThanTheCursorIsUnread() {
+        let cursor = AnnouncementCursor(latestSeen: 2)
+        let unread = cursor.unread(in: [announcement(1), announcement(2), announcement(3)])
+        XCTAssertEqual(unread.map(\.id), [3])
+    }
+
+    func testSeeingEverythingMovesTheCursorToTheNewest() {
+        let cursor = AnnouncementCursor(latestSeen: 1).havingSeen([announcement(1), announcement(4)])
+        XCTAssertEqual(cursor.latestSeen, 4)
+        XCTAssertTrue(cursor.unread(in: [announcement(1), announcement(4)]).isEmpty)
+    }
+
+    func testAnOlderListNeverMovesTheCursorBackwards() {
+        let cursor = AnnouncementCursor(latestSeen: 9).havingSeen([announcement(2)])
+        XCTAssertEqual(cursor.latestSeen, 9)
+        XCTAssertEqual(AnnouncementCursor(latestSeen: 9).havingSeen([]).latestSeen, 9)
+    }
+
+    private func announcement(_ id: Int) -> ServerAnnouncement {
+        ServerAnnouncement(id: id, title: "标题", body: "正文", publishedAt: "2026-11-06T00:00:00+00:00")
+    }
+
     // MARK: - 管理（spec #122）
 
     private func reply(
-        _ status: Int, _ json: String, reason: String?
+        _ status: Int, _ json: String, reason: String? = nil
     ) -> @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse) {
         { request in
             (
@@ -129,7 +150,7 @@ final class ServerTests: XCTestCase {
         let client = ServerClient(baseURL: base, token: "t0ken", transport: transport)
         try await client.setDisabled(true, userID: 4)
         try await client.setDisabled(false, userID: 4)
-        try await client.deleteUser(id: 4)
+        try await client.delete(userID: 4)
         try await client.rescanPackages()
 
         let paths = await transport.seen.map { "\($0.httpMethod ?? "") \($0.url?.path ?? "")" }

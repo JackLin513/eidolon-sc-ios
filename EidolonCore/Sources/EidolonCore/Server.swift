@@ -90,6 +90,26 @@ public struct ServerSession: Codable, Sendable, Hashable {
     public var isAdmin: Bool { role == "admin" }
 }
 
+/// 公告看没看过（spec #120）：游标是「最后看过的那条公告的标识」，只记在这台手机上。
+/// 界面只管把它读出来、推上去，判断都在这里。
+public struct AnnouncementCursor: Codable, Sendable, Equatable {
+    public var latestSeen: Int
+
+    public init(latestSeen: Int = 0) {
+        self.latestSeen = latestSeen
+    }
+
+    public func unread(in list: [ServerAnnouncement]) -> [ServerAnnouncement] {
+        list.filter { $0.id > latestSeen }
+    }
+
+    /// 「已读」：推到这份列表里最新的一条（列表空着就原地不动）。
+    public func havingSeen(_ list: [ServerAnnouncement]) -> AnnouncementCursor {
+        guard let newest = list.map(\.id).max() else { return self }
+        return AnnouncementCursor(latestSeen: max(latestSeen, newest))
+    }
+}
+
 /// 管理页里的一个账号（spec #122）。角色只能由服务器上的命令授予，这里只读。
 public struct ServerUser: Codable, Sendable, Hashable, Identifiable {
     public var id: Int
@@ -273,8 +293,8 @@ public struct ServerClient: Sendable {
         )
     }
 
-    public func deleteUser(id: Int) async throws {
-        _ = try await send(path: "/v1/admin/users/\(id)", method: "DELETE")
+    public func delete(userID: Int) async throws {
+        _ = try await send(path: "/v1/admin/users/\(userID)", method: "DELETE")
     }
 
     public func invites() async throws -> [ServerInvite] {

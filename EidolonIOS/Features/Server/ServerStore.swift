@@ -21,7 +21,8 @@ final class ServerStore {
     private(set) var session: ServerSession?
     private(set) var packages: [ServerPackage] = []
     private(set) var announcements: [ServerAnnouncement] = []
-    private(set) var latestAnnouncement = 0
+    /// 公告的已读游标（判断在 Core 的 `AnnouncementCursor` 里）。
+    private(set) var cursor = AnnouncementCursor()
     private(set) var isWorking = false
     private(set) var downloading: [Int: Int] = [:]
     var errorMessage: String?
@@ -39,7 +40,9 @@ final class ServerStore {
                 expiresAt: ""
             )
         }
-        latestAnnouncement = UserDefaults.standard.integer(forKey: Self.announcementCursorKey)
+        cursor = AnnouncementCursor(
+            latestSeen: UserDefaults.standard.integer(forKey: Self.announcementCursorKey)
+        )
     }
 
     var isSignedIn: Bool { session != nil }
@@ -51,8 +54,10 @@ final class ServerStore {
 
     /// 有没看过的新公告——那个红点就靠它。
     var hasUnreadAnnouncements: Bool {
-        announcements.contains { $0.id > latestAnnouncement }
+        !cursor.unread(in: announcements).isEmpty
     }
+
+    var latestAnnouncement: Int { cursor.latestSeen }
 
     private var baseURL: URL? {
         let text = baseURLText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -108,8 +113,7 @@ final class ServerStore {
         session = nil
         packages = []
         announcements = []
-        latestAnnouncement = 0
-        UserDefaults.standard.set(0, forKey: Self.announcementCursorKey)
+        // 已读游标留着：退出再登录，之前看过的公告不该又变成新的。
     }
 
     private func remember(_ session: ServerSession) {
@@ -141,11 +145,10 @@ final class ServerStore {
     }
 
     func markAnnouncementsSeen() {
-        guard let newest = announcements.last?.id else { return }
-        let stored = UserDefaults.standard.integer(forKey: Self.announcementCursorKey)
-        guard newest > stored else { return }
-        UserDefaults.standard.set(newest, forKey: Self.announcementCursorKey)
-        latestAnnouncement = newest
+        let next = cursor.havingSeen(announcements)
+        guard next != cursor else { return }
+        cursor = next
+        UserDefaults.standard.set(next.latestSeen, forKey: Self.announcementCursorKey)
     }
 
     /// 下完交给 `AppModel` 原来那三个导入入口之一。
@@ -168,6 +171,7 @@ final class ServerStore {
             case "bar": await app.importBarBundle(from: file)
             default: await app.importBundle(from: file)
             }
+            InstalledPackages.remember(version: package.version, for: package.kind)
             // 导入已经把它解到内容目录里了，这份几百 MB 的原文件不用再留着。
             try? FileManager.default.removeItem(at: file)
         } catch {

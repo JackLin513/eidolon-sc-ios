@@ -248,3 +248,24 @@ def _id(client: TestClient, username: str) -> int:
         ).fetchone()["id"]
     finally:
         connection.close()
+
+
+def test_deleting_an_account_does_not_make_its_invite_reusable(
+    client: TestClient, db
+) -> None:
+    token = admin_token(client, db)
+    created = client.post("/v1/admin/invites", headers=headers(token), json={}).json()
+    register(client, invite=created["code"], username="alice")
+    alice_id = _id(client, "alice")
+
+    assert client.delete(f"/v1/admin/users/{alice_id}", headers=headers(token)).status_code == 200
+
+    # 账号删了，那条码还是「用过」——不然同一张邀请码能开第二个账号。
+    listed = client.get("/v1/admin/invites", headers=headers(token)).json()["invites"]
+    assert listed[0]["state"] == "used"
+    again = client.post(
+        "/v1/register",
+        json={"invite": created["code"], "username": "bob", "password": PASSWORD},
+    )
+    assert again.status_code == 409
+    assert "用过" in again.json()["detail"]

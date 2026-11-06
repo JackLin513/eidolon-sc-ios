@@ -146,7 +146,7 @@ struct AccountView: View {
                         .font(.caption2).foregroundStyle(.secondary)
                 } else if server.isInstalled(package) {
                     HStack(spacing: 10) {
-                        Text("已安装").font(.caption2).foregroundStyle(.secondary)
+                        Text(installedLabel(package)).font(.caption2).foregroundStyle(.secondary)
                         Button("重新下载") {
                             Task { await server.download(package, into: app) }
                         }
@@ -159,9 +159,19 @@ struct AccountView: View {
                     .font(.caption)
                 }
             }
+            Text("\(package.size.megabytes) · \(String(package.createdAt.prefix(10)))")
+                .font(.caption2).foregroundStyle(.tertiary)
             if let written = server.downloading[package.id] {
                 ProgressView(value: Double(written), total: Double(max(package.size, 1)))
             }
         }
+    }
+
+    /// 「已安装」后面带上手机里那一版的版本号（spec #120 的故事 23）。
+    private func installedLabel(_ package: ServerPackage) -> String {
+        if let version = InstalledPackages.version(for: package.kind), version != package.version {
+            return "已安装 \(version)"
+        }
+        return "已安装"
     }
 }

@@ -56,7 +56,8 @@ python -m eidolon_server grant <用户名>        # 只升角色，不动密码�
 ```
 
 包文件名带种类和版本，`scan` 按 `种类-版本.eidolonpkg` 认，例如
-`content-2026-11-06.eidolonpkg`、`stand-2026-11-06.eidolonpkg`。
+`eidolon-content-2026-11-06.eidolonpkg`、`eidolon-stand-2026-11-06.eidolonpkg`
+（`eidolon-` 前缀可有可无；没有日期的那种 `eidolon-content.eidolonpkg` 记成版本 `1`）。
 
 ## 接口
 

@@ -66,7 +66,7 @@ struct AdminView: View {
             Button("删除", role: .destructive) {
                 guard let target = userToDelete else { return }
                 userToDelete = nil
-                Task { await run { try await self.client?.deleteUser(id: target.id) } }
+                Task { await run { try await self.client?.delete(userID: target.id) } }
             }
             Button("取消", role: .cancel) { userToDelete = nil }
         } message: {

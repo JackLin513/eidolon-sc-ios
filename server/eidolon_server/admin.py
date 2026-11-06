@@ -16,11 +16,11 @@ from .auth import hash_password, new_invite_code
 from .db import now
 from .packages import sync
 from .session import current_user, database, require_admin
+from .settings import MIN_PASSWORD
 
 router = APIRouter(prefix="/v1/admin")
 
 DEFAULT_INVITE_DAYS = 7
-MIN_PASSWORD = 8
 
 
 class InviteRequest(BaseModel):
@@ -202,7 +202,7 @@ def revoke_invite(
         row = db.execute("SELECT * FROM invites WHERE id = ?", (invite_id,)).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="没有这个邀请码")
-        if row["used_by"] is not None:
+        if row["used_at"] is not None:
             raise HTTPException(status_code=409, detail="这个邀请码已经用掉了，作废没有意义")
         db.execute("DELETE FROM invites WHERE id = ?", (invite_id,))
         _audit(db, user, "revoke", row["code"])
@@ -213,7 +213,7 @@ def revoke_invite(
 
 def _invite(row: sqlite3.Row) -> dict:
     """未用 / 已用 / 过期——界面照着这个说，不自己再算一遍。"""
-    if row["used_by"] is not None:
+    if row["used_at"] is not None:
         state = "used"
     elif row["expires_at"] is not None and row["expires_at"] <= now():
         state = "expired"

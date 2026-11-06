@@ -26,3 +26,5 @@ class Settings:
 
 LOGIN_ATTEMPTS = 5
 LOGIN_LOCK_MINUTES = 15
+# 建账号、改密码都按这一条来，别在三处各写一个 8。
+MIN_PASSWORD = 8

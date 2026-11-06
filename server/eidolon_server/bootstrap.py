@@ -10,8 +10,7 @@ import sqlite3
 
 from .auth import hash_password
 from .db import now
-
-MIN_PASSWORD = 8
+from .settings import MIN_PASSWORD
 
 
 class BootstrapError(Exception):

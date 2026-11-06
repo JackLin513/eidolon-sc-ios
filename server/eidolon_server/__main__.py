@@ -70,7 +70,7 @@ def _dispatch(arguments, db: sqlite3.Connection, settings: Settings) -> int:
 
     if arguments.command == "invites":
         for row in db.execute("SELECT * FROM invites ORDER BY id DESC"):
-            used = row["used_by"] and f"已用于账号 {row['used_by']}"
+            used = row["used_at"] and f"已用于账号 {row['used_by'] or '已删除的账号'}"
             print(f"{row['code']}\t{row['expires_at'] or '长期'}\t{used or '没用过'}")
         return 0
 
