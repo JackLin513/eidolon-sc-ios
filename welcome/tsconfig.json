@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@/lib/api": ["./src/shims/api.ts"],
+      "@/lib/imageColor": ["./src/shims/imageColor.ts"],
+      "@/lib/repository": ["./src/shims/repository.ts"],
+      "@/lib/signIn": ["./src/shims/signIn.ts"],
+      "@/components/ui/button": ["./src/shims/button.ts"],
+      "@/components/conversations/stand/Stand": ["./src/shims/stand.ts"],
+      "@/i18n": ["./src/shims/i18n.ts"]
+    }
+  },
+  "include": ["src"]
+}

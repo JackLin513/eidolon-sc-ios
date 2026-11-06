@@ -1,0 +1,82 @@
+/*
+ * 落地页之外的几样东西：字体（上游的静态子集）、两个 Tailwind 工具类（页面里只用了这两个），
+ * 还有右上角那个入口按钮。版式在 landing.css 里。
+ */
+@font-face {
+  font-family: "Shippori Mincho B1";
+  src: url("./landing/fonts/shippori-mincho-b1-600.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Noto Serif SC";
+  src: url("./landing/fonts/noto-serif-sc-600.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Noto Sans SC";
+  src: url("./landing/fonts/noto-sans-sc-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+html {
+  --lp-font-ja-act0: "Shippori Mincho B1";
+  --lp-font-ja: "Shippori Mincho B1";
+  --lp-font-zh-title-act0: "Noto Serif SC";
+  --lp-font-zh-title: "Noto Serif SC";
+  --lp-font-zh-act0: "Noto Sans SC";
+  --lp-font-zh: "Noto Sans SC";
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+.justify-self-start {
+  justify-self: start;
+}
+
+/* 右上角的入口：和页面其余部分同一种语气（细边、衬线），不抢戏。 */
+.lp-enter {
+  font: inherit;
+  font-size: 0.875rem;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  padding: 0.5rem 1.1rem;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.lp-enter:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* 页面起不来时的兜底：黑底、App 名、一个入口。 */
+.welcome-fallback {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  background: #020203;
+  color: rgba(255, 255, 255, 0.9);
+  font-family: "Shippori Mincho B1", "Noto Serif SC", serif;
+}
+.welcome-fallback-name {
+  font-size: 1.5rem;
+  letter-spacing: 0.3em;
+}
