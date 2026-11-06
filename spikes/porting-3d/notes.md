@@ -613,3 +613,20 @@ col += _Cube2D(uv) · (_MainTex.a · _Reflection)
   #26 评论。总表在 `docs/research/mltd-3d-pipeline-2026-10-31.md`。
 - README 已从 PMX 路线改写为原生资产路线；`mltools-headless.patch`、`pmx_to_usdz.py`、
   `render_vmd.py` 已删除（git 历史可查）。
+
+## 裙摆/摇摆解算（2026-11-06，回看游戏本体）
+
+Unity 里原样播放 `the_standd_appear_lop_ver01` 时裙子完全不跟着腿走：57 条曲线里没有任何 `skirt_*`。查过之后结论是**参数和算法都在游戏里，可以直接搬**。
+
+**参数是数据，不是代码**：每个角色包自带一个 `<名字>_sway` TextAsset（pr001：head 8.3 KB、body 23.9 KB）。格式是逐条的 `SwayManager / SwayCollider / SwayBone`，字段就是
+`stiffnessForce / dragForce / followForce / gravity / radius / minYAngle / maxYAngle / minZAngle / maxZAngle / sideLink / isSkirt / HitMuteForce / HitMuteRate / antiFold* / swayLength / resolveDepthFactor`。
+
+**裙子就在 body 的 sway 文件里**：`MODEL_00/BODY_SCALE/BASE/KOSHI/skirt_GP/skirt_L*` 一串 `isSkirt: True`，彼此用 `sideLink` 连成侧线；碰撞体是挂在骨骼上的 Sphere/Capsule（如 `MUNE1/MUNE2/KUBI/ATAMA` 的头球、腿上的胶囊）。裙摆顶点权重也印证：`KOSHI` 154、`MOMO_L/R` 各 49、十根 `skirt_*` 各 ~28。
+
+**算法是 IL2CPP 原生代码**（`build/mltd-spike/out/il2cpp/dump.cs` 里有完整签名和地址）：
+- `Imas.BoneLib.SwayBoneMT`：`SwayMove` @0x1C6867C、`SwayHit` @0x1C68C3C、`CalcRotate` @0x1C69F04、`CalcSideLineDistance` @0x1C6A450、`CalcAntiFoldForce` @0x1C6A6CC
+- `Imas.BoneLib.SwayColliderMT`：`CapsuleHit` / `CapsuleBridgeHit` / `Check` / `CheckPlane` / `CapsuleSideLineHit` / `CheckSideLine`
+- `Imas.BoneLib.SwayCtrlMT`：Jobs/Burst 并行调度（这套并行是可选的，算法本身按单骨骼串行就能等价）
+- 固定参数结构 `SwayBoneMT.FixedParams` 已给出全部字段（含 `isSkirt / sideLink / useLinkHit / HitMuteForce / resolveDepthFactor / bodyScale`），等于把 `SwayBone` 的文本参数怎么用写清楚了。
+
+**结论**：不搬我们自己 `ios/MotionSway.swift` 的调参，改为「解析游戏 `_sway.txt` + 按 `SwayBoneMT`/`SwayColliderMT` 的方法 1:1 实现」。二进制在 `~/Library/Containers/io.playcover.PlayCover/ミリシタ.app/Frameworks/UnityFramework.framework/UnityFramework`（__TEXT 0x0–0x5A48000，上面这些地址都在段内，可反编译）。
