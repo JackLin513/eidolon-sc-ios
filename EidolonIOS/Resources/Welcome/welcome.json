@@ -12,6 +12,7 @@
           "official": "#ffbad6",
           "ink": "#fbd0e1",
           "halo": "#ffbad6",
+          "stand": "stand-1030010010",
           "greeting": "mano-16c5c24b9843.mp3",
           "greetingJa": "ほわっ……プロデューサーさん、ですか？　よろしくお願いしますっ",
           "subtitle": "呼哇……你就是制作人吗？请多指教！"
@@ -24,6 +25,7 @@
           "official": "#144384",
           "ink": "#cbe0ff",
           "halo": "#5092f0",
+          "stand": "stand-1030020010",
           "greeting": "hiori-8990068102d6.mp3",
           "greetingJa": "はじめまして、風野灯織です。……精一杯、精進します",
           "subtitle": "初次见面，我是風野灯織。……我会竭尽全力。"
@@ -36,6 +38,7 @@
           "official": "#ffe012",
           "ink": "#ede09a",
           "halo": "#efd10c",
+          "stand": "stand-1030030010",
           "greeting": "meguru-01264963cb95.mp3",
           "greetingJa": "はじめまして！　えへへっ、いっぱい仲良くしようねっ、プロデューサー！",
           "subtitle": "初次见面！嘿嘿，我们要好好相处哦，制作人！"
@@ -53,6 +56,7 @@
           "official": "#f84cad",
           "ink": "#fdcfe3",
           "halo": "#ef5aab",
+          "stand": "stand-1030040010",
           "greeting": "kogane-24fa6aeb77ce.mp3",
           "greetingJa": "月岡恋鐘たい！　うち、ばりすごかアイドルになるけんね！",
           "subtitle": "我是月岡恋鐘！我会成为超——厉害的偶像哦！"
@@ -65,6 +69,7 @@
           "official": "#a846fb",
           "ink": "#e6d5fe",
           "halo": "#ae6bf3",
+          "stand": "stand-1030050010",
           "greeting": "mamimi-4a94c5aa23e6.mp3",
           "greetingJa": "ふぁ……新しいプロデューサーですかぁ？　まみみ、悪い子ですよー",
           "subtitle": "哈啊……新来的制作人？摩美々可是坏孩子哦～"
@@ -77,6 +82,7 @@
           "official": "#006047",
           "ink": "#bdead7",
           "halo": "#40a785",
+          "stand": "stand-1030060010",
           "greeting": "sakuya-7eef8b4234d8.mp3",
           "greetingJa": "フフ、はじめまして。アナタがプロデューサーかい？　よろしく頼むよ",
           "subtitle": "呵呵，初次见面。你就是制作人吗？请多关照。"
@@ -89,6 +95,7 @@
           "official": "#3b91c4",
           "ink": "#c0e4fd",
           "halo": "#439bd0",
+          "stand": "stand-1030070010",
           "greeting": "yuika-b38039839c5d.mp3",
           "greetingJa": "どーも、三峰です！　さてさて、プロデューサーのお手並み拝見かな？",
           "subtitle": "你好呀，我是三峰！那么，就来见识一下制作人的本事吧？"
@@ -101,6 +108,7 @@
           "official": "#d9f2ff",
           "ink": "#d2e1e8",
           "halo": "#bed5e1",
+          "stand": "stand-1030080010",
           "greeting": "kiriko-d8a93f224085.mp3",
           "greetingJa": "ゆ、幽谷……霧子です……。よろしく、お願いします……",
           "subtitle": "我、我是幽谷……霧子……请多、指教……"
@@ -118,6 +126,7 @@
           "official": "#e5461c",
           "ink": "#fdd3c8",
           "halo": "#f3562f",
+          "stand": "stand-1030090010",
           "greeting": "kaho-0a1c8e3a2bc1.mp3",
           "greetingJa": "小宮果穂です！　ヒーローみたいなアイドル、目指しますっ！",
           "subtitle": "我是小宮果穂！我要成为像英雄一样的偶像！"
@@ -130,6 +139,7 @@
           "official": "#f93b90",
           "ink": "#fed0dd",
           "halo": "#ed5090",
+          "stand": "stand-1030100010",
           "greeting": "chiyoko-7ffad2109a15.mp3",
           "greetingJa": "チョコアイドル、園田智代子です！　ちょこっとだけでも、覚えてくださいねっ",
           "subtitle": "我是巧克力偶像園田智代子！哪怕只记住一点点也好哦！"
@@ -142,6 +152,7 @@
           "official": "#ffc602",
           "ink": "#f7db98",
           "halo": "#ffc602",
+          "stand": "stand-1030110010",
           "greeting": "juri-ef2891a09d1d.mp3",
           "greetingJa": "……西城樹里。よろしくな。つーか、アタシで本当にいいのかよ？",
           "subtitle": "……我是西城樹里。请多关照。话说，真的选我没问题吗？"
@@ -154,6 +165,7 @@
           "official": "#89c3eb",
           "ink": "#c1e3fc",
           "halo": "#89c3eb",
+          "stand": "stand-1030120010",
           "greeting": "rinze-224c62eef821.mp3",
           "greetingJa": "プロデューサーさま……。凛世は……お傍に、おります……",
           "subtitle": "制作人大人……凛世……会一直在您身边……"
@@ -166,6 +178,7 @@
           "official": "#90e667",
           "ink": "#c3ecb1",
           "halo": "#90e667",
+          "stand": "stand-1030130010",
           "greeting": "natsuha-16c94d471baf.mp3",
           "greetingJa": "有栖川夏葉よ。私と一緒に、トップまで駆け上がりましょう！",
           "subtitle": "我是有栖川夏葉。和我一起，冲上顶点吧！"
@@ -183,6 +196,7 @@
           "official": "#f54275",
           "ink": "#fdd1d7",
           "halo": "#f14e79",
+          "stand": "stand-1030140010",
           "greeting": "amana-a9475678c9b9.mp3",
           "greetingJa": "大崎甘奈だよ☆　甜花ちゃんと一緒に、めーっちゃ頑張るね！",
           "subtitle": "我是大崎甘奈！我会和甜花一起超——努力的！"
@@ -195,6 +209,7 @@
           "official": "#e75bec",
           "ink": "#fecafe",
           "halo": "#dd6be0",
+          "stand": "stand-1030150010",
           "greeting": "tenka-05e395a911ca.mp3",
           "greetingJa": "て、甜花……です……。お、お手柔らかに……にへへ……",
           "subtitle": "我、我是甜花……请、请手下留情……嘿嘿……"
@@ -207,6 +222,7 @@
           "official": "#fbfafa",
           "ink": "#dedede",
           "halo": "#d1d1d1",
+          "stand": "stand-1030160010",
           "greeting": "chiyuki-e9ec33fb4016.mp3",
           "greetingJa": "桑山千雪です。ふふっ、これから一緒に、素敵なこといっぱいしましょうね",
           "subtitle": "我是桑山千雪。呵呵，以后一起做很多美好的事吧。"
@@ -224,6 +240,7 @@
           "official": "#f30100",
           "ink": "#fed2cb",
           "halo": "#f45343",
+          "stand": "stand-1030170010",
           "greeting": "asahi-db51cac5930b.mp3",
           "greetingJa": "芹沢あさひっす！　プロデューサーさん、なんか面白いことあるっすか？",
           "subtitle": "我是芹沢あさひ！制作人，有什么好玩的事吗？"
@@ -236,6 +253,7 @@
           "official": "#5ce626",
           "ink": "#c0edb4",
           "halo": "#77e158",
+          "stand": "stand-1030180010",
           "greeting": "fuyuko-6819358540eb.mp3",
           "greetingJa": "ふゆです、よろしくお願いしますっ♡……[flatly]って、あんたがプロデューサー？",
           "subtitle": "我是ふゆ，请多指教～……什么，你就是制作人？"
@@ -248,6 +266,7 @@
           "official": "#ff00ff",
           "ink": "#fecafb",
           "halo": "#df69dc",
+          "stand": "stand-1030190010",
           "greeting": "mei-6bc304fef661.mp3",
           "greetingJa": "へいへーい、和泉愛依だよ～！　プロデューサー、マジでヨロシクね！",
           "subtitle": "嘿嘿～，我是和泉愛依！制作人，真心请多关照啦！"
@@ -265,6 +284,7 @@
           "official": "#50d0d0",
           "ink": "#aaecec",
           "halo": "#50d0d0",
+          "stand": "stand-1030200010",
           "greeting": "toru-84aa1eb03f2b.mp3",
           "greetingJa": "よろしく、プロデューサー。ふふっ、なんか楽しそう、これから",
           "subtitle": "请多关照，制作人。呵呵，接下来好像会很有意思。"
@@ -277,6 +297,7 @@
           "official": "#be1e3e",
           "ink": "#fed1d2",
           "halo": "#f44f63",
+          "stand": "stand-1940210010",
           "greeting": "madoka-867d357e0063.mp3",
           "greetingJa": "……どうも、樋口です。別に、期待はしてませんので",
           "subtitle": "……你好，我是樋口。我可没抱什么期待。"
@@ -289,6 +310,7 @@
           "official": "#7967c3",
           "ink": "#ddd9fe",
           "halo": "#9380e5",
+          "stand": "stand-1030220010",
           "greeting": "koito-8efd5c062c75.mp3",
           "greetingJa": "ふ、福丸小糸です……！　ぜ、全然よゆーですから……！",
           "subtitle": "我、我是福丸小糸……！完、完全游刃有余的……！"
@@ -301,6 +323,7 @@
           "official": "#ffc639",
           "ink": "#fada99",
           "halo": "#ffc639",
+          "stand": "stand-1030230010",
           "greeting": "hinana-8499d82aaa1a.mp3",
           "greetingJa": "あは～、プロデューサー？　雛菜と一緒に、しあわせ～になろ～♡",
           "subtitle": "啊哈～，制作人？和雛菜一起变得幸福～吧～"
@@ -318,6 +341,7 @@
           "official": "#a6ceb6",
           "ink": "#cde5d6",
           "halo": "#a6ceb6",
+          "stand": "stand-1030240010",
           "greeting": "nichika-adfa764380f3.mp3",
           "greetingJa": "七草にちかです！　ぜったい、ぜーったい売れてみせますからー！",
           "subtitle": "我是七草にちか！我绝对、绝——对会红给你看的！"
@@ -330,6 +354,7 @@
           "official": "#760f10",
           "ink": "#fed2cc",
           "halo": "#ed5a51",
+          "stand": "stand-1030250010",
           "greeting": "mikoto-7a561f4d66ec.mp3",
           "greetingJa": "……緋田美琴です。よろしくね、プロデューサー",
           "subtitle": "……我是緋田美琴。请多关照，制作人。"
@@ -347,6 +372,7 @@
           "official": "#24130d",
           "ink": "#eadad5",
           "halo": "#b08779",
+          "stand": "stand-1030260010",
           "greeting": "luca-e06d2d7fe1fd.mp3",
           "greetingJa": "……アンタがプロデューサー？　チッ……勝手にしろよ",
           "subtitle": "……你就是制作人？啧……随你便。"
@@ -359,6 +385,7 @@
           "official": "#e0b5d3",
           "ink": "#f0d5e7",
           "halo": "#e0b5d3",
+          "stand": "stand-1030270010",
           "greeting": "hana-c5f33a59290f.mp3",
           "greetingJa": "鈴木羽那でーすっ！　あはっ、あたしのこと、ちゃんと見ててね？",
           "subtitle": "我是鈴木羽那！啊哈，要好好看着我哦？"
@@ -371,6 +398,7 @@
           "official": "#ead7a4",
           "ink": "#e9ddbf",
           "halo": "#e2d09e",
+          "stand": "stand-1030280010",
           "greeting": "haruki-2fab44ba9a2c.mp3",
           "greetingJa": "郁田はるきです。ふふ……これから、どんな色が見えるのかなぁ",
           "subtitle": "我是郁田はるき。呵呵……接下来，会看到什么样的色彩呢。"
@@ -388,6 +416,7 @@
           "official": "#c3d825",
           "ink": "#dae6a2",
           "halo": "#c3d825",
+          "stand": "stand-2040910010",
           "greeting": "hazuki-92fc403f3375.mp3",
           "greetingJa": "事務員の七草はづきです～。今日からよろしくお願いしますね、プロデューサーさん",
           "subtitle": "我是事务员七草はづき～。从今天起请多关照，制作人。"

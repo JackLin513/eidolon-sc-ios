@@ -29,7 +29,10 @@ export default defineConfig({
   resolve: {
     alias: [
       { find: "@/components/ui/button", replacement: shim("./src/shims/button.ts") },
-      { find: "@/components/conversations/stand/Stand", replacement: shim("./src/shims/stand.ts") },
+      { find: "@/components/conversations/stand/Stand", replacement: shim("./src/stand/Stand.tsx") },
+      { find: "@/lib/standAnimations", replacement: shim("./src/stand/standAnimations.ts") },
+      { find: "@/lib/standFrames", replacement: shim("./src/stand/standFrames.ts") },
+      { find: "@/lib/utils", replacement: shim("./src/shims/utils.ts") },
       { find: "@/lib/api", replacement: shim("./src/shims/api.ts") },
       { find: "@/lib/imageColor", replacement: shim("./src/shims/imageColor.ts") },
       { find: "@/lib/repository", replacement: shim("./src/shims/repository.ts") },

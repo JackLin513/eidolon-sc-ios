@@ -46,6 +46,8 @@ CUE = re.compile(r"^\s*(?:\[[a-z][a-z ,]*\]\s*)+")
 CALL_OPENER = re.compile(r"https://stand\.hmhnk\.top/call-openers/(?P<id>[a-z0-9-]+)-[0-9a-f]+\.mp3")
 # 第 5 幕浮岛上的体素小人：只有四座岛，每座一位。
 VOXELS = re.compile(r"https://stand\.hmhnk\.top/landing-voxels/(?P<id>[a-z0-9-]+)\.json")
+# 立绘：每位只用角色配置里的默认衣装（落地页只显示这一套）。
+ATLAS_PAGE = re.compile(r"^([A-Za-z0-9_.-]+\.(?:png|webp))$", re.M)
 
 
 def read_page(path: str | None) -> str:
@@ -83,6 +85,7 @@ def roster(page: str, characters: dict[str, dict]) -> dict:
                     "official": plate.group("official").lower(),
                     "ink": plate.group("ink").lower(),
                     "halo": plate.group("halo").lower(),
+                    "stand": (character.get("default_outfit") or "").replace("/", "-") or None,
                     "greeting": Path(greetings.get(identifier, "")).name or None,
                     "greetingJa": without_cue(character.get("greeting")),
                     "subtitle": character.get("greeting_subtitle"),
@@ -104,6 +107,37 @@ def roster(page: str, characters: dict[str, dict]) -> dict:
 
 def without_cue(text: str | None) -> str | None:
     return CUE.sub("", text) if text else None
+
+
+def download_stands(characters: dict[str, dict], directory: Path) -> None:
+    """每位角色默认衣装的三样文件（data.json、data.atlas、贴图），放进 stand/<kind>-<enzaId>/。"""
+    directory.mkdir(parents=True, exist_ok=True)
+    for character in characters.values():
+        outfit = character.get("default_outfit")
+        if not outfit:
+            continue
+        home = directory / outfit.replace("/", "-")
+        if (home / "data.json").exists() and (home / "data.atlas").exists():
+            continue
+        home.mkdir(parents=True, exist_ok=True)
+        base = f"{BUCKET}/spine/idols/{outfit}/"
+        for name in ("data.json", "data.atlas"):
+            path = home / name
+            if not path.exists():
+                print(f"下载 {outfit}/{name}", file=sys.stderr)
+                _fetch(base + name, path)
+        atlas = (home / "data.atlas").read_text(encoding="utf-8", errors="replace")
+        for page in ATLAS_PAGE.findall(atlas):
+            path = home / page
+            if not path.exists():
+                print(f"下载 {outfit}/{page}", file=sys.stderr)
+                _fetch(base + page, path)
+
+
+def _fetch(url: str, target: Path) -> None:
+    request = urllib.request.Request(url, headers={"User-Agent": "eidolon-roster"})
+    with urllib.request.urlopen(request, timeout=120) as response:
+        target.write_bytes(response.read())
 
 
 def download(page: str, directory: Path) -> None:
@@ -136,12 +170,15 @@ def main() -> None:
         help="上游的角色配置",
     )
     parser.add_argument("--greetings", type=Path, help="把招呼语音下载到这个目录")
+    parser.add_argument("--stands", type=Path, help="把每位默认衣装下载到这个目录")
     parser.add_argument("--out", type=Path, required=True)
     arguments = parser.parse_args()
 
     page = read_page(arguments.page)
     if arguments.greetings:
         download(page, arguments.greetings)
+    if arguments.stands:
+        download_stands(characters(arguments.characters), arguments.stands)
     data = roster(page, characters(arguments.characters))
     arguments.out.parent.mkdir(parents=True, exist_ok=True)
     arguments.out.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

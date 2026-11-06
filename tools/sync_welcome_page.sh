@@ -31,6 +31,16 @@ mkdir -p "$DEST" "$ROOT/welcome/public/landing"
 # 第 4 幕那台手机的模型和贴图（上游 public/landing）。
 (cd "$PUBLIC" && tar cf - .) | tar xf - -C "$ROOT/welcome/public/landing"
 
+# 立绘：上游通话层那个 React 组件（spine-ts 3.6 画）和它依赖的两个小库、运行时。
+STAND_SRC="$UPSTREAM/frontend/src/components/conversations/stand"
+mkdir -p "$ROOT/welcome/src/stand" "$ROOT/welcome/public/vendor/spine-3.6"
+for name in Stand.tsx StandEngine.ts spineRuntime.ts; do
+  cp "$STAND_SRC/$name" "$ROOT/welcome/src/stand/$name"
+done
+cp "$UPSTREAM/frontend/src/lib/standAnimations.ts" "$ROOT/welcome/src/stand/standAnimations.ts"
+cp "$UPSTREAM/frontend/src/lib/standFrames.ts" "$ROOT/welcome/src/stand/standFrames.ts"
+cp -R "$UPSTREAM/frontend/public/vendor/spine-3.6/." "$ROOT/welcome/public/vendor/spine-3.6/"
+
 # 接通音和挂断音（上游 public/sounds）：页面按 `/sounds/…` 取，少一份就听不到。
 mkdir -p "$ROOT/welcome/public/sounds"
 (cd "$UPSTREAM/frontend/public/sounds" && tar cf - .) | tar xf - -C "$ROOT/welcome/public/sounds"
