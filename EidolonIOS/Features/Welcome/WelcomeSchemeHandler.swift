@@ -37,7 +37,22 @@ final class WelcomeSchemeHandler: NSObject, WKURLSchemeHandler {
         // 每个请求都在 `start` 里当场答完，没有要取消的东西。
     }
 
+    /// 调试：数一下每秒有多少请求，看看是不是在反复要同一份素材。
+    private static var requestsThisSecond = 0
+    private static var lastSecond = 0
+
+    private func noteRequest(_ url: URL) {
+        let now = Int(Date().timeIntervalSince1970)
+        if now != Self.lastSecond {
+            print("[welcome] requests/s \(Self.requestsThisSecond) last=\(url.lastPathComponent)")
+            Self.lastSecond = now
+            Self.requestsThisSecond = 0
+        }
+        Self.requestsThisSecond += 1
+    }
+
     private func read(_ url: URL) -> (Int, String, Data) {
+        noteRequest(url)
         let root: URL
         switch url.host {
         case Self.pageHost: root = pageRoot

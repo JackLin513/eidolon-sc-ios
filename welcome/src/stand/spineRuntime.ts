@@ -18,9 +18,11 @@ export function loadSpineRuntime(): Promise<SpineRuntime> {
   if (loaded) return Promise.resolve(loaded);
   loading ??= new Promise<SpineRuntime>((resolve, reject) => {
     const script = document.createElement("script");
+    console.log("[stand] loading runtime");
     script.src = SPINE_RUNTIME_URL;
     script.async = true;
     script.onload = () => {
+      console.log("[stand] runtime loaded");
       const spine = (window as SpineWindow).spine;
       if (spine) resolve(spine);
       else reject(new Error(`${SPINE_RUNTIME_URL} 没有提供 window.spine`));

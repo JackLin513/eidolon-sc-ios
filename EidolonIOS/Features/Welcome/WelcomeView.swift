@@ -114,13 +114,23 @@ private struct WelcomeWebView: UIViewRepresentable {
         // 这里对这个 scheme 的页面全部放开。
         configuration.mediaTypesRequiringUserActionForPlayback = []
 
+        // 和 App 里立绘那个 WebView 对齐：同样的配置在那边能连续画几个小时的 Spine，
+        // 这里先照抄，看看崩溃是不是来自配置差异。
+        configuration.websiteDataStore = .nonPersistent()
+
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
-        webView.isOpaque = false
+        // 不透明：透明 WKWebView 里的 WebGL 走另一条合成路径，真机上曾把网页进程搞崩。
+        // 这一页本来就是纯黑底，不透明没有视觉变化。
+        webView.isOpaque = true
         webView.backgroundColor = .black
         webView.scrollView.backgroundColor = .black
         webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.scrollView.bounces = false
+        webView.scrollView.pinchGestureRecognizer?.isEnabled = false
+        webView.allowsBackForwardNavigationGestures = false
+        webView.allowsLinkPreview = false
         webView.load(URLRequest(url: url))
         return webView
     }
@@ -176,15 +186,26 @@ private struct WelcomeWebView: UIViewRepresentable {
 
         /// 页面起不来（资源丢了、WebContent 崩了）：交给兜底画面。
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
+            print("[welcome] didFailProvisionalNavigation \(error)")
             onFailure()
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
+            print("[welcome] didFail \(error)")
             onFailure()
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            print("[welcome] webContentProcessDidTerminate")
             onFailure()
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            didReceive challenge: URLAuthenticationChallenge
+        ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+            print("[welcome] challenge \(challenge.protectionSpace)")
+            return (.performDefaultHandling, nil)
         }
     }
 }

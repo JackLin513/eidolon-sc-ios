@@ -41,6 +41,47 @@ cp "$UPSTREAM/frontend/src/lib/standAnimations.ts" "$ROOT/welcome/src/stand/stan
 cp "$UPSTREAM/frontend/src/lib/standFrames.ts" "$ROOT/welcome/src/stand/standFrames.ts"
 cp -R "$UPSTREAM/frontend/public/vendor/spine-3.6/." "$ROOT/welcome/public/vendor/spine-3.6/"
 
+# 立绘内部再打几行日志：死在哪一步（运行时脚本 / 读素材 / 建骨架）。
+python3 - "$ROOT/welcome/src/stand" <<'PY'
+import sys
+from pathlib import Path
+
+home = Path(sys.argv[1])
+
+runtime = home / "spineRuntime.ts"
+text = runtime.read_text()
+old = '    script.src = SPINE_RUNTIME_URL;'
+new = '    console.log("[stand] loading runtime");\n    script.src = SPINE_RUNTIME_URL;'
+assert old in text
+text = text.replace(old, new)
+old = '      const spine = (window as SpineWindow).spine;'
+new = '      console.log("[stand] runtime loaded");\n      const spine = (window as SpineWindow).spine;'
+assert old in text
+runtime.write_text(text.replace(old, new))
+
+engine = home / "StandEngine.ts"
+text = engine.read_text()
+
+
+def swap(old, new):
+    global text
+    assert old in text, old[:50]
+    text = text.replace(old, new, 1)
+
+
+swap('  private readonly frame = (now: number): void => {',
+     '  private frames?: number;\n\n  private readonly frame = (now: number): void => {\n    if (this.frames === undefined) this.frames = 0;\n    if (this.frames++ < 10) console.log("[stand] frame " + this.frames + " @" + Math.round(now));')
+swap('    const data = new spine.SkeletonJson(loader).readSkeletonData(this.assets.get(json) as string);',
+     '    console.log("[stand] reading skeleton");\n    const data = new spine.SkeletonJson(loader).readSkeletonData(this.assets.get(json) as string);\n    console.log("[stand] skeleton parsed");')
+swap('  private start(): void {',
+     '  private start(): void {\n    console.log("[stand] starting render");')
+swap('    let fetching = this.fetching.get(url);',
+     '    console.log("[stand] fetching " + url);\n    let fetching = this.fetching.get(url);')
+swap('        .finally(() => this.fetching.delete(url));',
+     '        .then(() => console.log("[stand] fetched " + url))\n        .finally(() => this.fetching.delete(url));')
+engine.write_text(text)
+PY
+
 # 接通音和挂断音（上游 public/sounds）：页面按 `/sounds/…` 取，少一份就听不到。
 mkdir -p "$ROOT/welcome/public/sounds"
 (cd "$UPSTREAM/frontend/public/sounds" && tar cf - .) | tar xf - -C "$ROOT/welcome/public/sounds"
@@ -124,6 +165,25 @@ swap_new = """  .lp-act7-copy {
 assert swap_old in text
 text = text.replace(swap_old, swap_new)
 css.write_text(text)
+
+# 立绘这条路上打几行日志：真机上它在哪一步把 WebContent 进程带崩，日志会停在哪一行。
+slot = path.with_name("StandSlot.tsx")
+text = slot.read_text()
+swap_old = 'const Stand = lazy(() => import("@/components/conversations/stand/Stand").then((m) => ({ default: m.Stand })));'
+swap_new = """const Stand = lazy(() => {
+  console.log("[stand] importing component");
+  return import("@/components/conversations/stand/Stand")
+    .then((m) => {
+      console.log("[stand] component loaded");
+      return { default: m.Stand };
+    })
+    .catch((error) => {
+      console.log("[stand] import failed " + String(error));
+      throw error;
+    });
+});"""
+assert swap_old in text
+slot.write_text(text.replace(swap_old, swap_new))
 
 store = path.with_name("interactionStore.ts")
 text = store.read_text()

@@ -207,7 +207,9 @@ export class StandEngine {
     const atlas = `${url}data.atlas`;
     const spine = this.spine;
     const loader = new spine.AtlasAttachmentLoader(this.assets.get(atlas) as TextureAtlas);
+    console.log("[stand] reading skeleton");
     const data = new spine.SkeletonJson(loader).readSkeletonData(this.assets.get(json) as string);
+    console.log("[stand] skeleton parsed");
     const skeleton = new spine.Skeleton(data);
     if (data.findSkin("normal")) skeleton.setSkinByName("normal");
     skeleton.setToSetupPose();
@@ -235,6 +237,7 @@ export class StandEngine {
    * 等两份都有了结果再往下走：先失败的那份不能让另一份在引擎销毁之后才把贴图传上去。
    */
   private fetchOutfit(url: string): Promise<void> {
+    console.log("[stand] fetching " + url);
     let fetching = this.fetching.get(url);
     if (!fetching) {
       fetching = Promise.allSettled([
@@ -248,6 +251,7 @@ export class StandEngine {
         .then((results) => {
           for (const result of results) if (result.status === "rejected") throw result.reason;
         })
+        .then(() => console.log("[stand] fetched " + url))
         .finally(() => this.fetching.delete(url));
       this.fetching.set(url, fetching);
     }
@@ -380,6 +384,7 @@ export class StandEngine {
   }
 
   private start(): void {
+    console.log("[stand] starting render");
     if (this.raf || !this.pose || this.paused || this.lost || this.disposed) return;
     this.last = 0;
     this.raf = requestAnimationFrame(this.frame);
@@ -390,7 +395,11 @@ export class StandEngine {
     this.raf = 0;
   }
 
+  private frames?: number;
+
   private readonly frame = (now: number): void => {
+    if (this.frames === undefined) this.frames = 0;
+    if (this.frames++ < 10) console.log("[stand] frame " + this.frames + " @" + Math.round(now));
     this.raf = requestAnimationFrame(this.frame);
     if (!this.gate.shouldDraw(now)) return;
     const step = this.last ? Math.min((now - this.last) / 1000, MAX_STEP_SECONDS) : 0;

@@ -5,7 +5,18 @@ import { lazy, Suspense, useEffect, useRef } from "react";
 import type { Outfit } from "@/lib/api";
 
 // 立绘（spine-ts 和应用的立绘组件）不进首屏的包：要挂的时候才加载。
-const Stand = lazy(() => import("@/components/conversations/stand/Stand").then((m) => ({ default: m.Stand })));
+const Stand = lazy(() => {
+  console.log("[stand] importing component");
+  return import("@/components/conversations/stand/Stand")
+    .then((m) => {
+      console.log("[stand] component loaded");
+      return { default: m.Stand };
+    })
+    .catch((error) => {
+      console.log("[stand] import failed " + String(error));
+      throw error;
+    });
+});
 
 /** 立绘画布的像素比上限（spec「渲染层」）。 */
 const STAND_DPR = 1.5;
