@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues live in GitHub Issues for this private repo. See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues for this public repo. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
@@ -22,7 +22,7 @@ Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agen
 - 手机直接调用这些外部 API：对话 LLM、Fish Audio TTS、Soniox 或百炼 STT、硅基流动 embedding/rerank、判断模型、NovelAI。
 - 剧情同步和 embedding 仍在 Mac 上用上游的 Python 工具跑，产出 SQLite/索引后导入手机；手机运行时不需要 Python。
 
-`EidolonCore/` 是端上引擎（内容包、回合、判断、检索、记忆、搭话、标题、追踪、通话状态机），`EidolonIOS/` 是 SwiftUI 客户端。里程碑 1（文字对话）已完成；里程碑 2（通话 MVP：Soniox 实时识别 + Fish Audio 逐段语音）已实现并装到真机，剩一次 5 分钟以上的长通话验收（见 #18）。两者都不依赖后端；没有登录、OAuth、多用户和后台，外部服务的密钥存钥匙串。
+`EidolonCore/` 是端上引擎（内容包、回合、判断、检索、记忆、搭话、标题、追踪、通话状态机），`EidolonIOS/` 是 SwiftUI 客户端。里程碑 1（文字对话）已完成；里程碑 2（通话 MVP：Soniox 实时识别 + Fish Audio 逐段语音）已实现并装到真机，剩一次 5 分钟以上的长通话验收（见 #18）。两者都不依赖后端：没有 OAuth、多用户、后台，外部服务的密钥存钥匙串。唯一的服务端是 `server/`（spec #120，可选、自托管，只管「包从哪来」和「公告在哪看」），不连它 App 照旧能用。
 
 本地验证用的密钥只从 `../eidolon-sc/.env` 读取，不要写进仓库、提交或 issue；上游 checkout 只读。改提示词后必须跑 `tools/oracle/run.sh`，六个场景都要与上游 `identical`；平时 `swift test --package-path EidolonCore` 不联网。模拟器与真机调试用的注入开关见 README「测试」一节。
 
@@ -31,6 +31,6 @@ Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agen
 - 把除对话 LLM 以外的模型全部搬到端上代价很大（TTS 音色、生图质量），所以版本 1 允许手机直连多个模型 API。
 - TTS 音色是端上化最大的降级点：全本地只能用系统语音或自训练音色；版本 1 仍用 Fish Audio。
 - 首版范围：文字对话 + 通话 MVP，之后是礼物、抽奖与成就（#63）。照片、每日任务、统计、数据包先不做。
-- 不做登录、OAuth、多用户和后台；密钥存 Keychain。
+- App 本身不做登录、OAuth、多用户和后台，密钥存 Keychain。只有一台自用/朋友之间用的私有小服务（`server/`，spec #120）负责「内容包从哪来」和「公告在哪看」，它不是网游式后端：不登录、没有网，App 照旧能用。
 
 领域词汇见 `GLOSSARY.md`（从上游复制）；架构决策写在 `docs/adr/`，由 `/grill-with-docs` 逐步产生。

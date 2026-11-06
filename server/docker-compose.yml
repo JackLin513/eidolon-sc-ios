@@ -1,0 +1,43 @@
+# 私有服务（spec #120）。任何一台常开的机器（NAS、小主机、VPS）都能跑：
+# 把 server/ 这个目录放上去，`docker compose up -d --build` 就起来了，不需要仓库的其它部分。
+#
+# 管理员账号写在同目录的 docker-compose.override.yml 里（照 .example 抄一份）。
+# compose 会把 override 合并进来，而那个文件不进仓库、也不会被上传覆盖。
+#
+# 下面这几项都能用环境变量改（写在 override 或 shell 里都行）：
+#   EIDOLON_PROJECT     compose 项目名，默认 eidolon
+#   EIDOLON_SERVER_PORT 宿主端口，默认 2830（容器里固定 9090）
+#   EIDOLON_DATA_DIR    SQLite 库和包放在哪，默认同目录的 ./data
+#   TZ                 容器时区，默认 UTC
+#
+# 项目名写死会让 compose 拿目录名（server）当项目名，容器和网络就叫 server_*；
+# 这里给个默认值，装第二份时用 EIDOLON_PROJECT 分开。
+name: ${EIDOLON_PROJECT:-eidolon}
+
+services:
+  eidolon-server:
+    build: .
+    image: ${EIDOLON_PROJECT:-eidolon}-server:latest
+    # 容器名跟着项目名走，同一台机器上可以并存两份。
+    container_name: ${EIDOLON_PROJECT:-eidolon}-server
+    restart: unless-stopped
+    ports:
+      # 宿主端口 → 容器里的 9090。只在私网露着；对外走反向代理 + 证书（见 docs/server.md）。
+      - "${EIDOLON_SERVER_PORT:-2830}:9090"
+    volumes:
+      # SQLite 库和包文件都在这一个目录里：备份就备份它。
+      - ${EIDOLON_DATA_DIR:-./data}:/data
+    environment:
+      EIDOLON_SERVER_DB: /data/eidolon.sqlite3
+      EIDOLON_SERVER_PACKAGES: /data/packages
+      TZ: ${TZ:-UTC}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9090/v1/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
