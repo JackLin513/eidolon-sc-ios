@@ -25,6 +25,8 @@ public sealed class SwayRig
         public Quaternion restLocalRotation;
         public Vector3 restTipDirection;   // bone-local, normalised
         public float swayLength;
+        public Quaternion initialLocalRotation;
+        public Vector3 aimVector;
         public readonly List<Collider> colliders = new List<Collider>();
         public Bone sideLink;
 
@@ -131,6 +133,10 @@ public sealed class SwayRig
     {
         if (byPath.TryGetValue(path, out var direct)) return direct;
         var trimmed = path.Replace("/BODY_SCALE", "");
-        return byPath.TryGetValue(trimmed, out var found) ? found : null;
+        if (byPath.TryGetValue(trimmed, out var found)) return found;
+        // The head is a self-contained rig parented under the body's ATAMA, so
+        // its own hair sits one `ch_head/KUBI/ATAMA` deeper than the game's path.
+        var head = trimmed.Replace("/KUBI/ATAMA/HAIR/", "/KUBI/ATAMA/ch_head/KUBI/ATAMA/HAIR/");
+        return byPath.TryGetValue(head, out var headFound) ? headFound : null;
     }
 }
