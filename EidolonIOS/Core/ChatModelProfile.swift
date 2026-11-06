@@ -86,6 +86,7 @@ enum ChatModelProfileStore {
     static let profilesKey = "chat.profiles"
     static let activeKey = "chat.activeProfileID"
     static let deepSeekBaseURL = "https://api.deepseek.com/v1"
+    /// 占位地址（RFC 5737 的 TEST-NET-1）：模板只是给你照抄格式，换成自己那台的地址。
     static let localBaseURL = "http://192.0.2.10:8080/v1"
 
     struct State {
