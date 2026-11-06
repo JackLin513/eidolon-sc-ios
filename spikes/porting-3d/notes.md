@@ -630,3 +630,15 @@ Unity 里原样播放 `the_standd_appear_lop_ver01` 时裙子完全不跟着腿�
 - 固定参数结构 `SwayBoneMT.FixedParams` 已给出全部字段（含 `isSkirt / sideLink / useLinkHit / HitMuteForce / resolveDepthFactor / bodyScale`），等于把 `SwayBone` 的文本参数怎么用写清楚了。
 
 **结论**：不搬我们自己 `ios/MotionSway.swift` 的调参，改为「解析游戏 `_sway.txt` + 按 `SwayBoneMT`/`SwayColliderMT` 的方法 1:1 实现」。二进制在 `~/Library/Containers/io.playcover.PlayCover/ミリシタ.app/Frameworks/UnityFramework.framework/UnityFramework`（__TEXT 0x0–0x5A48000，上面这些地址都在段内，可反编译）。
+
+**二进制要对上版本**（2026-11-06 踩到）：`dump.cs` 里的 RVA 只对
+`~/Library/Containers/io.playcover.PlayCover/Applications/jp.co.bandainamcoent.BNEI0310.app/`（ミリシタ，2026-10 那版，UnityFramework 158 MB）成立。
+同一台机器上还有一个更老的 `ミリシタ.app`（2024-03，101 MB），在它里面 0x1C6867C 是别的函数——拿错版本反编译会得到完全无关的代码。
+校验方法：`SwayBoneMT..ctor` @0x1C6862C 应该把 `sb`/`jbh` 存到 `[x0+0x10]`/`[x0+0x18]`，紧跟其后的 0x1C6867C 是存 d8–d15、栈帧 0x130 的大函数（`SwayMove`）。
+
+**运行时细节（从 `dump.cs` 读到的，移植时要用）**
+- `SwayManager`：`FIXED_DELTA = 0.016666668`、`MAX_DELTA = 0.025000002`——步长固定 1/60，最大 0.025；另有 `skirtL1` / `skirtL2` 两级裙摆骨骼数组和 `SkirtFallFollow` 开关。
+- `SwayBone`（v01）：`tipTrs`、`aimVector`、`initialLocalRotation`、`swayLength`、`curTipPos/prevTipPos`、`force`、`lastBasePos`、`colliderInx`、`lineHitF/sphereHitF`、`m_offset_rot`、`skirtNormal/skirtDir`、`ResolveDepthFactor`（默认 0.9）。
+- 初始化链路：`SwayBone.Init` → `InitSub`（0x1C711A4）→ `SetSkirtParam`（0x1C716D0）→ `SwayBoneMT.InitializeFixedParams`（0x1C69508）。
+- 每帧链路：`SwayBoneMT.SwayMove` → `SwayHit` → `CalcRotate`；侧线 `CalcSideLinkDistance`，抗折叠 `CalcAntiFoldForce`。
+- 游戏里还有一套新的 `Imas.BoneLib.SwayVer02`（`SwayBuilder` / `SwayChain` / `SwayCharacter` / `SwayMaterialData`），但带 `_sway.txt` 的角色走的是 v01，本次按 v01 移植。

@@ -39,6 +39,18 @@ public sealed class CharacterBootstrap : MonoBehaviour
         }
         Frame();
         Apply(0);
+
+        if (!string.IsNullOrEmpty(bodyBundle))
+        {
+            var bodyAssetBundle = LoadBundle(bodyBundle);
+            var swayAsset = bodyAssetBundle == null ? null : bodyAssetBundle.LoadAllAssets<TextAsset>()
+                .FirstOrDefault(a => a.name.EndsWith("_sway"));
+            if (swayAsset != null)
+            {
+                var solver = gameObject.AddComponent<SwaySolver>();
+                solver.Bind(SwayFile.Parse(swayAsset.text));
+            }
+        }
     }
 
     private void Update()
