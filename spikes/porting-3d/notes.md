@@ -682,3 +682,13 @@ bone.rotation = Slerp(identity, delta, 0.7) * (parent.rotation * initialLocalRot
 按"参数首字母选参考骨的哪根轴"实现（`x→right / y→up / z→forward`，`initRefVector = initRef * axis`，四个算法统一用这根轴向量）之后：`cur*forward` 在纯 Z 弯曲下不变 → `q = identity` → `R1 = 当前旋转` → HIJI 拿到 63°，正好是肘弯的一半。肘部立刻变成正常圆润的肘尖，深色楔形消失。
 
 其余 ROT 骨的轴字母也自洽：肘/膝用 `z`（铰链轴），腕/踝/前臂中段用 `x`。静止姿态下 ROT 对任意轴都返回 `initMyRot`，所以这个改动不会移动 bind pose。
+
+## 裙摆背面那块"深棕色"（2026-11-06）
+
+从背后看裙子背面，会有一大块形状像倒立皇冠的深棕色区域，像破面。
+
+**不是洞，也不是蒙皮**：射线求交显示那块像素上最近的正向三角形就是裙子本体的外表面，位置正常；bind pose 下同样出现，说明与动画无关；把布料的材质换成 `Unlit/Texture` 直接显示贴图，色块消失（底下就是正常的格纹）。
+
+**它是描边**。把 `_OutlineColor` 改成绿色，色块整块变绿——这块是描边壳（外向膨胀的 hull）穿过了布料表面。原因是 shader 用 `_ZShift1000Min/Max` 把描边壳往视空间深处推（`Δz ≈ lerp(min,max,T.z²)`），而材质里那组值是游戏自己相机下调出来的（`0.001 / 0.02`）；在我们的相机下推得远远不够，于是在裙褶互相交叠、内侧壳只比外侧壳外凸 2–3 mm 的地方，描边壳整片盖住了布料。
+
+**修法**：`CharacterBootstrap.FixOutlineDepth()` 把 body 三份材质的 `_ZShift1000Min/Max` 推到 `0.2 / 2.0`。只影响描边壳的深度，不动轮廓线——正面/侧面/背面轮廓线都还在。试过的无效项：`_Outline`（宽度）、`_OutlineZadj`、`_TanFov`、`_CullMode=0`（会露出内侧壳，呈粉色）、光照方向、相机 near/far；只有 `_ZShift1000*` 有效。

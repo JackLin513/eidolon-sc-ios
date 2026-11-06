@@ -60,6 +60,26 @@ public static class ArmProbe
         return sb.ToString();
     }
 
+    /// The surface that is actually drawn: the first hit whose winding faces
+    /// the camera (back-face culling removes everything else).
+    public static string Drawn(string rendererName, int px, int py, int viewW, int viewH)
+    {
+        var full = Hit(rendererName, px, py, viewW, viewH).Split('\n');
+        foreach (var line in full)
+            if (line.Contains("nDotView=-") && line.Contains("#"))
+                return $"({px},{py}) " + line.Trim();
+        return $"({px},{py}) nothing front-facing";
+    }
+
+    public static string DrawnGrid(string rendererName, int x0, int y0, int x1, int y1, int step, int viewW, int viewH)
+    {
+        var sb = new StringBuilder();
+        for (var y = y0; y <= y1; y += step)
+            for (var x = x0; x <= x1; x += step)
+                sb.Append(Drawn(rendererName, x, y, viewW, viewH) + "\n");
+        return sb.ToString();
+    }
+
     public static string Grid(string rendererName, int x0, int y0, int x1, int y1, int step, int viewW, int viewH)
     {
         var sb = new StringBuilder();

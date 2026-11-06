@@ -81,6 +81,12 @@ public sealed class HelperBones : MonoBehaviour
 
     private void LateUpdate() => Apply();
 
+    /// Puts the whole rig back at its bind pose, for A/B probes.
+    public void RestoreAll()
+    {
+        foreach (var kv in rest) kv.Key.localRotation = kv.Value;
+    }
+
     /// Puts every assist bone back at its rest rotation, for A/B probes.
     public void RestoreRest()
     {

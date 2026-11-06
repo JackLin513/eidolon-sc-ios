@@ -31,6 +31,7 @@ public sealed class CharacterBootstrap : MonoBehaviour
         // first clip frame is applied.
         var helpers = gameObject.AddComponent<HelperBones>();
         helpers.Bind(transform);
+        FixOutlineDepth();
         if (File.Exists(clipPath))
         {
             clip = EidolonMotionClip.Load(clipPath);
@@ -130,6 +131,25 @@ public sealed class CharacterBootstrap : MonoBehaviour
         return true;
     }
 
+    /// The character shaders draw their outline as an extruded hull and park it
+    /// behind the surface with `_ZShift1000*`. The shipped values assume the
+    /// game's own camera; with ours the hull is far too close and bleeds
+    /// through the pleated skirt from behind (a brown crown of `_OutlineColor`
+    /// over the fabric). Pushing it back further restores the silhouette lines
+    /// and leaves the surface clean.
+    private void FixOutlineDepth()
+    {
+        var body = GetComponentsInChildren<SkinnedMeshRenderer>(true)
+            .FirstOrDefault(r => r.name == "body");
+        if (body == null) return;
+        foreach (var material in body.sharedMaterials)
+        {
+            if (material == null || !material.HasProperty("_ZShift1000Max")) continue;
+            material.SetFloat("_ZShift1000Min", 0.2f);
+            material.SetFloat("_ZShift1000Max", 2f);
+        }
+    }
+
     /// An AssetBundle cannot be loaded twice in one process; edit-time probes
     /// may already hold these, so reuse whatever is open.
     private AssetBundle LoadBundle(string file)
@@ -168,6 +188,7 @@ public sealed class CharacterBootstrap : MonoBehaviour
         camera.transform.position = new Vector3(0, 1.0f, 2.6f);
         camera.transform.LookAt(new Vector3(0, 0.95f, 0));
         camera.fieldOfView = 30;
+        if (camera.GetComponent<OrbitCamera>() == null) camera.gameObject.AddComponent<OrbitCamera>();
         if (FindObjectOfType<Light>() == null)
         {
             var light = new GameObject("Directional Light").AddComponent<Light>();
