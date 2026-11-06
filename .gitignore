@@ -11,3 +11,10 @@ xcuserdata/
 __pycache__/
 *.pyc
 .env
+
+# 服务端（spec #120）：虚拟环境与运行数据
+server/.venv/
+server/data/
+.pytest_cache/
+# 部署目标（主机、路径）是自己的机器，按模板写一份放着，不进仓库
+tools/deploy.env

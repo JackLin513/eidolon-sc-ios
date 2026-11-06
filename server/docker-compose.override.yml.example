@@ -1,0 +1,11 @@
+# 抄一份成 docker-compose.override.yml（不抄也行，管理员之后用命令行补）。
+# compose 会把同目录的 override 合并进来；这个文件不进仓库，上传脚本也不会覆盖它。
+#
+# 下面两个值一定要改：它们是管理员账号，第一次启动就按这个建出来。
+# 要换端口或数据目录也写在这里（EIDOLON_SERVER_PORT / EIDOLON_DATA_DIR / EIDOLON_PROJECT）。
+# 用户名 3–32 位（字母、数字、_ . -），密码至少八位。已经在的账号只会升角色，不会覆盖密码。
+services:
+  eidolon-server:
+    environment:
+      EIDOLON_SERVER_ADMIN_USER: change-me
+      EIDOLON_SERVER_ADMIN_PASSWORD: change-me-please

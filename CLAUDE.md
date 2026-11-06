@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues live in GitHub Issues for this private repo. See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues for this public repo. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
@@ -31,6 +31,6 @@ Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agen
 - 把除对话 LLM 以外的模型全部搬到端上代价很大（TTS 音色、生图质量），所以版本 1 允许手机直连多个模型 API。
 - TTS 音色是端上化最大的降级点：全本地只能用系统语音或自训练音色；版本 1 仍用 Fish Audio。
 - 首版范围：文字对话 + 通话 MVP，之后是礼物、抽奖与成就（#63）。照片、每日任务、统计、数据包先不做。
-- 不做登录、OAuth、多用户和后台；密钥存 Keychain。
+- App 本身不做登录、OAuth、多用户和后台，密钥存 Keychain。只有一台自用/朋友之间用的私有小服务（`server/`，spec #120）负责「内容包从哪来」和「公告在哪看」，它不是网游式后端：不登录、没有网，App 照旧能用。
 
 领域词汇见 `GLOSSARY.md`（从上游复制）；架构决策写在 `docs/adr/`，由 `/grill-with-docs` 逐步产生。

@@ -4,7 +4,7 @@
 
 ## 0. 三十秒版本
 
-- 仓库：`~/Developer/IdeaProjects/eidolon-sc-ios`（GitHub `JackLin513/eidolon-sc-ios`，私有，AGPL-3.0，自用不上架）。
+- 仓库：`~/Developer/IdeaProjects/eidolon-sc-ios`（GitHub `JackLin513/eidolon-sc-ios`，公开，AGPL-3.0，自用不上架）。
 - 上游参考实现：`~/Developer/IdeaProjects/eidolon-sc`（Sallyn0225/eidolon-sc，FastAPI + Pipecat + Next.js）。**上游 checkout 只读**，只作参考和离线数据准备，App 运行时不依赖它。
 - 形态：手机独立运行的 iOS 原生客户端。剧情索引、对话引擎、记忆、好感、立绘、通话状态机都在端上；运行时只直连外部模型 API（对话 LLM、判断模型、embedding/rerank、Soniox/百炼 STT、Fish Audio TTS）。
 - 唯一分支 `main`，默认分支也是它。交接时 tip = `47a455e`（README 的两处状态修正）。
