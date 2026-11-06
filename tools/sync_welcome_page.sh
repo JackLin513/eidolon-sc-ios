@@ -87,7 +87,33 @@ swap_new = """  .lp-act7-copy {
     left: 20px;
     right: 20px;"""
 assert swap_old in text
-css.write_text(text.replace(swap_old, swap_new))
+text = text.replace(swap_old, swap_new)
+# 居中的中文句子末尾要是带个全角句号，字面中心会比视觉中心偏左半个字；
+# 这两行统一往右让半格，看起来才是真的居中（标题和正文在这里都以句号结尾）。
+swap_old = """  .lp-act7-copy {
+    left: 20px;
+    right: 20px;
+    top: auto;
+    bottom: 9%;
+    transform: none;
+    text-align: center;
+  }"""
+swap_new = """  .lp-act7-copy {
+    left: 20px;
+    right: 20px;
+    top: auto;
+    bottom: 9%;
+    transform: none;
+    text-align: center;
+  }
+  .lp-act7-copy .lp-act-title,
+  .lp-act7-copy .lp-act-body {
+    /* 末尾的全角句号也算进居中宽度，视觉上会偏左半格；补回来。 */
+    padding-left: 1em;
+  }"""
+assert swap_old in text
+text = text.replace(swap_old, swap_new)
+css.write_text(text)
 
 store = path.with_name("interactionStore.ts")
 text = store.read_text()

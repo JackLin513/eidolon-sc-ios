@@ -1667,6 +1667,11 @@ html[data-lp-layout="motion"] .lp-act7-copy:has(:focus-visible) {
     transform: none;
     text-align: center;
   }
+  .lp-act7-copy .lp-act-title,
+  .lp-act7-copy .lp-act-body {
+    /* 末尾的全角句号也算进居中宽度，视觉上会偏左半格；补回来。 */
+    padding-left: 1em;
+  }
 }
 
 /* —— 页脚：非官方声明和法务链接，常驻在页尾。 */
