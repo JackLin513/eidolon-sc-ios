@@ -18,3 +18,11 @@ server/data/
 .pytest_cache/
 # 部署目标（主机、路径）是自己的机器，按模板写一份放着，不进仓库
 tools/deploy.env
+
+# 自己的东西，不进公开仓库：
+# IDA 的授权文件
+*.hexlic
+# 从别处抄来的一堆 skill，不是这个仓库的内容
+xcode-skills/
+# 本地模型（qwen）的运行模板，带自己的密钥和路径
+docs/千问模型运行模板/
