@@ -45,17 +45,28 @@ public sealed class CharacterBootstrap : MonoBehaviour
         Frame();
         Apply(0);
 
-        if (!string.IsNullOrEmpty(bodyBundle))
+        BindSway(bodyBundle, drape: true);
+        BindSway(headBundle, drape: false);
+    }
+
+    /// Each bundle ships its own `<character>_sway`: the body one carries the
+    /// skirt, the bows and the chest bones, the head one the 17 hair strands.
+    private void BindSway(string bundleName, bool drape)
+    {
+        if (string.IsNullOrEmpty(bundleName)) return;
+        var bundle = LoadBundle(bundleName);
+        var asset = bundle == null ? null : bundle.LoadAllAssets<TextAsset>()
+            .FirstOrDefault(a => a.name.EndsWith("_sway"));
+        if (asset == null) return;
+        var file = SwayFile.Parse(asset.text);
+        if (drape)
         {
-            var bodyAssetBundle = LoadBundle(bodyBundle);
-            var swayAsset = bodyAssetBundle == null ? null : bodyAssetBundle.LoadAllAssets<TextAsset>()
-                .FirstOrDefault(a => a.name.EndsWith("_sway"));
-            if (swayAsset != null)
-            {
-                var solver = gameObject.AddComponent<SwaySolver>();
-                solver.Bind(SwayFile.Parse(swayAsset.text));
-            }
+            var solver = gameObject.AddComponent<SwaySolver>();
+            solver.Bind(file);
         }
+        var rig = SwayRig.Build(file, transform);
+        var physics = gameObject.AddComponent<SwayPhysics>();
+        physics.Bind(rig);
     }
 
     /// The clip currently driving the pose (probes read this).

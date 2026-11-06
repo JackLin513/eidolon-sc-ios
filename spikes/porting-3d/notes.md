@@ -692,3 +692,14 @@ bone.rotation = Slerp(identity, delta, 0.7) * (parent.rotation * initialLocalRot
 **它是描边**。把 `_OutlineColor` 改成绿色，色块整块变绿——这块是描边壳（外向膨胀的 hull）穿过了布料表面。原因是 shader 用 `_ZShift1000Min/Max` 把描边壳往视空间深处推（`Δz ≈ lerp(min,max,T.z²)`），而材质里那组值是游戏自己相机下调出来的（`0.001 / 0.02`）；在我们的相机下推得远远不够，于是在裙褶互相交叠、内侧壳只比外侧壳外凸 2–3 mm 的地方，描边壳整片盖住了布料。
 
 **修法**：`CharacterBootstrap.FixOutlineDepth()` 把 body 三份材质的 `_ZShift1000Min/Max` 推到 `0.2 / 2.0`。只影响描边壳的深度，不动轮廓线——正面/侧面/背面轮廓线都还在。试过的无效项：`_Outline`（宽度）、`_OutlineZadj`、`_TanFov`、`_CullMode=0`（会露出内侧壳，呈粉色）、光照方向、相机 near/far；只有 `_ZShift1000*` 有效。
+
+## 原生 sway 解算（2026-11-06）
+
+`_sway` 里除了裙摆还有 17 根头发（head 文件）和 10 根身体骨（胸/腰蝴蝶结 + 胸部骨）。这些之前完全静止。现在按 `Imas.BoneLib.SwayBoneMT` V01 的算法接上（`Assets/Scripts/SwayPhysics.cs`）：
+
+- 状态是**骨尖位置**：每帧先随基点平移（`followForce`），再用刚度拉回静止尖端，速度按 `(1−dragForce)` 衰减，重力向下；全部按游戏的 1/60 秒尺度归一（`frames = dt·60`，力除 `frames²`）。
+- 碰撞（`SwayHit`）：把尖端推出骨骼上挂的 Sphere/Capsule，取最深的一处；被撞的下一帧跳过重力。
+- 角度窗口（`CalcRotate`）：先按骨头半径和窗口把方向夹回 `minYAngle…maxYAngle` / `minZAngle…maxZAngle`，再重建旋转。
+- 参数全部来自 `_sway` 文件本身（stiffness/drag/gravity/follow/radius/角度窗口/碰撞体列表），没有手调。
+
+身体文件绑了 10 根（其余 25 根是裙摆，暂仍走 `i70` 规则），头部文件绑了 17 根头发。验证：转头 30° 后采样 `hair_ushiroA0` 的 localRotation，三帧内从 (287,311,250) 收敛到 (282,319,244)，即弹簧在追——解算在跑，且没有 NaN。
