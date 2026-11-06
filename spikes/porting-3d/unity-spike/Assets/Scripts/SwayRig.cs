@@ -27,6 +27,8 @@ public sealed class SwayRig
         public float swayLength;
         public Quaternion initialLocalRotation;
         public Vector3 aimVector;
+        public float resolveDepthFactor = 0.9f;
+        public Vector3 restLocalPosition;
         public readonly List<Collider> colliders = new List<Collider>();
         public Bone sideLink;
 
@@ -79,6 +81,7 @@ public sealed class SwayRig
                 transform = transform,
                 index = i,
                 restLocalRotation = transform.localRotation,
+                restLocalPosition = transform.localPosition,
             };
             rig.bones.Add(bone);
             rig.bonesByPath[data.path] = bone;
