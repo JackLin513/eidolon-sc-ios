@@ -4,7 +4,6 @@ import type { Character, LandingAssets, SignInOptions } from "@/lib/api";
 import { PROVIDER_LABELS } from "@/lib/signIn";
 
 import { Honesty, Start } from "./Closing";
-import { EnterButton } from "../EnterButton";
 import { LightStage } from "./LightStage";
 import { Memory } from "./Memory";
 import type { Actor } from "./model/memory";

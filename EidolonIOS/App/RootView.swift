@@ -56,12 +56,11 @@ struct RootView: View {
                 app = model
                 await model.bootstrap()
                 // 别的调试注入开着时不放这一页，免得它盖住界面把 UI 用例挡住；
-                // 欢迎页自己的两个开关（`EIDOLON_WELCOME`、`EIDOLON_WELCOME_ACT`）例外。
+                // 欢迎页自己的开关（`EIDOLON_WELCOME`）例外。
                 let environment = ProcessInfo.processInfo.environment
                 let ordered = environment["EIDOLON_WELCOME"] == "1"
-                    || environment["EIDOLON_WELCOME_ACT"] != nil
                 let suppressed = environment.keys.contains {
-                    $0.hasPrefix("EIDOLON_") && $0 != "EIDOLON_WELCOME" && $0 != "EIDOLON_WELCOME_ACT"
+                    $0.hasPrefix("EIDOLON_") && $0 != "EIDOLON_WELCOME"
                 }
                 showsWelcome = ordered || (!suppressed && WelcomeLaunch.shouldPresent(
                     seen: model.welcomeSeen,

@@ -96,9 +96,15 @@ export async function loadWelcome(): Promise<WelcomeData> {
             : null,
         call_poster_url: speaks && roster.callPoster ? media(`stills/${roster.callPoster}`) : null,
         voxels_url: voxels.has(`${idol.id}.json`) ? media(`voxels/${idol.id}.json`) : null,
-        // 立绘先关掉：spine 运行时在这个 WKWebView 里画几帧以后会把网页进程带崩
-        // （Safari 和 App 里独立的立绘 WebView 都正常，原因还没找到，见 #118 的排查记录）。
-        stand: null,
+        stand: idol.stand
+          ? {
+              default_outfit: {
+                id: idol.stand.replace("-", "/"),
+                url: media(`stand/${idol.stand}/`),
+              },
+              outfits_url: media(`stand/${idol.stand}/outfits.json`),
+            }
+          : null,
       };
     }),
   );

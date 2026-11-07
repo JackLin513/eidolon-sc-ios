@@ -64,28 +64,6 @@ private struct WelcomeWebView: UIViewRepresentable {
     let onFinish: () -> Void
     let onFailure: () -> Void
 
-    /// 把 `console.*`、未捕获的异常和未处理的 Promise 拒绝都转给 App。
-    private static let consoleBridge = """
-    (function () {
-      function send(level, parts) {
-        try {
-          window.webkit.messageHandlers.log.postMessage(level + " " + parts.map(String).join(" "));
-        } catch (error) {}
-      }
-      ["log", "warn", "error"].forEach(function (level) {
-        var original = console[level];
-        console[level] = function () {
-          send(level, Array.prototype.slice.call(arguments));
-          original.apply(console, arguments);
-        };
-      });
-      window.addEventListener("error", function (event) { send("error", [event.message]); });
-      window.addEventListener("unhandledrejection", function (event) {
-        send("error", ["unhandled " + String(event.reason)]);
-      });
-    })();
-    """
-
     func makeCoordinator() -> Coordinator {
         Coordinator(onFinish: onFinish, onFailure: onFailure)
     }
@@ -97,16 +75,6 @@ private struct WelcomeWebView: UIViewRepresentable {
             forURLScheme: WelcomeSchemeHandler.scheme
         )
         configuration.userContentController.add(context.coordinator, name: "welcome")
-        // 网页的 console 接到 stdout：`devicectl device process launch --console` 能直接看到，
-        // 不再只能靠页面上的绿字。
-        configuration.userContentController.add(context.coordinator, name: "log")
-        configuration.userContentController.addUserScript(
-            WKUserScript(
-                source: Self.consoleBridge,
-                injectionTime: .atDocumentStart,
-                forMainFrameOnly: true
-            )
-        )
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         configuration.allowsInlineMediaPlayback = true
         // 这一页是本地打包的，声音由页面自己在上一个手势之后接着播（接听后的开场白、
@@ -121,10 +89,11 @@ private struct WelcomeWebView: UIViewRepresentable {
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
-        // 不透明：透明 WKWebView 里的 WebGL 走另一条合成路径，真机上曾把网页进程搞崩。
-        // 这一页本来就是纯黑底，不透明没有视觉变化。
-        webView.isOpaque = true
+        // 透明：立绘的 iframe 要靠父页面的背景透出来，不透明时 iframe 会被合成成白底
+        // （App 里立绘那个 WebView 也是透明的）。
+        webView.isOpaque = false
         webView.backgroundColor = .black
+        webView.scrollView.backgroundColor = .black
         webView.scrollView.backgroundColor = .black
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.bounces = false
@@ -139,7 +108,6 @@ private struct WelcomeWebView: UIViewRepresentable {
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "welcome")
-        webView.configuration.userContentController.removeScriptMessageHandler(forName: "log")
         webView.stopLoading()
     }
 
@@ -156,10 +124,6 @@ private struct WelcomeWebView: UIViewRepresentable {
             _ controller: WKUserContentController,
             didReceive message: WKScriptMessage
         ) {
-            if message.name == "log" {
-                print("[welcome] \(message.body)")
-                return
-            }
             guard message.name == "welcome",
                   let body = message.body as? [String: Any],
                   body["action"] as? String == "finish"
@@ -186,25 +150,21 @@ private struct WelcomeWebView: UIViewRepresentable {
 
         /// 页面起不来（资源丢了、WebContent 崩了）：交给兜底画面。
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
-            print("[welcome] didFailProvisionalNavigation \(error)")
-            onFailure()
+                        onFailure()
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
-            print("[welcome] didFail \(error)")
-            onFailure()
+                        onFailure()
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-            print("[welcome] webContentProcessDidTerminate")
-            onFailure()
+                        onFailure()
         }
 
         func webView(
             _ webView: WKWebView,
             didReceive challenge: URLAuthenticationChallenge
         ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
-            print("[welcome] challenge \(challenge.protectionSpace)")
             return (.performDefaultHandling, nil)
         }
     }

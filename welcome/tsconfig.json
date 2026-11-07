@@ -17,10 +17,6 @@
       "@/lib/repository": ["./src/shims/repository.ts"],
       "@/lib/signIn": ["./src/shims/signIn.ts"],
       "@/components/ui/button": ["./src/shims/button.ts"],
-      "@/components/conversations/stand/Stand": ["./src/stand/Stand.tsx"],
-      "@/lib/standAnimations": ["./src/stand/standAnimations.ts"],
-      "@/lib/standFrames": ["./src/stand/standFrames.ts"],
-      "@/lib/utils": ["./src/shims/utils.ts"],
       "@/i18n": ["./src/shims/i18n.ts"]
     }
   },

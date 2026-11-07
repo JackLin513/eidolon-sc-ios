@@ -19,18 +19,7 @@ enum WelcomeBundle {
         if ProcessInfo.processInfo.isLowPowerModeEnabled {
             items.append(URLQueryItem(name: "tier", value: "static"))
         }
-        // 调试：直接翻到某一幕（`EIDOLON_WELCOME_ACT=4`），省得手动滑。
-        if let act = ProcessInfo.processInfo.environment["EIDOLON_WELCOME_ACT"] {
-            items.append(URLQueryItem(name: "act", value: act))
-        }
         components.queryItems = items.isEmpty ? nil : items
-        // `EIDOLON_WELCOME_QUERY` 原样附在地址后面：`tier=full&act=4&scroll=600`，
-        // 用来在模拟器上停在某一帧看版式。
-        if let extra = ProcessInfo.processInfo.environment["EIDOLON_WELCOME_QUERY"] {
-            components.percentEncodedQuery = [components.percentEncodedQuery, extra]
-                .compactMap { $0 }
-                .joined(separator: "&")
-        }
         return components.url
     }
 
