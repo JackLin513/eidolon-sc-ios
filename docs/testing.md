@@ -22,6 +22,7 @@ tools/oracle/run.sh                          # 与上游逐字对照提示词（
 - `EIDOLON_CALL_HANGUP_MS`：到点自动挂断
 - `EIDOLON_OPEN_CHARACTER` / `EIDOLON_OPEN_CALL=1`：直接打开某角色的聊天并发起通话
 - `EIDOLON_WELCOME_ACT=<0–7>`：欢迎页直接翻到某一幕，只看那一幕的版式
+- `EIDOLON_WELCOME=1`：不管看没看过，这次启动先放一遍欢迎页
 - `EIDOLON_INSTALLED_SHA='{"content":"…","stand":"…"}'`：直接告诉 App 这台手机已经装着哪几份包（按 sha256），免得为了让它认出旧安装再下一次
 - 调试注入开着时（上面任何一个 `EIDOLON_*`）不放欢迎页，免得它盖住界面把用例挡住；要单独看欢迎页就不要带注入
 - `EIDOLON_SEND_TEXT='一句话'`：打开聊天后自动发一句

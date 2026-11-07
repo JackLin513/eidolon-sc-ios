@@ -67,6 +67,21 @@ final class AppModel {
 
     static let debugModeKey = "debug.mode"
 
+    /// 欢迎页（spec #118）：没有内容包时永远先给，有内容包时只在没看过的时候给一次。
+    /// 判断在 Core 的 `WelcomeLaunch` 里，这里只记「看过」。
+    static let welcomeSeenKey = "welcome.seen"
+
+    var welcomeSeen: Bool { UserDefaults.standard.bool(forKey: Self.welcomeSeenKey) }
+
+    func markWelcomeSeen() {
+        UserDefaults.standard.set(true, forKey: Self.welcomeSeenKey)
+    }
+
+    /// 设置里的「重新观看欢迎页」：RootView 收到通知就再放一次。
+    func replayWelcome() {
+        NotificationCenter.default.post(name: WelcomeNotifications.replay, object: nil)
+    }
+
     /// Development aid: a reply that skipped its picture gets a 生成照片 button beside 朗读,
     /// which opens a tag editor and makes one (spec #62's debug page).
     var debugPhotoButton = UserDefaults.standard.bool(forKey: AppModel.debugPhotoButtonKey)

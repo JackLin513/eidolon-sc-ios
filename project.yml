@@ -27,6 +27,13 @@ targets:
       - path: EidolonIOS
         excludes:
           - Info.plist
+          # 欢迎页（spec #118）的页面和素材要保留目录结构，见下面的 folder reference
+          - Resources/WelcomePage
+          - Resources/Welcome
+      - path: EidolonIOS/Resources/WelcomePage
+        type: folder
+      - path: EidolonIOS/Resources/Welcome
+        type: folder
       - path: AppIcon.icon
     settings:
       base:
