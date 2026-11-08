@@ -1,0 +1,149 @@
+<!doctype html>
+<!--
+  Her stand, drawn by the official Spine 3.6 WebGL runtime (ADR-0017). Everything is
+  local: this page, the runtime and the player come from the app bundle, her outfits
+  from the installed content bundle, all through the app's own URL scheme. The page
+  never navigates, never opens a window and never reaches the network.
+-->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src eidolon-welcome: 'unsafe-inline'; style-src 'unsafe-inline'; img-src eidolon-welcome:; connect-src eidolon-welcome:;">
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: none;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+  }
+</style>
+</head>
+<body>
+<canvas id="stand"></canvas>
+<!-- The runtime is copied out of the upstream checkout at build time and is third-party
+     code (never in this repository). Without it `stand-player.js` reports that the stand
+     is unavailable, and the app shows no stand. -->
+<script>
+  // 这个页面嵌在欢迎页的 iframe 里：自己接上播放器的 post（没有原生那一侧），
+  // 按 outfit 参数加载，按 loaded 里报回来的 bounds 算相机、按动画表挑轨道。
+  window.webkit = window.webkit || {};
+  window.webkit.messageHandlers = window.webkit.messageHandlers || {};
+  window.webkit.messageHandlers.stand = window.webkit.messageHandlers.stand || {
+    postMessage: function (message) {
+      if (message && message.type === "loaded") {
+        bounds = message.bounds;
+        animations = message.animations || {};
+        applyCamera();
+        window.standPlayer.receive({ type: "pose", pose: pose() });
+        parent.postMessage({ type: "stand-loaded", url: message.url }, "*");
+      }
+      if (message && (message.type === "failed" || message.type === "unavailable")) {
+        parent.postMessage({ type: "stand-failed" }, "*");
+      }
+    },
+  };
+
+  var bounds = null;
+  var animations = {};
+  // 说话与否、看哪儿：父页面只管这三样，轨道由下面照 App 的 StandAnimator 挑。
+  var direction = { mood: "calm", speaking: false, looking: true };
+
+  var BODY = {
+    calm: ["wait"], happy: ["smile1", "smile2"], shy: ["shy1", "shy2", "smile2"],
+    surprised: ["surp1", "surp2"], sad: ["sad1", "sad2"], angry: ["anger1", "anger2"],
+    thinking: ["think", "think1", "think2", "wait4", "wait"],
+  };
+  var FACE = {
+    calm: ["face_wait"], happy: ["face_smile", "face_smile1", "face_smile2"],
+    shy: ["face_shy", "face_shy2"], surprised: ["face_surp"], sad: ["face_sad"],
+    angry: ["face_anger", "face_anger1", "face_anger2"], thinking: ["face_serious"],
+  };
+  var LIP = { calm: "wait", happy: "smile", shy: "shy", surprised: "surp", sad: "sad", angry: "anger", thinking: "serious" };
+
+  function first(names) {
+    for (var i = 0; i < names.length; i += 1) if (animations[names[i]] != null) return names[i];
+    return null;
+  }
+
+  function anyMouth() {
+    var names = Object.keys(animations).sort();
+    for (var i = 0; i < names.length; i += 1) {
+      var name = names[i];
+      if (name.indexOf("lip_") === 0 && name !== "lip_a" && animations[name] > 0 && !/_s[0-9]*$/.test(name)) return name;
+    }
+    return null;
+  }
+
+  /** 和 App 里 StandAnimator.pose 一样：按情绪挑身体和表情，说话时张嘴。 */
+  function pose() {
+    var mood = direction.mood || "calm";
+    var mouth = first(["lip_" + LIP[mood], "lip_" + LIP[mood] + "1", "lip_" + LIP[mood] + "2", "lip_smile", "lip_wait"]) || anyMouth();
+    return {
+      body: first(BODY[mood] || []) || "wait",
+      face: first(FACE[mood] || []) || "blank",
+      mouth: mouth ? { name: mouth, open: !!direction.speaking } : null,
+      eye: direction.looking && animations["eye_front"] != null ? "eye_front" : null,
+      nod: null,
+    };
+  }
+
+  /** 相机：尺寸要等 iframe 排好版才算得对（刚加载时 innerWidth/Height 可能还是 0）。 */
+  function applyCamera() {
+    if (!bounds) return;
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    if (!(w > 1) || !(h > 1)) return;
+    var aspect = w / h;
+    var height = Math.max(bounds.height * 0.85, (bounds.width * 0.7) / aspect) * 1.12;
+    var top = bounds.y + bounds.height * 1.03;
+    window.standPlayer.receive({
+      type: "camera",
+      camera: {
+        x: bounds.x + bounds.width / 2,
+        y: top - height / 2,
+        viewportWidth: height * aspect,
+        viewportHeight: height,
+      },
+    });
+  }
+
+  window.addEventListener("resize", applyCamera);
+  requestAnimationFrame(applyCamera);
+
+  function load(url) {
+    window.standPlayer.receive({ type: "load", url: url });
+  }
+
+  window.addEventListener("message", function (event) {
+    var data = event.data || {};
+    if (data.type === "pose") {
+      direction.speaking = !!data.speaking;
+      if (data.mood) direction.mood = data.mood;
+      window.standPlayer.receive({ type: "pose", pose: pose() });
+    }
+  });
+</script>
+<script src="spine-webgl.js"></script>
+<script src="stand-player.js"></script>
+<script>
+  var outfit = new URLSearchParams(location.search).get("outfit");
+  if (outfit) load(decodeURIComponent(outfit));
+  parent.postMessage({ type: "stand-ready" }, "*");
+</script>
+</body>
+</html>

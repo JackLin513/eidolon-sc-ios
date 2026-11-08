@@ -80,6 +80,11 @@ struct SettingsView: View {
                     }
 
                     Section {
+                        Button("重新观看欢迎页") { app.replayWelcome() }
+                            .accessibilityIdentifier("settings.welcome")
+                    }
+
+                    Section {
                         NavigationLink {
                             APISettingsView()
                         } label: {

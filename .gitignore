@@ -26,3 +26,10 @@ tools/deploy.env
 xcode-skills/
 # 本地模型（qwen）的运行模板，带自己的密钥和路径
 docs/千问模型运行模板/
+
+# 欢迎页的网页工程（spec #118）：依赖和构建中间产物；构建结果在 Resources/WelcomePage
+welcome/node_modules/
+welcome/dist/
+
+# 欢迎页的档位脚本是构建时生成的
+welcome/public/tier.js
