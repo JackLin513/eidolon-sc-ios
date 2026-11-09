@@ -16,12 +16,6 @@ struct BarRoomView: View {
     /// The block the screen is fitted into, and where it lands in it. Kept in a reference box:
     /// a `@State` pair written from the geometry reader would be one change too many while the
     /// screen is being laid out.
-    /// Whether 「请横过来」 is up. It follows the geometry with a moment's delay: the page asks
-    /// for landscape on its way in, so a phone held upright is upright for a frame or two, and
-    /// the guard would flash over the picture each time. Written from the layout callbacks,
-    /// after the size is known, so it does not feed back into the layout.
-    @State private var showsGuard = false
-    @State private var guardTask: Task<Void, Never>?
     @State private var placement = BarScreen.placement(
         BarScreen.Viewport(width: 1, height: 1, pointer: .coarse)
     )
@@ -98,9 +92,6 @@ struct BarRoomView: View {
                     )
                     .onAppear { adopt(proxy.size) }
                     .onChange(of: proxy.size) { _, size in adopt(size) }
-                    .overlay {
-                        if showsGuard { BarPortraitGuard() }
-                    }
                 }
             } else {
                 ProgressView().tint(BarInk.sub)
@@ -153,29 +144,9 @@ struct BarRoomView: View {
     /// The drag reads its points through the same placement.
     private func adopt(_ size: CGSize) {
         guard size.width > 0, size.height > 0 else { return }
-        adoptGuard(isUpright: size.height > size.width)
         let placed = Self.placed(in: size)
         if placement != placed { placement = placed }
         drag.placement = placed
-    }
-
-    /// The guard goes up only once the phone has stayed upright for a while, and comes down at
-    /// once when it turns: on the way in the page is portrait for a frame or two before the
-    /// rotation it asked for lands.
-    private func adoptGuard(isUpright: Bool) {
-        guard isUpright != (guardTask != nil || showsGuard) else { return }
-        guardTask?.cancel()
-        guardTask = nil
-        if !isUpright {
-            showsGuard = false
-            return
-        }
-        guardTask = Task {
-            try? await Task.sleep(for: .milliseconds(600))
-            guard !Task.isCancelled else { return }
-            showsGuard = true
-            guardTask = nil
-        }
     }
 
     private static func placed(in size: CGSize) -> BarScreen.Placement {

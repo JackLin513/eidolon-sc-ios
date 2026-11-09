@@ -11,20 +11,33 @@ struct MainTabsView: View {
         // floating tab bar on iPhone (spec #64, page design direction: latest system).
         TabView(selection: selection) {
             Tab("对话", systemImage: "bubble.left.and.bubble.right", value: MainTab.conversation) {
-                ConversationListView()
+                GeometryReader { proxy in
+                    if ResponsiveLayout.conversationColumns(width: proxy.size.width) == 2 {
+                        ConversationSplitView()
+                    } else {
+                        ConversationListView()
+                    }
+                }
             }
             Tab("朋友圈", systemImage: "person.2", value: MainTab.moments) {
                 MomentsView()
+                    .frame(maxWidth: ResponsiveLayout.readingMaxWidth)
+                    .frame(maxWidth: .infinity)
             }
             .badge(app.momentsBadge ? 1 : 0)
             Tab("玩法", systemImage: "sparkles", value: MainTab.play) {
                 PlayHubView()
+                    .frame(maxWidth: ResponsiveLayout.readingMaxWidth)
+                    .frame(maxWidth: .infinity)
             }
             .badge(app.achievementBadge ? 1 : 0)
             Tab("设置", systemImage: "gearshape", value: MainTab.settings) {
                 SettingsView()
+                    .frame(maxWidth: ResponsiveLayout.readingMaxWidth)
+                    .frame(maxWidth: .infinity)
             }
         }
+        .tabViewStyle(.sidebarAdaptable)
         .overlay(alignment: .top) {
             if let toast = app.achievementToast {
                 Text(toast)

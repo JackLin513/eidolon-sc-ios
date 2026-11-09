@@ -7,7 +7,6 @@ import UIKit
 enum BarCopy {
     static let tv = "换台"
     static let leave = "离开"
-    static let portrait = "请横过来"
     static let next = "继续"
     static let producer = "制作人"
     static let skip = "跳过"

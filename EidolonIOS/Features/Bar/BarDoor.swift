@@ -208,14 +208,3 @@ struct BarEndCard: View {
 }
 
 /// 竖屏时的提醒盖住整层 (upstream `PortraitGuard.tsx`): no 「全屏横过来」 button on iOS.
-struct BarPortraitGuard: View {
-    var body: some View {
-        ZStack {
-            BarInk.black
-            Text(BarCopy.portrait)
-                .font(.title3)
-                .foregroundStyle(BarInk.sub)
-        }
-        .ignoresSafeArea()
-    }
-}

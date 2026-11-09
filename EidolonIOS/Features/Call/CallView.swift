@@ -78,7 +78,7 @@ struct CallView: View {
                             .opacity(standLoaded ? 1 : 0)
                             .animation(.linear(duration: 0.3), value: standLoaded)
                             .onAppear {
-                                let size = UIScreen.main.bounds.size
+                                let size = geometry.size
                                 standViewport = size
                                 renderer.setViewport(size)
                             }

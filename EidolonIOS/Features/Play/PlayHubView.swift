@@ -6,7 +6,6 @@ import UIKit
 /// achievements, calendar, her cycles, the bar — with what each holds read once on the page.
 struct PlayHubView: View {
     @Environment(AppModel.self) private var app
-    @Environment(\.barOrientation) private var barOrientation
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var summaryFailed = false
     @State private var isBarShown = false
@@ -208,16 +207,8 @@ struct PlayHubView: View {
             app.openSettings()
             return
         }
-        guard !isBarShown, !isEnteringBar, !isLeavingBar else { return }
-        isEnteringBar = true
-        barOrientation.landscape()
-        Task {
-            await waitForOrientation(landscape: true)
-            isBarShown = true
-            // The cover is up now; the black page behind it can go.
-            try? await Task.sleep(for: .milliseconds(450))
-            isEnteringBar = false
-        }
+        guard !isBarShown, !isLeavingBar else { return }
+        isBarShown = true
     }
 
     /// Called as the bar starts to go away, before its dismissal animation reveals the
@@ -226,32 +217,9 @@ struct PlayHubView: View {
         isLeavingBar = true
     }
 
-    /// The cover is gone: turn the page back, keeping it covered until upright.
+    /// The cover is gone; the bar no longer asks the window to rotate.
     private func finishLeavingBar() {
-        isLeavingBar = true
-        barOrientation.portrait()
-        Task {
-            await waitForOrientation(landscape: false)
-            isLeavingBar = false
-        }
-    }
-
-    /// Waits for the window to take the turn it was asked for; `requestGeometryUpdate`
-    /// has no completion, and the interface orientation lags the request by the animation.
-    private func waitForOrientation(landscape: Bool) async {
-        for _ in 0..<30 {
-            let orientation = UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .first?
-                .interfaceOrientation
-            if let orientation,
-               orientation != .unknown,
-               orientation.isLandscape == landscape
-            {
-                return
-            }
-            try? await Task.sleep(for: .milliseconds(50))
-        }
+        isLeavingBar = false
     }
 }
 
