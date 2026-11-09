@@ -20,7 +20,10 @@ enum BundledModel3D {
     }
 
     private struct RawEmotionMap: Decodable {
-        struct Emotion: Decodable { let name: String }
+        struct Emotion: Decodable {
+            let face: Int
+            let cheek: Int
+        }
         let emotions: [String: Emotion]
     }
 
@@ -35,7 +38,8 @@ enum BundledModel3D {
             contentsOf: root.appendingPathComponent(raw.emotionMap)
         ), let emotions = try? JSONDecoder().decode(RawEmotionMap.self, from: emotionData) {
             for (key, value) in emotions.emotions {
-                emotionMap[key] = value.name
+                // The embedded scene's protocol is "face,cheek"; the package owns both.
+                emotionMap[key] = "\(value.face),\(value.cheek)"
             }
         }
 
