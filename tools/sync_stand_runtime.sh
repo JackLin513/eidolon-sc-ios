@@ -14,6 +14,20 @@ destination="${1:?用法: sync_stand_runtime.sh <目标资源目录> [上游 che
 upstream="${2:-${EIDOLON_UPSTREAM:-../eidolon-sc}}"
 runtime="$upstream/frontend/public/vendor/spine-3.6/spine-webgl.js"
 
+# A worktree lives several levels below the repository root, so the historical
+# ../eidolon-sc default points at .agents/worktrees/eidolon-sc instead of the
+# checkout beside the repository. Walk up from SRCROOT before giving up.
+if [ ! -f "$runtime" ] && [ -n "${SRCROOT:-}" ]; then
+  for candidate in     "$SRCROOT/../eidolon-sc"     "$SRCROOT/../../eidolon-sc"     "$SRCROOT/../../../eidolon-sc"     "$SRCROOT/../../../../eidolon-sc"
+  do
+    if [ -f "$candidate/frontend/public/vendor/spine-3.6/spine-webgl.js" ]; then
+      upstream="$candidate"
+      runtime="$upstream/frontend/public/vendor/spine-3.6/spine-webgl.js"
+      break
+    fi
+  done
+fi
+
 if [ ! -f "$runtime" ]; then
   echo "warning: 没有找到 ${runtime}；本次构建不带 Spine 运行时，App 里没有立绘。" >&2
   exit 0

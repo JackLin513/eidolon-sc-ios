@@ -127,6 +127,13 @@ final class RuntimeRegistryTests: XCTestCase {
         XCTAssertNil(registry.makeRenderer(requirement, assets: assets()))
     }
 
+    func testTheSpineRuntimeIsBundled() {
+        XCTAssertNotNil(
+            Bundle.main.url(forResource: "spine-webgl", withExtension: "js"),
+            "the stand player needs spine-webgl.js in the app bundle"
+        )
+    }
+
     func testTheFiveStandSurfacesAllGetAConfiguredRenderer() {
         let spine = FixtureRuntime(.spineWebGL)
         let registry = RuntimeRegistry(runtimes: [spine])
