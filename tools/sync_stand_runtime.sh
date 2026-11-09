@@ -6,27 +6,38 @@
 #   sync_stand_runtime.sh <destination-directory> [upstream-checkout]
 #
 # The checkout defaults to ../eidolon-sc next to this repository, or to $EIDOLON_UPSTREAM.
+# An explicit argument or $EIDOLON_UPSTREAM is authoritative and is never replaced by the
+# worktree search. When no explicit path is given, walk up from SRCROOT because a worktree
+# lives below .agents/worktrees and the historical ../eidolon-sc points at the wrong place.
 # When the checkout or the runtime is missing, this prints a warning and succeeds: the app
 # builds and runs without a stand.
 set -eu
 
 destination="${1:?用法: sync_stand_runtime.sh <目标资源目录> [上游 checkout 路径]}"
-upstream="${2:-${EIDOLON_UPSTREAM:-../eidolon-sc}}"
-runtime="$upstream/frontend/public/vendor/spine-3.6/spine-webgl.js"
-
-# A worktree lives several levels below the repository root, so the historical
-# ../eidolon-sc default points at .agents/worktrees/eidolon-sc instead of the
-# checkout beside the repository. Walk up from SRCROOT before giving up.
-if [ ! -f "$runtime" ] && [ -n "${SRCROOT:-}" ]; then
-  for candidate in     "$SRCROOT/../eidolon-sc"     "$SRCROOT/../../eidolon-sc"     "$SRCROOT/../../../eidolon-sc"     "$SRCROOT/../../../../eidolon-sc"
-  do
-    if [ -f "$candidate/frontend/public/vendor/spine-3.6/spine-webgl.js" ]; then
-      upstream="$candidate"
-      runtime="$upstream/frontend/public/vendor/spine-3.6/spine-webgl.js"
-      break
-    fi
-  done
+upstream="${2:-${EIDOLON_UPSTREAM:-}}"
+explicit=0
+if [ -n "$upstream" ]; then
+  explicit=1
 fi
+
+if [ "$explicit" -eq 0 ]; then
+  upstream="../eidolon-sc"
+  runtime="$upstream/frontend/public/vendor/spine-3.6/spine-webgl.js"
+  if [ ! -f "$runtime" ] && [ -n "${SRCROOT:-}" ]; then
+    for candidate in \
+      "$SRCROOT/../eidolon-sc" \
+      "$SRCROOT/../../eidolon-sc" \
+      "$SRCROOT/../../../eidolon-sc" \
+      "$SRCROOT/../../../../eidolon-sc"
+    do
+      if [ -f "$candidate/frontend/public/vendor/spine-3.6/spine-webgl.js" ]; then
+        upstream="$candidate"
+        break
+      fi
+    done
+  fi
+fi
+runtime="$upstream/frontend/public/vendor/spine-3.6/spine-webgl.js"
 
 if [ ! -f "$runtime" ]; then
   echo "warning: 没有找到 ${runtime}；本次构建不带 Spine 运行时，App 里没有立绘。" >&2

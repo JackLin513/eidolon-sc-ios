@@ -1649,7 +1649,6 @@ final class AppModel {
         }
         do {
             let info = try await core.installModel3D(bundleAt: url)
-            model3DInfo = info
             await loadModel3D()
             debugLog("model3d imported: \(String(describing: info))")
         } catch {
@@ -1841,8 +1840,8 @@ final class AppModel {
         }
     }
 
-    /// Fills the optional 3D mapping into a page's assets. Pages call this before both
-    /// `makeRenderer` and `prepare`, so the renderer and its host see the same values.
+    /// Fills the optional 3D mapping into a page's assets. Only pages that call
+    /// `prepare` themselves need this; `makeRenderer` already fills its own copy.
     func preparedAssets(_ assets: RuntimeAssets) -> RuntimeAssets {
         RuntimeAssetPreparation.fill(
             assets,

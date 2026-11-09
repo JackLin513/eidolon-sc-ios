@@ -67,12 +67,12 @@ struct BarGuest: View {
         fallback: [StandOutfit],
         avoiding: Set<RuntimeID> = []
     ) {
-        let assets = app.preparedAssets(RuntimeAssets(
+        let assets = RuntimeAssets(
             contentRoot: root,
             characterID: character.id,
             outfit: outfit,
             framing: .waist
-        ))
+        )
         guard let made = app.makeRenderer(assets, avoiding: avoiding) else {
             loaded = false
             return

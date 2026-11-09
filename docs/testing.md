@@ -30,6 +30,8 @@ tools/oracle/run.sh                          # 与上游逐字对照提示词（
 - `EIDOLON_NO_JUDGE=1`：不接判断模型，由对话模型自行决定是否调用「回顾剧情」
 - `EIDOLON_OPEN_HISTORY` / `_TRACES` / `_LATEST_TRACE` / `_MEMORIES`：直接打开历史、追踪、最新追踪或记忆页
 - `EIDOLON_IMPORT_STAND_BUNDLE`：导入这个立绘包（裸文件名会在 Documents 里找），真机也能用
+- `EIDOLON_IMPORT_BAR_BUNDLE`：导入这个酒吧素材包（裸文件名会在 Documents 里找），真机也能用
+- `EIDOLON_IMPORT_MODEL3D_BUNDLE`：导入这个 3D 包（裸文件名会在 Documents 里找），真机也能用
 - `EIDOLON_OPEN_STAND_PREVIEW=1`：启动时自动打开设置里的立绘预览（只自动进入一次；之后手动打开设置不会再自动跳转）
 - `EIDOLON_OPEN_OUTFITS=1`：配合预览直接打开换衣装面板
 - `EIDOLON_PREVIEW_WEAR=<outfit id>`：预览打开后直接换到这套衣装（回归检查用）
