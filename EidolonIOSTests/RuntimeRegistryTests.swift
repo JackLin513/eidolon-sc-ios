@@ -154,9 +154,28 @@ final class RuntimeRegistryTests: XCTestCase {
         )
     }
 
-    func testTheSpineRuntimeIsBundled() throws {
-        guard let url = Bundle.main.url(forResource: "spine-webgl", withExtension: "js") else {
+    func testTheSpineRuntimeIsBundledWhenTheUpstreamCheckoutIsVisible() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let candidates = [
+            repoRoot.appendingPathComponent("../eidolon-sc"),
+            repoRoot.appendingPathComponent("../../eidolon-sc"),
+            repoRoot.appendingPathComponent("../../../eidolon-sc"),
+            repoRoot.appendingPathComponent("../../../../eidolon-sc"),
+        ]
+        let upstream = candidates.first {
+            FileManager.default.fileExists(
+                atPath: $0.appendingPathComponent(
+                    "frontend/public/vendor/spine-3.6/spine-webgl.js"
+                ).path
+            )
+        }
+        guard upstream != nil else {
             throw XCTSkip("没有上游 checkout；本次构建不带 Spine 运行时")
+        }
+        guard let url = Bundle.main.url(forResource: "spine-webgl", withExtension: "js") else {
+            return XCTFail("上游 checkout 可见但 App 包缺少 spine-webgl.js")
         }
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
     }

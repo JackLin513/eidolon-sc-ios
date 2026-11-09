@@ -940,7 +940,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/tools/sync_stand_runtime.sh\" \\\n  \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\" \\\n  \"${EIDOLON_UPSTREAM:-${SRCROOT}/../eidolon-sc}\"\n";
+			shellScript = "\"${SRCROOT}/tools/sync_stand_runtime.sh\" \\\n  \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\" \\\n  ${EIDOLON_UPSTREAM:+\"$EIDOLON_UPSTREAM\"}\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

@@ -57,7 +57,7 @@ targets:
         script: |
           "${SRCROOT}/tools/sync_stand_runtime.sh" \
             "${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}" \
-            "${EIDOLON_UPSTREAM:-${SRCROOT}/../eidolon-sc}"
+            ${EIDOLON_UPSTREAM:+"$EIDOLON_UPSTREAM"}
 
   EidolonIOSTests:
     type: bundle.unit-test

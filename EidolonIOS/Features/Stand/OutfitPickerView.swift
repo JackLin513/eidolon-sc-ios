@@ -281,7 +281,12 @@ struct OutfitPickerView: View {
                     contentRoot: contentRoot,
                     contentVersion: contentVersion,
                     characterID: character.id,
-                    rendererFactory: { assets in app.makeRenderer(assets) },
+                    rendererFactory: { assets in
+                        let prepared = app.preparedAssets(assets)
+                        guard let renderer = app.makeRenderer(prepared) else { return nil }
+                        renderer.prepare(prepared)
+                        return renderer
+                    },
                     herColor: herColor
                 ) { outfitID in
                     pickedID = outfitID
@@ -305,12 +310,12 @@ struct OutfitPickerView: View {
         phase = .loading
         if renderer == nil || rendererFailed {
             renderer?.setPaused(true)
-            let assets = RuntimeAssets(
+            let assets = app.preparedAssets(RuntimeAssets(
                 contentRoot: contentRoot,
                 characterID: character.id,
                 outfit: outfit,
                 framing: .full
-            )
+            ))
             guard let created = app.makeRenderer(assets) else {
                 phase = .failed
                 rendererFailed = true
@@ -337,6 +342,7 @@ struct OutfitPickerView: View {
             if previewSize != .zero {
                 created.setViewport(previewSize)
             }
+            created.prepare(assets)
             renderer = created
             rendererFailed = false
         }
