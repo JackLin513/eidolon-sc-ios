@@ -62,27 +62,27 @@ struct CallView: View {
 
     var body: some View {
         ZStack {
-            // A full-bleed backend (3D) draws behind everything; the 2D stand keeps its
-            // lower-stage composition in the geometry below.
-            if let renderer, fullBleed, !standFailed {
-                StandHostView(renderer: renderer)
-                    .id(ObjectIdentifier(renderer as AnyObject))
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
-                    .opacity(standLoaded ? 1 : 0)
-                    .animation(.linear(duration: 0.3), value: standLoaded)
-                    .onAppear {
-                        let size = UIScreen.main.bounds.size
-                        standViewport = size
-                        renderer.setViewport(size)
-                    }
-            }
             // Her likeness and stand keep the whole screen when the keyboard is up; only the
             // words and the bottom row rise above it.
             GeometryReader { geometry in
                 ZStack {
-                    background(size: geometry.size)
-                        .ignoresSafeArea()
+                    if !fullBleed {
+                        background(size: geometry.size)
+                            .ignoresSafeArea()
+                    }
+                    if let renderer, fullBleed, !standFailed {
+                        StandHostView(renderer: renderer)
+                            .id(ObjectIdentifier(renderer as AnyObject))
+                            .ignoresSafeArea()
+                            .allowsHitTesting(false)
+                            .opacity(standLoaded ? 1 : 0)
+                            .animation(.linear(duration: 0.3), value: standLoaded)
+                            .onAppear {
+                                let size = UIScreen.main.bounds.size
+                                standViewport = size
+                                renderer.setViewport(size)
+                            }
+                    }
                     if let renderer, !standFailed, !fullBleed {
                         standStage(renderer, size: geometry.size)
                     }
