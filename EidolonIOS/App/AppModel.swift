@@ -1248,6 +1248,7 @@ final class AppModel {
         await importBundleForDebuggingIfRequested()
         await importStandBundleForDebuggingIfRequested()
         await importBarBundleForDebuggingIfRequested()
+        await importModel3DBundleForDebuggingIfRequested()
         await applyDebugGiftState()
         await applyDebugUsageState()
         seedInstalledPackagesForDebugging()
@@ -1634,6 +1635,28 @@ final class AppModel {
         }
     }
 
+    /// `EIDOLON_IMPORT_MODEL3D_BUNDLE` is the 3D package's twin of the switch above.
+    private func importModel3DBundleForDebuggingIfRequested() async {
+        guard let path = ProcessInfo.processInfo.environment["EIDOLON_IMPORT_MODEL3D_BUNDLE"] else {
+            return
+        }
+        let url = path.hasPrefix("/")
+            ? URL(fileURLWithPath: path)
+            : URL.documentsDirectory.appending(path: path)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            errorMessage = "调试用的 3D 包不存在：\(path)"
+            return
+        }
+        do {
+            let info = try await core.installModel3D(bundleAt: url)
+            model3DInfo = info
+            await loadModel3D()
+            debugLog("model3d imported: \(String(describing: info))")
+        } catch {
+            errorMessage = "3D 包导入失败：\(error.localizedDescription)"
+        }
+    }
+
     /// `EIDOLON_IMPORT_BAR_BUNDLE` is the bar package's twin of the switch above.
     private func importBarBundleForDebuggingIfRequested() async {
         guard let path = ProcessInfo.processInfo.environment["EIDOLON_IMPORT_BAR_BUNDLE"] else {
@@ -1818,18 +1841,25 @@ final class AppModel {
         }
     }
 
-    /// The one place a page gets a renderer. `assets` is filled with the installed
-    /// `model3d` character mapping when there is one, so the Unity adapter never guesses.
-    func makeRenderer(
-        _ assets: RuntimeAssets,
-        avoiding: Set<RuntimeID> = []
-    ) -> (any CharacterRenderer)? {
+    /// Fills the optional 3D mapping into a page's assets. Pages call this before both
+    /// `makeRenderer` and `prepare`, so the renderer and its host see the same values.
+    func preparedAssets(_ assets: RuntimeAssets) -> RuntimeAssets {
         var assets = assets
         if let model3DManifest, let root = model3DRoot,
            let character = model3DManifest.character(localID: assets.characterID) {
             assets.model3D = character
             assets.model3DRoot = root
         }
+        return assets
+    }
+
+    /// The one place a page gets a renderer. `assets` is filled with the installed
+    /// `model3d` character mapping when there is one, so the Unity adapter never guesses.
+    func makeRenderer(
+        _ assets: RuntimeAssets,
+        avoiding: Set<RuntimeID> = []
+    ) -> (any CharacterRenderer)? {
+        let assets = preparedAssets(assets)
         return RuntimeRegistry.shared.makeRenderer(
             runtimeRequirement(for: assets.characterID),
             assets: assets,

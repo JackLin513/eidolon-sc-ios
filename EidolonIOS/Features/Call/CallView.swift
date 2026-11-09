@@ -230,12 +230,12 @@ struct CallView: View {
         standLoaded = false
         fullBleed = false
         let root = stand?.root ?? app.core.location.contentDirectory
-        let assets = RuntimeAssets(
+        let assets = app.preparedAssets(RuntimeAssets(
             contentRoot: root,
             characterID: character.id,
             outfit: outfit,
             framing: StandFraming(compactWidth: isCompactWidth)
-        )
+        ))
         guard let renderer = app.makeRenderer(assets, avoiding: avoiding) else {
             standFailed = true
             return

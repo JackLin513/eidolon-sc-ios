@@ -367,12 +367,12 @@ struct StandPreviewView: View {
     private func loadRenderer(_ outfit: StandOutfit, root: URL) {
         renderer?.setPaused(true)
         let framing = StandFraming(compactWidth: sizeClass != .regular)
-        let assets = RuntimeAssets(
+        let assets = app.preparedAssets(RuntimeAssets(
             contentRoot: root,
             characterID: selectedID ?? "",
             outfit: outfit,
             framing: framing
-        )
+        ))
         guard let renderer = app.makeRenderer(assets) else {
             phase = .missing("没有可用的立绘运行时")
             return

@@ -281,7 +281,9 @@ struct OutfitPickerView: View {
                     contentRoot: contentRoot,
                     contentVersion: contentVersion,
                     characterID: character.id,
-                    rendererFactory: { assets in app.makeRenderer(assets) },
+                    rendererFactory: { assets in
+                        app.makeRenderer(app.preparedAssets(assets))
+                    },
                     herColor: herColor
                 ) { outfitID in
                     pickedID = outfitID
@@ -305,12 +307,12 @@ struct OutfitPickerView: View {
         phase = .loading
         if renderer == nil || rendererFailed {
             renderer?.setPaused(true)
-            let assets = RuntimeAssets(
+            let assets = app.preparedAssets(RuntimeAssets(
                 contentRoot: contentRoot,
                 characterID: character.id,
                 outfit: outfit,
                 framing: .full
-            )
+            ))
             guard let created = app.makeRenderer(assets) else {
                 phase = .failed
                 rendererFailed = true
