@@ -1802,7 +1802,7 @@ final class AppModel {
     /// Whether this build + the installed packages can actually show 3D. The setting's
     /// 3D option is disabled when this is false, so it is not a silent no-op.
     var is3DAvailable: Bool {
-        guard model3DInfo != nil else { return false }
+        guard model3DManifest != nil else { return false }
         return RuntimeRegistry.shared.available.contains(.unityUaaL)
     }
 
@@ -1847,15 +1847,39 @@ final class AppModel {
     }
 
     private func loadModel3D() async {
-        guard let installed = (try? await core.installedModel3D()) ?? nil else {
-            model3DInfo = nil
-            model3DManifest = nil
-            model3DRoot = nil
+        if let installed = (try? await core.installedModel3D()) ?? nil {
+            model3DInfo = installed.info
+            model3DManifest = installed.manifest
+            model3DRoot = installed.directory
             return
         }
-        model3DInfo = installed.info
-        model3DManifest = installed.manifest
-        model3DRoot = installed.directory
+        #if canImport(UnityFramework)
+        // 3D smoke build: the generated content folder is bundled; a real package can be
+        // imported later and takes precedence.
+        if let bundled = BundledModel3D.load() {
+            model3DInfo = nil
+            model3DManifest = bundled.manifest
+            model3DRoot = bundled.root
+            return
+        }
+        #endif
+        model3DInfo = nil
+        model3DManifest = nil
+        model3DRoot = nil
+    }
+
+    /// Whether this character has a 3D mapping in the installed/bundled package.
+    func has3DModel(for characterID: String) -> Bool {
+        model3DManifest?.character(localID: characterID) != nil
+    }
+
+    /// The first outfit the mapping carries, for the call page's 3D-only path.
+    func first3DOutfit(for characterID: String) -> StandOutfit? {
+        guard let character = model3DManifest?.character(localID: characterID),
+              let id = character.outfits.first,
+              let root = model3DRoot
+        else { return nil }
+        return StandOutfit(id: id, directory: root)
     }
 
     func standIndexData() async -> Data? {

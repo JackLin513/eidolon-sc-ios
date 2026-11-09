@@ -177,7 +177,9 @@ struct CallView: View {
     /// Whether the bundle carries a stand for her at all. A character without one gets the
     /// large avatar and the dialling ripple instead (upstream `hasStand`). Until the bundle
     /// has been asked, the stand layout is kept so nothing flashes.
-    private var hasStand: Bool { !standChecked || stand != nil }
+    private var hasStand: Bool {
+        !standChecked || stand != nil || app.has3DModel(for: character.id)
+    }
 
     /// She hung up for a cooldown: there is no calling her until it ends, so no redial
     /// (upstream `endCard`).
@@ -197,7 +199,15 @@ struct CallView: View {
     /// She is put in the outfit remembered for her, or her default when that outfit is gone
     /// (spec「衣装与换衣装」); a fresh renderer is also the retry after a failure.
     private func loadStand() async {
-        guard renderer == nil, let found = await app.core.stand(for: character.id) else { return }
+        guard renderer == nil else { return }
+        // The 3D build can show a character from a `model3d` mapping even when the content
+        // bundle has no Spine stand for her (the MLTD test character is exactly this).
+        if app.is3DAvailable, app.has3DModel(for: character.id),
+           let outfit = app.first3DOutfit(for: character.id) {
+            showStand(outfit, fallback: [])
+            return
+        }
+        guard let found = await app.core.stand(for: character.id) else { return }
         stand = found
         let outfits = found.outfitsToTry(
             choice: StandOutfitChoiceStore().choice(for: character.id)

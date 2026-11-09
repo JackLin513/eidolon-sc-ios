@@ -33,3 +33,7 @@ welcome/dist/
 
 # 欢迎页的档位脚本是构建时生成的
 welcome/public/tier.js
+
+# 3D runtime artifacts (generated locally, never committed)
+EidolonIOS/UnityRuntime/
+EidolonIOS/Resources/Unity/
