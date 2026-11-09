@@ -54,6 +54,7 @@
 		6ADC1F5313FCC7F5003E1676 /* stand-player.js in Resources */ = {isa = PBXBuildFile; fileRef = 54B11631789B9A8BDAE83193 /* stand-player.js */; };
 		6B62B159421858FEDF362008 /* BundledModel3D.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3989FB12BF52765A2FE89317 /* BundledModel3D.swift */; };
 		6C4B4B8A22647306C000071F /* WelcomePage in Resources */ = {isa = PBXBuildFile; fileRef = 2BC1C76197EA58E3C032BD1E /* WelcomePage */; };
+		71F921D55D109E8FEB6EBAB6 /* RuntimeAssetPreparation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43B74216E2DDE143A931193D /* RuntimeAssetPreparation.swift */; };
 		71F9D2D2A2CE1C9A213F29AA /* APISettingsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB451726D31E16340EB84E2 /* APISettingsUITests.swift */; };
 		7480ECBFB8B3325B05E57CE5 /* InstalledPackages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93C40CC9B1A19D189C083A96 /* InstalledPackages.swift */; };
 		76176A305EEE6CC7E3036387 /* machine.config in Resources */ = {isa = PBXBuildFile; fileRef = 7E915873D097F16A3E6E6E27 /* machine.config */; };
@@ -204,6 +205,7 @@
 		417CE4303E61BC3BC3A1CC0B /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
 		4208DA3B81C99D8B53DC32F2 /* MomentsNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MomentsNotifications.swift; sourceTree = "<group>"; };
 		42DD0EA5D88C021794DFCDE1 /* globalgamemanagers */ = {isa = PBXFileReference; path = globalgamemanagers; sourceTree = "<group>"; };
+		43B74216E2DDE143A931193D /* RuntimeAssetPreparation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeAssetPreparation.swift; sourceTree = "<group>"; };
 		4472CA53E92E225069B1D652 /* FishSynthesis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FishSynthesis.swift; sourceTree = "<group>"; };
 		48F47E892DE490E8FC25FBAE /* EnvImportPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvImportPreviewView.swift; sourceTree = "<group>"; };
 		4AB451726D31E16340EB84E2 /* APISettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APISettingsUITests.swift; sourceTree = "<group>"; };
@@ -634,6 +636,7 @@
 			children = (
 				3989FB12BF52765A2FE89317 /* BundledModel3D.swift */,
 				415CF7C1B34DCFEAC8E9F8DF /* Runtime.swift */,
+				43B74216E2DDE143A931193D /* RuntimeAssetPreparation.swift */,
 				EB40C46AC00795924A44C0AA /* Unity */,
 			);
 			path = Runtime;
@@ -1020,6 +1023,7 @@
 				7DF54D92FD1EBA8B04C3A62A /* PriceEditorView.swift in Sources */,
 				E0F9B1FA2BA982860CDD2BC3 /* RootView.swift in Sources */,
 				0212FE5CDACF4D4B97649581 /* Runtime.swift in Sources */,
+				71F921D55D109E8FEB6EBAB6 /* RuntimeAssetPreparation.swift in Sources */,
 				4B5D22BE3F2537E0F40BC144 /* ScheduleBoardView.swift in Sources */,
 				FED6BF63726F8C9A78FA2904 /* ServerStore.swift in Sources */,
 				B2DF1A14F646EDBA6EAECF48 /* SettingsView.swift in Sources */,

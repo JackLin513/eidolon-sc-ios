@@ -127,6 +127,33 @@ final class RuntimeRegistryTests: XCTestCase {
         XCTAssertNil(registry.makeRenderer(requirement, assets: assets()))
     }
 
+    func testPreparedAssetsCarryTheMatchingModelAndRoot() {
+        let root = URL(fileURLWithPath: "/tmp/model3d")
+        let manifest = Model3DManifest(
+            franchise: "mltd",
+            files: [],
+            characters: [
+                Model3DCharacter(localID: "001har", model: "001har", outfits: ["pr001"]),
+                Model3DCharacter(localID: "haruka3d", model: "001har", outfits: ["pr001"]),
+            ]
+        )
+        let prepared = RuntimeAssetPreparation.fill(
+            assets(),
+            manifest: manifest,
+            root: root
+        )
+
+        XCTAssertEqual(prepared.model3D?.localID, "001har")
+        XCTAssertEqual(prepared.model3DRoot, root)
+        XCTAssertNil(
+            RuntimeAssetPreparation.fill(
+                assets(),
+                manifest: manifest,
+                root: nil
+            ).model3D
+        )
+    }
+
     func testTheSpineRuntimeIsBundled() {
         XCTAssertNotNil(
             Bundle.main.url(forResource: "spine-webgl", withExtension: "js"),

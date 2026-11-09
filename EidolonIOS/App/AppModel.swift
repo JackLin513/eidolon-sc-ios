@@ -1844,13 +1844,11 @@ final class AppModel {
     /// Fills the optional 3D mapping into a page's assets. Pages call this before both
     /// `makeRenderer` and `prepare`, so the renderer and its host see the same values.
     func preparedAssets(_ assets: RuntimeAssets) -> RuntimeAssets {
-        var assets = assets
-        if let model3DManifest, let root = model3DRoot,
-           let character = model3DManifest.character(localID: assets.characterID) {
-            assets.model3D = character
-            assets.model3DRoot = root
-        }
-        return assets
+        RuntimeAssetPreparation.fill(
+            assets,
+            manifest: model3DManifest,
+            root: model3DRoot
+        )
     }
 
     /// The one place a page gets a renderer. `assets` is filled with the installed
