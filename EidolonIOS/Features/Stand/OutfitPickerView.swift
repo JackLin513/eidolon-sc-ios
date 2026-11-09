@@ -282,10 +282,7 @@ struct OutfitPickerView: View {
                     contentVersion: contentVersion,
                     characterID: character.id,
                     rendererFactory: { assets in
-                        let prepared = app.preparedAssets(assets)
-                        guard let renderer = app.makeRenderer(prepared) else { return nil }
-                        renderer.prepare(prepared)
-                        return renderer
+                        app.makeRenderer(app.preparedAssets(assets), allow3D: false)
                     },
                     herColor: herColor
                 ) { outfitID in
@@ -316,11 +313,13 @@ struct OutfitPickerView: View {
                 outfit: outfit,
                 framing: .full
             ))
-            guard let created = app.makeRenderer(assets) else {
+            guard let created = app.makeRenderer(assets, allow3D: false) else {
                 phase = .failed
                 rendererFailed = true
                 return
             }
+            renderer = created
+            rendererFailed = false
             created.onReady = { [weak created] _ in
                 guard let created else { return }
                 created.present(
@@ -343,10 +342,9 @@ struct OutfitPickerView: View {
                 created.setViewport(previewSize)
             }
             created.prepare(assets)
-            renderer = created
-            rendererFailed = false
+        } else {
+            renderer?.load(outfit)
         }
-        renderer?.load(outfit)
     }
 
     private func wear() {

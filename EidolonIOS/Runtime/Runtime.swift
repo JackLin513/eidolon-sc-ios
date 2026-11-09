@@ -120,8 +120,13 @@ final class RuntimeRegistry {
         assets: RuntimeAssets,
         avoiding: Set<RuntimeID> = []
     ) -> (any CharacterRenderer)? {
-        guard let runtime = runtime(for: requirement, avoiding: avoiding) else { return nil }
-        return try? runtime.makeRenderer(assets)
+        for id in RuntimeResolver.order(requirement) where !avoiding.contains(id) {
+            guard let runtime = runtimes[id], runtime.isAvailable else { continue }
+            if let renderer = try? runtime.makeRenderer(assets) {
+                return renderer
+            }
+        }
+        return nil
     }
 
     func setPausedAll(_ paused: Bool) {

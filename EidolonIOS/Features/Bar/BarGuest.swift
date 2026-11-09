@@ -73,7 +73,7 @@ struct BarGuest: View {
             outfit: outfit,
             framing: .waist
         ))
-        guard let made = app.makeRenderer(assets, avoiding: avoiding) else {
+        guard let made = app.makeRenderer(assets, avoiding: avoiding, allow3D: false) else {
             loaded = false
             return
         }
@@ -86,17 +86,8 @@ struct BarGuest: View {
             render()
         }
         made.onFailure = { failure in
-            // 站不出来，酒吧照开。3D 失败先换 2D 同一套衣装，再考虑下一套。
+            // 站不出来，酒吧照开。
             app.noteRuntimeFailure(failure, runtimeID: runtimeID)
-            if runtimeID == .unityUaaL {
-                show(
-                    outfit,
-                    root: root,
-                    fallback: fallback,
-                    avoiding: avoiding.union([.unityUaaL])
-                )
-                return
-            }
             if case .contentMissing = failure, let next = fallbackOutfits.first {
                 show(
                     next,
@@ -111,7 +102,6 @@ struct BarGuest: View {
         renderer = made
         made.prepare(assets)
         render()
-        made.load(outfit)
     }
 
     private func render() {

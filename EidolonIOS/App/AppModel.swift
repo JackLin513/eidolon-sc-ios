@@ -1829,13 +1829,19 @@ final class AppModel {
     }
 
     /// What to ask for when drawing this character. `unity`/`auto` prefer 3D only when
-    /// 3D is actually available; a 3D failure pins this session to 2D.
-    func runtimeRequirement(for characterID: String) -> RuntimeRequirement {
+    /// this character actually has a 3D mapping; a 3D engine failure pins this session to
+    /// 2D, while a missing mapping only affects this character.
+    func runtimeRequirement(
+        for characterID: String,
+        allow3D: Bool = true
+    ) -> RuntimeRequirement {
         switch runtimePreference {
         case .spine:
             return .spine2D
         case .auto, .unity:
-            guard is3DAvailable, !unityFailedThisSession else { return .spine2D }
+            guard allow3D, is3DAvailable, !unityFailedThisSession,
+                  has3DModel(for: characterID)
+            else { return .spine2D }
             return .unityPreferred
         }
     }
@@ -1854,11 +1860,12 @@ final class AppModel {
     /// `model3d` character mapping when there is one, so the Unity adapter never guesses.
     func makeRenderer(
         _ assets: RuntimeAssets,
-        avoiding: Set<RuntimeID> = []
+        avoiding: Set<RuntimeID> = [],
+        allow3D: Bool = true
     ) -> (any CharacterRenderer)? {
         let assets = preparedAssets(assets)
         return RuntimeRegistry.shared.makeRenderer(
-            runtimeRequirement(for: assets.characterID),
+            runtimeRequirement(for: assets.characterID, allow3D: allow3D),
             assets: assets,
             avoiding: avoiding
         )
@@ -1868,6 +1875,9 @@ final class AppModel {
     /// launch; the reason is only shown in the debug section.
     func noteRuntimeFailure(_ failure: RuntimeFailure, runtimeID: RuntimeID) {
         lastRuntimeFailure = failure
+        // A character without a 3D mapping is a content gap, not a broken engine; do not
+        // pin the whole session to 2D for it.
+        if case .contentMissing = failure { return }
         if runtimeID == .unityUaaL {
             unityFailedThisSession = true
         }

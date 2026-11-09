@@ -161,7 +161,13 @@ final class UnityCharacterRenderer: CharacterRenderer {
             retry?.invalidate()
             Self.log.info("3D stand loaded: \(json, privacy: .public)")
             let bounds = assets.model3D?.bounds ?? Self.defaultBounds
-            onReady?(RuntimeReport(resolved: .unity3D, bounds: bounds))
+            var resolved = RuntimeCapabilities.unity3D
+            if let character = assets.model3D {
+                let emotions = character.emotionMap.keys.compactMap(StandEmotion.init)
+                if !emotions.isEmpty { resolved.expressions = Set(emotions) }
+                resolved.outfitSwitch = !character.outfits.isEmpty
+            }
+            onReady?(RuntimeReport(resolved: resolved, bounds: bounds))
             if let frame { apply(frame) }
         case "failure":
             let reason = object["reason"] as? String ?? "unknown"

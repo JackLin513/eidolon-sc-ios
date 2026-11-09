@@ -137,6 +137,8 @@ public struct RuntimeCapabilities: Codable, Sendable, Hashable {
     /// model package.
     public static let unity3D = RuntimeCapabilities(
         fullBleed: true,
+        // The embedded scene has no snapshot API; thumbnails fall back to the card.
+        snapshot: false,
         engine: "unity-uaal"
     )
 

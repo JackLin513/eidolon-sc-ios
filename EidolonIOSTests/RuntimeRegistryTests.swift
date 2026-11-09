@@ -93,6 +93,22 @@ final class RuntimeRegistryTests: XCTestCase {
         )
     }
 
+    func testFallsThroughToSpineWhenThePreferredRuntimeThrows() {
+        let unity = FixtureRuntime(.unityUaaL)
+        unity.throwsOnMake = true
+        let spine = FixtureRuntime(.spineWebGL)
+        let registry = RuntimeRegistry(runtimes: [unity, spine])
+        let requirement = RuntimeRequirement(
+            preferred: .unityUaaL,
+            fallbacks: [.spineWebGL, .avatar]
+        )
+
+        XCTAssertEqual(
+            registry.makeRenderer(requirement, assets: assets())?.runtimeID,
+            .spineWebGL
+        )
+    }
+
     func testAvoidingUnityPinsTheRestOfTheSessionToSpine() {
         let unity = FixtureRuntime(.unityUaaL)
         let spine = FixtureRuntime(.spineWebGL)

@@ -178,7 +178,7 @@ struct CallView: View {
     /// large avatar and the dialling ripple instead (upstream `hasStand`). Until the bundle
     /// has been asked, the stand layout is kept so nothing flashes.
     private var hasStand: Bool {
-        !standChecked || stand != nil || app.has3DModel(for: character.id)
+        !standChecked || (!standFailed && (stand != nil || app.has3DModel(for: character.id)))
     }
 
     /// She hung up for a cooldown: there is no calling her until it ends, so no redial
@@ -200,20 +200,21 @@ struct CallView: View {
     /// (spec「衣装与换衣装」); a fresh renderer is also the retry after a failure.
     private func loadStand() async {
         guard renderer == nil else { return }
-        // The 3D build can show a character from a `model3d` mapping even when the content
-        // bundle has no Spine stand for her (the MLTD test character is exactly this).
-        if app.is3DAvailable, app.has3DModel(for: character.id),
-           let outfit = app.first3DOutfit(for: character.id) {
-            showStand(outfit, fallback: [])
+        // A 2D stand is the source of truth when it exists: the 3D adapter only needs the
+        // character id, and if 3D fails the same outfit/root can be drawn by Spine.
+        if let found = await app.core.stand(for: character.id) {
+            stand = found
+            let outfits = found.outfitsToTry(
+                choice: StandOutfitChoiceStore().choice(for: character.id)
+            )
+            guard let worn = outfits.first else { return }
+            showStand(worn, fallback: Array(outfits.dropFirst()))
             return
         }
-        guard let found = await app.core.stand(for: character.id) else { return }
-        stand = found
-        let outfits = found.outfitsToTry(
-            choice: StandOutfitChoiceStore().choice(for: character.id)
-        )
-        guard let worn = outfits.first else { return }
-        showStand(worn, fallback: Array(outfits.dropFirst()))
+        // No 2D stand: a `model3d`-only character can still use the 3D engine.
+        if let outfit = app.first3DOutfit(for: character.id) {
+            showStand(outfit, fallback: [])
+        }
     }
 
     /// Put one outfit on her. A broken outfit falls back to the next one (her default); a
@@ -252,6 +253,8 @@ struct CallView: View {
             // failure always falls back to the 2D adapter (same outfit) before the page
             // gives up and shows her avatar.
             app.noteRuntimeFailure(failure, runtimeID: runtimeID)
+            // A 3D content gap leaves the same outfit usable by Spine. Once Spine itself
+            // reports a bad outfit, move on to her next one.
             if runtimeID == .unityUaaL {
                 showStand(
                     outfit,
