@@ -82,6 +82,10 @@ struct CallView: View {
                                 standViewport = size
                                 renderer.setViewport(size)
                             }
+                            .onChange(of: geometry.size) { _, size in
+                                standViewport = size
+                                renderer.setViewport(size)
+                            }
                     }
                     if let renderer, !standFailed, !fullBleed {
                         standStage(renderer, size: geometry.size)

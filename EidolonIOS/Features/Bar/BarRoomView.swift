@@ -97,6 +97,22 @@ struct BarRoomView: View {
                 ProgressView().tint(BarInk.sub)
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if isLoaded {
+                Button {
+                    rotate()
+                } label: {
+                    Image(systemName: "rotate.right")
+                        .font(.title3.weight(.semibold))
+                        .padding(10)
+                        .background(.black.opacity(0.45), in: Circle())
+                        .foregroundStyle(.white)
+                }
+                .padding(16)
+                .accessibilityLabel("旋转酒吧")
+                .accessibilityIdentifier("bar.rotate")
+            }
+        }
         .overlay(alignment: .top) {
             CallBar(returnsToConversation: false)
                 .onChange(of: app.call.layer) { _, layer in
@@ -147,6 +163,19 @@ struct BarRoomView: View {
         let placed = Self.placed(in: size)
         if placement != placed { placement = placed }
         drag.placement = placed
+    }
+
+    /// The explicit rotate affordance the iPad layout wants. The picture itself already
+    /// letterboxes to the container; this only asks the system for the other orientation,
+    /// and does not lock the app or the bar to it.
+    private func rotate() {
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first
+        else { return }
+        let landscape = scene.interfaceOrientation.isLandscape
+        let target: UIInterfaceOrientationMask = landscape ? .portrait : .landscape
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: target))
     }
 
     private static func placed(in size: CGSize) -> BarScreen.Placement {

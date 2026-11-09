@@ -1325,14 +1325,24 @@ final class AppModel {
     private var didConsumeDebugBarRequest = false
 
     /// Opens her chat from another tab or page (spec #64): the conversation tab, its
-    /// stack reset to her.
+    /// stack reset to her. The regular-width split has no `NavigationPath`; it reads this
+    /// target instead, then clears it.
     func openConversation(characterID: String) {
         selectedTab = .conversation
+        conversationTargetID = characterID
         guard let character = characters.first(where: { $0.id == characterID }) else {
             return
         }
         conversationPath = NavigationPath()
         conversationPath.append(character)
+    }
+
+    /// The character the next regular-width split should select; nil after it is taken.
+    private(set) var conversationTargetID: String?
+
+    func takeConversationTargetID() -> String? {
+        defer { conversationTargetID = nil }
+        return conversationTargetID
     }
 
     /// Opens the gift page from her chat (spec #64): the play tab, its stack reset to

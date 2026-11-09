@@ -193,7 +193,7 @@ eidolon-sc-ios/
 
 - **组件化 / 多运行时 / 多企划**：调研完成，尚未实现；阶段与验收见[路线图](docs/roadmap.md)，结论见 [`docs/research/`](docs/research/README.md)。调研结论不是已实现。
 - **3D 立绘**：在本地分支 `feat/mltd-3d-stand`（Unity as a Library），**未合入 main**；先补 main 的契约，再按路线图 M1 迁入。main 默认仍是 Spine 2D。
-- **iPad / macOS**：未开始。iPad 先做；macOS 先用 Xcode My Mac / Designed for iPad 做测试冒烟，不承诺 Unity/UE。
+- **iPad / macOS（S2，#134）**：iPad 已在 `feat/ipad` 分支实现同一份二进制、四方向、`sidebarAdaptable`、regular 宽度对话两栏、设置/朋友圈/玩法限宽、酒吧等比缩放不锁横屏；macOS 只做 My Mac (Designed for iPhone) 构建冒烟，不新增 target；iPad 以模拟器验收，未上真机。
 
 还没做，或者做不了：
 

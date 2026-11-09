@@ -14,9 +14,6 @@ struct EidolonIOSApp: App {
 }
 
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
-    /// The app follows the window's orientation; the bar letterboxes instead of asking
-    /// for a rotation (S2).
-    static var orientation = UIInterfaceOrientationMask.all
 
     func application(
         _ application: UIApplication,
@@ -47,10 +44,4 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         [.banner, .sound]
     }
 
-    func application(
-        _ application: UIApplication,
-        supportedInterfaceOrientationsFor window: UIWindow?
-    ) -> UIInterfaceOrientationMask {
-        Self.orientation
-    }
 }

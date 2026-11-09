@@ -5,6 +5,7 @@ import SwiftUI
 /// above all of them in the root view; the folded bar is drawn by each page.
 struct MainTabsView: View {
     @Bindable var app: AppModel
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         // The `Tab` form lets the same tab set become a sidebar on iPad and the new
@@ -12,7 +13,7 @@ struct MainTabsView: View {
         TabView(selection: selection) {
             Tab("对话", systemImage: "bubble.left.and.bubble.right", value: MainTab.conversation) {
                 GeometryReader { proxy in
-                    if ResponsiveLayout.conversationColumns(width: proxy.size.width) == 2 {
+                    if ResponsiveLayout.isSplit(width: proxy.size.width, sizeClass: sizeClass) {
                         ConversationSplitView()
                     } else {
                         ConversationListView()
@@ -20,24 +21,18 @@ struct MainTabsView: View {
                 }
             }
             Tab("朋友圈", systemImage: "person.2", value: MainTab.moments) {
-                MomentsView()
-                    .frame(maxWidth: ResponsiveLayout.readingMaxWidth)
-                    .frame(maxWidth: .infinity)
+                ResponsiveLayout.readingContainer { MomentsView() }
             }
             .badge(app.momentsBadge ? 1 : 0)
             Tab("玩法", systemImage: "sparkles", value: MainTab.play) {
-                PlayHubView()
-                    .frame(maxWidth: ResponsiveLayout.readingMaxWidth)
-                    .frame(maxWidth: .infinity)
+                ResponsiveLayout.readingContainer { PlayHubView() }
             }
             .badge(app.achievementBadge ? 1 : 0)
             Tab("设置", systemImage: "gearshape", value: MainTab.settings) {
-                SettingsView()
-                    .frame(maxWidth: ResponsiveLayout.readingMaxWidth)
-                    .frame(maxWidth: .infinity)
+                ResponsiveLayout.readingContainer { SettingsView() }
             }
         }
-        .tabViewStyle(.sidebarAdaptable)
+        .modifier(ResponsiveTabStyle())
         .overlay(alignment: .top) {
             if let toast = app.achievementToast {
                 Text(toast)
@@ -89,5 +84,19 @@ struct MainTabsView: View {
                 app.selectedTab = tab
             }
         )
+    }
+}
+
+/// iPad gets the system sidebar-adaptable tab bar; the compact iPhone keeps the existing
+/// tab bar so its navigation and UI tests do not change.
+private struct ResponsiveTabStyle: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    func body(content: Content) -> some View {
+        if sizeClass == .regular {
+            content.tabViewStyle(.sidebarAdaptable)
+        } else {
+            content
+        }
     }
 }

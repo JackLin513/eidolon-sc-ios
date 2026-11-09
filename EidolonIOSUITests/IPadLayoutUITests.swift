@@ -24,15 +24,7 @@ final class IPadLayoutUITests: XCTestCase {
             app.buttons["对话"].waitForExistence(timeout: 20),
             "the floating iPad tab bar did not appear"
         )
-        if app.windows.firstMatch.frame.width < 760 {
-            // iPad mini is compact in portrait; its regular width is landscape.
-            XCUIDevice.shared.orientation = .landscapeLeft
-        }
-        XCTAssertTrue(
-            app.staticTexts["选一个角色"].waitForExistence(timeout: 20),
-            "regular width did not show the two-column conversation detail"
-        )
-
+        // Landscape is regular width on every iPad, including the mini.
         XCUIDevice.shared.orientation = .landscapeLeft
         XCTAssertTrue(
             app.staticTexts["选一个角色"].waitForExistence(timeout: 10),
@@ -49,4 +41,34 @@ final class IPadLayoutUITests: XCTestCase {
             "settings did not open on iPad"
         )
     }
+
+    func testIPadLargeTextKeepsSettingsReachable() throws {
+        app.terminate()
+        app.launchArguments += [
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+        ]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["设置"].waitForExistence(timeout: 20))
+        app.buttons.matching(identifier: "设置").firstMatch.tap()
+        XCTAssertTrue(
+            app.staticTexts["服务器"].waitForExistence(timeout: 10),
+            "the accessibility text size hid the settings form"
+        )
+    }
+
+    func testIPadSplitSelectsChatAndKeyboardDoesNotHideTheInput() throws {
+        XCTAssertTrue(app.buttons["对话"].waitForExistence(timeout: 20))
+        let name = app.staticTexts["樱木真乃"].firstMatch
+        XCTAssertTrue(name.waitForExistence(timeout: 20), "no roster row in the split sidebar")
+        name.tap()
+
+        let input = app.textFields["chat.input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 20), "the split detail did not open her chat")
+        input.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "keyboard did not appear")
+        XCTAssertTrue(input.isHittable, "keyboard covers the chat input")
+    }
+
 }

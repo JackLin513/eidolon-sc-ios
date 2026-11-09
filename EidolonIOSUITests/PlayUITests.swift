@@ -11,6 +11,10 @@ final class PlayUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launch()
+        // A fresh simulator shows the welcome page once; the play tab lives behind it.
+        if app.buttons["跳过"].waitForExistence(timeout: 3) {
+            app.buttons["跳过"].tap()
+        }
     }
 
     override func tearDownWithError() throws {
@@ -312,7 +316,7 @@ final class PlayUITests: XCTestCase {
         )
     }
 
-    func testBarTurnsLandscapeAndComesBackUpright() throws {
+    func testBarOpensInTheCurrentOrientationAndLeaves() throws {
         app.tabBars.buttons["玩法"].tap()
         let bar = app.buttons["play.bar"]
         XCTAssertTrue(bar.waitForExistence(timeout: 10), "no bar card")
@@ -320,15 +324,16 @@ final class PlayUITests: XCTestCase {
 
         let door = app.buttons["点一下进门"]
         XCTAssertTrue(door.waitForExistence(timeout: 10), "bar did not open")
-        let sideways = app.windows.firstMatch.frame
-        XCTAssertGreaterThan(sideways.width, sideways.height, "bar did not turn landscape")
+        // S2: the bar no longer forces landscape; it letterboxes the 640×360 screen in
+        // whatever window it gets.
+        let window = app.windows.firstMatch.frame
+        XCTAssertGreaterThan(window.width, 0)
+        XCTAssertGreaterThan(window.height, 0)
 
         let leave = app.buttons["离开"]
         XCTAssertTrue(leave.waitForExistence(timeout: 5), "no leave control")
         leave.tap()
-
-        let upright = app.windows.firstMatch.frame
-        XCTAssertGreaterThan(upright.height, upright.width, "did not return to portrait")
+        XCTAssertTrue(app.buttons["play.bar"].waitForExistence(timeout: 5))
     }
 
     func testChatHidesTheTabBar() throws {

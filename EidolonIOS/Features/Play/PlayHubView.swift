@@ -9,10 +9,7 @@ struct PlayHubView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var summaryFailed = false
     @State private var isBarShown = false
-    /// The bar is a landscape screen. The play page turns first and is covered while it
-    /// does, so the bar never appears half-turned; on the way back it stays covered until
-    /// the page is upright again.
-    @State private var isEnteringBar = false
+    /// The bar no longer asks for a rotation; this only covers the return animation.
     @State private var isLeavingBar = false
 
     private var playPath: Binding<NavigationPath> {
@@ -79,12 +76,12 @@ struct PlayHubView: View {
                     CallBar()
                 }
             }
-        .background { TabBarHides(hidden: isEnteringBar || isLeavingBar) }
+        .background { TabBarHides(hidden: isLeavingBar) }
         .overlay {
-            if isEnteringBar || isLeavingBar {
+            if isLeavingBar {
                 ZStack {
                     Color.black.ignoresSafeArea()
-                    ProgressView(isEnteringBar ? "正在进入酒吧…" : "正在返回…")
+                    ProgressView("正在返回…")
                         .tint(.white)
                         .foregroundStyle(.white)
                 }

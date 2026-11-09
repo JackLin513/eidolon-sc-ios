@@ -93,3 +93,27 @@ tools/oracle/run.sh                          # 与上游逐字对照提示词（
 - **`xcodebuild ... | tail` 会吞掉构建失败**：管道的退出码是 `tail` 的 0；看日志里的 `BUILD SUCCEEDED / FAILED`，或加 `set -o pipefail`。
 - **`devicectl install` 成功不代表装的是新包**：装完核对产物的时间戳/大小；必要时先卸载或换 bundle id。
 - **设备 UDID 不写进仓库**：需要时用 `xcrun devicectl list devices` 现查。
+
+
+## iPad 布局（#134）
+
+纯布局函数在 `EidolonIOSTests/ResponsiveLayoutTests`；iPad 布局行为用 UI 测试，跑在 iPad 模拟器上（需要该模拟器已导入内容包/立绘包）：
+
+```sh
+# 13 英寸：竖屏两栏、旋转后两栏仍在、设置可打开
+xcodebuild test -project EidolonIOS.xcodeproj -scheme EidolonIOS \
+  -destination 'platform=iOS Simulator,name=iPad Air 13-inch (M4)' \
+  -only-testing:EidolonIOSUITests/IPadLayoutUITests
+
+# mini：竖屏单栏、横屏两栏（用例会先转 landscape）
+xcodebuild test -project EidolonIOS.xcodeproj -scheme EidolonIOS \
+  -destination 'platform=iOS Simulator,name=iPad mini (A20 Pro)' \
+  -only-testing:EidolonIOSUITests/IPadLayoutUITests
+```
+
+Mac 只做构建冒烟，不启动、不验收音频/3D：
+
+```sh
+xcodebuild -project EidolonIOS.xcodeproj -scheme EidolonIOS -configuration Debug \
+  -destination 'platform=macOS,arch=arm64,variant=Designed for [iPad,iPhone]' build
+```

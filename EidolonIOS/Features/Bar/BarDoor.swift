@@ -206,5 +206,3 @@ struct BarEndCard: View {
     }
 
 }
-
-/// 竖屏时的提醒盖住整层 (upstream `PortraitGuard.tsx`): no 「全屏横过来」 button on iOS.

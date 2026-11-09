@@ -5,6 +5,10 @@ import SwiftUI
 /// play tab).
 struct ConversationListView: View {
     @Environment(AppModel.self) private var app
+    /// The regular-width sidebar embeds the same roster without its own navigation stack.
+    var embedded = false
+    /// In the sidebar a tap selects the detail instead of pushing a page.
+    var onSelect: ((CharacterConfig) -> Void)?
     @State private var query = ""
 
     /// 有没看过的新公告时，铃铛右上角一个小圆点。
@@ -42,167 +46,184 @@ struct ConversationListView: View {
     @State private var showingAnnouncements = false
 
     var body: some View {
-        // The folded call's bar floats over the empty part of the large-title header, so
-        // showing or hiding it does not move the title or the list (bug 2026-11-04). Her
-        // chat keeps its own bar under the inline navigation bar, so the floating one is
-        // only drawn while the roster is the page on top.
-        NavigationStack(path: conversationPath) {
-                List {
-                    Section {
-                        ForEach(filtered, id: \.id) { character in
-                            Group {
-                                if app.call.isLive, !app.call.isCalling(character.id) {
-                                    // Entering another character hangs the call up: ask first
-                                    // (spec #46).
-                                    Button {
-                                        pendingCharacter = character
-                                    } label: {
-                                        HStack(spacing: 8) {
-                                            row(character)
-                                            Image(systemName: "chevron.right")
-                                                .font(.footnote.weight(.semibold))
-                                                .foregroundStyle(.tertiary)
-                                        }
-                                    }
-                                    .buttonStyle(.plain)
-                                    .foregroundStyle(.primary)
-                                } else {
-                                    NavigationLink(value: character) {
-                                        row(character)
-                                    }
-                                }
-                            }
-                            .swipeActions(edge: .leading) {
-                                let pinned = app.roster.isPinned(character.id)
-                                Button {
-                                    app.togglePinned(character.id)
-                                } label: {
-                                    Label(pinned ? "取消置顶" : "置顶",
-                                          systemImage: pinned ? "pin.slash" : "pin")
-                                }
-                                .tint(.accentColor)
-                            }
-                            .swipeActions(edge: .trailing) {
-                                let hidden = app.roster.isHidden(character.id)
-                                Button {
-                                    app.toggleHidden(character.id)
-                                } label: {
-                                    Label(hidden ? "显示" : "隐藏",
-                                          systemImage: hidden ? "eye" : "eye.slash")
-                                }
-                                .tint(.gray)
-                            }
-                        }
-                    }
-                    if !searching, hiddenCount > 0 {
-                        Section {
+        if embedded {
+            roster
+        } else {
+            NavigationStack(path: conversationPath) {
+                roster
+            }
+        }
+    }
+
+    private var roster: some View {
+
+
+        List {
+            Section {
+                ForEach(filtered, id: \.id) { character in
+                    Group {
+                        if embedded {
                             Button {
-                                showingHidden.toggle()
+                                onSelect?(character)
                             } label: {
-                                Label(
-                                    showingHidden
-                                        ? "收起隐藏的角色"
-                                        : "已隐藏 \(hiddenCount) 位",
-                                    systemImage: showingHidden ? "eye.slash" : "eye"
-                                )
-                                .foregroundStyle(.secondary)
+                                row(character)
                             }
-                        }
-                    }
-                }
-                .listStyle(.plain)
-                .searchable(text: $query, prompt: "搜中文名、假名、罗马字或组合")
-                .navigationTitle("对话")
-                .refreshable { await app.refresh() }
-                .toolbar {
-                    if app.server.isSignedIn {
-                        ToolbarItem(placement: .topBarTrailing) { bell }
-                    }
-                }
-                .sheet(isPresented: $showingAnnouncements) {
-                    AnnouncementsView()
-                        .environment(app)
-                }
-                .onChange(of: app.selectedTab) { _, tab in
-                    // 切回这一页再拉一次；拉不到就保持上一次的。
-                    guard tab == .conversation else { return }
-                    Task { await app.server.refreshAnnouncements() }
-                }
-                .task { await app.server.refreshAnnouncements() }
-                .navigationDestination(for: CharacterConfig.self) { character in
-                    ChatView(character: character)
-                }
-                .confirmationDialog(
-                    "结束通话并进入？",
-                    isPresented: Binding(
-                        get: { pendingCharacter != nil },
-                        set: { if !$0 { pendingCharacter = nil } }
-                    ),
-                    titleVisibility: .visible,
-                    presenting: pendingCharacter
-                ) { character in
-                    Button("结束通话并进入", role: .destructive) {
-                        pendingCharacter = nil
-                        app.call.hangUpAndLeave()
-                        app.conversationPath.append(character)
-                    }
-                    Button("取消", role: .cancel) {
-                        pendingCharacter = nil
-                    }
-                } message: { _ in
-                    Text("进入别的角色的对话会挂断这通电话。")
-                }
-                .task { await app.refresh() }
-                .task {
-                    while !Task.isCancelled {
-                        try? await Task.sleep(for: .seconds(60))
-                        now = Date()
-                    }
-                }
-                .task {
-                    #if DEBUG
-                    let wantsSettings = app.openDebugSettingsIfRequested()
-                    if wantsSettings, app.debugCharacterID == nil {
-                        app.selectedTab = .settings
-                    }
-                    if let id = app.consumeDebugCharacterRequest() {
-                        // The launch flag may run before the bundle's characters are
-                        // published; wait briefly instead of dropping the request.
-                        for _ in 0..<50 {
-                            if let character = app.characters.first(where: { $0.id == id }) {
-                                if app.conversationPath.isEmpty {
-                                    app.conversationPath.append(character)
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.primary)
+                        } else if app.call.isLive, !app.call.isCalling(character.id) {
+                            // Entering another character hangs the call up: ask first
+                            // (spec #46).
+                            Button {
+                                pendingCharacter = character
+                            } label: {
+                                HStack(spacing: 8) {
+                                    row(character)
+                                    Image(systemName: "chevron.right")
+                                        .font(.footnote.weight(.semibold))
+                                        .foregroundStyle(.tertiary)
                                 }
-                                break
                             }
-                            try? await Task.sleep(for: .milliseconds(100))
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.primary)
+                        } else {
+                            NavigationLink(value: character) {
+                                row(character)
+                            }
                         }
                     }
-                    if app.debugBarRequested {
-                        app.selectedTab = .play
+                    .swipeActions(edge: .leading) {
+                        let pinned = app.roster.isPinned(character.id)
+                        Button {
+                            app.togglePinned(character.id)
+                        } label: {
+                            Label(pinned ? "取消置顶" : "置顶",
+                                  systemImage: pinned ? "pin.slash" : "pin")
+                        }
+                        .tint(.accentColor)
                     }
-                    #endif
+                    .swipeActions(edge: .trailing) {
+                        let hidden = app.roster.isHidden(character.id)
+                        Button {
+                            app.toggleHidden(character.id)
+                        } label: {
+                            Label(hidden ? "显示" : "隐藏",
+                                  systemImage: hidden ? "eye" : "eye.slash")
+                        }
+                        .tint(.gray)
+                    }
                 }
-                .overlay {
-                    if app.characters.isEmpty {
-                        ContentUnavailableView(
-                            "没有角色",
-                            systemImage: "person.2",
-                            description: Text("这份内容包里没有角色")
+            }
+            if !searching, hiddenCount > 0 {
+                Section {
+                    Button {
+                        showingHidden.toggle()
+                    } label: {
+                        Label(
+                            showingHidden
+                                ? "收起隐藏的角色"
+                                : "已隐藏 \(hiddenCount) 位",
+                            systemImage: showingHidden ? "eye.slash" : "eye"
                         )
+                        .foregroundStyle(.secondary)
                     }
                 }
-                .alert("出错了", isPresented: errorBinding) {
-                    Button("好") { app.errorMessage = nil }
-                } message: {
-                    Text(app.errorMessage ?? "")
+            }
+        }
+        .listStyle(.plain)
+        .searchable(text: $query, prompt: "搜中文名、假名、罗马字或组合")
+        .navigationTitle("对话")
+        .refreshable { await app.refresh() }
+        .toolbar {
+            if app.server.isSignedIn {
+                ToolbarItem(placement: .topBarTrailing) { bell }
+            }
+        }
+        .sheet(isPresented: $showingAnnouncements) {
+            AnnouncementsView()
+                .environment(app)
+        }
+        .onChange(of: app.selectedTab) { _, tab in
+            // 切回这一页再拉一次；拉不到就保持上一次的。
+            guard tab == .conversation else { return }
+            Task { await app.server.refreshAnnouncements() }
+        }
+        .task { await app.server.refreshAnnouncements() }
+        .navigationDestination(for: CharacterConfig.self) { character in
+            ChatView(character: character)
+        }
+        .confirmationDialog(
+            "结束通话并进入？",
+            isPresented: Binding(
+                get: { pendingCharacter != nil },
+                set: { if !$0 { pendingCharacter = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingCharacter
+        ) { character in
+            Button("结束通话并进入", role: .destructive) {
+                pendingCharacter = nil
+                app.call.hangUpAndLeave()
+                app.conversationPath.append(character)
+            }
+            Button("取消", role: .cancel) {
+                pendingCharacter = nil
+            }
+        } message: { _ in
+            Text("进入别的角色的对话会挂断这通电话。")
+        }
+        .task { await app.refresh() }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                now = Date()
+            }
+        }
+        .task {
+            #if DEBUG
+            let wantsSettings = app.openDebugSettingsIfRequested()
+            if wantsSettings, app.debugCharacterID == nil {
+                app.selectedTab = .settings
+            }
+            if let id = app.consumeDebugCharacterRequest() {
+                // The launch flag may run before the bundle's characters are
+                // published; wait briefly instead of dropping the request.
+                for _ in 0..<50 {
+                    if let character = app.characters.first(where: { $0.id == id }) {
+                        if embedded {
+                            onSelect?(character)
+                        } else if app.conversationPath.isEmpty {
+                            app.conversationPath.append(character)
+                        }
+                        break
+                    }
+                    try? await Task.sleep(for: .milliseconds(100))
                 }
             }
-            .overlay(alignment: .top) {
-                if app.conversationPath.isEmpty {
-                    CallBar()
-                }
+            if app.debugBarRequested {
+                app.selectedTab = .play
             }
+            #endif
+        }
+        .overlay {
+            if app.characters.isEmpty {
+                ContentUnavailableView(
+                    "没有角色",
+                    systemImage: "person.2",
+                    description: Text("这份内容包里没有角色")
+                )
+            }
+        }
+        .alert("出错了", isPresented: errorBinding) {
+            Button("好") { app.errorMessage = nil }
+        } message: {
+            Text(app.errorMessage ?? "")
+        }
+
+        .overlay(alignment: .top) {
+            if app.conversationPath.isEmpty {
+                CallBar()
+            }
+        }
     }
 
     private var filtered: [CharacterConfig] {

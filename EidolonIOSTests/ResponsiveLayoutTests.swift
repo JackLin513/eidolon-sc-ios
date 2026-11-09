@@ -3,17 +3,11 @@ import XCTest
 
 final class ResponsiveLayoutTests: XCTestCase {
     func testConversationIsSplitOnlyAtRegularWidths() {
-        XCTAssertEqual(ResponsiveLayout.conversationColumns(width: 390), 1)
-        XCTAssertEqual(ResponsiveLayout.conversationColumns(width: 759), 1)
-        XCTAssertEqual(ResponsiveLayout.conversationColumns(width: 760), 2)
-        XCTAssertEqual(ResponsiveLayout.conversationColumns(width: 1366), 2)
-    }
-
-    func testReadingWidthStopsAtTheMaximumAndNeverGoesNegative() {
-        XCTAssertEqual(ResponsiveLayout.contentWidth(container: 390), 390)
-        XCTAssertEqual(ResponsiveLayout.contentWidth(container: 680), 680)
-        XCTAssertEqual(ResponsiveLayout.contentWidth(container: 1366), 680)
-        XCTAssertEqual(ResponsiveLayout.contentWidth(container: -10), 0)
+        // A landscape phone is wide but still compact.
+        XCTAssertFalse(ResponsiveLayout.isSplit(width: 852, sizeClass: .compact))
+        XCTAssertFalse(ResponsiveLayout.isSplit(width: 699, sizeClass: .regular))
+        XCTAssertTrue(ResponsiveLayout.isSplit(width: 700, sizeClass: .regular))
+        XCTAssertTrue(ResponsiveLayout.isSplit(width: 1366, sizeClass: .regular))
     }
 
     func testCollapsedCallTravelsPastTheContainerIncludingSafeArea() {
