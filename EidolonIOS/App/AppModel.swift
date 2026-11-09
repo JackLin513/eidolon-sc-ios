@@ -24,6 +24,12 @@ final class AppModel {
     private(set) var bundleInfo: ContentBundleInfo?
     private(set) var standInfo: StandBundleInfo?
     private(set) var barInfo: BarBundleInfo?
+    /// How the producer wants her drawn (ADR-0035): auto prefers 3D when this build and
+    /// the installed package provide it; 2D is the safe default and the fallback.
+    private(set) var runtimePreference = RuntimePreference(
+        rawValue: UserDefaults.standard.string(forKey: AppModel.runtimePreferenceKey) ?? ""
+    ) ?? .auto
+    static let runtimePreferenceKey = "runtime.preference"
     private(set) var avatars: [String: UIImage] = [:]
     private(set) var memories: [MemoryRecord] = []
     var errorMessage: String?
@@ -1778,6 +1784,46 @@ final class AppModel {
     }
 
     /// The installed stand index, for sharing with the Mac to build a delta bundle.
+    // MARK: - Presentation runtimes
+
+    func setRuntimePreference(_ preference: RuntimePreference) {
+        runtimePreference = preference
+        UserDefaults.standard.set(preference.rawValue, forKey: Self.runtimePreferenceKey)
+    }
+
+    /// What to ask for when drawing this character. S1 does not yet install a `model3d`
+    /// package, so the Unity runtime is unavailable and the registry falls back to Spine;
+    /// the setting still records the producer's choice for the 3D build.
+    func runtimeRequirement(for characterID: String) -> RuntimeRequirement {
+        switch runtimePreference {
+        case .spine:
+            return .spine2D
+        case .auto, .unity:
+            return RuntimeRequirement(
+                preferred: .unityUaaL,
+                fallbacks: [.spineWebGL, .avatar]
+            )
+        }
+    }
+
+    /// The one place a page gets a renderer. Pages never construct a backend directly.
+    func makeRenderer(
+        characterID: String,
+        outfit: StandOutfit?,
+        contentRoot: URL,
+        framing: StandFraming
+    ) -> (any CharacterRenderer)? {
+        RuntimeRegistry.shared.makeRenderer(
+            runtimeRequirement(for: characterID),
+            assets: RuntimeAssets(
+                contentRoot: contentRoot,
+                characterID: characterID,
+                outfit: outfit,
+                framing: framing
+            )
+        )
+    }
+
     func standIndexData() async -> Data? {
         try? await core.standIndexData()
     }

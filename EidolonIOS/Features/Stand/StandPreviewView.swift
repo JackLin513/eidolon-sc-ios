@@ -17,14 +17,12 @@ struct StandPreviewView: View {
     @State private var selectedID: String?
     @State private var outfitID: String?
     @State private var stand: CharacterStand?
-    @State private var renderer: (any StandRenderer)?
+    @State private var renderer: (any CharacterRenderer)?
     @State private var phase = Phase.loading
     @State private var showsOutfits = false
 
     /// The call's events as the buttons give them; her look comes out of it.
     @State private var director = StandDirector()
-    /// What the loaded outfit can play, as the player reported it.
-    @State private var animations: [String: Double] = [:]
     /// The segment the buttons are on; each new segment gets the next number.
     @State private var segment = StandSegment(reply: 0, segment: 0)
     /// This segment has been started and her voice has not stopped yet.
@@ -116,8 +114,8 @@ struct StandPreviewView: View {
                         .id(ObjectIdentifier(renderer as AnyObject))
                         .frame(width: proxy.size.width, height: proxy.size.height)
                         .opacity(over ? 0.4 : 1)
-                        .onAppear { renderer.setViewportSize(proxy.size) }
-                        .onChange(of: proxy.size) { _, size in renderer.setViewportSize(size) }
+                        .onAppear { renderer.setViewport(proxy.size) }
+                        .onChange(of: proxy.size) { _, size in renderer.setViewport(size) }
                 }
                 switch phase {
                 case .loading:
@@ -293,11 +291,11 @@ struct StandPreviewView: View {
     /// Ask the animation table what the current direction looks like on this outfit.
     private func render() {
         guard let renderer else { return }
-        renderer.direct(
-            StandAnimator.pose(
-                for: director.direction,
-                reducedMotion: reduceMotion,
-                animations: animations
+        renderer.present(
+            PresentationFrame(
+                director.direction,
+                framing: StandFraming(compactWidth: sizeClass != .regular),
+                reducedMotion: reduceMotion
             )
         )
     }
@@ -332,7 +330,6 @@ struct StandPreviewView: View {
         phase = .loading
         renderer?.setPaused(true)
         renderer = nil
-        animations = [:]
         director = StandDirector()
         segment = StandSegment(reply: 0, segment: 0)
         playing = false
@@ -369,12 +366,23 @@ struct StandPreviewView: View {
 
     private func loadRenderer(_ outfit: StandOutfit, root: URL) {
         renderer?.setPaused(true)
-        let renderer = StandWebRenderer(
+        let framing = StandFraming(compactWidth: sizeClass != .regular)
+        let assets = RuntimeAssets(
             contentRoot: root,
-            framing: StandFraming(compactWidth: sizeClass != .regular)
+            characterID: selectedID ?? "",
+            outfit: outfit,
+            framing: framing
         )
-        renderer.onLoaded = { report in
-            animations = report.animations
+        guard let renderer = app.makeRenderer(
+            characterID: selectedID ?? "",
+            outfit: outfit,
+            contentRoot: root,
+            framing: framing
+        ) else {
+            phase = .missing("没有可用的立绘运行时")
+            return
+        }
+        renderer.onReady = { _ in
             phase = .shown
             render()
         }
@@ -384,29 +392,25 @@ struct StandPreviewView: View {
         renderer.setPaused(scenePhase != .active)
         // What she can play is not known until the page reports it; the first pose is
         // sent again as soon as it does.
-        renderer.direct(
-            StandAnimator.pose(
-                for: director.direction,
-                reducedMotion: reduceMotion,
-                animations: animations
+        renderer.present(
+            PresentationFrame(
+                director.direction,
+                framing: framing,
+                reducedMotion: reduceMotion
             )
         )
         self.renderer = renderer
-        renderer.load(outfit)
+        renderer.prepare(assets)
     }
 
-    private static func reason(_ failure: StandRenderFailure) -> String {
-        switch failure {
-        case .page(let message): "立绘页面打不开：\(message)"
-        case .runtime(let message): "没有 Spine 运行时：\(message)"
-        case .outfit(let message): "立绘素材读不出：\(message)"
-        }
+    private static func reason(_ failure: RuntimeFailure) -> String {
+        failure.description
     }
 }
 
 /// Hosts whichever stand renderer the interface was given; it never sees WebKit.
 private struct StandView: UIViewRepresentable {
-    let renderer: any StandRenderer
+    let renderer: any CharacterRenderer
 
     func makeUIView(context: Context) -> UIView {
         renderer.view

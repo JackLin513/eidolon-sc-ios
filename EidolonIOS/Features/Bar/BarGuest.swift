@@ -16,9 +16,9 @@ struct BarGuest: View {
     let mood: StandEmotion
     let isSpeaking: Bool
 
-    @State private var renderer: (any StandRenderer)?
+    @Environment(AppModel.self) private var app
+    @State private var renderer: (any CharacterRenderer)?
     @State private var fallbackOutfits: [StandOutfit] = []
-    @State private var animations: [String: Double] = [:]
     @State private var loaded = false
 
     var body: some View {
@@ -53,7 +53,6 @@ struct BarGuest: View {
     private func load() async {
         renderer = nil
         loaded = false
-        animations = [:]
         guard let stand, let root = stand.root else { return }
         let outfits = stand.outfitsToTry(choice: StandOutfitChoiceStore().choice(for: character.id))
         guard let worn = outfits.first else { return }
@@ -63,18 +62,25 @@ struct BarGuest: View {
     /// Her in `outfit`. A broken outfit falls back to the next one (her default); a page that
     /// cannot draw leaves the window as it was, and the bar goes on.
     private func show(_ outfit: StandOutfit, root: URL, fallback: [StandOutfit]) {
-        let made = StandWebRenderer(contentRoot: root, framing: .waist)
+        guard let made = app.makeRenderer(
+            characterID: character.id,
+            outfit: outfit,
+            contentRoot: root,
+            framing: .waist
+        ) else {
+            loaded = false
+            return
+        }
         // The camera needs a size: the window's, as the original draws her at.
-        made.setViewportSize(CGSize(width: Self.stand.width, height: Self.window.height))
+        made.setViewport(CGSize(width: Self.stand.width, height: Self.window.height))
         fallbackOutfits = fallback
-        made.onLoaded = { report in
-            animations = report.animations
+        made.onReady = { _ in
             loaded = true
             render()
         }
         made.onFailure = { failure in
             // 站不出来，酒吧照开。
-            if case .outfit = failure, let next = fallbackOutfits.first {
+            if case .contentMissing = failure, let next = fallbackOutfits.first {
                 show(next, root: root, fallback: Array(fallbackOutfits.dropFirst()))
                 return
             }
@@ -90,7 +96,8 @@ struct BarGuest: View {
             mood: mood, speaking: isSpeaking, looking: true, nod: nil
         )
         guard let renderer else { return }
-        let pose = StandAnimator.pose(for: direction, reducedMotion: false, animations: animations)
-        renderer.direct(pose)
+        renderer.present(
+            PresentationFrame(direction, framing: .waist, reducedMotion: false)
+        )
     }
 }

@@ -7,11 +7,12 @@ import WebKit
 /// (ADR-0017). It only carries messages — Swift decides the pose and the camera, the page
 /// plays them — so the interface layer never sees WebKit.
 @MainActor
-final class StandWebRenderer: NSObject, StandRenderer {
+final class SpineCharacterRenderer: NSObject, CharacterRenderer {
+    let runtimeID = RuntimeID.spineWebGL
     let view: UIView
 
-    var onLoaded: ((StandPose.Report) -> Void)?
-    var onFailure: ((StandRenderFailure) -> Void)?
+    var onReady: ((RuntimeReport) -> Void)?
+    var onFailure: ((RuntimeFailure) -> Void)?
 
     private static let log = Logger(subsystem: "com.jacklin.eidolon", category: "stand")
     private static let messageName = "stand"
@@ -24,6 +25,7 @@ final class StandWebRenderer: NSObject, StandRenderer {
     private var pose = StandPose.calm
     private var viewportSize = CGSize.zero
     private var bounds: StandBounds?
+    private var animations: [String: Double] = [:]
     private var ready = false
     private var failed = false
     private var queued: [String] = []
@@ -75,24 +77,51 @@ final class StandWebRenderer: NSObject, StandRenderer {
         if let page = components.url {
             webView.load(URLRequest(url: page))
         } else {
-            fail(.page("立绘页面地址拼不出来"))
+            fail(.loadFailed("立绘页面地址拼不出来"))
         }
         sendPose()
     }
 
-    // MARK: - StandRenderer
+    // MARK: - CharacterRenderer
+
+    convenience init(assets: RuntimeAssets) {
+        self.init(contentRoot: assets.contentRoot, framing: assets.framing)
+    }
+
+    func prepare(_ assets: RuntimeAssets) {
+        guard let outfit = assets.outfit else {
+            fail(.contentMissing("没有要加载的衣装"))
+            return
+        }
+        load(outfit)
+    }
 
     func load(_ outfit: StandOutfit) {
         guard let relative = StandAssets.relativeDirectory(of: outfit.directory, under: contentRoot) else {
-            fail(.outfit("衣装 \(outfit.id) 不在内容包里"))
+            fail(.contentMissing("衣装 \(outfit.id) 不在内容包里"))
             return
         }
         let path = relative.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? relative
         send(["type": "load", "url": "\(StandSchemeHandler.scheme)://content/\(path)", "id": outfit.id])
     }
 
-    func direct(_ pose: StandPose) {
-        self.pose = pose
+    func presentCalm() {
+        self.pose = .calm
+        sendPose()
+    }
+
+    func present(_ frame: PresentationFrame) {
+        let direction = StandDirection(
+            mood: frame.emotion,
+            speaking: frame.speaking,
+            looking: frame.looking,
+            nod: frame.nod
+        )
+        self.pose = StandAnimator.pose(
+            for: direction,
+            reducedMotion: frame.reducedMotion,
+            animations: animations
+        )
         sendPose()
     }
 
@@ -100,7 +129,7 @@ final class StandWebRenderer: NSObject, StandRenderer {
         send(["type": "paused", "paused": paused])
     }
 
-    func setViewportSize(_ size: CGSize) {
+    func setViewport(_ size: CGSize) {
         guard size != viewportSize else { return }
         viewportSize = size
         sendCamera()
@@ -138,17 +167,18 @@ final class StandWebRenderer: NSObject, StandRenderer {
             ready = true
             flush()
         case "unavailable":
-            fail(.runtime(message.reason ?? "Spine 运行时不可用"))
+            fail(.unavailable(message.reason ?? "Spine 运行时不可用"))
         case "loaded":
             guard let animations = message.animations, let bounds = message.bounds else {
-                fail(.outfit("立绘加载完成的回报读不出"))
+                fail(.contentMissing("立绘加载完成的回报读不出"))
                 return
             }
             self.bounds = bounds
-            onLoaded?(StandPose.Report(animations: animations, bounds: bounds))
+            self.animations = animations
+            onReady?(RuntimeReport(resolved: .spine2D, bounds: bounds))
             sendCamera()
         case "failed":
-            fail(.outfit(message.message ?? "立绘素材读不出"))
+            fail(.contentMissing(message.message ?? "立绘素材读不出"))
         case "context-lost":
             Self.log.info("立绘画布的 WebGL 上下文丢失，等运行时恢复")
         case "context-restored":
@@ -198,7 +228,7 @@ final class StandWebRenderer: NSObject, StandRenderer {
         webView.evaluateJavaScript("standPlayer.receive(\(json));") { [weak self] _, error in
             guard let error else { return }
             Task { @MainActor in
-                self?.fail(.page("立绘页面没有响应：\(error.localizedDescription)"))
+                self?.fail(.loadFailed("立绘页面没有响应：\(error.localizedDescription)"))
             }
         }
     }
@@ -208,7 +238,7 @@ final class StandWebRenderer: NSObject, StandRenderer {
         return try? JSONSerialization.jsonObject(with: data)
     }
 
-    private func fail(_ failure: StandRenderFailure) {
+    private func fail(_ failure: RuntimeFailure) {
         guard !failed else { return }
         failed = true
         queued.removeAll()
@@ -227,7 +257,7 @@ final class StandWebRenderer: NSObject, StandRenderer {
 
 // MARK: - WKNavigationDelegate
 
-extension StandWebRenderer: WKNavigationDelegate {
+extension SpineCharacterRenderer: WKNavigationDelegate {
     /// The only page she may navigate to is the one local page; links, redirects and
     /// anything that would reach the network are refused.
     func webView(
@@ -247,21 +277,21 @@ extension StandWebRenderer: WKNavigationDelegate {
         didFailProvisionalNavigation navigation: WKNavigation!,
         withError error: Error
     ) {
-        fail(.page(error.localizedDescription))
+        fail(.loadFailed(error.localizedDescription))
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        fail(.page(error.localizedDescription))
+        fail(.loadFailed(error.localizedDescription))
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        fail(.page("立绘网页进程结束了"))
+        fail(.loadFailed("立绘网页进程结束了"))
     }
 }
 
 // MARK: - WKUIDelegate
 
-extension StandWebRenderer: WKUIDelegate {
+extension SpineCharacterRenderer: WKUIDelegate {
     /// No popups: the page never opens another window.
     func webView(
         _ webView: WKWebView,
@@ -305,7 +335,7 @@ extension StandWebRenderer: WKUIDelegate {
 /// by the web view, which the renderer owns): the page talks to the renderer weakly.
 @MainActor
 private final class MessageProxy: NSObject, WKScriptMessageHandler {
-    weak var renderer: StandWebRenderer?
+    weak var renderer: SpineCharacterRenderer?
 
     func userContentController(
         _ userContentController: WKUserContentController,

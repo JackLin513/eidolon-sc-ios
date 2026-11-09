@@ -3,7 +3,7 @@ import Foundation
 /// How much of her the stand shows (spec「渲染」). The call screen picks by width:
 /// phones held upright show her down to the knees, wider screens down to the waist;
 /// the outfit preview later uses `full`.
-public enum StandFraming: String, Sendable, Hashable, CaseIterable {
+public enum StandFraming: String, Codable, Sendable, Hashable, CaseIterable {
     /// Down to her knees.
     case knees
     /// Down to her waist.

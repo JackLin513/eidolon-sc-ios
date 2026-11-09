@@ -301,6 +301,17 @@ struct SettingsView: View {
                     }
 
                     Section {
+                        Picker(
+                            "立绘风格",
+                            selection: Binding(
+                                get: { app.runtimePreference },
+                                set: { app.setRuntimePreference($0) }
+                            )
+                        ) {
+                            ForEach(RuntimePreference.allCases) { preference in
+                                Text(preference.title).tag(preference)
+                            }
+                        }
                         Button {
                             showStandPreview = true
                         } label: {
@@ -309,7 +320,7 @@ struct SettingsView: View {
                     } header: {
                         Text("立绘")
                     } footer: {
-                        Text("用立绘包里她的默认衣装看一段待机动作。没有同步 Spine 运行时、页面失败或素材缺失时显示「没有立绘」。")
+                        Text("自动会优先用这个构建里可用的 3D；没有 Unity 产物或 3D 内容时回退到 2D。用立绘包里她的默认衣装看一段待机动作。")
                     }
 
                     standBundleSection

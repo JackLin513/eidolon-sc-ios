@@ -23,7 +23,7 @@ final class OutfitThumbnailStore {
 
     private let directory: URL
     private let memory = NSCache<NSString, UIImage>()
-    private var worker: StandWebRenderer?
+    private var worker: (any CharacterRenderer)?
     private var workerRoot: URL?
 
     private var busy = false
@@ -76,13 +76,13 @@ final class OutfitThumbnailStore {
     // MARK: - Drawing
 
     private func draw(_ outfit: StandOutfit, contentRoot: URL) async -> UIImage? {
-        let renderer = renderer(for: contentRoot)
+        guard let renderer = renderer(for: contentRoot, outfit: outfit) else { return nil }
         renderer.setPaused(false)
         // Any early exit below, cancellation included, leaves the off-screen renderer
         // paused instead of drawing for a card that is gone.
         defer { renderer.setPaused(true) }
-        renderer.setViewportSize(Self.size)
-        renderer.direct(.calm)
+        renderer.setViewport(Self.size)
+        renderer.presentCalm()
         guard await load(outfit, into: renderer) else {
             // A page or outfit that failed never draws again; the next thumbnail starts
             // from a fresh context.
@@ -110,18 +110,26 @@ final class OutfitThumbnailStore {
 
     /// Load one outfit and wait for the page's report, or until it gives up. The wait ends
     /// at once if the card goes away, so a slow load cannot hold the next card.
-    private func load(_ outfit: StandOutfit, into renderer: StandWebRenderer) async -> Bool {
+    private func load(_ outfit: StandOutfit, into renderer: any CharacterRenderer) async -> Bool {
         let waiter = LoadWaiter()
-        renderer.onLoaded = { _ in waiter.finish(true) }
+        renderer.onReady = { _ in waiter.finish(true) }
         renderer.onFailure = { _ in waiter.finish(false) }
         renderer.load(outfit)
         return await waiter.wait(timeout: .seconds(15))
     }
 
-    private func renderer(for contentRoot: URL) -> StandWebRenderer {
+    private func renderer(for contentRoot: URL, outfit: StandOutfit) -> any CharacterRenderer? {
         if let worker, workerRoot == contentRoot { return worker }
         discardWorker()
-        let renderer = StandWebRenderer(contentRoot: contentRoot, framing: .full)
+        guard let renderer = RuntimeRegistry.shared.makeRenderer(
+            .spine2D,
+            assets: RuntimeAssets(
+                contentRoot: contentRoot,
+                characterID: "",
+                outfit: outfit,
+                framing: .full
+            )
+        ) else { return nil }
         renderer.view.frame = CGRect(origin: .zero, size: Self.size)
         bench.addSubview(renderer.view)
         worker = renderer

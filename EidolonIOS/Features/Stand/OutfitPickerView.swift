@@ -28,7 +28,7 @@ struct OutfitPickerView: View {
     @State private var wornID: String
     /// The outfit the preview is showing; tapping and the switches only change this.
     @State private var pickedID: String
-    @State private var renderer: StandWebRenderer?
+    @State private var renderer: (any CharacterRenderer)?
     /// The outfit the renderer was last told to show, so tapping the same one does not
     /// reload her.
     @State private var loadedID: String?
@@ -199,11 +199,11 @@ struct OutfitPickerView: View {
                             .id(ObjectIdentifier(renderer as AnyObject))
                             .onAppear {
                                 previewSize = proxy.size
-                                renderer.setViewportSize(proxy.size)
+                                renderer.setViewport(proxy.size)
                             }
                             .onChange(of: proxy.size) { _, size in
                                 previewSize = size
-                                renderer.setViewportSize(size)
+                                renderer.setViewport(size)
                             }
                     }
                     switch phase {
@@ -303,10 +303,25 @@ struct OutfitPickerView: View {
         phase = .loading
         if renderer == nil || rendererFailed {
             renderer?.setPaused(true)
-            let created = StandWebRenderer(contentRoot: contentRoot, framing: .full)
-            created.onLoaded = { [weak created] report in
+            guard let created = app.makeRenderer(
+                characterID: character.id,
+                outfit: outfit,
+                contentRoot: contentRoot,
+                framing: .full
+            ) else {
+                phase = .failed
+                rendererFailed = true
+                return
+            }
+            created.onReady = { [weak created] _ in
                 guard let created else { return }
-                created.direct(calmPose(report.animations))
+                created.present(
+                    PresentationFrame(
+                        StandDirection.calm,
+                        framing: .full,
+                        reducedMotion: reduceMotion
+                    )
+                )
                 phase = .shown
             }
             created.onFailure = { _ in
@@ -315,17 +330,12 @@ struct OutfitPickerView: View {
             }
             created.setPaused(scenePhase != .active)
             if previewSize != .zero {
-                created.setViewportSize(previewSize)
+                created.setViewport(previewSize)
             }
             renderer = created
             rendererFailed = false
         }
         renderer?.load(outfit)
-    }
-
-    /// The calm pose, from what this outfit can play (upstream passes `CALM`).
-    private func calmPose(_ animations: [String: Double]) -> StandPose {
-        StandAnimator.pose(for: .calm, reducedMotion: reduceMotion, animations: animations)
     }
 
     private func wear() {

@@ -26,6 +26,9 @@ public struct ContentManifest: Codable, Sendable, Hashable {
     public var formatVersion: Int
     /// `content` for a story bundle; nil for packages written before the split.
     public var kind: String? = nil
+    /// The franchise this bundle belongs to; nil for bundles written before the
+    /// multi-franchise work, which read as `shiny` (S1 only reserves the field).
+    public var franchise: String? = nil
     public var contentSchemaVersion: Int
     public var createdAt: String
     public var embedding: Embedding
@@ -36,6 +39,7 @@ public struct ContentManifest: Codable, Sendable, Hashable {
     enum CodingKeys: String, CodingKey {
         case formatVersion = "format_version"
         case kind
+        case franchise
         case contentSchemaVersion = "content_schema_version"
         case createdAt = "created_at"
         case embedding

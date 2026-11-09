@@ -1,0 +1,112 @@
+# 3D 构建变体：在默认工程之上加入 UnityFramework 与 3D 内容。
+#
+# 默认构建用 `project.yml`；本文件只在需要 3D 时使用：
+#   xcodegen generate --spec project-3d.yml
+#
+# 所需本机产物（都不进仓库）：
+#   EidolonIOS/UnityRuntime/UnityFramework.framework   Unity iOS 导出
+#   EidolonIOS/Resources/Unity/Data                    Unity 导出的 Data 目录
+#   build/Unity3DContent                               3D 模型/衣装/动作（model3d 包）
+# 缺任何一个时 xcodegen 会失败，这是有意的：3D 变体必须带齐运行时与内容。
+
+name: EidolonIOS
+
+options:
+  bundleIdPrefix: com.jacklin
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1
+
+packages:
+  EidolonCore:
+    path: EidolonCore
+
+targets:
+  EidolonIOS:
+    type: application
+    platform: iOS
+    dependencies:
+      - package: EidolonCore
+      # 只 embed、不 link：UaaL 要求 App 启动时不要 dyld 自动加载 UnityFramework。
+      - framework: EidolonIOS/UnityRuntime/UnityFramework.framework
+        embed: true
+        codeSign: true
+        link: false
+    sources:
+      - path: EidolonIOS
+        excludes:
+          - Info.plist
+          - Resources/WelcomePage
+          - Resources/Welcome
+          # Unity 的 Data 目录要保持名字做 folder reference
+          - Resources/Unity
+          # UnityFramework 由 framework dependency 单独嵌入，不走 sources
+          - UnityRuntime
+      - path: EidolonIOS/Resources/WelcomePage
+        type: folder
+      - path: EidolonIOS/Resources/Welcome
+        type: folder
+      - path: EidolonIOS/Resources/Unity/Data
+        type: folder
+      - path: build/Unity3DContent
+        type: folder
+      - path: AppIcon.icon
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jacklin.eidolon
+        PRODUCT_NAME: Eidolon
+        TARGETED_DEVICE_FAMILY: "1"
+        INFOPLIST_FILE: EidolonIOS/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: "FF7NMQWZKK"
+        SWIFT_OBJC_BRIDGING_HEADER: EidolonIOS/Support/EidolonIOS-Bridging-Header.h
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        # Unity 的 framework 里有 ObjC category，链接时不能把没显式引用的类丢掉
+        OTHER_LDFLAGS: $(inherited) -ObjC
+        # Xcode 26 的 Debug dylib 拆分会让 C/ObjC 插件符号在链接阶段找不到
+        ENABLE_DEBUG_DYLIB: NO
+        LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/Frameworks
+    postBuildScripts:
+      - name: 同步 Spine 运行时
+        basedOnDependencyAnalysis: false
+        script: |
+          "${SRCROOT}/tools/sync_stand_runtime.sh" \
+            "${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}" \
+            "${EIDOLON_UPSTREAM:-${SRCROOT}/../eidolon-sc}"
+
+  EidolonIOSUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    dependencies:
+      - target: EidolonIOS
+    sources:
+      - path: EidolonIOSUITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jacklin.eidolon.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: EidolonIOS
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: "FF7NMQWZKK"
+
+schemes:
+  EidolonIOS-3D:
+    build:
+      targets:
+        EidolonIOS: all
+        EidolonIOSUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - EidolonIOSUITests

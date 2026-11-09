@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		006814D0C420AED5E64C35B7 /* MomentsProvidersFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CE28259DA40B1838D61EE57 /* MomentsProvidersFactory.swift */; };
+		0212FE5CDACF4D4B97649581 /* Runtime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 415CF7C1B34DCFEAC8E9F8DF /* Runtime.swift */; };
 		03957EC5C34772CEC53AE18A /* WelcomeSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94F4AA3D6E9281E164ABB615 /* WelcomeSchemeHandler.swift */; };
 		03D1D9AFAE21C9348078853C /* ImportGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */; };
 		040D13EBDCF7224BE38785D1 /* GiftsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3FDDF38468E86F1EF7C7A6 /* GiftsView.swift */; };
@@ -55,6 +56,7 @@
 		7DF54D92FD1EBA8B04C3A62A /* PriceEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD8235B33347EA38FBE44410 /* PriceEditorView.swift */; };
 		8ABC906B631EDC9CC6BC2529 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 502579B7DFF941BAC28ADE49 /* AppIcon.icon */; };
 		8F700315EAE8C6E59429BD0F /* BarTextBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B8F3B95D300DF671C5E5C20 /* BarTextBox.swift */; };
+		8FD64A54148D89DBDCE6D899 /* UnityCharacterRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10C42827A05CE10C99AE7F6A /* UnityCharacterRenderer.swift */; };
 		8FDA81B5B65A7F24FDDE1659 /* ChatSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730259B31CD6DBF3CA44FC75 /* ChatSettings.swift */; };
 		90BA232DAFE04205D280A5AF /* AffinityCue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A8C4CAB5DC57A55588F5D0 /* AffinityCue.swift */; };
 		9221A0F68F374BAAA5282CCE /* MemoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B94AA6A4C5655585B24D2400 /* MemoryListView.swift */; };
@@ -76,6 +78,7 @@
 		B2DF1A14F646EDBA6EAECF48 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2610401DD1C29D8D7AB56C /* SettingsView.swift */; };
 		B3AF831F701054AEEE1CCABB /* CyclesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 189051D482A540C18583A79E /* CyclesView.swift */; };
 		B519D97732DE729A2D3696A7 /* EnvImportPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F47E892DE490E8FC25FBAE /* EnvImportPreviewView.swift */; };
+		B53933E76D83367F37759639 /* UnityStandBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = E03649729109E32647148609 /* UnityStandBridge.mm */; };
 		B6BE9BFD3E39D4998319B6F0 /* APIModelPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FD60D136AC80DDE9C750A6 /* APIModelPicker.swift */; };
 		B735177E66946109DB42D254 /* PlayUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71934BAD4C67636EC0DCD9F1 /* PlayUITests.swift */; };
 		BBCD2E47044DFC5DAB92ED57 /* CallSettingsError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */; };
@@ -105,6 +108,7 @@
 		EF42004562B67CC87DFCF565 /* StandWebRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1AD0F6ABD451EB0C733277C /* StandWebRenderer.swift */; };
 		F0779B69941B95753CFA7C62 /* ObjCExceptionCatcher.m in Sources */ = {isa = PBXBuildFile; fileRef = BF8FFBE106A62A61CD0A8867 /* ObjCExceptionCatcher.m */; };
 		F6461ECD032B95DDDAF98B4B /* TabBarHides.swift in Sources */ = {isa = PBXBuildFile; fileRef = 957D8B0F7007CD039844150D /* TabBarHides.swift */; };
+		F920FA2022599C128DC7B081 /* UnityRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0F1E58FFACF1BB72F3AB192 /* UnityRuntime.swift */; };
 		FA5A10686839158B2C50E21D /* BarCounter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38B53BAD43DC896CF33D1635 /* BarCounter.swift */; };
 		FB74EA11C1B5E34D38ED3937 /* ChatStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA937E9DC437925E1DD0673 /* ChatStore.swift */; };
 		FDB0475CDE701EBBE395CFFE /* ChatSelectionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CCFC142CC2535CA115A8402 /* ChatSelectionUITests.swift */; };
@@ -126,6 +130,7 @@
 		04FF4244E9E83A9501C1F19E /* EidolonCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = EidolonCore; path = EidolonCore; sourceTree = SOURCE_ROOT; };
 		0CE28259DA40B1838D61EE57 /* MomentsProvidersFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MomentsProvidersFactory.swift; sourceTree = "<group>"; };
 		0E396CD6E4C64449524CEC32 /* EidolonIOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = EidolonIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		10C42827A05CE10C99AE7F6A /* UnityCharacterRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnityCharacterRenderer.swift; sourceTree = "<group>"; };
 		13DA6F636E010113BC8F3B10 /* ChatModelProfilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModelProfilesView.swift; sourceTree = "<group>"; };
 		14A72BB12039666C937D7C04 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		17A409D36FC5F7C23FD61FFB /* BarTutorialUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarTutorialUITests.swift; sourceTree = "<group>"; };
@@ -147,6 +152,7 @@
 		3B062B423FB9FC2174A88CBC /* AtmosphericTextUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtmosphericTextUITests.swift; sourceTree = "<group>"; };
 		3CB7C29B8A1FAC27F45659C8 /* APISettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APISettingsView.swift; sourceTree = "<group>"; };
 		3E8A9D366A002F554C2BAE80 /* CREDITS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CREDITS.md; sourceTree = "<group>"; };
+		415CF7C1B34DCFEAC8E9F8DF /* Runtime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runtime.swift; sourceTree = "<group>"; };
 		417CE4303E61BC3BC3A1CC0B /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
 		4208DA3B81C99D8B53DC32F2 /* MomentsNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MomentsNotifications.swift; sourceTree = "<group>"; };
 		4472CA53E92E225069B1D652 /* FishSynthesis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FishSynthesis.swift; sourceTree = "<group>"; };
@@ -175,6 +181,7 @@
 		78A39D03BFDD50261F07F298 /* StandPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandPreviewView.swift; sourceTree = "<group>"; };
 		7B8F3B95D300DF671C5E5C20 /* BarTextBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarTextBox.swift; sourceTree = "<group>"; };
 		7C010E713ABAD24B1CF59323 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
+		7DEECBE8C241DB48E9C36665 /* UnityStandBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = UnityStandBridge.h; sourceTree = "<group>"; };
 		7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportGuideView.swift; sourceTree = "<group>"; };
 		7F3FDDF38468E86F1EF7C7A6 /* GiftsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GiftsView.swift; sourceTree = "<group>"; };
 		7FB135685AEF80F60C0388E2 /* APISettingsSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APISettingsSupport.swift; sourceTree = "<group>"; };
@@ -217,6 +224,8 @@
 		D97FA6838C4D87D4724543C3 /* BarSound.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarSound.swift; sourceTree = "<group>"; };
 		DC2610401DD1C29D8D7AB56C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		DC72E9FAE9DD7A41CB65A1D2 /* AchievementsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchievementsView.swift; sourceTree = "<group>"; };
+		E03649729109E32647148609 /* UnityStandBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = UnityStandBridge.mm; sourceTree = "<group>"; };
+		E0F1E58FFACF1BB72F3AB192 /* UnityRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnityRuntime.swift; sourceTree = "<group>"; };
 		E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxRecognition.swift; sourceTree = "<group>"; };
 		E34EF8A94AAE4F85069E98B0 /* ScheduleBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleBoardView.swift; sourceTree = "<group>"; };
 		E826CF3E4888BCFD5A270D64 /* ObjCExceptionCatcher.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ObjCExceptionCatcher.h; sourceTree = "<group>"; };
@@ -308,6 +317,8 @@
 				6B79958807A1701A36095FD4 /* EidolonIOS-Bridging-Header.h */,
 				E826CF3E4888BCFD5A270D64 /* ObjCExceptionCatcher.h */,
 				BF8FFBE106A62A61CD0A8867 /* ObjCExceptionCatcher.m */,
+				7DEECBE8C241DB48E9C36665 /* UnityStandBridge.h */,
+				E03649729109E32647148609 /* UnityStandBridge.mm */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -379,6 +390,7 @@
 				AB93147C4769FE640D212437 /* Core */,
 				689A5C957FC75EE927E77D7D /* Features */,
 				7C3354A50873374D4CA6E7BE /* Resources */,
+				A39B2FF0A039534C308AE3C7 /* Runtime */,
 				3B4679FF0157C32A8AAEE9E6 /* Support */,
 			);
 			path = EidolonIOS;
@@ -468,6 +480,15 @@
 				957D8B0F7007CD039844150D /* TabBarHides.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		A39B2FF0A039534C308AE3C7 /* Runtime */ = {
+			isa = PBXGroup;
+			children = (
+				415CF7C1B34DCFEAC8E9F8DF /* Runtime.swift */,
+				EB40C46AC00795924A44C0AA /* Unity */,
+			);
+			path = Runtime;
 			sourceTree = "<group>";
 		};
 		AB93147C4769FE640D212437 /* Core */ = {
@@ -562,6 +583,15 @@
 				A590276F51027472E281D0EB /* MomentsView.swift */,
 			);
 			path = Moments;
+			sourceTree = "<group>";
+		};
+		EB40C46AC00795924A44C0AA /* Unity */ = {
+			isa = PBXGroup;
+			children = (
+				10C42827A05CE10C99AE7F6A /* UnityCharacterRenderer.swift */,
+				E0F1E58FFACF1BB72F3AB192 /* UnityRuntime.swift */,
+			);
+			path = Unity;
 			sourceTree = "<group>";
 		};
 		ED13E42C912E265F1EE4F490 /* Packages */ = {
@@ -784,6 +814,7 @@
 				DAA3C813C467A0A802E9C937 /* PlayHubView.swift in Sources */,
 				7DF54D92FD1EBA8B04C3A62A /* PriceEditorView.swift in Sources */,
 				E0F9B1FA2BA982860CDD2BC3 /* RootView.swift in Sources */,
+				0212FE5CDACF4D4B97649581 /* Runtime.swift in Sources */,
 				4B5D22BE3F2537E0F40BC144 /* ScheduleBoardView.swift in Sources */,
 				FED6BF63726F8C9A78FA2904 /* ServerStore.swift in Sources */,
 				B2DF1A14F646EDBA6EAECF48 /* SettingsView.swift in Sources */,
@@ -799,6 +830,9 @@
 				C7D9B29CBBADC895872095A7 /* TexturedAudio.swift in Sources */,
 				791DD675A29C48B88185FACE /* Theme.swift in Sources */,
 				28E1D1F65D00588EA9601DA3 /* TraceListView.swift in Sources */,
+				8FD64A54148D89DBDCE6D899 /* UnityCharacterRenderer.swift in Sources */,
+				F920FA2022599C128DC7B081 /* UnityRuntime.swift in Sources */,
+				B53933E76D83367F37759639 /* UnityStandBridge.mm in Sources */,
 				DFEDA5AE595B6BB38AC01901 /* UsageView.swift in Sources */,
 				C49847C1C908EFA4FDF3BE9F /* WebSocketSupport.swift in Sources */,
 				DB4EF5F6475B173CD7C4EBA8 /* WelcomeBundle.swift in Sources */,

@@ -35,7 +35,7 @@ struct CallView: View {
     @State private var backdrop: UIImage?
 
     /// Her stand, driven by the call's events. Nothing is drawn without one.
-    @State private var renderer: (any StandRenderer)?
+    @State private var renderer: (any CharacterRenderer)?
     /// Whether the producer is typing during the call (spec #47), and what they have typed.
     @State private var typing = false
     @State private var draft = ""
@@ -43,9 +43,9 @@ struct CallView: View {
     /// Whether the app went to the background, so coming back replaces the audio and the
     /// recognizer's connection; a Control Center pull only makes it inactive.
     @State private var wasBackgrounded = false
-    /// What the loaded outfit can play, as the player reported it.
-    @State private var animations: [String: Double] = [:]
     @State private var standLoaded = false
+    /// The measured backend wants the whole screen (3D); the 2D stand keeps its lower stage.
+    @State private var fullBleed = false
     @State private var standFailed = false
     /// Her stand read from the bundle: the default outfit and, when it reads, her list.
     @State private var stand: CharacterStand?
@@ -62,13 +62,28 @@ struct CallView: View {
 
     var body: some View {
         ZStack {
+            // A full-bleed backend (3D) draws behind everything; the 2D stand keeps its
+            // lower-stage composition in the geometry below.
+            if let renderer, fullBleed, !standFailed {
+                StandHostView(renderer: renderer)
+                    .id(ObjectIdentifier(renderer as AnyObject))
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .opacity(standLoaded ? 1 : 0)
+                    .animation(.linear(duration: 0.3), value: standLoaded)
+                    .onAppear {
+                        let size = UIScreen.main.bounds.size
+                        standViewport = size
+                        renderer.setViewport(size)
+                    }
+            }
             // Her likeness and stand keep the whole screen when the keyboard is up; only the
             // words and the bottom row rise above it.
             GeometryReader { geometry in
                 ZStack {
                     background(size: geometry.size)
                         .ignoresSafeArea()
-                    if let renderer, !standFailed {
+                    if let renderer, !standFailed, !fullBleed {
                         standStage(renderer, size: geometry.size)
                     }
                 }
@@ -199,19 +214,32 @@ struct CallView: View {
         // The new renderer starts blank: keep her hidden until it reports, so a fallback
         // in mid-call fades her back in instead of showing an empty stage at full opacity.
         standLoaded = false
-        let renderer = StandWebRenderer(
-            contentRoot: stand?.root ?? app.core.location.contentDirectory,
+        fullBleed = false
+        let root = stand?.root ?? app.core.location.contentDirectory
+        let assets = RuntimeAssets(
+            contentRoot: root,
+            characterID: character.id,
+            outfit: outfit,
             framing: StandFraming(compactWidth: isCompactWidth)
         )
+        guard let renderer = app.makeRenderer(
+            characterID: character.id,
+            outfit: outfit,
+            contentRoot: root,
+            framing: assets.framing
+        ) else {
+            standFailed = true
+            return
+        }
         fallbackOutfits = fallback
-        renderer.onLoaded = { report in
-            animations = report.animations
+        renderer.onReady = { report in
+            fullBleed = report.resolved.fullBleed
             standLoaded = true
             renderPose()
         }
         renderer.onFailure = { failure in
             // The renderer logs why; losing her is never fatal, the call goes on.
-            if case .outfit = failure, let next = fallbackOutfits.first {
+            if case .contentMissing = failure, let next = fallbackOutfits.first {
                 showStand(next, fallback: Array(fallbackOutfits.dropFirst()))
                 return
             }
@@ -219,11 +247,11 @@ struct CallView: View {
             standFailed = true
         }
         if standViewport != .zero {
-            renderer.setViewportSize(standViewport)
+            renderer.setViewport(standViewport)
         }
         self.renderer = renderer
         updatePause()
-        renderer.load(outfit)
+        renderer.prepare(assets)
     }
 
     /// Her stand draws only while the layer is on screen and the app is active.
@@ -234,11 +262,11 @@ struct CallView: View {
     /// Ask the animation table what the current direction looks like on this outfit.
     private func renderPose() {
         guard let renderer else { return }
-        renderer.direct(
-            StandAnimator.pose(
-                for: callStand.direction,
-                reducedMotion: reduceMotion,
-                animations: animations
+        renderer.present(
+            PresentationFrame(
+                callStand.direction,
+                framing: fullBleed ? .full : StandFraming(compactWidth: isCompactWidth),
+                reducedMotion: reduceMotion
             )
         )
     }
@@ -280,7 +308,7 @@ struct CallView: View {
     /// Her stand on the bottom 80% of the screen, under the words and the keys and taking no
     /// touches (spec「通话层」). It rises 12% and fades in when it arrives on a phone, only
     /// fades on wider screens and with reduced motion, and stays at 40% once the call is over.
-    private func standStage(_ renderer: any StandRenderer, size: CGSize) -> some View {
+    private func standStage(_ renderer: any CharacterRenderer, size: CGSize) -> some View {
         let height = size.height * 0.8
         let viewport = CGSize(width: size.width, height: height)
         return VStack(spacing: 0) {
@@ -296,11 +324,11 @@ struct CallView: View {
                 .animation(riseAnimation, value: standLoaded)
                 .onAppear {
                     standViewport = viewport
-                    renderer.setViewportSize(viewport)
+                    renderer.setViewport(viewport)
                 }
                 .onChange(of: viewport) { _, next in
                     standViewport = next
-                    renderer.setViewportSize(next)
+                    renderer.setViewport(next)
                 }
         }
         .frame(width: size.width, height: size.height, alignment: .bottom)
