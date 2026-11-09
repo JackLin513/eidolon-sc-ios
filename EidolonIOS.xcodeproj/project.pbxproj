@@ -51,6 +51,7 @@
 		6C4B4B8A22647306C000071F /* WelcomePage in Resources */ = {isa = PBXBuildFile; fileRef = 2BC1C76197EA58E3C032BD1E /* WelcomePage */; };
 		71F9D2D2A2CE1C9A213F29AA /* APISettingsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB451726D31E16340EB84E2 /* APISettingsUITests.swift */; };
 		7480ECBFB8B3325B05E57CE5 /* InstalledPackages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93C40CC9B1A19D189C083A96 /* InstalledPackages.swift */; };
+		7859A717F01D9B920478FB2B /* RuntimeRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8C081F7E09B0CF99E5767A1 /* RuntimeRegistryTests.swift */; };
 		791DD675A29C48B88185FACE /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE21F722ED79A2089F060B7F /* Theme.swift */; };
 		7A94DB09502E6152065DD4B6 /* StatsUsageUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15DDC55C81AD70CE4DA0CE4 /* StatsUsageUITests.swift */; };
 		7DF54D92FD1EBA8B04C3A62A /* PriceEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD8235B33347EA38FBE44410 /* PriceEditorView.swift */; };
@@ -117,6 +118,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		530422887E3B2E120EE0E899 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 379E28C85FA2AD7FFACA899D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E750EECA85E66DE8B22D1663;
+			remoteInfo = EidolonIOS;
+		};
 		D515522F817EFF089804E69D /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 379E28C85FA2AD7FFACA899D /* Project object */;
@@ -128,6 +136,7 @@
 
 /* Begin PBXFileReference section */
 		04FF4244E9E83A9501C1F19E /* EidolonCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = EidolonCore; path = EidolonCore; sourceTree = SOURCE_ROOT; };
+		0AC4514900E27D78D28C2726 /* EidolonIOSTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = EidolonIOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0CE28259DA40B1838D61EE57 /* MomentsProvidersFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MomentsProvidersFactory.swift; sourceTree = "<group>"; };
 		0E396CD6E4C64449524CEC32 /* EidolonIOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = EidolonIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		10C42827A05CE10C99AE7F6A /* UnityCharacterRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnityCharacterRenderer.swift; sourceTree = "<group>"; };
@@ -201,6 +210,7 @@
 		A3D7CC6AFCA2A05909641B10 /* TexturedAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TexturedAudio.swift; sourceTree = "<group>"; };
 		A530040A28709F9772A80A94 /* CallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallView.swift; sourceTree = "<group>"; };
 		A590276F51027472E281D0EB /* MomentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MomentsView.swift; sourceTree = "<group>"; };
+		A8C081F7E09B0CF99E5767A1 /* RuntimeRegistryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeRegistryTests.swift; sourceTree = "<group>"; };
 		AD8235B33347EA38FBE44410 /* PriceEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PriceEditorView.swift; sourceTree = "<group>"; };
 		B1AD0F6ABD451EB0C733277C /* StandWebRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandWebRenderer.swift; sourceTree = "<group>"; };
 		B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationHistoryView.swift; sourceTree = "<group>"; };
@@ -305,6 +315,7 @@
 			children = (
 				502579B7DFF941BAC28ADE49 /* AppIcon.icon */,
 				8428DAC951AA7D13E5248556 /* EidolonIOS */,
+				40DE607C4C0C77A5EDEF7DFC /* EidolonIOSTests */,
 				991D60CA2AEEBFDA342B90D9 /* EidolonIOSUITests */,
 				ED13E42C912E265F1EE4F490 /* Packages */,
 				D74BC4D4FEFFE9A287143AFF /* Products */,
@@ -321,6 +332,14 @@
 				E03649729109E32647148609 /* UnityStandBridge.mm */,
 			);
 			path = Support;
+			sourceTree = "<group>";
+		};
+		40DE607C4C0C77A5EDEF7DFC /* EidolonIOSTests */ = {
+			isa = PBXGroup;
+			children = (
+				A8C081F7E09B0CF99E5767A1 /* RuntimeRegistryTests.swift */,
+			);
+			path = EidolonIOSTests;
 			sourceTree = "<group>";
 		};
 		4EB1ECB7DD9E2A371CAEF70A /* Conversations */ = {
@@ -572,6 +591,7 @@
 			isa = PBXGroup;
 			children = (
 				0E396CD6E4C64449524CEC32 /* EidolonIOS.app */,
+				0AC4514900E27D78D28C2726 /* EidolonIOSTests.xctest */,
 				1C41FC4F60852CC263CFA152 /* EidolonIOSUITests.xctest */,
 			);
 			name = Products;
@@ -640,6 +660,24 @@
 			productReference = 1C41FC4F60852CC263CFA152 /* EidolonIOSUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		C967A100097ACB0BCBBCBCC9 /* EidolonIOSTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2E6BDD20E3A3E30CD2B0E4E3 /* Build configuration list for PBXNativeTarget "EidolonIOSTests" */;
+			buildPhases = (
+				07835F5D36153832B3B8B0AB /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				4247DB16176CDC2CACC08B05 /* PBXTargetDependency */,
+			);
+			name = EidolonIOSTests;
+			packageProductDependencies = (
+			);
+			productName = EidolonIOSTests;
+			productReference = 0AC4514900E27D78D28C2726 /* EidolonIOSTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		E750EECA85E66DE8B22D1663 /* EidolonIOS */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = B19BDED4E7A46DB1BEEEB5A1 /* Build configuration list for PBXNativeTarget "EidolonIOS" */;
@@ -675,6 +713,10 @@
 						ProvisioningStyle = Automatic;
 						TestTargetID = E750EECA85E66DE8B22D1663;
 					};
+					C967A100097ACB0BCBBCBCC9 = {
+						DevelopmentTeam = FF7NMQWZKK;
+						ProvisioningStyle = Automatic;
+					};
 					E750EECA85E66DE8B22D1663 = {
 						DevelopmentTeam = FF7NMQWZKK;
 						ProvisioningStyle = Automatic;
@@ -699,6 +741,7 @@
 			projectRoot = "";
 			targets = (
 				E750EECA85E66DE8B22D1663 /* EidolonIOS */,
+				C967A100097ACB0BCBBCBCC9 /* EidolonIOSTests */,
 				7E0134A9C2A2E0997CA04BE7 /* EidolonIOSUITests */,
 			);
 		};
@@ -746,6 +789,14 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		07835F5D36153832B3B8B0AB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7859A717F01D9B920478FB2B /* RuntimeRegistryTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		35F3F47F98BC46AAF4AF47CD /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -860,6 +911,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		4247DB16176CDC2CACC08B05 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E750EECA85E66DE8B22D1663 /* EidolonIOS */;
+			targetProxy = 530422887E3B2E120EE0E899 /* PBXContainerItemProxy */;
+		};
 		DC5DA05B32B9FADD5B9EA47E /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = E750EECA85E66DE8B22D1663 /* EidolonIOS */;
@@ -974,6 +1030,44 @@
 			};
 			name = Debug;
 		};
+		4BAD2BA8A5C132CCB9B9CC14 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = FF7NMQWZKK;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.jacklin.eidolon.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Eidolon.app/Eidolon";
+			};
+			name = Release;
+		};
+		5D767F0233A033F74C51383A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = FF7NMQWZKK;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.jacklin.eidolon.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Eidolon.app/Eidolon";
+			};
+			name = Debug;
+		};
 		845E5762AEA0724B3501F3B7 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1081,6 +1175,15 @@
 			buildConfigurations = (
 				334CE1257C4B5FDD9DA9B09B /* Debug */,
 				A3704641DD2CFBC811FDEEF8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		2E6BDD20E3A3E30CD2B0E4E3 /* Build configuration list for PBXNativeTarget "EidolonIOSTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5D767F0233A033F74C51383A /* Debug */,
+				4BAD2BA8A5C132CCB9B9CC14 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

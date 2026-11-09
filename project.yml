@@ -59,6 +59,22 @@ targets:
             "${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}" \
             "${EIDOLON_UPSTREAM:-${SRCROOT}/../eidolon-sc}"
 
+  EidolonIOSTests:
+    type: bundle.unit-test
+    platform: iOS
+    dependencies:
+      - target: EidolonIOS
+    sources:
+      - path: EidolonIOSTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jacklin.eidolon.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Eidolon.app/Eidolon
+        BUNDLE_LOADER: $(TEST_HOST)
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: "FF7NMQWZKK"
+
   EidolonIOSUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -79,10 +95,12 @@ schemes:
     build:
       targets:
         EidolonIOS: all
+        EidolonIOSTests: [test]
         EidolonIOSUITests: [test]
     run:
       config: Debug
     test:
       config: Debug
       targets:
+        - EidolonIOSTests
         - EidolonIOSUITests
