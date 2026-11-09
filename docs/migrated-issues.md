@@ -3,7 +3,7 @@
 旧仓库 [`JackLin513/eidolon-sc-ios-archive`](https://github.com/JackLin513/eidolon-sc-ios-archive) 已经归档、只读保留。
 当时没关的 30 个 issue 复制进了本仓库（标题、正文、标签、评论都在），复制时正文里指向旧编号的引用改成了旧仓库的链接。
 
-**本仓库文档里的「#18」「#35」这类编号说的是旧仓库的编号**（`CLAUDE.md`、`docs/eidolon-sc-ios-handoff.md` 里都有），
+**本仓库文档里的「#18」「#35」这类编号说的是旧仓库的编号**（`CLAUDE.md` 与早期文档里都有），
 对照表如下；已关闭的 47 个 issue 没有复制，直接去旧仓库看。
 
 | 旧编号 | 现在 | 标题 |

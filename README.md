@@ -140,6 +140,7 @@ flowchart LR
 ```
 
 - 文字和说话走**同一个引擎**，写进同一段对话；通话只是在引擎外面套了一层识别和合成。
+- 立绘默认是 **Spine 2D**（WKWebView 里跑 spine-webgl 3.6）；**3D 支线**（Unity UaaL）在本地分支 `feat/mltd-3d-stand`，未合入 main，因此 main 的构建与运行都不依赖 Unity。
 - 检索的粗筛在端上做（剧情、资料、记忆都向量化后存进本地索引），只有候选的排序交给云端重排。
 - 每个回合按需要并行地跑判断、检索和记忆，首 token 之前该等的等，不该等的放后台。
 
@@ -150,9 +151,10 @@ flowchart LR
 | [构建与安装](docs/building.md) | 导出内容包与立绘包、生成工程、上真机、导入与签名 |
 | [配置](docs/configuration.md) | 各家服务、判断模型四选一、密钥存在哪 |
 | [测试与调试](docs/testing.md) | 单元测试、提示词对照、模拟器与真机的调试注入 |
+| [路线图](docs/roadmap.md) | 组件化、多运行时、多企划的阶段与不变量（调研结论，不是已实现） |
 | [架构决策记录](docs/adr/) | 为什么这样设计：端上 WebView 立绘、立绘包拆分、酒吧、整屏画布等 |
 | [`GLOSSARY.md`](GLOSSARY.md) | 领域术语表（与上游同一套） |
-| [`docs/research/`](docs/research/) | 调研笔记：整屏画布怎么铺满、上游 port 等 |
+| [`docs/research/`](docs/research/README.md) | 调研笔记索引：当前方向与历史参考分开 |
 
 ## 💻 开发
 
@@ -162,7 +164,7 @@ python3 -m unittest discover -s tools/tests  # 导出工具
 tools/oracle/run.sh                          # 提示词与上游逐字对照（要上游 checkout 与内容包）
 ```
 
-工程由 `xcodegen` 从 `project.yml` 生成；Spine 运行时不在仓库里，构建时由 `tools/sync_stand_runtime.sh` 从上游 checkout 拷进构建产物。调试用的环境变量（直接开某个角色、注入一句话、排练长通话等）见[测试与调试](docs/testing.md)。
+工程由 `xcodegen` 从 `project.yml` 生成；Spine 运行时不在仓库里，构建时由 `tools/sync_stand_runtime.sh` 从上游 checkout 拷进构建产物。调试用的环境变量（直接开某个角色、注入一句话、排练长通话等）见[测试与调试](docs/testing.md)。3D 支线不在 main；切到 `feat/mltd-3d-stand` 时按分支里的 `docs/3d-stand-integration-plan.md` 构建，合入顺序见[路线图](docs/roadmap.md)。
 
 ## 📁 项目结构
 
@@ -186,6 +188,12 @@ eidolon-sc-ios/
 ## 🧭 现状与边界
 
 已完成：文字对话、通话、照片（文字与通话）、朋友圈（动态、配图、赞与评论、30 天清理、后台补齐）、立绘与换衣装、记忆与检索、搭话、酒吧（含新手教程与点唱机）。
+
+**当前阶段（2026-11-09）**：
+
+- **组件化 / 多运行时 / 多企划**：调研完成，尚未实现；阶段与验收见[路线图](docs/roadmap.md)，结论见 [`docs/research/`](docs/research/README.md)。调研结论不是已实现。
+- **3D 立绘**：在本地分支 `feat/mltd-3d-stand`（Unity as a Library），**未合入 main**；先补 main 的契约，再按路线图 M1 迁入。main 默认仍是 Spine 2D。
+- **iPad / macOS**：未开始。iPad 先做；macOS 先用 Xcode My Mac / Designed for iPad 做测试冒烟，不承诺 Unity/UE。
 
 还没做，或者做不了：
 

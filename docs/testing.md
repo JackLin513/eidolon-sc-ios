@@ -84,3 +84,10 @@ tools/oracle/run.sh                          # 与上游逐字对照提示词（
 - 只有后台任务真的生成了新动态或她的回复才发本地通知；前台补齐不发。通知权限被拒绝时只保留导航点。
 - 朋友圈数据在用户库（`moment_*` 表）和 `User/images/moments/`；30 天前的动态连同配图、赞、评论和未露出的回复一起删。删除对话不影响朋友圈。
 - 提示词改动后照常跑 `tools/oracle/run.sh`：朋友圈关闭或没有动态时，聊天、通话、搭话的提示词必须与之前逐字一致（7 个场景全部 `identical`）。
+
+## 环境与构建坑
+
+- **模拟器的 WebGL 截图是黑的**：立绘/欢迎页的动效只能靠真机或用户截图判断，别用模拟器截图下结论。
+- **`xcodebuild ... | tail` 会吞掉构建失败**：管道的退出码是 `tail` 的 0；看日志里的 `BUILD SUCCEEDED / FAILED`，或加 `set -o pipefail`。
+- **`devicectl install` 成功不代表装的是新包**：装完核对产物的时间戳/大小；必要时先卸载或换 bundle id。
+- **设备 UDID 不写进仓库**：需要时用 `xcrun devicectl list devices` 现查。
