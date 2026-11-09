@@ -195,6 +195,12 @@ public struct RuntimeRequirement: Codable, Sendable, Hashable {
 
     /// The built-in 2D package requirement.
     public static let spine2D = RuntimeRequirement(preferred: .spineWebGL)
+
+    /// Prefer the optional 3D runtime, then fall back to the built-in 2D player.
+    public static let unityPreferred = RuntimeRequirement(
+        preferred: .unityUaaL,
+        fallbacks: [.spineWebGL, .avatar]
+    )
 }
 
 /// Pure resolution of a requirement against the runtimes compiled into this build.

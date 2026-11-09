@@ -44,7 +44,9 @@ final class OutfitThumbnailStore {
     func thumbnail(
         for outfit: StandOutfit,
         contentRoot: URL,
-        contentVersion: String
+        contentVersion: String,
+        characterID: String,
+        rendererFactory: (RuntimeAssets) -> (any CharacterRenderer)?
     ) async -> UIImage? {
         let key = key(outfit, contentVersion: contentVersion)
         if let cached = cached(key, outfit: outfit, contentVersion: contentVersion) {
@@ -59,7 +61,12 @@ final class OutfitThumbnailStore {
             return cached
         }
         guard await waitForBench() else { return nil }
-        guard let image = await draw(outfit, contentRoot: contentRoot) else { return nil }
+        guard let image = await draw(
+            outfit,
+            contentRoot: contentRoot,
+            characterID: characterID,
+            rendererFactory: rendererFactory
+        ) else { return nil }
         guard !Task.isCancelled else { return nil }
         memory.setObject(image, forKey: key)
         if let data = image.pngData() {
@@ -75,8 +82,18 @@ final class OutfitThumbnailStore {
 
     // MARK: - Drawing
 
-    private func draw(_ outfit: StandOutfit, contentRoot: URL) async -> UIImage? {
-        guard let renderer = renderer(for: contentRoot, outfit: outfit) else { return nil }
+    private func draw(
+        _ outfit: StandOutfit,
+        contentRoot: URL,
+        characterID: String,
+        rendererFactory: (RuntimeAssets) -> (any CharacterRenderer)?
+    ) async -> UIImage? {
+        guard let renderer = renderer(
+            for: contentRoot,
+            outfit: outfit,
+            characterID: characterID,
+            rendererFactory: rendererFactory
+        ) else { return nil }
         renderer.setPaused(false)
         // Any early exit below, cancellation included, leaves the off-screen renderer
         // paused instead of drawing for a card that is gone.
@@ -118,14 +135,18 @@ final class OutfitThumbnailStore {
         return await waiter.wait(timeout: .seconds(15))
     }
 
-    private func renderer(for contentRoot: URL, outfit: StandOutfit) -> any CharacterRenderer? {
+    private func renderer(
+        for contentRoot: URL,
+        outfit: StandOutfit,
+        characterID: String,
+        rendererFactory: (RuntimeAssets) -> (any CharacterRenderer)?
+    ) -> any CharacterRenderer? {
         if let worker, workerRoot == contentRoot { return worker }
         discardWorker()
-        guard let renderer = RuntimeRegistry.shared.makeRenderer(
-            .spine2D,
-            assets: RuntimeAssets(
+        guard let renderer = rendererFactory(
+            RuntimeAssets(
                 contentRoot: contentRoot,
-                characterID: "",
+                characterID: characterID,
                 outfit: outfit,
                 framing: .full
             )

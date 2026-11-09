@@ -208,7 +208,11 @@ struct CallView: View {
 
     /// Put one outfit on her. A broken outfit falls back to the next one (her default); a
     /// page or runtime that cannot draw ends her stand for this call.
-    private func showStand(_ outfit: StandOutfit, fallback: [StandOutfit]) {
+    private func showStand(
+        _ outfit: StandOutfit,
+        fallback: [StandOutfit],
+        avoiding: Set<RuntimeID> = []
+    ) {
         let previous = renderer
         previous?.setPaused(true)
         // The new renderer starts blank: keep her hidden until it reports, so a fallback
@@ -222,15 +226,11 @@ struct CallView: View {
             outfit: outfit,
             framing: StandFraming(compactWidth: isCompactWidth)
         )
-        guard let renderer = app.makeRenderer(
-            characterID: character.id,
-            outfit: outfit,
-            contentRoot: root,
-            framing: assets.framing
-        ) else {
+        guard let renderer = app.makeRenderer(assets, avoiding: avoiding) else {
             standFailed = true
             return
         }
+        let runtimeID = renderer.runtimeID
         fallbackOutfits = fallback
         renderer.onReady = { report in
             fullBleed = report.resolved.fullBleed
@@ -238,9 +238,24 @@ struct CallView: View {
             renderPose()
         }
         renderer.onFailure = { failure in
-            // The renderer logs why; losing her is never fatal, the call goes on.
+            // The renderer logs why; losing her is never fatal, the call goes on. A 3D
+            // failure always falls back to the 2D adapter (same outfit) before the page
+            // gives up and shows her avatar.
+            app.noteRuntimeFailure(failure, runtimeID: runtimeID)
+            if runtimeID == .unityUaaL {
+                showStand(
+                    outfit,
+                    fallback: fallback,
+                    avoiding: avoiding.union([.unityUaaL])
+                )
+                return
+            }
             if case .contentMissing = failure, let next = fallbackOutfits.first {
-                showStand(next, fallback: Array(fallbackOutfits.dropFirst()))
+                showStand(
+                    next,
+                    fallback: Array(fallbackOutfits.dropFirst()),
+                    avoiding: avoiding
+                )
                 return
             }
             standLoaded = false

@@ -103,8 +103,12 @@ final class RuntimeRegistry {
     }
 
     /// The first runtime in the requirement's order that is actually available.
-    func runtime(for requirement: RuntimeRequirement) -> (any PresentationRuntime)? {
+    func runtime(
+        for requirement: RuntimeRequirement,
+        avoiding: Set<RuntimeID> = []
+    ) -> (any PresentationRuntime)? {
         RuntimeResolver.order(requirement)
+            .filter { !avoiding.contains($0) }
             .compactMap { runtimes[$0] }
             .first { $0.isAvailable }
     }
@@ -113,9 +117,10 @@ final class RuntimeRegistry {
     /// avatar).
     func makeRenderer(
         _ requirement: RuntimeRequirement,
-        assets: RuntimeAssets
+        assets: RuntimeAssets,
+        avoiding: Set<RuntimeID> = []
     ) -> (any CharacterRenderer)? {
-        guard let runtime = runtime(for: requirement) else { return nil }
+        guard let runtime = runtime(for: requirement, avoiding: avoiding) else { return nil }
         return try? runtime.makeRenderer(assets)
     }
 
@@ -126,7 +131,10 @@ final class RuntimeRegistry {
     }
 
     private static func defaultRuntimes() -> [any PresentationRuntime] {
-        var runtimes: [any PresentationRuntime] = [SpinePresentationRuntime()]
+        var runtimes: [any PresentationRuntime] = [
+            SpinePresentationRuntime(),
+            AvatarPresentationRuntime(),
+        ]
         #if canImport(UnityFramework)
         runtimes.append(UnityPresentationRuntime())
         #endif
@@ -163,7 +171,7 @@ final class AvatarPresentationRuntime: PresentationRuntime {
         gesture: false,
         engine: nil
     )
-    var isAvailable: Bool { false }
+    var isAvailable: Bool { true }
 
     func makeRenderer(_ assets: RuntimeAssets) throws -> any CharacterRenderer {
         throw RuntimeFailure.unavailable("头像由页面绘制")

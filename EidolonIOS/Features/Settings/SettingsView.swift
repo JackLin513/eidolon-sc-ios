@@ -294,6 +294,9 @@ struct SettingsView: View {
                         } label: {
                             LabeledContent("查看与导出", value: tracingEnabled ? "⇢" : "追踪已关闭")
                         }
+                        if let failure = app.lastRuntimeFailure {
+                            LabeledContent("最近立绘回退", value: failure.description)
+                        }
                     } header: {
                         Text("诊断")
                     } footer: {
@@ -309,7 +312,9 @@ struct SettingsView: View {
                             )
                         ) {
                             ForEach(RuntimePreference.allCases) { preference in
-                                Text(preference.title).tag(preference)
+                                Text(preference.title)
+                                    .tag(preference)
+                                    .disabled(preference == .unity && !app.is3DAvailable)
                             }
                         }
                         Button {
@@ -320,7 +325,7 @@ struct SettingsView: View {
                     } header: {
                         Text("立绘")
                     } footer: {
-                        Text("自动会优先用这个构建里可用的 3D；没有 Unity 产物或 3D 内容时回退到 2D。用立绘包里她的默认衣装看一段待机动作。")
+                        Text("自动会优先用这个构建里可用的 3D；没有 Unity 产物或 3D 内容时回退到 2D。3D 需要 3D 包与 Unity 构建。用立绘包里她的默认衣装看一段待机动作。")
                     }
 
                     standBundleSection

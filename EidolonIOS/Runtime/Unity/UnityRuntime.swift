@@ -1,4 +1,5 @@
 #if canImport(UnityFramework)
+import EidolonCore
 import Foundation
 import UIKit
 import UnityFramework
@@ -12,7 +13,6 @@ final class UnityRuntime {
 
     static let eventName = Notification.Name("EidolonStandEvent")
     static let eventKey = "json"
-    static let contentFolderName = "Unity3DContent"
     static let hostObject = "EidolonStandHost"
 
     private(set) var rootView: UIView?
@@ -35,15 +35,9 @@ final class UnityRuntime {
         }
     }
 
-    /// The 3D content directory, when the app was built with one.
-    nonisolated static var contentRoot: URL? {
-        Bundle.main.url(forResource: contentFolderName, withExtension: nil)
-    }
-
-    /// Whether this build can offer 3D at all: the content folder is present and the
-    /// framework is embedded. The framework is loaded lazily in `start()`.
+    /// Whether this build embedded UnityFramework. The framework is loaded lazily in
+    /// `start()`; whether a `model3d` package exists is decided by `AppModel`.
     var isAvailable: Bool {
-        guard Self.contentRoot != nil else { return false }
         let path = Bundle.main.privateFrameworksURL?
             .appendingPathComponent("UnityFramework.framework").path
         return path.map { FileManager.default.fileExists(atPath: $0) } ?? false

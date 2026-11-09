@@ -40,6 +40,18 @@ public struct Model3DManifest: Codable, Sendable, Hashable {
         self.legal = legal
     }
 
+    /// The common package header this manifest also satisfies.
+    public var header: PackageHeader {
+        PackageHeader(
+            formatVersion: formatVersion,
+            kind: kind,
+            franchise: franchise,
+            runtime: runtime,
+            capabilities: capabilities,
+            legal: legal
+        )
+    }
+
     /// The character with this local id, if this package carries one.
     public func character(localID: String) -> Model3DCharacter? {
         characters.first { $0.localID == localID }
@@ -57,11 +69,10 @@ public struct Model3DManifest: Codable, Sendable, Hashable {
         guard !franchise.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw Model3DManifestError.missingFranchise
         }
-        if let expectedEngineVersion, let actual = runtime.engineVersion,
-           actual != expectedEngineVersion {
+        if let expectedEngineVersion, runtime.engineVersion != expectedEngineVersion {
             throw Model3DManifestError.engineVersionMismatch(
                 expected: expectedEngineVersion,
-                actual: actual
+                actual: runtime.engineVersion ?? "未声明"
             )
         }
         var paths = Set<String>()

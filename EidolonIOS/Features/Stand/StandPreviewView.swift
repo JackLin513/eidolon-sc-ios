@@ -110,7 +110,7 @@ struct StandPreviewView: View {
                     endPoint: .bottom
                 )
                 if let renderer, !hasFailed {
-                    StandView(renderer: renderer)
+                    StandHostView(renderer: renderer)
                         .id(ObjectIdentifier(renderer as AnyObject))
                         .frame(width: proxy.size.width, height: proxy.size.height)
                         .opacity(over ? 0.4 : 1)
@@ -373,20 +373,17 @@ struct StandPreviewView: View {
             outfit: outfit,
             framing: framing
         )
-        guard let renderer = app.makeRenderer(
-            characterID: selectedID ?? "",
-            outfit: outfit,
-            contentRoot: root,
-            framing: framing
-        ) else {
+        guard let renderer = app.makeRenderer(assets) else {
             phase = .missing("没有可用的立绘运行时")
             return
         }
+        let runtimeID = renderer.runtimeID
         renderer.onReady = { _ in
             phase = .shown
             render()
         }
         renderer.onFailure = { failure in
+            app.noteRuntimeFailure(failure, runtimeID: runtimeID)
             phase = .missing(Self.reason(failure))
         }
         renderer.setPaused(scenePhase != .active)
@@ -406,15 +403,4 @@ struct StandPreviewView: View {
     private static func reason(_ failure: RuntimeFailure) -> String {
         failure.description
     }
-}
-
-/// Hosts whichever stand renderer the interface was given; it never sees WebKit.
-private struct StandView: UIViewRepresentable {
-    let renderer: any CharacterRenderer
-
-    func makeUIView(context: Context) -> UIView {
-        renderer.view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {}
 }

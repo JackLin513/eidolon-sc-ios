@@ -61,16 +61,23 @@ struct BarGuest: View {
 
     /// Her in `outfit`. A broken outfit falls back to the next one (her default); a page that
     /// cannot draw leaves the window as it was, and the bar goes on.
-    private func show(_ outfit: StandOutfit, root: URL, fallback: [StandOutfit]) {
-        guard let made = app.makeRenderer(
+    private func show(
+        _ outfit: StandOutfit,
+        root: URL,
+        fallback: [StandOutfit],
+        avoiding: Set<RuntimeID> = []
+    ) {
+        let assets = RuntimeAssets(
+            contentRoot: root,
             characterID: character.id,
             outfit: outfit,
-            contentRoot: root,
             framing: .waist
-        ) else {
+        )
+        guard let made = app.makeRenderer(assets, avoiding: avoiding) else {
             loaded = false
             return
         }
+        let runtimeID = made.runtimeID
         // The camera needs a size: the window's, as the original draws her at.
         made.setViewport(CGSize(width: Self.stand.width, height: Self.window.height))
         fallbackOutfits = fallback
@@ -79,9 +86,24 @@ struct BarGuest: View {
             render()
         }
         made.onFailure = { failure in
-            // 站不出来，酒吧照开。
+            // 站不出来，酒吧照开。3D 失败先换 2D 同一套衣装，再考虑下一套。
+            app.noteRuntimeFailure(failure, runtimeID: runtimeID)
+            if runtimeID == .unityUaaL {
+                show(
+                    outfit,
+                    root: root,
+                    fallback: fallback,
+                    avoiding: avoiding.union([.unityUaaL])
+                )
+                return
+            }
             if case .contentMissing = failure, let next = fallbackOutfits.first {
-                show(next, root: root, fallback: Array(fallbackOutfits.dropFirst()))
+                show(
+                    next,
+                    root: root,
+                    fallback: Array(fallbackOutfits.dropFirst()),
+                    avoiding: avoiding
+                )
                 return
             }
             loaded = false

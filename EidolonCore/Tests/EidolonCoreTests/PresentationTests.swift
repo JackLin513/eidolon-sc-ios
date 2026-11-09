@@ -150,6 +150,31 @@ final class PresentationTests: XCTestCase {
         XCTAssertThrowsError(try manifest.validate(expectedEngineVersion: "unity/6000.3"))
     }
 
+    func testModel3DManifestExposesTheCommonPackageHeader() {
+        let manifest = Model3DManifest(
+            franchise: "mltd",
+            files: [],
+            characters: [Model3DCharacter(localID: "001har", model: "m", outfits: ["pr001"])]
+        )
+        XCTAssertEqual(manifest.header.kind, .model3d)
+        XCTAssertEqual(manifest.header.franchise, "mltd")
+        XCTAssertEqual(manifest.header.runtime?.preferred, .unityUaaL)
+    }
+
+    func testModel3DManifestRejectsAMissingEngineVersionWhenOneIsRequired() {
+        let manifest = Model3DManifest(
+            franchise: "mltd",
+            runtime: RuntimeRequirement(
+                preferred: .unityUaaL,
+                engineVersion: nil,
+                fallbacks: [.spineWebGL]
+            ),
+            files: [],
+            characters: [Model3DCharacter(localID: "001har", model: "m", outfits: ["pr001"])]
+        )
+        XCTAssertThrowsError(try manifest.validate(expectedEngineVersion: "unity/6000.3"))
+    }
+
     func testModel3DManifestRejectsDuplicateCharacters() {
         let manifest = Model3DManifest(
             franchise: "mltd",

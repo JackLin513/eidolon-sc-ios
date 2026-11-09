@@ -17,7 +17,12 @@ final class UnityCharacterRenderer: CharacterRenderer {
     var onReady: ((RuntimeReport) -> Void)?
     var onFailure: ((RuntimeFailure) -> Void)?
 
-    private let assets: RuntimeAssets
+    /// The prototype scene's framing until a package declares its own bounds.
+    private static let defaultBounds = StandBounds(
+        x: -0.35, y: 0, width: 0.7, height: 1.62
+    )
+
+    private var assets: RuntimeAssets
     private let container = UIView()
     private var unityView: UIView?
     private var frame: PresentationFrame?
@@ -49,6 +54,7 @@ final class UnityCharacterRenderer: CharacterRenderer {
     }
 
     func prepare(_ assets: RuntimeAssets) {
+        self.assets = assets
         guard assets.model3D != nil else {
             fail(.contentMissing("没有 model3d 角色映射"))
             return
@@ -154,8 +160,7 @@ final class UnityCharacterRenderer: CharacterRenderer {
             loaded = true
             retry?.invalidate()
             Self.log.info("3D stand loaded: \(json, privacy: .public)")
-            let bounds = assets.model3D?.bounds
-                ?? StandBounds(x: -0.35, y: 0, width: 0.7, height: 1.62)
+            let bounds = assets.model3D?.bounds ?? Self.defaultBounds
             onReady?(RuntimeReport(resolved: .unity3D, bounds: bounds))
             if let frame { apply(frame) }
         case "failure":
@@ -170,7 +175,10 @@ final class UnityCharacterRenderer: CharacterRenderer {
     private func apply(_ frame: PresentationFrame) {
         let emotions = StandEmotion.allCases
         let index = emotions.firstIndex(of: frame.emotion) ?? 0
-        UnityRuntime.shared.send("SetEmotion", "\(index),0")
+        // The package owns the emotion → native face map. The fallback index keeps the
+        // adapter usable with the prototype scene until its host accepts names.
+        let nativeFace = assets.model3D?.nativeFace(for: frame.emotion)
+        UnityRuntime.shared.send("SetEmotion", nativeFace ?? "\(index),0")
         UnityRuntime.shared.send("SetSpeaking", frame.speaking ? "1" : "0")
         if let nod = frame.nod {
             UnityRuntime.shared.send("SetNod", nod.kind == .no ? "no" : "yes")

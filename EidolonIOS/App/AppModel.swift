@@ -30,6 +30,14 @@ final class AppModel {
         rawValue: UserDefaults.standard.string(forKey: AppModel.runtimePreferenceKey) ?? ""
     ) ?? .auto
     static let runtimePreferenceKey = "runtime.preference"
+    /// The installed 3D package and its manifest, if any. S1 only wires it; the package
+    /// itself is produced on the producer's machine.
+    private(set) var model3DInfo: Model3DBundleInfo?
+    private(set) var model3DManifest: Model3DManifest?
+    private(set) var model3DRoot: URL?
+    /// The last renderer failure, for the debug section only.
+    private(set) var lastRuntimeFailure: RuntimeFailure?
+    private var unityFailedThisSession = false
     private(set) var avatars: [String: UIImage] = [:]
     private(set) var memories: [MemoryRecord] = []
     var errorMessage: String?
@@ -1791,37 +1799,63 @@ final class AppModel {
         UserDefaults.standard.set(preference.rawValue, forKey: Self.runtimePreferenceKey)
     }
 
-    /// What to ask for when drawing this character. S1 does not yet install a `model3d`
-    /// package, so the Unity runtime is unavailable and the registry falls back to Spine;
-    /// the setting still records the producer's choice for the 3D build.
+    /// Whether this build + the installed packages can actually show 3D. The setting's
+    /// 3D option is disabled when this is false, so it is not a silent no-op.
+    var is3DAvailable: Bool {
+        guard model3DInfo != nil else { return false }
+        return RuntimeRegistry.shared.available.contains(.unityUaaL)
+    }
+
+    /// What to ask for when drawing this character. `unity`/`auto` prefer 3D only when
+    /// 3D is actually available; a 3D failure pins this session to 2D.
     func runtimeRequirement(for characterID: String) -> RuntimeRequirement {
         switch runtimePreference {
         case .spine:
             return .spine2D
         case .auto, .unity:
-            return RuntimeRequirement(
-                preferred: .unityUaaL,
-                fallbacks: [.spineWebGL, .avatar]
-            )
+            guard is3DAvailable, !unityFailedThisSession else { return .spine2D }
+            return .unityPreferred
         }
     }
 
-    /// The one place a page gets a renderer. Pages never construct a backend directly.
+    /// The one place a page gets a renderer. `assets` is filled with the installed
+    /// `model3d` character mapping when there is one, so the Unity adapter never guesses.
     func makeRenderer(
-        characterID: String,
-        outfit: StandOutfit?,
-        contentRoot: URL,
-        framing: StandFraming
+        _ assets: RuntimeAssets,
+        avoiding: Set<RuntimeID> = []
     ) -> (any CharacterRenderer)? {
-        RuntimeRegistry.shared.makeRenderer(
-            runtimeRequirement(for: characterID),
-            assets: RuntimeAssets(
-                contentRoot: contentRoot,
-                characterID: characterID,
-                outfit: outfit,
-                framing: framing
-            )
+        var assets = assets
+        if let model3DManifest, let root = model3DRoot,
+           let character = model3DManifest.character(localID: assets.characterID) {
+            assets.model3D = character
+            assets.model3DRoot = root
+        }
+        return RuntimeRegistry.shared.makeRenderer(
+            runtimeRequirement(for: assets.characterID),
+            assets: assets,
+            avoiding: avoiding
         )
+    }
+
+    /// Record a renderer failure. A Unity failure falls back to 2D for the rest of this
+    /// launch; the reason is only shown in the debug section.
+    func noteRuntimeFailure(_ failure: RuntimeFailure, runtimeID: RuntimeID) {
+        lastRuntimeFailure = failure
+        if runtimeID == .unityUaaL {
+            unityFailedThisSession = true
+        }
+    }
+
+    private func loadModel3D() async {
+        guard let installed = (try? await core.installedModel3D()) ?? nil else {
+            model3DInfo = nil
+            model3DManifest = nil
+            model3DRoot = nil
+            return
+        }
+        model3DInfo = installed.info
+        model3DManifest = installed.manifest
+        model3DRoot = installed.directory
     }
 
     func standIndexData() async -> Data? {
@@ -1919,6 +1953,7 @@ final class AppModel {
         }
         cyclesEnabled = (try? await core.cycleEnabled()) ?? true
         standInfo = try await core.installedStandInfo()
+        await loadModel3D()
         barInfo = try await core.installedBarInfo()
         barRewardToday = (try? await core.barRewardToday()) ?? true
         giftCatalog = try? await core.giftCatalog()

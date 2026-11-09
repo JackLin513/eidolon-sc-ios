@@ -280,6 +280,8 @@ struct OutfitPickerView: View {
                     pickedID: pickedID,
                     contentRoot: contentRoot,
                     contentVersion: contentVersion,
+                    characterID: character.id,
+                    rendererFactory: { assets in app.makeRenderer(assets) },
                     herColor: herColor
                 ) { outfitID in
                     pickedID = outfitID
@@ -303,12 +305,13 @@ struct OutfitPickerView: View {
         phase = .loading
         if renderer == nil || rendererFailed {
             renderer?.setPaused(true)
-            guard let created = app.makeRenderer(
+            let assets = RuntimeAssets(
+                contentRoot: contentRoot,
                 characterID: character.id,
                 outfit: outfit,
-                contentRoot: contentRoot,
                 framing: .full
-            ) else {
+            )
+            guard let created = app.makeRenderer(assets) else {
                 phase = .failed
                 rendererFailed = true
                 return
@@ -324,7 +327,9 @@ struct OutfitPickerView: View {
                 )
                 phase = .shown
             }
-            created.onFailure = { _ in
+            let runtimeID = created.runtimeID
+            created.onFailure = { failure in
+                app.noteRuntimeFailure(failure, runtimeID: runtimeID)
                 phase = .failed
                 rendererFailed = true
             }
@@ -355,6 +360,8 @@ private struct OutfitCardTile: View {
     let pickedID: String
     let contentRoot: URL
     let contentVersion: String
+    let characterID: String
+    let rendererFactory: (RuntimeAssets) -> (any CharacterRenderer)?
     let herColor: Color
     let onPick: (String) -> Void
 
@@ -365,6 +372,8 @@ private struct OutfitCardTile: View {
         pickedID: String,
         contentRoot: URL,
         contentVersion: String,
+        characterID: String,
+        rendererFactory: @escaping (RuntimeAssets) -> (any CharacterRenderer)?,
         herColor: Color,
         onPick: @escaping (String) -> Void
     ) {
@@ -372,6 +381,8 @@ private struct OutfitCardTile: View {
         self.pickedID = pickedID
         self.contentRoot = contentRoot
         self.contentVersion = contentVersion
+        self.characterID = characterID
+        self.rendererFactory = rendererFactory
         self.herColor = herColor
         self.onPick = onPick
         _chosen = State(initialValue: card.looks.first ?? .everyday)
@@ -397,7 +408,9 @@ private struct OutfitCardTile: View {
                         OutfitThumbnailView(
                             outfit: outfit,
                             contentRoot: contentRoot,
-                            contentVersion: contentVersion
+                            contentVersion: contentVersion,
+                            characterID: characterID,
+                            rendererFactory: rendererFactory
                         )
                     }
                 }
@@ -477,6 +490,8 @@ private struct OutfitThumbnailView: View {
     let outfit: StandOutfit
     let contentRoot: URL
     let contentVersion: String
+    let characterID: String
+    let rendererFactory: (RuntimeAssets) -> (any CharacterRenderer)?
 
     @State private var image: UIImage?
 
@@ -498,7 +513,9 @@ private struct OutfitThumbnailView: View {
             image = await OutfitThumbnailStore.shared.thumbnail(
                 for: outfit,
                 contentRoot: contentRoot,
-                contentVersion: contentVersion
+                contentVersion: contentVersion,
+                characterID: characterID,
+                rendererFactory: rendererFactory
             )
         }
     }
