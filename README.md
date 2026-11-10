@@ -193,7 +193,7 @@ eidolon-sc-ios/
 
 - **组件化 / 多运行时 / 多企划**：调研完成，尚未实现；阶段与验收见[路线图](docs/roadmap.md)，结论见 [`docs/research/`](docs/research/README.md)。调研结论不是已实现。
 - **3D 立绘**：在本地分支 `feat/mltd-3d-stand`（Unity as a Library），**未合入 main**；先补 main 的契约，再按路线图 M1 迁入。main 默认仍是 Spine 2D。
-- **iPad / macOS（S2.1，#137）**：iPad 使用同一份二进制与 165pt 常驻导航栏——`<650pt` 保持底部胶囊 Tab，`650–960pt` 为窄栏 + 单栏 Push，`>960pt` 为窄栏 + 角色列表 + 聊天三栏，列表可在 `0/320/460pt` 间拖拽吸附；聊天、筛选和空态复用现有页面。macOS 只做 My Mac (Designed for iPhone) 构建冒烟，不新增 target；iPad 已通过模拟器验收，并在 iPad mini 真机安装首版供验收。
+- **iPad / macOS（S2.2，#138）**：iPad 使用同一份二进制与 88–240pt 可调常驻导航栏——`<650pt` 保持底部胶囊 Tab，`650–960pt` 为窄栏 + 单栏 Push，`>960pt` 为窄栏 + 角色列表 + 聊天三栏；中栏与右栏在安全区内无极调节，拖左右边界时蓝线 + 右侧内容高斯模糊，已选角色越过中栏安全区后按阻力松手吸附收起；筛选按钮固定在中栏右侧，一级页标题用统一锚点。macOS 只做 My Mac (Designed for iPhone) 构建冒烟，不新增 target；iPad 以模拟器视觉验收为准，真机验收待下一步。
 
 还没做，或者做不了：
 

@@ -7,6 +7,7 @@ import UIKit
 struct PlayHubView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.isEidolonPadShell) private var isPadShell
     @State private var summaryFailed = false
     @State private var isBarShown = false
     /// The bar no longer asks for a rotation; this only covers the return animation.
@@ -21,6 +22,10 @@ struct PlayHubView: View {
         // it does not move the title (bug 2026-11-04). Subpages keep their inline
         // navigation untouched; the bar is only on the first-level page.
         NavigationStack(path: playPath) {
+            VStack(spacing: 0) {
+                if isPadShell {
+                    PadPageLargeTitle("玩法", id: "pad.title.play")
+                }
                 Group {
                     if let summary = app.playSummary {
                         cards(summary.cards)
@@ -37,8 +42,11 @@ struct PlayHubView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
-                .navigationTitle("玩法")
-                .navigationDestination(for: PlayRoute.self) { route in
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .navigationTitle("玩法")
+            .toolbar(isPadShell ? .hidden : .visible, for: .navigationBar)
+            .navigationDestination(for: PlayRoute.self) { route in
                     switch route {
                     case .gifts:
                         GiftsView()

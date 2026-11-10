@@ -449,12 +449,22 @@ Section {
     }
     private func settingsStack(category: SettingsCategory?) -> some View {
         NavigationStack {
-            settingsForm(category: category)
-                .frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: 0) {
+                if isPadShell {
+                    PadPageLargeTitle(category?.title ?? "设置", id: "pad.title.settings.detail") {
+                        Button("保存") { Task { await save() } }
+                            .fontWeight(.semibold)
+                            .accessibilityIdentifier("settings.save")
+                    }
+                }
+                settingsForm(category: category)
+                    .frame(maxWidth: .infinity)
+            }
 
                 // Returning to the call brings the layer over every page; settings gets out of
                 // its way (spec #46).
                 .navigationTitle(category?.title ?? "设置")
+                .toolbar(isPadShell ? .hidden : .visible, for: .navigationBar)
                 .onAppear { settingsRootOnScreen = true }
                 .onDisappear { settingsRootOnScreen = false }
                 .navigationDestination(isPresented: $showMemories) {
@@ -477,9 +487,11 @@ Section {
                     #endif
                 }
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("保存") { Task { await save() } }
-                            .fontWeight(.semibold)
+                    if !isPadShell {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("保存") { Task { await save() } }
+                                .fontWeight(.semibold)
+                        }
                     }
                 }
                 .task { await load() }
@@ -578,10 +590,11 @@ Section {
             HStack {
                 Text("设置")
                     .font(.title2.weight(.semibold))
+                    .accessibilityIdentifier("pad.title.settings")
                 Spacer()
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 18)
+            .padding(.horizontal, ResponsiveLayout.pageTitleLeading)
+            .padding(.top, ResponsiveLayout.pageTitleTop)
             .padding(.bottom, 12)
 
             ScrollView {

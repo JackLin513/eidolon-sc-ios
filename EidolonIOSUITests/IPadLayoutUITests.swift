@@ -65,25 +65,63 @@ final class IPadLayoutUITests: XCTestCase {
 
     func testIPadMediumPushesChatWithAnExplicitBackButton() throws {
         try XCTSkipUnless(isMedium, "This check is for the medium band on iPad mini portrait")
-        openChatAndGoBack()
+        let name = app.staticTexts["櫻木真乃"].firstMatch
+        XCTAssertTrue(name.waitForExistence(timeout: 20))
+        name.tap()
+        XCTAssertTrue(app.textFields["chat.input"].waitForExistence(timeout: 20))
+        XCTAssertFalse(anyElement("pad.chat.back").exists, "medium has the custom back button too")
+        XCTAssertTrue(
+            app.navigationBars.buttons.firstMatch.waitForExistence(timeout: 10),
+            "medium lost its system back button"
+        )
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["pad.title.conversation"].waitForExistence(timeout: 10))
     }
 
-    func testIPadWideDragHandleSnapsToCollapsedAndBack() throws {
+    func testIPadWideDragHandleKeepsSafeWidthAndCollapsesOnRelease() throws {
         XCUIDevice.shared.orientation = .landscapeLeft
-        XCTAssertTrue(anyElement("conversation.splitHandle").waitForExistence(timeout: 20))
+        let handle = anyElement("conversation.splitHandle")
+        XCTAssertTrue(handle.waitForExistence(timeout: 20))
+        XCTAssertEqual(handle.label, "调整角色列表宽度")
 
-        XCTAssertEqual(anyElement("conversation.splitHandle").label, "调整角色列表宽度")
+        // Without a selected character the roster cannot be collapsed.
+        handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)))
+        Thread.sleep(forTimeInterval: 0.6)
+        XCTAssertEqual(handle.label, "调整角色列表宽度")
+        XCTAssertGreaterThanOrEqual(Int(handle.value as? String ?? "0") ?? 0, 280)
+
+        // With a chat selected the rubber band/overshoot path can collapse on release.
+        app.staticTexts["櫻木真乃"].firstMatch.tap()
+        XCTAssertTrue(app.textFields["chat.input"].waitForExistence(timeout: 20))
+        XCTAssertTrue(anyElement("pad.chat.back").exists)
+
         collapseRosterWithHandle()
-        XCTAssertTrue(
-            anyElement("conversation.splitHandle").label == "显示角色列表",
-            "left fling did not collapse the roster"
-        )
+        XCTAssertEqual(handle.label, "显示角色列表")
 
-        anyElement("conversation.splitHandle").tap()
-        XCTAssertTrue(
-            anyElement("conversation.splitHandle").label == "调整角色列表宽度",
-            "tap on the collapsed handle did not restore the roster"
-        )
+        handle.tap()
+        XCTAssertEqual(handle.label, "调整角色列表宽度")
+        XCTAssertGreaterThanOrEqual(Int(handle.value as? String ?? "0") ?? 0, 280)
+    }
+
+    func testIPadRailResizesContinuouslyBetweenSafeWidths() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let railHandle = anyElement("pad.rail.handle")
+        XCTAssertTrue(railHandle.waitForExistence(timeout: 20), "no rail drag seam")
+        let before = Int(railHandle.value as? String ?? "0") ?? 0
+        XCTAssertEqual(before, 165)
+
+        let start = railHandle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let wider = start.withOffset(CGVector(dx: 55, dy: 0))
+        start.press(forDuration: 0.1, thenDragTo: wider)
+        XCTAssertGreaterThan(Int(railHandle.value as? String ?? "0") ?? before, before)
+
+        let narrower = app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5))
+        railHandle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.1, thenDragTo: narrower)
+        let after = Int(railHandle.value as? String ?? "0") ?? before
+        XCTAssertGreaterThanOrEqual(after, 88)
+        XCTAssertLessThanOrEqual(after, 240)
     }
 
     func testIPadSettingsUsesCategorySidebarWithoutASecondToggle() throws {
@@ -115,7 +153,7 @@ final class IPadLayoutUITests: XCTestCase {
     func testIPadMomentsAndPlayUseTheWideCanvas() throws {
         XCTAssertTrue(padTab("moments").waitForExistence(timeout: 20))
         padTab("moments").tap()
-        XCTAssertTrue(app.navigationBars["朋友圈"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["朋友圈"].waitForExistence(timeout: 10))
         attachScreenshot("ipad-moments")
 
         padTab("play").tap()
@@ -144,6 +182,76 @@ final class IPadLayoutUITests: XCTestCase {
         XCTAssertTrue(card.waitForExistence(timeout: 10), "the bar did not leave back to play")
     }
 
+
+
+    func testIPadFilterButtonStaysFixedWhileChipsScroll() throws {
+        XCTAssertTrue(padTab("conversation").waitForExistence(timeout: 20))
+        padTab("conversation").tap()
+        let filter = app.buttons["pad.filter.button"].firstMatch
+        XCTAssertTrue(filter.waitForExistence(timeout: 10), "no fixed filter button")
+        let before = filter.frame
+        XCTAssertTrue(filter.isHittable)
+
+        let horizontal = app.scrollViews.firstMatch
+        XCTAssertTrue(horizontal.waitForExistence(timeout: 10), "no horizontal filter strip")
+        horizontal.swipeLeft()
+        Thread.sleep(forTimeInterval: 0.3)
+        let after = filter.frame
+        XCTAssertEqual(before.minX, after.minX, accuracy: 1.5)
+        XCTAssertEqual(before.minY, after.minY, accuracy: 1.5)
+        XCTAssertTrue(filter.isHittable, "filter button scrolled away")
+    }
+
+
+    func testIPadPageTitlesShareAnchors() throws {
+        XCTAssertTrue(padTab("conversation").waitForExistence(timeout: 20))
+        padTab("conversation").tap()
+        let conversation = app.staticTexts["pad.title.conversation"].firstMatch
+        XCTAssertTrue(conversation.waitForExistence(timeout: 10))
+        let conversationFrame = conversation.frame
+
+        padTab("settings").tap()
+        let settings = app.staticTexts["pad.title.settings"].firstMatch
+        let detail = app.staticTexts["pad.title.settings.detail"].firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        XCTAssertTrue(detail.waitForExistence(timeout: 10))
+        XCTAssertEqual(conversationFrame.minX, settings.frame.minX, accuracy: 2)
+        XCTAssertEqual(conversationFrame.minY, settings.frame.minY, accuracy: 2)
+
+        padTab("moments").tap()
+        let moments = app.staticTexts["pad.title.moments"].firstMatch
+        XCTAssertTrue(moments.waitForExistence(timeout: 10))
+        let momentsFrame = moments.frame
+
+        padTab("play").tap()
+        let play = app.staticTexts["pad.title.play"].firstMatch
+        XCTAssertTrue(play.waitForExistence(timeout: 10))
+        XCTAssertEqual(momentsFrame.minX, play.frame.minX, accuracy: 2)
+        XCTAssertEqual(momentsFrame.minY, play.frame.minY, accuracy: 2)
+
+        padTab("settings").tap()
+        XCTAssertTrue(detail.waitForExistence(timeout: 10))
+        XCTAssertEqual(momentsFrame.minY, detail.frame.minY, accuracy: 2)
+        XCTAssertGreaterThan(detail.frame.minX, settings.frame.minX)
+    }
+
+    func testIPadSettingsPushedPageKeepsNavigation() throws {
+        XCTAssertTrue(padTab("settings").waitForExistence(timeout: 20))
+        padTab("settings").tap()
+        let account = app.buttons["settings.account"].firstMatch
+        XCTAssertTrue(account.waitForExistence(timeout: 10), "no account row")
+        account.tap()
+        XCTAssertTrue(
+            app.navigationBars.buttons.firstMatch.waitForExistence(timeout: 10),
+            "pushed settings page has no back button"
+        )
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(
+            app.buttons["settings.account"].waitForExistence(timeout: 10),
+            "back from pushed settings page failed"
+        )
+    }
+
     func testIPadLargeTextKeepsSettingsReachable() throws {
         app.terminate()
         app.launchArguments += [
@@ -166,14 +274,14 @@ final class IPadLayoutUITests: XCTestCase {
         let name = app.staticTexts["櫻木真乃"].firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 20))
         name.tap()
-        XCTAssertTrue(anyElement("pad.chat.back").waitForExistence(timeout: 20))
+        XCTAssertTrue(app.textFields["chat.input"].waitForExistence(timeout: 20))
 
         XCUIDevice.shared.orientation = .landscapeLeft
         XCTAssertTrue(anyElement("pad.chat.back").waitForExistence(timeout: 10))
         XCTAssertTrue(anyElement("conversation.splitHandle").exists, "wide shell did not load")
 
         XCUIDevice.shared.orientation = .portrait
-        XCTAssertTrue(anyElement("pad.chat.back").waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textFields["chat.input"].waitForExistence(timeout: 10))
     }
 
     func testIPadUnitFilterNarrowsTheRoster() throws {
@@ -182,14 +290,15 @@ final class IPadLayoutUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["櫻木真乃"].waitForExistence(timeout: 20))
 
         let chip = app.buttons["pad.filter.unit.L'Antica"]
-        if chip.exists, chip.isHittable {
-            chip.tap()
-        } else {
-            let menu = app.buttons["pad.filter.units"]
-            XCTAssertTrue(menu.waitForExistence(timeout: 5), "no unit filter affordance")
-            menu.tap()
-            app.buttons["L'Antica"].firstMatch.tap()
+        if !(chip.exists && chip.isHittable) {
+            // The filter row is a horizontally scrolling strip; swipe it into view.
+            let scroll = app.scrollViews.firstMatch
+            if scroll.exists {
+                scroll.swipeLeft()
+            }
         }
+        XCTAssertTrue(chip.waitForExistence(timeout: 5), "no unit filter affordance")
+        chip.tap()
 
         XCTAssertTrue(
             app.staticTexts["月岡恋鐘"].waitForExistence(timeout: 10),
@@ -222,7 +331,11 @@ final class IPadLayoutUITests: XCTestCase {
         input.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "keyboard did not appear")
         XCTAssertTrue(input.isHittable, "keyboard covers the chat input")
-        XCTAssertTrue(anyElement("pad.chat.back").exists)
+        XCTAssertTrue(
+            anyElement("pad.chat.back").exists
+                || app.navigationBars.buttons.firstMatch.exists,
+            "no back affordance in chat"
+        )
     }
 
     private func collapseRosterWithHandle() {
@@ -243,9 +356,15 @@ final class IPadLayoutUITests: XCTestCase {
 
         let input = app.textFields["chat.input"]
         XCTAssertTrue(input.waitForExistence(timeout: 20), "chat did not open")
-        XCTAssertTrue(anyElement("pad.chat.back").waitForExistence(timeout: 10), "no explicit back button")
 
-        anyElement("pad.chat.back").tap()
+        // Medium push uses the system back button; wide split uses our custom circle.
+        if anyElement("pad.chat.back").exists {
+            anyElement("pad.chat.back").tap()
+        } else {
+            let back = app.navigationBars.buttons.firstMatch
+            XCTAssertTrue(back.waitForExistence(timeout: 10), "no system back button")
+            back.tap()
+        }
         XCTAssertTrue(
             app.staticTexts["对话"].waitForExistence(timeout: 10),
             "back did not return to the roster"

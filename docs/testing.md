@@ -95,24 +95,26 @@ tools/oracle/run.sh                          # 与上游逐字对照提示词（
 - **设备 UDID 不写进仓库**：需要时用 `xcrun devicectl list devices` 现查。
 
 
-## iPad 布局（#134）
+## iPad 布局（#138 / S2.2）
 
-纯布局函数在 `EidolonIOSTests/ResponsiveLayoutTests`；iPad 布局行为用 UI 测试，跑在 iPad 模拟器上（需要该模拟器已导入内容包/立绘包）：
+纯布局函数在 `EidolonIOSTests/ResponsiveLayoutTests`（左栏 88/165/240、安全区、36pt 收起阈值、标题锚点）；iPad 布局行为用 UI 测试，跑在 iPad 模拟器上（需要该模拟器已导入内容包/立绘包）：
 
 ```sh
-# 13 英寸：wide 三栏、空态、设置无第二个系统折叠按钮
+# 13 英寸：wide 三栏、连续分栏、固定筛选、标题锚点
 xcodebuild test -project EidolonIOS.xcodeproj -scheme EidolonIOS \
   -destination 'platform=iOS Simulator,name=iPad Air 13-inch (M4)' \
   -only-testing:EidolonIOSUITests/IPadLayoutUITests
 
-# mini：竖屏 medium 单栏 Push、横屏 wide 三栏与灰条吸附
+# mini：竖屏 medium 单栏 Push、横屏 wide 三栏、左栏拖拽与收起
 xcodebuild test -project EidolonIOS.xcodeproj -scheme EidolonIOS \
   -destination 'platform=iOS Simulator,name=iPad mini (A20 Pro)' \
   -only-testing:EidolonIOSUITests/IPadLayoutUITests
 
-# 5 状态视觉验收（内容包/立绘包按环境变量或默认 build/ 路径）
+# 视觉验收（内容包/立绘包按环境变量或默认 build/ 路径）
 IPAD_UDID=<iPad UDID> PHONE_UDID=<iPhone UDID> ./tools/qa_ipad.sh
 ```
+
+`IPadVisualQATests` 会截取 13 个状态：标准宽屏、左栏窄/宽、280pt/安全区、拖拽蓝线+模糊、已选、收起、竖屏 Push、朋友圈/玩法/设置标题、compact 手机。测试用 DEBUG 变量 `EIDOLON_PAD_RAIL_WIDTH`、`EIDOLON_PAD_ROSTER_WIDTH`、`EIDOLON_PAD_DRAG_FEEDBACK` 直接进入可重复状态。
 
 Mac 只做构建冒烟，不启动、不验收音频/3D：
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# S2.1 visual QA: seed the real 283 content/stand packs, run the visual UI test on an iPad
-# and an optional iPhone, and extract the five layout screenshots into .qa-screenshots/.
+# S2.2 visual QA: seed the real content/stand packs, run the visual UI test on an iPad
+# and an optional iPhone, and extract the S2.2 layout screenshots into .qa-screenshots/.
 # A human/agent must still open the images and judge them; this script only captures them.
 set -euo pipefail
 
@@ -97,7 +97,12 @@ manifest = json.loads((raw / "manifest.json").read_text())
 for test in manifest:
     for attachment in test.get("attachments", []):
         name = attachment.get("suggestedHumanReadableName", "").split("_0_")[0]
-        if name in {"landscape-standard", "landscape-collapsed", "landscape-expanded", "portrait-push", "compact-phone"}:
+        if name in {
+            "landscape-standard", "landscape-rail-narrow", "landscape-rail-wide",
+            "landscape-roster-min", "landscape-split-active", "landscape-rail-active",
+            "landscape-selected", "landscape-collapsed", "portrait-push",
+            "moments-title", "play-title", "settings-title", "compact-phone",
+        }:
             shutil.copy(raw / attachment["exportedFileName"], out / f"{name}.png")
             print(f"captured {out / (name + '.png')}")
 PY

@@ -12,34 +12,86 @@ final class ResponsiveLayoutTests: XCTestCase {
     }
 
     func testCompactPhonesNeverBecomeThePadShell() {
-        // A landscape phone is wider than 650 but still has a compact size class.
         XCTAssertEqual(ResponsiveLayout.band(width: 852, sizeClass: .compact), .compact)
         XCTAssertEqual(ResponsiveLayout.band(width: 1366, sizeClass: .compact), .compact)
     }
 
-    func testPadWidths() {
-        XCTAssertEqual(ResponsiveLayout.railWidth, 165)
-        XCTAssertEqual(ResponsiveLayout.rosterStandardWidth, 320)
-        XCTAssertEqual(ResponsiveLayout.rosterExpandedWidth, 460)
-        XCTAssertEqual(ResponsiveLayout.rosterCollapsedWidth, 0)
-        XCTAssertEqual(ResponsiveLayout.rosterMinContentWidth, 280)
+    func testRailWidthsAndLabelThreshold() {
+        XCTAssertEqual(ResponsiveLayout.clampedRailWidth(10), 88)
+        XCTAssertEqual(ResponsiveLayout.clampedRailWidth(165), 165)
+        XCTAssertEqual(ResponsiveLayout.clampedRailWidth(400), 240)
+        XCTAssertFalse(ResponsiveLayout.railShowsLabels(width: 149))
+        XCTAssertTrue(ResponsiveLayout.railShowsLabels(width: 150))
+        XCTAssertTrue(ResponsiveLayout.railShowsLabels(width: 240))
     }
 
-    func testDragSnapsToTheNearestBreakpoint() {
-        XCTAssertEqual(ResponsiveLayout.snapRosterWidth(projectedWidth: -30), 0)
-        XCTAssertEqual(ResponsiveLayout.snapRosterWidth(projectedWidth: 0), 0)
-        XCTAssertEqual(ResponsiveLayout.snapRosterWidth(projectedWidth: 159), 0)
-        XCTAssertEqual(ResponsiveLayout.snapRosterWidth(projectedWidth: 160), 320)
-        XCTAssertEqual(ResponsiveLayout.snapRosterWidth(projectedWidth: 320), 320)
-        XCTAssertEqual(ResponsiveLayout.snapRosterWidth(projectedWidth: 389), 320)
-        XCTAssertEqual(ResponsiveLayout.snapRosterWidth(projectedWidth: 390), 460)
-        XCTAssertEqual(ResponsiveLayout.snapRosterWidth(projectedWidth: 900), 460)
+    func testRosterBoundsLeaveRoomForTheChat() {
+        XCTAssertEqual(ResponsiveLayout.rosterBounds(availableWidth: 900), 280...460)
+        XCTAssertEqual(ResponsiveLayout.rosterBounds(availableWidth: 1133), 280...460)
+        // 800 - 12 - 420 = 368 upper bound.
+        XCTAssertEqual(ResponsiveLayout.rosterBounds(availableWidth: 800), 280...368)
+        // Not enough room: fall back to the minimum so the roster stays usable.
+        XCTAssertEqual(ResponsiveLayout.rosterBounds(availableWidth: 650), 280...280)
     }
 
-    func testDraggingWidthsClampToTheAvailableRange() {
-        XCTAssertEqual(ResponsiveLayout.draggingRosterWidth(start: 320, translation: -500), 0)
-        XCTAssertEqual(ResponsiveLayout.draggingRosterWidth(start: 320, translation: 500), 460)
-        XCTAssertEqual(ResponsiveLayout.draggingRosterWidth(start: 320, translation: -10), 310)
+    func testSafeZoneDragKeepsTheFingerWidth() {
+        let result = ResponsiveLayout.resolveRosterDrag(
+            rawWidth: 360,
+            availableWidth: 1133,
+            hasSelection: true
+        )
+        XCTAssertEqual(result.visibleWidth, 360)
+        XCTAssertEqual(result.settledWidth, 360)
+        XCTAssertFalse(result.willCollapse)
+    }
+
+    func testUnselectedRosterRubberBandsAndNeverCollapses() {
+        let result = ResponsiveLayout.resolveRosterDrag(
+            rawWidth: 250,
+            availableWidth: 1133,
+            hasSelection: false
+        )
+        XCTAssertLessThan(result.visibleWidth, 280)
+        XCTAssertGreaterThan(result.visibleWidth, 270)
+        XCTAssertEqual(result.settledWidth, 280)
+        XCTAssertFalse(result.willCollapse)
+
+        let deep = ResponsiveLayout.resolveRosterDrag(
+            rawWidth: 0,
+            availableWidth: 1133,
+            hasSelection: false
+        )
+        XCTAssertLessThan(deep.visibleWidth, 280)
+        XCTAssertGreaterThan(deep.visibleWidth, 230)
+        XCTAssertEqual(deep.settledWidth, 280)
+        XCTAssertFalse(deep.willCollapse)
+    }
+
+    func testSelectedRosterCollapsesOnlyAfterOvershootThresholdOnRelease() {
+        let slight = ResponsiveLayout.resolveRosterDrag(
+            rawWidth: 260,
+            availableWidth: 1133,
+            hasSelection: true
+        )
+        XCTAssertGreaterThan(slight.visibleWidth, 270)
+        XCTAssertEqual(slight.settledWidth, 280)
+        XCTAssertFalse(slight.willCollapse)
+
+        let threshold = ResponsiveLayout.resolveRosterDrag(
+            rawWidth: 244,
+            availableWidth: 1133,
+            hasSelection: true
+        )
+        XCTAssertEqual(threshold.visibleWidth, 0)
+        XCTAssertEqual(threshold.settledWidth, 0)
+        XCTAssertTrue(threshold.willCollapse)
+    }
+
+    func testRememberedWidthClampsAfterRailResize() {
+        XCTAssertEqual(ResponsiveLayout.clampedRosterWidth(460, availableWidth: 800, hasSelection: true), 368)
+        XCTAssertEqual(ResponsiveLayout.clampedRosterWidth(0, availableWidth: 800, hasSelection: true), 0)
+        XCTAssertEqual(ResponsiveLayout.clampedRosterWidth(0, availableWidth: 800, hasSelection: false), 280)
+        XCTAssertEqual(ResponsiveLayout.clampedRosterWidth(320, availableWidth: 1133, hasSelection: false), 320)
     }
 
     func testCollapsedCallTravelsPastTheContainerIncludingSafeArea() {

@@ -1,11 +1,19 @@
 import CoreGraphics
 import SwiftUI
 
-/// The three presentations S2.1 uses. Width comes from the container, never the screen.
+/// The three presentations S2.2 uses. Width comes from the container, never the screen.
 enum ResponsiveWidthBand: Equatable {
     case compact
     case medium
     case wide
+}
+
+/// What one drag sample means for the roster column. `visibleWidth` is what the finger
+/// sees while dragging; `settledWidth` is where it goes on release.
+struct RosterDragResult: Equatable {
+    let visibleWidth: CGFloat
+    let settledWidth: CGFloat
+    let willCollapse: Bool
 }
 
 /// Pure layout decisions shared by the shell and the tests. All of them take the
@@ -16,23 +24,51 @@ enum ResponsiveLayout {
     /// Above this the roster and the chat sit side by side.
     static let wideMinWidth: CGFloat = 960
 
-    /// The fixed navigation rail on medium and wide.
-    static let railWidth: CGFloat = 165
+    // MARK: Left rail
 
-    /// The settings category column inside the S2.1 rail shell.
-    static let settingsSidebarWidth: CGFloat = 250
+    static let railMinWidth: CGFloat = 88
+    static let railDefaultWidth: CGFloat = 165
+    static let railMaxWidth: CGFloat = 240
+    /// Below this the rail shows icons + the E monogram; at or above it, labels return.
+    static let railLabelThreshold: CGFloat = 150
 
-    /// Below this the roster header switches from the expanded chip strip to the
-    /// two-chip + overflow-menu form.
-    static let rosterNarrowFilterWidth: CGFloat = 390
+    // MARK: Roster / chat columns
 
-    /// The wide roster's three resting positions.
-    static let rosterCollapsedWidth: CGFloat = 0
-    static let rosterStandardWidth: CGFloat = 320
-    static let rosterExpandedWidth: CGFloat = 460
+    static let rosterMinWidth: CGFloat = 280
+    static let rosterDefaultWidth: CGFloat = 320
+    static let rosterMaxWidth: CGFloat = 460
+    static let rosterRestoreWidth: CGFloat = 320
+    static let chatMinWidth: CGFloat = 420
+    /// The layout width reserved for the vertical handle / active line between columns.
+    static let splitterLayoutWidth: CGFloat = 12
 
-    /// The roster keeps this layout width while it is being clipped during a collapse.
-    static let rosterMinContentWidth: CGFloat = 280
+    // MARK: Drag feel
+
+    /// Once the roster is narrower than its minimum, this much continued travel must be
+    /// crossed before release actually collapses it.
+    static let rosterCollapseOvershoot: CGFloat = 36
+    /// In the rubber-band zone the visible width moves only a little per point.
+    static let rosterRubberBandFactor: CGFloat = 0.14
+
+    // MARK: Drag chrome
+
+    static let activeLineWidth: CGFloat = 2
+    static let handlePillWidth: CGFloat = 4
+    static let handlePillHeight: CGFloat = 44
+    static let handleHitSize: CGFloat = 44
+    static let dragBlurRadius: CGFloat = 14
+    static let dragFeedbackDuration: TimeInterval = 0.12
+    static let railHitWidth: CGFloat = 12
+
+    // MARK: Titles / filters
+
+    /// Shared horizontal anchor for a pad page title, measured from the page content's
+    /// leading edge (i.e. after the rail).
+    static let pageTitleLeading: CGFloat = 20
+    /// Shared top anchor measured from the page content's top safe area.
+    static let pageTitleTop: CGFloat = 12
+    static let filterButtonWidth: CGFloat = 44
+    static let filterTrailingInset: CGFloat = 52
 
     /// Settings, moments and play stay single-column; this only stops text fields and
     /// cards from stretching across a 13-inch window.
@@ -41,6 +77,11 @@ enum ResponsiveLayout {
     /// Cards and the settings detail may use more of an iPad's width than a text column.
     static let wideMaxWidth: CGFloat = 1000
 
+    /// The settings category column inside the S2.1/S2.2 rail shell.
+    static let settingsSidebarWidth: CGFloat = 250
+
+    // MARK: Width bands
+
     static func band(width: CGFloat, sizeClass: UserInterfaceSizeClass?) -> ResponsiveWidthBand {
         guard sizeClass == .regular else { return .compact }
         if width < mediumMinWidth { return .compact }
@@ -48,36 +89,83 @@ enum ResponsiveLayout {
         return .wide
     }
 
-    /// Live width while the gray handle is being dragged.
-    static func draggingRosterWidth(start: CGFloat, translation: CGFloat) -> CGFloat {
-        min(max(start + translation, rosterCollapsedWidth), rosterExpandedWidth)
+    // MARK: Left rail
+
+    static func clampedRailWidth(_ raw: CGFloat) -> CGFloat {
+        min(max(raw, railMinWidth), railMaxWidth)
     }
 
-    /// The resting width after a drag. The caller passes the width projected through
-    /// `predictedEndTranslation`, so a quick fling reaches the next stop.
-    static func snapRosterWidth(projectedWidth: CGFloat) -> CGFloat {
-        // Midpoints belong to the wider stop, matching the spring's direction of travel.
-        if projectedWidth < (rosterCollapsedWidth + rosterStandardWidth) / 2 {
-            return rosterCollapsedWidth
+    static func railShowsLabels(width: CGFloat) -> Bool {
+        width >= railLabelThreshold
+    }
+
+    // MARK: Roster safe zones
+
+    /// The safe range for the roster, after the rail and divider have taken their space.
+    /// The chat's minimum width is the other constraint; the default cap is 460.
+    static func rosterBounds(availableWidth: CGFloat) -> ClosedRange<CGFloat> {
+        let availableForRoster = availableWidth - splitterLayoutWidth - chatMinWidth
+        let upper = min(rosterMaxWidth, availableForRoster)
+        guard upper > rosterMinWidth else { return rosterMinWidth...rosterMinWidth }
+        return rosterMinWidth...upper
+    }
+
+    /// Resolve one drag sample. In the safe range the finger wins; below the minimum the
+    /// visible width only creeps (rubber band), and only a selected chat can cross the
+    /// 36pt overshoot to a real collapse on release.
+    static func resolveRosterDrag(
+        rawWidth: CGFloat,
+        availableWidth: CGFloat,
+        hasSelection: Bool
+    ) -> RosterDragResult {
+        let bounds = rosterBounds(availableWidth: availableWidth)
+        if rawWidth >= bounds.lowerBound {
+            let visible = min(rawWidth, bounds.upperBound)
+            return RosterDragResult(
+                visibleWidth: visible,
+                settledWidth: visible,
+                willCollapse: false
+            )
         }
-        if projectedWidth < (rosterStandardWidth + rosterExpandedWidth) / 2 {
-            return rosterStandardWidth
+
+        let overshoot = bounds.lowerBound - rawWidth
+        if hasSelection, overshoot >= rosterCollapseOvershoot {
+            return RosterDragResult(
+                visibleWidth: 0,
+                settledWidth: 0,
+                willCollapse: true
+            )
         }
-        return rosterExpandedWidth
+
+        let visible = bounds.lowerBound - overshoot * rosterRubberBandFactor
+        return RosterDragResult(
+            visibleWidth: visible,
+            settledWidth: bounds.lowerBound,
+            willCollapse: false
+        )
     }
 
-    /// The content keeps its natural minimum while the visible frame closes; clipping,
-    /// not text compression, hides it.
-    static func rosterContentWidth(visibleWidth: CGFloat) -> CGFloat {
-        max(visibleWidth, rosterMinContentWidth)
+    /// Width after a drag. Collapse only happens when the character is actually selected.
+    static func settledRosterWidth(_ result: RosterDragResult) -> CGFloat {
+        result.settledWidth
     }
 
-    /// Single-column pages stay readable but centred on a wide window.
-    static func readingContainer<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        content()
-            .frame(maxWidth: readingMaxWidth)
-            .frame(maxWidth: .infinity)
+    /// Clamp a remembered width when the rail resized or the window rotated.
+    static func clampedRosterWidth(
+        _ width: CGFloat,
+        availableWidth: CGFloat,
+        hasSelection: Bool
+    ) -> CGFloat {
+        if width <= 0 {
+            return hasSelection ? 0 : rosterMinWidth
+        }
+        let bounds = rosterBounds(availableWidth: availableWidth)
+        return min(max(width, bounds.lowerBound), bounds.upperBound)
     }
+
+    // MARK: Titles
+
+    // MARK: Generic
 
     /// How far the folded call layer sits below its container. The layer paints past the
     /// safe area, so its travel is the container plus both insets.

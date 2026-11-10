@@ -1,22 +1,86 @@
 import EidolonCore
 import SwiftUI
 
-/// S2.1's medium/wide shell: a fixed 165pt navigation rail beside the current page.
-/// The rail is ours, not a system sidebar, so there is no top-left collapse control and
-/// the rail background reaches the status bar.
+/// S2.2's medium/wide shell. The 165pt rail is now a resizable column (88–240pt): a
+/// narrow icon rail up to the label threshold, a labelled rail above it. The page stays
+/// crisp while the rail is dragged; the active boundary paints the blue line and blurs
+/// the page behind it.
 struct PadShellView: View {
     @Bindable var app: AppModel
     let band: ResponsiveWidthBand
 
+    @State private var railWidth = ResponsiveLayout.railDefaultWidth
+    @State private var railDragStart: CGFloat?
+    @State private var railDragging = false
+
     var body: some View {
         HStack(spacing: 0) {
-            PadRail(app: app)
-            Divider()
+            PadRail(app: app, width: railWidth)
+                .frame(width: railWidth)
+
             page
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .blur(radius: railDragging ? ResponsiveLayout.dragBlurRadius : 0)
+                .animation(.easeInOut(duration: ResponsiveLayout.dragFeedbackDuration), value: railDragging)
         }
         .background(Color(.systemBackground))
+        .overlay(alignment: .leading) {
+            if railDragging {
+                Rectangle()
+                    .fill(.tint)
+                    .frame(width: ResponsiveLayout.activeLineWidth)
+                    .offset(x: railWidth - ResponsiveLayout.activeLineWidth / 2)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+        .overlay(alignment: .leading) {
+            // No idle handle for the rail: only a 12pt invisible hit strip on the seam.
+            Color.clear
+                .frame(width: ResponsiveLayout.railHitWidth)
+                .contentShape(Rectangle())
+                .offset(x: railWidth - ResponsiveLayout.railHitWidth / 2)
+                .gesture(railResizeGesture)
+                .accessibilityElement()
+                .accessibilityLabel("调整导航栏宽度")
+                .accessibilityValue("\(Int(railWidth))")
+                .accessibilityIdentifier("pad.rail.handle")
+        }
         .environment(\.isEidolonPadShell, true)
+        .onAppear {
+            adoptQARailWidth()
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["EIDOLON_PAD_DRAG_FEEDBACK"] == "rail" {
+                railDragging = true
+            }
+            #endif
+        }
+    }
+
+    private var railResizeGesture: some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                if railDragStart == nil {
+                    railDragStart = railWidth
+                    railDragging = true
+                }
+                railWidth = ResponsiveLayout.clampedRailWidth(
+                    (railDragStart ?? railWidth) + value.translation.width
+                )
+            }
+            .onEnded { _ in
+                railDragStart = nil
+                railDragging = false
+            }
+    }
+
+    private func adoptQARailWidth() {
+        #if DEBUG
+        if let raw = ProcessInfo.processInfo.environment["EIDOLON_PAD_RAIL_WIDTH"],
+           let value = Double(raw) {
+            railWidth = ResponsiveLayout.clampedRailWidth(CGFloat(value))
+        }
+        #endif
     }
 
     @ViewBuilder
@@ -26,12 +90,8 @@ struct PadShellView: View {
             PadConversationView(band: band)
         case .moments:
             MomentsView()
-                .frame(maxWidth: ResponsiveLayout.wideMaxWidth)
-                .frame(maxWidth: .infinity)
         case .play:
             PlayHubView()
-                .frame(maxWidth: ResponsiveLayout.wideMaxWidth)
-                .frame(maxWidth: .infinity)
         case .settings:
             SettingsView()
         }
@@ -40,12 +100,18 @@ struct PadShellView: View {
 
 private struct PadRail: View {
     @Bindable var app: AppModel
+    let width: CGFloat
+
+    private var showsLabels: Bool {
+        ResponsiveLayout.railShowsLabels(width: width)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Eidolon")
+        VStack(alignment: showsLabels ? .leading : .center, spacing: 0) {
+            Text(showsLabels ? "Eidolon" : "E")
                 .font(.title3.weight(.semibold))
-                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, alignment: showsLabels ? .leading : .center)
+                .padding(.horizontal, showsLabels ? 16 : 8)
                 .padding(.top, 18)
                 .padding(.bottom, 18)
 
@@ -59,17 +125,19 @@ private struct PadRail: View {
 
             Spacer(minLength: 0)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("内容包")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                Text("\(app.characters.count) 位角色")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            if showsLabels {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("内容包")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Text("\(app.characters.count) 位角色")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(16)
             }
-            .padding(16)
         }
-        .frame(width: ResponsiveLayout.railWidth)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.secondarySystemBackground).ignoresSafeArea())
     }
 
@@ -86,37 +154,46 @@ private struct PadRail: View {
                 app.selectedTab = tab
             }
         } label: {
-            Label(title, systemImage: symbol)
-                .font(.subheadline.weight(app.selectedTab == tab ? .semibold : .regular))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(
-                    app.selectedTab == tab ? Color.accentColor.opacity(0.16) : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 9)
-                )
-                .overlay(alignment: .trailing) {
-                    if badge {
-                        Circle()
-                            .fill(.tint)
-                            .frame(width: 7, height: 7)
-                            .padding(.trailing, 10)
-                    }
+            HStack(spacing: showsLabels ? 10 : 0) {
+                Image(systemName: symbol)
+                    .font(.body)
+                    .frame(width: 22)
+                if showsLabels {
+                    Text(title)
+                        .font(.subheadline.weight(app.selectedTab == tab ? .semibold : .regular))
                 }
+            }
+            .frame(maxWidth: .infinity, alignment: showsLabels ? .leading : .center)
+            .padding(.horizontal, showsLabels ? 12 : 8)
+            .padding(.vertical, 10)
+            .background(
+                app.selectedTab == tab ? Color.accentColor.opacity(0.16) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 9)
+            )
+            .overlay(alignment: .trailing) {
+                if badge {
+                    Circle()
+                        .fill(.tint)
+                        .frame(width: 7, height: 7)
+                        .padding(.trailing, showsLabels ? 10 : 3)
+                }
+            }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
         .accessibilityIdentifier("pad.tab.\(tab.railID)")
     }
 }
 
 /// The conversation column pair. Medium shows one full-width page at a time; wide shows
-/// the roster beside the chat with a draggable gray handle between them.
+/// the roster beside the chat with a continuous, safe-zone bounded splitter.
 struct PadConversationView: View {
     @Environment(AppModel.self) private var app
     let band: ResponsiveWidthBand
 
-    @State private var listWidth: CGFloat = ResponsiveLayout.rosterStandardWidth
-    @State private var dragStart: CGFloat?
+    @State private var listWidth = ResponsiveLayout.rosterDefaultWidth
+    @State private var splitDragStart: CGFloat?
+    @State private var splitDragging = false
 
     private var selected: CharacterConfig? {
         guard let id = app.padConversationID else { return nil }
@@ -134,10 +211,32 @@ struct PadConversationView: View {
         .onAppear {
             adoptOpeningCharacter()
             adoptQARosterWidth()
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["EIDOLON_PAD_DRAG_FEEDBACK"] == "split",
+               band == .wide {
+                splitDragging = true
+            }
+            #endif
         }
         .onChange(of: app.conversationTargetID) { adoptOpeningCharacter() }
         .onChange(of: app.characters.count) { _, _ in
             if selected == nil { app.padConversationID = nil }
+        }
+        .onChange(of: app.padConversationID) { _, newValue in
+            if selected == nil, listWidth == 0 {
+                listWidth = ResponsiveLayout.rosterDefaultWidth
+            }
+            #if DEBUG
+            if newValue != nil,
+               let raw = ProcessInfo.processInfo.environment["EIDOLON_PAD_ROSTER_WIDTH"],
+               let value = Double(raw) {
+                listWidth = ResponsiveLayout.clampedRosterWidth(
+                    CGFloat(value),
+                    availableWidth: 1045,
+                    hasSelection: true
+                )
+            }
+            #endif
         }
     }
 
@@ -149,8 +248,6 @@ struct PadConversationView: View {
         }
     }
 
-    /// Wide selections are not pushes; when entering medium after a rotation, restore the
-    /// same character as a real NavigationStack push.
     private func syncMediumPath() {
         guard app.conversationPath.isEmpty,
               let id = app.padConversationID,
@@ -161,27 +258,55 @@ struct PadConversationView: View {
 
     private var wide: some View {
         GeometryReader { proxy in
-            HStack(spacing: 0) {
-                if listWidth > 0 {
-                    let contentWidth = ResponsiveLayout.rosterContentWidth(visibleWidth: listWidth)
-                    roster(width: contentWidth)
-                        .frame(width: contentWidth, alignment: .leading)
-                        .frame(width: listWidth, alignment: .leading)
-                        .clipped()
-                }
+            let available = max(proxy.size.width, ResponsiveLayout.rosterMinWidth)
+            ZStack(alignment: .leading) {
+                HStack(spacing: 0) {
+                    if listWidth > 0 {
+                        let contentWidth = max(listWidth, ResponsiveLayout.rosterMinWidth)
+                        roster(width: contentWidth)
+                            .frame(width: contentWidth, alignment: .leading)
+                            .frame(width: listWidth, alignment: .leading)
+                            .clipped()
+                    }
 
-                if let selected {
-                    chat(selected)
-                } else {
-                    PadEmptyConversationView { character in
-                        app.openPadConversation(characterID: character.id)
+                    if let selected {
+                        chat(selected)
+                    } else {
+                        PadEmptyConversationView { character in
+                            app.openPadConversation(characterID: character.id)
+                        }
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .blur(radius: splitDragging ? ResponsiveLayout.dragBlurRadius : 0)
+                .animation(.easeInOut(duration: ResponsiveLayout.dragFeedbackDuration), value: splitDragging)
+
+                if splitDragging {
+                    Rectangle()
+                        .fill(.tint)
+                        .frame(width: ResponsiveLayout.activeLineWidth)
+                        .frame(maxHeight: .infinity)
+                        .offset(x: max(listWidth - ResponsiveLayout.activeLineWidth / 2, 0))
+                        .allowsHitTesting(false)
+                }
+
+                splitHandle(availableWidth: available)
+                    .offset(x: max(listWidth - ResponsiveLayout.handleHitSize / 2, 0))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay(alignment: .leading) {
-                splitHandle()
-                    .offset(x: max(listWidth - 22, 0))
+            .onAppear {
+                listWidth = ResponsiveLayout.clampedRosterWidth(
+                    listWidth,
+                    availableWidth: available,
+                    hasSelection: selected != nil
+                )
+            }
+            .onChange(of: proxy.size.width) { _, newWidth in
+                listWidth = ResponsiveLayout.clampedRosterWidth(
+                    listWidth,
+                    availableWidth: max(newWidth, ResponsiveLayout.rosterMinWidth),
+                    hasSelection: selected != nil
+                )
             }
         }
     }
@@ -192,7 +317,7 @@ struct PadConversationView: View {
             onSelect: { character in
                 app.openPadConversation(characterID: character.id)
             },
-            padChromeWidth: ResponsiveLayout.rosterContentWidth(visibleWidth: width)
+            padChromeWidth: max(width, ResponsiveLayout.rosterMinWidth)
         )
     }
 
@@ -206,58 +331,95 @@ struct PadConversationView: View {
         }
     }
 
-    private func splitHandle() -> some View {
-        Capsule()
-            .fill(Color.secondary.opacity(0.55))
-            .frame(width: 44, height: 4)
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { value in
-                        if dragStart == nil {
-                            dragStart = listWidth
-                        }
-                        listWidth = ResponsiveLayout.draggingRosterWidth(
-                            start: dragStart ?? listWidth,
-                            translation: value.translation.width
-                        )
+    private func splitHandle(availableWidth: CGFloat) -> some View {
+        ZStack {
+            Capsule()
+                .fill(Color.secondary.opacity(0.55))
+                .frame(width: ResponsiveLayout.handlePillWidth, height: ResponsiveLayout.handlePillHeight)
+                .opacity(splitDragging ? 0 : 1)
+        }
+        .frame(width: ResponsiveLayout.handleHitSize, height: ResponsiveLayout.handleHitSize)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 1)
+                .onChanged { value in
+                    if splitDragStart == nil {
+                        splitDragStart = listWidth
+                        splitDragging = true
                     }
-                    .onEnded { value in
-                        let start = dragStart ?? listWidth
-                        let projected = ResponsiveLayout.draggingRosterWidth(
-                            start: start,
-                            translation: value.predictedEndTranslation.width
-                        )
-                        let snapped = ResponsiveLayout.snapRosterWidth(projectedWidth: projected)
-                        withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
-                            listWidth = snapped
+                    let start = splitDragStart ?? listWidth
+                    if start <= 0 {
+                        // From a collapsed roster a rightward drag previews a restore.
+                        if value.translation.width > 0 {
+                            listWidth = min(
+                                ResponsiveLayout.rosterDefaultWidth,
+                                max(value.translation.width, ResponsiveLayout.rosterMinWidth)
+                            )
                         }
-                        dragStart = nil
+                        return
                     }
-            )
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    guard listWidth == 0 else { return }
+                    let result = ResponsiveLayout.resolveRosterDrag(
+                        rawWidth: start + value.translation.width,
+                        availableWidth: availableWidth,
+                        hasSelection: selected != nil
+                    )
+                    listWidth = result.visibleWidth
+                }
+                .onEnded { value in
+                    let start = splitDragStart ?? listWidth
+                    defer {
+                        splitDragStart = nil
+                        splitDragging = false
+                    }
+                    if start <= 0 {
+                        if value.translation.width > 20 {
+                            withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                                listWidth = ResponsiveLayout.rosterRestoreWidth
+                            }
+                        }
+                        return
+                    }
+                    let result = ResponsiveLayout.resolveRosterDrag(
+                        rawWidth: start + value.translation.width,
+                        availableWidth: availableWidth,
+                        hasSelection: selected != nil
+                    )
                     withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
-                        listWidth = ResponsiveLayout.rosterStandardWidth
+                        listWidth = ResponsiveLayout.settledRosterWidth(result)
                     }
                 }
-            )
-            .accessibilityElement()
-            .accessibilityLabel(listWidth == 0 ? "显示角色列表" : "调整角色列表宽度")
-            .accessibilityIdentifier("conversation.splitHandle")
-            .accessibilityAddTraits(.isButton)
+        )
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                guard listWidth == 0 else { return }
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                    listWidth = ResponsiveLayout.rosterRestoreWidth
+                }
+            }
+        )
+        .accessibilityElement()
+        .accessibilityLabel(listWidth == 0 ? "显示角色列表" : "调整角色列表宽度")
+        .accessibilityValue("\(Int(listWidth))")
+        .accessibilityIdentifier("conversation.splitHandle")
+        .accessibilityAddTraits(.isButton)
     }
 
-    /// DEBUG-only seed for the screenshot harness: the visual states must be repeatable
-    /// without depending on a fling gesture that can be swallowed by the simulator.
+    /// DEBUG-only state seed for deterministic screenshot QA.
     private func adoptQARosterWidth() {
         #if DEBUG
         if band == .wide,
            let raw = ProcessInfo.processInfo.environment["EIDOLON_PAD_ROSTER_WIDTH"],
            let value = Double(raw) {
-            listWidth = ResponsiveLayout.snapRosterWidth(projectedWidth: CGFloat(value))
+            listWidth = ResponsiveLayout.clampedRosterWidth(
+                CGFloat(value),
+                availableWidth: 1133 - 88,
+                hasSelection: selected != nil
+            )
+        }
+        if band == .wide,
+           ProcessInfo.processInfo.environment["EIDOLON_PAD_ROSTER_COLLAPSED"] == "1",
+           selected != nil {
+            listWidth = 0
         }
         #endif
     }

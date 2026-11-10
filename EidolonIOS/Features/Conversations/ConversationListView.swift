@@ -164,14 +164,7 @@ struct ConversationListView: View {
         }
         .task { await app.server.refreshAnnouncements() }
         .navigationDestination(for: CharacterConfig.self) { character in
-            ChatView(
-                character: character,
-                onPadBack: padChromeWidth == nil ? nil : {
-                    app.conversationPath = NavigationPath()
-                    app.padConversationID = nil
-                }
-            )
-            .navigationBarBackButtonHidden(padChromeWidth != nil)
+            ChatView(character: character)
         }
         .confirmationDialog(
             "结束通话并进入？",
@@ -280,11 +273,12 @@ struct ConversationListView: View {
     }
 
     @ViewBuilder
-    private func padHeader(width: CGFloat) -> some View {
+    private func padHeader(width _: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 Text("对话")
                     .font(.title2.weight(.semibold))
+                    .accessibilityIdentifier("pad.title.conversation")
                 Spacer(minLength: 0)
                 if app.server.hasUnreadAnnouncements || app.server.isSignedIn {
                     bell
@@ -313,84 +307,58 @@ struct ConversationListView: View {
             .padding(.vertical, 8)
             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10))
 
-            if width < ResponsiveLayout.rosterNarrowFilterWidth {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        unitChip(nil, title: "全部")
-                        ForEach(unitOptions.prefix(2), id: \.self) { unit in
-                            unitChip(unit, title: narrowUnitTitle(unit))
-                        }
-                        Menu {
-                            Button {
-                                pinnedOnly.toggle()
-                            } label: {
-                                Label("置顶", systemImage: pinnedOnly ? "checkmark" : "pin")
-                            }
-                            .accessibilityIdentifier("pad.filter.pinned")
-                            Button {
-                                unreadOnly.toggle()
-                            } label: {
-                                Label("未读", systemImage: unreadOnly ? "checkmark" : "envelope.badge")
-                            }
-                            .accessibilityIdentifier("pad.filter.unread")
-                            Divider()
-                            ForEach(unitOptions, id: \.self) { unit in
-                                Button {
-                                    selectedUnit = unit
-                                } label: {
-                                    if selectedUnit == unit {
-                                        Label(unit, systemImage: "checkmark")
-                                    } else {
-                                        Text(unit)
-                                    }
-                                }
-                            }
-                            if selectedUnit != nil {
-                                Divider()
-                                Button("全部组合") { selectedUnit = nil }
-                            }
-                        } label: {
-                            Label(
-                                selectedUnit ?? "筛选",
-                                systemImage: "line.3.horizontal.decrease.circle"
-                            )
-                            .font(.caption.weight(.medium))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(Color(.secondarySystemFill), in: Capsule())
-                        }
-                        .accessibilityIdentifier("pad.filter.units")
-                    }
-                }
-            } else {
+            // Every unit lives in one horizontally scrolling strip. The filter button is
+            // fixed on the trailing edge; chips slide underneath it and the trailing
+            // inset lets the last chip scroll out.
+            ZStack(alignment: .trailing) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         unitChip(nil, title: "全部")
                         ForEach(unitOptions, id: \.self) { unit in
                             unitChip(unit, title: unit)
                         }
-                        filterChip("置顶", isOn: pinnedOnly) { pinnedOnly.toggle() }
-                            .accessibilityIdentifier("pad.filter.pinned")
-                        filterChip("未读", isOn: unreadOnly) { unreadOnly.toggle() }
-                            .accessibilityIdentifier("pad.filter.unread")
-                        if hasActiveFilter {
-                            Button("清除") { clearFilters() }
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
                     }
+                    .padding(.trailing, ResponsiveLayout.filterTrailingInset)
                 }
+                .frame(maxWidth: .infinity)
+
+                filterMenu
             }
+            .frame(maxWidth: .infinity)
+            .frame(height: 32)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, ResponsiveLayout.pageTitleLeading)
+        .padding(.top, ResponsiveLayout.pageTitleTop)
         .padding(.bottom, 10)
         .background(Color(.systemBackground))
     }
 
-    /// The narrow strip keeps the menu reachable; the menu still shows the full names.
-    private func narrowUnitTitle(_ unit: String) -> String {
-        String(unit.split(separator: " ").first ?? Substring(unit))
+    private var filterMenu: some View {
+        Menu {
+            Button {
+                pinnedOnly.toggle()
+            } label: {
+                Label("置顶", systemImage: pinnedOnly ? "checkmark" : "pin")
+            }
+            Button {
+                unreadOnly.toggle()
+            } label: {
+                Label("未读", systemImage: unreadOnly ? "checkmark" : "envelope.badge")
+            }
+            if hasActiveFilter {
+                Divider()
+                Button("清除筛选", role: .destructive) { clearFilters() }
+            }
+        } label: {
+            Image(systemName: "line.3.horizontal.decrease")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(width: ResponsiveLayout.filterButtonWidth, height: 32)
+                .background(Color(.secondarySystemFill), in: Capsule())
+        }
+        .accessibilityLabel("筛选")
+        .accessibilityIdentifier("pad.filter.button")
     }
 
     private func unitChip(_ unit: String?, title: String) -> some View {

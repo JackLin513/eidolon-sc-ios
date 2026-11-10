@@ -6,6 +6,7 @@ import SwiftUI
 struct MomentsView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.isEidolonPadShell) private var isPadShell
 
     @State private var posts: [MomentPost] = []
     @State private var loading = true
@@ -16,7 +17,11 @@ struct MomentsView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
+            VStack(spacing: 0) {
+                if isPadShell {
+                    PadPageLargeTitle("朋友圈", id: "pad.title.moments")
+                }
+                Group {
                 if !app.momentsSettings.enabled {
                     ContentUnavailableView {
                         Label("朋友圈未开启", systemImage: "person.2.slash")
@@ -57,8 +62,11 @@ struct MomentsView: View {
                     }
                     .refreshable { await load() }
                 }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .navigationTitle("朋友圈")
+            .toolbar(isPadShell ? .hidden : .visible, for: .navigationBar)
             .task {
                 await load()
                 await app.markMomentsOpened()
