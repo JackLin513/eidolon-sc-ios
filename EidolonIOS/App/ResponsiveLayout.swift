@@ -37,7 +37,6 @@ enum ResponsiveLayout {
     static let rosterMinWidth: CGFloat = 280
     static let rosterDefaultWidth: CGFloat = 320
     static let rosterMaxWidth: CGFloat = 460
-    static let rosterRestoreWidth: CGFloat = 320
     static let chatMinWidth: CGFloat = 420
     /// The layout width reserved for the vertical handle / active line between columns.
     static let splitterLayoutWidth: CGFloat = 12
@@ -69,10 +68,6 @@ enum ResponsiveLayout {
     static let pageTitleTop: CGFloat = 12
     static let filterButtonWidth: CGFloat = 44
     static let filterTrailingInset: CGFloat = 52
-
-    /// Settings, moments and play stay single-column; this only stops text fields and
-    /// cards from stretching across a 13-inch window.
-    static let readingMaxWidth: CGFloat = 680
 
     /// Cards and the settings detail may use more of an iPad's width than a text column.
     static let wideMaxWidth: CGFloat = 1000
@@ -130,8 +125,10 @@ enum ResponsiveLayout {
 
         let overshoot = bounds.lowerBound - rawWidth
         if hasSelection, overshoot >= rosterCollapseOvershoot {
+            // Stay on the safe boundary while the finger has crossed the collapse
+            // threshold; release is what actually collapses the roster.
             return RosterDragResult(
-                visibleWidth: 0,
+                visibleWidth: bounds.lowerBound,
                 settledWidth: 0,
                 willCollapse: true
             )
@@ -143,11 +140,6 @@ enum ResponsiveLayout {
             settledWidth: bounds.lowerBound,
             willCollapse: false
         )
-    }
-
-    /// Width after a drag. Collapse only happens when the character is actually selected.
-    static func settledRosterWidth(_ result: RosterDragResult) -> CGFloat {
-        result.settledWidth
     }
 
     /// Clamp a remembered width when the rail resized or the window rotated.

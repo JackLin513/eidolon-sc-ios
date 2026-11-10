@@ -66,7 +66,7 @@ struct ConversationListView: View {
         if let width = padChromeWidth {
             rosterList
                 .safeAreaInset(edge: .top, spacing: 0) {
-                    padHeader(width: width)
+                    padHeader()
                 }
         } else {
             rosterList
@@ -273,7 +273,7 @@ struct ConversationListView: View {
     }
 
     @ViewBuilder
-    private func padHeader(width _: CGFloat) -> some View {
+    private func padHeader() -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 Text("对话")

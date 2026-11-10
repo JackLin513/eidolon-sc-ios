@@ -63,13 +63,17 @@ final class IPadLayoutUITests: XCTestCase {
         )
     }
 
-    func testIPadMediumPushesChatWithAnExplicitBackButton() throws {
+    func testIPadMediumPushesChatWithOneSystemBackButton() throws {
         try XCTSkipUnless(isMedium, "This check is for the medium band on iPad mini portrait")
         let name = app.staticTexts["櫻木真乃"].firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 20))
         name.tap()
         XCTAssertTrue(app.textFields["chat.input"].waitForExistence(timeout: 20))
-        XCTAssertFalse(anyElement("pad.chat.back").exists, "medium has the custom back button too")
+        XCTAssertEqual(
+            app.buttons.matching(identifier: "pad.chat.back").count,
+            0,
+            "medium has the custom back button too"
+        )
         XCTAssertTrue(
             app.navigationBars.buttons.firstMatch.waitForExistence(timeout: 10),
             "medium lost its system back button"
@@ -94,7 +98,11 @@ final class IPadLayoutUITests: XCTestCase {
         // With a chat selected the rubber band/overshoot path can collapse on release.
         app.staticTexts["櫻木真乃"].firstMatch.tap()
         XCTAssertTrue(app.textFields["chat.input"].waitForExistence(timeout: 20))
-        XCTAssertTrue(anyElement("pad.chat.back").exists)
+        XCTAssertEqual(
+            app.buttons.matching(identifier: "pad.chat.back").count,
+            1,
+            "wide chat should have exactly one custom back button"
+        )
 
         collapseRosterWithHandle()
         XCTAssertEqual(handle.label, "显示角色列表")
@@ -201,6 +209,7 @@ final class IPadLayoutUITests: XCTestCase {
         XCTAssertEqual(before.minY, after.minY, accuracy: 1.5)
         XCTAssertTrue(filter.isHittable, "filter button scrolled away")
     }
+
 
 
     func testIPadPageTitlesShareAnchors() throws {

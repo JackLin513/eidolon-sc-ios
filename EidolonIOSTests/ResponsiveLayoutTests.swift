@@ -82,9 +82,15 @@ final class ResponsiveLayoutTests: XCTestCase {
             availableWidth: 1133,
             hasSelection: true
         )
-        XCTAssertEqual(threshold.visibleWidth, 0)
+        XCTAssertEqual(threshold.visibleWidth, 280)
         XCTAssertEqual(threshold.settledWidth, 0)
         XCTAssertTrue(threshold.willCollapse)
+    }
+
+    func testTitleAnchorsAreSharedConstants() {
+        XCTAssertEqual(ResponsiveLayout.pageTitleLeading, 20)
+        XCTAssertEqual(ResponsiveLayout.pageTitleTop, 12)
+        XCTAssertEqual(ResponsiveLayout.filterButtonWidth, 44)
     }
 
     func testRememberedWidthClampsAfterRailResize() {

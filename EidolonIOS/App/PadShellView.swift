@@ -25,14 +25,14 @@ struct PadShellView: View {
         }
         .background(Color(.systemBackground))
         .overlay(alignment: .leading) {
-            if railDragging {
-                Rectangle()
-                    .fill(.tint)
-                    .frame(width: ResponsiveLayout.activeLineWidth)
-                    .offset(x: railWidth - ResponsiveLayout.activeLineWidth / 2)
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
-            }
+            Rectangle()
+                .fill(.tint)
+                .frame(width: ResponsiveLayout.activeLineWidth)
+                .frame(maxHeight: .infinity)
+                .offset(x: railWidth - ResponsiveLayout.activeLineWidth / 2)
+                .opacity(railDragging ? 1 : 0)
+                .allowsHitTesting(false)
+                .animation(.easeInOut(duration: ResponsiveLayout.dragFeedbackDuration), value: railDragging)
         }
         .overlay(alignment: .leading) {
             // No idle handle for the rail: only a 12pt invisible hit strip on the seam.
@@ -44,6 +44,14 @@ struct PadShellView: View {
                 .accessibilityElement()
                 .accessibilityLabel("调整导航栏宽度")
                 .accessibilityValue("\(Int(railWidth))")
+                .accessibilityAdjustableAction { direction in
+                    let step: CGFloat = 16
+                    switch direction {
+                    case .increment: railWidth = ResponsiveLayout.clampedRailWidth(railWidth + step)
+                    case .decrement: railWidth = ResponsiveLayout.clampedRailWidth(railWidth - step)
+                    @unknown default: break
+                    }
+                }
                 .accessibilityIdentifier("pad.rail.handle")
         }
         .environment(\.isEidolonPadShell, true)
@@ -108,12 +116,19 @@ private struct PadRail: View {
 
     var body: some View {
         VStack(alignment: showsLabels ? .leading : .center, spacing: 0) {
-            Text(showsLabels ? "Eidolon" : "E")
-                .font(.title3.weight(.semibold))
-                .frame(maxWidth: .infinity, alignment: showsLabels ? .leading : .center)
-                .padding(.horizontal, showsLabels ? 16 : 8)
-                .padding(.top, 18)
-                .padding(.bottom, 18)
+            ZStack(alignment: showsLabels ? .leading : .center) {
+                Text("Eidolon")
+                    .font(.title3.weight(.semibold))
+                    .opacity(showsLabels ? 1 : 0)
+                Text("E")
+                    .font(.title3.weight(.semibold))
+                    .opacity(showsLabels ? 0 : 1)
+            }
+            .frame(maxWidth: .infinity, alignment: showsLabels ? .leading : .center)
+            .clipped()
+            .padding(.horizontal, showsLabels ? 16 : 8)
+            .padding(.top, 18)
+            .padding(.bottom, 18)
 
             VStack(spacing: 3) {
                 railRow(.conversation, "对话", "bubble.left.and.bubble.right")
@@ -139,6 +154,7 @@ private struct PadRail: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.secondarySystemBackground).ignoresSafeArea())
+        .animation(.easeInOut(duration: ResponsiveLayout.dragFeedbackDuration), value: showsLabels)
     }
 
     private func railRow(
@@ -194,6 +210,7 @@ struct PadConversationView: View {
     @State private var listWidth = ResponsiveLayout.rosterDefaultWidth
     @State private var splitDragStart: CGFloat?
     @State private var splitDragging = false
+    @State private var wideAvailableWidth: CGFloat = 0
 
     private var selected: CharacterConfig? {
         guard let id = app.padConversationID else { return nil }
@@ -210,7 +227,6 @@ struct PadConversationView: View {
         }
         .onAppear {
             adoptOpeningCharacter()
-            adoptQARosterWidth()
             #if DEBUG
             if ProcessInfo.processInfo.environment["EIDOLON_PAD_DRAG_FEEDBACK"] == "split",
                band == .wide {
@@ -228,11 +244,12 @@ struct PadConversationView: View {
             }
             #if DEBUG
             if newValue != nil,
+               wideAvailableWidth > 0,
                let raw = ProcessInfo.processInfo.environment["EIDOLON_PAD_ROSTER_WIDTH"],
                let value = Double(raw) {
                 listWidth = ResponsiveLayout.clampedRosterWidth(
                     CGFloat(value),
-                    availableWidth: 1045,
+                    availableWidth: wideAvailableWidth,
                     hasSelection: true
                 )
             }
@@ -281,20 +298,22 @@ struct PadConversationView: View {
                 .blur(radius: splitDragging ? ResponsiveLayout.dragBlurRadius : 0)
                 .animation(.easeInOut(duration: ResponsiveLayout.dragFeedbackDuration), value: splitDragging)
 
-                if splitDragging {
-                    Rectangle()
-                        .fill(.tint)
-                        .frame(width: ResponsiveLayout.activeLineWidth)
-                        .frame(maxHeight: .infinity)
-                        .offset(x: max(listWidth - ResponsiveLayout.activeLineWidth / 2, 0))
-                        .allowsHitTesting(false)
-                }
+                Rectangle()
+                    .fill(.tint)
+                    .frame(width: ResponsiveLayout.activeLineWidth)
+                    .frame(maxHeight: .infinity)
+                    .offset(x: max(listWidth - ResponsiveLayout.activeLineWidth / 2, 0))
+                    .opacity(splitDragging ? 1 : 0)
+                    .allowsHitTesting(false)
+                    .animation(.easeInOut(duration: ResponsiveLayout.dragFeedbackDuration), value: splitDragging)
 
                 splitHandle(availableWidth: available)
                     .offset(x: max(listWidth - ResponsiveLayout.handleHitSize / 2, 0))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onAppear {
+                wideAvailableWidth = available
+                adoptQARosterWidth(availableWidth: available)
                 listWidth = ResponsiveLayout.clampedRosterWidth(
                     listWidth,
                     availableWidth: available,
@@ -302,9 +321,11 @@ struct PadConversationView: View {
                 )
             }
             .onChange(of: proxy.size.width) { _, newWidth in
+                let newAvailable = max(newWidth, ResponsiveLayout.rosterMinWidth)
+                wideAvailableWidth = newAvailable
                 listWidth = ResponsiveLayout.clampedRosterWidth(
                     listWidth,
-                    availableWidth: max(newWidth, ResponsiveLayout.rosterMinWidth),
+                    availableWidth: newAvailable,
                     hasSelection: selected != nil
                 )
             }
@@ -374,7 +395,7 @@ struct PadConversationView: View {
                     if start <= 0 {
                         if value.translation.width > 20 {
                             withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
-                                listWidth = ResponsiveLayout.rosterRestoreWidth
+                                listWidth = ResponsiveLayout.rosterDefaultWidth
                             }
                         }
                         return
@@ -385,7 +406,7 @@ struct PadConversationView: View {
                         hasSelection: selected != nil
                     )
                     withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
-                        listWidth = ResponsiveLayout.settledRosterWidth(result)
+                        listWidth = result.settledWidth
                     }
                 }
         )
@@ -393,7 +414,7 @@ struct PadConversationView: View {
             TapGesture().onEnded {
                 guard listWidth == 0 else { return }
                 withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
-                    listWidth = ResponsiveLayout.rosterRestoreWidth
+                    listWidth = ResponsiveLayout.rosterDefaultWidth
                 }
             }
         )
@@ -405,21 +426,16 @@ struct PadConversationView: View {
     }
 
     /// DEBUG-only state seed for deterministic screenshot QA.
-    private func adoptQARosterWidth() {
+    private func adoptQARosterWidth(availableWidth: CGFloat) {
         #if DEBUG
         if band == .wide,
            let raw = ProcessInfo.processInfo.environment["EIDOLON_PAD_ROSTER_WIDTH"],
            let value = Double(raw) {
             listWidth = ResponsiveLayout.clampedRosterWidth(
                 CGFloat(value),
-                availableWidth: 1133 - 88,
+                availableWidth: availableWidth,
                 hasSelection: selected != nil
             )
-        }
-        if band == .wide,
-           ProcessInfo.processInfo.environment["EIDOLON_PAD_ROSTER_COLLAPSED"] == "1",
-           selected != nil {
-            listWidth = 0
         }
         #endif
     }
