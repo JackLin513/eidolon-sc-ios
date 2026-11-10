@@ -71,4 +71,27 @@ final class IPadLayoutUITests: XCTestCase {
         XCTAssertTrue(input.isHittable, "keyboard covers the chat input")
     }
 
+    func testIPadBarLetterboxesInTheCurrentWindow() throws {
+        XCTAssertTrue(app.buttons["玩法"].waitForExistence(timeout: 20))
+        app.buttons.matching(identifier: "玩法").firstMatch.tap()
+        let card = app.buttons["play.bar"]
+        XCTAssertTrue(card.waitForExistence(timeout: 20), "no bar card on iPad")
+        card.tap()
+
+        XCTAssertTrue(
+            app.buttons["点一下进门"].waitForExistence(timeout: 20),
+            "the bar did not open on iPad"
+        )
+        let window = app.windows.firstMatch.frame
+        XCTAssertGreaterThan(window.width, 0)
+        XCTAssertGreaterThan(window.height, 0)
+        XCTAssertTrue(
+            app.buttons["bar.rotate"].exists,
+            "the bar has no rotate affordance on iPad"
+        )
+
+        app.buttons["离开"].tap()
+        XCTAssertTrue(card.waitForExistence(timeout: 10), "the bar did not leave back to play")
+    }
+
 }
