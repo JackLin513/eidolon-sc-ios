@@ -1,42 +1,27 @@
+import EidolonCore
 import SwiftUI
 
-/// The app's four first-level pages (spec #64, #94). Each tab keeps its own navigation stack,
-/// so switching away and back returns to the page the producer left. The call layer stays
-/// above all of them in the root view; the folded bar is drawn by each page.
+/// The app's four first-level pages (spec #64, #94). iPhone keeps the tab bar stack;
+/// iPad uses S2.1's rail + breakpoint shell.
 struct MainTabsView: View {
     @Bindable var app: AppModel
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var measuredWidth: CGFloat?
 
     var body: some View {
-        // The `Tab` form lets the same tab set become a sidebar on iPad and the new
-        // floating tab bar on iPhone (spec #64, page design direction: latest system).
-        TabView(selection: selection) {
-            Tab("对话", systemImage: "bubble.left.and.bubble.right", value: MainTab.conversation) {
-                GeometryReader { proxy in
-                    if ResponsiveLayout.isSplit(width: proxy.size.width, sizeClass: sizeClass) {
-                        ConversationSplitView()
-                    } else {
-                        ConversationListView()
-                    }
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let band = ResponsiveLayout.band(width: width, sizeClass: sizeClass)
+
+            Group {
+                if band == .compact {
+                    tabShell
+                } else {
+                    PadShellView(app: app, band: band)
                 }
             }
-            Tab("朋友圈", systemImage: "person.2", value: MainTab.moments) {
-                MomentsView()
-                    .frame(maxWidth: ResponsiveLayout.wideMaxWidth)
-                    .frame(maxWidth: .infinity)
-            }
-            .badge(app.momentsBadge ? 1 : 0)
-            Tab("玩法", systemImage: "sparkles", value: MainTab.play) {
-                PlayHubView()
-                    .frame(maxWidth: ResponsiveLayout.wideMaxWidth)
-                    .frame(maxWidth: .infinity)
-            }
-            .badge(app.achievementBadge ? 1 : 0)
-            Tab("设置", systemImage: "gearshape", value: MainTab.settings) {
-                SettingsView()
-            }
+            .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { measuredWidth = $0 }
         }
-        .modifier(ResponsiveTabStyle())
         .overlay(alignment: .top) {
             if let toast = app.achievementToast {
                 Text(toast)
@@ -50,9 +35,6 @@ struct MainTabsView: View {
                     .accessibilityIdentifier("achievement.toast")
             }
         }
-        // A conversation is a page of its own: the four first-level tabs stay behind it
-        // (spec #64). A live call is the exception, so the play tab stays within reach.
-        // (The chat page hides the bar itself; see ChatView.)
         .animation(.snappy, value: app.achievementToast)
         .alert(
             "成就补算",
@@ -69,6 +51,48 @@ struct MainTabsView: View {
                         + (summary.resetCards > 0 ? "、\(summary.resetCards) 张重置卡" : "")
                         + "。通话时长从这次更新后开始计，抽过的奖从 0 起。"
                 )
+            }
+        }
+        .onChange(of: app.conversationPath.isEmpty) { _, isEmpty in
+            // A compact back button returns to the list. Expanding afterwards must not
+            // reopen the chat the producer just left.
+            if isEmpty {
+                app.padConversationID = nil
+            }
+        }
+        .onChange(of: measuredWidth ?? 0) { oldWidth, newWidth in
+            let oldBand = ResponsiveLayout.band(width: oldWidth, sizeClass: sizeClass)
+            let newBand = ResponsiveLayout.band(width: newWidth, sizeClass: sizeClass)
+            guard oldBand != .compact, newBand == .compact else { return }
+            guard app.conversationPath.isEmpty,
+                  let id = app.padConversationID,
+                  let character = app.characters.first(where: { $0.id == id })
+            else { return }
+            app.conversationPath.append(character)
+        }
+    }
+
+    /// The compact phone shell. Each tab keeps its own stack, and the conversation page
+    /// is the existing single-column list; the chat is pushed.
+    private var tabShell: some View {
+        TabView(selection: selection) {
+            Tab("对话", systemImage: "bubble.left.and.bubble.right", value: MainTab.conversation) {
+                ConversationListView()
+            }
+            Tab("朋友圈", systemImage: "person.2", value: MainTab.moments) {
+                MomentsView()
+                    .frame(maxWidth: ResponsiveLayout.wideMaxWidth)
+                    .frame(maxWidth: .infinity)
+            }
+            .badge(app.momentsBadge ? 1 : 0)
+            Tab("玩法", systemImage: "sparkles", value: MainTab.play) {
+                PlayHubView()
+                    .frame(maxWidth: ResponsiveLayout.wideMaxWidth)
+                    .frame(maxWidth: .infinity)
+            }
+            .badge(app.achievementBadge ? 1 : 0)
+            Tab("设置", systemImage: "gearshape", value: MainTab.settings) {
+                SettingsView()
             }
         }
     }
@@ -88,19 +112,5 @@ struct MainTabsView: View {
                 app.selectedTab = tab
             }
         )
-    }
-}
-
-/// iPad gets the system sidebar-adaptable tab bar; the compact iPhone keeps the existing
-/// tab bar so its navigation and UI tests do not change.
-private struct ResponsiveTabStyle: ViewModifier {
-    @Environment(\.horizontalSizeClass) private var sizeClass
-
-    func body(content: Content) -> some View {
-        if sizeClass == .regular {
-            content.tabViewStyle(.sidebarAdaptable)
-        } else {
-            content
-        }
     }
 }

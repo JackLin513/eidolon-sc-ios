@@ -9,7 +9,13 @@ struct ConversationListView: View {
     var embedded = false
     /// In the sidebar a tap selects the detail instead of pushing a page.
     var onSelect: ((CharacterConfig) -> Void)?
+    /// Non-nil when the S2.1 rail owns the page: draw a fixed roster header and filters,
+    /// and keep `.searchable`/`.navigationTitle` from escaping into the outer container.
+    var padChromeWidth: CGFloat?
     @State private var query = ""
+    @State private var selectedUnit: String?
+    @State private var pinnedOnly = false
+    @State private var unreadOnly = false
 
     /// 有没看过的新公告时，铃铛右上角一个小圆点。
     private var bell: some View {
@@ -55,9 +61,19 @@ struct ConversationListView: View {
         }
     }
 
+    @ViewBuilder
     private var roster: some View {
+        if let width = padChromeWidth {
+            rosterList
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    padHeader(width: width)
+                }
+        } else {
+            rosterList
+        }
+    }
 
-
+    private var rosterList: some View {
         List {
             Section {
                 ForEach(filtered, id: \.id) { character in
@@ -130,11 +146,10 @@ struct ConversationListView: View {
             }
         }
         .listStyle(.plain)
-        .searchable(text: $query, prompt: "搜中文名、假名、罗马字或组合")
-        .navigationTitle("对话")
+        .modifier(RosterSearchChrome(enabled: padChromeWidth == nil, query: $query))
         .refreshable { await app.refresh() }
         .toolbar {
-            if app.server.isSignedIn {
+            if app.server.isSignedIn, padChromeWidth == nil {
                 ToolbarItem(placement: .topBarTrailing) { bell }
             }
         }
@@ -220,7 +235,7 @@ struct ConversationListView: View {
         }
 
         .overlay(alignment: .top) {
-            if app.conversationPath.isEmpty {
+            if app.conversationPath.isEmpty, app.padConversationID == nil {
                 CallBar()
             }
         }
@@ -232,8 +247,157 @@ struct ConversationListView: View {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         // Searching always looks through the hidden ones too, as upstream's list does.
         let arranged = app.roster.arrange(ordered, showingHidden: showingHidden || !needle.isEmpty)
-        guard !needle.isEmpty else { return arranged }
-        return arranged.filter { $0.matches(needle) }
+        let searched = needle.isEmpty ? arranged : arranged.filter { $0.matches(needle) }
+        return searched.filter { character in
+            if let selectedUnit, character.unit != selectedUnit { return false }
+            if pinnedOnly, !app.roster.isPinned(character.id) { return false }
+            if unreadOnly, app.latest[character.id]?.unseenReachOut != true { return false }
+            return true
+        }
+    }
+
+    /// Unique combinations in content order, not an invented ordering.
+    private var unitOptions: [String] {
+        var seen = Set<String>()
+        return app.characters.compactMap(\.unit).filter { seen.insert($0).inserted }
+    }
+
+    private var hasActiveFilter: Bool {
+        selectedUnit != nil || pinnedOnly || unreadOnly
+    }
+
+    private func clearFilters() {
+        selectedUnit = nil
+        pinnedOnly = false
+        unreadOnly = false
+    }
+
+    @ViewBuilder
+    private func padHeader(width: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("对话")
+                    .font(.title2.weight(.semibold))
+                Spacer(minLength: 0)
+                if app.server.hasUnreadAnnouncements || app.server.isSignedIn {
+                    bell
+                }
+            }
+
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                TextField("搜中文名、假名、罗马字或组合", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.subheadline)
+                    .accessibilityIdentifier("pad.roster.search")
+                if !query.isEmpty {
+                    Button {
+                        query = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.tertiary)
+                    }
+                    .accessibilityLabel("清除搜索")
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10))
+
+            if width < 390 {
+                HStack(spacing: 8) {
+                    unitChip(nil, title: "全部")
+                    filterChip("置顶", isOn: pinnedOnly) { pinnedOnly.toggle() }
+                        .accessibilityIdentifier("pad.filter.pinned")
+                    filterChip("未读", isOn: unreadOnly) { unreadOnly.toggle() }
+                        .accessibilityIdentifier("pad.filter.unread")
+                    if hasActiveFilter {
+                        Button("清除") { clearFilters() }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    Menu {
+                        ForEach(unitOptions, id: \.self) { unit in
+                            Button {
+                                selectedUnit = unit
+                            } label: {
+                                if selectedUnit == unit {
+                                    Label(unit, systemImage: "checkmark")
+                                } else {
+                                    Text(unit)
+                                }
+                            }
+                        }
+                        if selectedUnit != nil {
+                            Divider()
+                            Button("全部组合") { selectedUnit = nil }
+                        }
+                    } label: {
+                        Label(
+                            selectedUnit ?? "组合",
+                            systemImage: "line.3.horizontal.decrease.circle"
+                        )
+                        .font(.caption.weight(.medium))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Color(.secondarySystemFill), in: Capsule())
+                    }
+                    .accessibilityIdentifier("pad.filter.units")
+                }
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        unitChip(nil, title: "全部")
+                        ForEach(unitOptions, id: \.self) { unit in
+                            unitChip(unit, title: unit)
+                        }
+                        filterChip("置顶", isOn: pinnedOnly) { pinnedOnly.toggle() }
+                            .accessibilityIdentifier("pad.filter.pinned")
+                        filterChip("未读", isOn: unreadOnly) { unreadOnly.toggle() }
+                            .accessibilityIdentifier("pad.filter.unread")
+                        if hasActiveFilter {
+                            Button("清除") { clearFilters() }
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
+        .background(Color(.systemBackground))
+    }
+
+    private func unitChip(_ unit: String?, title: String) -> some View {
+        filterChip(title, isOn: selectedUnit == unit) {
+            selectedUnit = unit
+        }
+        .accessibilityIdentifier("pad.filter.unit.\(unit ?? "all")")
+    }
+
+    private func filterChip(
+        _ title: String,
+        isOn: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption.weight(isOn ? .semibold : .medium))
+                .foregroundStyle(isOn ? Color.white : Color.primary)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 7)
+                .background(
+                    isOn ? Color.accentColor : Color(.secondarySystemFill),
+                    in: Capsule()
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 
     private var searching: Bool {
@@ -350,5 +514,22 @@ struct ConversationListView: View {
                 if !shown { app.errorMessage = nil }
             }
         )
+    }
+}
+
+/// The phone/legacy split keeps the system search field and title. The S2.1 rail draws
+/// its own fixed header, so those must not escape into the outer container.
+private struct RosterSearchChrome: ViewModifier {
+    let enabled: Bool
+    @Binding var query: String
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                .searchable(text: $query, prompt: "搜中文名、假名、罗马字或组合")
+                .navigationTitle("对话")
+        } else {
+            content
+        }
     }
 }

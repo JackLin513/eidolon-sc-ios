@@ -11,6 +11,9 @@ struct ChatView: View {
     var currentTurnInFlight: Bool = false
     /// A split-detail chat keeps the first-level tab bar: it is not a pushed compact page.
     var hidesTabBar = true
+    /// S2.1's medium/wide chat is not a pushed NavigationStack page; it needs an explicit
+    /// return control. The compact phone leaves this nil and keeps the system back button.
+    var onPadBack: (() -> Void)?
 
     @Environment(AppModel.self) private var app
     @State private var store: ChatStore?
@@ -58,6 +61,7 @@ struct ChatView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { app.padConversationID = character.id }
         // A conversation is a page of its own: the first-level tabs stay behind it, even
         // when a call is folded away over it (spec #64). Letting a live call bring them
         // back made the tab bar fight the input bar for the bottom edge and bounce during
@@ -72,6 +76,19 @@ struct ChatView: View {
             }
         }
         .toolbar {
+            if let onPadBack {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: onPadBack) {
+                        Image(systemName: "chevron.left")
+                            .font(.headline)
+                            .frame(width: 34, height: 34)
+                            .glassEffect(.regular.interactive(), in: .circle)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("返回角色列表")
+                    .accessibilityIdentifier("pad.chat.back")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     // Her call is already under way: this key brings the layer back.

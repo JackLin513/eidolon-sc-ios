@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct SettingsView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.isEidolonPadShell) private var isPadShell
     @State private var selectedCategory: SettingsCategory? = .server
 
     private var isRegularWidth: Bool { sizeClass == .regular }
@@ -63,7 +64,14 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if isRegularWidth {
+            if isPadShell {
+                HStack(spacing: 0) {
+                    padSettingsSidebar
+                        .frame(width: 250)
+                    Divider()
+                    settingsStack(category: selectedCategory)
+                }
+            } else if isRegularWidth {
                 NavigationSplitView {
                     settingsSidebar
                 } detail: {
@@ -442,7 +450,6 @@ Section {
     private func settingsStack(category: SettingsCategory?) -> some View {
         NavigationStack {
             settingsForm(category: category)
-                .frame(maxWidth: category == nil ? .infinity : ResponsiveLayout.readingMaxWidth)
                 .frame(maxWidth: .infinity)
 
                 // Returning to the call brings the layer over every page; settings gets out of
@@ -573,6 +580,75 @@ Section {
             }
         }
         .navigationTitle("设置")
+    }
+
+    /// The S2.1 shell already has its own rail; this is settings' own category column,
+    /// without a second system sidebar toggle or a navigation title floating over it.
+    private var padSettingsSidebar: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("设置")
+                    .font(.title2.weight(.semibold))
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 18)
+            .padding(.bottom, 12)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    categorySection("通用") {
+                        padCategoryRow(.server)
+                        padCategoryRow(.api)
+                        padCategoryRow(.stats)
+                    }
+                    categorySection("她的世界") {
+                        padCategoryRow(.moments)
+                        padCategoryRow(.conversation)
+                        padCategoryRow(.producer)
+                        padCategoryRow(.memories)
+                    }
+                    categorySection("内容与维护") {
+                        padCategoryRow(.look)
+                        padCategoryRow(.content)
+                        padCategoryRow(.diagnostics)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.bottom, 24)
+            }
+        }
+        .background(Color(.secondarySystemBackground).ignoresSafeArea())
+    }
+
+    private func categorySection<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+            content()
+        }
+    }
+
+    private func padCategoryRow(_ category: SettingsCategory) -> some View {
+        Button {
+            selectedCategory = category
+        } label: {
+            Label(category.title, systemImage: category.symbol)
+                .font(.subheadline.weight(selectedCategory == category ? .semibold : .regular))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(
+                    selectedCategory == category ? Color.accentColor.opacity(0.16) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 8)
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     private func categoryRow(_ category: SettingsCategory) -> some View {

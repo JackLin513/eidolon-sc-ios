@@ -37,3 +37,6 @@ welcome/public/tier.js
 # 3D runtime artifacts (generated locally, never committed)
 EidolonIOS/UnityRuntime/
 EidolonIOS/Resources/Unity/
+
+# S2.1 visual QA output
+.qa-screenshots/

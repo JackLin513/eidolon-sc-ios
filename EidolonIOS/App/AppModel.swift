@@ -61,6 +61,9 @@ final class AppModel {
     /// Each tab keeps its own stack, so another tab can open a page in it (spec #64).
     var conversationPath = NavigationPath()
     var playPath = NavigationPath()
+    /// The character the wide/medium iPad roster shows beside the rail. The compact phone
+    /// keeps using `conversationPath`; this survives rotation and Stage Manager resizes.
+    var padConversationID: String?
     /// The character the gift page should preselect when it is opened from her chat
     /// (spec #64; the gift page itself arrives in #65).
     var giftPreselection: String?
@@ -1330,11 +1333,22 @@ final class AppModel {
     func openConversation(characterID: String) {
         selectedTab = .conversation
         conversationTargetID = characterID
+        padConversationID = characterID
         guard let character = characters.first(where: { $0.id == characterID }) else {
             return
         }
         conversationPath = NavigationPath()
         conversationPath.append(character)
+    }
+
+    /// The iPad roster's selection. Kept here so a breakpoint change does not forget her.
+    func openPadConversation(characterID: String) {
+        padConversationID = characterID
+        selectedTab = .conversation
+    }
+
+    func closePadConversation() {
+        padConversationID = nil
     }
 
     /// The character the next regular-width split should select; nil after it is taken.
