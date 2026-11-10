@@ -115,5 +115,5 @@ Mac 只做构建冒烟，不启动、不验收音频/3D：
 
 ```sh
 xcodebuild -project EidolonIOS.xcodeproj -scheme EidolonIOS -configuration Debug \
-  -destination 'platform=macOS,arch=arm64,variant=Designed for [iPad,iPhone]' build
+  -destination 'platform=macOS,arch=arm64,variant=Designed for iPad' build
 ```
