@@ -96,24 +96,37 @@ struct PlayHubView: View {
 
     private func cards(_ cards: [PlayCardStatus]) -> some View {
         ScrollView {
-            VStack(spacing: 12) {
-                if let first = cards.first {
-                    card(first, filled: true)
-                }
-                LazyVGrid(columns: columns, spacing: 12) {
-                    ForEach(cards.dropFirst()) { status in
+            if sizeClass == .regular {
+                // iPad: one balanced grid of all five cards, with a wider canvas instead
+                // of a single full-width card above a narrow two-column grid.
+                LazyVGrid(columns: columns, spacing: 14) {
+                    ForEach(cards) { status in
                         card(status, filled: false)
                     }
                 }
+                .frame(maxWidth: ResponsiveLayout.wideMaxWidth)
+                .frame(maxWidth: .infinity)
+                .padding(20)
+            } else {
+                VStack(spacing: 12) {
+                    if let first = cards.first {
+                        card(first, filled: true)
+                    }
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(cards.dropFirst()) { status in
+                            card(status, filled: false)
+                        }
+                    }
+                }
+                .padding(16)
             }
-            .padding(16)
         }
     }
 
-    /// One column on a phone; two on anything wide, never three.
+    /// One column on a phone; two on an iPad, never three.
     private var columns: [GridItem] {
         sizeClass == .regular
-            ? [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+            ? [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
             : [GridItem(.flexible())]
     }
 

@@ -21,15 +21,19 @@ struct MainTabsView: View {
                 }
             }
             Tab("朋友圈", systemImage: "person.2", value: MainTab.moments) {
-                ResponsiveLayout.readingContainer { MomentsView() }
+                MomentsView()
+                    .frame(maxWidth: ResponsiveLayout.wideMaxWidth)
+                    .frame(maxWidth: .infinity)
             }
             .badge(app.momentsBadge ? 1 : 0)
             Tab("玩法", systemImage: "sparkles", value: MainTab.play) {
-                ResponsiveLayout.readingContainer { PlayHubView() }
+                PlayHubView()
+                    .frame(maxWidth: ResponsiveLayout.wideMaxWidth)
+                    .frame(maxWidth: .infinity)
             }
             .badge(app.achievementBadge ? 1 : 0)
             Tab("设置", systemImage: "gearshape", value: MainTab.settings) {
-                ResponsiveLayout.readingContainer { SettingsView() }
+                SettingsView()
             }
         }
         .modifier(ResponsiveTabStyle())

@@ -13,6 +13,9 @@ enum ResponsiveLayout {
     /// cards from stretching across a 13-inch window.
     static let readingMaxWidth: CGFloat = 680
 
+    /// Cards and the settings detail may use more of an iPad's width than a text column.
+    static let wideMaxWidth: CGFloat = 1000
+
     static func isSplit(width: CGFloat, sizeClass: UserInterfaceSizeClass?) -> Bool {
         sizeClass == .regular && width >= conversationSplitMinWidth
     }

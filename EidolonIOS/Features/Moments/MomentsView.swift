@@ -5,6 +5,7 @@ import SwiftUI
 /// settings is turned on; when off the page says so and neither generates nor deletes.
 struct MomentsView: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     @State private var posts: [MomentPost] = []
     @State private var loading = true
@@ -44,13 +45,15 @@ struct MomentsView: View {
                     .accessibilityIdentifier("moments.empty")
                 } else {
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 18) {
+                        LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
                             ForEach(posts) { post in
                                 row(post)
                             }
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                        .frame(maxWidth: ResponsiveLayout.wideMaxWidth)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 16)
                     }
                     .refreshable { await load() }
                 }
@@ -96,6 +99,14 @@ struct MomentsView: View {
         .overlay(alignment: .top) {
             CallBar()
         }
+    }
+
+    /// One column on a phone; two balanced cards on an iPad, so the feed uses the width
+    /// instead of becoming a narrow ribbon.
+    private var columns: [GridItem] {
+        sizeClass == .regular
+            ? [GridItem(.flexible(), spacing: 18), GridItem(.flexible(), spacing: 18)]
+            : [GridItem(.flexible())]
     }
 
     private func row(_ post: MomentPost) -> some View {

@@ -98,4 +98,51 @@ final class IPadLayoutUITests: XCTestCase {
         XCTAssertTrue(card.waitForExistence(timeout: 10), "the bar did not leave back to play")
     }
 
+    func testIPadSettingsUsesCategorySidebar() throws {
+        XCTAssertTrue(app.buttons["设置"].waitForExistence(timeout: 20))
+        app.buttons.matching(identifier: "设置").firstMatch.tap()
+
+        XCTAssertTrue(
+            app.staticTexts["服务器"].waitForExistence(timeout: 10),
+            "no settings category sidebar"
+        )
+        XCTAssertTrue(app.staticTexts["API 与模型"].exists)
+        XCTAssertTrue(app.staticTexts["对话与通话"].exists)
+
+        app.staticTexts["对话与通话"].tap()
+        XCTAssertTrue(
+            app.staticTexts["历史回合：20"].waitForExistence(timeout: 10),
+            "conversation category did not show its form"
+        )
+        app.staticTexts["制作人"].tap()
+        XCTAssertTrue(
+            app.textFields["称呼（留空沿用默认）"].waitForExistence(timeout: 10),
+            "producer category did not show its form"
+        )
+
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "ipad-settings"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    func testIPadMomentsAndPlayUseTheWideCanvas() throws {
+        XCTAssertTrue(app.buttons["朋友圈"].waitForExistence(timeout: 20))
+        app.buttons.matching(identifier: "朋友圈").firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["朋友圈"].waitForExistence(timeout: 10))
+        attachScreenshot("ipad-moments")
+
+        app.buttons.matching(identifier: "玩法").firstMatch.tap()
+        XCTAssertTrue(app.buttons["play.gifts"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["play.bar"].exists)
+        attachScreenshot("ipad-play")
+    }
+
+    private func attachScreenshot(_ name: String) {
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = name
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
 }

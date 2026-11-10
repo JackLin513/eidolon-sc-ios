@@ -5,6 +5,10 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var selectedCategory: SettingsCategory? = .server
+
+    private var isRegularWidth: Bool { sizeClass == .regular }
 
     @State private var historyTurns = 20
     @State private var atmosphericText = true
@@ -58,15 +62,34 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        // The folded call's bar stands above the navigation, not inside the form: inside,
-        // the iOS 26 navigation bar tints itself with the bar's dark background and its
-        // title disappears (spec #64).
         VStack(spacing: 0) {
-            NavigationStack {
-                Form {
+            if isRegularWidth {
+                NavigationSplitView {
+                    settingsSidebar
+                } detail: {
+                    settingsStack(category: selectedCategory)
+                }
+                .navigationSplitViewStyle(.balanced)
+            } else {
+                settingsStack(category: nil)
+            }
+        }
+        .overlay(alignment: .top) {
+            if settingsRootOnScreen {
+                CallBar()
+            }
+        }
+    
+    }
+
+    /// One category on the iPad; nil means the phone's full form.
+    private func settingsForm(category: SettingsCategory?) -> some View {
+        Form {
+
                     // 登录以后是账号，没登录时点进去就是登录页（spec #120）。放最上面，
                     // 不然它和「服务器」一样要找半天。
-                    Section {
+                    if visible(category, .server) {
+Section {
                         NavigationLink {
                             AccountView()
                         } label: {
@@ -78,13 +101,17 @@ struct SettingsView: View {
                     } footer: {
                         Text(downloadedFooter)
                     }
+                    }
 
-                    Section {
+                    if visible(category, .server) {
+Section {
                         Button("重新观看欢迎页") { app.replayWelcome() }
                             .accessibilityIdentifier("settings.welcome")
                     }
+                    }
 
-                    Section {
+                    if visible(category, .api) {
+Section {
                         NavigationLink {
                             APISettingsView()
                         } label: {
@@ -96,8 +123,10 @@ struct SettingsView: View {
                     } footer: {
                         Text("对话、后台、判断、检索和通话的地址、模型与密钥都在这里。")
                     }
+                    }
 
-                    Section {
+                    if visible(category, .moments) {
+Section {
                         NavigationLink {
                             MomentsSettingsView()
                         } label: {
@@ -109,8 +138,10 @@ struct SettingsView: View {
                     } header: {
                         Text("朋友圈")
                     }
+                    }
 
-                    Section {
+                    if visible(category, .stats) {
+Section {
                         NavigationLink {
                             StatsView()
                         } label: {
@@ -128,8 +159,10 @@ struct SettingsView: View {
                     } footer: {
                         Text("统计是和她往来多少；用量与花费是每次外部调用用了多少、按现价大概花了多少。两者都不离开这台手机。")
                     }
+                    }
 
-                    Section {
+                    if visible(category, .conversation) {
+Section {
                         Stepper("历史回合：\(historyTurns)", value: $historyTurns, in: 1...100)
                         SettingsHint("每次带上最近多少条对话；越多越记得久，也更花 token。")
                         Toggle("文字氛围模式", isOn: $atmosphericText)
@@ -139,8 +172,10 @@ struct SettingsView: View {
                     } footer: {
                         Text("文字氛围模式让文字回合的台词更长、并显示动作与环境描写；通话和搭话不受影响。")
                     }
+                    }
 
-                    Section {
+                    if visible(category, .conversation) {
+Section {
                         Toggle("成人模式", isOn: $adultMode)
                             .accessibilityIdentifier("settings.adultMode")
                     } header: {
@@ -148,8 +183,10 @@ struct SettingsView: View {
                     } footer: {
                         Text("只对内容包中 18 岁及以上的角色生效，未成年角色不受影响。开启后，双方愿意的亲密内容不会被判越界，也不会因此结束对话；真正的骚扰、威胁、辱骂仍然会结束对话。")
                     }
+                    }
 
-                    Section {
+                    if visible(category, .conversation) {
+Section {
                         TextField("时长上限（分钟，0 为不限）", value: $callMinutes, format: .number)
                             .keyboardType(.numberPad)
                         SettingsHint("一通电话最长多少分钟；0 = 不限制。")
@@ -163,9 +200,11 @@ struct SettingsView: View {
                         Text("默认每通电话最多 10 分钟、她最多 40 个回合，从接通起算；时长与回合都到点时先按时长算。"
                             + "电话质感让角色的声音像隔着电话听筒，改完从下一通电话开始生效。Soniox 与 Fish Audio 的密钥在「API 与模型」。")
                     }
+                    }
 
 
-                    Section {
+                    if visible(category, .producer) {
+Section {
                         TextField("称呼（留空沿用默认）", text: $formOfAddress)
                         SettingsHint("她叫你什么；留空用内容包里的默认称呼。")
                         Picker("性别", selection: $gender) {
@@ -199,8 +238,10 @@ struct SettingsView: View {
                     } footer: {
                         Text("只影响她当下怎么对待你，不改写剧情。生日只在当天被她主动提起。年份会保存，但提示词和日历只用到月日。")
                     }
+                    }
 
-                    Section {
+                    if visible(category, .producer) {
+Section {
                         Toggle("导出到系统日历", isOn: Binding(
                             get: { app.calendarExport.enabled },
                             set: { on in Task { await app.setCalendarExportEnabled(on) } }
@@ -246,8 +287,10 @@ struct SettingsView: View {
                     } footer: {
                         Text("打开后把她的生日、你的生日和所有已保存的排班写进单独的「Eidolon」日历。同步是单向的：只写不读，不碰你自己的事件；手动改过或删掉的导出事件下次同步会恢复。关掉开关只停止同步，保留已写入的事件。")
                     }
+                    }
 
-                    Section {
+                    if visible(category, .producer) {
+Section {
                         Toggle("周期", isOn: Binding(
                             get: { app.cyclesEnabled },
                             set: { on in Task { await app.setCyclesEnabled(on) } }
@@ -257,8 +300,10 @@ struct SettingsView: View {
                     } footer: {
                         Text("关掉后，她的提示词不再带经期和经期前的状态；周期本身照常推进，重新打开还是原来的位置。")
                     }
+                    }
 
-                    Section {
+                    if visible(category, .producer) {
+Section {
                         Toggle("按好感度随机", isOn: $reachOutByTier)
                         Stepper("搭话间隔：\(reachOutHours) 小时", value: $reachOutHours, in: 1...72)
                             .disabled(reachOutByTier)
@@ -272,8 +317,10 @@ struct SettingsView: View {
                                 + "冷淡和疏远不搭话。每天最多三次。关闭后一律用上面的固定间隔。"
                         )
                     }
+                    }
 
-                    Section {
+                    if visible(category, .memories) {
+Section {
                         Button {
                             showMemories = true
                         } label: {
@@ -284,8 +331,10 @@ struct SettingsView: View {
                     } footer: {
                         Text("回合结束后在后台提炼，所有偶像共享。被新记忆取代的旧记忆仍会列出，但不再被想起。")
                     }
+                    }
 
-                    Section {
+                    if visible(category, .diagnostics) {
+Section {
                         Toggle("记录回合追踪", isOn: $tracingEnabled)
                         Stepper("保留最近 \(traceRetention) 条", value: $traceRetention, in: 20...2000, step: 20)
                             .disabled(!tracingEnabled)
@@ -302,8 +351,10 @@ struct SettingsView: View {
                     } footer: {
                         Text("每回合记录提示词、判断原始输出、检索候选与分数和降级原因，只存在这台手机上；关闭后不再写入。")
                     }
+                    }
 
-                    Section {
+                    if visible(category, .look) {
+Section {
                         Picker(
                             "立绘风格",
                             selection: Binding(
@@ -327,12 +378,18 @@ struct SettingsView: View {
                     } footer: {
                         Text("自动会优先用这个构建里可用的 3D；没有 Unity 产物或 3D 内容时回退到 2D。3D 需要 3D 包与 Unity 构建。用立绘包里她的默认衣装看一段待机动作。")
                     }
+                    }
 
-                    standBundleSection
+                    if visible(category, .look) {
+standBundleSection
+                    }
 
-                    barBundleSection
+                    if visible(category, .look) {
+barBundleSection
+                    }
 
-                    Section("内容包") {
+                    if visible(category, .content) {
+Section("内容包") {
                         if let info = app.bundleInfo {
                             LabeledContent("剧情", value: "\(info.episodeCount)")
                             LabeledContent("段落", value: "\(info.passageCount)")
@@ -352,8 +409,10 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    }
 
-                    Section {
+                    if visible(category, .content) {
+Section {
                         Button("重新导入内容包") {
                             importKind = .content
                             isPicking = true
@@ -362,8 +421,10 @@ struct SettingsView: View {
                     } footer: {
                         Text("内容包只带剧情，不含立绘；立绘在立绘包里单独导入。导入失败时保留当前内容包；对话、记忆和好感度不受影响。")
                     }
+                    }
 
-                    Section {
+                    if visible(category, .diagnostics) {
+Section {
                         Toggle("调试模式", isOn: Binding(
                             get: { app.debugMode },
                             set: { app.setDebugMode($0) }
@@ -374,10 +435,19 @@ struct SettingsView: View {
                     } footer: {
                         Text("开启后，角色对话页的「⋯」菜单会出现「调试」：可以删除这段对话的记忆、修改好感度、恢复已结束的对话或把历史对话设为当前。改动立即写入本机数据，不能撤销；平时请保持关闭。")
                     }
-                }
+                    }
+                
+        }
+    }
+    private func settingsStack(category: SettingsCategory?) -> some View {
+        NavigationStack {
+            settingsForm(category: category)
+                .frame(maxWidth: category == nil ? .infinity : ResponsiveLayout.readingMaxWidth)
+                .frame(maxWidth: .infinity)
+
                 // Returning to the call brings the layer over every page; settings gets out of
                 // its way (spec #46).
-                .navigationTitle("设置")
+                .navigationTitle(category?.title ?? "设置")
                 .onAppear { settingsRootOnScreen = true }
                 .onDisappear { settingsRootOnScreen = false }
                 .navigationDestination(isPresented: $showMemories) {
@@ -480,14 +550,41 @@ struct SettingsView: View {
                         }
                     }
                 }
-            }
-        }
-        .overlay(alignment: .top) {
-            if settingsRootOnScreen {
-                CallBar()
-            }
+            
         }
     }
+    private var settingsSidebar: some View {
+        List(selection: $selectedCategory) {
+            Section("通用") {
+                categoryRow(.server)
+                categoryRow(.api)
+                categoryRow(.stats)
+            }
+            Section("她的世界") {
+                categoryRow(.moments)
+                categoryRow(.conversation)
+                categoryRow(.producer)
+                categoryRow(.memories)
+            }
+            Section("内容与维护") {
+                categoryRow(.look)
+                categoryRow(.content)
+                categoryRow(.diagnostics)
+            }
+        }
+        .navigationTitle("设置")
+    }
+
+    private func categoryRow(_ category: SettingsCategory) -> some View {
+        Label(category.title, systemImage: category.symbol)
+            .tag(category)
+    }
+
+    private func visible(_ filter: SettingsCategory?, _ category: SettingsCategory) -> Bool {
+        filter == nil || filter == category
+    }
+
+
 
     private func exportStandIndex() async {
         guard let data = await app.standIndexData() else { return }

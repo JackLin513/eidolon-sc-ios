@@ -88,6 +88,7 @@
 		B735177E66946109DB42D254 /* PlayUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71934BAD4C67636EC0DCD9F1 /* PlayUITests.swift */; };
 		BBCD2E47044DFC5DAB92ED57 /* CallSettingsError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */; };
 		BC87F9CD087F5F859E8BADC6 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C010E713ABAD24B1CF59323 /* WelcomeView.swift */; };
+		BDD3DB4CB30CBBD182A9641F /* SettingsCategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = E87C8B8A2D8E59D0162DFD49 /* SettingsCategory.swift */; };
 		BEB47246CC69F57123F84743 /* CREDITS.md in Resources */ = {isa = PBXBuildFile; fileRef = 3E8A9D366A002F554C2BAE80 /* CREDITS.md */; };
 		C375B67690EAE8B5B255A1B3 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1FF6012F255268462E4A685 /* Keychain.swift */; };
 		C49847C1C908EFA4FDF3BE9F /* WebSocketSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 909079B25647A871FFBB6DEC /* WebSocketSupport.swift */; };
@@ -250,6 +251,7 @@
 		E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonioxRecognition.swift; sourceTree = "<group>"; };
 		E34EF8A94AAE4F85069E98B0 /* ScheduleBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleBoardView.swift; sourceTree = "<group>"; };
 		E826CF3E4888BCFD5A270D64 /* ObjCExceptionCatcher.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ObjCExceptionCatcher.h; sourceTree = "<group>"; };
+		E87C8B8A2D8E59D0162DFD49 /* SettingsCategory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsCategory.swift; sourceTree = "<group>"; };
 		E95BF2FA018AF3E7B92AABD6 /* MainTabsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabsView.swift; sourceTree = "<group>"; };
 		EC906DC4FEA1F6B367320022 /* ResponsiveLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponsiveLayoutTests.swift; sourceTree = "<group>"; };
 		ECB07A2B2F018E55A2EDE3A3 /* AnnouncementsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncementsView.swift; sourceTree = "<group>"; };
@@ -467,6 +469,7 @@
 				48F47E892DE490E8FC25FBAE /* EnvImportPreviewView.swift */,
 				8C295E98529688E4D6D0802B /* MomentsSettingsView.swift */,
 				AD8235B33347EA38FBE44410 /* PriceEditorView.swift */,
+				E87C8B8A2D8E59D0162DFD49 /* SettingsCategory.swift */,
 				DC2610401DD1C29D8D7AB56C /* SettingsView.swift */,
 				99E7A44F5D7CA42424055A76 /* StatsView.swift */,
 				5AB00E0F6C271881DC4146E4 /* UsageView.swift */,
@@ -891,6 +894,7 @@
 				71F921D55D109E8FEB6EBAB6 /* RuntimeAssetPreparation.swift in Sources */,
 				4B5D22BE3F2537E0F40BC144 /* ScheduleBoardView.swift in Sources */,
 				FED6BF63726F8C9A78FA2904 /* ServerStore.swift in Sources */,
+				BDD3DB4CB30CBBD182A9641F /* SettingsCategory.swift in Sources */,
 				B2DF1A14F646EDBA6EAECF48 /* SettingsView.swift in Sources */,
 				50FF16442DF243C8411FF741 /* SonioxRecognition.swift in Sources */,
 				CD54EB8286C493A259743A6D /* SpeechPlayback.swift in Sources */,
