@@ -69,6 +69,10 @@ final class IPadLayoutUITests: XCTestCase {
         input.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "keyboard did not appear")
         XCTAssertTrue(input.isHittable, "keyboard covers the chat input")
+        XCTAssertTrue(
+            app.buttons["设置"].exists,
+            "opening the split detail hid the first-level tab bar"
+        )
     }
 
     func testIPadBarLetterboxesInTheCurrentWindow() throws {

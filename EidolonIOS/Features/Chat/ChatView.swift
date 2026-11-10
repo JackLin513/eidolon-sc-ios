@@ -9,6 +9,8 @@ struct ChatView: View {
     /// page cannot start another conversation then, since the current page would reload
     /// mid-turn (spec #37).
     var currentTurnInFlight: Bool = false
+    /// A split-detail chat keeps the first-level tab bar: it is not a pushed compact page.
+    var hidesTabBar = true
 
     @Environment(AppModel.self) private var app
     @State private var store: ChatStore?
@@ -64,8 +66,10 @@ struct ChatView: View {
         // the gift page and back does not send this page an appearance callback, and the
         // bar would stay up (spec bug, 2026-11-04).
         .background {
-            TabBarHides()
-                .id(app.selectedTab)
+            if hidesTabBar {
+                TabBarHides()
+                    .id(app.selectedTab)
+            }
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

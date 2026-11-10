@@ -21,7 +21,7 @@ struct ConversationSplitView: View {
         } detail: {
             if let selected {
                 NavigationStack {
-                    ChatView(character: selected)
+                    ChatView(character: selected, hidesTabBar: false)
                 }
             } else {
                 ContentUnavailableView(
