@@ -67,7 +67,7 @@ struct SettingsView: View {
             if isPadShell {
                 HStack(spacing: 0) {
                     padSettingsSidebar
-                        .frame(width: 250)
+                        .frame(width: ResponsiveLayout.settingsSidebarWidth)
                     Divider()
                     settingsStack(category: selectedCategory)
                 }
@@ -562,21 +562,10 @@ Section {
     }
     private var settingsSidebar: some View {
         List(selection: $selectedCategory) {
-            Section("通用") {
-                categoryRow(.server)
-                categoryRow(.api)
-                categoryRow(.stats)
-            }
-            Section("她的世界") {
-                categoryRow(.moments)
-                categoryRow(.conversation)
-                categoryRow(.producer)
-                categoryRow(.memories)
-            }
-            Section("内容与维护") {
-                categoryRow(.look)
-                categoryRow(.content)
-                categoryRow(.diagnostics)
+            ForEach(SettingsCategory.groups, id: \.title) { group in
+                Section(group.title) {
+                    ForEach(group.categories) { categoryRow($0) }
+                }
             }
         }
         .navigationTitle("设置")
@@ -597,21 +586,10 @@ Section {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    categorySection("通用") {
-                        padCategoryRow(.server)
-                        padCategoryRow(.api)
-                        padCategoryRow(.stats)
-                    }
-                    categorySection("她的世界") {
-                        padCategoryRow(.moments)
-                        padCategoryRow(.conversation)
-                        padCategoryRow(.producer)
-                        padCategoryRow(.memories)
-                    }
-                    categorySection("内容与维护") {
-                        padCategoryRow(.look)
-                        padCategoryRow(.content)
-                        padCategoryRow(.diagnostics)
+                    ForEach(SettingsCategory.groups, id: \.title) { group in
+                        categorySection(group.title) {
+                            ForEach(group.categories) { padCategoryRow($0) }
+                        }
                     }
                 }
                 .padding(.horizontal, 8)

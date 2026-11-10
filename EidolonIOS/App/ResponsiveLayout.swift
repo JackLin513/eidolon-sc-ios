@@ -19,6 +19,13 @@ enum ResponsiveLayout {
     /// The fixed navigation rail on medium and wide.
     static let railWidth: CGFloat = 165
 
+    /// The settings category column inside the S2.1 rail shell.
+    static let settingsSidebarWidth: CGFloat = 250
+
+    /// Below this the roster header switches from the expanded chip strip to the
+    /// two-chip + overflow-menu form.
+    static let rosterNarrowFilterWidth: CGFloat = 390
+
     /// The wide roster's three resting positions.
     static let rosterCollapsedWidth: CGFloat = 0
     static let rosterStandardWidth: CGFloat = 320

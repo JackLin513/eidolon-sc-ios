@@ -15,6 +15,13 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case content
     case diagnostics
 
+    /// The groups both settings sidebars render, in one place.
+    static let groups: [(title: String, categories: [SettingsCategory])] = [
+        ("通用", [.server, .api, .stats]),
+        ("她的世界", [.moments, .conversation, .producer, .memories]),
+        ("内容与维护", [.look, .content, .diagnostics]),
+    ]
+
     var id: String { rawValue }
 
     var title: String {

@@ -164,7 +164,14 @@ struct ConversationListView: View {
         }
         .task { await app.server.refreshAnnouncements() }
         .navigationDestination(for: CharacterConfig.self) { character in
-            ChatView(character: character)
+            ChatView(
+                character: character,
+                onPadBack: padChromeWidth == nil ? nil : {
+                    app.conversationPath = NavigationPath()
+                    app.padConversationID = nil
+                }
+            )
+            .navigationBarBackButtonHidden(padChromeWidth != nil)
         }
         .confirmationDialog(
             "结束通话并进入？",
@@ -306,46 +313,54 @@ struct ConversationListView: View {
             .padding(.vertical, 8)
             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10))
 
-            if width < 390 {
-                HStack(spacing: 8) {
-                    unitChip(nil, title: "全部")
-                    filterChip("置顶", isOn: pinnedOnly) { pinnedOnly.toggle() }
-                        .accessibilityIdentifier("pad.filter.pinned")
-                    filterChip("未读", isOn: unreadOnly) { unreadOnly.toggle() }
-                        .accessibilityIdentifier("pad.filter.unread")
-                    if hasActiveFilter {
-                        Button("清除") { clearFilters() }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 0)
-                    Menu {
-                        ForEach(unitOptions, id: \.self) { unit in
+            if width < ResponsiveLayout.rosterNarrowFilterWidth {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        unitChip(nil, title: "全部")
+                        ForEach(unitOptions.prefix(2), id: \.self) { unit in
+                            unitChip(unit, title: narrowUnitTitle(unit))
+                        }
+                        Menu {
                             Button {
-                                selectedUnit = unit
+                                pinnedOnly.toggle()
                             } label: {
-                                if selectedUnit == unit {
-                                    Label(unit, systemImage: "checkmark")
-                                } else {
-                                    Text(unit)
+                                Label("置顶", systemImage: pinnedOnly ? "checkmark" : "pin")
+                            }
+                            .accessibilityIdentifier("pad.filter.pinned")
+                            Button {
+                                unreadOnly.toggle()
+                            } label: {
+                                Label("未读", systemImage: unreadOnly ? "checkmark" : "envelope.badge")
+                            }
+                            .accessibilityIdentifier("pad.filter.unread")
+                            Divider()
+                            ForEach(unitOptions, id: \.self) { unit in
+                                Button {
+                                    selectedUnit = unit
+                                } label: {
+                                    if selectedUnit == unit {
+                                        Label(unit, systemImage: "checkmark")
+                                    } else {
+                                        Text(unit)
+                                    }
                                 }
                             }
+                            if selectedUnit != nil {
+                                Divider()
+                                Button("全部组合") { selectedUnit = nil }
+                            }
+                        } label: {
+                            Label(
+                                selectedUnit ?? "筛选",
+                                systemImage: "line.3.horizontal.decrease.circle"
+                            )
+                            .font(.caption.weight(.medium))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(Color(.secondarySystemFill), in: Capsule())
                         }
-                        if selectedUnit != nil {
-                            Divider()
-                            Button("全部组合") { selectedUnit = nil }
-                        }
-                    } label: {
-                        Label(
-                            selectedUnit ?? "组合",
-                            systemImage: "line.3.horizontal.decrease.circle"
-                        )
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(Color(.secondarySystemFill), in: Capsule())
+                        .accessibilityIdentifier("pad.filter.units")
                     }
-                    .accessibilityIdentifier("pad.filter.units")
                 }
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -373,6 +388,11 @@ struct ConversationListView: View {
         .background(Color(.systemBackground))
     }
 
+    /// The narrow strip keeps the menu reachable; the menu still shows the full names.
+    private func narrowUnitTitle(_ unit: String) -> String {
+        String(unit.split(separator: " ").first ?? Substring(unit))
+    }
+
     private func unitChip(_ unit: String?, title: String) -> some View {
         filterChip(title, isOn: selectedUnit == unit) {
             selectedUnit = unit
@@ -387,6 +407,7 @@ struct ConversationListView: View {
     ) -> some View {
         Button(action: action) {
             Text(title)
+                .lineLimit(1)
                 .font(.caption.weight(isOn ? .semibold : .medium))
                 .foregroundStyle(isOn ? Color.white : Color.primary)
                 .padding(.horizontal, 11)

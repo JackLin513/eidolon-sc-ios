@@ -37,6 +37,10 @@ fi
 [[ -n "$IPAD_UDID" ]] || { echo "no booted iPad; boot one or set IPAD_UDID" >&2; exit 2; }
 
 mkdir -p "$OUT"
+if [[ "${EIDOLON_QA_RESET:-0}" == "1" ]]; then
+  xcrun simctl uninstall "$IPAD_UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+  [[ -n "${PHONE_UDID:-}" ]] && xcrun simctl uninstall "$PHONE_UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+fi
 STATUS=(
   --time "9:41" --wifiBars 3 --cellularBars 4
   --batteryState charged --batteryLevel 100

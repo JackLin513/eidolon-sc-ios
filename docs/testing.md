@@ -100,15 +100,18 @@ tools/oracle/run.sh                          # 与上游逐字对照提示词（
 纯布局函数在 `EidolonIOSTests/ResponsiveLayoutTests`；iPad 布局行为用 UI 测试，跑在 iPad 模拟器上（需要该模拟器已导入内容包/立绘包）：
 
 ```sh
-# 13 英寸：竖屏两栏、旋转后两栏仍在、设置可打开
+# 13 英寸：wide 三栏、空态、设置无第二个系统折叠按钮
 xcodebuild test -project EidolonIOS.xcodeproj -scheme EidolonIOS \
   -destination 'platform=iOS Simulator,name=iPad Air 13-inch (M4)' \
   -only-testing:EidolonIOSUITests/IPadLayoutUITests
 
-# mini：竖屏单栏、横屏两栏（用例会先转 landscape）
+# mini：竖屏 medium 单栏 Push、横屏 wide 三栏与灰条吸附
 xcodebuild test -project EidolonIOS.xcodeproj -scheme EidolonIOS \
   -destination 'platform=iOS Simulator,name=iPad mini (A20 Pro)' \
   -only-testing:EidolonIOSUITests/IPadLayoutUITests
+
+# 5 状态视觉验收（内容包/立绘包按环境变量或默认 build/ 路径）
+IPAD_UDID=<iPad UDID> PHONE_UDID=<iPhone UDID> ./tools/qa_ipad.sh
 ```
 
 Mac 只做构建冒烟，不启动、不验收音频/3D：

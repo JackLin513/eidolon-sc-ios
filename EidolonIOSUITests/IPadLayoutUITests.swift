@@ -19,6 +19,8 @@ final class IPadLayoutUITests: XCTestCase {
     }
 
     private var width: CGFloat { app.windows.firstMatch.frame.width }
+    // UI-test bundle cannot see the app module's internal constants; these mirror the
+    // spec's published breakpoints.
     private var isWide: Bool { width > 960 }
     private var isMedium: Bool { width >= 650 && width <= 960 }
 
@@ -209,6 +211,19 @@ final class IPadLayoutUITests: XCTestCase {
         }
     }
 
+
+
+    func testIPadChatInputStaysAboveTheKeyboard() throws {
+        let name = app.staticTexts["櫻木真乃"].firstMatch
+        XCTAssertTrue(name.waitForExistence(timeout: 20))
+        name.tap()
+        let input = app.textFields["chat.input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 20))
+        input.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "keyboard did not appear")
+        XCTAssertTrue(input.isHittable, "keyboard covers the chat input")
+        XCTAssertTrue(anyElement("pad.chat.back").exists)
+    }
 
     private func collapseRosterWithHandle() {
         for _ in 0..<3 {

@@ -61,6 +61,7 @@ struct ChatView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(onPadBack != nil)
         .onAppear { app.padConversationID = character.id }
         // A conversation is a page of its own: the first-level tabs stay behind it, even
         // when a call is folded away over it (spec #64). Letting a live call bring them

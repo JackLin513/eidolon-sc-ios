@@ -12,7 +12,6 @@ final class IPadVisualQATests: XCTestCase {
         app.launchEnvironment["EIDOLON_CHAT_BASE_URL"] = "http://example.invalid"
         app.launchEnvironment["EIDOLON_CHAT_MODEL"] = "fake"
         app.launchEnvironment["EIDOLON_CHAT_API_KEY"] = "fake"
-        app.launch()
         XCUIDevice.shared.orientation = .portrait
     }
 
@@ -21,31 +20,28 @@ final class IPadVisualQATests: XCTestCase {
         app.terminate()
     }
 
-    private var width: CGFloat { app.windows.firstMatch.frame.width }
+    private var width: CGFloat {
+        app.windows.firstMatch.frame.width
+    }
 
     func testIPadVisualStates() throws {
+        launch()
         try XCTSkipUnless(width >= 650, "Run this on an iPad simulator")
 
         XCUIDevice.shared.orientation = .landscapeLeft
-        let handle = anyElement("conversation.splitHandle")
-        XCTAssertTrue(handle.waitForExistence(timeout: 20), "wide handle never appeared")
+        XCTAssertTrue(
+            app.descendants(matching: .any)["conversation.splitHandle"].waitForExistence(timeout: 20),
+            "landscape did not reach the wide shell"
+        )
         attach("landscape-standard")
 
-        drag(handle, towardX: 120)
-        if anyElement("conversation.splitHandle").label != "显示角色列表" {
-            drag(anyElement("conversation.splitHandle"), towardX: 100)
-        }
-        XCTAssertTrue(
-            anyElement("conversation.splitHandle").label == "显示角色列表",
-            "the roster did not collapse"
-        )
+        relaunch(rosterWidth: 0)
         attach("landscape-collapsed")
 
-        anyElement("conversation.splitHandle").tap()
-        XCTAssertTrue(anyElement("conversation.splitHandle").label == "调整角色列表宽度")
-        drag(anyElement("conversation.splitHandle"), towardX: 900)
+        relaunch(rosterWidth: 460)
         attach("landscape-expanded")
 
+        relaunch(rosterWidth: nil)
         XCUIDevice.shared.orientation = .portrait
         let row = app.staticTexts["櫻木真乃"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 20), "no roster row after rotating back")
@@ -55,22 +51,40 @@ final class IPadVisualQATests: XCTestCase {
     }
 
     func testCompactPhoneVisualState() throws {
+        launch()
         try XCTSkipUnless(width < 650, "Run this on an iPhone simulator")
         XCTAssertTrue(app.buttons["对话"].waitForExistence(timeout: 20), "compact tab bar missing")
         attach("compact-phone")
     }
 
-    private func anyElement(_ identifier: String) -> XCUIElement {
-        app.descendants(matching: .any)[identifier].firstMatch
+    private func launch() {
+        app.launch()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["conversation.splitHandle"].waitForExistence(timeout: 20)
+                || app.buttons["对话"].waitForExistence(timeout: 20),
+            "app did not become reachable"
+        )
     }
 
-    private func drag(_ element: XCUIElement, towardX x: CGFloat) {
-        let start = element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        let target = app.coordinate(withNormalizedOffset: CGVector(
-            dx: min(max(x / width, 0.05), 0.95),
-            dy: 0.5
-        ))
-        start.press(forDuration: 0.05, thenDragTo: target)
+    private func relaunch(rosterWidth: Int?) {
+        app.terminate()
+        if let rosterWidth {
+            app.launchEnvironment["EIDOLON_PAD_ROSTER_WIDTH"] = String(rosterWidth)
+        } else {
+            app.launchEnvironment.removeValue(forKey: "EIDOLON_PAD_ROSTER_WIDTH")
+        }
+        launch()
+        if rosterWidth == 0 {
+            XCTAssertTrue(
+                app.descendants(matching: .any)["conversation.splitHandle"].label == "显示角色列表",
+                "the collapsed QA seed did not reach the shell"
+            )
+        } else if rosterWidth == 460 {
+            XCTAssertTrue(
+                app.descendants(matching: .any)["conversation.splitHandle"].label == "调整角色列表宽度",
+                "the expanded QA seed did not reach the shell"
+            )
+        }
     }
 
     private func attach(_ name: String) {

@@ -125,16 +125,16 @@ struct PadConversationView: View {
 
     var body: some View {
         Group {
-            switch band {
-            case .medium:
-                medium
-            case .wide:
+            if band == .wide {
                 wide
-            case .compact:
+            } else {
                 medium
             }
         }
-        .onAppear { adoptOpeningCharacter() }
+        .onAppear {
+            adoptOpeningCharacter()
+            adoptQARosterWidth()
+        }
         .onChange(of: app.conversationTargetID) { adoptOpeningCharacter() }
         .onChange(of: app.characters.count) { _, _ in
             if selected == nil { app.padConversationID = nil }
@@ -143,23 +143,30 @@ struct PadConversationView: View {
 
     private var medium: some View {
         GeometryReader { proxy in
-            Group {
-                if let selected {
-                    chat(selected)
-                } else {
-                    roster(width: proxy.size.width)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ConversationListView(padChromeWidth: proxy.size.width)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onAppear { syncMediumPath() }
         }
+    }
+
+    /// Wide selections are not pushes; when entering medium after a rotation, restore the
+    /// same character as a real NavigationStack push.
+    private func syncMediumPath() {
+        guard app.conversationPath.isEmpty,
+              let id = app.padConversationID,
+              let character = app.characters.first(where: { $0.id == id })
+        else { return }
+        app.conversationPath.append(character)
     }
 
     private var wide: some View {
         GeometryReader { proxy in
             HStack(spacing: 0) {
                 if listWidth > 0 {
-                    roster(width: listWidth)
-                        .frame(width: listWidth)
+                    let contentWidth = ResponsiveLayout.rosterContentWidth(visibleWidth: listWidth)
+                    roster(width: contentWidth)
+                        .frame(width: contentWidth, alignment: .leading)
+                        .frame(width: listWidth, alignment: .leading)
                         .clipped()
                 }
 
@@ -241,6 +248,18 @@ struct PadConversationView: View {
             .accessibilityLabel(listWidth == 0 ? "显示角色列表" : "调整角色列表宽度")
             .accessibilityIdentifier("conversation.splitHandle")
             .accessibilityAddTraits(.isButton)
+    }
+
+    /// DEBUG-only seed for the screenshot harness: the visual states must be repeatable
+    /// without depending on a fling gesture that can be swallowed by the simulator.
+    private func adoptQARosterWidth() {
+        #if DEBUG
+        if band == .wide,
+           let raw = ProcessInfo.processInfo.environment["EIDOLON_PAD_ROSTER_WIDTH"],
+           let value = Double(raw) {
+            listWidth = ResponsiveLayout.snapRosterWidth(projectedWidth: CGFloat(value))
+        }
+        #endif
     }
 
     private func adoptOpeningCharacter() {
