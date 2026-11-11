@@ -218,6 +218,10 @@ enum ResponsiveLayout {
     // MARK: Folded-call capsule
 
     static let callCapsuleMargin: CGFloat = 16
+    /// The folded capsule rests above her chat composer; on a phone it also clears the
+    /// bottom tab bar.
+    static let callCapsuleConversationClearance: CGFloat = 104
+    static let callCapsuleCompactClearance: CGFloat = 52
 
     /// The resting centre of the capsule in its container, inside the safe area.
     static func callCapsuleCenter(

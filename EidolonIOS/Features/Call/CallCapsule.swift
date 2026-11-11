@@ -45,9 +45,9 @@ struct CallCapsule: View {
                 content(character)
                     .position(center)
                     .gesture(dragGesture(container: container, safeInsets: insets, resting: resting))
-                    .onTapGesture { expand(character) }
+                    .onTapGesture { expand() }
                     .contextMenu {
-                        Button("展开通话", systemImage: "phone.fill") { expand(character) }
+                        Button("展开通话", systemImage: "phone.fill") { expand() }
                         Button("挂断", systemImage: "phone.down.fill", role: .destructive) {
                             Task { await app.call.hangUp() }
                         }
@@ -69,8 +69,8 @@ struct CallCapsule: View {
     /// Keep the resting capsule above a bottom composer or tab bar.
     private var bottomClearance: CGFloat {
         switch app.selectedTab {
-        case .conversation: 104
-        default: sizeClass == .compact ? 52 : 0
+        case .conversation: ResponsiveLayout.callCapsuleConversationClearance
+        default: sizeClass == .compact ? ResponsiveLayout.callCapsuleCompactClearance : 0
         }
     }
 
@@ -161,7 +161,7 @@ struct CallCapsule: View {
             }
     }
 
-    private func expand(_ character: CharacterConfig) {
+    private func expand() {
         // Match the old CallBar: bring the conversation tab forward and expand over
         // whatever it was showing. Do not push her chat, or the end card's return would
         // land in a newly-opened chat instead of the page the producer was on.
