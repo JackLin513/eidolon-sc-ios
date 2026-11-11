@@ -80,10 +80,12 @@ struct ChatView: View {
             if let onPadBack {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: onPadBack) {
+                        // The iOS 26 toolbar already draws the glass circle around a
+                        // leading item; a second material circle here looked like two
+                        // nested back buttons.
                         Image(systemName: "chevron.left")
                             .font(.headline)
                             .frame(width: 34, height: 34)
-                            .glassEffect(.regular.interactive(), in: .circle)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("返回角色列表")

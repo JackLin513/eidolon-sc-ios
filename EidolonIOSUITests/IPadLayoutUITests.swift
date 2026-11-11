@@ -103,6 +103,7 @@ final class IPadLayoutUITests: XCTestCase {
             1,
             "wide chat should have exactly one custom back button"
         )
+        attachScreenshot("ipad-wide-chat-back")
 
         collapseRosterWithHandle()
         XCTAssertEqual(handle.label, "显示角色列表")

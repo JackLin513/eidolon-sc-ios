@@ -32,6 +32,7 @@ struct PadShellView: View {
                 .offset(x: railWidth - ResponsiveLayout.activeLineWidth / 2)
                 .opacity(railDragging ? 1 : 0)
                 .allowsHitTesting(false)
+                .ignoresSafeArea(edges: .vertical)
                 .animation(.easeInOut(duration: ResponsiveLayout.dragFeedbackDuration), value: railDragging)
         }
         .overlay(alignment: .leading) {
@@ -66,7 +67,7 @@ struct PadShellView: View {
     }
 
     private var railResizeGesture: some Gesture {
-        DragGesture(minimumDistance: 1)
+        DragGesture(minimumDistance: 1, coordinateSpace: .global)
             .onChanged { value in
                 if railDragStart == nil {
                     railDragStart = railWidth
@@ -298,6 +299,11 @@ struct PadConversationView: View {
                 .blur(radius: splitDragging ? ResponsiveLayout.dragBlurRadius : 0)
                 .animation(.easeInOut(duration: ResponsiveLayout.dragFeedbackDuration), value: splitDragging)
 
+                if listWidth > 0 {
+                    PadBoundaryLine()
+                        .offset(x: listWidth)
+                }
+
                 Rectangle()
                     .fill(.tint)
                     .frame(width: ResponsiveLayout.activeLineWidth)
@@ -305,6 +311,7 @@ struct PadConversationView: View {
                     .offset(x: max(listWidth - ResponsiveLayout.activeLineWidth / 2, 0))
                     .opacity(splitDragging ? 1 : 0)
                     .allowsHitTesting(false)
+                    .ignoresSafeArea(edges: .vertical)
                     .animation(.easeInOut(duration: ResponsiveLayout.dragFeedbackDuration), value: splitDragging)
 
                 splitHandle(availableWidth: available)
@@ -362,7 +369,7 @@ struct PadConversationView: View {
         .frame(width: ResponsiveLayout.handleHitSize, height: ResponsiveLayout.handleHitSize)
         .contentShape(Rectangle())
         .gesture(
-            DragGesture(minimumDistance: 1)
+            DragGesture(minimumDistance: 1, coordinateSpace: .global)
                 .onChanged { value in
                     if splitDragStart == nil {
                         splitDragStart = listWidth

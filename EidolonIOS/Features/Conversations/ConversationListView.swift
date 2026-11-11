@@ -63,11 +63,14 @@ struct ConversationListView: View {
 
     @ViewBuilder
     private var roster: some View {
-        if let width = padChromeWidth {
-            rosterList
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    padHeader()
-                }
+        if padChromeWidth != nil {
+            // A plain VStack instead of `.safeAreaInset`: the header then owns the full
+            // column width, so the search/filter/bell keep identical 20pt edge margins
+            // at every roster width.
+            VStack(spacing: 0) {
+                padHeader()
+                rosterList
+            }
         } else {
             rosterList
         }
@@ -321,6 +324,23 @@ struct ConversationListView: View {
                     .padding(.trailing, ResponsiveLayout.filterTrailingInset)
                 }
                 .frame(maxWidth: .infinity)
+
+                // Solid underlay + leading fade: chips disappear beneath the fixed
+                // filter control and slide out from under it as the strip scrolls.
+                HStack(spacing: 0) {
+                    LinearGradient(
+                        colors: [
+                            Color(.systemBackground).opacity(0),
+                            Color(.systemBackground),
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: 24)
+                    Color(.systemBackground)
+                        .frame(width: ResponsiveLayout.filterButtonWidth)
+                }
+                .allowsHitTesting(false)
 
                 filterMenu
             }

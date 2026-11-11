@@ -67,7 +67,7 @@ enum ResponsiveLayout {
     /// Shared top anchor measured from the page content's top safe area.
     static let pageTitleTop: CGFloat = 12
     static let filterButtonWidth: CGFloat = 44
-    static let filterTrailingInset: CGFloat = 52
+    static let filterTrailingInset: CGFloat = 64
 
     /// Cards and the settings detail may use more of an iPad's width than a text column.
     static let wideMaxWidth: CGFloat = 1000

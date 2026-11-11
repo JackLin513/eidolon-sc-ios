@@ -68,7 +68,7 @@ struct SettingsView: View {
                 HStack(spacing: 0) {
                     padSettingsSidebar
                         .frame(width: ResponsiveLayout.settingsSidebarWidth)
-                    Divider()
+                    PadBoundaryLine()
                     settingsStack(category: selectedCategory)
                 }
             } else if isRegularWidth {
@@ -446,15 +446,25 @@ Section {
                     }
                 
         }
+        .scrollContentBackground(isPadShell ? .hidden : .visible)
+        .background(isPadShell ? Color(.systemBackground) : Color(.systemGroupedBackground))
     }
     private func settingsStack(category: SettingsCategory?) -> some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 0) {
                 if isPadShell {
                     PadPageLargeTitle(category?.title ?? "设置", id: "pad.title.settings.detail") {
-                        Button("保存") { Task { await save() } }
-                            .fontWeight(.semibold)
-                            .accessibilityIdentifier("settings.save")
+                        Button {
+                            Task { await save() }
+                        } label: {
+                            Text("保存")
+                                .fontWeight(.semibold)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .glassEffect(.regular.interactive(), in: .capsule)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("settings.save")
                     }
                 }
                 settingsForm(category: category)

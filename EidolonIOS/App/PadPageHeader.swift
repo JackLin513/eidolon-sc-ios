@@ -35,3 +35,15 @@ extension PadPageLargeTitle where Trailing == EmptyView {
         self.init(title, id: id) { EmptyView() }
     }
 }
+
+/// The hairline that separates two pad columns. It is deliberately thinner than a
+/// `Divider` so the draggable blue line can sit on top of it without looking doubled.
+struct PadBoundaryLine: View {
+    var body: some View {
+        Rectangle()
+            .fill(Color(.separator).opacity(0.55))
+            .frame(width: 0.5)
+            .frame(maxHeight: .infinity)
+            .allowsHitTesting(false)
+    }
+}
