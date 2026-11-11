@@ -75,6 +75,8 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
     public var episodeCount: Int
     public var passageCount: Int
     public var characterCount: Int
+    /// Franchise-qualified keys when the package carries them; empty for old records.
+    public var characterKeys: [String] = []
     /// How many outfits the bundle carries under `stand/idols/`.
     public var standOutfitCount: Int
     /// How many places the bundle's place pool carries; zero for a bundle before places.
@@ -91,6 +93,7 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
         episodeCount: Int,
         passageCount: Int,
         characterCount: Int,
+        characterKeys: [String] = [],
         standOutfitCount: Int = 0,
         placeCount: Int = 0
     ) {
@@ -104,6 +107,7 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
         self.episodeCount = episodeCount
         self.passageCount = passageCount
         self.characterCount = characterCount
+        self.characterKeys = characterKeys
         self.standOutfitCount = standOutfitCount
         self.placeCount = placeCount
     }
@@ -119,6 +123,7 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
         case episodeCount
         case passageCount
         case characterCount
+        case characterKeys
         case standOutfitCount
         case placeCount
     }
@@ -138,6 +143,7 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
         episodeCount = try container.decode(Int.self, forKey: .episodeCount)
         passageCount = try container.decode(Int.self, forKey: .passageCount)
         characterCount = try container.decode(Int.self, forKey: .characterCount)
+        characterKeys = try container.decodeIfPresent([String].self, forKey: .characterKeys) ?? []
         standOutfitCount = try container.decodeIfPresent(Int.self, forKey: .standOutfitCount) ?? 0
         placeCount = try container.decodeIfPresent(Int.self, forKey: .placeCount) ?? 0
     }

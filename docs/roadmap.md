@@ -8,7 +8,7 @@
 - **S1 组件化 / 多运行时**：已完成（#133）。2D 五表面契约、可选 3D 适配器与运行时回退已落地。
 - **S2 iPad**：已完成（#134/#137/#138/#139）。三断点三栏、通话 pane/胶囊、真机与模拟器验收通过。
 - **macOS**：只保留平台化范围，完整支持拆到 #140；不阻塞 S3，也不承诺 Unity/UE。
-- **S3 多内容包 / 复合身份**：准备中（#135）。先做内容包 registry、`FranchiseID` / `CharacterKey` 与 v24 迁移。
+- **S3 多内容包 / 复合身份**：进行中（#135）。Phase A 已落地多根 registry、kind 路由、`CharacterKey` 边界与 SC/Sakura 本机验证；Phase B 的 v24 复合身份迁移仍未完成（ADR-0036）。
 - **3D 立绘**：在本地分支 `feat/mltd-3d-stand`（未合入 main），资产管线在 `spike/mltd-3d-static`；先补 main 契约再 rebase，不直接合。
 
 ## 不变量（任何阶段都不破）

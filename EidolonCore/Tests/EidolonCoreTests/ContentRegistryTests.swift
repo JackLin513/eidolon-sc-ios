@@ -23,8 +23,10 @@ struct ContentRegistryTests {
 
         #expect(info.franchise == "totsulover")
         #expect(info.kind == ContentKind.content.rawValue)
-        #expect(await eidolon.activeFranchise == "totsulover")
+        #expect(await eidolon.activeFranchise == "shiny")
         #expect(await eidolon.installedContentPackages.map(\.franchise) == ["shiny", "totsulover"])
+        try await eidolon.activateContent(franchise: "totsulover")
+        #expect(await eidolon.activeFranchise == "totsulover")
         #expect(try await eidolon.characters().count == 2)
 
         try await eidolon.activateContent(franchise: "shiny")
@@ -47,6 +49,19 @@ struct ContentRegistryTests {
         let info = try await eidolon.installContentPackage(bundleAt: bundle)
         #expect(info.franchise == "totsulover")
         #expect(await eidolon.activeFranchise == "totsulover")
+    }
+
+    @Test("a non-content kind is rejected by the content route")
+    func rejectsOtherKinds() async throws {
+        let (eidolon, root) = try makeEidolon()
+        var options = Fixture.Options()
+        options.franchise = "totsulover"
+        options.kind = "stand"
+        options.characterKeys = ["totsulover:mano", "totsulover:hiori"]
+        let bundle = try Fixture.makeBundle(in: root, options: options)
+        await #expect(throws: EidolonError.self) {
+            try await eidolon.installContentPackage(bundleAt: bundle)
+        }
     }
 
     @Test("a content package reports its CharacterKey namespace")

@@ -63,6 +63,7 @@ struct ContentBundleInstaller {
             episodeCount: counts["episodes"] ?? 0,
             passageCount: counts["episode_passages"] ?? 0,
             characterCount: characters.count,
+            characterKeys: manifest.characters.characterKeys ?? [],
             standOutfitCount: standOutfitCount,
             placeCount: placeCount
         )
@@ -104,6 +105,21 @@ struct ContentBundleInstaller {
     }
 
     // MARK: - Validation
+
+    /// Read the manifest from a zip without extracting the package. Shared by the
+    /// installer's routing layer so one package is not decoded twice.
+    static func readManifest(from bundleURL: URL) throws -> ContentManifest {
+        guard let archive = try? Archive(url: bundleURL, accessMode: .read),
+              let entry = archive.first(where: { $0.path == "manifest.json" })
+        else { throw EidolonError.unreadableBundle("不是有效的 zip，缺少 manifest.json") }
+        var data = Data()
+        _ = try archive.extract(entry) { data.append($0) }
+        do {
+            return try JSONDecoder().decode(ContentManifest.self, from: data)
+        } catch {
+            throw EidolonError.invalidBundle("manifest.json 无法解析：\(error.localizedDescription)")
+        }
+    }
 
     private func readManifest(in directory: URL) throws -> ContentManifest {
         let url = directory.appendingPathComponent("manifest.json")

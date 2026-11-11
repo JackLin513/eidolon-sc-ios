@@ -21,8 +21,8 @@ DEFAULT_SOURCE = Path.home() / "Developer/IdeaProjects/Galgame support/sakura"
 DEFAULT_OUT = Path("build/eidolon-totsulover-sakura.eidolonpkg")
 FRANCHISE = "totsulover"
 CHARACTER = "sakura"
-EMBEDDING_MODEL = "BAAI/bge-m3"
-EMBEDDING_DIM = 1536
+EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-0.6B"
+EMBEDDING_DIM = 1024
 
 
 def crc32_hex(data: bytes) -> str:
@@ -72,10 +72,23 @@ def write_episode_database(path: Path) -> None:
         ("sakura-e1",),
     )
     db.execute("INSERT INTO episode_cast VALUES (?, ?)", ("sakura-e1", CHARACTER))
-    db.execute(
-        "INSERT INTO episode_lines(episode_id, seq, speaker, ja, zh) VALUES (?, 1, ?, ?, ?)",
-        ("sakura-e1", "桜", "……起動した。用事があるなら、呼んで。", ""),
-    )
+    lines = [
+        "……起動した。用事があるなら、呼んで。",
+        "今日は、ちゃんと休め。",
+        "無理をしている顔をしている。",
+        "……少し、こちらを見て。",
+        "水を飲んで。話はそれからだ。",
+        "遅くまで起きていたでしょう。",
+        "私はここにいる。画面の中だけど。",
+        "……おかえり。待っていた。",
+        "焦らなくていい。一緒に片付けよう。",
+        "明日のことは、明日の私が考える。",
+    ]
+    for index, line in enumerate(lines, start=1):
+        db.execute(
+            "INSERT INTO episode_lines(episode_id, seq, speaker, ja, zh) VALUES (?, ?, ?, ?, ?)",
+            ("sakura-e1", index, "桜", line, ""),
+        )
     vector = struct.pack("<" + "f" * EMBEDDING_DIM, *([0.0] * EMBEDDING_DIM))
     db.execute(
         "INSERT INTO episode_passages(episode_id, seq, text, model, embedding) VALUES (?, 1, ?, ?, ?)",
@@ -104,12 +117,12 @@ def write_files(source: Path, staging: Path) -> None:
     (staging / "characters/avatars/sakura.png").write_bytes((source / "portraits/A020.png").read_bytes())
     (staging / "characters/expressions").mkdir(parents=True, exist_ok=True)
     expressions = {
-        "中性": "A020.png",
-        "不满": "A140.png",
-        "害羞": "A081.png",
-        "请求": "I180.png",
-        "困惑": "A070.png",
-        "惊讶": "A150.png",
+        "calm": "A020.png",
+        "angry": "A140.png",
+        "shy": "A081.png",
+        "thinking": "I180.png",
+        "sad": "A070.png",
+        "surprised": "A150.png",
     }
     raw_expressions = {}
     for name, filename in expressions.items():
@@ -194,6 +207,12 @@ def write_files(source: Path, staging: Path) -> None:
         ),
         encoding="utf-8",
     )
+    tone_source = source / "voice/refs/tone_refs"
+    if tone_source.is_dir():
+        (staging / "voice/tone_refs").mkdir(parents=True, exist_ok=True)
+        for tone in sorted(tone_source.iterdir()):
+            if tone.is_file():
+                (staging / "voice/tone_refs" / tone.name).write_bytes(tone.read_bytes())
     (staging / "content/holidays.json").write_text(
         json.dumps({"2026-01-01": "元日", "2026-02-11": "建国記念の日"}, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -219,7 +238,7 @@ def manifest(staging: Path) -> dict:
         "content": {
             "episodes": 1,
             "episode_cast": 1,
-            "episode_lines": 1,
+            "episode_lines": 10,
             "episode_passages": 1,
         },
         "characters": {

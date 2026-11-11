@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import ZIPFoundation
 
 extension Eidolon {
@@ -37,9 +38,25 @@ extension Eidolon {
         var info = try installer.install(url, expectedKind: .content, progress: progress)
         info.franchise = franchise
         info.kind = kind.rawValue
+        if let existing = contentPackages.values.first(where: { $0.franchise != franchise }),
+           existing.embeddingModel != info.embeddingModel
+            || existing.embeddingDimensions != info.embeddingDimensions {
+            throw EidolonError.invalidBundle(
+                "向量模型/维度不一致：已装 \(existing.embeddingModel)/\(existing.embeddingDimensions)，"
+                    + "新包 \(info.embeddingModel)/\(info.embeddingDimensions)"
+            )
+        }
+        let hadActive = contentPackages[activeContentFranchise] != nil
         contentPackages[franchise] = info
-        try persistContentPackages()
-        try activateContent(franchise: franchise)
+        do {
+            if !hadActive {
+                try activateContent(franchise: franchise)
+            }
+            try persistContentPackages()
+        } catch {
+            contentPackages.removeValue(forKey: franchise)
+            throw error
+        }
         return info
     }
 
@@ -51,24 +68,29 @@ extension Eidolon {
         bundleAt url: URL,
         progress: ((ImportProgress) -> Void)? = nil
     ) throws -> ContentBundleInfo {
-        let manifest = try readManifestForRouting(from: url)
+        let manifest = try ContentBundleInstaller.readManifest(from: url)
+        if let declared = manifest.franchise, !declared.isEmpty {
+            guard let keys = manifest.characters.characterKeys,
+                  keys.count == manifest.characters.ids.count,
+                  Set(keys.compactMap { $0.split(separator: ":", maxSplits: 1).last.map(String.init) })
+                    == Set(manifest.characters.ids)
+            else {
+                throw EidolonError.invalidBundle("多包内容包必须写与角色 id 对应的 characters.characterKeys")
+            }
+        }
         let franchise = ContentRegistryState.normalizedFranchise(manifest.franchise)
-        let kind = manifest.kind.flatMap(ContentKind.init(rawValue:)) ?? .content
+        let kind: ContentKind
+        if let raw = manifest.kind, !raw.isEmpty {
+            guard let parsed = ContentKind(rawValue: raw) else {
+                throw EidolonError.invalidBundle("不支持的内容包 kind：\(raw)")
+            }
+            kind = parsed
+        } else {
+            kind = .content
+        }
         return try installContent(bundleAt: url, franchise: franchise, kind: kind, progress: progress)
     }
 
-    private func readManifestForRouting(from bundleURL: URL) throws -> ContentManifest {
-        guard let archive = try? Archive(url: bundleURL, accessMode: .read),
-              let entry = archive.first(where: { $0.path == "manifest.json" })
-        else { throw EidolonError.unreadableBundle("不是有效的 zip，缺少 manifest.json") }
-        var data = Data()
-        _ = try archive.extract(entry) { data.append($0) }
-        do {
-            return try JSONDecoder().decode(ContentManifest.self, from: data)
-        } catch {
-            throw EidolonError.invalidBundle("manifest.json 无法解析：\(error.localizedDescription)")
-        }
-    }
 
     /// Switch the active package by repointing the `Content/current` symlink. The user
     /// database is deliberately not migrated here; Phase B owns composite user data.
@@ -80,17 +102,7 @@ extension Eidolon {
         guard FileManager.default.fileExists(atPath: target.path) else {
             throw EidolonError.contentNotInstalled
         }
-        let current = location.contentDirectory
-        if FileManager.default.fileExists(atPath: current.path)
-            || (try? current.resourceValues(forKeys: [.isSymbolicLinkKey])) != nil {
-            try FileManager.default.removeItem(at: current)
-        }
-        // A relative link survives the simulator's data-container UUID changing on an
-        // app update; an absolute one points at the previous container.
-        try FileManager.default.createSymbolicLink(
-            atPath: current.path,
-            withDestinationPath: "\(franchise)/current"
-        )
+        try writeCurrentLink(franchise: franchise)
         activeContentFranchise = franchise
         try saveAppState(ContentRegistryState.activeFranchiseKey, franchise)
         if let info = contentPackages[franchise] {
@@ -120,10 +132,16 @@ extension Eidolon {
         try fm.createDirectory(at: shiny.deletingLastPathComponent(), withIntermediateDirectories: true)
         if !fm.fileExists(atPath: shiny.path) {
             try fm.moveItem(at: current, to: shiny)
+            do {
+                try writeCurrentLink(franchise: ContentRegistryState.legacyFranchise)
+            } catch {
+                try? fm.moveItem(at: shiny, to: current)
+                throw error
+            }
         } else {
             try fm.removeItem(at: current)
+            try writeCurrentLink(franchise: ContentRegistryState.legacyFranchise)
         }
-        try fm.createSymbolicLink(at: current, withDestinationURL: shiny)
     }
 
     func loadContentPackagesIfNeeded() throws {
@@ -139,7 +157,7 @@ extension Eidolon {
             contentPackages[ContentRegistryState.legacyFranchise] = info
             activeContentFranchise = ContentRegistryState.legacyFranchise
         }
-        try? repairContentLinkIfNeeded()
+        try repairContentLinkIfNeeded()
     }
 
     /// Rebuild a missing/broken/absolute `Content/current` link. Simulator app updates can
@@ -155,11 +173,21 @@ extension Eidolon {
            destination == relative {
             return
         }
-        if fm.fileExists(atPath: current.path)
-            || (try? fm.destinationOfSymbolicLink(atPath: current.path)) != nil {
-            try fm.removeItem(at: current)
+        try writeCurrentLink(franchise: franchise)
+    }
+
+    /// Replace `Content/current` atomically. The link is relative so a simulator data
+    /// container UUID change does not break it.
+    private func writeCurrentLink(franchise: String) throws {
+        let fm = FileManager.default
+        let current = location.contentDirectory
+        let temporary = location.contentRoot.appendingPathComponent(".current-\(UUID().uuidString)")
+        try fm.createSymbolicLink(atPath: temporary.path, withDestinationPath: "\(franchise)/current")
+        guard rename(temporary.path, current.path) == 0 else {
+            let code = errno
+            try? fm.removeItem(at: temporary)
+            throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
         }
-        try fm.createSymbolicLink(atPath: current.path, withDestinationPath: relative)
     }
 
     private func installedContentInfoLegacy() throws -> ContentBundleInfo? {

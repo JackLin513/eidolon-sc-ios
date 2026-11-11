@@ -1759,6 +1759,8 @@ final class AppModel {
             try await core.activateContent(franchise: franchise)
             bundleInfo = try await core.installedContentInfo()
             contentPackages = await core.installedContentPackages
+            conversationPath = NavigationPath()
+            padConversationID = nil
             try await load()
             phase = .ready
         } catch {

@@ -11,6 +11,7 @@ tools/oracle/run.sh                          # 与上游逐字对照提示词（
 模拟器与真机上的调试验证可以用环境变量（仅 DEBUG 构建）注入识别与操作：
 
 - `EIDOLON_IMPORT_BUNDLE`：导入这个内容包（裸文件名会在 Documents 里找），真机也能用
+- `EIDOLON_IMPORT_CONTENT_FRANCHISE`：把这次 `EIDOLON_IMPORT_BUNDLE` 装到指定 franchise（默认 `shiny`）；`EIDOLON_ACTIVE_FRANCHISE` 在启动时切到该包，用来验 SC/Sakura 多根
 - `EIDOLON_CHAT_BASE_URL` / `_MODEL` / `_API_KEY` / `_EXTRA_BODY`：预置对话模型，并顺带保存下面这些设置；只在传了 `EIDOLON_CHAT_API_KEY` 时生效
 - `EIDOLON_ADULT_MODE=1`：单独预置成人模式开关，不依赖对话模型密钥（只对内容包中 18 岁及以上的角色生效）
 - `EIDOLON_RETRIEVAL_BASE_URL` / `_API_KEY`、`EIDOLON_EMBEDDING_MODEL`、`EIDOLON_RERANK_MODEL`：预置检索、向量化与重排

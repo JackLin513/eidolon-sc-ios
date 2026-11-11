@@ -191,7 +191,7 @@ eidolon-sc-ios/
 
 **当前阶段（2026-11-09）**：
 
-- **组件化 / 多运行时 / 多企划**：调研完成，尚未实现；阶段与验收见[路线图](docs/roadmap.md)，结论见 [`docs/research/`](docs/research/README.md)。调研结论不是已实现。
+- **组件化 / 多运行时 / 多企划**：S1/S2 已完成；S3 Phase A（多根内容包、kind 路由、CharacterKey、SC/Sakura 验证）已落地，Phase B 的 v24 复合身份迁移仍未完成；阶段与验收见[路线图](docs/roadmap.md)，结论见 [`docs/research/`](docs/research/README.md)。
 - **3D 立绘**：在本地分支 `feat/mltd-3d-stand`（Unity as a Library），**未合入 main**；先补 main 的契约，再按路线图 M1 迁入。main 默认仍是 Spine 2D。
 - **iPad / macOS（S2.2，#138）**：iPad 使用同一份二进制与 88–240pt 可调常驻导航栏——`<650pt` 保持底部胶囊 Tab，`650–960pt` 为窄栏 + 单栏 Push，`>960pt` 为窄栏 + 角色列表 + 聊天三栏；中栏与右栏在安全区内无极调节，拖左右边界时蓝线 + 中栏/右栏内容高斯模糊，已选角色越过中栏安全区后按阻力松手吸附收起；筛选按钮固定在中栏右侧，一级页标题用统一锚点。macOS 只做 My Mac (Designed for iPhone) 构建冒烟，不新增 target；iPad 已通过模拟器视觉验收，并在 iPad mini 真机安装 S2.2 首版供验收。
 

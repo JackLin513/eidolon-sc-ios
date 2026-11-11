@@ -395,7 +395,7 @@ Section("内容包") {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(package.franchise)
-                                        Text("\(package.info.characterCount) 位角色 · \(package.info.episodeCount) 段剧情")
+                                        Text("\(package.kind) · v\(package.info.formatVersion) · \(package.info.characterCount) 位角色 · \(package.info.episodeCount) 段剧情")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
