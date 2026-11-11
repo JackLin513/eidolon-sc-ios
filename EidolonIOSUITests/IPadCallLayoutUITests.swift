@@ -64,6 +64,18 @@ final class IPadCallLayoutUITests: XCTestCase {
         attach("call-wide-pane", settle: 8)
     }
 
+    func testAirPortraitCallStaysInsideTheChatColumn() throws {
+        XCUIDevice.shared.orientation = .portrait
+        launch()
+        try XCTSkipUnless(width > 960, "Run this on a 13-inch iPad")
+        let layer = app.descendants(matching: .any)["call.layer"].firstMatch
+        let call = layer.frame
+        let window = app.windows.firstMatch.frame
+        XCTAssertGreaterThan(call.minX, window.width * 0.4, "the portrait call covered the roster: call=\(call)")
+        XCTAssertLessThan(call.width, window.width - 280, "the portrait call is still full width")
+        XCTAssertTrue(app.buttons["pad.tab.conversation"].exists, "the rail disappeared")
+    }
+
     func testWideCallOnAnotherTabLeavesTheRail() throws {
         launch()
         try XCTSkipUnless(width > 960, "Run this on a 13-inch iPad")
