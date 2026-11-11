@@ -37,7 +37,9 @@
   const MAX_FPS = 60;
   const FRAME_MS = 1000 / MAX_FPS;
   const SLACK_MS = 1;
-  const MAX_PIXEL_RATIO = 2;
+  // A little supersampling beyond the device ratio smooths the 1024 atlas’s
+  // silhouette without changing the content package.
+  const MAX_PIXEL_RATIO = 3;
 
   const UNPACK_PREMULTIPLY_ALPHA_WEBGL = 0x9241;
 
@@ -128,6 +130,7 @@
       const context = new spine.webgl.ManagedWebGLRenderingContext(canvas, {
         alpha: true,
         premultipliedAlpha: true,
+        antialias: true,
       });
       if (!context.gl) throw new Error("这台设备不支持 WebGL");
       this.gl = context.gl;

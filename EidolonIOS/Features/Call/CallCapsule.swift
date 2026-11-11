@@ -13,17 +13,22 @@ struct CallCapsule: View {
     @Binding var corner: CallCapsuleCorner
     @State private var translation: CGSize = .zero
     @State private var dragging = false
+    /// Docked to a screen side and folded down to her avatar only (Q4-A/Q6-A).
+    @State private var half = false
+    @State private var dragStartedDocked = false
 
     private static let capsuleSize = CGSize(width: 148, height: 44)
+    private static let halfSize = CGSize(width: 44, height: 44)
 
     var body: some View {
         GeometryReader { proxy in
             if app.call.showsBar, let character = app.call.character {
                 let insets = proxy.safeAreaInsets
                 let container = proxy.size
+                let size = half ? Self.halfSize : Self.capsuleSize
                 let resting = ResponsiveLayout.callCapsuleCenter(
                     corner: corner,
-                    size: Self.capsuleSize,
+                    size: size,
                     container: container,
                     safeInsets: insets,
                     extraBottom: bottomClearance
@@ -35,7 +40,7 @@ struct CallCapsule: View {
                 let center = dragging
                     ? ResponsiveLayout.clampedCallCapsuleCenter(
                         dragged,
-                        size: Self.capsuleSize,
+                        size: size,
                         container: container,
                         safeInsets: insets,
                         margin: ResponsiveLayout.callCapsuleMargin,
@@ -45,7 +50,13 @@ struct CallCapsule: View {
                 content(character)
                     .position(center)
                     .gesture(dragGesture(container: container, safeInsets: insets, resting: resting))
-                    .onTapGesture { expand() }
+                    .onTapGesture {
+                        if half {
+                            half = false
+                        } else {
+                            expand()
+                        }
+                    }
                     .contextMenu {
                         Button("展开通话", systemImage: "phone.fill") { expand() }
                         Button("挂断", systemImage: "phone.down.fill", role: .destructive) {
@@ -74,7 +85,34 @@ struct CallCapsule: View {
         }
     }
 
+    @ViewBuilder
     private func content(_ character: CharacterConfig) -> some View {
+        if half {
+            halfContent(character)
+        } else {
+            fullContent(character)
+        }
+    }
+
+    private func halfContent(_ character: CharacterConfig) -> some View {
+        ZStack(alignment: .bottomTrailing) {
+            avatar(character)
+                .frame(width: 44, height: 44)
+                .clipShape(Circle())
+            statusDot
+                .frame(width: 10, height: 10)
+                .overlay(Circle().stroke(.white, lineWidth: 1.5))
+                .offset(x: 2, y: 1)
+        }
+        .frame(width: Self.halfSize.width, height: Self.halfSize.height)
+        .background(.regularMaterial, in: Circle())
+        .overlay(Circle().strokeBorder(.primary.opacity(0.08), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+        .contentShape(Circle())
+        .accessibilityLabel("通话 \(character.name)，轻点恢复")
+    }
+
+    private func fullContent(_ character: CharacterConfig) -> some View {
         HStack(spacing: 8) {
             ZStack(alignment: .bottomTrailing) {
                 avatar(character)
@@ -153,6 +191,9 @@ struct CallCapsule: View {
     ) -> some Gesture {
         DragGesture(minimumDistance: 8, coordinateSpace: .global)
             .onChanged { value in
+                if !dragging {
+                    dragStartedDocked = corner.isSide
+                }
                 dragging = true
                 translation = value.translation
             }
@@ -161,16 +202,29 @@ struct CallCapsule: View {
                     x: resting.x + value.translation.width,
                     y: resting.y + value.translation.height
                 )
-                corner = ResponsiveLayout.callCapsuleCorner(
+                let next = ResponsiveLayout.callCapsuleCorner(
                     for: target,
-                    size: Self.capsuleSize,
+                    size: half ? Self.halfSize : Self.capsuleSize,
                     container: container,
                     safeInsets: safeInsets,
                     margin: ResponsiveLayout.callCapsuleMargin,
                     extraBottom: max(0, bottomClearance)
                 )
+                let outward = (next == .leading && value.translation.width < -18)
+                    || (next == .trailing && value.translation.width > 18)
+                let inward = (corner == .leading && value.translation.width > 18)
+                    || (corner == .trailing && value.translation.width < -18)
+                if half, inward {
+                    half = false
+                } else if !half, dragStartedDocked, outward {
+                    half = true
+                } else if half, !next.isSide {
+                    half = false
+                }
+                corner = next
                 translation = .zero
                 dragging = false
+                dragStartedDocked = false
             }
     }
 
@@ -181,4 +235,8 @@ struct CallCapsule: View {
         app.selectedTab = .conversation
         app.call.expand()
     }
+}
+
+private extension CallCapsuleCorner {
+    var isSide: Bool { self == .leading || self == .trailing }
 }

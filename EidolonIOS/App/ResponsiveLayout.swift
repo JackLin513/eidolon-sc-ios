@@ -43,6 +43,9 @@ enum CallCapsuleCorner: CaseIterable, Equatable {
     case topTrailing
     case bottomLeading
     case bottomTrailing
+    /// Side-edge anchors (S2.3 addendum Q3-C): no top/bottom midpoint.
+    case leading
+    case trailing
 }
 
 /// What one drag sample means for the roster column. `visibleWidth` is what the finger
@@ -232,8 +235,15 @@ enum ResponsiveLayout {
         let maxX = max(minX, container.width - safeInsets.trailing - margin - halfW)
         let minY = safeInsets.top + margin + halfH
         let maxY = max(minY, container.height - safeInsets.bottom - margin - halfH - extraBottom)
-        let x = (corner == .topLeading || corner == .bottomLeading) ? minX : maxX
-        let y = (corner == .topLeading || corner == .topTrailing) ? minY : maxY
+        let x: CGFloat = switch corner {
+        case .topLeading, .bottomLeading, .leading: minX
+        case .topTrailing, .bottomTrailing, .trailing: maxX
+        }
+        let y: CGFloat = switch corner {
+        case .topLeading, .topTrailing: minY
+        case .bottomLeading, .bottomTrailing: maxY
+        case .leading, .trailing: min(max(container.height / 2, minY), maxY)
+        }
         return CGPoint(x: x, y: y)
     }
 

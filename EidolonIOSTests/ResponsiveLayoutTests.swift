@@ -160,6 +160,21 @@ final class ResponsiveLayoutTests: XCTestCase {
             ),
             .topTrailing
         )
+        XCTAssertEqual(
+            ResponsiveLayout.callCapsuleCorner(
+                for: CGPoint(x: 890, y: 350),
+                size: size,
+                container: container,
+                safeInsets: insets
+            ),
+            .trailing
+        )
+        XCTAssertEqual(
+            ResponsiveLayout.callCapsuleCenter(
+                corner: .trailing, size: size, container: container, safeInsets: insets
+            ).y,
+            container.height / 2
+        )
         let dragged = ResponsiveLayout.clampedCallCapsuleCenter(
             CGPoint(x: -100, y: 2000),
             size: size,

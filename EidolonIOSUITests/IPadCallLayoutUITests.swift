@@ -112,6 +112,37 @@ final class IPadCallLayoutUITests: XCTestCase {
     }
 
 
+
+    func testCapsuleDocksToASideAndFoldsToAnAvatar() throws {
+        launch()
+        app.buttons["收起"].firstMatch.tap()
+        let capsule = app.buttons["call.capsule"]
+        XCTAssertTrue(capsule.waitForExistence(timeout: 5), "no folded call capsule")
+
+        // Drag to the right edge's midpoint: the side anchor, not the nearest corner.
+        capsule.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(
+                forDuration: 0.1,
+                thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.50))
+            )
+        Thread.sleep(forTimeInterval: 0.5)
+        XCTAssertGreaterThan(capsule.frame.maxX, width - 40, "capsule did not dock to the right edge")
+        XCTAssertEqual(capsule.frame.midY, app.windows.firstMatch.frame.height / 2, accuracy: 60)
+
+        // A second outward drag folds it to her avatar only.
+        capsule.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(
+                forDuration: 0.1,
+                thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.50))
+            )
+        Thread.sleep(forTimeInterval: 0.5)
+        XCTAssertLessThan(capsule.frame.width, 60, "capsule did not fold to a half capsule")
+
+        // Tapping the half capsule restores the full capsule.
+        capsule.tap()
+        Thread.sleep(forTimeInterval: 0.4)
+        XCTAssertGreaterThan(capsule.frame.width, 100, "half capsule did not restore")
+    }
     func testRotatingBetweenWideAndMediumKeepsTheCall() throws {
         launch()
         let layer = app.descendants(matching: .any)["call.layer"].firstMatch

@@ -100,7 +100,7 @@ struct RootView: View {
                     CallView(character: character, presentation: presentation)
                         .environment(app)
                         .frame(width: frame.width, height: frame.height)
-                        .clipShape(Rectangle())
+                        .modifier(CallLayerClip(enabled: presentation.isPane))
                         .offset(
                             x: callX,
                             y: callY + (app.call.isCollapsed ? frame.height : 0)
@@ -212,5 +212,20 @@ struct CallChatFramePreferenceKey: PreferenceKey {
     static var defaultValue: CGRect?
     static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
         if let next = nextValue() { value = next }
+    }
+}
+
+/// A pane owns a clip rectangle; a full-screen call lets its `ignoresSafeArea`
+/// background reach the status/home areas instead of leaving black strips.
+private struct CallLayerClip: ViewModifier {
+    let enabled: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if enabled {
+            content.clipShape(Rectangle())
+        } else {
+            content
+        }
     }
 }
