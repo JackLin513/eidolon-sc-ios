@@ -119,6 +119,7 @@ struct RootView: View {
                         bottomInset: bottomInset
                     )
                         .environment(app)
+                        .ignoresSafeArea()
                         .frame(width: frame.width, height: frame.height)
                         .modifier(CallLayerClip(enabled: presentation.isPane))
                         .offset(
