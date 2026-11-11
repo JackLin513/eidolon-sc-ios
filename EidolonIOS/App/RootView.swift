@@ -151,6 +151,7 @@ struct RootView: View {
                             .environment(app)
                             .frame(width: frame.width, height: frame.height)
                             .clipped()
+                            .ignoresSafeArea(edges: [.top, .bottom])
                             .offset(x: callX, y: callY)
                             .opacity(app.call.isCollapsed ? 0 : 1)
                             .allowsHitTesting(false)
