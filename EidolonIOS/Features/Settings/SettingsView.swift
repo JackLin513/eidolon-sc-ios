@@ -63,37 +63,6 @@ struct SettingsView: View {
     }
 
 
-    /// S2.2 is choosing the settings surface. The real app stays on `current`; the three
-    /// alternatives are exposed only to the visual QA build.
-    private enum PadSettingsSurface: String {
-        case current
-        case allGray
-        case middleWhite
-        case grayCapsules
-    }
-
-    private var padSurface: PadSettingsSurface {
-        #if DEBUG
-        if let raw = ProcessInfo.processInfo.environment["EIDOLON_SETTINGS_SURFACE"],
-           let value = PadSettingsSurface(rawValue: raw) {
-            return value
-        }
-        #endif
-        return .current
-    }
-
-    private var padDetailUsesGroupedBackground: Bool {
-        isPadShell && (padSurface == .allGray || padSurface == .middleWhite)
-    }
-
-    private var padSidebarUsesWhiteBackground: Bool {
-        isPadShell && padSurface == .middleWhite
-    }
-
-    private var padRowsUseGrayCapsule: Bool {
-        isPadShell && padSurface == .grayCapsules
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             if isPadShell {
@@ -478,15 +447,7 @@ Section {
                     }
                 
         }
-        .scrollContentBackground(
-            isPadShell && !padDetailUsesGroupedBackground ? .hidden : .visible
-        )
-        .background(
-            isPadShell && !padDetailUsesGroupedBackground
-                ? Color(.systemBackground)
-                : Color(.systemGroupedBackground)
-        )
-        .modifier(SettingsCapsuleRows(enabled: padRowsUseGrayCapsule))
+        .background(Color(.systemGroupedBackground))
     }
     private func settingsStack(category: SettingsCategory?) -> some View {
         NavigationStack {
@@ -509,6 +470,7 @@ Section {
                 settingsForm(category: category)
                     .frame(maxWidth: .infinity)
             }
+            .background(Color(.systemGroupedBackground))
 
                 // Returning to the call brings the layer over every page; settings gets out of
                 // its way (spec #46).
@@ -658,10 +620,7 @@ Section {
                 .padding(.bottom, 24)
             }
         }
-        .background(
-            (padSidebarUsesWhiteBackground ? Color(.systemBackground) : Color(.secondarySystemBackground))
-                .ignoresSafeArea()
-        )
+        .background(Color(.secondarySystemBackground).ignoresSafeArea())
     }
 
     private func categorySection<Content: View>(
@@ -991,16 +950,3 @@ Section {
     }
 }
 
-/// Preview-only row treatment for the “only the capsules are gray” option.
-private struct SettingsCapsuleRows: ViewModifier {
-    let enabled: Bool
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if enabled {
-            content.listRowBackground(Color(.secondarySystemFill))
-        } else {
-            content
-        }
-    }
-}
