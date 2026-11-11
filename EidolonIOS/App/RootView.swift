@@ -107,6 +107,11 @@ struct RootView: View {
                 )
             )
             let baseFrame = callFrame(presentation, in: geometry)
+            #if DEBUG
+            let _ = uiLog.notice(
+                "frame page=\(String(describing: self.callPageFrame), privacy: .public) chat=\(String(describing: self.callChatFrame), privacy: .public) roster=\(String(describing: self.callRosterWidth), privacy: .public) base=\(String(describing: baseFrame), privacy: .public) band=\(String(describing: band), privacy: .public)"
+            )
+            #endif
             let resolvedPresentation = ResponsiveLayout.resolvePaneCallPresentation(
                 presentation,
                 paneSize: baseFrame.size
@@ -131,6 +136,11 @@ struct RootView: View {
             // actual centre instead of treating the pane origin as an offset.
             let callX = frame.midX - geometry.size.width / 2
             let callY = frame.midY - geometry.size.height / 2
+            #if DEBUG
+            let _ = uiLog.notice(
+                "final pres=\(String(describing: effectivePresentation), privacy: .public) frame=\(String(describing: frame), privacy: .public) callX=\(callX, format: .fixed(precision: 1)) callY=\(callY, format: .fixed(precision: 1)) geometry=\(String(describing: geometry.size), privacy: .public)"
+            )
+            #endif
             ZStack {
                 content(for: app)
                     .environment(app)
@@ -140,6 +150,7 @@ struct RootView: View {
                         CallBackdropView(character: character)
                             .environment(app)
                             .frame(width: frame.width, height: frame.height)
+                            .clipped()
                             .offset(x: callX, y: callY)
                             .opacity(app.call.isCollapsed ? 0 : 1)
                             .allowsHitTesting(false)
@@ -199,10 +210,10 @@ struct RootView: View {
     /// preference pass. Until then the page pane keeps the call inside the shell instead
     /// of flashing it over the rail.
     private func effectiveCallPresentation(requested: CallPresentation) -> CallPresentation {
-        if requested == .conversationPane, callChatFrame == nil {
-            return .page
-        }
-        return requested
+        // A missing chat-frame preference must not demote the call to the whole page:
+        // the page plus roster width still identifies the chat column. Demoting here
+        // made the Air portrait call cover the roster.
+        requested
     }
 
     private func callFrame(
