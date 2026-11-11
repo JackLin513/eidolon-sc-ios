@@ -299,6 +299,7 @@ struct PadConversationView: View {
 
                     if let selected {
                         chat(selected)
+                            .environment(app)
                     } else {
                         PadEmptyConversationView { character in
                             app.openPadConversation(characterID: character.id)

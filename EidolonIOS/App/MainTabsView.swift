@@ -18,6 +18,7 @@ struct MainTabsView: View {
                     tabShell
                 } else {
                     PadShellView(app: app, band: band)
+                        .environment(app)
                 }
             }
             .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { measuredWidth = $0 }
@@ -78,21 +79,25 @@ struct MainTabsView: View {
         TabView(selection: selection) {
             Tab("对话", systemImage: "bubble.left.and.bubble.right", value: MainTab.conversation) {
                 ConversationListView()
+                    .environment(app)
             }
             Tab("朋友圈", systemImage: "person.2", value: MainTab.moments) {
                 MomentsView()
                     .frame(maxWidth: ResponsiveLayout.wideMaxWidth)
                     .frame(maxWidth: .infinity)
+                    .environment(app)
             }
             .badge(app.momentsBadge ? 1 : 0)
             Tab("玩法", systemImage: "sparkles", value: MainTab.play) {
                 PlayHubView()
                     .frame(maxWidth: ResponsiveLayout.wideMaxWidth)
                     .frame(maxWidth: .infinity)
+                    .environment(app)
             }
             .badge(app.achievementBadge ? 1 : 0)
             Tab("设置", systemImage: "gearshape", value: MainTab.settings) {
                 SettingsView()
+                    .environment(app)
             }
         }
     }
