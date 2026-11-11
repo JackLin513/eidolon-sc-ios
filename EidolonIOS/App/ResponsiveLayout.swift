@@ -55,6 +55,9 @@ enum ResponsiveLayout {
     static let handlePillWidth: CGFloat = 4
     static let handlePillHeight: CGFloat = 44
     static let handleHitSize: CGFloat = 44
+    /// Distance from the seam to the hit area's leading edge; the visible pill is
+    /// therefore a few points to the right of the boundary rather than on top of it.
+    static let handleLineGap: CGFloat = 8
     static let dragBlurRadius: CGFloat = 14
     static let dragFeedbackDuration: TimeInterval = 0.12
     static let railHitWidth: CGFloat = 12

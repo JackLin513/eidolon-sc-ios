@@ -315,7 +315,15 @@ struct PadConversationView: View {
                     .animation(.easeInOut(duration: ResponsiveLayout.dragFeedbackDuration), value: splitDragging)
 
                 splitHandle(availableWidth: available)
-                    .offset(x: max(listWidth - ResponsiveLayout.handleHitSize / 2, 0))
+                    // Keep the gray pill off the boundary line; only the active blue line
+                    // lives exactly on the seam.
+                    .offset(
+                        x: max(
+                            listWidth + ResponsiveLayout.handleLineGap
+                                - ResponsiveLayout.handleHitSize / 2,
+                            0
+                        )
+                    )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onAppear {

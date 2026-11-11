@@ -102,6 +102,28 @@ final class IPadVisualQATests: XCTestCase {
         attach("settings-title")
     }
 
+
+    func testIPadSettingsSurfaceOptions() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        launch()
+        try XCTSkipUnless(width >= 650, "Run this on an iPad simulator")
+
+        let options: [(String, String)] = [
+            ("allGray", "settings-all-gray"),
+            ("middleWhite", "settings-middle-white"),
+            ("grayCapsules", "settings-gray-capsules"),
+        ]
+        for (surface, name) in options {
+            launch(environment: ["EIDOLON_SETTINGS_SURFACE": surface])
+            tapTab("settings")
+            XCTAssertTrue(
+                app.buttons["settings.account"].waitForExistence(timeout: 15),
+                "settings did not open for \(surface)"
+            )
+            attach(name)
+        }
+    }
+
     func testCompactPhoneVisualState() throws {
         launch()
         try XCTSkipUnless(width < 650, "Run this on an iPhone simulator")
