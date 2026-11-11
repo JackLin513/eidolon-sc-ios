@@ -1,3 +1,4 @@
+import OSLog
 import SwiftUI
 import UIKit
 
@@ -6,7 +7,9 @@ struct StandHostView: UIViewRepresentable {
     let renderer: any CharacterRenderer
 
     func makeUIView(context: Context) -> UIView {
-        renderer.view
+        Logger(subsystem: "com.jacklin.eidolon", category: "stand-ui")
+            .notice("StandHostView makeUIView")
+        return renderer.view
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {}

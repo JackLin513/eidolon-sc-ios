@@ -1,5 +1,6 @@
 import EidolonCore
 import Photos
+import OSLog
 import SwiftUI
 import UIKit
 
@@ -8,6 +9,7 @@ import UIKit
 /// saying in a card, and the hang-up key. It only shows what `CallSession` reports (ADR-0015)
 /// and drives her stand from the same events (`CallStandDirector`).
 struct CallView: View {
+    private let uiLog = Logger(subsystem: "com.jacklin.eidolon", category: "call-ui")
     let character: CharacterConfig
     /// How S2.3/S2.2 host this layer. The view itself never decides whether it is a
     /// full-screen layer or a pane; the shell passes that in.
@@ -204,11 +206,13 @@ struct CallView: View {
         presentation.standFraming
     }
 
-    /// Her stage height: a wide pane leaves the header above her, a full-screen iPad
-    /// gives her 70% (down from 80%) so the 1024 atlas is scaled less, and a phone keeps
-    /// upstream's 80%.
-    private var standHeightShare: CGFloat {
-        presentation.standHeightShare(isCompactPhone: isCompactPhone)
+    /// Her stage height: a wide pane leaves the header above her, a phone pane uses
+    /// phone proportions and a width cap, a full-screen iPad gives her 70%, and a phone
+    /// keeps upstream's 80%.
+    private var standHeight: (CGSize) -> CGFloat {
+        { size in
+            presentation.standHeight(in: size, isCompactPhone: isCompactPhone)
+        }
     }
 
     /// Her backdrop is only shown when the bundle has one; otherwise her avatar is blown up.
@@ -363,7 +367,7 @@ struct CallView: View {
     /// call is over. The stage height comes from the presentation so the wide pane and the
     /// full-screen iPad use different framings without the view guessing at size classes.
     private func standStage(_ renderer: any CharacterRenderer, size: CGSize) -> some View {
-        let height = size.height * standHeightShare
+        let height = standHeight(size)
         let viewport = CGSize(width: size.width, height: height)
         return VStack(spacing: 0) {
             Spacer(minLength: 0)
@@ -1186,5 +1190,62 @@ private final class EscapeResponder: UIViewController {
 
     @objc private func escape() {
         action()
+    }
+}
+
+/// The call's backdrop, reusable by the shell when a pane needs to paint through the
+/// window's safe areas behind a clipped call view. It is the same blurred likeness,
+/// background image and deep gradient the full-screen CallView draws.
+struct CallBackdropView: View {
+    let character: CharacterConfig
+    @Environment(AppModel.self) private var app
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .scaleEffect(1.25)
+            } else if let avatar = app.avatar(for: character.id) {
+                Image(uiImage: avatar)
+                    .resizable()
+                    .scaledToFill()
+                    .scaleEffect(1.25)
+                    .blur(radius: 64)
+            } else {
+                Color(hex: character.color ?? "#333333")
+            }
+            LinearGradient(
+                stops: [
+                    .init(color: .black.opacity(0.25), location: 0),
+                    .init(color: deepColor(0.24), location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .clipped()
+        .task { load() }
+    }
+
+    private func load() {
+        guard let path = character.background, !path.isEmpty else { return }
+        let url = app.core.location.contentDirectory.appendingPathComponent(path)
+        image = UIImage(contentsOfFile: url.path)
+    }
+
+    private func deepColor(_ factor: Double) -> Color {
+        let cleaned = (character.color ?? "").replacingOccurrences(of: "#", with: "")
+        guard cleaned.count == 6 else { return Color(white: 0.16) }
+        var value: UInt64 = 0
+        Scanner(string: cleaned).scanHexInt64(&value)
+        return Color(
+            .sRGB,
+            red: Double((value >> 16) & 0xFF) / 255 * factor,
+            green: Double((value >> 8) & 0xFF) / 255 * factor,
+            blue: Double(value & 0xFF) / 255 * factor
+        )
     }
 }

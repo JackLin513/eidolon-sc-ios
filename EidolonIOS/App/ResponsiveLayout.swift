@@ -17,22 +17,31 @@ enum CallPresentation: Equatable {
     case fullScreen
     case page
     case conversationPane
+    /// A narrow, tall conversation pane is laid out like a phone call sheet: same
+    /// knees framing and phone-like character scale, not the desktop waist framing.
+    case phonePane
 
     var isPane: Bool { self != .fullScreen }
 
-    /// The desktop pane frames her to the waist; a full-screen phone/iPad frames to the
-    /// knees. 3D full-bleed is reported by its renderer and overrides this.
+    /// The desktop pane frames her to the waist; a full-screen or phone-shaped pane
+    /// frames to the knees. 3D full-bleed is reported by its renderer and overrides this.
     var standFraming: StandFraming {
-        isPane ? .waist : .knees
+        switch self {
+        case .page, .conversationPane: .waist
+        case .fullScreen, .phonePane: .knees
+        }
     }
 
-    /// How much of the call's height her stand occupies. Wide panes start below the
-    /// header; an iPad full screen is a little shorter than a phone's to reduce the
-    /// 1024px atlas's upscale.
-    func standHeightShare(isCompactPhone: Bool) -> CGFloat {
+    /// Her stage height in a viewport. The phone pane also caps by width: a tall, narrow
+    /// Air portrait pane must not turn a 1024px atlas into a giant close-up.
+    func standHeight(in viewport: CGSize, isCompactPhone: Bool) -> CGFloat {
         switch self {
-        case .page, .conversationPane: 0.92
-        case .fullScreen: isCompactPhone ? 0.80 : 0.70
+        case .page, .conversationPane:
+            return viewport.height * 0.92
+        case .phonePane:
+            return min(viewport.height * 0.80, viewport.width * 1.35)
+        case .fullScreen:
+            return viewport.height * (isCompactPhone ? 0.80 : 0.70)
         }
     }
 }
@@ -210,6 +219,19 @@ enum ResponsiveLayout {
     ) -> CallPresentation {
         guard band == .wide else { return .fullScreen }
         return onConversation ? .conversationPane : .page
+    }
+
+    /// A conversation pane narrower than a phone-ish aspect is laid out as a phone
+    /// sheet instead of a desktop pane.
+    static func resolvePaneCallPresentation(
+        _ presentation: CallPresentation,
+        paneSize: CGSize
+    ) -> CallPresentation {
+        guard presentation == .conversationPane,
+              paneSize.height > 0,
+              paneSize.width / paneSize.height < 0.55
+        else { return presentation }
+        return .phonePane
     }
 
     // MARK: Folded-call capsule

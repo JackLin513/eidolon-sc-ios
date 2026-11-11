@@ -235,6 +235,7 @@ struct PadConversationView: View {
                 medium
             }
         }
+        .preference(key: CallRosterWidthPreferenceKey.self, value: listWidth)
         .onAppear {
             adoptOpeningCharacter()
             #if DEBUG

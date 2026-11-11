@@ -16,6 +16,17 @@ enum AppPhase: Equatable {
 @Observable
 final class AppModel {
     private(set) var phase: AppPhase = .loading
+    #if DEBUG
+    /// Bench probe: the loading screen names the current bootstrap stage. Kept only in
+    /// DEBUG so a slow launch can be diagnosed without guess-reinstalling builds.
+    private(set) var startupStage = "启动"
+    private(set) var startupStartedAt = Date()
+    private let startupLog = Logger(subsystem: "com.jacklin.eidolon", category: "startup")
+    private func mark(_ stage: String) {
+        startupStage = stage
+        startupLog.notice("stage=\(stage, privacy: .public) t=\(Date().timeIntervalSince(self.startupStartedAt), format: .fixed(precision: 2))")
+    }
+    #endif
     private(set) var characters: [CharacterConfig] = []
     /// Who has a stand, answered before `characters` is published so the chat page's
     /// toolbar can settle on its first frame (spec #44).
@@ -179,11 +190,25 @@ final class AppModel {
     private var momentImages: [String: UIImage] = [:]
 
     func loadMomentsSettings() async {
+        #if DEBUG
+        mark("朋友圈设置:读取数据库")
+        #endif
         momentsSettings = (try? await core.momentsSettings()) ?? .default
-        // Ageing out does not wait for the switch: a library turned off for a month
-        // still drops what is past retention.
-        await core.pruneMoments()
-        await refreshMomentsBadge()
+        // Ageing out must not hold the launch spinner: on a large library the actor's
+        // first SQLite cleanup can take seconds and is not needed to show the shell.
+        #if DEBUG
+        mark("朋友圈设置:清理过期内容")
+        #endif
+        Task { await core.pruneMoments() }
+        #if DEBUG
+        mark("朋友圈设置:未读角标")
+        #endif
+        // The badge query can contend with the first SQLite open; publish it as soon
+        // as it returns instead of blocking launch.
+        Task { await refreshMomentsBadge() }
+        #if DEBUG
+        mark("朋友圈设置:启动循环")
+        #endif
         if momentsSettings.enabled {
             startMomentsLoop()
             MomentsBackground.schedule(after: 15 * 60)
@@ -191,6 +216,9 @@ final class AppModel {
             momentsLoop?.cancel()
             momentsLoop = nil
         }
+        #if DEBUG
+        mark("朋友圈设置:通知权限")
+        #endif
         MomentsNotifications.requestAuthorizationIfNeeded(moments: momentsSettings)
     }
 
@@ -1244,6 +1272,8 @@ final class AppModel {
 
     func bootstrap() async {
         #if DEBUG
+        startupStartedAt = Date()
+        mark("调试配置")
         applyDebugAdultMode()
         applyDebugMode()
         applyDebugChatSettings()
@@ -1255,15 +1285,28 @@ final class AppModel {
         await applyDebugGiftState()
         await applyDebugUsageState()
         seedInstalledPackagesForDebugging()
+        mark("读取内容包")
         #endif
         do {
             if let info = try await core.usableContentInfo() {
                 bundleInfo = info
+                #if DEBUG
+                startupStage = "迁移立绘"
+                #endif
                 _ = try? await core.migrateLegacyStandIfNeeded()
+                #if DEBUG
+                startupStage = "读取角色与对话"
+                #endif
                 try await load()
                 loadChatProfiles()
-                await loadMomentsSettings()
                 phase = .ready
+                #if DEBUG
+                mark("完成")
+                #endif
+                // Moments settings and pruning are not needed to show the shell. They
+                // can contend with the core actor's first SQLite reads on a large
+                // library, so a launch must not wait for them.
+                Task { await loadMomentsSettings() }
                 #if DEBUG
                 importAPIEnvForDebuggingIfRequested()
                 #endif
@@ -1275,6 +1318,9 @@ final class AppModel {
             } else {
                 // A bundle from another format or content schema is not run: the app asks
                 // for a new import rather than failing later or missing what it added.
+                #if DEBUG
+                startupStage = "检查旧内容包"
+                #endif
                 if let stale = try await core.installedContentInfo() {
                     errorMessage = "已安装的内容包是旧格式（格式 \(stale.formatVersion)，"
                         + "内容库 \(stale.contentSchemaVersion)）。请重新导出并导入内容包。"
@@ -2022,14 +2068,29 @@ final class AppModel {
     }
 
     private func load() async throws {
+        #if DEBUG
+        mark("载入:角色列表")
+        #endif
         let characters = try await core.characters()
         // Publish the stand snapshot first: a view observing `characters` then sees a
         // consistent "who can be dressed" answer on the very first frame.
+        #if DEBUG
+        mark("载入:立绘可用角色")
+        #endif
         await refreshStandCharacterIDs()
         self.characters = characters
+        #if DEBUG
+        mark("载入:最近动态")
+        #endif
         latest = try await core.latestActivities()
+        #if DEBUG
+        mark("载入:制作人资料")
+        #endif
         producerProfile = (try? await core.producerProfile()) ?? .default
         aboutProducer = producerProfile.prompt
+        #if DEBUG
+        mark("载入:节日表")
+        #endif
         holidays = try? await core.holidayTable()
         if let jobs = try? await core.jobList() {
             hasJobList = !jobs.isEmpty
@@ -2037,12 +2098,21 @@ final class AppModel {
             hasJobList = false
         }
         cyclesEnabled = (try? await core.cycleEnabled()) ?? true
+        #if DEBUG
+        mark("载入:立绘包信息")
+        #endif
         standInfo = try await core.installedStandInfo()
         await loadModel3D()
+        #if DEBUG
+        mark("载入:酒吧包信息")
+        #endif
         barInfo = try await core.installedBarInfo()
         barRewardToday = (try? await core.barRewardToday()) ?? true
         giftCatalog = try? await core.giftCatalog()
 
+        #if DEBUG
+        mark("载入:头像")
+        #endif
         var images: [String: UIImage] = [:]
         for character in characters {
             guard let url = await core.avatarURL(for: character.id),
@@ -2051,5 +2121,8 @@ final class AppModel {
             images[character.id] = image
         }
         avatars = images
+        #if DEBUG
+        mark("载入:完成")
+        #endif
     }
 }

@@ -122,12 +122,57 @@ final class ResponsiveLayoutTests: XCTestCase {
     }
 
     func testCallStandFramingAndHeight() {
+        let desktop = CGSize(width: 880, height: 1024)
+        let phonePane = CGSize(width: 538, height: 1366)
         XCTAssertEqual(CallPresentation.page.standFraming, .waist)
         XCTAssertEqual(CallPresentation.conversationPane.standFraming, .waist)
         XCTAssertEqual(CallPresentation.fullScreen.standFraming, .knees)
-        XCTAssertEqual(CallPresentation.page.standHeightShare(isCompactPhone: false), 0.92)
-        XCTAssertEqual(CallPresentation.fullScreen.standHeightShare(isCompactPhone: false), 0.70)
-        XCTAssertEqual(CallPresentation.fullScreen.standHeightShare(isCompactPhone: true), 0.80)
+        XCTAssertEqual(CallPresentation.phonePane.standFraming, .knees)
+        XCTAssertEqual(
+            CallPresentation.page.standHeight(in: desktop, isCompactPhone: false),
+            desktop.height * 0.92,
+            accuracy: 0.01
+        )
+        XCTAssertEqual(
+            CallPresentation.fullScreen.standHeight(in: desktop, isCompactPhone: false),
+            desktop.height * 0.70,
+            accuracy: 0.01
+        )
+        XCTAssertEqual(
+            CallPresentation.fullScreen.standHeight(in: desktop, isCompactPhone: true),
+            desktop.height * 0.80,
+            accuracy: 0.01
+        )
+        // The tall portrait pane is capped by width, not by its 1366pt height.
+        XCTAssertEqual(
+            CallPresentation.phonePane.standHeight(in: phonePane, isCompactPhone: false),
+            phonePane.width * 1.35,
+            accuracy: 0.01
+        )
+    }
+
+    func testNarrowConversationPaneBecomesPhonePane() {
+        XCTAssertEqual(
+            ResponsiveLayout.resolvePaneCallPresentation(
+                .conversationPane,
+                paneSize: CGSize(width: 538, height: 1366)
+            ),
+            .phonePane
+        )
+        XCTAssertEqual(
+            ResponsiveLayout.resolvePaneCallPresentation(
+                .conversationPane,
+                paneSize: CGSize(width: 880, height: 1024)
+            ),
+            .conversationPane
+        )
+        XCTAssertEqual(
+            ResponsiveLayout.resolvePaneCallPresentation(
+                .page,
+                paneSize: CGSize(width: 538, height: 1366)
+            ),
+            .page
+        )
     }
 
     func testCallCapsuleSnapsInsideTheSafeArea() {

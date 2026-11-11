@@ -1,14 +1,17 @@
 import EidolonCore
+import OSLog
 import SwiftUI
 import UIKit
 
 @MainActor
 struct RootView: View {
+    private let uiLog = Logger(subsystem: "com.jacklin.eidolon", category: "ui")
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var callPageFrame: CGRect?
     @State private var callChatFrame: CGRect?
+    @State private var callRosterWidth: CGFloat?
     @State private var capsuleCorner: CallCapsuleCorner = .bottomTrailing
     @State private var app: AppModel?
     @State private var startupError: String?
@@ -21,8 +24,13 @@ struct RootView: View {
                 if showsWelcome {
                     WelcomeView { finishWelcome() }
                         .environment(app)
-                } else {
+                } else if app.phase == .ready {
+                    // Read `phase` directly in the body. Keeping it only inside the
+                    // nested content builder left the loading view on screen after the
+                    // model became ready.
                     pages(app)
+                } else {
+                    content(for: app)
                 }
             } else if let startupError {
                 ContentUnavailableView(
@@ -31,7 +39,8 @@ struct RootView: View {
                     description: Text(startupError)
                 )
             } else {
-                opening
+                ProgressView("正在打开…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -54,23 +63,31 @@ struct RootView: View {
             app?.selectedTab = .moments
             MomentsNotifications.pendingOpen = false
         }
+        .onChange(of: app?.phase) { _, phase in
+            uiLog.notice("root phase=\(String(describing: phase), privacy: .public)")
+        }
         .task {
             guard app == nil, startupError == nil else { return }
             do {
                 let model = try AppModel()
                 app = model
-                await model.bootstrap()
-                // 别的调试注入开着时不放这一页，免得它盖住界面把 UI 用例挡住；
-                // 欢迎页自己的开关（`EIDOLON_WELCOME`）例外。
-                let environment = ProcessInfo.processInfo.environment
-                let ordered = environment["EIDOLON_WELCOME"] == "1"
-                let suppressed = environment.keys.contains {
-                    $0.hasPrefix("EIDOLON_") && $0 != "EIDOLON_WELCOME"
+                // Bootstrap in an unstructured task: setting `app` re-renders this view,
+                // and a view-owned `.task` can be cancelled mid-await. A cancelled
+                // bootstrap used to leave the launch spinner suspended forever.
+                Task { @MainActor in
+                    await model.bootstrap()
+                    // 别的调试注入开着时不放这一页，免得它盖住界面把 UI 用例挡住；
+                    // 欢迎页自己的开关（`EIDOLON_WELCOME`）例外。
+                    let environment = ProcessInfo.processInfo.environment
+                    let ordered = environment["EIDOLON_WELCOME"] == "1"
+                    let suppressed = environment.keys.contains {
+                        $0.hasPrefix("EIDOLON_") && $0 != "EIDOLON_WELCOME"
+                    }
+                    showsWelcome = ordered || (!suppressed && WelcomeLaunch.shouldPresent(
+                        seen: model.welcomeSeen,
+                        hasContentBundle: model.phase == .ready
+                    ))
                 }
-                showsWelcome = ordered || (!suppressed && WelcomeLaunch.shouldPresent(
-                    seen: model.welcomeSeen,
-                    hasContentBundle: model.phase == .ready
-                ))
             } catch {
                 startupError = error.localizedDescription
             }
@@ -89,15 +106,21 @@ struct RootView: View {
                     onConversation: app.selectedTab == .conversation
                 )
             )
-            let rawFrame = callFrame(presentation, in: geometry)
+            let baseFrame = callFrame(presentation, in: geometry)
+            let resolvedPresentation = ResponsiveLayout.resolvePaneCallPresentation(
+                presentation,
+                paneSize: baseFrame.size
+            )
+            let rawFrame = callFrame(resolvedPresentation, in: geometry)
+            let effectivePresentation = resolvedPresentation
             let safe = windowSafeInsets
             // RootView's GeometryReader is inset by the safe area; the call's background
             // has to paint into that inset (status bar and Home indicator) instead of
             // stopping at the safe rectangle. Only the content is inset again.
             let frame = CGRect(
-                x: presentation.isPane ? rawFrame.minX : -safe.leading,
+                x: effectivePresentation.isPane ? rawFrame.minX : -safe.leading,
                 y: -safe.top,
-                width: presentation.isPane
+                width: effectivePresentation.isPane
                     ? rawFrame.width
                     : geometry.size.width + safe.leading + safe.trailing,
                 height: geometry.size.height + safe.top + safe.bottom
@@ -111,17 +134,27 @@ struct RootView: View {
             ZStack {
                 content(for: app)
                     .environment(app)
+                    .onAppear { uiLog.notice("pages content appeared") }
                 if app.call.isPresent, let character = app.call.character {
+                    if effectivePresentation.isPane {
+                        CallBackdropView(character: character)
+                            .environment(app)
+                            .frame(width: frame.width, height: frame.height)
+                            .offset(x: callX, y: callY)
+                            .opacity(app.call.isCollapsed ? 0 : 1)
+                            .allowsHitTesting(false)
+                            .zIndex(0.5)
+                    }
                     CallView(
                         character: character,
-                        presentation: presentation,
+                        presentation: effectivePresentation,
                         topInset: topInset,
                         bottomInset: bottomInset
                     )
                         .environment(app)
                         .ignoresSafeArea()
                         .frame(width: frame.width, height: frame.height)
-                        .modifier(CallLayerClip(enabled: presentation.isPane))
+                        .modifier(CallLayerClip(enabled: effectivePresentation.isPane))
                         .offset(
                             x: callX,
                             y: callY + (app.call.isCollapsed ? frame.height : 0)
@@ -150,7 +183,8 @@ struct RootView: View {
             }
             .coordinateSpace(.named("callLayerRoot"))
             .onPreferenceChange(CallPageFramePreferenceKey.self) { callPageFrame = $0 }
-            .onPreferenceChange(CallChatFramePreferenceKey.self) { callChatFrame = $0 }            .animation(
+            .onPreferenceChange(CallChatFramePreferenceKey.self) { callChatFrame = $0 }
+            .onPreferenceChange(CallRosterWidthPreferenceKey.self) { callRosterWidth = $0 }            .animation(
                 reduceMotion
                     ? nil
                     : .timingCurve(0.24, 1, 0.4, 1, duration: 0.41),
@@ -181,8 +215,20 @@ struct RootView: View {
             return full
         case .page:
             return callPageFrame ?? full
-        case .conversationPane:
-            return callChatFrame ?? callPageFrame ?? full
+        case .conversationPane, .phonePane:
+            // Derive the chat column from the page and the roster width: an iPad
+            // NavigationStack can report the whole page as its frame, which made the
+            // call pane cover the roster on a tall portrait window.
+            if let page = callPageFrame {
+                let roster = callRosterWidth ?? ResponsiveLayout.rosterDefaultWidth
+                return CGRect(
+                    x: page.minX + roster,
+                    y: page.minY,
+                    width: max(1, page.width - roster),
+                    height: page.height
+                )
+            }
+            return callChatFrame ?? full
         }
     }
 
@@ -194,9 +240,22 @@ struct RootView: View {
 
     /// The opening spinner fills the screen, so it is centred rather than squeezed into
     /// the top-left corner by the group's intrinsic size.
-    private var opening: some View {
-        ProgressView("正在打开…")
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    private func opening(_ app: AppModel) -> some View {
+        VStack(spacing: 10) {
+            ProgressView()
+            #if DEBUG
+            Text("正在打开…")
+            Text(app.startupStage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(String(format: "%.1fs", Date().timeIntervalSince(app.startupStartedAt)))
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.tertiary)
+            #else
+            Text("正在打开…")
+            #endif
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
 
@@ -204,7 +263,7 @@ struct RootView: View {
     private func content(for app: AppModel) -> some View {
         switch app.phase {
         case .loading:
-            opening
+            opening(app)
         case .needsContentBundle:
             ImportGuideView()
         case .ready:
@@ -244,6 +303,13 @@ struct CallPageFramePreferenceKey: PreferenceKey {
 struct CallChatFramePreferenceKey: PreferenceKey {
     static var defaultValue: CGRect?
     static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
+        if let next = nextValue() { value = next }
+    }
+}
+
+struct CallRosterWidthPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat?
+    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
         if let next = nextValue() { value = next }
     }
 }
