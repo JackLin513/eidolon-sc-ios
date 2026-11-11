@@ -5,9 +5,11 @@
 ## 现在在哪
 
 - App 已能独立运行：文字对话、通话、照片、朋友圈、立绘/换衣装、记忆与检索、搭话、酒吧、礼物/抽奖/成就、日历/周期/统计/用量、可选私有服务。现状以 README「现状与边界」为准。
-- **组件化 / 多运行时 / 多企划**：调研完成，尚未实现。
+- **S1 组件化 / 多运行时**：已完成（#133）。2D 五表面契约、可选 3D 适配器与运行时回退已落地。
+- **S2 iPad**：已完成（#134/#137/#138/#139）。三断点三栏、通话 pane/胶囊、真机与模拟器验收通过。
+- **macOS**：只保留平台化范围，完整支持拆到 #140；不阻塞 S3，也不承诺 Unity/UE。
+- **S3 多内容包 / 复合身份**：准备中（#135）。先做内容包 registry、`FranchiseID` / `CharacterKey` 与 v24 迁移。
 - **3D 立绘**：在本地分支 `feat/mltd-3d-stand`（未合入 main），资产管线在 `spike/mltd-3d-static`；先补 main 契约再 rebase，不直接合。
-- **iPad / macOS**：未开始。iPad 先做；macOS 先用 My Mac / Designed for iPad 做测试冒烟，不承诺 Unity/UE。
 
 ## 不变量（任何阶段都不破）
 
@@ -22,9 +24,9 @@
 | 阶段 | 目标 | 验收 |
 |---|---|---|
 | **M0 文档与 main 健康** | 本路线图、四篇调研、ADR-0034/0035 立项；main 干净 checkout 可构建（3D 内容/框架可选）；xcodeproj 与源码同步；仓库派生数据清理 | 无 Unity 产物可 `xcodegen` + 构建 + `swift test`；`git status` 干净；文档无死链 |
-| **M1 组件化扩展点 + MLTD 适配器** | Core `Presentation.swift`（5 类型 + `PackageHeader`）；App `PresentationRuntime`/`CharacterRenderer`/`RuntimeRegistry`；5 处构造点迁移；`project-3d.yml` 可选；3D 支线 rebase 成 `model3d` 内容包 | 2D 五表面行为不变；无 3D 构建通过；有 3D 产物时可选启用；失败回退 3D→2D→头像；oracle 六场景不变 |
-| **M2 iPad（+ Mac 冒烟）** | device family `"1,2"`、iPad 方向表、`sidebarAdaptable`、对话/设置两栏、容器尺寸、酒吧缩放；Mac 用 My Mac (Designed for iPhone) 冒烟 | iPad 竖横屏/分屏/1/3 全屏不裁切；酒吧不进强制横屏；Mac 上能启动、导入包、跑 2D 与网络 |
-| **M3 多企划并存（P0）** | `Content/<franchise>/current` + `ContentRegistry`；`FranchiseID`/`CharacterKey`；`conversation_participants`/`messages.speaker`；v24 迁移 | 两个企划包可同时安装；旧库回填正确；单角色 golden 不变；第二个纯文本内容包能 1:1 聊天 |
+| **M1 组件化扩展点 + MLTD 适配器（S1，完成）** | Core `Presentation.swift`（5 类型 + `PackageHeader`）；App `PresentationRuntime`/`CharacterRenderer`/`RuntimeRegistry`；5 处构造点迁移；`project-3d.yml` 可选；3D 支线 rebase 成 `model3d` 内容包 | 2D 五表面行为不变；无 3D 构建通过；有 3D 产物时可选启用；失败回退 3D→2D→头像；oracle 六场景不变 |
+| **M2 iPad（S2，完成；macOS 转 #140）** | device family `"1,2"`、iPad 方向表、`sidebarAdaptable`、对话/设置两栏、容器尺寸、酒吧缩放；Mac 用 My Mac (Designed for iPhone) 冒烟 | iPad 竖横屏/分屏/1/3 全屏不裁切；酒吧不进强制横屏；Mac 上能启动、导入包、跑 2D 与网络 |
+| **M3 多企划并存（P0，S3）** | `Content/<franchise>/current` + `ContentRegistry`；`FranchiseID`/`CharacterKey`；`conversation_participants`/`messages.speaker`；v24 迁移 | 两个企划包可同时安装；旧库回填正确；单角色 golden 不变；第二个纯文本内容包能 1:1 聊天 |
 | **M4 跨企划文本场景（P1）** | `universe` 内容包、`ScenePlan`/`SpeakerPolicy`/`ScenePlanner`/`ScenePrompt`、记忆作用域；双角色纯文本 fixture | 4 轮 A→B→A→B 说话人/归属/好感正确；单角色 oracle 不变；不碰 ensemble 引擎 |
 | **M5 多角色同屏（P2，可选）** | 先 `ZStack` 叠 N 个现有 `CharacterRenderer`（2D 优先） | 两个 2D 立绘同屏；暂停/恢复不互伤；3D 同台不承诺 |
 
