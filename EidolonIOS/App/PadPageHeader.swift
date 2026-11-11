@@ -41,7 +41,7 @@ extension PadPageLargeTitle where Trailing == EmptyView {
 struct PadBoundaryLine: View {
     var body: some View {
         Rectangle()
-            .fill(Color(.separator).opacity(0.55))
+            .fill(Color.primary.opacity(0.30))
             .frame(width: 0.5)
             .frame(maxHeight: .infinity)
             .allowsHitTesting(false)

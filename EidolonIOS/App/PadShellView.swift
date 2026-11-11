@@ -17,6 +17,7 @@ struct PadShellView: View {
         HStack(spacing: 0) {
             PadRail(app: app, width: railWidth)
                 .frame(width: railWidth)
+            PadBoundaryLine()
 
             page
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
