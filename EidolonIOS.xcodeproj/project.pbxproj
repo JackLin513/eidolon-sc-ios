@@ -129,6 +129,7 @@
 		E0F9B1FA2BA982860CDD2BC3 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A72BB12039666C937D7C04 /* RootView.swift */; };
 		E2CE98DD3BB86ABA51B920A4 /* Newtonsoft.Json.dll-resources.dat in Resources */ = {isa = PBXBuildFile; fileRef = AC2E2B7C200DBEE1B68378A9 /* Newtonsoft.Json.dll-resources.dat */; };
 		E2EE3E8C40ADA68473627FF6 /* ChatModelProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7508D45E23FF27B4AE122CC4 /* ChatModelProfile.swift */; };
+		EBC8CB3D63C4FABFAD6E6D0A /* StaticStandPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B4DF02DD2DE872922E1B01D /* StaticStandPreviewView.swift */; };
 		EF42004562B67CC87DFCF565 /* StandWebRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1AD0F6ABD451EB0C733277C /* StandWebRenderer.swift */; };
 		F0779B69941B95753CFA7C62 /* ObjCExceptionCatcher.m in Sources */ = {isa = PBXBuildFile; fileRef = BF8FFBE106A62A61CD0A8867 /* ObjCExceptionCatcher.m */; };
 		F6461ECD032B95DDDAF98B4B /* TabBarHides.swift in Sources */ = {isa = PBXBuildFile; fileRef = 957D8B0F7007CD039844150D /* TabBarHides.swift */; };
@@ -199,6 +200,7 @@
 		22B001CEBA8E13B70A91DA53 /* BarDoor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarDoor.swift; sourceTree = "<group>"; };
 		25EADDCE295E792E851FB175 /* ServerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerStore.swift; sourceTree = "<group>"; };
 		285B6FE593C90609C404D1F5 /* resources.assets */ = {isa = PBXFileReference; path = resources.assets; sourceTree = "<group>"; };
+		2B4DF02DD2DE872922E1B01D /* StaticStandPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaticStandPreviewView.swift; sourceTree = "<group>"; };
 		2BC1C76197EA58E3C032BD1E /* WelcomePage */ = {isa = PBXFileReference; lastKnownFileType = folder; name = WelcomePage; path = EidolonIOS/Resources/WelcomePage; sourceTree = SOURCE_ROOT; };
 		2CCFC142CC2535CA115A8402 /* ChatSelectionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSelectionUITests.swift; sourceTree = "<group>"; };
 		31FDC61716128573E91E0E66 /* connect.m4a */ = {isa = PBXFileReference; path = connect.m4a; sourceTree = "<group>"; };
@@ -693,6 +695,7 @@
 				74AACADEE8C7E3D7A4110BBE /* StandSchemeHandler.swift */,
 				F51D53D2BDB3163C8344025C /* StandThumbnails.swift */,
 				B1AD0F6ABD451EB0C733277C /* StandWebRenderer.swift */,
+				2B4DF02DD2DE872922E1B01D /* StaticStandPreviewView.swift */,
 			);
 			path = Stand;
 			sourceTree = "<group>";
@@ -1067,6 +1070,7 @@
 				FE5F343DF7059BBB3A98E62E /* StandSchemeHandler.swift in Sources */,
 				3B581C7316F3F7567E6CF0E1 /* StandThumbnails.swift in Sources */,
 				EF42004562B67CC87DFCF565 /* StandWebRenderer.swift in Sources */,
+				EBC8CB3D63C4FABFAD6E6D0A /* StaticStandPreviewView.swift in Sources */,
 				66655FDACC9EE002B2A43EEC /* StatsView.swift in Sources */,
 				F6461ECD032B95DDDAF98B4B /* TabBarHides.swift in Sources */,
 				C7D9B29CBBADC895872095A7 /* TexturedAudio.swift in Sources */,

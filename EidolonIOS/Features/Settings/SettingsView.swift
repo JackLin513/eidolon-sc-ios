@@ -36,6 +36,7 @@ struct SettingsView: View {
     @State private var showMemories = false
     @State private var showTraces = false
     @State private var showStandPreview = false
+    @State private var showStaticStandPreview = false
     @State private var standIndexURL: URL?
     @State private var confirmingPackageCleanup = false
     @State private var confirmingCalendarDelete = false
@@ -77,9 +78,65 @@ struct SettingsView: View {
                 }
                 .navigationSplitViewStyle(.balanced)
             } else {
-                settingsStack(category: nil)
+                phoneSettings
             }
         }
+    }
+
+    /// The compact phone is a category list that drills into one detail form. The iPad
+    /// keeps its sidebar; both render the same `settingsForm`.
+    private var phoneSettings: some View {
+        NavigationStack {
+            List {
+                ForEach(SettingsCategory.groups, id: \.title) { group in
+                    Section(group.title) {
+                        ForEach(group.categories) { category in
+                            NavigationLink {
+                                phoneSettingsDetail(category)
+                            } label: {
+                                Label(category.title, systemImage: category.symbol)
+                            }
+                            .accessibilityIdentifier("settings.category.\(category.rawValue)")
+                        }
+                    }
+                }
+            }
+            .navigationTitle("设置")
+        }
+        .task { await load() }
+    }
+
+    private func phoneSettingsDetail(_ category: SettingsCategory) -> some View {
+        settingsForm(category: category)
+            .navigationTitle(category.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("保存") { Task { await save() } }
+                        .fontWeight(.semibold)
+                }
+            }
+            .navigationDestination(isPresented: $showMemories) {
+                MemoryListView()
+            }
+            .navigationDestination(isPresented: $showTraces) {
+                TraceListView()
+            }
+            .navigationDestination(isPresented: $showStandPreview) {
+                StandPreviewView()
+            }
+            .navigationDestination(isPresented: $showStaticStandPreview) {
+                StaticStandPreviewView()
+            }
+            .onAppear {
+                #if DEBUG
+                if let destinations = app.consumeDebugSettingsDestinations() {
+                    if destinations.memories { showMemories = true }
+                    if destinations.traces { showTraces = true }
+                    if destinations.standPreview { showStandPreview = true }
+                }
+                #endif
+            }
     }
 
     /// One category on the iPad; nil means the phone's full form.
@@ -373,6 +430,14 @@ Section {
                         } label: {
                             LabeledContent("立绘预览", value: "⇢")
                         }
+                        if app.staticStandInfo != nil {
+                            Button {
+                                showStaticStandPreview = true
+                            } label: {
+                                LabeledContent("静态立绘预览", value: "⇢")
+                            }
+                            .accessibilityIdentifier("settings.staticStandPreview")
+                        }
                     } header: {
                         Text("立绘")
                     } footer: {
@@ -427,6 +492,12 @@ Section("内容包") {
                             LabeledContent("向量模型", value: info.embeddingModel)
                             LabeledContent("向量维度", value: "\(info.embeddingDimensions)")
                             LabeledContent("内容 schema", value: "\(info.contentSchemaVersion)")
+                            LabeledContent("内容族", value: info.contentSetID ?? "legacy（未绑定）")
+                            if let staticStand = app.staticStandInfo {
+                                LabeledContent("静态立绘", value: staticStand.contentSetID ?? "未绑定")
+                            } else {
+                                LabeledContent("静态立绘", value: "未安装")
+                            }
                             LabeledContent("安装时间", value: info.installedAt)
                         } else {
                             Text("还没有导入内容包")
@@ -499,6 +570,9 @@ Section {
                 }
                 .navigationDestination(isPresented: $showStandPreview) {
                     StandPreviewView()
+                }
+                .navigationDestination(isPresented: $showStaticStandPreview) {
+                    StaticStandPreviewView()
                 }
                 .task { await app.loadMemories() }
                 .onAppear {

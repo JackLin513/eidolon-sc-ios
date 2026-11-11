@@ -50,7 +50,8 @@ struct StandBundleInstaller {
             installedAt: ISO8601DateFormatter().string(from: Date()),
             characterCount: manifest.characters.count,
             outfitCount: outfitCount,
-            mode: manifest.mode
+            mode: manifest.mode,
+            contentSetID: manifest.contentSetID
         )
     }
 
@@ -89,6 +90,19 @@ struct StandBundleInstaller {
     }
 
     // MARK: - Validation
+
+    static func readManifest(from bundleURL: URL) throws -> StandManifest {
+        guard let archive = try? Archive(url: bundleURL, accessMode: .read),
+              let entry = archive.first(where: { $0.path == "manifest.json" })
+        else { throw EidolonError.unreadableBundle("不是有效的 zip，缺少 manifest.json") }
+        var data = Data()
+        _ = try archive.extract(entry) { data.append($0) }
+        do {
+            return try JSONDecoder().decode(StandManifest.self, from: data)
+        } catch {
+            throw EidolonError.invalidBundle("manifest.json 无法解析：\(error.localizedDescription)")
+        }
+    }
 
     private func readManifest(in directory: URL) throws -> StandManifest {
         let url = directory.appendingPathComponent("manifest.json")

@@ -40,6 +40,9 @@ public struct ContentManifest: Codable, Sendable, Hashable {
     /// The engine family (`t-script`, `spine`, `unity`, `webgl-three`, ...). It is
     /// deliberately separate from franchise: one engine can host several works.
     public var engineFamily: String? = nil
+    /// Stable content family shared with a stand package. New packages set it; old
+    /// packages remain readable and are paired as legacy.
+    public var contentSetID: String? = nil
     public var contentSchemaVersion: Int
     public var createdAt: String
     public var embedding: Embedding
@@ -52,6 +55,7 @@ public struct ContentManifest: Codable, Sendable, Hashable {
         case kind
         case franchise
         case engineFamily
+        case contentSetID = "contentSetID"
         case contentSchemaVersion = "content_schema_version"
         case createdAt = "created_at"
         case embedding
@@ -68,6 +72,8 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
     public var franchise: String = "shiny"
     /// The package kind; older records read as `content`.
     public var kind: String = ContentKind.content.rawValue
+    /// Stable content family for stand binding; nil for legacy packages.
+    public var contentSetID: String? = nil
     public var contentSchemaVersion: Int
     public var installedAt: String
     public var embeddingModel: String
@@ -86,6 +92,7 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
         formatVersion: Int,
         franchise: String = "shiny",
         kind: String = ContentKind.content.rawValue,
+        contentSetID: String? = nil,
         contentSchemaVersion: Int,
         installedAt: String,
         embeddingModel: String,
@@ -100,6 +107,7 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
         self.formatVersion = formatVersion
         self.franchise = franchise
         self.kind = kind
+        self.contentSetID = contentSetID
         self.contentSchemaVersion = contentSchemaVersion
         self.installedAt = installedAt
         self.embeddingModel = embeddingModel
@@ -116,6 +124,7 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
         case formatVersion
         case franchise
         case kind
+        case contentSetID
         case contentSchemaVersion
         case installedAt
         case embeddingModel
@@ -136,6 +145,7 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
             ?? "shiny"
         kind = try container.decodeIfPresent(String.self, forKey: .kind)
             ?? ContentKind.content.rawValue
+        contentSetID = try container.decodeIfPresent(String.self, forKey: .contentSetID)
         contentSchemaVersion = try container.decode(Int.self, forKey: .contentSchemaVersion)
         installedAt = try container.decode(String.self, forKey: .installedAt)
         embeddingModel = try container.decode(String.self, forKey: .embeddingModel)

@@ -39,6 +39,8 @@ public struct StandManifest: Codable, Sendable, Hashable {
     public var formatVersion: Int
     public var kind: Kind
     public var mode: Mode
+    /// Content family this stand belongs to; optional for legacy Spine packages.
+    public var contentSetID: String? = nil
     public var createdAt: String
     public var characters: [Character]
     public var files: [String: FileRecord]
@@ -47,6 +49,7 @@ public struct StandManifest: Codable, Sendable, Hashable {
         formatVersion: Int = StandManifest.supportedFormatVersion,
         kind: Kind = .stand,
         mode: Mode,
+        contentSetID: String? = nil,
         createdAt: String,
         characters: [Character],
         files: [String: FileRecord]
@@ -54,6 +57,7 @@ public struct StandManifest: Codable, Sendable, Hashable {
         self.formatVersion = formatVersion
         self.kind = kind
         self.mode = mode
+        self.contentSetID = contentSetID
         self.createdAt = createdAt
         self.characters = characters
         self.files = files
@@ -63,6 +67,7 @@ public struct StandManifest: Codable, Sendable, Hashable {
         case formatVersion = "format_version"
         case kind
         case mode
+        case contentSetID
         case createdAt = "created_at"
         case characters
         case files
@@ -77,18 +82,21 @@ public struct StandBundleInfo: Codable, Sendable, Hashable {
     public var outfitCount: Int
     /// `full` or `delta`; nil for an install record written before this was kept.
     public var mode: StandManifest.Mode?
+    public var contentSetID: String?
 
     public init(
         formatVersion: Int,
         installedAt: String,
         characterCount: Int,
         outfitCount: Int,
-        mode: StandManifest.Mode? = nil
+        mode: StandManifest.Mode? = nil,
+        contentSetID: String? = nil
     ) {
         self.formatVersion = formatVersion
         self.installedAt = installedAt
         self.characterCount = characterCount
         self.outfitCount = outfitCount
         self.mode = mode
+        self.contentSetID = contentSetID
     }
 }

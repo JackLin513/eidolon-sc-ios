@@ -19,6 +19,8 @@ from pathlib import Path
 
 DEFAULT_SOURCE = Path.home() / "Developer/IdeaProjects/Galgame support/sakura"
 DEFAULT_OUT = Path("build/eidolon-totsulover-sakura.eidolonpkg")
+DEFAULT_STAND_OUT = Path("build/eidolon-totsulover-sakura-stand.eidolonpkg")
+CONTENT_SET_ID = "totsulover.sakura.v1"
 FRANCHISE = "totsulover"
 CHARACTER = "sakura"
 EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-0.6B"
@@ -115,24 +117,6 @@ def write_files(source: Path, staging: Path) -> None:
     (staging / "characters/avatars").mkdir(parents=True, exist_ok=True)
     # The default portrait is the app's avatar; the rest are kept for a later stand pack.
     (staging / "characters/avatars/sakura.png").write_bytes((source / "portraits/A020.png").read_bytes())
-    (staging / "characters/expressions").mkdir(parents=True, exist_ok=True)
-    expressions = {
-        "calm": "A020.png",
-        "angry": "A140.png",
-        "shy": "A081.png",
-        "thinking": "I180.png",
-        "sad": "A070.png",
-        "surprised": "A150.png",
-    }
-    raw_expressions = {}
-    for name, filename in expressions.items():
-        source_file = source / "portraits" / filename
-        if source_file.exists():
-            (staging / "characters/expressions" / filename).parent.mkdir(parents=True, exist_ok=True)
-            (staging / "characters/expressions" / filename).write_bytes(source_file.read_bytes())
-            raw_expressions[name] = f"characters/expressions/{filename}"
-    for portrait in portraits:
-        (staging / "characters/expressions" / portrait.name).write_bytes(portrait.read_bytes())
 
     characters = [
         {
@@ -154,7 +138,6 @@ def write_files(source: Path, staging: Path) -> None:
             "photo_tag": "yono sakura",
             "photo_appearance": "long silver hair, light blue eyes, white school uniform",
             "place_likes": ["cafe", "park"],
-            "expressions": raw_expressions,
         }
     ]
     (staging / "characters/characters.json").write_text(
@@ -232,6 +215,7 @@ def manifest(staging: Path) -> dict:
         "kind": "content",
         "franchise": FRANCHISE,
         "engineFamily": "t-script",
+        "contentSetID": CONTENT_SET_ID,
         "content_schema_version": 1,
         "created_at": "2026-11-11T00:00:00Z",
         "embedding": {"model": EMBEDDING_MODEL, "dimensions": EMBEDDING_DIM},
@@ -250,10 +234,68 @@ def manifest(staging: Path) -> dict:
     }
 
 
+def write_static_stand(source: Path, staging: Path) -> None:
+    images = staging / "images"
+    images.mkdir(parents=True, exist_ok=True)
+    portraits = sorted((source / "portraits").glob("*.png"))
+    if not portraits:
+        raise SystemExit(f"no portraits under {source / 'portraits'}")
+    for portrait in portraits:
+        (images / portrait.name).write_bytes(portrait.read_bytes())
+    expressions = {
+        "calm": "A020.png",
+        "angry": "A140.png",
+        "shy": "A081.png",
+        "thinking": "I180.png",
+        "sad": "A070.png",
+        "surprised": "A150.png",
+    }
+    files = {}
+    for path in sorted(staging.rglob("*")):
+        if not path.is_file() or path.name == "manifest.json":
+            continue
+        rel = path.relative_to(staging).as_posix()
+        data = path.read_bytes()
+        files[rel] = {"size": len(data), "crc32": crc32_hex(data)}
+    manifest = {
+        "format_version": 1,
+        "kind": "stand",
+        "mode": "full",
+        "renderer": "static",
+        "franchise": FRANCHISE,
+        "contentSetID": CONTENT_SET_ID,
+        "created_at": "2026-11-12T00:00:00Z",
+        "characters": [
+            {
+                "id": CHARACTER,
+                "characterKey": f"{FRANCHISE}:{CHARACTER}",
+                "expressions": {
+                    emotion: f"images/{filename}"
+                    for emotion, filename in expressions.items()
+                    if (images / filename).exists()
+                },
+            }
+        ],
+        "files": files,
+    }
+    (staging / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def zip_directory(staging: Path, output: Path) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for path in sorted(staging.rglob("*")):
+            if path.is_file():
+                zf.write(path, path.relative_to(staging).as_posix())
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--stand-out", type=Path, default=DEFAULT_STAND_OUT)
     args = parser.parse_args()
     source = args.source
     if not (source / "character.json").exists() or not (source / "card.md").exists():
@@ -271,16 +313,19 @@ def main() -> None:
         (staging / "manifest.json").write_text(
             json.dumps(manifest(staging), ensure_ascii=False, indent=2), encoding="utf-8"
         )
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(args.out, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            for path in sorted(staging.rglob("*")):
-                if path.is_file():
-                    zf.write(path, path.relative_to(staging).as_posix())
+        zip_directory(staging, args.out)
+        import shutil
+        shutil.rmtree(staging)
+        staging.mkdir(parents=True)
+        write_static_stand(source, staging)
+        zip_directory(staging, args.stand_out)
     finally:
         import shutil
         shutil.rmtree(staging, ignore_errors=True)
     print(args.out)
     print(f"{args.out.stat().st_size} bytes")
+    print(args.stand_out)
+    print(f"{args.stand_out.stat().st_size} bytes")
 
 
 if __name__ == "__main__":

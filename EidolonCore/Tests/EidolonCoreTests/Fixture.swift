@@ -24,6 +24,7 @@ enum Fixture {
         var franchise: String? = nil
         var kind: String? = nil
         var characterKeys: [String]? = nil
+        var contentSetID: String? = nil
         var schemaVersion = 1
         var model = "test-embed"
         var dimensions = 4
@@ -576,6 +577,7 @@ enum Fixture {
         )
         manifest.franchise = options.franchise
         manifest.kind = options.kind
+        manifest.contentSetID = options.contentSetID
         return manifest
     }
 

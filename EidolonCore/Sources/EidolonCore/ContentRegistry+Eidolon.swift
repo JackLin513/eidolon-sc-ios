@@ -206,3 +206,68 @@ extension Eidolon {
         location.contentRoot.appendingPathComponent(franchise, isDirectory: true)
     }
 }
+
+extension Eidolon {
+    /// Install a static (PNG-per-expression) stand under the content's franchise and bind
+    /// it to the content's `contentSetID` when both packages declare one.
+    @discardableResult
+    public func installStaticStand(
+        bundleAt url: URL,
+        franchise: String? = nil,
+        progress: ((ImportProgress) -> Void)? = nil
+    ) throws -> StaticStandBundleInfo {
+        try loadContentPackagesIfNeeded()
+        let franchise = ContentRegistryState.normalizedFranchise(franchise ?? activeContentFranchise)
+        guard let content = contentPackages[franchise] else {
+            throw EidolonError.contentNotInstalled
+        }
+        let installer = StaticStandBundleInstaller(
+            contentRoot: packageRoot(franchise),
+            fileManager: .default
+        )
+        let info = try installer.install(url, progress: progress)
+        guard info.franchise == franchise else {
+            throw EidolonError.invalidBundle("立绘包 franchise 为 \(info.franchise)，当前内容包为 \(franchise)")
+        }
+        if let contentSetID = content.contentSetID, !contentSetID.isEmpty,
+           let standSetID = info.contentSetID, !standSetID.isEmpty,
+           contentSetID != standSetID {
+            throw EidolonError.invalidBundle(
+                "立绘包绑定 \(standSetID)，当前内容包是 \(contentSetID)"
+            )
+        }
+        let data = try JSONEncoder().encode(info)
+        try saveAppState("static-stand.bundle.\(franchise)", String(decoding: data, as: UTF8.self))
+        return info
+    }
+
+    public func installedStaticStandInfo(franchise: String? = nil) throws -> StaticStandBundleInfo? {
+        try loadContentPackagesIfNeeded()
+        let franchise = ContentRegistryState.normalizedFranchise(franchise ?? activeContentFranchise)
+        guard let stored = try appState("static-stand.bundle.\(franchise)"),
+              let data = stored.data(using: .utf8)
+        else { return nil }
+        return try? JSONDecoder().decode(StaticStandBundleInfo.self, from: data)
+    }
+
+    /// Expression image paths for one character, read from the installed static stand.
+    /// The preview uses this directly; no runtime protocol is needed for the first test.
+    public func staticStandExpressions(
+        characterID: String,
+        franchise: String? = nil
+    ) throws -> [String: URL]? {
+        try loadContentPackagesIfNeeded()
+        let franchise = ContentRegistryState.normalizedFranchise(franchise ?? activeContentFranchise)
+        let directory = packageRoot(franchise).appendingPathComponent("static-stand", isDirectory: true)
+        let manifestURL = directory.appendingPathComponent("manifest.json")
+        guard let data = try? Data(contentsOf: manifestURL),
+              let manifest = try? JSONDecoder().decode(StaticStandManifest.self, from: data),
+              let character = manifest.characters.first(where: { $0.id == characterID })
+        else { return nil }
+        var result: [String: URL] = [:]
+        for (emotion, path) in character.expressions {
+            result[emotion] = directory.appendingPathComponent(path)
+        }
+        return result
+    }
+}

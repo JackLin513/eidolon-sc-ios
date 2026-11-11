@@ -56,6 +56,9 @@ struct ContentBundleInstaller {
 
         let info = ContentBundleInfo(
             formatVersion: manifest.formatVersion,
+            franchise: manifest.franchise ?? "shiny",
+            kind: manifest.kind ?? ContentKind.content.rawValue,
+            contentSetID: manifest.contentSetID,
             contentSchemaVersion: manifest.contentSchemaVersion,
             installedAt: ISO8601DateFormatter().string(from: Date()),
             embeddingModel: manifest.embedding.model,

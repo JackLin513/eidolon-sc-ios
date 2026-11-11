@@ -37,6 +37,8 @@ final class AppModel {
     /// active franchise but deliberately leaves the user database un-migrated.
     private(set) var contentPackages: [InstalledContentPackage] = []
     private(set) var standInfo: StandBundleInfo?
+    /// The image-based stand paired with the active content package, if imported.
+    private(set) var staticStandInfo: StaticStandBundleInfo?
     private(set) var barInfo: BarBundleInfo?
     /// How the producer wants her drawn (ADR-0035): auto prefers 3D when this build and
     /// the installed package provide it; 2D is the safe default and the fallback.
@@ -1285,6 +1287,7 @@ final class AppModel {
         await importStandBundleForDebuggingIfRequested()
         await importBarBundleForDebuggingIfRequested()
         await importModel3DBundleForDebuggingIfRequested()
+        await importStaticStandBundleForDebuggingIfRequested()
         await activateDebugContentFranchiseIfRequested()
         await applyDebugGiftState()
         await applyDebugUsageState()
@@ -1759,6 +1762,7 @@ final class AppModel {
             try await core.activateContent(franchise: franchise)
             bundleInfo = try await core.installedContentInfo()
             contentPackages = await core.installedContentPackages
+            staticStandInfo = try await core.installedStaticStandInfo()
             conversationPath = NavigationPath()
             padConversationID = nil
             try await load()
@@ -1800,6 +1804,33 @@ final class AppModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func importStaticStandBundleForDebuggingIfRequested() async {
+        guard let path = ProcessInfo.processInfo.environment["EIDOLON_IMPORT_STATIC_STAND_BUNDLE"] else {
+            debugLog("no static stand env")
+            return
+        }
+        debugLog("static stand path: \(path)")
+        let url = path.hasPrefix("/")
+            ? URL(fileURLWithPath: path)
+            : URL.documentsDirectory.appending(path: path)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            errorMessage = "调试用的静态立绘包不存在：\(path)"
+            return
+        }
+        do {
+            let franchise = ProcessInfo.processInfo.environment["EIDOLON_IMPORT_STAND_FRANCHISE"]
+            staticStandInfo = try await core.installStaticStand(bundleAt: url, franchise: franchise)
+            debugLog("static stand imported: \(String(describing: staticStandInfo))")
+        } catch {
+            debugLog("static stand import failed: \(error)")
+            errorMessage = "静态立绘包导入失败：\(error.localizedDescription)"
+        }
+    }
+
+    func staticStandExpressions(characterID: String) async -> [String: URL]? {
+        try? await core.staticStandExpressions(characterID: characterID)
     }
 
     private func activateDebugContentFranchiseIfRequested() async {
@@ -2144,6 +2175,7 @@ final class AppModel {
         mark("载入:立绘包信息")
         #endif
         standInfo = try await core.installedStandInfo()
+        staticStandInfo = try await core.installedStaticStandInfo()
         await loadModel3D()
         #if DEBUG
         mark("载入:酒吧包信息")

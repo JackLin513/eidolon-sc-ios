@@ -110,6 +110,13 @@ public actor Eidolon {
         bundleAt url: URL,
         progress: ((ImportProgress) -> Void)? = nil
     ) throws -> StandBundleInfo {
+        try loadContentPackagesIfNeeded()
+        let manifest = try StandBundleInstaller.readManifest(from: url)
+        if let contentSetID = contentPackages[activeContentFranchise]?.contentSetID,
+           let standSetID = manifest.contentSetID,
+           contentSetID != standSetID {
+            throw EidolonError.invalidBundle("立绘包绑定 \(standSetID)，当前内容包是 \(contentSetID)")
+        }
         let installer = StandBundleInstaller(
             contentRoot: location.contentRoot,
             fileManager: .default
