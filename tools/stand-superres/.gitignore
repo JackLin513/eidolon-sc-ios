@@ -1,0 +1,5 @@
+# Extracted stand assets and upscaled samples never go into git.
+out/
+.tools/
+.venv/
+__pycache__/
