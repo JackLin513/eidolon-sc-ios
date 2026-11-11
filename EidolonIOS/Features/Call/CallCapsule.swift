@@ -78,10 +78,9 @@ struct CallCapsule: View {
         HStack(spacing: 8) {
             ZStack(alignment: .bottomTrailing) {
                 avatar(character)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 36, height: 36)
                     .clipShape(Circle())
-                Circle()
-                    .fill(.green)
+                statusDot
                     .frame(width: 9, height: 9)
                     .overlay(Circle().stroke(.white, lineWidth: 1.5))
                     .offset(x: 2, y: 1)
@@ -118,6 +117,20 @@ struct CallCapsule: View {
                         .font(.headline)
                         .foregroundStyle(.white)
                 }
+        }
+    }
+
+    @ViewBuilder
+    private var statusDot: some View {
+        if app.call.connectedAt == nil, !reduceMotion {
+            TimelineView(.periodic(from: .now, by: 0.8)) { context in
+                let tick = Int(context.date.timeIntervalSinceReferenceDate / 0.8) % 2
+                Circle()
+                    .fill(.green)
+                    .opacity(tick == 0 ? 0.35 : 1)
+            }
+        } else {
+            Circle().fill(.green)
         }
     }
 

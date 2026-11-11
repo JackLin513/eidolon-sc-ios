@@ -101,16 +101,6 @@ final class ResponsiveLayoutTests: XCTestCase {
         XCTAssertEqual(ResponsiveLayout.clampedRosterWidth(320, availableWidth: 1133, hasSelection: false), 320)
     }
 
-    func testCollapsedCallTravelsPastTheContainerIncludingSafeArea() {
-        XCTAssertEqual(
-            ResponsiveLayout.callCollapsedOffset(containerHeight: 800, safeTop: 24, safeBottom: 20),
-            844
-        )
-        XCTAssertEqual(
-            ResponsiveLayout.callCollapsedOffset(containerHeight: 500, safeTop: 0, safeBottom: 0),
-            500
-        )
-    }
 
     func testCallPresentationKeepsTheRosterOnAWideConversation() {
         XCTAssertEqual(

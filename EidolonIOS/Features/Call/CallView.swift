@@ -109,7 +109,9 @@ struct CallView: View {
         // Only the open layer is dark. Folded away, it must not drag the pages behind it
         // into dark mode: the tab pages keep the system's appearance, and the call bar is
         // dark on its own (spec #46).
-        .preferredColorScheme(call.layer == .collapsed ? nil : .dark)
+        .preferredColorScheme(
+            presentation == .fullScreen && call.layer != .collapsed ? .dark : nil
+        )
         .fullScreenCover(item: $viewingPhoto) { photo in
             PhotoViewer(id: photo.id)
         }

@@ -113,6 +113,12 @@ struct BarRoomView: View {
                 .accessibilityIdentifier("bar.rotate")
             }
         }
+        .overlay(alignment: .top) {
+            CallBar(returnsToConversation: false)
+                .onChange(of: app.call.layer) { _, layer in
+                    if layer == .expanded { dismiss() }
+                }
+        }
         .ignoresSafeArea()
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)

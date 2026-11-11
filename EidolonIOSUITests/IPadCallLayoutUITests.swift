@@ -26,8 +26,8 @@ final class IPadCallLayoutUITests: XCTestCase {
 
     private var width: CGFloat { app.windows.firstMatch.frame.width }
 
-    private func attach(_ name: String) {
-        Thread.sleep(forTimeInterval: 8.0)
+    private func attach(_ name: String, settle: TimeInterval = 0.6) {
+        Thread.sleep(forTimeInterval: settle)
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         shot.name = name
         shot.lifetime = .keepAlways
@@ -61,7 +61,7 @@ final class IPadCallLayoutUITests: XCTestCase {
         )
         XCTAssertLessThan(call.width, width - 280, "the call is still full width")
         XCTAssertTrue(app.buttons["pad.tab.conversation"].exists, "the rail disappeared")
-        attach("call-wide-pane")
+        attach("call-wide-pane", settle: 8)
     }
 
     func testWideCallOnAnotherTabLeavesTheRail() throws {
@@ -111,6 +111,29 @@ final class IPadCallLayoutUITests: XCTestCase {
         XCTAssertTrue(app.buttons["call.hangUp"].waitForExistence(timeout: 5), "call did not expand")
     }
 
+
+    func testRotatingBetweenWideAndMediumKeepsTheCall() throws {
+        launch()
+        let layer = app.descendants(matching: .any)["call.layer"].firstMatch
+        let wideFrame = layer.frame
+        XCUIDevice.shared.orientation = .portrait
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline {
+            let w = app.windows.firstMatch.frame.width
+            if w < wideFrame.width || w != app.windows.firstMatch.frame.height {
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        XCTAssertTrue(app.buttons["call.hangUp"].waitForExistence(timeout: 5), "call did not survive rotation")
+        let frame = layer.frame
+        let width = app.windows.firstMatch.frame.width
+        if width < 960 {
+            XCTAssertEqual(frame.width, width, accuracy: 1, "medium call is not full width after rotation")
+        } else {
+            XCTAssertLessThan(frame.width, width - 280, "wide call lost its pane after rotation")
+        }
+    }
     func testMediumWidthUsesTheFullScreenCall() throws {
         XCUIDevice.shared.orientation = .portrait
         launch()
@@ -121,6 +144,6 @@ final class IPadCallLayoutUITests: XCTestCase {
         )
         let layer = app.descendants(matching: .any)["call.layer"].firstMatch
         XCTAssertEqual(layer.frame.width, width, accuracy: 1, "medium call is not full width")
-        attach("call-fullscreen-medium")
+        attach("call-fullscreen-medium", settle: 8)
     }
 }

@@ -178,15 +178,6 @@ struct RootView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// The layer paints past the safe area, so it has to clear the whole screen, not just
-    /// the part the pages are laid out in.
-    private func callOffset(_ geometry: GeometryProxy) -> CGFloat {
-        ResponsiveLayout.callCollapsedOffset(
-            containerHeight: geometry.size.height,
-            safeTop: geometry.safeAreaInsets.top,
-            safeBottom: geometry.safeAreaInsets.bottom
-        )
-    }
 
     @ViewBuilder
     private func content(for app: AppModel) -> some View {

@@ -78,6 +78,7 @@
 		95A9B4AE1A48E3E818365E7A /* ChatModelProfilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13DA6F636E010113BC8F3B10 /* ChatModelProfilesView.swift */; };
 		98333F217ECF9D6DE64CAABD /* mscorlib.dll-resources.dat in Resources */ = {isa = PBXBuildFile; fileRef = 05277436D5DE6B03371C8FFD /* mscorlib.dll-resources.dat */; };
 		99CF59ED1AC1CDDA579652C8 /* BarDoor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22B001CEBA8E13B70A91DA53 /* BarDoor.swift */; };
+		9A5CB0693E72A1A500267358 /* CallBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D6B5CE0ADDE78E895BA3509 /* CallBar.swift */; };
 		9C1DDAAE28F34ADE34D50C28 /* CallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A530040A28709F9772A80A94 /* CallView.swift */; };
 		9CAC2EA1317007EA0713B384 /* IPadCallLayoutUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1455C4FC60895CD0C8697546 /* IPadCallLayoutUITests.swift */; };
 		9D20EB7BB99D127FE839428F /* Welcome in Resources */ = {isa = PBXBuildFile; fileRef = 1CF86EEEA308C3E11B958AE8 /* Welcome */; };
@@ -219,6 +220,7 @@
 		4472CA53E92E225069B1D652 /* FishSynthesis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FishSynthesis.swift; sourceTree = "<group>"; };
 		48F47E892DE490E8FC25FBAE /* EnvImportPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvImportPreviewView.swift; sourceTree = "<group>"; };
 		4AB451726D31E16340EB84E2 /* APISettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APISettingsUITests.swift; sourceTree = "<group>"; };
+		4D6B5CE0ADDE78E895BA3509 /* CallBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallBar.swift; sourceTree = "<group>"; };
 		502579B7DFF941BAC28ADE49 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		50E17776AF83ACD8BF3E62A1 /* AdminView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminView.swift; sourceTree = "<group>"; };
 		54B11631789B9A8BDAE83193 /* stand-player.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "stand-player.js"; sourceTree = "<group>"; };
@@ -471,6 +473,7 @@
 		625C6D73570D8E7071EBD5D4 /* Call */ = {
 			isa = PBXGroup;
 			children = (
+				4D6B5CE0ADDE78E895BA3509 /* CallBar.swift */,
 				D711FD31C5B313139D0C8F05 /* CallCapsule.swift */,
 				5CFD4688849D1738F874DEB1 /* CallController.swift */,
 				A530040A28709F9772A80A94 /* CallView.swift */,
@@ -1009,6 +1012,7 @@
 				6B62B159421858FEDF362008 /* BundledModel3D.swift in Sources */,
 				3ACEA71814B49E10B2D97C65 /* CalendarExportController.swift in Sources */,
 				18C6C6CFCBBB69A854EB81E9 /* CalendarView.swift in Sources */,
+				9A5CB0693E72A1A500267358 /* CallBar.swift in Sources */,
 				6E84F74271B94CAF0E09EA73 /* CallCapsule.swift in Sources */,
 				4712F704044E74983A1AF649 /* CallController.swift in Sources */,
 				BBCD2E47044DFC5DAB92ED57 /* CallSettingsError.swift in Sources */,

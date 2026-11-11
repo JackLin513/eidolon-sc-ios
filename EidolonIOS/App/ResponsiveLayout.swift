@@ -199,12 +199,6 @@ enum ResponsiveLayout {
 
     // MARK: Generic
 
-    /// How far the folded call layer sits below its container. The layer paints past the
-    /// safe area, so its travel is the container plus both insets.
-    static func callCollapsedOffset(containerHeight: CGFloat, safeTop: CGFloat, safeBottom: CGFloat) -> CGFloat {
-        containerHeight + safeTop + safeBottom
-    }
-
     // MARK: Call presentation
 
     static func callPresentation(
