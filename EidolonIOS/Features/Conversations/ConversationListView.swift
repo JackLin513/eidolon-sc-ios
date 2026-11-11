@@ -236,12 +236,6 @@ struct ConversationListView: View {
         } message: {
             Text(app.errorMessage ?? "")
         }
-
-        .overlay(alignment: .top) {
-            if app.conversationPath.isEmpty, app.padConversationID == nil {
-                CallBar()
-            }
-        }
     }
 
     private var filtered: [CharacterConfig] {

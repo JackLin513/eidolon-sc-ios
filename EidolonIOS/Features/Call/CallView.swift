@@ -9,6 +9,9 @@ import UIKit
 /// and drives her stand from the same events (`CallStandDirector`).
 struct CallView: View {
     let character: CharacterConfig
+    /// How S2.3/S2.2 host this layer. The view itself never decides whether it is a
+    /// full-screen layer or a pane; the shell passes that in.
+    let presentation: CallPresentation
 
     @Environment(AppModel.self) private var app
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -189,7 +192,18 @@ struct CallView: View {
     /// (upstream `endCard`).
     private var canRedial: Bool { call.canRedial }
 
-    private var isCompactWidth: Bool { sizeClass != .regular }
+    private var isCompactPhone: Bool { sizeClass == .compact }
+
+    private var standFraming: StandFraming {
+        presentation.standFraming
+    }
+
+    /// Her stage height: a wide pane leaves the header above her, a full-screen iPad
+    /// gives her 70% (down from 80%) so the 1024 atlas is scaled less, and a phone keeps
+    /// upstream's 80%.
+    private var standHeightShare: CGFloat {
+        presentation.standHeightShare(isCompactPhone: isCompactPhone)
+    }
 
     /// Her backdrop is only shown when the bundle has one; otherwise her avatar is blown up.
     private func loadBackdrop() {
@@ -239,7 +253,7 @@ struct CallView: View {
             contentRoot: root,
             characterID: character.id,
             outfit: outfit,
-            framing: StandFraming(compactWidth: isCompactWidth)
+            framing: standFraming
         ))
         guard let renderer = app.makeRenderer(assets, avoiding: avoiding) else {
             standFailed = true
@@ -297,7 +311,7 @@ struct CallView: View {
         renderer.present(
             PresentationFrame(
                 callStand.direction,
-                framing: fullBleed ? .full : StandFraming(compactWidth: isCompactWidth),
+                framing: fullBleed ? .full : standFraming,
                 reducedMotion: reduceMotion
             )
         )
@@ -337,11 +351,13 @@ struct CallView: View {
         .clipped()
     }
 
-    /// Her stand on the bottom 80% of the screen, under the words and the keys and taking no
-    /// touches (spec「通话层」). It rises 12% and fades in when it arrives on a phone, only
-    /// fades on wider screens and with reduced motion, and stays at 40% once the call is over.
+    /// Her stand on the lower stage of the layer, under the words and the keys and taking
+    /// no touches (spec「通话层」). It rises 12% and fades in when it arrives on a phone,
+    /// only fades in a pane/wider screen or with reduced motion, and stays at 40% once the
+    /// call is over. The stage height comes from the presentation so the wide pane and the
+    /// full-screen iPad use different framings without the view guessing at size classes.
     private func standStage(_ renderer: any CharacterRenderer, size: CGSize) -> some View {
-        let height = size.height * 0.8
+        let height = size.height * standHeightShare
         let viewport = CGSize(width: size.width, height: height)
         return VStack(spacing: 0) {
             Spacer(minLength: 0)
@@ -371,13 +387,13 @@ struct CallView: View {
     }
 
     private func riseOffset(height: CGFloat) -> CGFloat {
-        guard !standLoaded, isCompactWidth, !reduceMotion else { return 0 }
+        guard presentation == .fullScreen, isCompactPhone, !standLoaded, !reduceMotion else { return 0 }
         return height * 0.12
     }
 
     /// Upstream's `ease-call`: 410 ms, `cubic-bezier(0.24, 1, 0.4, 1)`.
     private var riseAnimation: Animation {
-        isCompactWidth && !reduceMotion
+        presentation == .fullScreen && isCompactPhone && !reduceMotion
             ? .timingCurve(0.24, 1, 0.4, 1, duration: 0.41)
             : .linear(duration: 0.3)
     }

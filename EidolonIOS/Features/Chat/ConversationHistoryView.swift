@@ -69,9 +69,6 @@ struct ConversationHistoryView: View {
                 }
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            CallBar()
-        }
         .navigationTitle("对话记录")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

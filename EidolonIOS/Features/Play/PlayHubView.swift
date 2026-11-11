@@ -79,11 +79,6 @@ struct PlayHubView: View {
                     }
                 }
             }
-            .overlay(alignment: .top) {
-                if app.playPath.isEmpty {
-                    CallBar()
-                }
-            }
         .background { TabBarHides(hidden: isLeavingBar) }
         .overlay {
             if isLeavingBar {

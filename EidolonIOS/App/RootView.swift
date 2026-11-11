@@ -5,6 +5,10 @@ import SwiftUI
 struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var callPageFrame: CGRect?
+    @State private var callChatFrame: CGRect?
+    @State private var capsuleCorner: CallCapsuleCorner = .bottomTrailing
     @State private var app: AppModel?
     @State private var startupError: String?
     /// 欢迎页（spec #118）：放着的时候整屏都是它，原生只剩右上角的跳过。
@@ -72,29 +76,92 @@ struct RootView: View {
         }
     }
 
-    /// 四个页签和压在上面的通话层（spec #46、#64）。
+    /// 四个页签和压在上面的通话层（spec #46、#64）。S2.3 gives the call a pane over
+    /// the content the S2.2 shell measures; the same single CallView keeps its renderer
+    /// while it is folded, so folding does not reload her stand.
     private func pages(_ app: AppModel) -> some View {
         GeometryReader { geometry in
+            let band = ResponsiveLayout.band(width: geometry.size.width, sizeClass: sizeClass)
+            let presentation = effectiveCallPresentation(
+                requested: ResponsiveLayout.callPresentation(
+                    band: band,
+                    onConversation: app.selectedTab == .conversation
+                )
+            )
+            let frame = callFrame(presentation, in: geometry)
+            // The ZStack centres a fixed-size child; offset from its centre to the pane's
+            // actual centre instead of treating the pane origin as an offset.
+            let callX = frame.midX - geometry.size.width / 2
+            let callY = frame.midY - geometry.size.height / 2
             ZStack {
                 content(for: app)
                     .environment(app)
-                // The call layer lives over the pages for as long as the call does:
-                // folded off the bottom while the producer is elsewhere, slid back
-                // up when they return to it (spec #46).
                 if app.call.isPresent, let character = app.call.character {
-                    CallView(character: character)
+                    CallView(character: character, presentation: presentation)
                         .environment(app)
-                        .offset(y: app.call.isCollapsed ? callOffset(geometry) : 0)
+                        .frame(width: frame.width, height: frame.height)
+                        .clipShape(Rectangle())
+                        .offset(
+                            x: callX,
+                            y: callY + (app.call.isCollapsed ? frame.height : 0)
+                        )
+                        .opacity(app.call.isCollapsed ? 0 : 1)
                         .allowsHitTesting(!app.call.isCollapsed)
                         .transition(.move(edge: .bottom))
+                        .zIndex(1)
+                    if !app.call.isCollapsed {
+                        Color.clear
+                            .frame(width: frame.width, height: frame.height)
+                            .offset(x: callX, y: callY)
+                            .accessibilityElement()
+                            .accessibilityLabel("通话层")
+                            .accessibilityIdentifier("call.layer")
+                            .allowsHitTesting(false)
+                            .zIndex(1.5)
+                    }
+                }
+                if app.call.isPresent {
+                    CallCapsule(corner: $capsuleCorner)
+                        .environment(app)
+                        .zIndex(2)
                 }
             }
+            .coordinateSpace(.named("callLayerRoot"))
+            .onPreferenceChange(CallPageFramePreferenceKey.self) { callPageFrame = $0 }
+            .onPreferenceChange(CallChatFramePreferenceKey.self) { callChatFrame = $0 }
             .animation(
                 reduceMotion
                     ? nil
                     : .timingCurve(0.24, 1, 0.4, 1, duration: 0.41),
                 value: app.call.layer
             )
+            // The chat preference is only consulted for `.conversationPane`; other
+            // presentations use the page frame, so no stale-frame reset is needed.
+        }
+    }
+
+    /// A wide conversation keeps the roster, but its chat frame arrives on the next
+    /// preference pass. Until then the page pane keeps the call inside the shell instead
+    /// of flashing it over the rail.
+    private func effectiveCallPresentation(requested: CallPresentation) -> CallPresentation {
+        if requested == .conversationPane, callChatFrame == nil {
+            return .page
+        }
+        return requested
+    }
+
+    private func callFrame(
+        _ presentation: CallPresentation,
+        in geometry: GeometryProxy
+    ) -> CGRect {
+        let full = CGRect(origin: .zero, size: geometry.size)
+        switch presentation {
+        case .fullScreen:
+            return full
+        case .page:
+            return callPageFrame ?? full
+        case .conversationPane:
+            return callChatFrame ?? callPageFrame ?? full
         }
     }
 
@@ -137,5 +204,22 @@ struct RootView: View {
                 description: Text(message)
             )
         }
+    }
+}
+
+
+/// S2.2 shell reports the page area to the right of the rail and, on a wide conversation
+/// page, the chat column itself. Frames are in RootView's named coordinate space.
+struct CallPageFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect?
+    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
+        if let next = nextValue() { value = next }
+    }
+}
+
+struct CallChatFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect?
+    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
+        if let next = nextValue() { value = next }
     }
 }

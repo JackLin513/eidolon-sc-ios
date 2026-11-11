@@ -38,9 +38,6 @@ struct ChatView: View {
         Group {
             if let store {
                 VStack(spacing: 0) {
-                    // Her conversation keeps the folded call's bar under the navigation bar,
-                    // without repeating her name (spec #46).
-                    CallBar(showsName: !app.call.isCalling(character.id))
                     transcript(store)
                     if store.isPast {
                         pastBar

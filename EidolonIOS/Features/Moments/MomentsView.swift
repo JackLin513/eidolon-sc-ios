@@ -104,9 +104,6 @@ struct MomentsView: View {
                 Button("取消", role: .cancel) {}
             }
         }
-        .overlay(alignment: .top) {
-            CallBar()
-        }
     }
 
     /// One column on a phone; two balanced cards on an iPad, so the feed uses the width

@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import Eidolon
 
@@ -109,5 +110,73 @@ final class ResponsiveLayoutTests: XCTestCase {
             ResponsiveLayout.callCollapsedOffset(containerHeight: 500, safeTop: 0, safeBottom: 0),
             500
         )
+    }
+
+    func testCallPresentationKeepsTheRosterOnAWideConversation() {
+        XCTAssertEqual(
+            ResponsiveLayout.callPresentation(band: .wide, onConversation: true),
+            .conversationPane
+        )
+        XCTAssertEqual(
+            ResponsiveLayout.callPresentation(band: .wide, onConversation: false),
+            .page
+        )
+        XCTAssertEqual(
+            ResponsiveLayout.callPresentation(band: .medium, onConversation: true),
+            .fullScreen
+        )
+        XCTAssertEqual(
+            ResponsiveLayout.callPresentation(band: .compact, onConversation: false),
+            .fullScreen
+        )
+    }
+
+    func testCallStandFramingAndHeight() {
+        XCTAssertEqual(CallPresentation.page.standFraming, .waist)
+        XCTAssertEqual(CallPresentation.conversationPane.standFraming, .waist)
+        XCTAssertEqual(CallPresentation.fullScreen.standFraming, .knees)
+        XCTAssertEqual(CallPresentation.page.standHeightShare(isCompactPhone: false), 0.92)
+        XCTAssertEqual(CallPresentation.fullScreen.standHeightShare(isCompactPhone: false), 0.70)
+        XCTAssertEqual(CallPresentation.fullScreen.standHeightShare(isCompactPhone: true), 0.80)
+    }
+
+    func testCallCapsuleSnapsInsideTheSafeArea() {
+        let container = CGSize(width: 1000, height: 700)
+        let insets = EdgeInsets(top: 20, leading: 10, bottom: 24, trailing: 14)
+        let size = CGSize(width: 140, height: 44)
+        let bottomTrailing = ResponsiveLayout.callCapsuleCenter(
+            corner: .bottomTrailing,
+            size: size,
+            container: container,
+            safeInsets: insets
+        )
+        XCTAssertEqual(bottomTrailing.x, 1000 - 14 - 16 - 70)
+        XCTAssertEqual(bottomTrailing.y, 700 - 24 - 16 - 22)
+        XCTAssertEqual(
+            ResponsiveLayout.callCapsuleCorner(
+                for: CGPoint(x: 150, y: 640),
+                size: size,
+                container: container,
+                safeInsets: insets
+            ),
+            .bottomLeading
+        )
+        XCTAssertEqual(
+            ResponsiveLayout.callCapsuleCorner(
+                for: CGPoint(x: 900, y: 50),
+                size: size,
+                container: container,
+                safeInsets: insets
+            ),
+            .topTrailing
+        )
+        let dragged = ResponsiveLayout.clampedCallCapsuleCenter(
+            CGPoint(x: -100, y: 2000),
+            size: size,
+            container: container,
+            safeInsets: insets
+        )
+        XCTAssertEqual(dragged.x, 10 + 16 + 70)
+        XCTAssertEqual(dragged.y, 700 - 24 - 16 - 22)
     }
 }

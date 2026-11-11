@@ -1,4 +1,5 @@
 import CoreGraphics
+import EidolonCore
 import SwiftUI
 
 /// The three presentations S2.2 uses. Width comes from the container, never the screen.
@@ -6,6 +7,42 @@ enum ResponsiveWidthBand: Equatable {
     case compact
     case medium
     case wide
+}
+
+
+/// How the call layer is presented by the S2.2 shell. Width alone is not enough: a
+/// wide conversation page keeps the roster visible, so the call only takes the chat
+/// column; any other wide page takes the content area to the right of the rail.
+enum CallPresentation: Equatable {
+    case fullScreen
+    case page
+    case conversationPane
+
+    var isPane: Bool { self != .fullScreen }
+
+    /// The desktop pane frames her to the waist; a full-screen phone/iPad frames to the
+    /// knees. 3D full-bleed is reported by its renderer and overrides this.
+    var standFraming: StandFraming {
+        isPane ? .waist : .knees
+    }
+
+    /// How much of the call's height her stand occupies. Wide panes start below the
+    /// header; an iPad full screen is a little shorter than a phone's to reduce the
+    /// 1024px atlas's upscale.
+    func standHeightShare(isCompactPhone: Bool) -> CGFloat {
+        switch self {
+        case .page, .conversationPane: 0.92
+        case .fullScreen: isCompactPhone ? 0.80 : 0.70
+        }
+    }
+}
+
+/// The four resting places of the folded-call capsule.
+enum CallCapsuleCorner: CaseIterable, Equatable {
+    case topLeading
+    case topTrailing
+    case bottomLeading
+    case bottomTrailing
 }
 
 /// What one drag sample means for the roster column. `visibleWidth` is what the finger
@@ -166,5 +203,81 @@ enum ResponsiveLayout {
     /// safe area, so its travel is the container plus both insets.
     static func callCollapsedOffset(containerHeight: CGFloat, safeTop: CGFloat, safeBottom: CGFloat) -> CGFloat {
         containerHeight + safeTop + safeBottom
+    }
+
+    // MARK: Call presentation
+
+    static func callPresentation(
+        band: ResponsiveWidthBand,
+        onConversation: Bool
+    ) -> CallPresentation {
+        guard band == .wide else { return .fullScreen }
+        return onConversation ? .conversationPane : .page
+    }
+
+    // MARK: Folded-call capsule
+
+    static let callCapsuleMargin: CGFloat = 16
+
+    /// The resting centre of the capsule in its container, inside the safe area.
+    static func callCapsuleCenter(
+        corner: CallCapsuleCorner,
+        size: CGSize,
+        container: CGSize,
+        safeInsets: EdgeInsets,
+        margin: CGFloat = callCapsuleMargin,
+        extraBottom: CGFloat = 0
+    ) -> CGPoint {
+        let halfW = size.width / 2
+        let halfH = size.height / 2
+        let minX = safeInsets.leading + margin + halfW
+        let maxX = max(minX, container.width - safeInsets.trailing - margin - halfW)
+        let minY = safeInsets.top + margin + halfH
+        let maxY = max(minY, container.height - safeInsets.bottom - margin - halfH - extraBottom)
+        let x = (corner == .topLeading || corner == .bottomLeading) ? minX : maxX
+        let y = (corner == .topLeading || corner == .topTrailing) ? minY : maxY
+        return CGPoint(x: x, y: y)
+    }
+
+    /// Keep a dragged capsule inside the safe area while the finger is down.
+    static func clampedCallCapsuleCenter(
+        _ center: CGPoint,
+        size: CGSize,
+        container: CGSize,
+        safeInsets: EdgeInsets,
+        margin: CGFloat = callCapsuleMargin,
+        extraBottom: CGFloat = 0
+    ) -> CGPoint {
+        let halfW = size.width / 2
+        let halfH = size.height / 2
+        let minX = safeInsets.leading + margin + halfW
+        let maxX = max(minX, container.width - safeInsets.trailing - margin - halfW)
+        let minY = safeInsets.top + margin + halfH
+        let maxY = max(minY, container.height - safeInsets.bottom - margin - halfH - extraBottom)
+        return CGPoint(x: min(max(center.x, minX), maxX), y: min(max(center.y, minY), maxY))
+    }
+
+    /// The corner the capsule settles into after a drag: nearest by squared distance.
+    static func callCapsuleCorner(
+        for center: CGPoint,
+        size: CGSize,
+        container: CGSize,
+        safeInsets: EdgeInsets,
+        margin: CGFloat = callCapsuleMargin,
+        extraBottom: CGFloat = 0
+    ) -> CallCapsuleCorner {
+        CallCapsuleCorner.allCases.min { lhs, rhs in
+            let l = callCapsuleCenter(
+                corner: lhs, size: size, container: container,
+                safeInsets: safeInsets, margin: margin, extraBottom: extraBottom
+            )
+            let r = callCapsuleCenter(
+                corner: rhs, size: size, container: container,
+                safeInsets: safeInsets, margin: margin, extraBottom: extraBottom
+            )
+            let ld = pow(l.x - center.x, 2) + pow(l.y - center.y, 2)
+            let rd = pow(r.x - center.x, 2) + pow(r.y - center.y, 2)
+            return ld < rd
+        } ?? .bottomTrailing
     }
 }

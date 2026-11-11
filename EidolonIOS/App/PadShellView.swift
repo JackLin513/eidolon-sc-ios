@@ -23,6 +23,14 @@ struct PadShellView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .blur(radius: railDragging ? ResponsiveLayout.dragBlurRadius : 0)
                 .animation(.easeInOut(duration: ResponsiveLayout.dragFeedbackDuration), value: railDragging)
+                .background {
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: CallPageFramePreferenceKey.self,
+                            value: proxy.frame(in: .named("callLayerRoot"))
+                        )
+                    }
+                }
         }
         .background(Color(.systemBackground))
         .overlay(alignment: .leading) {
@@ -365,6 +373,14 @@ struct PadConversationView: View {
                 hidesTabBar: false,
                 onPadBack: { app.closePadConversation() }
             )
+        }
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: CallChatFramePreferenceKey.self,
+                    value: proxy.frame(in: .named("callLayerRoot"))
+                )
+            }
         }
     }
 

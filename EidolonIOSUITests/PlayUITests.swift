@@ -383,38 +383,35 @@ final class PlayUITests: XCTestCase {
         // The folded call's banner is a band above the tab's navigation, not inside it:
         // inside the list, the iOS 26 navigation bar tints itself with the banner's dark
         // colour and the title disappears (spec #64).
-        let bar = app.buttons["回到通话"].firstMatch
-        XCTAssertTrue(bar.waitForExistence(timeout: 5), "no folded call banner on the roster")
-        XCTAssertGreaterThan(
-            roster.staticTexts["对话"].firstMatch.frame.minY, bar.frame.maxY,
-            "the roster's title is under the call banner"
+        let capsule = app.buttons["call.capsule"].firstMatch
+        XCTAssertTrue(capsule.waitForExistence(timeout: 5), "no folded call capsule on the roster")
+        XCTAssertFalse(
+            capsule.frame.intersects(roster.staticTexts["对话"].firstMatch.frame),
+            "the capsule covers the roster title"
         )
 
         app.tabBars.buttons["玩法"].tap()
         let playTitle = app.staticTexts["玩法"].firstMatch
         XCTAssertTrue(playTitle.waitForExistence(timeout: 5), "play title is missing")
-        XCTAssertGreaterThan(
-            app.navigationBars["玩法"].staticTexts["玩法"].firstMatch.frame.minY,
-            bar.frame.maxY,
-            "the play title is under the call banner"
+        XCTAssertFalse(
+            capsule.frame.intersects(playTitle.frame),
+            "the capsule covers the play title"
         )
 
         app.tabBars.buttons["朋友圈"].tap()
         let momentsTitle = app.staticTexts["朋友圈"].firstMatch
         XCTAssertTrue(momentsTitle.waitForExistence(timeout: 5), "moments title is missing")
-        XCTAssertGreaterThan(
-            app.navigationBars["朋友圈"].staticTexts["朋友圈"].firstMatch.frame.minY,
-            bar.frame.maxY,
-            "the moments title is under the call banner"
+        XCTAssertFalse(
+            capsule.frame.intersects(momentsTitle.frame),
+            "the capsule covers the moments title"
         )
 
         app.tabBars.buttons["设置"].tap()
         let settingsTitle = app.staticTexts["设置"].firstMatch
         XCTAssertTrue(settingsTitle.waitForExistence(timeout: 5), "settings title is missing")
-        XCTAssertGreaterThan(
-            app.navigationBars["设置"].staticTexts["设置"].firstMatch.frame.minY,
-            bar.frame.maxY,
-            "the settings title is under the call banner"
+        XCTAssertFalse(
+            capsule.frame.intersects(settingsTitle.frame),
+            "the capsule covers the settings title"
         )
     }
 
@@ -436,8 +433,8 @@ final class PlayUITests: XCTestCase {
         app.buttons["收起"].firstMatch.tap()
 
         XCTAssertTrue(
-            app.buttons["回到通话"].waitForExistence(timeout: 5),
-            "the folded call has no bar in her chat"
+            app.buttons["call.capsule"].waitForExistence(timeout: 5),
+            "the folded call has no capsule in her chat"
         )
         XCTAssertFalse(
             app.tabBars.buttons["玩法"].exists,
@@ -489,15 +486,15 @@ final class PlayUITests: XCTestCase {
         let title = app.navigationBars["对话"].staticTexts["对话"].firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 5), "no large title")
         let foldedTitleY = title.frame.minY
-        let bar = app.buttons["call.bar"]
-        XCTAssertTrue(bar.waitForExistence(timeout: 5), "the folded call has no bar on the roster")
-        XCTAssertLessThan(
-            bar.frame.maxY, title.frame.minY,
-            "the call bar is not in the empty space above the large title"
+        let capsule = app.buttons["call.capsule"]
+        XCTAssertTrue(capsule.waitForExistence(timeout: 5), "the folded call has no capsule on the roster")
+        XCTAssertFalse(
+            capsule.frame.intersects(title.frame),
+            "the capsule covers the large title"
         )
 
         // Expand and end the call; the bar goes away and the title must not move.
-        bar.tap()
+        capsule.tap()
         let hangUpAgain = app.buttons["call.hangUp"]
         XCTAssertTrue(hangUpAgain.waitForExistence(timeout: 5), "call did not expand")
         expectation(for: enabled, evaluatedWith: hangUpAgain)
@@ -514,7 +511,7 @@ final class PlayUITests: XCTestCase {
         XCTAssertTrue(uprightTitle.waitForExistence(timeout: 5), "roster did not come back")
         XCTAssertEqual(
             uprightTitle.frame.minY, foldedTitleY, accuracy: 1,
-            "the large title moved when the folded call bar went away"
+            "the large title moved when the folded call capsule went away"
         )
     }
 
@@ -605,36 +602,30 @@ final class PlayUITests: XCTestCase {
         let settingsTab = app.tabBars.buttons["设置"]
         XCTAssertTrue(settingsTab.waitForExistence(timeout: 5), "no settings tab")
         settingsTab.tap()
+        let capsule = app.buttons["call.capsule"]
         XCTAssertTrue(
-            app.buttons["call.bar"].waitForExistence(timeout: 5),
-            "the folded call has no bar on the settings root"
+            capsule.waitForExistence(timeout: 5),
+            "the folded call has no capsule on the settings root"
         )
         app.buttons["settings.api"].tap()
-        XCTAssertTrue(
-            app.navigationBars["API 与模型"].waitForExistence(timeout: 5),
-            "settings subpage did not open"
-        )
-        XCTAssertFalse(
-            app.buttons["call.bar"].exists,
-            "the call bar covered the settings subpage"
-        )
+        let apiBar = app.navigationBars["API 与模型"]
+        XCTAssertTrue(apiBar.waitForExistence(timeout: 5), "settings subpage did not open")
+        XCTAssertFalse(capsule.frame.intersects(apiBar.frame), "the capsule covered the settings subpage title")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(
-            app.buttons["call.bar"].waitForExistence(timeout: 5),
-            "the call bar did not come back on the settings root"
+            capsule.waitForExistence(timeout: 5),
+            "the capsule did not survive the settings root"
         )
 
         app.tabBars.buttons["玩法"].tap()
         XCTAssertTrue(
-            app.buttons["call.bar"].waitForExistence(timeout: 5),
-            "the folded call has no bar on the play root"
+            capsule.waitForExistence(timeout: 5),
+            "the folded call has no capsule on the play root"
         )
         app.buttons["play.gifts"].tap()
-        XCTAssertTrue(app.navigationBars["礼物"].waitForExistence(timeout: 5), "gifts did not open")
-        XCTAssertFalse(
-            app.buttons["call.bar"].exists,
-            "the call bar covered the gifts page"
-        )
+        let giftsBar = app.navigationBars["礼物"]
+        XCTAssertTrue(giftsBar.waitForExistence(timeout: 5), "gifts did not open")
+        XCTAssertFalse(capsule.frame.intersects(giftsBar.frame), "the capsule covered the gifts title")
     }
 
     func testCallBarFollowsToThePlayTab() throws {
@@ -657,8 +648,8 @@ final class PlayUITests: XCTestCase {
         let play = app.tabBars.buttons["玩法"]
         XCTAssertTrue(play.waitForExistence(timeout: 5), "no play tab while calling")
         play.tap()
-        let back = app.buttons["回到通话"]
-        XCTAssertTrue(back.waitForExistence(timeout: 5), "call bar is not on the play tab")
+        let back = app.buttons["call.capsule"]
+        XCTAssertTrue(back.waitForExistence(timeout: 5), "call capsule is not on the play tab")
         back.tap()
         XCTAssertTrue(hangUp.waitForExistence(timeout: 5), "call did not expand")
     }

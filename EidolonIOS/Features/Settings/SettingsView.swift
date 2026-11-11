@@ -39,9 +39,6 @@ struct SettingsView: View {
     @State private var standIndexURL: URL?
     @State private var confirmingPackageCleanup = false
     @State private var confirmingCalendarDelete = false
-    /// Whether the settings root is the page on top; its folded call bar floats over the
-    /// large-title header only there (bug 2026-11-04).
-    @State private var settingsRootOnScreen = true
 
     /// 「账号」那一行右边写什么：没登录就说没登录。
     private var accountValue: String {
@@ -83,12 +80,6 @@ struct SettingsView: View {
                 settingsStack(category: nil)
             }
         }
-        .overlay(alignment: .top) {
-            if settingsRootOnScreen {
-                CallBar()
-            }
-        }
-    
     }
 
     /// One category on the iPad; nil means the phone's full form.
@@ -476,8 +467,6 @@ Section {
                 // its way (spec #46).
                 .navigationTitle(category?.title ?? "设置")
                 .toolbar(isPadShell ? .hidden : .visible, for: .navigationBar)
-                .onAppear { settingsRootOnScreen = true }
-                .onDisappear { settingsRootOnScreen = false }
                 .navigationDestination(isPresented: $showMemories) {
                     MemoryListView()
                 }
