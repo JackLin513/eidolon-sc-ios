@@ -21,17 +21,22 @@ struct RootView: View {
     var body: some View {
         Group {
             if let app {
-                if showsWelcome {
-                    WelcomeView { finishWelcome() }
-                        .environment(app)
-                } else if app.phase == .ready {
-                    // Read `phase` directly in the body. Keeping it only inside the
-                    // nested content builder left the loading view on screen after the
-                    // model became ready.
-                    pages(app)
-                } else {
-                    content(for: app)
+                // One root environment for every main surface. A nested builder used to
+                // own this for some branches only; after the welcome page an iPad-sized
+                // surface could be built without AppModel and trap in EnvironmentValues.
+                Group {
+                    if showsWelcome {
+                        WelcomeView { finishWelcome() }
+                    } else if app.phase == .ready {
+                        // Read `phase` directly in the body. Keeping it only inside the
+                        // nested content builder left the loading view on screen after the
+                        // model became ready.
+                        pages(app)
+                    } else {
+                        content(for: app)
+                    }
                 }
+                .environment(app)
             } else if let startupError {
                 ContentUnavailableView(
                     "无法启动",
