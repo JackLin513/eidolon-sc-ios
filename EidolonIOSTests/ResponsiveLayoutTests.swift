@@ -127,7 +127,7 @@ final class ResponsiveLayoutTests: XCTestCase {
         XCTAssertEqual(CallPresentation.page.standFraming, .waist)
         XCTAssertEqual(CallPresentation.conversationPane.standFraming, .waist)
         XCTAssertEqual(CallPresentation.fullScreen.standFraming, .knees)
-        XCTAssertEqual(CallPresentation.phonePane.standFraming, .knees)
+        XCTAssertEqual(CallPresentation.phonePane.standFraming, .full)
         XCTAssertEqual(
             CallPresentation.page.standHeight(in: desktop, isCompactPhone: false),
             desktop.height * 0.92,
@@ -143,10 +143,9 @@ final class ResponsiveLayoutTests: XCTestCase {
             desktop.height * 0.80,
             accuracy: 0.01
         )
-        // The tall portrait pane is capped by width, not by its 1366pt height.
         XCTAssertEqual(
             CallPresentation.phonePane.standHeight(in: phonePane, isCompactPhone: false),
-            phonePane.width * 1.35,
+            phonePane.height * 0.92,
             accuracy: 0.01
         )
     }

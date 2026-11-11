@@ -28,7 +28,8 @@ enum CallPresentation: Equatable {
     var standFraming: StandFraming {
         switch self {
         case .page, .conversationPane: .waist
-        case .fullScreen, .phonePane: .knees
+        case .fullScreen: .knees
+        case .phonePane: .full
         }
     }
 
@@ -39,7 +40,9 @@ enum CallPresentation: Equatable {
         case .page, .conversationPane:
             return viewport.height * 0.92
         case .phonePane:
-            return min(viewport.height * 0.80, viewport.width * 1.35)
+            // A tall portrait pane can hold her whole body at the same width; do not
+            // waste the upper half on a knees crop.
+            return viewport.height * 0.92
         case .fullScreen:
             return viewport.height * (isCompactPhone ? 0.80 : 0.70)
         }

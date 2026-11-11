@@ -206,8 +206,8 @@ struct CallView: View {
         presentation.standFraming
     }
 
-    /// Her stage height: a wide pane leaves the header above her, a phone pane uses
-    /// phone proportions and a width cap, a full-screen iPad gives her 70%, and a phone
+    /// Her stage height: a wide pane leaves the header above her, a phone pane fits her
+    /// whole body at the pane's width, a full-screen iPad gives her 70%, and a phone
     /// keeps upstream's 80%.
     private var standHeight: (CGSize) -> CGFloat {
         { size in
