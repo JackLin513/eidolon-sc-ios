@@ -110,6 +110,14 @@ enum ResponsiveLayout {
     /// Distance from the seam to the hit area's leading edge; the visible pill is
     /// therefore a few points to the right of the boundary rather than on top of it.
     static let handleLineGap: CGFloat = 8
+
+    /// Offset for the 44pt split-handle hit frame. The gray pill's centre sits
+    /// `handleLineGap` right of the roster seam in both states; when the roster is
+    /// collapsed the hit frame may extend a little into the rail so the pill does not
+    /// jump inward to the hit-frame centre.
+    static func splitHandleOffset(listWidth: CGFloat) -> CGFloat {
+        listWidth + handleLineGap - handleHitSize / 2
+    }
     static let dragBlurRadius: CGFloat = 14
     static let dragFeedbackDuration: TimeInterval = 0.12
     static let railHitWidth: CGFloat = 12
@@ -228,10 +236,15 @@ enum ResponsiveLayout {
     /// sheet instead of a desktop pane.
     static func resolvePaneCallPresentation(
         _ presentation: CallPresentation,
-        paneSize: CGSize
+        paneSize: CGSize,
+        containerSize: CGSize
     ) -> CallPresentation {
+        // The pane size comes from a preference that can still be the previous
+        // orientation for one layout pass. Resolve against the current window too:
+        // a landscape window is never a phone pane, even if the stale pane looks tall.
         guard presentation == .conversationPane,
               paneSize.height > 0,
+              containerSize.height > containerSize.width,
               paneSize.width / paneSize.height < 0.55
         else { return presentation }
         return .phonePane

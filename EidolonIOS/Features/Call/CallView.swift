@@ -132,6 +132,13 @@ struct CallView: View {
         .onChange(of: call.stand.direction) {
             renderPose()
         }
+        // A phone pane and a desktop pane use different framing. Re-present after the
+        // shell changes the presentation, otherwise a rotation leaves the renderer on
+        // the previous body crop.
+        .onChange(of: presentation) { _, newValue in
+            uiLog.notice("presentation changed to \(String(describing: newValue), privacy: .public)")
+            renderPose()
+        }
         // VoiceOver says the loss once when it appears and once when it is over.
         .onChange(of: call.micNotice) { previous, notice in
             if let notice {

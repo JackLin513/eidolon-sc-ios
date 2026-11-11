@@ -154,21 +154,33 @@ final class ResponsiveLayoutTests: XCTestCase {
         XCTAssertEqual(
             ResponsiveLayout.resolvePaneCallPresentation(
                 .conversationPane,
-                paneSize: CGSize(width: 538, height: 1366)
+                paneSize: CGSize(width: 538, height: 1366),
+                containerSize: CGSize(width: 1024, height: 1366)
             ),
             .phonePane
         )
         XCTAssertEqual(
             ResponsiveLayout.resolvePaneCallPresentation(
                 .conversationPane,
-                paneSize: CGSize(width: 880, height: 1024)
+                paneSize: CGSize(width: 880, height: 1024),
+                containerSize: CGSize(width: 1366, height: 1024)
+            ),
+            .conversationPane
+        )
+        // A stale tall pane from portrait must not keep phone layout in landscape.
+        XCTAssertEqual(
+            ResponsiveLayout.resolvePaneCallPresentation(
+                .conversationPane,
+                paneSize: CGSize(width: 538, height: 1366),
+                containerSize: CGSize(width: 1366, height: 1024)
             ),
             .conversationPane
         )
         XCTAssertEqual(
             ResponsiveLayout.resolvePaneCallPresentation(
                 .page,
-                paneSize: CGSize(width: 538, height: 1366)
+                paneSize: CGSize(width: 538, height: 1366),
+                containerSize: CGSize(width: 1024, height: 1366)
             ),
             .page
         )
@@ -228,4 +240,19 @@ final class ResponsiveLayoutTests: XCTestCase {
         XCTAssertEqual(dragged.x, 10 + 16 + 70)
         XCTAssertEqual(dragged.y, 700 - 24 - 16 - 22)
     }
+    func testSplitHandlePillKeepsTheSameGapToTheSeamWhenCollapsed() {
+        let collapsed = ResponsiveLayout.splitHandleOffset(listWidth: 0)
+        XCTAssertEqual(
+            collapsed + ResponsiveLayout.handleHitSize / 2,
+            ResponsiveLayout.handleLineGap,
+            accuracy: 0.01
+        )
+        let open = ResponsiveLayout.splitHandleOffset(listWidth: 320)
+        XCTAssertEqual(
+            open + ResponsiveLayout.handleHitSize / 2,
+            320 + ResponsiveLayout.handleLineGap,
+            accuracy: 0.01
+        )
+    }
+
 }

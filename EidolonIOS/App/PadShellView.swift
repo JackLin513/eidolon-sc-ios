@@ -327,13 +327,7 @@ struct PadConversationView: View {
                 splitHandle(availableWidth: available)
                     // Keep the gray pill off the boundary line; only the active blue line
                     // lives exactly on the seam.
-                    .offset(
-                        x: max(
-                            listWidth + ResponsiveLayout.handleLineGap
-                                - ResponsiveLayout.handleHitSize / 2,
-                            0
-                        )
-                    )
+                    .offset(x: ResponsiveLayout.splitHandleOffset(listWidth: listWidth))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onAppear {

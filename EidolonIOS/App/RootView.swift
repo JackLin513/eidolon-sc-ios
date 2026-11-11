@@ -114,7 +114,8 @@ struct RootView: View {
             #endif
             let resolvedPresentation = ResponsiveLayout.resolvePaneCallPresentation(
                 presentation,
-                paneSize: baseFrame.size
+                paneSize: baseFrame.size,
+                containerSize: geometry.size
             )
             let rawFrame = callFrame(resolvedPresentation, in: geometry)
             let effectivePresentation = resolvedPresentation
