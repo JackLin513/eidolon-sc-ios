@@ -16,6 +16,8 @@ struct CallCapsule: View {
     /// Docked to a screen side and folded down to her avatar only (Q4-A/Q6-A).
     @State private var half = false
     @State private var dragStartedDocked = false
+    /// Free vertical position while docked to a left/right edge.
+    @State private var sideY: CGFloat?
 
     private static let capsuleSize = CGSize(width: 148, height: 44)
     private static let halfSize = CGSize(width: 44, height: 44)
@@ -26,13 +28,25 @@ struct CallCapsule: View {
                 let insets = proxy.safeAreaInsets
                 let container = proxy.size
                 let size = half ? Self.halfSize : Self.capsuleSize
-                let resting = ResponsiveLayout.callCapsuleCenter(
-                    corner: corner,
-                    size: size,
-                    container: container,
-                    safeInsets: insets,
-                    extraBottom: bottomClearance
-                )
+                let resting: CGPoint = {
+                    if corner.isSide, let sideY {
+                        return ResponsiveLayout.callCapsuleSideCenter(
+                            side: corner,
+                            y: sideY,
+                            size: size,
+                            container: container,
+                            safeInsets: insets,
+                            extraBottom: bottomClearance
+                        )
+                    }
+                    return ResponsiveLayout.callCapsuleCenter(
+                        corner: corner,
+                        size: size,
+                        container: container,
+                        safeInsets: insets,
+                        extraBottom: bottomClearance
+                    )
+                }()
                 let dragged = CGPoint(
                     x: resting.x + translation.width,
                     y: resting.y + translation.height
@@ -202,14 +216,42 @@ struct CallCapsule: View {
                     x: resting.x + value.translation.width,
                     y: resting.y + value.translation.height
                 )
-                let next = ResponsiveLayout.callCapsuleCorner(
-                    for: target,
-                    size: half ? Self.halfSize : Self.capsuleSize,
-                    container: container,
-                    safeInsets: safeInsets,
-                    margin: ResponsiveLayout.callCapsuleMargin,
-                    extraBottom: max(0, bottomClearance)
-                )
+                let size = half ? Self.halfSize : Self.capsuleSize
+                let edgeInset = ResponsiveLayout.callCapsuleMargin + 96
+                let nearLeading = target.x <= safeInsets.leading + edgeInset
+                let nearTrailing = target.x >= container.width - safeInsets.trailing - edgeInset
+                let next: CallCapsuleCorner
+                if nearLeading {
+                    next = .leading
+                    sideY = ResponsiveLayout.callCapsuleSideCenter(
+                        side: .leading,
+                        y: target.y,
+                        size: size,
+                        container: container,
+                        safeInsets: safeInsets,
+                        extraBottom: max(0, bottomClearance)
+                    ).y
+                } else if nearTrailing {
+                    next = .trailing
+                    sideY = ResponsiveLayout.callCapsuleSideCenter(
+                        side: .trailing,
+                        y: target.y,
+                        size: size,
+                        container: container,
+                        safeInsets: safeInsets,
+                        extraBottom: max(0, bottomClearance)
+                    ).y
+                } else {
+                    next = ResponsiveLayout.callCapsuleCornerOnly(
+                        for: target,
+                        size: size,
+                        container: container,
+                        safeInsets: safeInsets,
+                        margin: ResponsiveLayout.callCapsuleMargin,
+                        extraBottom: max(0, bottomClearance)
+                    )
+                    sideY = nil
+                }
                 let outward = (next == .leading && value.translation.width < -18)
                     || (next == .trailing && value.translation.width > 18)
                 let inward = (corner == .leading && value.translation.width > 18)

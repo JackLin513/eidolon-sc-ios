@@ -1,5 +1,6 @@
 import EidolonCore
 import SwiftUI
+import UIKit
 
 @MainActor
 struct RootView: View {
@@ -88,7 +89,21 @@ struct RootView: View {
                     onConversation: app.selectedTab == .conversation
                 )
             )
-            let frame = callFrame(presentation, in: geometry)
+            let rawFrame = callFrame(presentation, in: geometry)
+            let safe = windowSafeInsets
+            // RootView's GeometryReader is inset by the safe area; the call's background
+            // has to paint into that inset (status bar and Home indicator) instead of
+            // stopping at the safe rectangle. Only the content is inset again.
+            let frame = CGRect(
+                x: presentation.isPane ? rawFrame.minX : -safe.leading,
+                y: -safe.top,
+                width: presentation.isPane
+                    ? rawFrame.width
+                    : geometry.size.width + safe.leading + safe.trailing,
+                height: geometry.size.height + safe.top + safe.bottom
+            )
+            let topInset = safe.top
+            let bottomInset = safe.bottom
             // The ZStack centres a fixed-size child; offset from its centre to the pane's
             // actual centre instead of treating the pane origin as an offset.
             let callX = frame.midX - geometry.size.width / 2
@@ -97,7 +112,12 @@ struct RootView: View {
                 content(for: app)
                     .environment(app)
                 if app.call.isPresent, let character = app.call.character {
-                    CallView(character: character, presentation: presentation)
+                    CallView(
+                        character: character,
+                        presentation: presentation,
+                        topInset: topInset,
+                        bottomInset: bottomInset
+                    )
                         .environment(app)
                         .frame(width: frame.width, height: frame.height)
                         .modifier(CallLayerClip(enabled: presentation.isPane))
@@ -123,13 +143,13 @@ struct RootView: View {
                 if app.call.isPresent {
                     CallCapsule(corner: $capsuleCorner)
                         .environment(app)
+                        .id("\(geometry.size.width)x\(geometry.size.height)")
                         .zIndex(2)
                 }
             }
             .coordinateSpace(.named("callLayerRoot"))
             .onPreferenceChange(CallPageFramePreferenceKey.self) { callPageFrame = $0 }
-            .onPreferenceChange(CallChatFramePreferenceKey.self) { callChatFrame = $0 }
-            .animation(
+            .onPreferenceChange(CallChatFramePreferenceKey.self) { callChatFrame = $0 }            .animation(
                 reduceMotion
                     ? nil
                     : .timingCurve(0.24, 1, 0.4, 1, duration: 0.41),
@@ -196,6 +216,18 @@ struct RootView: View {
             )
         }
     }
+
+
+    /// The key window's safe insets. RootView's GeometryReader works in the safe
+    /// rectangle, while the call background must paint through it.
+    private var windowSafeInsets: EdgeInsets {
+        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
+              let window = scene.windows.first(where: \.isKeyWindow) ?? scene.windows.first
+        else { return EdgeInsets() }
+        let insets = window.safeAreaInsets
+        return EdgeInsets(top: insets.top, leading: insets.left, bottom: insets.bottom, trailing: insets.right)
+    }
+
 }
 
 

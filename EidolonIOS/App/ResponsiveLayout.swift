@@ -247,6 +247,56 @@ enum ResponsiveLayout {
         return CGPoint(x: x, y: y)
     }
 
+    /// A free vertical position on a left/right edge; Q3-C allows any y, not just the
+    /// midpoint or the three corner-ish slots the discrete anchors produced.
+    static func callCapsuleSideCenter(
+        side: CallCapsuleCorner,
+        y: CGFloat,
+        size: CGSize,
+        container: CGSize,
+        safeInsets: EdgeInsets,
+        margin: CGFloat = callCapsuleMargin,
+        extraBottom: CGFloat = 0
+    ) -> CGPoint {
+        let center = callCapsuleCenter(
+            corner: side,
+            size: size,
+            container: container,
+            safeInsets: safeInsets,
+            margin: margin,
+            extraBottom: extraBottom
+        )
+        let halfH = size.height / 2
+        let minY = safeInsets.top + margin + halfH
+        let maxY = max(minY, container.height - safeInsets.bottom - margin - halfH - extraBottom)
+        return CGPoint(x: center.x, y: min(max(y, minY), maxY))
+    }
+
+    /// The four corners, without the side anchors: used when a drag is not close enough
+    /// to a screen edge to dock.
+    static func callCapsuleCornerOnly(
+        for center: CGPoint,
+        size: CGSize,
+        container: CGSize,
+        safeInsets: EdgeInsets,
+        margin: CGFloat = callCapsuleMargin,
+        extraBottom: CGFloat = 0
+    ) -> CallCapsuleCorner {
+        [.topLeading, .topTrailing, .bottomLeading, .bottomTrailing].min { lhs, rhs in
+            let l = callCapsuleCenter(
+                corner: lhs, size: size, container: container,
+                safeInsets: safeInsets, margin: margin, extraBottom: extraBottom
+            )
+            let r = callCapsuleCenter(
+                corner: rhs, size: size, container: container,
+                safeInsets: safeInsets, margin: margin, extraBottom: extraBottom
+            )
+            let ld = pow(l.x - center.x, 2) + pow(l.y - center.y, 2)
+            let rd = pow(r.x - center.x, 2) + pow(r.y - center.y, 2)
+            return ld < rd
+        } ?? .bottomTrailing
+    }
+
     /// Keep a dragged capsule inside the safe area while the finger is down.
     static func clampedCallCapsuleCenter(
         _ center: CGPoint,

@@ -12,6 +12,10 @@ struct CallView: View {
     /// How S2.3/S2.2 host this layer. The view itself never decides whether it is a
     /// full-screen layer or a pane; the shell passes that in.
     let presentation: CallPresentation
+    /// The pane starts at the window edge so her background fills the status/home areas;
+    /// its content keeps the page's safe top/bottom instead of sliding under the system UI.
+    var topInset: CGFloat = 0
+    var bottomInset: CGFloat = 0
 
     @Environment(AppModel.self) private var app
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -485,8 +489,8 @@ struct CallView: View {
                 bottomControls
             }
         }
-        .padding(.top, 16)
-        .padding(.bottom, 16)
+        .padding(.top, 16 + topInset)
+        .padding(.bottom, 16 + bottomInset)
     }
 
     /// Three slots, as upstream: 换衣装 on the left, her name and status in the middle,

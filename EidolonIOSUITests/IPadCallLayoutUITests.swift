@@ -143,6 +143,31 @@ final class IPadCallLayoutUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 0.4)
         XCTAssertGreaterThan(capsule.frame.width, 100, "half capsule did not restore")
     }
+
+    func testPortraitCallRotatesToLandscapePaneWithoutDropping() throws {
+        XCUIDevice.shared.orientation = .portrait
+        launch()
+        try XCTSkipUnless(width < 960, "Run this on an iPad mini")
+        let layer = app.descendants(matching: .any)["call.layer"].firstMatch
+        XCTAssertTrue(layer.waitForExistence(timeout: 5), "no portrait call layer")
+
+        XCUIDevice.shared.orientation = .landscapeLeft
+        Thread.sleep(forTimeInterval: 2.5)
+        let window = app.windows.firstMatch.frame
+        let rotated = layer.frame
+        print("ROTATED", rotated, "WINDOW", window)
+        XCTAssertLessThanOrEqual(rotated.minY, 40, "call pane dropped below the top edge after rotation")
+        XCTAssertGreaterThanOrEqual(rotated.maxY, window.height - 40, "call pane did not reach the bottom after rotation")
+        attach("call-rotated-pane")
+
+        app.buttons["收起"].firstMatch.tap()
+        let capsule = app.buttons["call.capsule"]
+        XCTAssertTrue(capsule.waitForExistence(timeout: 5), "capsule disappeared after rotation")
+        print("CAPSULE", capsule.frame, "WINDOW", window)
+        XCTAssertGreaterThanOrEqual(capsule.frame.minY, 0)
+        XCTAssertLessThanOrEqual(capsule.frame.maxY, window.height)
+        attach("call-rotated-capsule")
+    }
     func testRotatingBetweenWideAndMediumKeepsTheCall() throws {
         launch()
         let layer = app.descendants(matching: .any)["call.layer"].firstMatch
