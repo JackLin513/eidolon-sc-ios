@@ -390,6 +390,30 @@ barBundleSection
 
                     if visible(category, .content) {
 Section("内容包") {
+                        if app.contentPackages.count > 1 {
+                            ForEach(app.contentPackages, id: \.franchise) { package in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(package.franchise)
+                                        Text("\(package.info.characterCount) 位角色 · \(package.info.episodeCount) 段剧情")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if package.franchise == app.bundleInfo?.franchise {
+                                        Text("当前")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.tint)
+                                    } else {
+                                        Button("切换") {
+                                            Task { await app.activateContentPackage(franchise: package.franchise) }
+                                        }
+                                        .accessibilityIdentifier("settings.content.switch.\(package.franchise)")
+                                    }
+                                }
+                            }
+                            Divider()
+                        }
                         if let info = app.bundleInfo {
                             LabeledContent("剧情", value: "\(info.episodeCount)")
                             LabeledContent("段落", value: "\(info.passageCount)")

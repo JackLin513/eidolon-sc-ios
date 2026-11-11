@@ -33,6 +33,9 @@ final class AppModel {
     private(set) var standCharacterIDs: Set<String> = []
     private(set) var latest: [String: LatestActivity] = [:]
     private(set) var bundleInfo: ContentBundleInfo?
+    /// Installed content packages, for the settings package list. Phase A switches the
+    /// active franchise but deliberately leaves the user database un-migrated.
+    private(set) var contentPackages: [InstalledContentPackage] = []
     private(set) var standInfo: StandBundleInfo?
     private(set) var barInfo: BarBundleInfo?
     /// How the producer wants her drawn (ADR-0035): auto prefers 3D when this build and
@@ -1282,6 +1285,7 @@ final class AppModel {
         await importStandBundleForDebuggingIfRequested()
         await importBarBundleForDebuggingIfRequested()
         await importModel3DBundleForDebuggingIfRequested()
+        await activateDebugContentFranchiseIfRequested()
         await applyDebugGiftState()
         await applyDebugUsageState()
         seedInstalledPackagesForDebugging()
@@ -1747,6 +1751,21 @@ final class AppModel {
         }
     }
 
+    /// Switch which franchise's content package the shell reads. Phase A intentionally
+    /// does not migrate the user library; this validates the package root and identity
+    /// seam first. Callers must reload the shell afterwards.
+    func activateContentPackage(franchise: String) async {
+        do {
+            try await core.activateContent(franchise: franchise)
+            bundleInfo = try await core.installedContentInfo()
+            contentPackages = await core.installedContentPackages
+            try await load()
+            phase = .ready
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func debugLog(_ message: String) {
         #if DEBUG
         NSLog("[eidolon] %@", message)
@@ -1765,9 +1784,30 @@ final class AppModel {
             return
         }
         do {
-            _ = try await core.install(bundleAt: url)
+            let franchise = ProcessInfo.processInfo.environment["EIDOLON_IMPORT_CONTENT_FRANCHISE"] ?? "shiny"
+            if franchise == "shiny" {
+                _ = try await core.install(bundleAt: url)
+            } else {
+                _ = try await core.installContent(
+                    bundleAt: url,
+                    franchise: franchise,
+                    kind: .content
+                )
+                debugLog("content imported into \(franchise)")
+            }
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func activateDebugContentFranchiseIfRequested() async {
+        guard let franchise = ProcessInfo.processInfo.environment["EIDOLON_ACTIVE_FRANCHISE"],
+              !franchise.isEmpty else { return }
+        do {
+            try await core.activateContent(franchise: franchise)
+            debugLog("active content franchise: \(franchise)")
+        } catch {
+            errorMessage = "切换内容包失败：\(error.localizedDescription)"
         }
     }
     #endif
@@ -1792,7 +1832,7 @@ final class AppModel {
 
         do {
             try FileManager.default.copyItem(at: url, to: copy)
-            let info = try await core.install(bundleAt: copy) { [weak self] progress in
+            let info = try await core.installContentPackage(bundleAt: copy) { [weak self] progress in
                 Task { @MainActor in self?.importProgress = progress }
             }
             bundleInfo = info
@@ -2109,6 +2149,8 @@ final class AppModel {
         barInfo = try await core.installedBarInfo()
         barRewardToday = (try? await core.barRewardToday()) ?? true
         giftCatalog = try? await core.giftCatalog()
+        contentPackages = await core.installedContentPackages
+        bundleInfo = try await core.installedContentInfo()
 
         #if DEBUG
         mark("载入:头像")

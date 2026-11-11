@@ -29,7 +29,11 @@ public actor Eidolon {
     public nonisolated let location: Location
 
     let userQueue: DatabaseQueue
-    private var content: ContentDatabase?
+    var content: ContentDatabase?
+    /// Installed content packages keyed by franchise. Kept in actor state and persisted in
+    /// `app_state`; the active package is also mirrored at `Content/current` as a symlink.
+    var contentPackages: [String: ContentBundleInfo] = [:]
+    var activeContentFranchise = "shiny"
     /// The world setting, parsed once per installed bundle: it is 1.3 MB, read on the main
     /// path of every turn otherwise.
     var cachedWorld: WorldSetting?
@@ -78,6 +82,7 @@ public actor Eidolon {
     }
 
     public func installedContentInfo() throws -> ContentBundleInfo? {
+        try loadContentPackagesIfNeeded()
         let stored: String? = try userQueue.read { db in
             try String.fetchOne(
                 db,
@@ -95,27 +100,7 @@ public actor Eidolon {
         bundleAt url: URL,
         progress: ((ImportProgress) -> Void)? = nil
     ) throws -> ContentBundleInfo {
-        let installer = ContentBundleInstaller(
-            contentRoot: location.contentRoot,
-            userDatabasePath: location.userDatabase,
-            fileManager: .default
-        )
-        let info = try installer.install(url, progress: progress)
-        let encoded = try JSONEncoder().encode(info)
-        try userQueue.write { db in
-            try db.execute(
-                sql: """
-                    INSERT INTO app_state(key, value) VALUES('content.bundle', ?)
-                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
-                    """,
-                arguments: [String(decoding: encoded, as: UTF8.self)]
-            )
-        }
-        content = try openContent()
-        // Another bundle's world is not this one's.
-        cachedWorld = nil
-        worldCached = false
-        return info
+        try installContent(bundleAt: url, franchise: "shiny", kind: .content, progress: progress)
     }
 
     /// Installs a stand bundle beside the content bundle, atomically. On any failure the
@@ -300,7 +285,7 @@ public actor Eidolon {
         }
     }
 
-    private func saveAppState(_ key: String, _ value: String) throws {
+    func saveAppState(_ key: String, _ value: String) throws {
         try userQueue.write { db in
             try db.execute(
                 sql: """
@@ -653,7 +638,7 @@ public actor Eidolon {
         }
     }
 
-    private func openContent() throws -> ContentDatabase {
+    func openContent() throws -> ContentDatabase {
         try ContentDatabase(
             contentDirectory: location.contentDirectory,
             userDatabasePath: location.userDatabase

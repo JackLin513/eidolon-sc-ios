@@ -16,6 +16,14 @@ public struct ContentManifest: Codable, Sendable, Hashable {
     public struct Characters: Codable, Sendable, Hashable {
         public var count: Int
         public var ids: [String]
+        /// New packages carry franchise-qualified keys; older packages leave this nil.
+        public var characterKeys: [String]? = nil
+
+        public init(count: Int, ids: [String], characterKeys: [String]? = nil) {
+            self.count = count
+            self.ids = ids
+            self.characterKeys = characterKeys
+        }
     }
 
     public struct FileRecord: Codable, Sendable, Hashable {
@@ -27,8 +35,11 @@ public struct ContentManifest: Codable, Sendable, Hashable {
     /// `content` for a story bundle; nil for packages written before the split.
     public var kind: String? = nil
     /// The franchise this bundle belongs to; nil for bundles written before the
-    /// multi-franchise work, which read as `shiny` (S1 only reserves the field).
+    /// multi-franchise work, which read as `shiny`.
     public var franchise: String? = nil
+    /// The engine family (`t-script`, `spine`, `unity`, `webgl-three`, ...). It is
+    /// deliberately separate from franchise: one engine can host several works.
+    public var engineFamily: String? = nil
     public var contentSchemaVersion: Int
     public var createdAt: String
     public var embedding: Embedding
@@ -40,6 +51,7 @@ public struct ContentManifest: Codable, Sendable, Hashable {
         case formatVersion = "format_version"
         case kind
         case franchise
+        case engineFamily
         case contentSchemaVersion = "content_schema_version"
         case createdAt = "created_at"
         case embedding
@@ -52,6 +64,10 @@ public struct ContentManifest: Codable, Sendable, Hashable {
 /// What the app knows about the bundle it has installed.
 public struct ContentBundleInfo: Codable, Sendable, Hashable {
     public var formatVersion: Int
+    /// The franchise this package belongs to; older records read as `shiny`.
+    public var franchise: String = "shiny"
+    /// The package kind; older records read as `content`.
+    public var kind: String = ContentKind.content.rawValue
     public var contentSchemaVersion: Int
     public var installedAt: String
     public var embeddingModel: String
@@ -66,6 +82,8 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
 
     public init(
         formatVersion: Int,
+        franchise: String = "shiny",
+        kind: String = ContentKind.content.rawValue,
         contentSchemaVersion: Int,
         installedAt: String,
         embeddingModel: String,
@@ -77,6 +95,8 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
         placeCount: Int = 0
     ) {
         self.formatVersion = formatVersion
+        self.franchise = franchise
+        self.kind = kind
         self.contentSchemaVersion = contentSchemaVersion
         self.installedAt = installedAt
         self.embeddingModel = embeddingModel
@@ -90,6 +110,8 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case formatVersion
+        case franchise
+        case kind
         case contentSchemaVersion
         case installedAt
         case embeddingModel
@@ -105,6 +127,10 @@ public struct ContentBundleInfo: Codable, Sendable, Hashable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         formatVersion = try container.decode(Int.self, forKey: .formatVersion)
+        franchise = try container.decodeIfPresent(String.self, forKey: .franchise)
+            ?? "shiny"
+        kind = try container.decodeIfPresent(String.self, forKey: .kind)
+            ?? ContentKind.content.rawValue
         contentSchemaVersion = try container.decode(Int.self, forKey: .contentSchemaVersion)
         installedAt = try container.decode(String.self, forKey: .installedAt)
         embeddingModel = try container.decode(String.self, forKey: .embeddingModel)

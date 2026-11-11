@@ -21,6 +21,9 @@ enum Fixture {
 
     struct Options {
         var formatVersion = ContentManifest.supportedFormatVersion
+        var franchise: String? = nil
+        var kind: String? = nil
+        var characterKeys: [String]? = nil
         var schemaVersion = 1
         var model = "test-embed"
         var dimensions = 4
@@ -558,15 +561,22 @@ enum Fixture {
             content[key] = value
         }
 
-        return ContentManifest(
+        var manifest = ContentManifest(
             formatVersion: options.formatVersion,
             contentSchemaVersion: options.schemaVersion,
             createdAt: "2026-10-23T00:00:00Z",
             embedding: .init(model: options.manifestModel ?? options.model, dimensions: options.dimensions),
             content: content,
-            characters: .init(count: characterIDs.count, ids: characterIDs),
+            characters: .init(
+                count: characterIDs.count,
+                ids: characterIDs,
+                characterKeys: options.characterKeys
+            ),
             files: files
         )
+        manifest.franchise = options.franchise
+        manifest.kind = options.kind
+        return manifest
     }
 
     private static func relativePath(of url: URL, in directory: URL) -> String {

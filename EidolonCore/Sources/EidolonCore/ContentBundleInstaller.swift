@@ -13,6 +13,7 @@ struct ContentBundleInstaller {
 
     func install(
         _ bundleURL: URL,
+        expectedKind: ContentKind? = nil,
         progress: ((ImportProgress) -> Void)? = nil
     ) throws -> ContentBundleInfo {
         guard fileManager.fileExists(atPath: bundleURL.path) else {
@@ -29,6 +30,14 @@ struct ContentBundleInstaller {
 
         let manifest = try readManifest(in: staging)
         try validateManifest(manifest)
+        if let expectedKind,
+           let declared = manifest.kind?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !declared.isEmpty,
+           declared != expectedKind.rawValue {
+            throw EidolonError.invalidBundle(
+                "包 kind 为 \(declared)，这里只接受 \(expectedKind.rawValue)"
+            )
+        }
         try validateFiles(manifest, in: staging, progress: progress)
         try validateHolidays(in: staging)
         try validateWorld(in: staging)
