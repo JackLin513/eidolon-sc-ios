@@ -492,6 +492,7 @@ def write_assets(staging: Path, sakura_source: Path, avatar_dir: Path | None = N
         "producer_line": "和你对话的是你的制作人，也是学园相关的人。",
         "memory_instructions": "你负责替《ディメンション凸ラバース！！》中学园的角色们记住关于制作人的事。制作人就是正在和她们对话的用户。",
         "title_instructions": "你负责给制作人和一位角色（《ディメンション凸ラバース！！》中学园的一员）的一段对话起标题，好让制作人以后在历史对话里一眼认出这段聊了什么。制作人就是正在和她对话的用户。",
+        "photo_series": "",
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     (chars / "world.json").write_text(json.dumps(WORLD, ensure_ascii=False, indent=2), encoding="utf-8")
     (chars / "places.json").write_text(json.dumps(PLACES, ensure_ascii=False, indent=2), encoding="utf-8")

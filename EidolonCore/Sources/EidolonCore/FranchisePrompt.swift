@@ -26,6 +26,7 @@ public struct FranchisePrompt: Codable, Sendable, Hashable {
         case producerLine = "producer_line"
         case memoryInstructions = "memory_instructions"
         case titleInstructions = "title_instructions"
+        case photoSeries = "photo_series"
     }
 
     public init(
