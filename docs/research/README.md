@@ -11,6 +11,7 @@
 | [扩展点与平台适配](extension-points-and-platforms-2026-11-09.md) | 运行时/内容扩展点；Unity/UE/2D 运行时边界；iPad/macOS 路径 |
 | [多企划与跨企划场景](cross-franchise-model-2026-11-09.md) | 多内容包、复合身份、会话参与者、Scene/Universe/P0-P2 |
 | [两个外部企划的内容包可行性（2026-11-11）](content-packs-galgame-gakumas-2026-11-11.md) | galgame（T-Script 引擎）与 Gakumas-Player 各能提供什么内容、格式清单、提取管线、#135 映射与风险 |
+| [Galgame 全量迁移（2026-11-12）](galgame-full-migration-2026-11-12.md) | 全量文本/语音/立绘/世界观、PGD 解码、Sv20、Fish Audio、分阶段迁移与 CHS v1.1 汉化补丁分析 |
 
 ## 历史参考
 
