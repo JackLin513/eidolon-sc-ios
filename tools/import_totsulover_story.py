@@ -67,6 +67,16 @@ def normalize_text(value: str) -> str:
     return re.sub(r"\s+", "", value)
 
 
+def clean_for_text(value: str) -> str:
+    """Remove controller/render tags before storing or embedding a line."""
+    value = re.sub(r"<[^>]*>", "", value or "")
+    value = re.sub(r"%[0-9]+", "、", value)
+    value = re.sub(r"%[A-Za-z]", "", value)
+    value = value.replace("\u3000", " ").replace("\r", " ").replace("\n", " ")
+    value = re.sub(r"\s+", " ", value).strip()
+    return value
+
+
 def read_pac_entry(pac: Path, wanted: str) -> bytes:
     data = pac.read_bytes()
     if data[:4] != b"PAC ":
@@ -247,6 +257,7 @@ def make_lines(text, strings, unit: Unit):
         cursor = found + 1
         if not translated:
             translated = zh
+        translated = clean_for_text(translated)
         name = (entry.get("name") or "").strip()
         if name in PROTAGONIST_NAMES:
             speaker = "__producer__"

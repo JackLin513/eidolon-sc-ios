@@ -31,3 +31,11 @@ class StoryHelpersTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StoryTextCleanupTests(unittest.TestCase):
+    def test_controller_tags_do_not_reach_display_text(self) -> None:
+        self.assertEqual(
+            story.clean_for_text("你好<br><d0005>反现实</d>世界%0%10再见"),
+            "你好反现实世界、、再见",
+        )
