@@ -13,6 +13,7 @@
 | [两个外部企划的内容包可行性（2026-11-11）](content-packs-galgame-gakumas-2026-11-11.md) | galgame（T-Script 引擎）与 Gakumas-Player 各能提供什么内容、格式清单、提取管线、#135 映射与风险 |
 | [Galgame 全量迁移（2026-11-12）](galgame-full-migration-2026-11-12.md) | 全量文本/语音/立绘/世界观、PGD 解码、Sv20、Fish Audio、分阶段迁移与 CHS v1.1 汉化补丁分析 |
 | [Fish Audio 训练与成本（2026-11-12）](fish-audio-cost-2026-11-12.md) | Sakura/VO01 数据集能否训练、PVC/API/套餐各怎么收费、$0 与 $15 两条路的确切花钱步骤 |
+| [全量立绘运行时（2026-11-12）](galgame-stand-runtime-2026-11-12.md) | GE/PGD3 解码、LZSS/滤波/XOR、表情与姿态、四女主立绘体量、manifest v2 与通话页接入方案 |
 
 ## 历史参考
 
