@@ -45,7 +45,7 @@ HEROINES = {
 HEROINE_DETAIL = {
     "sakura": {
         "age": 18, "birthday": "01-01",
-        "voice_id": "6242d3abca7b4e0f955616c9ca87e69c",
+        "voice_id": "f55813e84ce44a6ea13a592a112458a7",
         "photo_tag": "yoruno sakura",
         "photo_appearance": "white hair, pink gradient hair, long hair, blue eyes, hair ornament, school uniform",
     },
