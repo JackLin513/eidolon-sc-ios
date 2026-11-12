@@ -435,7 +435,7 @@ struct CallView: View {
             Image(uiImage: image)
                 .resizable()
                 .scaledToFit()
-                .frame(height: height)
+                .frame(maxWidth: size.width - 24, maxHeight: height)
                 .frame(maxWidth: .infinity)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
