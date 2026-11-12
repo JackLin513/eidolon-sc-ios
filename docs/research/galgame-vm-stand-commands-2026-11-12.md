@@ -23,7 +23,7 @@
 | 参数 | `face_set(file_id, instance, dx, dy)`；`face_init(instance, slot, anchor_x, anchor_y, y_offset)`；`face_cls(instance)` | **H（反编译）** |
 | 角色/衣装/姿态/表情槽位编码 | 全部在 **FILE.DAT 文件名**里（`ST01A_A020` → 角色 01、组 A、槽 020）；命令只收一个 file id，没有独立字段 | **H** |
 | 每行 vs 每场景 | 命令是「脚本位置上的状态设置」，与文本行**没有绑定关系** | **H** |
-| 脚本能否给表情标签 | **不能**：全脚本 `face_*` 各 1 次；`sp_set_ex` 的贴图参数全部是 UI/特效/背景（`#颜色`/`ETC_*`/`BA_*`/`BK_*`/`MASK*`/`ANI_*`），没有一个 `ST*`/`FA*` | **H（负结论）** |
+| 脚本能否给表情标签 | **不能给情绪名**：全脚本 `face_*` 各 1 次；`sp_set_ex` 贴图参数全是 UI/特效/背景。**但能给用法**：后续报告实测 `local[1] = ST…` 赋值 **11,614 条**（旧结论漏扫了普通赋值指令，见 [`galgame-stand-engine-2026-11-12.md`](galgame-stand-engine-2026-11-12.md)） | **H（负结论已被限定）** |
 | `LIST_STAND.TXT` | 是 **STAND EDIT 工具**的数据（exe 里有 `STAND EDIT OK/CANCEL` 串），给「姿态 a..i × 漫符锚点坐标」，与剧情的「用哪个表情」无关 | **M** |
 | `STAND.CSV` | `st↔vo` 通道 + x/y/高度补正；只帮「角色↔槽位/语音通道」，不帮表情语义 | **M** |
 
@@ -336,6 +336,12 @@ release_face_object(vm + 732*slot + 164564); // sub_445360
 
 ## 6. 为什么「脚本导出标签」不成立（负结论及其证据）
 
+> **2026-11-12 追加修正（必读）**：本节结论**只对 `face_*`/`call_ext` 常量参数成立**，不能推广到「脚本没有逐行立绘数据」。
+> 后续实测（[`galgame-stand-engine-2026-11-12.md`](galgame-stand-engine-2026-11-12.md)）发现：立绘由 ADV 图层 +
+> `sp_set_transition`(0x30032) 驱动，脚本里有 **11,614 条 `local[1] = ST<CC><Outfit>_<Pose><Slot>`**（VM opcode 1 赋值的立即数）
+> 覆盖 2,137/2,137 张 ST 立绘（100%）。本节保留为「`face_*` 不是立绘驱动 + 命令参数无 ST 常量」的证据，
+> 但 §6 的最终结论「脚本不含逐行表情」**作废**。
+
 三个独立的证据都指向同一结论：
 
 **证据 A：`face_*` 几乎没被调用。**
@@ -468,8 +474,8 @@ LLM 输出 emotion ∈ {calm,happy,shy,surprised,sad,angry,thinking}
   "kind": "stand", "mode": "full", "renderer": "static",
   "franchise": "totsulover", "contentSetID": "totsulover.main.v1",
   "source": { "archive": "st.pac", "resolution": "S|LL|mixed", "height": 2048,
-              "labelSource": "manual",          // ← 新增：脚本导出不可用，显式声明手工标定
-              "scriptDerived": false },         // ← 新增：false 表示没有脚本真值
+              "labelSource": "script-usage+manual", // ← 修正：用法有脚本来源，情绪名手工
+              "scriptDerived": true },          // ← 修正：脚本有「用法」真值（11,614 条），但没有情绪语义
   "characters": [{
     "id": "sakura", "characterKey": "totsulover:sakura", "defaultPose": "a",
     "poses": [{
@@ -493,7 +499,8 @@ LLM 输出 emotion ∈ {calm,happy,shy,surprised,sad,angry,thinking}
 1. **`id` 必须是游戏槽位**（`pose + 3 位槽`，如 `a.020`/`a.061`），不要用情绪当主键；
    这样与 `ST01A_A020` 一一对应，将来任何数据源（含找到真值后）都能回填。
 2. **`emotion` 只作可选标签**，来源标 `manual`；**不要**写「script-derived」，
-   因为我们证明脚本里没有。`source.scriptDerived=false` 把这件事写进数据，防止以后又被当成「有真值」。
+   **修正（2026-11-12）**：立绘由其后的 [`galgame-stand-engine-2026-11-12.md`](galgame-stand-engine-2026-11-12.md) 证明**有脚本用法**（11,614 条槽位赋值），
+   所以 `source.scriptDerived` 应为 `true`，同时用 `labelSource: "script-usage+manual"` 说明「用法是脚本的、情绪名是人工的」。
 3. **`label`/`usage` 允许任意字符串**（生成器读 `tools/stand_expression_map.json`，可人工改）；
    安装器只校验 `path` 在 `files` 里，`emotion` 不在 7 情绪内时记 warning 而不是报错。
 4. **v1 兼容**：`format_version` 接受 `1...2`；v1 包行为不变（`expressions` 字典 → 7 情绪）。

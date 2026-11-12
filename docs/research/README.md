@@ -15,7 +15,8 @@
 | [行 → 语音映射（2026-11-12）](galgame-voice-mapping-2026-11-12.md) | Sv20 文本命令的 4 个操作数、TEXT.DAT/FILE.DAT/voice.pac 解析、22,127/39,829 行语音覆盖、四女主 100%、ASR 否决、立绘/表情命令族与 manifest v2 建议 |
 | [Fish Audio 训练与成本（2026-11-12）](fish-audio-cost-2026-11-12.md) | Sakura/VO01 数据集能否训练、PVC/API/套餐各怎么收费、$0 与 $15 两条路的确切花钱步骤 |
 | [全量立绘运行时（2026-11-12）](galgame-stand-runtime-2026-11-12.md) | GE/PGD3 解码、LZSS/滤波/XOR、表情与姿态、四女主立绘体量、manifest v2 与通话页接入方案 |
-| [Sv20 VM 与立绘/表情命令解码（2026-11-12）](galgame-vm-stand-commands-2026-11-12.md) | Sv20 帧格式（已证明）、类型化操作数、`call_ext` 与 24 张命令表；`face_init/face_set/face_cls` 的 opcode/handler/操作数；**脚本里没有逐行表情数据**（负结论）与 v2 manifest 建议 |
+| [Sv20 VM 与立绘/表情命令解码（2026-11-12）](galgame-vm-stand-commands-2026-11-12.md) | Sv20 帧格式（已证明）、类型化操作数、`call_ext` 与 24 张命令表；`face_init/face_set/face_cls` 的 opcode/handler/操作数；**脚本里没有逐行表情数据**（负结论，已被下一条修正）与 v2 manifest 建议 |
+| [立绘显示引擎与表情用法（2026-11-12）](galgame-stand-engine-2026-11-12.md) | 立绘驱动 = ADV 图层 + `sp_set_transition`（不是 `face_*`）；脚本里 **11,614 条** `local[1]=ST<CC><Outfit>_<Pose><Slot>` 用法数据（覆盖 100% 的 ST 立绘、60% 邻接台词）→ 权威用法可抽、语义仍需人工但可按频率减量；修正 `0x4CF5C0`/`WORK*.EXE`/`face_*` 三处误读与旧负结论 |
 
 ## 历史参考
 
