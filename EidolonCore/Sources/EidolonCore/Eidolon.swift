@@ -56,6 +56,11 @@ public actor Eidolon {
     /// The stand package's character map, read once per install.
     private var cachedStandConfigs: [String: StandConfig]?
 
+    /// Drop franchise-scoped stand caches after switching the active content package.
+    func invalidateStandCaches() {
+        cachedStandConfigs = nil
+    }
+
     public init(location: Location) throws {
         self.location = location
         try FileManager.default.createDirectory(

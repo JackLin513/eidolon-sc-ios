@@ -104,6 +104,7 @@ extension Eidolon {
         }
         try writeCurrentLink(franchise: franchise)
         activeContentFranchise = franchise
+        invalidateStandCaches()
         try saveAppState(ContentRegistryState.activeFranchiseKey, franchise)
         if let info = contentPackages[franchise] {
             let encoded = try JSONEncoder().encode(info)

@@ -275,6 +275,21 @@ final class StandBundleTests: XCTestCase {
         XCTAssertEqual(info?.outfitCount, 8)
     }
 
+    func testSwitchingContentDropsThePreviousFranchiseStandCache() async throws {
+        let eidolon = try await installedEidolon()
+        try await eidolon.installStand(bundleAt: StandFixture.makeBundle(in: root))
+        let shinyStand = await eidolon.stand(for: "mano")
+        XCTAssertEqual(shinyStand?.outfitList?.cards.count, 4)
+
+        try await eidolon.installContent(
+            bundleAt: Fixture.makeBundle(in: root),
+            franchise: "totsulover"
+        )
+        try await eidolon.activateContent(franchise: "totsulover")
+        let totsuloverStand = await eidolon.stand(for: "mano")
+        XCTAssertNil(totsuloverStand)
+    }
+
     func testImportReportsExtractionAndValidationProgress() async throws {
         let eidolon = try await installedEidolon()
         let recorder = ProgressRecorder()
