@@ -48,7 +48,7 @@ final class PhotoTagDraftTests: XCTestCase {
         // The same prompt a real turn gets, then the one difference: only the tag.
         XCTAssertTrue(sent.contains { $0.role == .system && $0.content.contains("每栏尽量写 2–4 个") })
         XCTAssertTrue(sent.contains { $0.content.contains("只输出一个 <photo> 标签") })
-        XCTAssertTrue(sent.contains { $0.content.contains("制作人刚才说的是：「拍张照片」") })
+        XCTAssertTrue(sent.contains { $0.content.contains("对方刚才说的是：「拍张照片」") })
         XCTAssertEqual(sent.map(\.content).filter { $0 == "（把手机举起来）让我拍一张。" }.count, 1)
         let calls = try await eidolon.serviceCalls()
         XCTAssertEqual(calls.filter { $0.service == .chat }.count, 1)

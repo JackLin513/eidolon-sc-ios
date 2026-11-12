@@ -13,6 +13,8 @@ public struct FranchisePrompt: Codable, Sendable, Hashable {
     public var producerLine: String
     public var memoryInstructions: String
     public var titleInstructions: String
+    /// The NovelAI series tag for photos; nil keeps the SC tag for older packs.
+    public var photoSeries: String?
 
     enum CodingKeys: String, CodingKey {
         case workName = "work_name"
@@ -35,7 +37,8 @@ public struct FranchisePrompt: Codable, Sendable, Hashable {
         callScene: String,
         producerLine: String,
         memoryInstructions: String,
-        titleInstructions: String
+        titleInstructions: String,
+        photoSeries: String? = nil
     ) {
         self.workName = workName
         self.organization = organization
@@ -46,6 +49,7 @@ public struct FranchisePrompt: Codable, Sendable, Hashable {
         self.producerLine = producerLine
         self.memoryInstructions = memoryInstructions
         self.titleInstructions = titleInstructions
+        self.photoSeries = photoSeries
     }
 
     /// The built-in SC identity, copied verbatim from the pre-pack prompts.
@@ -58,7 +62,8 @@ public struct FranchisePrompt: Codable, Sendable, Hashable {
         callScene: "角色扮演的通话中，角色是《偶像大师 闪耀色彩》283 事务所的偶像（或事务员），正在和制作人通话。",
         producerLine: "和你对话的是你的制作人，也就是 283 事务所的制作人。",
         memoryInstructions: "你负责替《偶像大师 闪耀色彩》283 事务所的偶像们（还有事务员）记住关于制作人的事。制作人就是正在和她们对话的用户。",
-        titleInstructions: "你负责给制作人和一位角色（283 事务所的偶像或事务员）的一段对话起标题，好让制作人以后在历史对话里一眼认出这段聊了什么。制作人就是正在和她对话的用户。"
+        titleInstructions: "你负责给制作人和一位角色（283 事务所的偶像或事务员）的一段对话起标题，好让制作人以后在历史对话里一眼认出这段聊了什么。制作人就是正在和她对话的用户。",
+        photoSeries: "idolmaster shiny colors"
     )
 
     public static let totsulover = FranchisePrompt(
@@ -70,7 +75,8 @@ public struct FranchisePrompt: Codable, Sendable, Hashable {
         callScene: "角色扮演的通话中，角色是《ディメンション凸ラバース！！》中学园的一员，正在和制作人通话。",
         producerLine: "和你对话的是你的制作人，也是学园相关的人。",
         memoryInstructions: "你负责替《ディメンション凸ラバース！！》中学园的角色们记住关于制作人的事。制作人就是正在和她们对话的用户。",
-        titleInstructions: "你负责给制作人和一位角色（《ディメンション凸ラバース！！》中学园的一员）的一段对话起标题，好让制作人以后在历史对话里一眼认出这段聊了什么。制作人就是正在和她对话的用户。"
+        titleInstructions: "你负责给制作人和一位角色（《ディメンション凸ラバース！！》中学园的一员）的一段对话起标题，好让制作人以后在历史对话里一眼认出这段聊了什么。制作人就是正在和她对话的用户。",
+        photoSeries: ""
     )
 
     public static func load(in contentDirectory: URL) -> FranchisePrompt? {

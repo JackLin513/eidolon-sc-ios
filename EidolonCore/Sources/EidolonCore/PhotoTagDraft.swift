@@ -126,7 +126,7 @@ extension Eidolon {
         var rules = """
             # 这一回合只写照片标签
             只输出一个 <photo> 标签，标签外不要写任何文字，也不要写台词。
-            按对话最后一轮制作人的要求和此刻正在发生的事写：
+            按对话最后一轮对方的要求和此刻正在发生的事写：
             - shot：他拿手机或相机拍你写 other；他要自拍才写 selfie。
             - framing：他说“全身”就写 full body，说“上半身/特写”就写 upper body，没指定再自己选。
             - with：拍她一个人（自拍、单人照）写 none；他从第一人称拍、画面里只露出他的手或身体写 hands；
@@ -140,14 +140,14 @@ extension Eidolon {
               闭眼写 eyes closed；没看镜头写 facing viewer 或 looking to the side，
               不要写 looking away（已废弃）。
             不要照抄历史里的任何照片标签；以此刻为准。
-            note 用中文：写「制作人」不要写「生产者」；她的名字写中文名，不要写成别的字。
+            note 用中文：用「你」称呼拍照的人，不要写「制作人」「生产者」；她的名字写中文名，不要写成别的字。
             """
         if let chineseName, !chineseName.isEmpty {
             rules += "\n她的中文名是「\(chineseName)」，note 里用这个名字。"
         }
         if let lastAsked, !lastAsked.isEmpty {
             let quoted = lastAsked.count > 160 ? String(lastAsked.prefix(160)) : lastAsked
-            rules += "\n制作人刚才说的是：「\(quoted)」。framing 和地点要按这句话里的要求写。"
+            rules += "\n对方刚才说的是：「\(quoted)」。framing 和地点要按这句话里的要求写。"
         }
         return rules
     }

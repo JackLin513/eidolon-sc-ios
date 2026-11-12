@@ -359,7 +359,7 @@ public enum PhotoPromptBuilder {
 
         // NovelAI's V4/V5 captions split scene from character. The numbered subject tag
         // stays in the base prompt; the character prompt says `girl`, never `1girl`.
-        let series = "idolmaster shiny colors"
+        let series = FranchisePromptContext.current.photoSeries ?? "idolmaster shiny colors"
         // `solo` is only true when nobody else is in the picture; a POV shot shows his
         // hands, and `he` puts a second character in the frame.
         let subject = switch cleaned.partner {
@@ -367,8 +367,8 @@ public enum PhotoPromptBuilder {
         case .hands: ["1girl"]
         case .he: ["1girl", "1boy"]
         }
-        var base = subject + [series]
-        var full = subject + [characterTag, series]
+        var base = subject + (series.isEmpty ? [] : [series])
+        var full = subject + [characterTag] + (series.isEmpty ? [] : [series])
         if !trimmedStyle.isEmpty {
             base.append(trimmedStyle)
             full.append(trimmedStyle)

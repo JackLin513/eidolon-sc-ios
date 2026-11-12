@@ -1117,20 +1117,26 @@ struct APISettingsView: View {
                 }
             }
             .accessibilityIdentifier("api.image.format")
-            SettingsHint("NovelAI 原生接口，或 OpenAI 兼容的图片接口。")
+            SettingsHint(settings.imageAPIFormat == .comfyui
+                ? "ComfyUI 的 /prompt 接口地址，例如 http://192.168.1.10:8188；普通模型填 checkpoint 文件名，密钥可留空。"
+                : "NovelAI 原生接口，或 OpenAI 兼容的图片接口。")
             TextField("接口地址，例如 https://image.novelai.net", text: $settings.imageBaseURL)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
             SettingsHint("NovelAI 原生格式写到域名根；OpenAI 图像格式写到 /v1。")
-            SecureField("NovelAI 密钥（留空保留已存密钥）", text: $settings.novelAIAPIKey)
+            SecureField(settings.imageAPIFormat == .comfyui
+                ? "ComfyUI API 密钥（通常留空）"
+                : "NovelAI 密钥（留空保留已存密钥）", text: $settings.novelAIAPIKey)
             clearSecretButton(.novelAI, hasStored: !saved.novelAIAPIKey.trimmed.isEmpty) {
                 settings.novelAIAPIKey = ""
             }
             TextField("普通模型", text: $settings.imageModel)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            SettingsHint("全年龄照片用的 NovelAI 模型名。")
+            SettingsHint(settings.imageAPIFormat == .comfyui
+                ? "ComfyUI 里的 checkpoint 文件名，例如 noobai-vpred-1.0.safetensors。"
+                : "全年龄照片用的 NovelAI 模型名。")
             TextField("成人模型", text: $settings.imageAdultModel)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()

@@ -9,6 +9,7 @@ import ZIPFoundation
 public enum ImageAPIFormat: String, Codable, Sendable, CaseIterable, Identifiable {
     case novelai
     case openai
+    case comfyui
 
     public var id: String { rawValue }
 
@@ -16,6 +17,7 @@ public enum ImageAPIFormat: String, Codable, Sendable, CaseIterable, Identifiabl
         switch self {
         case .novelai: "NovelAI 原生格式"
         case .openai: "OpenAI 图像格式"
+        case .comfyui: "ComfyUI API"
         }
     }
 }
@@ -77,7 +79,9 @@ public struct ImageServiceSettings: Sendable, Equatable {
     }
 
     public var isConfigured: Bool {
-        guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        let hasKey = apiFormat == .comfyui
+            || !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        guard hasKey,
               !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let url = URL(string: baseURL),
               url.scheme != nil, url.host != nil
@@ -93,6 +97,8 @@ public struct ImageServiceSettings: Sendable, Equatable {
             return base.appendingPathComponent("ai/generate-image")
         case .openai:
             return base.appendingPathComponent("images/generations")
+        case .comfyui:
+            return base
         }
     }
 
@@ -268,7 +274,13 @@ public struct RemoteImageGenerator: ImageGenerating {
         _ request: ImageRequest,
         settings: ImageServiceSettings
     ) async throws -> Data {
-        guard settings.isConfigured, !settings.apiKey.isEmpty else {
+        guard settings.isConfigured else {
+            throw ImageGenerationError.missingKey
+        }
+        if settings.apiFormat == .comfyui {
+            return try await generateComfyUI(request, settings: settings)
+        }
+        guard !settings.apiKey.isEmpty else {
             throw ImageGenerationError.missingKey
         }
         guard let endpoint = settings.endpoint else {
@@ -280,6 +292,8 @@ public struct RemoteImageGenerator: ImageGenerating {
             body = Self.novelAIRequest(request)
         case .openai:
             body = Self.openAIRequest(request)
+        case .comfyui:
+            throw ImageGenerationError.invalidAddress
         }
         var urlRequest = URLRequest(url: endpoint)
         urlRequest.httpMethod = "POST"
@@ -307,6 +321,8 @@ public struct RemoteImageGenerator: ImageGenerating {
             picture = try Self.pictureInZip(response.body)
         case .openai:
             picture = try await Self.pictureInOpenAIAnswer(response.body, transport: transport)
+        case .comfyui:
+            throw ImageGenerationError.invalidAddress
         }
         return try ImageTranscoder.jpeg(
             picture,
@@ -314,6 +330,84 @@ public struct RemoteImageGenerator: ImageGenerating {
             height: request.height,
             fit: false
         )
+    }
+
+    /// ComfyUI's `/prompt` API. The workflow is a plain text-to-image graph; `model` is
+    /// the checkpoint filename, and the generated image is fetched from `/view`.
+    private func generateComfyUI(
+        _ request: ImageRequest,
+        settings: ImageServiceSettings
+    ) async throws -> Data {
+        guard let base = settings.endpoint else { throw ImageGenerationError.invalidAddress }
+        let positive = request.basePrompt ?? request.prompt
+        let workflow: [String: Any] = [
+            "1": ["class_type": "CheckpointLoaderSimple", "inputs": ["ckpt_name": request.model]],
+            "2": ["class_type": "CLIPTextEncode", "inputs": ["text": positive, "clip": ["1", 1]]],
+            "3": ["class_type": "CLIPTextEncode", "inputs": ["text": request.negativePrompt, "clip": ["1", 1]]],
+            "4": ["class_type": "EmptyLatentImage", "inputs": [
+                "width": request.width, "height": request.height, "batch_size": 1,
+            ]],
+            "8": ["class_type": "ModelSamplingDiscrete", "inputs": [
+                "model": ["1", 0], "sampling": "v_prediction", "zsnr": true,
+            ]],
+            "5": ["class_type": "KSampler", "inputs": [
+                "seed": Int(request.seed), "steps": 23, "cfg": 6.0,
+                "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1.0,
+                "model": ["8", 0], "positive": ["2", 0], "negative": ["3", 0],
+                "latent_image": ["4", 0],
+            ]],
+            "6": ["class_type": "VAEDecode", "inputs": ["samples": ["5", 0], "vae": ["1", 2]]],
+            "7": ["class_type": "SaveImage", "inputs": ["filename_prefix": "eidolon", "images": ["6", 0]]],
+        ]
+        let body = try JSONSerialization.data(withJSONObject: [
+            "prompt": workflow, "client_id": UUID().uuidString,
+        ])
+        var submit = URLRequest(url: base.appendingPathComponent("prompt"))
+        submit.httpMethod = "POST"
+        submit.timeoutInterval = 30
+        submit.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        submit.httpBody = body
+        let submitted = try await transport.send(submit)
+        try Self.checkStatus(submitted)
+        guard let json = try? JSONSerialization.jsonObject(with: submitted.body) as? [String: Any],
+              let promptID = json["prompt_id"] as? String
+        else { throw ImageGenerationError.serviceError("ComfyUI 没有返回 prompt_id") }
+        for _ in 0..<240 {
+            try await Task.sleep(for: .seconds(1))
+            let history = try await transport.send(URLRequest(
+                url: base.appendingPathComponent("history").appendingPathComponent(promptID)
+            ))
+            try Self.checkStatus(history)
+            guard let object = try? JSONSerialization.jsonObject(with: history.body) as? [String: Any],
+                  let entry = object[promptID] as? [String: Any],
+                  let outputs = entry["outputs"] as? [String: Any]
+            else { continue }
+            for output in outputs.values {
+                guard let images = output as? [String: Any],
+                      let list = images["images"] as? [[String: Any]],
+                      let first = list.first,
+                      let filename = first["filename"] as? String
+                else { continue }
+                var components = URLComponents(
+                    url: base.appendingPathComponent("view"), resolvingAgainstBaseURL: false
+                )
+                components?.queryItems = [
+                    URLQueryItem(name: "filename", value: filename),
+                    URLQueryItem(name: "subfolder", value: first["subfolder"] as? String ?? ""),
+                    URLQueryItem(name: "type", value: first["type"] as? String ?? "output"),
+                ]
+                guard let view = components?.url else { continue }
+                let picture = try await transport.send(URLRequest(url: view))
+                try Self.checkStatus(picture)
+                return try ImageTranscoder.jpeg(
+                    picture.body,
+                    width: request.width,
+                    height: request.height,
+                    fit: false
+                )
+            }
+        }
+        throw ImageGenerationError.timeout
     }
 
     static func novelAIRequest(_ request: ImageRequest) -> [String: Any] {

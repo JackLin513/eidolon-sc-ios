@@ -384,7 +384,7 @@ public enum EnvImporter {
                     invalid.append(.init(
                         key: key,
                         line: entry.line,
-                        message: "只能是 novelai 或 openai"
+                        message: "只能是 novelai、openai 或 comfyui"
                     ))
                 }
                 return nil
