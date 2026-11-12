@@ -292,11 +292,14 @@ def zip_directory(staging: Path, output: Path) -> None:
 
 
 def main() -> None:
+    global CONTENT_SET_ID
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--stand-out", type=Path, default=DEFAULT_STAND_OUT)
+    parser.add_argument("--content-set-id", default=CONTENT_SET_ID)
     args = parser.parse_args()
+    CONTENT_SET_ID = args.content_set_id
     source = args.source
     if not (source / "character.json").exists() or not (source / "card.md").exists():
         raise SystemExit(f"not a Sakura source directory: {source}")

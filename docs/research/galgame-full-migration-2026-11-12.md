@@ -1105,3 +1105,32 @@ https://canneed.eu.org  /  https://github.com/colorfulkurumi/canneed-oss
 | E49 | DLL 只用 GDI 画字（`TextOutW`/`CreateDIBSection`/`UpdateLayeredWindow`）+ `AddFontResourceExW` 装 `FONT.TTF`；无网络导入 | 导入表全量 |
 | E50 | `canneed-oss` = CC BY-NC-SA 4.0；`HEAD 0eb9e28`（2026-09-25）；仅 JSON，无二进制 | `git show HEAD:LICENSE`、`README.md`、`git ls-files` |
 | E51 | 补丁目录密钥扫描 0 命中 | 正则扫描（`sk-`/`AKIA`/`ghp_`/`api_key`/`Bearer`） |
+
+---
+
+## 13. 当前迁移范围与已生成产物（2026-11-12）
+
+范围收窄为 **4 位女主**：夜乃桜、海漫華淡、ソフィア・ランカスター、崩月水仙。
+
+其他角色只保留在 `episode_lines.speaker` 中作为剧情上下文，不生成角色卡、立绘或语音。用户本人映射为 `__producer__`（男主），不做角色卡、立绘或语音；当前共 **9,670** 条台词。
+
+本轮已生成（均在 `build/`，不提交仓库）：
+
+| 产物 | 内容 | 校验 |
+|---|---|---|
+| `build/eidolon-totsulover-full.eidolonpkg` | 255 个单元、39,803 行、13,351 段、4 角色、`contentSetID=totsulover.full.v1` | 模拟器安装成功，4 角色列表可见 |
+| `build/eidolon-totsulover-sakura-full-stand.eidolonpkg` | 夜乃桜 14 张 PNG、6 个语义表情、绑定同一 `contentSetID` | 安装成功，预览返回 6 个表情路径 |
+| `build/sakura-voice/` | VO01 的 159 段干净 WAV，12.04 分钟；Fish Audio PVC 门槛 10 分钟 | 仅本机试音/训练用 |
+
+生成器：
+
+- `tools/import_totsulover_story.py`：PAC → TEXT.DAT → CHS RPCK/STRINGS.JSON → 单元切幕 → 说话人/男主 → embedding API → content 包
+- `tools/build_sakura_pack.py`：Sakura content + static stand 两个包
+- `tools/prepare_fish_audio_dataset.py`：按 PAC 前缀提取/转 WAV/裁剪到目标分钟数
+
+仍需注意：
+
+- `VO01` 与夜乃桜的对应关系目前按通道顺序推定，正式训练前要用 `.MIX`/脚本 voice id 或人工试听确认。
+- 其它 3 位女主的头像/人设仍是占位；剧情文本已包含她们。
+- `<dNNNN>` 仍建议用原版 TIPS + `tips####` 桥接。
+- 全量立绘（20 角色）不在此范围；当前只做 Sakura 的 static stand 链路。
