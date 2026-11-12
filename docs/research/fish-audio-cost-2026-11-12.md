@@ -351,3 +351,24 @@ curl -s -o /tmp/models.json -w '%{http_code}' \
 - Voice Design（$0.01/成功请求）：[Voice Design](https://docs.fish.audio/features/voice-design)
 - 套餐页：[fish.audio/plan](https://fish.audio/plan/) / [zh-CN](https://fish.audio/zh-CN/plan/)；官方定价接口：[api.fish.audio/pricing/plans](https://api.fish.audio/pricing/plans)
 - 服务条款（上传许可、perpetual/irrevocable）：[fish.audio/terms](https://fish.audio/terms/)
+
+---
+
+## 9. 2026-11-12 实测：API 即时克隆被账户额度拦住
+
+在用户批准“测试即时克隆”后，做了两次只读/创建尝试；**没有模型被创建，没有产生费用**：
+
+1. `GET /wallet/self/api-credit`：`credit = 0.0`，`cumulative_top_up = 0`。
+2. 先把 `build/sakura-voice/` 的 159 段拼成 20 个约 36 s 的 WAV（共 12.04 min，34.6 MB）上传 `POST /model`：**HTTP 413 Request Entity Too Large**。
+3. 转成 20 个 FLAC（共 17.2 MB）再上传：请求体通过，但被 **HTTP 403** 拒绝：
+
+```json
+{"status":403,"message":"API model creation limit reached (0/0). Top up API credit to raise the limit."}
+```
+
+结论：
+
+- **API 模型创建受 API credit 限制，0 余额时额度是 0/0**；不是“创建完全免费”。
+- 官方 API 文档没有写最低充值额；第三方资料常见 **$5 首充**，实际以 API Billing 结账页为准。
+- 20 个文件是 `POST /model` 的硬上限；12 min 可以塞进 20 个拼接片段，但请求体要压到服务端大小限制内（FLAC/MP3）。
+- 在没有 API credit 前，无法通过 API 做即时克隆；如要走这条路，需要先充值，再重新跑同一请求。
