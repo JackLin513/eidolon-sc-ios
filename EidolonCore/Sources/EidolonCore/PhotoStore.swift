@@ -462,12 +462,39 @@ extension Eidolon {
         )
         let id = UUID().uuidString
         let started = Date()
+        // Insert the pending row before asking ComfyUI, so a relaunch can adopt a job
+        // whose prompt id is already persisted.
+        try await userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO photos(
+                        id, conversation_id, message_id, tag, status, reason, file,
+                        width, height, started_at, finished_at
+                    ) VALUES (?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, ?, NULL)
+                    """,
+                arguments: [
+                    id, conversationID, messageID, tag.raw,
+                    PhotoGeometry.width, PhotoGeometry.height, Eidolon.timestamp(started),
+                ]
+            )
+        }
         var data: Data?
         var reason: PhotoFailureReason?
         var detail: String?
         do {
             data = try await imageQueue.run(priority: .photo, timeout: nil) {
-                try await context.generator.generate(request, settings: context.settings)
+                try await context.generator.generate(
+                    request, settings: context.settings
+                ) { promptID in
+                    Task {
+                        await self.rememberComfyPhoto(
+                            photoID: id, promptID: promptID, settings: context.settings
+                        )
+                        await self.updatePendingComfyAttachment(
+                            photoID: id, messageID: messageID, conversationID: conversationID
+                        )
+                    }
+                }
             }
         } catch let error as ImageGenerationError {
             reason = Self.photoReason(error)
@@ -495,18 +522,13 @@ extension Eidolon {
         try await userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO photos(
-                        id, conversation_id, message_id, tag, status, reason, file,
-                        width, height, started_at, finished_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    UPDATE photos SET status = ?, reason = ?, file = ?, finished_at = ?
+                    WHERE id = ?
                     """,
-                arguments: [
-                    id, conversationID, messageID, tag.raw, statusValue,
-                    reasonValue, file, PhotoGeometry.width, PhotoGeometry.height,
-                    Eidolon.timestamp(started), Eidolon.timestamp(now),
-                ]
+                arguments: [statusValue, reasonValue, file, Eidolon.timestamp(now), id]
             )
         }
+        removePendingComfyPhoto(photoID: id)
         return PhotoReference(id: id, status: status, reason: reason)
     }
 
