@@ -392,7 +392,7 @@ public struct RemoteImageGenerator: ImageGenerating {
         guard let json = try? JSONSerialization.jsonObject(with: submitted.body) as? [String: Any],
               let promptID = json["prompt_id"] as? String
         else { throw ImageGenerationError.serviceError("ComfyUI 没有返回 prompt_id") }
-        for _ in 0..<1800 {
+        while !Task.isCancelled {
             try await Task.sleep(for: .seconds(1))
             let history = try await transport.send(URLRequest(
                 url: base.appendingPathComponent("history").appendingPathComponent(promptID)
