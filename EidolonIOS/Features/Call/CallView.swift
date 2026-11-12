@@ -402,10 +402,9 @@ struct CallView: View {
             return
         }
         staticImage = UIImage(contentsOfFile: url.path)
-        if var remembered = Optional(StaticAppearanceStore().selection(for: character.id)) {
-            remembered.emotion = emotion
-            StaticAppearanceStore().remember(remembered, for: character.id)
-        }
+        var remembered = StaticAppearanceStore().selection(for: character.id)
+        remembered.emotion = emotion
+        StaticAppearanceStore().remember(remembered, for: character.id)
     }
 
     private func staticStage(_ image: UIImage, size: CGSize) -> some View {
