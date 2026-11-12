@@ -65,6 +65,10 @@ extension Eidolon {
         savePendingComfyPhotos(jobs)
     }
 
+    public func hasPendingComfyPhotos() -> Bool {
+        !loadPendingComfyPhotos().isEmpty
+    }
+
     /// On launch, ask the Mac for any ComfyUI job whose prompt id survived the app being
     /// closed. A finished picture is written into the existing pending photo row.
     public func recoverComfyPhotos() async {

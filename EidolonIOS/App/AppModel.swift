@@ -1307,7 +1307,13 @@ final class AppModel {
                 try await load()
                 // ComfyUI keeps rendering while this app is closed; adopt any finished
                 // job back into its pending photo row on the next launch.
-                Task { await core.recoverComfyPhotos() }
+                Task {
+                    repeat {
+                        await core.recoverComfyPhotos()
+                        guard await core.hasPendingComfyPhotos() else { break }
+                        try? await Task.sleep(for: .seconds(10))
+                    } while !Task.isCancelled
+                }
                 loadChatProfiles()
                 phase = .ready
                 #if DEBUG
