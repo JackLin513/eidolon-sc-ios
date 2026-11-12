@@ -29,9 +29,11 @@ extension Eidolon {
         Task {
             let started = Date()
             do {
+                // Temporary local-ComfyUI mode: image generation may take many minutes
+                // while the model warms up, so do not cut the job off at 90 seconds.
                 let data = try await imageQueue.run(
                     priority: .photo,
-                    timeout: .seconds(90)
+                    timeout: nil
                 ) {
                     try await context.generator.generate(request, settings: context.settings)
                 }
@@ -355,7 +357,7 @@ extension Eidolon {
         var reason: PhotoFailureReason?
         var detail: String?
         do {
-            data = try await imageQueue.run(priority: .photo, timeout: .seconds(90)) {
+            data = try await imageQueue.run(priority: .photo, timeout: nil) {
                 try await context.generator.generate(request, settings: context.settings)
             }
         } catch let error as ImageGenerationError {

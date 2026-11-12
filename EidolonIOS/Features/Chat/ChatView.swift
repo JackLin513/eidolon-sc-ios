@@ -805,6 +805,7 @@ struct ChatView: View {
         @State private var image: UIImage?
         @State private var viewing = false
         @State private var blinking = false
+        @State private var startedAt = Date()
 
         private var width: CGFloat { PhotoGeometry.bubbleWidth }
 
@@ -844,11 +845,15 @@ struct ChatView: View {
                         .fill(Color(.tertiarySystemBackground))
                         .frame(width: width, height: width / PhotoGeometry.aspectRatio)
                         .overlay {
-                            VStack(spacing: 10) {
+                            VStack(spacing: 8) {
                                 Image(systemName: "camera")
                                     .font(.title2)
                                     .opacity(blinking ? 0.35 : 1)
                                 ProgressView()
+                                TimelineView(.periodic(from: .now, by: 1)) { context in
+                                    Text("生成中 · \(Int(context.date.timeIntervalSince(startedAt)))s")
+                                        .font(.caption.monospacedDigit())
+                                }
                             }
                             .foregroundStyle(.secondary)
                         }
