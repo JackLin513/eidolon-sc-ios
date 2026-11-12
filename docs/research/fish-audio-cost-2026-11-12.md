@@ -372,3 +372,22 @@ curl -s -o /tmp/models.json -w '%{http_code}' \
 - 官方 API 文档没有写最低充值额；第三方资料常见 **$5 首充**，实际以 API Billing 结账页为准。
 - 20 个文件是 `POST /model` 的硬上限；12 min 可以塞进 20 个拼接片段，但请求体要压到服务端大小限制内（FLAC/MP3）。
 - 在没有 API credit 前，无法通过 API 做即时克隆；如要走这条路，需要先充值，再重新跑同一请求。
+
+---
+
+## 10. 2026-11-12 实测：API 即时克隆成功（$0，私有模型）
+
+充值 $1 API credit 后重试：
+
+- 先传 12.04 min（20×FLAC）→ `400 Total duration of audios is too long, it should be less than 270 seconds`
+- 改成 **19 个 FLAC、71 段、约 261 s（4.35 min）** → `201`，`state=trained`，`train_mode=fast`，`visibility=private`
+- 用 `s2.1-pro-free` + `reference_id=<模型 id>` 生成 3 段试听：
+  - 日文台词 5.59 s / 89 KB
+  - 日文台词 5.3 s / 86 KB
+  - 中文台词约 2.6 s / 40 KB
+- 生成前后 API credit 都是 **$1.00**；即时克隆创建与本次 TTS 均未扣费
+- 模型 ID 与音频只保留在本地 `build/sakura-voice/`（`model.json`、`instant-clone-sample-*.mp3`），不写入公开仓库
+
+**新事实**：`POST /model` 的 fast clone 当前版本有 **总时长 < 270 s** 的限制，不是“20 个文件可无限拼接”。12 min PVC 数据不能直接喂给 fast clone；要更多参考只能走 PVC。
+
+结论：API 即时克隆可用于本机试听；相似度/情绪表现有限，且用 game 原声克隆仍受 Fish 条款与授权约束。
