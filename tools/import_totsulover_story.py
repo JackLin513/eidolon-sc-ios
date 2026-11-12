@@ -47,6 +47,8 @@ HEROINE_DETAIL = {
         "age": 18, "birthday": "01-01",
         "voice_id": "f55813e84ce44a6ea13a592a112458a7",
         "photo_tag": "yoruno sakura",
+        "photo_lora": "Yoruno_Sakura_Kuro_Syasyou_v1.0_NoobAI.safetensors",
+        "photo_lora_triggers": "Yoruno_sakura, Yoruno_sakura-(school_uniform)",
         "photo_appearance": "white hair, pink gradient hair, long hair, blue eyes, hair ornament, school uniform",
     },
     "katan": {
@@ -478,6 +480,8 @@ def write_assets(staging: Path, sakura_source: Path, avatar_dir: Path | None = N
             "voice_id": detail.get("voice_id", cid), "sheet": sheet, "facts": facts, "avatar": avatar,
             "speakers": [speaker], "idol_id": index, "birthday": detail["birthday"],
             "age": detail["age"], "photo_tag": detail["photo_tag"],
+            "photo_lora": detail.get("photo_lora"),
+            "photo_lora_triggers": detail.get("photo_lora_triggers", ""),
             "photo_appearance": detail["photo_appearance"],
             "place_likes": ["cafe", "park"], "liked_gifts": gifts,
         })

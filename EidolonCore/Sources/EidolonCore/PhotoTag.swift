@@ -367,8 +367,11 @@ public enum PhotoPromptBuilder {
         case .hands: ["1girl"]
         case .he: ["1girl", "1boy"]
         }
-        var base = subject + (series.isEmpty ? [] : [series])
-        var full = subject + [characterTag] + (series.isEmpty ? [] : [series])
+        let loraTags = character.photoLoraTriggers
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        var base = subject + loraTags + (series.isEmpty ? [] : [series])
+        var full = subject + [characterTag] + loraTags + (series.isEmpty ? [] : [series])
         if !trimmedStyle.isEmpty {
             base.append(trimmedStyle)
             full.append(trimmedStyle)
@@ -391,7 +394,8 @@ public enum PhotoPromptBuilder {
             negativePrompt: adult ? adultNegative : allAgesNegative,
             width: PhotoGeometry.width,
             height: PhotoGeometry.height,
-            model: model
+            model: model,
+            lora: character.photoLora
         )
     }
 }

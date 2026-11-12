@@ -28,6 +28,10 @@ public struct CharacterConfig: Sendable, Hashable {
     /// Her character tag in Danbooru's spelling, for the image service. It is not derived
     /// from `name_romaji`; nil means the bundle cannot draw her.
     public var photoTag: String?
+    /// The ComfyUI LoRA filename for her, when the local workflow should load one.
+    public var photoLora: String?
+    /// Tags the LoRA was trained on, prepended to the photo prompt.
+    public var photoLoraTriggers: [String]
     /// The appearance tags every photo of her carries: hair colour and style, eye colour.
     public var photoAppearance: [String]
     /// The place categories she likes, used when the moments page picks a place.
@@ -56,6 +60,8 @@ public struct CharacterConfig: Sendable, Hashable {
         birthday: Birthday? = nil,
         age: Int? = nil,
         photoTag: String? = nil,
+        photoLora: String? = nil,
+        photoLoraTriggers: [String] = [],
         photoAppearance: [String] = [],
         placeLikes: [String] = [],
         likedGifts: [String] = [],
@@ -80,6 +86,8 @@ public struct CharacterConfig: Sendable, Hashable {
         self.birthday = birthday
         self.age = age
         self.photoTag = photoTag
+        self.photoLora = photoLora
+        self.photoLoraTriggers = photoLoraTriggers
         self.photoAppearance = photoAppearance
         self.placeLikes = placeLikes
         self.likedGifts = likedGifts
@@ -135,6 +143,8 @@ public struct CharacterConfig: Sendable, Hashable {
             birthday: birthday,
             age: object["age"]?.intValue,
             photoTag: object["photo_tag"]?.stringValue,
+            photoLora: object["photo_lora"]?.stringValue,
+            photoLoraTriggers: Self.commaTags(object["photo_lora_triggers"]?.stringValue),
             photoAppearance: Self.commaTags(object["photo_appearance"]?.stringValue),
             placeLikes: object["place_likes"]?.arrayValue?.compactMap(\.stringValue) ?? [],
             likedGifts: object["liked_gifts"]?.arrayValue?.compactMap(\.stringValue) ?? [],

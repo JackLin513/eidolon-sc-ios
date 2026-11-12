@@ -20,7 +20,7 @@ extension Eidolon {
                   style: context.settings.style,
                   adult: adult,
                   table: table,
-                  model: adult ? context.settings.adultModel : context.settings.model,
+                  model: context.settings.model(adult: adult),
                   producerTags: context.settings.producerTags
               )
         else { return nil }
@@ -346,7 +346,7 @@ extension Eidolon {
             style: context.settings.style,
             adult: adult,
             table: table,
-            model: adult ? context.settings.adultModel : context.settings.model,
+            model: context.settings.model(adult: adult),
             producerTags: context.settings.producerTags
         )
         let id = UUID().uuidString

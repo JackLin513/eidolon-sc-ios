@@ -89,6 +89,13 @@ public struct ImageServiceSettings: Sendable, Equatable {
         return true
     }
 
+    /// The checkpoint a photo of this rating uses. ComfyUI has one local checkpoint in
+    /// this workflow, so its adult and normal settings share `model`.
+    public func model(adult: Bool) -> String {
+        guard apiFormat != .comfyui else { return model }
+        return adult ? adultModel : model
+    }
+
     public var endpoint: URL? {
         guard let base = URL(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines))
         else { return nil }
@@ -174,6 +181,8 @@ public struct ImageRequest: Sendable, Equatable {
     public var width: Int
     public var height: Int
     public var model: String
+    /// A ComfyUI LoRA filename; ignored by other services.
+    public var lora: String?
     public var seed: UInt32
 
     public init(
@@ -184,6 +193,7 @@ public struct ImageRequest: Sendable, Equatable {
         width: Int,
         height: Int,
         model: String,
+        lora: String? = nil,
         seed: UInt32 = UInt32.random(in: 0...(UInt32.max - 7))
     ) {
         self.prompt = prompt
@@ -193,6 +203,7 @@ public struct ImageRequest: Sendable, Equatable {
         self.width = width
         self.height = height
         self.model = model
+        self.lora = lora
         self.seed = seed
     }
 }
@@ -340,15 +351,18 @@ public struct RemoteImageGenerator: ImageGenerating {
     ) async throws -> Data {
         guard let base = settings.endpoint else { throw ImageGenerationError.invalidAddress }
         let positive = request.basePrompt ?? request.prompt
-        let workflow: [String: Any] = [
+        let lora = request.lora?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let model: [Any] = lora.isEmpty ? ["1", 0] : ["9", 0]
+        let clip: [Any] = lora.isEmpty ? ["1", 1] : ["9", 1]
+        var workflow: [String: Any] = [
             "1": ["class_type": "CheckpointLoaderSimple", "inputs": ["ckpt_name": request.model]],
-            "2": ["class_type": "CLIPTextEncode", "inputs": ["text": positive, "clip": ["1", 1]]],
-            "3": ["class_type": "CLIPTextEncode", "inputs": ["text": request.negativePrompt, "clip": ["1", 1]]],
+            "2": ["class_type": "CLIPTextEncode", "inputs": ["text": positive, "clip": clip]],
+            "3": ["class_type": "CLIPTextEncode", "inputs": ["text": request.negativePrompt, "clip": clip]],
             "4": ["class_type": "EmptyLatentImage", "inputs": [
                 "width": request.width, "height": request.height, "batch_size": 1,
             ]],
             "8": ["class_type": "ModelSamplingDiscrete", "inputs": [
-                "model": ["1", 0], "sampling": "v_prediction", "zsnr": true,
+                "model": model, "sampling": "v_prediction", "zsnr": true,
             ]],
             "5": ["class_type": "KSampler", "inputs": [
                 "seed": Int(request.seed), "steps": 23, "cfg": 6.0,
@@ -359,6 +373,12 @@ public struct RemoteImageGenerator: ImageGenerating {
             "6": ["class_type": "VAEDecode", "inputs": ["samples": ["5", 0], "vae": ["1", 2]]],
             "7": ["class_type": "SaveImage", "inputs": ["filename_prefix": "eidolon", "images": ["6", 0]]],
         ]
+        if !lora.isEmpty {
+            workflow["9"] = ["class_type": "LoraLoader", "inputs": [
+                "model": ["1", 0], "clip": ["1", 1], "lora_name": lora,
+                "strength_model": 0.9, "strength_clip": 0.9,
+            ]]
+        }
         let body = try JSONSerialization.data(withJSONObject: [
             "prompt": workflow, "client_id": UUID().uuidString,
         ])
@@ -372,7 +392,7 @@ public struct RemoteImageGenerator: ImageGenerating {
         guard let json = try? JSONSerialization.jsonObject(with: submitted.body) as? [String: Any],
               let promptID = json["prompt_id"] as? String
         else { throw ImageGenerationError.serviceError("ComfyUI 没有返回 prompt_id") }
-        for _ in 0..<240 {
+        for _ in 0..<1800 {
             try await Task.sleep(for: .seconds(1))
             let history = try await transport.send(URLRequest(
                 url: base.appendingPathComponent("history").appendingPathComponent(promptID)
