@@ -12,8 +12,10 @@
 | [多企划与跨企划场景](cross-franchise-model-2026-11-09.md) | 多内容包、复合身份、会话参与者、Scene/Universe/P0-P2 |
 | [两个外部企划的内容包可行性（2026-11-11）](content-packs-galgame-gakumas-2026-11-11.md) | galgame（T-Script 引擎）与 Gakumas-Player 各能提供什么内容、格式清单、提取管线、#135 映射与风险 |
 | [Galgame 全量迁移（2026-11-12）](galgame-full-migration-2026-11-12.md) | 全量文本/语音/立绘/世界观、PGD 解码、Sv20、Fish Audio、分阶段迁移与 CHS v1.1 汉化补丁分析 |
+| [行 → 语音映射（2026-11-12）](galgame-voice-mapping-2026-11-12.md) | Sv20 文本命令的 4 个操作数、TEXT.DAT/FILE.DAT/voice.pac 解析、22,127/39,829 行语音覆盖、四女主 100%、ASR 否决、立绘/表情命令族与 manifest v2 建议 |
 | [Fish Audio 训练与成本（2026-11-12）](fish-audio-cost-2026-11-12.md) | Sakura/VO01 数据集能否训练、PVC/API/套餐各怎么收费、$0 与 $15 两条路的确切花钱步骤 |
 | [全量立绘运行时（2026-11-12）](galgame-stand-runtime-2026-11-12.md) | GE/PGD3 解码、LZSS/滤波/XOR、表情与姿态、四女主立绘体量、manifest v2 与通话页接入方案 |
+| [Sv20 VM 与立绘/表情命令解码（2026-11-12）](galgame-vm-stand-commands-2026-11-12.md) | Sv20 帧格式（已证明）、类型化操作数、`call_ext` 与 24 张命令表；`face_init/face_set/face_cls` 的 opcode/handler/操作数；**脚本里没有逐行表情数据**（负结论）与 v2 manifest 建议 |
 
 ## 历史参考
 
