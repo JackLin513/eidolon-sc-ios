@@ -40,6 +40,31 @@ HEROINES = {
     "sophia": ("ソフィア・ランカスター", "索菲娅·兰卡斯特", "そふぃあ らんかすたー", "Sophia Lancaster", "ソフィア", "#d9c7ff"),
     "suisen": ("崩月水仙", "崩月水仙", "くずつき すいせん", "Kuzutsuki Suisen", "水仙", "#c7f0e8"),
 }
+# Content metadata used by the full bundle. Ages are set to the adult floor required by
+# the user for adult mode; the game has no explicit age table in the extracted data.
+HEROINE_DETAIL = {
+    "sakura": {
+        "age": 18, "birthday": "01-01",
+        "photo_tag": "yoruno sakura",
+        "photo_appearance": "white hair, pink gradient hair, long hair, blue eyes, hair ornament, school uniform",
+    },
+    "katan": {
+        "age": 18, "birthday": "01-01",
+        "photo_tag": "kaiman katan",
+        "photo_appearance": "red hair, twintails, pink eyes, heart ahoge, black hair bow, school uniform",
+    },
+    "sophia": {
+        "age": 18, "birthday": "01-01",
+        "photo_tag": "sophia lancaster",
+        "photo_appearance": "blonde hair, long hair, green eyes, school uniform",
+    },
+    "suisen": {
+        "age": 18, "birthday": "01-01",
+        "photo_tag": "houzuki suisen",
+        "photo_appearance": "grey hair, gradient hair, purple hair, twintails, yellow eyes, school uniform",
+    },
+}
+
 SPEAKER_TO_HEROINE = {
     "樱": "sakura", "桜": "sakura",
     "华淡": "katan", "華淡": "katan",
@@ -275,8 +300,9 @@ def write_database(path: Path, lines_by_unit, embeddings):
     db.execute("PRAGMA user_version = 1")
     db.executescript(
         """
-        CREATE TABLE episodes (id TEXT PRIMARY KEY, category TEXT NOT NULL, source TEXT NOT NULL,
-          title TEXT NOT NULL, imported_from TEXT NOT NULL DEFAULT 'csv', imported_at TEXT NOT NULL);
+        CREATE TABLE episodes (id TEXT PRIMARY KEY, category TEXT NOT NULL, route TEXT,
+          chapter TEXT, source TEXT NOT NULL, title TEXT NOT NULL,
+          imported_from TEXT NOT NULL DEFAULT 'csv', imported_at TEXT NOT NULL);
         CREATE TABLE episode_cast (episode_id TEXT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
           character_id TEXT NOT NULL, PRIMARY KEY (episode_id, character_id));
         CREATE INDEX episode_cast_by_character ON episode_cast(character_id);
@@ -291,8 +317,8 @@ def write_database(path: Path, lines_by_unit, embeddings):
     passage_index = 0
     for unit, lines in lines_by_unit:
         episode_id = unit.name
-        db.execute("INSERT INTO episodes VALUES (?, '本編', ?, ?, 'totsulover', '2026-11-12T00:00:00Z')",
-                   (episode_id, str(unit.source), unit.name))
+        db.execute("INSERT INTO episodes(category, route, chapter, source, title, imported_from, imported_at, id) VALUES ('本編', ?, ?, ?, ?, 'totsulover', '2026-11-12T00:00:00Z', ?)",
+                   (unit.route, unit.name, str(unit.source), unit.name, episode_id))
         cast = set()
         for line in lines:
             if line["speaker"] in HEROINES:
@@ -326,53 +352,157 @@ def solid_png(size: int, rgb: tuple[int, int, int]) -> bytes:
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
 
 
-def write_assets(staging: Path, sakura_source: Path):
+GIFTS = [
+    ("cake", "蛋糕", "food", "common", False),
+    ("ice-cream", "冰淇淋", "food", "common", False),
+    ("pudding", "布丁", "food", "common", False),
+    ("chocolate", "巧克力", "food", "common", False),
+    ("candy", "糖果", "food", "common", False),
+    ("red-tea", "红茶", "drink", "common", False),
+    ("coffee", "咖啡", "drink", "common", False),
+    ("milk-tea", "奶茶", "drink", "common", False),
+    ("cocoa", "热可可", "drink", "uncommon", True),
+    ("honey-drink", "蜂蜜热饮", "drink", "uncommon", True),
+    ("flower-bouquet", "花束", "flower", "uncommon", False),
+    ("music-box", "八音盒", "trinket", "rare", False),
+]
+
+WORLD = {
+    "as_of": "2026-11-12",
+    "office": {
+        "name": "学园",
+        "staff": [
+            {"name": "学园学生会长", "position": "学生会长"},
+        ],
+    },
+    "units": [
+        {"name": "学园", "members": ["夜乃桜", "海漫華淡", "ソフィア・ランカスター", "崩月水仙"]},
+        {"name": "魔术师", "members": ["崩月槐"]},
+        {"name": "崩月家", "members": ["崩月槐", "崩月水仙"]},
+    ],
+    "idols": [
+        {"name": "夜乃桜", "unit": "学园", "role": "学生会长"},
+        {"name": "海漫華淡", "unit": "学园", "role": "学生"},
+        {"name": "ソフィア・ランカスター", "unit": "学园", "role": "副会长"},
+        {"name": "崩月水仙", "unit": "学园", "role": "学生"},
+    ],
+    "releases": [], "songs": [], "lives": [],
+}
+
+PLACES = {"places": [
+    {"id": "academy", "name": "学园", "area": "横浜", "lat": 35.4657, "lon": 139.6222,
+     "category": "cafe", "note": "学园校舍与学生会室。", "checked": "2026-11-12"},
+    {"id": "waterfront", "name": "横浜港", "area": "横浜", "lat": 35.4700, "lon": 139.6300,
+     "category": "park", "note": "能看到海湾的散步道。", "checked": "2026-11-12"},
+]}
+
+HOLIDAYS_2026 = {
+    "2026-01-01": "元日", "2026-01-12": "成人の日", "2026-02-11": "建国記念の日",
+    "2026-03-20": "春分の日", "2026-04-29": "昭和の日", "2026-05-03": "憲法記念日",
+    "2026-05-04": "みどりの日", "2026-05-05": "こどもの日", "2026-05-06": "振替休日",
+    "2026-07-20": "海の日", "2026-08-11": "山の日", "2026-09-21": "敬老の日",
+    "2026-09-22": "国民の休日", "2026-09-23": "秋分の日", "2026-10-12": "スポーツの日",
+    "2026-11-03": "文化の日", "2026-11-23": "勤労感謝の日",
+}
+
+SHEETS = {
+    "sakura": """# 夜乃桜
+
+学园最强级别的学生会长，冷静、孤高、责任感很强。她不擅长把关心说得好听，
+但会认真观察制作人的状态；越是重要的事，越会先沉默，再说重点。
+用户是她在屏幕这一侧想要守护、也会认真要求回应的人。
+
+她喜欢猫、普通日常和被认真对待；被夸时会短暂停顿或转移话题。
+她不会无条件顺从，会在制作人逞强、逃避或把她推开时明确表达不满。
+""",
+    "katan": """# 海漫華淡
+
+学园学生，性格明亮而直接，情绪来得快也去得快。她会主动靠近在意的人，
+用轻快的语气把尴尬化解掉，但在认真的事情上并不含糊。
+她把制作人当作可以一起行动、也可以被自己照顾的人。
+""",
+    "sophia": """# ソフィア・ランカスター
+
+学园学生会副会长，出身良好、举止端整，自尊心很强，不喜欢输。
+她对在意的人会照顾到细节，偶尔用大小姐式的措辞掩饰害羞。
+她认真、可靠，也有不擅长坦率表达的一面。
+""",
+    "suisen": """# 崩月水仙
+
+崩月槐的妹妹，身材高挑，自称“忍者女仆”，负责照顾哥哥的日常。
+她话不多，行动利落，对制作人保持礼貌但会默默观察。
+她对哥哥有很强的执着，也会把这份在意藏进冷静的举止里。
+""",
+}
+
+def write_assets(staging: Path, sakura_source: Path, avatar_dir: Path | None = None):
     chars = staging / "characters"
     (chars / "sheets").mkdir(parents=True)
     (chars / "avatars").mkdir(parents=True)
     (chars / "facts").mkdir(parents=True)
     entries = []
     for index, (cid, (name, name_zh, kana, romaji, speaker, color)) in enumerate(HEROINES.items(), start=1):
+        detail = HEROINE_DETAIL[cid]
         sheet = f"characters/sheets/{cid}.md"
         facts = f"characters/facts/{cid}.md"
-        avatar = f"characters/avatars/{cid}.png"
-        text = f"# {name}\n\n"
+        avatar = f"characters/avatars/{cid}.jpg"
+        text = SHEETS.get(cid, f"# {name}\n")
         if cid == "sakura" and (sakura_source / "card.md").exists():
             text = (sakura_source / "card.md").read_text(encoding="utf-8")
         (staging / sheet).write_text(text, encoding="utf-8")
-        (staging / facts).write_text(f"# {name}\n", encoding="utf-8")
-        if cid == "sakura" and (sakura_source / "portraits/A020.png").exists():
+        (staging / facts).write_text(
+            f"# {name}\n\n- 作品：ディメンション凸ラバース！！\n- 组织：学园\n- 年龄：{detail['age']}\n",
+            encoding="utf-8",
+        )
+        if avatar_dir and (avatar_dir / f"{cid}.jpg").exists():
+            (staging / avatar).write_bytes((avatar_dir / f"{cid}.jpg").read_bytes())
+        elif cid == "sakura" and (sakura_source / "portraits/A020.png").exists():
             (staging / avatar).write_bytes((sakura_source / "portraits/A020.png").read_bytes())
         else:
             (staging / avatar).write_bytes(solid_png(256, (40 + index * 30, 70, 120)))
+        gifts = [g[0] for g in GIFTS if (g[0], cid) in {
+            ("cake", "sakura"), ("red-tea", "sakura"), ("flower-bouquet", "sakura"),
+            ("coffee", "katan"), ("candy", "katan"), ("music-box", "katan"),
+            ("milk-tea", "sophia"), ("chocolate", "sophia"), ("flower-bouquet", "sophia"),
+            ("pudding", "suisen"), ("cocoa", "suisen"), ("honey-drink", "suisen"),
+        }]
         entries.append({
             "id": cid, "name": name, "name_zh": name_zh, "name_kana": kana, "name_romaji": romaji,
             "unit": "学園", "intro": f"{name}，本作的女主角之一。", "color": color,
             "voice_id": cid, "sheet": sheet, "facts": facts, "avatar": avatar,
-            "speakers": [speaker], "idol_id": index, "birthday": "01-01",
-            "photo_tag": romaji.lower(), "photo_appearance": [f"{name} character"],
-            "place_likes": ["cafe", "park"],
+            "speakers": [speaker], "idol_id": index, "birthday": detail["birthday"],
+            "age": detail["age"], "photo_tag": detail["photo_tag"],
+            "photo_appearance": detail["photo_appearance"],
+            "place_likes": ["cafe", "park"], "liked_gifts": gifts,
         })
     (chars / "characters.json").write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
-    (chars / "world.json").write_text(json.dumps({
-        "as_of": "2026-11-12",
-        "office": {"name": "学園", "staff": []},
-        "units": [], "idols": [], "releases": [], "songs": [], "lives": [],
+    (chars / "franchise.json").write_text(json.dumps({
+        "work_name": "ディメンション凸ラバース！！",
+        "organization": "学園",
+        "producer_role": "制作人",
+        "language": "ja",
+        "judge_scene": "角色扮演对话中，角色是《ディメンション凸ラバース！！》中学园的一员，正在和制作人对话。",
+        "call_scene": "角色扮演的通话中，角色是《ディメンション凸ラバース！！》中学园的一员，正在和制作人通话。",
+        "producer_line": "和你对话的是你的制作人，也是学园相关的人。",
+        "memory_instructions": "你负责替《ディメンション凸ラバース！！》中学园的角色们记住关于制作人的事。制作人就是正在和她们对话的用户。",
+        "title_instructions": "你负责给制作人和一位角色（《ディメンション凸ラバース！！》中学园的一员）的一段对话起标题，好让制作人以后在历史对话里一眼认出这段聊了什么。制作人就是正在和她对话的用户。",
     }, ensure_ascii=False, indent=2), encoding="utf-8")
-    (chars / "places.json").write_text(json.dumps({"places": [
-        {"id": "cafe", "name": "カフェ", "area": "横浜", "lat": 35.4657, "lon": 139.6222, "category": "cafe", "note": "街角的咖啡馆。", "checked": "2026-11-12"},
-        {"id": "park", "name": "公園", "area": "横浜", "lat": 35.4700, "lon": 139.6300, "category": "park", "note": "有长椅的公园。", "checked": "2026-11-12"},
+    (chars / "world.json").write_text(json.dumps(WORLD, ensure_ascii=False, indent=2), encoding="utf-8")
+    (chars / "places.json").write_text(json.dumps(PLACES, ensure_ascii=False, indent=2), encoding="utf-8")
+    (chars / "gifts.json").write_text(json.dumps({"gifts": [
+        {"id": gid, "name": gname, "category": category, "rarity": rarity, "warm": warm}
+        for gid, gname, category, rarity, warm in GIFTS
     ]}, ensure_ascii=False, indent=2), encoding="utf-8")
-    (chars / "photo_tags.json").write_text(json.dumps({
-        "model": "test-image", "known": ["smile", "cafe", "indoors"], "rewrites": {},
-        "allowed": ["smile"], "blocked": {"nudity": {"tags": ["nude"], "words": []}},
-    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    photo_tags = Path("/Users/jacklin/Developer/IdeaProjects/eidolon-sc/backend/src/eidolon/photo_tags.json")
+    if photo_tags.exists():
+        (chars / "photo_tags.json").write_bytes(photo_tags.read_bytes())
+    else:
+        (chars / "photo_tags.json").write_text(json.dumps({
+            "model": "nai-diffusion-5-curated", "known": ["smile", "cafe", "indoors"], "rewrites": {},
+            "allowed": ["smile"], "blocked": {"nudity": {"tags": ["nude"], "words": []}},
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
     (staging / "content/holidays.json").parent.mkdir(parents=True, exist_ok=True)
-    (staging / "content/holidays.json").write_text(json.dumps({
-        "2026-01-01": "元日", "2026-02-11": "建国記念の日", "2026-03-20": "春分の日",
-        "2026-05-03": "憲法記念日", "2026-12-25": "クリスマス",
-    }, ensure_ascii=False, indent=2), encoding="utf-8")
-
+    (staging / "content/holidays.json").write_text(json.dumps(HOLIDAYS_2026, ensure_ascii=False, indent=2), encoding="utf-8")
 
 def load_env(path: Path) -> dict[str, str]:
     values = {}
@@ -445,6 +575,7 @@ def main():
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV)
     parser.add_argument("--embedding-mode", choices=("api", "zeros"), default="api")
+    parser.add_argument("--avatar-dir", type=Path, default=Path("build/totsulover-avatars"))
     parser.add_argument("--max-units", type=int)
     args = parser.parse_args()
     if not args.game.exists() or not args.chs.exists():
@@ -471,7 +602,7 @@ def main():
     try:
         (staging / "content").mkdir(parents=True)
         write_database(staging / "content/eidolon.db", lines_by_unit, embeddings)
-        write_assets(staging, DEFAULT_CHS.parent / "sakura")
+        write_assets(staging, DEFAULT_CHS.parent / "sakura", args.avatar_dir)
         write_zip(staging, args.out)
     finally:
         import shutil

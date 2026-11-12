@@ -24,6 +24,7 @@ struct ChatView: View {
     @State private var outfitsStand: CharacterStand?
     @State private var outfitsChecked = false
     @State private var showsOutfits = false
+    @State private var showsStaticOutfits = false
     @State private var showsAffinity = false
     @State private var showsAchievements = false
     @State private var showsDebug = false
@@ -116,7 +117,7 @@ struct ChatView: View {
                     Button("历史对话") {
                         showHistory = true
                     }
-                    if app.hasStand(for: character.id) {
+                    if app.hasAppearance(for: character.id) {
                         Button("换衣装") {
                             openOutfits()
                         }
@@ -187,6 +188,13 @@ struct ChatView: View {
         }
         .onDisappear {
             app.readAloud.stop()
+        }
+        .fullScreenCover(isPresented: $showsStaticOutfits) {
+            StaticStandPickerView(
+                character: character,
+                onClose: { showsStaticOutfits = false }
+            )
+            .environment(app)
         }
         .sheet(isPresented: $showsAchievements) {
             NavigationStack {
@@ -262,7 +270,11 @@ struct ChatView: View {
         }
         Task {
             await loadOutfitsStand()
-            if outfitsStand != nil { showsOutfits = true }
+            if outfitsStand != nil {
+                showsOutfits = true
+            } else if await app.staticStandBases(characterID: character.id) != nil {
+                showsStaticOutfits = true
+            }
         }
     }
 

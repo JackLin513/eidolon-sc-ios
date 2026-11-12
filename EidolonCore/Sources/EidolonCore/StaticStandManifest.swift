@@ -4,7 +4,7 @@ import Foundation
 /// `StandManifest`: a static stand has one PNG per expression, not outfits, atlases or
 /// animation tables. It follows the same install and content-binding rules.
 public struct StaticStandManifest: Codable, Sendable, Hashable {
-    public static let supportedFormatVersion = 1
+    public static let supportedFormatVersion = 2
 
     public enum Kind: String, Codable, Sendable {
         case stand
@@ -15,16 +15,60 @@ public struct StaticStandManifest: Codable, Sendable, Hashable {
         case delta
     }
 
+    /// One outfit/pose base in a v2 package. `expressions` maps the canonical emotion
+    /// raw value to the package-relative image for that base. v1 packages omit bases and
+    /// use `Character.expressions` as one implicit base.
+    public struct Base: Codable, Sendable, Hashable {
+        public var id: String
+        public var outfit: String
+        public var pose: String
+        public var source: String?
+        public var expressions: [String: String]
+
+        public init(
+            id: String,
+            outfit: String,
+            pose: String,
+            source: String? = nil,
+            expressions: [String: String]
+        ) {
+            self.id = id
+            self.outfit = outfit
+            self.pose = pose
+            self.source = source
+            self.expressions = expressions
+        }
+    }
+
     public struct Character: Codable, Sendable, Hashable {
         public var id: String
         public var characterKey: String?
-        /// Emotion raw value -> package-relative image path.
+        /// v1: Emotion raw value -> package-relative image path.
         public var expressions: [String: String]
+        /// v2: explicit outfit/pose bases.
+        public var bases: [Base]?
 
-        public init(id: String, characterKey: String? = nil, expressions: [String: String]) {
+        public init(
+            id: String,
+            characterKey: String? = nil,
+            expressions: [String: String],
+            bases: [Base]? = nil
+        ) {
             self.id = id
             self.characterKey = characterKey
             self.expressions = expressions
+            self.bases = bases
+        }
+
+        /// Every expression in this character, v1 or v2.
+        public var allExpressions: [String: String] {
+            var result = expressions
+            for base in bases ?? [] {
+                for (emotion, path) in base.expressions where result[emotion] == nil {
+                    result[emotion] = path
+                }
+            }
+            return result
         }
     }
 
@@ -93,6 +137,8 @@ public struct StaticStandBundleInfo: Codable, Sendable, Hashable {
     public var characterCount: Int
     public var expressionCount: Int
     public var mode: StaticStandManifest.Mode
+    /// v2 bases; absent for old v1 records.
+    public var baseCount: Int?
 
     public init(
         formatVersion: Int,
@@ -101,7 +147,8 @@ public struct StaticStandBundleInfo: Codable, Sendable, Hashable {
         installedAt: String,
         characterCount: Int,
         expressionCount: Int,
-        mode: StaticStandManifest.Mode
+        mode: StaticStandManifest.Mode,
+        baseCount: Int? = nil
     ) {
         self.formatVersion = formatVersion
         self.franchise = franchise
@@ -110,5 +157,6 @@ public struct StaticStandBundleInfo: Codable, Sendable, Hashable {
         self.characterCount = characterCount
         self.expressionCount = expressionCount
         self.mode = mode
+        self.baseCount = baseCount
     }
 }

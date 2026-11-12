@@ -42,7 +42,7 @@ public struct ProducerProfile: Sendable, Hashable {
 
     /// The prompt section about the user: who they are, the same from turn to turn.
     public var prompt: String {
-        var lines = ["# 制作人", "和你对话的是你的制作人，也就是 283 事务所的制作人。"]
+        var lines = ["# 制作人", FranchisePromptContext.current.producerLine]
         if let formOfAddress, !formOfAddress.isEmpty {
             lines.append(
                 "制作人希望你称呼对方为「\(formOfAddress)」。这只是叫法，"

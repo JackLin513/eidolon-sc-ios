@@ -1833,6 +1833,20 @@ final class AppModel {
         try? await core.staticStandExpressions(characterID: characterID)
     }
 
+    func staticStandBases(characterID: String) async -> [StaticStandManifest.Base]? {
+        try? await core.staticStandBases(characterID: characterID)
+    }
+
+    func staticStandExpressions(characterID: String, baseID: String) async -> [String: URL]? {
+        try? await core.staticStandExpressions(characterID: characterID, baseID: baseID)
+    }
+
+    /// Whether the active content/stand packages can offer a wardrobe, for either the
+    /// Spine cards or a v2 static stand.
+    func hasAppearance(for characterID: String) -> Bool {
+        hasStand(for: characterID) || staticStandInfo != nil
+    }
+
     private func activateDebugContentFranchiseIfRequested() async {
         guard let franchise = ProcessInfo.processInfo.environment["EIDOLON_ACTIVE_FRANCHISE"],
               !franchise.isEmpty else { return }

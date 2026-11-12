@@ -21,6 +21,7 @@ struct StaticStandTests {
             "images/calm.png": .init(size: image.count, crc32: CRC32.hex(image))
         ]
         let manifest = StaticStandManifest(
+            formatVersion: 1,
             franchise: "totsulover",
             contentSetID: contentSetID,
             createdAt: "2026-11-12T00:00:00Z",

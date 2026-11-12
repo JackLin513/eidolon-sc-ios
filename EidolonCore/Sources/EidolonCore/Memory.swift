@@ -44,8 +44,9 @@ enum MemoryExtraction {
     static let maxNewMemories = 5
     static let maxLength = 200
 
-    static let instructions = """
-        你负责替《偶像大师 闪耀色彩》283 事务所的偶像们（还有事务员）记住关于制作人的事。制作人就是正在和她们对话的用户。
+    static var instructions: String {
+        FranchisePromptContext.current.memoryInstructions + """
+
         读下面的对话，从制作人最新的一句话里找出值得长期记住的、关于制作人本人的信息。
 
         只记过后仍有意义的事。
@@ -64,6 +65,7 @@ enum MemoryExtraction {
 
         只输出 JSON，格式为 {"memories": [{"text": "……", "supersedes": [编号]}]}，不取代任何记忆时 supersedes 写 []；没有值得记住的就输出 {"memories": []}。
         """
+    }
 
     /// The exchange as the model reads it: today, what is already remembered, the last
     /// messages, then the line being judged and her answer to it.

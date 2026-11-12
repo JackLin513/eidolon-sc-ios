@@ -33,8 +33,9 @@ struct StaticStandBundleInstaller {
             contentSetID: manifest.contentSetID,
             installedAt: ISO8601DateFormatter().string(from: Date()),
             characterCount: manifest.characters.count,
-            expressionCount: manifest.characters.reduce(0) { $0 + $1.expressions.count },
-            mode: manifest.mode
+            expressionCount: manifest.characters.reduce(0) { $0 + $1.allExpressions.count },
+            mode: manifest.mode,
+            baseCount: manifest.characters.reduce(0) { $0 + ($1.bases?.count ?? 0) }
         )
     }
 
@@ -73,7 +74,7 @@ struct StaticStandBundleInstaller {
     }
 
     private func validateManifest(_ manifest: StaticStandManifest) throws {
-        guard manifest.formatVersion == StaticStandManifest.supportedFormatVersion else {
+        guard (1...StaticStandManifest.supportedFormatVersion).contains(manifest.formatVersion) else {
             throw EidolonError.unsupportedVersion("静态立绘包格式版本 \(manifest.formatVersion)")
         }
         guard manifest.kind == .stand else { throw EidolonError.invalidBundle("不是立绘包") }
@@ -91,9 +92,31 @@ struct StaticStandBundleInstaller {
         for character in manifest.characters {
             guard !character.id.isEmpty else { throw EidolonError.invalidContent("角色缺少 id") }
             guard ids.insert(character.id).inserted else { throw EidolonError.invalidContent("角色 \(character.id) 重复") }
-            guard !character.expressions.isEmpty else { throw EidolonError.invalidContent("角色 \(character.id) 没有表情") }
-            for (emotion, path) in character.expressions {
-                guard !emotion.isEmpty, !path.isEmpty else { throw EidolonError.invalidContent("角色 \(character.id) 的表情映射不完整") }
+            if manifest.formatVersion >= 2 {
+                let bases = character.bases ?? []
+                guard !bases.isEmpty else { throw EidolonError.invalidContent("角色 \(character.id) 没有 outfit/pose 底图") }
+                var baseIDs = Set<String>()
+                for base in bases {
+                    guard !base.id.isEmpty, !base.outfit.isEmpty, !base.pose.isEmpty else {
+                        throw EidolonError.invalidContent("角色 \(character.id) 的底图标识不完整")
+                    }
+                    guard baseIDs.insert(base.id).inserted else {
+                        throw EidolonError.invalidContent("角色 \(character.id) 的底图 \(base.id) 重复")
+                    }
+                    guard !base.expressions.isEmpty else {
+                        throw EidolonError.invalidContent("角色 \(character.id) 的底图 \(base.id) 没有表情")
+                    }
+                    for (emotion, path) in base.expressions {
+                        guard !emotion.isEmpty, !path.isEmpty else {
+                            throw EidolonError.invalidContent("角色 \(character.id) 的底图 \(base.id) 表情映射不完整")
+                        }
+                    }
+                }
+            } else {
+                guard !character.expressions.isEmpty else { throw EidolonError.invalidContent("角色 \(character.id) 没有表情") }
+                for (emotion, path) in character.expressions {
+                    guard !emotion.isEmpty, !path.isEmpty else { throw EidolonError.invalidContent("角色 \(character.id) 的表情映射不完整") }
+                }
             }
         }
     }
@@ -119,7 +142,7 @@ struct StaticStandBundleInstaller {
 
     private func validateCharacters(_ manifest: StaticStandManifest, in directory: URL) throws {
         for character in manifest.characters {
-            for path in character.expressions.values {
+            for path in character.allExpressions.values {
                 guard fileManager.fileExists(atPath: directory.appendingPathComponent(path).path) else {
                     throw EidolonError.invalidBundle("角色 \(character.id) 的表情文件 \(path) 不在包里")
                 }

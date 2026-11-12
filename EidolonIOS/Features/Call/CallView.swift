@@ -58,6 +58,11 @@ struct CallView: View {
     @State private var standFailed = false
     /// Her stand read from the bundle: the default outfit and, when it reads, her list.
     @State private var stand: CharacterStand?
+    /// v2 static appearance: the chosen base and its emotion images. When this is
+    /// present, the page draws a static image instead of asking a renderer.
+    @State private var staticBaseID: String?
+    @State private var staticImages: [String: URL] = [:]
+    @State private var staticImage: UIImage?
     /// Whether the bundle has been asked for her stand yet: before that, the screen keeps
     /// the stand layout so a character who has one never flashes the avatar version.
     @State private var standChecked = false
@@ -78,6 +83,9 @@ struct CallView: View {
                     if !fullBleed {
                         background(size: geometry.size)
                             .ignoresSafeArea()
+                    }
+                    if let staticImage {
+                        staticStage(staticImage, size: geometry.size)
                     }
                     if let renderer, fullBleed, !standFailed {
                         StandHostView(renderer: renderer)
@@ -200,7 +208,7 @@ struct CallView: View {
     /// large avatar and the dialling ripple instead (upstream `hasStand`). Until the bundle
     /// has been asked, the stand layout is kept so nothing flashes.
     private var hasStand: Bool {
-        !standChecked || (!standFailed && (stand != nil || app.has3DModel(for: character.id)))
+        !standChecked || (!standFailed && (stand != nil || staticBaseID != nil || app.has3DModel(for: character.id)))
     }
 
     /// She hung up for a cooldown: there is no calling her until it ends, so no redial
@@ -234,7 +242,18 @@ struct CallView: View {
     /// She is put in the outfit remembered for her, or her default when that outfit is gone
     /// (spec「衣装与换衣装」); a fresh renderer is also the retry after a failure.
     private func loadStand() async {
-        guard renderer == nil else { return }
+        guard renderer == nil, staticBaseID == nil else { return }
+        // A v2 static stand has no Spine outfit. Its outfit/pose base is the source of
+        // truth; the rest of the call screen (voice, lines, emotion) is unchanged.
+        if let bases = await app.staticStandBases(characterID: character.id), !bases.isEmpty {
+            let remembered = StaticAppearanceStore().selection(for: character.id)
+            let base = bases.first { $0.outfit == remembered.outfit && $0.pose == remembered.pose }
+                ?? bases.first!
+            staticBaseID = base.id
+            staticImages = await app.staticStandExpressions(characterID: character.id, baseID: base.id) ?? [:]
+            renderStatic(remembered.emotion)
+            return
+        }
         // A 2D stand is the source of truth when it exists: the 3D adapter only needs the
         // character id, and if 3D fails the same outfit/root can be drawn by Spine.
         if let found = await app.core.stand(for: character.id) {
@@ -324,6 +343,10 @@ struct CallView: View {
 
     /// Ask the animation table what the current direction looks like on this outfit.
     private func renderPose() {
+        if staticBaseID != nil {
+            renderStatic(callStand.direction.mood)
+            return
+        }
         guard let renderer else { return }
         renderer.present(
             PresentationFrame(
@@ -373,6 +396,35 @@ struct CallView: View {
     /// only fades in a pane/wider screen or with reduced motion, and stays at 40% once the
     /// call is over. The stage height comes from the presentation so the wide pane and the
     /// full-screen iPad use different framings without the view guessing at size classes.
+    private func renderStatic(_ emotion: StandEmotion) {
+        guard let url = staticImages[emotion.rawValue] ?? staticImages[StandEmotion.calm.rawValue] else {
+            staticImage = nil
+            return
+        }
+        staticImage = UIImage(contentsOfFile: url.path)
+        if var remembered = Optional(StaticAppearanceStore().selection(for: character.id)) {
+            remembered.emotion = emotion
+            StaticAppearanceStore().remember(remembered, for: character.id)
+        }
+    }
+
+    private func staticStage(_ image: UIImage, size: CGSize) -> some View {
+        let height = standHeight(size)
+        return VStack {
+            Spacer(minLength: 0)
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(height: height)
+                .frame(maxWidth: .infinity)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+        .frame(width: size.width, height: size.height)
+        .opacity(standLoaded ? 1 : 0)
+        .onAppear { standLoaded = true }
+    }
+
     private func standStage(_ renderer: any CharacterRenderer, size: CGSize) -> some View {
         let height = standHeight(size)
         let viewport = CGSize(width: size.width, height: height)

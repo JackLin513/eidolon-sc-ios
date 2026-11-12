@@ -111,6 +111,7 @@ extension Eidolon {
             try saveAppState("content.bundle", String(decoding: encoded, as: UTF8.self))
         }
         content = try openContent()
+        installFranchisePrompt(franchise: franchise)
         cachedWorld = nil
         worldCached = false
     }
@@ -242,6 +243,19 @@ extension Eidolon {
         return info
     }
 
+    /// The active content package's franchise prompt pack, if it has one.
+    public func franchisePrompt(franchise: String? = nil) -> FranchisePrompt? {
+        let franchise = ContentRegistryState.normalizedFranchise(franchise ?? activeContentFranchise)
+        let root = packageRoot(franchise).appendingPathComponent("current", isDirectory: true)
+        return FranchisePrompt.load(in: root)
+    }
+
+    func installFranchisePrompt(franchise: String? = nil) {
+        if let prompt = franchisePrompt(franchise: franchise) {
+            FranchisePromptContext.current = prompt
+        }
+    }
+
     public func installedStaticStandInfo(franchise: String? = nil) throws -> StaticStandBundleInfo? {
         try loadContentPackagesIfNeeded()
         let franchise = ContentRegistryState.normalizedFranchise(franchise ?? activeContentFranchise)
@@ -266,7 +280,40 @@ extension Eidolon {
               let character = manifest.characters.first(where: { $0.id == characterID })
         else { return nil }
         var result: [String: URL] = [:]
-        for (emotion, path) in character.expressions {
+        for (emotion, path) in character.allExpressions {
+            result[emotion] = directory.appendingPathComponent(path)
+        }
+        return result
+    }
+
+    /// v2 outfit/pose bases for one character. Empty for a v1 package.
+    public func staticStandBases(
+        characterID: String,
+        franchise: String? = nil
+    ) throws -> [StaticStandManifest.Base]? {
+        try loadContentPackagesIfNeeded()
+        let franchise = ContentRegistryState.normalizedFranchise(franchise ?? activeContentFranchise)
+        let directory = packageRoot(franchise).appendingPathComponent("static-stand", isDirectory: true)
+        guard let data = try? Data(contentsOf: directory.appendingPathComponent("manifest.json")),
+              let manifest = try? JSONDecoder().decode(StaticStandManifest.self, from: data),
+              let character = manifest.characters.first(where: { $0.id == characterID })
+        else { return nil }
+        return character.bases
+    }
+
+    /// One v2 base's emotion images, resolved under the installed static stand.
+    public func staticStandExpressions(
+        characterID: String,
+        baseID: String,
+        franchise: String? = nil
+    ) throws -> [String: URL]? {
+        guard let bases = try staticStandBases(characterID: characterID, franchise: franchise),
+              let base = bases.first(where: { $0.id == baseID })
+        else { return nil }
+        let franchise = ContentRegistryState.normalizedFranchise(franchise ?? activeContentFranchise)
+        let directory = packageRoot(franchise).appendingPathComponent("static-stand", isDirectory: true)
+        var result: [String: URL] = [:]
+        for (emotion, path) in base.expressions {
             result[emotion] = directory.appendingPathComponent(path)
         }
         return result
