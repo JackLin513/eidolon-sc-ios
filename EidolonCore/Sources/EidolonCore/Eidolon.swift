@@ -17,8 +17,6 @@ public actor Eidolon {
         var userDatabase: URL { userDirectory.appendingPathComponent("eidolon.sqlite") }
         /// The installed bundle's directory: where her stand's files are read from (ADR-0018).
         public var contentDirectory: URL { contentRoot.appendingPathComponent("current", isDirectory: true) }
-        /// Where a separate stand package will be installed; empty until one is imported.
-        public var standDirectory: URL { contentRoot.appendingPathComponent("stand", isDirectory: true) }
         /// Where the bar package's pictures, font and sound are installed; empty until one
         /// is imported (ADR-0021).
         public var barDirectory: URL { contentRoot.appendingPathComponent("bar", isDirectory: true) }
@@ -34,6 +32,14 @@ public actor Eidolon {
     /// `app_state`; the active package is also mirrored at `Content/current` as a symlink.
     var contentPackages: [String: ContentBundleInfo] = [:]
     var activeContentFranchise = "shiny"
+
+    /// The active franchise's Spine stand. There is intentionally no global
+    /// `Content/stand`: each franchise owns its own stand package.
+    var standDirectory: URL {
+        location.contentRoot
+            .appendingPathComponent(activeContentFranchise, isDirectory: true)
+            .appendingPathComponent("stand", isDirectory: true)
+    }
     /// The world setting, parsed once per installed bundle: it is 1.3 MB, read on the main
     /// path of every turn otherwise.
     var cachedWorld: WorldSetting?
@@ -108,37 +114,41 @@ public actor Eidolon {
     @discardableResult
     public func installStand(
         bundleAt url: URL,
+        franchise: String? = nil,
         progress: ((ImportProgress) -> Void)? = nil
     ) throws -> StandBundleInfo {
         try loadContentPackagesIfNeeded()
+        let franchise = ContentRegistryState.normalizedFranchise(franchise ?? activeContentFranchise)
         let manifest = try StandBundleInstaller.readManifest(from: url)
-        if let contentSetID = contentPackages[activeContentFranchise]?.contentSetID,
+        if let contentSetID = contentPackages[franchise]?.contentSetID,
            let standSetID = manifest.contentSetID,
            contentSetID != standSetID {
             throw EidolonError.invalidBundle("立绘包绑定 \(standSetID)，当前内容包是 \(contentSetID)")
         }
+        let standRoot = location.contentRoot.appendingPathComponent(franchise, isDirectory: true)
         let installer = StandBundleInstaller(
-            contentRoot: location.contentRoot,
+            contentRoot: standRoot,
             fileManager: .default
         )
+        let installedDirectory = standRoot.appendingPathComponent("stand", isDirectory: true)
         do {
             let info = try installer.install(url, progress: progress)
-            try saveStandInfo(info)
+            try saveStandInfo(info, franchise: franchise)
             do {
-                try StandIndex.scan(at: location.standDirectory)
-                    .write(to: location.standDirectory)
+                try StandIndex.scan(at: installedDirectory)
+                    .write(to: installedDirectory)
             } catch {
                 // Never leave an old index next to a new stand tree; the lazy rebuild
                 // will make a correct one next time.
                 try? FileManager.default.removeItem(
-                    at: location.standDirectory.appendingPathComponent("index.json")
+                    at: installedDirectory.appendingPathComponent("index.json")
                 )
             }
             cachedStandConfigs = nil
             return info
         } catch {
             try? FileManager.default.removeItem(
-                at: location.standDirectory.appendingPathComponent("index.json")
+                at: installedDirectory.appendingPathComponent("index.json")
             )
             throw error
         }
@@ -150,8 +160,14 @@ public actor Eidolon {
     @discardableResult
     public func migrateLegacyStandIfNeeded() throws -> StandBundleInfo? {
         let fileManager = FileManager.default
-        guard !fileManager.fileExists(atPath: location.standDirectory.path),
-              try installedStandInfo() == nil,
+        try loadContentPackagesIfNeeded()
+        try migrateGlobalStandIfNeeded()
+        let franchise = ContentRegistryState.legacyFranchise
+        let target = location.contentRoot
+            .appendingPathComponent(franchise, isDirectory: true)
+            .appendingPathComponent("stand", isDirectory: true)
+        guard !fileManager.fileExists(atPath: target.path),
+              try installedStandInfo(franchise: franchise) == nil,
               try usableContentInfo() != nil
         else { return nil }
 
@@ -183,20 +199,18 @@ public actor Eidolon {
         )
         let data = try JSONEncoder().encode(manifest)
         try data.write(to: staging.appendingPathComponent("manifest.json"))
-
-        guard !fileManager.fileExists(atPath: location.standDirectory.path) else { return nil }
-        try fileManager.moveItem(at: staging, to: location.standDirectory)
+        try fileManager.moveItem(at: staging, to: target)
         try? fileManager.removeItem(at: legacy)
 
         let info = StandBundleInfo(
             formatVersion: manifest.formatVersion,
             installedAt: manifest.createdAt,
             characterCount: entries.count,
-            outfitCount: countStandOutfits(in: location.standDirectory, fileManager: fileManager),
+            outfitCount: countStandOutfits(in: target, fileManager: fileManager),
             mode: .full
         )
-        try saveStandInfo(info)
-        try? StandIndex.scan(at: location.standDirectory).write(to: location.standDirectory)
+        try saveStandInfo(info, franchise: franchise)
+        try? StandIndex.scan(at: target).write(to: target)
         cachedStandConfigs = nil
         return info
     }
@@ -315,14 +329,22 @@ public actor Eidolon {
         return String(decoding: data, as: UTF8.self)
     }
 
-    public func installedStandInfo() throws -> StandBundleInfo? {
+    public func installedStandInfo(franchise: String? = nil) throws -> StandBundleInfo? {
+        let normalized = ContentRegistryState.normalizedFranchise(franchise ?? activeContentFranchise)
         let stored: String? = try userQueue.read { db in
             try String.fetchOne(
                 db,
-                sql: "SELECT value FROM app_state WHERE key = 'stand.bundle'"
+                sql: "SELECT value FROM app_state WHERE key = ?",
+                arguments: ["stand.bundle.\(normalized)"]
             )
         }
         guard let stored, let data = stored.data(using: .utf8) else { return nil }
+        let directory = location.contentRoot
+            .appendingPathComponent(normalized, isDirectory: true)
+            .appendingPathComponent("stand", isDirectory: true)
+        guard FileManager.default.fileExists(
+            atPath: directory.appendingPathComponent("manifest.json").path
+        ) else { return nil }
         return try? JSONDecoder().decode(StandBundleInfo.self, from: data)
     }
 
@@ -376,7 +398,7 @@ public actor Eidolon {
     /// installed. The paths in it are relative to the stand directory.
     public func standConfigs() throws -> [String: StandConfig] {
         if let cachedStandConfigs { return cachedStandConfigs }
-        let url = location.standDirectory.appendingPathComponent("manifest.json")
+        let url = standDirectory.appendingPathComponent("manifest.json")
         guard let data = try? Data(contentsOf: url),
               let manifest = try? JSONDecoder().decode(StandManifest.self, from: data),
               manifest.kind == .stand
@@ -395,9 +417,9 @@ public actor Eidolon {
     /// Every installed stand file and its checksum; rebuilt once when an older install
     /// predates the index. The exporter reads this to make a delta bundle.
     public func standIndex() throws -> StandIndex {
-        if let index = StandIndex.read(at: location.standDirectory) { return index }
-        let index = try StandIndex.scan(at: location.standDirectory)
-        try index.write(to: location.standDirectory)
+        if let index = StandIndex.read(at: standDirectory) { return index }
+        let index = try StandIndex.scan(at: standDirectory)
+        try index.write(to: standDirectory)
         return index
     }
 
@@ -629,7 +651,7 @@ public actor Eidolon {
     ) -> [(config: StandConfig, root: URL)] {
         var sources: [(config: StandConfig, root: URL)] = []
         if let config = configs[character.id] {
-            sources.append((config, location.standDirectory))
+            sources.append((config, standDirectory))
         }
         if let config = character.stand {
             sources.append((config, location.contentDirectory))
@@ -659,15 +681,54 @@ public actor Eidolon {
         return opened
     }
 
-    private func saveStandInfo(_ info: StandBundleInfo) throws {
+    /// The first registry versions kept one global `Content/stand`. Move it under the
+    /// legacy franchise once and rewrite the old global app-state key. No global stand
+    /// path remains as an interface.
+    private func migrateGlobalStandIfNeeded() throws {
+        let fileManager = FileManager.default
+        let legacy = location.contentRoot.appendingPathComponent("stand", isDirectory: true)
+        let target = location.contentRoot
+            .appendingPathComponent(ContentRegistryState.legacyFranchise, isDirectory: true)
+            .appendingPathComponent("stand", isDirectory: true)
+        guard fileManager.fileExists(atPath: legacy.path),
+              !fileManager.fileExists(atPath: target.path)
+        else {
+            if !fileManager.fileExists(atPath: legacy.path) {
+                try? userQueue.write { db in
+                    try db.execute(sql: "DELETE FROM app_state WHERE key = 'stand.bundle'")
+                }
+            }
+            return
+        }
+        try fileManager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try fileManager.moveItem(at: legacy, to: target)
+
+        if let data = try? Data(contentsOf: target.appendingPathComponent("manifest.json")),
+           let manifest = try? JSONDecoder().decode(StandManifest.self, from: data) {
+            let info = StandBundleInfo(
+                formatVersion: manifest.formatVersion,
+                installedAt: manifest.createdAt,
+                characterCount: manifest.characters.count,
+                outfitCount: countStandOutfits(in: target, fileManager: fileManager),
+                mode: manifest.mode,
+                contentSetID: manifest.contentSetID
+            )
+            try saveStandInfo(info, franchise: ContentRegistryState.legacyFranchise)
+        }
+        try userQueue.write { db in
+            try db.execute(sql: "DELETE FROM app_state WHERE key = 'stand.bundle'")
+        }
+    }
+
+    private func saveStandInfo(_ info: StandBundleInfo, franchise: String) throws {
         let encoded = try JSONEncoder().encode(info)
         try userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO app_state(key, value) VALUES('stand.bundle', ?)
+                    INSERT INTO app_state(key, value) VALUES(?, ?)
                     ON CONFLICT(key) DO UPDATE SET value = excluded.value
                     """,
-                arguments: [String(decoding: encoded, as: UTF8.self)]
+                arguments: ["stand.bundle.\(franchise)", String(decoding: encoded, as: UTF8.self)]
             )
         }
     }

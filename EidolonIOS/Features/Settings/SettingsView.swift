@@ -792,16 +792,19 @@ Section {
     @ViewBuilder
     private var standBundleSection: some View {
         Section {
+            if let info = app.staticStandInfo {
+                LabeledContent("静态立绘", value: "\(info.characterCount) 角色 / \(info.expressionCount) 表情")
+                LabeledContent("绑定", value: info.contentSetID ?? "未绑定")
+            }
             if let info = app.standInfo {
-                LabeledContent("角色", value: "\(info.characterCount)")
-                LabeledContent("衣装", value: "\(info.outfitCount) 套")
+                LabeledContent("Spine 立绘", value: "\(info.characterCount) 角色 / \(info.outfitCount) 套衣装")
                 LabeledContent("格式", value: "v\(info.formatVersion)")
                 LabeledContent("安装时间", value: info.installedAt)
-            } else {
-                Text("还没有导入立绘包")
+            } else if app.staticStandInfo == nil {
+                Text("当前企划还没有导入立绘包")
                     .foregroundStyle(.secondary)
             }
-            Button(app.standInfo == nil ? "导入立绘包" : "重新导入立绘包") {
+            Button(app.standInfo == nil ? "导入 Spine 立绘包" : "重新导入 Spine 立绘包") {
                 importKind = .stand
                 isPicking = true
             }
@@ -822,7 +825,7 @@ Section {
         } header: {
             Text("立绘包")
         } footer: {
-            Text("立绘包和内容包分开导入；第一次导入全量包，之后可以追加增量包。导入失败保留上一份。")
+            Text("Spine 与静态立绘按内容企划分开存放；切换企划只读取当前企划的包。")
         }
     }
 

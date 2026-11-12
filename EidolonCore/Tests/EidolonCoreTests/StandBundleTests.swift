@@ -225,7 +225,9 @@ final class StandBundleTests: XCTestCase {
 
     func testLegacyStandIsMigratedAndSurvivesAContentUpdate() async throws {
         let eidolon = try await installedEidolon(includeStand: true)
-        let standRoot = eidolon.location.standDirectory
+        let standRoot = eidolon.location.contentRoot.appendingPathComponent(
+            "shiny/stand", isDirectory: true
+        )
         XCTAssertFalse(FileManager.default.fileExists(atPath: standRoot.path))
 
         let migrated = try await eidolon.migrateLegacyStandIfNeeded()
@@ -254,6 +256,23 @@ final class StandBundleTests: XCTestCase {
 
         let again = try await eidolon.migrateLegacyStandIfNeeded()
         XCTAssertNil(again)
+    }
+
+    func testTheOldGlobalStandMovesUnderTheLegacyFranchise() async throws {
+        let eidolon = try await installedEidolon()
+        try await eidolon.installStand(bundleAt: StandFixture.makeBundle(in: root))
+        let contentRoot = eidolon.location.contentRoot
+        let shiny = contentRoot.appendingPathComponent("shiny/stand", isDirectory: true)
+        let global = contentRoot.appendingPathComponent("stand", isDirectory: true)
+        try FileManager.default.moveItem(at: shiny, to: global)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: global.path))
+
+        _ = try await eidolon.migrateLegacyStandIfNeeded()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: global.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: shiny.path))
+        let info = try await eidolon.installedStandInfo(franchise: "shiny")
+        XCTAssertEqual(info?.outfitCount, 8)
     }
 
     func testImportReportsExtractionAndValidationProgress() async throws {
@@ -290,7 +309,8 @@ final class StandBundleTests: XCTestCase {
         XCTAssertEqual(stand.outfitList?.cards.last?.name, "衣装 5")
         XCTAssertTrue(
             FileManager.default.fileExists(
-                atPath: eidolon.location.standDirectory
+                atPath: eidolon.location.contentRoot
+                    .appendingPathComponent("shiny/stand", isDirectory: true)
                     .appendingPathComponent("stand/idols/stand/1030010010/data.json").path
             ),
             "the old outfit is still there"
