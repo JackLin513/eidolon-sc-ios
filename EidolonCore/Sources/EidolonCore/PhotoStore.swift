@@ -2,6 +2,99 @@ import Foundation
 import GRDB
 
 extension Eidolon {
+    /// A ComfyUI job whose prompt id is known but whose image has not been attached yet.
+    /// Persisting this small record is what lets a killed app recover the Mac's result.
+    struct PendingComfyPhoto: Codable, Sendable {
+        var photoID: String
+        var promptID: String
+        var baseURL: String
+        var model: String
+        var startedAt: Date
+        var messageID: String?
+        var conversationID: String?
+    }
+
+    private var pendingComfyFileURL: URL {
+        location.userDirectory.appendingPathComponent("comfy-jobs.json")
+    }
+
+    private func loadPendingComfyPhotos() -> [PendingComfyPhoto] {
+        guard let data = try? Data(contentsOf: pendingComfyFileURL),
+              let jobs = try? JSONDecoder().decode([PendingComfyPhoto].self, from: data)
+        else { return [] }
+        return jobs
+    }
+
+    private func savePendingComfyPhotos(_ jobs: [PendingComfyPhoto]) {
+        guard let data = try? JSONEncoder().encode(jobs) else { return }
+        try? data.write(to: pendingComfyFileURL, options: .atomic)
+    }
+
+    static func pendingComfyPhotoIDs(in userDirectory: URL) -> Set<String> {
+        let url = userDirectory.appendingPathComponent("comfy-jobs.json")
+        guard let data = try? Data(contentsOf: url),
+              let jobs = try? JSONDecoder().decode([PendingComfyPhoto].self, from: data)
+        else { return [] }
+        return Set(jobs.map(\.photoID))
+    }
+
+    func rememberComfyPhoto(photoID: String, promptID: String, settings: ImageServiceSettings) {
+        var jobs = loadPendingComfyPhotos()
+        if let index = jobs.firstIndex(where: { $0.photoID == photoID }) {
+            jobs[index].promptID = promptID
+            jobs[index].baseURL = settings.baseURL
+        } else {
+            jobs.append(PendingComfyPhoto(
+                photoID: photoID, promptID: promptID, baseURL: settings.baseURL,
+                model: settings.model, startedAt: Date()
+            ))
+        }
+        savePendingComfyPhotos(jobs)
+    }
+
+    private func updatePendingComfyAttachment(photoID: String, messageID: String, conversationID: String) {
+        var jobs = loadPendingComfyPhotos()
+        guard let index = jobs.firstIndex(where: { $0.photoID == photoID }) else { return }
+        jobs[index].messageID = messageID
+        jobs[index].conversationID = conversationID
+        savePendingComfyPhotos(jobs)
+    }
+
+    private func removePendingComfyPhoto(photoID: String) {
+        let jobs = loadPendingComfyPhotos().filter { $0.photoID != photoID }
+        savePendingComfyPhotos(jobs)
+    }
+
+    /// On launch, ask the Mac for any ComfyUI job whose prompt id survived the app being
+    /// closed. A finished picture is written into the existing pending photo row.
+    public func recoverComfyPhotos() async {
+        var jobs = loadPendingComfyPhotos()
+        guard !jobs.isEmpty else { return }
+        var remaining: [PendingComfyPhoto] = []
+        for job in jobs {
+            guard let base = URL(string: job.baseURL),
+                  let data = await ComfyUIRecovery.image(baseURL: base, promptID: job.promptID)
+            else {
+                remaining.append(job)
+                continue
+            }
+            guard let file = try? writePhotoFile(id: job.photoID, data: data) else {
+                remaining.append(job)
+                continue
+            }
+            try? await userQueue.write { db in
+                try db.execute(
+                    sql: """
+                        UPDATE photos SET status = 'ready', reason = NULL, file = ?,
+                            finished_at = ? WHERE id = ?
+                        """,
+                    arguments: [file, Eidolon.timestamp(Date()), job.photoID]
+                )
+            }
+        }
+        savePendingComfyPhotos(remaining)
+    }
+
     /// Starts the picture her `<photo>` tag describes. The reply is not recorded yet, so
     /// the row waits for `attachPhoto`; the image may arrive before or after it.
     @discardableResult
@@ -35,7 +128,13 @@ extension Eidolon {
                     priority: .photo,
                     timeout: nil
                 ) {
-                    try await context.generator.generate(request, settings: context.settings)
+                    try await context.generator.generate(
+                        request, settings: context.settings
+                    ) { promptID in
+                        Task { await self.rememberComfyPhoto(
+                            photoID: id, promptID: promptID, settings: context.settings
+                        ) }
+                    }
                 }
                 finishPhoto(id: id, data: data, at: Date())
                 recordImageCall(
@@ -83,6 +182,7 @@ extension Eidolon {
             draft.fileName = try writePhotoFile(id: id, data: data)
         }
         photoDrafts[id] = draft
+        updatePendingComfyAttachment(photoID: id, messageID: messageID, conversationID: conversationID)
         let status = draft.status
         let reason = draft.reason?.rawValue
         let file = draft.fileName
@@ -116,6 +216,7 @@ extension Eidolon {
     /// finds nothing to store when it lands.
     func discardPhoto(id: String) {
         photoDrafts.removeValue(forKey: id)
+        removePendingComfyPhoto(photoID: id)
     }
 
     /// The status of one photo, for the app's polling after the turn has finished.
@@ -193,16 +294,18 @@ extension Eidolon {
     }
 
     /// Marks photos left pending by a previous process as timed out.
-    static func failPendingPhotos(_ queue: DatabaseQueue) throws {
+    static func failPendingPhotos(_ queue: DatabaseQueue, excluding: Set<String> = []) throws {
         try queue.write { db in
-            try db.execute(
-                sql: """
-                    UPDATE photos
-                    SET status = 'failed', reason = 'timeout', finished_at = ?
-                    WHERE status = 'pending'
-                    """,
-                arguments: [Eidolon.timestamp(Date())]
-            )
+            let ids = try String.fetchAll(db, sql: "SELECT id FROM photos WHERE status = 'pending'")
+            for id in ids where !excluding.contains(id) {
+                try db.execute(
+                    sql: """
+                        UPDATE photos SET status = 'failed', reason = 'timeout', finished_at = ?
+                        WHERE id = ?
+                        """,
+                    arguments: [Eidolon.timestamp(Date()), id]
+                )
+            }
         }
     }
 
@@ -225,6 +328,7 @@ extension Eidolon {
             }
         }
         photoDrafts[id] = draft
+        removePendingComfyPhoto(photoID: id)
     }
 
     private func finishPhoto(
@@ -250,6 +354,7 @@ extension Eidolon {
         }
         _ = detail
         photoDrafts[id] = draft
+        removePendingComfyPhoto(photoID: id)
     }
 
     /// One real generation, for the usage page (spec #96, ticket #101): what model, how

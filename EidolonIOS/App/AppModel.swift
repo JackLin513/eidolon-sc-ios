@@ -1305,6 +1305,9 @@ final class AppModel {
                 startupStage = "读取角色与对话"
                 #endif
                 try await load()
+                // ComfyUI keeps rendering while this app is closed; adopt any finished
+                // job back into its pending photo row on the next launch.
+                Task { await core.recoverComfyPhotos() }
                 loadChatProfiles()
                 phase = .ready
                 #if DEBUG

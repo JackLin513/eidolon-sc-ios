@@ -262,6 +262,18 @@ public protocol ImageGenerating: Sendable {
     func generate(_ request: ImageRequest, settings: ImageServiceSettings) async throws -> Data
 }
 
+public extension ImageGenerating {
+    /// ComfyUI-only: tells the caller the server-side job id so a photo can be recovered
+    /// after the app is killed while the Mac keeps rendering.
+    func generate(
+        _ request: ImageRequest,
+        settings: ImageServiceSettings,
+        onPromptID: @escaping @Sendable (String) -> Void
+    ) async throws -> Data {
+        try await generate(request, settings: settings)
+    }
+}
+
 public protocol GPTImageGenerating: Sendable {
     func generate(_ request: ImageRequest, settings: GPTImageSettings) async throws -> Data
 }
@@ -283,13 +295,24 @@ public struct RemoteImageGenerator: ImageGenerating {
 
     public func generate(
         _ request: ImageRequest,
+        settings: ImageServiceSettings,
+        onPromptID: @escaping @Sendable (String) -> Void
+    ) async throws -> Data {
+        guard settings.apiFormat == .comfyui else {
+            return try await generate(request, settings: settings)
+        }
+        return try await generateComfyUI(request, settings: settings, onPromptID: onPromptID)
+    }
+
+    public func generate(
+        _ request: ImageRequest,
         settings: ImageServiceSettings
     ) async throws -> Data {
         guard settings.isConfigured else {
             throw ImageGenerationError.missingKey
         }
         if settings.apiFormat == .comfyui {
-            return try await generateComfyUI(request, settings: settings)
+            return try await generateComfyUI(request, settings: settings, onPromptID: { _ in })
         }
         guard !settings.apiKey.isEmpty else {
             throw ImageGenerationError.missingKey
@@ -347,7 +370,8 @@ public struct RemoteImageGenerator: ImageGenerating {
     /// the checkpoint filename, and the generated image is fetched from `/view`.
     private func generateComfyUI(
         _ request: ImageRequest,
-        settings: ImageServiceSettings
+        settings: ImageServiceSettings,
+        onPromptID: @escaping @Sendable (String) -> Void
     ) async throws -> Data {
         guard let base = settings.endpoint else { throw ImageGenerationError.invalidAddress }
         let positive = request.basePrompt ?? request.prompt
@@ -392,6 +416,7 @@ public struct RemoteImageGenerator: ImageGenerating {
         guard let json = try? JSONSerialization.jsonObject(with: submitted.body) as? [String: Any],
               let promptID = json["prompt_id"] as? String
         else { throw ImageGenerationError.serviceError("ComfyUI 没有返回 prompt_id") }
+        onPromptID(promptID)
         while !Task.isCancelled {
             try await Task.sleep(for: .seconds(1))
             let history = try await transport.send(URLRequest(
@@ -627,6 +652,41 @@ public enum ImageJobPriority: Int, Sendable, Comparable {
 
     public static func < (lhs: ImageJobPriority, rhs: ImageJobPriority) -> Bool {
         lhs.rawValue < rhs.rawValue
+    }
+}
+
+/// Reads a finished ComfyUI job back from the Mac after this app was killed. The app
+/// persists only the prompt id and address; the image itself stays on the Mac until then.
+enum ComfyUIRecovery {
+    static func image(baseURL: URL, promptID: String) async -> Data? {
+        guard let historyURL = URL(string: "history/\(promptID)", relativeTo: baseURL),
+              let (history, _) = try? await URLSession.shared.data(from: historyURL),
+              let object = try? JSONSerialization.jsonObject(with: history) as? [String: Any],
+              let entry = object[promptID] as? [String: Any],
+              let outputs = entry["outputs"] as? [String: Any]
+        else { return nil }
+        for output in outputs.values {
+            guard let node = output as? [String: Any],
+                  let list = node["images"] as? [[String: Any]],
+                  let first = list.first,
+                  let filename = first["filename"] as? String,
+                  var components = URLComponents(
+                    url: URL(string: "view", relativeTo: baseURL)!, resolvingAgainstBaseURL: false
+                  )
+            else { continue }
+            components.queryItems = [
+                URLQueryItem(name: "filename", value: filename),
+                URLQueryItem(name: "subfolder", value: first["subfolder"] as? String ?? ""),
+                URLQueryItem(name: "type", value: first["type"] as? String ?? "output"),
+            ]
+            guard let view = components.url,
+                  let (picture, _) = try? await URLSession.shared.data(from: view)
+            else { continue }
+            return try? ImageTranscoder.jpeg(
+                picture, width: PhotoGeometry.width, height: PhotoGeometry.height, fit: false
+            )
+        }
+        return nil
     }
 }
 
