@@ -45,21 +45,25 @@ HEROINES = {
 HEROINE_DETAIL = {
     "sakura": {
         "age": 18, "birthday": "01-01",
+        "voice_id": "6242d3abca7b4e0f955616c9ca87e69c",
         "photo_tag": "yoruno sakura",
         "photo_appearance": "white hair, pink gradient hair, long hair, blue eyes, hair ornament, school uniform",
     },
     "katan": {
         "age": 18, "birthday": "01-01",
+        "voice_id": "6123d976c0044789be9b6b79772723f0",
         "photo_tag": "kaiman katan",
         "photo_appearance": "red hair, twintails, pink eyes, heart ahoge, black hair bow, school uniform",
     },
     "sophia": {
         "age": 18, "birthday": "01-01",
+        "voice_id": "e8f7da8d0760440195fd812dcb3a7737",
         "photo_tag": "sophia lancaster",
         "photo_appearance": "blonde hair, long hair, green eyes, school uniform",
     },
     "suisen": {
         "age": 18, "birthday": "01-01",
+        "voice_id": "2dab8607f82a4c8187d740c9583d21fb",
         "photo_tag": "houzuki suisen",
         "photo_appearance": "grey hair, gradient hair, purple hair, twintails, yellow eyes, school uniform",
     },
@@ -471,7 +475,7 @@ def write_assets(staging: Path, sakura_source: Path, avatar_dir: Path | None = N
         entries.append({
             "id": cid, "name": name, "name_zh": name_zh, "name_kana": kana, "name_romaji": romaji,
             "unit": "学園", "intro": f"{name}，本作的女主角之一。", "color": color,
-            "voice_id": cid, "sheet": sheet, "facts": facts, "avatar": avatar,
+            "voice_id": detail.get("voice_id", cid), "sheet": sheet, "facts": facts, "avatar": avatar,
             "speakers": [speaker], "idol_id": index, "birthday": detail["birthday"],
             "age": detail["age"], "photo_tag": detail["photo_tag"],
             "photo_appearance": detail["photo_appearance"],

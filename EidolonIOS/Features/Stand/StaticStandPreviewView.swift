@@ -10,6 +10,9 @@ struct StaticStandPreviewView: View {
     @State private var character: CharacterConfig?
     @State private var expressions: [String: URL] = [:]
     @State private var selected = "calm"
+    @State private var bases: [StaticStandManifest.Base] = []
+    @State private var outfit = ""
+    @State private var pose = ""
     @State private var image: UIImage?
     @State private var failure: String?
 
@@ -62,6 +65,18 @@ struct StaticStandPreviewView: View {
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
             }
+            if outfits.count > 1 {
+                axis("衣装", values: outfits, selected: outfit) { value in
+                    outfit = value
+                    Task { await loadBase() }
+                }
+            }
+            if poses.count > 1 {
+                axis("姿态", values: poses, selected: pose) { value in
+                    pose = value
+                    Task { await loadBase() }
+                }
+            }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(order.filter { expressions[$0] != nil }, id: \.self) { emotion in
@@ -77,6 +92,25 @@ struct StaticStandPreviewView: View {
         }
         .padding(.vertical, 8)
         .background(.bar)
+    }
+
+    private var outfits: [String] { Array(Set(bases.map(\.outfit))).sorted() }
+    private var poses: [String] { Array(Set(bases.map(\.pose))).sorted() }
+
+    private func axis(_ title: String, values: [String], selected: String, choose: @escaping (String) -> Void) -> some View {
+        HStack(spacing: 8) {
+            Text(title).font(.caption).foregroundStyle(.secondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(values, id: \.self) { value in
+                        Button(value) { choose(value) }
+                            .buttonStyle(.bordered)
+                            .tint(selected == value ? .accentColor : .secondary)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 12)
     }
 
     private func emotionName(_ raw: String) -> String {
@@ -98,10 +132,21 @@ struct StaticStandPreviewView: View {
             return
         }
         character = first
-        guard let found = await app.staticStandExpressions(characterID: first.id), !found.isEmpty else {
+        guard let found = await app.staticStandBases(characterID: first.id), !found.isEmpty else {
             failure = "当前内容包没有配对静态立绘，或立绘包未安装"
             return
         }
+        bases = found
+        outfit = found.first?.outfit ?? ""
+        pose = found.first?.pose ?? ""
+        await loadBase()
+    }
+
+    private func loadBase() async {
+        guard let base = bases.first(where: { $0.outfit == outfit && $0.pose == pose }),
+              let first = character
+        else { return }
+        let found = await app.staticStandExpressions(characterID: first.id, baseID: base.id) ?? [:]
         expressions = found
         if found[selected] == nil, let firstKey = order.first(where: { found[$0] != nil }) {
             selected = firstKey
