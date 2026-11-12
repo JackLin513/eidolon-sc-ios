@@ -2,6 +2,16 @@ import Foundation
 import GRDB
 
 extension Eidolon {
+    /// ComfyUI is local and shares the Mac's memory, so give it a smaller canvas. NovelAI
+    /// and OpenAI keep the content package's normal 832x1216.
+    private func sizedForService(_ request: ImageRequest, settings: ImageServiceSettings) -> ImageRequest {
+        guard settings.apiFormat == .comfyui else { return request }
+        var request = request
+        request.width = ImageServiceSettings.comfyWidth
+        request.height = ImageServiceSettings.comfyHeight
+        return request
+    }
+
     /// A ComfyUI job whose prompt id is known but whose image has not been attached yet.
     /// Persisting this small record is what lets a killed app recover the Mac's result.
     struct PendingComfyPhoto: Codable, Sendable {
@@ -111,7 +121,7 @@ extension Eidolon {
     ) -> String? {
         guard context.isConfigured, character.canSendPhoto else { return nil }
         guard let table = try? photoTags() else { return nil }
-        guard let request = try? PhotoPromptBuilder.request(
+        guard let built = try? PhotoPromptBuilder.request(
                   tag: tag,
                   character: character,
                   style: context.settings.style,
@@ -121,6 +131,7 @@ extension Eidolon {
                   producerTags: context.settings.producerTags
               )
         else { return nil }
+        let request = sizedForService(built, settings: context.settings)
         let id = UUID().uuidString
         photoDrafts[id] = PhotoDraft(id: id, tag: tag, startedAt: now)
         Task {
@@ -451,7 +462,7 @@ extension Eidolon {
                 )
             }
         }
-        let request = try PhotoPromptBuilder.request(
+        let built = try PhotoPromptBuilder.request(
             tag: tag,
             character: character,
             style: context.settings.style,
@@ -460,6 +471,7 @@ extension Eidolon {
             model: context.settings.model(adult: adult),
             producerTags: context.settings.producerTags
         )
+        let request = sizedForService(built, settings: context.settings)
         let id = UUID().uuidString
         let started = Date()
         // Insert the pending row before asking ComfyUI, so a relaunch can adopt a job

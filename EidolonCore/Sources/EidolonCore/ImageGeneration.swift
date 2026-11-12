@@ -57,6 +57,10 @@ public struct ImageServiceSettings: Sendable, Equatable {
     /// What the settings' 试一张 uses on NovelAI: the older, cheaper 4.5 Curated model,
     /// so confirming the key and the address costs less (spec #98's try-out rule).
     public static let testModel = "nai-diffusion-4-5-curated"
+    /// ComfyUI runs on the same 16 GB Mac as everything else, so photos use a smaller
+    /// canvas than NovelAI's 832x1216 while keeping the same portrait aspect.
+    public static let comfyWidth = 704
+    public static let comfyHeight = 1024
 
     public init(
         apiFormat: ImageAPIFormat = .novelai,
