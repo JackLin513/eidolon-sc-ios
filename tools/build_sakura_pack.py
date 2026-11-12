@@ -237,19 +237,29 @@ def manifest(staging: Path) -> dict:
 def write_static_stand(source: Path, staging: Path) -> None:
     images = staging / "images"
     images.mkdir(parents=True, exist_ok=True)
+    # The agreed Sakura A/A 7-emotion set, decoded from the game's S assets.
+    seven = Path("build/sakura-7")
     portraits = sorted((source / "portraits").glob("*.png"))
-    if not portraits:
-        raise SystemExit(f"no portraits under {source / 'portraits'}")
-    for portrait in portraits:
-        (images / portrait.name).write_bytes(portrait.read_bytes())
-    expressions = {
-        "calm": "A020.png",
-        "angry": "A140.png",
-        "shy": "A081.png",
-        "thinking": "I180.png",
-        "sad": "A070.png",
-        "surprised": "A150.png",
-    }
+    if not seven.is_dir() and not portraits:
+        raise SystemExit(f"no portraits under {source / 'portraits'} and no {seven}")
+    if seven.is_dir():
+        for png in seven.glob("*.png"):
+            (images / png.name).write_bytes(png.read_bytes())
+        expressions = {name: f"{name}.png" for name in
+                       ("calm", "angry", "shy", "thinking", "sad", "surprised", "happy")}
+        bases = [{
+            "id": "A.A", "outfit": "A", "pose": "A", "source": "S",
+            "expressions": expressions,
+        }]
+    else:
+        for portrait in portraits:
+            (images / portrait.name).write_bytes(portrait.read_bytes())
+        expressions = {
+            "calm": "A020.png", "angry": "A140.png", "shy": "A081.png",
+            "thinking": "I180.png", "sad": "A070.png", "surprised": "A150.png",
+        }
+        bases = []
+
     files = {}
     for path in sorted(staging.rglob("*")):
         if not path.is_file() or path.name == "manifest.json":
@@ -258,7 +268,7 @@ def write_static_stand(source: Path, staging: Path) -> None:
         data = path.read_bytes()
         files[rel] = {"size": len(data), "crc32": crc32_hex(data)}
     manifest = {
-        "format_version": 1,
+        "format_version": 2 if bases else 1,
         "kind": "stand",
         "mode": "full",
         "renderer": "static",
@@ -274,6 +284,7 @@ def write_static_stand(source: Path, staging: Path) -> None:
                     for emotion, filename in expressions.items()
                     if (images / filename).exists()
                 },
+                **({"bases": bases} if bases else {}),
             }
         ],
         "files": files,

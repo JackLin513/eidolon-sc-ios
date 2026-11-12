@@ -160,6 +160,7 @@ extension Eidolon {
             activeContentFranchise = ContentRegistryState.legacyFranchise
         }
         try repairContentLinkIfNeeded()
+        installFranchisePrompt(franchise: activeContentFranchise)
     }
 
     /// Rebuild a missing/broken/absolute `Content/current` link. Simulator app updates can
@@ -251,9 +252,7 @@ extension Eidolon {
     }
 
     func installFranchisePrompt(franchise: String? = nil) {
-        if let prompt = franchisePrompt(franchise: franchise) {
-            FranchisePromptContext.current = prompt
-        }
+        FranchisePromptContext.current = franchisePrompt(franchise: franchise) ?? .shiny
     }
 
     public func installedStaticStandInfo(franchise: String? = nil) throws -> StaticStandBundleInfo? {

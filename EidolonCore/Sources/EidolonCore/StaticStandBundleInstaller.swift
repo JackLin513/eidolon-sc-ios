@@ -33,7 +33,10 @@ struct StaticStandBundleInstaller {
             contentSetID: manifest.contentSetID,
             installedAt: ISO8601DateFormatter().string(from: Date()),
             characterCount: manifest.characters.count,
-            expressionCount: manifest.characters.reduce(0) { $0 + $1.allExpressions.count },
+            expressionCount: manifest.characters.reduce(0) { total, character in
+                total + (character.bases ?? []).reduce(0) { $0 + $1.expressions.count }
+                    + (character.bases == nil ? character.expressions.count : 0)
+            },
             mode: manifest.mode,
             baseCount: manifest.characters.reduce(0) { $0 + ($1.bases?.count ?? 0) }
         )

@@ -83,5 +83,19 @@ public struct FranchisePrompt: Codable, Sendable, Hashable {
 /// The active prompt pack. Content activation sets it; tests and older bundles keep the
 /// built-in SC text. The value is read on prompt-building paths, not UI state.
 public enum FranchisePromptContext {
-    nonisolated(unsafe) public static var current = FranchisePrompt.shiny
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var stored = FranchisePrompt.shiny
+
+    public static var current: FranchisePrompt {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return stored
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            stored = newValue
+        }
+    }
 }

@@ -125,7 +125,11 @@ struct StaticStandPickerView: View {
             failure = "当前内容包没有 v2 静态立绘，或立绘包未安装"
             return
         }
-        bases = found
+        bases = found.filter { $0.expressions[StandEmotion.calm.rawValue] != nil }
+        guard !bases.isEmpty else {
+            failure = "静态立绘没有可用的 calm 表情"
+            return
+        }
         if currentBase == nil {
             selected.outfit = outfits.first
             selected.pose = poses.first
@@ -165,41 +169,3 @@ struct StaticStandPickerView: View {
     }
 }
 
-
-/// The last static appearance chosen per character, on this device only.
-struct StaticAppearanceSelection: Codable, Hashable {
-    var outfit: String?
-    var pose: String?
-    var emotion: StandEmotion
-
-    init(outfit: String? = nil, pose: String? = nil, emotion: StandEmotion = .calm) {
-        self.outfit = outfit
-        self.pose = pose
-        self.emotion = emotion
-    }
-}
-
-struct StaticAppearanceStore {
-    private let defaults = UserDefaults.standard
-    private let key = "eidolon.staticAppearance"
-
-    func selection(for characterID: String) -> StaticAppearanceSelection {
-        guard let data = defaults.data(forKey: key),
-              let all = try? JSONDecoder().decode([String: StaticAppearanceSelection].self, from: data),
-              let found = all[characterID]
-        else { return StaticAppearanceSelection() }
-        return found
-    }
-
-    func remember(_ selection: StaticAppearanceSelection, for characterID: String) {
-        var all: [String: StaticAppearanceSelection] = [:]
-        if let data = defaults.data(forKey: key),
-           let decoded = try? JSONDecoder().decode([String: StaticAppearanceSelection].self, from: data) {
-            all = decoded
-        }
-        all[characterID] = selection
-        if let data = try? JSONEncoder().encode(all) {
-            defaults.set(data, forKey: key)
-        }
-    }
-}

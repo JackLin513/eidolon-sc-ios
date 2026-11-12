@@ -372,7 +372,7 @@ WORLD = {
     "office": {
         "name": "学园",
         "staff": [
-            {"name": "学园学生会长", "position": "学生会长"},
+            {"name": "学园学生会长", "reading": "がくえん せいと かいちょう", "position": "学生会长"},
         ],
     },
     "units": [
@@ -381,10 +381,10 @@ WORLD = {
         {"name": "崩月家", "members": ["崩月槐", "崩月水仙"]},
     ],
     "idols": [
-        {"name": "夜乃桜", "unit": "学园", "role": "学生会长"},
-        {"name": "海漫華淡", "unit": "学园", "role": "学生"},
-        {"name": "ソフィア・ランカスター", "unit": "学园", "role": "副会长"},
-        {"name": "崩月水仙", "unit": "学园", "role": "学生"},
+        {"name": "夜乃桜", "reading": "よの さくら", "unit": "学园"},
+        {"name": "海漫華淡", "reading": "かいまん かたん", "unit": "学园"},
+        {"name": "ソフィア・ランカスター", "reading": "そふぃあ らんかすたー", "unit": "学园"},
+        {"name": "崩月水仙", "reading": "ほうづき すいせん", "unit": "学园"},
     ],
     "releases": [], "songs": [], "lives": [],
 }
@@ -398,6 +398,7 @@ PLACES = {"places": [
 
 HOLIDAYS_2026 = {
     "2026-01-01": "元日", "2026-01-12": "成人の日", "2026-02-11": "建国記念の日",
+    "2026-02-23": "天皇誕生日",
     "2026-03-20": "春分の日", "2026-04-29": "昭和の日", "2026-05-03": "憲法記念日",
     "2026-05-04": "みどりの日", "2026-05-05": "こどもの日", "2026-05-06": "振替休日",
     "2026-07-20": "海の日", "2026-08-11": "山の日", "2026-09-21": "敬老の日",
@@ -435,7 +436,8 @@ SHEETS = {
 """,
 }
 
-def write_assets(staging: Path, sakura_source: Path, avatar_dir: Path | None = None):
+def write_assets(staging: Path, sakura_source: Path, avatar_dir: Path | None = None,
+                 photo_tags_path: Path | None = None):
     chars = staging / "characters"
     (chars / "sheets").mkdir(parents=True)
     (chars / "avatars").mkdir(parents=True)
@@ -493,7 +495,7 @@ def write_assets(staging: Path, sakura_source: Path, avatar_dir: Path | None = N
         {"id": gid, "name": gname, "category": category, "rarity": rarity, "warm": warm}
         for gid, gname, category, rarity, warm in GIFTS
     ]}, ensure_ascii=False, indent=2), encoding="utf-8")
-    photo_tags = Path("/Users/jacklin/Developer/IdeaProjects/eidolon-sc/backend/src/eidolon/photo_tags.json")
+    photo_tags = photo_tags_path or Path("build/photo_tags.json")
     if photo_tags.exists():
         (chars / "photo_tags.json").write_bytes(photo_tags.read_bytes())
     else:
@@ -576,6 +578,7 @@ def main():
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV)
     parser.add_argument("--embedding-mode", choices=("api", "zeros"), default="api")
     parser.add_argument("--avatar-dir", type=Path, default=Path("build/totsulover-avatars"))
+    parser.add_argument("--photo-tags", type=Path, default=Path("build/photo_tags.json"))
     parser.add_argument("--max-units", type=int)
     args = parser.parse_args()
     if not args.game.exists() or not args.chs.exists():
@@ -602,7 +605,7 @@ def main():
     try:
         (staging / "content").mkdir(parents=True)
         write_database(staging / "content/eidolon.db", lines_by_unit, embeddings)
-        write_assets(staging, DEFAULT_CHS.parent / "sakura", args.avatar_dir)
+        write_assets(staging, DEFAULT_CHS.parent / "sakura", args.avatar_dir, args.photo_tags)
         write_zip(staging, args.out)
     finally:
         import shutil
