@@ -73,6 +73,7 @@ struct CallView: View {
     @State private var standViewport = CGSize.zero
     /// The picture opened full screen; nothing of it can be saved or shared (ticket #103).
     @State private var viewingPhoto: CallPhoto?
+    @State private var showsStaticOutfits = false
 
     var body: some View {
         ZStack {
@@ -128,6 +129,16 @@ struct CallView: View {
         )
         .fullScreenCover(item: $viewingPhoto) { photo in
             PhotoViewer(id: photo.id)
+        }
+        .fullScreenCover(isPresented: $showsStaticOutfits) {
+            StaticStandPickerView(
+                character: character,
+                onClose: {
+                    showsStaticOutfits = false
+                    Task { await reloadStaticAppearance() }
+                }
+            )
+            .environment(app)
         }
         .task {
             loadBackdrop()
@@ -396,6 +407,16 @@ struct CallView: View {
     /// only fades in a pane/wider screen or with reduced motion, and stays at 40% once the
     /// call is over. The stage height comes from the presentation so the wide pane and the
     /// full-screen iPad use different framings without the view guessing at size classes.
+    private func reloadStaticAppearance() async {
+        guard let bases = await app.staticStandBases(characterID: character.id), !bases.isEmpty else { return }
+        let remembered = StaticAppearanceStore().selection(for: character.id)
+        let base = bases.first { $0.outfit == remembered.outfit && $0.pose == remembered.pose }
+            ?? bases.first!
+        staticBaseID = base.id
+        staticImages = await app.staticStandExpressions(characterID: character.id, baseID: base.id) ?? [:]
+        renderStatic(remembered.emotion)
+    }
+
     private func renderStatic(_ emotion: StandEmotion) {
         guard let url = staticImages[emotion.rawValue] ?? staticImages[StandEmotion.calm.rawValue] else {
             staticImage = nil
@@ -572,6 +593,18 @@ struct CallView: View {
                             .background(.white.opacity(0.16), in: Circle())
                     }
                     .accessibilityLabel("收起")
+                }
+                if hasStand, staticBaseID != nil {
+                    Button {
+                        showsStaticOutfits = true
+                    } label: {
+                        Image(systemName: "tshirt")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 38, height: 38)
+                            .background(.white.opacity(0.16), in: Circle())
+                    }
+                    .accessibilityLabel("换衣装")
                 }
                 Spacer(minLength: 0)
             }

@@ -54,3 +54,44 @@ public struct AppearanceSelection: Sendable, Hashable {
         values.keys.sorted().map { "\($0)=\(values[$0] ?? "")" }.joined(separator: "&")
     }
 }
+
+/// The independent outfit/pose catalog for a v2 static stand. SC's card/look hierarchy is
+/// still represented by its own source; this catalog is the totsulover side of the shared
+/// selection model.
+public struct AppearanceCatalog: Sendable, Hashable {
+    public var characterID: String
+    public var dimensions: [AppearanceDimension]
+
+    public init(characterID: String, bases: [StaticStandManifest.Base]) {
+        self.characterID = characterID
+        let outfits = Set(bases.map(\.outfit)).sorted()
+        let poses = Set(bases.map(\.pose)).sorted()
+        dimensions = []
+        if !outfits.isEmpty {
+            dimensions.append(AppearanceDimension(
+                id: "outfit",
+                title: "衣装",
+                options: outfits.map { AppearanceOption(id: $0, title: $0, values: ["outfit": $0]) }
+            ))
+        }
+        if !poses.isEmpty {
+            dimensions.append(AppearanceDimension(
+                id: "pose",
+                title: "姿态",
+                options: poses.map { AppearanceOption(id: $0, title: $0, values: ["pose": $0]) }
+            ))
+        }
+    }
+
+    public func dimension(_ id: String) -> AppearanceDimension? {
+        dimensions.first { $0.id == id }
+    }
+
+    public func base(
+        outfit: String?,
+        pose: String?,
+        in bases: [StaticStandManifest.Base]
+    ) -> StaticStandManifest.Base? {
+        bases.first { $0.outfit == outfit && $0.pose == pose }
+    }
+}

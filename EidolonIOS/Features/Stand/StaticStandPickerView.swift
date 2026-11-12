@@ -130,9 +130,10 @@ struct StaticStandPickerView: View {
             failure = "静态立绘没有可用的 calm 表情"
             return
         }
+        let catalog = AppearanceCatalog(characterID: character.id, bases: bases)
         if currentBase == nil {
-            selected.outfit = outfits.first
-            selected.pose = poses.first
+            selected.outfit = catalog.dimension("outfit")?.options.first?.id
+            selected.pose = catalog.dimension("pose")?.options.first?.id
         }
         await loadBase()
     }
