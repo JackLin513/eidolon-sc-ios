@@ -126,3 +126,23 @@ Mac 只做构建冒烟，不启动、不验收音频/3D：
 xcodebuild -project EidolonIOS.xcodeproj -scheme EidolonIOS -configuration Debug \
   -destination 'platform=macOS,arch=arm64,variant=Designed for iPad' build
 ```
+
+## 内容包身份与提示词（#144）
+
+自动检查（不联网）：
+
+```sh
+swift test --package-path EidolonCore --filter FranchisePromptTests
+swift test --package-path EidolonCore --filter PromptFidelityTests
+swift test --package-path EidolonCore --filter ReplyFormatTests
+```
+
+`FranchisePromptTests` 覆盖 SC 逐字不变、`vocabulary` 最长优先、totsulover 内置身份与 snake_case 解码。`PromptFidelityTests` / `ReplyFormatTests` 保证 SC 提示词仍与上游 golden 一致。
+
+待人工详细测试：
+
+- [ ] Air 真机导入 v5 `totsulover` 内容包，跑一轮文字对话，打开「调试上下文」：`world` / `用户资料` 中不出现 `制作人`、`283`、`偶像`、`事务所`；用户资料是崩月槐，夜乃桜称「槐くん」、海漫華淡称「槐さん」、崩月水仙称「槐お兄ちゃん」。
+- [ ] 成人模式关闭时提示词含「亲密边界」，打开后该段消失。
+- [ ] 非 SC 企划的设置页不显示「制作人资料」，分类名为「你的资料」；生图制作人 tag 显示「槐」。
+- [ ] 旧对话历史不被改写：只有新回合使用新提示词，旧回复里的「制作人」保留原样。
+- [ ] 设置 → API 与模型：对话、生图、判断、检索配置在重装后由 Keychain 备份恢复；ComfyUI 使用公网地址和 `NoobAI-XL-v1.0.safetensors`。
