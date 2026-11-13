@@ -389,13 +389,12 @@ public struct RemoteImageGenerator: ImageGenerating {
             "4": ["class_type": "EmptyLatentImage", "inputs": [
                 "width": request.width, "height": request.height, "batch_size": 1,
             ]],
-            "8": ["class_type": "ModelSamplingDiscrete", "inputs": [
-                "model": model, "sampling": "v_prediction", "zsnr": true,
-            ]],
+            // No ModelSamplingDiscrete: the server's NoobAI-XL checkpoint is an epsilon
+            // model, and forcing v_prediction there decodes to a flat gray image.
             "5": ["class_type": "KSampler", "inputs": [
-                "seed": Int(request.seed), "steps": 23, "cfg": 6.0,
+                "seed": Int(request.seed), "steps": 28, "cfg": 5.5,
                 "sampler_name": "euler_ancestral", "scheduler": "normal", "denoise": 1.0,
-                "model": ["8", 0], "positive": ["2", 0], "negative": ["3", 0],
+                "model": model, "positive": ["2", 0], "negative": ["3", 0],
                 "latent_image": ["4", 0],
             ]],
             "6": ["class_type": "VAEDecode", "inputs": ["samples": ["5", 0], "vae": ["1", 2]]],
