@@ -95,3 +95,24 @@ public struct AppearanceCatalog: Sendable, Hashable {
         bases.first { $0.outfit == outfit && $0.pose == pose }
     }
 }
+
+/// The renderer-agnostic source of appearance choices. SC and totsulover provide their own
+/// implementations; the wardrobe and call code only ask for a catalog and a selection.
+public protocol AppearanceSource: Sendable {
+    var characterID: String { get }
+    func catalog() async -> AppearanceCatalog
+}
+
+public struct StaticAppearanceSource: AppearanceSource {
+    public let characterID: String
+    public let bases: [StaticStandManifest.Base]
+
+    public init(characterID: String, bases: [StaticStandManifest.Base]) {
+        self.characterID = characterID
+        self.bases = bases
+    }
+
+    public func catalog() async -> AppearanceCatalog {
+        AppearanceCatalog(characterID: characterID, bases: bases)
+    }
+}

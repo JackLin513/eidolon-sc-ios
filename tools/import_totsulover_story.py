@@ -314,6 +314,7 @@ def write_database(path: Path, lines_by_unit, embeddings):
         CREATE INDEX episode_cast_by_character ON episode_cast(character_id);
         CREATE TABLE episode_lines (episode_id TEXT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
           seq INTEGER NOT NULL, speaker TEXT, ja TEXT NOT NULL, zh TEXT,
+          ja_raw TEXT, ja_clean TEXT,
           PRIMARY KEY (episode_id, seq));
         CREATE TABLE episode_passages (episode_id TEXT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
           seq INTEGER NOT NULL, text TEXT NOT NULL, model TEXT NOT NULL, embedding BLOB NOT NULL,
@@ -329,8 +330,9 @@ def write_database(path: Path, lines_by_unit, embeddings):
         for line in lines:
             if line["speaker"] in HEROINES:
                 cast.add(line["speaker"])
-            db.execute("INSERT INTO episode_lines VALUES (?, ?, ?, ?, ?)",
-                       (episode_id, line["seq"], line["speaker"], line["ja"], line["zh"]))
+            db.execute("INSERT INTO episode_lines(episode_id, seq, speaker, ja, zh, ja_raw, ja_clean) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                       (episode_id, line["seq"], line["speaker"], line["ja"], line["zh"],
+                        line["ja"], clean_for_text(line["ja"])))
         if unit.route == "0共通" or not cast:
             cast = set(HEROINES)
         elif unit.route in ROUTE_HEROINE and ROUTE_HEROINE[unit.route]:
@@ -339,7 +341,7 @@ def write_database(path: Path, lines_by_unit, embeddings):
             db.execute("INSERT INTO episode_cast VALUES (?, ?)", (episode_id, character_id))
         for start in range(0, len(lines), 3):
             chunk = lines[start:start + 3]
-            text_value = "\n".join((line["zh"] or line["ja"]) for line in chunk).strip()
+            text_value = "\n".join(clean_for_text(line["zh"] or line["ja"]) for line in chunk).strip()
             if not text_value:
                 continue
             embedding = embeddings[passage_index]
@@ -442,8 +444,27 @@ SHEETS = {
 """,
 }
 
+def load_terms(game: Path) -> list[dict]:
+    """The 128-row original TIPS.CSV: term, reading and the two tips image names."""
+    blob = read_pac_entry(game / "csv.pac", "TIPS.CSV").decode("cp932", errors="replace")
+    terms = []
+    for row, line in enumerate(blob.splitlines()):
+        cols = line.split(",")
+        if len(cols) < 4 or not cols[0].strip():
+            continue
+        terms.append({
+            "id": cols[2].strip().removesuffix("S"),
+            "row": row,
+            "term": cols[0].strip(),
+            "reading": cols[1].strip(),
+            "image_small": cols[2].strip(),
+            "image_large": cols[3].strip(),
+        })
+    return terms
+
+
 def write_assets(staging: Path, sakura_source: Path, avatar_dir: Path | None = None,
-                 photo_tags_path: Path | None = None):
+                 photo_tags_path: Path | None = None, game: Path | None = None):
     chars = staging / "characters"
     (chars / "sheets").mkdir(parents=True)
     (chars / "avatars").mkdir(parents=True)
@@ -486,6 +507,10 @@ def write_assets(staging: Path, sakura_source: Path, avatar_dir: Path | None = N
             "place_likes": ["cafe", "park"], "liked_gifts": gifts,
         })
     (chars / "characters.json").write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+    if game is not None:
+        (chars / "terms.json").write_text(
+            json.dumps(load_terms(game), ensure_ascii=False, indent=2), encoding="utf-8"
+        )
     (chars / "franchise.json").write_text(json.dumps({
         "work_name": "ディメンション凸ラバース！！",
         "organization": "学園",
@@ -614,7 +639,7 @@ def main():
     try:
         (staging / "content").mkdir(parents=True)
         write_database(staging / "content/eidolon.db", lines_by_unit, embeddings)
-        write_assets(staging, DEFAULT_CHS.parent / "sakura", args.avatar_dir, args.photo_tags)
+        write_assets(staging, DEFAULT_CHS.parent / "sakura", args.avatar_dir, args.photo_tags, args.game)
         write_zip(staging, args.out)
     finally:
         import shutil

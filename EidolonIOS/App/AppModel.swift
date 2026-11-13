@@ -39,6 +39,7 @@ final class AppModel {
     private(set) var standInfo: StandBundleInfo?
     /// The image-based stand paired with the active content package, if imported.
     private(set) var staticStandInfo: StaticStandBundleInfo?
+    private(set) var staticStandCharacterIDs: Set<String> = []
     private(set) var barInfo: BarBundleInfo?
     /// How the producer wants her drawn (ADR-0035): auto prefers 3D when this build and
     /// the installed package provide it; 2D is the safe default and the fallback.
@@ -1772,6 +1773,7 @@ final class AppModel {
             bundleInfo = try await core.installedContentInfo()
             contentPackages = await core.installedContentPackages
             staticStandInfo = try await core.installedStaticStandInfo()
+            staticStandCharacterIDs = (try? await core.staticStandCharacterIDs()) ?? []
             conversationPath = NavigationPath()
             padConversationID = nil
             try await load()
@@ -1853,7 +1855,7 @@ final class AppModel {
     /// Whether the active content/stand packages can offer a wardrobe, for either the
     /// Spine cards or a v2 static stand.
     func hasAppearance(for characterID: String) -> Bool {
-        hasStand(for: characterID) || staticStandInfo != nil
+        hasStand(for: characterID) || staticStandCharacterIDs.contains(characterID)
     }
 
     private func activateDebugContentFranchiseIfRequested() async {
@@ -2199,6 +2201,7 @@ final class AppModel {
         #endif
         standInfo = try await core.installedStandInfo()
         staticStandInfo = try await core.installedStaticStandInfo()
+        staticStandCharacterIDs = (try? await core.staticStandCharacterIDs()) ?? []
         await loadModel3D()
         #if DEBUG
         mark("载入:酒吧包信息")

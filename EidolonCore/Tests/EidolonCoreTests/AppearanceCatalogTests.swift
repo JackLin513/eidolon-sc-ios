@@ -23,3 +23,17 @@ struct AppearanceCatalogTests {
         #expect(selection.storageKey == "outfit=A&pose=B")
     }
 }
+
+@Suite("Appearance source")
+struct AppearanceSourceTests {
+    @Test("the static source exposes her independent axes")
+    func staticSource() async {
+        let source = StaticAppearanceSource(characterID: "sakura", bases: [
+            StaticStandManifest.Base(id: "A.A", outfit: "A", pose: "A", expressions: ["calm": "a"]),
+            StaticStandManifest.Base(id: "A.B", outfit: "A", pose: "B", expressions: ["calm": "b"]),
+        ])
+        let catalog = await source.catalog()
+        #expect(catalog.characterID == "sakura")
+        #expect(catalog.dimension("pose")?.options.count == 2)
+    }
+}

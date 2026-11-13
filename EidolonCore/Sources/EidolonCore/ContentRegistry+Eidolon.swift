@@ -285,6 +285,18 @@ extension Eidolon {
         return result
     }
 
+    /// Characters the installed static stand actually declares. Used for the per-character
+    /// wardrobe capability check instead of treating every character as drawable.
+    public func staticStandCharacterIDs(franchise: String? = nil) throws -> Set<String> {
+        try loadContentPackagesIfNeeded()
+        let franchise = ContentRegistryState.normalizedFranchise(franchise ?? activeContentFranchise)
+        let directory = packageRoot(franchise).appendingPathComponent("static-stand", isDirectory: true)
+        guard let data = try? Data(contentsOf: directory.appendingPathComponent("manifest.json")),
+              let manifest = try? JSONDecoder().decode(StaticStandManifest.self, from: data)
+        else { return [] }
+        return Set(manifest.characters.map(\.id))
+    }
+
     /// v2 outfit/pose bases for one character. Empty for a v1 package.
     public func staticStandBases(
         characterID: String,
