@@ -1467,11 +1467,13 @@ final class AppModel {
         settings.apply(report.values)
         // An unsigned UI-test build can fail the Keychain write; this run still needs the
         // values, as the other debug seeding does.
+        // Secrets live in the Keychain and an unsigned debug simulator build may fail
+        // that write; keep the parsed settings in memory regardless so the .env test
+        // still talks to the configured providers this run.
+        chatSettings = settings
         if let saved = try? saveChatSettings(settings) {
             chatSettings = saved
             try? captureActiveChatProfile(from: saved, clearKey: false)
-        } else {
-            chatSettings = settings
         }
         try? FileManager.default.removeItem(at: url)
         Logger(subsystem: "com.jacklin.eidolon", category: "settings").notice(
