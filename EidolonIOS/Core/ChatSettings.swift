@@ -3,7 +3,7 @@ import Foundation
 
 /// The chat and judge model settings: addresses and model names in UserDefaults, keys in
 /// the Keychain (ADR-0010). A chat judge left blank uses the chat model's settings.
-struct ChatSettings: Equatable {
+struct ChatSettings: Codable, Equatable {
     // MARK: Chat model
 
     var baseURL: String = ""
@@ -320,6 +320,19 @@ struct ChatSettings: Equatable {
         settings.gptImageStyle = defaults.string(forKey: gptImageStyleKey)
             ?? GPTImageSettings.defaultStyle
         settings.gptImageAPIKey = Keychain.string(account: gptImageKeychainAccount) ?? ""
+        // A reinstall wipes UserDefaults (and the user DB) but not the Keychain. Restore
+        // the last saved configuration when the live chat keys are gone; a deliberate
+        // blank save still writes those defaults keys, so this never undoes a clear.
+        if defaults.object(forKey: baseURLKey) == nil,
+           defaults.object(forKey: modelKey) == nil,
+           let backup = SettingsBackupStore.load(),
+           backup.settings.hasRecoverableAPIConfiguration {
+            // Write the restored values back so the next launch is a normal load and
+            // the profile store's migration sees the same settings.
+            let restored = backup.settings
+            try? restored.save(writingChatKey: false)
+            return restored
+        }
         return settings
     }
 
@@ -474,6 +487,7 @@ struct ChatSettings: Equatable {
         defaults.set(gptImageQuality.rawValue, forKey: Self.gptImageQualityKey)
         defaults.set(gptImageStyle, forKey: Self.gptImageStyleKey)
         try Self.store(gptImageAPIKey, account: Self.gptImageKeychainAccount)
+        SettingsBackupStore.updateSettings(self)
     }
 
     /// A timeout short enough to be useful and long enough to reach the service: anything
@@ -603,6 +617,22 @@ struct ChatSettings: Equatable {
 
     var imageIsConfigured: Bool { imageSettings.isConfigured }
     var gptImageIsConfigured: Bool { gptImageSettings.isConfigured }
+
+    /// True when the saved configuration has something worth restoring after a reinstall;
+    /// image and call defaults alone do not count.
+    var hasRecoverableAPIConfiguration: Bool {
+        !baseURL.trimmed.isEmpty
+            || !model.trimmed.isEmpty
+            || !judgeBaseURL.trimmed.isEmpty
+            || !judgeModel.trimmed.isEmpty
+            || !backgroundBaseURL.trimmed.isEmpty
+            || !backgroundModel.trimmed.isEmpty
+            || !retrievalBaseURL.trimmed.isEmpty
+            || !embeddingModel.trimmed.isEmpty
+            || !apiKey.trimmed.isEmpty
+            || !judgeAPIKey.trimmed.isEmpty
+            || !retrievalAPIKey.trimmed.isEmpty
+    }
 
     // MARK: - Model configs
 
@@ -831,4 +861,48 @@ private extension ChatModelConfig {
         model: "",
         apiKey: ""
     )
+}
+
+/// A copy of the whole settings surface, kept in the Keychain so a reinstall (which wipes
+/// UserDefaults and the app data container) does not make the user retype every address,
+/// model and key. The Keychain survives app replacement; the copy is only read when the
+/// live `chat.baseURL`/`chat.model` keys are both absent.
+struct SettingsBackup: Codable {
+    var version = 1
+    var settings: ChatSettings
+    var profiles: [ChatModelProfile] = []
+    var activeProfileID: String?
+}
+
+enum SettingsBackupStore {
+    private static let account = "settings.backup"
+
+    static func load() -> SettingsBackup? {
+        guard let text = Keychain.string(account: account),
+              let data = text.data(using: .utf8)
+        else { return nil }
+        return try? JSONDecoder().decode(SettingsBackup.self, from: data)
+    }
+
+    static func updateSettings(_ settings: ChatSettings) {
+        update { $0.settings = settings }
+    }
+
+    static func updateProfiles(_ profiles: [ChatModelProfile], activeID: String?) {
+        update {
+            $0.profiles = profiles
+            $0.activeProfileID = activeID
+        }
+    }
+
+    static func updateActiveID(_ id: String?) {
+        update { $0.activeProfileID = id }
+    }
+
+    private static func update(_ mutate: (inout SettingsBackup) -> Void) {
+        var backup = load() ?? SettingsBackup(settings: ChatSettings())
+        mutate(&backup)
+        guard let data = try? JSONEncoder().encode(backup) else { return }
+        try? Keychain.set(String(decoding: data, as: UTF8.self), account: account)
+    }
 }

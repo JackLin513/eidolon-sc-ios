@@ -1158,7 +1158,17 @@ final class AppModel {
         // Requests read `chatSettings`; its key must be the selected profile's, not the
         // legacy `chat.apiKey` left over from before profiles existed.
         if let profile = activeChatProfile {
-            chatSettings.apiKey = profile.storedAPIKey
+            var settings = chatSettings
+            // A fresh install can have the profile list but no live chat fields; the
+            // profile is the source of truth then. Never overwrite settings that were
+            // restored or filled in, beyond the profile's key.
+            if settings.baseURL.trimmed.isEmpty && settings.model.trimmed.isEmpty {
+                var applied = profile
+                applied.apply(to: &settings)
+            } else if !profile.storedAPIKey.trimmed.isEmpty {
+                settings.apiKey = profile.storedAPIKey
+            }
+            chatSettings = settings
         }
     }
 

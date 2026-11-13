@@ -106,6 +106,13 @@ enum ChatModelProfileStore {
             }
             return State(profiles: decoded, activeID: active)
         }
+        if let backup = SettingsBackupStore.load(), !backup.profiles.isEmpty {
+            let active = backup.activeProfileID.flatMap { id in
+                backup.profiles.contains { $0.id == id } ? id : nil
+            } ?? backup.profiles.first?.id
+            save(backup.profiles, activeID: active)
+            return State(profiles: backup.profiles, activeID: active)
+        }
         return migrate(settings: settings)
     }
 
@@ -168,6 +175,7 @@ enum ChatModelProfileStore {
         } else {
             defaults.removeObject(forKey: activeKey)
         }
+        SettingsBackupStore.updateProfiles(profiles, activeID: activeID)
     }
 
     static func saveActive(_ id: String?) {
@@ -177,6 +185,7 @@ enum ChatModelProfileStore {
         } else {
             defaults.removeObject(forKey: activeKey)
         }
+        SettingsBackupStore.updateActiveID(id)
     }
 
     private static func sameAddress(_ left: String, _ right: String) -> Bool {
