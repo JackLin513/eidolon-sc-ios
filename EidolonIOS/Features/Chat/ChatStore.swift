@@ -31,6 +31,11 @@ final class ChatStore {
     /// current one it resolved. nil before there has ever been a conversation. The debug
     /// page works on this one (spec #62).
     private(set) var activeConversationID: String?
+    /// Debug-only snapshots keyed by reply message id. The map is loaded for the active
+    /// conversation; normal replies with no snapshot simply have no button.
+    private(set) var debugSnapshotsByReply: [String: TurnDebugSnapshotRecord] = [:]
+    /// The latest failed/cancelled snapshot, for the error bar's debug entry.
+    private(set) var latestFailedDebugSnapshot: TurnDebugSnapshotRecord?
     var input = ""
     var errorMessage: String?
     /// When she was asked for a picture this hour's allowance was gone: the feed says so
@@ -58,6 +63,10 @@ final class ChatStore {
     /// The conversation in order: turns and what happened around them.
     var transcript: [ConversationLine] { lines }
 
+    func debugSnapshot(for replyMessageID: String) -> TurnDebugSnapshotRecord? {
+        debugSnapshotsByReply[replyMessageID]
+    }
+
     func load() async {
         guard let reading = await read() else { return }
         apply(reading)
@@ -69,6 +78,7 @@ final class ChatStore {
             pendingUser = nil
         }
         watchPendingPhotos()
+        await refreshDebugSnapshots()
     }
 
     /// One reading of everything the store shows: the turns, the record and how she feels.
@@ -157,6 +167,31 @@ final class ChatStore {
         }
     }
 
+    /// Loads debug snapshots for the active conversation and the latest failure. This
+    /// is cheap (at most 20 small JSON rows) and is also safe when debug mode is off:
+    /// the UI decides whether to show the entries.
+    private func refreshDebugSnapshots() async {
+        if let conversationID = activeConversationID {
+            let records = (try? await core.debugSnapshots(conversationID: conversationID)) ?? []
+            debugSnapshotsByReply = Dictionary(
+                records.compactMap { record in
+                    record.snapshot.replyMessageID.map { ($0, record) }
+                },
+                uniquingKeysWith: { first, _ in first }
+            )
+            latestFailedDebugSnapshot = try? await core.latestFailedDebugSnapshot(
+                characterID: character.id,
+                conversationID: conversationID
+            )
+        } else {
+            debugSnapshotsByReply = [:]
+            latestFailedDebugSnapshot = try? await core.latestFailedDebugSnapshot(
+                characterID: character.id,
+                conversationID: nil
+            )
+        }
+    }
+
     /// Sends the input as a turn. If she is still speaking, the reply is cut off and
     /// what she already said is kept, as upstream does when the producer types again.
     func send(
@@ -170,7 +205,8 @@ final class ChatStore {
         replyStyle: ReplyStyle = .text,
         adultMode: Bool = false,
         photo: PhotoTurnContext? = nil,
-        faceToFace: Bool = false
+        faceToFace: Bool = false,
+        captureDebug: Bool = false
     ) async {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !affinity.cooling, !readOnly else { return }
@@ -209,7 +245,8 @@ final class ChatStore {
             replyStyle: replyStyle,
             adultMode: adultMode,
             faceToFace: faceToFace,
-            photo: photo
+            photo: photo,
+            captureDebug: captureDebug
         )
         let turn = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -261,6 +298,7 @@ final class ChatStore {
                 self.pendingUser = nil
                 self.watchPendingPhotos()
             }
+            await self.refreshDebugSnapshots()
             self.isStreaming = false
         }
         task = turn

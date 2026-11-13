@@ -70,6 +70,7 @@ struct DebugView: View {
                 affinitySection
                 photoSection
                 keepOpenSection
+                debugSnapshotSection
                 conversationSection
             }
             .navigationTitle("调试")
@@ -208,6 +209,32 @@ struct DebugView: View {
             Text("照片")
         } footer: {
             Text("打开后，没生成照片的回复旁会出现一个按钮；点开可以改写照片标签并立刻生成一张，用于测试。")
+        }
+    }
+
+    private var debugSnapshotSection: some View {
+        Section {
+            Button("清空当前对话的调试快照") {
+                Task {
+                    await app.clearDebugSnapshots(conversationID: store.activeConversationID)
+                    await store.load()
+                }
+            }
+            .disabled(busy || store.activeConversationID == nil)
+            .accessibilityIdentifier("debug.clearTurnSnapshots")
+
+            Button("清空全部调试快照", role: .destructive) {
+                Task {
+                    await app.clearDebugSnapshots(conversationID: nil)
+                    await store.load()
+                }
+            }
+            .disabled(busy)
+            .accessibilityIdentifier("debug.clearAllTurnSnapshots")
+        } header: {
+            Text("本轮调试快照")
+        } footer: {
+            Text("每个对话最多保留最近 20 轮；失败和已停止的轮次也会保留部分快照。")
         }
     }
 

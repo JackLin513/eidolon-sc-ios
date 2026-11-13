@@ -4,7 +4,7 @@ import GRDB
 /// The writable user library (ADR-0002). Its schema evolves with the app, not
 /// with the content bundle, and is therefore managed by GRDB migrations.
 enum UserSchema {
-    static let version = 23
+    static let version = 24
 
     static func migrate(_ dbQueue: DatabaseQueue) throws {
         var migrator = DatabaseMigrator()
@@ -544,6 +544,28 @@ enum UserSchema {
                     last_opened_at TEXT,
                     planned_day TEXT
                 );
+                """)
+        }
+        migrator.registerMigration("v24") { db in
+            // Per-reply debug context. The payload is a JSON `TurnDebugSnapshot`; the
+            // columns are only the query keys, so the shape can grow without a migration.
+            try db.execute(sql: """
+                CREATE TABLE turn_debug_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
+                    character_id TEXT NOT NULL,
+                    user_message_id TEXT,
+                    reply_message_id TEXT,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                );
+                CREATE INDEX turn_debug_snapshots_by_conversation
+                    ON turn_debug_snapshots(conversation_id, id);
+                CREATE INDEX turn_debug_snapshots_by_reply
+                    ON turn_debug_snapshots(reply_message_id);
+                CREATE INDEX turn_debug_snapshots_by_character
+                    ON turn_debug_snapshots(character_id, status, id);
                 """)
         }
         try migrator.migrate(dbQueue)

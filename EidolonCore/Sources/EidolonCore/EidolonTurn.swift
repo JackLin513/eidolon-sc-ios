@@ -136,9 +136,13 @@ extension Eidolon {
         replyStyle: ReplyStyle = .text,
         adultMode: Bool = false,
         faceToFace: Bool = false,
-        photo: PhotoTurnContext? = nil
+        photo: PhotoTurnContext? = nil,
+        captureDebug: Bool = false
     ) -> AsyncThrowingStream<TurnEvent, Error> {
-        AsyncThrowingStream { continuation in
+        let debugCapture = captureDebug
+            ? TurnDebugCapture(characterID: characterID, now: now)
+            : nil
+        return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
                     let record = try await self.performTurn(
@@ -160,13 +164,27 @@ extension Eidolon {
                         replyStyle: replyStyle,
                         adultMode: adultMode,
                         faceToFace: faceToFace,
-                        photo: photo
+                        photo: photo,
+                        capture: debugCapture
                     ) { continuation.yield($0) }
+                    if let debugCapture {
+                        debugCapture.snapshot.status = .complete
+                        try? await self.writeDebugSnapshot(debugCapture.snapshot)
+                    }
                     continuation.yield(.finished(record))
                     continuation.finish()
                 } catch is CancellationError {
+                    if let debugCapture {
+                        debugCapture.snapshot.status = .cancelled
+                        try? await self.writeDebugSnapshot(debugCapture.snapshot)
+                    }
                     continuation.finish()
                 } catch {
+                    if let debugCapture {
+                        debugCapture.snapshot.status = .failed
+                        debugCapture.snapshot.error = error.localizedDescription
+                        try? await self.writeDebugSnapshot(debugCapture.snapshot)
+                    }
                     continuation.finish(throwing: error)
                 }
             }
@@ -216,6 +234,7 @@ extension Eidolon {
         adultMode: Bool,
         faceToFace: Bool,
         photo: PhotoTurnContext?,
+        capture: TurnDebugCapture? = nil,
         emit: (TurnEvent) -> Void
     ) async throws -> TurnRecord {
         // Where the turn's time goes, for the trace (ADR-0012): the producer waits through
@@ -234,6 +253,16 @@ extension Eidolon {
         let effectiveTalking: NowPrompt.Talking = talking == .inCall
             ? .inCall
             : (faceToFace ? .inPerson : talking)
+        if let capture {
+            capture.snapshot.talking = String(describing: effectiveTalking)
+            capture.snapshot.faceToFace = faceToFace
+            capture.snapshot.replyStyle = String(describing: replyStyle)
+            capture.snapshot.adultMode = effectiveAdultMode
+            if let reporting = provider as? any ChatUsageReporting {
+                capture.snapshot.model = reporting.usageModel
+                capture.snapshot.providerHost = reporting.usageProviderHost
+            }
+        }
         let photoTable = try? photoTags()
         // No judge means nothing can tell whether he asked for a picture: she is told she
         // cannot send one, exactly as before photos existed (spec #98).
@@ -268,6 +297,7 @@ extension Eidolon {
         // The producer's days go by the profile's time zone, when they set one.
         let zone = producer.timezone.flatMap(TimeZone.init(identifier:)) ?? timeZone
         let existingConversation = try currentConversationID(characterID)
+        capture?.snapshot.conversationID = existingConversation
         if let existingConversation, try isEnded(conversationID: existingConversation) {
             throw EidolonError.conversationEnded
         }
@@ -333,6 +363,13 @@ extension Eidolon {
                 latency: latency,
                 failure: failure
             )
+            capture?.snapshot.judge = judgeTrace
+            if let judged = verdict?.affinity {
+                capture?.snapshot.verdict = "level=\(judged.level) step=\(judged.step)"
+                    + " out_of_line=\(judged.outOfLine)"
+                    + " manipulation=\(judged.manipulation)"
+                    + " retrieval=\(verdict?.need.rawValue ?? "")"
+            }
             await recordJudgeCall(
                 judge: judge,
                 inputText: judgeHistory.map(\.content).joined(separator: "\n")
@@ -360,6 +397,7 @@ extension Eidolon {
         let retrievalStarted = ContinuousClock.now
         let retrieved = await retrieval.retrieve(history: history, text: text, need: need)
         let retrievalElapsed = ContinuousClock.now - retrievalStarted
+        capture?.snapshot.retrieval = retrieved.trace
 
         // A call's turns count apart from the conversation's typed ones: what it holds
         // comes from the call, not from the messages (upstream `in_call`).
@@ -435,6 +473,11 @@ extension Eidolon {
             )) ?? []
         )
         let wantsPhoto = verdict?.wantsPhoto ?? false
+        if let capture {
+            capture.snapshot.photoEligible = photoEligible
+            capture.snapshot.photoUsedUp = photoUsedUp
+            capture.snapshot.wantsPhoto = wantsPhoto
+        }
         let photoSection = PromptAssembler.photoSection(
             eligible: photoEligible,
             wants: wantsPhoto,
@@ -450,6 +493,33 @@ extension Eidolon {
             emit(.photosUsedUp(retryAt: photoRetryAt ?? now.addingTimeInterval(3600)))
         }
 
+        let formatInstructions = replyStyle.formatInstructions(voiceModel: model)
+        if let capture {
+            let sheet = character.sheet.flatMap {
+                CharacterSheet.read(
+                    characterID: character.id,
+                    sheetPath: $0,
+                    in: location.contentDirectory
+                )
+            }
+            capture.addSection("persona", "角色设定", sheet)
+            if let birthday = character.birthday {
+                capture.addSection("birthday", "她的生日", TodayPrompt.herBirthday(birthday))
+            }
+            capture.addSection("world", "世界设定", world?.prompt(name: character.name, today: Self.isoDay(now, in: zone)))
+            capture.addSection("producer", "制作人资料", producer.prompt)
+            capture.addSection("format", "回复格式", formatInstructions)
+            if effectiveAdultMode {
+                capture.addSection("adult", "成人模式", AdultModePrompt.section(tier: affinity.tier))
+            }
+            capture.addSection("now", "此刻", nowText)
+            capture.addSection("today", "今天与生日", todayLines.joined(separator: "\n"))
+            capture.addSection("schedule", "她的日程", scheduleLines.joined(separator: "\n"))
+            capture.addSection("cycle", "她的周期", cycleLines.joined(separator: "\n"))
+            capture.addSection("photo", "照片状态", photoSection)
+            capture.addSection("memories", "检索到的记忆", retrieved.memories)
+            capture.addSection("references", "检索到的剧情与资料", retrieved.references)
+        }
         let assembler = PromptAssembler(
             bundleDirectory: location.contentDirectory,
             character: character,
@@ -457,7 +527,7 @@ extension Eidolon {
             producer: producer,
             today: Self.isoDay(now, in: zone),
             nowSection: nowSection,
-            formatInstructions: replyStyle.formatInstructions(voiceModel: model),
+            formatInstructions: formatInstructions,
             adultMode: effectiveAdultMode,
             affinityTier: affinity.tier,
             narration: record.narration,
@@ -521,6 +591,7 @@ extension Eidolon {
         var failure: Error?
         var sentPrompts: [[PromptMessage]] = []
         var allSaid = ""
+        var rawSaid: [String] = []
         let chatStarted = ContinuousClock.now
         var firstTokenAt: ContinuousClock.Instant?
         do {
@@ -562,6 +633,7 @@ extension Eidolon {
                 shown(parser.finish())
                 startPendingPhoto()
                 allSaid += said
+                rawSaid.append(said)
 
                 // A call made when forbidden, or to a tool never offered, is left
                 // unanswered; the turn goes on with what she said.
@@ -592,7 +664,7 @@ extension Eidolon {
         // A provider whose stream cancelled quietly leaves the loop through its end, not
         // through an error: the turn was still stopped by the producer.
         if Task.isCancelled { stopped = true }
-        await recordChatCall(
+        let chatCall = await recordChatCall(
             provider: provider,
             operation: call == nil ? .chatText : .chatCall,
             prompts: sentPrompts,
@@ -603,6 +675,27 @@ extension Eidolon {
             callID: call?.callID,
             at: now
         )
+
+        if let capture {
+            capture.snapshot.inputTokens = chatCall.input
+            capture.snapshot.outputTokens = chatCall.output
+            capture.snapshot.cachedInputTokens = chatCall.cachedInput
+            capture.snapshot.requests = prompts.enumerated().map { index, messages in
+                TurnDebugRequest(
+                    index: index + 1,
+                    messages: messages,
+                    rawResponse: rawSaid.indices.contains(index) ? rawSaid[index] : nil
+                )
+            }
+            capture.snapshot.toolCalls = toolCalls
+            capture.snapshot.degradation = degradation + retrieved.trace.degradation
+            capture.snapshot.timings = TurnTimings(
+                memory: memoryElapsed.inSeconds,
+                retrieval: retrievalElapsed.inSeconds,
+                firstToken: firstTokenAt.map { ($0 - chatStarted).inSeconds },
+                total: (ContinuousClock.now - turnStarted).inSeconds
+            )
+        }
 
         // What this turn can be gone over by, later: what she was asked, what the judge
         // wrote, what retrieval found and what the fallbacks cost (ADR-0012).
@@ -691,6 +784,9 @@ extension Eidolon {
             now: now,
             replyAt: replyAt
         )
+        capture?.snapshot.conversationID = recorded.conversationID
+        capture?.snapshot.userMessageID = recorded.userMessageID
+        capture?.snapshot.replyMessageID = recorded.replyMessageID
         if let photoID {
             try? attachPhoto(
                 id: photoID,

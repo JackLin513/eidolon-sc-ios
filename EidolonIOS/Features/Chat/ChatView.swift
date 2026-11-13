@@ -34,6 +34,8 @@ struct ChatView: View {
     @State private var liveHeard: String?
     @State private var liveReply: Int?
     @State private var liveLines: [Int: HerLine] = [:]
+    /// The failed turn's debug snapshot opened from the error bar.
+    @State private var failedDebugSnapshot: TurnDebugSnapshotRecord?
 
     var body: some View {
         Group {
@@ -61,6 +63,9 @@ struct ChatView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(onPadBack != nil)
         .onAppear { app.padConversationID = character.id }
+        .sheet(item: $failedDebugSnapshot) { record in
+            DebugTurnContextView(record: record)
+        }
         // A conversation is a page of its own: the first-level tabs stay behind it, even
         // when a call is folded away over it (spec #64). Letting a live call bring them
         // back made the tab bar fight the input bar for the bottom edge and bounce during
@@ -307,7 +312,8 @@ struct ChatView: View {
                             replyStyle: app.replyStyle,
                             adultMode: app.adultMode(for: character),
                             photo: app.photoContext,
-                            faceToFace: store.faceToFace
+                            faceToFace: store.faceToFace,
+                            captureDebug: app.debugMode
                         ) }
         #endif
     }
@@ -580,6 +586,7 @@ struct ChatView: View {
                         conversationID: store?.activeConversationID,
                         faceToFace: store?.faceToFace ?? false,
                         messages: store?.messages ?? [],
+                        debugSnapshot: store?.debugSnapshot(for: message.id),
                         onPhotoMade: { Task { await store?.load() } }
                     )
                     if row.last {
@@ -894,11 +901,14 @@ struct ChatView: View {
         var faceToFace = false
         /// What the tag draft reads.
         var messages: [ChatMessageRecord] = []
+        /// This reply's debug snapshot, when debug mode recorded one.
+        var debugSnapshot: TurnDebugSnapshotRecord? = nil
         /// Reloads the page after the debug button makes a picture.
         var onPhotoMade: (() -> Void)? = nil
 
         @Environment(AppModel.self) private var app
         @State private var editingPhoto = false
+        @State private var showingDebugContext = false
 
         var body: some View {
             VStack(alignment: .leading, spacing: 6) {
@@ -924,8 +934,16 @@ struct ChatView: View {
                         if showsDebugPhotoButton {
                             debugPhotoButton
                         }
+                        if showsDebugContextButton {
+                            debugContextButton
+                        }
                         Spacer(minLength: 0)
                     }
+                }
+            }
+            .sheet(isPresented: $showingDebugContext) {
+                if let debugSnapshot {
+                    DebugTurnContextView(record: debugSnapshot)
                 }
             }
             .sheet(isPresented: $editingPhoto) {
@@ -965,6 +983,25 @@ struct ChatView: View {
                 && conversationID != nil
                 && !app.call.isLive
                 && app.photoContext != nil
+        }
+
+        private var showsDebugContextButton: Bool {
+            app.debugMode && line != nil && debugSnapshot != nil
+        }
+
+        private var debugContextButton: some View {
+            Button {
+                showingDebugContext = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "ladybug")
+                    Text("调试上下文")
+                }
+            }
+            .buttonStyle(.plain)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .accessibilityIdentifier("chat.debugContext")
         }
 
         private var debugPhotoButton: some View {
@@ -1133,7 +1170,8 @@ struct ChatView: View {
                             replyStyle: app.replyStyle,
                             adultMode: app.adultMode(for: character),
                             photo: app.photoContext,
-                            faceToFace: store.faceToFace
+                            faceToFace: store.faceToFace,
+                            captureDebug: app.debugMode
                         ) }
                     }
                 } label: {
@@ -1217,6 +1255,14 @@ struct ChatView: View {
                 .font(.footnote)
                 .lineLimit(2)
             Spacer(minLength: 0)
+            if app.debugMode, store.latestFailedDebugSnapshot != nil {
+                Button("调试上下文 · 未完成") {
+                    failedDebugSnapshot = store.latestFailedDebugSnapshot
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("chat.debugContext.failed")
+            }
             if let provider = app.chatProvider, !store.input.isEmpty {
                 Button("重试") {
                     Task { await store.send(
@@ -1230,7 +1276,8 @@ struct ChatView: View {
                             replyStyle: app.replyStyle,
                             adultMode: app.adultMode(for: character),
                             photo: app.photoContext,
-                            faceToFace: store.faceToFace
+                            faceToFace: store.faceToFace,
+                            captureDebug: app.debugMode
                         ) }
                 }
                 .font(.footnote.weight(.semibold))

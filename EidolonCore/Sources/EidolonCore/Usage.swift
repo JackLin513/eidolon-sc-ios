@@ -1017,6 +1017,7 @@ public enum UsageRecording {
 extension Eidolon {
     /// Writes one chat-model request, using what the service reported and estimating only
     /// what it did not (spec #96).
+    @discardableResult
     func recordChatCall(
         provider: any ChatProvider,
         operation: ServiceOperation,
@@ -1028,7 +1029,7 @@ extension Eidolon {
         callID: String? = nil,
         at: Date,
         service: ServiceName = .chat
-    ) async {
+    ) async -> ServiceCall {
         var call = await UsageRecording.chatCall(
             provider: provider, operation: operation, prompts: prompts, output: output,
             latency: latency, error: error, conversationID: conversationID, at: at,
@@ -1036,6 +1037,7 @@ extension Eidolon {
         )
         call.callID = callID
         try? recordServiceCall(call)
+        return call
     }
 
     /// Writes one judged turn. The judge reports its input tokens where the service does;

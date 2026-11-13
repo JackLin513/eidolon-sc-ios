@@ -1854,6 +1854,24 @@ final class AppModel {
         (try? await core.storyCatalog()) ?? []
     }
 
+    func debugSnapshots(conversationID: String) async -> [TurnDebugSnapshotRecord] {
+        (try? await core.debugSnapshots(conversationID: conversationID)) ?? []
+    }
+
+    func latestFailedDebugSnapshot(
+        characterID: String,
+        conversationID: String?
+    ) async -> TurnDebugSnapshotRecord? {
+        try? await core.latestFailedDebugSnapshot(
+            characterID: characterID,
+            conversationID: conversationID
+        )
+    }
+
+    func clearDebugSnapshots(conversationID: String?) async {
+        try? await core.clearDebugSnapshots(conversationID: conversationID)
+    }
+
     func terms() async -> [ContentTerm] {
         (try? await core.terms()) ?? []
     }

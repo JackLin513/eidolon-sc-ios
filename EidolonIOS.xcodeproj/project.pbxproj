@@ -44,6 +44,7 @@
 		4B5D22BE3F2537E0F40BC144 /* ScheduleBoardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E34EF8A94AAE4F85069E98B0 /* ScheduleBoardView.swift */; };
 		4B6C40186ED37643BD5ED1EE /* BarSound.swift in Sources */ = {isa = PBXBuildFile; fileRef = D97FA6838C4D87D4724543C3 /* BarSound.swift */; };
 		4F12150EAE57B5502068B36B /* MainTabsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E95BF2FA018AF3E7B92AABD6 /* MainTabsView.swift */; };
+		4F2F502FA1E91EA475026C04 /* DebugTurnContextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71D2032E87DE5362BA1B759F /* DebugTurnContextView.swift */; };
 		502DA124FF6C85F5C69F0991 /* connect.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 31FDC61716128573E91E0E66 /* connect.m4a */; };
 		50FF16442DF243C8411FF741 /* SonioxRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BCFFDDC9ABB7FBA0D59FE3 /* SonioxRecognition.swift */; };
 		58D49346C2362E8BD2497083 /* BarRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F84087F773F0C23692413FF7 /* BarRoomView.swift */; };
@@ -240,6 +241,7 @@
 		6DA937E9DC437925E1DD0673 /* ChatStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStore.swift; sourceTree = "<group>"; };
 		7025F2A3BD709EA3857B3C5A /* level0 */ = {isa = PBXFileReference; path = level0; sourceTree = "<group>"; };
 		71934BAD4C67636EC0DCD9F1 /* PlayUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayUITests.swift; sourceTree = "<group>"; };
+		71D2032E87DE5362BA1B759F /* DebugTurnContextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugTurnContextView.swift; sourceTree = "<group>"; };
 		71EFAE07EB12013AF146132A /* BarRecipeBookView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarRecipeBookView.swift; sourceTree = "<group>"; };
 		730259B31CD6DBF3CA44FC75 /* ChatSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSettings.swift; sourceTree = "<group>"; };
 		74AACADEE8C7E3D7A4110BBE /* StandSchemeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandSchemeHandler.swift; sourceTree = "<group>"; };
@@ -584,6 +586,7 @@
 				6DA937E9DC437925E1DD0673 /* ChatStore.swift */,
 				77736DA8D3A8B0B2407A626B /* ChatView.swift */,
 				B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */,
+				71D2032E87DE5362BA1B759F /* DebugTurnContextView.swift */,
 				206921654182FEC10EDD1B36 /* DebugView.swift */,
 			);
 			path = Chat;
@@ -1035,6 +1038,7 @@
 				B3AF831F701054AEEE1CCABB /* CyclesView.swift in Sources */,
 				3683109ABC50AB71E6D512A8 /* DebugChatProvider.swift in Sources */,
 				0EFF31521A69C5A7C7949BCB /* DebugRecognition.swift in Sources */,
+				4F2F502FA1E91EA475026C04 /* DebugTurnContextView.swift in Sources */,
 				AFE29FA91C362A3D8DC4BAE7 /* DebugView.swift in Sources */,
 				27EE9A61F1EA6DD131D5D03F /* EidolonIOSApp.swift in Sources */,
 				B519D97732DE729A2D3696A7 /* EnvImportPreviewView.swift in Sources */,
