@@ -499,6 +499,8 @@ Section("内容包") {
                                 LabeledContent("静态立绘", value: "未安装")
                             }
                             LabeledContent("安装时间", value: info.installedAt)
+                            NavigationLink("剧情目录") { StoryCatalogView() }
+                                .accessibilityIdentifier("settings.storyCatalog")
                         } else {
                             Text("还没有导入内容包")
                                 .foregroundStyle(.secondary)
@@ -1040,3 +1042,48 @@ Section {
     }
 }
 
+
+/// A read-only browse view over the installed story rows, grouped by route and chapter.
+/// It deliberately reads only the catalog columns, never the embeddings.
+struct StoryCatalogView: View {
+    @Environment(AppModel.self) private var app
+    @State private var entries: [StoryCatalogEntry] = []
+    @State private var failure: String?
+
+    var body: some View {
+        List {
+            if let failure {
+                ContentUnavailableView("读不到剧情目录", systemImage: "books.vertical", description: Text(failure))
+            }
+            ForEach(grouped, id: \.route) { group in
+                Section(group.route) {
+                    ForEach(group.entries) { entry in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(entry.title).font(.subheadline.weight(.medium))
+                            HStack(spacing: 8) {
+                                Text(entry.chapter ?? "")
+                                if !entry.cast.isEmpty {
+                                    Text(entry.cast.joined(separator: "、"))
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("剧情目录")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            entries = await app.storyCatalog()
+            if entries.isEmpty { failure = "当前内容包没有剧情目录。" }
+        }
+    }
+
+    private var grouped: [(route: String, entries: [StoryCatalogEntry])] {
+        Dictionary(grouping: entries.dropFirst(0), by: { $0.route ?? "共通" })
+            .sorted { $0.key < $1.key }
+            .map { ($0.key, $0.value) }
+    }
+}
