@@ -501,6 +501,8 @@ Section("内容包") {
                             LabeledContent("安装时间", value: info.installedAt)
                             NavigationLink("剧情目录") { StoryCatalogView() }
                                 .accessibilityIdentifier("settings.storyCatalog")
+                            NavigationLink("用语集") { TermCatalogView() }
+                                .accessibilityIdentifier("settings.terms")
                         } else {
                             Text("还没有导入内容包")
                                 .foregroundStyle(.secondary)
@@ -1085,5 +1087,34 @@ struct StoryCatalogView: View {
         Dictionary(grouping: entries.dropFirst(0), by: { $0.route ?? "共通" })
             .sorted { $0.key < $1.key }
             .map { ($0.key, $0.value) }
+    }
+}
+
+
+/// The original TIPS.CSV terms, listed with their reading. The story text's `<dNNNN>`
+/// references use the same identifiers, so this is the reference table the producer
+/// needs while reading a chapter.
+struct TermCatalogView: View {
+    @Environment(AppModel.self) private var app
+    @State private var terms: [ContentTerm] = []
+
+    var body: some View {
+        List {
+            if terms.isEmpty {
+                ContentUnavailableView("没有用语集", systemImage: "character.book.closed", description: Text("当前内容包没有 terms.json。"))
+            }
+            ForEach(terms) { term in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(term.term)
+                    if !term.reading.isEmpty {
+                        Text(term.reading).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+        .navigationTitle("用语集")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { terms = await app.terms() }
     }
 }

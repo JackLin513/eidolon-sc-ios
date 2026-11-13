@@ -1854,6 +1854,10 @@ final class AppModel {
         (try? await core.storyCatalog()) ?? []
     }
 
+    func terms() async -> [ContentTerm] {
+        (try? await core.terms()) ?? []
+    }
+
     func staticStandExpressions(characterID: String, baseID: String) async -> [String: URL]? {
         try? await core.staticStandExpressions(characterID: characterID, baseID: baseID)
     }
