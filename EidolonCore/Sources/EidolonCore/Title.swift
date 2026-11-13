@@ -67,8 +67,8 @@ enum ConversationTitles {
             }
         }
         return [
-            PromptMessage(.system, instructions),
-            PromptMessage(.user, lines.joined(separator: "\n")),
+            PromptMessage(.system, FranchisePromptContext.localize(instructions)),
+            PromptMessage(.user, FranchisePromptContext.localize(lines.joined(separator: "\n"))),
         ]
     }
 

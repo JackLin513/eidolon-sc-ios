@@ -1362,12 +1362,13 @@ extension Eidolon {
         work: Bool = false,
         forceAdult: Bool = false
     ) throws -> [PromptMessage] {
+        let franchise = FranchisePromptContext.current
         var shared = [momentSheet(character)]
         if let birthday = character.birthday {
             shared.append(TodayPrompt.herBirthday(birthday))
         }
         if let world {
-            shared.append(world.prompt(name: character.name, today: Self.isoDay(now, in: Self.momentTokyo)))
+            shared.append(franchise.worldPrompt ?? world.prompt(name: character.name, today: Self.isoDay(now, in: Self.momentTokyo)))
         }
         shared.append(Self.momentFormat(
             places: places, circle: circle,
@@ -1433,11 +1434,12 @@ extension Eidolon {
             )
         }
 
+        let localize = franchise.localized
         return [
-            PromptMessage(.system, shared.joined(separator: "\n\n")),
-            PromptMessage(.system, producer.prompt),
-            PromptMessage(.system, context.joined(separator: "\n\n")),
-            PromptMessage(.user, "（你想发一条朋友圈。）"),
+            PromptMessage(.system, shared.map(localize).joined(separator: "\n\n")),
+            PromptMessage(.system, franchise.userSection ?? localize(producer.prompt)),
+            PromptMessage(.system, context.map(localize).joined(separator: "\n\n")),
+            PromptMessage(.user, localize("（你想发一条朋友圈。）")),
         ]
     }
 
@@ -1700,6 +1702,7 @@ extension Eidolon {
         _ target: MomentReplyTarget, character: CharacterConfig, now: Date,
         providers: MomentsProviders
     ) async -> (ja: String, zh: String)? {
+        let franchise = FranchisePromptContext.current
         let producer = (try? producerProfile()) ?? .default
         let world = try? loadWorld()
         let characters = (try? characters()) ?? []
@@ -1715,7 +1718,7 @@ extension Eidolon {
             shared.append(TodayPrompt.herBirthday(birthday))
         }
         if let world {
-            shared.append(world.prompt(name: character.name, today: Self.isoDay(now, in: Self.momentTokyo)))
+            shared.append(franchise.worldPrompt ?? world.prompt(name: character.name, today: Self.isoDay(now, in: Self.momentTokyo)))
         }
         shared.append("""
             # 回评论
@@ -1769,11 +1772,12 @@ extension Eidolon {
            !turns.isEmpty {
             context.append("# 你们最近说的话\n" + turns.joined(separator: "\n"))
         }
+        let localize = franchise.localized
         let prompt = [
-            PromptMessage(.system, shared.joined(separator: "\n\n")),
-            PromptMessage(.system, producer.prompt),
-            PromptMessage(.system, context.joined(separator: "\n\n")),
-            PromptMessage(.user, "（你在朋友圈回复制作人的评论。）"),
+            PromptMessage(.system, shared.map(localize).joined(separator: "\n\n")),
+            PromptMessage(.system, franchise.userSection ?? localize(producer.prompt)),
+            PromptMessage(.system, context.map(localize).joined(separator: "\n\n")),
+            PromptMessage(.user, localize("（你在朋友圈回复制作人的评论。）")),
         ]
         let answer = await momentChatAnswer(prompt, providers: providers)
         let pair = answer.failure == nil ? Self.parseMomentReply(answer.raw) : nil

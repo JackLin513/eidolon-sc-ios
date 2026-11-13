@@ -169,14 +169,15 @@ public enum BarPrompt {
     public static func prompt(
         shared: String, visit: String, written: [(ask: String, lines: [BarLine])], ask: String
     ) -> [BarChatMessage] {
+        let localize = FranchisePromptContext.localize
         var messages = [
-            BarChatMessage(role: "system", content: shared, cacheBreakpoint: true),
-            BarChatMessage(role: "system", content: visit),
+            BarChatMessage(role: "system", content: localize(shared), cacheBreakpoint: true),
+            BarChatMessage(role: "system", content: localize(visit)),
         ]
         for call in written {
-            messages.append(BarChatMessage(role: "user", content: call.ask))
+            messages.append(BarChatMessage(role: "user", content: localize(call.ask)))
             messages.append(BarChatMessage(
-                role: "assistant", content: call.lines.map { $0.written() }.joined(separator: "\n")
+                role: "assistant", content: localize(call.lines.map { $0.written() }.joined(separator: "\n"))
             ))
         }
         if !written.isEmpty {
@@ -186,7 +187,7 @@ public enum BarPrompt {
                 role: messages[last].role, content: messages[last].content, cacheBreakpoint: true
             )
         }
-        messages.append(BarChatMessage(role: "user", content: ask))
+        messages.append(BarChatMessage(role: "user", content: localize(ask)))
         return messages
     }
 

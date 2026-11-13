@@ -80,6 +80,43 @@ SPEAKER_TO_HEROINE = {
     "水仙": "suisen",
 }
 PROTAGONIST_NAMES = {"槐", "制作人", "主人公"}
+
+# The user is the male protagonist of Dimension Lover, not an idol producer. The
+# extracted game text calls him 制作人; the package rewrites that to the in-world user.
+TOTSULOVER_USER_SECTION = """# 和你对话的人
+正在和你对话的是崩月槐（くずつき かい），男性，崩月家的魔术师，也是转入「学园」的转学生。
+请按你在原作中对他的称呼叫他：
+- 夜乃桜、ソフィア・ランカスター：「槐くん」
+- 海漫華淡：「槐さん」
+- 崩月水仙：「槐お兄ちゃん」
+不要用身份标签或泛称代替这些称呼，也不要给他套用其他作品的职业称呼。"""
+TOTSULOVER_ADULT_BOUNDARY = """# 亲密边界
+不要进入成人亲密、婚姻承诺、强烈占有、病态依赖、控制欲或现实接触幻想。"""
+TOTSULOVER_WORLD_PROMPT = """# 世界设定
+《ディメンション凸ラバース！！》的舞台是横滨的「学园」。学园既是学校，也是对抗怪兽的组织；学生会是学生一侧的核心。
+- 学园：以学生会为核心，夜乃桜担任学生会长，海漫華淡与ソフィア・ランカスター也在学生会。
+- 魔术师：研究反现实与魔术的势力，崩月家所属。
+- 崩月家：研究反现实与魔术的家族，崩月槐与妹妹崩月水仙出身于此。
+主要人物：夜乃桜、海漫華淡、ソフィア・ランカスター、崩月水仙；崩月槐是本校学生，也是故事的中心人物。"""
+TOTSULOVER_VOCABULARY = {
+    "283 事务所": "学园",
+    "制作人": "槐",
+    "偶像": "角色",
+    "事务所": "学园",
+}
+SAKURA_ADULT_CLAUSE = "但不要进入成人亲密、婚姻承诺、强烈占有、病态依赖、控制欲或现实接触幻想。"
+
+
+def as_user(text: str) -> str:
+    """Rewrite extracted text from the game's producer vocabulary to this work's user."""
+    for old, new in [
+        ("283 事务所", "学园"),
+        ("制作人", "你"),
+        ("偶像", "角色"),
+        ("事务所", "学园"),
+    ]:
+        text = text.replace(old, new)
+    return text
 ROUTE_HEROINE = {
     "0共通": None,
     "1樱": "sakura",
@@ -293,7 +330,7 @@ def make_lines(text, strings, unit: Unit):
         translated = clean_for_text(translated)
         name = (entry.get("name") or "").strip()
         if name in PROTAGONIST_NAMES:
-            speaker = "__producer__"
+            speaker = "槐"
         elif name in SPEAKER_TO_HEROINE:
             speaker = SPEAKER_TO_HEROINE[name]
         else:
@@ -408,7 +445,7 @@ WORLD = {
         {"name": "魔术师", "reading": "まじゅつし", "note": "崩月家所属的魔术师势力；崩月槐与崩月水仙出身于此。"},
         {"name": "崩月家", "reading": "くずつきけ", "note": "研究反现实与魔术的家族；槐与妹妹水仙是家族成员。"},
     ],
-    "protagonist": {"name": "崩月槐", "reading": "くずつき かい", "note": "崩月家的魔术师，也是本作的主角；制作人与玩家处在同一侧。"},
+    "protagonist": {"name": "崩月槐", "reading": "くずつき かい", "note": "崩月家的魔术师，也是故事的中心人物。"},
     "units": [
         {"name": "学园", "members": ["夜乃桜", "海漫華淡", "ソフィア・ランカスター", "崩月水仙"]},
         {"name": "魔术师", "members": ["崩月槐"]},
@@ -568,8 +605,10 @@ def write_assets(staging: Path, sakura_source: Path, avatar_dir: Path | None = N
         text = SHEETS.get(cid, f"# {name}\n")
         if cid == "sakura" and (sakura_source / "card.md").exists():
             text = (sakura_source / "card.md").read_text(encoding="utf-8")
+            text = text.replace(SAKURA_ADULT_CLAUSE, "").replace(SAKURA_ADULT_CLAUSE.rstrip("。"), "")
+        text = as_user(text)
         (staging / sheet).write_text(text, encoding="utf-8")
-        (staging / facts).write_text(f"# {name}\n\n{FACTS[cid]}", encoding="utf-8")
+        (staging / facts).write_text(f"# {name}\n\n{as_user(FACTS[cid])}", encoding="utf-8")
         if avatar_dir and (avatar_dir / f"{cid}.jpg").exists():
             (staging / avatar).write_bytes((avatar_dir / f"{cid}.jpg").read_bytes())
         elif cid == "sakura" and (sakura_source / "portraits/A020.png").exists():
@@ -601,15 +640,20 @@ def write_assets(staging: Path, sakura_source: Path, avatar_dir: Path | None = N
         )
     (chars / "franchise.json").write_text(json.dumps({
         "work_name": "ディメンション凸ラバース！！",
-        "organization": "学園",
-        "producer_role": "制作人",
+        "organization": "学园",
+        "producer_role": "主人公",
         "language": "ja",
-        "judge_scene": "角色扮演对话中，角色是《ディメンション凸ラバース！！》中学园的一员，正在和制作人对话。",
-        "call_scene": "角色扮演的通话中，角色是《ディメンション凸ラバース！！》中学园的一员，正在和制作人通话。",
-        "producer_line": "和你对话的是你的制作人，也是学园相关的人。",
-        "memory_instructions": "你负责替《ディメンション凸ラバース！！》中学园的角色们记住关于制作人的事。制作人就是正在和她们对话的用户。",
-        "title_instructions": "你负责给制作人和一位角色（《ディメンション凸ラバース！！》中学园的一员）的一段对话起标题，好让制作人以后在历史对话里一眼认出这段聊了什么。制作人就是正在和她对话的用户。",
+        "judge_scene": "角色扮演对话中，角色是《ディメンション凸ラバース！！》中学园的一员，正在和崩月槐对话。",
+        "call_scene": "角色扮演的通话中，角色是《ディメンション凸ラバース！！》中学园的一员，正在和崩月槐通话。",
+        "producer_line": "正在和你对话的是崩月槐。请按原作中你与他的关系称呼他。",
+        "memory_instructions": "你负责替《ディメンション凸ラバース！！》中学园的角色们记住关于崩月槐的事。崩月槐就是正在和她们对话的用户。",
+        "title_instructions": "你负责给崩月槐和一位角色（《ディメンション凸ラバース！！》中学园的一员）的一段对话起标题，好让崩月槐以后在历史对话里一眼认出这段聊了什么。崩月槐就是正在和她对话的用户。",
         "photo_series": "",
+        "protagonist_term": "槐",
+        "user_section": TOTSULOVER_USER_SECTION,
+        "adult_boundary": TOTSULOVER_ADULT_BOUNDARY,
+        "world_prompt": TOTSULOVER_WORLD_PROMPT,
+        "vocabulary": TOTSULOVER_VOCABULARY,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     (chars / "world.json").write_text(json.dumps(WORLD, ensure_ascii=False, indent=2), encoding="utf-8")
     (chars / "places.json").write_text(json.dumps(PLACES, ensure_ascii=False, indent=2), encoding="utf-8")

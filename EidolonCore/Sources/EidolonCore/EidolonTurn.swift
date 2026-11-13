@@ -495,6 +495,7 @@ extension Eidolon {
 
         let formatInstructions = replyStyle.formatInstructions(voiceModel: model)
         if let capture {
+            let franchise = FranchisePromptContext.current
             let sheet = character.sheet.flatMap {
                 CharacterSheet.read(
                     characterID: character.id,
@@ -502,23 +503,31 @@ extension Eidolon {
                     in: location.contentDirectory
                 )
             }
-            capture.addSection("persona", "角色设定", sheet)
+            capture.addSection("persona", "角色设定", sheet.map { franchise.localized($0) })
             if let birthday = character.birthday {
-                capture.addSection("birthday", "她的生日", TodayPrompt.herBirthday(birthday))
+                capture.addSection("birthday", "她的生日", franchise.localized(TodayPrompt.herBirthday(birthday)))
             }
-            capture.addSection("world", "世界设定", world?.prompt(name: character.name, today: Self.isoDay(now, in: zone)))
-            capture.addSection("producer", "制作人资料", producer.prompt)
-            capture.addSection("format", "回复格式", formatInstructions)
+            let worldText = franchise.worldPrompt
+                ?? world?.prompt(name: character.name, today: Self.isoDay(now, in: zone))
+            capture.addSection("world", "世界设定", worldText.map { franchise.localized($0) })
+            capture.addSection(
+                "producer",
+                franchise.userSection == nil ? "制作人资料" : "用户资料",
+                franchise.userSection ?? franchise.localized(producer.prompt)
+            )
+            capture.addSection("format", "回复格式", franchise.localized(formatInstructions))
             if effectiveAdultMode {
-                capture.addSection("adult", "成人模式", AdultModePrompt.section(tier: affinity.tier))
+                capture.addSection("adult", "成人模式", franchise.localized(AdultModePrompt.section(tier: affinity.tier)))
+            } else if let boundary = franchise.adultBoundary, !boundary.isEmpty {
+                capture.addSection("adult_boundary", "亲密边界", franchise.localized(boundary))
             }
-            capture.addSection("now", "此刻", nowText)
-            capture.addSection("today", "今天与生日", todayLines.joined(separator: "\n"))
-            capture.addSection("schedule", "她的日程", scheduleLines.joined(separator: "\n"))
-            capture.addSection("cycle", "她的周期", cycleLines.joined(separator: "\n"))
-            capture.addSection("photo", "照片状态", photoSection)
-            capture.addSection("memories", "检索到的记忆", retrieved.memories)
-            capture.addSection("references", "检索到的剧情与资料", retrieved.references)
+            capture.addSection("now", "此刻", franchise.localized(nowText))
+            capture.addSection("today", "今天与生日", franchise.localized(todayLines.joined(separator: "\n")))
+            capture.addSection("schedule", "她的日程", franchise.localized(scheduleLines.joined(separator: "\n")))
+            capture.addSection("cycle", "她的周期", franchise.localized(cycleLines.joined(separator: "\n")))
+            capture.addSection("photo", "照片状态", photoSection.map { franchise.localized($0) })
+            capture.addSection("memories", "检索到的记忆", retrieved.memories.map { franchise.localized($0) })
+            capture.addSection("references", "检索到的剧情与资料", retrieved.references.map { franchise.localized($0) })
         }
         let assembler = PromptAssembler(
             bundleDirectory: location.contentDirectory,
@@ -1715,21 +1724,30 @@ struct PromptAssembler {
 
         // Everything every turn of hers carries, apart from what the turn is about, in
         // upstream's order: her sheet, her birthday, the world, the reply format.
-        var shared = [sheet]
+        let franchise = FranchisePromptContext.current
+        var shared = [franchise.localized(sheet)]
         if let birthday = character.birthday {
-            shared.append(TodayPrompt.herBirthday(birthday))
+            shared.append(franchise.localized(TodayPrompt.herBirthday(birthday)))
         }
         if let world {
-            shared.append(world.prompt(name: character.name, today: today))
+            shared.append(franchise.localized(franchise.worldPrompt ?? world.prompt(name: character.name, today: today)))
         }
-        shared.append(formatInstructions)
+        shared.append(franchise.localized(formatInstructions))
         if adultMode {
-            shared.append(AdultModePrompt.section(tier: affinityTier))
+            shared.append(franchise.localized(AdultModePrompt.section(tier: affinityTier)))
+        }
+
+        // The user/producer identity: content packs may replace the whole section and
+        // move the intimacy boundary out of the sheet, adding it only while adult mode
+        // is off. The SC path keeps `ProducerProfile.prompt` byte for byte.
+        var userSection = franchise.userSection ?? franchise.localized(producer.prompt)
+        if !adultMode, let boundary = franchise.adultBoundary, !boundary.isEmpty {
+            userSection += "\n\n" + franchise.localized(boundary)
         }
 
         var messages = [
             PromptMessage(.system, shared.joined(separator: "\n\n")),
-            PromptMessage(.system, producer.prompt),
+            PromptMessage(.system, userSection),
         ]
         for message in history {
             if message.role == "user" {
@@ -1749,7 +1767,7 @@ struct PromptAssembler {
             }
         }
         if let nowSection {
-            messages.append(PromptMessage(.system, nowSection))
+            messages.append(PromptMessage(.system, franchise.localized(nowSection)))
         }
         messages.append(PromptMessage(.user, currentNarration + text))
         return messages

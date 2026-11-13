@@ -83,11 +83,14 @@ public enum RetrievalRules {
 public enum RecallStoryTool {
     public static let name = "recall_story"
 
-    public static let definition = ChatTool(
+    public static var definition: ChatTool {
+        ChatTool(
         name: name,
-        description: "回顾剧情：在你亲身经历过的原作剧情中查找和某件事有关的剧情，返回它在你的剧情目录中的位置"
-            + "（哪张卡或哪个活动）和剧情内容。当制作人问起「那次……是怎么回事」这类过去的事、"
-            + "而你想不起具体经过时使用；闲聊时不需要。",
+        description: FranchisePromptContext.localize(
+            "回顾剧情：在你亲身经历过的原作剧情中查找和某件事有关的剧情，返回它在你的剧情目录中的位置"
+                + "（哪张卡或哪个活动）和剧情内容。当制作人问起「那次……是怎么回事」这类过去的事、"
+                + "而你想不起具体经过时使用；闲聊时不需要。"
+        ),
         parameters: .object([
             "type": .string("object"),
             "properties": .object([
@@ -100,12 +103,17 @@ public enum RecallStoryTool {
             ]),
             "required": .array([.string("query")]),
         ])
-    )
+        )
+    }
 
     /// Added to the tool result the model reads just before the round that forbids tool
     /// calls; without it the model writes out its own tool-call markup as the reply.
-    public static let lastRoundNote = "（这一轮不能再调用任何工具了，请现在就回答制作人。上面想起来的内容如果答不上他的问题，"
-        + "就像一时记不清那样自然地说，不要提到查找、工具、记录或剧情库。）"
+    public static var lastRoundNote: String {
+        FranchisePromptContext.localize(
+            "（这一轮不能再调用任何工具了，请现在就回答制作人。上面想起来的内容如果答不上他的问题，"
+                + "就像一时记不清那样自然地说，不要提到查找、工具、记录或剧情库。）"
+        )
+    }
 }
 
 /// The retrieval itself: one query vector, the nearest candidates of each source, reranked
@@ -243,7 +251,7 @@ struct RetrievalEngine {
         for reference in references {
             lines += ["", "## \(reference.kind.heading)", reference.text]
         }
-        return lines.joined(separator: "\n")
+        return FranchisePromptContext.localize(lines.joined(separator: "\n"))
     }
 
     // MARK: - Recall
@@ -275,7 +283,11 @@ struct RetrievalEngine {
             ?? Self.cannotRecall
     }
 
-    private static let cannotRecall = "暂时想不起来，现在查不到剧情。不要编造经过，可以坦率地说记不太清了。"
+    private static var cannotRecall: String {
+        FranchisePromptContext.localize(
+            "暂时想不起来，现在查不到剧情。不要编造经过，可以坦率地说记不太清了。"
+        )
+    }
 
     private func recallText(
         asked: String,
@@ -332,8 +344,10 @@ struct RetrievalEngine {
         }
 
         if episodeIDs.isEmpty && workEntries.isEmpty {
-            outcome.text = "没有想起和「\(asked)」有关的剧情：剧情库里没有记录这段经过，但这不等于这件事没有发生过。"
-                + "不要编造经过，也不要说没有这回事；可以坦率地说细节记不太清了，或者问问制作人。"
+            outcome.text = FranchisePromptContext.localize(
+                "没有想起和「\(asked)」有关的剧情：剧情库里没有记录这段经过，但这不等于这件事没有发生过。"
+                    + "不要编造经过，也不要说没有这回事；可以坦率地说细节记不太清了，或者问问制作人。"
+            )
             return outcome
         }
         let prompt = (try? await eidolon.recallPrompt(

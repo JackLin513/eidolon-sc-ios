@@ -335,7 +335,7 @@ public struct ChatJudgeProvider: TracingJudgeProvider {
             "上文：\(recent.isEmpty ? "（对话刚开始）" : recent.joined(separator: "\n"))",
             "制作人最新的一句话：\(said)",
         ]
-        return lines.joined(separator: "\n")
+        return FranchisePromptContext.localize(lines.joined(separator: "\n"))
     }
 
     /// The out-of-line rule the base chat judge reads. Kept as a constant so the adult
@@ -385,7 +385,7 @@ public struct ChatJudgeProvider: TracingJudgeProvider {
                 + "明确要照片、自拍、拍某样东西，或让他看看她今天的衣服、便当等，都是 true；"
                 + "只问「你在干嘛」「你今天穿什么」「好想见你」不是。"
         }
-        return text
+        return FranchisePromptContext.localize(text)
     }
 
     static func answerText(_ data: Data) throws -> String {

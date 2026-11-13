@@ -18,17 +18,26 @@ public enum JudgeQuestion: Sendable, Hashable {
     }
 
     func json() -> [String: Any] {
+        let localize = FranchisePromptContext.localize
         switch self {
         case let .score(instructions, criteria):
-            return ["type": "score", "instructions": instructions, "criteria": criteria]
+            return [
+                "type": "score",
+                "instructions": localize(instructions),
+                "criteria": criteria.map(localize),
+            ]
         case let .noul(instructions, yes, no):
             return [
                 "type": "noul",
-                "instructions": instructions,
-                "criteria": ["true": yes, "false": no],
+                "instructions": localize(instructions),
+                "criteria": ["true": localize(yes), "false": localize(no)],
             ]
         case let .choice(instructions, criteria):
-            return ["type": "choice", "instructions": instructions, "criteria": criteria]
+            return [
+                "type": "choice",
+                "instructions": localize(instructions),
+                "criteria": criteria.mapValues(localize),
+            ]
         }
     }
 }

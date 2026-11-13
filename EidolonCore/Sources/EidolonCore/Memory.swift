@@ -97,8 +97,8 @@ enum MemoryExtraction {
         lines.append("制作人（最新的一句话）：\(text)")
         lines.append("\(characterName)：\(reply)")
         return [
-            PromptMessage(.system, instructions),
-            PromptMessage(.user, lines.joined(separator: "\n")),
+            PromptMessage(.system, FranchisePromptContext.localize(instructions)),
+            PromptMessage(.user, FranchisePromptContext.localize(lines.joined(separator: "\n"))),
         ]
     }
 

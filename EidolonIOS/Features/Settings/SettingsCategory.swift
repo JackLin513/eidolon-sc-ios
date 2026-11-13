@@ -24,6 +24,16 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// The producer category is an SC concept. A non-SC content package still keeps
+    /// that category for character-side controls (cycles, reach-out), but labels it
+    /// as the user rather than as a producer.
+    func title(for franchise: String?) -> String {
+        if self == .producer, let franchise, franchise != "shiny" {
+            return "你的资料"
+        }
+        return title
+    }
+
     var title: String {
         switch self {
         case .server: "服务器"

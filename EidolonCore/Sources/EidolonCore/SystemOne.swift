@@ -657,11 +657,13 @@ public struct SystemOneJudgeProvider: TracingJudgeProvider {
             case .system, .tool: break
             }
         }
-        return [
+        let localize = FranchisePromptContext.localize
+        let state = [
             "角色": characterName,
             "上文": recent.isEmpty ? "（对话刚开始）" : recent.joined(separator: "\n"),
             "制作人最新的一句话": said,
         ]
+        return Dictionary(uniqueKeysWithValues: state.map { (localize($0.key), localize($0.value)) })
     }
 
     /// What the answers come to. The likeliest affinity level wins; two levels tied at

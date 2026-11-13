@@ -11,6 +11,13 @@ struct SettingsView: View {
 
     private var isRegularWidth: Bool { sizeClass == .regular }
 
+    /// A content package can describe the user as someone other than an SC producer.
+    /// Hide the producer-only profile and calendar fields in that case; the rest of
+    /// the category (cycles, reach-out) belongs to the character, not the producer role.
+    private var showsProducerProfile: Bool {
+        (app.bundleInfo?.franchise ?? "shiny") == "shiny"
+    }
+
     @State private var historyTurns = 20
     @State private var atmosphericText = true
     @State private var adultMode = false
@@ -94,7 +101,7 @@ struct SettingsView: View {
                             NavigationLink {
                                 phoneSettingsDetail(category)
                             } label: {
-                                Label(category.title, systemImage: category.symbol)
+                                Label(category.title(for: app.bundleInfo?.franchise), systemImage: category.symbol)
                             }
                             .accessibilityIdentifier("settings.category.\(category.rawValue)")
                         }
@@ -108,7 +115,7 @@ struct SettingsView: View {
 
     private func phoneSettingsDetail(_ category: SettingsCategory) -> some View {
         settingsForm(category: category)
-            .navigationTitle(category.title)
+            .navigationTitle(category.title(for: app.bundleInfo?.franchise))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -260,7 +267,7 @@ Section {
                     }
 
 
-                    if visible(category, .producer) {
+                    if showsProducerProfile, visible(category, .producer) {
 Section {
                         TextField("称呼（留空沿用默认）", text: $formOfAddress)
                         SettingsHint("她叫你什么；留空用内容包里的默认称呼。")
@@ -297,7 +304,7 @@ Section {
                     }
                     }
 
-                    if visible(category, .producer) {
+                    if showsProducerProfile, visible(category, .producer) {
 Section {
                         Toggle("导出到系统日历", isOn: Binding(
                             get: { app.calendarExport.enabled },
@@ -731,7 +738,7 @@ Section {
         Button {
             selectedCategory = category
         } label: {
-            Label(category.title, systemImage: category.symbol)
+            Label(category.title(for: app.bundleInfo?.franchise), systemImage: category.symbol)
                 .font(.subheadline.weight(selectedCategory == category ? .semibold : .regular))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
@@ -745,7 +752,7 @@ Section {
     }
 
     private func categoryRow(_ category: SettingsCategory) -> some View {
-        Label(category.title, systemImage: category.symbol)
+        Label(category.title(for: app.bundleInfo?.franchise), systemImage: category.symbol)
             .tag(category)
     }
 

@@ -58,7 +58,7 @@ extension Eidolon {
         for entry in entries {
             lines += ["", "## 作品资料", entry.text]
         }
-        return lines.joined(separator: "\n")
+        return FranchisePromptContext.localize(lines.joined(separator: "\n"))
     }
 
     // MARK: - Facts and work facts
@@ -221,7 +221,7 @@ extension Eidolon {
                     + "提起时要用转述的口吻，例如「听\(name)说……」，不要说成是制作人亲口告诉你的）")
             }
         }
-        return lines.joined(separator: "\n")
+        return FranchisePromptContext.localize(lines.joined(separator: "\n"))
     }
 
     static func day(_ stamp: String, in timeZone: TimeZone) -> String {
@@ -295,7 +295,8 @@ extension ContentDatabase {
             let speaker: String? = line["speaker"]
             let ja: String = line["ja"]
             let zh: String? = line["zh"]
-            var said = speaker.map { "\($0)：\(ja)" } ?? ja
+            let displaySpeaker = speaker == "男主角" ? "你" : speaker
+            var said = displaySpeaker.map { "\($0)：\(ja)" } ?? ja
             if let zh, !zh.isEmpty { said += "（\(zh)）" }
             if text.count + said.count > limit {
                 return (text.isEmpty ? String(said.prefix(limit)) : text) + "……（后略）"

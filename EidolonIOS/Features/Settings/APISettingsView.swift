@@ -1145,7 +1145,7 @@ struct APISettingsView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
             SettingsHint("风格 tag，原样拼进生图提示词；留空不加。")
-            TextField("制作人形象 tag（他入镜时用）", text: $settings.imageProducerTags)
+            TextField("\(FranchisePromptContext.current.protagonistTerm ?? "制作人")形象 tag（他入镜时用）", text: $settings.imageProducerTags)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
             SettingsHint("他入镜时的第二个角色提示词，例如西装领带；留空用内置形象。")
