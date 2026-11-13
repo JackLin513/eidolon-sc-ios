@@ -31,6 +31,19 @@ struct StaticStandPickerView: View {
             ?? bases.first
     }
 
+    /// A pose is only offered when this outfit actually has that base. Missing
+    /// outfit/pose combinations are shown disabled instead of silently falling back
+    /// to the first base, which made a made-up selection look real.
+    private func hasBase(outfit: String?, pose: String?) -> Bool {
+        guard let outfit, let pose else { return false }
+        return bases.contains { $0.outfit == outfit && $0.pose == pose }
+    }
+
+    private func firstPose(outfit: String) -> String? {
+        bases.first { $0.outfit == outfit && $0.expressions[StandEmotion.calm.rawValue] != nil }?.pose
+            ?? bases.first { $0.outfit == outfit }?.pose
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
@@ -78,8 +91,16 @@ struct StaticStandPickerView: View {
         HStack(spacing: 12) {
             selector("衣装", value: selected.outfit ?? "—", options: outfits) { value in
                 selected.outfit = value
+                if !hasBase(outfit: value, pose: selected.pose) {
+                    selected.pose = firstPose(outfit: value)
+                }
             }
-            selector("姿态", value: selected.pose ?? "—", options: poses) { value in
+            selector(
+                "姿态",
+                value: selected.pose ?? "—",
+                options: poses,
+                enabled: { hasBase(outfit: selected.outfit, pose: $0) }
+            ) { value in
                 selected.pose = value
             }
         }
@@ -89,17 +110,34 @@ struct StaticStandPickerView: View {
         _ title: String,
         value: String,
         options: [String],
+        enabled: @escaping (String) -> Bool = { _ in true },
         onSelect: @escaping (String) -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).font(.caption).foregroundStyle(.secondary)
-            Picker(title, selection: Binding(get: { value }, set: { onSelect($0) })) {
+            Menu {
                 ForEach(options, id: \.self) { option in
-                    Text(option).tag(option)
+                    Button {
+                        onSelect(option)
+                    } label: {
+                        if enabled(option) {
+                            Text(option)
+                        } else {
+                            Text("\(option)（没有这组）")
+                        }
+                    }
+                    .disabled(!enabled(option))
                 }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(value)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .font(.body.weight(.medium))
             }
-            .pickerStyle(.menu)
-            .labelsHidden()
+            .accessibilityLabel("\(title) \(value)")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
