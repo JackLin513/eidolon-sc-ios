@@ -39,6 +39,13 @@ Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agen
 - 新增 Swift 文件后跑 `xcodegen generate`；Xcode 会把 `EidolonIOS.xcodeproj/xcshareddata/xcschemes/EidolonIOS.xcscheme` 回写成旧格式，提交前还原。
 - Spine 运行时、立绘、酒吧素材、3D 资产都不进仓库；由构建脚本或内容包在用户本机生成/导入。
 
+
+## GitHub 写操作
+
+- 本仓库的写操作目标只有一个：`JackLin513/eidolon-sc-ios`。所有会写 GitHub 的 `gh` 命令（`issue` / `pr` 的 create、edit、comment、close、reopen、merge，以及 `gh api` 的 POST/PATCH/PUT/DELETE）必须显式带 `-R JackLin513/eidolon-sc-ios`，不要依赖当前目录推断。
+- `upstream`（`Sallyn0225/eidolon-sc`）和 `archive` 只读；这两个 remote 的 push URL 已设为 `DISABLED`，不要改回，也不要对它们创建/修改 issue、PR 或评论。
+- 执行写操作前先跑 `gh repo view --json nameWithOwner -q .nameWithOwner`，输出必须是 `JackLin513/eidolon-sc-ios`；不一致就停下。
+
 ## 已经讨论过的取舍
 
 - 把除对话 LLM 以外的模型全部搬到端上代价很大（TTS 音色、生图质量），所以允许手机直连多个模型 API。
