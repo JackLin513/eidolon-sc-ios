@@ -165,10 +165,10 @@ final class ContentBundleImportTests: XCTestCase {
                 .invalidContent("角色 mano 的生日应为 MM-DD 格式、一年中有的一天（例如 \"04-25\"），现在是 \"02-30\"")
             )
         }
-        XCTAssertThrowsError(try CharacterConfig(json: .object([
+        XCTAssertNil(try CharacterConfig(json: .object([
             "id": .string("mano"),
             "name": .string("櫻木真乃"),
-        ])))
+        ])).birthday)
     }
 
     // MARK: - Rejections

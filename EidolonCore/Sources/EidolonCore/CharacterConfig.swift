@@ -104,12 +104,19 @@ public struct CharacterConfig: Sendable, Hashable {
         guard let name = object["name"]?.stringValue, !name.isEmpty else {
             throw EidolonError.invalidContent("角色 \(id) 缺少 name")
         }
-        let birthdayText = object["birthday"]?.stringValue
-        guard let birthdayText, let birthday = Birthday(birthdayText) else {
-            throw EidolonError.invalidContent(
-                "角色 \(id) 的生日应为 MM-DD 格式、一年中有的一天（例如 \"04-25\"），现在是 "
-                    + (birthdayText.map { "\"\($0)\"" } ?? "（缺）")
-            )
+        // A bundle may not know a character's birthday; the calendar and prompts skip
+        // her instead of inventing a day. A present but malformed value is still an error.
+        let birthday: Birthday?
+        if let value = object["birthday"], value != .null {
+            guard let text = value.stringValue, let parsed = Birthday(text) else {
+                throw EidolonError.invalidContent(
+                    "角色 \(id) 的生日应为 MM-DD 格式、一年中有的一天（例如 \"04-25\"），现在是 "
+                        + (value.stringValue.map { "\"\($0)\"" } ?? "（缺）")
+                )
+            }
+            birthday = parsed
+        } else {
+            birthday = nil
         }
         let idolID = object["idol_id"]?.intValue
         if let idolID, idolID <= 0 {

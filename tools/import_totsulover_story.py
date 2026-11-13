@@ -12,9 +12,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
+import random
 import re
 import sqlite3
 import struct
@@ -44,7 +46,7 @@ HEROINES = {
 # the user for adult mode; the game has no explicit age table in the extracted data.
 HEROINE_DETAIL = {
     "sakura": {
-        "age": 18, "birthday": "01-01",
+        "age": 18,
         "voice_id": "f55813e84ce44a6ea13a592a112458a7",
         "photo_tag": "yoruno sakura",
         "photo_lora": "Yoruno_Sakura_Kuro_Syasyou_v1.0_NoobAI.safetensors",
@@ -52,19 +54,19 @@ HEROINE_DETAIL = {
         "photo_appearance": "white hair, pink gradient hair, long hair, blue eyes, hair ornament, school uniform",
     },
     "katan": {
-        "age": 18, "birthday": "01-01",
+        "age": 18,
         "voice_id": "6123d976c0044789be9b6b79772723f0",
         "photo_tag": "kaiman katan",
         "photo_appearance": "red hair, twintails, pink eyes, heart ahoge, black hair bow, school uniform",
     },
     "sophia": {
-        "age": 18, "birthday": "01-01",
+        "age": 18,
         "voice_id": "e8f7da8d0760440195fd812dcb3a7737",
         "photo_tag": "sophia lancaster",
         "photo_appearance": "blonde hair, long hair, green eyes, school uniform",
     },
     "suisen": {
-        "age": 18, "birthday": "01-01",
+        "age": 18,
         "voice_id": "2dab8607f82a4c8187d740c9583d21fb",
         "photo_tag": "houzuki suisen",
         "photo_appearance": "grey hair, gradient hair, purple hair, twintails, yellow eyes, school uniform",
@@ -366,14 +368,31 @@ GIFTS = [
     ("pudding", "布丁", "food", "common", False),
     ("chocolate", "巧克力", "food", "common", False),
     ("candy", "糖果", "food", "common", False),
-    ("red-tea", "红茶", "drink", "common", False),
+    ("meat-bun", "肉包", "food", "common", False),
+    ("wagashi", "和果子", "food", "uncommon", False),
+    ("black-tea", "红茶", "drink", "common", False),
     ("coffee", "咖啡", "drink", "common", False),
     ("milk-tea", "奶茶", "drink", "common", False),
     ("cocoa", "热可可", "drink", "uncommon", True),
     ("honey-drink", "蜂蜜热饮", "drink", "uncommon", True),
-    ("flower-bouquet", "花束", "flower", "uncommon", False),
-    ("music-box", "八音盒", "trinket", "rare", False),
+    ("bouquet", "花束", "flower", "uncommon", False),
+    ("potted-plant", "盆栽", "flower", "uncommon", False),
+    ("preserved-flower", "永生花", "flower", "rare", False),
+    ("book", "书", "trinket", "uncommon", False),
+    ("music-cd", "音乐 CD", "trinket", "uncommon", False),
+    ("hot-water-bag", "热水袋", "trinket", "uncommon", True),
+    ("plush", "毛绒玩偶", "trinket", "rare", False),
+    ("jewelry", "首饰", "trinket", "rare", False),
 ]
+
+# Her tastes are stable between installs but not a hand-maintained duplicate of the
+# catalog: the favored pool is a short personality seed and the draw uses the character id.
+GIFT_FAVORITES = {
+    "sakura": ["cake", "black-tea", "bouquet", "book", "plush"],
+    "katan": ["candy", "meat-bun", "milk-tea", "music-cd", "plush"],
+    "sophia": ["black-tea", "bouquet", "potted-plant", "jewelry", "book"],
+    "suisen": ["pudding", "cocoa", "honey-drink", "hot-water-bag", "jewelry"],
+}
 
 WORLD = {
     "as_of": "2026-11-12",
@@ -381,8 +400,15 @@ WORLD = {
         "name": "学园",
         "staff": [
             {"name": "学园学生会长", "reading": "がくえん せいと かいちょう", "position": "学生会长"},
+            {"name": "崩月槐", "reading": "くずつき かい", "position": "魔术师 / 转学生"},
         ],
     },
+    "factions": [
+        {"name": "学园", "reading": "がくえん", "note": "以学生会为核心的学园势力；夜乃樱担任学生会长。"},
+        {"name": "魔术师", "reading": "まじゅつし", "note": "崩月家所属的魔术师势力；崩月槐与崩月水仙出身于此。"},
+        {"name": "崩月家", "reading": "くずつきけ", "note": "研究反现实与魔术的家族；槐与妹妹水仙是家族成员。"},
+    ],
+    "protagonist": {"name": "崩月槐", "reading": "くずつき かい", "note": "崩月家的魔术师，也是本作的主角；制作人与玩家处在同一侧。"},
     "units": [
         {"name": "学园", "members": ["夜乃桜", "海漫華淡", "ソフィア・ランカスター", "崩月水仙"]},
         {"name": "魔术师", "members": ["崩月槐"]},
@@ -392,18 +418,43 @@ WORLD = {
         {"name": "夜乃桜", "reading": "よの さくら", "unit": "学园"},
         {"name": "海漫華淡", "reading": "かいまん かたん", "unit": "学园"},
         {"name": "ソフィア・ランカスター", "reading": "そふぃあ らんかすたー", "unit": "学园"},
-        {"name": "崩月水仙", "reading": "ほうづき すいせん", "unit": "学园"},
+        {"name": "崩月水仙", "reading": "くずつき すいせん", "unit": "学园"},
     ],
     "releases": [], "songs": [], "lives": [],
 }
-
 PLACES = {"places": [
-    {"id": "academy", "name": "学园", "area": "横浜", "lat": 35.4657, "lon": 139.6222,
-     "category": "cafe", "note": "学园校舍与学生会室。", "checked": "2026-11-12"},
+    {"id": "academy", "name": "学园校舍", "area": "横浜", "lat": 35.4657, "lon": 139.6222,
+     "category": "cafe", "note": "学园的校舍与学生会室，日常剧情的中心。", "checked": "2026-11-12",
+     "idols": ["sakura", "katan", "sophia", "suisen"]},
+    {"id": "student-council", "name": "学生会室", "area": "横浜", "lat": 35.4659, "lon": 139.6224,
+     "category": "cafe", "note": "学生会开会、处理后辈事务的房间。", "checked": "2026-11-12",
+     "idols": ["sakura", "katan", "sophia"]},
+    {"id": "rooftop", "name": "学园天台", "area": "横浜", "lat": 35.4661, "lon": 139.6226,
+     "category": "park", "note": "能看见校园与远处海湾的天台。", "checked": "2026-11-12",
+     "idols": ["sakura", "katan", "sophia", "suisen"]},
     {"id": "waterfront", "name": "横浜港", "area": "横浜", "lat": 35.4700, "lon": 139.6300,
-     "category": "park", "note": "能看到海湾的散步道。", "checked": "2026-11-12"},
+     "category": "seaside", "note": "能看到海湾的散步道，傍晚适合慢慢走。", "checked": "2026-11-12"},
+    {"id": "cafe", "name": "港边咖啡店", "area": "横浜", "lat": 35.4682, "lon": 139.6251,
+     "category": "cafe", "note": "安静的街角咖啡店，适合放学后坐一会儿。", "checked": "2026-11-12"},
+    {"id": "bookstore", "name": "旧书店", "area": "横浜", "lat": 35.4674, "lon": 139.6244,
+     "category": "books", "note": "木质书架和旧书气味很重的小店。", "checked": "2026-11-12"},
+    {"id": "shopping-street", "name": "商店街", "area": "横浜", "lat": 35.4670, "lon": 139.6238,
+     "category": "shopping-street", "note": "有小吃摊和杂货铺的热闹商店街。", "checked": "2026-11-12"},
+    {"id": "fashion-street", "name": "元町商店街", "area": "横浜", "lat": 35.4428, "lon": 139.6501,
+     "category": "fashion-street", "note": "洋装店和杂货店林立的坡道。", "checked": "2026-11-12"},
+    {"id": "mall", "name": "港未来商场", "area": "横浜", "lat": 35.4570, "lon": 139.6320,
+     "category": "mall", "note": "有电影院和甜品店的大型商场。", "checked": "2026-11-12"},
+    {"id": "shrine", "name": "山手神社", "area": "横浜", "lat": 35.4460, "lon": 139.6480,
+     "category": "shrine", "note": "山手坡道上的小神社，石阶很安静。", "checked": "2026-11-12"},
+    {"id": "amusement", "name": "港湾游乐园", "area": "横浜", "lat": 35.4555, "lon": 139.6368,
+     "category": "amusement", "note": "有摩天轮和海景观览车的游乐园。", "checked": "2026-11-12"},
+    {"id": "museum", "name": "美术馆", "area": "横浜", "lat": 35.4577, "lon": 139.6356,
+     "category": "museum", "note": "常设展和企划展都安静的美术馆。", "checked": "2026-11-12"},
+    {"id": "night-view", "name": "大栈桥夜景", "area": "横浜", "lat": 35.4540, "lon": 139.6420,
+     "category": "night-view", "note": "能看港口灯火的栈桥平台。", "checked": "2026-11-12"},
+    {"id": "bath", "name": "钱汤", "area": "横浜", "lat": 35.4668, "lon": 139.6260,
+     "category": "bath", "note": "老式钱汤，门口挂着暖帘。", "checked": "2026-11-12"},
 ]}
-
 HOLIDAYS_2026 = {
     "2026-01-01": "元日", "2026-01-12": "成人の日", "2026-02-11": "建国記念の日",
     "2026-02-23": "天皇誕生日",
@@ -412,6 +463,45 @@ HOLIDAYS_2026 = {
     "2026-07-20": "海の日", "2026-08-11": "山の日", "2026-09-21": "敬老の日",
     "2026-09-22": "国民の休日", "2026-09-23": "秋分の日", "2026-10-12": "スポーツの日",
     "2026-11-03": "文化の日", "2026-11-23": "勤労感謝の日",
+}
+
+FACTS = {
+    "sakura": """- 作品：ディメンション凸ラバース！！
+- 组织：学园学生会
+- 身份：学生会长，学园最强级别的战力
+- 年龄：18
+- 生日：未在公开资料中确认（内容包暂不虚构具体日期）
+- 特征：白发、粉色渐变长发、蓝眼；持有名为「蓝之心脏」的反现实器官
+- 性格：冷静孤高、责任感强，不擅长把关心说得好听；习惯独自承担危险
+- 关系：制作人是她愿意认真对待、也会要求回应的人；与崩月家处于敌对立场
+""",
+    "katan": """- 作品：ディメンション凸ラバース！！
+- 组织：学园学生会
+- 身份：学生会成员，气氛担当
+- 年龄：18
+- 生日：未在公开资料中确认（内容包暂不虚构具体日期）
+- 特征：红发双马尾、粉色眼睛、心形呆毛
+- 性格：高情绪、直率、善于沟通，对谁都不摆架子；认真起来不马虎
+- 关系：把制作人当作可以一起行动、也可以由她来照顾的人
+""",
+    "sophia": """- 作品：ディメンション凸ラバース！！
+- 组织：学园学生会
+- 身份：副会长，名门兰卡斯特家的女儿
+- 年龄：18
+- 生日：未在公开资料中确认（内容包暂不虚构具体日期）
+- 特征：金发、绿眼、举止端整；使用细剑
+- 性格：自尊心强、不服输，同时有照顾人的姐姐气质；有三个妹妹
+- 关系：对制作人会照顾到细节，偶尔用大小姐措辞掩饰害羞
+""",
+    "suisen": """- 作品：ディメンション凸ラバース！！
+- 组织：崩月家 / 魔术师
+- 身份：崩月槐的妹妹，自称「忍者女仆」
+- 年龄：18
+- 生日：未在公开资料中确认（内容包暂不虚构具体日期）
+- 特征：灰紫渐变发、双马尾、黄色眼睛
+- 性格：话少、行动利落，对制作人礼貌但会默默观察
+- 关系：对哥哥崩月槐有很强的执着，把这份在意藏进冷静的举止里
+""",
 }
 
 SHEETS = {
@@ -426,21 +516,21 @@ SHEETS = {
 """,
     "katan": """# 海漫華淡
 
-学园学生，性格明亮而直接，情绪来得快也去得快。她会主动靠近在意的人，
-用轻快的语气把尴尬化解掉，但在认真的事情上并不含糊。
-她把制作人当作可以一起行动、也可以被自己照顾的人。
+学园学生会成员，性格明亮而直接，情绪来得快也去得快。她讨厌把气氛弄僵，
+会主动靠近在意的人，用轻快的语气把尴尬化解掉；真正认真的时候并不含糊。
+她对谁都保持礼貌和距离感，却会把制作人当作可以一起行动、也可以由她照顾的人。
 """,
     "sophia": """# ソフィア・ランカスター
 
-学园学生会副会长，出身良好、举止端整，自尊心很强，不喜欢输。
-她对在意的人会照顾到细节，偶尔用大小姐式的措辞掩饰害羞。
-她认真、可靠，也有不擅长坦率表达的一面。
+学园学生会副会长，出身名门兰卡斯特家，举止端整，自尊心很强，不喜欢输。
+她有三个妹妹，习惯照顾人，偶尔会用大小姐式的措辞掩饰害羞，也会半认真地
+要求制作人叫她“姐姐”。她认真、可靠，也有不擅长坦率表达的一面。
 """,
     "suisen": """# 崩月水仙
 
-崩月槐的妹妹，身材高挑，自称“忍者女仆”，负责照顾哥哥的日常。
-她话不多，行动利落，对制作人保持礼貌但会默默观察。
-她对哥哥有很强的执着，也会把这份在意藏进冷静的举止里。
+崩月槐的妹妹，出身魔术师家族，身材高挑，自称“忍者女仆”，负责照顾哥哥的日常。
+她话不多，行动利落，对制作人保持礼貌但会默默观察；遇到与哥哥有关的事时，
+冷静的举止会露出明显的执着。她也会用自己的方式记住制作人的习惯。
 """,
 }
 
@@ -479,32 +569,30 @@ def write_assets(staging: Path, sakura_source: Path, avatar_dir: Path | None = N
         if cid == "sakura" and (sakura_source / "card.md").exists():
             text = (sakura_source / "card.md").read_text(encoding="utf-8")
         (staging / sheet).write_text(text, encoding="utf-8")
-        (staging / facts).write_text(
-            f"# {name}\n\n- 作品：ディメンション凸ラバース！！\n- 组织：学园\n- 年龄：{detail['age']}\n",
-            encoding="utf-8",
-        )
+        (staging / facts).write_text(f"# {name}\n\n{FACTS[cid]}", encoding="utf-8")
         if avatar_dir and (avatar_dir / f"{cid}.jpg").exists():
             (staging / avatar).write_bytes((avatar_dir / f"{cid}.jpg").read_bytes())
         elif cid == "sakura" and (sakura_source / "portraits/A020.png").exists():
             (staging / avatar).write_bytes((sakura_source / "portraits/A020.png").read_bytes())
         else:
             (staging / avatar).write_bytes(solid_png(256, (40 + index * 30, 70, 120)))
-        gifts = [g[0] for g in GIFTS if (g[0], cid) in {
-            ("cake", "sakura"), ("red-tea", "sakura"), ("flower-bouquet", "sakura"),
-            ("coffee", "katan"), ("candy", "katan"), ("music-box", "katan"),
-            ("milk-tea", "sophia"), ("chocolate", "sophia"), ("flower-bouquet", "sophia"),
-            ("pudding", "suisen"), ("cocoa", "suisen"), ("honey-drink", "suisen"),
-        }]
+        seed = int(hashlib.sha256(cid.encode()).hexdigest()[:8], 16)
+        gifts = random.Random(seed).sample(GIFT_FAVORITES[cid], 3)
         entries.append({
             "id": cid, "name": name, "name_zh": name_zh, "name_kana": kana, "name_romaji": romaji,
             "unit": "学園", "intro": f"{name}，本作的女主角之一。", "color": color,
             "voice_id": detail.get("voice_id", cid), "sheet": sheet, "facts": facts, "avatar": avatar,
-            "speakers": [speaker], "idol_id": index, "birthday": detail["birthday"],
+            "speakers": [speaker], "idol_id": index, **({"birthday": detail["birthday"]} if detail.get("birthday") else {}),
             "age": detail["age"], "photo_tag": detail["photo_tag"],
             "photo_lora": detail.get("photo_lora"),
             "photo_lora_triggers": detail.get("photo_lora_triggers", ""),
             "photo_appearance": detail["photo_appearance"],
-            "place_likes": ["cafe", "park"], "liked_gifts": gifts,
+            "place_likes": {
+                "sakura": ["cafe", "books", "seaside", "night-view"],
+                "katan": ["cafe", "shopping-street", "amusement", "park"],
+                "sophia": ["cafe", "museum", "fashion-street", "mall"],
+                "suisen": ["bath", "seaside", "books", "shrine"],
+            }[cid], "liked_gifts": gifts,
         })
     (chars / "characters.json").write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
     if game is not None:

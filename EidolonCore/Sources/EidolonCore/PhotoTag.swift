@@ -73,7 +73,11 @@ public struct PhotoTag: Sendable, Hashable {
         self.place = place
         self.outfit = outfit
         self.action = action
+        // The image service never receives `note`, but the tag is shown in the chat.
+        // Keep the content pack's wording from reintroducing the old producer label.
         self.note = note
+            .replacingOccurrences(of: "制作人", with: "你")
+            .replacingOccurrences(of: "生产者", with: "你")
         self.raw = raw
     }
 

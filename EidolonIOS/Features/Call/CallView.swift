@@ -430,6 +430,7 @@ struct CallView: View {
 
     private func staticStage(_ image: UIImage, size: CGSize) -> some View {
         let height = standHeight(size)
+        let direction = callStand.direction
         return VStack {
             Spacer(minLength: 0)
             Image(uiImage: image)
@@ -439,6 +440,12 @@ struct CallView: View {
                 .frame(maxWidth: .infinity)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
+                // A still image still answers the call's direction: a small lift while
+                // she speaks and a tilt while she looks up keep the same cues as Spine.
+                .offset(y: direction.speaking ? -2 : 0)
+                .scaleEffect(x: direction.looking ? 1.006 : 1, y: 1, anchor: .bottom)
+                .animation(.easeInOut(duration: 0.18), value: direction.speaking)
+                .animation(.easeInOut(duration: 0.25), value: direction.looking)
         }
         .frame(width: size.width, height: size.height)
         .opacity(standLoaded ? 1 : 0)
