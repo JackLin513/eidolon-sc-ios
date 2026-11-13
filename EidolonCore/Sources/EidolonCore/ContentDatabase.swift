@@ -62,6 +62,34 @@ struct ContentDatabase {
         }
     }
 
+    func storyCatalog() throws -> [StoryCatalogEntry] {
+        try queue.read { db in
+            let columns = try Set(Row.fetchAll(db, sql: "PRAGMA table_info(episodes)").compactMap { row in
+                row["name"] as String?
+            })
+            let route = columns.contains("route") ? "route" : "NULL"
+            let chapter = columns.contains("chapter") ? "chapter" : "NULL"
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT id, title, category, \(route) AS route, \(chapter) AS chapter FROM episodes ORDER BY rowid"
+            )
+            var castByID: [String: [String]] = [:]
+            for row in try Row.fetchAll(
+                db,
+                sql: "SELECT episode_id, character_id FROM episode_cast ORDER BY episode_id, character_id"
+            ) {
+                castByID[row["episode_id"], default: []].append(row["character_id"])
+            }
+            return rows.map { row in
+                StoryCatalogEntry(
+                    id: row["id"], title: row["title"], route: row["route"],
+                    chapter: row["chapter"], category: row["category"],
+                    cast: castByID[row["id"]] ?? []
+                )
+            }
+        }
+    }
+
     func episodeCount(characterID: String) throws -> Int {
         try queue.read { db in
             try Int.fetchOne(
