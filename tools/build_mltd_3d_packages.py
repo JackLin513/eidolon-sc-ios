@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import shutil
 import tempfile
@@ -49,6 +50,24 @@ def write_zip(root: Path, path: Path) -> None:
                 archive.write(item, item.relative_to(root))
 
 
+def model3d_files(root: Path) -> list[dict[str, object]]:
+    """`Model3DFile` shape: a list of {path, sha256, size} (not the content bundle's map)."""
+    files: list[dict[str, object]] = []
+    for item in sorted(root.rglob("*")):
+        if not item.is_file():
+            continue
+        rel = item.relative_to(root).as_posix()
+        if rel == "manifest.json":
+            continue
+        data = item.read_bytes()
+        files.append({
+            "path": rel,
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "size": len(data),
+        })
+    return files
+
+
 def manifest_files(root: Path) -> dict[str, dict[str, object]]:
     files: dict[str, dict[str, object]] = {}
     for item in sorted(root.rglob("*")):
@@ -81,7 +100,7 @@ def build_model_package(src: Path, dst: Path, motions_dir: Path | None = None) -
         manifest["franchise"] = "mltd"
         manifest["contentSetID"] = "mltd.model3d.v1"
         manifest["created_at"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        manifest["files"] = manifest_files(root)
+        manifest["files"] = model3d_files(root)
         (root / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
         write_zip(root, dst)
     return [c["localID"] for c in characters]
@@ -116,6 +135,41 @@ def merge_motions(root: Path, motions_dir: Path, ids: list[str]) -> None:
           f"{sum(len(c['actions']) for c in kept.values())} actions")
 
 
+def normalize_places(root: Path, ids: list[str]) -> None:
+    """The test content shell inherits SC places whose idol lists name SC ids.
+
+    The app validates every place idol against the roster, so remap the survivors to
+    real MLTD ids instead of shipping a package that cannot import.
+    """
+    path = root / "characters" / "places.json"
+    if not path.exists():
+        return
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return
+    known = set(ids)
+    changed = False
+    for place in data.get("places", []):
+        idols = [idol for idol in place.get("idols", []) if idol in known]
+        if not idols:
+            idols = [ids[0]]
+        if idols != place.get("idols"):
+            place["idols"] = idols
+            changed = True
+    if changed:
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+# Real Fish Audio reference ids already used by the Totsu-lover import tooling.
+DEMO_VOICES = (
+    "f55813e84ce44a6ea13a592a112458a7",
+    "6123d976c0044789be9b6b79772723f0",
+    "e8f7da8d0760440195fd812dcb3a7737",
+    "2dab8607f82a4c8187d740c9583d21fb",
+)
+
+
 def build_content_package(base: Path, ids: list[str], dst: Path) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -124,7 +178,7 @@ def build_content_package(base: Path, ids: list[str], dst: Path) -> None:
         if old_sheet.exists():
             old_sheet.unlink()
         characters = []
-        for local_id in ids:
+        for index, local_id in enumerate(ids):
             name = NAMES.get(local_id, f"MLTD {local_id}")
             sheet_rel = f"characters/sheets/{local_id}.md"
             sheet = root / sheet_rel
@@ -144,6 +198,10 @@ def build_content_package(base: Path, ids: list[str], dst: Path) -> None:
                 "color": "#7ec8e3",
                 "sheet": sheet_rel,
                 "speakers": [name],
+                # The call page refuses a character without a voice (`CallSession`
+                # throws "没有音色"). MLTD's own Fish voices are not mapped yet, so the
+                # prototype borrows real Fish reference ids from the Totsu-lover pack.
+                "voice_id": DEMO_VOICES[index % len(DEMO_VOICES)],
             })
         (root / "characters/characters.json").write_text(
             json.dumps(characters, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -157,6 +215,7 @@ def build_content_package(base: Path, ids: list[str], dst: Path) -> None:
         manifest["characters"]["ids"] = ids
         manifest["characters"]["count"] = len(ids)
         manifest["characters"]["characterKeys"] = [f"mltd:{i}" for i in ids]
+        normalize_places(root, ids)
         manifest["files"] = manifest_files(root)
         (root / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
         write_zip(root, dst)

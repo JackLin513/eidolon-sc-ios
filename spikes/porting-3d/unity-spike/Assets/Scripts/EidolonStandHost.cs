@@ -127,6 +127,7 @@ public sealed class EidolonStandHost : MonoBehaviour
             case "str":
             case "lop":
             case "end":
+                Debug.Log($"[stand] action {value}");
                 motion.PlayGesture(value);
                 break;
             default:

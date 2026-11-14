@@ -33,6 +33,7 @@ final class UnityCharacterRenderer: CharacterRenderer {
     private var paused = false
     private var catalog: MotionCatalog?
     private var lastEmotion: StandEmotion?
+    private var actionCycle: Timer?
 
     init(assets: RuntimeAssets) {
         self.assets = assets
@@ -53,6 +54,7 @@ final class UnityCharacterRenderer: CharacterRenderer {
 
     deinit {
         retry?.invalidate()
+        actionCycle?.invalidate()
     }
 
     func prepare(_ assets: RuntimeAssets) {
@@ -94,7 +96,31 @@ final class UnityCharacterRenderer: CharacterRenderer {
     /// dropped there, so a catalog entry the bundle does not carry degrades to idle.
     func playAction(_ action: String) {
         guard loaded else { return }
+        Self.log.info("3D action: \(action, privacy: .public)")
         UnityRuntime.shared.send("PlayAction", action)
+    }
+
+    /// Development aid: `EIDOLON_3D_ACTIONS=act,yes,lop` plays the listed actions in a
+    /// loop once the character has loaded, so a screenshot run can prove the clips
+    /// actually differ without driving a conversation.
+    private func startActionCycleForDebuggingIfRequested() {
+        guard actionCycle == nil,
+              let raw = ProcessInfo.processInfo.environment["EIDOLON_3D_ACTIONS"],
+              !raw.isEmpty
+        else { return }
+        let actions = raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        guard !actions.isEmpty else { return }
+        var index = 0
+        actionCycle = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self, self.loaded else {
+                    timer.invalidate()
+                    return
+                }
+                self.playAction(actions[index % actions.count])
+                index += 1
+            }
+        }
     }
 
     func setViewport(_ size: CGSize) {
@@ -223,6 +249,7 @@ final class UnityCharacterRenderer: CharacterRenderer {
             }
             onReady?(RuntimeReport(resolved: resolved, bounds: bounds))
             if let frame { apply(frame) }
+            startActionCycleForDebuggingIfRequested()
         case "failure":
             let reason = object["reason"] as? String ?? "unknown"
             Self.log.error("3D stand load failure: \(reason, privacy: .public)")
