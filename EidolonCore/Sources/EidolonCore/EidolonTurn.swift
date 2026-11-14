@@ -1491,8 +1491,11 @@ extension Eidolon {
 
     public func producerProfile() throws -> ProducerProfile {
         try userQueue.read { db in
-            guard let row = try Row.fetchOne(db, sql: "SELECT * FROM producer_profile WHERE id = 1")
-            else { return .default }
+            guard let row = try Row.fetchOne(
+                db,
+                sql: "SELECT * FROM producer_profile WHERE franchise_id = ?",
+                arguments: [activeContentFranchise]
+            ) else { return .default }
             let gender = (row["gender"] as String?).flatMap(ProducerProfile.Gender.init(rawValue:))
             return ProducerProfile(
                 formOfAddress: row["form_of_address"],

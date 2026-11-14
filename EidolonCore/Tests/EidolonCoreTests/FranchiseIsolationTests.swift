@@ -176,4 +176,26 @@ struct FranchiseIsolationTests {
         #expect(shinyRecords[0].days == 5)
     }
 
+    @Test("the producer profile is read and written per franchise")
+    func producerProfileIsScopedToItsFranchise() async throws {
+        let (eidolon, root) = try makeEidolon()
+        try await installTwoFranchises(on: eidolon, in: root)
+
+        try await eidolon.updateProducerProfile(
+            ProducerProfile(formOfAddress: "槐くん", gender: .male)
+        )
+        #expect(try await eidolon.producerProfile().formOfAddress == "槐くん")
+
+        try await eidolon.activateContent(franchise: "totsulover")
+        #expect(try await eidolon.producerProfile() == .default)
+
+        try await eidolon.updateProducerProfile(
+            ProducerProfile(formOfAddress: "槐さん", gender: .male)
+        )
+        #expect(try await eidolon.producerProfile().formOfAddress == "槐さん")
+
+        try await eidolon.activateContent(franchise: "shiny")
+        #expect(try await eidolon.producerProfile().formOfAddress == "槐くん")
+    }
+
 }

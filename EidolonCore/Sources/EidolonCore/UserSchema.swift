@@ -161,7 +161,7 @@ enum UserSchema {
         );
 
         CREATE TABLE producer_profile (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
+            franchise_id TEXT PRIMARY KEY,
             form_of_address TEXT,
             gender TEXT,
             timezone TEXT,
