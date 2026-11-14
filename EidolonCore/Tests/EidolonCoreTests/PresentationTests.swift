@@ -1,4 +1,5 @@
 import XCTest
+import ZIPFoundation
 @testable import EidolonCore
 
 final class PresentationTests: XCTestCase {
@@ -113,6 +114,54 @@ final class PresentationTests: XCTestCase {
             root.appending(path: "totsulover/model3d-previous").path
         )
         XCTAssertNotEqual(installer.directory("shiny"), installer.directory("totsulover"))
+    }
+
+    private func makeModel3DPackage(
+        in parent: URL,
+        franchise: String,
+        localID: String
+    ) throws -> URL {
+        let staging = parent.appending(path: "model3d-\(franchise)-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        let manifest = Model3DManifest(
+            franchise: franchise,
+            files: [],
+            characters: [
+                Model3DCharacter(localID: localID, model: "\(localID).model", outfits: ["default"])
+            ]
+        )
+        try JSONEncoder().encode(manifest).write(to: staging.appending(path: "manifest.json"))
+        let output = parent.appending(path: "\(franchise)-\(UUID().uuidString).model3d")
+        let archive = try Archive(url: output, accessMode: .create)
+        try archive.addEntry(with: "manifest.json", fileURL: staging.appending(path: "manifest.json"))
+        return output
+    }
+
+    func testModel3DPackagesKeepTheirOwnFranchiseSlots() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "eidolon-model3d-slots-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let eidolon = try Eidolon(location: .init(root: root))
+
+        let mltd = try makeModel3DPackage(in: root, franchise: "mltd", localID: "haruka")
+        let shiny = try makeModel3DPackage(in: root, franchise: "shiny", localID: "mano")
+        let mltdInfo = try await eidolon.installModel3D(bundleAt: mltd)
+        let shinyInfo = try await eidolon.installModel3D(bundleAt: shiny)
+        XCTAssertEqual(mltdInfo.franchise, "mltd")
+        XCTAssertEqual(shinyInfo.franchise, "shiny")
+
+        let mltdInstalled = try await eidolon.installedModel3D(franchise: "mltd")
+        let shinyInstalled = try await eidolon.installedModel3D(franchise: "shiny")
+        XCTAssertEqual(
+            mltdInstalled?.directory.path,
+            root.appending(path: "Content/mltd/model3d").path
+        )
+        XCTAssertEqual(
+            shinyInstalled?.directory.path,
+            root.appending(path: "Content/shiny/model3d").path
+        )
+        XCTAssertEqual(mltdInstalled?.manifest.characters.map(\.localID), ["haruka"])
+        XCTAssertEqual(shinyInstalled?.manifest.characters.map(\.localID), ["mano"])
     }
 
     func testModel3DManifestValidatesACharacterAndOutfits() throws {
