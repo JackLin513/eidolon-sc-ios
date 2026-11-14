@@ -302,7 +302,15 @@ extension Eidolon {
         calendar.timeZone = zone
         let began = calendar.startOfDay(for: now)
         return try userQueue.read { db in
-            try Row.fetchAll(db, sql: "SELECT created_at FROM reach_outs")
+            try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT r.created_at FROM reach_outs r
+                    JOIN conversations c ON c.id = r.conversation_id
+                    WHERE c.franchise_id = ?
+                    """,
+                arguments: [activeContentFranchise]
+            )
                 .filter { row in
                     let stamp: String = row["created_at"]
                     guard let at = Eidolon.parseTimestamp(stamp) else { return false }

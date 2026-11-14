@@ -620,6 +620,7 @@ public actor Eidolon {
                                ) AS has_photo
                         FROM messages m
                         JOIN conversations c ON c.id = m.conversation_id
+                        WHERE c.franchise_id = ?
                         UNION ALL
                         SELECT c.character_id,
                                'character',
@@ -631,6 +632,7 @@ public actor Eidolon {
                                0
                         FROM reach_outs r
                         JOIN conversations c ON c.id = r.conversation_id
+                        WHERE c.franchise_id = ?
                         UNION ALL
                         SELECT c.character_id,
                                'event',
@@ -642,9 +644,10 @@ public actor Eidolon {
                                0
                         FROM conversation_events e
                         JOIN conversations c ON c.id = e.conversation_id
+                        WHERE c.franchise_id = ?
                     )
                 ) WHERE rn = 1
-                """)
+                """, arguments: [activeContentFranchise, activeContentFranchise, activeContentFranchise])
             for row in latest {
                 let characterID: String = row["character_id"]
                 result[characterID] = LatestActivity(
@@ -662,9 +665,9 @@ public actor Eidolon {
                 SELECT c.character_id AS character_id, COUNT(*) AS count
                 FROM reach_outs r
                 JOIN conversations c ON c.id = r.conversation_id
-                WHERE r.seen = 0
+                WHERE r.seen = 0 AND c.franchise_id = ?
                 GROUP BY c.character_id
-                """)
+                """, arguments: [activeContentFranchise])
             for row in unseen {
                 let characterID: String = row["character_id"]
                 var activity = result[characterID] ?? LatestActivity()
