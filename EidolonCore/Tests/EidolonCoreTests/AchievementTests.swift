@@ -205,7 +205,8 @@ final class AchievementTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             let conversation = UUID().uuidString
             try Eidolon.insertConversation(
-                db, id: conversation, characterID: "mano", createdAt: Eidolon.timestamp(now)
+                db, id: conversation, franchiseID: "shiny",
+                characterID: "mano", createdAt: Eidolon.timestamp(now)
             )
             for index in 0..<10 {
                 try db.execute(
@@ -231,7 +232,8 @@ final class AchievementTests: XCTestCase {
             // add both up rather than pick one conversation per character.
             let other = UUID().uuidString
             try Eidolon.insertConversation(
-                db, id: other, characterID: "mano", createdAt: Eidolon.timestamp(now)
+                db, id: other, franchiseID: "shiny",
+                characterID: "mano", createdAt: Eidolon.timestamp(now)
             )
             for index in 0..<4 {
                 try db.execute(

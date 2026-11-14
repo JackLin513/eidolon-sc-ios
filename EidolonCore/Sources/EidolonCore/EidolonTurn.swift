@@ -927,17 +927,29 @@ extension Eidolon {
     /// one": the debug page can put an older conversation back in use (spec #62).
     func currentConversationID(_ characterID: String) throws -> String? {
         try userQueue.read { db in
-            try Self.currentConversationID(db, characterID: characterID)
+            try Self.currentConversationID(
+                db,
+                franchiseID: activeContentFranchise,
+                characterID: characterID
+            )
         }
     }
 
     /// The pointer, or the newest conversation when a library written before the pointer
-    /// (or a test that wrote one row directly) has none.
-    static func currentConversationID(_ db: Database, characterID: String) throws -> String? {
+    /// (or a test that wrote one row directly) has none. Identity is
+    /// `(franchise, local character id)`: two franchises may both have a `mano`.
+    static func currentConversationID(
+        _ db: Database,
+        franchiseID: String,
+        characterID: String
+    ) throws -> String? {
         if let pointed = try String.fetchOne(
             db,
-            sql: "SELECT conversation_id FROM current_conversations WHERE character_id = ?",
-            arguments: [characterID]
+            sql: """
+                SELECT conversation_id FROM current_conversations
+                WHERE franchise_id = ? AND character_id = ?
+                """,
+            arguments: [franchiseID, characterID]
         ) {
             return pointed
         }
@@ -945,24 +957,29 @@ extension Eidolon {
             db,
             sql: """
                 SELECT id FROM conversations
-                WHERE character_id = ?
+                WHERE franchise_id = ? AND character_id = ?
                 ORDER BY created_at DESC, rowid DESC LIMIT 1
                 """,
-            arguments: [characterID]
+            arguments: [franchiseID, characterID]
         )
     }
 
     /// Points the character at `id`. Called wherever a conversation is created, and by the
     /// debug page when it puts an older one back in use.
-    static func pointCurrentConversation(_ db: Database, characterID: String, id: String) throws {
+    static func pointCurrentConversation(
+        _ db: Database,
+        franchiseID: String,
+        characterID: String,
+        id: String
+    ) throws {
         try db.execute(
             sql: """
-                INSERT INTO current_conversations(character_id, conversation_id)
-                VALUES (?, ?)
-                ON CONFLICT(character_id) DO UPDATE SET
+                INSERT INTO current_conversations(franchise_id, character_id, conversation_id)
+                VALUES (?, ?, ?)
+                ON CONFLICT(franchise_id, character_id) DO UPDATE SET
                     conversation_id = excluded.conversation_id
                 """,
-            arguments: [characterID, id]
+            arguments: [franchiseID, characterID, id]
         )
     }
 
@@ -970,18 +987,24 @@ extension Eidolon {
     static func insertConversation(
         _ db: Database,
         id: String,
+        franchiseID: String,
         characterID: String,
         createdAt: String,
         faceToFace: Bool = false
     ) throws {
         try db.execute(
             sql: """
-                INSERT INTO conversations(id, character_id, created_at, face_to_face)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO conversations(id, franchise_id, character_id, created_at, face_to_face)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-            arguments: [id, characterID, createdAt, faceToFace ? 1 : 0]
+            arguments: [id, franchiseID, characterID, createdAt, faceToFace ? 1 : 0]
         )
-        try pointCurrentConversation(db, characterID: characterID, id: id)
+        try pointCurrentConversation(
+            db,
+            franchiseID: franchiseID,
+            characterID: characterID,
+            id: id
+        )
     }
 
     func createConversation(
@@ -994,6 +1017,7 @@ extension Eidolon {
             try Self.insertConversation(
                 db,
                 id: id,
+                franchiseID: activeContentFranchise,
                 characterID: characterID,
                 createdAt: Self.timestamp(now),
                 faceToFace: faceToFace
@@ -1309,6 +1333,7 @@ extension Eidolon {
                 try Self.insertConversation(
                     db,
                     id: id,
+                    franchiseID: activeContentFranchise,
                     characterID: characterID,
                     createdAt: stamp,
                     faceToFace: faceToFace ?? false

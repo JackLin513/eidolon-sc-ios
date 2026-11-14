@@ -37,7 +37,7 @@ final class StatsTests: XCTestCase {
     ) async throws {
         try await eidolon.userQueue.write { db in
             try db.execute(
-                sql: "INSERT OR IGNORE INTO conversations(id, character_id, created_at) VALUES (?, ?, ?)",
+                sql: "INSERT OR IGNORE INTO conversations(id, franchise_id, character_id, created_at) VALUES (?, 'shiny', ?, ?)",
                 arguments: [id, character, stamp]
             )
         }

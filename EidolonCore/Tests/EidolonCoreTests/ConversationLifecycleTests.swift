@@ -91,8 +91,8 @@ final class ConversationLifecycleTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO conversations(id, character_id, created_at)
-                    VALUES ('empty', 'mano', '2020-01-01T00:00:00Z')
+                    INSERT INTO conversations(id, franchise_id, character_id, created_at)
+                    VALUES ('empty', 'shiny', 'mano', '2020-01-01T00:00:00Z')
                     """
             )
         }
@@ -459,8 +459,8 @@ final class ConversationLifecycleTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO conversations(id, character_id, created_at)
-                    VALUES ('old', 'mano', '2020-01-01T00:00:00.000000Z')
+                    INSERT INTO conversations(id, franchise_id, character_id, created_at)
+                    VALUES ('old', 'shiny', 'mano', '2020-01-01T00:00:00.000000Z')
                     """
             )
             try db.execute(
@@ -486,8 +486,8 @@ final class ConversationLifecycleTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO conversations(id, character_id, created_at)
-                    VALUES ('old', 'mano', '2020-01-01T00:00:00.000000Z')
+                    INSERT INTO conversations(id, franchise_id, character_id, created_at)
+                    VALUES ('old', 'shiny', 'mano', '2020-01-01T00:00:00.000000Z')
                     """
             )
             try db.execute(

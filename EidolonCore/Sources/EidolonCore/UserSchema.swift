@@ -3,574 +3,440 @@ import GRDB
 
 /// The writable user library (ADR-0002). Its schema evolves with the app, not
 /// with the content bundle, and is therefore managed by GRDB migrations.
+///
+/// v25 is a break: Phase B scopes the library by franchise, so an older library is
+/// backed up and replaced instead of migrated (ADR-0037). A fresh library is created
+/// directly at v25; there is no data to carry over.
 enum UserSchema {
-    static let version = 24
+    static let version = 25
+
+    struct LegacyLibrary: Error, CustomStringConvertible {
+        var version: Int
+        var description: String {
+            "user library is v\(version), but this build only opens a fresh v\(UserSchema.version) library"
+        }
+    }
 
     static func migrate(_ dbQueue: DatabaseQueue) throws {
-        var migrator = DatabaseMigrator()
-        migrator.registerMigration("v1") { db in
-            try db.execute(sql: """
-                CREATE TABLE conversations (
-                    id TEXT PRIMARY KEY,
-                    character_id TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    title TEXT,
-                    ended_at TEXT
-                );
-                CREATE INDEX conversations_by_character
-                    ON conversations(character_id, created_at);
-
-                CREATE TABLE messages (
-                    id TEXT PRIMARY KEY,
-                    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-                    role TEXT NOT NULL,
-                    text TEXT,
-                    ja TEXT,
-                    zh TEXT,
-                    segments TEXT,
-                    created_at TEXT NOT NULL,
-                    affinity TEXT,
-                    hurt INTEGER NOT NULL DEFAULT 0,
-                    out_of_line INTEGER NOT NULL DEFAULT 0
-                );
-                CREATE INDEX messages_by_conversation
-                    ON messages(conversation_id, created_at);
-
-                CREATE TABLE conversation_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-                    kind TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                );
-
-                CREATE TABLE reach_outs (
-                    id TEXT PRIMARY KEY,
-                    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-                    ja TEXT NOT NULL,
-                    zh TEXT,
-                    segments TEXT,
-                    seen INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL
-                );
-
-                CREATE TABLE memories (
-                    id TEXT PRIMARY KEY,
-                    source_character_id TEXT,
-                    conversation_id TEXT,
-                    text TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    superseded_by TEXT
-                );
-
-                CREATE TABLE memory_vectors (
-                    memory_id TEXT PRIMARY KEY REFERENCES memories(id) ON DELETE CASCADE,
-                    model TEXT NOT NULL,
-                    embedding BLOB NOT NULL
-                );
-
-                CREATE TABLE fact_vectors (
-                    scope TEXT NOT NULL,
-                    entry_id TEXT NOT NULL,
-                    model TEXT NOT NULL,
-                    embedding BLOB NOT NULL,
-                    PRIMARY KEY (scope, entry_id, model)
-                );
-
-                CREATE TABLE affinities (
-                    character_id TEXT PRIMARY KEY,
-                    value REAL NOT NULL,
-                    cooling INTEGER NOT NULL DEFAULT 0
-                );
-
-                CREATE TABLE pending_jobs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    kind TEXT NOT NULL,
-                    conversation_id TEXT,
-                    message_id TEXT,
-                    created_at TEXT NOT NULL,
-                    attempts INTEGER NOT NULL DEFAULT 0
-                );
-
-                CREATE TABLE turn_traces (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    conversation_id TEXT,
-                    created_at TEXT NOT NULL,
-                    payload TEXT NOT NULL
-                );
-
-                CREATE TABLE producer_profile (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    form_of_address TEXT,
-                    gender TEXT,
-                    timezone TEXT,
-                    birthday_month INTEGER,
-                    birthday_day INTEGER
-                );
-
-                CREATE TABLE app_state (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL
-                );
-                """)
+        let current = try dbQueue.read { db in
+            try Int.fetchOne(db, sql: "PRAGMA user_version") ?? 0
         }
-        migrator.registerMigration("v2") { db in
-            try db.execute(sql: "ALTER TABLE affinities ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''")
-            try db.execute(sql: "ALTER TABLE affinities ADD COLUMN gained_today REAL NOT NULL DEFAULT 0")
-            try db.execute(sql: "ALTER TABLE affinities ADD COLUMN gained_on TEXT")
-        }
-        migrator.registerMigration("v3") { db in
-            // One user: the same memory written down twice is the same memory.
-            try db.execute(sql: "CREATE UNIQUE INDEX memories_by_text ON memories(text)")
-            // A memory's vector is per embedding model, as the content library's are.
-            try db.execute(sql: """
-                CREATE TABLE memory_vectors_v3 (
-                    memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
-                    model TEXT NOT NULL,
-                    embedding BLOB NOT NULL,
-                    PRIMARY KEY (memory_id, model)
-                );
-                INSERT INTO memory_vectors_v3(memory_id, model, embedding)
-                    SELECT memory_id, model, embedding FROM memory_vectors;
-                DROP TABLE memory_vectors;
-                ALTER TABLE memory_vectors_v3 RENAME TO memory_vectors;
-                """)
-        }
-        migrator.registerMigration("v4") { db in
-            // A turn taken in a call counts in the call, not in the conversation's typed
-            // turns; what was written before this is read as a typed turn (upstream
-            // records the distinction as `hurt IS NOT NULL`).
-            try db.execute(sql: "ALTER TABLE messages ADD COLUMN typed INTEGER NOT NULL DEFAULT 1")
-        }
-        migrator.registerMigration("v5") { db in
-            // An affinity row carried over from v1 has no timestamp: reading it as "now"
-            // swallowed the recovery it was owed and moved a cooldown's start. The upgrade
-            // is the earliest moment it can be said to have been true, so recovery goes on
-            // from there.
-            let now = Eidolon.timestamp(Date())
-            try db.execute(
-                sql: "UPDATE affinities SET updated_at = ? WHERE updated_at IS NULL OR updated_at = ''",
-                arguments: [now]
-            )
-        }
-        migrator.registerMigration("v6") { db in
-            // When a call that connected ended, so that "when did we last talk" counts it
-            // as upstream's `calls` table does (its `connected_at` plus `duration_s`).
-            try db.execute(sql: """
-                CREATE TABLE call_ends (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-                    character_id TEXT NOT NULL,
-                    ended_at TEXT NOT NULL
-                );
-                CREATE INDEX call_ends_by_character
-                    ON call_ends(character_id, ended_at);
-                """)
-        }
-        migrator.registerMigration("v7") { db in
-            // Older builds wrote every call ending into the conversation, the producer's
-            // own hang-up as `hung_up` and hers as `she_hung_up`; now only her hang-up is
-            // kept, and `hung_up` means that (upstream records only hers). The old
-            // `hung_up` has to go before `she_hung_up` takes its name, or it would be
-            // read as her hanging up. The call_* kinds were the other endings upstream
-            // only traces; they are dropped.
-            try db.execute(sql: "DELETE FROM conversation_events WHERE kind = 'hung_up'")
-            try db.execute(sql: "DELETE FROM conversation_events WHERE kind GLOB 'call_*'")
-            try db.execute(
-                sql: "UPDATE conversation_events SET kind = 'hung_up' WHERE kind = 'she_hung_up'"
-            )
-        }
-        migrator.registerMigration("v8") { db in
-            // Each visit to the bar done is written down (GLOSSARY.md「光顾」, ADR-0021): who
-            // came, when, why, what about, each order as JSON, whether she got drunk, and
-            // whether the visit was rewarded. Nothing of what was said. Its shape follows
-            // upstream's `visit_records` row, less the user it is the one user's of.
-            try db.execute(sql: """
-                CREATE TABLE bar_visits (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    character_id TEXT NOT NULL,
-                    entered_at TEXT NOT NULL,
-                    left_at TEXT NOT NULL,
-                    entered_on TEXT NOT NULL,
-                    reason TEXT NOT NULL,
-                    topic TEXT NOT NULL,
-                    orders TEXT NOT NULL,
-                    drunk INTEGER NOT NULL,
-                    rewarded INTEGER NOT NULL
-                );
-                CREATE INDEX bar_visits_by_her ON bar_visits (character_id, id);
-                CREATE INDEX bar_visits_by_day ON bar_visits (entered_on);
-                """)
-        }
-        migrator.registerMigration("v9") { db in
-            // How a reply changed her affinity, kept beside it so the transcript can say
-            // it after the fact (spec #38). All three are null when the turn changed
-            // nothing; `messages.affinity` still holds the tier she was left in.
-            try db.execute(sql: "ALTER TABLE messages ADD COLUMN affinity_up INTEGER")
-            try db.execute(sql: "ALTER TABLE messages ADD COLUMN affinity_tier_changed INTEGER")
-            try db.execute(sql: "ALTER TABLE messages ADD COLUMN affinity_cooldown INTEGER")
-        }
-        migrator.registerMigration("v10") { db in
-            // The weekly schedule (spec #50): the jobs drawn for a week, kept so the week
-            // never changes once published, and what the producer placed.
-            try db.execute(sql: """
-                CREATE TABLE schedule_weeks (
-                    week TEXT PRIMARY KEY,
-                    drawn_at TEXT NOT NULL
-                );
-                CREATE TABLE weekly_jobs (
-                    id TEXT PRIMARY KEY,
-                    week TEXT NOT NULL,
-                    character_id TEXT NOT NULL,
-                    listed_id TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    note TEXT NOT NULL,
-                    category TEXT NOT NULL,
-                    length INTEGER NOT NULL,
-                    slots TEXT
-                );
-                CREATE INDEX weekly_jobs_by_week
-                    ON weekly_jobs(week, character_id);
-                CREATE TABLE schedule_placements (
-                    week TEXT NOT NULL,
-                    job_id TEXT NOT NULL,
-                    character_id TEXT NOT NULL,
-                    day INTEGER NOT NULL,
-                    slot INTEGER NOT NULL,
-                    saved_at TEXT NOT NULL,
-                    counted_at TEXT,
-                    PRIMARY KEY (week, job_id)
-                );
-                CREATE INDEX schedule_placements_by_her
-                    ON schedule_placements(character_id, week);
-                """)
-        }
-        migrator.registerMigration("v11") { db in
-            // Her cycle (spec #52): a stable seed for each character on this device, and the
-            // one switch for all of them. The seed is made when first needed; cycles are on
-            // until switched off.
-            try db.execute(sql: """
-                CREATE TABLE cycle_seeds (
-                    character_id TEXT PRIMARY KEY,
-                    seed BLOB NOT NULL
-                );
-                CREATE TABLE cycle_settings (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    enabled INTEGER NOT NULL DEFAULT 1
-                );
-                """)
-        }
-        migrator.registerMigration("v12") { db in
-            // The periods the producer writes down (spec #53); the estimate is worked out
-            // from them whenever it is read, never stored, and her true cycle is not read.
-            try db.execute(sql: """
-                CREATE TABLE cycle_records (
-                    id TEXT PRIMARY KEY,
-                    character_id TEXT NOT NULL,
-                    first_day TEXT NOT NULL,
-                    days INTEGER NOT NULL,
-                    recorded_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
-                CREATE INDEX cycle_records_by_her
-                    ON cycle_records(character_id, first_day);
-                """)
-        }
-        migrator.registerMigration("v13") { db in
-            // A reply's ordered blocks: spoken lines and scene blocks (spec #60). Old rows
-            // have no value and are read from `segments` as lines.
-            try db.execute(sql: "ALTER TABLE messages ADD COLUMN blocks TEXT")
-        }
-        migrator.registerMigration("v14") { db in
-            // The current conversation is a pointer, not "the newest one" any more: a
-            // debug action can put an older one back in use without rewriting its start
-            // time (spec #62). An upgraded library points at what it showed before.
-            try db.execute(sql: """
-                CREATE TABLE current_conversations (
-                    character_id TEXT PRIMARY KEY,
-                    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE
-                );
-                INSERT INTO current_conversations(character_id, conversation_id)
-                SELECT c.character_id, c.id
-                FROM conversations c
-                WHERE c.rowid = (
-                    SELECT c2.rowid FROM conversations c2
-                    WHERE c2.character_id = c.character_id
-                    ORDER BY c2.created_at DESC, c2.rowid DESC
-                    LIMIT 1
-                );
-                """)
-        }
-        migrator.registerMigration("v15") { db in
-            // A debug conversation can keep going after the affinity that would have
-            // ended it (spec #62). Off for every conversation until the debug page turns
-            // it on; a new conversation starts off.
-            try db.execute(sql: """
-                ALTER TABLE conversations ADD COLUMN debug_no_ending INTEGER NOT NULL DEFAULT 0
-                """)
-        }
-        migrator.registerMigration("v16") { db in
-            // Gifts and achievements (spec #63, #65): what the producer has drawn, what is
-            // in the backpack, the rewards already given by their key (so each is given
-            // once), and the achievement stages reached. One producer, so no user column.
-            try db.execute(sql: """
-                CREATE TABLE gift_balances (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    draws INTEGER NOT NULL,
-                    given_on TEXT NOT NULL,
-                    reset_cards INTEGER NOT NULL DEFAULT 0
-                );
-                CREATE TABLE gift_backpack (
-                    gift_id TEXT PRIMARY KEY,
-                    count INTEGER NOT NULL
-                );
-                CREATE TABLE gift_rewards (
-                    key TEXT PRIMARY KEY,
-                    draws INTEGER NOT NULL,
-                    reset_cards INTEGER NOT NULL,
-                    rewarded_at TEXT NOT NULL
-                );
-                CREATE TABLE achievement_progress (
-                    achievement TEXT NOT NULL,
-                    character_id TEXT NOT NULL,
-                    count REAL NOT NULL,
-                    last_day TEXT,
-                    PRIMARY KEY (achievement, character_id)
-                );
-                CREATE TABLE achievement_stages (
-                    achievement TEXT NOT NULL,
-                    character_id TEXT NOT NULL,
-                    stage INTEGER NOT NULL,
-                    unlocked_at TEXT NOT NULL,
-                    PRIMARY KEY (achievement, character_id, stage)
-                );
-                CREATE TABLE achievements_launched (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    launched_at TEXT NOT NULL,
-                    notice_seen INTEGER NOT NULL DEFAULT 0
-                );
-                """)
-            // A connected call's start and length, for the call achievements (spec #63).
-            // Old rows keep NULL, and the one-time backfill reads them as zero. A library
-            // that never ran v6 has no call table, as the partial test libraries show.
-            if try db.tableExists("call_ends") {
-                try db.execute(sql: "ALTER TABLE call_ends ADD COLUMN connected_at TEXT")
-                try db.execute(sql: "ALTER TABLE call_ends ADD COLUMN duration_s REAL")
-            }
-            // A gift given to her, as the conversation event that tells her of it (spec
-            // #63): which gift, whether she likes it, and the affinity change it showed.
-            if try db.tableExists("conversation_events") {
-                try db.execute(sql: "ALTER TABLE conversation_events ADD COLUMN gift_id TEXT")
-                try db.execute(sql: "ALTER TABLE conversation_events ADD COLUMN liked INTEGER")
-                try db.execute(sql: "ALTER TABLE conversation_events ADD COLUMN affinity TEXT")
-            }
-        }
-        migrator.registerMigration("v17") { db in
-            // Which achievement stages and rewards the producer has looked at, for the
-            // new marks and the play tab's dot (spec #63, #69/#70); and what the one-time
-            // launch notice says (spec #72).
-            try db.execute(sql: """
-                ALTER TABLE achievement_stages ADD COLUMN seen INTEGER NOT NULL DEFAULT 0;
-                ALTER TABLE gift_rewards ADD COLUMN seen INTEGER NOT NULL DEFAULT 0;
-                ALTER TABLE achievements_launched ADD COLUMN notice_stages INTEGER NOT NULL DEFAULT 0;
-                ALTER TABLE achievements_launched ADD COLUMN notice_draws INTEGER NOT NULL DEFAULT 0;
-                ALTER TABLE achievements_launched ADD COLUMN notice_reset_cards INTEGER NOT NULL DEFAULT 0;
-                """)
-        }
-        migrator.registerMigration("v18") { db in
-            // When the play tab's dot was last cleared (spec #70). A moment of its own,
-            // apart from the per-scope seen marks, so opening the achievements page or the
-            // gift page clears the dot without clearing the other page's new marks.
-            try db.execute(sql: """
-                CREATE TABLE achievement_play_seen (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    seen_at TEXT NOT NULL
-                );
-                """)
-        }
-        migrator.registerMigration("v19") { db in
-            // Every call to an outside service, for the usage page (spec #96). It is kept
-            // against nothing: a deleted conversation keeps what it cost, and an old
-            // library starts counting from this version rather than being backfilled.
-            try db.execute(sql: """
-                CREATE TABLE service_calls (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    at TEXT NOT NULL,
-                    service TEXT NOT NULL,
-                    provider TEXT NOT NULL DEFAULT '',
-                    model TEXT NOT NULL DEFAULT '',
-                    operation TEXT NOT NULL,
-                    unit TEXT NOT NULL,
-                    input INTEGER NOT NULL DEFAULT 0,
-                    output INTEGER,
-                    cached_input INTEGER,
-                    estimated INTEGER NOT NULL DEFAULT 0,
-                    latency REAL,
-                    error TEXT,
-                    conversation_id TEXT,
-                    call_id TEXT
-                );
-                CREATE INDEX service_calls_by_at ON service_calls(at);
-                CREATE INDEX service_calls_by_service
-                    ON service_calls(service, provider, model, at);
-
-                CREATE TABLE price_overrides (
-                    provider TEXT NOT NULL,
-                    model TEXT NOT NULL,
-                    unit TEXT NOT NULL,
-                    input REAL NOT NULL,
-                    output REAL,
-                    cached_input REAL,
-                    currency TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    PRIMARY KEY (provider, model, unit)
-                );
-                """)
-        }
-        migrator.registerMigration("v20") { db in
-            // The birth year is kept so the settings date picker shows the year the
-            // producer chose; the prompts and calendar still use only month and day.
-            if try db.tableExists("producer_profile") {
-                try db.execute(sql: "ALTER TABLE producer_profile ADD COLUMN birthday_year INTEGER")
-            }
-        }
-        migrator.registerMigration("v21") { db in
-            // A picture she sent in a reply. The tag is what she wrote; the image itself
-            // is a file beside the database, never a BLOB.
-            try db.execute(sql: """
-                CREATE TABLE photos (
-                    id TEXT PRIMARY KEY,
-                    conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
-                    message_id TEXT REFERENCES messages(id) ON DELETE CASCADE,
-                    tag TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    reason TEXT,
-                    file TEXT,
-                    width INTEGER NOT NULL,
-                    height INTEGER NOT NULL,
-                    started_at TEXT NOT NULL,
-                    finished_at TEXT
-                );
-                CREATE INDEX photos_by_message ON photos(message_id);
-                CREATE INDEX photos_by_started ON photos(started_at);
-                """)
-        }
-        migrator.registerMigration("v22") { db in
-            // Whether this conversation is spoken face to face rather than as messages
-            // (spec #98's follow-up). New conversations start as messages.
-            try db.execute(
-                sql: "ALTER TABLE conversations ADD COLUMN face_to_face INTEGER NOT NULL DEFAULT 0"
-            )
-        }
-        migrator.registerMigration("v23") { db in
-            // Moments (spec #98, tickets #105–#113): her posts, their pictures and the
-            // other idols' reactions, the producer's like and comment, and the plans that
-            // make today's posts happen. Nothing here is part of the content bundle.
-            try db.execute(sql: """
-                CREATE TABLE moment_posts (
-                    id TEXT PRIMARY KEY,
-                    character_id TEXT NOT NULL,
-                    ja TEXT NOT NULL,
-                    zh TEXT NOT NULL,
-                    plan_day TEXT NOT NULL,
-                    reveal_at TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    place_id TEXT,
-                    place_name TEXT,
-                    place_area TEXT,
-                    place_lat REAL,
-                    place_lon REAL,
-                    weather_code INTEGER,
-                    weather_temperature INTEGER
-                );
-                CREATE INDEX moment_posts_by_reveal
-                    ON moment_posts(reveal_at);
-                CREATE INDEX moment_posts_by_character
-                    ON moment_posts(character_id, plan_day);
-
-                CREATE TABLE moment_images (
-                    id TEXT PRIMARY KEY,
-                    post_id TEXT NOT NULL REFERENCES moment_posts(id) ON DELETE CASCADE,
-                    file TEXT NOT NULL,
-                    width INTEGER NOT NULL,
-                    height INTEGER NOT NULL,
-                    composition TEXT NOT NULL,
-                    tag TEXT NOT NULL,
-                    note TEXT,
-                    created_at TEXT NOT NULL
-                );
-                CREATE INDEX moment_images_by_post ON moment_images(post_id);
-
-                CREATE TABLE moment_reactions (
-                    id TEXT PRIMARY KEY,
-                    post_id TEXT NOT NULL REFERENCES moment_posts(id) ON DELETE CASCADE,
-                    character_id TEXT NOT NULL,
-                    kind TEXT NOT NULL,
-                    ja TEXT,
-                    zh TEXT,
-                    position INTEGER NOT NULL DEFAULT 0,
-                    reveal_at TEXT NOT NULL
-                );
-                CREATE INDEX moment_reactions_by_post
-                    ON moment_reactions(post_id, reveal_at);
-
-                CREATE TABLE moment_likes (
-                    post_id TEXT PRIMARY KEY REFERENCES moment_posts(id) ON DELETE CASCADE,
-                    created_at TEXT NOT NULL
-                );
-
-                CREATE TABLE moment_comments (
-                    post_id TEXT PRIMARY KEY REFERENCES moment_posts(id) ON DELETE CASCADE,
-                    text TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    reply_reveal_at TEXT,
-                    reply_ja TEXT,
-                    reply_zh TEXT,
-                    reply_at TEXT
-                );
-
-                CREATE TABLE moment_plans (
-                    id TEXT PRIMARY KEY,
-                    character_id TEXT NOT NULL,
-                    plan_day TEXT NOT NULL,
-                    due_at TEXT NOT NULL,
-                    kind TEXT NOT NULL,
-                    birthday INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL
-                );
-                CREATE INDEX moment_plans_by_due ON moment_plans(due_at);
-
-                CREATE TABLE moment_state (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    last_opened_at TEXT,
-                    planned_day TEXT
-                );
-                """)
-        }
-        migrator.registerMigration("v24") { db in
-            // Per-reply debug context. The payload is a JSON `TurnDebugSnapshot`; the
-            // columns are only the query keys, so the shape can grow without a migration.
-            try db.execute(sql: """
-                CREATE TABLE turn_debug_snapshots (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
-                    character_id TEXT NOT NULL,
-                    user_message_id TEXT,
-                    reply_message_id TEXT,
-                    status TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    payload TEXT NOT NULL
-                );
-                CREATE INDEX turn_debug_snapshots_by_conversation
-                    ON turn_debug_snapshots(conversation_id, id);
-                CREATE INDEX turn_debug_snapshots_by_reply
-                    ON turn_debug_snapshots(reply_message_id);
-                CREATE INDEX turn_debug_snapshots_by_character
-                    ON turn_debug_snapshots(character_id, status, id);
-                """)
-        }
-        try migrator.migrate(dbQueue)
+        if current == version { return }
+        guard current == 0 else { throw LegacyLibrary(version: current) }
         try dbQueue.write { db in
+            try db.execute(sql: ddl)
             try db.execute(sql: "PRAGMA user_version = \(version)")
         }
     }
+
+    /// A fresh v25 library.
+    ///
+    /// `conversations.franchise_id` and `current_conversations` are the first identity
+    /// boundary: a local character id only names someone inside a franchise.
+    /// `conversation_participants` and the `messages.speaker_*` columns are the shared
+    /// shapes group conversations will use; a one-character conversation still writes
+    /// one participant row and leaves the speaker columns for her replies.
+    private static let ddl = """
+        CREATE TABLE conversations (
+            id TEXT PRIMARY KEY,
+            franchise_id TEXT NOT NULL,
+            character_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            title TEXT,
+            ended_at TEXT,
+            debug_no_ending INTEGER NOT NULL DEFAULT 0,
+            face_to_face INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX conversations_by_character
+            ON conversations(franchise_id, character_id, created_at);
+
+        CREATE TABLE conversation_participants (
+            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            franchise_id TEXT NOT NULL,
+            character_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            joined_at TEXT NOT NULL,
+            PRIMARY KEY (conversation_id, franchise_id, character_id)
+        );
+        CREATE INDEX conversation_participants_by_character
+            ON conversation_participants(franchise_id, character_id);
+
+        CREATE TABLE messages (
+            id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            role TEXT NOT NULL,
+            speaker_kind TEXT,
+            speaker_franchise TEXT,
+            speaker_character TEXT,
+            text TEXT,
+            ja TEXT,
+            zh TEXT,
+            segments TEXT,
+            created_at TEXT NOT NULL,
+            affinity TEXT,
+            hurt INTEGER NOT NULL DEFAULT 0,
+            out_of_line INTEGER NOT NULL DEFAULT 0,
+            typed INTEGER NOT NULL DEFAULT 1,
+            affinity_up INTEGER,
+            affinity_tier_changed INTEGER,
+            affinity_cooldown INTEGER,
+            blocks TEXT
+        );
+        CREATE INDEX messages_by_conversation
+            ON messages(conversation_id, created_at);
+
+        CREATE TABLE conversation_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            kind TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            gift_id TEXT,
+            liked INTEGER,
+            affinity TEXT
+        );
+
+        CREATE TABLE reach_outs (
+            id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            ja TEXT NOT NULL,
+            zh TEXT,
+            segments TEXT,
+            seen INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE memories (
+            id TEXT PRIMARY KEY,
+            source_franchise_id TEXT,
+            source_character_id TEXT,
+            conversation_id TEXT,
+            text TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            superseded_by TEXT
+        );
+        CREATE UNIQUE INDEX memories_by_text ON memories(text);
+        CREATE INDEX memories_by_source
+            ON memories(source_franchise_id, source_character_id);
+
+        CREATE TABLE memory_vectors (
+            memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+            model TEXT NOT NULL,
+            embedding BLOB NOT NULL,
+            PRIMARY KEY (memory_id, model)
+        );
+
+        CREATE TABLE fact_vectors (
+            scope TEXT NOT NULL,
+            entry_id TEXT NOT NULL,
+            model TEXT NOT NULL,
+            embedding BLOB NOT NULL,
+            PRIMARY KEY (scope, entry_id, model)
+        );
+
+        CREATE TABLE affinities (
+            character_id TEXT PRIMARY KEY,
+            value REAL NOT NULL,
+            cooling INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT '',
+            gained_today REAL NOT NULL DEFAULT 0,
+            gained_on TEXT
+        );
+
+        CREATE TABLE pending_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL,
+            conversation_id TEXT,
+            message_id TEXT,
+            created_at TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE turn_traces (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id TEXT,
+            created_at TEXT NOT NULL,
+            payload TEXT NOT NULL
+        );
+
+        CREATE TABLE producer_profile (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            form_of_address TEXT,
+            gender TEXT,
+            timezone TEXT,
+            birthday_month INTEGER,
+            birthday_day INTEGER,
+            birthday_year INTEGER
+        );
+
+        CREATE TABLE app_state (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+
+        CREATE TABLE call_ends (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            character_id TEXT NOT NULL,
+            ended_at TEXT NOT NULL,
+            connected_at TEXT,
+            duration_s REAL
+        );
+        CREATE INDEX call_ends_by_character
+            ON call_ends(character_id, ended_at);
+
+        CREATE TABLE bar_visits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            character_id TEXT NOT NULL,
+            entered_at TEXT NOT NULL,
+            left_at TEXT NOT NULL,
+            entered_on TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            topic TEXT NOT NULL,
+            orders TEXT NOT NULL,
+            drunk INTEGER NOT NULL,
+            rewarded INTEGER NOT NULL
+        );
+        CREATE INDEX bar_visits_by_her ON bar_visits (character_id, id);
+        CREATE INDEX bar_visits_by_day ON bar_visits (entered_on);
+
+        CREATE TABLE schedule_weeks (
+            week TEXT PRIMARY KEY,
+            drawn_at TEXT NOT NULL
+        );
+        CREATE TABLE weekly_jobs (
+            id TEXT PRIMARY KEY,
+            week TEXT NOT NULL,
+            character_id TEXT NOT NULL,
+            listed_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            note TEXT NOT NULL,
+            category TEXT NOT NULL,
+            length INTEGER NOT NULL,
+            slots TEXT
+        );
+        CREATE INDEX weekly_jobs_by_week
+            ON weekly_jobs(week, character_id);
+        CREATE TABLE schedule_placements (
+            week TEXT NOT NULL,
+            job_id TEXT NOT NULL,
+            character_id TEXT NOT NULL,
+            day INTEGER NOT NULL,
+            slot INTEGER NOT NULL,
+            saved_at TEXT NOT NULL,
+            counted_at TEXT,
+            PRIMARY KEY (week, job_id)
+        );
+        CREATE INDEX schedule_placements_by_her
+            ON schedule_placements(character_id, week);
+
+        CREATE TABLE cycle_seeds (
+            character_id TEXT PRIMARY KEY,
+            seed BLOB NOT NULL
+        );
+        CREATE TABLE cycle_settings (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            enabled INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE TABLE cycle_records (
+            id TEXT PRIMARY KEY,
+            character_id TEXT NOT NULL,
+            first_day TEXT NOT NULL,
+            days INTEGER NOT NULL,
+            recorded_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX cycle_records_by_her
+            ON cycle_records(character_id, first_day);
+
+        CREATE TABLE current_conversations (
+            franchise_id TEXT NOT NULL,
+            character_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            PRIMARY KEY (franchise_id, character_id)
+        );
+
+        CREATE TABLE gift_balances (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            draws INTEGER NOT NULL,
+            given_on TEXT NOT NULL,
+            reset_cards INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE gift_backpack (
+            gift_id TEXT PRIMARY KEY,
+            count INTEGER NOT NULL
+        );
+        CREATE TABLE gift_rewards (
+            key TEXT PRIMARY KEY,
+            draws INTEGER NOT NULL,
+            reset_cards INTEGER NOT NULL,
+            rewarded_at TEXT NOT NULL,
+            seen INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE achievement_progress (
+            achievement TEXT NOT NULL,
+            character_id TEXT NOT NULL,
+            count REAL NOT NULL,
+            last_day TEXT,
+            PRIMARY KEY (achievement, character_id)
+        );
+        CREATE TABLE achievement_stages (
+            achievement TEXT NOT NULL,
+            character_id TEXT NOT NULL,
+            stage INTEGER NOT NULL,
+            unlocked_at TEXT NOT NULL,
+            seen INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (achievement, character_id, stage)
+        );
+        CREATE TABLE achievements_launched (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            launched_at TEXT NOT NULL,
+            notice_seen INTEGER NOT NULL DEFAULT 0,
+            notice_stages INTEGER NOT NULL DEFAULT 0,
+            notice_draws INTEGER NOT NULL DEFAULT 0,
+            notice_reset_cards INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE achievement_play_seen (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            seen_at TEXT NOT NULL
+        );
+
+        CREATE TABLE service_calls (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            at TEXT NOT NULL,
+            service TEXT NOT NULL,
+            provider TEXT NOT NULL DEFAULT '',
+            model TEXT NOT NULL DEFAULT '',
+            operation TEXT NOT NULL,
+            unit TEXT NOT NULL,
+            input INTEGER NOT NULL DEFAULT 0,
+            output INTEGER,
+            cached_input INTEGER,
+            estimated INTEGER NOT NULL DEFAULT 0,
+            latency REAL,
+            error TEXT,
+            conversation_id TEXT,
+            call_id TEXT
+        );
+        CREATE INDEX service_calls_by_at ON service_calls(at);
+        CREATE INDEX service_calls_by_service
+            ON service_calls(service, provider, model, at);
+
+        CREATE TABLE price_overrides (
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            unit TEXT NOT NULL,
+            input REAL NOT NULL,
+            output REAL,
+            cached_input REAL,
+            currency TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (provider, model, unit)
+        );
+
+        CREATE TABLE photos (
+            id TEXT PRIMARY KEY,
+            conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
+            message_id TEXT REFERENCES messages(id) ON DELETE CASCADE,
+            tag TEXT NOT NULL,
+            status TEXT NOT NULL,
+            reason TEXT,
+            file TEXT,
+            width INTEGER NOT NULL,
+            height INTEGER NOT NULL,
+            started_at TEXT NOT NULL,
+            finished_at TEXT
+        );
+        CREATE INDEX photos_by_message ON photos(message_id);
+        CREATE INDEX photos_by_started ON photos(started_at);
+
+        CREATE TABLE moment_posts (
+            id TEXT PRIMARY KEY,
+            character_id TEXT NOT NULL,
+            ja TEXT NOT NULL,
+            zh TEXT NOT NULL,
+            plan_day TEXT NOT NULL,
+            reveal_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            place_id TEXT,
+            place_name TEXT,
+            place_area TEXT,
+            place_lat REAL,
+            place_lon REAL,
+            weather_code INTEGER,
+            weather_temperature INTEGER
+        );
+        CREATE INDEX moment_posts_by_reveal
+            ON moment_posts(reveal_at);
+        CREATE INDEX moment_posts_by_character
+            ON moment_posts(character_id, plan_day);
+        CREATE TABLE moment_images (
+            id TEXT PRIMARY KEY,
+            post_id TEXT NOT NULL REFERENCES moment_posts(id) ON DELETE CASCADE,
+            file TEXT NOT NULL,
+            width INTEGER NOT NULL,
+            height INTEGER NOT NULL,
+            composition TEXT NOT NULL,
+            tag TEXT NOT NULL,
+            note TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX moment_images_by_post ON moment_images(post_id);
+        CREATE TABLE moment_reactions (
+            id TEXT PRIMARY KEY,
+            post_id TEXT NOT NULL REFERENCES moment_posts(id) ON DELETE CASCADE,
+            character_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            ja TEXT,
+            zh TEXT,
+            position INTEGER NOT NULL DEFAULT 0,
+            reveal_at TEXT NOT NULL
+        );
+        CREATE INDEX moment_reactions_by_post
+            ON moment_reactions(post_id, reveal_at);
+        CREATE TABLE moment_likes (
+            post_id TEXT PRIMARY KEY REFERENCES moment_posts(id) ON DELETE CASCADE,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE moment_comments (
+            post_id TEXT PRIMARY KEY REFERENCES moment_posts(id) ON DELETE CASCADE,
+            text TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            reply_reveal_at TEXT,
+            reply_ja TEXT,
+            reply_zh TEXT,
+            reply_at TEXT
+        );
+        CREATE TABLE moment_plans (
+            id TEXT PRIMARY KEY,
+            character_id TEXT NOT NULL,
+            plan_day TEXT NOT NULL,
+            due_at TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            birthday INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX moment_plans_by_due ON moment_plans(due_at);
+        CREATE TABLE moment_state (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            last_opened_at TEXT,
+            planned_day TEXT
+        );
+
+        CREATE TABLE turn_debug_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
+            character_id TEXT NOT NULL,
+            user_message_id TEXT,
+            reply_message_id TEXT,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            payload TEXT NOT NULL
+        );
+        CREATE INDEX turn_debug_snapshots_by_conversation
+            ON turn_debug_snapshots(conversation_id, id);
+        CREATE INDEX turn_debug_snapshots_by_reply
+            ON turn_debug_snapshots(reply_message_id);
+        CREATE INDEX turn_debug_snapshots_by_character
+            ON turn_debug_snapshots(character_id, status, id);
+        """
 }

@@ -503,7 +503,7 @@ extension Eidolon {
             )
 
             let conversationID: String
-            let current = try Self.currentConversationID(db, characterID: characterID)
+            let current = try Self.currentConversationID(db, franchiseID: activeContentFranchise, characterID: characterID)
             let ended: String? = try current.flatMap {
                 try String.fetchOne(
                     db,
@@ -518,6 +518,7 @@ extension Eidolon {
                 try Self.insertConversation(
                     db,
                     id: conversationID,
+                    franchiseID: activeContentFranchise,
                     characterID: characterID,
                     createdAt: Self.timestamp(now)
                 )

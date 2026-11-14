@@ -66,7 +66,7 @@ final class ConversationRecordTests: XCTestCase {
         let eidolon = try await installedEidolon()
         try await eidolon.userQueue.write { db in
             try db.execute(
-                sql: "INSERT INTO conversations(id, character_id, created_at) VALUES ('c1', 'mano', ?)",
+                sql: "INSERT INTO conversations(id, franchise_id, character_id, created_at) VALUES ('c1', 'shiny', 'mano', ?)",
                 arguments: ["2026-10-27T12:00:00.000000Z"]
             )
             try db.execute(
@@ -148,7 +148,7 @@ final class ConversationRecordTests: XCTestCase {
         let eidolon = try await installedEidolon()
         try await eidolon.userQueue.write { db in
             try db.execute(
-                sql: "INSERT INTO conversations(id, character_id, created_at) VALUES ('c1', 'mano', ?)",
+                sql: "INSERT INTO conversations(id, franchise_id, character_id, created_at) VALUES ('c1', 'shiny', 'mano', ?)",
                 arguments: ["2026-10-27T12:00:00.000000Z"]
             )
             try db.execute(
@@ -178,7 +178,7 @@ final class ConversationRecordTests: XCTestCase {
         let eidolon = try await installedEidolon()
         try await eidolon.userQueue.write { db in
             try db.execute(
-                sql: "INSERT INTO conversations(id, character_id, created_at) VALUES ('c1', 'mano', ?)",
+                sql: "INSERT INTO conversations(id, franchise_id, character_id, created_at) VALUES ('c1', 'shiny', 'mano', ?)",
                 arguments: ["2026-10-27T12:00:00Z"]
             )
             try db.execute(
@@ -209,7 +209,7 @@ final class ConversationRecordTests: XCTestCase {
         let eidolon = try await installedEidolon()
         try await eidolon.userQueue.write { db in
             try db.execute(
-                sql: "INSERT INTO conversations(id, character_id, created_at) VALUES ('c1', 'mano', ?)",
+                sql: "INSERT INTO conversations(id, franchise_id, character_id, created_at) VALUES ('c1', 'shiny', 'mano', ?)",
                 arguments: ["2026-10-27T12:00:00.000000Z"]
             )
             try db.execute(

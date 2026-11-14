@@ -2310,8 +2310,8 @@ final class CallSessionTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO conversations(id, character_id, created_at, ended_at)
-                    VALUES ('ended', 'mano', '2026-10-01T00:00:00Z', '2026-10-01T01:00:00Z')
+                    INSERT INTO conversations(id, franchise_id, character_id, created_at, ended_at)
+                    VALUES ('ended', 'shiny', 'mano', '2026-10-01T00:00:00Z', '2026-10-01T01:00:00Z')
                     """
             )
         }

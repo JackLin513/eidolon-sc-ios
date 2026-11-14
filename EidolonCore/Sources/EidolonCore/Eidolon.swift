@@ -31,7 +31,7 @@ public actor Eidolon {
     /// Installed content packages keyed by franchise. Kept in actor state and persisted in
     /// `app_state`; the active package is also mirrored at `Content/current` as a symlink.
     var contentPackages: [String: ContentBundleInfo] = [:]
-    var activeContentFranchise = "shiny"
+    nonisolated(unsafe) var activeContentFranchise = "shiny"
 
     /// The active franchise's Spine stand. There is intentionally no global
     /// `Content/stand`: each franchise owns its own stand package.
@@ -61,6 +61,61 @@ public actor Eidolon {
         cachedStandConfigs = nil
     }
 
+    /// Phase B replaces the user library instead of migrating it (ADR-0037). Keep the old
+    /// file beside the new one so a manual recovery is still possible, then start clean.
+    private static func resetLegacyUserDatabaseIfNeeded(at url: URL) throws {
+        let manager = FileManager.default
+        guard manager.fileExists(atPath: url.path) else { return }
+        let queue = try DatabaseQueue(path: url.path)
+        let version = try queue.read { db in
+            try Int.fetchOne(db, sql: "PRAGMA user_version") ?? 0
+        }
+        try queue.close()
+        guard version > 0, version < UserSchema.version else { return }
+
+        let stamp = Self.backupStamp(Date())
+        var backup = url.deletingLastPathComponent()
+            .appendingPathComponent("\(url.lastPathComponent).bak-\(stamp)")
+        var suffix = 1
+        while manager.fileExists(atPath: backup.path) {
+            backup = backup.deletingLastPathComponent()
+                .appendingPathComponent("\(url.lastPathComponent).bak-\(stamp)-\(suffix)")
+            suffix += 1
+        }
+        try manager.copyItem(at: url, to: backup)
+        for suffix in ["-wal", "-shm"] {
+            let sidecar = URL(fileURLWithPath: url.path + suffix)
+            if manager.fileExists(atPath: sidecar.path) {
+                try? manager.copyItem(
+                    at: sidecar,
+                    to: URL(fileURLWithPath: backup.path + suffix)
+                )
+                try manager.removeItem(at: sidecar)
+            }
+        }
+        try manager.removeItem(at: url)
+
+        // Keep the last three backups; the library can be large and this is a one-shot
+        // escape hatch, not an archive.
+        let prefix = url.lastPathComponent + ".bak-"
+        let backups = try manager.contentsOfDirectory(atPath: url.deletingLastPathComponent().path)
+            .filter { $0.hasPrefix(prefix) }
+            .sorted(by: >)
+        for stale in backups.dropFirst(3) {
+            try? manager.removeItem(
+                at: url.deletingLastPathComponent().appendingPathComponent(stale)
+            )
+        }
+    }
+
+    private static func backupStamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter.string(from: date)
+    }
+
     public init(location: Location) throws {
         self.location = location
         try FileManager.default.createDirectory(
@@ -71,6 +126,7 @@ public actor Eidolon {
             at: location.userDirectory,
             withIntermediateDirectories: true
         )
+        try Self.resetLegacyUserDatabaseIfNeeded(at: location.userDatabase)
         userQueue = try DatabaseQueue(path: location.userDatabase.path)
         try UserSchema.migrate(userQueue)
         try Self.failPendingPhotos(

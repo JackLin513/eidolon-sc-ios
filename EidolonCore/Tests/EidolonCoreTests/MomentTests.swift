@@ -28,8 +28,8 @@ final class MomentTests: XCTestCase {
             let conversation = "conversation-\(character)"
             try db.execute(
                 sql: """
-                    INSERT OR IGNORE INTO conversations(id, character_id, created_at)
-                    VALUES (?, ?, ?)
+                    INSERT OR IGNORE INTO conversations(id, franchise_id, character_id, created_at)
+                    VALUES (?, 'shiny', ?, ?)
                     """,
                 arguments: [conversation, character, Eidolon.timestamp(date)]
             )

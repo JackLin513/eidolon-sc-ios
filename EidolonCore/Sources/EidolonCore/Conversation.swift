@@ -238,7 +238,7 @@ extension Eidolon {
         let catalog = try? GiftCatalog.load(in: location.contentDirectory)
         let herName = (try? characters().first { $0.id == characterID }?.name) ?? "她"
         return try userQueue.read { db in
-            let currentID = try Eidolon.currentConversationID(db, characterID: characterID)
+            let currentID = try Eidolon.currentConversationID(db, franchiseID: activeContentFranchise, characterID: characterID)
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -273,10 +273,10 @@ extension Eidolon {
                          WHERE e.conversation_id = c.id AND e.kind = 'gift'
                          ORDER BY e.created_at DESC, e.id DESC LIMIT 1) AS gift_at
                     FROM conversations c
-                    WHERE c.character_id = ?
+                    WHERE c.franchise_id = ? AND c.character_id = ?
                     ORDER BY (c.id = ?) DESC, c.created_at DESC, c.rowid DESC
                     """,
-                arguments: [characterID, currentID]
+                arguments: [activeContentFranchise, characterID, currentID]
             )
             return rows.compactMap { row -> ConversationSummary? in
                 let records: Int = row["records"]
@@ -382,12 +382,18 @@ extension Eidolon {
             )
         }
         try userQueue.write { db in
-            guard let characterID = try String.fetchOne(
+            guard let owner = try Row.fetchOne(
                 db,
-                sql: "SELECT character_id FROM conversations WHERE id = ?",
+                sql: "SELECT franchise_id, character_id FROM conversations WHERE id = ?",
                 arguments: [id]
             ) else { return }
-            let current = try Eidolon.currentConversationID(db, characterID: characterID)
+            let franchiseID: String = owner["franchise_id"]
+            let characterID: String = owner["character_id"]
+            let current = try Eidolon.currentConversationID(
+                db,
+                franchiseID: franchiseID,
+                characterID: characterID
+            )
             guard current != id else { throw EidolonError.conversationIsCurrent }
             // She remembers what she was told there; the conversation it came from is gone.
             try db.execute(

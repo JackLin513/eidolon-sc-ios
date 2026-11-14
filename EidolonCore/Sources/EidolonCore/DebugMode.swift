@@ -124,7 +124,7 @@ extension Eidolon {
                 sql: "SELECT character_id FROM conversations WHERE id = ?",
                 arguments: [id]
             ), owner == characterID else { return false }
-            try Self.pointCurrentConversation(db, characterID: characterID, id: id)
+            try Self.pointCurrentConversation(db, franchiseID: activeContentFranchise, characterID: characterID, id: id)
             if reopen {
                 try Self.reopen(db, conversationID: id)
             }

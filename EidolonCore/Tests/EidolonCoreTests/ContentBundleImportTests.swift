@@ -449,8 +449,8 @@ final class ContentBundleImportTests: XCTestCase {
         try await queue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO conversations(id, character_id, created_at)
-                    VALUES ('c1', 'mano', '2026-10-01T00:00:00Z')
+                    INSERT INTO conversations(id, franchise_id, character_id, created_at)
+                    VALUES ('c1', 'shiny', 'mano', '2026-10-01T00:00:00Z')
                     """
             )
         }
