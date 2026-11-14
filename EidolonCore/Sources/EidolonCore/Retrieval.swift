@@ -153,14 +153,19 @@ struct RetrievalEngine {
             trace.candidates = memories.candidates
             trace.degradation += memories.degradation
             // A past event between them can be a user memory or an original story
-            // scene. When nothing was written down, adult mode may still recall the
-            // story scene itself — clearly labelled as story, never as a user memory.
-            if memories.text == nil, adultMode {
+            // scene. Adult mode recalls both: the written memory says what happened,
+            // the story scene supplies the concrete detail the summary leaves out.
+            // The scene stays labelled as story, never as a user memory.
+            if adultMode {
                 let intimacy = await intimacySection(query: query, vector: vector)
                 trace.candidates += intimacy.candidates
                 trace.degradation += intimacy.degradation
                 if intimacy.text != nil {
-                    return RetrievalResult(references: intimacy.text, trace: trace)
+                    return RetrievalResult(
+                        references: intimacy.text,
+                        memories: memories.text,
+                        trace: trace
+                    )
                 }
             }
             return RetrievalResult(memories: memories.text, trace: trace)

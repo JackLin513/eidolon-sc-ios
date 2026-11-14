@@ -251,6 +251,52 @@ final class RetrievalTests: XCTestCase {
         XCTAssertFalse(try systemPrompt(allAges).contains("# 回忆中的原作剧情"))
     }
 
+    /// A written memory and the original adult scene are different kinds of past:
+    /// adult mode recalls both, so a thin summary does not erase the concrete scene.
+    func testAdultStorySceneIsAddedToAnExistingMemory() async throws {
+        var options = Fixture.Options()
+        options.manoAge = 20
+        options.hioriAge = 20
+        let eidolon = try await installedEidolon(options)
+        let characters = eidolon.contentDirectory.appendingPathComponent("characters", isDirectory: true)
+        try FileManager.default.createDirectory(at: characters, withIntermediateDirectories: true)
+        try #"{"episodes":["e1"],"routes":{"mano":["e1"]}}"#.write(
+            to: characters.appendingPathComponent("adult_episodes.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let userDatabase = root.appendingPathComponent("app/User/eidolon.sqlite")
+        let queue = try DatabaseQueue(path: userDatabase.path)
+        let vector = [Float]([1, 0, 0, 0])
+        let data = vector.withUnsafeBufferPointer { Data(buffer: $0) }
+        try await queue.write { db in
+            try db.execute(
+                sql: "INSERT INTO memories(id, source_franchise_id, source_character_id, text, created_at) VALUES ('m1', 'shiny', 'mano', '槐很喜欢夜乃桜，想和她做亲密的事，并提到两人上次也做过。', '2026-11-14T00:00:00Z')"
+            )
+            try db.execute(
+                sql: "INSERT INTO memory_vectors(memory_id, model, embedding) VALUES ('m1', 'test-embed', ?)",
+                arguments: [data]
+            )
+        }
+
+        let provider = reply()
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano",
+            text: "この前の夜のこと、覚えてる？",
+            provider: provider,
+            judge: FixedJudge(judged: Judged(level: 2), need: .memories),
+            embedder: FakeEmbedding(vector: [1, 0, 0, 0]),
+            reranker: FakeRerank(scores: [0.9]),
+            adultMode: true
+        ) {}
+        let system = try systemPrompt(provider)
+        XCTAssertTrue(system.contains("# 关于制作人的记忆"))
+        XCTAssertTrue(system.contains("槐很喜欢夜乃桜"))
+        XCTAssertTrue(system.contains("# 回忆中的原作剧情"))
+        XCTAssertTrue(system.contains("真乃的段落"))
+    }
+
     /// A judge that times out or cannot be read still looks references up: upstream's
     /// `retrieval.py` retrieves anyway on `JudgeError`, and only the affinity is left alone.
     func testAFailingJudgeStillLooksReferencesUp() async throws {
