@@ -8,7 +8,7 @@ enum BundledModel3D {
     private struct RawManifest: Decodable {
         struct Character: Decodable {
             let id: String
-            let outfits: [String: [String: String]]
+            let outfits: [String: [String: String?]]
         }
         let characters: [Character]
         let emotionMap: String
@@ -28,7 +28,8 @@ enum BundledModel3D {
     }
 
     static func load() -> (manifest: Model3DManifest, root: URL)? {
-        guard let root = Bundle.main.url(forResource: "Unity3DContent", withExtension: nil),
+        let root = Bundle.main.bundleURL.appendingPathComponent("Unity3DContent", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: root.appendingPathComponent("manifest.json").path),
               let data = try? Data(contentsOf: root.appendingPathComponent("manifest.json")),
               let raw = try? JSONDecoder().decode(RawManifest.self, from: data)
         else { return nil }

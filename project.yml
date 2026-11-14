@@ -23,6 +23,14 @@ targets:
     platform: iOS
     dependencies:
       - package: EidolonCore
+      # Unity as a Library（ADR-0034）。framework 由 spikes/porting-3d/unity-spike 的
+      # iOS 导出构建后拷到这里（不进仓库），缺它时 xcodegen 会报错。
+      # 只 embed、不 link：UaaL 要求 App 启动时不要 dyld 自动加载 UnityFramework，
+      # 否则 Unity 的静态初始化会在 runUI 之前跑，模拟器/真机都会闪退。
+      - framework: EidolonIOS/UnityRuntime/UnityFramework.framework
+        embed: true
+        codeSign: true
+        link: false
     sources:
       - path: EidolonIOS
         excludes:
@@ -30,9 +38,19 @@ targets:
           # 欢迎页（spec #118）的页面和素材要保留目录结构，见下面的 folder reference
           - Resources/WelcomePage
           - Resources/Welcome
+          # Unity 的 Data 目录要保持名字做 folder reference
+          - Resources/Unity
+          # UnityFramework 由上面的 framework dependency 单独嵌入，不走 sources
+          - UnityRuntime
       - path: EidolonIOS/Resources/WelcomePage
         type: folder
       - path: EidolonIOS/Resources/Welcome
+        type: folder
+      # Unity 运行时的 Data 目录（Unity 导出产物拷贝，bundle 根下名为 Data）
+      - path: EidolonIOS/Resources/Unity/Data
+        type: folder
+      # 3D 立绘内容（tools/fetch_unity3d_content.py 产物，bundle 根下名为 Unity3DContent）
+      - path: build/Unity3DContent
         type: folder
       - path: AppIcon.icon
     settings:
@@ -48,6 +66,14 @@ targets:
         # AVFAudio 的安装 tap 会以 Objective-C 异常失败，Swift 接不住；一个 ObjC 兜底
         # 把闪退变成一次失败的恢复。
         SWIFT_OBJC_BRIDGING_HEADER: EidolonIOS/Support/EidolonIOS-Bridging-Header.h
+        # Unity 的 framework 里有 ObjC category，链接时不能把没显式引用的类丢掉
+        OTHER_LDFLAGS: $(inherited) -ObjC
+        FRAMEWORK_SEARCH_PATHS: $(inherited) "$(SRCROOT)/EidolonIOS/UnityRuntime"
+        HEADER_SEARCH_PATHS: $(inherited) "$(SRCROOT)/EidolonIOS/UnityRuntime" "$(SRCROOT)/EidolonIOS/UnityRuntime/UnityFramework.framework/Headers"
+        # Xcode 26 的 Debug dylib 拆分会让 C/ObjC 插件符号（EidolonUnityStart、
+        # _mh_execute_header）在链接阶段找不到；Unity 嵌入走单二进制。
+        ENABLE_DEBUG_DYLIB: NO
+        LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/Frameworks
         # 立绘运行时在构建时从上游 checkout 拷进构建产物（ADR-0017），那个路径在
         # SRCROOT 之外，脚本沙箱会挡住；下面的脚本只读那一个文件。
         ENABLE_USER_SCRIPT_SANDBOXING: NO

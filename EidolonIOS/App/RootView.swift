@@ -31,7 +31,17 @@ struct RootView: View {
                         // Read `phase` directly in the body. Keeping it only inside the
                         // nested content builder left the loading view on screen after the
                         // model became ready.
+                        #if DEBUG
+                        if ProcessInfo.processInfo.environment["EIDOLON_3D_PREVIEW"] == "1" {
+                            NavigationStack {
+                                Model3DPreviewView()
+                            }
+                        } else {
+                            pages(app)
+                        }
+                        #else
                         pages(app)
+                        #endif
                     } else {
                         content(for: app)
                     }

@@ -16,11 +16,23 @@ UnityFramework * _Nullable EidolonUnityLoadFramework(void)
     NSString *path = [[[NSBundle mainBundle] bundlePath]
         stringByAppendingString:@"/Frameworks/UnityFramework.framework"];
     NSBundle *bundle = [NSBundle bundleWithPath:path];
-    if (bundle == nil) return nil;
-    if (![bundle isLoaded]) [bundle load];
+    if (bundle == nil) {
+        NSLog(@"EidolonUnity: no bundle at %@", path);
+        return nil;
+    }
+    if (![bundle isLoaded]) {
+        NSError *error = nil;
+        if (![bundle loadAndReturnError:&error]) {
+            NSLog(@"EidolonUnity: load failed: %@", error);
+            return nil;
+        }
+    }
 
     Class principal = [bundle principalClass];
-    if (principal == Nil) return nil;
+    if (principal == Nil) {
+        NSLog(@"EidolonUnity: no principal class (%@)", bundle);
+        return nil;
+    }
     UnityFramework *framework = [principal getInstance];
     if (framework == nil) return nil;
 

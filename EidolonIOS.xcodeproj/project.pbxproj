@@ -13,13 +13,14 @@
 		03D1D9AFAE21C9348078853C /* ImportGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */; };
 		040D13EBDCF7224BE38785D1 /* GiftsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3FDDF38468E86F1EF7C7A6 /* GiftsView.swift */; };
 		0EFF31521A69C5A7C7949BCB /* DebugRecognition.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCD1CD149AFF0049C2EE0F58 /* DebugRecognition.swift */; };
+		0F4ECB1E83EF9F1FB80F879D /* Model3DPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E67F44BDF2BA0EF6E9C619 /* Model3DPreviewView.swift */; };
 		10BA2565084D529C4152A890 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38579B2A473B296EC588CBD6 /* AppModel.swift */; };
 		113F1FAAA8A9FE0C88AB1FC5 /* AffinityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2D79D1CDB4D74AADF0D731E /* AffinityViews.swift */; };
 		1288A744CB351AACE0271910 /* AdminView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50E17776AF83ACD8BF3E62A1 /* AdminView.swift */; };
 		12A60E7675F7DBC81EDAEAC3 /* ResponsiveLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC906DC4FEA1F6B367320022 /* ResponsiveLayoutTests.swift */; };
-		12D92132984A021B1EBC8FA4 /* globalgamemanagers.assets in Resources */ = {isa = PBXBuildFile; fileRef = 0B069AA4F3607C75B7081FF4 /* globalgamemanagers.assets */; };
 		17CAADABE8FCFE23334C6C09 /* stand.html in Resources */ = {isa = PBXBuildFile; fileRef = C3363DDA773D810C71B70EE3 /* stand.html */; };
 		18C6C6CFCBBB69A854EB81E9 /* CalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17CCE5274F40A022DD05DD08 /* CalendarView.swift */; };
+		2214C6C2819053E7A948FB0A /* UnityFramework.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D0545C01241D0AEDEC370DE5 /* UnityFramework.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		26F5E5C4D4F191FC8B32A126 /* APISettingsSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FB135685AEF80F60C0388E2 /* APISettingsSupport.swift */; };
 		27EE9A61F1EA6DD131D5D03F /* EidolonIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6567288D9C69EE4C18792B6 /* EidolonIOSApp.swift */; };
 		28E1D1F65D00588EA9601DA3 /* TraceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D48DCFB6F0FC0D93BD033FC6 /* TraceListView.swift */; };
@@ -29,16 +30,14 @@
 		2CF24EECC30E051467FA4D35 /* MicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */; };
 		3361C9CBA23EC466560C4FBB /* ChatReadAloud.swift in Sources */ = {isa = PBXBuildFile; fileRef = 699260EC8FFFC02E174467D0 /* ChatReadAloud.swift */; };
 		358B5729124F43B436D1A6DC /* AnchoredConfirmation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F2E8AAA2A4E9E5ECFAA2EC4 /* AnchoredConfirmation.swift */; };
-		35EF934E14EEDCA14B9EAC68 /* boot.config in Resources */ = {isa = PBXBuildFile; fileRef = 067A44C35F5E2A20F2D678A6 /* boot.config */; };
 		3683109ABC50AB71E6D512A8 /* DebugChatProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDB63104EE3509F94360E5EF /* DebugChatProvider.swift */; };
 		36C86D8435661F4A422CF168 /* BarSettingsBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4EC9179658A248DC6D0E540 /* BarSettingsBox.swift */; };
+		399D574E4E8BD1342728962A /* Unity3DContent in Resources */ = {isa = PBXBuildFile; fileRef = 20B9667DC5D1C8ED28428E6D /* Unity3DContent */; };
 		3ACEA71814B49E10B2D97C65 /* CalendarExportController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F246EF28F053EF6D9FF0BD04 /* CalendarExportController.swift */; };
 		3B581C7316F3F7567E6CF0E1 /* StandThumbnails.swift in Sources */ = {isa = PBXBuildFile; fileRef = F51D53D2BDB3163C8344025C /* StandThumbnails.swift */; };
 		400272C1EB5DCE6FA78BBF36 /* MomentsNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4208DA3B81C99D8B53DC32F2 /* MomentsNotifications.swift */; };
 		410F91B39B617580D97D62F3 /* hang-up.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 3426738E4DA43CD7060B7095 /* hang-up.mp3 */; };
-		4210BA1BF9A870634722ECCF /* UnityFramework.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A166862F81D4CCB752B597F9 /* UnityFramework.framework */; };
 		4235DD89FDB9280BFC39D5E1 /* BarCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85A4199D7AAE978829BFEC9 /* BarCanvas.swift */; };
-		4322627B406988114D2937F7 /* global-metadata.dat in Resources */ = {isa = PBXBuildFile; fileRef = 07F22D4C17DE6120276BE92F /* global-metadata.dat */; };
 		4553FBED9DB3008313820C29 /* MomentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A590276F51027472E281D0EB /* MomentsView.swift */; };
 		4712F704044E74983A1AF649 /* CallController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CFD4688849D1738F874DEB1 /* CallController.swift */; };
 		4A89D538AE34E8640D373968 /* AtmosphericTextUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B062B423FB9FC2174A88CBC /* AtmosphericTextUITests.swift */; };
@@ -61,24 +60,21 @@
 		71F921D55D109E8FEB6EBAB6 /* RuntimeAssetPreparation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43B74216E2DDE143A931193D /* RuntimeAssetPreparation.swift */; };
 		71F9D2D2A2CE1C9A213F29AA /* APISettingsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB451726D31E16340EB84E2 /* APISettingsUITests.swift */; };
 		7480ECBFB8B3325B05E57CE5 /* InstalledPackages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93C40CC9B1A19D189C083A96 /* InstalledPackages.swift */; };
-		76176A305EEE6CC7E3036387 /* machine.config in Resources */ = {isa = PBXBuildFile; fileRef = 7E915873D097F16A3E6E6E27 /* machine.config */; };
 		7859A717F01D9B920478FB2B /* RuntimeRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8C081F7E09B0CF99E5767A1 /* RuntimeRegistryTests.swift */; };
 		791DD675A29C48B88185FACE /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE21F722ED79A2089F060B7F /* Theme.swift */; };
 		7986845BDB75EE0FE8CBF9D7 /* PadShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D7048EB4845B500782F5521 /* PadShellView.swift */; };
-		7A12F96FE609F8DE1694DAB9 /* resources.assets in Resources */ = {isa = PBXBuildFile; fileRef = 285B6FE593C90609C404D1F5 /* resources.assets */; };
 		7A94DB09502E6152065DD4B6 /* StatsUsageUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15DDC55C81AD70CE4DA0CE4 /* StatsUsageUITests.swift */; };
 		7DF54D92FD1EBA8B04C3A62A /* PriceEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD8235B33347EA38FBE44410 /* PriceEditorView.swift */; };
-		81D6880520F403264E6CB27F /* sharedassets0.assets in Resources */ = {isa = PBXBuildFile; fileRef = 18F88B15F2D884A4008E550E /* sharedassets0.assets */; };
 		824DC35E99F9349A54482CDD /* PadPageHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01997B4467A6CAB300CC91DF /* PadPageHeader.swift */; };
 		8ABC906B631EDC9CC6BC2529 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 502579B7DFF941BAC28ADE49 /* AppIcon.icon */; };
 		8F700315EAE8C6E59429BD0F /* BarTextBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B8F3B95D300DF671C5E5C20 /* BarTextBox.swift */; };
 		8FD64A54148D89DBDCE6D899 /* UnityCharacterRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10C42827A05CE10C99AE7F6A /* UnityCharacterRenderer.swift */; };
 		8FDA81B5B65A7F24FDDE1659 /* ChatSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730259B31CD6DBF3CA44FC75 /* ChatSettings.swift */; };
 		90BA232DAFE04205D280A5AF /* AffinityCue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A8C4CAB5DC57A55588F5D0 /* AffinityCue.swift */; };
+		90FFCD18A39AD9444D444998 /* Data in Resources */ = {isa = PBXBuildFile; fileRef = 4B2A5B56582CED6D9638149C /* Data */; };
 		9221A0F68F374BAAA5282CCE /* MemoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B94AA6A4C5655585B24D2400 /* MemoryListView.swift */; };
 		92E1F6607762968CB4BD184B /* BarRoomBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B9D77576080818CADE3BD64 /* BarRoomBackground.swift */; };
 		95A9B4AE1A48E3E818365E7A /* ChatModelProfilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13DA6F636E010113BC8F3B10 /* ChatModelProfilesView.swift */; };
-		98333F217ECF9D6DE64CAABD /* mscorlib.dll-resources.dat in Resources */ = {isa = PBXBuildFile; fileRef = 05277436D5DE6B03371C8FFD /* mscorlib.dll-resources.dat */; };
 		99CF59ED1AC1CDDA579652C8 /* BarDoor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22B001CEBA8E13B70A91DA53 /* BarDoor.swift */; };
 		9A5CB0693E72A1A500267358 /* CallBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D6B5CE0ADDE78E895BA3509 /* CallBar.swift */; };
 		9C1DDAAE28F34ADE34D50C28 /* CallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A530040A28709F9772A80A94 /* CallView.swift */; };
@@ -104,24 +100,20 @@
 		BC87F9CD087F5F859E8BADC6 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C010E713ABAD24B1CF59323 /* WelcomeView.swift */; };
 		BDD3DB4CB30CBBD182A9641F /* SettingsCategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = E87C8B8A2D8E59D0162DFD49 /* SettingsCategory.swift */; };
 		BEB47246CC69F57123F84743 /* CREDITS.md in Resources */ = {isa = PBXBuildFile; fileRef = 3E8A9D366A002F554C2BAE80 /* CREDITS.md */; };
-		C0BCB66EB675F41EB4B3A7C3 /* ScriptingAssemblies.json in Resources */ = {isa = PBXBuildFile; fileRef = 0F35A36E8A81E9E159025C8E /* ScriptingAssemblies.json */; };
 		C375B67690EAE8B5B255A1B3 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1FF6012F255268462E4A685 /* Keychain.swift */; };
 		C49847C1C908EFA4FDF3BE9F /* WebSocketSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 909079B25647A871FFBB6DEC /* WebSocketSupport.swift */; };
 		C4A367A529E4989B63B0939E /* AchievementsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC72E9FAE9DD7A41CB65A1D2 /* AchievementsView.swift */; };
 		C5B1C51FBA6F57968A704048 /* StandPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A39D03BFDD50261F07F298 /* StandPreviewView.swift */; };
-		C6D9818584C7EA4A186F7DE5 /* RuntimeInitializeOnLoads.json in Resources */ = {isa = PBXBuildFile; fileRef = 5EE5BABCFB9FADBCBFC2C618 /* RuntimeInitializeOnLoads.json */; };
 		C7D9B29CBBADC895872095A7 /* TexturedAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D7CC6AFCA2A05909641B10 /* TexturedAudio.swift */; };
 		C9418CA5E2FAA0A0E6083783 /* IPadVisualQATests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AF8B84DD1643FCB76955FF4 /* IPadVisualQATests.swift */; };
 		CABF61FA71D8DD24099824B3 /* ConversationHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */; };
 		CBF5FF776C62201A4CD83E96 /* MomentsBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C1B7F88E7F97D4335F2722 /* MomentsBackground.swift */; };
-		CCA30FAEE05A2E249F2FCDEE /* sharedassets0.assets.resS in Resources */ = {isa = PBXBuildFile; fileRef = B8B424C607A6DEE723BEA97A /* sharedassets0.assets.resS */; };
 		CD54EB8286C493A259743A6D /* SpeechPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362E0BAAF16B958F406E1E08 /* SpeechPlayback.swift */; };
 		CE00D8377D2438104442130D /* APISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CB7C29B8A1FAC27F45659C8 /* APISettingsView.swift */; };
 		CE87D4AD7E46D813BFAA4BC5 /* CallTypingUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98D2780F46613402EB78186A /* CallTypingUITests.swift */; };
 		CE9A6DFCD019D9A5DEBFC3CA /* BarPixelViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D2BD6185831DEBBED2FA62 /* BarPixelViews.swift */; };
 		CF99DB2C76A1A363E3D2BC16 /* BarRecipeBookView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71EFAE07EB12013AF146132A /* BarRecipeBookView.swift */; };
 		D080D9792F63EBF71440173B /* EidolonCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0BE53CDEEF5BB1E157A83EC1 /* EidolonCore */; };
-		D4CA2376FF47D32AABB09D8A /* System.Data.dll-resources.dat in Resources */ = {isa = PBXBuildFile; fileRef = EE0E90F938BD4BDEECD1BFCC /* System.Data.dll-resources.dat */; };
 		D7B2DC33734343A4F40D315A /* OutfitPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD7263A570545913D16486F1 /* OutfitPickerView.swift */; };
 		D87D5EF9B85BB39DEBD561FB /* FishSynthesis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4472CA53E92E225069B1D652 /* FishSynthesis.swift */; };
 		DAA3C813C467A0A802E9C937 /* PlayHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9642E415565176749C5D2D54 /* PlayHubView.swift */; };
@@ -130,7 +122,6 @@
 		DD71BA887B65B9DB3F0EA811 /* IPadLayoutUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58B5AE82D249A57CCA6241E0 /* IPadLayoutUITests.swift */; };
 		DFEDA5AE595B6BB38AC01901 /* UsageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AB00E0F6C271881DC4146E4 /* UsageView.swift */; };
 		E0F9B1FA2BA982860CDD2BC3 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A72BB12039666C937D7C04 /* RootView.swift */; };
-		E2CE98DD3BB86ABA51B920A4 /* Newtonsoft.Json.dll-resources.dat in Resources */ = {isa = PBXBuildFile; fileRef = AC2E2B7C200DBEE1B68378A9 /* Newtonsoft.Json.dll-resources.dat */; };
 		E2EE3E8C40ADA68473627FF6 /* ChatModelProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7508D45E23FF27B4AE122CC4 /* ChatModelProfile.swift */; };
 		EBC8CB3D63C4FABFAD6E6D0A /* StaticStandPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B4DF02DD2DE872922E1B01D /* StaticStandPreviewView.swift */; };
 		EF42004562B67CC87DFCF565 /* StandWebRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1AD0F6ABD451EB0C733277C /* StandWebRenderer.swift */; };
@@ -140,7 +131,6 @@
 		FA5A10686839158B2C50E21D /* BarCounter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38B53BAD43DC896CF33D1635 /* BarCounter.swift */; };
 		FB74EA11C1B5E34D38ED3937 /* ChatStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA937E9DC437925E1DD0673 /* ChatStore.swift */; };
 		FDB0475CDE701EBBE395CFFE /* ChatSelectionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CCFC142CC2535CA115A8402 /* ChatSelectionUITests.swift */; };
-		FDCBCC2B9216C7D0A58EE953 /* System.Drawing.dll-resources.dat in Resources */ = {isa = PBXBuildFile; fileRef = 05350607F0D0A977B6EB6837 /* System.Drawing.dll-resources.dat */; };
 		FE5F343DF7059BBB3A98E62E /* StandSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74AACADEE8C7E3D7A4110BBE /* StandSchemeHandler.swift */; };
 		FED6BF63726F8C9A78FA2904 /* ServerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25EADDCE295E792E851FB175 /* ServerStore.swift */; };
 		FEE4C80D7EE15887A588B5CF /* ResponsiveLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C201821210A65ADA3F817BC /* ResponsiveLayout.swift */; };
@@ -170,7 +160,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				4210BA1BF9A870634722ECCF /* UnityFramework.framework in Embed Frameworks */,
+				2214C6C2819053E7A948FB0A /* UnityFramework.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -180,15 +170,9 @@
 /* Begin PBXFileReference section */
 		01997B4467A6CAB300CC91DF /* PadPageHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PadPageHeader.swift; sourceTree = "<group>"; };
 		04FF4244E9E83A9501C1F19E /* EidolonCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = EidolonCore; path = EidolonCore; sourceTree = SOURCE_ROOT; };
-		05277436D5DE6B03371C8FFD /* mscorlib.dll-resources.dat */ = {isa = PBXFileReference; path = "mscorlib.dll-resources.dat"; sourceTree = "<group>"; };
-		05350607F0D0A977B6EB6837 /* System.Drawing.dll-resources.dat */ = {isa = PBXFileReference; path = "System.Drawing.dll-resources.dat"; sourceTree = "<group>"; };
-		067A44C35F5E2A20F2D678A6 /* boot.config */ = {isa = PBXFileReference; path = boot.config; sourceTree = "<group>"; };
-		07F22D4C17DE6120276BE92F /* global-metadata.dat */ = {isa = PBXFileReference; path = "global-metadata.dat"; sourceTree = "<group>"; };
 		0AC4514900E27D78D28C2726 /* EidolonIOSTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = EidolonIOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		0B069AA4F3607C75B7081FF4 /* globalgamemanagers.assets */ = {isa = PBXFileReference; path = globalgamemanagers.assets; sourceTree = "<group>"; };
 		0CE28259DA40B1838D61EE57 /* MomentsProvidersFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MomentsProvidersFactory.swift; sourceTree = "<group>"; };
 		0E396CD6E4C64449524CEC32 /* EidolonIOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = EidolonIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		0F35A36E8A81E9E159025C8E /* ScriptingAssemblies.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = ScriptingAssemblies.json; sourceTree = "<group>"; };
 		10C42827A05CE10C99AE7F6A /* UnityCharacterRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnityCharacterRenderer.swift; sourceTree = "<group>"; };
 		13DA6F636E010113BC8F3B10 /* ChatModelProfilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModelProfilesView.swift; sourceTree = "<group>"; };
 		1455C4FC60895CD0C8697546 /* IPadCallLayoutUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPadCallLayoutUITests.swift; sourceTree = "<group>"; };
@@ -196,13 +180,12 @@
 		17A409D36FC5F7C23FD61FFB /* BarTutorialUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarTutorialUITests.swift; sourceTree = "<group>"; };
 		17CCE5274F40A022DD05DD08 /* CalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarView.swift; sourceTree = "<group>"; };
 		189051D482A540C18583A79E /* CyclesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CyclesView.swift; sourceTree = "<group>"; };
-		18F88B15F2D884A4008E550E /* sharedassets0.assets */ = {isa = PBXFileReference; path = sharedassets0.assets; sourceTree = "<group>"; };
 		1C41FC4F60852CC263CFA152 /* EidolonIOSUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = EidolonIOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1CF86EEEA308C3E11B958AE8 /* Welcome */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Welcome; path = EidolonIOS/Resources/Welcome; sourceTree = SOURCE_ROOT; };
 		206921654182FEC10EDD1B36 /* DebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugView.swift; sourceTree = "<group>"; };
+		20B9667DC5D1C8ED28428E6D /* Unity3DContent */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Unity3DContent; path = build/Unity3DContent; sourceTree = SOURCE_ROOT; };
 		22B001CEBA8E13B70A91DA53 /* BarDoor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarDoor.swift; sourceTree = "<group>"; };
 		25EADDCE295E792E851FB175 /* ServerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerStore.swift; sourceTree = "<group>"; };
-		285B6FE593C90609C404D1F5 /* resources.assets */ = {isa = PBXFileReference; path = resources.assets; sourceTree = "<group>"; };
 		2B4DF02DD2DE872922E1B01D /* StaticStandPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaticStandPreviewView.swift; sourceTree = "<group>"; };
 		2BC1C76197EA58E3C032BD1E /* WelcomePage */ = {isa = PBXFileReference; lastKnownFileType = folder; name = WelcomePage; path = EidolonIOS/Resources/WelcomePage; sourceTree = SOURCE_ROOT; };
 		2CCFC142CC2535CA115A8402 /* ChatSelectionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSelectionUITests.swift; sourceTree = "<group>"; };
@@ -217,15 +200,14 @@
 		3B062B423FB9FC2174A88CBC /* AtmosphericTextUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtmosphericTextUITests.swift; sourceTree = "<group>"; };
 		3CB7C29B8A1FAC27F45659C8 /* APISettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APISettingsView.swift; sourceTree = "<group>"; };
 		3E8A9D366A002F554C2BAE80 /* CREDITS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CREDITS.md; sourceTree = "<group>"; };
-		4099E0E81B6666893746F837 /* unity default resources */ = {isa = PBXFileReference; path = "unity default resources"; sourceTree = "<group>"; };
 		415CF7C1B34DCFEAC8E9F8DF /* Runtime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runtime.swift; sourceTree = "<group>"; };
 		417CE4303E61BC3BC3A1CC0B /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
 		4208DA3B81C99D8B53DC32F2 /* MomentsNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MomentsNotifications.swift; sourceTree = "<group>"; };
-		42DD0EA5D88C021794DFCDE1 /* globalgamemanagers */ = {isa = PBXFileReference; path = globalgamemanagers; sourceTree = "<group>"; };
 		43B74216E2DDE143A931193D /* RuntimeAssetPreparation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeAssetPreparation.swift; sourceTree = "<group>"; };
 		4472CA53E92E225069B1D652 /* FishSynthesis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FishSynthesis.swift; sourceTree = "<group>"; };
 		48F47E892DE490E8FC25FBAE /* EnvImportPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvImportPreviewView.swift; sourceTree = "<group>"; };
 		4AB451726D31E16340EB84E2 /* APISettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APISettingsUITests.swift; sourceTree = "<group>"; };
+		4B2A5B56582CED6D9638149C /* Data */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Data; path = EidolonIOS/Resources/Unity/Data; sourceTree = SOURCE_ROOT; };
 		4D6B5CE0ADDE78E895BA3509 /* CallBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallBar.swift; sourceTree = "<group>"; };
 		4F2E8AAA2A4E9E5ECFAA2EC4 /* AnchoredConfirmation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnchoredConfirmation.swift; sourceTree = "<group>"; };
 		502579B7DFF941BAC28ADE49 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
@@ -234,14 +216,12 @@
 		58B5AE82D249A57CCA6241E0 /* IPadLayoutUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPadLayoutUITests.swift; sourceTree = "<group>"; };
 		5AB00E0F6C271881DC4146E4 /* UsageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageView.swift; sourceTree = "<group>"; };
 		5CFD4688849D1738F874DEB1 /* CallController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallController.swift; sourceTree = "<group>"; };
-		5EE5BABCFB9FADBCBFC2C618 /* RuntimeInitializeOnLoads.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = RuntimeInitializeOnLoads.json; sourceTree = "<group>"; };
 		68007D7CBD92A33E2B3D28B0 /* ringback.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = ringback.mp3; sourceTree = "<group>"; };
 		699260EC8FFFC02E174467D0 /* ChatReadAloud.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatReadAloud.swift; sourceTree = "<group>"; };
 		6B79958807A1701A36095FD4 /* EidolonIOS-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "EidolonIOS-Bridging-Header.h"; sourceTree = "<group>"; };
 		6B9D77576080818CADE3BD64 /* BarRoomBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarRoomBackground.swift; sourceTree = "<group>"; };
 		6BD3CDDF9E21C813CACA8FB4 /* CallSettingsError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallSettingsError.swift; sourceTree = "<group>"; };
 		6DA937E9DC437925E1DD0673 /* ChatStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStore.swift; sourceTree = "<group>"; };
-		7025F2A3BD709EA3857B3C5A /* level0 */ = {isa = PBXFileReference; path = level0; sourceTree = "<group>"; };
 		71934BAD4C67636EC0DCD9F1 /* PlayUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayUITests.swift; sourceTree = "<group>"; };
 		71D2032E87DE5362BA1B759F /* DebugTurnContextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugTurnContextView.swift; sourceTree = "<group>"; };
 		71EFAE07EB12013AF146132A /* BarRecipeBookView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarRecipeBookView.swift; sourceTree = "<group>"; };
@@ -252,16 +232,15 @@
 		77736DA8D3A8B0B2407A626B /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		77D2BD6185831DEBBED2FA62 /* BarPixelViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarPixelViews.swift; sourceTree = "<group>"; };
 		78A39D03BFDD50261F07F298 /* StandPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandPreviewView.swift; sourceTree = "<group>"; };
+		79E67F44BDF2BA0EF6E9C619 /* Model3DPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model3DPreviewView.swift; sourceTree = "<group>"; };
 		7B8F3B95D300DF671C5E5C20 /* BarTextBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarTextBox.swift; sourceTree = "<group>"; };
 		7C010E713ABAD24B1CF59323 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		7D7048EB4845B500782F5521 /* PadShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PadShellView.swift; sourceTree = "<group>"; };
 		7DEECBE8C241DB48E9C36665 /* UnityStandBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = UnityStandBridge.h; sourceTree = "<group>"; };
-		7E915873D097F16A3E6E6E27 /* machine.config */ = {isa = PBXFileReference; path = machine.config; sourceTree = "<group>"; };
 		7ED185E2B0C0A4ACCA675C47 /* ImportGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportGuideView.swift; sourceTree = "<group>"; };
 		7F3FDDF38468E86F1EF7C7A6 /* GiftsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GiftsView.swift; sourceTree = "<group>"; };
 		7FB135685AEF80F60C0388E2 /* APISettingsSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APISettingsSupport.swift; sourceTree = "<group>"; };
 		805B1BB0D7E3061C6B957E32 /* ProducerProfileUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProducerProfileUITests.swift; sourceTree = "<group>"; };
-		8249805B37BEAF52AA7AB222 /* unity_builtin_extra */ = {isa = PBXFileReference; path = unity_builtin_extra; sourceTree = "<group>"; };
 		889A8316C35EBB240F4D78A2 /* BarGuest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarGuest.swift; sourceTree = "<group>"; };
 		8AF8B84DD1643FCB76955FF4 /* IPadVisualQATests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPadVisualQATests.swift; sourceTree = "<group>"; };
 		8C201821210A65ADA3F817BC /* ResponsiveLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponsiveLayout.swift; sourceTree = "<group>"; };
@@ -274,20 +253,17 @@
 		98D2780F46613402EB78186A /* CallTypingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallTypingUITests.swift; sourceTree = "<group>"; };
 		99E7A44F5D7CA42424055A76 /* StatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsView.swift; sourceTree = "<group>"; };
 		9F578A9048CFEEA99905CC19 /* BailianRecognition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BailianRecognition.swift; sourceTree = "<group>"; };
-		A166862F81D4CCB752B597F9 /* UnityFramework.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = UnityFramework.framework; sourceTree = "<group>"; };
 		A2D79D1CDB4D74AADF0D731E /* AffinityViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AffinityViews.swift; sourceTree = "<group>"; };
 		A3A3CDE40EDED61EECF1DBF1 /* BarJukeboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarJukeboxView.swift; sourceTree = "<group>"; };
 		A3D7CC6AFCA2A05909641B10 /* TexturedAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TexturedAudio.swift; sourceTree = "<group>"; };
 		A530040A28709F9772A80A94 /* CallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallView.swift; sourceTree = "<group>"; };
 		A590276F51027472E281D0EB /* MomentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MomentsView.swift; sourceTree = "<group>"; };
 		A8C081F7E09B0CF99E5767A1 /* RuntimeRegistryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeRegistryTests.swift; sourceTree = "<group>"; };
-		AC2E2B7C200DBEE1B68378A9 /* Newtonsoft.Json.dll-resources.dat */ = {isa = PBXFileReference; path = "Newtonsoft.Json.dll-resources.dat"; sourceTree = "<group>"; };
 		AD8235B33347EA38FBE44410 /* PriceEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PriceEditorView.swift; sourceTree = "<group>"; };
 		B1AD0F6ABD451EB0C733277C /* StandWebRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandWebRenderer.swift; sourceTree = "<group>"; };
 		B230C45C048DF8D016D1E013 /* ConversationHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationHistoryView.swift; sourceTree = "<group>"; };
 		B3E123E7FAC64C8170D6CDFE /* ScheduleCycleUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleCycleUITests.swift; sourceTree = "<group>"; };
 		B4EC9179658A248DC6D0E540 /* BarSettingsBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarSettingsBox.swift; sourceTree = "<group>"; };
-		B8B424C607A6DEE723BEA97A /* sharedassets0.assets.resS */ = {isa = PBXFileReference; path = sharedassets0.assets.resS; sourceTree = "<group>"; };
 		B94AA6A4C5655585B24D2400 /* MemoryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryListView.swift; sourceTree = "<group>"; };
 		BD7263A570545913D16486F1 /* OutfitPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutfitPickerView.swift; sourceTree = "<group>"; };
 		BDB63104EE3509F94360E5EF /* DebugChatProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugChatProvider.swift; sourceTree = "<group>"; };
@@ -299,6 +275,7 @@
 		C85A4199D7AAE978829BFEC9 /* BarCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarCanvas.swift; sourceTree = "<group>"; };
 		CE21F722ED79A2089F060B7F /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		CE4CA93A98A82A36915C5E19 /* CallTonesPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallTonesPlayer.swift; sourceTree = "<group>"; };
+		D0545C01241D0AEDEC370DE5 /* UnityFramework.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UnityFramework.framework; path = EidolonIOS/UnityRuntime/UnityFramework.framework; sourceTree = "<group>"; };
 		D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneCapture.swift; sourceTree = "<group>"; };
 		D3FD60D136AC80DDE9C750A6 /* APIModelPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIModelPicker.swift; sourceTree = "<group>"; };
 		D48DCFB6F0FC0D93BD033FC6 /* TraceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceListView.swift; sourceTree = "<group>"; };
@@ -316,7 +293,6 @@
 		E95BF2FA018AF3E7B92AABD6 /* MainTabsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabsView.swift; sourceTree = "<group>"; };
 		EC906DC4FEA1F6B367320022 /* ResponsiveLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponsiveLayoutTests.swift; sourceTree = "<group>"; };
 		ECB07A2B2F018E55A2EDE3A3 /* AnnouncementsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncementsView.swift; sourceTree = "<group>"; };
-		EE0E90F938BD4BDEECD1BFCC /* System.Data.dll-resources.dat */ = {isa = PBXFileReference; path = "System.Data.dll-resources.dat"; sourceTree = "<group>"; };
 		F1FF6012F255268462E4A685 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		F246EF28F053EF6D9FF0BD04 /* CalendarExportController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarExportController.swift; sourceTree = "<group>"; };
 		F4A469720C393AAAFE8185A4 /* MainTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTab.swift; sourceTree = "<group>"; };
@@ -365,22 +341,12 @@
 			path = Welcome;
 			sourceTree = "<group>";
 		};
-		111D3FCCB061F4C68D5625DD /* Data */ = {
+		125823516DCE6217638C875F /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				067A44C35F5E2A20F2D678A6 /* boot.config */,
-				42DD0EA5D88C021794DFCDE1 /* globalgamemanagers */,
-				0B069AA4F3607C75B7081FF4 /* globalgamemanagers.assets */,
-				7025F2A3BD709EA3857B3C5A /* level0 */,
-				285B6FE593C90609C404D1F5 /* resources.assets */,
-				5EE5BABCFB9FADBCBFC2C618 /* RuntimeInitializeOnLoads.json */,
-				0F35A36E8A81E9E159025C8E /* ScriptingAssemblies.json */,
-				18F88B15F2D884A4008E550E /* sharedassets0.assets */,
-				B8B424C607A6DEE723BEA97A /* sharedassets0.assets.resS */,
-				BBF6A1EA6CE665362A13BE5F /* Managed */,
-				41DD91272EF6B385879481EE /* Resources */,
+				D0545C01241D0AEDEC370DE5 /* UnityFramework.framework */,
 			);
-			path = Data;
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 		1963BD6A440B8224EF15AAED /* Play */ = {
@@ -408,10 +374,12 @@
 			isa = PBXGroup;
 			children = (
 				502579B7DFF941BAC28ADE49 /* AppIcon.icon */,
+				6FB1F714B625135221B942E1 /* build */,
 				8428DAC951AA7D13E5248556 /* EidolonIOS */,
 				40DE607C4C0C77A5EDEF7DFC /* EidolonIOSTests */,
 				991D60CA2AEEBFDA342B90D9 /* EidolonIOSUITests */,
 				ED13E42C912E265F1EE4F490 /* Packages */,
+				125823516DCE6217638C875F /* Frameworks */,
 				D74BC4D4FEFFE9A287143AFF /* Products */,
 			);
 			sourceTree = "<group>";
@@ -428,14 +396,6 @@
 			path = Support;
 			sourceTree = "<group>";
 		};
-		3D361E48C0F6A49D0B6017C8 /* 4.0 */ = {
-			isa = PBXGroup;
-			children = (
-				7E915873D097F16A3E6E6E27 /* machine.config */,
-			);
-			path = 4.0;
-			sourceTree = "<group>";
-		};
 		40DE607C4C0C77A5EDEF7DFC /* EidolonIOSTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -443,23 +403,6 @@
 				A8C081F7E09B0CF99E5767A1 /* RuntimeRegistryTests.swift */,
 			);
 			path = EidolonIOSTests;
-			sourceTree = "<group>";
-		};
-		41DD91272EF6B385879481EE /* Resources */ = {
-			isa = PBXGroup;
-			children = (
-				4099E0E81B6666893746F837 /* unity default resources */,
-				8249805B37BEAF52AA7AB222 /* unity_builtin_extra */,
-			);
-			path = Resources;
-			sourceTree = "<group>";
-		};
-		41ECDC08C3BDAA5AF4243704 /* UnityRuntime */ = {
-			isa = PBXGroup;
-			children = (
-				A166862F81D4CCB752B597F9 /* UnityFramework.framework */,
-			);
-			path = UnityRuntime;
 			sourceTree = "<group>";
 		};
 		4EB1ECB7DD9E2A371CAEF70A /* Conversations */ = {
@@ -512,15 +455,12 @@
 			path = Features;
 			sourceTree = "<group>";
 		};
-		6A9D8669D5B2F1305CAC5F3D /* Resources */ = {
+		6FB1F714B625135221B942E1 /* build */ = {
 			isa = PBXGroup;
 			children = (
-				05277436D5DE6B03371C8FFD /* mscorlib.dll-resources.dat */,
-				AC2E2B7C200DBEE1B68378A9 /* Newtonsoft.Json.dll-resources.dat */,
-				EE0E90F938BD4BDEECD1BFCC /* System.Data.dll-resources.dat */,
-				05350607F0D0A977B6EB6837 /* System.Drawing.dll-resources.dat */,
+				20B9667DC5D1C8ED28428E6D /* Unity3DContent */,
 			);
-			path = Resources;
+			path = build;
 			sourceTree = "<group>";
 		};
 		7C3354A50873374D4CA6E7BE /* Resources */ = {
@@ -535,14 +475,6 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
-		820594B347461E85B0FEE6A7 /* mono */ = {
-			isa = PBXGroup;
-			children = (
-				3D361E48C0F6A49D0B6017C8 /* 4.0 */,
-			);
-			path = mono;
-			sourceTree = "<group>";
-		};
 		8428DAC951AA7D13E5248556 /* EidolonIOS */ = {
 			isa = PBXGroup;
 			children = (
@@ -552,7 +484,6 @@
 				7C3354A50873374D4CA6E7BE /* Resources */,
 				A39B2FF0A039534C308AE3C7 /* Runtime */,
 				3B4679FF0157C32A8AAEE9E6 /* Support */,
-				41ECDC08C3BDAA5AF4243704 /* UnityRuntime */,
 			);
 			path = EidolonIOS;
 			sourceTree = "<group>";
@@ -576,7 +507,7 @@
 		8B582085F38F841FA6692DBE /* Unity */ = {
 			isa = PBXGroup;
 			children = (
-				111D3FCCB061F4C68D5625DD /* Data */,
+				4B2A5B56582CED6D9638149C /* Data */,
 			);
 			path = Unity;
 			sourceTree = "<group>";
@@ -639,14 +570,6 @@
 			path = Import;
 			sourceTree = "<group>";
 		};
-		9C211B17AC4FC1C7E4D1FE21 /* Metadata */ = {
-			isa = PBXGroup;
-			children = (
-				07F22D4C17DE6120276BE92F /* global-metadata.dat */,
-			);
-			path = Metadata;
-			sourceTree = "<group>";
-		};
 		A03C8252AFD0E637325A2848 /* App */ = {
 			isa = PBXGroup;
 			children = (
@@ -697,6 +620,7 @@
 		B55329AEDA18D27997833A55 /* Stand */ = {
 			isa = PBXGroup;
 			children = (
+				79E67F44BDF2BA0EF6E9C619 /* Model3DPreviewView.swift */,
 				BD7263A570545913D16486F1 /* OutfitPickerView.swift */,
 				78A39D03BFDD50261F07F298 /* StandPreviewView.swift */,
 				C5B65BE210B02CA6A488C94D /* StandRenderer.swift */,
@@ -727,16 +651,6 @@
 				74FD1739419C49E74E2FE9D0 /* BarVisitState.swift */,
 			);
 			path = Bar;
-			sourceTree = "<group>";
-		};
-		BBF6A1EA6CE665362A13BE5F /* Managed */ = {
-			isa = PBXGroup;
-			children = (
-				9C211B17AC4FC1C7E4D1FE21 /* Metadata */,
-				820594B347461E85B0FEE6A7 /* mono */,
-				6A9D8669D5B2F1305CAC5F3D /* Resources */,
-			);
-			path = Managed;
 			sourceTree = "<group>";
 		};
 		C44CE4BCACA1463866B9EC0D /* Server */ = {
@@ -936,24 +850,13 @@
 			files = (
 				8ABC906B631EDC9CC6BC2529 /* AppIcon.icon in Resources */,
 				BEB47246CC69F57123F84743 /* CREDITS.md in Resources */,
-				E2CE98DD3BB86ABA51B920A4 /* Newtonsoft.Json.dll-resources.dat in Resources */,
-				C6D9818584C7EA4A186F7DE5 /* RuntimeInitializeOnLoads.json in Resources */,
-				C0BCB66EB675F41EB4B3A7C3 /* ScriptingAssemblies.json in Resources */,
-				D4CA2376FF47D32AABB09D8A /* System.Data.dll-resources.dat in Resources */,
-				FDCBCC2B9216C7D0A58EE953 /* System.Drawing.dll-resources.dat in Resources */,
+				90FFCD18A39AD9444D444998 /* Data in Resources */,
+				399D574E4E8BD1342728962A /* Unity3DContent in Resources */,
 				9D20EB7BB99D127FE839428F /* Welcome in Resources */,
 				6C4B4B8A22647306C000071F /* WelcomePage in Resources */,
-				35EF934E14EEDCA14B9EAC68 /* boot.config in Resources */,
 				502DA124FF6C85F5C69F0991 /* connect.m4a in Resources */,
-				4322627B406988114D2937F7 /* global-metadata.dat in Resources */,
-				12D92132984A021B1EBC8FA4 /* globalgamemanagers.assets in Resources */,
 				410F91B39B617580D97D62F3 /* hang-up.mp3 in Resources */,
-				76176A305EEE6CC7E3036387 /* machine.config in Resources */,
-				98333F217ECF9D6DE64CAABD /* mscorlib.dll-resources.dat in Resources */,
-				7A12F96FE609F8DE1694DAB9 /* resources.assets in Resources */,
 				DC64850F614BE98D316D7D08 /* ringback.mp3 in Resources */,
-				81D6880520F403264E6CB27F /* sharedassets0.assets in Resources */,
-				CCA30FAEE05A2E249F2FCDEE /* sharedassets0.assets.resS in Resources */,
 				6ADC1F5313FCC7F5003E1676 /* stand-player.js in Resources */,
 				17CAADABE8FCFE23334C6C09 /* stand.html in Resources */,
 			);
@@ -1055,6 +958,7 @@
 				4F12150EAE57B5502068B36B /* MainTabsView.swift in Sources */,
 				9221A0F68F374BAAA5282CCE /* MemoryListView.swift in Sources */,
 				2CF24EECC30E051467FA4D35 /* MicrophoneCapture.swift in Sources */,
+				0F4ECB1E83EF9F1FB80F879D /* Model3DPreviewView.swift in Sources */,
 				CBF5FF776C62201A4CD83E96 /* MomentsBackground.swift in Sources */,
 				400272C1EB5DCE6FA78BBF36 /* MomentsNotifications.swift in Sources */,
 				006814D0C420AED5E64C35B7 /* MomentsProvidersFactory.swift in Sources */,
@@ -1160,13 +1064,17 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = FF7NMQWZKK;
+				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = EidolonIOS/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited) \"$(SRCROOT)/EidolonIOS/UnityRuntime\"",
+					"\"EidolonIOS/UnityRuntime\"",
 				);
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = "$(inherited) \"$(SRCROOT)/EidolonIOS/UnityRuntime\" \"$(SRCROOT)/EidolonIOS/UnityRuntime/UnityFramework.framework/Headers\"";
+				INFOPLIST_FILE = EidolonIOS/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				OTHER_LDFLAGS = "$(inherited) -ObjC";
 				PRODUCT_BUNDLE_IDENTIFIER = com.jacklin.eidolon;
 				PRODUCT_NAME = Eidolon;
 				SDKROOT = iphoneos;
@@ -1362,13 +1270,17 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = FF7NMQWZKK;
+				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = EidolonIOS/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited) \"$(SRCROOT)/EidolonIOS/UnityRuntime\"",
+					"\"EidolonIOS/UnityRuntime\"",
 				);
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = "$(inherited) \"$(SRCROOT)/EidolonIOS/UnityRuntime\" \"$(SRCROOT)/EidolonIOS/UnityRuntime/UnityFramework.framework/Headers\"";
+				INFOPLIST_FILE = EidolonIOS/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				OTHER_LDFLAGS = "$(inherited) -ObjC";
 				PRODUCT_BUNDLE_IDENTIFIER = com.jacklin.eidolon;
 				PRODUCT_NAME = Eidolon;
 				SDKROOT = iphoneos;
