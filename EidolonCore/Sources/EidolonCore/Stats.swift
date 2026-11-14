@@ -197,13 +197,14 @@ extension Eidolon {
                            'turn' AS kind, 0 AS liked, NULL AS gift_id
                     FROM messages m
                     JOIN conversations c ON c.id = m.conversation_id
-                    WHERE m.role = 'user'
+                    WHERE c.franchise_id = ? AND m.role = 'user'
                     UNION ALL
                     SELECT c.character_id, e.created_at, 'gift', COALESCE(e.liked, 0), e.gift_id
                     FROM conversation_events e
                     JOIN conversations c ON c.id = e.conversation_id
-                    WHERE e.kind = 'gift'
-                    """
+                    WHERE c.franchise_id = ? AND e.kind = 'gift'
+                    """,
+                arguments: [activeContentFranchise, activeContentFranchise]
             ).compactMap { row -> ContactRow? in
                 guard let at = Self.parseTimestamp(row["at"]) else { return nil }
                 return ContactRow(
@@ -218,8 +219,9 @@ extension Eidolon {
                            COALESCE(k.duration_s, 0) AS seconds
                     FROM call_ends k
                     JOIN conversations c ON c.id = k.conversation_id
-                    WHERE k.connected_at IS NOT NULL
-                    """
+                    WHERE c.franchise_id = ? AND k.connected_at IS NOT NULL
+                    """,
+                arguments: [activeContentFranchise]
             ).compactMap { row -> CallRow? in
                 guard let at = Self.parseTimestamp(row["at"]) else { return nil }
                 return CallRow(
@@ -232,17 +234,20 @@ extension Eidolon {
                     SELECT character_id, MIN(at) AS first FROM (
                         SELECT c.character_id AS character_id, m.created_at AS at
                         FROM messages m JOIN conversations c ON c.id = m.conversation_id
+                        WHERE c.franchise_id = ?
                         UNION ALL
                         SELECT c.character_id, e.created_at
                         FROM conversation_events e
                         JOIN conversations c ON c.id = e.conversation_id
+                        WHERE c.franchise_id = ?
                         UNION ALL
                         SELECT c.character_id, k.connected_at
                         FROM call_ends k
                         JOIN conversations c ON c.id = k.conversation_id
-                        WHERE k.connected_at IS NOT NULL
+                        WHERE c.franchise_id = ? AND k.connected_at IS NOT NULL
                     ) GROUP BY character_id
-                    """
+                    """,
+                arguments: [activeContentFranchise, activeContentFranchise, activeContentFranchise]
             )
             var firstByCharacter: [String: Date] = [:]
             var first: Date?
@@ -252,7 +257,8 @@ extension Eidolon {
                 if first == nil || at < first! { first = at }
             }
             let stages = try Int.fetchOne(
-                db, sql: "SELECT COUNT(*) FROM achievement_stages"
+                db, sql: "SELECT COUNT(*) FROM achievement_stages WHERE franchise_id = ?",
+                arguments: [activeContentFranchise]
             ) ?? 0
             let complete = try Int.fetchOne(
                 db,
@@ -431,34 +437,39 @@ extension Eidolon {
         return try userQueue.read { db in
             let posts = try Int.fetchOne(
                 db,
-                sql: "SELECT COUNT(*) FROM moment_posts WHERE reveal_at >= ? AND reveal_at <= ?",
-                arguments: [fromStamp, toStamp]
+                sql: """
+                    SELECT COUNT(*) FROM moment_posts
+                    WHERE franchise_id = ? AND reveal_at >= ? AND reveal_at <= ?
+                    """,
+                arguments: [activeContentFranchise, fromStamp, toStamp]
             ) ?? 0
             let replies = try Int.fetchOne(
                 db,
                 sql: """
-                    SELECT COUNT(*) FROM moment_comments
-                    WHERE reply_at IS NOT NULL AND reply_at >= ? AND reply_at <= ?
+                    SELECT COUNT(*) FROM moment_comments c
+                    JOIN moment_posts p ON p.id = c.post_id
+                    WHERE p.franchise_id = ? AND c.reply_at IS NOT NULL
+                        AND c.reply_at >= ? AND c.reply_at <= ?
                     """,
-                arguments: [fromStamp, toStamp]
+                arguments: [activeContentFranchise, fromStamp, toStamp]
             ) ?? 0
             let liked = try Int.fetchOne(
                 db,
                 sql: """
                     SELECT COUNT(*) FROM moment_likes l
                     JOIN moment_posts p ON p.id = l.post_id
-                    WHERE p.reveal_at >= ? AND p.reveal_at <= ?
+                    WHERE p.franchise_id = ? AND p.reveal_at >= ? AND p.reveal_at <= ?
                     """,
-                arguments: [fromStamp, toStamp]
+                arguments: [activeContentFranchise, fromStamp, toStamp]
             ) ?? 0
             let commented = try Int.fetchOne(
                 db,
                 sql: """
                     SELECT COUNT(*) FROM moment_comments c
                     JOIN moment_posts p ON p.id = c.post_id
-                    WHERE p.reveal_at >= ? AND p.reveal_at <= ?
+                    WHERE p.franchise_id = ? AND p.reveal_at >= ? AND p.reveal_at <= ?
                     """,
-                arguments: [fromStamp, toStamp]
+                arguments: [activeContentFranchise, fromStamp, toStamp]
             ) ?? 0
             let failedPosts = try Int.fetchOne(
                 db,
