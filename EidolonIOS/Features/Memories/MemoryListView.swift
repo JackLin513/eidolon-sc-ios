@@ -57,20 +57,15 @@ struct MemoryListView: View {
             if !app.memories.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("清空", role: .destructive) { confirmingClear = true }
+                        .anchoredConfirmation(
+                            "清空所有记忆？",
+                            message: "她们会忘掉你告诉过她们的所有事。",
+                            confirmTitle: "清空",
+                            isPresented: $confirmingClear,
+                            onConfirm: { Task { await clear() } }
+                        )
                 }
             }
-        }
-        .confirmationDialog(
-            "清空所有记忆？",
-            isPresented: $confirmingClear,
-            titleVisibility: .visible
-        ) {
-            Button("清空", role: .destructive) {
-                Task { await clear() }
-            }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("她们会忘掉你告诉过她们的所有事。")
         }
         .alert("出错了", isPresented: Binding(
             get: { error != nil },

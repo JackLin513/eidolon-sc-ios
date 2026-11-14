@@ -28,6 +28,7 @@
 		2CAA8739C8F32538D08118CF /* CallTonesPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE4CA93A98A82A36915C5E19 /* CallTonesPlayer.swift */; };
 		2CF24EECC30E051467FA4D35 /* MicrophoneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3AEFFEEE669955F231B2C89 /* MicrophoneCapture.swift */; };
 		3361C9CBA23EC466560C4FBB /* ChatReadAloud.swift in Sources */ = {isa = PBXBuildFile; fileRef = 699260EC8FFFC02E174467D0 /* ChatReadAloud.swift */; };
+		358B5729124F43B436D1A6DC /* AnchoredConfirmation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F2E8AAA2A4E9E5ECFAA2EC4 /* AnchoredConfirmation.swift */; };
 		35EF934E14EEDCA14B9EAC68 /* boot.config in Resources */ = {isa = PBXBuildFile; fileRef = 067A44C35F5E2A20F2D678A6 /* boot.config */; };
 		3683109ABC50AB71E6D512A8 /* DebugChatProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDB63104EE3509F94360E5EF /* DebugChatProvider.swift */; };
 		36C86D8435661F4A422CF168 /* BarSettingsBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4EC9179658A248DC6D0E540 /* BarSettingsBox.swift */; };
@@ -226,6 +227,7 @@
 		48F47E892DE490E8FC25FBAE /* EnvImportPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvImportPreviewView.swift; sourceTree = "<group>"; };
 		4AB451726D31E16340EB84E2 /* APISettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APISettingsUITests.swift; sourceTree = "<group>"; };
 		4D6B5CE0ADDE78E895BA3509 /* CallBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallBar.swift; sourceTree = "<group>"; };
+		4F2E8AAA2A4E9E5ECFAA2EC4 /* AnchoredConfirmation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnchoredConfirmation.swift; sourceTree = "<group>"; };
 		502579B7DFF941BAC28ADE49 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		50E17776AF83ACD8BF3E62A1 /* AdminView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminView.swift; sourceTree = "<group>"; };
 		54B11631789B9A8BDAE83193 /* stand-player.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "stand-player.js"; sourceTree = "<group>"; };
@@ -648,6 +650,7 @@
 		A03C8252AFD0E637325A2848 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				4F2E8AAA2A4E9E5ECFAA2EC4 /* AnchoredConfirmation.swift */,
 				38579B2A473B296EC588CBD6 /* AppModel.swift */,
 				BDB63104EE3509F94360E5EF /* DebugChatProvider.swift */,
 				F6567288D9C69EE4C18792B6 /* EidolonIOSApp.swift */,
@@ -1002,6 +1005,7 @@
 				1288A744CB351AACE0271910 /* AdminView.swift in Sources */,
 				90BA232DAFE04205D280A5AF /* AffinityCue.swift in Sources */,
 				113F1FAAA8A9FE0C88AB1FC5 /* AffinityViews.swift in Sources */,
+				358B5729124F43B436D1A6DC /* AnchoredConfirmation.swift in Sources */,
 				6671584A336DD81559677994 /* AnnouncementsView.swift in Sources */,
 				10BA2565084D529C4152A890 /* AppModel.swift in Sources */,
 				5D56B7DEA553EFFF531FE9A9 /* BailianRecognition.swift in Sources */,

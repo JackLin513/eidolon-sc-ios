@@ -58,20 +58,6 @@ struct AdminView: View {
         } message: {
             Text("至少 8 位。这个账号已经登录的地方会立刻退出。")
         }
-        .confirmationDialog(
-            "删除 \(userToDelete?.username ?? "")？",
-            isPresented: Binding(get: { userToDelete != nil }, set: { if !$0 { userToDelete = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("删除", role: .destructive) {
-                guard let target = userToDelete else { return }
-                userToDelete = nil
-                Task { await run { try await self.client?.delete(userID: target.id) } }
-            }
-            Button("取消", role: .cancel) { userToDelete = nil }
-        } message: {
-            Text("它的令牌会一起作废，删了就找不回来。")
-        }
     }
 
     // MARK: - 账号
@@ -106,6 +92,21 @@ struct AdminView: View {
                         Image(systemName: "ellipsis.circle")
                     }
                     .accessibilityIdentifier("admin.user.\(user.username)")
+                    .anchoredConfirmation(
+                        "删除 \(userToDelete?.username ?? "")？",
+                        message: "它的令牌会一起作废，删了就找不回来。",
+                        isPresented: Binding(
+                            get: { userToDelete?.id == user.id },
+                            set: { shown in
+                                if !shown, userToDelete?.id == user.id { userToDelete = nil }
+                            }
+                        ),
+                        onConfirm: {
+                            guard let target = userToDelete else { return }
+                            userToDelete = nil
+                            Task { await run { try await self.client?.delete(userID: target.id) } }
+                        }
+                    )
                 }
             }
         } header: {

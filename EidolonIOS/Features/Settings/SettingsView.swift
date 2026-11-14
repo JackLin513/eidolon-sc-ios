@@ -354,6 +354,12 @@ Section {
                         }
                         .disabled(app.calendarExport.deleting || app.calendarExport.syncing)
                         .accessibilityIdentifier("settings.calendarExport.delete")
+                        .anchoredConfirmation(
+                            "删除 Eidolon 日历事件？",
+                            message: "只删除带 Eidolon 标记的事件；你自己的日历事件不会被删。",
+                            isPresented: $confirmingCalendarDelete,
+                            onConfirm: { Task { await app.deleteCalendarExportEvents() } }
+                        )
                     } header: {
                         Text("系统日历")
                     } footer: {
@@ -496,6 +502,23 @@ Section("内容包") {
                                     }
                                     .buttonStyle(.borderless)
                                     .accessibilityIdentifier("settings.content.delete.\(package.franchise)")
+                                    .anchoredConfirmation(
+                                        "删除内容包？",
+                                        message: "会删除 \(package.franchise) 的内容和该企划的立绘/3D 包；对话、记忆和好感度保留，重新导入后恢复。",
+                                        isPresented: Binding(
+                                            get: { packageToDelete == package.franchise },
+                                            set: { shown in
+                                                if !shown, packageToDelete == package.franchise {
+                                                    packageToDelete = nil
+                                                }
+                                            }
+                                        ),
+                                        onConfirm: {
+                                            let target = package.franchise
+                                            packageToDelete = nil
+                                            Task { await app.deleteContentPackage(franchise: target) }
+                                        }
+                                    )
                                 }
                             }
                             Divider()
@@ -528,22 +551,6 @@ Section("内容包") {
                             Text("还没有导入内容包")
                                 .foregroundStyle(.secondary)
                         }
-                    }
-                    .confirmationDialog(
-                        "删除内容包？",
-                        isPresented: Binding(
-                            get: { packageToDelete != nil },
-                            set: { if !$0 { packageToDelete = nil } }
-                        ),
-                        presenting: packageToDelete
-                    ) { franchise in
-                        Button("删除 \(franchise)", role: .destructive) {
-                            let target = franchise
-                            packageToDelete = nil
-                            Task { await app.deleteContentPackage(franchise: target) }
-                        }
-                    } message: { franchise in
-                        Text("会删除 \(franchise) 的内容和该企划的立绘/3D 包；对话、记忆和好感度保留，重新导入后恢复。")
                     }
                     }
 
@@ -670,26 +677,6 @@ Section {
                 }
                 .alert("已保存", isPresented: $savedNotice) {
                     Button("好") {}
-                }
-                .confirmationDialog(
-                    "清理 Documents 里的内容包？",
-                    isPresented: $confirmingPackageCleanup
-                ) {
-                    Button("清理", role: .destructive) {
-                        _ = app.removeDocumentPackages()
-                    }
-                } message: {
-                    Text("只删除 Documents 里的 .eidolonpkg 文件；已安装的内容和立绘不受影响。")
-                }
-                .confirmationDialog(
-                    "删除 Eidolon 日历事件？",
-                    isPresented: $confirmingCalendarDelete
-                ) {
-                    Button("删除", role: .destructive) {
-                        Task { await app.deleteCalendarExportEvents() }
-                    }
-                } message: {
-                    Text("只删除带 Eidolon 标记的事件；你自己的日历事件不会被删。")
                 }
                 .fileImporter(
                     isPresented: $isPicking,
@@ -862,6 +849,13 @@ Section {
                 Button("清理 Documents 里的内容包", role: .destructive) {
                     confirmingPackageCleanup = true
                 }
+                .anchoredConfirmation(
+                    "清理 Documents 里的内容包？",
+                    message: "只删除 Documents 里的 .eidolonpkg 文件；已安装的内容和立绘不受影响。",
+                    confirmTitle: "清理",
+                    isPresented: $confirmingPackageCleanup,
+                    onConfirm: { _ = app.removeDocumentPackages() }
+                )
             }
         } header: {
             Text("立绘包")

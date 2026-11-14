@@ -88,21 +88,6 @@ struct MomentsView: View {
                 }
                 .disabled(commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .confirmationDialog(
-                "删除评论？她的回复也会一起删掉。",
-                isPresented: deletingBinding,
-                titleVisibility: .visible
-            ) {
-                Button("删除", role: .destructive) {
-                    if let post = deleting {
-                        Task {
-                            await app.deleteMomentComment(post.id)
-                            await load()
-                        }
-                    }
-                }
-                Button("取消", role: .cancel) {}
-            }
         }
     }
 
@@ -162,6 +147,23 @@ struct MomentsView: View {
                 Button("删除评论", role: .destructive) { deleting = post }
             }
         }
+        .anchoredConfirmation(
+            "删除评论？",
+            message: "她的回复也会一起删掉。",
+            isPresented: Binding(
+                get: { deleting?.id == post.id },
+                set: { shown in
+                    if !shown, deleting?.id == post.id { deleting = nil }
+                }
+            ),
+            onConfirm: {
+                deleting = nil
+                Task {
+                    await app.deleteMomentComment(post.id)
+                    await load()
+                }
+            }
+        )
     }
 
     private func meta(_ post: MomentPost) -> some View {
@@ -248,13 +250,6 @@ struct MomentsView: View {
         Binding(
             get: { commenting != nil },
             set: { if !$0 { commenting = nil } }
-        )
-    }
-
-    private var deletingBinding: Binding<Bool> {
-        Binding(
-            get: { deleting != nil },
-            set: { if !$0 { deleting = nil } }
         )
     }
 

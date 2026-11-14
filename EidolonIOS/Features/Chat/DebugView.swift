@@ -472,18 +472,6 @@ struct DebugMemoryListView: View {
             deleteBar
         }
         .task { await load() }
-        .confirmationDialog(
-            selected.isEmpty ? "删除所选的记忆？" : "删除所选的 \(selected.count) 条记忆？",
-            isPresented: $confirmingDelete,
-            titleVisibility: .visible
-        ) {
-            Button("删除", role: .destructive) {
-                Task { await deleteSelected() }
-            }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("记忆是跨角色共享的，删除后所有偶像都不再想起；不能撤销。")
-        }
         .debugErrorAlert($errorMessage)
     }
 
@@ -534,6 +522,13 @@ struct DebugMemoryListView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(selected.isEmpty || busy || isDeleting)
+            .anchoredConfirmation(
+                selected.isEmpty ? "删除所选的记忆？" : "删除所选的 \(selected.count) 条记忆？",
+                message: "记忆是跨角色共享的，删除后所有偶像都不再想起；不能撤销。",
+                arrowEdge: .bottom,
+                isPresented: $confirmingDelete,
+                onConfirm: { Task { await deleteSelected() } }
+            )
             .accessibilityIdentifier("debug.memory.delete")
             Text(
                 busy

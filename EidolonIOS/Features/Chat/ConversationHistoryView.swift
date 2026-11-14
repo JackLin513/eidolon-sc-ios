@@ -66,6 +66,22 @@ struct ConversationHistoryView: View {
                             .tint(.accentColor)
                         }
                     }
+                    .anchoredConfirmation(
+                        "删除这段对话？",
+                        message: "删除后无法恢复。",
+                        isPresented: Binding(
+                            get: { pendingDelete?.id == conversation.id },
+                            set: { shown in
+                                if !shown, pendingDelete?.id == conversation.id {
+                                    pendingDelete = nil
+                                }
+                            }
+                        ),
+                        onConfirm: {
+                            pendingDelete = nil
+                            Task { await delete(conversation) }
+                        }
+                    )
                 }
             }
         }
@@ -86,23 +102,6 @@ struct ConversationHistoryView: View {
         // its way (spec #46).
         .onChange(of: app.call.layer) { _, layer in
             if layer == .expanded { dismiss() }
-        }
-        .confirmationDialog(
-            "删除这段对话？",
-            isPresented: Binding(
-                get: { pendingDelete != nil },
-                set: { if !$0 { pendingDelete = nil } }
-            ),
-            titleVisibility: .visible,
-            presenting: pendingDelete
-        ) { conversation in
-            Button("删除", role: .destructive) {
-                pendingDelete = nil
-                Task { await delete(conversation) }
-            }
-            Button("取消", role: .cancel) { pendingDelete = nil }
-        } message: { _ in
-            Text("删除后无法恢复。")
         }
         .alert("出错了", isPresented: Binding(
             get: { error != nil },

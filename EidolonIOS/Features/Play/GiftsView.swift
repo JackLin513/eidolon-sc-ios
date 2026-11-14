@@ -377,6 +377,15 @@ struct GiftsView: View {
                 .buttonStyle(.bordered)
                 .disabled(state.resetCards == 0 || resetTargets.isEmpty || app.isGiftWorking)
                 .accessibilityIdentifier("gifts.useResetCard")
+                .anchoredConfirmation(
+                    "把她们拉回信任？",
+                    message: resetTargets.map {
+                        "\($0.name)：\($0.tier.title)" + ($0.cooling ? "（冷却中）" : "") + " → 信任"
+                    }.joined(separator: "\n"),
+                    confirmTitle: "使用一张重置卡",
+                    isPresented: $confirmingReset,
+                    onConfirm: { useResetCard() }
+                )
             }
             if state.resetCards == 0 {
                 Label("抽奖有 1% 的机会得到重置卡", systemImage: "arrow.counterclockwise.circle")
@@ -387,20 +396,6 @@ struct GiftsView: View {
             Text("重置卡")
         } footer: {
             Text("把所有低于信任（冷淡、疏远）的角色拉回 50 并解除冷却；信任及以上不动。不写对话，也不触发成就。")
-        }
-        .confirmationDialog(
-            "把她们拉回信任？",
-            isPresented: $confirmingReset,
-            titleVisibility: .visible
-        ) {
-            Button("使用一张重置卡") { useResetCard() }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text(
-                resetTargets.map {
-                    "\($0.name)：\($0.tier.title)" + ($0.cooling ? "（冷却中）" : "") + " → 信任"
-                }.joined(separator: "\n")
-            )
         }
     }
 

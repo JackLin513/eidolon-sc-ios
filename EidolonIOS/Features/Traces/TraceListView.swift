@@ -52,6 +52,13 @@ struct TraceListView: View {
                     Image(systemName: "trash")
                 }
                 .disabled(traces.isEmpty)
+                .anchoredConfirmation(
+                    "清空全部追踪？",
+                    message: "所有回合的调用追踪都会被删除。",
+                    confirmTitle: "清空",
+                    isPresented: $confirmingClear,
+                    onConfirm: { Task { await clear() } }
+                )
             }
         }
         .navigationDestination(isPresented: Binding(
@@ -72,11 +79,6 @@ struct TraceListView: View {
                 selected = traces.first
             }
             #endif
-        }
-        .confirmationDialog("清空全部追踪？", isPresented: $confirmingClear) {
-            Button("清空", role: .destructive) {
-                Task { await clear() }
-            }
         }
         .alert("出错了", isPresented: Binding(
             get: { error != nil },

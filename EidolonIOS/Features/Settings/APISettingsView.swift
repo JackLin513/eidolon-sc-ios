@@ -169,29 +169,6 @@ struct APISettingsView: View {
                 }
             }
         }
-        .confirmationDialog(
-            "删除「\(deletingProfile?.name ?? "")」？",
-            isPresented: Binding(
-                get: { deletingProfile != nil },
-                set: { if !$0 { deletingProfile = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("删除", role: .destructive) {
-                guard let profile = deletingProfile else { return }
-                deletingProfile = nil
-                do {
-                    if !(try app.deleteChatProfile(profile.id)) {
-                        profileError = "最后一个配置不能删除。"
-                    }
-                } catch {
-                    profileError = error.localizedDescription
-                }
-            }
-            Button("取消", role: .cancel) { deletingProfile = nil }
-        } message: {
-            Text("密钥也会一并删除，不能撤销。")
-        }
         .alert("模型配置", isPresented: Binding(
             get: { profileError != nil },
             set: { if !$0 { profileError = nil } }
@@ -277,6 +254,27 @@ struct APISettingsView: View {
                         Button("删除", role: .destructive) { deletingProfile = profile }
                     }
                 }
+                .anchoredConfirmation(
+                    "删除「\(profile.name)」？",
+                    message: "密钥也会一并删除，不能撤销。",
+                    isPresented: Binding(
+                        get: { deletingProfile?.id == profile.id },
+                        set: { shown in
+                            if !shown, deletingProfile?.id == profile.id { deletingProfile = nil }
+                        }
+                    ),
+                    onConfirm: {
+                        guard let doomed = deletingProfile else { return }
+                        deletingProfile = nil
+                        do {
+                            if !(try app.deleteChatProfile(doomed.id)) {
+                                profileError = "最后一个配置不能删除。"
+                            }
+                        } catch {
+                            profileError = error.localizedDescription
+                        }
+                    }
+                )
             }
             Button {
                 editingProfile = app.addChatProfile()
