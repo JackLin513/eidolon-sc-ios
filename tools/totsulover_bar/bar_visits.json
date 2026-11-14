@@ -1,0 +1,106 @@
+{
+  "reasons": [
+    {
+      "id": "council-work",
+      "note": "学生会的工作终于告一段落，想找崩月槐喝一杯，嘴上说只是顺路。",
+      "mood": "happy"
+    },
+    {
+      "id": "patrol-done",
+      "note": "今晚的巡逻结束了，街上没出大事，但身体还绷着。",
+      "mood": "tired"
+    },
+    {
+      "id": "magic-practice",
+      "note": "魔术练习不太顺利，想换个地方把脑子放空。",
+      "mood": "annoyed"
+    },
+    {
+      "id": "family-errand",
+      "note": "替崩月家跑完腿，路过店门口就进来了。",
+      "mood": "calm"
+    },
+    {
+      "id": "something-happened",
+      "note": "今天遇到了一件不好解释的事，想先听崩月槐怎么说。",
+      "mood": "down"
+    },
+    {
+      "id": "celebrate-small",
+      "note": "有件小小的好事，想第一个说给崩月槐听。",
+      "mood": "happy"
+    },
+    {
+      "id": "cant-sleep",
+      "note": "睡不着，觉得店里还亮着灯就进来了。",
+      "mood": "tired"
+    },
+    {
+      "id": "just-because",
+      "note": "没有特别理由，就是想来见崩月槐。",
+      "mood": "calm"
+    }
+  ],
+  "topics": [
+    {
+      "id": "student-council",
+      "note": "学生会最近的事：会议、报告，和学园上层的拉扯。"
+    },
+    {
+      "id": "dimension-lover",
+      "note": "反现实和怪兽：最近出现的异常，以及学园的应对。"
+    },
+    {
+      "id": "kuzutsuki-house",
+      "note": "崩月家：家里的规矩、魔术研究，还有水仙。"
+    },
+    {
+      "id": "sakura",
+      "note": "夜乃桜自己：蓝之心脏、战斗，以及她不太会说出口的担心。",
+      "not_for": [
+        "katan",
+        "sophia",
+        "suisen"
+      ]
+    },
+    {
+      "id": "katan",
+      "note": "海漫華淡自己：学生会里的气氛、朋友，她最近在意的热闹事。",
+      "not_for": [
+        "sakura",
+        "sophia",
+        "suisen"
+      ]
+    },
+    {
+      "id": "sophia",
+      "note": "索菲亚自己：兰卡斯特家、妹妹们、剑术练习。",
+      "not_for": [
+        "sakura",
+        "katan",
+        "suisen"
+      ]
+    },
+    {
+      "id": "suisen",
+      "note": "水仙自己：崩月家的魔术、她自称的忍者女仆工作、对哥哥的在意。",
+      "not_for": [
+        "sakura",
+        "katan",
+        "sophia"
+      ]
+    },
+    {
+      "id": "bar-regulars",
+      "note": "店里其他客人：最近常来的人，和这家店的小道消息。"
+    },
+    {
+      "id": "food",
+      "note": "吃的：最近喜欢的点心、想试的店。"
+    },
+    {
+      "id": "music",
+      "note": "音乐：点唱机里的歌，最近循环的曲子。"
+    }
+  ]
+}

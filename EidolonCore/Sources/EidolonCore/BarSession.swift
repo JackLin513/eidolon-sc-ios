@@ -289,7 +289,8 @@ public actor BarRoom {
             shared: BarPrompt.shared(
                 sheet: try bar.sheet(of: character),
                 birthday: character.birthdayPrompt,
-                world: bar.world?.prompt(name: character.name, today: today)
+                world: bar.world?.prompt(name: character.name, today: today),
+                template: bar.content.prompt
             ),
             about: try BarPrompt.visit(
                 aboutProducer: setup.aboutProducer,

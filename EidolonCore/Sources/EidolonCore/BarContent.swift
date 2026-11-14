@@ -9,14 +9,18 @@ public struct BarContent: Sendable {
     public var visits: BarVisits
     public var lines: BarLines
     public var characters: [CharacterConfig]
+    /// The three static prompt blocks the active package chose, or the SC defaults.
+    public var prompt: BarPromptTemplate
 
     public init(
-        catalog: DrinkCatalog, visits: BarVisits, lines: BarLines, characters: [CharacterConfig]
+        catalog: DrinkCatalog, visits: BarVisits, lines: BarLines,
+        characters: [CharacterConfig], prompt: BarPromptTemplate = .default
     ) {
         self.catalog = catalog
         self.visits = visits
         self.lines = lines
         self.characters = characters
+        self.prompt = prompt
     }
 
     /// Reads and validates the bar's three files (`characters/drinks.json`,
@@ -27,11 +31,14 @@ public struct BarContent: Sendable {
         let visits = try BarVisits(json: try Self.read(directory, "bar_visits.json"))
         let lines = try BarLines(json: try Self.read(directory, "bar_lines.json"))
         let characters = try Self.characters(directory)
+        let prompt = try Self.prompt(directory)
 
         try BarTastesCheck.check(characters, catalog: catalog)
         try visits.check(characters: characters.map(\.id))
         try lines.check(catalog: catalog)
-        self.init(catalog: catalog, visits: visits, lines: lines, characters: characters)
+        self.init(
+            catalog: catalog, visits: visits, lines: lines, characters: characters, prompt: prompt
+        )
     }
 
     /// The bar content of the bundle installed at `bundle`, and the directory it was
@@ -58,6 +65,26 @@ public struct BarContent: Sendable {
         // Upstream strips the sheet as it reads it (`characters.py`), so the prompt has it
         // without the file's trailing newline.
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The optional package prompt. No file means the original SC blocks, so old packages
+    /// keep their exact prompt; a file that is there must decode and have all three blocks.
+    private static func prompt(_ directory: URL) throws -> BarPromptTemplate {
+        let url = directory.appendingPathComponent("characters/bar_prompt.json")
+        guard FileManager.default.fileExists(atPath: url.path) else { return .default }
+        do {
+            let prompt = try JSONDecoder().decode(
+                BarPromptTemplate.self, from: Data(contentsOf: url)
+            )
+            try prompt.check()
+            return prompt
+        } catch let error as EidolonError {
+            throw error
+        } catch {
+            throw EidolonError.invalidBundle(
+                "characters/bar_prompt.json 无法解析：\(error.localizedDescription)"
+            )
+        }
     }
 
     private static func read(_ directory: URL, _ name: String) throws -> JSONValue {

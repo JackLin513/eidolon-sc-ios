@@ -64,6 +64,8 @@ struct BarRecipeBookView: View {
     static let drinkList = (y: 52.0, step: 26.0)
     static let bottle = (x: 39.0, y: 56.0, width: 35.0, height: 53.0)
     static let note = (x: 90.0, y: 75.0)
+    /// 内容包自定义配方的页号从这里起；酒吧素材包只有 `recipe_1..24`，这些页没有图片。
+    static let customRecipePageFloor = 101
 
     let drinks: [Drink]
     let isCounterOpen: Bool
@@ -137,7 +139,12 @@ struct BarRecipeBookView: View {
     @ViewBuilder private var content: some View {
         let open = drinks.first { $0.id == book.drink }
         if let open, !open.isBottled, let page = open.page {
-            BarSprite(name: "recipe_\(page)", x: 0, y: 0, width: Self.page.width, height: Self.page.height)
+            if page >= Self.customRecipePageFloor, let recipe = open.recipe {
+                // 内容包自定义饮品没有随包发来的配方卡图片：不再空白，改画一张文字卡。
+                customRecipeCard(open, recipe: recipe)
+            } else {
+                BarSprite(name: "recipe_\(page)", x: 0, y: 0, width: Self.page.width, height: Self.page.height)
+            }
         } else if let open, open.isBottled {
             let isDragged = drag.item == .bottle(open.id)
             BarPixelText(open.name, x: Self.title.x, y: Self.title.y)
@@ -207,6 +214,42 @@ struct BarRecipeBookView: View {
                     act(.drink(drink.id), "jukechange")
                 }
             }
+        }
+    }
+
+    /// 没有配方卡图片的自定义饮品：用文字把名称、说明和配方写在同一页上。
+    @ViewBuilder private func customRecipeCard(_ drink: Drink, recipe: Recipe) -> some View {
+        BarPixelText(drink.name, x: Self.title.x, y: Self.title.y)
+        BarPixelText(
+            drink.nameJa, x: Self.title.x, y: Self.title.y + 18, color: UIColor(BarInk.bookGrey)
+        )
+        let descriptionLines = Self.wrap(drink.description, every: 18)
+        ForEach(Array(descriptionLines.enumerated()), id: \.offset) { index, line in
+            BarPixelText(
+                line, x: Self.title.x, y: 64 + Double(index) * 14,
+                color: UIColor(BarInk.bookGrey)
+            )
+        }
+        let parts = "A\(recipe.adelhyde)  B\(recipe.bronsonExtract)  P\(recipe.powderedDelta)  F\(recipe.flanergide)  K\(recipe.karmotrine ?? 0)"
+        BarPixelText(parts, x: Self.title.x, y: 122, color: UIColor(BarInk.bookGrey))
+        let flags = [recipe.ice ? "加冰" : nil, recipe.aged ? "陈化" : nil].compactMap { $0 }
+        if !flags.isEmpty {
+            BarPixelText(
+                flags.joined(separator: " · "), x: Self.title.x, y: 138,
+                color: UIColor(BarInk.bookGrey)
+            )
+        }
+    }
+
+    /// 把说明按字数折行；像素字体没有自动换行。
+    private static func wrap(_ text: String, every count: Int) -> [String] {
+        let characters = Array(text)
+        guard characters.count > count else { return [text] }
+        // 均分，不留下一个只有一两个字的尾巴。
+        let lineCount = (characters.count + count - 1) / count
+        let perLine = (characters.count + lineCount - 1) / lineCount
+        return stride(from: 0, to: characters.count, by: perLine).map {
+            String(characters[$0 ..< min($0 + perLine, characters.count)])
         }
     }
 

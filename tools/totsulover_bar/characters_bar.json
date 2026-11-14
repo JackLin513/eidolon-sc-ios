@@ -1,0 +1,58 @@
+{
+  "sakura": {
+    "bar_flavors": [
+      "bitter",
+      "sour"
+    ],
+    "bar_kind": "classy",
+    "bar_favorites": [
+      "widow-maker",
+      "silver-thorn",
+      "quiet-observation"
+    ],
+    "bar_disliked_flavor": "sweet",
+    "bar_tolerance": "strong"
+  },
+  "katan": {
+    "bar_flavors": [
+      "sweet",
+      "bubbly"
+    ],
+    "bar_kind": "girly",
+    "bar_favorites": [
+      "cherry-ribbon",
+      "moonlit-sakura",
+      "lancaster-rose"
+    ],
+    "bar_disliked_flavor": "bitter",
+    "bar_tolerance": "medium"
+  },
+  "sophia": {
+    "bar_flavors": [
+      "sweet",
+      "bitter"
+    ],
+    "bar_kind": "classy",
+    "bar_favorites": [
+      "student-council",
+      "lancaster-rose",
+      "silver-thorn"
+    ],
+    "bar_disliked_flavor": "spicy",
+    "bar_tolerance": "medium"
+  },
+  "suisen": {
+    "bar_flavors": [
+      "sour",
+      "bitter"
+    ],
+    "bar_kind": "classic",
+    "bar_favorites": [
+      "ninja-tea",
+      "quiet-observation",
+      "last-order"
+    ],
+    "bar_disliked_flavor": "spicy",
+    "bar_tolerance": "medium"
+  }
+}

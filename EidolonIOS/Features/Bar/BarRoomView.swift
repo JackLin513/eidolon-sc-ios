@@ -618,6 +618,12 @@ struct BarRoomView: View {
         endTutorial(end)
     }
 
+    /// What the guest calls the man behind the counter. Content packs that name their
+    /// protagonist replace the SC 「制作人」 label; SC keeps the original.
+    private var producerName: String {
+        FranchisePromptContext.current.protagonistTerm ?? BarCopy.producer
+    }
+
     /// The door tapped: in, unless the visit is already coming in (upstream `useBarVisit`'s
     /// `enter`, which only acts at the door).
     private func enter() {
@@ -681,7 +687,7 @@ struct BarRoomView: View {
         guard her?.id != characterID else { return }
         guard let character = app.characters.first(where: { $0.id == characterID }) else { return }
         her = character
-        visit.names = BarTextNames(her: character.name)
+        visit.names = BarTextNames(her: character.name, producer: producerName)
         await loadStand(for: character)
     }
 
@@ -771,7 +777,7 @@ struct BarRoomView: View {
         }
         her = character
         play("door")
-        let names = BarTextNames(her: character.name)
+        let names = BarTextNames(her: character.name, producer: producerName)
         let hasJukebox = sound?.hasJukebox ?? false
         let now = Date().timeIntervalSince1970
         tutorial = BarTutorial.begin(
@@ -822,7 +828,7 @@ struct BarRoomView: View {
 
     private func resume(_ underWay: BarVisit) async {
         her = underWay.character
-        visit.names = BarTextNames(her: underWay.character.name)
+        visit.names = BarTextNames(her: underWay.character.name, producer: producerName)
         visit.visit = BarVisitScreen.Visit(id: underWay.id, characterID: underWay.character.id)
         visit.mood = underWay.written.last?.lines.last?.emotion ?? .calm
         if underWay.step == .failed { visit.failure = BarVisitState.failed }

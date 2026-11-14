@@ -14,6 +14,42 @@ public struct BarChatMessage: Sendable, Hashable {
     }
 }
 
+/// The parts of the bar's prompt a content package may replace (issue #148).
+///
+/// A package that has no `characters/bar_prompt.json` gets `defaultTemplate`, which holds the
+/// original SC text byte for byte. The order, serving, judging and reply contract is not
+/// replaceable: only these three static blocks are.
+public struct BarPromptTemplate: Codable, Sendable, Hashable {
+    public var barIF: String
+    public var writing: String
+    public var format: String
+
+    public init(barIF: String, writing: String, format: String) {
+        self.barIF = barIF
+        self.writing = writing
+        self.format = format
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case barIF = "bar_if"
+        case writing
+        case format
+    }
+
+    public static let `default` = BarPromptTemplate(
+        barIF: BarPrompt.barIF, writing: BarPrompt.writing, format: BarPrompt.format
+    )
+
+    /// Raises when a package replaced one of the blocks with nothing.
+    public func check() throws {
+        for (name, text) in [("bar_if", barIF), ("writing", writing), ("format", format)] {
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw EidolonError.invalidBundle("characters/bar_prompt.json 的 \(name) 不能为空")
+            }
+        }
+    }
+}
+
 /// The bar's prompt (upstream `bar_prompt.py`), the same four parts in every call of a visit
 /// (ADR-0021, verbatim by ADR-0004):
 ///
@@ -43,11 +79,15 @@ public enum BarPrompt {
     // MARK: - The first part
 
     /// The first part: what every user's visits with her open with that day.
-    public static func shared(sheet: String, birthday: String, world: String?) -> String {
+    public static func shared(
+        sheet: String, birthday: String, world: String?,
+        template: BarPromptTemplate = .default
+    ) -> String {
         var parts = [sheet]
         if !birthday.isEmpty { parts.append(birthday) }
         if let world, !world.isEmpty { parts.append(world) }
-        return ([parts, [barIF, writing, format]].flatMap { $0 }).joined(separator: "\n\n")
+        return ([parts, [template.barIF, template.writing, template.format]].flatMap { $0 })
+            .joined(separator: "\n\n")
     }
 
     // MARK: - The second part
