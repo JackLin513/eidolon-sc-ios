@@ -217,28 +217,49 @@ struct BarRecipeBookView: View {
         }
     }
 
-    /// 没有配方卡图片的自定义饮品：用文字把名称、说明和配方写在同一页上。
+    /// 没有配方卡图片的自定义饮品：按上游卡面的句子写名称、配方和说明。
     @ViewBuilder private func customRecipeCard(_ drink: Drink, recipe: Recipe) -> some View {
         BarPixelText(drink.name, x: Self.title.x, y: Self.title.y)
-        BarPixelText(
-            drink.nameJa, x: Self.title.x, y: Self.title.y + 18, color: UIColor(BarInk.bookGrey)
-        )
-        let descriptionLines = Self.wrap(drink.description, every: 18)
+        let sentenceLines = Self.wrap(Self.recipeSentence(drink, recipe), every: 26)
+        ForEach(Array(sentenceLines.enumerated()), id: \.offset) { index, line in
+            BarPixelText(
+                line, x: Self.title.x, y: 56 + Double(index) * 14,
+                color: UIColor(BarInk.bookGrey)
+            )
+        }
+        let descriptionLines = Self.wrap(drink.description, every: 26)
+        let descriptionY = 56 + Double(sentenceLines.count) * 14 + 12
         ForEach(Array(descriptionLines.enumerated()), id: \.offset) { index, line in
             BarPixelText(
-                line, x: Self.title.x, y: 64 + Double(index) * 14,
+                line, x: Self.title.x, y: descriptionY + Double(index) * 14,
                 color: UIColor(BarInk.bookGrey)
             )
         }
-        let parts = "A\(recipe.adelhyde)  B\(recipe.bronsonExtract)  P\(recipe.powderedDelta)  F\(recipe.flanergide)  K\(recipe.karmotrine ?? 0)"
-        BarPixelText(parts, x: Self.title.x, y: 122, color: UIColor(BarInk.bookGrey))
-        let flags = [recipe.ice ? "加冰" : nil, recipe.aged ? "陈化" : nil].compactMap { $0 }
-        if !flags.isEmpty {
-            BarPixelText(
-                flags.joined(separator: " · "), x: Self.title.x, y: 138,
-                color: UIColor(BarInk.bookGrey)
-            )
+    }
+
+    /// 上游配方卡原文的句式：`Todo es是由2 Bronson Extract、2 Powdered Delta……调制而成。`
+    private static func recipeSentence(_ drink: Drink, _ recipe: Recipe) -> String {
+        let parts: [(String, Int)] = [
+            ("Adelhyde", recipe.adelhyde),
+            ("Bronson Extract", recipe.bronsonExtract),
+            ("Powdered Delta", recipe.powderedDelta),
+            ("Flanergide", recipe.flanergide),
+            ("Karmotrine", recipe.karmotrine ?? 0),
+        ].filter { $0.1 > 0 }
+        let ingredients: String
+        switch parts.count {
+        case 0: ingredients = ""
+        case 1: ingredients = "\(parts[0].1) \(parts[0].0)"
+        case 2: ingredients = "\(parts[0].1) \(parts[0].0)和\(parts[1].1) \(parts[1].0)"
+        default:
+            let head = parts.dropLast().map { "\($0.1) \($0.0)" }.joined(separator: "、")
+            ingredients = "\(head)和\(parts.last!.1) \(parts.last!.0)"
         }
+        var flags: [String] = []
+        if recipe.ice { flags.append("加冰") }
+        if recipe.aged { flags.append("陈化") }
+        let suffix = flags.isEmpty ? "" : flags.joined(separator: "并")
+        return "\(drink.name)是由\(ingredients)\(suffix)，调制而成。"
     }
 
     /// 把说明按字数折行；像素字体没有自动换行。
