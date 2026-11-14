@@ -34,6 +34,10 @@ public struct CharacterConfig: Sendable, Hashable {
     public var photoLoraTriggers: [String]
     /// The appearance tags every photo of her carries: hair colour and style, eye colour.
     public var photoAppearance: [String]
+    /// Canonical tags for her everyday uniform. When a photo asks for a uniform,
+    /// these replace the model-written outfit so a content pack's uniform stays
+    /// consistent (e.g. a white coat is not drawn as a black jacket).
+    public var photoUniform: [String]
     /// The place categories she likes, used when the moments page picks a place.
     public var placeLikes: [String]
     /// The gifts she likes (`liked_gifts`), from the bundle's gift catalog.
@@ -63,6 +67,7 @@ public struct CharacterConfig: Sendable, Hashable {
         photoLora: String? = nil,
         photoLoraTriggers: [String] = [],
         photoAppearance: [String] = [],
+        photoUniform: [String] = [],
         placeLikes: [String] = [],
         likedGifts: [String] = [],
         raw: [String: JSONValue] = [:]
@@ -89,6 +94,7 @@ public struct CharacterConfig: Sendable, Hashable {
         self.photoLora = photoLora
         self.photoLoraTriggers = photoLoraTriggers
         self.photoAppearance = photoAppearance
+        self.photoUniform = photoUniform
         self.placeLikes = placeLikes
         self.likedGifts = likedGifts
         self.raw = raw
@@ -153,6 +159,7 @@ public struct CharacterConfig: Sendable, Hashable {
             photoLora: object["photo_lora"]?.stringValue,
             photoLoraTriggers: Self.commaTags(object["photo_lora_triggers"]?.stringValue),
             photoAppearance: Self.commaTags(object["photo_appearance"]?.stringValue),
+            photoUniform: Self.commaTags(object["photo_uniform"]?.stringValue),
             placeLikes: object["place_likes"]?.arrayValue?.compactMap(\.stringValue) ?? [],
             likedGifts: object["liked_gifts"]?.arrayValue?.compactMap(\.stringValue) ?? [],
             raw: object

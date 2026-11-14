@@ -315,6 +315,18 @@ public enum PhotoPromptBuilder {
         lowres, bad anatomy, bad hands, text, watermark, child, loli, shota, toddler, aged down
         """
 
+    /// A uniform photo should show the pack's uniform, not whatever jacket the
+    /// model happened to tag. Other outfits (swimsuits, sleepwear) stay as written.
+    static func outfitTags(_ outfit: [String], character: CharacterConfig) -> [String] {
+        guard !character.photoUniform.isEmpty else { return outfit }
+        let uniformWords = ["uniform", "blazer", "seifuku", "school"]
+        let asksForUniform = outfit.contains { tag in
+            let lower = tag.lowercased()
+            return uniformWords.contains { lower.contains($0) }
+        }
+        return asksForUniform ? character.photoUniform : outfit
+    }
+
     public static func request(
         tag: PhotoTag,
         character: CharacterConfig,
@@ -329,6 +341,7 @@ public enum PhotoPromptBuilder {
               !character.photoAppearance.isEmpty
         else { throw PhotoTagError.malformed("这位角色没有照片 tag 或外貌 tag") }
         let cleaned = tag.sanitized(using: table, adult: adult)
+        let outfit = Self.outfitTags(cleaned.outfit, character: character)
         let appearance = character.photoAppearance
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
@@ -355,7 +368,7 @@ public enum PhotoPromptBuilder {
         }
         rest.append(cleaned.framing.listedName)
         rest.append(cleaned.place.joined(separator: ", "))
-        rest.append(cleaned.outfit.joined(separator: ", "))
+        rest.append(outfit.joined(separator: ", "))
         rest.append(cleaned.action.joined(separator: ", "))
         rest.append(contentsOf: ["depth of field", "blurry background"])
         rest.append(contentsOf: ["very aesthetic", "masterpiece", "no text"])
