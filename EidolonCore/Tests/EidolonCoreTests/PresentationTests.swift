@@ -95,6 +95,26 @@ final class PresentationTests: XCTestCase {
         XCTAssertEqual(header.runtime?.engineVersion, "unity/6000.3")
     }
 
+    func testModel3DPackagesAreScopedByFranchise() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "eidolon-model3d-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let installer = Model3DBundleInstaller(contentRoot: root, fileManager: .default)
+        XCTAssertEqual(
+            installer.directory("shiny").path,
+            root.appending(path: "shiny/model3d").path
+        )
+        XCTAssertEqual(
+            installer.directory("totsulover").path,
+            root.appending(path: "totsulover/model3d").path
+        )
+        XCTAssertEqual(
+            installer.previousDirectory("totsulover").path,
+            root.appending(path: "totsulover/model3d-previous").path
+        )
+        XCTAssertNotEqual(installer.directory("shiny"), installer.directory("totsulover"))
+    }
+
     func testModel3DManifestValidatesACharacterAndOutfits() throws {
         let manifest = Model3DManifest(
             franchise: "mltd",

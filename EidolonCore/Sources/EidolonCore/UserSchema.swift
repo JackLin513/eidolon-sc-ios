@@ -155,6 +155,7 @@ enum UserSchema {
 
         CREATE TABLE turn_traces (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            franchise_id TEXT NOT NULL,
             conversation_id TEXT,
             created_at TEXT NOT NULL,
             payload TEXT NOT NULL

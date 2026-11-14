@@ -1795,6 +1795,28 @@ final class AppModel {
         }
     }
 
+    /// Uninstall one content package. Its user data is kept as orphans, so re-importing
+    /// the same franchise restores the old conversations and affinities.
+    func deleteContentPackage(franchise: String) async {
+        do {
+            try await core.deleteContent(franchise: franchise)
+            bundleInfo = try await core.installedContentInfo()
+            contentPackages = await core.installedContentPackages
+            staticStandInfo = try await core.installedStaticStandInfo()
+            staticStandCharacterIDs = (try? await core.staticStandCharacterIDs()) ?? []
+            conversationPath = NavigationPath()
+            padConversationID = nil
+            if bundleInfo == nil {
+                phase = .needsContentBundle
+            } else {
+                try await load()
+                phase = .ready
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func debugLog(_ message: String) {
         #if DEBUG
         NSLog("[eidolon] %@", message)

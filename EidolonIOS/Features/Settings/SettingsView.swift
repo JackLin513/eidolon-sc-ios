@@ -48,6 +48,7 @@ struct SettingsView: View {
     @State private var showStaticStandPreview = false
     @State private var standIndexURL: URL?
     @State private var confirmingPackageCleanup = false
+    @State private var packageToDelete: String?
     @State private var confirmingCalendarDelete = false
 
     /// 「账号」那一行右边写什么：没登录就说没登录。
@@ -489,6 +490,10 @@ Section("内容包") {
                                         }
                                         .accessibilityIdentifier("settings.content.switch.\(package.franchise)")
                                     }
+                                    Button("删除", role: .destructive) {
+                                        packageToDelete = package.franchise
+                                    }
+                                    .accessibilityIdentifier("settings.content.delete.\(package.franchise)")
                                 }
                             }
                             Divider()
@@ -521,6 +526,22 @@ Section("内容包") {
                             Text("还没有导入内容包")
                                 .foregroundStyle(.secondary)
                         }
+                    }
+                    .confirmationDialog(
+                        "删除内容包？",
+                        isPresented: Binding(
+                            get: { packageToDelete != nil },
+                            set: { if !$0 { packageToDelete = nil } }
+                        ),
+                        presenting: packageToDelete
+                    ) { franchise in
+                        Button("删除 \(franchise)", role: .destructive) {
+                            let target = franchise
+                            packageToDelete = nil
+                            Task { await app.deleteContentPackage(franchise: target) }
+                        }
+                    } message: { franchise in
+                        Text("会删除 \(franchise) 的内容和该企划的立绘/3D 包；对话、记忆和好感度保留，重新导入后恢复。")
                     }
                     }
 

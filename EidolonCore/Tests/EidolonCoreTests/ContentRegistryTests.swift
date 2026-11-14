@@ -38,6 +38,33 @@ struct ContentRegistryTests {
         #expect(try FileManager.default.destinationOfSymbolicLink(atPath: current.path) == "shiny/current")
     }
 
+    @Test("deleting a package keeps its user data and a re-import restores it")
+    func deleteKeepsOrphanedUserData() async throws {
+        let (eidolon, root) = try makeEidolon()
+        try await eidolon.install(bundleAt: try Fixture.makeBundle(in: root))
+
+        var options = Fixture.Options()
+        options.franchise = "totsulover"
+        options.contentSetID = "totsulover.delete"
+        let sakuraRoot = root.appending(path: "sakura-delete-src", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: sakuraRoot, withIntermediateDirectories: true)
+        let sakura = try Fixture.makeBundle(in: sakuraRoot, options: options)
+        try await eidolon.installContent(bundleAt: sakura, franchise: "totsulover")
+        try await eidolon.activateContent(franchise: "totsulover")
+        let conversation = try await eidolon.startConversation(characterID: "mano")
+
+        try await eidolon.deleteContent(franchise: "totsulover")
+        #expect(await eidolon.activeFranchise == "shiny")
+        #expect(await eidolon.installedContentPackages.map(\.franchise) == ["shiny"])
+        let keptWhileDeleted = try await eidolon.conversation(id: conversation)
+        #expect(keptWhileDeleted != nil)
+
+        _ = try await eidolon.installContent(bundleAt: sakura, franchise: "totsulover")
+        try await eidolon.activateContent(franchise: "totsulover")
+        let keptAfterReimport = try await eidolon.conversation(id: conversation)
+        #expect(keptAfterReimport != nil)
+    }
+
     @Test("import routing reads franchise from the package manifest")
     func autoRouting() async throws {
         let (eidolon, root) = try makeEidolon()

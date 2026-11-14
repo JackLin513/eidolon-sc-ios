@@ -18,11 +18,16 @@ public struct BarFacts: Sendable {
 
     let contentDirectory: URL
     let userQueue: DatabaseQueue
+    let franchiseID: String
     let character: CharacterConfig
 
-    public init(contentDirectory: URL, userQueue: DatabaseQueue, character: CharacterConfig) {
+    public init(
+        contentDirectory: URL, userQueue: DatabaseQueue, franchiseID: String,
+        character: CharacterConfig
+    ) {
         self.contentDirectory = contentDirectory
         self.userQueue = userQueue
+        self.franchiseID = franchiseID
         self.character = character
     }
 
@@ -62,7 +67,8 @@ public struct BarFacts: Sendable {
         let facts = try self.facts()
         guard !facts.isEmpty else { return [] }
         let vectors = try await Self.cachedVectors(
-            userQueue: userQueue, character: character, facts: facts, embedder: embedder
+            userQueue: userQueue, franchiseID: franchiseID, character: character,
+            facts: facts, embedder: embedder
         )
         let near = zip(facts, vectors)
             .map { fact, score in
@@ -92,11 +98,12 @@ public struct BarFacts: Sendable {
     /// model — the same cache a turn's facts use.
     private static func cachedVectors(
         userQueue: DatabaseQueue,
+        franchiseID: String,
         character: CharacterConfig,
         facts: [Fact],
         embedder: any EmbeddingProvider
     ) async throws -> [[Float]] {
-        let scope = "fact:\(character.id)"
+        let scope = "fact:\(franchiseID):\(character.id)"
         let model = embedder.model
         let existing: [String: [Float]] = try await userQueue.read { db in
             var cache: [String: [Float]] = [:]

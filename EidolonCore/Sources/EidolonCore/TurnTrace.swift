@@ -239,9 +239,10 @@ extension Eidolon {
                 db,
                 sql: """
                     SELECT id, conversation_id, created_at, payload FROM turn_traces
+                    WHERE franchise_id = ?
                     ORDER BY id DESC LIMIT ?
                     """,
-                arguments: [limit]
+                arguments: [activeContentFranchise, limit]
             ).compactMap { row in
                 let payload: String = row["payload"]
                 guard let data = payload.data(using: .utf8),
@@ -274,7 +275,10 @@ extension Eidolon {
 
     public func clearTraces() throws {
         try userQueue.write { db in
-            try db.execute(sql: "DELETE FROM turn_traces")
+            try db.execute(
+                sql: "DELETE FROM turn_traces WHERE franchise_id = ?",
+                arguments: [activeContentFranchise]
+            )
         }
     }
 
@@ -291,18 +295,25 @@ extension Eidolon {
         try userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO turn_traces(conversation_id, created_at, payload)
-                    VALUES (?, ?, ?)
+                    INSERT INTO turn_traces(franchise_id, conversation_id, created_at, payload)
+                    VALUES (?, ?, ?, ?)
                     """,
-                arguments: [conversationID, createdAt, String(decoding: encoded, as: UTF8.self)]
+                arguments: [
+                    activeContentFranchise, conversationID, createdAt,
+                    String(decoding: encoded, as: UTF8.self),
+                ]
             )
             try db.execute(
                 sql: """
-                    DELETE FROM turn_traces WHERE id NOT IN (
-                        SELECT id FROM turn_traces ORDER BY id DESC LIMIT ?
+                    DELETE FROM turn_traces WHERE franchise_id = ? AND id NOT IN (
+                        SELECT id FROM turn_traces WHERE franchise_id = ?
+                        ORDER BY id DESC LIMIT ?
                     )
                     """,
-                arguments: [max(tracing.retention, 0)]
+                arguments: [
+                    activeContentFranchise, activeContentFranchise,
+                    max(tracing.retention, 0),
+                ]
             )
         }
     }

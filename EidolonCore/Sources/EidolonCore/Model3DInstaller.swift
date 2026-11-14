@@ -9,12 +9,16 @@ struct Model3DBundleInstaller {
     let contentRoot: URL
     let fileManager: FileManager
 
-    var directory: URL {
-        contentRoot.appendingPathComponent("model3d", isDirectory: true)
+    func directory(_ franchise: String) -> URL {
+        contentRoot
+            .appendingPathComponent(franchise, isDirectory: true)
+            .appendingPathComponent("model3d", isDirectory: true)
     }
 
-    var previousDirectory: URL {
-        contentRoot.appendingPathComponent("model3d-previous", isDirectory: true)
+    func previousDirectory(_ franchise: String) -> URL {
+        contentRoot
+            .appendingPathComponent(franchise, isDirectory: true)
+            .appendingPathComponent("model3d-previous", isDirectory: true)
     }
 
     func install(
@@ -40,7 +44,7 @@ struct Model3DBundleInstaller {
             throw EidolonError.invalidBundle(error.description)
         }
         try validateFiles(manifest, in: staging, progress: progress)
-        try swapIn(staging)
+        try swapIn(staging, franchise: manifest.franchise)
 
         return Model3DBundleInfo(
             formatVersion: manifest.formatVersion,
@@ -134,22 +138,28 @@ struct Model3DBundleInstaller {
         }
     }
 
-    private func swapIn(_ staging: URL) throws {
-        if fileManager.fileExists(atPath: previousDirectory.path) {
-            try fileManager.removeItem(at: previousDirectory)
+    private func swapIn(_ staging: URL, franchise: String) throws {
+        let directory = directory(franchise)
+        let previous = previousDirectory(franchise)
+        try fileManager.createDirectory(
+            at: directory.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        if fileManager.fileExists(atPath: previous.path) {
+            try fileManager.removeItem(at: previous)
         }
         if fileManager.fileExists(atPath: directory.path) {
-            try fileManager.moveItem(at: directory, to: previousDirectory)
+            try fileManager.moveItem(at: directory, to: previous)
         }
         do {
             try fileManager.moveItem(at: staging, to: directory)
         } catch {
-            if fileManager.fileExists(atPath: previousDirectory.path) {
-                try? fileManager.moveItem(at: previousDirectory, to: directory)
+            if fileManager.fileExists(atPath: previous.path) {
+                try? fileManager.moveItem(at: previous, to: directory)
             }
             throw error
         }
-        try? fileManager.removeItem(at: previousDirectory)
+        try? fileManager.removeItem(at: previous)
     }
 }
 

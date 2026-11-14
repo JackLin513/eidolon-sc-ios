@@ -116,6 +116,48 @@ extension Eidolon {
         worldCached = false
     }
 
+    /// Uninstall one content package and its franchise-scoped assets. User data stays in
+    /// the library as orphans so a later re-import can restore the same franchise.
+    public func deleteContent(franchise: String) throws {
+        let normalized = ContentRegistryState.normalizedFranchise(franchise)
+        try loadContentPackagesIfNeeded()
+        let wasActive = activeContentFranchise == normalized
+        guard contentPackages[normalized] != nil else { return }
+
+        contentPackages.removeValue(forKey: normalized)
+        let remaining = contentPackages.keys.sorted()
+
+        if wasActive, let next = remaining.first {
+            try activateContent(franchise: next)
+        } else if wasActive {
+            try? FileManager.default.removeItem(at: location.contentDirectory)
+            activeContentFranchise = ""
+            content = nil
+            cachedWorld = nil
+            worldCached = false
+            installFranchisePrompt(franchise: ContentRegistryState.legacyFranchise)
+        }
+
+        try? FileManager.default.removeItem(at: packageRoot(normalized))
+        try userQueue.write { db in
+            try db.execute(
+                sql: "DELETE FROM app_state WHERE key IN (?, ?, ?)",
+                arguments: [
+                    "stand.bundle.\(normalized)",
+                    "static-stand.bundle.\(normalized)",
+                    "model3d.bundle.\(normalized)"
+                ]
+            )
+            if wasActive, remaining.isEmpty {
+                try db.execute(
+                    sql: "DELETE FROM app_state WHERE key IN ('content.bundle', 'content.activeFranchise')"
+                )
+            }
+        }
+        invalidateStandCaches()
+        try persistContentPackages()
+    }
+
     public func installedContentInfo(franchise: String) throws -> ContentBundleInfo? {
         try loadContentPackagesIfNeeded()
         return contentPackages[ContentRegistryState.normalizedFranchise(franchise)]

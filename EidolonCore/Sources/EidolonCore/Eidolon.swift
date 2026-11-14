@@ -21,7 +21,11 @@ public actor Eidolon {
         /// is imported (ADR-0021).
         public var barDirectory: URL { contentRoot.appendingPathComponent("bar", isDirectory: true) }
         /// Where the optional 3D model package is installed; empty until one is imported.
-        public var model3DDirectory: URL { contentRoot.appendingPathComponent("model3d", isDirectory: true) }
+        public func model3DDirectory(franchise: String) -> URL {
+            contentRoot
+                .appendingPathComponent(franchise, isDirectory: true)
+                .appendingPathComponent("model3d", isDirectory: true)
+        }
     }
 
     public nonisolated let location: Location
@@ -432,15 +436,19 @@ public actor Eidolon {
             expectedEngineVersion: expectedEngineVersion,
             progress: progress
         )
-        try saveAppState("model3d.bundle", Self.encode(info))
+        try saveAppState("model3d.bundle.\(info.franchise)", Self.encode(info))
         return info
     }
 
-    public func installedModel3DInfo() throws -> Model3DBundleInfo? {
+    public func installedModel3DInfo(franchise: String? = nil) throws -> Model3DBundleInfo? {
+        let normalized = ContentRegistryState.normalizedFranchise(
+            franchise ?? activeContentFranchise
+        )
         let stored: String? = try userQueue.read { db in
             try String.fetchOne(
                 db,
-                sql: "SELECT value FROM app_state WHERE key = 'model3d.bundle'"
+                sql: "SELECT value FROM app_state WHERE key = ?",
+                arguments: ["model3d.bundle.\(normalized)"]
             )
         }
         guard let stored, let data = stored.data(using: .utf8) else { return nil }
@@ -448,11 +456,11 @@ public actor Eidolon {
     }
 
     /// The installed model package, its directory and decoded manifest, when there is one.
-    public func installedModel3D() throws -> (
+    public func installedModel3D(franchise: String? = nil) throws -> (
         info: Model3DBundleInfo, directory: URL, manifest: Model3DManifest
     )? {
-        guard let info = try installedModel3DInfo() else { return nil }
-        let directory = location.model3DDirectory
+        guard let info = try installedModel3DInfo(franchise: franchise) else { return nil }
+        let directory = location.model3DDirectory(franchise: info.franchise)
         let url = directory.appendingPathComponent("manifest.json")
         guard let data = try? Data(contentsOf: url),
               let manifest = try? JSONDecoder().decode(Model3DManifest.self, from: data)

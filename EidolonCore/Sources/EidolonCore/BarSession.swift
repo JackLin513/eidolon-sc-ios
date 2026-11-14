@@ -261,7 +261,8 @@ public actor BarRoom {
         )
         let topic = Self.topic(character, bar.content.visits, recent: Set(hers.history.topics))
         let facts = await BarFacts(
-            contentDirectory: bar.directory, userQueue: userQueue, character: character
+            contentDirectory: bar.directory, userQueue: userQueue, franchiseID: franchiseID,
+            character: character
         ).about(topic, embedder: setup.embedder, reranker: setup.reranker)
 
         let cups = BarRules.cups(random)

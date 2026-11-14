@@ -424,7 +424,7 @@ struct RetrievalEngine {
         let facts = Fact.parse(markdown)
         guard !facts.isEmpty else { return [] }
         let vectors = try await eidolon.cachedVectors(
-            scope: "fact:\(character.id)",
+            scope: "fact:\(eidolon.activeContentFranchise):\(character.id)",
             entries: facts.map { (id: $0.text, text: $0.text) },
             embedder: embedder
         )
@@ -448,7 +448,7 @@ struct RetrievalEngine {
         }
         guard !entries.isEmpty else { return nil }
         guard let vectors = try? await eidolon.cachedVectors(
-            scope: "work",
+            scope: "work:\(eidolon.activeContentFranchise)",
             entries: entries.map { (id: $0.title, text: $0.text) },
             embedder: embedder
         ) else { return nil }
