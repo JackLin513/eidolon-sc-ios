@@ -7,8 +7,56 @@ extension Eidolon {
     // MARK: - Story
 
     func storyCandidates(queryVector: [Float], characterID: String, limit: Int) throws -> [Reference] {
+        try storyCandidates(
+            queryVector: queryVector,
+            characterID: characterID,
+            limit: limit,
+            episodeIDs: nil
+        )
+    }
+
+    /// The adult scenes declared by the active content package, as episode ids. A
+    /// package without `characters/adult_episodes.json` has none.
+    nonisolated func adultEpisodeIDs(for characterID: String) -> Set<String> {
+        let url = contentDirectory.appendingPathComponent("characters/adult_episodes.json")
+        guard let data = try? Data(contentsOf: url),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return [] }
+        // `routes` keeps each heroine's scenes on her own route. A package that only
+        // declares the flat list has no route information, so it keeps the older
+        // behaviour; a package with `routes` never falls back to every scene.
+        if let routes = object["routes"] as? [String: [String]] {
+            return Set(routes[characterID] ?? [])
+        }
+        guard let episodes = object["episodes"] as? [String] else { return [] }
+        return Set(episodes)
+    }
+
+    /// Story passages restricted to the package's adult scenes. The character filter is
+    /// the same cast join the normal story lookup uses, so an adult scene from another
+    /// route cannot leak into this character's prompt.
+    func adultStoryCandidates(
+        queryVector: [Float], characterID: String, limit: Int
+    ) throws -> [Reference] {
+        let allowed = adultEpisodeIDs(for: characterID)
+        guard !allowed.isEmpty else { return [] }
+        return try storyCandidates(
+            queryVector: queryVector,
+            characterID: characterID,
+            limit: limit,
+            episodeIDs: allowed
+        )
+    }
+
+    private func storyCandidates(
+        queryVector: [Float],
+        characterID: String,
+        limit: Int,
+        episodeIDs: Set<String>?
+    ) throws -> [Reference] {
         let passages = try contentDatabase().passages(characterID: characterID)
         return passages
+            .filter { episodeIDs?.contains($0.episodeID) ?? true }
             .map { passage in
                 Reference(
                     kind: .episode,

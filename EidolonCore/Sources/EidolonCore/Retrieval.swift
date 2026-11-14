@@ -125,6 +125,7 @@ struct RetrievalEngine {
     let embedder: (any EmbeddingProvider)?
     let reranker: (any RerankProvider)?
     let timeZone: TimeZone
+    let adultMode: Bool
 
     func retrieve(history: [StoredMessage], text: String, need: RetrievalNeed) async -> RetrievalResult {
         var trace = RetrievalTrace(need: need.rawValue)
@@ -151,6 +152,17 @@ struct RetrievalEngine {
             let memories = await memoriesPrompt(query: query, vector: vector)
             trace.candidates = memories.candidates
             trace.degradation += memories.degradation
+            // A past event between them can be a user memory or an original story
+            // scene. When nothing was written down, adult mode may still recall the
+            // story scene itself — clearly labelled as story, never as a user memory.
+            if memories.text == nil, adultMode {
+                let intimacy = await intimacySection(query: query, vector: vector)
+                trace.candidates += intimacy.candidates
+                trace.degradation += intimacy.degradation
+                if intimacy.text != nil {
+                    return RetrievalResult(references: intimacy.text, trace: trace)
+                }
+            }
             return RetrievalResult(memories: memories.text, trace: trace)
         case .references:
             async let refs = referencesSection(query: query, vector: vector)
@@ -358,6 +370,64 @@ struct RetrievalEngine {
         )) ?? nil
         outcome.text = prompt ?? Self.cannotRecall
         return outcome
+    }
+
+    // MARK: - Intimacy in the original story
+
+    /// Adult mode only: when the judge reads a past-event turn as "memories" but no
+    /// producer memory exists, look for an adult scene in her own route. The passages
+    /// stay story references; they are never written to `memories`.
+    private func intimacySection(query: String, vector: [Float]) async -> RetrievalOutcome {
+        var outcome = RetrievalOutcome()
+        guard let reranker else {
+            outcome.degradation.append("没有配置重排模型，不注入原作亲密剧情")
+            return outcome
+        }
+        guard let candidates = try? await eidolon.adultStoryCandidates(
+            queryVector: vector,
+            characterID: character.id,
+            limit: RetrievalRules.candidatesPerSource
+        ), !candidates.isEmpty else { return outcome }
+
+        outcome.candidates = candidates.map {
+            RetrievalCandidate(kind: $0.kind.rawValue, title: $0.title, similarity: $0.similarity)
+        }
+        var relevant: [Reference] = []
+        var scores: [Int: Double] = [:]
+        do {
+            let ranked = try await reranker.rerank(
+                query: query, documents: candidates.map(\.text)
+            )
+            for item in ranked { scores[item.index] = item.score }
+            relevant = ranked
+                .filter { $0.score >= RetrievalRules.thresholds(for: reranker.model).references }
+                .prefix(2)
+                .map { candidates[$0.index] }
+        } catch {
+            outcome.degradation.append("亲密剧情重排失败，不注入：\(error.localizedDescription)")
+            return outcome
+        }
+        for index in candidates.indices {
+            outcome.candidates[index].score = scores[index]
+            outcome.candidates[index].chosen = relevant.contains(candidates[index])
+        }
+        guard !relevant.isEmpty else { return outcome }
+        outcome.text = Self.intimacyPrompt(relevant)
+        return outcome
+    }
+
+    static func intimacyPrompt(_ references: [Reference]) -> String {
+        var lines = [
+            "# 回忆中的原作剧情",
+            "下面是和制作人这句话可能有关的、你在原作剧情里经历过的场景，按相关程度排列。",
+            "- 这些是原作里的剧情，不是这个存档里新增的用户记忆。",
+            "- 可以像回忆往事一样自然地提起当时的气氛和关系，但不要照搬露骨台词或详细性描写。",
+            "- 剧情里没有记录制作人当时选了哪个选项，不要断言他当时说了什么或选了什么。",
+        ]
+        for reference in references {
+            lines += ["", "## 剧情", reference.text]
+        }
+        return FranchisePromptContext.localize(lines.joined(separator: "\n"))
     }
 
     // MARK: - Memories

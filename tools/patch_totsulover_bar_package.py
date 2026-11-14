@@ -49,6 +49,11 @@ def main() -> int:
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--bar-data", type=Path, default=Path("tools/totsulover_bar"))
+    parser.add_argument(
+        "--adult-episodes",
+        type=Path,
+        default=Path("tools/totsulover_adult_episodes.json"),
+    )
     args = parser.parse_args()
 
     if args.output.exists():
@@ -83,6 +88,11 @@ def main() -> int:
         parser.error(f"characters_bar.json has unknown character ids: {sorted(missing)}")
     data["characters/characters.json"] = _json_bytes(characters)
 
+    if args.adult_episodes.is_file():
+        payload = args.adult_episodes.read_bytes()
+        json.loads(payload)
+        data["characters/adult_episodes.json"] = payload
+
     manifest = json.loads(data["manifest.json"])
     files = manifest.setdefault("files", {})
     for name, payload in data.items():
@@ -103,8 +113,8 @@ def main() -> int:
                 if name == "manifest.json":
                     continue
                 archive.writestr(name, data[name])
-            for name in BAR_FILES:
-                if name not in names:
+            for name in (*BAR_FILES, "characters/adult_episodes.json"):
+                if name in data and name not in names:
                     archive.writestr(name, data[name])
             archive.writestr("manifest.json", data["manifest.json"])
         os.replace(temp_path, args.output)

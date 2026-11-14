@@ -392,7 +392,8 @@ extension Eidolon {
             world: world,
             embedder: recordedEmbedder,
             reranker: recordedReranker,
-            timeZone: zone
+            timeZone: zone,
+            adultMode: effectiveAdultMode
         )
         let retrievalStarted = ContinuousClock.now
         let retrieved = await retrieval.retrieve(history: history, text: text, need: need)

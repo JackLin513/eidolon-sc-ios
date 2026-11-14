@@ -189,6 +189,68 @@ final class RetrievalTests: XCTestCase {
         XCTAssertTrue(system.contains("转述"))
     }
 
+    /// Adult mode only: when the turn is read as a past event with no producer memory,
+    /// a declared adult story scene is offered as story, never as a user memory.
+    func testAnAdultStorySceneReachesThePromptOnlyInAdultMode() async throws {
+        var options = Fixture.Options()
+        options.manoAge = 20
+        options.hioriAge = 20
+        let eidolon = try await installedEidolon(options)
+        let characters = eidolon.contentDirectory.appendingPathComponent("characters", isDirectory: true)
+        try FileManager.default.createDirectory(at: characters, withIntermediateDirectories: true)
+        try #"{"episodes":["e1"],"routes":{"mano":["e1"]}}"#.write(
+            to: characters.appendingPathComponent("adult_episodes.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let adult = reply()
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano",
+            text: "この前の夜のこと、覚えてる？",
+            provider: adult,
+            judge: FixedJudge(judged: Judged(level: 2), need: .memories),
+            embedder: FakeEmbedding(vector: [1, 0, 0, 0]),
+            reranker: FakeRerank(scores: [0.9]),
+            adultMode: true
+        ) {}
+        let adultSystem = try systemPrompt(adult)
+        XCTAssertTrue(adultSystem.contains("# 回忆中的原作剧情"))
+        XCTAssertTrue(adultSystem.contains("真乃的段落"))
+        XCTAssertFalse(adultSystem.contains("# 关于制作人的记忆"))
+        XCTAssertFalse(adultSystem.contains("真乃的段落二"))
+
+        // A route map is authoritative: another heroine's route does not leak in.
+        try #"{"episodes":["e1"],"routes":{"hiori":["e1"]}}"#.write(
+            to: characters.appendingPathComponent("adult_episodes.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let otherRoute = reply()
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano",
+            text: "この前の夜のこと、覚えてる？",
+            provider: otherRoute,
+            judge: FixedJudge(judged: Judged(level: 2), need: .memories),
+            embedder: FakeEmbedding(vector: [1, 0, 0, 0]),
+            reranker: FakeRerank(scores: [0.9]),
+            adultMode: true
+        ) {}
+        XCTAssertFalse(try systemPrompt(otherRoute).contains("# 回忆中的原作剧情"))
+
+        let allAges = reply()
+        for try await _ in eidolon.sendTurn(
+            characterID: "mano",
+            text: "この前の夜のこと、覚えてる？",
+            provider: allAges,
+            judge: FixedJudge(judged: Judged(level: 2), need: .memories),
+            embedder: FakeEmbedding(vector: [1, 0, 0, 0]),
+            reranker: FakeRerank(scores: [0.9]),
+            adultMode: false
+        ) {}
+        XCTAssertFalse(try systemPrompt(allAges).contains("# 回忆中的原作剧情"))
+    }
+
     /// A judge that times out or cannot be read still looks references up: upstream's
     /// `retrieval.py` retrieves anyway on `JudgeError`, and only the affinity is left alone.
     func testAFailingJudgeStillLooksReferencesUp() async throws {
