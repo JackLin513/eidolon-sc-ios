@@ -147,6 +147,39 @@ struct FranchiseIsolationTests {
         #expect(!shinyList.contains { $0.id == totsuloverConversation })
     }
 
+    @Test("gift draws and backpack are kept per franchise")
+    func giftStateIsScopedToItsFranchise() async throws {
+        let (eidolon, root) = try makeEidolon()
+        try await installTwoFranchises(on: eidolon, in: root)
+
+        try await eidolon.debugSetGiftBalance(draws: 5, resetCards: 1)
+        try await eidolon.debugSetGiftBackpack(["ribbon": 2])
+        #expect(try await eidolon.debugAddGiftDraws(1) == 6)
+
+        try await eidolon.activateContent(franchise: "totsulover")
+        #expect(try await eidolon.debugAddGiftDraws(0) == 2)
+        try await eidolon.debugSetGiftBalance(draws: 3)
+        try await eidolon.debugSetGiftBackpack(["ribbon": 1])
+
+        let totsuloverCount = try await eidolon.userQueue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT count FROM gift_backpack WHERE franchise_id = 'totsulover' AND gift_id = 'ribbon'"
+            ) ?? 0
+        }
+        #expect(totsuloverCount == 1)
+
+        try await eidolon.activateContent(franchise: "shiny")
+        #expect(try await eidolon.debugAddGiftDraws(0) == 6)
+        let shinyCount = try await eidolon.userQueue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT count FROM gift_backpack WHERE franchise_id = 'shiny' AND gift_id = 'ribbon'"
+            ) ?? 0
+        }
+        #expect(shinyCount == 2)
+    }
+
     @Test("cycle seed and records are kept per franchise")
     func cycleIsScopedToItsFranchise() async throws {
         let (eidolon, root) = try makeEidolon()

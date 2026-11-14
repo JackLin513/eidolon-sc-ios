@@ -1677,6 +1677,7 @@ extension Eidolon {
             if duration > 0 {
                 _ = try AchievementStore.keep(
                     db,
+                    franchiseID: activeContentFranchise,
                     characterID: characterID,
                     now: moment,
                     today: GiftRules.day(moment),

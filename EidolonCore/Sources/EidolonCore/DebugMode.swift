@@ -48,27 +48,27 @@ extension Eidolon {
         try userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO gift_balances (id, draws, given_on, reset_cards)
-                    VALUES (1, ?, ?, ?)
-                    ON CONFLICT (id) DO UPDATE SET
+                    INSERT INTO gift_balances (franchise_id, draws, given_on, reset_cards)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT (franchise_id) DO UPDATE SET
                         draws = excluded.draws,
                         given_on = excluded.given_on,
                         reset_cards = excluded.reset_cards
                     """,
-                arguments: [max(0, draws), today, max(0, resetCards)]
+                arguments: [activeContentFranchise, max(0, draws), today, max(0, resetCards)]
             )
-            try db.execute(sql: "DELETE FROM gift_backpack")
+            try db.execute(sql: "DELETE FROM gift_backpack WHERE franchise_id = ?", arguments: [activeContentFranchise])
         }
     }
 
     /// Puts gifts in the backpack for UI tests, replacing it.
     public func debugSetGiftBackpack(_ gifts: [String: Int]) throws {
         try userQueue.write { db in
-            try db.execute(sql: "DELETE FROM gift_backpack")
+            try db.execute(sql: "DELETE FROM gift_backpack WHERE franchise_id = ?", arguments: [activeContentFranchise])
             for (id, count) in gifts where count > 0 {
                 try db.execute(
-                    sql: "INSERT INTO gift_backpack(gift_id, count) VALUES (?, ?)",
-                    arguments: [id, count]
+                    sql: "INSERT INTO gift_backpack(franchise_id, gift_id, count) VALUES (?, ?, ?)",
+                    arguments: [activeContentFranchise, id, count]
                 )
             }
         }
@@ -79,16 +79,17 @@ extension Eidolon {
     /// nothing goes into the backpack and the draw achievements do not move.
     public func debugAddGiftDraws(_ count: Int, now: Date = Date()) throws -> Int {
         try userQueue.write { db in
-            try Self.giveDueGiftDraws(db, at: now)
+            try Self.giveDueGiftDraws(db, franchiseID: activeContentFranchise, at: now)
             if count > 0 {
                 try db.execute(
-                    sql: "UPDATE gift_balances SET draws = draws + ? WHERE id = 1",
-                    arguments: [count]
+                    sql: "UPDATE gift_balances SET draws = draws + ? WHERE franchise_id = ?",
+                    arguments: [count, activeContentFranchise]
                 )
             }
             return try Int.fetchOne(
                 db,
-                sql: "SELECT draws FROM gift_balances WHERE id = 1"
+                sql: "SELECT draws FROM gift_balances WHERE franchise_id = ?",
+                arguments: [activeContentFranchise]
             ) ?? 0
         }
     }

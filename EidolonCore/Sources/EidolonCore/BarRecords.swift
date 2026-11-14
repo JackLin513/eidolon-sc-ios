@@ -215,6 +215,7 @@ enum BarRecords {
             )
             let drawGiven = try GiftStore.creditBarDraw(
                 db,
+                franchiseID: franchiseID,
                 key: "bar:\(GiftRules.day(now))",
                 at: now
             )

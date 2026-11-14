@@ -49,9 +49,9 @@ final class GiftTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO gift_balances (id, draws, given_on, reset_cards)
-                    VALUES (1, ?, ?, 0)
-                    ON CONFLICT (id) DO UPDATE SET
+                    INSERT INTO gift_balances (franchise_id, draws, given_on, reset_cards)
+                    VALUES ('shiny', ?, ?, 0)
+                    ON CONFLICT (franchise_id) DO UPDATE SET
                         draws = excluded.draws,
                         given_on = excluded.given_on
                     """,

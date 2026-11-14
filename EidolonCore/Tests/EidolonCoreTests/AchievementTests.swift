@@ -37,8 +37,8 @@ final class AchievementTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO gift_backpack(gift_id, count) VALUES (?, ?)
-                    ON CONFLICT(gift_id) DO UPDATE SET count = count + excluded.count
+                    INSERT INTO gift_backpack(franchise_id, gift_id, count) VALUES ('shiny', ?, ?)
+                    ON CONFLICT(franchise_id, gift_id) DO UPDATE SET count = count + excluded.count
                     """,
                 arguments: [id, count]
             )
@@ -69,7 +69,7 @@ final class AchievementTests: XCTestCase {
     private func balance(_ eidolon: Eidolon) async throws -> (draws: Int, cards: Int) {
         try await eidolon.userQueue.read { db in
             let row = try Row.fetchOne(
-                db, sql: "SELECT draws, reset_cards FROM gift_balances WHERE id = 1"
+                db, sql: "SELECT draws, reset_cards FROM gift_balances WHERE franchise_id = 'shiny'"
             )
             return (row?["draws"] ?? 0, row?["reset_cards"] ?? 0)
         }
@@ -178,9 +178,9 @@ final class AchievementTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO gift_balances(id, draws, given_on, reset_cards)
-                    VALUES (1, 0, ?, 1)
-                    ON CONFLICT(id) DO UPDATE SET reset_cards = 1
+                    INSERT INTO gift_balances(franchise_id, draws, given_on, reset_cards)
+                    VALUES ('shiny', 0, ?, 1)
+                    ON CONFLICT(franchise_id) DO UPDATE SET reset_cards = 1
                     """,
                 arguments: [GiftRules.day(now)]
             )
@@ -265,8 +265,8 @@ final class AchievementTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO gift_balances(id, draws, given_on, reset_cards)
-                    VALUES (1, 10, ?, 0) ON CONFLICT(id) DO UPDATE SET draws = 10
+                    INSERT INTO gift_balances(franchise_id, draws, given_on, reset_cards)
+                    VALUES ('shiny', 10, ?, 0) ON CONFLICT(franchise_id) DO UPDATE SET draws = 10
                     """,
                 arguments: [GiftRules.day(now)]
             )
@@ -285,10 +285,10 @@ final class AchievementTests: XCTestCase {
         let eidolon = try await installedEidolon()
         let now = try noon()
         let first = try await eidolon.userQueue.write { db in
-            try GiftStore.creditBarDraw(db, key: "bar:\(GiftRules.day(now))", at: now)
+            try GiftStore.creditBarDraw(db, franchiseID: "shiny", key: "bar:\(GiftRules.day(now))", at: now)
         }
         let second = try await eidolon.userQueue.write { db in
-            try GiftStore.creditBarDraw(db, key: "bar:\(GiftRules.day(now))", at: now)
+            try GiftStore.creditBarDraw(db, franchiseID: "shiny", key: "bar:\(GiftRules.day(now))", at: now)
         }
         XCTAssertTrue(first)
         XCTAssertFalse(second)

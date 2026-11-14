@@ -176,10 +176,11 @@ extension Eidolon {
     public func giftState(at now: Date = Date()) throws -> GiftState {
         let catalog = try giftCatalog()
         return try userQueue.write { db in
-            try Self.giveDueGiftDraws(db, at: now)
+            try Self.giveDueGiftDraws(db, franchiseID: activeContentFranchise, at: now)
             let row = try Row.fetchOne(
                 db,
-                sql: "SELECT draws, reset_cards FROM gift_balances WHERE id = 1"
+                sql: "SELECT draws, reset_cards FROM gift_balances WHERE franchise_id = ?",
+                arguments: [activeContentFranchise]
             )
             let draws: Int = row?["draws"] ?? 0
             let resetCards: Int = row?["reset_cards"] ?? 0
@@ -189,8 +190,8 @@ extension Eidolon {
                 for gift in catalog.gifts {
                     let count = try Int.fetchOne(
                         db,
-                        sql: "SELECT count FROM gift_backpack WHERE gift_id = ?",
-                        arguments: [gift.id]
+                        sql: "SELECT count FROM gift_backpack WHERE franchise_id = ? AND gift_id = ?",
+                        arguments: [activeContentFranchise, gift.id]
                     ) ?? 0
                     if count > 0 {
                         backpack.append(GiftStack(gift: gift, count: count))
@@ -223,10 +224,11 @@ extension Eidolon {
             throw EidolonError.giftCatalogMissing
         }
         return try userQueue.write { db in
-            try Self.giveDueGiftDraws(db, at: now)
+            try Self.giveDueGiftDraws(db, franchiseID: activeContentFranchise, at: now)
             let draws = try Int.fetchOne(
                 db,
-                sql: "SELECT draws FROM gift_balances WHERE id = 1"
+                sql: "SELECT draws FROM gift_balances WHERE franchise_id = ?",
+                arguments: [activeContentFranchise]
             ) ?? 0
             guard draws > 0 else { throw EidolonError.noDraws }
 
@@ -239,10 +241,10 @@ extension Eidolon {
                 case let .gift(gift):
                     try db.execute(
                         sql: """
-                            INSERT INTO gift_backpack (gift_id, count) VALUES (?, 1)
-                            ON CONFLICT (gift_id) DO UPDATE SET count = count + 1
+                            INSERT INTO gift_backpack (franchise_id, gift_id, count) VALUES (?, ?, 1)
+                            ON CONFLICT (franchise_id, gift_id) DO UPDATE SET count = count + 1
                             """,
-                        arguments: [gift.id]
+                        arguments: [activeContentFranchise, gift.id]
                     )
                 case .resetCard:
                     gainedCards += 1
@@ -255,16 +257,18 @@ extension Eidolon {
                 sql: """
                     UPDATE gift_balances
                     SET draws = ?, reset_cards = reset_cards + ?
-                    WHERE id = 1
+                    WHERE franchise_id = ?
                     """,
-                arguments: [left, gainedCards]
+                arguments: [left, gainedCards, activeContentFranchise]
             )
             let resetCards = try Int.fetchOne(
                 db,
-                sql: "SELECT reset_cards FROM gift_balances WHERE id = 1"
+                sql: "SELECT reset_cards FROM gift_balances WHERE franchise_id = ?",
+                arguments: [activeContentFranchise]
             ) ?? 0
             let rewards = try AchievementStore.keep(
                 db,
+                franchiseID: activeContentFranchise,
                 now: now,
                 today: GiftRules.day(now),
                 draws: count
@@ -297,18 +301,19 @@ extension Eidolon {
     /// Gives the chances due by `today` (upstream `_give`): the new producer's on their
     /// first read, else one for each day since they were last given, up to the most kept.
     /// A balance already over the most (from an achievement) is never brought down.
-    static func giveDueGiftDraws(_ db: Database, at now: Date) throws {
+    static func giveDueGiftDraws(_ db: Database, franchiseID: String, at now: Date) throws {
         let today = GiftRules.day(now)
         guard let row = try Row.fetchOne(
             db,
-            sql: "SELECT draws, given_on FROM gift_balances WHERE id = 1"
+            sql: "SELECT draws, given_on FROM gift_balances WHERE franchise_id = ?",
+            arguments: [franchiseID]
         ) else {
             try db.execute(
                 sql: """
-                    INSERT INTO gift_balances (id, draws, given_on, reset_cards)
-                    VALUES (1, ?, ?, 0)
+                    INSERT INTO gift_balances (franchise_id, draws, given_on, reset_cards)
+                    VALUES (?, ?, ?, 0)
                     """,
-                arguments: [GiftRules.drawsPerDay, today]
+                arguments: [franchiseID, GiftRules.drawsPerDay, today]
             )
             return
         }
@@ -318,10 +323,10 @@ extension Eidolon {
             // A balance from a build that never stamped its day: give today's chances,
             // without taking back any the achievements gave over the cap.
             try db.execute(
-                sql: "UPDATE gift_balances SET draws = ?, given_on = ? WHERE id = 1",
+                sql: "UPDATE gift_balances SET draws = ?, given_on = ? WHERE franchise_id = ?",
                 arguments: [
                     max(draws, min(draws + GiftRules.drawsPerDay, GiftRules.maxDraws)),
-                    today,
+                    today, franchiseID,
                 ]
             )
             return
@@ -330,8 +335,8 @@ extension Eidolon {
         let due = GiftRules.days(from: givenOn, to: today) * GiftRules.drawsPerDay
         let kept = max(draws, min(draws + due, GiftRules.maxDraws))
         try db.execute(
-            sql: "UPDATE gift_balances SET draws = ?, given_on = ? WHERE id = 1",
-            arguments: [kept, today]
+            sql: "UPDATE gift_balances SET draws = ?, given_on = ? WHERE franchise_id = ?",
+            arguments: [kept, today, franchiseID]
         )
     }
 
@@ -455,14 +460,14 @@ extension Eidolon {
         let liked = character.likedGifts.contains(giftID)
         return try userQueue.write { db in
             try db.execute(
-                sql: "UPDATE gift_backpack SET count = count - 1 WHERE gift_id = ? AND count > 0",
-                arguments: [giftID]
+                sql: "UPDATE gift_backpack SET count = count - 1 WHERE franchise_id = ? AND gift_id = ? AND count > 0",
+                arguments: [activeContentFranchise, giftID]
             )
             guard db.changesCount > 0 else { throw EidolonError.noSuchGift }
             let remaining = try Int.fetchOne(
                 db,
-                sql: "SELECT count FROM gift_backpack WHERE gift_id = ?",
-                arguments: [giftID]
+                sql: "SELECT count FROM gift_backpack WHERE franchise_id = ? AND gift_id = ?",
+                arguments: [activeContentFranchise, giftID]
             ) ?? 0
 
             let before = try Self.readAffinity(db, franchiseID: activeContentFranchise, characterID: characterID, now: now)
@@ -540,6 +545,7 @@ extension Eidolon {
             )
             let rewards = try AchievementStore.keep(
                 db,
+                franchiseID: activeContentFranchise,
                 characterID: characterID,
                 now: now,
                 today: GiftRules.day(now),
@@ -579,7 +585,8 @@ extension Eidolon {
         let characters = try characters()
         return try userQueue.write { db in
             let cards = try Int.fetchOne(
-                db, sql: "SELECT reset_cards FROM gift_balances WHERE id = 1"
+                db, sql: "SELECT reset_cards FROM gift_balances WHERE franchise_id = ?",
+                arguments: [activeContentFranchise]
             ) ?? 0
             guard cards > 0 else { throw EidolonError.noResetCards }
             var restored: [ResetCardTarget] = []
@@ -610,7 +617,8 @@ extension Eidolon {
             }
             guard !restored.isEmpty else { throw EidolonError.noOneToReset }
             try db.execute(
-                sql: "UPDATE gift_balances SET reset_cards = reset_cards - 1 WHERE id = 1"
+                sql: "UPDATE gift_balances SET reset_cards = reset_cards - 1 WHERE franchise_id = ?",
+                arguments: [activeContentFranchise]
             )
             return ResetCardUse(restored: restored, resetCardsLeft: cards - 1)
         }
@@ -651,40 +659,49 @@ enum GiftStore {
     /// Whether it was given now.
     static func creditReward(
         _ db: Database,
+        franchiseID: String,
         key: String,
         draws: Int,
         resetCards: Int,
         at now: Date
     ) throws -> Bool {
-        try Eidolon.giveDueGiftDraws(db, at: now)
+        try Eidolon.giveDueGiftDraws(db, franchiseID: franchiseID, at: now)
         try db.execute(
             sql: """
-                INSERT INTO gift_rewards(key, draws, reset_cards, rewarded_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT DO NOTHING
+                INSERT INTO gift_rewards(franchise_id, key, draws, reset_cards, rewarded_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(franchise_id, key) DO NOTHING
                 """,
-            arguments: [key, draws, resetCards, Eidolon.timestamp(now)]
+            arguments: [franchiseID, key, draws, resetCards, Eidolon.timestamp(now)]
         )
         guard db.changesCount > 0 else { return false }
         try db.execute(
             sql: """
                 UPDATE gift_balances
                 SET draws = draws + ?, reset_cards = reset_cards + ?
-                WHERE id = 1
+                WHERE franchise_id = ?
                 """,
-            arguments: [draws, resetCards]
+            arguments: [draws, resetCards, franchiseID]
         )
         return true
     }
 
     /// The bar's first visit done gives one draw, held to the day's most: only if it was
     /// under the cap when the visit finished, recorded once by its key.
-    static func creditBarDraw(_ db: Database, key: String, at now: Date) throws -> Bool {
-        try Eidolon.giveDueGiftDraws(db, at: now)
+    static func creditBarDraw(
+        _ db: Database,
+        franchiseID: String,
+        key: String,
+        at now: Date
+    ) throws -> Bool {
+        try Eidolon.giveDueGiftDraws(db, franchiseID: franchiseID, at: now)
         let draws = try Int.fetchOne(
-            db, sql: "SELECT draws FROM gift_balances WHERE id = 1"
+            db, sql: "SELECT draws FROM gift_balances WHERE franchise_id = ?",
+            arguments: [franchiseID]
         ) ?? 0
         guard draws < GiftRules.maxDraws else { return false }
-        return try creditReward(db, key: key, draws: 1, resetCards: 0, at: now)
+        return try creditReward(
+            db, franchiseID: franchiseID, key: key, draws: 1, resetCards: 0, at: now
+        )
     }
 }

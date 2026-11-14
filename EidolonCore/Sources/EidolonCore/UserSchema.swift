@@ -267,21 +267,25 @@ enum UserSchema {
         );
 
         CREATE TABLE gift_balances (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
+            franchise_id TEXT PRIMARY KEY,
             draws INTEGER NOT NULL,
             given_on TEXT NOT NULL,
             reset_cards INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE gift_backpack (
-            gift_id TEXT PRIMARY KEY,
-            count INTEGER NOT NULL
+            franchise_id TEXT NOT NULL,
+            gift_id TEXT NOT NULL,
+            count INTEGER NOT NULL,
+            PRIMARY KEY (franchise_id, gift_id)
         );
         CREATE TABLE gift_rewards (
-            key TEXT PRIMARY KEY,
+            franchise_id TEXT NOT NULL,
+            key TEXT NOT NULL,
             draws INTEGER NOT NULL,
             reset_cards INTEGER NOT NULL,
             rewarded_at TEXT NOT NULL,
-            seen INTEGER NOT NULL DEFAULT 0
+            seen INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (franchise_id, key)
         );
         CREATE TABLE achievement_progress (
             achievement TEXT NOT NULL,

@@ -242,6 +242,7 @@ enum AchievementStore {
     /// rewards in the same transaction.
     static func keep(
         _ db: Database,
+        franchiseID: String,
         characterID: String? = nil,
         now: Date,
         today: String,
@@ -286,7 +287,7 @@ enum AchievementStore {
                 arguments: [all, today]
             )
         }
-        return try unlock(db, characterID: characterID, now: now)
+        return try unlock(db, franchiseID: franchiseID, characterID: characterID, now: now)
     }
 
     private static func add(
@@ -318,6 +319,7 @@ enum AchievementStore {
 
     static func unlock(
         _ db: Database,
+        franchiseID: String,
         characterID: String?,
         now: Date
     ) throws -> [AchievementReward] {
@@ -341,7 +343,7 @@ enum AchievementStore {
                 )
                 guard db.changesCount > 0 else { continue }
                 let key = "achievement:\(id.rawValue):\(character):\(stage)"
-                if try GiftStore.creditReward(db, key: key, draws: stage, resetCards: 0, at: now) {
+                if try GiftStore.creditReward(db, franchiseID: franchiseID, key: key, draws: stage, resetCards: 0, at: now) {
                     rewards.append(AchievementReward(
                         achievement: id,
                         characterID: character == all ? nil : character,
@@ -384,7 +386,7 @@ enum AchievementStore {
                 let inserted = db.changesCount > 0
                 if inserted {
                     let key = "achievement_complete:\(characterID)"
-                    if try GiftStore.creditReward(db, key: key, draws: 0, resetCards: 1, at: now) {
+                    if try GiftStore.creditReward(db, franchiseID: franchiseID, key: key, draws: 0, resetCards: 1, at: now) {
                         rewards.append(AchievementReward(
                             resetCards: 1,
                             completedCharacterID: characterID
@@ -437,7 +439,7 @@ enum AchievementStore {
 
     /// The one-time backfill: what was recorded before achievements existed, and the
     /// rewards for the stages it reaches. nil once it has been done.
-    static func launch(_ db: Database, now: Date) throws -> AchievementLaunchSummary? {
+    static func launch(_ db: Database, franchiseID: String, now: Date) throws -> AchievementLaunchSummary? {
         let done = try Int.fetchOne(
             db, sql: "SELECT COUNT(*) FROM achievements_launched"
         ) ?? 0
@@ -557,9 +559,9 @@ enum AchievementStore {
         var rewards: [AchievementReward] = []
         let characters = Set(rows.map { $0["character_id"] as String })
         for character in characters {
-            rewards += try unlock(db, characterID: character, now: now)
+            rewards += try unlock(db, franchiseID: franchiseID, characterID: character, now: now)
         }
-        rewards += try unlock(db, characterID: nil, now: now)
+        rewards += try unlock(db, franchiseID: franchiseID, characterID: nil, now: now)
 
         let stages = rewards.filter { $0.stage != nil }.count
         let draws = rewards.reduce(0) { $0 + $1.draws }
@@ -799,7 +801,7 @@ extension Eidolon {
     /// has been done, or if nothing was unlocked.
     public func launchAchievements(now: Date = Date()) throws -> AchievementLaunchSummary? {
         try userQueue.write { db in
-            try AchievementStore.launch(db, now: now)
+            try AchievementStore.launch(db, franchiseID: activeContentFranchise, now: now)
         }
     }
 

@@ -1458,6 +1458,7 @@ extension Eidolon {
             }
             let rewards = try AchievementStore.keep(
                 db,
+                franchiseID: activeContentFranchise,
                 characterID: characterID,
                 now: now,
                 today: day,
