@@ -378,7 +378,10 @@ public struct RemoteImageGenerator: ImageGenerating {
         onPromptID: @escaping @Sendable (String) -> Void
     ) async throws -> Data {
         guard let base = settings.endpoint else { throw ImageGenerationError.invalidAddress }
-        let positive = request.basePrompt ?? request.prompt
+        // ComfyUI has one positive prompt, not NovelAI's split captions. The base
+        // prompt leaves out her name and appearance tags; use the full prompt so the
+        // checkpoint/LoRA gets the character, not just the scene.
+        let positive = request.prompt
         let lora = request.lora?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let model: [Any] = lora.isEmpty ? ["1", 0] : ["9", 0]
         let clip: [Any] = lora.isEmpty ? ["1", 1] : ["9", 1]

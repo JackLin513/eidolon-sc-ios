@@ -150,6 +150,57 @@ final class ImageGenerationTests: XCTestCase {
         XCTAssertEqual(parameters?["seed"] as? Int, 42)
     }
 
+    func testComfyUITakesTheWholeCharacterPrompt() async throws {
+        let transport = FakeTransport()
+        transport.responses = [
+            .success(ImageHTTPResponse(
+                statusCode: 200,
+                body: Data(#"{"prompt_id":"p1"}"#.utf8)
+            )),
+            .success(ImageHTTPResponse(
+                statusCode: 200,
+                body: Data(#"{"p1":{"outputs":{"7":{"images":[{"filename":"x.png"}]}}}}"#.utf8)
+            )),
+            .success(ImageHTTPResponse(
+                statusCode: 200,
+                body: try jpeg(width: 704, height: 1024)
+            )),
+        ]
+        let generator = RemoteImageGenerator(transport: transport)
+        let split = ImageRequest(
+            prompt: "1girl, solo, yoruno sakura, white hair, pink gradient hair, smile",
+            basePrompt: "1girl, solo, smile",
+            negativePrompt: "nsfw",
+            width: 704,
+            height: 1024,
+            model: "test-model",
+            lora: "Yoruno_sakura-noobai_v1.0.safetensors",
+            seed: 42
+        )
+        _ = try await generator.generate(
+            split,
+            settings: ImageServiceSettings(
+                apiFormat: .comfyui,
+                baseURL: "https://comfy.example",
+                apiKey: ""
+            )
+        )
+
+        let body = try JSONSerialization.jsonObject(
+            with: try XCTUnwrap(transport.requests.first?.httpBody)
+        ) as? [String: Any]
+        let prompt = try XCTUnwrap(body?["prompt"] as? [String: Any])
+        let node = try XCTUnwrap(prompt["2"] as? [String: Any])
+        let inputs = try XCTUnwrap(node["inputs"] as? [String: Any])
+        XCTAssertEqual(
+            inputs["text"] as? String,
+            "1girl, solo, yoruno sakura, white hair, pink gradient hair, smile"
+        )
+        let lora = try XCTUnwrap(prompt["9"] as? [String: Any])
+        let loraInputs = try XCTUnwrap(lora["inputs"] as? [String: Any])
+        XCTAssertEqual(loraInputs["lora_name"] as? String, "Yoruno_sakura-noobai_v1.0.safetensors")
+    }
+
     func testANovelAIConcurrentLockIsAskedAgain() async throws {
         let transport = FakeTransport()
         transport.responses = [
