@@ -176,6 +176,40 @@ struct FranchiseIsolationTests {
         #expect(shinyRecords[0].days == 5)
     }
 
+    @Test("saved schedule placements are read per franchise")
+    func scheduleIsScopedToItsFranchise() async throws {
+        let (eidolon, root) = try makeEidolon()
+        try await installTwoFranchises(on: eidolon, in: root)
+        let week = CalendarDay(year: 2026, month: 11, day: 14)
+        let jobID = "\(week.stamp):vocal"
+
+        for franchise in ["shiny", "totsulover"] {
+            try await eidolon.userQueue.write { db in
+                try db.execute(
+                    sql: """
+                        INSERT INTO weekly_jobs(
+                            id, franchise_id, week, character_id, listed_id, name, note,
+                            category, length, slots
+                        ) VALUES (?, ?, ?, 'mano', 'vocal', ?, '说明。', 'practice', 1, NULL)
+                        """,
+                    arguments: [jobID, franchise, week.stamp, "声乐课-\(franchise)"]
+                )
+                try db.execute(
+                    sql: """
+                        INSERT INTO schedule_placements(
+                            franchise_id, week, job_id, character_id, day, slot, saved_at
+                        ) VALUES (?, ?, ?, 'mano', 0, 0, '2026-11-14T00:00:00.000000Z')
+                        """,
+                    arguments: [franchise, week.stamp, jobID]
+                )
+            }
+        }
+
+        #expect(try await eidolon.savedPlacements().map(\.job.name) == ["声乐课-shiny"])
+        try await eidolon.activateContent(franchise: "totsulover")
+        #expect(try await eidolon.savedPlacements().map(\.job.name) == ["声乐课-totsulover"])
+    }
+
     @Test("the producer profile is read and written per franchise")
     func producerProfileIsScopedToItsFranchise() async throws {
         let (eidolon, root) = try makeEidolon()

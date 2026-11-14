@@ -203,11 +203,14 @@ enum UserSchema {
         CREATE INDEX bar_visits_by_day ON bar_visits (franchise_id, entered_on);
 
         CREATE TABLE schedule_weeks (
-            week TEXT PRIMARY KEY,
-            drawn_at TEXT NOT NULL
+            franchise_id TEXT NOT NULL,
+            week TEXT NOT NULL,
+            drawn_at TEXT NOT NULL,
+            PRIMARY KEY (franchise_id, week)
         );
         CREATE TABLE weekly_jobs (
-            id TEXT PRIMARY KEY,
+            id TEXT NOT NULL,
+            franchise_id TEXT NOT NULL,
             week TEXT NOT NULL,
             character_id TEXT NOT NULL,
             listed_id TEXT NOT NULL,
@@ -215,11 +218,13 @@ enum UserSchema {
             note TEXT NOT NULL,
             category TEXT NOT NULL,
             length INTEGER NOT NULL,
-            slots TEXT
+            slots TEXT,
+            PRIMARY KEY (franchise_id, id)
         );
         CREATE INDEX weekly_jobs_by_week
-            ON weekly_jobs(week, character_id);
+            ON weekly_jobs(franchise_id, week, character_id);
         CREATE TABLE schedule_placements (
+            franchise_id TEXT NOT NULL,
             week TEXT NOT NULL,
             job_id TEXT NOT NULL,
             character_id TEXT NOT NULL,
@@ -227,10 +232,10 @@ enum UserSchema {
             slot INTEGER NOT NULL,
             saved_at TEXT NOT NULL,
             counted_at TEXT,
-            PRIMARY KEY (week, job_id)
+            PRIMARY KEY (franchise_id, week, job_id)
         );
         CREATE INDEX schedule_placements_by_her
-            ON schedule_placements(character_id, week);
+            ON schedule_placements(franchise_id, character_id, week);
 
         CREATE TABLE cycle_seeds (
             franchise_id TEXT NOT NULL,

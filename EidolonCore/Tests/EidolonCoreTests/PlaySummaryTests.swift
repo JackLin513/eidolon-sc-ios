@@ -31,15 +31,15 @@ final class PlaySummaryTests: XCTestCase {
     ) async throws {
         try await eidolon.userQueue.write { db in
             try db.execute(
-                sql: "INSERT INTO schedule_weeks(week, drawn_at) VALUES (?, ?)",
-                arguments: [week.stamp, "2026-11-01T00:00:00.000000Z"]
+                sql: "INSERT INTO schedule_weeks(franchise_id, week, drawn_at) VALUES (?, ?, ?)",
+                arguments: ["shiny", week.stamp, "2026-11-01T00:00:00.000000Z"]
             )
             for job in jobs {
                 try db.execute(
                     sql: """
                         INSERT INTO weekly_jobs(
-                            id, week, character_id, listed_id, name, note, category, length, slots
-                        ) VALUES (?, ?, 'mano', ?, ?, '说明。', 'practice', 1, NULL)
+                            id, franchise_id, week, character_id, listed_id, name, note, category, length, slots
+                        ) VALUES (?, 'shiny', ?, 'mano', ?, ?, '说明。', 'practice', 1, NULL)
                         """,
                     arguments: [
                         "\(week.stamp):\(job.id)", week.stamp, job.id, job.name,

@@ -252,7 +252,7 @@ public actor BarRoom {
                 franchiseID: franchiseID
             )
             return try ScheduleStore.doneTodayJob(
-                db, characterID: character.id, now: now, timeZone: zone
+                db, characterID: character.id, franchiseID: franchiseID, now: now, timeZone: zone
             )
         }
         let reason = Self.reason(

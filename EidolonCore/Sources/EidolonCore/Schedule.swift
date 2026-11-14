@@ -482,8 +482,8 @@ extension Eidolon {
         let idols = try idolIDs()
         let jobs = try jobList()
         return try userQueue.write { db in
-            try Self.ensureWeekDrawn(db, week: week, idols: idols, jobs: jobs)
-            return try Self.weeklyJobs(db, week: week, characterID: nil)
+            try Self.ensureWeekDrawn(db, week: week, idols: idols, jobs: jobs, franchiseID: activeContentFranchise)
+            return try Self.weeklyJobs(db, week: week, characterID: nil, franchiseID: activeContentFranchise)
         }
     }
 
@@ -499,9 +499,9 @@ extension Eidolon {
                 db, now: now, timeZone: timeZone, thisWeek: thisWeek,
                 franchiseID: activeContentFranchise
             )
-            try Self.ensureWeekDrawn(db, week: week, idols: idols, jobs: listed)
-            let jobs = try Self.weeklyJobs(db, week: week, characterID: characterID)
-            let placements = try Self.placements(db, week: week, characterID: characterID)
+            try Self.ensureWeekDrawn(db, week: week, idols: idols, jobs: listed, franchiseID: activeContentFranchise)
+            let jobs = try Self.weeklyJobs(db, week: week, characterID: characterID, franchiseID: activeContentFranchise)
+            let placements = try Self.placements(db, week: week, characterID: characterID, franchiseID: activeContentFranchise)
             return ScheduleBoard(
                 week: week, isCurrent: week == thisWeek, jobs: jobs, placements: placements
             )
@@ -521,14 +521,14 @@ extension Eidolon {
                 db, now: now, timeZone: timeZone, thisWeek: thisWeek,
                 franchiseID: activeContentFranchise
             )
-            try Self.ensureWeekDrawn(db, week: thisWeek, idols: idols, jobs: jobs)
-            try Self.ensureWeekDrawn(db, week: nextWeek, idols: idols, jobs: jobs)
+            try Self.ensureWeekDrawn(db, week: thisWeek, idols: idols, jobs: jobs, franchiseID: activeContentFranchise)
+            try Self.ensureWeekDrawn(db, week: nextWeek, idols: idols, jobs: jobs, franchiseID: activeContentFranchise)
             let rows = try Self.placementRows(
-                db, characterID: characterID, weeks: [thisWeek, nextWeek]
+                db, characterID: characterID, weeks: [thisWeek, nextWeek], franchiseID: activeContentFranchise
             )
             let weekly = Dictionary(
                 uniqueKeysWithValues: try Self.weeklyJobs(
-                    db, weeks: [thisWeek, nextWeek], characterID: characterID
+                    db, weeks: [thisWeek, nextWeek], characterID: characterID, franchiseID: activeContentFranchise
                 ).map { ($0.id, $0) }
             )
             let hers = rows.compactMap { row -> HerJob? in
@@ -569,12 +569,12 @@ extension Eidolon {
         let listed = try jobList()
         let characters = try characters()
         return try userQueue.write { db in
-            try Self.ensureWeekDrawn(db, week: thisWeek, idols: idols, jobs: listed)
-            try Self.ensureWeekDrawn(db, week: nextWeek, idols: idols, jobs: listed)
+            try Self.ensureWeekDrawn(db, week: thisWeek, idols: idols, jobs: listed, franchiseID: activeContentFranchise)
+            try Self.ensureWeekDrawn(db, week: nextWeek, idols: idols, jobs: listed, franchiseID: activeContentFranchise)
             let byID = Dictionary(uniqueKeysWithValues: characters.map { ($0.id, $0) })
-            let jobs = try Self.weeklyJobs(db, weeks: [thisWeek, nextWeek], characterID: nil)
+            let jobs = try Self.weeklyJobs(db, weeks: [thisWeek, nextWeek], characterID: nil, franchiseID: activeContentFranchise)
             let jobsByID = Dictionary(uniqueKeysWithValues: jobs.map { ($0.id, $0) })
-            let placements = try Self.allPlacementRows(db, weeks: [thisWeek, nextWeek])
+            let placements = try Self.allPlacementRows(db, weeks: [thisWeek, nextWeek], franchiseID: activeContentFranchise)
             let saved = Set(placements.map(\.jobID))
             var entries: [ScheduleCalendarEntry] = []
             for placement in placements {
@@ -632,9 +632,11 @@ extension Eidolon {
                            j.character_id, j.listed_id, j.name, j.note, j.category,
                            j.length, j.slots
                     FROM schedule_placements p
-                    JOIN weekly_jobs j ON j.id = p.job_id
+                    JOIN weekly_jobs j ON j.id = p.job_id AND j.franchise_id = p.franchise_id
+                    WHERE p.franchise_id = ?
                     ORDER BY p.week, p.day, p.slot, p.character_id, j.rowid
-                    """
+                    """,
+                arguments: [activeContentFranchise]
             ).map { row in
                 let placementWeek = Self.calendarDay(row["placement_week"])
                 let jobWeek = Self.calendarDay(row["job_week"])
@@ -681,13 +683,13 @@ extension Eidolon {
         let idols = try idolIDs()
         let list = try jobList()
         return try userQueue.write { db in
-            try Self.ensureWeekDrawn(db, week: week, idols: idols, jobs: list)
+            try Self.ensureWeekDrawn(db, week: week, idols: idols, jobs: list, franchiseID: activeContentFranchise)
             let jobs = Dictionary(
                 uniqueKeysWithValues: try Self.weeklyJobs(
-                    db, week: week, characterID: characterID
+                    db, week: week, characterID: characterID, franchiseID: activeContentFranchise
                 ).map { ($0.id, $0) }
             )
-            var saved = try Self.placements(db, week: week, characterID: characterID)
+            var saved = try Self.placements(db, week: week, characterID: characterID, franchiseID: activeContentFranchise)
             var result = ScheduleSave()
             for input in inputs {
                 if let reason = Self.refusal(
@@ -703,12 +705,13 @@ extension Eidolon {
                 )
                 try db.execute(
                     sql: """
-                        INSERT INTO schedule_placements(week, job_id, character_id, day, slot, saved_at)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                        INSERT INTO schedule_placements(
+                            franchise_id, week, job_id, character_id, day, slot, saved_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
                         """,
                     arguments: [
-                        week.stamp, input.jobID, characterID, input.day, input.slot,
-                        placement.savedAt,
+                        activeContentFranchise, week.stamp, input.jobID, characterID,
+                        input.day, input.slot, placement.savedAt,
                     ]
                 )
                 saved.append(placement)
@@ -721,16 +724,17 @@ extension Eidolon {
     // MARK: - Weeks and placements
 
     static func ensureWeekDrawn(
-        _ db: Database, week: CalendarDay, idols: [String], jobs: [ListedJob]
+        _ db: Database, week: CalendarDay, idols: [String], jobs: [ListedJob], franchiseID: String
     ) throws {
         let exists = try Bool.fetchOne(
-            db, sql: "SELECT 1 FROM schedule_weeks WHERE week = ?", arguments: [week.stamp]
+            db, sql: "SELECT 1 FROM schedule_weeks WHERE franchise_id = ? AND week = ?",
+            arguments: [franchiseID, week.stamp]
         ) ?? false
         guard !exists else { return }
         let drawn = try ScheduleRules.drawWeek(week: week, idols: idols, jobs: jobs)
         try db.execute(
-            sql: "INSERT INTO schedule_weeks(week, drawn_at) VALUES (?, ?)",
-            arguments: [week.stamp, Eidolon.timestamp(Date())]
+            sql: "INSERT INTO schedule_weeks(franchise_id, week, drawn_at) VALUES (?, ?, ?)",
+            arguments: [franchiseID, week.stamp, Eidolon.timestamp(Date())]
         )
         for pair in drawn {
             let job = pair.job
@@ -738,11 +742,12 @@ extension Eidolon {
             try db.execute(
                 sql: """
                     INSERT INTO weekly_jobs(
-                        id, week, character_id, listed_id, name, note, category, length, slots
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        id, franchise_id, week, character_id, listed_id, name, note,
+                        category, length, slots
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                 arguments: [
-                    id, week.stamp, pair.characterID, job.id, job.name, job.note,
+                    id, franchiseID, week.stamp, pair.characterID, job.id, job.name, job.note,
                     job.category.rawValue, job.length,
                     job.slots.map { $0.map { String($0.rawValue) }.joined(separator: ",") },
                 ]
@@ -751,21 +756,21 @@ extension Eidolon {
     }
 
     static func weeklyJobs(
-        _ db: Database, week: CalendarDay, characterID: String?
+        _ db: Database, week: CalendarDay, characterID: String?, franchiseID: String
     ) throws -> [WeeklyJob] {
-        try weeklyJobs(db, weeks: [week], characterID: characterID)
+        try weeklyJobs(db, weeks: [week], characterID: characterID, franchiseID: franchiseID)
     }
 
     static func weeklyJobs(
-        _ db: Database, weeks: [CalendarDay], characterID: String?
+        _ db: Database, weeks: [CalendarDay], characterID: String?, franchiseID: String
     ) throws -> [WeeklyJob] {
         let marks = weeks.map(\.stamp)
         let placeholders = Array(repeating: "?", count: marks.count).joined(separator: ",")
         var sql = """
             SELECT id, week, character_id, listed_id, name, note, category, length, slots
-            FROM weekly_jobs WHERE week IN (\(placeholders))
+            FROM weekly_jobs WHERE franchise_id = ? AND week IN (\(placeholders))
             """
-        var arguments: [any DatabaseValueConvertible] = marks
+        var arguments: [any DatabaseValueConvertible] = [franchiseID] + marks
         if let characterID {
             sql += " AND character_id = ?"
             arguments.append(characterID)
@@ -795,13 +800,13 @@ extension Eidolon {
     }
 
     static func placements(
-        _ db: Database, week: CalendarDay, characterID: String
+        _ db: Database, week: CalendarDay, characterID: String, franchiseID: String
     ) throws -> [SchedulePlacement] {
-        try placementRows(db, characterID: characterID, weeks: [week])
+        try placementRows(db, characterID: characterID, weeks: [week], franchiseID: franchiseID)
     }
 
     static func placementRows(
-        _ db: Database, characterID: String, weeks: [CalendarDay]
+        _ db: Database, characterID: String, weeks: [CalendarDay], franchiseID: String
     ) throws -> [SchedulePlacement] {
         let marks = weeks.map(\.stamp)
         let placeholders = Array(repeating: "?", count: marks.count).joined(separator: ",")
@@ -810,15 +815,15 @@ extension Eidolon {
             sql: """
                 SELECT week, job_id, character_id, day, slot, saved_at, counted_at
                 FROM schedule_placements
-                WHERE character_id = ? AND week IN (\(placeholders))
+                WHERE franchise_id = ? AND character_id = ? AND week IN (\(placeholders))
                 ORDER BY week, day, slot
                 """,
-            arguments: StatementArguments([characterID] + marks)
+            arguments: StatementArguments([franchiseID, characterID] + marks)
         ).map(Self.placement(from:))
     }
 
     static func allPlacementRows(
-        _ db: Database, weeks: [CalendarDay]
+        _ db: Database, weeks: [CalendarDay], franchiseID: String
     ) throws -> [SchedulePlacement] {
         let marks = weeks.map(\.stamp)
         let placeholders = Array(repeating: "?", count: marks.count).joined(separator: ",")
@@ -827,10 +832,10 @@ extension Eidolon {
             sql: """
                 SELECT week, job_id, character_id, day, slot, saved_at, counted_at
                 FROM schedule_placements
-                WHERE week IN (\(placeholders))
+                WHERE franchise_id = ? AND week IN (\(placeholders))
                 ORDER BY week, day, slot
                 """,
-            arguments: StatementArguments(marks)
+            arguments: StatementArguments([franchiseID] + marks)
         ).map(Self.placement(from:))
     }
 
@@ -905,9 +910,10 @@ extension Eidolon {
             sql: """
                 SELECT p.week, p.job_id, p.character_id, p.day, p.slot, j.length
                 FROM schedule_placements p
-                JOIN weekly_jobs j ON j.id = p.job_id
-                WHERE p.counted_at IS NULL
-                """
+                JOIN weekly_jobs j ON j.id = p.job_id AND j.franchise_id = p.franchise_id
+                WHERE p.franchise_id = ? AND p.counted_at IS NULL
+                """,
+            arguments: [franchiseID]
         )
         for row in rows {
             let parts = (row["week"] as String).split(separator: "-").compactMap { Int($0) }
@@ -941,9 +947,9 @@ extension Eidolon {
             try db.execute(
                 sql: """
                     UPDATE schedule_placements SET counted_at = ?
-                    WHERE week = ? AND job_id = ?
+                    WHERE franchise_id = ? AND week = ? AND job_id = ?
                     """,
-                arguments: [Eidolon.timestamp(now), row["week"], row["job_id"]]
+                arguments: [Eidolon.timestamp(now), franchiseID, row["week"], row["job_id"]]
             )
         }
     }
@@ -979,15 +985,15 @@ public struct ScheduleOverview: Sendable, Hashable {
 public enum ScheduleStore {
     /// Her job the producer scheduled today and she has done, the latest if more than one.
     public static func doneTodayJob(
-        _ db: Database, characterID: String, now: Date, timeZone: TimeZone
+        _ db: Database, characterID: String, franchiseID: String, now: Date, timeZone: TimeZone
     ) throws -> WeeklyJob? {
         let thisWeek = ScheduleRules.week(of: now)
         let placements = try Eidolon.placementRows(
-            db, characterID: characterID, weeks: [thisWeek]
+            db, characterID: characterID, weeks: [thisWeek], franchiseID: franchiseID
         )
         let jobs = Dictionary(
             uniqueKeysWithValues: try Eidolon.weeklyJobs(
-                db, weeks: [thisWeek], characterID: characterID
+                db, weeks: [thisWeek], characterID: characterID, franchiseID: franchiseID
             ).map { ($0.id, $0) }
         )
         let today = ScheduleRules.localWeekday(now: now, timeZone: timeZone)

@@ -183,15 +183,15 @@ final class ScheduleTests: XCTestCase {
     ) async throws {
         try await eidolon.userQueue.write { db in
             try db.execute(
-                sql: "INSERT INTO schedule_weeks(week, drawn_at) VALUES (?, ?)",
-                arguments: [week.stamp, "2026-11-01T00:00:00.000000Z"]
+                sql: "INSERT INTO schedule_weeks(franchise_id, week, drawn_at) VALUES (?, ?, ?)",
+                arguments: ["shiny", week.stamp, "2026-11-01T00:00:00.000000Z"]
             )
             for job in jobs {
                 try db.execute(
                     sql: """
                         INSERT INTO weekly_jobs(
-                            id, week, character_id, listed_id, name, note, category, length, slots
-                        ) VALUES (?, ?, 'mano', ?, ?, '说明。', 'practice', ?, ?)
+                            id, franchise_id, week, character_id, listed_id, name, note, category, length, slots
+                        ) VALUES (?, 'shiny', ?, 'mano', ?, ?, '说明。', 'practice', ?, ?)
                         """,
                     arguments: [
                         "\(week.stamp):\(job.id)", week.stamp, job.id, job.name, job.length,
@@ -276,8 +276,8 @@ final class ScheduleTests: XCTestCase {
             try db.execute(
                 sql: """
                     INSERT INTO weekly_jobs(
-                        id, week, character_id, listed_id, name, note, category, length, slots
-                    ) VALUES (?, ?, 'hiori', 'photo', '拍摄', '拍照。', 'appearance', 1, NULL)
+                        id, franchise_id, week, character_id, listed_id, name, note, category, length, slots
+                    ) VALUES (?, 'shiny', ?, 'hiori', 'photo', '拍摄', '拍照。', 'appearance', 1, NULL)
                     """,
                 arguments: ["\(week.stamp):photo", week.stamp]
             )
@@ -289,8 +289,8 @@ final class ScheduleTests: XCTestCase {
                 try db.execute(
                     sql: """
                         INSERT INTO schedule_placements(
-                            week, job_id, character_id, day, slot, saved_at
-                        ) VALUES (?, ?, ?, ?, ?, ?)
+                            franchise_id, week, job_id, character_id, day, slot, saved_at
+                        ) VALUES ('shiny', ?, ?, ?, ?, ?, ?)
                         """,
                     arguments: [
                         week.stamp, "\(week.stamp):\(job)", character, day, slot,
@@ -323,8 +323,8 @@ final class ScheduleTests: XCTestCase {
             try db.execute(
                 sql: """
                     INSERT INTO schedule_placements(
-                        week, job_id, character_id, day, slot, saved_at
-                    ) VALUES (?, ?, 'mano', 1, 0, ?)
+                        franchise_id, week, job_id, character_id, day, slot, saved_at
+                    ) VALUES ('shiny', ?, ?, 'mano', 1, 0, ?)
                     """,
                 arguments: [week.stamp, "\(week.stamp):vocal", "2026-11-02T00:00:00.000000Z"]
             )
@@ -348,7 +348,7 @@ final class ScheduleTests: XCTestCase {
         let zone = tokyo
         let job = try await eidolon.userQueue.read { db in
             try ScheduleStore.doneTodayJob(
-                db, characterID: "mano", now: localNow, timeZone: zone
+                db, characterID: "mano", franchiseID: "shiny", now: localNow, timeZone: zone
             )
         }
         XCTAssertEqual(job?.name, "声乐课")
@@ -364,22 +364,22 @@ final class ScheduleTests: XCTestCase {
             try db.execute(
                 sql: """
                     INSERT INTO weekly_jobs(
-                        id, week, character_id, listed_id, name, note, category, length, slots
-                    ) VALUES (?, ?, 'hiori', 'dance', '舞蹈课', '说明。', 'practice', 2, NULL)
+                        id, franchise_id, week, character_id, listed_id, name, note, category, length, slots
+                    ) VALUES (?, 'shiny', ?, 'hiori', 'dance', '舞蹈课', '说明。', 'practice', 2, NULL)
                     """,
                 arguments: ["\(week.stamp):dance", week.stamp]
             )
             try db.execute(
                 sql: """
                     INSERT INTO schedule_placements(
-                        week, job_id, character_id, day, slot, saved_at
-                    ) VALUES (?, ?, 'mano', 1, 0, ?)
+                        franchise_id, week, job_id, character_id, day, slot, saved_at
+                    ) VALUES ('shiny', ?, ?, 'mano', 1, 0, ?)
                     """,
                 arguments: [week.stamp, "\(week.stamp):vocal", "2026-11-02T00:00:00.000000Z"]
             )
             try db.execute(
-                sql: "INSERT INTO schedule_weeks(week, drawn_at) VALUES (?, ?)",
-                arguments: [next.stamp, "2026-11-02T00:00:00.000000Z"]
+                sql: "INSERT INTO schedule_weeks(franchise_id, week, drawn_at) VALUES (?, ?, ?)",
+                arguments: ["shiny", next.stamp, "2026-11-02T00:00:00.000000Z"]
             )
         }
         let overview = try await eidolon.scheduleOverview(
@@ -409,8 +409,8 @@ final class ScheduleTests: XCTestCase {
             try db.execute(
                 sql: """
                     INSERT INTO schedule_placements(
-                        week, job_id, character_id, day, slot, saved_at
-                    ) VALUES (?, ?, 'mano', 0, 0, ?)
+                        franchise_id, week, job_id, character_id, day, slot, saved_at
+                    ) VALUES ('shiny', ?, ?, 'mano', 0, 0, ?)
                     """,
                 arguments: [after.stamp, "\(after.stamp):late", "2026-11-02T00:00:00.000000Z"]
             )
