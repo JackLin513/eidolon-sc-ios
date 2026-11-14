@@ -488,11 +488,13 @@ Section("内容包") {
                                         Button("切换") {
                                             Task { await app.activateContentPackage(franchise: package.franchise) }
                                         }
+                                        .buttonStyle(.borderless)
                                         .accessibilityIdentifier("settings.content.switch.\(package.franchise)")
                                     }
                                     Button("删除", role: .destructive) {
                                         packageToDelete = package.franchise
                                     }
+                                    .buttonStyle(.borderless)
                                     .accessibilityIdentifier("settings.content.delete.\(package.franchise)")
                                 }
                             }
