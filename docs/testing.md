@@ -170,3 +170,31 @@ swift test --package-path EidolonCore --filter ReplyFormatTests
 - [ ] 非 SC 企划的设置页不显示「制作人资料」，分类名为「你的资料」；生图制作人 tag 显示「槐」。
 - [ ] 旧对话历史不被改写：只有新回合使用新提示词，旧回复里的「制作人」保留原样。
 - [ ] 设置 → API 与模型：对话、生图、判断、检索配置在重装后由 Keychain 备份恢复；ComfyUI 使用公网地址和 `NoobAI-XL-v1.0.safetensors`。
+
+## 多内容包与 v25 复合身份（S3，iPhone Air 真机）
+
+自动检查（不联网）：
+
+```sh
+swift test --package-path EidolonCore
+swift test --package-path EidolonCore --filter FranchiseIsolationTests
+swift test --package-path EidolonCore --filter UserSchemaTests
+```
+
+`FranchiseIsolationTests` 是 S3 的主验收锚点：同一 local id（如 `sakura`）在两个 franchise 下不共享会话、当前会话、好感、周期、日程、礼物、成就、朋友圈、记忆、debug snapshot；`UserSchemaTests` 覆盖 v25 新建、旧库备份+硬重置。
+
+真机验收包：
+
+- `build/eidolon-totsulover-full-v7.eidolonpkg`：正式 totsulover 包，含酒吧数据与教程称呼。
+- `build/eidolon-sakura-s3test.eidolonpkg`：仅用于 S3 验收的合成 `sakura` 包（franchise `sakura`，只有一个 local id `sakura`，与 totsulover 的 `sakura` 同名），用来验证同 id 隔离。不要当正式内容使用。
+
+待人工详细测试（Air，先装 v7，再装 s3test）：
+
+- [ ] 设置 → 内容包：两个包同时出现在列表，可切换；切包后回到该企划首页，不保留另一企划的当前聊天。
+- [ ] 同 local id 隔离：在 totsulover 里和 `樱` 聊几句；切到 `sakura` 合成包，不应看到 totsulover 的会话、最后一条消息、好感、朋友圈、记忆。
+- [ ] 切回 totsulover：原会话和消息仍在，继续对话正常；`sakura` 合成包的对话不污染 totsulover。
+- [ ] 删除 totsulover 包：聊天列表/聚合页不再显示 totsulover 数据；用户数据不被删除。
+- [ ] 重导入 v7：切回 totsulover，之前的会话/好感/记忆恢复。
+- [ ] 旧库升级：若 Air 上是 v24 旧库，启动后应生成 `eidolon.sqlite.bak-<时间>` 并重建空库（v25 硬重置，不回填旧数据）。
+- [ ] 设置里的称呼/外观偏好按企划分开：两个包同一 local id 的表白/立绘偏好互不影响。
+- [ ] 真机跑一轮文字聊天、通话、酒吧各一次，确认 S3 没有破坏 S1/S2 行为。
