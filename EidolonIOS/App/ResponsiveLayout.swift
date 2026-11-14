@@ -73,8 +73,14 @@ struct RosterDragResult: Equatable {
 enum ResponsiveLayout {
     /// Below this it is the phone layout: bottom tabs and a pushed chat.
     static let mediumMinWidth: CGFloat = 650
-    /// Above this the roster and the chat sit side by side.
+    /// Above this the roster and the chat sit side by side on iPad.
     static let wideMinWidth: CGFloat = 960
+    /// Above this the roster and the chat sit side by side on the iPhone system
+    /// sidebar shell. A Duo's inner page is narrower than an iPad, so the same 712pt
+    /// conversation needs a lower threshold; the chat column is the flexible side.
+    static var duoConversationWideMinWidth: CGFloat {
+        rosterMinWidth + splitterLayoutWidth + chatMinWidth
+    }
 
     // MARK: Left rail
 
@@ -89,7 +95,7 @@ enum ResponsiveLayout {
     static let rosterMinWidth: CGFloat = 280
     static let rosterDefaultWidth: CGFloat = 320
     static let rosterMaxWidth: CGFloat = 460
-    static let chatMinWidth: CGFloat = 420
+    static let chatMinWidth: CGFloat = 340
     /// The layout width reserved for the vertical handle / active line between columns.
     static let splitterLayoutWidth: CGFloat = 12
 
@@ -145,6 +151,20 @@ enum ResponsiveLayout {
         if width < mediumMinWidth { return .compact }
         if width <= wideMinWidth { return .medium }
         return .wide
+    }
+
+    /// The page content inside the iPhone system shell. Two columns are only safe in
+    /// a landscape page: the Duo's inner display is 951pt wide when unfolded, but in
+    /// portrait the system chrome still leaves the chat header cramped. Portrait keeps
+    /// the ordinary phone list -> pushed chat flow.
+    static func duoPageBand(width: CGFloat, height: CGFloat) -> ResponsiveWidthBand {
+        width > height && width >= duoConversationWideMinWidth ? .wide : .compact
+    }
+
+    /// iPad keeps the custom S2.1/S2.2 rail shell. iPhone uses the system tab/sidebar
+    /// component at every width; the compact presentation falls back to the tab bar.
+    static func usesPadShell(isPad: Bool, band: ResponsiveWidthBand) -> Bool {
+        isPad && band != .compact
     }
 
     // MARK: Left rail

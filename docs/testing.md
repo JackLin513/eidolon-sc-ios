@@ -127,6 +127,30 @@ xcodebuild -project EidolonIOS.xcodeproj -scheme EidolonIOS -configuration Debug
   -destination 'platform=macOS,arch=arm64,variant=Designed for iPad' build
 ```
 
+## iPhone Duo 布局（S2.4）
+
+Duo 的四菜单使用系统 `TabView` 默认放置：外屏/内屏由 iOS 27 把浮动 tab bar 放到侧边，不再使用 iPad 的左栏 `PadShellView`。对话页只在**内屏横屏**且页面宽度 ≥ 632pt 时复用 iPad 的「列表 + 内容」两栏；内屏竖屏按普通手机单列 → push 聊天，避免右侧聊天头部被系统 chrome 挤压。半折叠时页面切回 compact，但保留当前会话和 tab 选择。
+
+自动检查：
+
+```sh
+xcodebuild test -project EidolonIOS.xcodeproj -scheme EidolonIOS \
+  -destination 'id=<Duo UDID>' \
+  -only-testing:EidolonIOSTests/ResponsiveLayoutTests
+```
+
+`ResponsiveLayoutTests` 覆盖 `chatMinWidth = 340`、`duoConversationWideMinWidth = 632`、横竖屏两栏判定（`duoPageBand(width:height:)`）以及 `usesPadShell` 的 iPad/iPhone 分流。
+
+待人工详细测试（Duo 模拟器只能读两个屏幕，不能脚本切折叠角度）：
+
+- [ ] 外屏：四个菜单是右侧系统浮动 tab bar（不是 iPad 左栏），聊天列表不被 tab bar 遮挡。
+- [ ] 内屏横屏：仍是系统浮动 tab bar；页面宽度足够时对话页显示「左列表 + 右聊天」两栏，选中会话后展开/合上不丢当前会话。
+- [ ] 内屏竖屏：按手机布局显示单列对话列表，点进聊天后角色名、返回按钮、电话/更多按钮不被系统侧边 chrome 遮挡。
+- [ ] 内屏设置：单列分类列表 → 详情，不出现 iPad 左栏/双层 `NavigationSplitView`。
+- [ ] 半折叠：页面按 compact 布局，当前会话、tab 选择、滚动位置保留；安全区/相机遮挡不压内容。
+- [ ] iPad 回归：S2.1/S2.2 的左栏拖拽、宽度、二/三栏与 `IPadLayoutUITests` 不变。
+- [ ] 不要用 `xcrun simctl io ... screenConfig` 切换 Duo 内屏电源；会让 SpringBoard 崩溃（见 2026-11-14 记录）。
+
 ## 内容包身份与提示词（#144）
 
 自动检查（不联网）：

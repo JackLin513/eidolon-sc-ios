@@ -7,6 +7,8 @@ struct SettingsView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.isEidolonPadShell) private var isPadShell
+    @Environment(\.isEidolonSystemSidebarShell) private var isSystemSidebarShell
+    @Environment(\.isEidolonForceCompactContent) private var forceCompactContent
     @State private var selectedCategory: SettingsCategory? = .server
 
     private var isRegularWidth: Bool { sizeClass == .regular }
@@ -77,6 +79,11 @@ struct SettingsView: View {
                     PadBoundaryLine()
                     settingsStack(category: selectedCategory)
                 }
+            } else if isSystemSidebarShell || forceCompactContent {
+                // The system tab sidebar already owns first-level navigation on Duo;
+                // a second split would make three columns. Use the phone list -> detail
+                // flow inside the tab.
+                phoneSettings
             } else if isRegularWidth {
                 NavigationSplitView {
                     settingsSidebar

@@ -29,10 +29,10 @@ final class ResponsiveLayoutTests: XCTestCase {
     func testRosterBoundsLeaveRoomForTheChat() {
         XCTAssertEqual(ResponsiveLayout.rosterBounds(availableWidth: 900), 280...460)
         XCTAssertEqual(ResponsiveLayout.rosterBounds(availableWidth: 1133), 280...460)
-        // 800 - 12 - 420 = 368 upper bound.
-        XCTAssertEqual(ResponsiveLayout.rosterBounds(availableWidth: 800), 280...368)
-        // Not enough room: fall back to the minimum so the roster stays usable.
-        XCTAssertEqual(ResponsiveLayout.rosterBounds(availableWidth: 650), 280...280)
+        // 800 - 12 - 340 = 448 upper bound.
+        XCTAssertEqual(ResponsiveLayout.rosterBounds(availableWidth: 800), 280...448)
+        // 650 - 12 - 340 = 298; the roster stays usable but the chat keeps its minimum.
+        XCTAssertEqual(ResponsiveLayout.rosterBounds(availableWidth: 650), 280...298)
     }
 
     func testSafeZoneDragKeepsTheFingerWidth() {
@@ -88,6 +88,26 @@ final class ResponsiveLayoutTests: XCTestCase {
         XCTAssertTrue(threshold.willCollapse)
     }
 
+    func testDuoPageUsesTwoColumnsBelowTheIPadWideThreshold() {
+        // 280 roster + 12 splitter + 340 chat = 632; an iPad's 960 threshold would
+        // never fire on the Duo inner display.
+        XCTAssertEqual(ResponsiveLayout.duoConversationWideMinWidth, 632)
+        XCTAssertEqual(ResponsiveLayout.duoPageBand(width: 631, height: 900), .compact)
+        XCTAssertEqual(ResponsiveLayout.duoPageBand(width: 650, height: 600), .wide)
+        XCTAssertEqual(ResponsiveLayout.duoPageBand(width: 632, height: 600), .wide)
+        XCTAssertEqual(ResponsiveLayout.duoPageBand(width: 951, height: 669), .wide)
+        XCTAssertEqual(ResponsiveLayout.duoPageBand(width: 669, height: 951), .compact)
+        XCTAssertEqual(ResponsiveLayout.duoPageBand(width: 600, height: 900), .compact)
+    }
+
+    func testIPadKeepsThePadShellAndIPhoneUsesTheSystemShell() {
+        XCTAssertTrue(ResponsiveLayout.usesPadShell(isPad: true, band: .medium))
+        XCTAssertTrue(ResponsiveLayout.usesPadShell(isPad: true, band: .wide))
+        XCTAssertFalse(ResponsiveLayout.usesPadShell(isPad: true, band: .compact))
+        XCTAssertFalse(ResponsiveLayout.usesPadShell(isPad: false, band: .medium))
+        XCTAssertFalse(ResponsiveLayout.usesPadShell(isPad: false, band: .wide))
+    }
+
     func testTitleAnchorsAreSharedConstants() {
         XCTAssertEqual(ResponsiveLayout.pageTitleLeading, 20)
         XCTAssertEqual(ResponsiveLayout.pageTitleTop, 12)
@@ -95,7 +115,7 @@ final class ResponsiveLayoutTests: XCTestCase {
     }
 
     func testRememberedWidthClampsAfterRailResize() {
-        XCTAssertEqual(ResponsiveLayout.clampedRosterWidth(460, availableWidth: 800, hasSelection: true), 368)
+        XCTAssertEqual(ResponsiveLayout.clampedRosterWidth(460, availableWidth: 800, hasSelection: true), 448)
         XCTAssertEqual(ResponsiveLayout.clampedRosterWidth(0, availableWidth: 800, hasSelection: true), 0)
         XCTAssertEqual(ResponsiveLayout.clampedRosterWidth(0, availableWidth: 800, hasSelection: false), 280)
         XCTAssertEqual(ResponsiveLayout.clampedRosterWidth(320, availableWidth: 1133, hasSelection: false), 320)
