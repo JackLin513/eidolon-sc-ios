@@ -87,14 +87,21 @@ struct MainTabsView: View {
     /// default on the Duo's outer display; the same system placement must be left alone
     /// on the inner display instead of forcing the iPad-style labeled sidebar.
     private func phoneShell(forceCompactContent: Bool) -> some View {
-        tabShell(forceCompactContent: forceCompactContent)
+        tabShell(isPad: false, forceCompactContent: forceCompactContent)
     }
 
-    private func tabShell(forceCompactContent: Bool) -> some View {
+    /// The system tab shell is shared by iPhone and a compact iPad, so every Duo-only
+    /// behavior has to be gated here rather than leaking into the pad shell.
+    private func tabShell(isPad: Bool, forceCompactContent: Bool) -> some View {
         TabView(selection: selection) {
             Tab("对话", systemImage: "bubble.left.and.bubble.right", value: MainTab.conversation) {
-                DuoConversationPage(forceCompactContent: forceCompactContent)
-                    .environment(app)
+                if isPad {
+                    ConversationListView()
+                        .environment(app)
+                } else {
+                    DuoConversationPage(forceCompactContent: forceCompactContent)
+                        .environment(app)
+                }
             }
             Tab("朋友圈", systemImage: "person.2", value: MainTab.moments) {
                 MomentsView()
@@ -115,9 +122,9 @@ struct MainTabsView: View {
                     .environment(app)
             }
         }
-        .tabBarMinimizeBehavior(.never)
-        .environment(\.isEidolonSystemSidebarShell, true)
-        .environment(\.isEidolonForceCompactContent, forceCompactContent)
+        .modifier(PhoneTabBarChrome(isPhone: !isPad))
+        .environment(\.isEidolonSystemSidebarShell, !isPad)
+        .environment(\.isEidolonForceCompactContent, !isPad && forceCompactContent)
     }
 
     /// A tap on 设置 is a manual visit. A debug launch selects the tab in `AppModel`
@@ -168,6 +175,21 @@ private struct DuoConversationPage: View {
                 else { return }
                 app.conversationPath.append(character)
             }
+        }
+    }
+}
+
+/// The iPhone's floating tab bar should never minimize; a compact iPad keeps its
+/// existing behavior. Applying this unconditionally changed the iPad split-view tab bar.
+private struct PhoneTabBarChrome: ViewModifier {
+    let isPhone: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isPhone {
+            content.tabBarMinimizeBehavior(.never)
+        } else {
+            content
         }
     }
 }

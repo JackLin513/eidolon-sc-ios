@@ -75,12 +75,13 @@ enum ResponsiveLayout {
     static let mediumMinWidth: CGFloat = 650
     /// Above this the roster and the chat sit side by side on iPad.
     static let wideMinWidth: CGFloat = 960
-    /// Above this the roster and the chat sit side by side on the iPhone system
-    /// sidebar shell. A Duo's inner page is narrower than an iPad, so the same 712pt
-    /// conversation needs a lower threshold; the chat column is the flexible side.
-    static var duoConversationWideMinWidth: CGFloat {
-        rosterMinWidth + splitterLayoutWidth + chatMinWidth
-    }
+
+    /// The Duo's inner page is narrower than an iPad. Two columns fit from
+    /// 280 roster + 12 splitter + 340 chat = 632pt; iPad still uses `chatMinWidth`
+    /// below, so this narrower chat minimum must never leak into the pad shell.
+    static let duoChatMinWidth: CGFloat = 340
+    static let duoConversationWideMinWidth: CGFloat =
+        rosterMinWidth + splitterLayoutWidth + duoChatMinWidth
 
     // MARK: Left rail
 
@@ -95,7 +96,7 @@ enum ResponsiveLayout {
     static let rosterMinWidth: CGFloat = 280
     static let rosterDefaultWidth: CGFloat = 320
     static let rosterMaxWidth: CGFloat = 460
-    static let chatMinWidth: CGFloat = 340
+    static let chatMinWidth: CGFloat = 420
     /// The layout width reserved for the vertical handle / active line between columns.
     static let splitterLayoutWidth: CGFloat = 12
 

@@ -5,6 +5,9 @@ import SwiftUI
 /// play tab).
 struct ConversationListView: View {
     @Environment(AppModel.self) private var app
+    /// True only inside the iPhone system tab shell. The iPad rail keeps its smaller
+    /// S2 title and original vertical rhythm.
+    @Environment(\.isEidolonSystemSidebarShell) private var isSystemSidebarShell
     /// The regular-width sidebar embeds the same roster without its own navigation stack.
     var embedded = false
     /// In the sidebar a tap selects the detail instead of pushing a page.
@@ -271,10 +274,10 @@ struct ConversationListView: View {
 
     @ViewBuilder
     private func padHeader() -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: isSystemSidebarShell ? 4 : 10) {
             HStack(alignment: .firstTextBaseline) {
                 Text("对话")
-                    .font(.title2.weight(.semibold))
+                    .font(isSystemSidebarShell ? .title.bold() : .title2.weight(.semibold))
                     .accessibilityIdentifier("pad.title.conversation")
                 Spacer(minLength: 0)
                 if app.server.hasUnreadAnnouncements || app.server.isSignedIn {
@@ -343,8 +346,8 @@ struct ConversationListView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, ResponsiveLayout.pageTitleLeading)
-        .padding(.top, ResponsiveLayout.pageTitleTop)
-        .padding(.bottom, 10)
+        .padding(.top, ResponsiveLayout.pageTitleTop + (isSystemSidebarShell ? 20 : 0))
+        .padding(.bottom, isSystemSidebarShell ? 4 : 10)
         .background(Color(.systemBackground))
     }
 
