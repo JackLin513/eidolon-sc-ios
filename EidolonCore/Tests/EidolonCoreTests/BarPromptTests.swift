@@ -64,4 +64,17 @@ final class BarPromptTests: XCTestCase {
             BarPromptTemplate(barIF: "IF", writing: "WRITING", format: "FORMAT")
         )
     }
+
+    func testAPackageTutorialNamesFileReplacesOnlyTheAddress() throws {
+        let root = try directory()
+        try Data(#"{"producer":"槐","producer_ja":"槐さん"}"#.utf8)
+            .write(to: root.appendingPathComponent("characters/bar_tutorial.json"))
+        let content = try BarContent(directory: root)
+        XCTAssertEqual(content.tutorialNames, BarTutorialNames(producer: "槐", producerJa: "槐さん"))
+    }
+
+    func testAPackageWithoutTutorialNamesKeepsSCDefaults() throws {
+        let content = try BarContent(directory: try directory())
+        XCTAssertNil(content.tutorialNames)
+    }
 }

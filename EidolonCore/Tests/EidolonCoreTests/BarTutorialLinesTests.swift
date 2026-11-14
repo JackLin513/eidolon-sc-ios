@@ -150,4 +150,20 @@ final class BarTutorialLinesTests: XCTestCase {
         let said = BarTutorialLines.section(.jukebox).lines.map(\.zh).joined()
         XCTAssertNotNil(said.range(of: "12 首", options: .regularExpression))
     }
+
+    /// 内容包可以只换教程里对酒保的称呼，其余教程照旧。
+    func testTutorialNamesReplaceOnlyTheProducersAddress() {
+        let names = BarTutorialNames(producer: "槐", producerJa: "槐さん")
+        let opening = BarTutorialLines.section(.opening, names: names)
+        XCTAssertTrue(opening.lines[0].ja.contains("槐さん"))
+        XCTAssertTrue(opening.lines[0].zh.contains("槐"))
+        XCTAssertFalse(opening.lines[0].ja.contains("プロデューサーさん"))
+        XCTAssertFalse(opening.lines[0].zh.contains("制作人"))
+
+        let defaultOpening = BarTutorialLines.section(.opening)
+        XCTAssertTrue(defaultOpening.lines[0].ja.contains("プロデューサーさん"))
+        XCTAssertTrue(defaultOpening.lines[0].zh.contains("制作人"))
+        // 调酒段落不变
+        XCTAssertEqual(opening.then, defaultOpening.then)
+    }
 }

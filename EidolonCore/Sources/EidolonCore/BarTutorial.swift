@@ -121,11 +121,12 @@ public struct BarTutorial: Sendable, Hashable {
         characterID: String,
         hasJukebox: Bool,
         layout: Layout,
-        now: TimeInterval
+        now: TimeInterval,
+        names: BarTutorialNames = .default
     ) -> BarTutorial {
         var laidOut: [BarTutorialSectionID: [BarVisitScreen.LinePage]] = [:]
         for id in BarTutorialSectionID.allCases {
-            let lines = BarTutorialLines.section(id).lines
+            let lines = BarTutorialLines.section(id, names: names).lines
             laidOut[id] = lines.flatMap { line -> [BarVisitScreen.LinePage] in
                 let pages = layout(line.text)
                 return pages.enumerated().map { index, page in

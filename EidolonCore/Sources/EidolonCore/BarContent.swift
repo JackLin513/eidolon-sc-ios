@@ -11,16 +11,20 @@ public struct BarContent: Sendable {
     public var characters: [CharacterConfig]
     /// The three static prompt blocks the active package chose, or the SC defaults.
     public var prompt: BarPromptTemplate
+    /// What the package calls the bartender in the tutorial, or nil for the SC defaults.
+    public var tutorialNames: BarTutorialNames?
 
     public init(
         catalog: DrinkCatalog, visits: BarVisits, lines: BarLines,
-        characters: [CharacterConfig], prompt: BarPromptTemplate = .default
+        characters: [CharacterConfig], prompt: BarPromptTemplate = .default,
+        tutorialNames: BarTutorialNames? = nil
     ) {
         self.catalog = catalog
         self.visits = visits
         self.lines = lines
         self.characters = characters
         self.prompt = prompt
+        self.tutorialNames = tutorialNames
     }
 
     /// Reads and validates the bar's three files (`characters/drinks.json`,
@@ -32,12 +36,14 @@ public struct BarContent: Sendable {
         let lines = try BarLines(json: try Self.read(directory, "bar_lines.json"))
         let characters = try Self.characters(directory)
         let prompt = try Self.prompt(directory)
+        let tutorialNames = try Self.tutorialNames(directory)
 
         try BarTastesCheck.check(characters, catalog: catalog)
         try visits.check(characters: characters.map(\.id))
         try lines.check(catalog: catalog)
         self.init(
-            catalog: catalog, visits: visits, lines: lines, characters: characters, prompt: prompt
+            catalog: catalog, visits: visits, lines: lines, characters: characters, prompt: prompt,
+            tutorialNames: tutorialNames
         )
     }
 
@@ -83,6 +89,25 @@ public struct BarContent: Sendable {
         } catch {
             throw EidolonError.invalidBundle(
                 "characters/bar_prompt.json 无法解析：\(error.localizedDescription)"
+            )
+        }
+    }
+
+    /// The optional tutorial naming file. No file means the SC tutorial names.
+    private static func tutorialNames(_ directory: URL) throws -> BarTutorialNames? {
+        let url = directory.appendingPathComponent("characters/bar_tutorial.json")
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        do {
+            let names = try JSONDecoder().decode(
+                BarTutorialNames.self, from: Data(contentsOf: url)
+            )
+            try names.check()
+            return names
+        } catch let error as EidolonError {
+            throw error
+        } catch {
+            throw EidolonError.invalidBundle(
+                "characters/bar_tutorial.json 无法解析：\(error.localizedDescription)"
             )
         }
     }

@@ -784,7 +784,8 @@ struct BarRoomView: View {
             characterID: character.id,
             hasJukebox: hasJukebox,
             layout: { BarText.paginate($0, names: names) { Int(images.face.width($0)) } },
-            now: now
+            now: now,
+            names: app.barTutorialNames ?? .default
         )
         Task { await loadStand(for: character) }
     }

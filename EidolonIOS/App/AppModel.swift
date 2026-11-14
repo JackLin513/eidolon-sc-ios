@@ -650,6 +650,8 @@ final class AppModel {
     private(set) var barSettingsValue = BarSettings.default
     private(set) var barJukeboxState = BarJukebox.State(slots: [])
     private(set) var barTutorialDone = false
+    /// What the active package calls the bartender in the tutorial, or nil for SC defaults.
+    private(set) var barTutorialNames: BarTutorialNames?
     /// Whether today's first visit is still rewarded (the roster card's line).
     private(set) var barRewardToday = true
 
@@ -900,6 +902,7 @@ final class AppModel {
         barJukeboxState = (try? await core.barJukebox(barAudio))
             ?? BarJukebox.State(slots: BarJukebox.defaultSlots(barAudio))
         barTutorialDone = (try? await core.barTutorialWalked()) ?? false
+        barTutorialNames = (try? BarContent(directory: core.location.contentDirectory))?.tutorialNames
     }
 
     func saveBarSettings(_ settings: BarSettings) async {

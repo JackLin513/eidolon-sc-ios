@@ -18,6 +18,7 @@ from pathlib import Path
 
 BAR_FILES = (
     "characters/bar_prompt.json",
+    "characters/bar_tutorial.json",
     "characters/bar_visits.json",
     "characters/bar_lines.json",
     "characters/bar_audio.json",
@@ -25,6 +26,7 @@ BAR_FILES = (
 )
 DATA_FILES = {
     "characters/bar_prompt.json": "bar_prompt.json",
+    "characters/bar_tutorial.json": "bar_tutorial.json",
     "characters/bar_visits.json": "bar_visits.json",
     "characters/bar_lines.json": "bar_lines.json",
     "characters/bar_audio.json": "bar_audio.json",

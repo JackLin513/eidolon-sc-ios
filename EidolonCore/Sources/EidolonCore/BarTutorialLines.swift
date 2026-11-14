@@ -2,6 +2,33 @@ import Foundation
 
 /// One line of the tutorial: hers in Japanese with its Chinese subtitle and how she looks
 /// saying it, or the producer's in Chinese alone (upstream `TutorialLine`).
+/// What a content package may call the bartender in the tutorial. Missing means the SC
+/// tutorial's 「制作人」 / 「プロデューサーさん」 unchanged.
+public struct BarTutorialNames: Codable, Sendable, Hashable {
+    public var producer: String
+    public var producerJa: String
+
+    public init(producer: String = "制作人", producerJa: String = "プロデューサーさん") {
+        self.producer = producer
+        self.producerJa = producerJa
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case producer
+        case producerJa = "producer_ja"
+    }
+
+    public static let `default` = BarTutorialNames()
+
+    public func check() throws {
+        guard !producer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !producerJa.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            throw EidolonError.invalidBundle("characters/bar_tutorial.json 的称呼不能为空")
+        }
+    }
+}
+
 public struct BarTutorialLine: Sendable, Hashable {
     public enum Who: String, Sendable, Hashable {
         case her, producer
@@ -93,7 +120,13 @@ public enum BarTutorialLines {
         BarTutorialLine(who: .producer, zh: zh, emotion: emotion)
     }
 
-    public static func section(_ id: BarTutorialSectionID) -> BarTutorialSection {
+    public static func section(
+        _ id: BarTutorialSectionID, names: BarTutorialNames = .default
+    ) -> BarTutorialSection {
+        applying(names, to: baseSection(id))
+    }
+
+    private static func baseSection(_ id: BarTutorialSectionID) -> BarTutorialSection {
         switch id {
         case .opening:
             return BarTutorialSection(lines: [
@@ -202,4 +235,23 @@ public enum BarTutorialLines {
             ], then: .done)
         }
     }
+
+    /// Replace only the bartender's addresses, leaving the lesson and its wording alone.
+    private static func applying(
+        _ names: BarTutorialNames, to section: BarTutorialSection
+    ) -> BarTutorialSection {
+        var section = section
+        section.lines = section.lines.map { line in
+            var line = line
+            if !names.producer.isEmpty, line.zh.contains("制作人") {
+                line.zh = line.zh.replacingOccurrences(of: "制作人", with: names.producer)
+            }
+            if !names.producerJa.isEmpty, line.ja.contains("プロデューサーさん") {
+                line.ja = line.ja.replacingOccurrences(of: "プロデューサーさん", with: names.producerJa)
+            }
+            return line
+        }
+        return section
+    }
+
 }
