@@ -282,7 +282,10 @@ extension Eidolon {
             // Turning it back on today plans the rest of the day again: `planned_day`
             // alone would otherwise make the switch look like it did nothing.
             if settings.enabled && !previous.enabled {
-                try db.execute(sql: "UPDATE moment_state SET planned_day = NULL WHERE id = 1")
+                try db.execute(
+                    sql: "UPDATE moment_state SET planned_day = NULL WHERE franchise_id = ?",
+                    arguments: [activeContentFranchise]
+                )
             }
         }
     }
@@ -294,8 +297,8 @@ extension Eidolon {
         return try userQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
-                sql: "SELECT * FROM moment_posts WHERE reveal_at <= ? ORDER BY reveal_at DESC",
-                arguments: [stamp]
+                sql: "SELECT * FROM moment_posts WHERE franchise_id = ? AND reveal_at <= ? ORDER BY reveal_at DESC",
+                arguments: [activeContentFranchise, stamp]
             )
             let images = try Row.fetchAll(
                 db, sql: "SELECT * FROM moment_images"
@@ -369,13 +372,18 @@ extension Eidolon {
         let stamp = Self.timestamp(now)
         return try userQueue.read { db in
             let opened = try String.fetchOne(
-                db, sql: "SELECT last_opened_at FROM moment_state WHERE id = 1"
+                db,
+                sql: "SELECT last_opened_at FROM moment_state WHERE franchise_id = ?",
+                arguments: [activeContentFranchise]
             )
             if let opened {
                 let posts = try Int.fetchOne(
                     db,
-                    sql: "SELECT COUNT(*) FROM moment_posts WHERE reveal_at > ? AND reveal_at <= ?",
-                    arguments: [opened, stamp]
+                    sql: """
+                        SELECT COUNT(*) FROM moment_posts
+                        WHERE franchise_id = ? AND reveal_at > ? AND reveal_at <= ?
+                        """,
+                    arguments: [activeContentFranchise, opened, stamp]
                 ) ?? 0
                 if posts > 0 { return true }
                 let replies = try Int.fetchOne(
@@ -388,7 +396,10 @@ extension Eidolon {
                 ) ?? 0
                 return replies > 0
             }
-            return (try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM moment_posts") ?? 0) > 0
+            return (try Int.fetchOne(
+                db, sql: "SELECT COUNT(*) FROM moment_posts WHERE franchise_id = ?",
+                arguments: [activeContentFranchise]
+            ) ?? 0) > 0
         }
     }
 
@@ -396,10 +407,10 @@ extension Eidolon {
         try userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO moment_state(id, last_opened_at) VALUES (1, ?)
-                    ON CONFLICT(id) DO UPDATE SET last_opened_at = excluded.last_opened_at
+                    INSERT INTO moment_state(franchise_id, last_opened_at) VALUES (?, ?)
+                    ON CONFLICT(franchise_id) DO UPDATE SET last_opened_at = excluded.last_opened_at
                     """,
-                arguments: [Self.timestamp(now)]
+                arguments: [activeContentFranchise, Self.timestamp(now)]
             )
         }
     }
@@ -574,15 +585,21 @@ extension Eidolon {
     ) throws {
         let day = Self.isoDay(now, in: Self.momentTokyo)
         let planned: String? = try userQueue.read { db in
-            try String.fetchOne(db, sql: "SELECT planned_day FROM moment_state WHERE id = 1")
+            try String.fetchOne(
+                db, sql: "SELECT planned_day FROM moment_state WHERE franchise_id = ?",
+                arguments: [activeContentFranchise]
+            )
         }
         guard planned != day else { return }
         // Plans older than yesterday are not caught up (spec #98); a work plan may run
         // past midnight and still belongs to its own day.
         try userQueue.write { db in
             try db.execute(
-                sql: "DELETE FROM moment_plans WHERE plan_day < ?",
-                arguments: [Self.isoDay(now.addingTimeInterval(-24 * 3600), in: Self.momentTokyo)]
+                sql: "DELETE FROM moment_plans WHERE franchise_id = ? AND plan_day < ?",
+                arguments: [
+                    activeContentFranchise,
+                    Self.isoDay(now.addingTimeInterval(-24 * 3600), in: Self.momentTokyo),
+                ]
             )
         }
         let characters = try characters()
@@ -649,10 +666,10 @@ extension Eidolon {
         try userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO moment_state(id, planned_day) VALUES (1, ?)
-                    ON CONFLICT(id) DO UPDATE SET planned_day = excluded.planned_day
+                    INSERT INTO moment_state(franchise_id, planned_day) VALUES (?, ?)
+                    ON CONFLICT(franchise_id) DO UPDATE SET planned_day = excluded.planned_day
                     """,
-                arguments: [day]
+                arguments: [activeContentFranchise, day]
             )
         }
     }
@@ -666,13 +683,19 @@ extension Eidolon {
         return try userQueue.read { db in
             let posts = try String.fetchAll(
                 db,
-                sql: "SELECT reveal_at FROM moment_posts WHERE reveal_at >= ? AND reveal_at < ?",
-                arguments: [Self.timestamp(start), Self.timestamp(end)]
+                sql: """
+                    SELECT reveal_at FROM moment_posts
+                    WHERE franchise_id = ? AND reveal_at >= ? AND reveal_at < ?
+                    """,
+                arguments: [activeContentFranchise, Self.timestamp(start), Self.timestamp(end)]
             )
             let plans = try String.fetchAll(
                 db,
-                sql: "SELECT due_at FROM moment_plans WHERE due_at >= ? AND due_at < ?",
-                arguments: [Self.timestamp(start), Self.timestamp(end)]
+                sql: """
+                    SELECT due_at FROM moment_plans
+                    WHERE franchise_id = ? AND due_at >= ? AND due_at < ?
+                    """,
+                arguments: [activeContentFranchise, Self.timestamp(start), Self.timestamp(end)]
             )
             return (posts + plans).compactMap(Self.parseTimestamp)
         }
@@ -685,11 +708,12 @@ extension Eidolon {
         try userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO moment_plans(id, character_id, plan_day, due_at, kind, birthday, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO moment_plans(
+                        id, franchise_id, character_id, plan_day, due_at, kind, birthday, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                 arguments: [
-                    UUID().uuidString, characterID, planDay, Self.timestamp(dueAt),
+                    UUID().uuidString, activeContentFranchise, characterID, planDay, Self.timestamp(dueAt),
                     kind.rawValue, birthday ? 1 : 0, Self.timestamp(now),
                 ]
             )
@@ -747,8 +771,12 @@ extension Eidolon {
         try userQueue.read { db in
             try Row.fetchAll(
                 db,
-                sql: "SELECT * FROM moment_plans WHERE due_at <= ? ORDER BY due_at ASC",
-                arguments: [Self.timestamp(now)]
+                sql: """
+                    SELECT * FROM moment_plans
+                    WHERE franchise_id = ? AND due_at <= ?
+                    ORDER BY due_at ASC
+                    """,
+                arguments: [activeContentFranchise, Self.timestamp(now)]
             ).map { row in
                 MomentPlanRecord(
                     id: row["id"], characterID: row["character_id"], planDay: row["plan_day"],
@@ -822,8 +850,12 @@ extension Eidolon {
         try userQueue.read { db in
             try Row.fetchAll(
                 db,
-                sql: "SELECT character_id, COUNT(*) AS n FROM moment_posts WHERE plan_day = ? GROUP BY character_id",
-                arguments: [day]
+                sql: """
+                    SELECT character_id, COUNT(*) AS n FROM moment_posts
+                    WHERE franchise_id = ? AND plan_day = ?
+                    GROUP BY character_id
+                    """,
+                arguments: [activeContentFranchise, day]
             ).reduce(into: [:]) { result, row in result[row["character_id"]] = row["n"] }
         }
     }
@@ -1050,13 +1082,13 @@ extension Eidolon {
             try db.execute(
                 sql: """
                     INSERT INTO moment_posts(
-                        id, character_id, ja, zh, plan_day, reveal_at, created_at,
+                        id, franchise_id, character_id, ja, zh, plan_day, reveal_at, created_at,
                         place_id, place_name, place_area, place_lat, place_lon,
                         weather_code, weather_temperature
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                 arguments: [
-                    postID, character.id, postJA, postZH, planDay,
+                    postID, activeContentFranchise, character.id, postJA, postZH, planDay,
                     Self.timestamp(now), Self.timestamp(now),
                     snapshot?.id, snapshot?.name, snapshot?.area, snapshot?.lat, snapshot?.lon,
                     weather.map { $0.kind.rawValue }, weather?.temperature,
@@ -1212,8 +1244,11 @@ extension Eidolon {
         return try userQueue.read { db in
             Set(try String.fetchAll(
                 db,
-                sql: "SELECT place_id FROM moment_posts WHERE place_id IS NOT NULL AND reveal_at >= ?",
-                arguments: [cutoff]
+                sql: """
+                    SELECT place_id FROM moment_posts
+                    WHERE franchise_id = ? AND place_id IS NOT NULL AND reveal_at >= ?
+                    """,
+                arguments: [activeContentFranchise, cutoff]
             ))
         }
     }
@@ -1321,10 +1356,11 @@ extension Eidolon {
                 sql: """
                     SELECT ja, reveal_at, (SELECT note FROM moment_images i WHERE i.post_id = p.id)
                         AS note
-                    FROM moment_posts p WHERE character_id = ?
-                    ORDER BY reveal_at DESC LIMIT ?
+                    FROM moment_posts p
+                    WHERE p.franchise_id = ? AND p.character_id = ?
+                    ORDER BY p.reveal_at DESC LIMIT ?
                     """,
-                arguments: [characterID, limit]
+                arguments: [activeContentFranchise, characterID, limit]
             )
             return rows.map { row in
                 let ja: String = row["ja"]
@@ -1646,10 +1682,11 @@ extension Eidolon {
                         EXISTS(SELECT 1 FROM moment_likes l WHERE l.post_id = p.id) AS liked
                     FROM moment_comments c
                     JOIN moment_posts p ON p.id = c.post_id
-                    WHERE c.reply_reveal_at IS NOT NULL AND c.reply_at IS NULL
+                    WHERE p.franchise_id = ?
+                        AND c.reply_reveal_at IS NOT NULL AND c.reply_at IS NULL
                         AND c.reply_reveal_at <= ? AND p.reveal_at <= ?
                     """,
-                arguments: [stamp, stamp]
+                arguments: [activeContentFranchise, stamp, stamp]
             )
         }
         let names = Dictionary(
@@ -1849,9 +1886,9 @@ extension Eidolon {
                     sql: """
                         SELECT p.id, i.file FROM moment_posts p
                         LEFT JOIN moment_images i ON i.post_id = p.id
-                        WHERE p.reveal_at < ? LIMIT 200
+                        WHERE p.franchise_id = ? AND p.reveal_at < ? LIMIT 200
                         """,
-                    arguments: [cutoff]
+                    arguments: [activeContentFranchise, cutoff]
                 )
             }
             guard !batch.isEmpty else { break }
@@ -1872,8 +1909,11 @@ extension Eidolon {
         }
         try userQueue.write { db in
             try db.execute(
-                sql: "DELETE FROM moment_plans WHERE plan_day < ?",
-                arguments: [Self.isoDay(now.addingTimeInterval(-24 * 3600), in: Self.momentTokyo)]
+                sql: "DELETE FROM moment_plans WHERE franchise_id = ? AND plan_day < ?",
+                arguments: [
+                    activeContentFranchise,
+                    Self.isoDay(now.addingTimeInterval(-24 * 3600), in: Self.momentTokyo),
+                ]
             )
         }
         try removeOrphanMomentImages()
@@ -1919,10 +1959,11 @@ extension Eidolon {
                         c.text AS comment, c.reply_ja AS reply, c.reply_at AS reply_at
                     FROM moment_posts p
                     LEFT JOIN moment_comments c ON c.post_id = p.id
-                    WHERE p.character_id = ? AND p.reveal_at >= ? AND p.reveal_at <= ?
+                    WHERE p.franchise_id = ? AND p.character_id = ?
+                        AND p.reveal_at >= ? AND p.reveal_at <= ?
                     ORDER BY p.reveal_at DESC LIMIT 3
                     """,
-                arguments: [characterID, cutoff, stamp]
+                arguments: [activeContentFranchise, characterID, cutoff, stamp]
             )
         }
         guard !rows.isEmpty else { return [] }

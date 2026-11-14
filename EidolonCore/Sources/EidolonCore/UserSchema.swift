@@ -368,6 +368,7 @@ enum UserSchema {
 
         CREATE TABLE moment_posts (
             id TEXT PRIMARY KEY,
+            franchise_id TEXT NOT NULL,
             character_id TEXT NOT NULL,
             ja TEXT NOT NULL,
             zh TEXT NOT NULL,
@@ -383,7 +384,7 @@ enum UserSchema {
             weather_temperature INTEGER
         );
         CREATE INDEX moment_posts_by_reveal
-            ON moment_posts(reveal_at);
+            ON moment_posts(franchise_id, reveal_at);
         CREATE INDEX moment_posts_by_character
             ON moment_posts(character_id, plan_day);
         CREATE TABLE moment_images (
@@ -425,6 +426,7 @@ enum UserSchema {
         );
         CREATE TABLE moment_plans (
             id TEXT PRIMARY KEY,
+            franchise_id TEXT NOT NULL,
             character_id TEXT NOT NULL,
             plan_day TEXT NOT NULL,
             due_at TEXT NOT NULL,
@@ -432,9 +434,9 @@ enum UserSchema {
             birthday INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL
         );
-        CREATE INDEX moment_plans_by_due ON moment_plans(due_at);
+        CREATE INDEX moment_plans_by_due ON moment_plans(franchise_id, due_at);
         CREATE TABLE moment_state (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
+            franchise_id TEXT PRIMARY KEY,
             last_opened_at TEXT,
             planned_day TEXT
         );

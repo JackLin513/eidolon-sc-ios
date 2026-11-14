@@ -63,8 +63,8 @@ final class MomentTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO moment_state(id, planned_day) VALUES (1, ?)
-                    ON CONFLICT(id) DO UPDATE SET planned_day = excluded.planned_day
+                    INSERT INTO moment_state(franchise_id, planned_day) VALUES ('shiny', ?)
+                    ON CONFLICT(franchise_id) DO UPDATE SET planned_day = excluded.planned_day
                     """,
                 arguments: [planned]
             )
@@ -81,8 +81,8 @@ final class MomentTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO moment_plans(id, character_id, plan_day, due_at, kind, birthday, created_at)
-                    VALUES (?, ?, ?, ?, ?, 0, ?)
+                    INSERT INTO moment_plans(id, franchise_id, character_id, plan_day, due_at, kind, birthday, created_at)
+                    VALUES (?, 'shiny', ?, ?, ?, ?, 0, ?)
                     """,
                 arguments: [
                     UUID().uuidString, character, planned, dueStamp, kind, created,
@@ -101,8 +101,8 @@ final class MomentTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO moment_posts(id, character_id, ja, zh, plan_day, reveal_at, created_at)
-                    VALUES (?, ?, ?, '今天也辛苦了。', ?, ?, ?)
+                    INSERT INTO moment_posts(id, franchise_id, character_id, ja, zh, plan_day, reveal_at, created_at)
+                    VALUES (?, 'shiny', ?, ?, '今天也辛苦了。', ?, ?, ?)
                     """,
                 arguments: [id, character, ja, planned, stamp, stamp]
             )
@@ -554,7 +554,7 @@ extension MomentTests {
         try await markPlanned(eidolon, at: now)
         try await settings(eidolon, enabled: true)
         let planned = try await eidolon.userQueue.read { db in
-            try String.fetchOne(db, sql: "SELECT planned_day FROM moment_state WHERE id = 1")
+            try String.fetchOne(db, sql: "SELECT planned_day FROM moment_state WHERE franchise_id = 'shiny'")
         }
         XCTAssertNil(planned, "a switch turned back on today plans again")
     }

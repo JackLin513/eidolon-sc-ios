@@ -243,6 +243,44 @@ struct FranchiseIsolationTests {
             .achievements.first(where: { $0.id == .turns })?.progress == 7)
     }
 
+    @Test("moments and plans are kept per franchise")
+    func momentsAreScopedToTheirFranchise() async throws {
+        let (eidolon, root) = try makeEidolon()
+        try await installTwoFranchises(on: eidolon, in: root)
+        let now = try Date("2026-11-14T12:00:00Z", strategy: .iso8601)
+        let stamp = Eidolon.timestamp(now)
+        try await eidolon.userQueue.write { db in
+            for franchise in ["shiny", "totsulover"] {
+                try db.execute(
+                    sql: """
+                        INSERT INTO moment_posts
+                            (id, franchise_id, character_id, ja, zh, plan_day,
+                             reveal_at, created_at)
+                        VALUES (?, ?, 'mano', 'post', '动态', '2026-11-14', ?, ?)
+                        """,
+                    arguments: ["post-\(franchise)", franchise, stamp, stamp]
+                )
+                try db.execute(
+                    sql: """
+                        INSERT INTO moment_plans
+                            (id, franchise_id, character_id, plan_day, due_at, kind, created_at)
+                        VALUES (?, ?, 'mano', '2026-11-14', ?, 'daily', ?)
+                        """,
+                    arguments: ["plan-\(franchise)", franchise, stamp, stamp]
+                )
+            }
+        }
+        let shiny = try await eidolon.momentsTimeline(now: now)
+        #expect(shiny.map(\.id) == ["post-shiny"])
+        let shinyPlans = try await eidolon.dueMomentPlans(now: now)
+        #expect(shinyPlans.map(\.id) == ["plan-shiny"])
+
+        try await eidolon.activateContent(franchise: "totsulover")
+        let totsulover = try await eidolon.momentsTimeline(now: now)
+        #expect(totsulover.map(\.id) == ["post-totsulover"])
+        #expect(try await eidolon.dueMomentPlans(now: now).map(\.id) == ["plan-totsulover"])
+    }
+
     @Test("cycle seed and records are kept per franchise")
     func cycleIsScopedToItsFranchise() async throws {
         let (eidolon, root) = try makeEidolon()
