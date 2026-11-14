@@ -34,6 +34,7 @@ final class FaceToFaceTests: XCTestCase {
         ) {}
         let prompt = try XCTUnwrap(provider.prompts.first)
         XCTAssertTrue(prompt.contains { $0.role == .system && $0.content.contains("正面对面说话") })
+        XCTAssertTrue(prompt.contains { $0.role == .system && $0.content.contains("不要把自己说成屏幕") })
         let snapshot = try await eidolon.currentConversation(characterID: "mano")
         XCTAssertEqual(snapshot?.faceToFace, true)
     }
