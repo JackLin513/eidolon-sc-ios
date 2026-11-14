@@ -227,7 +227,9 @@ extension Eidolon {
     public func cycleEnabled() throws -> Bool {
         try userQueue.read { db in
             let enabled = try Int.fetchOne(
-                db, sql: "SELECT enabled FROM cycle_settings WHERE id = 1"
+                db,
+                sql: "SELECT enabled FROM cycle_settings WHERE franchise_id = ?",
+                arguments: [activeContentFranchise]
             )
             return enabled != 0
         }
@@ -239,10 +241,10 @@ extension Eidolon {
         try userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO cycle_settings(id, enabled) VALUES (1, ?)
-                    ON CONFLICT(id) DO UPDATE SET enabled = excluded.enabled
+                    INSERT INTO cycle_settings(franchise_id, enabled) VALUES (?, ?)
+                    ON CONFLICT(franchise_id) DO UPDATE SET enabled = excluded.enabled
                     """,
-                arguments: [on]
+                arguments: [activeContentFranchise, on]
             )
         }
     }
@@ -253,15 +255,22 @@ extension Eidolon {
         guard try characters().contains(where: { $0.id == characterID }) else { return nil }
         return try userQueue.write { db in
             if let seed = try Data.fetchOne(
-                db, sql: "SELECT seed FROM cycle_seeds WHERE character_id = ?",
-                arguments: [characterID]
+                db,
+                sql: """
+                    SELECT seed FROM cycle_seeds
+                    WHERE franchise_id = ? AND character_id = ?
+                    """,
+                arguments: [activeContentFranchise, characterID]
             ) {
                 return seed
             }
             let seed = HerCycle.newSeed()
             try db.execute(
-                sql: "INSERT INTO cycle_seeds(character_id, seed) VALUES (?, ?)",
-                arguments: [characterID, seed]
+                sql: """
+                    INSERT INTO cycle_seeds(franchise_id, character_id, seed)
+                    VALUES (?, ?, ?)
+                    """,
+                arguments: [activeContentFranchise, characterID, seed]
             )
             return seed
         }

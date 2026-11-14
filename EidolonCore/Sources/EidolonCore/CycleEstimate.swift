@@ -220,30 +220,41 @@ public enum CycleEstimateRules {
 
 extension Eidolon {
     static let cycleRecordColumns =
-        "id, character_id, first_day, days, recorded_at, updated_at"
+        "id, franchise_id, character_id, first_day, days, recorded_at, updated_at"
 
-    static func cycleRecords(_ db: Database, characterID: String) throws -> [CycleRecord] {
+    static func cycleRecords(
+        _ db: Database, franchiseID: String, characterID: String
+    ) throws -> [CycleRecord] {
         try Row.fetchAll(
             db,
             sql: """
                 SELECT \(cycleRecordColumns) FROM cycle_records
-                WHERE character_id = ? ORDER BY first_day
+                WHERE franchise_id = ? AND character_id = ? ORDER BY first_day
                 """,
-            arguments: [characterID]
+            arguments: [franchiseID, characterID]
         ).map(Self.record(from:))
     }
 
-    static func cycleRecord(_ db: Database, id: String) throws -> CycleRecord? {
+    static func cycleRecord(
+        _ db: Database, franchiseID: String, id: String
+    ) throws -> CycleRecord? {
         try Row.fetchOne(
             db,
-            sql: "SELECT \(cycleRecordColumns) FROM cycle_records WHERE id = ?",
-            arguments: [id]
+            sql: """
+                SELECT \(cycleRecordColumns) FROM cycle_records
+                WHERE franchise_id = ? AND id = ?
+                """,
+            arguments: [franchiseID, id]
         ).map(Self.record(from:))
     }
 
     /// One character's records, by first day.
     public func cycleRecords(characterID: String) throws -> [CycleRecord] {
-        try userQueue.read { db in try Self.cycleRecords(db, characterID: characterID) }
+        try userQueue.read { db in
+            try Self.cycleRecords(
+                db, franchiseID: activeContentFranchise, characterID: characterID
+            )
+        }
     }
 
     /// What her records estimate on the producer's day; nil without a record.
@@ -266,7 +277,9 @@ extension Eidolon {
             throw CycleRecordError.noSuchCharacter
         }
         return try userQueue.write { db in
-            let existing = try Self.cycleRecords(db, characterID: characterID)
+            let existing = try Self.cycleRecords(
+                db, franchiseID: activeContentFranchise, characterID: characterID
+            )
             try Self.check(
                 firstDay: firstDay, days: days, today: today, existing: existing, id: nil
             )
@@ -275,7 +288,7 @@ extension Eidolon {
                 id: UUID().uuidString, characterID: characterID,
                 firstDay: firstDay, days: days, recordedAt: stamp, updatedAt: stamp
             )
-            try Self.insert(record, into: db)
+            try Self.insert(record, franchiseID: activeContentFranchise, into: db)
             return record
         }
     }
@@ -287,10 +300,14 @@ extension Eidolon {
     ) throws -> CycleRecord {
         let today = CalendarPage.today(now: now, timeZone: timeZone)
         return try userQueue.write { db in
-            guard let old = try Self.cycleRecord(db, id: id) else {
+            guard let old = try Self.cycleRecord(
+                db, franchiseID: activeContentFranchise, id: id
+            ) else {
                 throw CycleRecordError.noSuchRecord
             }
-            let existing = try Self.cycleRecords(db, characterID: old.characterID)
+            let existing = try Self.cycleRecords(
+                db, franchiseID: activeContentFranchise, characterID: old.characterID
+            )
             try Self.check(
                 firstDay: firstDay, days: days, today: today, existing: existing, id: id
             )
@@ -332,16 +349,19 @@ extension Eidolon {
         )
     }
 
-    static func insert(_ record: CycleRecord, into db: Database) throws {
+    static func insert(
+        _ record: CycleRecord, franchiseID: String, into db: Database
+    ) throws {
         try db.execute(
             sql: """
                 INSERT INTO cycle_records(
-                    id, character_id, first_day, days, recorded_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    id, franchise_id, character_id, first_day, days, recorded_at,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
             arguments: [
-                record.id, record.characterID, record.firstDay.stamp, record.days,
-                record.recordedAt, record.updatedAt,
+                record.id, franchiseID, record.characterID, record.firstDay.stamp,
+                record.days, record.recordedAt, record.updatedAt,
             ]
         )
     }

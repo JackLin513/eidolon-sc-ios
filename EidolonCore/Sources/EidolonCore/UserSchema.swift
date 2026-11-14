@@ -232,15 +232,18 @@ enum UserSchema {
             ON schedule_placements(character_id, week);
 
         CREATE TABLE cycle_seeds (
-            character_id TEXT PRIMARY KEY,
-            seed BLOB NOT NULL
+            franchise_id TEXT NOT NULL,
+            character_id TEXT NOT NULL,
+            seed BLOB NOT NULL,
+            PRIMARY KEY (franchise_id, character_id)
         );
         CREATE TABLE cycle_settings (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
+            franchise_id TEXT PRIMARY KEY,
             enabled INTEGER NOT NULL DEFAULT 1
         );
         CREATE TABLE cycle_records (
             id TEXT PRIMARY KEY,
+            franchise_id TEXT NOT NULL,
             character_id TEXT NOT NULL,
             first_day TEXT NOT NULL,
             days INTEGER NOT NULL,
@@ -248,7 +251,7 @@ enum UserSchema {
             updated_at TEXT NOT NULL
         );
         CREATE INDEX cycle_records_by_her
-            ON cycle_records(character_id, first_day);
+            ON cycle_records(franchise_id, character_id, first_day);
 
         CREATE TABLE current_conversations (
             franchise_id TEXT NOT NULL,

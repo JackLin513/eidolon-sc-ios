@@ -147,4 +147,33 @@ struct FranchiseIsolationTests {
         #expect(!shinyList.contains { $0.id == totsuloverConversation })
     }
 
+    @Test("cycle seed and records are kept per franchise")
+    func cycleIsScopedToItsFranchise() async throws {
+        let (eidolon, root) = try makeEidolon()
+        try await installTwoFranchises(on: eidolon, in: root)
+        let today = CalendarDay(year: 2026, month: 11, day: 14)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let shinySeed = try #require(try await eidolon.cycleSeed(characterID: "mano"))
+        try await eidolon.addCycleRecord(
+            characterID: "mano", firstDay: today, days: 5, now: now, timeZone: .gmt
+        )
+        #expect(try await eidolon.cycleRecords(characterID: "mano").count == 1)
+
+        try await eidolon.activateContent(franchise: "totsulover")
+        let totsuloverSeed = try #require(try await eidolon.cycleSeed(characterID: "mano"))
+        #expect(totsuloverSeed != shinySeed, "两个企划的同名角色不能共用一个周期种子")
+        #expect(try await eidolon.cycleRecords(characterID: "mano").isEmpty)
+
+        try await eidolon.addCycleRecord(
+            characterID: "mano", firstDay: today, days: 6, now: now, timeZone: .gmt
+        )
+        #expect(try await eidolon.cycleRecords(characterID: "mano").count == 1)
+
+        try await eidolon.activateContent(franchise: "shiny")
+        let shinyRecords = try await eidolon.cycleRecords(characterID: "mano")
+        #expect(shinyRecords.count == 1)
+        #expect(shinyRecords[0].days == 5)
+    }
+
 }
