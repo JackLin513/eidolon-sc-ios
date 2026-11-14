@@ -55,6 +55,7 @@ final class AchievementTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             try Eidolon.writeAffinity(
                 db,
+                franchiseID: "shiny",
                 characterID: character,
                 value: value,
                 cooling: cooling,

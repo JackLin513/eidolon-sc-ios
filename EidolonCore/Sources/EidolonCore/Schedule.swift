@@ -495,7 +495,10 @@ extension Eidolon {
         let idols = try idolIDs()
         let listed = try jobList()
         return try userQueue.write { db in
-            try Self.countDoneJobs(db, now: now, timeZone: timeZone, thisWeek: thisWeek)
+            try Self.countDoneJobs(
+                db, now: now, timeZone: timeZone, thisWeek: thisWeek,
+                franchiseID: activeContentFranchise
+            )
             try Self.ensureWeekDrawn(db, week: week, idols: idols, jobs: listed)
             let jobs = try Self.weeklyJobs(db, week: week, characterID: characterID)
             let placements = try Self.placements(db, week: week, characterID: characterID)
@@ -514,7 +517,10 @@ extension Eidolon {
         let idols = try idolIDs()
         let jobs = try jobList()
         return try userQueue.write { db in
-            try Self.countDoneJobs(db, now: now, timeZone: timeZone, thisWeek: thisWeek)
+            try Self.countDoneJobs(
+                db, now: now, timeZone: timeZone, thisWeek: thisWeek,
+                franchiseID: activeContentFranchise
+            )
             try Self.ensureWeekDrawn(db, week: thisWeek, idols: idols, jobs: jobs)
             try Self.ensureWeekDrawn(db, week: nextWeek, idols: idols, jobs: jobs)
             let rows = try Self.placementRows(
@@ -891,7 +897,8 @@ extension Eidolon {
     }
 
     static func countDoneJobs(
-        _ db: Database, now: Date, timeZone: TimeZone, thisWeek: CalendarDay
+        _ db: Database, now: Date, timeZone: TimeZone, thisWeek: CalendarDay,
+        franchiseID: String
     ) throws {
         let rows = try Row.fetchAll(
             db,
@@ -914,18 +921,21 @@ extension Eidolon {
                 week: week, day: row["day"], slot: row["slot"], length: row["length"]
             ) else { continue }
             let characterID: String = row["character_id"]
-            let before = try Self.readAffinity(db, characterID: characterID, now: now)
+            let before = try Self.readAffinity(
+                db, franchiseID: franchiseID, characterID: characterID, now: now
+            )
             let after = before.stepped(ScheduleRules.jobDoneStep)
             try db.execute(
                 sql: """
-                    INSERT INTO affinities(character_id, value, updated_at, cooling, gained_today, gained_on)
-                    VALUES (?, ?, ?, ?, 0, NULL)
-                    ON CONFLICT(character_id) DO UPDATE SET
+                    INSERT INTO affinities(franchise_id, character_id, value, updated_at, cooling, gained_today, gained_on)
+                    VALUES (?, ?, ?, ?, ?, 0, NULL)
+                    ON CONFLICT(franchise_id, character_id) DO UPDATE SET
                         value = excluded.value, updated_at = excluded.updated_at,
                         cooling = excluded.cooling
                     """,
                 arguments: [
-                    characterID, after.value, Eidolon.timestamp(now), after.cooling ? 1 : 0,
+                    franchiseID, characterID, after.value,
+                    Eidolon.timestamp(now), after.cooling ? 1 : 0,
                 ]
             )
             try db.execute(

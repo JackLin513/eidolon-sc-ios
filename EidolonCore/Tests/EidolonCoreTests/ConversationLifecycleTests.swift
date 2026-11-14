@@ -423,8 +423,8 @@ final class ConversationLifecycleTests: XCTestCase {
             try db.execute(
                 sql: """
                     INSERT OR REPLACE INTO affinities(
-                        character_id, value, cooling, updated_at, gained_today, gained_on
-                    ) VALUES ('mano', 5, 0, ?, 0, NULL)
+                        franchise_id, character_id, value, cooling, updated_at, gained_today, gained_on
+                    ) VALUES ('shiny', 'mano', 5, 0, ?, 0, NULL)
                     """,
                 arguments: [Eidolon.timestamp(Date())]
             )

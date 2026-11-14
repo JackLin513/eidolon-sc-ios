@@ -859,6 +859,7 @@ extension Eidolon {
     /// touching the day's allowance, so they keep their own statement.
     static func writeAffinity(
         _ db: Database,
+        franchiseID: String,
         characterID: String,
         value: Double,
         cooling: Bool,
@@ -868,32 +869,38 @@ extension Eidolon {
     ) throws {
         try db.execute(
             sql: """
-                INSERT INTO affinities(character_id, value, cooling, updated_at, gained_today, gained_on)
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(character_id) DO UPDATE SET
+                INSERT INTO affinities(franchise_id, character_id, value, cooling, updated_at, gained_today, gained_on)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(franchise_id, character_id) DO UPDATE SET
                     value = excluded.value, cooling = excluded.cooling,
                     updated_at = excluded.updated_at,
                     gained_today = excluded.gained_today, gained_on = excluded.gained_on
                 """,
             arguments: [
-                characterID, value, cooling ? 1 : 0, updatedAt, gainedToday, gainedOn,
+                franchiseID, characterID, value, cooling ? 1 : 0, updatedAt, gainedToday, gainedOn,
             ]
         )
     }
 
     func readAffinity(characterID: String, now: Date) throws -> Affinity {
         try userQueue.read { db in
-            try Self.readAffinity(db, characterID: characterID, now: now)
+            try Self.readAffinity(db, franchiseID: activeContentFranchise, characterID: characterID, now: now)
         }
     }
 
-    static func readAffinity(_ db: Database, characterID: String, now: Date) throws -> Affinity {
+    static func readAffinity(
+        _ db: Database,
+        franchiseID: String,
+        characterID: String,
+        now: Date
+    ) throws -> Affinity {
         guard let row = try Row.fetchOne(
             db,
             sql: """
-                SELECT value, updated_at, cooling FROM affinities WHERE character_id = ?
+                SELECT value, updated_at, cooling FROM affinities
+                WHERE franchise_id = ? AND character_id = ?
                 """,
-            arguments: [characterID]
+            arguments: [franchiseID, characterID]
         ) else {
             return .fresh(at: now)
         }
@@ -1368,12 +1375,20 @@ extension Eidolon {
             ) ?? 0
 
             // Affinity changes as the turn is recorded, and only then.
-            let before = try Self.readAffinity(db, characterID: characterID, now: now)
+            let before = try Self.readAffinity(
+                db,
+                franchiseID: activeContentFranchise,
+                characterID: characterID,
+                now: now
+            )
             var step = judged?.step ?? 0
             let gainRow = try Row.fetchOne(
                 db,
-                sql: "SELECT gained_today, gained_on FROM affinities WHERE character_id = ?",
-                arguments: [characterID]
+                sql: """
+                    SELECT gained_today, gained_on FROM affinities
+                    WHERE franchise_id = ? AND character_id = ?
+                    """,
+                arguments: [activeContentFranchise, characterID]
             )
             let gainedBefore = (gainRow?["gained_on"] as String?) == day
                 ? (gainRow?["gained_today"] as Double? ?? 0)
@@ -1390,6 +1405,7 @@ extension Eidolon {
             let gainedToday = gainedBefore + min(max(step, 0), rose)
             try Self.writeAffinity(
                 db,
+                franchiseID: activeContentFranchise,
                 characterID: characterID,
                 value: after.value,
                 cooling: after.cooling,

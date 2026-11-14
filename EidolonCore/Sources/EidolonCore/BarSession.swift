@@ -143,6 +143,8 @@ public actor BarRoom {
     }
 
     let userQueue: DatabaseQueue
+    /// 这个酒吧属于哪个企划：亲密度、来访与事实都按它记。
+    let franchiseID: String
     let clock: @Sendable () -> Date
     /// The device's time zone, for the bar's day: 「当天」 is the producer's day here, not the
     /// server's (ADR-0021). Injected so tests do not depend on the machine's zone.
@@ -157,6 +159,7 @@ public actor BarRoom {
 
     public init(
         userQueue: DatabaseQueue,
+        franchiseID: String,
         clock: @escaping @Sendable () -> Date = { Date() },
         timeZone: @escaping @Sendable () -> TimeZone = { .current },
         source: @escaping @Sendable () throws -> BarContentSource,
@@ -164,6 +167,7 @@ public actor BarRoom {
         random: @escaping BarRandom = { Int.random(in: 0..<max($0, 1)) }
     ) {
         self.userQueue = userQueue
+        self.franchiseID = franchiseID
         self.clock = clock
         self.timeZone = timeZone
         self.source = source
@@ -232,11 +236,12 @@ public actor BarRoom {
         let character = everyone[indexed]
         let hers = try await userQueue.read { db in
             (history: try BarRecords.history(db, characterID: character.id),
-             affinity: try Eidolon.readAffinity(db, characterID: character.id, now: now))
+             affinity: try Eidolon.readAffinity(db, franchiseID: franchiseID, characterID: character.id, now: now))
         }
         let doneJob = try await userQueue.write { db in
             try Eidolon.countDoneJobs(
-                db, now: now, timeZone: zone, thisWeek: ScheduleRules.week(of: now)
+                db, now: now, timeZone: zone, thisWeek: ScheduleRules.week(of: now),
+                franchiseID: franchiseID
             )
             return try ScheduleStore.doneTodayJob(
                 db, characterID: character.id, now: now, timeZone: zone
@@ -769,6 +774,7 @@ public actor BarRoom {
         return try await userQueue.write { db in
             try BarRecords.writeDown(
                 visit, leftAt: now, day: day, rewarding: open(),
+                franchiseID: franchiseID,
                 catalog: bar.content.catalog, db
             )
         }

@@ -335,7 +335,8 @@ class BarTestCase: XCTestCase {
         let home = home!
         let clock = self.clock
         return BarRoom(
-            userQueue: home.queue, clock: { clock.now }, timeZone: { Self.timeZone },
+            userQueue: home.queue, franchiseID: "shiny",
+            clock: { clock.now }, timeZone: { Self.timeZone },
             source: {
                 var content = home.content
                 content.world = world

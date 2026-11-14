@@ -134,12 +134,14 @@ enum UserSchema {
         );
 
         CREATE TABLE affinities (
-            character_id TEXT PRIMARY KEY,
+            franchise_id TEXT NOT NULL,
+            character_id TEXT NOT NULL,
             value REAL NOT NULL,
             cooling INTEGER NOT NULL DEFAULT 0,
             updated_at TEXT NOT NULL DEFAULT '',
             gained_today REAL NOT NULL DEFAULT 0,
-            gained_on TEXT
+            gained_on TEXT,
+            PRIMARY KEY (franchise_id, character_id)
         );
 
         CREATE TABLE pending_jobs (

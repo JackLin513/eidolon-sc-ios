@@ -1319,8 +1319,8 @@ final class CallSessionTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO affinities(character_id, value, cooling, updated_at, gained_today, gained_on)
-                    VALUES ('mano', 1, 0, ?, 0, NULL)
+                    INSERT INTO affinities(franchise_id, character_id, value, cooling, updated_at, gained_today, gained_on)
+                    VALUES ('shiny', 'mano', 1, 0, ?, 0, NULL)
                     """,
                 arguments: [Eidolon.timestamp(Date())]
             )
@@ -2289,8 +2289,8 @@ final class CallSessionTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO affinities(character_id, value, cooling, updated_at, gained_today, gained_on)
-                    VALUES ('mano', 0, 1, ?, 0, NULL)
+                    INSERT INTO affinities(franchise_id, character_id, value, cooling, updated_at, gained_today, gained_on)
+                    VALUES ('shiny', 'mano', 0, 1, ?, 0, NULL)
                     """,
                 arguments: [Eidolon.timestamp(Date())]
             )
@@ -2970,8 +2970,8 @@ final class CallSessionTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO affinities(character_id, value, cooling, updated_at, gained_today, gained_on)
-                    VALUES ('mano', 10.5, 0, ?, 0, NULL)
+                    INSERT INTO affinities(franchise_id, character_id, value, cooling, updated_at, gained_today, gained_on)
+                    VALUES ('shiny', 'mano', 10.5, 0, ?, 0, NULL)
                     """,
                 arguments: [Eidolon.timestamp(Date())]
             )

@@ -465,7 +465,7 @@ extension Eidolon {
                 arguments: [giftID]
             ) ?? 0
 
-            let before = try Self.readAffinity(db, characterID: characterID, now: now)
+            let before = try Self.readAffinity(db, franchiseID: activeContentFranchise, characterID: characterID, now: now)
             let step = gift.coolingStep(
                 affinityCooling: before.cooling,
                 liked: liked,
@@ -493,13 +493,16 @@ extension Eidolon {
             }
             try db.execute(
                 sql: """
-                    INSERT INTO affinities(character_id, value, cooling, updated_at, gained_today, gained_on)
-                    VALUES (?, ?, ?, ?, 0, NULL)
-                    ON CONFLICT(character_id) DO UPDATE SET
+                    INSERT INTO affinities(franchise_id, character_id, value, cooling, updated_at, gained_today, gained_on)
+                    VALUES (?, ?, ?, ?, ?, 0, NULL)
+                    ON CONFLICT(franchise_id, character_id) DO UPDATE SET
                         value = excluded.value, cooling = excluded.cooling,
                         updated_at = excluded.updated_at
                     """,
-                arguments: [characterID, after.value, after.cooling ? 1 : 0, Self.timestamp(now)]
+                arguments: [
+                    activeContentFranchise, characterID, after.value,
+                    after.cooling ? 1 : 0, Self.timestamp(now),
+                ]
             )
 
             let conversationID: String
@@ -582,7 +585,10 @@ extension Eidolon {
             var restored: [ResetCardTarget] = []
             for character in characters {
                 let affinity = try Self.readAffinity(
-                    db, characterID: character.id, now: now
+                    db,
+                    franchiseID: activeContentFranchise,
+                    characterID: character.id,
+                    now: now
                 )
                 guard affinity.tier.start < AffinityTier.trust.start else { continue }
                 restored.append(ResetCardTarget(
@@ -594,9 +600,12 @@ extension Eidolon {
                 try db.execute(
                     sql: """
                         UPDATE affinities SET value = ?, updated_at = ?, cooling = 0
-                        WHERE character_id = ?
+                        WHERE franchise_id = ? AND character_id = ?
                         """,
-                    arguments: [AffinityRules.normal, Self.timestamp(now), character.id]
+                    arguments: [
+                        AffinityRules.normal, Self.timestamp(now),
+                        activeContentFranchise, character.id,
+                    ]
                 )
             }
             guard !restored.isEmpty else { throw EidolonError.noOneToReset }

@@ -175,7 +175,7 @@ final class BarVisitTests: BarTestCase {
         let queue = self.queue!
         let at = now!
         let affinity = try await queue.read { db in
-            try Eidolon.readAffinity(db, characterID: "mano", now: at)
+            try Eidolon.readAffinity(db, franchiseID: "shiny", characterID: "mano", now: at)
         }
         XCTAssertEqual(affinity.value, AffinityRules.normal + AffinityRules.servedSteps[.best]!, accuracy: 1e-9)
     }

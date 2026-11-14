@@ -175,7 +175,7 @@ enum BarRecords {
     /// with her affinity.
     static func writeDown(
         _ visit: BarVisit, leftAt now: Date, day: String, rewarding: Bool,
-        catalog: DrinkCatalog, _ db: Database
+        franchiseID: String, catalog: DrinkCatalog, _ db: Database
     ) throws -> Reward? {
         var reward: Reward?
         if rewarding, try doneOn(db, day: day) == false {
@@ -183,7 +183,7 @@ enum BarRecords {
                 (serving.tier, try BarRules.hasBest(serving.order, visit.character, catalog))
             })
             let affinityUp = try raiseAffinity(
-                visit.character.id, by: step, at: now, db
+                visit.character.id, by: step, at: now, franchiseID: franchiseID, db
             )
             let drawGiven = try GiftStore.creditBarDraw(
                 db,
@@ -213,20 +213,26 @@ enum BarRecords {
     /// `Affinities._raise`): beyond the day's gains, and out of a cooldown only at the thaw
     /// line. Whether it rose: not if it was as high as it goes.
     private static func raiseAffinity(
-        _ characterID: String, by step: Double, at now: Date, _ db: Database
+        _ characterID: String, by step: Double, at now: Date,
+        franchiseID: String, _ db: Database
     ) throws -> Bool {
-        let before = try Eidolon.readAffinity(db, characterID: characterID, now: now)
+        let before = try Eidolon.readAffinity(
+            db, franchiseID: franchiseID, characterID: characterID, now: now
+        )
         let after = before.stepped(max(step, 0)).recovered(now: now)
         try db.execute(
             sql: """
-                INSERT INTO affinities(character_id, value, updated_at, cooling, gained_today,
-                                       gained_on)
-                VALUES (?, ?, ?, ?, 0, NULL)
-                ON CONFLICT(character_id) DO UPDATE SET
+                INSERT INTO affinities(franchise_id, character_id, value, updated_at, cooling,
+                                       gained_today, gained_on)
+                VALUES (?, ?, ?, ?, ?, 0, NULL)
+                ON CONFLICT(franchise_id, character_id) DO UPDATE SET
                     value = excluded.value, updated_at = excluded.updated_at,
                     cooling = excluded.cooling
                 """,
-            arguments: [characterID, after.value, Eidolon.timestamp(now), after.cooling ? 1 : 0]
+            arguments: [
+                franchiseID, characterID, after.value,
+                Eidolon.timestamp(now), after.cooling ? 1 : 0,
+            ]
         )
         return after.value > before.value
     }

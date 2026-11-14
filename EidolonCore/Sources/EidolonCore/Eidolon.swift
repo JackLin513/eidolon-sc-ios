@@ -502,6 +502,7 @@ public actor Eidolon {
         let holidays = try? holidayTable()
         return BarRoom(
             userQueue: queue,
+            franchiseID: activeContentFranchise,
             source: {
                 // Read on every step, so a visit under way writes on the bundle it came in
                 // on; the content is small and validated on the way in.

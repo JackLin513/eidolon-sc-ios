@@ -24,6 +24,7 @@ extension Eidolon {
         try userQueue.write { db in
             try Self.writeAffinity(
                 db,
+                franchiseID: activeContentFranchise,
                 characterID: characterID,
                 value: clamped,
                 cooling: cooling,

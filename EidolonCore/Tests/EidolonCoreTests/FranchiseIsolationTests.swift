@@ -74,4 +74,77 @@ struct FranchiseIsolationTests {
         #expect(shinyHistory.count == 1)
         #expect(shinyHistory.first?.id == shinyConversation)
     }
+    @Test("affinity is kept per franchise, not shared by the same local id")
+    func affinityIsScopedToItsFranchise() async throws {
+        let (eidolon, root) = try makeEidolon()
+        try await installTwoFranchises(on: eidolon, in: root)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+        try await eidolon.userQueue.write { db in
+            try Eidolon.writeAffinity(
+                db, franchiseID: "shiny", characterID: "mano", value: 30,
+                cooling: false, updatedAt: Eidolon.timestamp(now),
+                gainedToday: 0, gainedOn: nil
+            )
+        }
+        let shinyValue = try await eidolon.userQueue.read { db in
+            try Eidolon.readAffinity(
+                db, franchiseID: "shiny", characterID: "mano", now: now
+            ).value
+        }
+        #expect(shinyValue == 30)
+
+        try await eidolon.activateContent(franchise: "totsulover")
+        let totsuloverValueBefore = try await eidolon.userQueue.read { db in
+            try Eidolon.readAffinity(
+                db, franchiseID: "totsulover", characterID: "mano", now: now
+            ).value
+        }
+        #expect(
+            totsuloverValueBefore == AffinityRules.normal,
+            "totsulover 的 mano 不能继承 shiny 的亲密度"
+        )
+
+        try await eidolon.userQueue.write { db in
+            try Eidolon.writeAffinity(
+                db, franchiseID: "totsulover", characterID: "mano", value: 60,
+                cooling: false, updatedAt: Eidolon.timestamp(now),
+                gainedToday: 0, gainedOn: nil
+            )
+        }
+        let totsuloverValue = try await eidolon.userQueue.read { db in
+            try Eidolon.readAffinity(
+                db, franchiseID: "totsulover", characterID: "mano", now: now
+            ).value
+        }
+        #expect(totsuloverValue == 60)
+
+        try await eidolon.activateContent(franchise: "shiny")
+        let shinyValueAgain = try await eidolon.userQueue.read { db in
+            try Eidolon.readAffinity(
+                db, franchiseID: "shiny", characterID: "mano", now: now
+            ).value
+        }
+        #expect(shinyValueAgain == 30, "切回 shiny 必须读回 shiny 的亲密度")
+    }
+
+    @Test("each franchise lists only its own conversations")
+    func conversationListIsScopedToItsFranchise() async throws {
+        let (eidolon, root) = try makeEidolon()
+        try await installTwoFranchises(on: eidolon, in: root)
+
+        let shinyConversation = try await eidolon.startConversation(characterID: "mano")
+        try await eidolon.activateContent(franchise: "totsulover")
+        let totsuloverConversation = try await eidolon.startConversation(characterID: "mano")
+
+        let totsuloverList = try await eidolon.conversations(characterID: "mano")
+        #expect(totsuloverList.map(\.id) == [totsuloverConversation])
+        #expect(!totsuloverList.contains { $0.id == shinyConversation })
+
+        try await eidolon.activateContent(franchise: "shiny")
+        let shinyList = try await eidolon.conversations(characterID: "mano")
+        #expect(shinyList.map(\.id) == [shinyConversation])
+        #expect(!shinyList.contains { $0.id == totsuloverConversation })
+    }
+
 }

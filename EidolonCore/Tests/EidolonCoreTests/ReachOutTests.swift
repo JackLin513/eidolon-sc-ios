@@ -108,9 +108,9 @@ final class ReachOutTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO affinities(character_id, value, cooling, updated_at)
-                    VALUES ('mano', ?, 0, ?)
-                    ON CONFLICT(character_id) DO UPDATE SET
+                    INSERT INTO affinities(franchise_id, character_id, value, cooling, updated_at)
+                    VALUES ('shiny', 'mano', ?, 0, ?)
+                    ON CONFLICT(franchise_id, character_id) DO UPDATE SET
                         value = excluded.value, cooling = 0, updated_at = excluded.updated_at
                     """,
                 arguments: [value, Eidolon.timestamp(when)]
@@ -188,9 +188,9 @@ final class ReachOutTests: XCTestCase {
             try await eidolon.userQueue.write { db in
                 try db.execute(
                     sql: """
-                        INSERT INTO affinities(character_id, value, cooling, updated_at)
-                        VALUES ('mano', ?, 0, ?)
-                        ON CONFLICT(character_id) DO UPDATE SET
+                        INSERT INTO affinities(franchise_id, character_id, value, cooling, updated_at)
+                        VALUES ('shiny', 'mano', ?, 0, ?)
+                        ON CONFLICT(franchise_id, character_id) DO UPDATE SET
                             value = excluded.value, cooling = 0, updated_at = excluded.updated_at
                         """,
                     arguments: [value, stamp]

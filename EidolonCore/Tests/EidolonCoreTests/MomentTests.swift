@@ -48,9 +48,9 @@ final class MomentTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO affinities(character_id, value, cooling, updated_at, gained_today, gained_on)
-                    VALUES (?, ?, 0, ?, 0, NULL)
-                    ON CONFLICT(character_id) DO UPDATE SET value = excluded.value,
+                    INSERT INTO affinities(franchise_id, character_id, value, cooling, updated_at, gained_today, gained_on)
+                    VALUES ('shiny', ?, ?, 0, ?, 0, NULL)
+                    ON CONFLICT(franchise_id, character_id) DO UPDATE SET value = excluded.value,
                         cooling = 0, updated_at = excluded.updated_at
                     """,
                 arguments: [character, value, stamp]
