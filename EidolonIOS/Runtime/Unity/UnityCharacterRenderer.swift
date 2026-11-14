@@ -31,6 +31,8 @@ final class UnityCharacterRenderer: CharacterRenderer {
     private var retry: Timer?
     private var retries = 0
     private var paused = false
+    private var catalog: MotionCatalog?
+    private var lastEmotion: StandEmotion?
 
     init(assets: RuntimeAssets) {
         self.assets = assets
@@ -64,6 +66,7 @@ final class UnityCharacterRenderer: CharacterRenderer {
             return
         }
         embed(unityView)
+        loadMotionCatalog()
         sendLoad()
         scheduleRetry()
     }
@@ -86,12 +89,63 @@ final class UnityCharacterRenderer: CharacterRenderer {
         container.isHidden = paused
     }
 
+    /// Play one daily action from the package's catalog (`act/swt/yes/noo/str/lop/end`).
+    /// The Unity host cross-fades one-shot clips over the idle loop; unknown names are
+    /// dropped there, so a catalog entry the bundle does not carry degrades to idle.
+    func playAction(_ action: String) {
+        guard loaded else { return }
+        UnityRuntime.shared.send("PlayAction", action)
+    }
+
     func setViewport(_ size: CGSize) {
         container.frame = CGRect(origin: .zero, size: size)
         unityView?.frame = container.bounds
     }
 
     // MARK: - Messages
+
+    /// The package's `motions/catalog.json`: which daily actions each character ships,
+    /// with the tag the action was authored for. Read once per loaded content root.
+    private struct MotionCatalog: Decodable {
+        struct Entry: Decodable {
+            let id: String
+            let tags: [String]?
+        }
+        struct Character: Decodable {
+            let actions: [Entry]
+        }
+        let characters: [String: Character]
+
+        func action(tagged tag: String, for character: String) -> String? {
+            guard let actions = characters[character]?.actions else { return nil }
+            return actions.first { $0.tags?.contains(tag) == true }?.id
+        }
+    }
+
+    private func loadMotionCatalog() {
+        guard catalog == nil, let root = assets.model3DRoot else { return }
+        let url = root.appendingPathComponent("motions/catalog.json")
+        guard let data = try? Data(contentsOf: url) else { return }
+        catalog = try? JSONDecoder().decode(MotionCatalog.self, from: data)
+    }
+
+    /// The action a changed emotion should show, using the tags the catalog was built
+    /// with (see `tools/fetch_unity3d_content.py`: idle/agree/disagree/surprise/relax/leave).
+    /// Calm falls back to the idle loop, so a neutral turn never interrupts it.
+    private func action(for emotion: StandEmotion) -> String? {
+        let tag: String
+        switch emotion {
+        case .calm: return nil
+        case .happy: tag = "agree"
+        case .shy: tag = "relax"
+        case .surprised, .thinking: tag = "surprise"
+        case .sad, .angry: tag = "disagree"
+        }
+        guard let model = assets.model3D?.model,
+              let action = catalog?.action(tagged: tag, for: model)
+        else { return nil }
+        return action
+    }
 
     private func sendLoad(outfitID: String? = nil) {
         guard let character = assets.model3D else { return }
@@ -188,7 +242,12 @@ final class UnityCharacterRenderer: CharacterRenderer {
         UnityRuntime.shared.send("SetSpeaking", frame.speaking ? "1" : "0")
         if let nod = frame.nod {
             UnityRuntime.shared.send("SetNod", nod.kind == .no ? "no" : "yes")
+        } else if frame.emotion != lastEmotion, let action = action(for: frame.emotion) {
+            // The judge changes her mood once per reply segment; only the change plays
+            // an action, so a held emotion does not loop the clip.
+            UnityRuntime.shared.send("PlayAction", action)
         }
+        lastEmotion = frame.emotion
         UnityRuntime.shared.send("SetFraming", frame.framing.rawValue)
     }
 

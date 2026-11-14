@@ -62,7 +62,7 @@ def manifest_files(root: Path) -> dict[str, dict[str, object]]:
     return files
 
 
-def build_model_package(src: Path, dst: Path) -> list[str]:
+def build_model_package(src: Path, dst: Path, motions_dir: Path | None = None) -> list[str]:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         read_zip(src, root)
@@ -76,12 +76,44 @@ def build_model_package(src: Path, dst: Path) -> list[str]:
             seen.add(local_id)
             characters.append(character)
         manifest["characters"] = characters
+        if motions_dir is not None:
+            merge_motions(root, motions_dir, [c["localID"] for c in characters])
         manifest["franchise"] = "mltd"
         manifest["contentSetID"] = "mltd.model3d.v1"
         manifest["created_at"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        manifest["files"] = manifest_files(root)
         (root / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
         write_zip(root, dst)
     return [c["localID"] for c in characters]
+
+
+def merge_motions(root: Path, motions_dir: Path, ids: list[str]) -> None:
+    """Replace the package's motions with a freshly decoded daily set plus its catalog."""
+    target = root / "motions"
+    if target.exists():
+        shutil.rmtree(target)
+    source = motions_dir / "motions"
+    catalog_source = source / "catalog.json"
+    catalog = json.loads(catalog_source.read_text()) if catalog_source.exists() else None
+    kept: dict[str, dict] = {}
+    for local_id in ids:
+        character_dir = source / local_id
+        if not character_dir.is_dir():
+            continue
+        destination = target / local_id
+        destination.mkdir(parents=True, exist_ok=True)
+        for item in sorted(character_dir.glob("*.tsv")):
+            shutil.copyfile(item, destination / item.name)
+        if catalog is not None and local_id in catalog.get("characters", {}):
+            kept[local_id] = catalog["characters"][local_id]
+    if catalog is not None:
+        target.mkdir(parents=True, exist_ok=True)
+        catalog["characters"] = kept
+        (target / "catalog.json").write_text(
+            json.dumps(catalog, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    print(f"motions: {len(kept)} characters, "
+          f"{sum(len(c['actions']) for c in kept.values())} actions")
 
 
 def build_content_package(base: Path, ids: list[str], dst: Path) -> None:
@@ -136,8 +168,10 @@ def main() -> int:
     parser.add_argument("--content-base", required=True)
     parser.add_argument("--out-model", required=True)
     parser.add_argument("--out-content", required=True)
+    parser.add_argument("--motions-dir", type=Path, default=None,
+                        help="output of fetch_unity3d_content.py --motions-only")
     args = parser.parse_args()
-    ids = build_model_package(Path(args.model_source), Path(args.out_model))
+    ids = build_model_package(Path(args.model_source), Path(args.out_model), args.motions_dir)
     build_content_package(Path(args.content_base), ids, Path(args.out_content))
     print(f"model: {args.out_model} characters={len(ids)}")
     print(f"content: {args.out_content} characters={len(ids)}")

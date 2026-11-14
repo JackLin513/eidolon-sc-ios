@@ -110,6 +110,31 @@ public sealed class EidolonStandHost : MonoBehaviour
         else motion?.PlayGesture("yes");
     }
 
+    /// <summary>
+    /// Play one daily action from the package's ``motions/catalog.json``
+    /// (``act/swt/yes/noo/str/lop/end``). One-shot clips cross-fade over the idle loop;
+    /// unknown names are ignored so a newer client cannot break an older bundle.
+    /// </summary>
+    public void PlayAction(string value)
+    {
+        if (motion == null || string.IsNullOrEmpty(value)) return;
+        switch (value)
+        {
+            case "act":
+            case "swt":
+            case "yes":
+            case "noo":
+            case "str":
+            case "lop":
+            case "end":
+                motion.PlayGesture(value);
+                break;
+            default:
+                Debug.Log($"[stand] unknown action {value}");
+                break;
+        }
+    }
+
     public void SetFraming(string value)
     {
         framing = value == "full" || value == "waist" ? value : "knees";

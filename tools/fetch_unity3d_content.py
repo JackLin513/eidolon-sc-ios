@@ -83,6 +83,60 @@ def load_names(manifest: Path) -> dict[str, tuple[str, str, int]]:
     return names
 
 
+#: Actions the merged daily index can carry, and how the stand should play them.
+#: The game only ships these seven state clips per idol (`chr_anim_com_<idol>` plus the
+#: commu pose sets); the loop/one-shot split below follows the clip's role in the game's
+#: stand (idle + its switch are loops, the reactions are one-shots).
+DAILY_ACTIONS = (
+    ("act", "idle", True),
+    ("swt", "idle-variant", True),
+    ("yes", "agree", False),
+    ("noo", "disagree", False),
+    ("str", "surprise", False),
+    ("lop", "relax", False),
+    ("end", "leave", False),
+)
+
+
+def build_catalog(out: Path, index: dict, ids: list[str], fps: int) -> dict:
+    """The `motions/catalog.json` the stand reads: per character, every action it has."""
+    characters: dict[str, dict] = {}
+    for character in ids:
+        row = index.get(character, {})
+        actions = []
+        for action, tag, loop in DAILY_ACTIONS:
+            path = out / "motions" / character / f"{action}.tsv"
+            if not path.exists():
+                continue
+            frames = 0
+            with path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    if line.startswith("frames\t"):
+                        frames = int(line.split("\t")[1])
+                        break
+            entry = {
+                "id": action,
+                "file": f"motions/{character}/{action}.tsv",
+                "loop": loop,
+                "duration": round(frames / fps, 3) if frames else None,
+                "frames": frames,
+                "tags": [tag],
+            }
+            clip = (row.get("actions") or {}).get(action) or {}
+            if clip.get("clip"):
+                entry["source"] = {"clip": clip["clip"], "pack": clip.get("pack"),
+                                   "origin": clip.get("origin")}
+            actions.append(entry)
+        if actions:
+            characters[character] = {"actions": actions}
+    return {
+        "version": 1,
+        "format": "eidolon.motions/1",
+        "fps": fps,
+        "characters": characters,
+    }
+
+
 def token(args: argparse.Namespace) -> str:
     value = args.token or os.environ.get("EIDOLON_ASSET_TOKEN")
     if not value and DEFAULT_TOKEN_FILE.exists():
@@ -232,12 +286,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--only", default="", help="comma separated character ids (debug)")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--motions-only",
+        action="store_true",
+        help="decode only the daily motion TSVs from bundles already in --work "
+             "(no model/shared download, no asset-server token needed)",
+    )
     args = parser.parse_args(argv)
 
     if not args.manifest.exists():
         raise SystemExit(f"{args.manifest}: missing asset manifest")
     names = load_names(args.manifest)
-    auth = "" if args.dry_run else token(args)
+    auth = "" if (args.dry_run or args.motions_only) else token(args)
     log(f"{len(names)} asset names in manifest; output {args.out}")
 
     index = motion_index(args.work)
@@ -253,7 +313,7 @@ def main(argv: list[str] | None = None) -> int:
         row = index.get(character, {})
         family = row.get("family") or ""
         body_bundles: dict[str, dict[str, str | None]] = {}
-        for outfit in OUTFITS:
+        for outfit in (() if args.motions_only else OUTFITS):
             cb_name = f"cb_{outfit}_{character}.unity3d"
             ch_name = f"ch_{outfit}_{character}.unity3d"
             if ch_name not in names:
@@ -293,11 +353,11 @@ def main(argv: list[str] | None = None) -> int:
             f"motions={sum(1 for value in motions.values() if value)}")
 
     shared: dict[str, str | None] = {"facial_chara": None, "chara_soul": None, "chara_shadow": None}
-    for name, relative in (
+    for name, relative in (() if args.motions_only else (
         ("facial_chara.json", "shared/facial_chara.json"),
         ("chara_soul.unity3d", "shared/chara_soul.unity3d"),
         ("chara_shadow.unity3d", "shared/chara_shadow.unity3d"),
-    ):
+    )):
         local = find_local(args.work, name)
         dest = args.out / relative
         if local is not None:
@@ -328,6 +388,18 @@ def main(argv: list[str] | None = None) -> int:
         "speaking": {"lip_cycle": ["A", "I", "U", "E", "O"], "frames_per_lip": 4},
         "idle": {"action": "act", "loop": True},
     }
+    if args.motions_only:
+        if not args.dry_run:
+            catalog = build_catalog(args.out, index, ids, args.fps)
+            (args.out / "motions" / "catalog.json").write_text(
+                json.dumps(catalog, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            log(f"done: characters={len(catalog['characters'])} "
+                f"motions={sum(len(c['actions']) for c in catalog['characters'].values())}")
+        else:
+            log(f"dry run: {len(ids)} characters (motions only)")
+        return 0
+
     if not args.dry_run:
         (args.out / "shared").mkdir(parents=True, exist_ok=True)
         (args.out / "emotion-map.json").write_text(json.dumps(emotion_map, ensure_ascii=False, indent=2))
