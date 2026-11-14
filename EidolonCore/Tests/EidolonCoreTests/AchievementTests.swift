@@ -325,8 +325,8 @@ final class AchievementTests: XCTestCase {
             ] {
                 try db.execute(
                     sql: """
-                        INSERT INTO achievement_progress(achievement, character_id, count)
-                        VALUES (?, 'mano', ?)
+                        INSERT INTO achievement_progress(franchise_id, achievement, character_id, count)
+                        VALUES ('shiny', ?, 'mano', ?)
                         """,
                     arguments: [achievement, count]
                 )

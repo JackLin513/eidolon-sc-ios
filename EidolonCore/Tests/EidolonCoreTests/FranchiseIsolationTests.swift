@@ -209,6 +209,40 @@ struct FranchiseIsolationTests {
         } == 1)
     }
 
+    @Test("achievements are kept per franchise")
+    func achievementsAreScopedToTheirFranchise() async throws {
+        let (eidolon, root) = try makeEidolon()
+        try await installTwoFranchises(on: eidolon, in: root)
+        try await eidolon.userQueue.write { db in
+            for franchise in ["shiny", "totsulover"] {
+                try db.execute(
+                    sql: """
+                        INSERT INTO achievement_progress
+                            (franchise_id, achievement, character_id, count)
+                        VALUES (?, 'turns', 'mano', 7)
+                        """,
+                    arguments: [franchise]
+                )
+            }
+        }
+        #expect(try await eidolon.herAchievements(characterID: "mano")
+            .achievements.first(where: { $0.id == .turns })?.progress == 7)
+        try await eidolon.activateContent(franchise: "totsulover")
+        #expect(try await eidolon.herAchievements(characterID: "mano")
+            .achievements.first(where: { $0.id == .turns })?.progress == 7)
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: """
+                    UPDATE achievement_progress SET count = 3
+                    WHERE franchise_id = 'totsulover' AND achievement = 'turns'
+                    """
+            )
+        }
+        try await eidolon.activateContent(franchise: "shiny")
+        #expect(try await eidolon.herAchievements(characterID: "mano")
+            .achievements.first(where: { $0.id == .turns })?.progress == 7)
+    }
+
     @Test("cycle seed and records are kept per franchise")
     func cycleIsScopedToItsFranchise() async throws {
         let (eidolon, root) = try makeEidolon()

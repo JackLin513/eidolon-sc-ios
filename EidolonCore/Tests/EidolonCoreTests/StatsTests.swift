@@ -97,8 +97,8 @@ final class StatsTests: XCTestCase {
             try db.execute(
                 sql: """
                     INSERT INTO achievement_stages(
-                        achievement, character_id, stage, unlocked_at
-                    ) VALUES ('turns', ?, ?, ?)
+                        franchise_id, achievement, character_id, stage, unlocked_at
+                    ) VALUES ('shiny', 'turns', ?, ?, ?)
                     """,
                 arguments: [character, stage, "2026-11-01T03:00:00Z"]
             )

@@ -288,22 +288,24 @@ enum UserSchema {
             PRIMARY KEY (franchise_id, key)
         );
         CREATE TABLE achievement_progress (
+            franchise_id TEXT NOT NULL,
             achievement TEXT NOT NULL,
             character_id TEXT NOT NULL,
             count REAL NOT NULL,
             last_day TEXT,
-            PRIMARY KEY (achievement, character_id)
+            PRIMARY KEY (franchise_id, achievement, character_id)
         );
         CREATE TABLE achievement_stages (
+            franchise_id TEXT NOT NULL,
             achievement TEXT NOT NULL,
             character_id TEXT NOT NULL,
             stage INTEGER NOT NULL,
             unlocked_at TEXT NOT NULL,
             seen INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY (achievement, character_id, stage)
+            PRIMARY KEY (franchise_id, achievement, character_id, stage)
         );
         CREATE TABLE achievements_launched (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
+            franchise_id TEXT PRIMARY KEY,
             launched_at TEXT NOT NULL,
             notice_seen INTEGER NOT NULL DEFAULT 0,
             notice_stages INTEGER NOT NULL DEFAULT 0,
@@ -311,7 +313,7 @@ enum UserSchema {
             notice_reset_cards INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE achievement_play_seen (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
+            franchise_id TEXT PRIMARY KEY,
             seen_at TEXT NOT NULL
         );
 

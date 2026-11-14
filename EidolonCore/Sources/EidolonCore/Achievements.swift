@@ -253,38 +253,38 @@ enum AchievementStore {
         tier: AffinityTier? = nil
     ) throws -> [AchievementReward] {
         if let characterID, turns > 0 {
-            try add(db, "turns", characterID, Double(turns))
+            try add(db, franchiseID: franchiseID, "turns", characterID, Double(turns))
         }
         if let characterID, gifts > 0 {
-            try add(db, "gifts", characterID, Double(gifts))
+            try add(db, franchiseID: franchiseID, "gifts", characterID, Double(gifts))
         }
         if let characterID, callTime > 0 {
-            try add(db, "call_time", characterID, callTime)
+            try add(db, franchiseID: franchiseID, "call_time", characterID, callTime)
         }
         if draws > 0 {
-            try add(db, "draws", all, Double(draws))
+            try add(db, franchiseID: franchiseID, "draws", all, Double(draws))
         }
         if let characterID, let tier, let rank = tierRank(tier) {
             try db.execute(
                 sql: """
-                    INSERT INTO achievement_progress(achievement, character_id, count)
-                    VALUES ('tier', ?, ?)
-                    ON CONFLICT(achievement, character_id) DO UPDATE SET
+                    INSERT INTO achievement_progress(franchise_id, achievement, character_id, count)
+                    VALUES (?, 'tier', ?, ?)
+                    ON CONFLICT(franchise_id, achievement, character_id) DO UPDATE SET
                         count = MAX(count, excluded.count)
                     """,
-                arguments: [characterID, rank]
+                arguments: [franchiseID, characterID, rank]
             )
         }
         if characterID != nil, turns > 0 || gifts > 0 {
             try db.execute(
                 sql: """
-                    INSERT INTO achievement_progress(achievement, character_id, count, last_day)
-                    VALUES ('days', ?, 1, ?)
-                    ON CONFLICT(achievement, character_id) DO UPDATE SET
+                    INSERT INTO achievement_progress(franchise_id, achievement, character_id, count, last_day)
+                    VALUES (?, 'days', ?, 1, ?)
+                    ON CONFLICT(franchise_id, achievement, character_id) DO UPDATE SET
                         count = count + 1, last_day = excluded.last_day
                     WHERE last_day IS NULL OR last_day < excluded.last_day
                     """,
-                arguments: [all, today]
+                arguments: [franchiseID, all, today]
             )
         }
         return try unlock(db, franchiseID: franchiseID, characterID: characterID, now: now)
@@ -292,18 +292,19 @@ enum AchievementStore {
 
     private static func add(
         _ db: Database,
+        franchiseID: String,
         _ achievement: String,
         _ characterID: String,
         _ count: Double
     ) throws {
         try db.execute(
             sql: """
-                INSERT INTO achievement_progress(achievement, character_id, count)
-                VALUES (?, ?, ?)
-                ON CONFLICT(achievement, character_id) DO UPDATE SET
+                INSERT INTO achievement_progress(franchise_id, achievement, character_id, count)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(franchise_id, achievement, character_id) DO UPDATE SET
                     count = count + excluded.count
                 """,
-            arguments: [achievement, characterID, count]
+            arguments: [franchiseID, achievement, characterID, count]
         )
     }
 
@@ -324,7 +325,7 @@ enum AchievementStore {
         now: Date
     ) throws -> [AchievementReward] {
         let stamp = Eidolon.timestamp(now)
-        let counts = try progressCounts(db)
+        let counts = try progressCounts(db, franchiseID: franchiseID)
         var rewards: [AchievementReward] = []
         func value(_ id: AchievementID, _ character: String) -> Double {
             counts[ProgressKey(achievement: id.rawValue, character: character)] ?? 0
@@ -335,11 +336,11 @@ enum AchievementStore {
                 try db.execute(
                     sql: """
                         INSERT INTO achievement_stages
-                            (achievement, character_id, stage, unlocked_at)
-                        VALUES (?, ?, ?, ?)
+                            (franchise_id, achievement, character_id, stage, unlocked_at)
+                        VALUES (?, ?, ?, ?, ?)
                         ON CONFLICT DO NOTHING
                         """,
-                    arguments: [id.rawValue, character, stage, stamp]
+                    arguments: [franchiseID, id.rawValue, character, stage, stamp]
                 )
                 guard db.changesCount > 0 else { continue }
                 let key = "achievement:\(id.rawValue):\(character):\(stage)"
@@ -369,19 +370,19 @@ enum AchievementStore {
                 db,
                 sql: """
                     SELECT COUNT(*) FROM achievement_stages
-                    WHERE character_id = ? AND achievement IN
+                    WHERE franchise_id = ? AND character_id = ? AND achievement IN
                         (\(AchievementID.perCharacter.map { "'\($0.rawValue)'" }.joined(separator: ",")))
                     """,
-                arguments: [characterID]
+                arguments: [franchiseID, characterID]
             ) ?? 0
             if unlocked >= total {
                 try db.execute(
                     sql: """
-                        INSERT INTO achievement_progress(achievement, character_id, count)
-                        VALUES ('complete', ?, 1)
+                        INSERT INTO achievement_progress(franchise_id, achievement, character_id, count)
+                        VALUES (?, 'complete', ?, 1)
                         ON CONFLICT DO NOTHING
                         """,
-                    arguments: [characterID]
+                    arguments: [franchiseID, characterID]
                 )
                 let inserted = db.changesCount > 0
                 if inserted {
@@ -405,10 +406,16 @@ enum AchievementStore {
         let character: String
     }
 
-    private static func progressCounts(_ db: Database) throws -> [ProgressKey: Double] {
+    private static func progressCounts(
+        _ db: Database, franchiseID: String
+    ) throws -> [ProgressKey: Double] {
         let rows = try Row.fetchAll(
             db,
-            sql: "SELECT achievement, character_id, count FROM achievement_progress"
+            sql: """
+                SELECT achievement, character_id, count FROM achievement_progress
+                WHERE franchise_id = ?
+                """,
+            arguments: [franchiseID]
         )
         var counts: [ProgressKey: Double] = [:]
         for row in rows {
@@ -441,15 +448,16 @@ enum AchievementStore {
     /// rewards for the stages it reaches. nil once it has been done.
     static func launch(_ db: Database, franchiseID: String, now: Date) throws -> AchievementLaunchSummary? {
         let done = try Int.fetchOne(
-            db, sql: "SELECT COUNT(*) FROM achievements_launched"
+            db, sql: "SELECT COUNT(*) FROM achievements_launched WHERE franchise_id = ?",
+            arguments: [franchiseID]
         ) ?? 0
         guard done == 0 else { return nil }
         try db.execute(
             sql: """
-                INSERT INTO achievements_launched(id, launched_at, notice_seen)
-                VALUES (1, ?, 1)
+                INSERT INTO achievements_launched(franchise_id, launched_at, notice_seen)
+                VALUES (?, ?, 1)
                 """,
-            arguments: [Eidolon.timestamp(now)]
+            arguments: [franchiseID, Eidolon.timestamp(now)]
         )
 
         let rows = try Row.fetchAll(
@@ -458,21 +466,22 @@ enum AchievementStore {
                 SELECT c.character_id,
                     (SELECT COUNT(*) FROM messages m
                      JOIN conversations mc ON mc.id = m.conversation_id
-                     WHERE mc.character_id = c.character_id AND m.role = 'user') AS turns,
+                     WHERE mc.character_id = c.character_id AND mc.franchise_id = ? AND m.role = 'user') AS turns,
                     (SELECT COUNT(*) FROM conversation_events e
                      JOIN conversations ec ON ec.id = e.conversation_id
-                     WHERE ec.character_id = c.character_id AND e.kind = 'gift') AS gifts,
+                     WHERE ec.character_id = c.character_id AND ec.franchise_id = ? AND e.kind = 'gift') AS gifts,
                     (SELECT COALESCE(SUM(k.duration_s), 0) FROM call_ends k
                      JOIN conversations kc ON kc.id = k.conversation_id
-                     WHERE kc.character_id = c.character_id) AS call_time
-                FROM (SELECT DISTINCT character_id FROM conversations) c
-                """
+                     WHERE kc.character_id = c.character_id AND kc.franchise_id = ?) AS call_time
+                FROM (SELECT DISTINCT character_id FROM conversations WHERE franchise_id = ?) c
+                """,
+            arguments: [franchiseID, franchiseID, franchiseID, franchiseID]
         )
         for row in rows {
             let character: String = row["character_id"]
-            try upsertProgress(db, "turns", character, row["turns"])
-            try upsertProgress(db, "gifts", character, row["gifts"])
-            try upsertProgress(db, "call_time", character, row["call_time"])
+            try upsertProgress(db, franchiseID: franchiseID, "turns", character, row["turns"])
+            try upsertProgress(db, franchiseID: franchiseID, "gifts", character, row["gifts"])
+            try upsertProgress(db, franchiseID: franchiseID, "call_time", character, row["call_time"])
         }
 
         let tiers = try Row.fetchAll(
@@ -480,15 +489,16 @@ enum AchievementStore {
             sql: """
                 SELECT c.character_id, m.affinity AS tier FROM messages m
                 JOIN conversations c ON c.id = m.conversation_id
-                WHERE m.affinity IS NOT NULL
+                WHERE c.franchise_id = ? AND m.affinity IS NOT NULL
                 UNION ALL
                 SELECT c.character_id, e.affinity FROM conversation_events e
                 JOIN conversations c ON c.id = e.conversation_id
-                WHERE e.kind = 'gift' AND e.affinity IS NOT NULL
+                WHERE c.franchise_id = ? AND e.kind = 'gift' AND e.affinity IS NOT NULL
                 UNION ALL
-                SELECT character_id, NULL FROM affinities WHERE value >= ?
+                SELECT character_id, NULL FROM affinities
+                WHERE franchise_id = ? AND value >= ?
                 """,
-            arguments: [AffinityTier.close.start]
+            arguments: [franchiseID, franchiseID, franchiseID, AffinityTier.close.start]
         )
         var ranks: [String: Int] = [:]
         for row in tiers {
@@ -507,8 +517,8 @@ enum AchievementStore {
         // The current affinity was added as NULL above; read its value separately for
         // characters already at close or better.
         let current = try Row.fetchAll(
-            db, sql: "SELECT character_id, value FROM affinities WHERE value >= ?",
-            arguments: [AffinityTier.close.start]
+            db, sql: "SELECT character_id, value FROM affinities WHERE franchise_id = ? AND value >= ?",
+            arguments: [franchiseID, AffinityTier.close.start]
         )
         for row in current {
             let character: String = row["character_id"]
@@ -517,12 +527,12 @@ enum AchievementStore {
         for (character, rank) in ranks where rank > 0 {
             try db.execute(
                 sql: """
-                    INSERT INTO achievement_progress(achievement, character_id, count)
-                    VALUES ('tier', ?, ?)
-                    ON CONFLICT(achievement, character_id) DO UPDATE SET
+                    INSERT INTO achievement_progress(franchise_id, achievement, character_id, count)
+                    VALUES (?, 'tier', ?, ?)
+                    ON CONFLICT(franchise_id, achievement, character_id) DO UPDATE SET
                         count = MAX(count, excluded.count)
                     """,
-                arguments: [character, rank]
+                arguments: [franchiseID, character, rank]
             )
         }
 
@@ -531,11 +541,14 @@ enum AchievementStore {
             db,
             sql: """
                 SELECT m.created_at FROM messages m
-                JOIN conversations c ON c.id = m.conversation_id WHERE m.role = 'user'
+                JOIN conversations c ON c.id = m.conversation_id
+                WHERE c.franchise_id = ? AND m.role = 'user'
                 UNION ALL
                 SELECT e.created_at FROM conversation_events e
-                JOIN conversations c ON c.id = e.conversation_id WHERE e.kind = 'gift'
-                """
+                JOIN conversations c ON c.id = e.conversation_id
+                WHERE c.franchise_id = ? AND e.kind = 'gift'
+                """,
+            arguments: [franchiseID, franchiseID]
         )
         for stamp in stamps {
             if let at = Eidolon.parseTimestamp(stamp) {
@@ -546,13 +559,13 @@ enum AchievementStore {
             let ordered = days.sorted()
             try db.execute(
                 sql: """
-                    INSERT INTO achievement_progress(achievement, character_id, count, last_day)
-                    VALUES ('days', ?, ?, ?)
-                    ON CONFLICT(achievement, character_id) DO UPDATE SET
+                    INSERT INTO achievement_progress(franchise_id, achievement, character_id, count, last_day)
+                    VALUES (?, 'days', ?, ?, ?)
+                    ON CONFLICT(franchise_id, achievement, character_id) DO UPDATE SET
                         count = MAX(count, excluded.count),
                         last_day = MAX(last_day, excluded.last_day)
                     """,
-                arguments: [all, ordered.count, ordered.last]
+                arguments: [franchiseID, all, ordered.count, ordered.last]
             )
         }
 
@@ -571,33 +584,34 @@ enum AchievementStore {
             sql: """
                 UPDATE achievements_launched SET
                     notice_seen = 0, notice_stages = ?, notice_draws = ?, notice_reset_cards = ?
-                WHERE id = 1
+                WHERE franchise_id = ?
                 """,
-            arguments: [stages, draws, cards]
+            arguments: [stages, draws, cards, franchiseID]
         )
         return AchievementLaunchSummary(stages: stages, draws: draws, resetCards: cards)
     }
 
     private static func upsertProgress(
-        _ db: Database, _ achievement: String, _ character: String, _ count: Double
+        _ db: Database, franchiseID: String, _ achievement: String,
+        _ character: String, _ count: Double
     ) throws {
         guard count > 0 else { return }
         try db.execute(
             sql: """
-                INSERT INTO achievement_progress(achievement, character_id, count)
-                VALUES (?, ?, ?)
-                ON CONFLICT(achievement, character_id) DO UPDATE SET
+                INSERT INTO achievement_progress(franchise_id, achievement, character_id, count)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(franchise_id, achievement, character_id) DO UPDATE SET
                     count = MAX(count, excluded.count)
                 """,
-            arguments: [achievement, character, count]
+            arguments: [franchiseID, achievement, character, count]
         )
     }
 
     // MARK: - Reading
 
-    static func hers(_ db: Database, characterID: String) throws -> HerAchievements {
-        let counts = try progressCounts(db)
-        let stages = try stageRows(db, characterID: characterID)
+    static func hers(_ db: Database, franchiseID: String, characterID: String) throws -> HerAchievements {
+        let counts = try progressCounts(db, franchiseID: franchiseID)
+        let stages = try stageRows(db, franchiseID: franchiseID, characterID: characterID)
         let achievements = AchievementID.perCharacter.map { id in
             AchievementProgress(
                 id: id,
@@ -612,9 +626,9 @@ enum AchievementStore {
         return HerAchievements(achievements: achievements, completedAt: completedAt)
     }
 
-    static func allAchievements(_ db: Database) throws -> AllAchievements {
-        let counts = try progressCounts(db)
-        let stages = try stageRows(db, characterID: all)
+    static func allAchievements(_ db: Database, franchiseID: String) throws -> AllAchievements {
+        let counts = try progressCounts(db, franchiseID: franchiseID)
+        let stages = try stageRows(db, franchiseID: franchiseID, characterID: all)
         let achievements = AchievementID.allCharacters.map { id in
             AchievementProgress(
                 id: id,
@@ -626,15 +640,15 @@ enum AchievementStore {
     }
 
     private static func stageRows(
-        _ db: Database, characterID: String
+        _ db: Database, franchiseID: String, characterID: String
     ) throws -> [String: [Int: (String, Bool)]] {
         let rows = try Row.fetchAll(
             db,
             sql: """
                 SELECT achievement, stage, unlocked_at, seen FROM achievement_stages
-                WHERE character_id = ?
+                WHERE franchise_id = ? AND character_id = ?
                 """,
-            arguments: [characterID]
+            arguments: [franchiseID, characterID]
         )
         var stages: [String: [Int: (String, Bool)]] = [:]
         for row in rows {
@@ -661,32 +675,35 @@ enum AchievementStore {
         }
     }
 
-    static func markSeen(_ db: Database, characterID: String?) throws {
+    static func markSeen(_ db: Database, franchiseID: String, characterID: String?) throws {
         if let characterID {
             try db.execute(
-                sql: "UPDATE achievement_stages SET seen = 1 WHERE character_id = ?",
-                arguments: [characterID]
+                sql: "UPDATE achievement_stages SET seen = 1 WHERE franchise_id = ? AND character_id = ?",
+                arguments: [franchiseID, characterID]
             )
         } else {
             // The play page's achievements card covers every scope: opening it acknowledges
             // the per-character stages too, or its dot would never go.
-            try db.execute(sql: "UPDATE achievement_stages SET seen = 1")
+            try db.execute(sql: "UPDATE achievement_stages SET seen = 1 WHERE franchise_id = ?", arguments: [franchiseID])
         }
     }
 
-    static func markRewardsSeen(_ db: Database) throws {
-        try db.execute(sql: "UPDATE gift_rewards SET seen = 1")
+    static func markRewardsSeen(_ db: Database, franchiseID: String) throws {
+        try db.execute(sql: "UPDATE gift_rewards SET seen = 1 WHERE franchise_id = ?", arguments: [franchiseID])
     }
 
-    static func badges(_ db: Database) throws -> PlayBadges {
+    static func badges(_ db: Database, franchiseID: String) throws -> PlayBadges {
         let unseen = try Int.fetchOne(
-            db, sql: "SELECT COUNT(*) FROM achievement_stages WHERE seen = 0"
+            db, sql: "SELECT COUNT(*) FROM achievement_stages WHERE franchise_id = ? AND seen = 0",
+            arguments: [franchiseID]
         ) ?? 0
         let unlocked = try Int.fetchOne(
-            db, sql: "SELECT COUNT(*) FROM achievement_stages"
+            db, sql: "SELECT COUNT(*) FROM achievement_stages WHERE franchise_id = ?",
+            arguments: [franchiseID]
         ) ?? 0
         let rewards = try Int.fetchOne(
-            db, sql: "SELECT COUNT(*) FROM gift_rewards WHERE seen = 0"
+            db, sql: "SELECT COUNT(*) FROM gift_rewards WHERE franchise_id = ? AND seen = 0",
+            arguments: [franchiseID]
         ) ?? 0
         return PlayBadges(
             achievements: unseen > 0,
@@ -697,42 +714,44 @@ enum AchievementStore {
     }
 
     /// Whether anything was unlocked or paid since the play tab was last cleared.
-    static func hasNew(_ db: Database) throws -> Bool {
+    static func hasNew(_ db: Database, franchiseID: String) throws -> Bool {
         let seenAt = try String.fetchOne(
-            db, sql: "SELECT seen_at FROM achievement_play_seen WHERE id = 1"
+            db, sql: "SELECT seen_at FROM achievement_play_seen WHERE franchise_id = ?",
+            arguments: [franchiseID]
         ) ?? ""
         let stages = try Int.fetchOne(
             db,
-            sql: "SELECT COUNT(*) FROM achievement_stages WHERE unlocked_at > ?",
-            arguments: [seenAt]
+            sql: "SELECT COUNT(*) FROM achievement_stages WHERE franchise_id = ? AND unlocked_at > ?",
+            arguments: [franchiseID, seenAt]
         ) ?? 0
         let rewards = try Int.fetchOne(
             db,
-            sql: "SELECT COUNT(*) FROM gift_rewards WHERE rewarded_at > ?",
-            arguments: [seenAt]
+            sql: "SELECT COUNT(*) FROM gift_rewards WHERE franchise_id = ? AND rewarded_at > ?",
+            arguments: [franchiseID, seenAt]
         ) ?? 0
         return stages > 0 || rewards > 0
     }
 
     /// Clears the play tab's dot: the producer has seen the achievements page or the gift
     /// page.
-    static func markPlaySeen(_ db: Database, at now: Date) throws {
+    static func markPlaySeen(_ db: Database, franchiseID: String, at now: Date) throws {
         try db.execute(
             sql: """
-                INSERT INTO achievement_play_seen(id, seen_at) VALUES (1, ?)
-                ON CONFLICT(id) DO UPDATE SET seen_at = excluded.seen_at
+                INSERT INTO achievement_play_seen(franchise_id, seen_at) VALUES (?, ?)
+                ON CONFLICT(franchise_id) DO UPDATE SET seen_at = excluded.seen_at
                 """,
-            arguments: [Eidolon.timestamp(now)]
+            arguments: [franchiseID, Eidolon.timestamp(now)]
         )
     }
 
-    static func launchSummary(_ db: Database) throws -> AchievementLaunchSummary? {
+    static func launchSummary(_ db: Database, franchiseID: String) throws -> AchievementLaunchSummary? {
         guard let row = try Row.fetchOne(
             db,
             sql: """
                 SELECT notice_seen, notice_stages, notice_draws, notice_reset_cards
-                FROM achievements_launched WHERE id = 1
-                """
+                FROM achievements_launched WHERE franchise_id = ?
+                """,
+            arguments: [franchiseID]
         ), (row["notice_seen"] as Int) == 0 else { return nil }
         return AchievementLaunchSummary(
             stages: row["notice_stages"],
@@ -741,8 +760,8 @@ enum AchievementStore {
         )
     }
 
-    static func markLaunchSeen(_ db: Database) throws {
-        try db.execute(sql: "UPDATE achievements_launched SET notice_seen = 1 WHERE id = 1")
+    static func markLaunchSeen(_ db: Database, franchiseID: String) throws {
+        try db.execute(sql: "UPDATE achievements_launched SET notice_seen = 1 WHERE franchise_id = ?", arguments: [franchiseID])
     }
 }
 
@@ -750,14 +769,14 @@ extension Eidolon {
     /// Her four achievements with the producer, and whether all their stages are unlocked.
     public func herAchievements(characterID: String) throws -> HerAchievements {
         try userQueue.read { db in
-            try AchievementStore.hers(db, characterID: characterID)
+            try AchievementStore.hers(db, franchiseID: activeContentFranchise, characterID: characterID)
         }
     }
 
     /// The four achievements of everyone together.
     public func allAchievements() throws -> AllAchievements {
         try userQueue.read { db in
-            try AchievementStore.allAchievements(db)
+            try AchievementStore.allAchievements(db, franchiseID: activeContentFranchise)
         }
     }
 
@@ -765,35 +784,35 @@ extension Eidolon {
     /// (`nil`), never the other's.
     public func markAchievementsSeen(characterID: String?) throws {
         try userQueue.write { db in
-            try AchievementStore.markSeen(db, characterID: characterID)
+            try AchievementStore.markSeen(db, franchiseID: activeContentFranchise, characterID: characterID)
         }
     }
 
     /// Marks the rewards the gift page shows as looked at, clearing the play tab's dot.
     public func markGiftRewardsSeen() throws {
         try userQueue.write { db in
-            try AchievementStore.markRewardsSeen(db)
+            try AchievementStore.markRewardsSeen(db, franchiseID: activeContentFranchise)
         }
     }
 
     /// Whether the play tab should show its dot: a new stage or a new reward.
     public func achievementBadge() throws -> Bool {
         try userQueue.read { db in
-            try AchievementStore.hasNew(db)
+            try AchievementStore.hasNew(db, franchiseID: activeContentFranchise)
         }
     }
 
     /// Which play card has something new: a stage (achievements) or a reward (gifts).
     public func playBadges() throws -> PlayBadges {
         try userQueue.read { db in
-            try AchievementStore.badges(db)
+            try AchievementStore.badges(db, franchiseID: activeContentFranchise)
         }
     }
 
     /// Clears the play tab's dot after the achievements page or the gift page was opened.
     public func markPlaySeen(now: Date = Date()) throws {
         try userQueue.write { db in
-            try AchievementStore.markPlaySeen(db, at: now)
+            try AchievementStore.markPlaySeen(db, franchiseID: activeContentFranchise, at: now)
         }
     }
 
@@ -808,13 +827,13 @@ extension Eidolon {
     /// The launch summary still to show once; nil after it was seen.
     public func achievementLaunchSummary() throws -> AchievementLaunchSummary? {
         try userQueue.read { db in
-            try AchievementStore.launchSummary(db)
+            try AchievementStore.launchSummary(db, franchiseID: activeContentFranchise)
         }
     }
 
     public func markAchievementLaunchSeen() throws {
         try userQueue.write { db in
-            try AchievementStore.markLaunchSeen(db)
+            try AchievementStore.markLaunchSeen(db, franchiseID: activeContentFranchise)
         }
     }
 }
