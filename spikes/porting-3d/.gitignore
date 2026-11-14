@@ -1,0 +1,36 @@
+# Downloaded bundles live in $MLTD_WORK now; keep Unity's Assets/ tracked.
+downloaded/
+out/
+*.unity3d
+*.pmx
+*.vmd
+*.png
+*.jpg
+*.jpeg
+*.mp4
+*.mov
+
+*.usdz
+
+# Material parameter tables rebuilt by export_character.py, alongside the usdz.
+*-materials.json
+*-params.png
+
+# Skinned box written by export_character.py for the preview's camera fit.
+*-bounds.json
+
+# Decompiled shader source quoted line by line; conclusions live in ToonShading.metal.
+research-mltd-shading-math.md
+research-sheen-and-colour-gaps.md
+research-face-and-normals.md
+research-alpha-survival.md
+research-alpha-and-cutout.md
+research-cutout-alpha-and-seams.md
+research-userelflect-and-texture-slots.md
+research-chr-span-sparkle.md
+
+# Decompiled CalcBone driver quoted line by line; conclusions live in ios/MotionAssist.swift.
+research-mltd-calcbone.md
+
+# Decompiled sway/collider driver quoted line by line; conclusions live in ios/MotionSway.swift.
+research-mltd-sway-physics.md

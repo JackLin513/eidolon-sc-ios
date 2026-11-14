@@ -1,0 +1,296 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using UnityEngine;
+
+/// <summary>
+/// The Unity side of the app's 3D stand (ADR-0034): one scene, one character, a
+/// tiny string message face for Swift.
+///
+/// Swift sends <c>LoadCharacter</c> with a small JSON request, then drives the
+/// emotion / speaking / blink / nod state with the other methods (all reachable
+/// through <c>UnityFramework.sendMessageToGO</c>). Everything the character needs
+/// comes from the app's content directory: the game's own costume bundles, the
+/// decoded expression table, the soul/shadow bundles and the flat motion files
+/// written by <c>tools/fetch_unity3d_content.py</c>.
+/// </summary>
+public sealed class EidolonStandHost : MonoBehaviour
+{
+    [Serializable]
+    private sealed class LoadRequest
+    {
+        public string contentRoot;
+        public string character;
+        public string outfit;
+    }
+
+    public static EidolonStandHost Instance { get; private set; }
+
+    private CharacterBootstrap bootstrap;
+    private EidolonStandMotion motion;
+    private EidolonStandFace face;
+    private Camera camera;
+    private string contentRoot;
+    private string character;
+    private string outfit;
+    private bool paused;
+    private bool loading;
+    private string framing = "knees";
+
+    private void Awake()
+    {
+        Instance = this;
+        Application.targetFrameRate = 30;
+        Screen.sleepTimeout = SleepTimeout.NeverSleep;
+        camera = Camera.main;
+        if (camera == null)
+        {
+            var go = new GameObject("Main Camera");
+            go.tag = "MainCamera";
+            camera = go.AddComponent<Camera>();
+        }
+        camera.clearFlags = CameraClearFlags.SolidColor;
+        camera.backgroundColor = new Color(0.09f, 0.09f, 0.11f, 0f);
+        camera.fieldOfView = 30f;
+        Debug.Log("[stand] host awake");
+    }
+
+    // ------------------------------------------------------------------
+    // Messages from Swift
+    // ------------------------------------------------------------------
+
+    /// <summary>Load one character in one outfit. Replaces whatever was shown.</summary>
+    public void LoadCharacter(string json)
+    {
+        LoadRequest request;
+        try
+        {
+            request = JsonUtility.FromJson<LoadRequest>(json);
+        }
+        catch (Exception error)
+        {
+            EmitFailure("bad request: " + error.Message);
+            return;
+        }
+        if (request == null || string.IsNullOrEmpty(request.contentRoot) || string.IsNullOrEmpty(request.character))
+        {
+            EmitFailure("request needs contentRoot and character");
+            return;
+        }
+        if (loading) return;
+        loading = true;
+        contentRoot = request.contentRoot;
+        character = request.character;
+        outfit = string.IsNullOrEmpty(request.outfit) ? "pr001" : request.outfit;
+        StartCoroutine(LoadRoutine(contentRoot, character, outfit));
+    }
+
+    /// <summary>Expression + cheek, already resolved by Swift's emotion table: "5,0".</summary>
+    public void SetEmotion(string value)
+    {
+        if (face == null || string.IsNullOrEmpty(value)) return;
+        var parts = value.Split(',');
+        var facial = 0;
+        var cheek = 0;
+        if (parts.Length > 0) int.TryParse(parts[0], out facial);
+        if (parts.Length > 1) int.TryParse(parts[1], out cheek);
+        face.ApplyExpression(facial, cheek);
+    }
+
+    public void SetSpeaking(string value)
+    {
+        face?.SetSpeaking(value == "1" || value == "true");
+    }
+
+    public void SetNod(string value)
+    {
+        if (value == "no" || value == "noo") motion?.PlayGesture("noo");
+        else motion?.PlayGesture("yes");
+    }
+
+    public void SetFraming(string value)
+    {
+        framing = value == "full" || value == "waist" ? value : "knees";
+        FrameCamera(framing);
+    }
+
+    /// <summary>Stop advancing the clock while the app is not showing the stand.</summary>
+    public void SetPaused(string value)
+    {
+        paused = value == "1" || value == "true";
+        Time.timeScale = paused ? 0f : 1f;
+    }
+
+    // ------------------------------------------------------------------
+    // Assembly
+    // ------------------------------------------------------------------
+
+    private IEnumerator LoadRoutine(string root, string characterId, string outfitId)
+    {
+        DestroyCharacter();
+        yield return null;
+
+        var modelDir = Path.Combine(root, "models", characterId, outfitId);
+        var bodyBundle = $"cb_{outfitId}_{characterId}.unity3d";
+        var headBundle = $"ch_{outfitId}_{characterId}.unity3d";
+        if (!File.Exists(Path.Combine(modelDir, headBundle)))
+            headBundle = $"ch_pr001_{characterId}.unity3d";
+
+        var go = new GameObject("Character");
+        go.SetActive(false);
+        bootstrap = go.AddComponent<CharacterBootstrap>();
+        bootstrap.bundleDirectory = modelDir;
+        bootstrap.bodyBundle = bodyBundle;
+        bootstrap.headBundle = headBundle;
+        bootstrap.facialParamsPath = Path.Combine(root, "shared", "facial_chara.json");
+        bootstrap.characterSoulBundle = Path.Combine(root, "shared", "chara_soul.unity3d");
+        bootstrap.shadowBundlePath = Path.Combine(root, "shared", "chara_shadow.unity3d");
+        bootstrap.buildMotion = false;
+        bootstrap.buildCameraOrbit = false;
+        go.SetActive(true);
+
+        // CharacterBootstrap.Start runs on the first frame after activation; wait
+        // for its native state to exist before attaching our motion/face drivers.
+        for (var frame = 0; frame < 120 && bootstrap != null && bootstrap.FaceCtrl == null; frame++)
+            yield return null;
+        if (bootstrap == null || bootstrap.FaceCtrl == null)
+        {
+            loading = false;
+            EmitFailure("character did not assemble");
+            yield break;
+        }
+
+        InsertBodyScale(go.transform);
+        ApplyMaterialFixes(go.transform);
+        // No colour overrides here on purpose: the shipped materials already carry the
+        // game's authored values (`_Color`/`_IllumiColor` are the neutral 0.5 the shader
+        // multiplies by two, `_AmbientColor` differs per material). Scaling them is what
+        // turned the shy face's cheek red into a bruised smear; the look comes from the
+        // colour space and the shader's own `_Light` vector.
+
+        motion = go.AddComponent<EidolonStandMotion>();
+        motion.Init(go.transform, root, characterId);
+        face = go.AddComponent<EidolonStandFace>();
+        face.Bind(bootstrap.FaceCtrl);
+        EmitLoaded();
+        FrameCamera(framing);
+        loading = false;
+        Debug.Log($"[stand] loaded {characterId}/{outfitId}");
+    }
+
+    private void DestroyCharacter()
+    {
+        if (bootstrap != null) Destroy(bootstrap.gameObject);
+        bootstrap = null;
+        motion = null;
+        face = null;
+    }
+
+    /// <summary>
+    /// The game inserts an identity <c>BODY_SCALE</c> node at runtime; every
+    /// screen-animation clip binds paths through it (ADR-0033). The bundled prefab
+    /// does not carry it, so mirror the insertion before the motion runs.
+    /// </summary>
+    private static void InsertBodyScale(Transform character)
+    {
+        var modelRoot = FindDeep(character, "MODEL_00");
+        if (modelRoot == null || modelRoot.Find("BODY_SCALE") != null) return;
+        var scale = new GameObject("BODY_SCALE").transform;
+        scale.SetParent(modelRoot, false);
+        var children = new List<Transform>();
+        for (var index = 0; index < modelRoot.childCount; index++)
+        {
+            var child = modelRoot.GetChild(index);
+            if (child != scale) children.Add(child);
+        }
+        foreach (var child in children) child.SetParent(scale, true);
+    }
+
+    /// <summary>Outline depth: the shipped `_ZShift1000*` assumes the game camera.</summary>
+    private static void ApplyMaterialFixes(Transform character)
+    {
+        foreach (var renderer in character.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+        {
+            foreach (var material in renderer.sharedMaterials)
+            {
+                if (material == null || !material.HasProperty("_ZShift1000Max")) continue;
+                material.SetFloat("_ZShift1000Min", 0.2f);
+                material.SetFloat("_ZShift1000Max", 2f);
+            }
+        }
+    }
+
+    private static Transform FindDeep(Transform root, string name)
+    {
+        if (root == null) return null;
+        if (root.name == name) return root;
+        foreach (var child in root.GetComponentsInChildren<Transform>(true))
+            if (child.name == name) return child;
+        return null;
+    }
+
+    // ------------------------------------------------------------------
+    // Camera framing — mirrors EidolonCore's StandFraming math.
+    // ------------------------------------------------------------------
+
+    private void FrameCamera(string framing)
+    {
+        if (camera == null) return;
+        var renderers = bootstrap != null
+            ? bootstrap.GetComponentsInChildren<Renderer>(true).Where(renderer => renderer.enabled).ToArray()
+            : Array.Empty<Renderer>();
+        if (renderers.Length == 0) return;
+        var bounds = renderers[0].bounds;
+        foreach (var renderer in renderers) bounds.Encapsulate(renderer.bounds);
+
+        var aspect = Screen.height > 0 ? (float)Screen.width / Screen.height : 1f;
+        var share = framing == "waist" ? 0.66f : framing == "knees" ? 0.85f : 1f;
+        // Full-body framing on a full-screen phone: 3% puts her hair right at the top
+        // edge (and under the notch), so leave more air above her.
+        var headroom = 0.08f;
+        float viewHeight;
+        if (framing == "full")
+        {
+            viewHeight = Mathf.Max(bounds.size.y, bounds.size.x / aspect) * (1 + 2 * headroom);
+        }
+        else
+        {
+            viewHeight = Mathf.Max(bounds.size.y * share, bounds.size.x * 0.7f / aspect);
+        }
+        var top = bounds.center.y + bounds.size.y / 2 * (1 + headroom);
+        var centerY = framing == "full" ? bounds.center.y : top - viewHeight / 2;
+        var distance = viewHeight / (2 * Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad));
+        camera.transform.position = new Vector3(bounds.center.x, centerY, bounds.center.z + distance);
+        camera.transform.LookAt(new Vector3(bounds.center.x, centerY, bounds.center.z));
+    }
+
+    /// Probe entry: sample the idle at a fixed time and return one bone's euler.
+    public string ProbeIdle(string spec)
+    {
+        if (motion == null) return "no-motion";
+        var parts = spec.Split(',');
+        var time = parts.Length > 0 && float.TryParse(parts[0], System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed : 0f;
+        motion.SampleIdle(time);
+        return parts.Length > 1 ? motion.DebugEuler(parts[1]) : "ok";
+    }
+
+    // ------------------------------------------------------------------
+    // Events to Swift
+    // ------------------------------------------------------------------
+
+    private void EmitLoaded()
+    {
+        var message = $"{{\"type\":\"loaded\",\"character\":\"{character}\",\"outfit\":\"{outfit}\"," +
+                      $"\"bones\":{motion?.BoneCount ?? 0},\"idleFrames\":{motion?.IdleFrames ?? 0}}}";
+        EidolonStandBridge.Emit(message);
+    }
+
+    private void EmitFailure(string reason)
+    {
+        var escaped = reason.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        EidolonStandBridge.Emit($"{{\"type\":\"failure\",\"reason\":\"{escaped}\"}}");
+    }
+}

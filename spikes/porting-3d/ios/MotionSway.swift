@@ -1,0 +1,904 @@
+import Foundation
+import simd
+
+/// The game's runtime sway for the bones its dances never key (issue #28).
+///
+/// The dance curves cover 57 bones and none of the skirt panels, ribbons or
+/// hair chains; the game moves those with `Imas.BoneLib.SwayBone` in a
+/// `SwayManager.ExecuteUpdate` pass. Without it the skirt hangs rigid while the
+/// hips swing.
+///
+/// This mirrors the game's V01 solver, decompiled from the shipped build:
+///
+/// * The state is the **tip position**, not a direction. `SwayMove` (RVA
+///   0x1C6867C) seeds it from the rigid rest direction, carries it along with
+///   the base (`MoveTipPos`, scaled by `follow`), then integrates a spring
+///   towards the rest tip at `stiffnessForce`, `(tip − previousTip)` damped by
+///   `(1 − dragForce)`, and gravity — all normalised to the game's 1/60 s step
+///   (`ratio = dt · 60`: forces divided by `ratio²` and the step multiplied
+///   back, so damping is frame-rate independent).
+/// * `SwayHit` (0x1C68C3C) pushes the tip out of every collider the bone
+///   lists — the thigh capsules and the hip sphere in `_sway.txt` — and keeps
+///   the deepest push. A frame that was hit skips gravity the next frame, so a
+///   leg does not press the panel straight back in.
+/// * `CalcRotate` (0x1C69F04) clamps the tip's yaw/pitch to
+///   `minYAngle…maxYAngle` / `minZAngle…maxZAngle` and, when it clamps,
+///   recomputes the tip from the clamped angles instead of dropping the
+///   rotation. That "penetrative" correction is why the game's panels never
+///   rotate into the legs.
+/// * `CalcSideLineDistance` / `CalcAntiFoldForce` keep neighbouring panels of
+///   the same ring from folding through each other.
+///
+/// Units are the game's, taken straight from `<model>_sway.txt`: `stiffness`
+/// 0.02, `drag` 0.6, `gravity` 0.0001 are per-60-Hz-frame quantities, not SI.
+struct MotionSway {
+    /// The sidecar `sway.py` writes beside a model.
+    ///
+    /// Version 2 carries what the game's own `_sway.txt` carries: a spring per
+    /// bone in the game's numbers, the angle window the game clamps each panel
+    /// to, and the colliders (thigh capsules, hip sphere) a panel is tested
+    /// against. Version 1 is the hand-tuned form and is still accepted so an
+    /// older export keeps working, it just has no limits and no collisions.
+    struct Configuration: Decodable {
+        let format: String
+        let families: [String: Spring]?
+        let bones: [Bone]
+        let colliders: [Collider]?
+    }
+
+    struct Spring: Decodable {
+        let stiffness: Float
+        let drag: Float
+        /// Downward pull along the solver's up axis, in the game's per-frame
+        /// units. Version 1 carried a hand-tuned magnitude from a different
+        /// scale; version 2 carries the game's own `gravity.y` magnitude.
+        let gravity: Float
+    }
+
+    struct Bone: Decodable {
+        let name: String
+        let family: String
+        let tail: [Float]
+        /// Tip sphere radius the game collides with (`SwayBone.radius`).
+        let radius: Float?
+        /// Per-bone spring; falls back to the family's.
+        let spring: Spring?
+        /// How much of the base's movement the tip follows (0–1).
+        let follow: Float?
+        /// The game's `minYAngle`/`maxYAngle`/`minZAngle`/`maxZAngle`, degrees
+        /// in the parent's frame. `nil` leaves the bone unclamped.
+        let limit: Limit?
+        /// Indices into `Configuration.colliders`.
+        let colliders: [Int]?
+        /// Another sway bone this one stays side-by-side with (`sideLink`).
+        let sideLink: String?
+        /// The game's `sideSpringForce`; 0 or absent turns the link off.
+        let sideSpring: Float?
+        let antiFold: AntiFold?
+        /// `SwayBone.hitTwice`: a second `SwayHit` pass on the pushed tip.
+        let hitTwice: Bool?
+        /// `SwayBone.useLinkHit`: also collide with the side-linked bone's set.
+        let useLinkHit: Bool?
+        /// `SwayBone.isSkirt`: the skirt barrier applies to this bone.
+        let isSkirt: Bool?
+        /// `SwayBone.HitMuteForce`: `CalcRotate` keeps part of the hit frame's
+        /// velocity, so the push is not thrown away by the angle window.
+        let hitMute: Bool?
+        /// `SwayBone.HitMuteRate`: how much of the clamp wins on a hit frame.
+        let hitMuteRate: Float?
+
+        init(name: String, family: String, tail: [Float], radius: Float? = nil,
+             spring: Spring? = nil, follow: Float? = nil, limit: Limit? = nil,
+             colliders: [Int]? = nil, sideLink: String? = nil,
+             sideSpring: Float? = nil, antiFold: AntiFold? = nil,
+             hitTwice: Bool? = nil, useLinkHit: Bool? = nil,
+             isSkirt: Bool? = nil, hitMute: Bool? = nil,
+             hitMuteRate: Float? = nil) {
+            self.name = name
+            self.family = family
+            self.tail = tail
+            self.radius = radius
+            self.spring = spring
+            self.follow = follow
+            self.limit = limit
+            self.colliders = colliders
+            self.sideLink = sideLink
+            self.sideSpring = sideSpring
+            self.antiFold = antiFold
+            self.hitTwice = hitTwice
+            self.useLinkHit = useLinkHit
+            self.isSkirt = isSkirt
+            self.hitMute = hitMute
+            self.hitMuteRate = hitMuteRate
+        }
+    }
+
+    struct Limit: Decodable {
+        let minY: Float
+        let maxY: Float
+        let minZ: Float
+        let maxZ: Float
+    }
+
+    /// The game's `antiFoldForceK` / `antiFoldAngle`: once two neighbours fold
+    /// closer than `angle` degrees, the pair is pushed apart with `force`.
+    struct AntiFold: Decodable {
+        let force: Float
+        let angle: Float
+    }
+
+    /// A `SwayCollider` from the game's data: a sphere or capsule hung on a
+    /// joint, in that joint's local space. `distance` is the capsule's full
+    /// length along `axis`; `offset` moves its centre off the joint.
+    struct Collider: Decodable {
+        let joint: String
+        let type: String
+        let radius: Float
+        let distance: Float
+        let offset: [Float]
+        let axis: String?
+        /// Plane only: the plane's normal in the joint's local frame.
+        let normal: [Float]?
+        /// Bridge only: the joint at the far end of the capsule.
+        let target: String?
+        /// `SwayCollider.useSkirtBarrier`: a skirt panel is held on its own
+        /// side of the capsule's centreline (read by the capsule hit).
+        let useSkirtBarrier: Bool?
+        /// `SwayCollider.skirtGuardOffset`: extra clearance for that barrier,
+        /// in units of the collider's radius.
+        let skirtGuardOffset: Float?
+
+        init(joint: String, type: String, radius: Float, distance: Float,
+             offset: [Float], axis: String?,
+             normal: [Float]? = nil, target: String? = nil,
+             useSkirtBarrier: Bool? = nil, skirtGuardOffset: Float? = nil) {
+            self.joint = joint
+            self.type = type
+            self.radius = radius
+            self.distance = distance
+            self.offset = offset
+            self.axis = axis
+            self.normal = normal
+            self.target = target
+            self.useSkirtBarrier = useSkirtBarrier
+            self.skirtGuardOffset = skirtGuardOffset
+        }
+    }
+
+    static let format = "eidolon.sway/2"
+    static let legacyFormat = "eidolon.sway/1"
+    /// The game solves at a fixed 1/60 s (`SwayManager.FIXED_DELTA`).
+    static let framesPerSecond: Float = 60
+    /// How far outside a collider a panel is settled (metres).
+    private static let surfaceMargin: Float = 0.001
+
+    private struct Pendulum {
+        let joint: Int
+        let parent: Int?
+        /// The mass point in the bone's own local axes, as exported.
+        let tail: SIMD3<Float>
+        let length: Float
+        /// The bone's rest rotation. The dance never keys a sway bone, so this
+        /// is the local rotation the rigid pose holds.
+        let restRotation: SIMD4<Float>
+        let spring: Spring
+        let radius: Float
+        let follow: Float
+        let limit: Limit?
+        let colliders: [Int]
+        let sideLinkPath: String?
+        let sideSpring: Float
+        let antiFold: AntiFold?
+        /// The game's `hitTwice`: run `SwayHit` a second time on the pushed tip.
+        let hitTwice: Bool
+        /// The game's `useLinkHit`: also test the side-linked bone's colliders.
+        let useLinkHit: Bool
+        /// The game's `isSkirt`: barrier colliders apply to this bone.
+        let isSkirt: Bool
+        /// The game's `HitMuteForce` / `HitMuteRate`: on a hit frame the
+        /// clamped tip is blended into the remembered one.
+        let hitMute: Bool
+        let hitMuteRate: Float
+    }
+
+    /// `SwayMove`'s `skirtNormal` / `skirtDir`: the panel's own up and right
+    /// axes (the game rotates `Vector3.up` / `Vector3.right` by the bone's
+    /// static rotation). The capsule hit's barrier keeps a skirt panel on the
+    /// outer side of the leg's centreline using them.
+    private struct SkirtFrame {
+        let normal: SIMD3<Float>
+        let direction: SIMD3<Float>
+    }
+
+    private enum BoundKind { case sphere, capsule, plane, bridge }
+
+    private struct Bounds {
+        let kind: BoundKind
+        let joint: Int
+        let radius: Float
+        let halfLength: Float
+        let offset: SIMD3<Float>
+        /// Local axis the capsule runs along; unused for spheres.
+        let axis: SIMD3<Float>
+        /// Plane only: the normal in the joint's local frame.
+        let normal: SIMD3<Float>
+        /// Bridge only: the joint at the far end of the capsule.
+        let target: Int?
+        /// Capsule only: `useSkirtBarrier` and its guard, as a fraction of
+        /// the collider's radius.
+        let useSkirtBarrier: Bool
+        let skirtGuardOffset: Float
+    }
+
+    /// How much of a collider's reach a tip may stay inside before `SwayHit`
+    /// corrects it, as a fraction of `collider.radius + bone.radius`.
+    ///
+    /// Zero — the game's own semantics — settles every panel on the collider's
+    /// surface. Raising it lets panels sink into the thighs and the cloth take
+    /// the leg through it, which the preview showed as the leg cutting the
+    /// skirt; it exists for A/B (`EIDOLON_3D_SWAY_PENETRATION_TOLERANCE`).
+    static let allowedPenetration: Float =
+        Float(ProcessInfo.processInfo.environment["EIDOLON_3D_SWAY_PENETRATION_TOLERANCE"] ?? "0") ?? 0
+
+    private let pendulums: [Pendulum]
+    /// `sideLink` resolved to an index after the parent-before-child sort.
+    private let sideLinks: [Int?]
+    private let bounds: [Bounds]
+    private let parents: [Int?]
+    /// The solver works in world space, where the rest skeleton's up is +Z —
+    /// the root-frame turn the USDZ pipeline makes lands there — not the +Y
+    /// the model's own bounds use. Derive it instead of hard-coding it.
+    private let up: SIMD3<Float>
+
+    private var tips: [SIMD3<Float>]
+    private var previousTips: [SIMD3<Float>]
+    private var bases: [SIMD3<Float>]
+    private var lastBases: [SIMD3<Float>]
+    private var seeded: [Bool]
+    /// Distance between a panel and its `sideLink`, remembered from the rest
+    /// pose so the pair keeps its shape.
+    private var sideLineRest: [Float]
+    /// The `SwayHit` half of the game: a hit frame suppresses gravity next.
+    private var hitLastFrame: [Bool]
+
+    var count: Int { pendulums.count }
+
+    /// The solver's remembered tips, in bone order. Exposed for the tests that
+    /// pin the hit bookkeeping (`HitMuteForce` blends these); the renderer
+    /// only ever reads the rotations.
+    var tipState: (current: [SIMD3<Float>], remembered: [SIMD3<Float>]) {
+        (tips, previousTips)
+    }
+
+    /// Bind the sidecar to a skeleton. Returns nil when the format is not ours
+    /// or none of its bones exist in `joints`, so a sidecar from another model
+    /// leaves the pose rigid instead of half-swaying it.
+    init?(configuration: Configuration, joints: [String], rest: [JointPose]) {
+        guard configuration.format == Self.format
+            || configuration.format == Self.legacyFormat,
+            joints.count == rest.count
+        else {
+            return nil
+        }
+        var byPath: [String: Int] = [:]
+        for (index, name) in joints.enumerated() where byPath[name] == nil {
+            byPath[name] = index
+        }
+        var parents = [Int?](repeating: nil, count: joints.count)
+        for (index, name) in joints.enumerated() {
+            if let cut = name.lastIndex(of: "/") {
+                parents[index] = byPath[String(name[..<cut])]
+            }
+        }
+        var depth = [Int](repeating: 0, count: joints.count)
+        for index in joints.indices {
+            var cursor = parents[index]
+            while let parent = cursor {
+                depth[index] += 1
+                cursor = parents[parent]
+            }
+        }
+
+        var bounds: [Bounds] = []
+        for entry in configuration.colliders ?? [] {
+            guard entry.offset.count == 3,
+                  let joint = byPath[entry.joint],
+                  entry.radius > 0
+            else { continue }
+            var axis = SIMD3<Float>(1, 0, 0)
+            switch entry.axis?.uppercased() {
+            case "Y": axis = SIMD3(0, 1, 0)
+            case "Z": axis = SIMD3(0, 0, 1)
+            default: break
+            }
+            var normal = SIMD3<Float>(0, 0, 1)
+            if let raw = entry.normal, raw.count == 3 {
+                normal = SIMD3(raw[0], raw[1], raw[2])
+                if simd_length(normal) > 1e-6 { normal = simd_normalize(normal) }
+            }
+            var target: Int?
+            let kind: BoundKind
+            switch entry.type.lowercased() {
+            case "capsule": kind = .capsule
+            case "plane":
+                guard entry.normal?.count == 3 else { continue }
+                kind = .plane
+            case "bridge":
+                guard let name = entry.target, let far = byPath[name] else { continue }
+                target = far
+                kind = .bridge
+            default: kind = .sphere
+            }
+            bounds.append(Bounds(
+                kind: kind, joint: joint, radius: entry.radius,
+                halfLength: max(entry.distance, 0) / 2,
+                offset: SIMD3(entry.offset[0], entry.offset[1], entry.offset[2]),
+                axis: axis, normal: normal, target: target,
+                useSkirtBarrier: entry.useSkirtBarrier ?? false,
+                skirtGuardOffset: entry.skirtGuardOffset ?? 0
+            ))
+        }
+
+        var pendulums: [Pendulum] = []
+        for bone in configuration.bones {
+            guard bone.tail.count == 3,
+                  let joint = byPath[bone.name],
+                  let spring = bone.spring ?? configuration.families?[bone.family]
+            else { continue }
+            let tail = SIMD3(bone.tail[0], bone.tail[1], bone.tail[2])
+            let length = simd_length(tail)
+            guard length > 1e-5 else { continue }
+            let colliders = (bone.colliders ?? []).filter { bounds.indices.contains($0) }
+            pendulums.append(Pendulum(
+                joint: joint, parent: parents[joint], tail: tail, length: length,
+                restRotation: rest[joint].rotation, spring: spring,
+                radius: max(bone.radius ?? 0, 0),
+                follow: min(max(bone.follow ?? 1, 0), 1),
+                limit: bone.limit, colliders: colliders,
+                sideLinkPath: bone.sideLink, sideSpring: bone.sideSpring ?? 0,
+                antiFold: bone.antiFold,
+                hitTwice: bone.hitTwice ?? false,
+                useLinkHit: bone.useLinkHit ?? false,
+                isSkirt: bone.isSkirt ?? false,
+                hitMute: bone.hitMute ?? false,
+                hitMuteRate: bone.hitMuteRate ?? 0
+            ))
+        }
+        guard !pendulums.isEmpty else { return nil }
+        // Parent before child: a chain bone has to turn its child's world frame
+        // before the child reads it.
+        pendulums.sort { depth[$0.joint] < depth[$1.joint] }
+
+        var indexByPath: [String: Int] = [:]
+        for (index, pendulum) in pendulums.enumerated() {
+            indexByPath[joints[pendulum.joint]] = index
+        }
+        let sideLinks = pendulums.map { pendulum in
+            pendulum.sideLinkPath.flatMap { indexByPath[$0] }
+        }
+
+        self.pendulums = pendulums
+        self.sideLinks = sideLinks
+        self.bounds = bounds
+        self.parents = parents
+        self.up = Self.upAxis(joints: joints, rest: rest, parents: parents)
+        self.tips = Array(repeating: .zero, count: pendulums.count)
+        self.previousTips = Array(repeating: .zero, count: pendulums.count)
+        self.bases = Array(repeating: .zero, count: pendulums.count)
+        self.lastBases = Array(repeating: .zero, count: pendulums.count)
+        self.seeded = Array(repeating: false, count: pendulums.count)
+        self.sideLineRest = Array(repeating: 0, count: pendulums.count)
+        self.hitLastFrame = Array(repeating: false, count: pendulums.count)
+    }
+
+    /// Advance the solver by `dt` and fold the result into `poses`. A zero `dt`
+    /// only re-clamps and re-collides the bones, which is what a held frame
+    /// needs.
+    mutating func apply(_ poses: inout [JointPose], dt: Float) {
+        var world = JointWorld.transforms(poses, parents: parents)
+        let frames = max(dt, 0) * Self.framesPerSecond
+        let square = max(frames * frames, 1e-6)
+
+        for (index, pendulum) in pendulums.enumerated() {
+            let parent = pendulum.parent
+            let parentPosition = parent.map { world[$0].position } ?? .zero
+            let parentRotation = parent.map { world[$0].rotation }
+                ?? SIMD4<Float>(0, 0, 0, 1)
+            // The bone turns about its own origin, which is not the parent's:
+            // group nodes (`skirt_GP`, `ribbon_GP`, …) carry metre-sized
+            // compensation offsets, so using the parent's position as the base
+            // put the tip a whole unit away from the bone and turned the panel
+            // into spaghetti.
+            let base = parentPosition
+                + QuaternionMath.rotate(parentRotation, poses[pendulum.joint].translation)
+            let rigid = QuaternionMath.multiply(parentRotation, pendulum.restRotation)
+            let restDirection = QuaternionMath.rotate(rigid, pendulum.tail)
+            // `SwayMove` also keeps a skirt panel's own up and right axes, for
+            // the capsule hit's barrier (`skirtNormal` / `skirtDir`).
+            let skirt: SkirtFrame? = pendulum.isSkirt
+                ? SkirtFrame(
+                    normal: QuaternionMath.rotate(rigid, SIMD3(0, 1, 0)),
+                    direction: QuaternionMath.rotate(rigid, SIMD3(1, 0, 0)))
+                : nil
+            let aim = base + restDirection
+            bases[index] = base
+
+            if !seeded[index] {
+                tips[index] = aim
+                previousTips[index] = aim
+                lastBases[index] = base
+                seeded[index] = true
+                if let link = sideLinks[index], seeded[link] {
+                    sideLineRest[index] = simd_length(tips[link] - tips[index])
+                }
+            }
+
+            if dt > 0 {
+                // `MoveTipPos`: the tip rides along with the base.
+                let travel = (base - lastBases[index]) * pendulum.follow
+                tips[index] += travel
+                previousTips[index] += travel
+
+                // `SwayMove`'s force: spring towards the rest tip, damped
+                // velocity, gravity, then the neighbour springs.
+                let velocity = tips[index] - previousTips[index]
+                var force = (aim - tips[index]) * pendulum.spring.stiffness
+                    + velocity * (1 - pendulum.spring.drag) / square
+                if !hitLastFrame[index] {
+                    force -= up * pendulum.spring.gravity
+                }
+                if sideLineRest[index] == 0, let link = sideLinks[index],
+                   seeded[link] {
+                    sideLineRest[index] = simd_length(tips[link] - tips[index])
+                }
+                force += sideLineForce(for: index)
+                force += antiFoldForce(for: index)
+
+                let oldTip = tips[index]
+                tips[index] += force * square
+                previousTips[index] = oldTip
+                lastBases[index] = base
+            }
+
+            hitLastFrame[index] = false
+            // `SwayHit` then `CalcRotate`: a panel is only ever drawn at
+            // `length` from its base, so a push out of a collider has to be
+            // applied to the direction and re-normalised — pushing the free
+            // tip and then rescaling it back to `length` would pull the panel
+            // straight back into the thigh.
+            // The game's order is `SwayMove` (spring) → `SwayHit` (collision
+            // on the free tip) → `CalcRotate` (angle window). The window has to
+            // come last: a collider push can leave the window, and clamping
+            // before the push let hair strands be shoved 90 degrees out of a
+            // ±20 degree window — the "hair floating" on the dance.
+            var springDirection = tips[index] - base
+            if simd_length(springDirection) < 1e-5 {
+                springDirection = restDirection
+            }
+            springDirection = simd_normalize(springDirection)
+            // Two thigh capsules can push against each other: a panel
+            // between them gets opposite normals that cancel, so a plain
+            // push does nothing (measured on the real dance: still 17 mm
+            // inside). Relax the summed violation first, then, if the panel is
+            // wedged, search the tangent circle around the current direction —
+            // the escape there is a few degrees sideways (4° on this dance).
+            // `CheckSideLine`: with `useLinkHit` on, the game tests the
+            // segment between this tip and its `sideLink` neighbour as well —
+            // a pair can straddle a leg with both tips still clear of it.
+            var sideTip: SIMD3<Float>?
+            var sideRadius: Float = 0
+            if pendulum.useLinkHit, let link = sideLinks[index], seeded[link] {
+                sideTip = tips[link]
+                sideRadius = pendulums[link].radius
+            }
+            var resolved = resolvingCollisions(
+                direction: springDirection, base: base, pendulum: pendulum,
+                colliders: pendulum.colliders, sideTip: sideTip,
+                sideRadius: sideRadius, skirt: skirt, world: world
+            )
+            // `SwayBoneMT`'s job calls `SwayHit` a second time when `hitTwice`
+            // is set; the second pass starts from the tip the first one pushed
+            // out and catches whatever lies behind it.
+            if pendulum.hitTwice {
+                let second = resolvingCollisions(
+                    direction: resolved.direction, base: base, pendulum: pendulum,
+                    colliders: pendulum.colliders, sideTip: sideTip,
+                    sideRadius: sideRadius, skirt: skirt, world: world
+                )
+                resolved = (second.direction, resolved.hit || second.hit)
+            }
+            hitLastFrame[index] = resolved.hit
+            tips[index] = base + resolved.direction * pendulum.length
+            let direction = clampedDirection(
+                of: tips[index], from: base, parentRotation: parentRotation,
+                restDirection: restDirection, restRotation: rigid,
+                limit: pendulum.limit
+            )
+            // `CalcRotate`'s `HitMuteForce`: on a hit frame the remembered
+            // tip is moved off the pushed one by `1 - HitMuteRate` of the
+            // clamp's push. The next frame's velocity is `tip - remembered`,
+            // so that much of the collision push survives the angle window;
+            // rate 1 throws all of it away. (The game blends towards its
+            // clamped `curTipPos`; ours keeps the pushed tip in `tips`, so the
+            // remembered value is mirrored.)
+            if pendulum.hitMute, resolved.hit {
+                let pushed = base + resolved.direction * pendulum.length
+                let clamped = base + direction * pendulum.length
+                previousTips[index] = pushed
+                    + (pushed - clamped) * (1 - pendulum.hitMuteRate)
+            }
+
+            let turned = QuaternionMath.multiply(
+                QuaternionMath.fromToRotation(restDirection, direction),
+                rigid
+            )
+            poses[pendulum.joint].rotation = parent.map {
+                QuaternionMath.multiply(QuaternionMath.inverse(world[$0].rotation), turned)
+            } ?? turned
+            world[pendulum.joint] = (base, turned)
+        }
+    }
+
+    /// Forget the simulated tips. Playback replays the dance from the top
+    /// before showing a seek, so a held frame carries the sway playback would
+    /// reach.
+    mutating func reset() {
+        seeded = Array(repeating: false, count: pendulums.count)
+        hitLastFrame = Array(repeating: false, count: pendulums.count)
+        sideLineRest = Array(repeating: 0, count: pendulums.count)
+    }
+
+    // MARK: - The game's judgements
+
+
+    /// `SwayHit`: push the bone's direction out of the deepest collider it
+    /// lists, once per frame. Returns the resolved direction, which is
+    /// `direction` itself when nothing was hit.
+    ///
+    /// The game asks every collider of the bone how far the tip is inside,
+    /// keeps the deepest answer and moves the tip out along that normal
+    /// (`SwayBoneMT.SwayHit` at RVA 0x1C68C3C). It does not add the pushes
+    /// together and it never searches for a direction that is clear of *all*
+    /// of them: when a thigh swings through the front of the skirt there is no
+    /// such direction within 90 degrees, and walking the tip to one is what
+    /// turned the hem into a flat umbrella. `CalcRotate`'s angle window and
+    /// the next frame's spring decide the rest.
+    private func resolvingCollisions(
+        direction: SIMD3<Float>, base: SIMD3<Float>, pendulum: Pendulum,
+        colliders: [Int], sideTip: SIMD3<Float>? = nil, sideRadius: Float = 0,
+        skirt: SkirtFrame? = nil,
+        world: [(position: SIMD3<Float>, rotation: SIMD4<Float>)]
+    ) -> (direction: SIMD3<Float>, hit: Bool) {
+        guard !colliders.isEmpty else { return (direction, false) }
+        let point = base + direction * pendulum.length
+        var normal = SIMD3<Float>.zero
+        var depth: Float = 0
+        func consider(_ candidate: SIMD3<Float>, _ amount: Float) {
+            if amount > depth {
+                normal = candidate
+                depth = amount
+            }
+        }
+        for collider in colliders {
+            if let (push, amount) = violation(
+                of: point, with: bounds[collider], world: world,
+                radius: pendulum.radius, skirt: skirt
+            ) {
+                consider(push, amount)
+            }
+            if let sideTip, let (push, amount) = sideViolation(
+                of: point, link: sideTip, radius: pendulum.radius,
+                linkRadius: sideRadius, with: bounds[collider], world: world
+            ) {
+                consider(push, amount)
+            }
+        }
+        guard depth > 0 else { return (direction, false) }
+        let delta = (point + normal * depth) - base
+        guard simd_length(delta) > 1e-6 else { return (direction, true) }
+        return (simd_normalize(delta), true)
+    }
+
+    /// How far a tip is inside a sphere or capsule, with the normal that
+    /// pushes it out. `nil` when it is outside.
+    private func violation(
+        of tip: SIMD3<Float>, with bound: Bounds,
+        world: [(position: SIMD3<Float>, rotation: SIMD4<Float>)], radius: Float,
+        skirt: SkirtFrame? = nil
+    ) -> (SIMD3<Float>, Float)? {
+        let joint = world[bound.joint]
+        let centre = joint.position + QuaternionMath.rotate(joint.rotation, bound.offset)
+        // `allowedPenetration` is normally zero, so the tip settles on the
+        // collider's surface; the knob exists so a run can leave some overlap
+        // in place when comparing silhouettes.
+        let reach = bound.radius + radius
+        let limit = reach * (1 - Self.allowedPenetration) + Self.surfaceMargin
+
+        switch bound.kind {
+        case .plane:
+            // `SwayColliderMT.CheckPlane`: a half-space through the collider's
+            // offset point. The bone's own radius is the margin the game
+            // takes from that plane (FixedParams.n_radius).
+            let normal = simd_normalize(QuaternionMath.rotate(joint.rotation, bound.normal))
+            let signed = simd_dot(tip - centre, normal)
+            let margin = radius + Self.surfaceMargin
+            guard signed < margin else { return nil }
+            return (normal, margin - signed)
+
+        case .bridge:
+            // `CapsuleBridgeHit`: a capsule spanning this joint and the
+            // `bridgetgt` joint, exactly like a normal capsule otherwise.
+            guard let far = bound.target else { return nil }
+            let other = world[far].position
+            let span = other - joint.position
+            let spanLength = simd_length(span)
+            guard spanLength > 1e-5 else { return nil }
+            let axis = span / spanLength
+            let midpoint = joint.position + span * 0.5
+            let half = min(bound.halfLength > 0 ? bound.halfLength : spanLength / 2,
+                           spanLength / 2)
+            let along = simd_clamp(simd_dot(tip - midpoint, axis), -half, half)
+            let closest = midpoint + axis * along
+            let delta = tip - closest
+            let distance = simd_length(delta)
+            guard distance < limit else { return nil }
+            let normal = distance > 1e-5 ? delta / distance : axis
+            return (normal, limit - distance)
+
+        case .sphere, .capsule:
+            var push = SIMD3<Float>.zero
+            var capsuleAxis = SIMD3<Float>.zero
+            var closest = centre
+            if bound.kind == .capsule {
+                capsuleAxis = simd_normalize(
+                    QuaternionMath.rotate(joint.rotation, bound.axis)
+                )
+                let along = simd_clamp(
+                    simd_dot(tip - centre, capsuleAxis),
+                    -bound.halfLength, bound.halfLength
+                )
+                closest = centre + capsuleAxis * along
+            }
+            let delta = tip - closest
+            let distance = simd_length(delta)
+            if distance < limit {
+                let normal = distance > 1e-5
+                    ? delta / distance
+                    : simd_normalize(QuaternionMath.rotate(joint.rotation, SIMD3(1, 0, 0)))
+                push += normal * (limit - distance)
+            }
+            // `CapsuleHit`'s skirt barrier: a skirt bone whose own right axis
+            // lines up with the capsule is held on its own side of the plane
+            // through the capsule's centreline (the panel's up axis, flattened
+            // onto the capsule), `boneRadius + radius * skirtGuardOffset` out
+            // from it. Without it a panel can slip from the outer thigh to the
+            // inner one through the midway plane.
+            if bound.kind == .capsule, bound.useSkirtBarrier, let skirt,
+               simd_dot(skirt.direction, capsuleAxis) > 0.1 {
+                let flat = skirt.normal - capsuleAxis * simd_dot(skirt.normal, capsuleAxis)
+                let flatLength = simd_length(flat)
+                if flatLength > 1e-5 {
+                    let outward = flat / flatLength
+                    let clearance = radius + bound.radius * bound.skirtGuardOffset
+                    let signed = simd_dot(tip - centre, outward)
+                    if signed < clearance {
+                        push += outward * (clearance - signed)
+                    }
+                }
+            }
+            let pushLength = simd_length(push)
+            guard pushLength > 1e-7 else { return nil }
+            return (push / pushLength, pushLength)
+        }
+    }
+
+    /// `CheckSideLine`: the segment between this tip and its `sideLink`
+    /// neighbour — `SwayBoneMT` works from the tips' midpoint, half their
+    /// separation long each way — is tested against the same colliders as a
+    /// capsule `0.9 x` the smaller bone radius thick. Two panels either side
+    /// of a thigh can straddle it with both tips already outside, which is the
+    /// gap a wide skirt opens when the dance swings it between the legs.
+    ///
+    /// The game also branches this check per collider type; no shipped costume
+    /// links a plane or bridge (`useLinkHit` in the corpus only ever names the
+    /// thigh capsules), so those two keep the point hit only.
+    private func sideViolation(
+        of tip: SIMD3<Float>, link: SIMD3<Float>,
+        radius: Float, linkRadius: Float, with bound: Bounds,
+        world: [(position: SIMD3<Float>, rotation: SIMD4<Float>)]
+    ) -> (SIMD3<Float>, Float)? {
+        guard bound.kind == .sphere || bound.kind == .capsule else { return nil }
+        let joint = world[bound.joint]
+        let centre = joint.position + QuaternionMath.rotate(joint.rotation, bound.offset)
+        // `SwayCollider.SideLineHitRadius`: 0.9 x the smaller of the two bone
+        // radii on top of the collider's own surface, with the same
+        // penetration tolerance the point hit allows.
+        let limit = (bound.radius + 0.9 * min(radius, linkRadius))
+            * (1 - Self.allowedPenetration)
+
+        let delta = tip - link
+        let span = simd_length(delta)
+        guard span > 1e-5 else { return nil }
+        let midpoint = (tip + link) * 0.5
+        let axis = delta / span
+        let half = span * 0.5
+
+        var capsuleAxis = SIMD3<Float>.zero
+        var capsuleHalf: Float = 0
+        if bound.kind == .capsule {
+            capsuleAxis = simd_normalize(QuaternionMath.rotate(joint.rotation, bound.axis))
+            capsuleHalf = bound.halfLength
+        }
+        let (onSide, onCollider) = Self.closestPoints(
+            midpoint - axis * half, midpoint + axis * half,
+            centre - capsuleAxis * capsuleHalf, centre + capsuleAxis * capsuleHalf
+        )
+        let push = onSide - onCollider
+        let distance = simd_length(push)
+        guard distance < limit else { return nil }
+        let fallback = abs(axis.z) < 0.9 ? SIMD3<Float>(0, 0, 1) : SIMD3<Float>(1, 0, 0)
+        let normal = distance > 1e-5
+            ? push / distance
+            : simd_normalize(simd_cross(axis, fallback))
+        return (normal, limit - distance)
+    }
+
+    /// Closest points on two segments (Ericson, *Real-Time Collision
+    /// Detection*, 5.1.9), returned as one point on each.
+    private static func closestPoints(
+        _ p1: SIMD3<Float>, _ q1: SIMD3<Float>,
+        _ p2: SIMD3<Float>, _ q2: SIMD3<Float>
+    ) -> (SIMD3<Float>, SIMD3<Float>) {
+        let d1 = q1 - p1
+        let d2 = q2 - p2
+        let r = p1 - p2
+        let a = simd_dot(d1, d1)
+        let e = simd_dot(d2, d2)
+        let f = simd_dot(d2, r)
+        let epsilon: Float = 1e-7
+        if a <= epsilon && e <= epsilon { return (p1, p2) }
+        var s: Float
+        var t: Float
+        if a <= epsilon {
+            s = 0
+            t = simd_clamp(f / e, 0, 1)
+        } else {
+            let c = simd_dot(d1, r)
+            if e <= epsilon {
+                t = 0
+                s = simd_clamp(-c / a, 0, 1)
+            } else {
+                let b = simd_dot(d1, d2)
+                let denominator = a * e - b * b
+                s = denominator > epsilon
+                    ? simd_clamp((b * f - c * e) / denominator, 0, 1)
+                    : 0
+                t = (b * s + f) / e
+                if t < 0 {
+                    t = 0
+                    s = simd_clamp(-c / a, 0, 1)
+                } else if t > 1 {
+                    t = 1
+                    s = simd_clamp((b - c) / a, 0, 1)
+                }
+            }
+        }
+        return (p1 + d1 * s, p2 + d2 * t)
+    }
+
+    /// The game's angle window (`CalcRotate`): `minYAngle … maxYAngle` is how
+    /// far a panel may swing **sideways** around the body, `minZAngle …
+    /// maxZAngle` how far it may lift or droop inside its own radial plane.
+    ///
+    /// Both angles are deviations from the panel's rest direction, and they
+    /// are measured against the solver's up axis. The first version measured
+    /// them with Unity's `(x, −y, z)` convention, i.e. against +Y while the
+    /// solver's world is +Z-up; for a panel that hangs down that swapped yaw
+    /// and pitch, so a 1° yaw window never bound anything and every collision
+    /// push escaped sideways — the flat "umbrella" hem.
+    private func clampedDirection(
+        of tip: SIMD3<Float>, from base: SIMD3<Float>,
+        parentRotation: SIMD4<Float>, restDirection: SIMD3<Float>,
+        restRotation: SIMD4<Float>, limit: Limit?
+    ) -> SIMD3<Float> {
+        let offset = tip - base
+        let length = simd_length(offset)
+        guard length > 1e-6 else { return simd_normalize(restDirection) }
+        let direction = offset / length
+        guard let limit else { return direction }
+        let rest = simd_normalize(restDirection)
+        // The panel's own radial plane: `up` plus the outward direction its
+        // rest pose points at. A panel whose rest direction is vertical has no
+        // radial, so it stays unclamped rather than picking one.
+        var radial = rest - up * simd_dot(rest, up)
+        if simd_length(radial) < 1e-3 {
+            // A chain that hangs straight down has no outward component of its
+            // own; its rest roll still names a side (`m_offset_rot` is the
+            // game's answer to the same question), so take that instead of
+            // leaving the bone unclamped.
+            let side = QuaternionMath.rotate(restRotation, SIMD3(0, 1, 0))
+            radial = side - up * simd_dot(side, up)
+        }
+        guard simd_length(radial) > 1e-4 else { return direction }
+        let outward = simd_normalize(radial)
+        let tangent = simd_cross(up, outward)
+        func angles(_ v: SIMD3<Float>) -> (yaw: Float, pitch: Float) {
+            let horizontal = SIMD2(simd_dot(v, outward), simd_dot(v, tangent))
+            return (
+                atan2(horizontal.y, horizontal.x) * 180 / .pi,
+                -atan2(simd_dot(v, up), simd_length(horizontal)) * 180 / .pi
+            )
+        }
+        let restAngles = angles(rest)
+        let candidate = angles(direction)
+        let yaw = Self.wrap(candidate.yaw - restAngles.yaw)
+        let pitch = candidate.pitch - restAngles.pitch
+        let clampedYaw = min(max(yaw, limit.minY), limit.maxY)
+        let clampedPitch = min(max(pitch, limit.minZ), limit.maxZ)
+        let yawRadians = (restAngles.yaw + clampedYaw) * .pi / 180
+        let pitchRadians = (restAngles.pitch + clampedPitch) * .pi / 180
+        return simd_normalize(
+            outward * (cos(pitchRadians) * cos(yawRadians))
+                + tangent * (cos(pitchRadians) * sin(yawRadians))
+                - up * sin(pitchRadians)
+        )
+    }
+
+    private static func wrap(_ degrees: Float) -> Float {
+        var value = degrees
+        while value > 180 { value -= 360 }
+        while value < -180 { value += 360 }
+        return value
+    }
+
+    /// The game's `CalcSideLineDistance`: a panel and its neighbour keep the
+    /// distance they had at rest.
+    private func sideLineForce(for index: Int) -> SIMD3<Float> {
+        guard let link = sideLinks[index], seeded[link], seeded[index],
+              sideLineRest[index] > 0
+        else { return .zero }
+        let delta = tips[link] - tips[index]
+        let distance = simd_length(delta)
+        guard distance > 1e-5 else { return .zero }
+        let stretch = distance - sideLineRest[index]
+        return delta / distance * (stretch * pendulums[index].sideSpring)
+    }
+
+    /// The game's `CalcAntiFoldForce`: once two neighbours fold tighter than
+    /// `antiFoldAngle`, push them apart along the bisector of their tips.
+    private func antiFoldForce(for index: Int) -> SIMD3<Float> {
+        guard let fold = pendulums[index].antiFold,
+              let link = sideLinks[index], seeded[link], seeded[index]
+        else { return .zero }
+        let mine = tips[index] - bases[index]
+        let theirs = tips[link] - bases[link]
+        guard simd_length(mine) > 1e-5, simd_length(theirs) > 1e-5 else {
+            return .zero
+        }
+        let cosine = simd_dot(simd_normalize(mine), simd_normalize(theirs))
+        let angle = acos(simd_clamp(cosine, -1, 1))
+        guard angle < fold.angle * .pi / 180 else { return .zero }
+        let apart = simd_normalize(mine) - simd_normalize(theirs)
+        return simd_length(apart) > 1e-5
+            ? simd_normalize(apart) * fold.force
+            : .zero
+    }
+
+    private static func upAxis(
+        joints: [String], rest: [JointPose], parents: [Int?]
+    ) -> SIMD3<Float> {
+        let world = JointWorld.transforms(rest, parents: parents)
+        var top: SIMD3<Float>?
+        var bottom: SIMD3<Float>?
+        for (index, name) in joints.enumerated() {
+            let leaf = name.split(separator: "/").last.map(String.init) ?? name
+            if leaf == "HAIR" { top = world[index].position }
+            if leaf == "KOSHI" { bottom = world[index].position }
+        }
+        guard let top, let bottom else { return SIMD3(0, 0, 1) }
+        let direction = top - bottom
+        return simd_length(direction) > 1e-5
+            ? simd_normalize(direction)
+            : SIMD3(0, 0, 1)
+    }
+}

@@ -1,0 +1,747 @@
+# MLTD 3D spike notes
+
+## 资源
+
+- 游戏/平台：
+- 版本：
+- 资源路径（仅本机）：`build/mltd-spike/assets/`
+- 来源/所有权：
+
+## 工具
+
+- Windows VM：
+- .NET Framework 4.7.2：
+- MLTDTools：
+- Blender / MMD Tools：
+
+## 2026-10-28 iOS 容器只读探测
+
+- 容器：`~/Library/Containers/jp.co.bandainamcoent.BNEI0310/Data/Documents`（本机已有 iOS 版缓存）
+- 扫描：4885 个文件，4422 个 UnityFS bundle，约 1.36GB；没有导出/复制素材。
+- Unity revision 分布：
+  - `2018.4.11f1` 1575
+  - `2018.4.12f1` 882
+  - `2020.3.28f1` 44
+  - `2020.3.32f1` 270
+  - `2021.3.21f1` 412
+  - `2021.3.36f1` 896
+  - `6000.2.6f2` 343
+- 结论：缓存不是单一版本；2018.4 的 2457 个 bundle 与 MLTDTools v0.3.0 的年代接近，可能可读；2020.3/2021/6000 不应假设旧 AssetStudio 能读。下一步要在 2018.4 bundle 中定位目标角色的 `ch_*`/`cb_*`/`dan_*`，再决定是否启动 Windows VM。
+- 探测工具：`unityfs_probe.py`；测试：`tests/test_unityfs_probe.py`（4 tests）。只读 header，不解析资源内容。
+
+## 2026-10-28 模型/贴图实际读取
+
+- 在 iOS 缓存中定位到 `014mir`（春日未来）的 2018.4 bundle：`ch_pr001_014mir` / `cb_pr001_014mir` / `ch_ss003_014mir` / `cb_ss003_014mir`。
+- UnityPy 能读：head 有 3 个 Mesh、6 张 Texture、Avatar/SkinnedMeshRenderer；body 有 1 个 Mesh、2 张 Texture、Avatar/SkinnedMeshRenderer。
+- 已用 UnityPy 导出 OBJ + PNG 到 `build/mltd-spike/out/`，再用 Blender 4.5 headless 渲染静态 T-pose 到 `build/mltd-spike/out/mirai.png`。
+- 结果：身体/衣服/头发/鞋/裙纹理基本正确；脸与眼睛材质仍不完整（脸是闭眼贴图，眼睛层还没接对）。
+- 这一步证明“iOS 缓存里的 2018.4 模型可读、可在 Mac 显示”，不证明 MLTDTools 的 PMX/VMD 转换可用。
+
+## 2026-10-28 Headless MLTDTools
+
+- 给 MLTDTools 加了 `--config` 控制台入口（`MainWorker` 改成 `IMainWorkerHost`，ConsoleHost 不依赖 WinForms），补丁见 `mltools-headless.patch`。
+- 用 Mac Mono/xbuild + 预编译依赖构建出 `MillionDance.exe --config ...`，在 Windows VM 上运行成功（Windows 侧只需 .NET 4.8 + 预编译 DLL；不必装 Visual Studio）。
+- 用 2018.4 的 `ch_pr001_014mir` + `cb_pr001_014mir` + `dan_loveig_01` + `scrobj_loveig` 生成：
+  - `mirai.pmx`（约 694KB）
+  - `mirai.vmd`（约 24MB，3900 帧）
+  - `tex/` 贴图
+- PMX 在 Blender + MMD Tools 里能正确导入并渲染 T-pose；VMD 导入后模型爆炸/拉伸，尚未解决。
+- 失败点已定位到 VMD 的动画坐标/骨骼映射，不是 PMX/贴图；下一步比较 VMD 与 PMX 的骨骼名/缩放，或用 MillionDanceView 复核 VMD。
+- 脸/皮肤偏白不是贴图丢失：PMX 的基础色贴图本身很浅，游戏里还叠了 toon/环境光；Blender 中性光下会显得平、白。眼睛是独立 mesh + 贴图，PMX-only 图里是正常的。
+- Blender 4.2.23 LTS + 对应 MMD Tools 4.5.14（bl4.2）仍复现 VMD 爆炸；因此不是 Blender 4.5 单点兼容问题。
+- `MillionDanceView` 不能用来复核 PMX/VMD：它加载的是 MLTD 原始 head/body Unity 资源并在 Unity/OpenGL 里播放，不读 PMX/VMD。B 方案不成立，需要 MMD 本体或其他 PMX/VMD 查看器。
+- 输出只在 `build/mltd-spike/out/mltd/`，不提交。
+
+## 结果
+
+- [x] head/body 读取（UnityPy）
+- [x] 静态模型 + 贴图渲染（Blender，T-pose）
+- [x] Headless MLTDTools 生成 PMX/VMD
+- [x] PMX 导入 Blender 显示正确
+- [ ] VMD 动画导入显示正确
+- [ ] PMX 导出
+- [ ] 贴图
+- [ ] 骨架
+- [ ] VMD 动作
+- [ ] Blender 导入
+
+## 失败点 / issue 对照
+
+## 截图/录屏（仅本机，不提交）
+
+`build/mltd-spike/out/`
+
+
+## 2026-10-28 3D 支线（spec #53）
+
+- 新增独立 `Eidolon3DSpike` target：RealityKit + `Model3DPreview`，不碰 Spine/Core。
+- PMX → USDZ：[pmx_to_usdz.py](pmx_to_usdz.py)；`usdchecker` 返回 Success。
+- RealityKit macOS 能加载 `mirai.usdz`；原始 extents 约 0.106 × 0.127 × 0.023，App 按高度归一化到 1.6m。
+- Simulator build 成功；模拟器 UI 测试环境当前 `simctl`/launchd_sim 卡住，未拿到截图。
+- Air 安装失败：设备 free developer profile 已装 3 个 App（AltStore / Eidolon / Bangumi），spike 是第 4 个，需先删一个或换付费账号。
+- `usdchecker` 输出 `Success!`；RealityKit macOS 加载 extents ≈ 0.106 × 0.127 × 0.023，App 归一化到 1.6m。
+- Review 修正：文件选择的 security-scoped URL 先复制到 Documents；灯光只加一次；空 bounds 报错；empty/failure 共用 placeholder。
+- Air 已安装并截到静态模型：几何、比例、orbit 相机正常；但当前截图仍是灰色材质，纹理 USDZ 已包含 PNG 且在 USD 里是 UsdPreviewSurface，RealityKit 在 Air 上没有显示贴图。Air 截图：`build/mltd-spike/out/ios-3d-air-2.png`。
+- Air 重启并清理安装后重新安装成功：textured USDZ 正常显示，头发/眼睛/衣服/裙子/鞋子贴图都在，比例和朝向可用。截图：`build/mltd-spike/out/ios-3d-reboot.png`。
+- orbit 相机由 RealityKit 的 `realityViewCameraControls(.orbit)` 提供；未做手势自动化，只确认代码路径和静态画面。
+- 纹理问题实际是安装缓存/旧 build，不是 USDZ 材质；textured USDZ 已嵌入 PNG。
+- 增加 `Model3DResourceLocator` 与 iOS XCTest：env → bundle（递归）→ Documents；`xcodebuild test` 因模拟器 boot timeout 未执行，但测试代码已编译。
+- 重启 Air 后重新安装，textured USDZ 正常显示；此前空页面是设备安装/快照缓存问题。
+
+## T1（#55）双衣装静态预览
+
+- 新增 `Model3DOutfit`：`pr001` 私服、`ss003` 演出服；两套 USDZ 作为 target resources 打入 App。
+- UI 底部可切换两套衣装；固定默认舞台/机位，orbit 保留为调试手势。
+- 载入失败保留上一套实体并显示红色错误条；没有上一套时才进入失败页。
+- Air 截图：`build/mltd-spike/out/ios-3d-pr001d.png`、`build/mltd-spike/out/ios-3d-ss003.png`。
+- `ss003` 第一次从 Windows VM 复制出的 PMX 损坏（同尺寸但 MMD Tools 报 signature invalid）；重新复制后导出成功。以后跨 VM 复制大文件要重拷贝/校验。
+- 新增 outfit-specific locator 单测；`build-for-testing` 通过，模拟器测试运行仍受 boot timeout 阻塞。
+
+### T1 review 修正
+
+- 固定舞台改为与主线一致的渐变背景；移除默认 orbit，默认机位固定。
+- 换装不再卸载 RealityView：旧实体保留，载入时覆盖 spinner；成功后替换实体，失败保留上一套并显示错误条。
+- 加入 `StandDirection` 状态（calm），换装不重置；动作消费在 T2。
+- 资源引用从 Xcode 工程移除；`postBuildScripts` 仅在本地资源存在时复制，clean checkout 不会因缺 USDZ 构建失败。
+- 移除文件选择器，避免未结构化的加载 Task 与衣装选择竞态。
+- 当前 Air 重新安装被设备/连接阻塞，最新固定机位版本尚未重新截图；旧双衣装截图仍有效。
+
+### 资源打包最终方案
+
+- USDZ 重新作为 target Resources，由 Xcode 正常签名。
+- `preBuildScripts` 只在文件缺失时创建空占位，保证 clean checkout/无素材时仍能构建；本地有真实 USDZ 时不会被覆盖。
+- 最新 build 已生成两个 USDZ；Air 安装连续 `devicectl` timeout，需解锁设备后复验。
+
+### T1 模拟器复验
+
+- iPhone Air 模拟器（`6C599927...`）启动成功，最新 build 已安装并截到两套衣装：`build/mltd-spike/out/sim-pr001b.png`、`build/mltd-spike/out/sim-ss003b.png`。
+- 固定渐变舞台、固定机位、底部私服/演出服按钮均可见；`StandDirection` 为 calm 并跨换装保留。
+- `xcodebuild test` 在模拟器执行：4 个 locator 测试全部通过。
+- 实机安装仍超时，最终 Air 验收留给 T6（#60）。
+
+### T2 动作映射起点
+
+- 新增 `Model3DAction` / `Model3DActionMap`：calm→idle、speaking→talk+mouthOpen、looking→listen、nod→nodYes/nodNo，情绪透传。
+- 新增 4 个纯映射单测，模拟器全部通过。
+- 渲染器动作播放/按钮状态机尚未接上，T2 不能关闭。
+
+### T4 Phase 0（MMD/ARM）
+
+- Windows ARM 无法正常安装 x64 VC++ 2008；改用 App-local x64 VC90（从 VisualCppRedist AIO 提取 `msvcr90/msvcp90/vcomp90` + 私有 manifest，manifest 版本改成 MMD 依赖的 `9.0.21022.8`），MMD 进程能启动。
+- 在 VM 桌面打开 `C:\MMD\app\MikuMikuDance.exe`，加载 `mirai.pmx` + `mirai.vmd`：动作/骨骼运动正常；Mesh 因 Windows ARM/MMD 渲染问题不可见。
+- 结论：VMD 动作有效性通过（按用户确认），Phase 3 可以用 VMD 路径；但“MMD 里看到模型内容物”仍受 ARM 渲染限制，不能用于模型视觉验收。
+- 下一步不是再装运行库，而是解决 Blender/MMD Tools VMD 导入爆炸，或写 VMD→USDZ 导出。
+
+## 原生动作分析（IDA + Il2CppDumper）
+
+- 将 PlayCover 容器里的 `UnityFramework` 复制到 `/tmp/MLTD-UnityFramework` 后，IDA 可以打开；容器原路径会 `Failed to open database`。
+- 完整 IDA 分析完成：702,223 个函数，数据库 `/tmp/MLTD-UnityFramework.i64`。
+- Il2CppDumper 6.7.46 生成 `dump.cs` / `il2cpp.h`（本地 `build/mltd-spike/out/il2cpp/`，不提交）。
+- 关键原生类型/地址：
+  - `CharacterImasMotionAsset.Curve`：`path`、`attribs`、`values`。
+  - `CharacterImasMotionData.CurveSet`：`px/py/pz/rx/ry/rz` 六个曲线，按 `path` 分骨骼。
+  - `CharacterImasMotionData.CreateFromImoAsset` @ `0x37EC030`。
+  - `CharacterImasMotionData.GetKeyCount/GetDeltaTime/GetKeyTime/GetKeyValue` @ `0x37EC388/0x37EC454/0x37EC4A4/0x37EC598`。
+  - `CharacterImasMotionPlayer.SolveCurve` @ `0x37E80B8`、`GetLastSeekerPosition` @ `0x37E89DC`。
+  - `CharacterImasMotionPlayerDance.SolveCurves` @ `0x37EE384`、`SetResultToTransforms` @ `0x37EE99C`。
+- 曲线 `KeyType`：0 固定 60fps、1 时间/值对、2 常量、3 全帧曲线、6 全帧偏移、7 增量帧；`SolveCurve` 负责 Hermite/线性插值。
+- 结论：应直接从 `.imo.unity3d` 的 `CharacterImasMotionAsset` 解码，生成 USDZ/骨骼动画；不再依赖 MMD/VMD 或 Blender 的 MMD Tools 导入。
+
+### 原生曲线直接套骨骼的实验
+
+- 从 `dan_loveig_01` 解出 180 条曲线（`CharacterImasMotionAsset`），导出为 `/tmp/loveig-curves.json`（本地副本在 `build/mltd-spike/out/il2cpp/`）。
+- 直接按 native path（MUNE1/MUNE2/SAKOTSU_L/...）映射到 MMD 骨骼并应用 Euler 角，模型仍爆炸。
+- 结论：原生曲线本身可读，但 native 骨骼局部轴/rest pose 与 MLTDTools PMX/MMD 骨骼不一致；需要按 native skeleton 的 rest transform 做 retarget，不能直接套 MMD 骨骼。下一步应构建 native skeleton 或使用 `CharacterCommonSkeleton` 的 rest 矩阵。
+
+### 真矩阵链尝试
+
+- 按 `skin = rest^-1 * currentWorld`、`local = rest * skin * parentWorld^-1` 实现一帧 retarget，使用 PMX rest 作为 native rest 的代理。
+- 结果仍爆炸。说明 PMX rest 不能替代 native rest；必须先取得 `CharacterCommonSkeleton` 的 native rest world matrices，再套矩阵链。
+- 未完成 T5；不能继续用 PMX rest 冒充 native rest。
+
+### native skeleton rest（第二轮）
+
+- 从 head/body Unity Transform 层级提取 188 个 native 节点（localPosition/localRotation/parent），保存为本地 `native-skeleton.json`。
+- 用 native rest + native curves + PMX binding 矩阵链渲染，仍爆炸。
+- 已排除“没有 native rest”这一项；剩余问题在 native 路径/父子关系或 native→PMX binding 的对应。
+- T5 仍未完成。
+
+### 运行时 native rest dump（成功）
+
+- Frida attach 到 PlayCover MLTD，找到 `UnityFramework` 的 `il2cpp_*` 导出。
+- 通过 `ilm2cpp_class_from_name("Imas","CharacterCommonSkeleton")`、静态字段 `s_static_data` 读取。
+- 已 dump 64 根 native 骨骼：`bone_id/local_position/local_angle`。
+- 文件：`build/mltd-spike/out/il2cpp/native-rest.json`。
+- 这是真正的 `CharacterCommonSkeleton` rest，不是 Avatar/Transform 推断。
+
+## 2026-10-29 原生路线（ADR-0022）
+
+放弃 PMX / VMD / MLTDTools / MMD Tools。模型、骨骼、绑定、蒙皮、贴图、表情形变全部从游戏自己的 UnityFS bundle 读，动画在端上用 `SkeletalPosesComponent` 每帧算。spec 见 #54，执行见 #73–#77。
+
+**取包**：`mltd-assets.py` 用 `mltd-asset-downloader` 下载的 manifest 直接向 CDN 取指定包，不问工具要全量。URL 形如
+`https://td-assets.bn765.com/<version>/production/2018/iOS/<manifest 第二字段>`；
+当前 version `1078000`，manifest 22.7 MB。只取 9 个包（两套衣装的 `ch_/cb_/ca_/cas_` 加 `dan_loveig_01`），约 5.5 MB。
+
+**实测结构（UnityPy 1.25.4）**
+
+| 包 | 内容 |
+|---|---|
+| `ch_pr001_014mir` | 5 个 SMR（face / hair / eyes / 两个 acc），各 37 骨；`face` 有 **32 个 shape key**；Avatar TOS 45 |
+| `cb_pr001_014mir` | 1 个 SMR，134 骨；body 4422 顶点、11440 索引；Avatar TOS 143 |
+| `ch_ss003_014mir` / `cb_ss003_014mir` | 同上，body 4123 顶点、124 骨 |
+| `dan_loveig_01.imo` | **只有 MonoBehaviour + MonoScript + AssetBundle**，脚本类是 `Imas.CharacterImasMotionAsset`，字段 `curves` / `kind` / `time_length` / `attribs` |
+
+所以这支舞**不是** `AnimationClip`，是游戏自定义的 `CharacterImasMotionAsset`——但 UnityPy 能直接读，不需要自己写二进制解析。曲线的 180 条按 Transform 路径寻址，与既有 `loveig-curves.json` 一致。
+
+**顶点布局**：`m_DataSize` 就是整块顶点缓冲，三条流首尾相接、每条按 16 字节对齐。
+stream0 stride 40（pos12 + normal12 + tangent16）、stream1 stride 12（color4 + uv8）、stream2 stride 32（权重 Float32x4 + 骨索引 **SInt32x4**）。
+**每顶点 4 个骨影响**，所以 `m_VariableBoneCountWeights` 那套截断风险在本作不存在。
+
+**骨头集合**：头 37 骨与身体 134 骨共用 `KUBI` / `ATAMA` / `KUBI_RT__twist_x0`，其余 35 根头发骨只在头包里。合并成一套 joint 要做名字对齐。
+
+**已做**：`unity_mesh.py`（顶点流解码、索引解码、手性翻转）与 `mltd_assets.py`（manifest 解析、CDN URL 推导）各有单测，共 20 个通过。
+
+### 2026-10-29 导出器进度（#73）
+
+已能出一张完整的未来（pr001 私服）：头、发、身、裙、鞋、脸，T-pose，正面，比例正确。
+
+**踩到并修掉的坑**
+
+1. **四元数手性共轭写反**。镜像 `diag(1,1,-1)` 把旋转轴送到 `(x, y, -z)`，但同时把**角度取反**，合起来等价于 `(-x, -y, z, w)`。写成 `(x, y, -z, w)` 会让整具骨架在静止姿势就爆炸。已加数值断言钉住。
+2. **glTF 场景根写成了节点 0**。节点按名字排序后 0 号是个中间骨，整棵树挂错地方。已改成真正的根节点索引。
+3. **IBM 用 Unity 的 `m_BindPose`**。先验证过它与 rest 世界矩阵的逆**逐元素相等**（134/134 个 joint，误差 0），所以两者可以互推；现在直接用层级算，保证与导出的节点自洽。
+4. **Blender glTF 导入会造一个 42 顶点的 Icosphere 当骨骼显示形状**，它会把包围盒撑到 2.0 m，渲染取景要按「有 Armature 修改器的网格」过滤。
+
+**还没对的地方（下一步）**
+
+- **身体材质只取了第一个**。`body` 网格有 3 个 submesh、3 个材质，我们只用了 `m_Materials[0]`，而那是一张贴着领结的贴花图，所以衣服渲染成黑的。要按 submesh 切 primitive、逐 submesh 选材质。
+- 身体顶点色全是 `(0,0,0,0)`，没用；COLOR_0 只在非全零时才写。头/脸有真实贴图，UV 的 V 翻转（Unity 左下原点 → glTF 左上原点）验证正确。
+- 32 个 face shape key 还没导出成 morph target。
+- 还没转 USDZ、还没接进 `Eidolon3DSpike`。
+
+### 2026-10-29 USDZ 与模拟器（#73 收尾）
+
+两套衣装都能从原生资产导出成 USDZ：`mirai-pr001.usdz` 2.2 MB、`mirai-ss003.usdz` 2.3 MB，各自 8 张贴图内嵌。Blender 只做 GLB → USDZ 的格式转换。
+
+**Blender 4.2 的坑**：`bpy.ops.wm.usd_export` 没有 `export_format` 参数，格式由扩展名决定；参数是 `export_armatures` / `export_shapekeys` / `export_animation`，不是 `export_skeletons` / `export_animations`。
+
+**glTF 的坑**：每个 primitive 必须有自己的属性 accessor。共享 accessor 时 Blender 的导入器会去重，然后给第二个 primitive 产出越界索引。另外 `buffers[0].uri` 要跟着 `--name` 走，不能写死。
+
+**未完成**：装进 iPhone 18 Pro 模拟器后启动，截图全黑，没有崩溃日志。iPhone Air 模拟器本身坏了（`simctl install` 挂住、`bootstatus` 报 `Data Migration Failed`）。下一步要先查这个黑屏，不要当成模型问题。
+
+### 2026-10-29 曲线压缩（#74）
+
+三种 key_type 实测：
+
+| key_type | 曲线数 | 值个数 | 结论 |
+|---|---|---|---|
+| `Const` | 74 | 1 | 整段一个值，可折叠成常量表 |
+| `FullFrame` | 52 | 7801 | **60 fps 每帧一个**（130.0 s × 60 + 1），已确认 |
+| `Discreate` | 52 | 22 / 54 / 4662…4890 不等 | 扁平的 `(time, value)` 对，键间线性插值，首尾夹住；已确认（见 10-31 一节） |
+
+压缩实测（`motion.py`，旧版）：
+
+- 折叠 74 条 `Const` + `FullFrame` 降到 30 fps + int16 量化
+- 0.01° 精度 → **2.45 MB**；0.1° 精度 → **1.99 MB**（原始 13.32 MB）
+
+### 2026-10-31 曲线语义定案与压缩格式（#27）
+
+用 IDA Pro 9.4（`ida-pro-mcp`）反编译 `CharacterImasMotionPlayer` 的几个函数确认语义，替代原来猜测、试错的三件事：
+
+1. **欧拉顺序与符号**：`SetResultToTransforms` 把 `Result.angle` 的 x/y/z 原样乘 0.01745329 后交给 `Quaternion.Euler` → `Transform.set_localRotation`，没有取负、没有换轴。Unity 的 `Internal_FromEulerRad` 内部按 **z → x → y** 施加，即 `q = qY * qX * qZ`。位置只在 CurveSet 里至少有一条 Position 曲线时才写 `set_localPosition`。
+2. **采样与插值**：`SolveCurves` 先把 `current_time` 截断到整帧 `(int)(t*60)/60`，所以姿势只存在于 60 fps 网格上。`FullFrame` 每 1/60 s 一个样本；`FullFrameOffset` 的 `values[0]` 是起始时间；`DeltaFrame` 的 `values[0]` 是帧长（秒）；`Discreate` 是扁平的 `(time, value)` 对；这四种都线性插值，越界夹到首/尾。`Step` 保持前一个值，`Const` 取 `values[0]`，`FCurve` 是标准三次 Hermite（`(time, value, inTangent, outTangent)`，切线乘键距），`Step_3Values` 在 `SolveCurve` 里不参与求值（返回 0）。
+3. **`MODEL_00/BODY_SCALE` 存在**：`CharacterImasMotionAsset` 的曲线路径里就有 `MODEL_00/BODY_SCALE/BASE`（本支舞 57 个路径之一）；`dump.cs` 里 `CharacterCommonSkeleton.BoneID` 的 `POSITION = 0, MODEL_00 = 1, BODY_SCALE = 2, BASE = 3`，`ShadowMapCtrl` 也把 `"MODEL_00/BODY_SCALE/BASE"` 写死成常量。
+
+新的端上格式 `eidolon.motion/1`（`compress_motion.py` 产出）：统一 30 fps 网格、折叠常量、通道做**增量编码**（`[首帧, 增量…]`，首帧和单个增量都按 int16 上限校验）。角度整数化用 1/100°，位置 1/4000 单位。`dan_loveig_01` 实测：**1.32 MB**（< 2 MB 门槛）、57 根骨、3901 帧，最大单帧增量 16637（< 32767）；`--verify` 重新采样原始曲线对照，最差角度误差 0.005°（= 量化半步），位置误差 0.000125 单位。
+
+Swift 侧 `spikes/porting-3d/ios/MotionDance.swift` 是纯值类型解码器（不 import RealityKit），含 Unity ZXY 欧拉 → 四元数；单测 `MotionDanceTests` 覆盖格式、增量还原、越界夹取、手算四元数，以及「单骨骼单帧」数值对照。
+
+**给 #28 的坑**：导出的 USDZ 层级里只有 `MODEL_00 → BASE`，`POSITION` 与 `BODY_SCALE` 两个 Transform 在 glTF 导出时被压掉了（它们不是 SkinnedMeshRenderer 的骨骼，导出器按骨骼重建层级）。而曲线路径正好按这两个节点寻址。`register_imo_data`（`0x37ECCE4`）对每个 CurveSet 用 `go.transform.Find(path)` 各自解析目标 Transform 再存进 `CurveBinder.tr`，所以 `POSITION` 和 `MODEL_00` 是**两个不同的 Transform**、游戏里就是两级各自叠加——端上照做即可，不要去重。缺失的 `POSITION` / `POSITION/SCALE_POINT` 两条曲线要补根节点或合进根实体；其余路径先按叶子唯一名匹配（55/57），匹配不到时把 `MODEL_00/BODY_SCALE/` 改写成 `MODEL_00/`。
+
+### 2026-10-29 模拟器里跑通（#73 收尾）
+
+两套衣装都能在模拟器里正立、正面、贴图正确显示。截图：
+
+- `build/mltd-spike/out/native/sim-final.png`（私服）
+- `build/mltd-spike/out/native/sim-ss003.png`（演出服）
+
+**这一步修掉的四个 Blender 转换缺陷**
+
+1. **朝向转了 90°**：角色朝 +X 而不是朝相机。在导出前把整具 rig（网格 + 骨架）挂到一个 yaw = -90° 的父空对象下面。蒙皮是相似变换，整 rig 一起转不破坏形变。
+2. **法线是 `faceVarying`**：Blender 的 USD 导出器**无条件**写 face-varying 法线，`shade_smooth()` 和清 custom split normals 都改不掉。RealityKit 不做面法线插值，于是头发和所有曲面都是硬边块面。解决：`pack_usd.py` 用 pxr 把面法线平均回顶点、改 `interpolation=vertex`，再用 `UsdUtils.CreateNewUsdzPackage` 重新打包。7485 顶点 → 7485 条法线。
+3. **`upAxis` 是 Z**：Blender 默认不转，RealityKit 要 Y。`convert_orientation=True`。
+4. **蒙皮网格被挂到骨下面**：父级的 90° 会被重复施加，表现为侧身 + 鞋子和腿断开。导出前把它从父级摘掉、世界矩阵归一。
+
+**流程因此变成**：glTF →（Blender）`X.usdc` →（`pack_usd.py`：修法线 + 打包）`X.usdz`。
+
+**构图**：`Model3DPreview` 把模型推到 z = -1.35。原先居中在原点，RealityKit 默认相机也在原点，等于贴在脸上，脚会被切掉。
+
+**注意**：`Model3DPreview` **没有** orbit 手势，这是 spec 里的决定（固定正面构图），不是 bug。
+
+### 2026-10-29 toon 着色
+
+`ToonShading.metal` 是一段两段式 ramp（>0.55 全亮、>0.15 半亮、否则 0.66 保底），`ToonShading.swift` 把载入模型的每个 `PhysicallyBasedMaterial` 换成 `CustomMaterial`，把它自己的 baseColor 贴图接到 `custom.texture`。
+
+**踩到的 API**
+
+- `CustomMaterial(surfaceShader:lightingModel:)` 本身是 **throwing**（它在编译 shader）。
+- `CustomMaterial.SurfaceShader(named:in:)` 的 `in` 是 **`MTLLibrary`**，不是 `Bundle`。用 `MTLCreateSystemDefaultDevice()!.makeDefaultLibrary()`。
+- `CustomMaterial.Texture(_:)` 也 throwing。
+- **surface shader 里拿到的 UV 没有翻 V**。内置材质内部会翻，自定义 shader 必须自己 `1.0 - uv.y`，否则整张图集错位（表现为衣服变成橙色、袖子变成格子）。
+
+效果：两套衣装都不再有压黑的暗部，头发和脸干净。
+
+### 2026-10-29 换装修复与画质
+
+**换装不生效的真因**：不是按钮。`RealityView` 的 make 闭包只跑一次，重新给 `@State entity` 赋值不会重新挂载；按钮状态变了、模型没换。改成先 `content.add(container)`，换装时清空 `container` 的子节点再挂新的。
+
+**换装卡死**：`Entity.load(contentsOf:)` 在主 actor 上解析 5 MB USDZ。改成 `nonisolated` 静态方法，离主线程跑。
+
+**头部色块/伤疤**：不是打光，是**图集 mipmap 串色**。card 贴图是一张图集，采样 mip 链会把相邻岛的颜色混过来（头发上出现青紫色块，而头发贴图里根本没有这些颜色）。sampler 改成 `mip_filter::none` + `address::clamp_to_edge` 后消失。
+
+**ramp 过硬**：三段式（0.55/0.15）在低模脸上切出硬边，看着像疤。改成 `mix(0.80, 1.0, smoothstep(0.15, 0.55, lambert))`。
+
+**调试开关**：`EIDOLON_3D_SWAP_SECONDS=6` 启动后自动换一次装，用来验证换装路径（模拟器没有点击自动化）。
+
+### 2026-10-29 UV 通道 bug（真正的原因）
+
+**症状**：ss003 演出服胸口一大块红色墨水、身上到处色块；pr001 看着正常。
+
+**根因**：`TEXCOORD0` 的 offset 被写死成 4。两条流的布局其实不同：
+
+| 包 | stream1 通道 | UV offset |
+|---|---|---|
+| `cb_pr001_014mir` | color(UNorm8x4) @0 + UV @4 | **4** |
+| `cb_ss003_014mir` | 只有 UV @0 | **0** |
+
+写死 4 之后，ss003 的所有 UV 都从错误位置读，采样到图集的随机区域——所以是"墨水""色块"，而不是整体错位。
+
+**修法**：`unity_rig` 改成从 `m_VertexData.m_Channels` 按通道号查 offset/stride，不再硬编码。通道号：0 位置、1 法线、4 UV0、12 权重、13 骨索引。
+
+修完两套衣装在模拟器里都正确（`fix-pr001.png` / `fix-ss003.png`）。
+
+**顺带发现**：MLTD 的材质多数有两个贴图——`_MainTex`（反照率）和 `_SubTex`（发光/配色遮罩）。我们只用了 `_MainTex`，暂时够用，但发光部件会缺。
+
+### 2026-10-29 高光（第一版）
+
+原版材质里的高光不是烘在贴图里的，是两套参数：
+
+- **边缘光**：`_RimLightOn` / `_RimBorder` / `_RimOffset`（脸、头发）
+- **眼睛高光**：`_SpecTex_Center_X/Y`、`_Zoom`、`_Rotate_Z`、`_Scale_X/Y`、`_Vector_X/Y`、`_Fade`——亮点是算出来的
+- 分级参数：`_ShadingBorder` 5.0、`_ShadingOffset` 0.25
+
+第一版实现：`toonSurface` 加 fresnel 边缘光（0.10）+ 收紧的高光（pow 48，阈值 0.72）；另写 `eyeSurface`（pow 120、强度 0.85）想给眼睛单独加强。
+
+**没生效**：眼睛那条路靠 `material.name` 匹配 `"eye"`，但 USD 导入后 `Material.name` 可能是 nil，所以全部走了通用 shader。下一步要用可靠标识（材质名、贴图尺寸，或按 primitive 索引）来分流。
+
+### 2026-10-29 高光第二版：`_SubTex`，以及它到底是什么
+
+第一版把高光当成"程序化算出来的"（`_RimLight*` / `_SpecTex_*`），结果眼睛那条路也没生效。这版先按 `research-mltd-materials.md` 的结论把真正承载高光的那张贴图搬过来，结论是：**MLTD 的高光是 `_SubTex` 这一层加法贴图，不是参数**。
+
+**证据**：把 `_SubTex` 导出后再渲染，眼睛出现明确的白色眼神光（原来是平的）、ss003 的霓虹描边从暗紫变成亮白。同一份 glTF 去掉 `emissiveTexture` 再渲染，这两处都消失。两版对比图在 `build/mltd-spike/out/native/probe-glow-ss003.png`（开）与 `/tmp/noglow-ss003.png`（关）。
+
+**原来的调查结论要修正一处**：`_SpecTex_*` 那套参数确实存在，但眼睛上真正画出亮点的是 `_SubTex`——一张白底（`(255,255,255)`）配 alpha 遮罩、覆盖率约 2% 的贴图。`_SpecTex_*` 是经营这套高光的运动/缩放参数，不是高光本身。
+
+**这条链上的四个坑**
+
+1. **`_SubTex` 的 alpha 是遮罩，emissive 只乘 RGB。** 直接把带 alpha 的原图当 emissive，眼睛会整块发光。导出时先把 alpha 乘进颜色（`premultiplied()`），alpha 再置 255；ss003 的 glow 本来就 alpha=255，乘积是恒等。测试在 `tests/test_export_character.py`。
+2. **`params.textures().emissive_color()` 能采样，但 `.lit` 光照模型不会替你把 emissive 加进结果。** 验证方法是先把 `emissiveColor` 的 tint 设白（结果没变化），再在 shader 里自己加（结果出来了）。所以现在 tint 设成 `.black` 只用来**绑定**贴图，加算在 `toonSurface` 里做——否则两条路径同时生效会加两遍。
+3. **UV1 读错了地方**：`decode_channel(stream(uv1_channel.stream), ...)` 少写了 `offsets[...]`，把 stream 序号 1 当成字节偏移，读出来是 `-1.7e18` 量级的垃圾。修好后 hair 的 UV1 范围是 u∈[0.099, 0.998]、v∈[0.002, 0.995]。
+4. **Blender 的 USD 导出器只写一套 `primvars:st`。** 场景里 `UVMap` / `UVMap.001` 都在，`export_uvmaps=True`，但导出的 USD 里没有 `primvars:st1`。所以头发的 `_SubTex`（唯一需要 UV1 的材质）暂时跳过——用 UV0 采样只会把几笔高光甩到头上，比没有更糟。
+
+**顺带修掉的构图问题**：`visualBounds` 在实体还没挂到场景里时读到的包围盒不可靠（骨架 rest pose 决定），pr001 因此被缩到四分之一个 ss003。现在先 `container.addChild`、睡 120 ms 再 `normalize`。归一化目标从魔数 `1.6` 改成显式常量 `targetHeight = 2.3`——默认 `RealityView` 相机在 z = -1 处的可视高度约 3.1 单位，2.3 正好留出状态栏和按钮的位置。
+
+**仍未做**：`_AmbientColor` / `_DiffuseColor` / `_ShadingOffset` / `_Outline*` 这些材质标量仍没进导出，所以明暗分级还是全局一套，没有描边。
+
+### 2026-10-29 参数迁移：把每个材质的完整参数送到端上
+
+目标是不再靠猜全局常量，而是把游戏每个材质自己的颜色和浮点原样交给 shader。
+
+**导出**：`material_params.py` 读整个 `m_SavedProperties`（每个材质 9–11 个颜色、18–38 个浮点），写成 `<name>-materials.json`。shader 名只在 `Shader.m_ParsedForm.m_Name` 里，`Material.m_Shader.m_Name` 全是空串。五个 shader 都认出来了：`Chr_Glow` / `Chr_Basic` / `Chr_Face` / `Chr_Hair` / `BultIn/Bi_CharEye`。
+
+**传输**：一条 `float4` 装不下 30 个数。试了三条路，只有第三条能用：
+
+1. `LowLevelTexture` + `metal.replace(region:)` —— **写不进去**，CPU 回读全是 0。加了 `.shaderWrite` 也没用。
+2. `TextureResource(dimensions:format:contents:)` + `Format.raw(pixelFormat:)` —— `Dimensions2D` **没有公开初始化器**，编译不过。
+3. `TextureResource(contentsOf:)` 读一张 PNG —— **可以**。参数烘进 `material_atlas.py` 生成的 32×64 图，**每texel 一个参数，存在 alpha 通道里**：颜色通道会被色彩管理（sRGB PNG 取回来是线性化过的），alpha 原样通过。shader 用 nearest 采样读 `.a`，一个字节就是 `value/255`。
+
+**`.unlit` 用不了**：`CustomMaterial(lightingModel: .unlit)` 下 `custom` / `emissive` 贴图不再绑定，整个人渲染成黑剪影（换成有效参数表之后依然如此）。只能用 `.lit`，于是 PBR 光照会在 shader 结果上再加一层；目前靠三盏方向光把亮度维持住。
+
+**已验证**：调试开关 `EIDOLON_3D_LUT_DEBUG=1` 把参数行直接画成颜色（R=shader 类型/10，G=`_Color.r`，B=|\_Light.x|），躯干打出 (0.38,0.76,0.58)、头发 (0.71,0.81,0.62)，与表里的 0.2/0.502/0.3 和 0.4/0.502/0.3 按同一增益吻合——查表真的接通了。
+
+**顺带确认的事实**：`_Light` / `_RimLight` 在所有材质里都是 `(-0.3,-0.4,1.0)`；`_Color` 全是 0.502；`_DiffuseColor` 全白；`_OutlineColor` 全同；`_ShadingOffset` 0.25、`_ShadingBorder` 5.0、`_RimOffset` 0.25、`_RimBorder` 2.0 也全同。真正逐材质变化的是 `_AmbientColor`（0.863 灰 / 0.841,0.709,0.647 头发 / 0.980,0.827,0.788 皮肤）、眼睛的 `_SpecTex_*`、头发的 `_Sub*`、`Chr_Glow` 的 `_WhityCol`/`_WhiteMode`、脸的 `_Bihaku*`/`_Reddish*`。`_BumpScale`/`_Parallax`/`_Glossiness` 是 Unity Standard 的遗留字段，没有 `_BumpMap` 槽，所以**原版没有法线贴图，凹凸这一项没有可迁移的东西**。`_Cube`（反射）在所有材质的 `m_PathID` 都是 0，`_UseReflect`=0——**原版这两套衣装不反射**。
+
+### 2026-10-29 着色换成原版公式（从游戏自带的 GPU 程序反推）
+
+**来源是一手**：主包 `Data/data.unity3d` 里 200 个 `Shader` 全带 LZ4 压缩的 `compressedBlob`，解压后不是汇编，而是 **hlslcc 生成的完整 Metal 源码**。iOS 上 Unity 就是把它编成 metallib 跑的，所以这五个 shader 的数学不需要反汇编、不需要看重实现。提取方法在 `research-mltd-shading-math.md` §8（该文件**不入库**，因为它逐行引用了反编译出来的游戏代码；结论已全部落到 `ToonShading.metal`）。
+
+**写进 shader 前纠正的四处错判**
+
+1. **`_Light` 在视空间**，且只翻 x、y，z 保持不变：`L = normalize(-Lx,-Ly,+Lz)`。明暗是**线性斜坡** `saturate((N·L - 0.25) * 5)`，不是 smoothstep。
+2. **`_Color` / `_IllumiColor` 恒为 0.5，是"中性"**，shader 里到处 `×2` 抵消。以前按贴图直接乘，整体亮度就差了。
+3. **`_SubTex` 有三种语义，不是统一加法**：
+   - `Chr_Glow`：门控是 `_MainTex.a * _SubTex.g > 0.5`（**绿通道**），命中时把颜色**替换**成 `2*base*_GlowColor`（= 不参与明暗的纯贴图色），所以霓虹线看着像自发光；
+   - `Bi_CharEye`：alpha 当遮罩，向 `_IrisColor` 插值——眼神光其实是"白色插值"；
+   - `Chr_Hair`：`nz³` 加权的加法高光，需要第二套 UV。
+4. **`_RimOffset` / `_RimBorder` 不在编译出来的变体里**。边缘光是顶点路径 `(1-|N·V|)^5 * saturate(2*(N·Lr-0.25))`；另一条重算路径依赖 C# 每帧推入的 `_RimCtrl`，取值未知。
+
+**顺带确认**：`_Cube` 全包 75 个材质里没有一个非空，`_USEREFLECT_ON` 从未开启 → **原版不反射**；`_BumpMap` 槽不存在 → **原版没有法线贴图**；`02alp_m` 不是半透明，是 `_ISCUTOFF_ON` 的 alpha 裁剪；顶点色 R 被夹到 ≥1，**实际不影响颜色**。
+
+**踩到的两个 RealityKit 限制**
+
+- `RealityKit` 的 emissive 贴图**会丢 alpha**（USDZ 里的 PNG alpha 还在，0–255 完好）。所以 `_SubTex` 导出时把 alpha 乘进 RGB，shader 用 `.r` 当遮罩。ss003 的 glow 本来 alpha=255，乘积是恒等，绿通道门控不受影响。
+- `.unlit` 下 `custom` / `emissive` 贴图不再绑定（整只角色黑剪影），只能用 `.lit`，于是 PBR 光照会在着色结果上再加一层——这是目前剩下的主要失真来源。
+
+**眼睛高光**：原版用第二套 UV 算一个透镜畸变、随视角旋转的高光位置，但 `eyes` mesh 根本没有 uv1（一手数据里只有 uv0），公式跑起来会把整个虹膜刷白。改用 MLTDTools 记录的做法：按 base UV 采样（两张图尺寸相同，等价）。这也是研究报告 §7 里那条 UNVERIFIED 的处置。
+
+**构图**：`visualBounds` 在骨骼就绪后还会继续变大好几帧，读一次会把模型缩成四分之一或撑爆。改成挂载后连续 6 帧取最大包围盒（异步 100 ms 一次），并允许换装时重算。
+
+### 2026-10-29 色彩空间：已验证是 Gamma
+
+前面按"饱和度偏高 + 蓝通道被吃"推断项目是 Gamma，属于推测。现在读到了游戏自己的设置：
+
+```
+UnityPy.load(.../Data/data.unity3d)
+  PlayerSettings.m_ActiveColorSpace == 0        # 0 = Gamma, 1 = Linear
+```
+
+注意：直接 `obj.read()` 会因这个 2018.4 数据的 typetree 少 4 字节报
+`Expected to read 900 bytes, but only read 896`，用 `read(check_read=False)` 才能拿到。
+
+旁证（方向一致）：`Chr_Glow/Basic/Face/Hair/Bi_CharEye` 五个角色 shader 里**没有任何**
+色彩空间转换（无 `ColorSpaceDouble`、无 `LinearToGammaSpace`），全包出现 `0.416666`
+的只有 UI / Legacy 那几个内置 shader。也就是说角色 shader 不转换，算术直接在当前
+色彩空间里做——Gamma 项目里就是在 sRGB 值上做 `_Color*tex - 0.02`。
+
+RealityKit 采样会线性化、输出也期望线性，所以 `ToonShading.metal` 在采样后做
+`toGamma`、出结果前做 `toLinear`，把数学放回 sRGB 空间。实测头发饱和度
+0.84 → 0.71（游戏 0.45），余下差距归因于 `.lit` 的 PBR 那层。
+
+## 2026-10-30 描边与 unlit 输出
+
+- **纠正**：之前记「`.unlit` 会把自定义纹理绑丢」是错的。`RealityKitSurfaceShader.h:484-494`
+  写明 unlit 材质只取 `set_emissive_color()` 的输出；黑剪影是因为着色器只写了
+  `set_base_color()`。现在基色写 0、结果写 emissive，同一份着色器两种光照模型都对。
+  默认 unlit（`EIDOLON_3D_LIT` 可切回），RealityKit 的 PBR 那层和它带来的多余光照随之消失。
+  截图对比：头发从偏橙的高饱和变成红棕，肤色回暖，和游戏接近了很多。
+- **描边**：游戏是倒装壳——同一网格再画一遍，沿法线外推、`Cull Front`。RealityKit 没有
+  单模型的第二 pass，所以克隆一份做兄弟节点，`faceCulling = .front`，`lightingModel = .unlit`，
+  颜色写死近黑。第一次做的时候外推量写死 0.004，结果整块黑：这是**模型本地空间**的单位，
+  而这个 USD 原生只有 1.58 高，壳被撑得比人还大，从内部看就是全黑。改成按模型自身高度
+  取 0.003。
+- **取景**两个老 bug 一并修了：`fit()` 设了 entity 的 transform，`applyInspection` 又设容器的，
+  缩放被应用两次；换装时容器残留上一次变换，而 `visualBounds(relativeTo:)` 是世界坐标，
+  会一路累积。现在每次加载先把容器归零。另外实测默认相机不是盯着内容原点，居中后她在
+  画面偏下，所以按半个模型高度抬了一点。
+
+## 2026-10-30 已知缺口（全角色上线时留的账）
+
+按优先级，都是已知未做，不是未知问题：
+
+1. ~~**`Chr_Alpha` 的混合数学没移植**~~ —— 已补：材质切 `.transparent`，
+   shader 用 `set_opacity(_MainTex.a)`。2026-10-30 在 003mik 吊坠上实测通过
+   （透明区能透出白衬衫）。
+1b. ~~**裁切用「近黑即丢弃」顶替**~~ —— 已换真 alpha（2026-10-30）：导出保留
+   alpha + glTF `alphaMode: MASK`，shader 判 `mainTexRaw.a < 0.5`。重导 32 套，
+   回补 8209 个被误丢的暗像素（0.659%）。游戏里的真开关是 keyword
+   `_ISCUTOFF_ON`；`_IsCutOff` 不是 shader uniform（1592 个文件里 0 次）。
+
+### 2026-10-30 描边色只有一种
+
+284 个有描边 pass 的材质，`_OutlineColor` 全是同一个值 `(0.353, 0.235, 0.118)`
+（#5A3C1E）。反编译的顶点着色器写 `2 * _IllumiColor * _OutlineColor`，
+`_IllumiColor` 恒为 0.5，所以壳色就是 `_OutlineColor` 本身；片元着色器只做
+`clamp(COLOR0.rgb * COLOR0.a)` 再过 fog/whiteness，**没有 ramp、没有逐角色染色**。
+实测渲染值 (89,61,34)/(94,61,30)，与数据逐位吻合。006mak 看起来怪是因为她的配色是
+冷灰头发 + 橄榄绿上衣，暖棕描边对比强——不是我们算错。
+2. **描边外扩方向用的是 NORMAL，游戏用 TANGENT 通道里的硬法线**。手臂、裙子这类
+   平滑过渡处描边会断。补法：读通道 2 → 八面体编码塞进空闲 UV 集 → `primvars:st2`
+   → 着色器解码。
+3. **描边缺深度偏移** `out.z -= 0.001 * lerp(_ZShift1000Min, _ZShift1000Max, T.z²)`，
+   游戏用它救轮廓 z-fighting。
+4. **描边宽度系数 0.0014 是量出来的**，不是从 `0.7 * k * _Outline` 推出来的
+   （Unity 的 `_ProjectionParams` / `_ScreenParams` 无法完整复原）。
+5. **几何修改器里 `normal()` 的空间未实测**，倾向 model-space；影响 `outlineVertex`
+   的外推方向，转模型时可能看得见。
+6. **geom shader 未覆盖的变体**：`_USEREFLECT_ON`、`MOSAIC_ON`、`_ISREDDISH_ON`。
+   体检脚本会把出现过的报成 warn。
+7. **HUD/眼睛高光以外的加法层**：`_FlashColor`、`_GuradeParams`、fog 等实测在默认
+   值下恒等，但换舞台/换服装后是否仍恒等未验证。
+8. **真机未验证**。所有像素实验都在 iOS 27 模拟器上；`ToneMappingComponent` 是
+   iOS 27 的未文档化组件。
+9. **部分语料的取景偏上**（已查）：003mik 等模型头被切在屏幕外，`frame.log` 显示
+   `visualBounds` 的 `centre.y = -0.061`、`extents.y = 1.62`，而骨架画出来的
+   身体在 0.002..1.621（中心 0.812）——相差 0.873，正是 glTF 里 `BASE` 关节的
+   位移。RealityKit 对蒙皮网格报的是**绑定姿势**的框，根关节带位移时框和画出来的
+   人隔一个身子。`skinned_bounds.py` 按 `global(joint) · inverseBind · p` 逐顶点
+   复算，导出时写 `<stem>-bounds.json`，预览取它的 Y 中心取景，无 sidecar 的模型
+   退回原路径。
+
+2026-10-30 又修了两个：003mik 吊坠黑底（描边壳，`applyOutline` 的材质名判断失效）
+和 052kao 纽扣花边（采样器 `clamp_to_edge` 吃掉平铺 UV）。根因与证据见本地
+`research-alpha-and-cutout.md`（逐行引用反编译源码，不进仓库）。
+
+### 2026-10-30 全语料普查：这两个问题的影响面
+
+修完那两个之后又做了一轮普查，确认「同类问题」不是只有那两个模型：
+
+1. **描边壳套错了材质（吊坠那类）**。去游戏自己的 `m_ParsedForm` 里数 pass：
+   只有 `Chr_Basic` / `Chr_Color` / `Chr_Face` / `Chr_Glow` / `Chr_Hair` /
+   `Chr_Span` 是两 pass（基础 pass + 描边 pass），其余全部单 pass。旁证是同名
+   的 `*_NoOutline` 兄弟 shader 一一对应存在，而 `Chr_CutOff` / `Chr_Alpha`
+   没有兄弟——它们本来就没有描边。
+   我们之前给**所有**材质都套壳：语料里 120 个 `Bi_CharEye`、29 个
+   `*_NoOutline`、12 个 `Chr_CutOff`、2 个 `Chr_Span` 都白套了。已改成按
+   shader 名白名单跳过。实测眼睛和 02cut 贴片的壳此前被深度/裁切挡住，肉眼看
+   不出来，但那是运气，不是正确。
+
+2. **平铺 UV（花边那类）比想的多**：464 个 primitive 里 241 个材质的 UV 越出
+   `[0,1]`，几乎是全语料。以前全部被 `clamp_to_edge` 拉成边框色，只是很多贴图
+   的边框色恰好接近本色，看不出来。换成 `address::repeat` 之后才和游戏一致。
+
+3. **透明贴图没有漏网的**：按图集里真正生效的 `_IsCutOff`（由 shader 名推导，
+   不是材质里的那个 float）逐材质核对，60 套里没有任何一个「有透明像素却没有
+   透明通路」的材质。有描边 pass 的 282 个材质全部带非零 `_OutlineColor`，
+   不会出现纯黑描边。
+
+工具：`audit_materials.py`（静态，查 shader/图集/贴图/UV）、`audit_outline.py`
+（拿开/关描边的两张截图做形态学差分，找出「消失一块」而不是「细一圈」的异常）。
+
+## 2026-10-30 剩下 18 个角色解不出来的原因（已定位到通道表）
+
+> 2026-10-31 结账：这批网格不是权重丢失，而是**刚性配件**——权重通道为 0、索引是一个
+> 32 位值。`5a8eea59` 按网格实际给的槽位补齐到 4（常规 4、双骨道具 2、刚性配件 0+1）
+> 之后即可导出。下面「下一步要解打包布局」已作废。
+
+对比同一份代码下的两个网格，`m_VertexData.m_Channels` 不一样：
+
+```
+001har（能导）  (3,0,0,0) (3,0,12,0) (4,0,24,0) … (4,0,2,0) 权重  (4,11,2,16) 骨骼索引
+006mak（导不出）(3,0,0,0) (3,0,12,0) (4,0,24,0) … (0,0,0,0) 权重缺失  (1,10,2,0) 索引
+```
+
+即这批网格 **通道 12（权重）是空的，通道 13（骨骼索引）是 dimension=1、format=10
+（UInt32）**——一个 32 位里塞 4 个 8 位索引，权重可能被压在同一个 uint32 里，或者
+存到了别处。我们现在的解码器假设"权重 4×float32 + 索引 4×SInt32"，所以：
+先 KeyError(10)，补上 32 位格式后又变成 stride/offset 越界。
+
+下一步要在 `unity_mesh.decode_channel` 里支持这种打包布局（解 4 个字节出来），
+并确认权重到底在哪——如果确实缺失，说明这批模型不是常规蒙皮，需要另找数据源。
+
+## 2026-10-30 金色包边消失：颜色被画在透明像素里
+
+亮片做完之后，202xxx-gs001 的**金色包边**（腰带、裙摆边缘、胸衣下沿）没了，
+只剩下描边壳那一条细褐线。查了一圈贴图和 UV，最后定位到导出器：
+
+`export_character.py` 以前对所有「非混合、非 cutout」的材质跑 `cutout_safe()`，
+把 alpha < 128 的纹理像素的 RGB **洗成黑色**。可这套衣服的金边恰恰就是画在
+透明像素里的：
+
+```
+cb_gs001_202xxx_01（1024²，被 01/03ref/04spa/skin 四个材质共用）
+  腰带 UV (0.025, 0.018) 处  RGB=(163,117,39)  A=13
+```
+
+一张图集同时服务不透明的 `Chr_Basic` 部件和 `02cut` 裁切贴片，所以这些像素
+既要有颜色（给 Basic 画）又要是透明的（给裁切遮罩用）。游戏里 `Chr_Basic`
+根本不测 alpha，alpha 只被 `Chr_Span` 的亮片权重用到——这也正是「金边不闪、
+黑布闪」的原因。我们把它洗黑，于是整条金边变成黑色。
+
+修法是**原样保留**：不洗 RGB，也不把 alpha 顶成 255。后者会连带把亮片糊到
+金边上（alpha 13 → 0.05，本该几乎不闪）。`Chr_Alpha` 和 cutout 材质本来就走
+`keep_alpha`，不受影响。
+
+定位过程顺手加了三个调试探针（`EIDOLON_3D_DEBUG_ALBEDO` 直接输出图集采样，
+`EIDOLON_3D_ISOLATE_ROW=n` 只看某一行材质，`EIDOLON_3D_DEBUG_MASTER=1` 给每个
+材质刷一种纯色）：
+
+- master 图一眼看出腰带和金边是 `03ref_m`（`_USEREFLECT_ON`）、裙摆是
+  `04spa_m`（`Chr_Span`）、黑色腰带环是 `skin_m`；
+- albedo 图在金边处是纯黑，而同样的 UV 在图集里是金色 —— 直接把问题钉在
+  「导出的贴图」而不是「着色」上。
+
+`audit_materials.py` 的对应检查也改了：原来把「不透明材质带透明像素」当 error
+（因为那时候确实会画成黑色），现在改成报「有多少颜色藏在透明像素里」，谁再把
+它洗掉就会在数字上看出来。
+
+## 2026-10-30 亮片把金边也点亮了：alpha 没到 GPU + 采样空间错
+
+金边修回来之后，用户指出**金边不该闪**（它只是包边），而我们这一帧里它和黑布闪得
+一样。把游戏自己的 `Custom/Chr_Span` 片元程序逐行拆开（笔记见
+`research-chr-span-sparkle.md`，只在本机，不进仓库）后有两处错：
+
+**一、`_MainTex.a` 根本没到 GPU。** 游戏的亮片权重就是
+`_MainTex.a * _Reflection`，线性、没有阈值（`Custom__Chr_Span_NoOutline__blob3_MetalFS.metal:99,112`）。
+金边 α=13、黑布 α=255，本该差 19.6 倍。但 RealityKit 只在**材质图真的采样了
+`diffuse.a`** 时才保留 alpha 通道（`pack_usd.wire_alpha_from_diffuse` 的文档就是这条），
+而我们只给 `Chr_Alpha` 接了 `opacity`。`Chr_Span` 是 opaque → 着色器读到的 a 恒为 1
+→ 权重塌成常数 0.502 → 金边和黑布一模一样。
+
+用 `EIDOLON_3D_DEBUG_ALPHA` 截图即可确诊：修之前整件衣服是均匀浅灰（a=1），修之后
+金边那条是深色（a≈0.05）、黑布仍是浅灰。现在 `export_character.py` 给 `Chr_Span`
+写 `alphaMode: MASK`（`alphaCutoff: 0`，不裁任何像素），`pack_usd.py` 的接线谓词也
+把 `Chr_Span` 加进「读 alpha 的 shader」名单。
+
+**二、采样空间是从布料 UV 编出来的。** 游戏用的是纯法线 matcap：
+
+```
+f  = (0,0,1)
+m  = normalize(f + _NormRef · (N̂_view − f))      _NormRef = 0.77
+uv = (m.xy + (bump·2−1) · _NormMapMag + 1) · 0.5   _NormMapMag = 0.2，bump 按 30×30 平铺
+col += _Cube2D(uv) · (_MainTex.a · _Reflection)
+```
+
+`_UVRef = 0`，所以网格 UV 完全不参与——之前把 `_UVRef` 当成 6、把 `_NormRef` 压成
+0.25，等于自己发明了一个采样空间，转模型时亮斑贴着布料走、还会沿接缝爬。现在照抄
+游戏公式；`_NormRef` / `_UVRef` 没进参数图集（全语料 `Chr_Span` 只有 2 个材质，取值
+一致），按常量硬编码并在注释里写明。`_NormMapMag` 走图集第 76 列。
+
+顺带记一笔：`_BumpMap_ST` 在服装上是 30、在配饰上是 7，图集没这一列，先按 30 写死，
+差别只是噪声频率，真要较真再加列（要动 `kParamColumns`，得全语料重导）。
+
+以上两条都验证过：`EIDOLON_3D_DEBUG_ALPHA` 截图为证；yaw 0/45/90 三个角度金边都
+干净、黑布照常闪；`check_corpus` 60 套 0 错、`audit_materials` 60 套干净。
+
+## 2026-10-31 全语料收口与遗留登记
+
+- 语料：58 组（001–052、101kot/102mis、4 个通用 `xxx`），109 个模型，49 套演出服。
+- 取景：49 套演出服批量截图，按逐像素中位数基线分割轮廓，**0 异常**；头顶 327–602px，
+  脚底 2199–2239px，中位身高 1641px。`-bounds.json` 由 `export_character.py` 每次自动写。
+- 18 个「导不出」的角色已结账，见上一节的注。
+- 遗留已分流：配件挂点（006mak 肩带、039kon 蝴蝶结、009rit/050jul 错挂）→ issue #33；
+  缺演出服（019min/031tom/052kao）与纹理数告警 → issue #34；描边/几何变体等外观账 →
+  #26 评论。总表在 `docs/research/mltd-3d-pipeline-2026-10-31.md`。
+- README 已从 PMX 路线改写为原生资产路线；`mltools-headless.patch`、`pmx_to_usdz.py`、
+  `render_vmd.py` 已删除（git 历史可查）。
+
+## 裙摆/摇摆解算（2026-11-06，回看游戏本体）
+
+Unity 里原样播放 `the_standd_appear_lop_ver01` 时裙子完全不跟着腿走：57 条曲线里没有任何 `skirt_*`。查过之后结论是**参数和算法都在游戏里，可以直接搬**。
+
+**参数是数据，不是代码**：每个角色包自带一个 `<名字>_sway` TextAsset（pr001：head 8.3 KB、body 23.9 KB）。格式是逐条的 `SwayManager / SwayCollider / SwayBone`，字段就是
+`stiffnessForce / dragForce / followForce / gravity / radius / minYAngle / maxYAngle / minZAngle / maxZAngle / sideLink / isSkirt / HitMuteForce / HitMuteRate / antiFold* / swayLength / resolveDepthFactor`。
+
+**裙子就在 body 的 sway 文件里**：`MODEL_00/BODY_SCALE/BASE/KOSHI/skirt_GP/skirt_L*` 一串 `isSkirt: True`，彼此用 `sideLink` 连成侧线；碰撞体是挂在骨骼上的 Sphere/Capsule（如 `MUNE1/MUNE2/KUBI/ATAMA` 的头球、腿上的胶囊）。裙摆顶点权重也印证：`KOSHI` 154、`MOMO_L/R` 各 49、十根 `skirt_*` 各 ~28。
+
+**算法是 IL2CPP 原生代码**（`build/mltd-spike/out/il2cpp/dump.cs` 里有完整签名和地址）：
+- `Imas.BoneLib.SwayBoneMT`：`SwayMove` @0x1C6867C、`SwayHit` @0x1C68C3C、`CalcRotate` @0x1C69F04、`CalcSideLineDistance` @0x1C6A450、`CalcAntiFoldForce` @0x1C6A6CC
+- `Imas.BoneLib.SwayColliderMT`：`CapsuleHit` / `CapsuleBridgeHit` / `Check` / `CheckPlane` / `CapsuleSideLineHit` / `CheckSideLine`
+- `Imas.BoneLib.SwayCtrlMT`：Jobs/Burst 并行调度（这套并行是可选的，算法本身按单骨骼串行就能等价）
+- 固定参数结构 `SwayBoneMT.FixedParams` 已给出全部字段（含 `isSkirt / sideLink / useLinkHit / HitMuteForce / resolveDepthFactor / bodyScale`），等于把 `SwayBone` 的文本参数怎么用写清楚了。
+
+**结论**：不搬我们自己 `ios/MotionSway.swift` 的调参，改为「解析游戏 `_sway.txt` + 按 `SwayBoneMT`/`SwayColliderMT` 的方法 1:1 实现」。二进制在 `~/Library/Containers/io.playcover.PlayCover/ミリシタ.app/Frameworks/UnityFramework.framework/UnityFramework`（__TEXT 0x0–0x5A48000，上面这些地址都在段内，可反编译）。
+
+**二进制要对上版本**（2026-11-06 踩到）：`dump.cs` 里的 RVA 只对
+`~/Library/Containers/io.playcover.PlayCover/Applications/jp.co.bandainamcoent.BNEI0310.app/`（ミリシタ，2026-10 那版，UnityFramework 158 MB）成立。
+同一台机器上还有一个更老的 `ミリシタ.app`（2024-03，101 MB），在它里面 0x1C6867C 是别的函数——拿错版本反编译会得到完全无关的代码。
+校验方法：`SwayBoneMT..ctor` @0x1C6862C 应该把 `sb`/`jbh` 存到 `[x0+0x10]`/`[x0+0x18]`，紧跟其后的 0x1C6867C 是存 d8–d15、栈帧 0x130 的大函数（`SwayMove`）。
+
+**运行时细节（从 `dump.cs` 读到的，移植时要用）**
+- `SwayManager`：`FIXED_DELTA = 0.016666668`、`MAX_DELTA = 0.025000002`——步长固定 1/60，最大 0.025；另有 `skirtL1` / `skirtL2` 两级裙摆骨骼数组和 `SkirtFallFollow` 开关。
+- `SwayBone`（v01）：`tipTrs`、`aimVector`、`initialLocalRotation`、`swayLength`、`curTipPos/prevTipPos`、`force`、`lastBasePos`、`colliderInx`、`lineHitF/sphereHitF`、`m_offset_rot`、`skirtNormal/skirtDir`、`ResolveDepthFactor`（默认 0.9）。
+- 初始化链路：`SwayBone.Init` → `InitSub`（0x1C711A4）→ `SetSkirtParam`（0x1C716D0）→ `SwayBoneMT.InitializeFixedParams`（0x1C69508）。
+- 每帧链路：`SwayBoneMT.SwayMove` → `SwayHit` → `CalcRotate`；侧线 `CalcSideLinkDistance`，抗折叠 `CalcAntiFoldForce`。
+- 游戏里还有一套新的 `Imas.BoneLib.SwayVer02`（`SwayBuilder` / `SwayChain` / `SwayCharacter` / `SwayMaterialData`），但带 `_sway.txt` 的角色走的是 v01，本次按 v01 移植。
+
+## 裙摆修复（2026-11-06）
+
+**根因**：这条 clip 里腿是真实摆动的（MOMO 相对骨盆约 33°、膝盖前移 20 cm），而裙摆布料有一部分（正面下摆 187 个顶点里 `MOMO_L` 45 + `MOMO_R` 41）**直接蒙在大腿上**。腿一走，这部分布料跟着走，蒙在 `skirt_*` 骨上的那部分不动，裙子就在大腿上方被撕开——所以看起来是"大腿穿出裙子"，其实不是碰撞没解，是蒙皮被拉裂。把腿复位到 bind 后裙子立刻完好，可以复现这个结论。
+
+**修法（规则来自游戏自己的骨骼名）**：outfit 的裙摆根骨叫 `COMANECI_L__slerp_MOMO_L__i70_x0` —— 名字里就写着"朝 MOMO_L 做 70% 的 slerp"。于是每块裙摆片按 **对应大腿相对骨盆的旋转 ×70%** 去转：
+
+```
+delta = thigh.rotation * inverse(pelvis.rotation)        // 同侧；F/B 片取左右平均
+bone.rotation = Slerp(identity, delta, 0.7) * (parent.rotation * initialLocalRotation)
+```
+
+参数（70%、左右配对）都来自游戏资源本身，没有手调。修复后整段循环 + 侧面都没有穿模，头也正常。
+
+**踩到的坑（重要）**：未经焦的 Editor 里，`capture game_view` 和 `Camera.Render()` 都可能拿到**旧的蒙皮帧**——转骨骼完全没变化，白白浪费了一轮排查。可靠做法是 `Application.onBeforeRender` 里渲染到 RenderTexture 再存 PNG（`Assets/Editor/SwayProbe.cs` 的 `SwayShot.Request`），这样一定拿到当前帧的蒙皮结果。
+
+## 辅助骨与手肘（2026-11-06）
+
+**现象**：手臂弯到 50° 左右时，肘内侧出现一块硬边的深棕色楔形，看上去像"手臂重叠/破了"。
+
+**先证明不是洞**：把 skin 子网格换成 `Unlit/Color` 白材质，同一像素位置渲染出来是连续的白色——没有缺面，楔形是同一条皮肤表面的着色问题。再用 `ArmProbe`（`Assets/Editor/ArmProbe.cs`）把蒙皮后的网格烘焙出来做逐三角形射线求交：该像素最近的交点法线与视线 `n·dir≈-0.97`（正对相机，是正面），但 1–2 cm 见方的空间里有 4–6 层表面——几何在这个关节被压皱了。
+
+**根因**：这块几何的权重里，肘部最主要的变形骨不是 `UDE_L`，而是 `HIJI_L__rot_UDE_L__z50`（权重 17.3，`UDE_L` 只有 4.0，`KATA_L` 3.2）。clip 里只有 `UDE_L` 的轨道，辅助骨停在 bind pose，于是皮肤只有一半跟着弯，另一半不动，褶皱堆成一团。
+
+**游戏怎么算辅助骨**：`Imas.BoneLib.CalcBone` 在 LateUpdate 里按骨骼名逐帧重算，文法 `<我的名字>__<算法>_<参考骨>[__参数]`，算法按 `slerp → twist → const → rot` 顺序判定（详见 `research-mltd-calcbone.md`，那份文档引用反编译代码，不入库）。本模型共 30 根：
+
+| 规则 | 例子 | 权重 |
+| --- | --- | --- |
+| slerp | `WAKI_L__slerp_KATA_L__i30_x0`、`COMANECI_L__slerp_MOMO_L__i70_x0` | 30/50/70% |
+| rot | `HIJI_L__rot_UDE_L__z50`、`HIZOKOZO`、`ASHIKUBI`、`TEKUBI`、`UDE_MD` | 50/100% |
+| twist | `KATA_MD_L__twist_x50`、`MOMO_MD_L__twist_x50` | 50% |
+| const | `MUNE_L__const_KATA_L__rot_SAKOTSU_L__x0` | — |
+
+实现在 `Assets/Scripts/HelperBones.cs`（`[DefaultExecutionOrder(-50)]`，每帧 LateUpdate；`SwaySolver` 排在 -40，裙摆仍由已验证的那条规则收尾）。
+
+**一处必须改掉文档结论的地方**：`research-mltd-calcbone.md` 说 ROT 不使用参数里的轴字母。照那个实现，`HIJI_L__rot_UDE_L__z50` 拿来算的结果**恒为 `initMyRot`**——因为肘部的局部旋转是纯 Z 旋转，`FromToRotation(initRefVec, cur*right)` 恰好还原出同一个旋转，`Inverse(q)*cur` 就是单位四元数。实测 HIJI_L 的 localRotation 一直是 (0,0,0)，弯不弯都一样。
+
+按"参数首字母选参考骨的哪根轴"实现（`x→right / y→up / z→forward`，`initRefVector = initRef * axis`，四个算法统一用这根轴向量）之后：`cur*forward` 在纯 Z 弯曲下不变 → `q = identity` → `R1 = 当前旋转` → HIJI 拿到 63°，正好是肘弯的一半。肘部立刻变成正常圆润的肘尖，深色楔形消失。
+
+其余 ROT 骨的轴字母也自洽：肘/膝用 `z`（铰链轴），腕/踝/前臂中段用 `x`。静止姿态下 ROT 对任意轴都返回 `initMyRot`，所以这个改动不会移动 bind pose。
+
+## 裙摆背面那块"深棕色"（2026-11-06）
+
+从背后看裙子背面，会有一大块形状像倒立皇冠的深棕色区域，像破面。
+
+**不是洞，也不是蒙皮**：射线求交显示那块像素上最近的正向三角形就是裙子本体的外表面，位置正常；bind pose 下同样出现，说明与动画无关；把布料的材质换成 `Unlit/Texture` 直接显示贴图，色块消失（底下就是正常的格纹）。
+
+**它是描边**。把 `_OutlineColor` 改成绿色，色块整块变绿——这块是描边壳（外向膨胀的 hull）穿过了布料表面。原因是 shader 用 `_ZShift1000Min/Max` 把描边壳往视空间深处推（`Δz ≈ lerp(min,max,T.z²)`），而材质里那组值是游戏自己相机下调出来的（`0.001 / 0.02`）；在我们的相机下推得远远不够，于是在裙褶互相交叠、内侧壳只比外侧壳外凸 2–3 mm 的地方，描边壳整片盖住了布料。
+
+**修法**：`CharacterBootstrap.FixOutlineDepth()` 把 body 三份材质的 `_ZShift1000Min/Max` 推到 `0.2 / 2.0`。只影响描边壳的深度，不动轮廓线——正面/侧面/背面轮廓线都还在。试过的无效项：`_Outline`（宽度）、`_OutlineZadj`、`_TanFov`、`_CullMode=0`（会露出内侧壳，呈粉色）、光照方向、相机 near/far；只有 `_ZShift1000*` 有效。
+
+## 原生 sway 解算（2026-11-06）
+
+`_sway` 里除了裙摆还有 17 根头发（head 文件）和 10 根身体骨（胸/腰蝴蝶结 + 胸部骨）。这些之前完全静止。现在按 `Imas.BoneLib.SwayBoneMT` V01 的算法接上（`Assets/Scripts/SwayPhysics.cs`）：
+
+- 状态是**骨尖位置**：每帧先随基点平移（`followForce`），再用刚度拉回静止尖端，速度按 `(1−dragForce)` 衰减，重力向下；全部按游戏的 1/60 秒尺度归一（`frames = dt·60`，力除 `frames²`）。
+- 碰撞（`SwayHit`）：把尖端推出骨骼上挂的 Sphere/Capsule，取最深的一处；被撞的下一帧跳过重力。
+- 角度窗口（`CalcRotate`）：先按骨头半径和窗口把方向夹回 `minYAngle…maxYAngle` / `minZAngle…maxZAngle`，再重建旋转。
+- 参数全部来自 `_sway` 文件本身（stiffness/drag/gravity/follow/radius/角度窗口/碰撞体列表），没有手调。
+
+身体文件绑了 10 根（其余 25 根是裙摆，暂仍走 `i70` 规则），头部文件绑了 17 根头发。验证：转头 30° 后采样 `hair_ushiroA0` 的 localRotation，三帧内从 (287,311,250) 收敛到 (282,319,244)，即弹簧在追——解算在跑，且没有 NaN。
+
+## 裙摆接原生物理（2026-11-07）
+
+`SwayPhysics` 现在也驱动 25 根裙摆（`skipSkirt=false`），并补上 `sideLink`（`CalcSideLineDistance`：邻片保持静止时的间距，弹簧系数 `sideSpringForce`）。碰撞体是 `_sway` 里骨盆球 + 两条大腿胶囊。
+
+只上物理不行：这条 clip 里大腿相对骨盆带着约 33° 的扭转（外观上看不出来，因为绕腿轴），而裙布有近 190 个顶点直接蒙在大腿上，会被拖着把前片掀起来、露出腿。所以每块裙片在解算前先叠上服装自己的规则 `COMANECI_L__slerp_MOMO_L__i70_x0`（大腿相对骨盆旋转的 70%）作为基线，物理再在基线上摆动。
+
+**乘法顺序很关键**：`follow * (parent.rotation * restLocal)`。反过来写成 `(parent.rotation * restLocal) * follow` 时，裙片会塌成"伞"——同样的 70%、同样的轴，结果完全不同，因为两者不交换。踩过一次，记在这里。
+
+## 面部（2026-11-07）
+
+**表情不是贴图也不是骨骼，是 32 个 blend shape**：`face` 网格自带 `blendShape1.M_*`（口型 14 个 = 游戏的 `mouthShapes`）、`B_*`（眉 10）、`E_*`/`EL_*`（眼 8）——正好凑成游戏的 `eyeShapes = 18`。
+
+游戏的驱动是 `Imas.FaceCtrl`（dump.cs 341011）：
+
+```csharp
+FaceCtrl.BlendParamLoad(string json)            // 从 JSON 读参数
+class FaceBlendParam { string cid; MeshBlendParam[] expressions; }
+eyeBlinkTime = 0.1, cheekTransTime = 0.1, lipTransitionTime = 0.2, faceTransitionTime = 0.1333
+```
+
+那份 JSON 不在角色包里（`ch_/cb_` 只有 sway 文本、网格、贴图），它来自 `commu_params.unity3d`（游戏自带 manifest 里的条目：hash `985465169f0a7f9c5cdc620898b79b1449e494cd`，文件名 `0e9028d1404f69a9d32e17a82f9f74f76d133be27.unity3d`）。本机缓存里没有，CDN 现在对任何路径都返回 403（连不存在的文件也是 403），所以这份参数暂时取不到。
+
+已实现 `Assets/Scripts/FaceCtrl.cs`：按名字建 shape 索引、眨眼（游戏常量 0.1 s）、口型切换、任意表情组接口。眨眼用 `E_metoji_r/l`（目閉じ），实测每秒采样只剩 0 值时用计数器确认——8 秒 4 次；闭眼/笑（`M_egao` + `B_agari`）都渲染正常。等 `commu_params` 拿得到，把 `expressions` 读进来替换默认分组即可。
+
+### 表情参数找到了（2026-11-07 补）
+
+之前判断"参数在 `commu_params` / CDN 取不到"，这是错的。真正的来源是 **`facial_chara.unity3d`**：
+
+- 游戏缓存里以哈希命名（68–72 位十六进制，不是 manifest 里那个 40 位哈希），所以按名字搜不到；按内容搜**能搜到**——包里有一个 `MonoScript`，类名 `FaceScrObj`。
+- 结构（`dump.cs` 536771）：`FaceScrObj { FaceBlendParam[] charaParams }`，`FaceBlendParam { string cid; MeshBlendParam[] expressions }`，`MeshBlendParam { float[] param32open; float[] param32close }`。
+- 实测：61 个角色 × 28 个表情，每条 33 个权重（0..100），`param32open` 是睁眼版、`param32close` 是闭眼版——所以眨眼就是两组权重按 `eyeClosed` 线性插值，和我们实现的一致。第 33 个通道（下标 32）在网格上没有对应 blend shape，跳过。
+- 序列化是 Unity 默认格式：`m_GameObject`(12) + `m_Enabled`(对齐到 4) + `m_Script`(12) + `m_Name`(字符串)，随后 `int32 count` 开始。
+
+导出脚本：`spikes/porting-3d/extract_facial_params.py --cache <游戏 Documents> --output <json>`（按内容找包，不依赖文件名）。JSON 是游戏资源，不进仓库。
+
+## 换演出服 + 大动作（2026-11-07）
+
+- 演出服走 ss003（`cb_ss003_001har` / `ch_ss003_001har`）：缓存索引 `build/mltd-index.jsonl` 里按 `idols=001har` + `costumes=ss003` 找到两个包，复制到 `/tmp/mltd-unity-assets-ss003/`，`CharacterBootstrap` 的三个公共字段改指向即可。每套衣服自带 `<costume>_sway`，所以 sway 骨骼数量会跟着变（ss003 身体 16 根，比 pr001 的 30 根少；头发仍 17 根），代码不需要特判。
+- 大动作：`build/mltd-spike/out/curves/loveig.motion.json`（130 秒、3901 帧、30 fps 的舞蹈）。新增 `spikes/porting-3d/motion_to_eulr.py` 把它压成 Unity spike 读的 `EULR`（`magic + frames + count`，每条 `uint16 len + path + hasPos + 每帧 3|6 个 float`），本次取 600–1500 帧、900 帧（30 秒）循环。
+- 抽查帧 0/120/260/400/560/700/800/860：裙摆、发、蝴蝶结、肘部都正常；数值上 6 个采样帧的裙布穿腿顶点为 0（`SwayMeshProbe.MeasureRig`）。
+- 注意：换过衣服以后，ss003 的裙摆角度窗口是 `z[-80, 90]`（pr001 是 `[-80, 0]`），也就是允许向上翻 90°；目前没有观察到翻起来的情况，但这是这套衣服比上一套更容易出问题的地方。
