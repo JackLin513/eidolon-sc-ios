@@ -4,7 +4,7 @@ import SwiftUI
 import UIKit
 
 /// Development-only 3D smoke test: no call, no microphone, just the packaged
-/// `Unity3DContent` and a `haruka3d` content character.
+/// `Unity3DContent` and an MLTD content character.
 struct Model3DPreviewView: View {
     @Environment(AppModel.self) private var app
     @State private var renderer: (any CharacterRenderer)?
@@ -42,13 +42,13 @@ struct Model3DPreviewView: View {
         let manifestURL = bundleRoot.appendingPathComponent("manifest.json")
         let exists = FileManager.default.fileExists(atPath: manifestURL.path)
         let bytes = (try? Data(contentsOf: manifestURL))?.count ?? -1
-        guard let outfit = app.first3DOutfit(for: "haruka3d") else {
-            status = "没有 haruka3d 映射  characters=\(count) root=\(root) available=\(available) exists=\(exists) bytes=\(bytes)"
+        guard let outfit = app.first3DOutfit(for: "001har") else {
+            status = "没有 001har 映射  characters=\(count) root=\(root) available=\(available) exists=\(exists) bytes=\(bytes)"
             return
         }
         let assets = app.preparedAssets(RuntimeAssets(
             contentRoot: app.core.location.contentDirectory,
-            characterID: "haruka3d",
+            characterID: "001har",
             outfit: outfit,
             framing: .full
         ))
