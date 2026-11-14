@@ -439,6 +439,7 @@ enum UserSchema {
 
         CREATE TABLE turn_debug_snapshots (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            franchise_id TEXT NOT NULL,
             conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
             character_id TEXT NOT NULL,
             user_message_id TEXT,
@@ -452,6 +453,6 @@ enum UserSchema {
         CREATE INDEX turn_debug_snapshots_by_reply
             ON turn_debug_snapshots(reply_message_id);
         CREATE INDEX turn_debug_snapshots_by_character
-            ON turn_debug_snapshots(character_id, status, id);
+            ON turn_debug_snapshots(franchise_id, character_id, status, id);
         """
 }

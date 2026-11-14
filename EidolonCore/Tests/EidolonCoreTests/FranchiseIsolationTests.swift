@@ -180,6 +180,35 @@ struct FranchiseIsolationTests {
         #expect(shinyCount == 2)
     }
 
+    @Test("debug snapshots are cleared only in the active franchise")
+    func debugSnapshotsAreScopedToTheirFranchise() async throws {
+        let (eidolon, root) = try makeEidolon()
+        try await installTwoFranchises(on: eidolon, in: root)
+        try await eidolon.userQueue.write { db in
+            for franchise in ["shiny", "totsulover"] {
+                try db.execute(
+                    sql: """
+                        INSERT INTO turn_debug_snapshots
+                            (franchise_id, character_id, status, created_at, payload)
+                        VALUES (?, 'mano', 'complete', '2026-11-14T00:00:00Z', '{}')
+                        """,
+                    arguments: [franchise]
+                )
+            }
+        }
+        try await eidolon.clearDebugSnapshots()
+        #expect(try await eidolon.userQueue.read { db in
+            try Int.fetchOne(
+                db, sql: "SELECT COUNT(*) FROM turn_debug_snapshots WHERE franchise_id = 'shiny'"
+            ) ?? -1
+        } == 0)
+        #expect(try await eidolon.userQueue.read { db in
+            try Int.fetchOne(
+                db, sql: "SELECT COUNT(*) FROM turn_debug_snapshots WHERE franchise_id = 'totsulover'"
+            ) ?? -1
+        } == 1)
+    }
+
     @Test("cycle seed and records are kept per franchise")
     func cycleIsScopedToItsFranchise() async throws {
         let (eidolon, root) = try makeEidolon()

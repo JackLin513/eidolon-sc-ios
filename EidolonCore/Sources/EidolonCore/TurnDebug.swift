@@ -192,11 +192,12 @@ extension Eidolon {
             try db.execute(
                 sql: """
                     INSERT INTO turn_debug_snapshots(
-                        conversation_id, character_id, user_message_id, reply_message_id,
-                        status, created_at, payload
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        franchise_id, conversation_id, character_id, user_message_id,
+                        reply_message_id, status, created_at, payload
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                 arguments: [
+                    activeContentFranchise,
                     snapshot.conversationID,
                     snapshot.characterID,
                     snapshot.userMessageID,
@@ -210,14 +211,16 @@ extension Eidolon {
                 sql: """
                     DELETE FROM turn_debug_snapshots WHERE id NOT IN (
                         SELECT id FROM turn_debug_snapshots
-                        WHERE character_id = ? AND conversation_id IS ?
+                        WHERE franchise_id = ? AND character_id = ? AND conversation_id IS ?
                         ORDER BY id DESC LIMIT ?
-                    ) AND character_id = ? AND conversation_id IS ?
+                    ) AND franchise_id = ? AND character_id = ? AND conversation_id IS ?
                     """,
                 arguments: [
+                    activeContentFranchise,
                     snapshot.characterID,
                     snapshot.conversationID,
                     Self.debugSnapshotRetention,
+                    activeContentFranchise,
                     snapshot.characterID,
                     snapshot.conversationID,
                 ]
@@ -255,17 +258,18 @@ extension Eidolon {
             if let conversationID {
                 sql = """
                     SELECT id, payload FROM turn_debug_snapshots
-                    WHERE character_id = ? AND conversation_id = ? AND status != 'complete'
+                    WHERE franchise_id = ? AND character_id = ? AND conversation_id = ?
+                        AND status != 'complete'
                     ORDER BY id DESC LIMIT 1
                     """
-                arguments = [characterID, conversationID]
+                arguments = [activeContentFranchise, characterID, conversationID]
             } else {
                 sql = """
                     SELECT id, payload FROM turn_debug_snapshots
-                    WHERE character_id = ? AND status != 'complete'
+                    WHERE franchise_id = ? AND character_id = ? AND status != 'complete'
                     ORDER BY id DESC LIMIT 1
                     """
-                arguments = [characterID]
+                arguments = [activeContentFranchise, characterID]
             }
             return try Self.decodeDebugSnapshots(db, sql: sql, arguments: arguments).first
         }
@@ -295,7 +299,10 @@ extension Eidolon {
                     arguments: [conversationID]
                 )
             } else {
-                try db.execute(sql: "DELETE FROM turn_debug_snapshots")
+                try db.execute(
+                    sql: "DELETE FROM turn_debug_snapshots WHERE franchise_id = ?",
+                    arguments: [activeContentFranchise]
+                )
             }
         }
     }
