@@ -95,6 +95,14 @@ final class AppModel {
     /// This phone's roster tidy choices (spec #48); not part of the user library.
     private(set) var roster = RosterStore.load()
 
+    private var rosterFranchise: String { bundleInfo?.franchise ?? "shiny" }
+
+    /// UserDefaults keys for appearance choices are scoped like the user library:
+    /// `shiny:mano` can never read `totsulover:mano`'s outfit.
+    func characterStorageKey(_ localID: String) -> String {
+        CharacterKey(franchise: rosterFranchise, localID: localID).description
+    }
+
     /// Whether the debug page is offered on a character's chat page (spec #62). It lives
     /// on this phone, is off by default, and exists in every build.
     private(set) var debugMode = UserDefaults.standard.bool(forKey: AppModel.debugModeKey)
@@ -1308,6 +1316,7 @@ final class AppModel {
         do {
             if let info = try await core.usableContentInfo() {
                 bundleInfo = info
+                roster = RosterStore.load(franchise: rosterFranchise)
                 #if DEBUG
                 startupStage = "迁移立绘"
                 #endif
@@ -1783,6 +1792,7 @@ final class AppModel {
         do {
             try await core.activateContent(franchise: franchise)
             bundleInfo = try await core.installedContentInfo()
+            roster = RosterStore.load(franchise: rosterFranchise)
             contentPackages = await core.installedContentPackages
             staticStandInfo = try await core.installedStaticStandInfo()
             staticStandCharacterIDs = (try? await core.staticStandCharacterIDs()) ?? []
@@ -2178,14 +2188,14 @@ final class AppModel {
     /// Pins or unpins a role in this phone's roster (spec #48).
     func togglePinned(_ characterID: String) {
         roster.togglePinned(characterID)
-        RosterStore.save(roster)
+        RosterStore.save(roster, franchise: rosterFranchise)
     }
 
     /// Hides or shows a role in this phone's roster (spec #48). Hidden only takes her out
     /// of the list; nothing else about her changes.
     func toggleHidden(_ characterID: String) {
         roster.toggleHidden(characterID)
-        RosterStore.save(roster)
+        RosterStore.save(roster, franchise: rosterFranchise)
     }
 
     /// Switches her cycle for every character; the position itself does not change.

@@ -52,4 +52,21 @@ final class RosterTidyTests: XCTestCase {
         XCTAssertEqual(RosterStore.load(from: suite), tidy)
         XCTAssertEqual(RosterStore.load(from: suite).pinned, ["c"])
     }
+
+    func testTheChoicesAreKeptPerFranchise() {
+        let suite = UserDefaults(suiteName: "RosterTidyTests.\(UUID().uuidString)")!
+        defer { suite.removePersistentDomain(forName: suite.description) }
+
+        var shiny = RosterTidy()
+        shiny.togglePinned("mano")
+        RosterStore.save(shiny, franchise: "shiny", to: suite)
+
+        var totsulover = RosterTidy()
+        totsulover.toggleHidden("mano")
+        RosterStore.save(totsulover, franchise: "totsulover", to: suite)
+
+        XCTAssertEqual(RosterStore.load(franchise: "shiny", from: suite), shiny)
+        XCTAssertEqual(RosterStore.load(franchise: "totsulover", from: suite), totsulover)
+        XCTAssertEqual(RosterStore.load(from: suite), shiny)
+    }
 }

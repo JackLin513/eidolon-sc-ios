@@ -85,6 +85,7 @@ struct StandPreviewView: View {
                     contentRoot: stand.root ?? app.core.location.contentDirectory,
                     contentVersion: app.standInfo?.installedAt
                         ?? app.bundleInfo?.installedAt ?? "current",
+                    storageKey: app.characterStorageKey(character.id),
                     onWear: { outfit in
                         previewWear(outfit)
                     },
@@ -341,7 +342,7 @@ struct StandPreviewView: View {
         }
         stand = found
         let worn = found.worn(
-            choice: StandOutfitChoiceStore().choice(for: id)
+            choice: StandOutfitChoiceStore().choice(for: app.characterStorageKey(id))
         )
         outfitID = worn.id
         loadRenderer(worn, root: found.root ?? app.core.location.contentDirectory)

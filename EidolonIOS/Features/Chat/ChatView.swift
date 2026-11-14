@@ -197,6 +197,7 @@ struct ChatView: View {
         .fullScreenCover(isPresented: $showsStaticOutfits) {
             StaticStandPickerView(
                 character: character,
+                storageKey: app.characterStorageKey(character.id),
                 onClose: { showsStaticOutfits = false }
             )
             .environment(app)
@@ -214,6 +215,7 @@ struct ChatView: View {
                     stand: stand,
                     contentRoot: stand.root ?? app.core.location.contentDirectory,
                     contentVersion: app.standInfo?.installedAt ?? app.bundleInfo?.installedAt ?? "current",
+                    storageKey: app.characterStorageKey(character.id),
                     onWear: { _ in },
                     onClose: { showsOutfits = false }
                 )

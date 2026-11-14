@@ -7,6 +7,7 @@ import UIKit
 /// keeps its own controls.
 struct StaticStandPickerView: View {
     let character: CharacterConfig
+    let storageKey: String
     let onClose: () -> Void
 
     @Environment(AppModel.self) private var app
@@ -18,10 +19,11 @@ struct StaticStandPickerView: View {
 
     private let emotions = StandEmotion.allCases
 
-    init(character: CharacterConfig, onClose: @escaping () -> Void) {
+    init(character: CharacterConfig, storageKey: String, onClose: @escaping () -> Void) {
         self.character = character
+        self.storageKey = storageKey
         self.onClose = onClose
-        _selected = State(initialValue: StaticAppearanceStore().selection(for: character.id))
+        _selected = State(initialValue: StaticAppearanceStore().selection(for: storageKey))
     }
 
     private var outfits: [String] { Array(Set(bases.map(\.outfit))).sorted() }
@@ -186,13 +188,13 @@ struct StaticStandPickerView: View {
             selected.emotion = first
         }
         showEmotion()
-        StaticAppearanceStore().remember(selected, for: character.id)
+        StaticAppearanceStore().remember(selected, for: storageKey)
     }
 
     private func showEmotion() {
         guard let url = images[selected.emotion.rawValue] else { image = nil; return }
         image = UIImage(contentsOfFile: url.path)
-        StaticAppearanceStore().remember(selected, for: character.id)
+        StaticAppearanceStore().remember(selected, for: storageKey)
     }
 
     private func emotionName(_ emotion: StandEmotion) -> String {

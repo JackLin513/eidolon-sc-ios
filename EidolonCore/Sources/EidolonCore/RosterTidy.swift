@@ -43,18 +43,25 @@ public struct RosterTidy: Sendable, Equatable {
 /// Where the tidy choices live on this device. Not in the user library: they are this
 /// phone's, as upstream keeps them in the browser.
 public enum RosterStore {
-    static let pinnedKey = "roster.pinned"
-    static let hiddenKey = "roster.hidden"
+    static func pinnedKey(_ franchise: String) -> String { "roster.\(franchise).pinned" }
+    static func hiddenKey(_ franchise: String) -> String { "roster.\(franchise).hidden" }
 
-    public static func load(from defaults: UserDefaults = .standard) -> RosterTidy {
+    public static func load(
+        franchise: String = "shiny",
+        from defaults: UserDefaults = .standard
+    ) -> RosterTidy {
         RosterTidy(
-            pinned: Set(defaults.stringArray(forKey: pinnedKey) ?? []),
-            hidden: Set(defaults.stringArray(forKey: hiddenKey) ?? [])
+            pinned: Set(defaults.stringArray(forKey: pinnedKey(franchise)) ?? []),
+            hidden: Set(defaults.stringArray(forKey: hiddenKey(franchise)) ?? [])
         )
     }
 
-    public static func save(_ tidy: RosterTidy, to defaults: UserDefaults = .standard) {
-        defaults.set(tidy.pinned.sorted(), forKey: pinnedKey)
-        defaults.set(tidy.hidden.sorted(), forKey: hiddenKey)
+    public static func save(
+        _ tidy: RosterTidy,
+        franchise: String = "shiny",
+        to defaults: UserDefaults = .standard
+    ) {
+        defaults.set(tidy.pinned.sorted(), forKey: pinnedKey(franchise))
+        defaults.set(tidy.hidden.sorted(), forKey: hiddenKey(franchise))
     }
 }

@@ -54,7 +54,7 @@ struct BarGuest: View {
         renderer = nil
         loaded = false
         guard let stand, let root = stand.root else { return }
-        let outfits = stand.outfitsToTry(choice: StandOutfitChoiceStore().choice(for: character.id))
+        let outfits = stand.outfitsToTry(choice: StandOutfitChoiceStore().choice(for: app.characterStorageKey(character.id)))
         guard let worn = outfits.first else { return }
         show(worn, root: root, fallback: Array(outfits.dropFirst()))
     }

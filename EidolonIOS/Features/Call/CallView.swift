@@ -133,6 +133,7 @@ struct CallView: View {
         .fullScreenCover(isPresented: $showsStaticOutfits) {
             StaticStandPickerView(
                 character: character,
+                storageKey: app.characterStorageKey(character.id),
                 onClose: {
                     showsStaticOutfits = false
                     Task { await reloadStaticAppearance() }
@@ -257,7 +258,7 @@ struct CallView: View {
         // A v2 static stand has no Spine outfit. Its outfit/pose base is the source of
         // truth; the rest of the call screen (voice, lines, emotion) is unchanged.
         if let bases = await app.staticStandBases(characterID: character.id), !bases.isEmpty {
-            let remembered = StaticAppearanceStore().selection(for: character.id)
+            let remembered = StaticAppearanceStore().selection(for: app.characterStorageKey(character.id))
             let base = bases.first { $0.outfit == remembered.outfit && $0.pose == remembered.pose }
                 ?? bases.first!
             staticBaseID = base.id
@@ -270,7 +271,7 @@ struct CallView: View {
         if let found = await app.core.stand(for: character.id) {
             stand = found
             let outfits = found.outfitsToTry(
-                choice: StandOutfitChoiceStore().choice(for: character.id)
+                choice: StandOutfitChoiceStore().choice(for: app.characterStorageKey(character.id))
             )
             guard let worn = outfits.first else { return }
             showStand(worn, fallback: Array(outfits.dropFirst()))
@@ -409,7 +410,7 @@ struct CallView: View {
     /// full-screen iPad use different framings without the view guessing at size classes.
     private func reloadStaticAppearance() async {
         guard let bases = await app.staticStandBases(characterID: character.id), !bases.isEmpty else { return }
-        let remembered = StaticAppearanceStore().selection(for: character.id)
+        let remembered = StaticAppearanceStore().selection(for: app.characterStorageKey(character.id))
         let base = bases.first { $0.outfit == remembered.outfit && $0.pose == remembered.pose }
             ?? bases.first!
         staticBaseID = base.id
@@ -423,9 +424,9 @@ struct CallView: View {
             return
         }
         staticImage = UIImage(contentsOfFile: url.path)
-        var remembered = StaticAppearanceStore().selection(for: character.id)
+        var remembered = StaticAppearanceStore().selection(for: app.characterStorageKey(character.id))
         remembered.emotion = emotion
-        StaticAppearanceStore().remember(remembered, for: character.id)
+        StaticAppearanceStore().remember(remembered, for: app.characterStorageKey(character.id))
     }
 
     private func staticStage(_ image: UIImage, size: CGSize) -> some View {

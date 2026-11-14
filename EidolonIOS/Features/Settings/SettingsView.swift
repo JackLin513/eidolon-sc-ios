@@ -470,7 +470,7 @@ barBundleSection
 
                     if visible(category, .content) {
 Section("内容包") {
-                        if app.contentPackages.count > 1 {
+                        if !app.contentPackages.isEmpty {
                             ForEach(app.contentPackages, id: \.franchise) { package in
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {

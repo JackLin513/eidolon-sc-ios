@@ -48,6 +48,7 @@ struct OutfitPickerView: View {
         stand: CharacterStand,
         contentRoot: URL,
         contentVersion: String,
+        storageKey: String,
         onWear: @escaping (StandOutfit) -> Void,
         onClose: @escaping () -> Void
     ) {
@@ -57,7 +58,7 @@ struct OutfitPickerView: View {
         self.contentVersion = contentVersion
         self.onWear = onWear
         self.onClose = onClose
-        let worn = stand.worn(choice: StandOutfitChoiceStore().choice(for: character.id))
+        let worn = stand.worn(choice: StandOutfitChoiceStore().choice(for: storageKey))
         _wornID = State(initialValue: worn.id)
         _pickedID = State(initialValue: worn.id)
     }
@@ -349,7 +350,7 @@ struct OutfitPickerView: View {
 
     private func wear() {
         let outfit = previewedOutfit
-        StandOutfitChoiceStore().remember(outfit.id, for: character.id)
+        StandOutfitChoiceStore().remember(outfit.id, for: app.characterStorageKey(character.id))
         wornID = outfit.id
         onWear(outfit)
         onClose()
