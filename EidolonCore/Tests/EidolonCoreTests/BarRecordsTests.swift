@@ -27,7 +27,8 @@ final class BarRecordsTests: BarTestCase {
         XCTAssertEqual(
             columns,
             [
-                "id", "character_id", "entered_at", "left_at", "entered_on", "reason", "topic",
+                "id", "franchise_id", "character_id", "entered_at", "left_at", "entered_on",
+                "reason", "topic",
                 "orders", "drunk", "rewarded",
             ]
         )
@@ -38,13 +39,13 @@ final class BarRecordsTests: BarTestCase {
 
         let id: Int64 = try queue.write { db in
             try BarRecords.insert(
-                db, characterID: "mano", enteredAt: enter, leftAt: leave,
+                db, franchiseID: "shiny", characterID: "mano", enteredAt: enter, leftAt: leave,
                 enteredOn: "2026-09-21", reason: "reason-1", topic: "topic-2", servings: servings,
                 drunk: true, rewarded: true
             )
         }
 
-        let record = try XCTUnwrap(try queue.read { db in try BarRecords.all(db) }.first)
+        let record = try XCTUnwrap(try queue.read { db in try BarRecords.all(db, franchiseID: "shiny") }.first)
         XCTAssertEqual(id, record.id)
         XCTAssertEqual(record.characterID, "mano")
         XCTAssertEqual(record.enteredOn, "2026-09-21")
@@ -66,16 +67,16 @@ final class BarRecordsTests: BarTestCase {
     func testAVisitDoneOnADayCountsForThatDayOnly() throws {
         try queue.write { db in
             try BarRecords.insert(
-                db, characterID: "mano", enteredAt: enter, leftAt: leave, enteredOn: "2026-09-21",
+                db, franchiseID: "shiny", characterID: "mano", enteredAt: enter, leftAt: leave, enteredOn: "2026-09-21",
                 reason: "reason-1", topic: "topic-1", servings: [], drunk: false, rewarded: true
             )
         }
 
         let (sameDay, otherDay, before) = try queue.read { db in
             (
-                try BarRecords.doneOn(db, day: "2026-09-21"),
-                try BarRecords.doneOn(db, day: "2026-09-22"),
-                try BarRecords.before(db, today: "2026-09-22")
+                try BarRecords.doneOn(db, franchiseID: "shiny", day: "2026-09-21"),
+                try BarRecords.doneOn(db, franchiseID: "shiny", day: "2026-09-22"),
+                try BarRecords.before(db, franchiseID: "shiny", today: "2026-09-22")
             )
         }
 
@@ -88,7 +89,7 @@ final class BarRecordsTests: BarTestCase {
         try queue.write { db in
             for n in 1...4 {
                 try BarRecords.insert(
-                    db, characterID: "mano", enteredAt: enter.addingTimeInterval(Double(n)),
+                    db, franchiseID: "shiny", characterID: "mano", enteredAt: enter.addingTimeInterval(Double(n)),
                     leftAt: leave.addingTimeInterval(Double(n)), enteredOn: "2026-09-2\(n)",
                     reason: "reason-\(n)", topic: "topic-\(n)", servings: [], drunk: n == 2,
                     rewarded: false
@@ -96,12 +97,12 @@ final class BarRecordsTests: BarTestCase {
             }
             // Another character's visits are not hers to remember.
             try BarRecords.insert(
-                db, characterID: "hiori", enteredAt: enter, leftAt: leave, enteredOn: "2026-09-21",
+                db, franchiseID: "shiny", characterID: "hiori", enteredAt: enter, leftAt: leave, enteredOn: "2026-09-21",
                 reason: "reason-9", topic: "topic-9", servings: [], drunk: false, rewarded: false
             )
         }
 
-        let history = try queue.read { db in try BarRecords.history(db, characterID: "mano") }
+        let history = try queue.read { db in try BarRecords.history(db, franchiseID: "shiny", characterID: "mano") }
 
         XCTAssertEqual(history.remembered.visits, 4)
         XCTAssertEqual(history.reasons, ["reason-4", "reason-3", "reason-2"])
@@ -111,7 +112,7 @@ final class BarRecordsTests: BarTestCase {
     }
 
     func testAFirstVisitRemembersNothingButThatThereWereNone() throws {
-        let history = try queue.read { db in try BarRecords.history(db, characterID: "mano") }
+        let history = try queue.read { db in try BarRecords.history(db, franchiseID: "shiny", characterID: "mano") }
 
         XCTAssertEqual(history.remembered, BarPrompt.Remembered())
         XCTAssertTrue(history.reasons.isEmpty)
@@ -131,13 +132,13 @@ final class BarRecordsTests: BarTestCase {
         )
         try queue.write { db in
             try BarRecords.insert(
-                db, characterID: "mano", enteredAt: enter, leftAt: leave, enteredOn: "2026-09-21",
+                db, franchiseID: "shiny", characterID: "mano", enteredAt: enter, leftAt: leave, enteredOn: "2026-09-21",
                 reason: "reason-1", topic: "topic-1", servings: [wrong, right], drunk: false,
                 rewarded: true
             )
         }
 
-        let history = try queue.read { db in try BarRecords.history(db, characterID: "mano") }
+        let history = try queue.read { db in try BarRecords.history(db, franchiseID: "shiny", characterID: "mano") }
 
         XCTAssertEqual(history.remembered.lastOrders.map(\.wanted), ["adelhyde-flavor", "adelhyde-flavor"])
         XCTAssertEqual(history.remembered.lastOrders.map(\.served), ["bronson-aged", "adelhyde-flavor"])

@@ -188,6 +188,7 @@ enum UserSchema {
 
         CREATE TABLE bar_visits (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            franchise_id TEXT NOT NULL,
             character_id TEXT NOT NULL,
             entered_at TEXT NOT NULL,
             left_at TEXT NOT NULL,
@@ -198,8 +199,8 @@ enum UserSchema {
             drunk INTEGER NOT NULL,
             rewarded INTEGER NOT NULL
         );
-        CREATE INDEX bar_visits_by_her ON bar_visits (character_id, id);
-        CREATE INDEX bar_visits_by_day ON bar_visits (entered_on);
+        CREATE INDEX bar_visits_by_her ON bar_visits (franchise_id, character_id, id);
+        CREATE INDEX bar_visits_by_day ON bar_visits (franchise_id, entered_on);
 
         CREATE TABLE schedule_weeks (
             week TEXT PRIMARY KEY,

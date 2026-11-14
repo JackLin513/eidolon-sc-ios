@@ -183,18 +183,22 @@ public actor BarRoom {
     public func status() throws -> BarStatus {
         let today = BarRecords.day(clock(), in: timeZone())
         let content = try source().content
-        let done = try userQueue.read { try BarRecords.doneOn($0, day: today) }
+        let done = try userQueue.read {
+            try BarRecords.doneOn($0, franchiseID: franchiseID, day: today)
+        }
         return BarStatus(drinks: content.catalog.drinks, rewardToday: !done)
     }
 
     /// The visits done, oldest first.
     public func records() throws -> [VisitRecord] {
-        try userQueue.read { try BarRecords.all($0) }
+        try userQueue.read { try BarRecords.all($0, franchiseID: franchiseID) }
     }
 
     /// Forgets every visit done, and what was looked up for them.
     public func clearRecords() throws {
-        try userQueue.write { try BarRecords.clear($0) }
+        try userQueue.write {
+            try BarRecords.clear($0, franchiseID: franchiseID)
+        }
     }
 
     /// The visit under way, as the page catches up on it after being away; nil if none, or
@@ -231,11 +235,15 @@ public actor BarRoom {
         let now = clock()
         let zone = timeZone()
         let today = BarRecords.day(now, in: zone)
-        let before = try await userQueue.read { try BarRecords.before($0, today: today) }
+        let before = try await userQueue.read {
+            try BarRecords.before($0, franchiseID: franchiseID, today: today)
+        }
         let indexed = before.doneToday ? pick(everyone.count) : Self.ofTheDay(today, everyone.count)
         let character = everyone[indexed]
         let hers = try await userQueue.read { db in
-            (history: try BarRecords.history(db, characterID: character.id),
+            (history: try BarRecords.history(
+                db, franchiseID: franchiseID, characterID: character.id
+            ),
              affinity: try Eidolon.readAffinity(db, franchiseID: franchiseID, characterID: character.id, now: now))
         }
         let doneJob = try await userQueue.write { db in

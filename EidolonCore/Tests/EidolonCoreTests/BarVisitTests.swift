@@ -576,7 +576,7 @@ final class BarVisitTests: BarTestCase {
         try await queue.write { db in
             for n in 1...3 {
                 try BarRecords.insert(
-                    db, characterID: "mano", enteredAt: at, leftAt: at,
+                    db, franchiseID: "shiny", characterID: "mano", enteredAt: at, leftAt: at,
                     enteredOn: n == 3 ? today : "2026-09-2\(n)",
                     reason: "reason-\(n)", topic: "topic-\(n)", servings: [], drunk: false,
                     rewarded: n == 1

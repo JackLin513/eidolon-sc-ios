@@ -352,7 +352,9 @@ public actor Eidolon {
     /// (ADR-0021). The roster's bar card says so without opening the bar.
     public func barRewardToday(now: Date = Date(), timeZone: TimeZone = .current) throws -> Bool {
         let day = BarDates.day(of: now, in: timeZone)
-        return try userQueue.read { try !BarRecords.doneOn($0, day: day) }
+        return try userQueue.read {
+            try !BarRecords.doneOn($0, franchiseID: activeContentFranchise, day: day)
+        }
     }
 
     /// Whether the tutorial has been walked through: done or skipped.

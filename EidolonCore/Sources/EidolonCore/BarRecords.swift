@@ -79,44 +79,70 @@ enum BarRecords {
     // MARK: - Reading
 
     /// The visits done with anyone, oldest first.
-    static func all(_ db: Database) throws -> [VisitRecord] {
-        try Row.fetchAll(db, sql: "SELECT * FROM bar_visits ORDER BY id").map(record)
+    static func all(_ db: Database, franchiseID: String) throws -> [VisitRecord] {
+        try Row.fetchAll(
+            db,
+            sql: "SELECT * FROM bar_visits WHERE franchise_id = ? ORDER BY id",
+            arguments: [franchiseID]
+        ).map(record)
     }
 
     /// How many visits were done, with anyone.
-    static func count(_ db: Database) throws -> Int {
-        try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM bar_visits") ?? 0
+    static func count(_ db: Database, franchiseID: String) throws -> Int {
+        try Int.fetchOne(
+            db,
+            sql: "SELECT COUNT(*) FROM bar_visits WHERE franchise_id = ?",
+            arguments: [franchiseID]
+        ) ?? 0
     }
 
     /// Whether a visit done came in on `day` (the device's, `yyyy-MM-dd`).
-    static func doneOn(_ db: Database, day: String) throws -> Bool {
+    static func doneOn(
+        _ db: Database, franchiseID: String, day: String
+    ) throws -> Bool {
         try Bool.fetchOne(
             db,
-            sql: "SELECT EXISTS (SELECT 1 FROM bar_visits WHERE entered_on = ?)",
-            arguments: [day]
+            sql: """
+                SELECT EXISTS (
+                    SELECT 1 FROM bar_visits
+                    WHERE franchise_id = ? AND entered_on = ?
+                )
+                """,
+            arguments: [franchiseID, day]
         ) ?? false
     }
 
     /// Whether one was done on `today`, and how many with anyone.
-    static func before(_ db: Database, today: String) throws -> BarBefore {
-        BarBefore(doneToday: try doneOn(db, day: today), visitsDone: try count(db))
+    static func before(
+        _ db: Database, franchiseID: String, today: String
+    ) throws -> BarBefore {
+        BarBefore(
+            doneToday: try doneOn(db, franchiseID: franchiseID, day: today),
+            visitsDone: try count(db, franchiseID: franchiseID)
+        )
     }
 
     /// What she remembers of her visits with the user before this one, and the reasons and
     /// topics of the latest `BarVisits.recentVisits` of them, latest first.
-    static func history(_ db: Database, characterID: String) throws -> BarHistory {
+    static func history(
+        _ db: Database, franchiseID: String, characterID: String
+    ) throws -> BarHistory {
         let visits = try Int.fetchOne(
             db,
-            sql: "SELECT COUNT(*) FROM bar_visits WHERE character_id = ?",
-            arguments: [characterID]
+            sql: """
+                SELECT COUNT(*) FROM bar_visits
+                WHERE franchise_id = ? AND character_id = ?
+                """,
+            arguments: [franchiseID, characterID]
         ) ?? 0
         let rows = try Row.fetchAll(
             db,
             sql: """
-                SELECT * FROM bar_visits WHERE character_id = ?
+                SELECT * FROM bar_visits
+                WHERE franchise_id = ? AND character_id = ?
                 ORDER BY id DESC LIMIT ?
                 """,
-            arguments: [characterID, BarVisits.recentVisits]
+            arguments: [franchiseID, characterID, BarVisits.recentVisits]
         )
         guard let first = rows.first else { return BarHistory() }
         let last = try record(first)
@@ -136,6 +162,7 @@ enum BarRecords {
     @discardableResult
     static func insert(
         _ db: Database,
+        franchiseID: String,
         characterID: String,
         enteredAt: Date,
         leftAt: Date,
@@ -154,12 +181,13 @@ enum BarRecords {
         }
         try db.execute(
             sql: """
-                INSERT INTO bar_visits(character_id, entered_at, left_at, entered_on, reason,
-                                       topic, orders, drunk, rewarded)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO bar_visits(franchise_id, character_id, entered_at, left_at,
+                                       entered_on, reason, topic, orders, drunk, rewarded)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
             arguments: [
-                characterID, Eidolon.timestamp(enteredAt), Eidolon.timestamp(leftAt), enteredOn,
+                franchiseID, characterID, Eidolon.timestamp(enteredAt),
+                Eidolon.timestamp(leftAt), enteredOn,
                 reason, topic, try Self.ordersJSON(orders), drunk ? 1 : 0, rewarded ? 1 : 0,
             ]
         )
@@ -178,7 +206,7 @@ enum BarRecords {
         franchiseID: String, catalog: DrinkCatalog, _ db: Database
     ) throws -> Reward? {
         var reward: Reward?
-        if rewarding, try doneOn(db, day: day) == false {
+        if rewarding, try doneOn(db, franchiseID: franchiseID, day: day) == false {
             let step = AffinityRules.visitDone(try visit.servings.map { serving in
                 (serving.tier, try BarRules.hasBest(serving.order, visit.character, catalog))
             })
@@ -193,7 +221,8 @@ enum BarRecords {
             reward = Reward(affinityUp: affinityUp, drawGiven: drawGiven)
         }
         try insert(
-            db, characterID: visit.character.id, enteredAt: visit.enteredAt, leftAt: now,
+            db, franchiseID: franchiseID, characterID: visit.character.id,
+            enteredAt: visit.enteredAt, leftAt: now,
             enteredOn: day, reason: visit.reason.id, topic: visit.topic.id,
             servings: visit.servings, drunk: visit.drunk, rewarded: reward != nil
         )
@@ -202,8 +231,11 @@ enum BarRecords {
 
     /// Forgets every visit done, and what was looked up for them. What was said was never
     /// kept; her affinity stays as it is.
-    static func clear(_ db: Database) throws {
-        try db.execute(sql: "DELETE FROM bar_visits")
+    static func clear(_ db: Database, franchiseID: String) throws {
+        try db.execute(
+            sql: "DELETE FROM bar_visits WHERE franchise_id = ?",
+            arguments: [franchiseID]
+        )
         try db.execute(sql: "DELETE FROM app_state WHERE key LIKE 'bar.facts.%'")
     }
 
