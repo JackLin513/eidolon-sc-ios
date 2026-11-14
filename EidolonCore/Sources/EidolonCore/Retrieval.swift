@@ -367,7 +367,8 @@ struct RetrievalEngine {
         guard let candidates = try? await eidolon.memoryCandidates(
             queryVector: vector,
             limit: RetrievalRules.candidatesPerSource,
-            embedder: embedder
+            embedder: embedder,
+            franchiseID: eidolon.activeContentFranchise
         ), !candidates.isEmpty else { return outcome }
 
         outcome.candidates = candidates.map {

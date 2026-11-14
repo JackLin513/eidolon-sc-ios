@@ -165,8 +165,10 @@ extension Eidolon {
                 db,
                 sql: """
                     SELECT id, source_character_id, text, created_at, superseded_by
-                    FROM memories ORDER BY created_at ASC, rowid ASC
-                    """
+                    FROM memories WHERE source_franchise_id = ?
+                    ORDER BY created_at ASC, rowid ASC
+                    """,
+                arguments: [activeContentFranchise]
             ).map { row in
                 MemoryRecord(
                     id: row["id"],
@@ -187,22 +189,29 @@ extension Eidolon {
         // settles first, so it cannot bring the memory back afterwards.
         await settleMemories()
         return try await userQueue.write { db in
-            try Self.deleteMemoryRows(db, ids: [id]) > 0
+            try Self.deleteMemoryRows(db, ids: [id], franchiseID: activeContentFranchise) > 0
         }
     }
 
     /// Deletes the memories and the vectors that would find them, in one write. Says how
     /// many memory rows were really deleted; ids that are already gone are not errors.
-    static func deleteMemoryRows(_ db: Database, ids: [String]) throws -> Int {
+    static func deleteMemoryRows(
+        _ db: Database, ids: [String], franchiseID: String
+    ) throws -> Int {
         guard !ids.isEmpty else { return 0 }
         let marks = Array(repeating: "?", count: ids.count).joined(separator: ",")
-        let arguments = StatementArguments(ids)
+        let arguments = StatementArguments([franchiseID] + ids)
         try db.execute(
-            sql: "DELETE FROM memory_vectors WHERE memory_id IN (\(marks))",
+            sql: """
+                DELETE FROM memory_vectors WHERE memory_id IN (
+                    SELECT id FROM memories WHERE source_franchise_id = ?
+                    AND id IN (\(marks))
+                )
+                """,
             arguments: arguments
         )
         try db.execute(
-            sql: "DELETE FROM memories WHERE id IN (\(marks))",
+            sql: "DELETE FROM memories WHERE source_franchise_id = ? AND id IN (\(marks))",
             arguments: arguments
         )
         return db.changesCount
@@ -213,9 +222,30 @@ extension Eidolon {
     public func clearMemories() async throws {
         await settleMemories()
         try await userQueue.write { db in
-            try db.execute(sql: "DELETE FROM memory_vectors")
-            try db.execute(sql: "DELETE FROM memories")
-            try db.execute(sql: "DELETE FROM pending_jobs WHERE kind = 'memory'")
+            try db.execute(
+                sql: """
+                    DELETE FROM memory_vectors WHERE memory_id IN (
+                        SELECT id FROM memories WHERE source_franchise_id = ?
+                    )
+                    """,
+                arguments: [activeContentFranchise]
+            )
+            try db.execute(
+                sql: "DELETE FROM memories WHERE source_franchise_id = ?",
+                arguments: [activeContentFranchise]
+            )
+            try db.execute(
+                sql: """
+                    DELETE FROM pending_jobs WHERE kind = 'memory'
+                    AND (
+                        conversation_id IS NULL
+                        OR conversation_id IN (
+                            SELECT id FROM conversations WHERE franchise_id = ?
+                        )
+                    )
+                    """,
+                arguments: [activeContentFranchise]
+            )
         }
     }
 
@@ -226,7 +256,8 @@ extension Eidolon {
            let nearest = try? await memoryCandidates(
                queryVector: vector,
                limit: MemoryExtraction.shownMemories,
-               embedder: embedder
+               embedder: embedder,
+               franchiseID: activeContentFranchise
            ), !nearest.isEmpty {
             return nearest.map { $0.record }
         }
@@ -485,10 +516,15 @@ extension Eidolon {
                     id = UUID().uuidString
                     try db.execute(
                         sql: """
-                            INSERT INTO memories(id, source_character_id, conversation_id, text, created_at)
-                            VALUES (?, ?, (SELECT id FROM conversations WHERE id = ?), ?, ?)
+                            INSERT INTO memories(
+                                id, source_franchise_id, source_character_id, conversation_id,
+                                text, created_at
+                            ) VALUES (?, ?, ?, (SELECT id FROM conversations WHERE id = ?), ?, ?)
                             """,
-                        arguments: [id, characterID, conversationID, memory.text, stamp]
+                        arguments: [
+                            id, activeContentFranchise, characterID, conversationID,
+                            memory.text, stamp,
+                        ]
                     )
                     added.append(MemoryRecord(
                         id: id,

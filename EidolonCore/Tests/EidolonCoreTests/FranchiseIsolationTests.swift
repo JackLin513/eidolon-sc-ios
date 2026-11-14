@@ -210,6 +210,43 @@ struct FranchiseIsolationTests {
         #expect(try await eidolon.savedPlacements().map(\.job.name) == ["声乐课-totsulover"])
     }
 
+    @Test("memories are read and cleared per franchise")
+    func memoriesAreScopedToTheirFranchise() async throws {
+        let (eidolon, root) = try makeEidolon()
+        try await installTwoFranchises(on: eidolon, in: root)
+
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO memories(
+                        id, source_franchise_id, source_character_id, text, created_at
+                    ) VALUES ('shiny-1', 'shiny', 'mano', '制作人养了一只猫',
+                              '2026-11-14T00:00:00.000000Z')
+                    """
+            )
+        }
+        #expect(try await eidolon.memories().map(\.text) == ["制作人养了一只猫"])
+
+        try await eidolon.activateContent(franchise: "totsulover")
+        #expect(try await eidolon.memories().isEmpty)
+        try await eidolon.userQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO memories(
+                        id, source_franchise_id, source_character_id, text, created_at
+                    ) VALUES ('tot-1', 'totsulover', 'mano', '制作人喜欢咖啡',
+                              '2026-11-14T00:00:00.000000Z')
+                    """
+            )
+        }
+        #expect(try await eidolon.memories().map(\.text) == ["制作人喜欢咖啡"])
+
+        try await eidolon.clearMemories()
+        #expect(try await eidolon.memories().isEmpty)
+        try await eidolon.activateContent(franchise: "shiny")
+        #expect(try await eidolon.memories().map(\.text) == ["制作人养了一只猫"])
+    }
+
     @Test("the producer profile is read and written per franchise")
     func producerProfileIsScopedToItsFranchise() async throws {
         let (eidolon, root) = try makeEidolon()

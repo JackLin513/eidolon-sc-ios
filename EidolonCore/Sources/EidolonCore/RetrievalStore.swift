@@ -122,7 +122,8 @@ extension Eidolon {
         queryVector: [Float],
         limit: Int,
         embedder: (any EmbeddingProvider)?,
-        characterID: String? = nil
+        characterID: String? = nil,
+        franchiseID: String
     ) async throws -> [MemoryCandidate] {
         let model = embedder?.model ?? (try? installedContentInfo()?.embeddingModel) ?? ""
         let rows: [(id: String, text: String, source: String?, createdAt: String, vector: Data?)] =
@@ -134,9 +135,10 @@ extension Eidolon {
                         FROM memories m
                         LEFT JOIN memory_vectors v ON v.memory_id = m.id AND v.model = ?
                         WHERE m.superseded_by IS NULL
+                          AND m.source_franchise_id = ?
                           AND (? IS NULL OR m.source_character_id = ?)
                         """,
-                    arguments: [model, characterID, characterID]
+                    arguments: [model, franchiseID, characterID, characterID]
                 ).map { row in
                     (
                         id: row["id"],

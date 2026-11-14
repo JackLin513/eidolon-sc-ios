@@ -178,7 +178,7 @@ extension Eidolon {
         guard !ids.isEmpty else { return 0 }
         await settleMemories()
         return try await userQueue.write { db in
-            try Self.deleteMemoryRows(db, ids: ids)
+            try Self.deleteMemoryRows(db, ids: ids, franchiseID: activeContentFranchise)
         }
     }
 

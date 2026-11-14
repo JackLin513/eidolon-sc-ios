@@ -164,7 +164,7 @@ final class RetrievalTests: XCTestCase {
         let data = vector.withUnsafeBufferPointer { Data(buffer: $0) }
         try await queue.write { db in
             try db.execute(
-                sql: "INSERT INTO memories(id, source_character_id, text, created_at) VALUES ('m1', 'hiori', '制作人养了一只猫', '2026-10-01T00:00:00Z')"
+                sql: "INSERT INTO memories(id, source_franchise_id, source_character_id, text, created_at) VALUES ('m1', 'shiny', 'hiori', '制作人养了一只猫', '2026-10-01T00:00:00Z')"
             )
             try db.execute(
                 sql: "INSERT INTO memory_vectors(memory_id, model, embedding) VALUES ('m1', 'test-embed', ?)",

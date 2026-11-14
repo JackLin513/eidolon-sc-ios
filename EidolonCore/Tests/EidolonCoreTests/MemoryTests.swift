@@ -179,7 +179,8 @@ final class MemoryTests: XCTestCase {
         let found = try await eidolon.memoryCandidates(
             queryVector: [1, 0, 0, 0],
             limit: 12,
-            embedder: FakeEmbedding(vector: [1, 0, 0, 0])
+            embedder: FakeEmbedding(vector: [1, 0, 0, 0]),
+            franchiseID: eidolon.activeContentFranchise
         )
         XCTAssertEqual(found.map(\.text), ["制作人养了一只叫小白的猫"])
     }
@@ -311,8 +312,9 @@ final class MemoryTests: XCTestCase {
         try await eidolon.userQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO memories(id, source_character_id, text, created_at)
-                    VALUES (?, 'mano', ?, '2026-10-27T12:00:00.000000Z')
+                    INSERT INTO memories(
+                        id, source_franchise_id, source_character_id, text, created_at
+                    ) VALUES (?, 'shiny', 'mano', ?, '2026-10-27T12:00:00.000000Z')
                     """,
                 arguments: [id, text]
             )

@@ -328,7 +328,8 @@ extension Eidolon {
                 queryVector: vector,
                 limit: RetrievalRules.candidatesPerSource,
                 embedder: embedder,
-                characterID: characterID
+                characterID: characterID,
+                franchiseID: activeContentFranchise
             )) ?? []).filter { $0.sourceCharacterID == characterID }
             if let reranker, !candidates.isEmpty,
                let ranked = try? await reranker.rerank(
