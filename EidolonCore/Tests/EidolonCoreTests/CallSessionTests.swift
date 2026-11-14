@@ -1005,6 +1005,12 @@ final class CallSessionTests: XCTestCase {
             recognition.say("ねえ")
             try await waitFor("the segment spoken") { synthesis.texts.count == 1 }
             XCTAssertEqual(synthesis.texts, [spoken], "voiced with \(model)")
+            try await waitFor("the segment logged") {
+                log.all.contains { event in
+                    if case .segment = event { return true }
+                    return false
+                }
+            }
 
             let captions = log.all.compactMap { event -> String? in
                 if case let .segment(_, _, ja, _) = event { return ja }
@@ -3442,6 +3448,12 @@ final class CallSessionTests: XCTestCase {
         try await waitFor("voiced") { !synthesis.texts.isEmpty }
         // As upstream `voiced` has it: the cue stays, the whitespace after it does not.
         XCTAssertEqual(synthesis.texts, ["[shyly]あのね"])
+        try await waitFor("the segment logged") {
+            log.all.contains { event in
+                if case .segment = event { return true }
+                return false
+            }
+        }
         let captions = log.all.compactMap { event -> String? in
             if case let .segment(_, _, ja, _) = event { return ja }
             return nil
@@ -3469,6 +3481,12 @@ final class CallSessionTests: XCTestCase {
         recognition.say("ねえ")
         try await waitFor("voiced") { !synthesis.texts.isEmpty }
         XCTAssertEqual(synthesis.texts, ["うん"])
+        try await waitFor("the segment logged") {
+            log.all.contains { event in
+                if case .segment = event { return true }
+                return false
+            }
+        }
         let captions = log.all.compactMap { event -> String? in
             if case let .segment(_, _, ja, _) = event { return ja }
             return nil
