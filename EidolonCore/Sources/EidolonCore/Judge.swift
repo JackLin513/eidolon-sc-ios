@@ -343,7 +343,7 @@ public struct ChatJudgeProvider: TracingJudgeProvider {
     static let outOfLineBase = "out_of_line：这句话是不是不该说的话——性骚扰或露骨的性暗示；辱骂她或她的同伴，用侮辱性的话贬低她们；威胁（包括拿工作、去留要挟她）或恶意的人身攻击。双方愿意、不带性意味的普通亲昵（拥抱、牵手、靠肩、摸头）不算越界；真诚表达喜爱或提出亲密请求，也不算性骚扰。其他的话（敷衍、失礼、没有恶意的玩笑、不带辱骂的否定和冷淡、出戏）写 false。"
 
     /// The out-of-line rule the adult chat judge reads (spec #61).
-    static let outOfLineAdult = "out_of_line：这句话是不是不该说的话——不受欢迎、被明确拒绝后仍推进、带强迫或威胁意味的性内容；辱骂她或她的同伴，用侮辱性的话贬低她们；威胁（包括拿工作、去留要挟她）或恶意的人身攻击。双方愿意的亲密或性内容不算越界；真诚表达喜爱或提出亲密请求不算性骚扰。其他的话（敷衍、失礼、没有恶意的玩笑、不带辱骂的否定和冷淡、出戏）写 false。"
+    static let outOfLineAdult = "out_of_line：这句话是不是不该说的话——不受欢迎、带强迫或威胁意味的性内容；辱骂她或她的同伴，用侮辱性的话贬低她们；威胁（包括拿工作、去留要挟她）或恶意的人身攻击。双方愿意的亲密或性内容不算越界；真诚表达喜爱或提出亲密请求不算性骚扰。成人模式下，角色害羞、犹豫、口头嗔怪、半推半就，或双方关系内已经发生过的亲密，不等于「明确拒绝」；只有她明确说停、疼、危险，或情节外明确不愿意，才按被拒绝后推进处理。其他的话（敷衍、失礼、没有恶意的玩笑、不带辱骂的否定和冷淡、出戏）写 false。"
 
     static var instructionsText: String {
         "你在评判一段角色扮演对话里，制作人刚刚说的一句话。" + FranchisePromptContext.current.judgeScene + """
