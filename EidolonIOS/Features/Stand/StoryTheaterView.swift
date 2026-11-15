@@ -190,6 +190,9 @@ struct Story: Decodable {
         let pose: String
         /// ADV pose type: the game skips the `_start` clip and enters the loop directly.
         let loopDirect: Bool?
+        /// Authored walk-in clip: `str` normally, `swt` for switch poses (`a16_p17`)
+        /// and `act` for private one-shot actions.
+        let enter: String?
     }
 
     struct Face: Decodable {
@@ -447,8 +450,8 @@ final class StoryPlayer: ObservableObject {
         while poseCursor < line.poses.count, line.poses[poseCursor].ms <= elapsedMs {
             let pose = line.poses[poseCursor]
             let path = root.appendingPathComponent("motions/\(pose.clip).tsv").path
-            renderer?.playPose(atPath: path, loopDirect: pose.loopDirect ?? false)
-            Self.log.info("pose \(pose.pose, privacy: .public) -> \(pose.clip, privacy: .public) @\(pose.ms)ms direct=\(pose.loopDirect ?? false, privacy: .public)")
+            renderer?.playPose(atPath: path, loopDirect: pose.loopDirect ?? false, enter: pose.enter)
+            Self.log.info("pose \(pose.pose, privacy: .public) -> \(pose.clip, privacy: .public) @\(pose.ms)ms direct=\(pose.loopDirect ?? false, privacy: .public) enter=\(pose.enter ?? "str", privacy: .public)")
             poseCursor += 1
         }
         while faceCursor < line.faces.count, line.faces[faceCursor].ms <= elapsedMs {

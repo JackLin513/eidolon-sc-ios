@@ -42,6 +42,7 @@ public sealed class EidolonStandMotion : MonoBehaviour
         public string stem;
         public Clip loop;    // `_lop`
         public Clip enter;   // `_str`
+        public Clip transition; // `_swt` (switch poses: `a16_p17` etc.)
         public Clip leave;   // `_end`
         public Clip action;  // `_act` (one-shot action poses such as `a16`)
         public Clip yes;     // `_yes`
@@ -78,6 +79,7 @@ public sealed class EidolonStandMotion : MonoBehaviour
     private PoseSet pose;       // current story pose (null when standing in idle)
     private PoseSet pendingPose;
     private bool pendingLoopDirect;
+    private Clip pendingIntro;
 
     private Clip blendFrom;     // 0.1 s blend when a pose returns to the idle loop
     private float blendTime;
@@ -255,6 +257,14 @@ public sealed class EidolonStandMotion : MonoBehaviour
     /// `loopDirect` is set (the ADV pose type flag) the ``_start`` clip is skipped.
     public void PlayPose(string clip, bool loopDirect)
     {
+        PlayPose(clip, loopDirect, null);
+    }
+
+    /// <param name="enter">Which authored clip walks into the pose: `str` (the
+    /// normal `_start`), `swt` (a switch pose's `_switch`) or `act` (a private
+    /// action's one-shot `_action`). Null keeps the default `_str`.</param>
+    public void PlayPose(string clip, bool loopDirect, string enter)
+    {
         if (string.IsNullOrEmpty(clip)) return;
         var set = LoadPose(StoryClipPath(clip));
         if (set == null)
@@ -268,19 +278,21 @@ public sealed class EidolonStandMotion : MonoBehaviour
             return;
         }
         Debug.Log($"[stand] pose {clip} loop={(set.loop != null)} enter={(set.enter != null)} " +
-                  $"end={(set.leave != null)} action={(set.action != null)} loopDirect={loopDirect}");
+                  $"switch={(set.transition != null)} end={(set.leave != null)} " +
+                  $"action={(set.action != null)} loopDirect={loopDirect} enterKind={enter ?? "str"}");
         if (pose != null && pose.leave != null && (phase == Phase.Looping || phase == Phase.Entering))
         {
             // The controller's `_end -> idle` transition is what the game uses when a
             // pose goes away; queue the next pose behind the authored exit.
             pendingPose = set;
             pendingLoopDirect = loopDirect;
+            pendingIntro = ResolveIntro(set, enter);
             StartClip(pose.leave, false);
             phase = Phase.Leaving;
             ApplyCurrent();
             return;
         }
-        EnterPose(set, loopDirect);
+        EnterPose(set, loopDirect, ResolveIntro(set, enter));
     }
 
     /// Return to the character's own idle loop after a story ends.
@@ -298,14 +310,38 @@ public sealed class EidolonStandMotion : MonoBehaviour
         GoIdle();
     }
 
+    /// The authored clip that walks into this pose. The game enters a normal pose
+    /// through `_start` (`str`), a switch pose through the source pose's `_switch`
+    /// (`swt`, passed as `swt:<source clip>`) and a private action through `_action`.
+    private Clip ResolveIntro(PoseSet set, string enter)
+    {
+        if (string.IsNullOrEmpty(enter)) return set.enter;
+        if (enter == "act") return set.action;
+        if (enter == "swt") return set.transition;
+        if (enter.StartsWith("swt:"))
+        {
+            var directory = Path.GetDirectoryName(set.stem);
+            var name = enter.Substring(4);
+            var path = Path.Combine(directory ?? "", name + "_swt.tsv");
+            return File.Exists(path) ? LoadClip(path) : null;
+        }
+        return set.enter;
+    }
+
     private void EnterPose(PoseSet set, bool loopDirect)
+    {
+        EnterPose(set, loopDirect, null);
+    }
+
+    private void EnterPose(PoseSet set, bool loopDirect, Clip intro)
     {
         pose = set;
         pendingPose = null;
+        pendingIntro = null;
         gesture = null;
-        if (!loopDirect && set.enter != null)
+        if (!loopDirect && intro != null)
         {
-            StartClip(set.enter, false);
+            StartClip(intro, false);
             phase = Phase.Entering;
         }
         else if (set.loop != null)
@@ -376,6 +412,7 @@ public sealed class EidolonStandMotion : MonoBehaviour
             stem = stem,
             loop = Load("lop"),
             enter = Load("str"),
+            transition = Load("swt"),
             leave = Load("end"),
             action = Load("act"),
             yes = Load("yes"),
@@ -454,7 +491,7 @@ public sealed class EidolonStandMotion : MonoBehaviour
                 break;
             case Phase.Leaving when clock >= current.Length:
             case Phase.Acting when clock >= current.Length:
-                if (pendingPose != null) EnterPose(pendingPose, pendingLoopDirect);
+                if (pendingPose != null) EnterPose(pendingPose, pendingLoopDirect, pendingIntro);
                 else GoIdle();
                 break;
         }

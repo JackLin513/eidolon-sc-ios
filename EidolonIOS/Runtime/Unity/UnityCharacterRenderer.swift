@@ -134,10 +134,13 @@ final class UnityCharacterRenderer: CharacterRenderer {
     /// The host mirrors the game's own pose state machine (`AnimCtrl_Commu`): the
     /// previous pose plays its `_end` clip, the new pose plays `_start` then settles
     /// into `_loop`. `loopDirect` (the ADV pose type flag) skips `_start`.
-    func playPose(atPath path: String, loopDirect: Bool = false) {
+    /// <param name="enter">Authored walk-in clip: `str` (normal `_start`), `swt`
+    /// (switch poses such as `a16_p17`) or `act` (private one-shot actions).</param>
+    func playPose(atPath path: String, loopDirect: Bool = false, enter: String? = nil) {
         guard loaded else { return }
-        Self.log.info("3D pose: \(path, privacy: .public) loopDirect=\(loopDirect, privacy: .public)")
-        UnityRuntime.shared.send("PlayPose", "\(path)|\(loopDirect ? 1 : 0)")
+        let kind = enter ?? "str"
+        Self.log.info("3D pose: \(path, privacy: .public) loopDirect=\(loopDirect, privacy: .public) enter=\(kind, privacy: .public)")
+        UnityRuntime.shared.send("PlayPose", "\(path)|\(loopDirect ? 1 : 0)|\(kind)")
     }
 
     /// Stand in the game's own neutral `p01` idle clip (`com_cut_01z_lop`) instead of

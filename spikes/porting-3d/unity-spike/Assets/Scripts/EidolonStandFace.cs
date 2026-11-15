@@ -15,11 +15,16 @@ public sealed class EidolonStandFace : MonoBehaviour
     /// Native lip codes: SetLip(n) maps n%5 to the mouth row; 0..4 = A I U E O.
     private static readonly int[] LipCycle = { 0, 1, 2, 3, 4 };
 
-    /// CharacterFace_RC constants (spike migration-progress.md): blink is
-    /// 0.125 s closed, random interval 0.225–0.07 s around a 3–6 s cadence.
-    private const float BlinkClosed = 0.125f;
-    private const float BlinkMinInterval = 3.2f;
-    private const float BlinkMaxInterval = 6.0f;
+    /// Blink cadence from the game's own CharacterFace.EyesBlink (IDA: 0x3884EC4).
+    /// The native timer re-arms with `Random.Range(0f, 1f) + 4f`, i.e. an interval of
+    /// 4.0–5.0 s, and the lid closes over 0.1 s then opens over 0.1 s (0.2 s total,
+    /// no hold). The discrete SetEyeClose(bool) transition is 0.1 s, so closing and
+    /// re-opening one BlinkClosed window later reproduces the native curve.
+    /// (`flapOpenTime/flapCloseTime/flapTransTime` are the mouth talking flap, not
+    /// the blink — see the eye/face note.)
+    private const float BlinkClosed = 0.1f;
+    private const float BlinkMinInterval = 4.0f;
+    private const float BlinkMaxInterval = 5.0f;
 
     private FaceCtrlNative face;
     private bool speaking;

@@ -158,6 +158,13 @@ for o in env.objects:
   - 切到新姿势时，**先播当前姿势的 `_end`**；播完再进入新姿势的 `_str`（`loopDirect` 为真则跳过）；`_str` 播完接 `_lop`。
   - 动作型姿势（只有 `_act`，如 `cut_16a`）播一次 `_act` 后回 idle —— 对应 `_action → idle`。
   - 相同姿势重复请求直接忽略（避免同一事件重复从头播）。
+- **switch 过渡姿势**（`a10_p11` / `a12_p13` / `a14_p15` / `a16_p17`，`create_pose_infos` 里硬编码的四条 `CreateSwitch`）：
+  它们不是站姿而是一次「从 `aNN` 摆到 `pMM`」的过渡。剪辑名按 `switch_from.Substring(1)` 取源姿势
+  （`a16` → `com_cut_16a_swt`），播完落到目标姿势的 `_lop`。工具层把它写成
+  `"enter": "swt:<source clip>"`，播放器 `ResolveIntro` 按同目录 `<source>_swt.tsv` 加载。
+- **`p18` 私有族**：`p18_p` → 角色自带 `18y` 的 `_lop`；`p18_s` → `18y` 的 `_swt` 进入；
+  `p18_a` → `18y` 的 `_act` 一次性后再落 `_lop`；`p18_e01..08`（`priv_etc`）依赖
+  `chr_anim_com_umset_<set>_<chr>`，只有 `101kot`/`102mis` 有，普通偶像回退到 `18y_lop` 并记日志。
 - `PlayGesture(yes/no)`：优先当前姿势的 `_yes`/`_noo`，播完回该姿势 `_lop`（对应 `_yes/_no → _loop`）；没有就退回角色自己的点头。
 - `ResetPose()`：有 `_end` 就先播 `_end` 再回 idle；否则直接回 idle。
 - 所有状态切换 **不做 cross-fade**（时长 0）；只有回到 idle 用 **0.1s** 平滑（游戏里同样的 0.1f 常量）。
@@ -170,9 +177,31 @@ for o in env.objects:
 - 剧情场景（带 `direct` 标记）：`~/mltd-work/out/story-extract/scenes.json`（`build_story_scenes.py` 已把 `actor_pose.arg6` 写成 `direct`）
 - 反汇编辅助：`/tmp/cs_annot.py`（capstone，解析 adrp+add 字面量与 `bl` 目标名）、`/tmp/ild_names.json`（258,679 条 RVA→方法名）
 
-## 5. 仍未确认的点（UNKNOWN）
+## 5. `_switch` / `priv_etc` 结案（2026-11-15）
+
+原先记在这两处的 UNKNOWN 已解：
+
+- **`_switch` 不是「条件触发」，而是四种复合姿势名的专用过渡动画。**
+  `CharacterActorCommu.create_pose_infos` @0x382EAC0 里硬编码调用
+  `CreateSwitch(from, to)`（@0x384CA14；调用点 0x382FBAC / 0x382FBE8 / 0x382FC1C / 0x382FC50）：
+  `a10→p11`、`a12→p13`、`a14→p15`、`a16→p17`，另有 `CreatePrivateSwitch("p18_s")` @0x382FC84。
+  `PoseInfo.is_switch()` @0x384CE7C 判 `switch_from(+0x48)/switch_to(+0x50)` 非空；
+  `override_pose_clip` @0x3829770 的 switch 分支（0x382A1C0 起）取 `switch_from.Substring(1)`
+  （去掉 `a`/`p`，`a16` → `"16"`）调 `set_clip_to_over_ctrl` @0x3830D5C，把控制器里的
+  `dmy_com_<pose>_switch` 占位覆盖成真实的 `com_<variant>_16a_swt`。
+  所以 933 个剧本里 `_swt` 用得很频繁——只是我们此前把 `a16_p17` 截成 `a16` 当普通姿势播了。
+  数据核对：`a16_p17` 257 次、`a10_p11` 241 次，另有 `a12_p13` / `a14_p15`。
+- **`priv_etc01..08` 属于特殊角色的 UniqueMotionSet。** `create_pose_infos` 的私有分支（0x382FD40 起）
+  先调 `GetPrivatePoseInfo` @0x389687C（masterdata）取 flags（bit0 action / bit8 pose / bit0x10 switch）
+  与 etc 数组，再 `CreatePrivateEtc` 循环用 `"priv_etc" + ToString(i + 1)` 生成 `priv_etc01..08`。
+  真实剪辑来自 `chr_anim_com_umset_<set>_<chr>.unity3d` / `chara_commu_umset_<set>_<chr>`
+  （`CreateBundleName` @0x384D40C、`CreateJsonName` @0x384D874）。资产清单里 `umset` 只有 13 个，
+  全部属于 `101kot` / `102mis`（set `lb01..lb07`、`mk01`、`test00`）；PlayCover 缓存里只有
+  `dmy_com_priv_etc01..08_*` 占位动画。普通偶像没有 umset，剧情也不会引用 `p18_e*`。
+
+## 6. 仍未确认的点（UNKNOWN）
 
 - `_start → _loop` 在代码里到底由 controller 的 `exitTime` 自动触发，还是由 `step_pose_execute` 里的
   `IsCurrentAnimationEnded` + `PlayAnimation` 驱动：两种路径都只能看到常量 0 的切换，画面效果一致，实现上按「剪辑播完即换」处理。
-- `_switch`（`swt`）的具体触发条件（推测用于同一姿势族内的坐/站或左右变体切换），剧情里未观测到使用。
-- `p18_*` 之外的私有姿势（`priv_etc01..08`）对应的资源命名规则，剧情里未出现。
+- `_switch` 播放结束后是否一定由 `check_pose_changing_loop` 切到目标 `_lop`（推断如此，画面已按此实现；
+  IDA 的 `step_pose_execute` 反编译产出后复核）。

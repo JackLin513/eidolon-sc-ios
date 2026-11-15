@@ -58,6 +58,13 @@ from build_mltd_3d_packages import NAMES  # noqa: E402  (character id -> Chinese
 
 VARIANTS = ("cut", "col", "pas", "sit")
 LOOP_ACTIONS = ("lop", "act")
+
+# The game hardcodes four switch poses in `CharacterActorCommu.create_pose_infos`
+# (`CreateSwitch("a10","p11")`, `("a12","p13")`, `("a14","p15")`, `("a16","p17")`);
+# `PoseInfo.switch_from/switch_to` mark them, and `override_pose_clip` builds the
+# clip name from `switch_from.Substring(1)` — so the `_swt` clip belongs to the
+# *source* pose (`a16` -> `com_cut_16a_swt`) and playback lands on the target's loop.
+SWITCH_POSES = {"a10_p11", "a12_p13", "a14_p15", "a16_p17"}
 GESTURE_ACTIONS = ("yes", "noo")
 
 # facialMenu index -> StandEmotion (the model3d manifest emotion map).
@@ -217,6 +224,18 @@ def build(args: argparse.Namespace) -> int:
     written: dict[str, str] = {}
     missing_loops = 0
 
+    def ship(clip: str, action: str) -> str | None:
+        """Write `com_<clip>_<action>.motion.json` as a 30 fps TSV once, return its name."""
+        name = f"{clip}_{action}"
+        if name in written:
+            return name
+        source = args.poses / f"com_{clip}_{action}.motion.json"
+        if not source.exists():
+            return None
+        write_flat(motions / f"{name}.tsv", source)
+        written[name] = f"motions/{name}.tsv"
+        return name
+
     for story_id in story_ids:
         scene = scenes.get(story_id)
         if scene is None:
@@ -243,10 +262,38 @@ def build(args: argparse.Namespace) -> int:
 
             poses: list[dict[str, object]] = []
             for event in line.get("poses", []):
-                clip = library.resolve(idol, event["pose"])
+                pose_name = str(event["pose"])
+                enter: str | None = None
+                if pose_name in SWITCH_POSES:
+                    # A switch pose is a transition, not a stance: the authored clip is
+                    # the source pose's `_swt`, and it lands on the target's `_lop`.
+                    source_name, target_name = pose_name.split("_")
+                    source_clip = library.resolve(idol, source_name)
+                    target_clip = library.resolve(idol, target_name)
+                    clip = target_clip or source_clip or base
+                    if source_clip and "swt" in library.actions(source_clip) and ship(source_clip, "swt"):
+                        enter = f"swt:{source_clip}"
+                    else:
+                        log(f"{story_id}: switch {pose_name} has no _swt for {source_clip}; using {clip}")
+                elif pose_name.startswith("p18_e"):
+                    # `p18_e01..08` are the private `priv_etc` slots. Their clips live in
+                    # the character-specific UniqueMotionSet (`chr_anim_com_umset_*`),
+                    # which only exists for the special 101kot/102mis actors.
+                    log(f"{story_id}: {pose_name} needs a umset bundle; standing in {base}")
+                    clip = base
+                elif pose_name.startswith("p18_s"):
+                    clip = base
+                    if base and "swt" in library.actions(base) and ship(base, "swt"):
+                        enter = f"swt:{base}"
+                elif pose_name.startswith("p18_a"):
+                    clip = base
+                    if base and "act" in library.actions(base) and ship(base, "act"):
+                        enter = "act"
+                else:
+                    clip = library.resolve(idol, pose_name)
                 if clip is None:
                     missing_loops += 1
-                    log(f"{story_id}: pose {event['pose']} unresolved; falling back to {base}")
+                    log(f"{story_id}: pose {pose_name} unresolved; falling back to {base}")
                     clip = base
                 if clip is None:
                     continue
@@ -257,52 +304,37 @@ def build(args: argparse.Namespace) -> int:
                     # shipped, and the player freezes it on the pose instead of looping
                     # the raise-and-drop.
                     loop_action = "act"
-                clip_file = f"{clip}_{loop_action}"
-                if clip not in written:
-                    source = args.poses / f"com_{clip}_{loop_action}.motion.json"
-                    if not source.exists():
-                        log(f"{story_id}: {source.name} missing; using {base}")
-                        clip = base or clip
-                        clip_file = f"{clip}_act"
-                        actions = library.actions(clip)
-                        source = args.poses / f"com_{clip}_act.motion.json"
-                    if source.exists():
-                        write_flat(motions / f"{clip_file}.tsv", source)
-                        written[clip_file] = f"motions/{clip_file}.tsv"
-                        # The game enters a pose through its `str` clip and loops it
-                        # with `lop`; shipping both lets the player cross-fade through
-                        # the authored transition instead of snapping between loops.
-                        if "str" in actions:
-                            intro_source = args.poses / f"com_{clip}_str.motion.json"
-                            intro_name = f"{clip}_str"
-                            if intro_source.exists() and intro_name not in written:
-                                write_flat(motions / f"{intro_name}.tsv", intro_source)
-                                written[intro_name] = f"motions/{intro_name}.tsv"
-                        # `_end` is the pose's authored exit: the animator plays it and
-                        # then falls back to the idle pose, which is what a story pose
-                        # change looks like in the game.
-                        if "end" in actions:
-                            end_source = args.poses / f"com_{clip}_end.motion.json"
-                            end_name = f"{clip}_end"
-                            if end_source.exists() and end_name not in written:
-                                write_flat(motions / f"{end_name}.tsv", end_source)
-                                written[end_name] = f"motions/{end_name}.tsv"
-                        for gesture in GESTURE_ACTIONS:
-                            if gesture in actions:
-                                gesture_source = args.poses / f"com_{clip}_{gesture}.motion.json"
-                                if gesture_source.exists():
-                                    name = f"{clip}_{gesture}"
-                                    if name not in written:
-                                        write_flat(motions / f"{name}.tsv", gesture_source)
-                                        written[name] = f"motions/{name}.tsv"
+                loop_name = ship(clip, loop_action)
+                if loop_name is None:
+                    log(f"{story_id}: {clip}_{loop_action} missing; using {base}")
+                    if base is None:
+                        continue
+                    clip = base
+                    actions = library.actions(clip)
+                    loop_action = next((action for action in LOOP_ACTIONS if action in actions), None) or "act"
+                    loop_name = ship(clip, loop_action)
+                    if loop_name is None:
+                        continue
+                # The game enters a pose through an authored clip and then loops it:
+                # `_start` (`str`) normally, `_switch` (`swt`) for switch poses and
+                # `_action` (`act`) for private actions. `_end` is the pose's authored
+                # exit; shipping it lets the player leave the pose the way the game does.
+                if enter is None and "str" in actions:
+                    ship(clip, "str")
+                if "end" in actions:
+                    ship(clip, "end")
+                for gesture in GESTURE_ACTIONS:
+                    if gesture in actions:
+                        ship(clip, gesture)
                 ms = round(event["start"] * 1000 / STORY_FPS)
                 poses.append({
                     "ms": ms,
-                    "clip": clip_file,
-                    "pose": event["pose"],
+                    "clip": loop_name,
+                    "pose": pose_name,
                     # ADV pose type: the game calls SetPose(name, loopDirect: true)
                     # and skips the `_start` clip for these (ADVPoseLogic.Execute).
                     "loopDirect": bool(event.get("direct")),
+                    "enter": enter,
                 })
 
             faces: list[dict[str, object]] = []

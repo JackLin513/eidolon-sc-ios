@@ -152,15 +152,20 @@ public sealed class EidolonStandHost : MonoBehaviour
         if (motion == null || string.IsNullOrEmpty(value)) return;
         // `"<path>|<0|1>"`: the flag is the ADV pose type (loopDirect) we recovered
         // from `ADVPoseLogic.Execute` (see the motion reverse-engineering note).
+        // `"<path>|<0|1>[|<str|swt|act>]"`: the flag is the ADV pose type
+        // (loopDirect) from `ADVPoseLogic.Execute`, the optional third field names the
+        // authored clip that walks into the pose (switch poses enter through `_swt`).
         var path = value;
         var loopDirect = false;
-        var bar = value.LastIndexOf('|');
-        if (bar >= 0)
+        string enter = null;
+        var parts = value.Split('|');
+        if (parts.Length >= 2)
         {
-            path = value.Substring(0, bar);
-            loopDirect = value.Substring(bar + 1).Trim() == "1";
+            path = parts[0];
+            loopDirect = parts[1].Trim() == "1";
         }
-        motion.PlayPose(path, loopDirect);
+        if (parts.Length >= 3 && parts[2].Trim().Length > 0) enter = parts[2].Trim();
+        motion.PlayPose(path, loopDirect, enter);
     }
 
     /// <summary>Return to the character's own idle loop once the story ends.</summary>

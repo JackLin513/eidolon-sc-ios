@@ -159,8 +159,21 @@ fixed   eyeOpenBuff[0], eyeCloseBuff[0] 每次眨眼后: (1.0,0.0) (1.0,0.0) …
 7. `EyeTrackingNative.cs`：新增 `forcedGaze`，在原生 `EyeUpdate` 算完并夹取 `eye_rx/eye_ry`
    之后用 `EyeDirLimRight/Left`、`EyeDirLimDown/Up` 插值覆盖，绕开「眼睛追相机」。
 
-自动眨眼（`BlinkClosed=0.125s`、3.2–6.0s 间隔，来自 `CharacterFace_RC`）保留为默认
-`CharacterEyeMode.Blink` 的行为；脚本 `close/open` 期间暂停，脚本 `blink` 恢复。
+自动眨眼保留为默认 `CharacterEyeMode.Blink` 的行为；脚本 `close/open` 期间暂停，脚本 `blink` 恢复。
+节奏按原版 `CharacterFace.EyesBlink`（IDA: **0x3884EC4**）重写，不再是自造数值：
+
+| 参数 | 原生（反汇编） | 我们 |
+| --- | --- | --- |
+| 间隔 | `nextblinktime = Random.Range(0f, 1f) + 4f` → **4.0–5.0 s** | `Random.Range(4f, 5f)` |
+| 闭眼 | 0.1 s（`t∈[0.1,0.2]`，`close=(0.2-t)/0.1`） | `SetEyeClose(true)`（原生过渡 0.1 s） |
+| 睁眼 | 0.1 s（`t∈[0,0.1]`，`close=t/0.1`） | 0.1 s 后 `SetEyeClose(false)` |
+| 总时长 | 0.2 s，无保持 | 0.2 s |
+
+`SetFaceBlink(val)` @0x3882734 的公式是 `(1-val)*eyeOpenBuff[i+8] + val*eyeCloseBuff[i+8]`，
+写权重槽 `i+14`（i=0..17）——与 `FaceCtrlNative` 的 BS 14..31 布局一致。
+`flapOpenTime=0.125 / flapCloseTime=0.225 / flapTransTime=0.07` 是 `talking` 时的**嘴部 flap**
+（无口型数据时的说话占位），不是眨眼；`CharacterFace_RC` 在 dump 里没有任何引用，疑似死代码，
+运行时的脸是基类 `CharacterFace`（`CharacterActorBase.face` @+0x200）。
 
 ## 6. 验证
 
@@ -205,7 +218,8 @@ fixed   eyeOpenBuff[0], eyeCloseBuff[0] 每次眨眼后: (1.0,0.0) (1.0,0.0) …
   `±30°`（水平）/`+10°/-10°`（垂直），但没有直接读到取这两个字段的指令；当前实现按该假设重建。
 * `_swt`（动画控制器的 `_switch` 状态）在 933 个剧本里没有被触发过，触发条件未解。
 * `priv_etc01..08` 私有姿势的资源和触发条件仍未对上（剧情里没出现）。
-* `CharacterEyeMode.Blink` 的自动眨眼时序由 `CharacterFace_RC` 驱动（我们自造的 0.125 s 闭眼 /
-  3.2–6.0 s 间隔只对齐了节奏，未逐字节还原）；`_swt`/`priv_etc` 同上。
+* 自动眨眼已按基类 `CharacterFace.EyesBlink` 的 4–5 s / 0.2 s（闭 0.1 + 睁 0.1）实现；
+  仍是「离散 `SetEyeClose` 两次调用」等价近似原生 `SetFaceBlink` 的连续闭眼曲线。
+* `_swt` 与 `priv_etc` 已在 `docs/research/mltd-motion-reverse-engineering-2026-11-15.md` §5 结案。
 * `SetEyeDirectionByRate` 里角度端点（`EyeTrackParam` 的 `±30°` / `+10°/-10°`）来自
   `EyeTrackingNative.EyeTrackParam` 常量，未直接从该函数取字段确认。
