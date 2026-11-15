@@ -86,7 +86,17 @@ public sealed class EidolonStandMotion : MonoBehaviour
     private bool pendingLoopDirect;
     private Clip pendingIntro;
 
-    private Clip blendFrom;     // clip we are blending away from (pose entry only)
+    /// The on-screen posture captured right before a state change. The game does the
+    /// same thing with Unity's `HumanPoseHandler` (`take_over_posture`): the new state
+    /// starts from wherever the body is, not from another clip's frame 0. Our rig is a
+    /// plain bone hierarchy, so the equivalent is a snapshot of the local transforms.
+    private sealed class PoseSnapshot
+    {
+        public readonly Dictionary<string, Quaternion> rotations = new Dictionary<string, Quaternion>();
+        public readonly Dictionary<string, Vector3> positions = new Dictionary<string, Vector3>();
+    }
+
+    private PoseSnapshot blendFrom;     // live posture we are blending away from
     private float blendTime;
     private float blendDuration;
 
@@ -132,8 +142,7 @@ public sealed class EidolonStandMotion : MonoBehaviour
         idlePath = path;
         idle = clip;
         if (phase != Phase.Idle) return;
-        blendFrom = current;
-        blendTime = 0f;
+        BeginBlend(PoseEntryBlend);
         StartClip(idle, true);
         ApplyCurrent();
         Debug.Log($"[stand] idle clip {Path.GetFileName(path)} frames={clip.frames}");
@@ -393,13 +402,22 @@ public sealed class EidolonStandMotion : MonoBehaviour
 
     private void BeginBlend(float duration)
     {
-        if (current == null || duration <= 0f)
+        if (duration <= 0f || bones.Count == 0)
         {
             blendFrom = null;
             blendTime = 0f;
             return;
         }
-        blendFrom = current;
+        // `take_over_posture`: sample what the rig looks like right now and start the
+        // new state from there.
+        var snapshot = new PoseSnapshot();
+        foreach (var pair in bones)
+        {
+            var transform = pair.Value.transform;
+            snapshot.rotations[pair.Key] = transform.localRotation;
+            snapshot.positions[pair.Key] = transform.localPosition;
+        }
+        blendFrom = snapshot;
         blendTime = 0f;
         blendDuration = duration;
     }
@@ -659,13 +677,11 @@ public sealed class EidolonStandMotion : MonoBehaviour
         if (current == null) return;
         var time = currentLoops && current.Length > 0.01f ? Mathf.Repeat(clock, current.Length) : Mathf.Min(clock, current.Length);
         var alpha = 1f;
-        var fromTime = 0f;
         if (blendFrom != null)
         {
             alpha = blendDuration > 0f
                 ? Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(blendTime / blendDuration))
                 : 1f;
-            fromTime = blendFrom.Length > 0.01f ? Mathf.Repeat(blendTime, blendFrom.Length) : 0f;
         }
         foreach (var pair in bones)
         {
@@ -674,8 +690,11 @@ public sealed class EidolonStandMotion : MonoBehaviour
             var hasPosition = SamplePosition(current, pair.Key, time, out var position);
             if (blendFrom != null)
             {
-                rotation = Quaternion.Slerp(SampleRotation(blendFrom, pair.Key, fromTime), rotation, alpha);
-                if (SamplePosition(blendFrom, pair.Key, fromTime, out var fromPosition))
+                if (blendFrom.rotations.TryGetValue(pair.Key, out var fromRotation))
+                {
+                    rotation = Quaternion.Slerp(fromRotation, rotation, alpha);
+                }
+                if (blendFrom.positions.TryGetValue(pair.Key, out var fromPosition))
                 {
                     position = hasPosition ? Vector3.Lerp(fromPosition, position, alpha) : fromPosition;
                     hasPosition = true;

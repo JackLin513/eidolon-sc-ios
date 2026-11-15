@@ -609,11 +609,15 @@ final class StoryPlayer: ObservableObject {
             renderer?.setLipEnvelope(fps: 30, values: [])
             renderer?.setSpeaking(false)
         }
-        // The game advances on the authored scenario window (`actor_text` frames at
-        // 60 fps), not on the audio length: a voice longer than its window is simply
-        // cut when the cut moves on.
-        lineDurationMs = max(line.scriptMs, 200)
+        // The scenario window (`actor_text` frames at 60 fps) is the minimum, but the
+        // game lets the line finish: a voice longer than its window keeps the line on
+        // screen until the recording ends (plus the short tail before the next cut).
+        let voicedMs = Int((audio?.duration ?? 0) * 1000)
+        lineDurationMs = max(max(line.scriptMs, voicedMs + 300), 200)
         Self.log.info("line \(line.key, privacy: .public) ms=\(self.lineDurationMs) voice=\(line.voice ?? "-", privacy: .public)")
+        #if DEBUG
+        print("[story] line \(lineIndex + 1) \(line.key) ms=\(lineDurationMs) script=\(line.scriptMs) voiceMs=\(voicedMs)")
+        #endif
         startedAt = Date()
         paused = false
         isPlaying = true
