@@ -264,3 +264,44 @@ if (`id` 以 a89/a90/a94/a95 结尾 || 姿势 number 不匹配) v39 = 0.0f;
 0.14°–0.33°，所以我们用 `Mathf.Repeat` 连续播放与原生「播完重头再来」等价。
 switch 播放结束后由 `step_pose_execute` 把 `current_pose` 置为目标并在下一次 update 播目标 `_lop`
 （IDA 已复核，见 §5.1）；`check_pose_changing_loop` 本身只做状态对齐，不负责选剪辑。
+
+### 6.1 混合时长（全部按原生对齐）
+
+`step_pose_execute` 在发出姿势请求时写 `PlayAnimationRequest`：`fade = loopDirect ? 0.0f : 0.1f`
+（state 以 `a89/a90/a94/a95` 结尾或姿势编号不匹配时为 0），`execute_entity` @0x382BE18 再用
+`PlayAnimation(req.state, req.fade_duration, req.start_time)` 播放。加上上面的 transition 表，
+原生只有**一个**非零混合：进入姿势状态（`_start`/`_switch`/`_action`）时 0.1 s（`loopDirect` 时为 0）。
+其余全部是零时长直切：`_start/_yes/_no/_switch → _loop`、`_end/_action → dmy_com_p01`、
+以及 `_loop` 的末尾重播。
+
+端上 `EidolonStandMotion` 已按此实现（2026-11-15）：
+`PoseEntryBlend = 0.1f` 只在 `EnterPose` 时启用（`loopDirect` 传 0），
+`_start → _loop`、`_end → idle` 都走 `BeginBlend(0f)` 直切，`_loop` 用 `Mathf.Repeat`。
+唯一保留的近似是 `yes/no` 手势覆盖层：原生是进入 `_yes` 状态（具体 fade 常量未逐条读出），
+端上用 0.2 s 上升/下降的部分混合叠加，视觉上等价。
+
+### 6.2 姿势切换必须等当前剪辑播完（2026-11-15 补，修「动作衔接闪现」）
+
+上一版端上实现在 `PlayPose` 里**立即**切到下一个姿势。按原生代码这是错的：
+所有 transition 都是 `m_HasExitTime=1`、`m_ExitTime=1.0`、`m_TransitionDuration=0`，
+而 `CharacterActorCommu.step_pose_execute` 只在 `IsCurrentAnimationEnded` 为真后才把
+`next_poses` 的队首变成 `current_pose` 并 `PlayAnimation(...)`——**没有任何路径在剪辑中途打断当前状态**。
+`SetPose` 的职责只是把请求压进 `next_poses`（`is_pose_changing` 期间若帧率低于 60 才直接丢弃）。
+
+也就是说：`_start`/`_switch`/`_action`/`_loop` 都要播到剪辑末尾，下一个姿势才接管；
+`_loop` 没有出边、靠 `LoopCurrentAnimation()` 末尾零时长重播，所以新请求最多等一个循环周期（`_lop` 46 帧 ≈ 1.53 s）。
+
+端上原来「立即切换」的后果：把正在播放的 `_str/_swt/_act/_lop` 在任意相位截断，
+再以 0.1 s 混到下一个姿势 → 画面上就是**动作衔接的闪现/抽搐**（用户 2026-11-15 反馈）。
+修正后（`EidolonStandMotion.cs`）：
+- `PlayPose` 在当前 `Looping/Entering/Acting` 期间只做 `pendingPose/pendingLoopDirect/pendingIntro` 入队，
+  打日志 `queued until <Phase> ends`，不切换；
+- `Update()` 在 `Phase.Looping when clock >= current.Length` 时应用队首请求（否则 `clock -= Length` 继续循环），
+  `Phase.Entering/Acting` 结束时同样先看队列；
+- 跨姿势不再插 `_end`（`_end` 只用于 `ResetPose` 回 idle，对应 controller 的 `_end → dmy_com_p01`）。
+
+验证（模拟器 `job_story_001har_4000`，28 次姿势请求、27 次入队）：
+日志每个 `[stand] pose ...` 之后要么紧接 `queued until ... ends`，要么是同姿势 `already showing`；
+没有一次「请求即切换」。对比录像里原先 81.5 s 处「双手垂下 → 合十」的单帧跳变，
+现在该处为 2–3 帧（≈0.25–0.5 s）连续过渡。证据：
+`~/mltd-work/out/3d-stand/story-exit-time-001har-4000.mp4`、`story-exit-time-contact.png`。

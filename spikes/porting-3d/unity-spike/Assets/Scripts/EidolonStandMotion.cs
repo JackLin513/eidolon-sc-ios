@@ -67,7 +67,11 @@ public sealed class EidolonStandMotion : MonoBehaviour
 
     private static readonly string[] PoseActions = { "lop", "act", "str", "end", "swt", "yes", "noo" };
 
-    private const float IdleBlendDuration = 0.1f;
+    // The game enters a pose state with `PlayAnimation(state, 0.1f)` (or 0 when the
+    // ADV pose is `loopDirect`); every other state change is a zero-duration
+    // transition baked into `AnimCtrl_Commu` (`m_TransitionDuration = 0`,
+    // `m_ExitTime = 1.0`). Nothing else cross-fades.
+    private const float PoseEntryBlend = 0.1f;
 
     private readonly Dictionary<string, Bone> bones = new Dictionary<string, Bone>();
     private Clip idle;          // the character's own idle loop (`motions/<idol>/act.tsv`)
@@ -81,8 +85,9 @@ public sealed class EidolonStandMotion : MonoBehaviour
     private bool pendingLoopDirect;
     private Clip pendingIntro;
 
-    private Clip blendFrom;     // 0.1 s blend when a pose returns to the idle loop
+    private Clip blendFrom;     // clip we are blending away from (pose entry only)
     private float blendTime;
+    private float blendDuration;
 
     private Clip gesture;
     private float gestureTime;
@@ -277,19 +282,27 @@ public sealed class EidolonStandMotion : MonoBehaviour
             Debug.Log($"[stand] pose {clip} already showing");
             return;
         }
+        if (pendingPose != null && pendingPose.stem == set.stem)
+        {
+            // `SetPose` skips a request whose pose is already the queued one.
+            Debug.Log($"[stand] pose {clip} already queued");
+            return;
+        }
         Debug.Log($"[stand] pose {clip} loop={(set.loop != null)} enter={(set.enter != null)} " +
                   $"switch={(set.transition != null)} end={(set.leave != null)} " +
                   $"action={(set.action != null)} loopDirect={loopDirect} enterKind={enter ?? "str"}");
-        if (pose != null && pose.leave != null && (phase == Phase.Looping || phase == Phase.Entering))
+        // Every transition in `AnimCtrl_Commu` is hasExitTime=1 / exitTime=1.0 /
+        // duration=0, and `step_pose_execute` only starts the queued pose once the
+        // running state ended (`IsCurrentAnimationEnded`). The game therefore never
+        // cuts a clip mid-motion: a `SetPose` arriving during `_start`/`_loop`/
+        // `_action` waits for that clip to finish. Switching immediately is what made
+        // the transition snap instead of flowing.
+        if (pose != null && (phase == Phase.Looping || phase == Phase.Entering || phase == Phase.Acting))
         {
-            // The controller's `_end -> idle` transition is what the game uses when a
-            // pose goes away; queue the next pose behind the authored exit.
             pendingPose = set;
             pendingLoopDirect = loopDirect;
             pendingIntro = ResolveIntro(set, enter);
-            StartClip(pose.leave, false);
-            phase = Phase.Leaving;
-            ApplyCurrent();
+            Debug.Log($"[stand] pose {clip} queued until {phase} ends");
             return;
         }
         EnterPose(set, loopDirect, ResolveIntro(set, enter));
@@ -333,8 +346,23 @@ public sealed class EidolonStandMotion : MonoBehaviour
         EnterPose(set, loopDirect, null);
     }
 
+    private void BeginBlend(float duration)
+    {
+        if (current == null || duration <= 0f)
+        {
+            blendFrom = null;
+            blendTime = 0f;
+            return;
+        }
+        blendFrom = current;
+        blendTime = 0f;
+        blendDuration = duration;
+    }
+
     private void EnterPose(PoseSet set, bool loopDirect, Clip intro)
     {
+        // `PlayAnimation(state, loopDirect ? 0f : 0.1f)` in the game.
+        BeginBlend(loopDirect ? 0f : PoseEntryBlend);
         pose = set;
         pendingPose = null;
         pendingIntro = null;
@@ -362,8 +390,8 @@ public sealed class EidolonStandMotion : MonoBehaviour
         pose = null;
         pendingPose = null;
         gesture = null;
-        blendFrom = current;
-        blendTime = 0f;
+        // The controller's `_end -> dmy_com_p01` transition has duration 0.
+        BeginBlend(0f);
         StartClip(idle, true);
         phase = Phase.Idle;
         ApplyCurrent();
@@ -468,13 +496,29 @@ public sealed class EidolonStandMotion : MonoBehaviour
         if (blendFrom != null)
         {
             blendTime += Time.deltaTime;
-            if (blendTime >= IdleBlendDuration) blendFrom = null;
+            if (blendTime >= blendDuration) blendFrom = null;
         }
         switch (phase)
         {
+            case Phase.Looping when clock >= current.Length:
+                // exitTime=1.0: the queued pose takes over at the end of the loop
+                // cycle; with nothing queued the loop simply wraps (`LoopCurrentAnimation`
+                // restarts the same state), which our `Mathf.Repeat` sampling reproduces.
+                if (pendingPose != null) EnterPose(pendingPose, pendingLoopDirect, pendingIntro);
+                else clock -= current.Length;
+                break;
             case Phase.Entering when clock >= current.Length:
-                if (pose != null && pose.loop != null)
+                if (pendingPose != null)
                 {
+                    // The queued `SetPose` runs once the in-flight enter finished; the
+                    // game cross-fades straight into the next state, it never inserts
+                    // the leaving pose's `_end` clip between two poses.
+                    EnterPose(pendingPose, pendingLoopDirect, pendingIntro);
+                }
+                else if (pose != null && pose.loop != null)
+                {
+                    // `_start -> _loop` is a duration-0 controller transition.
+                    BeginBlend(0f);
                     StartClip(pose.loop, true);
                     phase = Phase.Looping;
                     Debug.Log("[stand] pose enter done -> loop");
@@ -538,7 +582,9 @@ public sealed class EidolonStandMotion : MonoBehaviour
         var fromTime = 0f;
         if (blendFrom != null)
         {
-            alpha = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(blendTime / IdleBlendDuration));
+            alpha = blendDuration > 0f
+                ? Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(blendTime / blendDuration))
+                : 1f;
             fromTime = blendFrom.Length > 0.01f ? Mathf.Repeat(blendTime, blendFrom.Length) : 0f;
         }
         foreach (var pair in bones)
