@@ -59,12 +59,14 @@ from build_mltd_3d_packages import NAMES  # noqa: E402  (character id -> Chinese
 VARIANTS = ("cut", "col", "pas", "sit")
 LOOP_ACTIONS = ("lop", "act")
 
-# The game hardcodes four switch poses in `CharacterActorCommu.create_pose_infos`
-# (`CreateSwitch("a10","p11")`, `("a12","p13")`, `("a14","p15")`, `("a16","p17")`);
-# `PoseInfo.switch_from/switch_to` mark them, and `override_pose_clip` builds the
-# clip name from `switch_from.Substring(1)` — so the `_swt` clip belongs to the
-# *source* pose (`a16` -> `com_cut_16a_swt`) and playback lands on the target's loop.
-SWITCH_POSES = {"a10_p11", "a12_p13", "a14_p15", "a16_p17"}
+# The game hardcodes five switch poses in `CharacterActorCommu.create_pose_infos`
+# (`CreateSwitch("a10","p11")`, `("a12","p13")`, `("a14","p15")`, `("a16","p17")`,
+# `("a21","p22")` — confirmed from the decompiled `CreateSwitch` call sites and the
+# literal table in script.json); `PoseInfo.switch_from/switch_to` mark them, and
+# `override_pose_clip` builds the clip name from the *source* pose, so the `_swt`
+# clip is `com_<variant>_<source>_swt` (`a16` -> `com_cut_16a_swt`) and playback
+# lands on the target pose's loop.
+SWITCH_POSES = {"a10_p11", "a12_p13", "a14_p15", "a16_p17", "a21_p22"}
 GESTURE_ACTIONS = ("yes", "noo")
 
 # facialMenu index -> StandEmotion (the model3d manifest emotion map).

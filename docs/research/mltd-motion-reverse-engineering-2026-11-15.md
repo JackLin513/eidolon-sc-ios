@@ -181,10 +181,14 @@ for o in env.objects:
 
 原先记在这两处的 UNKNOWN 已解：
 
-- **`_switch` 不是「条件触发」，而是四种复合姿势名的专用过渡动画。**
+- **`_switch` 不是「条件触发」，而是五种复合姿势名的专用过渡动画。**
   `CharacterActorCommu.create_pose_infos` @0x382EAC0 里硬编码调用
-  `CreateSwitch(from, to)`（@0x384CA14；调用点 0x382FBAC / 0x382FBE8 / 0x382FC1C / 0x382FC50）：
-  `a10→p11`、`a12→p13`、`a14→p15`、`a16→p17`，另有 `CreatePrivateSwitch("p18_s")` @0x382FC84。
+  `CreateSwitch(from, to)`（@0x384CA14；调用点 0x382FBAC / 0x382FBE8 / 0x382FC1C / 0x382FC50 / 0x382FC84）：
+  `a10→p11`、`a12→p13`、`a14→p15`、`a16→p17`、`a21→p22`（字面量 `0x98C0A18`/`0x98C0A40`/`0x98C0A50`/`0x98C0A60`/`0x98C0A80`），
+  另有 `CreatePrivateSwitch("p18_s")`。
+  后缀字面量（`script.json`）：`start`@0x98DE5D8 / `loop`@0x98D3A28 / `end`@0x98C7638 / `action`@0x98C0DD0 /
+  `yes`@0x98E3300 / `no`@0x98D6B28 / `switch`@0x98DF3D8 / `_swt`@0x98C07E0，与磁盘剪辑后缀
+  `_str/_lop/_end/_act/_yes/_noo/_swt` 一一对应。
   `PoseInfo.is_switch()` @0x384CE7C 判 `switch_from(+0x48)/switch_to(+0x50)` 非空；
   `override_pose_clip` @0x3829770 的 switch 分支（0x382A1C0 起）取 `switch_from.Substring(1)`
   （去掉 `a`/`p`，`a16` → `"16"`）调 `set_clip_to_over_ctrl` @0x3830D5C，把控制器里的
@@ -199,9 +203,35 @@ for o in env.objects:
   全部属于 `101kot` / `102mis`（set `lb01..lb07`、`mk01`、`test00`）；PlayCover 缓存里只有
   `dmy_com_priv_etc01..08_*` 占位动画。普通偶像没有 umset，剧情也不会引用 `p18_e*`。
 
+### 5.1 IDA 复核：switch 播完确实落到目标姿势
+
+`CharacterActorCommu.step_pose_execute`（Hex-Rays 反编译，@0x382D2AC）里请求状态被播出的那段
+（对应 `LABEL_149`）：
+
+```c
+v37 = PoseInfo__is_switch(v12, 0);        // 0x384CE7C
+v38 = v37 ? 80 /* switch_to @+0x50 */ : 16 /* id @+0x10 */;
+*(a1 + 424) = *(v12 + v38);               // current_pose := switch_to (e.g. "p17")
+v39 = (loopDirect != 0) ? 0.0f : 0.1f;    // 进入 loop 的混合时长
+if (`id` 以 a89/a90/a94/a95 结尾 || 姿势 number 不匹配) v39 = 0.0f;
+*(a1 + 488) = v13;  *(a1 + 496) = v39;    // pending state + fade
+*(a1 + 504) = loopDirect;  *(a1 + 432) = (loopDirect == 0);
+```
+
+也就是说：switch 播放期间 `current_pose` 已经是**目标姿势**，状态播完后下一次 `step_pose_execute`
+按目标姿势求 loop 状态名并以 **0.1 s** 混合过去；`check_pose_changing_loop` @0x382E084 只负责
+「等 animator 真正进入该 loop 状态」再 `SetAnimationState` 对齐。
+
+端到端验证：`cut_16a_swt` 末帧与 `cut_17a_lop` 首帧逐骨最大夹角 **0.00°**（全 56 骨），
+所以 0.1 s 混合在画面上等价于直接接上；我们实现的「播 `_swt` → 播目标 `_lop`」与原生一致。
+
+另一条独立证据：`CharacterFace_RC` 的 `.ctor`/`Action`/`blink_control` 在 1.3 亿字节 `__text`
+里**一次都没被调用**（capstone 全量扫描），说明这张脸走的是基类 `CharacterFace`，
+`EyesBlink`/`SetFaceBlink`/`nextblinktime`(+0xA8) 都在基类上 —— 与 §3 的眨眼结论一致。
+
 ## 6. 仍未确认的点（UNKNOWN）
 
 - `_start → _loop` 在代码里到底由 controller 的 `exitTime` 自动触发，还是由 `step_pose_execute` 里的
   `IsCurrentAnimationEnded` + `PlayAnimation` 驱动：两种路径都只能看到常量 0 的切换，画面效果一致，实现上按「剪辑播完即换」处理。
-- `_switch` 播放结束后是否一定由 `check_pose_changing_loop` 切到目标 `_lop`（推断如此，画面已按此实现；
-  IDA 的 `step_pose_execute` 反编译产出后复核）。
+- switch 播放结束后由 `step_pose_execute` 把 `current_pose` 置为目标并在下一次 update 播目标 `_lop`
+  （IDA 已复核，见 §5.1）；`check_pose_changing_loop` 本身只做状态对齐，不负责选剪辑。
