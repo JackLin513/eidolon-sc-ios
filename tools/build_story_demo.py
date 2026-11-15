@@ -251,11 +251,11 @@ def build(args: argparse.Namespace) -> int:
                 if clip is None:
                     continue
                 actions = library.actions(clip)
-                # The character's own 18-year set uses `act` as its standing idle;
-                # commu pose sets use `lop` for the pose loop.
-                order = ("act", "lop") if clip.endswith("_18y") else LOOP_ACTIONS
-                loop_action = next((action for action in order if action in actions), None)
+                loop_action = next((action for action in LOOP_ACTIONS if action in actions), None)
                 if loop_action is None:
+                    # No `lop`: the only clip is a one-shot `act` gesture. It is still
+                    # shipped, and the player freezes it on the pose instead of looping
+                    # the raise-and-drop.
                     loop_action = "act"
                 clip_file = f"{clip}_{loop_action}"
                 if clip not in written:

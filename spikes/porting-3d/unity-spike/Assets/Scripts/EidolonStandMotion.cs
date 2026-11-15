@@ -27,6 +27,14 @@ public sealed class EidolonStandMotion : MonoBehaviour
         public readonly Dictionary<string, Quaternion[]> rotations = new Dictionary<string, Quaternion[]>();
         public readonly Dictionary<string, Vector3[]> positions = new Dictionary<string, Vector3[]>();
         public float Length => frames > 1 ? (frames - 1f) / fps : 0f;
+        // Some pose clips ship only as `act`, and that clip is the game's one-shot
+        // gesture: it starts at the neutral stance, reaches the pose and returns to
+        // the neutral stance. Looping one of those makes the character raise and drop
+        // her arms over and over. Play the entry once, then hold the pose with only
+        // the small sway authored inside the pose's plateau.
+        public bool oneShot;
+        public float holdStart;
+        public float holdEnd;
     }
 
     private sealed class Bone
@@ -183,7 +191,85 @@ public sealed class EidolonStandMotion : MonoBehaviour
         foreach (var pair in positions)
             clip.positions[pair.Key] = pair.Value.ToArray();
         if (clip.frames <= 1) clip.frames = 2;
+        AnalyzeClip(clip, path);
         return clip;
+    }
+
+    /// Classify a clip as a loop or a one-shot gesture.
+    ///
+    /// A loop returns to where it started (``lop``); a pose-enter ``str`` ends on the
+    /// pose; an `act` clip that starts and ends on the same neutral stance with a large
+    /// excursion in between is a one-shot gesture. For those, playback stops on the
+    /// frame where the pose is most expressed.
+    private static void AnalyzeClip(Clip clip, string path)
+    {
+        // Only story pose `act` clips qualify. The character's own daily `act` is the
+        // idle loop (it wanders and returns), and `cut_*_lop` is explicitly the loop.
+        var normalized = (path ?? "").Replace('\\', '/');
+        if (!normalized.Contains("/stories/motions/") || !normalized.EndsWith("_act.tsv")) return;
+        if (clip.frames < 3 || clip.rotations.Count == 0) return;
+        var paths = new List<string>();
+        foreach (var pair in clip.rotations)
+            if (pair.Value.Length == clip.frames) paths.Add(pair.Key);
+        if (paths.Count == 0) return;
+        var start = new Quaternion[paths.Count];
+        var last = new Quaternion[paths.Count];
+        for (var i = 0; i < paths.Count; i++)
+        {
+            start[i] = clip.rotations[paths[i]][0];
+            last[i] = clip.rotations[paths[i]][clip.frames - 1];
+        }
+        var endsWhereItStarts = 0f;
+        for (var i = 0; i < paths.Count; i++) endsWhereItStarts += Quaternion.Angle(start[i], last[i]);
+        endsWhereItStarts /= paths.Count;
+        var peakIndex = 0;
+        var peakAngle = 0f;
+        for (var frame = 1; frame < clip.frames; frame++)
+        {
+            var angle = 0f;
+            for (var i = 0; i < paths.Count; i++) angle += Quaternion.Angle(start[i], clip.rotations[paths[i]][frame]);
+            angle /= paths.Count;
+            if (angle <= peakAngle) continue;
+            peakAngle = angle;
+            peakIndex = frame;
+        }
+        if (endsWhereItStarts > 2f || peakAngle < 5f) return;
+        // The plateau is where the clip has settled on the pose; looping only that span
+        // keeps the authored sway without repeating the raise/lower gesture.
+        var plateauStart = -1;
+        var plateauEnd = -1;
+        for (var frame = 0; frame < clip.frames; frame++)
+        {
+            var angle = 0f;
+            for (var i = 0; i < paths.Count; i++) angle += Quaternion.Angle(start[i], clip.rotations[paths[i]][frame]);
+            angle /= paths.Count;
+            if (angle < peakAngle * 0.9f) continue;
+            if (plateauStart < 0) plateauStart = frame;
+            plateauEnd = frame;
+        }
+        clip.oneShot = true;
+        if (plateauEnd - plateauStart >= 9)
+        {
+            clip.holdStart = plateauStart / (float)clip.fps;
+            clip.holdEnd = plateauEnd / (float)clip.fps;
+        }
+        else
+        {
+            clip.holdStart = clip.holdEnd = Mathf.Clamp((peakIndex - 1) / (float)clip.fps, 0f, clip.Length);
+        }
+        Debug.Log($"[stand] one-shot pose clip: enter then hold {clip.holdStart:F2}-{clip.holdEnd:F2}s (peak {peakAngle:F1}deg)");
+    }
+
+    /// Where to read a clip at wall-clock `time`: loops wrap, one-shot gestures play the
+    /// entry and then stay on their plateau.
+    private static float ClipTime(Clip clip, float time)
+    {
+        if (clip == null) return 0f;
+        if (!clip.oneShot) return clip.Length > 0.01f ? Mathf.Repeat(time, clip.Length) : 0f;
+        if (time <= clip.holdStart) return time;
+        var span = clip.holdEnd - clip.holdStart;
+        if (span <= 0.01f) return clip.holdStart;
+        return clip.holdStart + Mathf.Repeat(time - clip.holdStart, span);
     }
 
     /// Switch the loop to a story pose clip, cross-fading over 0.25 s.
@@ -195,6 +281,11 @@ public sealed class EidolonStandMotion : MonoBehaviour
     {
         if (string.IsNullOrEmpty(clip)) return;
         var path = StoryClipPath(clip);
+        if (path == poseClip)
+        {
+            Debug.Log($"[stand] pose {clip} already showing");
+            return;
+        }
         var loop = LoadClip(path);
         if (loop == null)
         {
@@ -202,6 +293,9 @@ public sealed class EidolonStandMotion : MonoBehaviour
             return;
         }
         var intro = LoadIntro(path);
+        // A one-shot `act` already contains the entry (neutral -> pose -> neutral), so
+        // chaining the `str` entry in front of it would play the movement twice.
+        if (loop.oneShot) intro = null;
         BeginPoseFade();
         gesture = null;
         idleTime = 0f;
@@ -367,7 +461,7 @@ public sealed class EidolonStandMotion : MonoBehaviour
 
     private void ApplyIdle(float time)
     {
-        var looped = idle.Length > 0.01f ? Mathf.Repeat(time, idle.Length) : 0f;
+        var looped = ClipTime(idle, time);
         if (poseFadeFrom != null)
         {
             poseFadeTime += Time.deltaTime;
@@ -376,7 +470,7 @@ public sealed class EidolonStandMotion : MonoBehaviour
         var alpha = poseFadeFrom == null
             ? 1f
             : Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(poseFadeTime / PoseFadeDuration));
-        var fromTime = poseFadeFrom != null && poseFadeFrom.Length > 0.01f ? Mathf.Repeat(poseFadeTime, poseFadeFrom.Length) : 0f;
+        var fromTime = poseFadeFrom != null ? ClipTime(poseFadeFrom, poseFadeTime) : 0f;
         foreach (var pair in bones)
         {
             var target = pair.Value.transform;
@@ -399,7 +493,7 @@ public sealed class EidolonStandMotion : MonoBehaviour
     private void ApplyGesture(float time)
     {
         var fade = Mathf.Clamp01(time / 0.2f) * Mathf.Clamp01((gesture.Length - time) / 0.2f);
-        var looped = idle.Length > 0.01f ? Mathf.Repeat(idleTime, idle.Length) : 0f;
+        var looped = ClipTime(idle, idleTime);
         foreach (var pair in bones)
         {
             var target = pair.Value.transform;
