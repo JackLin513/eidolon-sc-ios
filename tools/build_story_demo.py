@@ -53,6 +53,9 @@ def replace_macros(text: str) -> str:
     return text
 
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from build_mltd_3d_packages import NAMES  # noqa: E402  (character id -> Chinese name)
+
 VARIANTS = ("cut", "col", "pas", "sit")
 LOOP_ACTIONS = ("lop", "act")
 GESTURE_ACTIONS = ("yes", "noo")
@@ -109,9 +112,18 @@ class PoseLibrary:
         for file in poses_dir.glob("com_*_*.motion.json"):
             clip_name = file.name.removesuffix(".motion.json")
             match = re.match(r"com_(cut|col|pas|sit)_(\w+?)_(act|yes|noo|str|lop|end|swt)$", clip_name)
-            if not match:
-                continue
-            self._available.setdefault(f"{match.group(1)}_{match.group(2)}", set()).add(match.group(3))
+            if match:
+                clip = f"{match.group(1)}_{match.group(2)}"
+            else:
+                # Per-idol clips (`com_001har_18y_act`) are the character's own standing
+                # set. `p18_*` story poses resolve to this family: the commu pose
+                # masterdata has no `p18` column, and the game's own pose list
+                # (global-metadata) names `p18_a/p18_e…/p18_p/p18_s` as one family.
+                match = re.match(r"com_([0-9a-z]+)_(18[a-z])_(act|yes|noo|str|lop|end|swt)$", clip_name)
+                if not match:
+                    continue
+                clip = f"{match.group(1)}_{match.group(2)}"
+            self._available.setdefault(clip, set()).add(match.group(3))
         self._cache: dict[tuple[str, str], str | None] = {}
 
     def _candidates(self, idol: str, pose: str) -> list[str]:
@@ -143,6 +155,13 @@ class PoseLibrary:
         key = (idol, pose)
         if key in self._cache:
             return self._cache[key]
+        # `p18_*` is the character's own standing set, not a commu pose: the pose
+        # masterdata has no `p18` column, and the metadata pose list names it as
+        # `p18_a/p18_e/p18_p/p18_s` (one family, letter = body variant).
+        if pose.split("_")[0].startswith("p18"):
+            chosen = self.base_clip(idol)
+            self._cache[key] = chosen
+            return chosen
         candidates = self._candidates(idol, pose)
         chosen = candidates[0] if candidates else None
         self._cache[key] = chosen
@@ -153,8 +172,8 @@ class PoseLibrary:
 
     def base_clip(self, idol: str) -> str | None:
         """The per-idol idle used when a story pose has no loop clip in the cache."""
-        clip = f"com_{idol}_18y"
-        return f"{idol}_18y" if "act" in self.actions(clip) else None
+        clip = f"{idol}_18y"
+        return clip if "act" in self.actions(clip) else None
 
 
 def write_flat(dest: Path, packed_path: Path) -> None:
@@ -212,6 +231,8 @@ def build(args: argparse.Namespace) -> int:
         lines: list[dict[str, object]] = []
         for line in scene["lines"]:
             key = line["key"]
+            line_speaker = line.get("speaker") or ""
+            speaker_name = "制作人" if line_speaker == "p" else NAMES.get(line_speaker, line_speaker)
             voice_src = args.audio / story_id / f"{key}.m4a"
             voice_rel = None
             duration = 0.0
@@ -230,7 +251,10 @@ def build(args: argparse.Namespace) -> int:
                 if clip is None:
                     continue
                 actions = library.actions(clip)
-                loop_action = next((action for action in LOOP_ACTIONS if action in actions), None)
+                # The character's own 18-year set uses `act` as its standing idle;
+                # commu pose sets use `lop` for the pose loop.
+                order = ("act", "lop") if clip.endswith("_18y") else LOOP_ACTIONS
+                loop_action = next((action for action in order if action in actions), None)
                 if loop_action is None:
                     loop_action = "act"
                 clip_file = f"{clip}_{loop_action}"
@@ -293,6 +317,7 @@ def build(args: argparse.Namespace) -> int:
                 {
                     "cut": line["cut"],
                     "speaker": line["speaker"],
+                    "speakerName": speaker_name,
                     "key": key,
                     "ja": replace_macros(line["ja"]),
                     "startFrame": line["start"],

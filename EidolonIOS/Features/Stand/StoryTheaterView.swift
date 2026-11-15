@@ -139,7 +139,7 @@ private struct StoryPanel: View {
                     .font(.caption2.monospaced())
                     .foregroundStyle(.white.opacity(0.55))
             }
-            Text(player.speaker == "p" ? "制作人" : player.speaker)
+            Text(player.speakerLabel)
                 .font(.caption2)
                 .foregroundStyle(.cyan.opacity(0.85))
             Text(player.subtitle)
@@ -204,6 +204,7 @@ struct Story: Decodable {
     struct Line: Decodable {
         let cut: String
         let speaker: String
+        let speakerName: String?
         let key: String
         let ja: String
         let startFrame: Int
@@ -252,6 +253,15 @@ final class StoryPlayer: ObservableObject {
 
     @Published private(set) var subtitle = ""
     @Published private(set) var speaker = ""
+
+    /// Display label for the current line: the pack ships the Chinese character name,
+    /// and the script's `p` speaker is the producer.
+    var speakerLabel: String {
+        if speaker == "p" { return "制作人" }
+        return story.lines.indices.contains(lineIndex)
+            ? (story.lines[lineIndex].speakerName ?? speaker)
+            : speaker
+    }
     @Published private(set) var progress = ""
     @Published private(set) var isPlaying = false
 
@@ -268,16 +278,25 @@ final class StoryPlayer: ObservableObject {
     }
 
     func stop() {
+        stop(keepPose: false)
+    }
+
+    /// `keepPose` is for 重播: the story's standing pose must survive the reset,
+    /// otherwise the character falls back to her own daily `act` loop and the
+    /// restart looks like she started doing her personal idle instead of the scene.
+    func stop(keepPose: Bool) {
         ticker?.invalidate()
         ticker = nil
         audio?.stop()
         audio = nil
         isPlaying = false
-        renderer?.resetPose()
+        renderer?.setLipEnvelope(fps: 30, values: [])
+        renderer?.setSpeaking(false)
+        if !keepPose { renderer?.resetPose() }
     }
 
     func restart() {
-        stop()
+        stop(keepPose: true)
         start()
     }
 
@@ -336,18 +355,22 @@ final class StoryPlayer: ObservableObject {
         faceCursor = 0
         gestureCursor = 0
         cheekCursor = 0
-        // Only the mouth starts; the face keeps whatever the previous lines left,
-        // because the script's own `actor_facial` events own the expression.
-        renderer?.setSpeaking(true)
-        // The authored `fhout` envelope makes the mouth follow this line's voice
-        // instead of the placeholder vowel cycle.
-        renderer?.setLipEnvelope(fps: line.lipFps ?? 30, values: line.lip ?? [])
-
+        // Only lines with an authored voice move the mouth. The producer / narration
+        // lines (`speaker == "p"`) have no recording, and the game keeps the character
+        // still while they are on screen — talking along with them is what made the
+        // stand look like it was lip-syncing to nothing.
         if let voice = line.voice {
+            renderer?.setSpeaking(true)
+            // The authored `fhout` envelope makes the mouth follow this line's voice
+            // instead of the placeholder vowel cycle.
+            renderer?.setLipEnvelope(fps: line.lipFps ?? 30, values: line.lip ?? [])
             let url = root.appendingPathComponent(voice)
             audio = try? AVAudioPlayer(contentsOf: url)
             audio?.prepareToPlay()
             audio?.play()
+        } else {
+            renderer?.setLipEnvelope(fps: 30, values: [])
+            renderer?.setSpeaking(false)
         }
         let spoken = audio?.duration ?? 0
         lineDurationMs = max(max(line.voiceMs, line.scriptMs), Int(spoken * 1000)) + 350
@@ -453,6 +476,14 @@ final class StoryPlayer: ObservableObject {
         subtitle = "— 完 —\n\(story.situation)"
         speaker = story.character
         Self.log.info("story finished: \(self.story.id, privacy: .public)")
+        // Debug hook: prove 重播 keeps the scene's standing pose instead of falling
+        // back to the character's own daily action loop.
+        if ProcessInfo.processInfo.environment["EIDOLON_STORY_AUTORESTART"] != nil {
+            Self.log.info("auto restart in 2.5s")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+                self?.restart()
+            }
+        }
     }
 }
 #endif

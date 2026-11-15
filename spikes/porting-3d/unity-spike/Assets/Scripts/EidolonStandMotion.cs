@@ -46,13 +46,13 @@ public sealed class EidolonStandMotion : MonoBehaviour
     // blending out of the previous clip instead of switching hard.
     private Clip poseFadeFrom;
     private float poseFadeTime;
-    private const float PoseFadeDuration = 0.45f;
-    // The authored `str` clip is the game's own entry into a pose; when the story pack
-    // ships it, play it once before the loop instead of cross-fading two loops.
-    private const float PoseIntroBlend = 0.18f;
+    private const float PoseFadeDuration = 0.25f;
+    // The authored `str` clip is the game's own entry into a pose (`str` = start,
+    // `lop` = loop, `end` = leave). When the story pack ships it, the entry clip
+    // plays first and the loop takes over when it ends; blending two loops while
+    // an entry clip is overlaid made the arms end up in neither pose.
+    private Clip poseNextLoop;
     private string poseClip;
-    private Clip poseIntro;
-    private float poseIntroTime;
 
     public int BoneCount => bones.Count;
     public int IdleFrames => idle != null ? idle.frames : 0;
@@ -195,20 +195,30 @@ public sealed class EidolonStandMotion : MonoBehaviour
     {
         if (string.IsNullOrEmpty(clip)) return;
         var path = StoryClipPath(clip);
-        var clip_ = LoadClip(path);
-        if (clip_ == null)
+        var loop = LoadClip(path);
+        if (loop == null)
         {
             Debug.Log($"[stand] pose {clip} not available");
             return;
         }
+        var intro = LoadIntro(path);
         BeginPoseFade();
-        idle = clip_;
+        gesture = null;
         idleTime = 0f;
         poseClip = path;
-        gesture = null;
-        poseIntro = LoadIntro(path);
-        poseIntroTime = 0f;
-        Debug.Log($"[stand] pose {clip} frames={clip_.frames} intro={(poseIntro != null)}");
+        if (intro != null)
+        {
+            // Play the game's own entry clip first; `Update` swaps in the loop when
+            // it finishes (the extracted `str` ends on the loop's first pose).
+            idle = intro;
+            poseNextLoop = loop;
+        }
+        else
+        {
+            idle = loop;
+            poseNextLoop = null;
+        }
+        Debug.Log($"[stand] pose {clip} frames={loop.frames} intro={(intro != null)}");
     }
 
     /// Return to the character's own idle loop after a story ends.
@@ -222,7 +232,7 @@ public sealed class EidolonStandMotion : MonoBehaviour
         idleTime = 0f;
         poseClip = null;
         gesture = null;
-        poseIntro = null;
+        poseNextLoop = null;
         Debug.Log("[stand] pose reset");
     }
 
@@ -315,10 +325,14 @@ public sealed class EidolonStandMotion : MonoBehaviour
     {
         if (idle == null || bones.Count == 0) return;
         idleTime += Time.deltaTime;
-        if (poseIntro != null)
+        // The entry clip handed over to the pose loop; blend from its last frame.
+        if (poseNextLoop != null && idleTime >= idle.Length)
         {
-            poseIntroTime += Time.deltaTime;
-            if (poseIntroTime >= poseIntro.Length) poseIntro = null;
+            BeginPoseFade();
+            idle = poseNextLoop;
+            poseNextLoop = null;
+            idleTime = 0f;
+            Debug.Log("[stand] pose enter done -> loop");
         }
         ApplyIdle(idleTime);
         if (gesture == null) return;
@@ -375,21 +389,6 @@ public sealed class EidolonStandMotion : MonoBehaviour
                 {
                     position = hasPosition ? Vector3.Lerp(fromPosition, position, alpha) : fromPosition;
                     hasPosition = true;
-                }
-            }
-            if (poseIntro != null)
-            {
-                var weight = Mathf.Min(
-                    Mathf.Clamp01(poseIntroTime / PoseIntroBlend),
-                    Mathf.Clamp01((poseIntro.Length - poseIntroTime) / PoseIntroBlend));
-                if (weight > 0f)
-                {
-                    rotation = Quaternion.Slerp(rotation, SampleRotation(poseIntro, pair.Key, poseIntroTime), weight);
-                    if (SamplePosition(poseIntro, pair.Key, poseIntroTime, out var introPosition))
-                    {
-                        position = hasPosition ? Vector3.Lerp(position, introPosition, weight) : introPosition;
-                        hasPosition = true;
-                    }
                 }
             }
             target.localRotation = rotation;
