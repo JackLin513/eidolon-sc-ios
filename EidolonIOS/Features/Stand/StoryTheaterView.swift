@@ -151,6 +151,11 @@ private struct StoryPanel: View {
                 .font(.body)
                 .foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
+            #if DEBUG
+            Text(player.debugHUD)
+                .font(.caption2.monospaced())
+                .foregroundStyle(.yellow.opacity(0.8))
+            #endif
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -292,6 +297,15 @@ final class StoryPlayer: ObservableObject {
     }
     @Published private(set) var progress = ""
     @Published private(set) var isPlaying = false
+    #if DEBUG
+    @Published private(set) var debugPose = "-"
+    @Published private(set) var debugGesture = "-"
+    @Published private(set) var debugFace = "-"
+
+    var debugHUD: String {
+        "L\(lineIndex + 1) pose=\(debugPose) g=\(debugGesture) face=\(debugFace)"
+    }
+    #endif
 
     init(story: Story, root: URL, renderer: any CharacterRenderer) {
         self.story = story
@@ -454,6 +468,9 @@ final class StoryPlayer: ObservableObject {
             let path = root.appendingPathComponent("motions/\(pose.clip).tsv").path
             renderer?.playPose(atPath: path, loopDirect: pose.loopDirect ?? false, enter: pose.enter)
             Self.log.info("pose \(pose.pose, privacy: .public) -> \(pose.clip, privacy: .public) @\(pose.ms)ms direct=\(pose.loopDirect ?? false, privacy: .public) enter=\(pose.enter ?? "str", privacy: .public)")
+            #if DEBUG
+            debugPose = "\(pose.clip)@\(elapsedMs)"
+            #endif
             poseCursor += 1
         }
         while faceCursor < line.faces.count, line.faces[faceCursor].ms <= elapsedMs {
@@ -463,12 +480,18 @@ final class StoryPlayer: ObservableObject {
             } else if let raw = face.emotion {
                 present(emotion: StandEmotion(rawValue: raw) ?? .calm, speaking: true)
             }
+            #if DEBUG
+            debugFace = "\(face.menu.map(String.init) ?? face.emotion ?? "-")@\(elapsedMs)"
+            #endif
             faceCursor += 1
         }
         while gestureCursor < line.gestures.count, line.gestures[gestureCursor].ms <= elapsedMs {
             let gesture = line.gestures[gestureCursor]
             renderer?.setNod(yes: gesture.kind == "yes")
             Self.log.info("gesture \(gesture.kind, privacy: .public) @\(gesture.ms)ms")
+            #if DEBUG
+            debugGesture = "\(gesture.kind)@\(elapsedMs)"
+            #endif
             gestureCursor += 1
         }
         while cheekCursor < line.cheeks.count, line.cheeks[cheekCursor].ms <= elapsedMs {

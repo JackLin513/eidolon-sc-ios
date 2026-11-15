@@ -290,7 +290,33 @@ public sealed class EidolonStandMotion : MonoBehaviour
         Debug.Log($"[stand] pose {clip} loop={(set.loop != null)} enter={(set.enter != null)} " +
                   $"switch={(set.transition != null)} end={(set.leave != null)} " +
                   $"action={(set.action != null)} loopDirect={loopDirect} enterKind={enter ?? "str"}");
-        // Every transition in `AnimCtrl_Commu` is hasExitTime=1 / exitTime=1.0 /
+        // Returning to the idle pose (`p01`) is the one transition the game drives
+        // through the leaving clip: `step_pose_execute` builds `Concat(current_pose,
+        // ".end")` when the request targets `p01` while another pose is showing, and
+        // `AnimCtrl_Commu` then runs `<pose>_end -> dmy_com_p01` (exitTime 1, duration 0).
+        // Playing the `_end` clip is what keeps the arms from snapping to the sides at
+        // the start of every line.
+        if (IsIdleTarget(set) && pose != null && pose.stem != set.stem &&
+            (phase == Phase.Looping || phase == Phase.Entering || phase == Phase.YesNo))
+        {
+            Debug.Log($"[stand] pose {clip} -> leave via {pose.stem} end={(pose.leave != null)}");
+            // The queued pose is the request that arrived just before the cut changed;
+            // the game returns to `p01` through `<pose>_end` and the cut's own first
+            // pose (usually `p01` again) starts from there.
+            pendingPose = null;
+            pendingIntro = null;
+            BeginBlend(0f);
+            if (pose.leave != null)
+            {
+                StartClip(pose.leave, false);
+                phase = Phase.Leaving;
+                ApplyCurrent();
+                return;
+            }
+            GoIdle();
+            return;
+        }
+        // Every other transition in `AnimCtrl_Commu` is hasExitTime=1 / exitTime=1.0 /
         // duration=0, and `step_pose_execute` only starts the queued pose once the
         // running state ended (`IsCurrentAnimationEnded`). The game therefore never
         // cuts a clip mid-motion: a `SetPose` arriving during `_start`/`_loop`/
@@ -306,6 +332,26 @@ public sealed class EidolonStandMotion : MonoBehaviour
         }
         EnterPose(set, loopDirect, ResolveIntro(set, enter));
     }
+
+    /// True when the pose's loop clip is the neutral standing pose the story shows
+    /// between actions (`cut_01z_lop`, the `p01` pose).
+    private bool IsIdleTarget(PoseSet set)
+    {
+        if (set?.stem == null) return false;
+        if (string.IsNullOrEmpty(idlePath)) return false;
+        // `PoseSet.stem` has the action suffix stripped (`.../cut_01z`), so compare the
+        // idle clip's name without its own suffix.
+        var idleName = Path.GetFileNameWithoutExtension(idlePath);
+        foreach (var suffix in IdleSuffixes)
+        {
+            if (!idleName.EndsWith(suffix, System.StringComparison.Ordinal)) continue;
+            idleName = idleName.Substring(0, idleName.Length - suffix.Length);
+            break;
+        }
+        return Path.GetFileName(set.stem) == idleName;
+    }
+
+    private static readonly string[] IdleSuffixes = { "_lop", "_act", "_swt", "_str", "_end" };
 
     /// Return to the character's own idle loop after a story ends.
     public void ResetPose()
