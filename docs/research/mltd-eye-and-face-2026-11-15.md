@@ -177,17 +177,27 @@ fixed   eyeOpenBuff[0], eyeCloseBuff[0] 每次眨眼后: (1.0,0.0) (1.0,0.0) …
   `story-eyes-blink-contact.png`（3 s 间隔、40 帧眼部特写，待机段全部睁开，
   半闭只出现在 0.1 s 过渡或 `微笑み`/`困り笑い` 这类本身就垂眼的行里）。
 
-## 7. 052tmg 没有动作的原因（顺带结案）
+## 7. 052 是正常角色；`052tmg` 是 052kao 的遗留副本（顺带结案）
 
-`~/mltd-work/asset-manifest/manifest.msgpack`（171,033 条）按角色统计：`052tmg` 只有
-**1** 条资产 `cb_pr001_052tmg.unity3d`（卡面 body），没有 `ch_*`（头/脸）、没有
-`chr_anim_com_*`、没有 `com_*` 姿势剪辑；`motion-daily-merged/index.json`、`chara_commu_pose_set.json`、
-PlayCover 缓存索引里也都查不到它（`051tmg {ch:141, cb:44, chr_anim:6}` 是对照组）。
+先纠正一个曾经的误判：**052 号偶像是 `052kao`（桜守歌織），资源完整**——manifest 里
+`ch_pr001_052kao` / `cb_pr001_052kao` / `ch_ss003_052kao` / `cb_ss003_052kao` 齐全，
+`chr_anim` 6 个 bundle，模型包里 7 个日常动作 + 11 个文件，模拟器里用
+`EIDOLON_3D_PREVIEW=1 EIDOLON_3D_IDOL=052kao` 能正常加载（`[stand] loaded 052kao/pr001 bones=56`）。
 
-结论：**这是只有卡面资源的角色，原游戏里没有它的立绘动作可提**。`tools/build_mltd_3d_packages.py`
-现在会丢弃没有任何 `ch_*.unity3d` 的角色，并打印
-`dropped card-only characters: 052tmg`；重建后 `build/eidolon-model3d-mltd.eidolonpkg`
-从 57 → **56** 个角色（613 个文件，manifest 的 `files` 全部存在）。
+真正没有资源的是 `052tmg`，而它**不是角色**：
+
+* 游戏二进制 `CharacterID` 枚举（`/tmp/ild/dump.cs`，TypeDefIndex 9830）只有
+  `C051tmg = 54`、`C052kao = 55`，**没有 `C052tmg`**；名单里 56 个 id 全部能在枚举里对上，
+  只有 `052tmg` 对不上。
+* manifest（171,033 条）里 `052tmg` 只命中 **1** 条 `cb_pr001_052tmg.unity3d`（449,784 B），
+  没有 `ch_*`、没有 `chr_anim_com_*`、没有 `com_*` 姿势；PlayCover 缓存索引里命中 0。
+* 把 `cb_pr001_052tmg.unity3d` 与 `cb_pr001_052kao.unity3d`（449,777 B）用 UnityPy 拆开比较：
+  两者 Mesh 名同 (`body(SoftNormal前処理)`)、顶点数同（4,019）、通道布局同、**去掉名字前缀后的原始
+  Mesh 序列化字节完全相同**（sha1 `9955a61314…`）。→ 这是 052kao 常服 body 的遗留重命名副本。
+
+因此 `tools/build_mltd_3d_packages.py` 丢弃「没有任何 `ch_*.unity3d`」的 id 仍然正确，但理由要改成
+「不是可站立角色/遗留副本」：打印 `dropped card-only characters: 052tmg`，roster 57 → **56**
+（613 个文件，manifest 的 `files` 全部存在，56 个 id 全部是合法 `CharacterID`）。
 
 ## 8. 仍然 UNKNOWN
 

@@ -42,13 +42,14 @@ struct Model3DPreviewView: View {
         let manifestURL = bundleRoot.appendingPathComponent("manifest.json")
         let exists = FileManager.default.fileExists(atPath: manifestURL.path)
         let bytes = (try? Data(contentsOf: manifestURL))?.count ?? -1
-        guard let outfit = app.first3DOutfit(for: "001har") else {
-            status = "没有 001har 映射  characters=\(count) root=\(root) available=\(available) exists=\(exists) bytes=\(bytes)"
+        let idol = ProcessInfo.processInfo.environment["EIDOLON_3D_IDOL"] ?? "001har"
+        guard let outfit = app.first3DOutfit(for: idol) else {
+            status = "没有 \(idol) 映射  characters=\(count) root=\(root) available=\(available) exists=\(exists) bytes=\(bytes)"
             return
         }
         let assets = app.preparedAssets(RuntimeAssets(
             contentRoot: app.core.location.contentDirectory,
-            characterID: "001har",
+            characterID: idol,
             outfit: outfit,
             framing: .full
         ))
