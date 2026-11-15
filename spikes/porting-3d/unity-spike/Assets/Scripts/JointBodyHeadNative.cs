@@ -1,45 +1,44 @@
-// Native-faithful port of `Imas.BoneLib.JointBodyHead` (dump.cs TypeDefIndex 15271) plus
+// Native-faithful port of `Imas.BoneLib.JointBodyHead` (dump.cs TypeDefIndex 15607) plus
 // the assembly/switch skeleton it drives (ADR-0033 B5).
 //
-// Decompiled evidence (all in /tmp/ida-decomp/b5/, addresses = dump.cs RVAs):
-//   .ctor()                                  0x1C62EAC
-//   .ctor(int index)                         0x1C63198
-//   Initialize                               0x1C633CC
-//   Initialize_Post_1 (iterator)             0x1C63A48
-//   Initialize_Post_1.MoveNext               0x1C66DB0   (the real assembly order)
-//   Initialize_Post_2                        0x1C63AF8   (AtamaY / EyesY)
-//   AddPositionNode                          0x1C63F34
-//   SwayManagerAllON                         0x1C62D28
-//   skirt_GP_SwayManagerCtrl                 0x1C62DC0
-//   SwaySwitch                               0x1C64534
-//   MeasureSway                              0x1C645DC
-//   GetHeadModelTop                          0x1C646C0
-//   GetBodyModelTop                          0x1C646DC
-//   GetDropShadow                            0x1C646F8
-//   SetWingLimit                             0x1C64700
-//   SetOptionDisplay                         0x1C64820
-//   InitializeDisplay                        0x1C64920
-//   GetBoneRot                               0x1C64A6C
-//   SetBodyMeshs                             0x1C64C18
-//   SetHeadMeshs                             0x1C6516C
-//   ApplyModelSwitch                         0x1C64F94
-//   ApplyGlassesSwitch                       0x1C65524
-//   SetVisible                               0x1C642A0
-//   Reset                                    0x1C63B58
-//   GetInitRot                               0x1C627AC
-//   Set_updateWhenOffscreen                  0x1C640A8
+// Evidence: Hex-Rays bodies of the CURRENT shipped binary from /tmp/unk2-decomp/
+// (files `JointBodyHead__old_<oldRVA>__new_<newRVA>.c`, body = function at <newRVA>)
+// plus /tmp/decomp2/ (`JointBodyHead_<Method>.c`) for the methods outside that set.
+// Region delta old→new RVA = +0x5AC78; the comments below cite the CURRENT RVA.
+//   SetVisible                         0x1CBEF18  (old 0x1C642A0)
+//   MeasureSway                        0x1CBF254  (old 0x1C645DC)
+//   SetBodyMeshs                       0x1CBF890  (old 0x1C64C18)
+//   SetHeadMeshs                       0x1CBFDE4  (old 0x1C6516C)
+//   ApplyModelSwitch                   0x1CBFC0C  (old 0x1C64F94)
+//   ApplyGlassesSwitch                 0x1CC019C  (old 0x1C65524)
+//   Initialize_Post_1.MoveNext         0x1CC1A28  (old 0x1C66DB0 — the real assembly order)
+//   .ctor() 0x1CBDB24, .ctor(int) 0x1CBDE10, Initialize 0x1CBE044,
+//   Initialize_Post_1 0x1CBE6C0, Initialize_Post_2 0x1CBE770, AddPositionNode 0x1CBEBAC,
+//   Set_updateWhenOffscreen 0x1CBED20, SwaySwitch 0x1CBF1AC, GetHeadModelTop 0x1CBF338,
+//   GetBodyModelTop 0x1CBF354, GetDropShadow 0x1CBF370, SetWingLimit 0x1CBF378,
+//   SetOptionDisplay 0x1CBF498, InitializeDisplay 0x1CBF598, GetBoneRot 0x1CBF6E4,
+//   SwayManagerAllON 0x1CBD9A0, skirt_GP_SwayManagerCtrl 0x1CBDA38, Reset 0x1CBE7D0,
+//   GetInitRot 0x1CBD424, serchChild 0x1CC0614, serchChildRrecursive 0x1CC06E4.
+//
+// String literals are IL2CPP metadata-usage slots and ARE statically resolvable: every
+// literal below was read from /tmp/ild/script.json `ScriptString`, keyed by the slot
+// address printed by Hex-Rays (e.g. qword_98E2DA8 → "wing"). No literal in this file is a
+// guess; the previous "IL2CPP literal slots cannot be resolved statically" note was wrong.
 //
 // OUT OF SCOPE (Live orchestration, listed so the gap stays explicit):
-//   InitializeAsync 0x1C63D3C (AssetBundleLoadResourceOperation / loading progress),
-//   Initialize_Post_1's bundle-wait states, MovePosition 0x1C628FC / RePosition 0x1C62C8C
-//   (stage placement / lift), Finalize/Dispose 0x1C630D8/0x1C6317C, boneDump 0x1C65C0C /
-//   weightDump 0x1C65D10 / bindPoseDump 0x1C663F0 (debug dumps), ApplyModelSwitch /
-//   ApplyGlassesSwitch's DanceIdolInfo flag source (see the UNKNOWN notes in place).
+//   InitializeAsync 0x1CBE9B4 (AssetBundleLoadResourceOperation / loading progress),
+//   Initialize_Post_1's bundle-wait states and its 5 ms `EarlyAdopter.stopWatch` yields
+//   (the spike has no async load, so Initialize runs the same steps without yielding),
+//   MovePosition 0x1CBD574 / RePosition 0x1CBD904 (stage placement / lift),
+//   Finalize/Dispose 0x1CBDD50/0x1CBDDF4, boneDump 0x1CC0884 / weightDump 0x1CC0988 /
+//   bindPoseDump 0x1CC1068 (debug dumps), and the Live-stage consumers of the created
+//   nodes (CharacterManager soul data, EyeTracking/FaceCtrl/DropShadow ownership is
+//   wired by B4; see the hooks below).
 //
 // ---------------------------------------------------------------------------
 // Sway runtime arrays — what actually lives on JointBodyHead
 // ---------------------------------------------------------------------------
-// dump.cs 15271 declares exactly ONE sway runtime array on this class:
+// dump.cs 15607 declares exactly ONE sway runtime array on this class:
 //     public float[] swayFollowRate;   // 0x128
 // plus `swayOn` 0x104 and `swayTransBack` 0x105.
 // `swayFollowSW`, `swayDamper` and `vecs1` are NOT JointBodyHead fields:
@@ -47,20 +46,16 @@
 //     IdolPositionMgr.swayDamper     (dump.cs 16396, 0x38)
 //     EventScenarioData.vecs1        (dump.cs ~536724, 0x138)
 // i.e. they are Live-stage data owned by the stage/formation manager, which is out of
-// scope here. SwayManagerNative already models them with the neutral defaults
-// (0 / false / 1 / zero) that the V01 solver falls back to when nothing is set, and
-// `FollowFall` is SwayBoneMT.FixedParams.fallFollow (from the `_sway` text), not a JBH
-// field either. This class therefore pushes only what the binary really has:
+// scope here. This class therefore pushes only what the binary really has:
 // `swayFollowRate`, `swayTransBack`, `swayOn`.
 //
-// swayFollowRate's own native default: Initialize_Post_1 allocates
-// `swayFollowRate = new float[N]` (all zeros) where N is the count of a *global*
-// manager list (sub_6653270/sub_6661FF0/sub_6661FD0 on the qword_96E1210 +
-// qword_9C9C2F0 statics). N and that list are UNKNOWN(native 0x1C66DB0 @start):
-// the array is zero-filled either way, and 0 means "fall through to the bone's own
-// followForce" in SwayBoneMT.SwayMove 0x1C6867C. A 5-entry zero array is therefore
-// value-equivalent to the native allocation for SwayCategory {Normal,Hair,Skirt,Opai,
-// SideHair}; the length itself stays documented as a gap.
+// swayFollowRate's native default (Post_1 @0x1CC1A28, resolved):
+//     int n = Enum.GetValues(typeof(SwayBone.swaycategory)).Length;
+//     swayFollowRate = new float[n];
+// i.e. N is the SwayCategory enum count (5 in this build: Normal/Hair/Skirt/Opai/
+// SideHair), NOT a global manager-list count. All entries are zero; a zero rate means
+// "fall through to the bone's own followForce" in SwayBoneMT.SwayMove, so the two
+// readings are value-equivalent, but the count is now pinned.
 
 using System;
 using System.Collections.Generic;
@@ -73,22 +68,28 @@ public sealed class JointBodyHeadNative : MonoBehaviour
     // SwayCategory count = SwayCategory { Normal, Hair, Skirt, Opai, SideHair } (B2).
     public const int SwayCategoryCount = 5;
 
-    // Native name constants. These are the *field names* of JointBodyHead; the native
-    // code passes string literals to `serchChild` / `Transform.Find`, and those
-    // literals are IL2CPP metadata-usage pointers that cannot be resolved statically
-    // (Mach-O chained fixups). UNKNOWN(native 0x1C66DB0 / 0x1C63F34 literal slots):
-    // used as the search names, overridable from the inspector / probe.
-    public const string NamePosition = "Position";
-    public const string NameModel00 = "Model00";
-    public const string NameBodyScale = "BodyScale";
-    public const string NameBase = "Base";
-    public const string NameAtama = "Atama";
-    public const string NameKubi = "Kubi";
-    public const string NameMune2 = "Mune2";
-    public const string NameRFinger = "RFinger";
-    public const string NameLFinger = "LFinger";
-    public const string NameEye = "Eye";
-    public const string NameSkirtGP = "skirt_GP";
+    // Native name constants — every value is a resolved ScriptString literal (slot address
+    // in the comment), not a guess. The previous note that IL2CPP metadata-usage literal
+    // slots are statically unresolvable was wrong; /tmp/ild/script.json resolves all of them.
+    public const string NamePosition = "POSITION";        // 0x98B0488 (AddPositionNode 0x1CBEBAC)
+    public const string NameModel00 = "MODEL_00";         // 0x98AC2D0
+    public const string NameBodyScale = "BODY_SCALE";     // 0x989B638 / 0x98AC2F0
+    public const string NameBase = "BASE";                // path segment of 0x98AC2F8
+    public const string NameAtama = "ATAMA";              // 0x9899D60
+    public const string NameKubi = "KUBI";                // 0x98AAEC8
+    public const string NameMune2 = "MUNE2";              // path segment of 0x98AC2E0
+    public const string NameRFinger =
+        "MODEL_00/BODY_SCALE/BASE/MUNE1/MUNE2/SAKOTSU_R/KATA_R/UDE_R/TE_R/HITO3_R/HITO2_R/HITO1_R"; // 0x98AC5A0
+    public const string NameLFinger =
+        "MODEL_00/BODY_SCALE/BASE/MUNE1/MUNE2/SAKOTSU_L/KATA_L/UDE_L/TE_L/HITO3_L/HITO2_L/HITO1_L"; // 0x98AC4A0
+    public const string NameEye = "Eye_obj";              // 0x98A4930
+    public const string NameSkirtGP = "skirt_GP";         // skirt_GP_SwayManagerCtrl (old 0x1C62DC0)
+    // Post_1 (0x1CC1A28) transform literals.
+    public const string NameBodyMesh = "obj_body_GP";     // 0x98D70E8
+    public const string NameHeadMesh = "obj_head_GP";     // 0x98D70F0
+    public const string NameKubiAtama = "KUBI/ATAMA";     // 0x98AAED0
+    public const string NameBodyKubiAtama = "MODEL_00/BASE/MUNE1/MUNE2/KUBI/ATAMA"; // 0x98AC2E0
+    public const string NameOldBoneSuffix = "___";        // 0x98BFEC0
 
     // =====================================================================
     // Fields (dump.cs offsets in comments)
@@ -229,7 +230,8 @@ public sealed class JointBodyHeadNative : MonoBehaviour
     ///   9 is_creation_succeeded = true
     /// </summary>
     public bool Initialize(GameObject bodyGo, GameObject headGo, string objName,
-        bool start_with_hide = false, bool is_bloom_enabled = true)
+        bool start_with_hide = false, bool is_bloom_enabled = true,
+        IDanceIdolInfoFlags info = null)
     {
         is_creation_succeeded = false;
         destroy_loadedResource_soon = false;
@@ -242,62 +244,182 @@ public sealed class JointBodyHeadNative : MonoBehaviour
         if (headGo == null) return false;
         head = headGo;
 
-        // Initialize_Post_1 0x1C66DB0: clear the option-display dictionary, allocate the
-        // per-category follow-rate array, then walk body -> head.
-        optionDisplayDict.Clear();
-        AllocateSwayFollowRate();
-        if (swayMT == null) swayMT = new SwayCtrlMTNative();
+        // Initialize_Post_1 0x1CC1A28 (old 0x1C66DB0). The native iterator yields for
+        // the 5 ms EarlyAdopter.stopWatch budget between head-bone grafts; the spike has
+        // no AssetBundle load, so every state runs synchronously in the same order.
+        if (!InitializePost1(objName, info, start_with_hide)) return false;
 
-        // body_mesh / head_mesh: native does body.transform.Find(<lit>) into 0xC0 and
-        // head.transform.Find(<lit>) into 0xB8.
-        bodyMesh = FindDeep(body.transform, NameModel00) ?? body.transform;
-        headMesh = FindDeep(head.transform, NameModel00) ?? head.transform;
+        AddPositionNode();          // 0x1CBEBAC (old 0x1C63F34)
+        InitializeDisplay();        // 0x1CBF598 (old 0x1C64920)
 
-        SetBodyMeshs(bodyMesh, null);
-        SetHeadMeshs(headMesh, null);
-
-        if (!start_with_hide) Set_updateWhenOffscreen(true);
-
-        // Reference nodes (native resolves each with serchChild/Find on the body model;
-        // the literals are UNKNOWN, see the name constants above).
-        Model00 = FindGo(body.transform, NameModel00);
-        BodyScale = FindGo(body.transform, NameBodyScale);
-        Base = FindGo(body.transform, NameBase);
-        Atama = FindGo(body.transform, NameAtama);
-        Kubi = FindGo(body.transform, NameKubi);
-        Mune2 = FindGo(body.transform, NameMune2);
-        RFinger = FindGo(body.transform, NameRFinger);
-        LFinger = FindGo(body.transform, NameLFinger);
-        Eye = FindGo(head.transform, NameEye);
-        kubiTrans = Kubi != null ? Kubi.transform : null;
-
-        // GetBoneRot 0x1C64A6C runs over the *body* model at the end of Post_1
-        // (`sub_1C64A6C(v8, v184)`); every child's localRotation is captured at bind.
-        bonesRot.Clear();
-        if (body.transform != null) GetBoneRot(body.transform);
-
-        AddPositionNode();
-        InitializeDisplay();
-
-        // 0x1C633CC tail: DropShadow.Initialize(shadow, ABShadow) — B4 owns DropShadow,
-        // so only the hook is called.
+        // 0x1CBE044 tail: DropShadow.Initialize(shadow, ABShadow) is B4-owned; the hook
+        // lets the binder run DropShadow.SetShadowMode 0x379A228 / EyeTracking.Init /
+        // FaceCtrl.Init in the native order.
         onAssembled?.Invoke(this);
 
-        Initialize_Post_2();
+        Initialize_Post_2();        // 0x1CBE770 (old 0x1C63AF8)
 
         is_creation_succeeded = true;
         return true;
     }
 
     /// <summary>
-    /// Initialize_Post_1 0x1C66DB0 head: `swayFollowRate = new float[count]` (all
-    /// zeros). See the file header for why the count is UNKNOWN and why a 5-entry zero
-    /// array is value-equivalent for the V01 solver.
+    /// JointBodyHead.Initialize_Post_1.MoveNext 0x1CC1A28 (old 0x1C66DB0), synchronous
+    /// flattening of the iterator (state 0 + the 5 ms resume). Native order:
+    ///   optionDisplayDict.Clear(); swayFollowRate = new float[SwayCategoryCount];
+    ///   bodyMesh = body.transform.Find("obj_body_GP"); headMesh = head.transform.Find("obj_head_GP");
+    ///   SetBodyMeshs(bodyMesh, info); SetHeadMeshs(headMesh, info);
+    ///   if (!start_with_hide) Set_updateWhenOffscreen(true);
+    ///   headbones = children of head.transform.Find("KUBI/ATAMA");
+    ///   per bone: rename body-side old bone to name+"___", head-side bone SetParent(body KUBI/ATAMA, false);
+    ///   headMesh.SetParent(body.transform, true); kubiTrans = serchChild(body, "KUBI");
+    ///   per head mesh: graft bones by name under kubiTrans, replace smr.bones/rootBone;
+    ///   destroy old body-side bones and the head root;
+    ///   create BODY_SCALE under MODEL_00/BASE and move MODEL_00's children under it;
+    ///   resolve KUBI/ATAMA/MUNE2/finger paths, create Eye_obj under MUNE2;
+    ///   clear/re-capture bonesRot; renderer shadow baseline.
+    /// Steps left to the hooks (Live-only data): CalcBone AddComponent (+0xF0), the
+    /// CharacterSoul blend-shape pass (`_sle`/`_gla`), EyeTracking/FaceCtrl creation and
+    /// dshadow = body.AddComponent&lt;DropShadow&gt;() (+0xF8).
+    /// </summary>
+    private bool InitializePost1(string objName, IDanceIdolInfoFlags info, bool start_with_hide)
+    {
+        optionDisplayDict.Clear();
+        AllocateSwayFollowRate();
+        if (swayMT == null) swayMT = new SwayCtrlMTNative();
+
+        // bodyMesh(+0xC0) = body.transform.Find("obj_body_GP");
+        // headMesh(+0xB8) = head.transform.Find("obj_head_GP"); (Transform.Find, not a deep search)
+        bodyMesh = body.transform.Find(NameBodyMesh);
+        if (bodyMesh == null) return false;                 // native returns false
+        headMesh = head.transform.Find(NameHeadMesh);
+        if (headMesh == null) return false;
+
+        SetBodyMeshs(bodyMesh, info);                       // 0x1CBF890
+        SetHeadMeshs(headMesh, info);                       // 0x1CBFDE4
+
+        if (!start_with_hide) Set_updateWhenOffscreen(true); // 0x1CBED20
+
+        // headbones: direct children of the head's KUBI/ATAMA node.
+        var atamaRoot = head.transform.Find(NameKubiAtama);
+        if (atamaRoot == null) return false;
+        headbones.Clear();
+        for (var i = 0; i < atamaRoot.childCount; i++) headbones.Add(atamaRoot.GetChild(i).name);
+
+        // Bone reparenting: the body-side old bone is renamed with the "___" suffix and
+        // the head-side bone is moved under the body-side KUBI/ATAMA (worldPositionStays = false).
+        var tBody = body.transform.Find(NameBodyKubiAtama);
+        if (tBody == null) return false;
+        for (var i = 0; i < headbones.Count; i++)
+        {
+            var boneName = headbones[i];
+            var old = body.transform.Find(NameBodyKubiAtama + "/" + boneName);
+            if (old != null) old.name = boneName + NameOldBoneSuffix;
+            var tHead = head.transform.Find(NameKubiAtama + "/" + boneName);
+            if (tHead == null) return false;
+            tHead.SetParent(tBody, false);
+        }
+
+        headMesh.SetParent(body.transform, true);           // worldPositionStays = true
+        kubiTrans = serchChild(body.transform, NameKubi);
+        if (kubiTrans == null) return false;
+
+        // Head-mesh bone grafting (the iterator yields here every 5 ms; flattened).
+        for (var i = 0; i < headmeshes.Count; i++)
+        {
+            var rf = headmeshes[i];
+            var graft = new List<Transform>();
+            var names = rf.bones;
+            if (names != null)
+            {
+                for (var k = 0; k < names.Count; k++)
+                {
+                    var t = serchChild(kubiTrans, names[k]);
+                    if (t != null) graft.Add(t);            // native passes the lookup result through
+                }
+            }
+            var smr = rf.obj != null ? rf.obj.GetComponent<SkinnedMeshRenderer>() : null;
+            if (smr != null)
+            {
+                smr.bones = graft.ToArray();
+                smr.rootBone = kubiTrans;
+            }
+        }
+
+        // Destroy the renamed old body-side bones, then the (now emptied) head root.
+        for (var i = 0; i < headbones.Count; i++)
+        {
+            var old = body.transform.Find(NameBodyKubiAtama + "/" + headbones[i] + NameOldBoneSuffix);
+            if (old != null) Destroy(old.gameObject);
+        }
+        if (head != null) Destroy(head);
+
+        // MODEL_00 children (captured before BODY_SCALE exists) move under a new BODY_SCALE
+        // node parented to MODEL_00/BASE.
+        Model00 = FindGo(body.transform, NameModel00);
+        if (Model00 == null) return false;
+        var modelTr = Model00.transform;
+        var kids = new Transform[modelTr.childCount];
+        for (var i = 0; i < kids.Length; i++) kids[i] = modelTr.GetChild(i);
+
+        Base = FindGo(body.transform, "MODEL_00/BASE");
+        if (Base == null) return false;
+
+        var bodyScaleGo = new GameObject(NameBodyScale);
+        BodyScale = bodyScaleGo;
+        bodyScaleGo.transform.localPosition = Vector3.zero;
+        bodyScaleGo.transform.SetParent(Base.transform, false);
+        for (var i = 0; i < kids.Length; i++)
+            if (kids[i] != null) kids[i].SetParent(bodyScaleGo.transform, false);
+
+        // Reference nodes after the BODY_SCALE insertion.
+        Kubi = FindGo(body.transform, "MODEL_00/BODY_SCALE/BASE/MUNE1/MUNE2/KUBI");
+        Atama = FindGo(body.transform, "MODEL_00/BODY_SCALE/BASE/MUNE1/MUNE2/KUBI/ATAMA");
+        Mune2 = FindGo(body.transform, "MODEL_00/BODY_SCALE/BASE/MUNE1/MUNE2");
+        RFinger = FindGo(body.transform, NameRFinger);
+        LFinger = FindGo(body.transform, NameLFinger);
+        if (Kubi == null || Atama == null || Mune2 == null) return false;
+
+        // Eye_obj: empty gaze anchor under MUNE2. Native scales it with the CharacterSoul
+        // body-scale value (soul.Value+0x24) times a Vector3 static (the default = one);
+        // the soul lookup needs CharacterManager (Live-only), so a seam supplies the
+        // factor and its neutral default is 1.0.
+        var eyeGo = new GameObject(NameEye);
+        Eye = eyeGo;
+        eyeGo.transform.localPosition = Vector3.zero;
+        eyeGo.transform.SetParent(Mune2.transform, false);
+        var eyeScale = eyeScaleProvider != null ? eyeScaleProvider(info) : 1f;
+        eyeGo.transform.localScale = new Vector3(eyeScale, eyeScale, eyeScale);
+
+        // 0x1CBF6E4: bonesRot is cleared and re-captured over the whole body.
+        bonesRot.Clear();
+        GetBoneRot(body.transform);
+
+        // Renderer baseline: receiveShadows = false, shadowCastingMode = Off,
+        // lightProbeUsage = Off over body.GetComponentsInChildren&lt;Renderer&gt;().
+        foreach (var r in body.GetComponentsInChildren<Renderer>(true))
+        {
+            if (r == null) continue;
+            r.receiveShadows = false;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Initialize_Post_1 0x1CC1A28 (old 0x1C66DB0) head, resolved:
+    ///   int n = Enum.GetValues(typeof(SwayBone.swaycategory)).Length;
+    ///   swayFollowRate(+0x128) = new float[n];   // zero-filled
+    /// The native sink is `sub_671BD44(swaycategory_var)` (Enum.GetValues) followed by
+    /// Array.get_Length, so the length is the SwayCategory enum count (5 in this build),
+    /// not a manager-list count.
     /// </summary>
     private void AllocateSwayFollowRate()
     {
-        if (swayFollowRate == null || swayFollowRate.Length != SwayCategoryCount)
-            swayFollowRate = new float[SwayCategoryCount];
+        var n = Enum.GetValues(typeof(SwayCategory)).Length;
+        if (swayFollowRate == null || swayFollowRate.Length != n)
+            swayFollowRate = new float[n];
         for (var i = 0; i < swayFollowRate.Length; i++) swayFollowRate[i] = 0f;
     }
 
@@ -321,14 +443,16 @@ public sealed class JointBodyHeadNative : MonoBehaviour
     }
 
     /// <summary>
-    /// JointBodyHead.AddPositionNode 0x1C63F34: find the `Position` node under the body
-    /// model; if it is missing create an empty GameObject with that name and parent it
-    /// to the body (worldPositionStays = true).
+    /// JointBodyHead.AddPositionNode 0x1CBEBAC (old 0x1C63F34), verbatim:
+    ///   var t = body.transform.Find("POSITION");            // Transform.Find, direct child
+    ///   if (t != null) Position(+0x20) = t.gameObject;
+    ///   else { var go = new GameObject(); go.name = "POSITION";
+    ///          go.transform.SetParent(body.transform, true); Position = go; }
     /// </summary>
     public void AddPositionNode()
     {
         if (body == null) return;
-        var found = FindDeep(body.transform, NamePosition);
+        var found = body.transform.Find(NamePosition);
         if (found != null)
         {
             Position = found.gameObject;
@@ -340,18 +464,21 @@ public sealed class JointBodyHeadNative : MonoBehaviour
     }
 
     /// <summary>
-    /// JointBodyHead.SetBodyMeshs 0x1C64C18: for every child of `top`:
-    ///   render = child.GetComponent&lt;SkinnedMeshRenderer&gt;();
-    ///   ApplyModelSwitch(render, info);
-    ///   if (child.gameObject.name == &lt;lit&gt;) SetOptionDisplay(render, info.flag == 0);
-    ///   if (render == null) continue;
-    ///   bm.obj = child.gameObject; bm.KUBI_index = bm.ATAMA_index = -1;
-    ///   for each shared material j: if (name == &lt;lit Kubi&gt;) bm.KUBI_index = j;
-    ///                               if (name == &lt;lit Atama&gt;) bm.ATAMA_index = j;
-    ///   bodymeshes.Add(bm);
-    /// The two material-name literals are UNKNOWN(native 0x1C64C18 slots
-    /// qword_97F3C08 / qword_97E2B40); they are exposed as fields so the probe can
-    /// report which material matched.
+    /// JointBodyHead.SetBodyMeshs 0x1CBF890 (old 0x1C64C18), fills bodymeshes (+0xA0):
+    ///   for i in 0..top.childCount-1:
+    ///     child = top.GetChild(i); render = child.GetComponent&lt;SkinnedMeshRenderer&gt;();
+    ///     ApplyModelSwitch(render, info);                               // 0x1CBFC0C
+    ///     if (child.name.Equals("wing"))                                // literal 0x98E2DA8
+    ///         SetOptionDisplay(render, assem_info(+0xE8).costume_number_changed(+0xD6) == 0);
+    ///     if (render == null) continue;                                 // op_Inequality
+    ///     bm = new BodyMeshRef { obj = child.gameObject, KUBI_index = -1, ATAMA_index = -1 };
+    ///     for k in render.bones: if (bones[k].name.Equals("KUBI"))  bm.KUBI_index  = k;
+    ///                            if (bones[k].name.Equals("ATAMA")) bm.ATAMA_index = k;
+    ///     bodymeshes.Add(bm);
+    /// The KUBI/ATAMA indices come from the renderer's BONE list, NOT from sharedMaterials
+    /// (the earlier port read material names; that was wrong). The native "wing" gate
+    /// dereferences info/assem_info without a null guard; with no info the port skips that
+    /// display write instead of throwing.
     /// </summary>
     public void SetBodyMeshs(Transform top, object info)
     {
@@ -363,34 +490,54 @@ public sealed class JointBodyHeadNative : MonoBehaviour
             var render = child.GetComponent<SkinnedMeshRenderer>();
             ApplyModelSwitch(render, info);
 
-            if (child.gameObject.name == kubiMeshName)
-                SetOptionDisplay(render, true);
+            if (string.Equals(child.name, "wing", StringComparison.Ordinal))
+            {
+                // UNKNOWN(native 0x1CBF890): native has no null guard on info/assem_info
+                // here (it NREs); the port skips the write when the flag source is absent.
+                var asm = info as IPartsAssembleInfoFlags;
+                if (asm != null) SetOptionDisplay(render, !asm.CostumeNumberChanged);
+            }
+
             if (render == null) continue;
 
             var bm = new BodyMeshRef { obj = child.gameObject, KUBI_index = -1, ATAMA_index = -1 };
-            var mats = render.sharedMaterials;
-            for (var j = 0; j < mats.Length; j++)
+            var bones = render.bones;
+            if (bones != null)
             {
-                var m = mats[j];
-                if (m == null) continue;
-                if (m.name == kubiMaterialName) bm.KUBI_index = j;
-                if (m.name == atamaMaterialName) bm.ATAMA_index = j;
+                for (var k = 0; k < bones.Length; k++)
+                {
+                    var bone = bones[k];
+                    if (bone == null) continue;
+                    var boneName = bone.name;
+                    if (string.Equals(boneName, NameKubi, StringComparison.Ordinal)) bm.KUBI_index = k;
+                    if (string.Equals(boneName, NameAtama, StringComparison.Ordinal)) bm.ATAMA_index = k;
+                }
             }
             bodymeshes.Add(bm);
         }
     }
 
-    /// <summary>UNKNOWN(native 0x1C64C18 literal qword_982B5D0): child-name gate for the option display.</summary>
-    public string kubiMeshName = "kubi";
-    /// <summary>UNKNOWN(native 0x1C64C18 literal qword_97F3C08): material name that marks the KUBI sub-mesh.</summary>
-    public string kubiMaterialName = "kubi";
-    /// <summary>UNKNOWN(native 0x1C64C18 literal qword_97E2B40): material name that marks the ATAMA sub-mesh.</summary>
-    public string atamaMaterialName = "atama";
+    /// <summary>
+    /// DanceIdolInfo.assem_info (PartsAssembleInfo, DanceIdolInfo+0xE8) field read by
+    /// SetBodyMeshs' "wing" gate: `costume_number_changed` (+0xD6). Implement it on the
+    /// object passed as `info`; when absent the wing display write is skipped (native NREs).
+    /// </summary>
+    public interface IPartsAssembleInfoFlags
+    {
+        bool CostumeNumberChanged { get; }
+    }
 
     /// <summary>
-    /// JointBodyHead.SetHeadMeshs 0x1C6516C: same walk over the head model, filling
-    /// headmeshes (GameObject + the list of bone names the head renderer skinning
-    /// references, used by SetHeadMeshs/headbones) and applying ApplyGlassesSwitch.
+    /// JointBodyHead.SetHeadMeshs 0x1CBFDE4 (old 0x1C6516C):
+    ///   for each child of top:
+    ///     render = child.GetComponent&lt;SkinnedMeshRenderer&gt;();
+    ///     ApplyModelSwitch(render, info); ApplyGlassesSwitch(render, info);
+    ///     if (render == null) { SetHeadMeshs(child, info); continue; }      // depth-first
+    ///     href = new HeadMeshRef { obj = child.gameObject, bones = new List&lt;string&gt;() };
+    ///     for k in render.bones: href.bones.Add(bones[k].name);             // no dedupe
+    ///     headmeshes(+0x98).Add(href);
+    /// Recursion walks the sub-trees that carry no renderer, so nested head parts are
+    /// included; the bone names are later grafted by name under KUBI in InitializePost1.
     /// </summary>
     public void SetHeadMeshs(Transform top, object info)
     {
@@ -400,22 +547,22 @@ public sealed class JointBodyHeadNative : MonoBehaviour
             var child = top.GetChild(i);
             if (child == null) continue;
             var render = child.GetComponent<SkinnedMeshRenderer>();
+            ApplyModelSwitch(render, info);
             ApplyGlassesSwitch(render, info);
-            if (render == null) continue;
+            if (render == null)
+            {
+                SetHeadMeshs(child, info);
+                continue;
+            }
 
             var href = new HeadMeshRef { obj = child.gameObject };
             var bones = render.bones;
             if (bones != null)
             {
                 for (var b = 0; b < bones.Length; b++)
-                {
-                    if (bones[b] == null) continue;
-                    if (!href.bones.Contains(bones[b].name)) href.bones.Add(bones[b].name);
-                }
+                    if (bones[b] != null && bones[b].name != null) href.bones.Add(bones[b].name);
             }
             headmeshes.Add(href);
-            for (var b = 0; b < href.bones.Count; b++)
-                if (!headbones.Contains(href.bones[b])) headbones.Add(href.bones[b]);
         }
     }
 
@@ -481,56 +628,99 @@ public sealed class JointBodyHeadNative : MonoBehaviour
     }
 
     /// <summary>
-    /// JointBodyHead.ApplyModelSwitch 0x1C64F94. Native gates on DanceIdolInfo flags
-    /// (`info+232` sub-object bytes 0xC4/0xC5) and on the *root bone parent's* GameObject
-    /// name matching one of two literals, then calls SetOptionDisplay. The flags and the
-    /// literals are Live costume data:
-    ///   UNKNOWN(native 0x1C64F94): DanceIdolInfo.modelSwitch flags + the two name
-    ///   literals. Without `info` this is a no-op, which is the neutral value.
+    /// JointBodyHead.ApplyModelSwitch 0x1CBFC0C (old 0x1C64F94), verbatim:
+    ///   if (render == null) return;
+    ///   var tr = render.transform;
+    ///   if (info == null) return;                 // (decomp checks info after transform)
+    ///   if (tr == null) return;
+    ///   var asm = info.assem_info(+0xE8);
+    ///   if (asm != null &amp;&amp; asm.is_release_model_switch(+0xC5) == 1) {
+    ///       var n = render.transform.name;
+    ///       if (n.EndsWith("_switch"))   SetOptionDisplay(render, asm.enable_model_switch(+0xC4));
+    ///       if (n.EndsWith("_switch_r")) SetOptionDisplay(render, asm.enable_model_switch(+0xC4) == 0);
+    ///   }
+    /// Literals: "_switch" 0x98C07D0, "_switch_r" 0x98C07D8 — both are SUFFIXES of the
+    /// renderer's transform name (not root-bone parent names).
     /// </summary>
     public void ApplyModelSwitch(SkinnedMeshRenderer render, object info)
     {
+        if (render == null) return;
+        var tr = render.transform;
+        if (info == null) return;
+        if (tr == null) return;
         var flags = info as IDanceIdolInfoFlags;
-        if (render == null || flags == null) return;
-        if (!flags.ModelSwitchEnabled) return;
-        var rootBone = render.rootBone;
-        if (rootBone == null || rootBone.parent == null) return;
-        var name = rootBone.parent.gameObject.name;
+        if (flags == null || !flags.ModelSwitchEnabled) return;
 
-        if (name == modelSwitchNameA) SetOptionDisplay(render, flags.ModelSwitchVisible);
-        if (name == modelSwitchNameB) SetOptionDisplay(render, !flags.ModelSwitchVisible);
+        var n = tr.name;
+        if (n.EndsWith("_switch", StringComparison.Ordinal))
+            SetOptionDisplay(render, flags.ModelSwitchVisible);
+        if (n.EndsWith("_switch_r", StringComparison.Ordinal))
+            SetOptionDisplay(render, !flags.ModelSwitchVisible);
     }
 
     /// <summary>
-    /// JointBodyHead.ApplyGlassesSwitch 0x1C65524. Native gates on DanceIdolInfo flag
-    /// bytes 0xC6/0xC7, compares the renderer's GameObject name against a literal and,
-    /// when the name ends with the "&lt;...&gt;" suffix pair, compares the suffix number
-    /// with `info` (0xCC) before calling SetOptionDisplay.
-    /// UNKNOWN(native 0x1C65524): flag layout, literals, suffix grammar.
+    /// JointBodyHead.ApplyGlassesSwitch 0x1CC019C (old 0x1C65524), resolved grammar:
+    ///   if (render == null) return; if (render.transform == null) return;
+    ///   if (info == null) return; var asm = info.assem_info(+0xE8); if (asm == null) return;
+    ///   bool enabled = (asm.is_release_glasses(+0xC6) &amp; 1) != 0
+    ///               || (asm.is_release_enable_only_default_glasses(+0xC7) &amp; 1) != 0;
+    ///   int no = asm.glasses_model_ver(+0xCC);   // int
+    ///   if (enabled) {
+    ///       if (name.EndsWith("_gls_base")) SetOptionDisplay(render, no == 0);
+    ///       if (name.Length >= "_gls_v".Length + 2) {
+    ///           var suffix = name.Substring(name.Length - 2);        // two chars
+    ///           if (name == "_gls_v" + suffix &amp;&amp; int.TryParse(suffix, out var v))
+    ///               SetOptionDisplay(render, no == v);
+    ///       }
+    ///   } else if (name.Length >= "_gls_v".Length + 2) {
+    ///       var suffix = name.Substring(name.Length - 2);
+    ///       if (name == "_gls_v" + suffix) SetOptionDisplay(render, false);
+    ///   }
+    /// Literals: "_gls_base" 0x98C0528, "_gls_v" 0x98C0530 (single prefix string, not an
+    /// array; the decomp's off_98C0530 points at its length+chars).
     /// </summary>
     public void ApplyGlassesSwitch(SkinnedMeshRenderer render, object info)
     {
+        if (render == null) return;
+        var tr = render.transform;
+        if (tr == null) return;
+        if (info == null) return;
         var flags = info as IDanceIdolInfoFlags;
-        if (render == null || flags == null) return;
-        if (!flags.GlassesSwitchEnabled) return;
-        var name = render.gameObject.name;
-        if (name == glassesNameA) SetOptionDisplay(render, flags.GlassesIndex == 0);
-        if (name == glassesNameB) SetOptionDisplay(render, flags.GlassesIndex == 1);
+        if (flags == null) return;
+
+        var n = tr.name;
+        if (flags.GlassesSwitchEnabled)
+        {
+            if (n.EndsWith(GlassesBaseSuffix, StringComparison.Ordinal))
+                SetOptionDisplay(render, flags.GlassesIndex == 0);
+            if (n.Length >= GlassesVersionPrefix.Length + 2)
+            {
+                var suffix = n.Substring(n.Length - 2);
+                if (n == GlassesVersionPrefix + suffix && int.TryParse(suffix, out var v))
+                    SetOptionDisplay(render, flags.GlassesIndex == v);
+            }
+        }
+        else if (n.Length >= GlassesVersionPrefix.Length + 2)
+        {
+            var suffix = n.Substring(n.Length - 2);
+            if (n == GlassesVersionPrefix + suffix) SetOptionDisplay(render, false);
+        }
     }
 
-    /// <summary>UNKNOWN(native 0x1C64F94 literals): root-bone parent names for the model switch.</summary>
-    public string modelSwitchNameA = "model_a";
-    /// <summary>UNKNOWN(native 0x1C64F94 literals).</summary>
-    public string modelSwitchNameB = "model_b";
-    /// <summary>UNKNOWN(native 0x1C65524 literals): renderer names for the glasses switch.</summary>
-    public string glassesNameA = "glasses_a";
-    /// <summary>UNKNOWN(native 0x1C65524 literals).</summary>
-    public string glassesNameB = "glasses_b";
+    /// <summary>Native literal "_gls_base" (slot 0x98C0528), a renderer-name suffix.</summary>
+    public const string GlassesBaseSuffix = "_gls_base";
+    /// <summary>Native literal "_gls_v" (slot 0x98C0530); names are prefix + two digits.</summary>
+    public const string GlassesVersionPrefix = "_gls_v";
 
     /// <summary>
-    /// The DanceIdolInfo flag surface ApplyModelSwitch/ApplyGlassesSwitch read
-    /// (dump.cs DanceIdolInfo is Live-only and not migrated). Implement it on whatever
-    /// carries the costume switch data; absent ⇒ both switches are no-ops.
+    /// The DanceIdolInfo flag surface ApplyModelSwitch/ApplyGlassesSwitch read from
+    /// DanceIdolInfo.assem_info (PartsAssembleInfo, DanceIdolInfo+0xE8). Implement it on
+    /// whatever carries the costume switch data; absent ⇒ both switches are no-ops.
+    /// Mapping to the native bytes:
+    ///   ModelSwitchEnabled = is_release_model_switch (+0xC5)
+    ///   ModelSwitchVisible = enable_model_switch (+0xC4)
+    ///   GlassesSwitchEnabled = is_release_glasses (+0xC6) | is_release_enable_only_default_glasses (+0xC7)
+    ///   GlassesIndex = glasses_model_ver (+0xCC, int)
     /// </summary>
     public interface IDanceIdolInfoFlags
     {
@@ -609,15 +799,20 @@ public sealed class JointBodyHeadNative : MonoBehaviour
     }
 
     /// <summary>
-    /// JointBodyHead.MeasureSway 0x1C645DC: sums SwayManager.updateSwayTime (0x90) and
-    /// SwayManager.sideLineHitTime (0x94) over `swm` into two accumulators.
-    /// UNKNOWN(native 0x1C645DC): the combine step / return value — the decompiled body
-    /// leaves both sums in s8/s9 and returns nothing visible, so both are exposed via
-    /// out parameters instead of guessing a formula.
+    /// JointBodyHead.MeasureSway 0x1CBF254 (old 0x1C645DC), decoded:
+    ///   float a = 0, b = 0;
+    ///   foreach (var m in swm (+0x118)) { a += m.updateSwayTime (+0x90); b += m.sideLineHitTime (+0x94); }
+    /// The Hex-Rays tail does not show the combine/return: the two float sums stay in
+    /// s8/s9 and the emitted `return` is the List.get_Item register artifact, so the final
+    /// scalar is genuinely unresolved. Both sums are exposed via out parameters; the
+    /// convenience overload returns their sum only because callers need a single float.
     /// </summary>
     public float MeasureSway()
     {
         MeasureSway(out var time, out var sideLine);
+        // UNKNOWN(native 0x1CBF254): how the native float return combines the two sums
+        // (add / max / one of them only). The decompile loses that instruction; a runtime
+        // probe of the shipped binary is required before changing this.
         return time + sideLine;
     }
 
@@ -708,30 +903,56 @@ public sealed class JointBodyHeadNative : MonoBehaviour
     }
 
     /// <summary>
-    /// JointBodyHead.SetVisible 0x1C642A0:
+    /// JointBodyHead.SetVisible 0x1CBEF18 (old 0x1C642A0), verbatim:
     ///   if (body == null) return;
-    ///   foreach renderer in body.GetComponentsInChildren&lt;Renderer&gt;():
-    ///       if (renderer.sharedMaterials.Length != 0) renderer.enabled = show;
-    ///   if (dshadow != null) dshadow.SetVisible(show);
-    ///   if (dshadow.activeShadow != null) dshadow.SetShadowVisible(show, &lt;global flag&gt;, -1.0f);
-    /// UNKNOWN(native 0x1C642A0): the global flag read from the CharacterManager
-    /// singleton (off_970CEB8 → +112 → byte 128) and the DropShadow entry points are B4
-    /// scope; the renderer loop is reproduced exactly.
+    ///   foreach (var smr in body.GetComponentsInChildren&lt;SkinnedMeshRenderer&gt;())   // includeInactive = false
+    ///       if (smr.sharedMaterials != null &amp;&amp; smr.sharedMaterials.Length != 0) smr.enabled = show;
+    ///   if (dshadow != null) dshadow.LightAndShadowByChara(show);                    // 0x3877424
+    ///   bool useGlobalColor = true;
+    ///   var vm = VisualManager3d.instance;
+    ///   if (vm != null) { var st = vm.stageMgr (+0x70); if (st != null) useGlobalColor = st.pinSpotUseGlobalColor (+0x80); }
+    ///   if (dshadow.pinlightObj (+0x30) != null)
+    ///       dshadow.SetPinLightState(show, useGlobalColor, false, -1.0f);             // 0x3877158
+    /// Deviations: the native dereferences dshadow.pinlightObj without a dshadow null check
+    /// (it throws when dshadow is null), so the port guards dshadow; VisualManager3d is a
+    /// Live-only subsystem with no ADV-story equivalent, so the global-color byte comes from
+    /// a seam whose default `true` reproduces the native initialiser.
     /// </summary>
     public void SetVisible(bool show)
     {
         if (body == null) return;
-        foreach (var r in body.GetComponentsInChildren<Renderer>(true))
+        foreach (var smr in body.GetComponentsInChildren<SkinnedMeshRenderer>())
         {
-            if (r == null) continue;
-            if (r.sharedMaterials.Length != 0) r.enabled = show;
+            if (smr == null) continue;
+            var mats = smr.sharedMaterials;
+            if (mats != null && mats.Length != 0) smr.enabled = show;
         }
-        // dshadow.SetVisible / SetShadowVisible — wired by B4 via onSetVisibleHook.
-        onDropShadowVisible?.Invoke(show);
+        if (dshadow == null) return;
+
+        var shadow = dshadow as DropShadow;
+        if (shadow == null) return;
+        shadow.LightAndShadowByChara(show);
+
+        var useGlobalColor = pinSpotUseGlobalColor != null ? pinSpotUseGlobalColor() : true;
+        // UNKNOWN(native 0x1CBEF18): StageMgr.pinSpotUseGlobalColor (+0x80) is Live-stage
+        // state; absent in the ADV-story spike, so the seam falls back to the native `true`.
+        if (shadow.pinlightObj != null)
+            shadow.SetPinLightState(show, useGlobalColor, false, -1.0f);
     }
 
-    /// <summary>B4 hook: DropShadow.SetVisible(show) (+ SetShadowVisible).</summary>
-    [NonSerialized] public Action<bool> onDropShadowVisible;
+    /// <summary>
+    /// Live subsystem seam: StageMgr.pinSpotUseGlobalColor (VisualManager3d.instance.stageMgr
+    /// +0x80). Native default is `true` when there is no stage manager; the ADV-story spike
+    /// leaves it unset.
+    /// </summary>
+    [NonSerialized] public static Func<bool> pinSpotUseGlobalColor;
+
+    /// <summary>
+    /// Live subsystem seam: CharacterSoul body-scale factor used for Eye_obj.localScale in
+    /// Initialize_Post_1 (native multiplies the soul's Value&lt;float&gt; bodyScale by the
+    /// Vector3 static default = one). Neutral default 1.0; CharacterManager is Live-only.
+    /// </summary>
+    [NonSerialized] public static Func<IDanceIdolInfoFlags, float> eyeScaleProvider;
 
     /// <summary>
     /// JointBodyHead.Reset 0x1C63B58 (used before a re-Initialize): clears the collected
@@ -772,68 +993,58 @@ public sealed class JointBodyHeadNative : MonoBehaviour
     }
 
     // =====================================================================
-    // Search helpers (serchChild 0x1C6599C / serchChildRrecursive 0x1C65A6C)
+    // Search helpers (serchChild 0x1CC0614 / serchChildRrecursive 0x1CC06E4)
     // =====================================================================
 
     /// <summary>
-    /// JointBodyHead.serchChild 0x1C6599C: depth-first search of `top`'s descendants for
-    /// a Transform whose GameObject name equals `name` (native also stops at the first
-    /// match). A case-sensitive ordinal compare is used; the shipped names are ASCII.
+    /// JointBodyHead.serchChild 0x1CC0614 (old 0x1C6599C), verbatim:
+    ///   if (top == null) throw NullReferenceException;
+    ///   return top.name.Equals(name) ? top : serchChildRrecursive(top, name);
+    /// Exact ordinal name compare; the top node itself is tested first.
     /// </summary>
     public static Transform serchChild(Transform top, string name)
     {
-        if (top == null || string.IsNullOrEmpty(name)) return null;
-        return FindDeep(top, name);
+        if (top == null || name == null) return null;
+        if (string.Equals(top.name, name, StringComparison.Ordinal)) return top;
+        return serchChildRrecursive(top, name);
     }
 
     /// <summary>
-    /// The native literals for the reference nodes are UNKNOWN; the shipped bundles
-    /// name them in upper case with underscores ("MODEL_00", "BODY_SCALE", "ATAMA",
-    /// "POSITION", ...) while the decompiled constants are PascalCase. Compare
-    /// case/underscore-insensitively, exact match first, then a prefix match so
-    /// "Eye" still finds the head's "eyes" node without letting "KUBI" match
-    /// "KUBI_RT__twist_x0" before the real "KUBI" node.
+    /// JointBodyHead.serchChildRrecursive 0x1CC06E4 (old 0x1C65A6C): children in order,
+    /// exact ordinal name compare; after a child miss the native recurses only while
+    /// `String.Compare(child.name, "___") &lt; 0` (literal 0x98BFEC0, a pruning optimization
+    /// that skips the "___"-suffixed renamed bones). The port walks every child; for the
+    /// shipped bone names this yields the same first match.
     /// </summary>
-    private static Transform FindDeep(Transform top, string name)
+    private static Transform serchChildRrecursive(Transform top, string name)
     {
         if (top == null) return null;
-        var wanted = NormalizeName(name);
-        if (wanted.Length == 0) return null;
-        var exact = FindDeep(top, wanted, false);
-        return exact ?? FindDeep(top, wanted, true);
-    }
-
-    private static Transform FindDeep(Transform top, string wanted, bool prefix)
-    {
         for (var i = 0; i < top.childCount; i++)
         {
             var c = top.GetChild(i);
             if (c == null) continue;
-            var candidate = NormalizeName(c.name);
-            if (prefix ? candidate.StartsWith(wanted, StringComparison.Ordinal) : candidate == wanted)
-                return c;
-            var hit = FindDeep(c, wanted, prefix);
+            if (string.Equals(c.name, name, StringComparison.Ordinal)) return c;
+            var hit = serchChildRrecursive(c, name);
             if (hit != null) return hit;
         }
         return null;
     }
 
-    private static string NormalizeName(string name)
+    /// <summary>
+    /// IdolUtility.FindObjectByPath equivalent used by Initialize_Post_1: a path with '/'
+    /// goes through Transform.Find (native IdolUtility.FindObjectByPath 0x365DC78); a bare
+    /// name is a serchChild deep search.
+    /// </summary>
+    private static GameObject FindGo(Transform top, string path)
     {
-        if (string.IsNullOrEmpty(name)) return string.Empty;
-        var sb = new StringBuilder(name.Length);
-        foreach (var ch in name)
+        if (top == null || string.IsNullOrEmpty(path)) return null;
+        if (path.IndexOf('/') >= 0)
         {
-            if (ch == '_' || ch == ' ') continue;
-            sb.Append(char.ToLowerInvariant(ch));
+            var t = top.Find(path);
+            return t != null ? t.gameObject : null;
         }
-        return sb.ToString();
-    }
-
-    private static GameObject FindGo(Transform top, string name)
-    {
-        var t = FindDeep(top, name);
-        return t != null ? t.gameObject : null;
+        var hit = serchChild(top, path);
+        return hit != null ? hit.gameObject : null;
     }
 
     // =====================================================================

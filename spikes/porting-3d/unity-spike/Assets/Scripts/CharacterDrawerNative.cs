@@ -134,7 +134,8 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
         }
     }
 
-    // Native z-shift slot indices, recovered from 0x1C10590 / 0x1C105D8 / 0x1C10618:
+    // Native z-shift slot indices, recovered from SetZShiftFace 0x1C6B090 /
+    // SetZShiftOther 0x1C6B0D8 / GetZShiftCloth 0x1C6B118:
     //   SetZShiftFace  writes index 2 (array offset +40)
     //   SetZShiftOther writes index 0 (array offset +32)
     //   GetZShiftCloth reads index 1 (array offset +36)
@@ -159,6 +160,11 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     public CharacterMaterialsNative materials;         // 0xB8
     public CharacterDrawerEyeNative drawer_eye;        // 0xB0
     public bool isVisibleMirrorIdol;                   // 0xD1
+    /// <summary>Mirror/audience items whose layers ReloadDefaultLayers snapshots
+    /// (native `mirroredItems` 0xD8 / `mirroredItemDefaultLayers` 0xE0). The spike has
+    /// no mirror pass, so these stay empty unless a caller fills them.</summary>
+    public GameObject[] mirroredItems;                 // 0xD8
+    public int[] mirroredItemDefaultLayers;            // 0xE0
     /// <summary>The JointBodyHead this drawer belongs to (native Create argument, 0x1C13A84).</summary>
     public JointBodyHeadNative joint_body_head;
 
@@ -285,7 +291,7 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     // =====================================================================
 
     /// <summary>
-    /// CharacterDrawer.SetVisible 0x1C0F5EC: `config.is_visible_external = value;
+    /// CharacterDrawer.SetVisible 0x1C6A0E4: `config.is_visible_external = value;
     /// visibleChangeEvent?.Invoke(value);`. Nothing else happens in the native body.
     /// SPIKE-MAPPING: the flag is additionally pushed to Renderer.enabled because the
     /// spike has no draw-command pass to skip.
@@ -298,7 +304,7 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     }
 
     /// <summary>
-    /// CharacterDrawer.SetDrawOutline 0x1C0F614: `config.is_draw_outline_external = v;`
+    /// CharacterDrawer.SetDrawOutline 0x1C6A114: `config.is_draw_outline_external = v;`
     /// (no other side effect in the binary).
     /// SPIKE-MAPPING: the outline is a shader pass inside the same material, so the
     /// flag is delivered as `_Outline = 0` / stored width.
@@ -310,7 +316,7 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     }
 
     /// <summary>
-    /// CharacterDrawer.SetDrawEntity 0x1C0F61C: `config.is_draw_entity_external = v;`
+    /// CharacterDrawer.SetDrawEntity 0x1C6A11C: `config.is_draw_entity_external = v;`
     /// No side effect in the binary. The entity/outline split is only meaningful to the
     /// command-buffer passes (out of scope), so this stays a pure state record — there
     /// is no Unity switch that removes "the entity" without also removing the outline.
@@ -321,7 +327,7 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     }
 
     /// <summary>
-    /// CharacterDrawer.SetLODLevel 0x1C0F624: `if (lod <= 1) this.lod = lod;`
+    /// CharacterDrawer.SetLODLevel 0x1C6A124: `if (lod <= 1) this.lod = lod;`
     /// (values above MaxLOD are ignored, not clamped).
     /// </summary>
     public void SetLODLevel(int lodLevel)
@@ -330,24 +336,23 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     }
 
     /// <summary>
-    /// CharacterDrawer.SetSkinQuality 0x1C0F634: `quality = q;` then for every
-    /// RendererAndMaterials whose renderer is not null, apply the quality.
-    /// SkinQuality_To_Int 0x1C0F738: 1→1, 2→2, else 4. Int_To_SkinQuality 0x1C0F758:
-    /// <=1→1, 2→2, else 4 (Unity's SkinQuality is Auto=0/Bone1=1/Bone2=2/Bone4=4).
-    /// UNKNOWN(native 0x1C0F634): the per-renderer call (sub_7075E70) lost its
-    /// arguments in the decompilation, so the `require_skin_quality` gate that
-    /// RendererAndMaterials declares (0x50) cannot be confirmed; the spike assigns
-    /// the converted value to every renderer, which is the only reading consistent
-    /// with the guard `renderer_ != null`.
+    /// CharacterDrawer.SetSkinQuality 0x1C6A134 (decompiled):
+    ///   quality (+0x4C/76) = value;
+    ///   forward walk of renmats (+0x40) → if (item.renderer_ != null) set that
+    ///   renderer's quality (sub_710AB64 = SkinnedMeshRenderer.set_quality).
+    /// The body has NO `require_skin_quality` gate and does NOT call
+    /// SkinQuality_To_Int 0x1C6A238 / Int_To_SkinQuality 0x1C6A258 — those are
+    /// draw-pipeline helpers; the argument is stored as given.
     /// </summary>
     public void SetSkinQuality(SkinQuality skinQuality)
     {
-        quality = skinQuality;
-        var converted = Int_To_SkinQuality(SkinQuality_To_Int(skinQuality));
+        quality = skinQuality;                 // +0x4C(76)
         foreach (var renmat in renmats)
         {
             if (renmat.renderer_ == null) continue;
-            renmat.renderer_.quality = converted;
+            // UNKNOWN(native 0x1C6A134): sub_710AB64's argument list was dropped
+            // by Hex-Rays — `quality` is the only value in scope at that call.
+            renmat.renderer_.quality = skinQuality;
         }
     }
 
@@ -366,7 +371,7 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     }
 
     /// <summary>
-    /// CharacterDrawer.SetSubMeshVisibleAll 0x1C0FB90: `renmat.sub_meshes[i].is_visible
+    /// CharacterDrawer.SetSubMeshVisibleAll 0x1C6A690: `renmat.sub_meshes[i].is_visible
     /// = value` for every renderer and every sub-mesh (no other side effect in the
     /// binary — the value is read by `IsVisible` 0x1C1140C inside the draw passes).
     /// With the command-buffer path out of scope there is no Unity switch that hides a
@@ -397,28 +402,36 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     }
 
     /// <summary>
-    /// CharacterDrawer.SetLayerId 0x1C0FC9C: `m_layerId = id;`
-    /// `if (materials != null) materials.SetStencilRef(LayerIdToStencilRef(id));`
-    /// then the CharacterManager singleton is told about the new layer
-    /// (`sub_3791D6C(CharacterManager.inst, …)`). The spike has no CharacterManager,
-    /// so that last call is UNKNOWN(native 0x1C0FC9C tail) and omitted.
+    /// CharacterDrawer.SetLayerId 0x1C6A79C (decompiled):
+    ///   m_layerId (+0x20/32) = id;
+    ///   if (materials (+0xB8/184) != null) SetStencilRef(LayerIdToStencilRef(id))
+    ///     → CharacterMaterials.SetStencilRef 0x1C785E4 (tail apply_stencil
+    ///     0x1C78648: forward MatCol walk, SetFloat(_Stencil, ref), no guard);
+    ///   then CharacterManager.Instance.RequestSortDrawer() (0x386CEEC, reached
+    ///   through the MBSingleton statics at off_980F630) re-sorts the drawer after
+    ///   the stencil change. The spike has no CharacterManager — this component is
+    ///   driven directly by CharacterBootstrap/the probe — so the tail is
+    ///   intentionally omitted rather than unknown.
     /// </summary>
     public void SetLayerId(int id)
     {
-        m_layerId = id;
+        m_layerId = id;                        // +0x20(32)
         if (materials != null) materials.SetStencilRef(LayerIdToStencilRef(id));
+        // CharacterManager.Instance.RequestSortDrawer() 0x386CEEC — omitted (no
+        // CharacterManager subsystem in the spike).
     }
 
-    /// <summary>CharacterDrawer.LayerIdToStencilRef 0x1C0FD70: id >= 0 ? id + 2 : 0.</summary>
+    /// <summary>CharacterDrawer.LayerIdToStencilRef 0x1C6A7C4: id >= 0 ? id + MIN_LAYER_STENCIL_REF : 0.</summary>
     public static int LayerIdToStencilRef(int layerId)
     {
         return layerId >= 0 ? layerId + MIN_LAYER_STENCIL_REF : 0;
     }
 
     /// <summary>
-    /// CharacterDrawer.SetLayerIdToObject 0x1C0FD80: stencil ref = LayerIdToStencilRef,
+    /// CharacterDrawer.SetLayerIdToObject 0x1C6A880: stencil ref = LayerIdToStencilRef,
     /// then for every Renderer in `go` (GetComponentsInChildren) and every shared
-    /// material, `material.SetFloat(id_StencilRef, ref)`.
+    /// material, `material.SetFloat(_Stencil, ref)` (HasProperty-guarded by the bundle
+    /// inventory: _Stencil exists on Chr_Basic/Chr_Face/Bi_CharEye).
     /// </summary>
     public static void SetLayerIdToObject(int id, GameObject go)
     {
@@ -439,7 +452,8 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     // Outline / colours
     // =====================================================================
 
-    /// <summary>CharacterDrawer.SetOutlineWidth 0x1C10180 → materials.SetOutlineWidth 0x1C1D744.</summary>
+    /// <summary>CharacterDrawer.SetOutlineWidth 0x1C6AC80 → materials.SetOutlineWidth
+    /// 0x1C783BC (state only; apply site ApplyOutline 0x1C7CC14, out of batch).</summary>
     public void SetOutlineWidth(float width)
     {
         if (materials == null) return;
@@ -447,9 +461,9 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     }
 
     /// <summary>
-    /// CharacterDrawer.GetOutlineWidth 0x1C1019C: if the materials object is null or
+    /// CharacterDrawer.GetOutlineWidth 0x1C6AC9C: if the materials object is null or
     /// destroyed return the literal 0.0008f; otherwise materials.GetOutlineWidth
-    /// 0x1C1D7A8.
+    /// 0x1C78420.
     /// </summary>
     public float GetOutlineWidth()
     {
@@ -457,14 +471,17 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
         return materials.GetOutlineWidth();
     }
 
-    /// <summary>CharacterDrawer.SetOutlineColor 0x1C10260 → materials.SetOutlineColor 0x1C1D7E8.</summary>
+    /// <summary>CharacterDrawer.SetOutlineColor 0x1C6AD60 → materials.SetOutlineColor
+    /// 0x1C78460 (then ApplyOutlineColor 0x1C784EC, decompiled: forward MatCol walk,
+    /// SetColor(_OutlineColor), no HasProperty guard).</summary>
     public void SetOutlineColor(Color color)
     {
         if (materials == null) return;
         materials.SetOutlineColor(color);
     }
 
-    /// <summary>CharacterDrawer.SetIdolColor(bool, Color) 0x1C1027C → materials 0x1C1DAC0.</summary>
+    /// <summary>CharacterDrawer.SetIdolColor(bool, Color) 0x1C6AD7C → materials
+    /// SetIdolColor 0x1C78738 (state record only).</summary>
     public void SetIdolColor(bool is_enable, Color color)
     {
         if (materials == null) return;
@@ -472,8 +489,8 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     }
 
     /// <summary>
-    /// CharacterDrawer.SetIdolColor(Color) 0x1C10298: re-applies with the *stored*
-    /// enable flag (`materials.idol_color` state, 0x1C1DAC0).
+    /// CharacterDrawer.SetIdolColor(Color) 0x1C6AD98: re-applies with the *stored*
+    /// enable flag (`materials.idol_color`, set by 0x1C78738).
     /// </summary>
     public void SetIdolColor(Color color)
     {
@@ -481,27 +498,30 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
         materials.SetIdolColor(materials.GetIdolColor().is_enable, color);
     }
 
-    /// <summary>CharacterDrawer.GetIdolColor 0x1C102BC → materials.idol_color.</summary>
+    /// <summary>CharacterDrawer.GetIdolColor 0x1C6ADBC → materials.idol_color.</summary>
     public CharacterMaterialsNative.IdolColor GetIdolColor()
     {
         return materials != null ? materials.GetIdolColor() : default;
     }
 
-    /// <summary>CharacterDrawer.SetMonoColor 0x1C102E4 → materials 0x1C1DAEC.</summary>
+    /// <summary>CharacterDrawer.SetMonoColor 0x1C6ADE4 → materials SetMonoColor
+    /// 0x1C78764 (state record only).</summary>
     public void SetMonoColor(Color color)
     {
         if (materials == null) return;
         materials.SetMonoColor(color);
     }
 
-    /// <summary>CharacterDrawer.SetMonoColorRatio 0x1C10300 → materials 0x1C1DB00.</summary>
+    /// <summary>CharacterDrawer.SetMonoColorRatio 0x1C6AE00 → materials
+    /// SetMonoColorRatio 0x1C78778 (state record only; no id_MonoColorRatio exists).</summary>
     public void SetMonoColorRatio(float ratio)
     {
         if (materials == null) return;
         materials.SetMonoColorRatio(ratio);
     }
 
-    /// <summary>CharacterDrawer.SetRimLight(bool, Color) 0x1C1031C → materials 0x1C1DB10.</summary>
+    /// <summary>CharacterDrawer.SetRimLight(bool, Color) 0x1C6AE1C → materials
+    /// SetRimLight 0x1C78788 (state record only).</summary>
     public void SetRimLight(bool is_enable, Color color)
     {
         if (materials == null) return;
@@ -509,7 +529,7 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     }
 
     /// <summary>
-    /// CharacterDrawer.SetRimLightColor 0x1C10338: re-applies with the stored enable
+    /// CharacterDrawer.SetRimLightColor 0x1C6AE38: re-applies with the stored enable
     /// flag (same shape as SetIdolColor(Color)).
     /// </summary>
     public void SetRimLightColor(Color color)
@@ -518,7 +538,7 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
         materials.SetRimLight(materials.GetRimLight().is_enable, color);
     }
 
-    /// <summary>CharacterDrawer.SetRimLightEnable 0x1C1035C → materials.SetRimLight(enable, stored).</summary>
+    /// <summary>CharacterDrawer.SetRimLightEnable 0x1C6AE5C → materials.SetRimLight(enable, stored).</summary>
     public void SetRimLightEnable(bool is_enable)
     {
         if (materials == null) return;
@@ -526,10 +546,9 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     }
 
     /// <summary>
-    /// CharacterDrawer.SetRimLightDirection 0x1C10380 → CharacterMaterials.SetRimLightDirection
-    /// 0x1C1DB28. UNKNOWN(native 0x1C1DB28): that function was not decompiled in B5;
-    /// the requested direction is recorded and can be pushed once the apply site is
-    /// known (it feeds `_RimOffset`/the `_RimCtrl` global in the material inventory).
+    /// CharacterDrawer.SetRimLightDirection 0x1C6AE80 → CharacterMaterials
+    /// SetRimLightDirection 0x1C787A0 (decompiled write-through): BACK-TO-FRONT walk
+    /// of the MatCol list, SetVector(_RimLight, x, y, z, 0) on every material.
     /// </summary>
     public void SetRimLightDirection(Vector3 direction)
     {
@@ -538,8 +557,9 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     }
 
     /// <summary>
-    /// CharacterDrawer.SetLightDirection 0x1C1039C → CharacterMaterials.SetLightDirection
-    /// 0x1C1DC8C. UNKNOWN(native 0x1C1DC8C): not decompiled in B5; recorded only.
+    /// CharacterDrawer.SetLightDirection 0x1C6AE9C → CharacterMaterials
+    /// SetLightDirection 0x1C78904 (decompiled write-through): BACK-TO-FRONT walk of
+    /// the MatCol list, SetVector(_Light, x, y, z, 0) on every material.
     /// </summary>
     public void SetLightDirection(Vector3 direction)
     {
@@ -552,8 +572,10 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     // =====================================================================
 
     /// <summary>
-    /// CharacterDrawer.SetCheekRedden 0x1C103E0 → CharacterMaterials.SetCheekRedden
-    /// 0x1C1DFC4: `enable = intensity > 0` (only when it changed), `intensity = v`.
+    /// CharacterDrawer.SetCheekRedden 0x1C6AEE0 → CharacterMaterials.SetCheekRedden
+    /// 0x1C78C3C (state record: enable = intensity > 0 only when changed, then the
+    /// intensity cache; the material delivery is SetCheekReddenToMaterial 0x1C78C6C
+    /// from the apply pass).
     /// </summary>
     public void SetCheekRedden(float intensity)
     {
@@ -561,14 +583,14 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
         materials.SetCheekRedden(intensity);
     }
 
-    /// <summary>ICharacterDrawerSink — CharacterDrawer.SetCheekReddenEnable 0x1C103FC → 0x1C1E170.</summary>
+    /// <summary>ICharacterDrawerSink — CharacterDrawer.SetCheekReddenEnable 0x1C6AEFC → 0x1C78DE8.</summary>
     public void SetCheekReddenEnable(bool enable)
     {
         if (materials == null) return;
         materials.SetCheekReddenEnable(enable);
     }
 
-    /// <summary>ICharacterDrawerSink — CharacterDrawer.SetCheekReddenIntensity 0x1C10418 → 0x1C1E18C.</summary>
+    /// <summary>ICharacterDrawerSink — CharacterDrawer.SetCheekReddenIntensity 0x1C6AF18 → 0x1C78E04.</summary>
     public void SetCheekReddenIntensity(float intensity)
     {
         if (materials == null) return;
@@ -580,11 +602,10 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     // =====================================================================
 
     /// <summary>
-    /// CharacterDrawer.SetEyeHighlightColor 0x1C10434 → CharacterMaterials.SetEyeHighlightColor
-    /// 0x1C1F390, which fans out to `SetEyeHighlightColorToMaterial(mat, col)` 0x1C1F62C
-    /// over the eye materials. UNKNOWN(native 0x1C1F62C): the property it writes was not
-    /// decompiled in B5. The colour is recorded and the eye-material list is exposed
-    /// (`GetEyeMaterials`) so B4/EyeTracking can bind it; nothing is written blindly.
+    /// CharacterDrawer.SetEyeHighlightColor 0x1C6AF34 → CharacterMaterials
+    /// SetEyeHighlightColor 0x1C7A008, which fans out to
+    /// SetEyeHighlightColorToMaterial 0x1C7A2A4 (decompiled: HasProperty(_IrisColor)
+    /// gate, then SetColor(_IrisColor, colour including alpha)).
     /// </summary>
     public void SetEyeHighlightColor(Color col)
     {
@@ -593,10 +614,11 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     }
 
     /// <summary>
-    /// CharacterDrawer.SetSpotlightColor 0x1C10450 → CharacterMaterials.SetSpotlightColor
-    /// 0x1C1DE04: stores `spotlight_color` (BlendColor) and `pinspotlight_color` +
-    /// alpha into PassivePropertys; the consumption site is the Live light pass
-    /// (out of scope), and no `_SpotLight*` property exists in the shipped materials.
+    /// CharacterDrawer.SetSpotlightColor 0x1C6AF50 → CharacterMaterials
+    /// SetSpotlightColor 0x1C78A7C (decompiled: PassiveProperty&lt;BlendColor&gt; at
+    /// +0xAC/+0xB0 and PassiveProperty&lt;Color&gt; at +0xC4/+0xC8; no character
+    /// material is written). The consumption site is the Live-stage light pass — out
+    /// of ADV scope; no `_SpotLight*` property exists in the shipped materials.
     /// </summary>
     public void SetSpotlightColor(Color color, Color pin, float pin_alpha, int blend)
     {
@@ -619,14 +641,17 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
         return materials != null ? materials.GetPinSpotlightAlpha() : 0f;
     }
 
-    /// <summary>CharacterDrawer.SetInherentColor(sel, color_sel) 0x1C104E8 → materials 0x1C1E7F8.</summary>
+    /// <summary>CharacterDrawer.SetInherentColor(sel, color_sel) 0x1C6AFE8 → materials
+    /// SetInherentColorSel 0x1C79470.</summary>
     public void SetInherentColorSel(Imas.CharacterSoul soul, int color_sel)
     {
         if (materials == null) return;
         materials.SetInherentColorSel(soul, color_sel);
     }
 
-    /// <summary>CharacterDrawer.SetInherentColor(color, index) 0x1C10504 → materials 0x1C1E8C0.</summary>
+    /// <summary>CharacterDrawer.SetInherentColor(color, index) 0x1C6B004 → materials
+    /// SetInherentColor 0x1C79538 (decompiled: index 0..3, element write, forward
+    /// MatCol fan-out to SetInherentColorToMaterial 0x1C796B0).</summary>
     public void SetInherentColor(Color color, int color_index)
     {
         if (materials == null) return;
@@ -638,7 +663,7 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     // =====================================================================
 
     /// <summary>
-    /// CharacterDrawer.SetZShiftFace 0x1C10590: `z_shift_min_array[2] = z.min;
+    /// CharacterDrawer.SetZShiftFace 0x1C6B090: `z_shift_min_array[2] = z.min;
     /// z_shift_max_array[2] = z.max;` (bounds-checked, throws natively when the array
     /// is shorter than 3).
     /// </summary>
@@ -649,7 +674,7 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
         z_shift_max_array[ZSHIFT_FACE] = z_shift.max;
     }
 
-    /// <summary>CharacterDrawer.SetZShiftOther 0x1C105D8: index 0.</summary>
+    /// <summary>CharacterDrawer.SetZShiftOther 0x1C6B0D8: index 0.</summary>
     public void SetZShiftOther(ZShift z_shift)
     {
         EnsureZShiftArrays();
@@ -658,9 +683,13 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     }
 
     /// <summary>
-    /// CharacterDrawer.GetZShiftCloth 0x1C10618: `new ZShift(min[1], max[1])`.
-    /// The cloth slot is never written by this class — it is seeded elsewhere
-    /// (CharacterMaterials/CharacterManager); UNKNOWN(native 0x1C10618 callers).
+    /// CharacterDrawer.GetZShiftCloth 0x1C6B118 (decompiled): reads both arrays at
+    /// this+0xC0/0xC8 (null → throw), requires length >= 2 in each (the native test is
+    /// `(len &amp; 0xFFFFFFFE) == 0` → IndexOutOfRange for length 0/1), reads slot 1
+    /// (`Arrays[1]`, data+36) and returns `new CharacterManager.ZShift(min[1], max[1])`
+    /// (8-byte struct returned in x0/s0-s1 — Hex-Rays typed it as float).
+    /// The cloth slot is seeded outside this class (the caller set is not in this
+    /// batch); the port's EnsureZShiftArrays keeps length 3 so the read is safe.
     /// </summary>
     public ZShift GetZShiftCloth()
     {
@@ -678,42 +707,54 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
     // Misc accessors
     // =====================================================================
 
-    /// <summary>CharacterDrawer.GetCharacterDrawerEye 0x1C10684: returns `drawer_eye` (0xB0).</summary>
+    /// <summary>CharacterDrawer.GetCharacterDrawerEye 0x1C6B184: returns `drawer_eye` (0xB0).</summary>
     public CharacterDrawerEyeNative GetCharacterDrawerEye()
     {
         return drawer_eye;
     }
 
-    /// <summary>CharacterDrawer.SetShadowCastEnable 0x1C10694: `config.isShadowCastEnabled = v;`.</summary>
+    /// <summary>CharacterDrawer.SetShadowCastEnable 0x1C6B194: `config.isShadowCastEnabled = v;`.</summary>
     public void SetShadowCastEnable(bool isEnabled)
     {
         config.isShadowCastEnabled = isEnabled;
     }
 
-    /// <summary>CharacterDrawer.IsShadowCastEnabled 0x1C1069C.</summary>
+    /// <summary>CharacterDrawer.IsShadowCastEnabled 0x1C6B19C.</summary>
     public bool IsShadowCastEnabled()
     {
         return config.isShadowCastEnabled;
     }
 
-    /// <summary>CharacterDrawer.GetMaterials 0x1C1067C.</summary>
+    /// <summary>CharacterDrawer.GetMaterials 0x1C6B17C.</summary>
     public CharacterMaterialsNative GetMaterials()
     {
         return materials;
     }
 
-    /// <summary>CharacterDrawer.GetNumOfRendererAndMaterials 0x1C0F8FC.</summary>
+    /// <summary>CharacterDrawer.GetNumOfRendererAndMaterials 0x1C6A3FC.</summary>
     public int GetNumOfRendererAndMaterials()
     {
         return renmats.Count;
     }
 
-    /// <summary>CharacterDrawer.ReloadDefaultLayers 0x1C108B8 (layer bookkeeping only).</summary>
+    /// <summary>
+    /// CharacterDrawer.ReloadDefaultLayers 0x1C6B3B8 (decompiled): if
+    /// `mirroredItemDefaultLayers` (+0xE0) is non-null, walk it BACK-TO-FRONT
+    /// (len-1 .. 0) and store `mirroredItems[i].layer` (GameObject.get_layer,
+    /// sub_71404D4) into `mirroredItemDefaultLayers[i]`. Pure mirror/audience-layer
+    /// bookkeeping: it never touches renmats or character materials. Native throws on
+    /// a null/short mirroredItems entry; the spike skips those defensively.
+    /// </summary>
     public void ReloadDefaultLayers()
     {
-        // Native restores every registered renderer's layer to its captured default.
-        // The spike does not reparent characters between layers, so this is a no-op
-        // that keeps the API present. UNKNOWN(native 0x1C108B8): per-renderer defaults.
+        if (mirroredItemDefaultLayers == null) return;
+        for (var i = mirroredItemDefaultLayers.Length - 1; i >= 0; i--)
+        {
+            if (mirroredItems == null || i >= mirroredItems.Length) continue;
+            var go = mirroredItems[i];
+            if (go == null) continue;
+            mirroredItemDefaultLayers[i] = go.layer;
+        }
     }
 
     /// <summary>SPIKE-MAPPING helper for SetVisible (see the method comment).</summary>
@@ -757,28 +798,16 @@ public sealed class CharacterDrawerNative : MonoBehaviour, FaceCtrlNative.IChara
 }
 
 // =========================================================================
-// CharacterMaterials (dump.cs 15017) — the subset the drawer writes.
+// CharacterMaterials — ported in its own file, CharacterMaterialsNative.cs.
 // =========================================================================
 
-/// <summary>
-/// `CharacterMaterials` state for the B5 subset. Native is a MonoBehaviour attached to
-/// the character's top object (Create 0x1C1CEC8) that keeps
-/// <c>List&lt;MatCol&gt;</c> + <c>List&lt;OutlineMaterial&gt;</c> and defers every write
-/// to `UpdateProperties(float)` 0x1C2308C through PassiveProperty/dirty flags.
-///
-/// Performance-layer substitution (ADR-0033 §3): the dirty/deferred split is collapsed
-/// into an immediate guarded write. The *state* fields keep their native layout
-/// (is_changed / is_enable / value) so a later port of the apply pass can diff against
-/// them; only the timing of the material write changes (same frame, same value).
-///
-/// Not ported here: glow (SetGlowLuminance/SetGlowBlink*), glasses colour/reflection,
-/// skin bias, `initStatic`, mirror materials, `<c>apply_color</c>` 0x1C21158,
-/// `ApplyOutline` 0x1C21F9C, `ApplyOutlineColor` 0x1C1D874, `apply_stencil` 0x1C1D9D0,
-/// `UpdateProperties` 0x1C2308C, `UnsetDirty` 0x1C2341C, `blink2blend_all` 0x1C1E49C.
-/// </summary>
-// The embedded CharacterMaterialsNative (previously lines ~779-1209) was
+// The embedded CharacterMaterialsNative stub (previously lines ~779-1209) was
 // replaced by the native-faithful standalone file CharacterMaterialsNative.cs
-// (same member signatures; B5 spec #126). Everything below is intact.
+// (same member signatures). That file carries the current-shipped-binary
+// evidence table (create_sync 0x1C77B44, ApplyOutlineColor 0x1C784EC,
+// apply_stencil 0x1C78648, the Set*/Get* wrappers, initStatic 0x1C7ABE8) and is
+// the single place where the deferred apply pass
+// UpdateProperties 0x1C7DD04 / apply_color 0x1C7BDD0 is documented.
 
 // =========================================================================
 // CharacterDrawerEye (dump.cs 14990) — identity + draw type only.

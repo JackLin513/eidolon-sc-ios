@@ -1,76 +1,57 @@
 // =========================================================================
-// CharacterMaterials (dump.cs TypeDefIndex 15017) — B5 decompilation-faithful
-// port of the 15 Materials__* functions in /tmp/ida-decomp/b5/.
+// CharacterMaterials (dump.cs TypeDefIndex 15017) — decompilation-faithful
+// port of the current shipped binary (/tmp/unk2-decomp, old → new RVAs below).
 // =========================================================================
 //
-// Evidence (read-only):
-//   /tmp/ida-decomp/b5/Materials__Create@0x1c1cec8.c            (thunk -> sub_1C1CECC)
-//   /tmp/ida-decomp/b5/Materials__SetOutlineWidth@0x1c1d744.c
-//   /tmp/ida-decomp/b5/Materials__SetOutlineColor@0x1c1d7e8.c
-//   /tmp/ida-decomp/b5/Materials__SetStencilRef@0x1c1d96c.c
-//   /tmp/ida-decomp/b5/Materials__SetIdolColor@0x1c1dac0.c
-//   /tmp/ida-decomp/b5/Materials__SetMonoColor@0x1c1daec.c
-//   /tmp/ida-decomp/b5/Materials__SetMonoColorRatio@0x1c1db00.c
-//   /tmp/ida-decomp/b5/Materials__SetRimLight@0x1c1db10.c
-//   /tmp/ida-decomp/b5/Materials__SetRimLightDirection@0x1c1db28.c
-//   /tmp/ida-decomp/b5/Materials__SetLightDirection@0x1c1dc8c.c
-//   /tmp/ida-decomp/b5/Materials__SetSpotlightColor@0x1c1de04.c
-//   /tmp/ida-decomp/b5/Materials__SetCheekRedden@0x1c1dfc4.c
-//   /tmp/ida-decomp/b5/Materials__SetCheekReddenToMaterial@0x1c1dff4.c
-//   /tmp/ida-decomp/b5/Materials__SetCheekReddenEnable@0x1c1e170.c
-//   /tmp/ida-decomp/b5/Materials__SetCheekReddenIntensity@0x1c1e18c.c
-//   plus the Drawer-layer wrappers /tmp/ida-decomp/b5/Drawer__*.c (0x1C10180,
-//   0x1C1019C, 0x1C10260, 0x1C1027C, 0x1C10298, 0x1C102BC, 0x1C102E4, 0x1C10300,
-//   0x1C1031C, 0x1C10338, 0x1C1035C, 0x1C10380, 0x1C1039C, 0x1C103E0, 0x1C103FC,
-//   0x1C10418, 0x1C10450, 0x1C10478).
-// Note: IDA was unavailable for this pass (no re-dump); every statement below is
-// sourced from the snapshot above.
+// Evidence (read-only; every file is CharacterMaterials__old_<oldRVA>__new_<newRVA>.c
+// and the body inside is the <newRVA> function):
+//   0x1C1CECC -> 0x1C77B44   create_sync
+//   0x1C1D874 -> 0x1C784EC   ApplyOutlineColor
+//   0x1C1D9D0 -> 0x1C78648   apply_stencil
+//   0x1C1DAC0 -> 0x1C78738   SetIdolColor
+//   0x1C1DB00 -> 0x1C78778   SetMonoColorRatio
+//   0x1C1DB10 -> 0x1C78788   SetRimLight
+//   0x1C1DB28 -> 0x1C787A0   SetRimLightDirection
+//   0x1C1DC8C -> 0x1C78904   SetLightDirection
+//   0x1C1DE04 -> 0x1C78A7C   SetSpotlightColor
+//   0x1C1E8C0 -> 0x1C79538   SetInherentColor
+//   0x1C1F62C -> 0x1C7A2A4   SetEyeHighlightColorToMaterial (static)
+//   0x1C1FF70 -> 0x1C7ABE8   initStatic (property-id cctor)
+// Other current RVAs cited in comments come from dump.cs 15017.
 //
-// Decision context: docs/adr/0033-native-faithful-3d-migration.md (B5).
+// Decision context: docs/adr/0033-native-faithful-3d-migration.md.
 // Rules honoured in this file:
-//   * A method touches the real material ONLY when the decompiled body directly
-//     shows the material write (SetCheekReddenToMaterial, and the confirmed
-//     tail-apply calls of SetOutlineColor / SetStencilRef). Everything else is a
-//     state-cache write, and the material half is TryApplyAll()'s or UNKNOWN.
-//   * Every unresolved semantic is UNKNOWN(native 0x…) — also listed in
-//     CharacterMaterialsNative.NativeUnknowns and /tmp/materials-native-notes.md.
-//   * Fields below carry the native IL2CPP byte offset in comments; the native
-//     struct layout is, byte for byte:
+//   * A method writes the real material only where the decompiled body shows
+//     the material call: ApplyOutlineColor, apply_stencil, both direction
+//     setters, SetEyeHighlightColorToMaterial, SetCheekReddenToMaterial. Every
+//     other Set* entry only fills the native state record, exactly like the
+//     binary; the deferred half belongs to apply_color 0x1C7BDD0 /
+//     UpdateProperties 0x1C7DD04 (bodies outside this batch).
+//   * A remaining unresolved semantic is written as `UNKNOWN(native 0x<newRVA>)`
+//     and listed in CharacterMaterialsNative.NativeUnknowns.
+//   * Fields carry the native IL2CPP byte offset in comments; the native layout
+//     is, byte for byte (PassiveProperty<T> = changed byte, value 4 bytes later):
 //     +0x4C(76) changed | +0x4D(77) enable | +0x50(80)..+0x5C(92) Color   IdolColor
 //     +0x60(96) changed | +0x64(100)..+0x70(112) Color                   MonoColor
 //     +0x74(116) changed | +0x78(120) ratio                              MonoColorRatio
 //     +0x7C(124) changed | +0x7D(125) enable | +0x80(128)..+0x8C(140) C. RimLight
-//     +0x90(144) changed | +0xA4(164) intensity                          CheekRedden
+//     +0x90(144) changed | +0x94(148) Color | +0xA4(164) intensity      CheekRedden
 //     +0xA8(168) changed | +0xA9(169) value                              CheekReddenEnable
-//     +0xAC(172) {int blend, float r,g,b,a}  | +0xC4(196) {changed; pincolor/alpha}
-//     +0x130(304) List<MatCol>  | +0x144(324) outline_width float
-//     +0x14C(332) outline_color Color | +0x160(352) stencil_ref int
+//     +0xAC(172) PassiveProperty<BlendColor>  (value 176: int + Color)
+//     +0xC4(196) PassiveProperty<Color>       (value 200..212, pin + alpha)
+//     +0xE0(224) Color[4] inherent_colors   | +0x130(304) List<MatCol>
+//     +0x144(324) PassiveProperty<float> outline_width (value 328)
+//     +0x14C(332) PassiveProperty<Color> outline_color (value 336)
+//     +0x160(352) PassiveProperty<int>   stencil_ref   (value 356)
 //
-// WIRING (one line, not performed here): replace the embedded
-// CharacterMaterialsNative inside CharacterDrawerNative (CharacterDrawerNative.cs
-// "@Materials" section) with this class — `drawer.materials` keeps the same
-// name; construct it in drawer.Create with
-// `new CharacterMaterialsNative(rootGo.GetComponentsInChildren<SkinnedMeshRenderer>(true))`,
-// then call `ApplyFromSoul(soul)` + `TryApplyAll()` where drawer.Create ends.
-//
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-// COMPILE NOTE: CharacterDrawerNative.cs already embeds a
-// `public sealed class CharacterMaterialsNative` (its "@Materials" section,
-// ~line 779). While that embedded class exists, the two files do NOT compile
-// together (CS0101, duplicate top-level name in the global namespace). This
-// file is written to compile standalone (verified offline, 0 error / 0 warning)
-// and to be a drop-in replacement: delete the embedded class in
-// CharacterDrawerNative.cs when wiring (that edit belongs to the lead, not to
-// this authoring pass), then keep every member signature listed at the bottom
-// of this file identical.
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//
-// Shader property names are ground truth from the shipped bundles (same
-// material inventory as CharacterDrawerNative's header):
+// Shader property names are ground truth from the shipped bundles + the
+// resolved initStatic 0x1C7ABE8 table (same material inventory as
+// CharacterDrawerNative's header):
 //   Custom/Chr_Basic        : _Outline _OutlineColor _OutlineZadj _TanFov _Stencil
 //                             _RimLightOn _RimLight _RimColor _ZShift1000Min/Max
 //   Custom/Chr_Face         : _Outline _OutlineColor _Stencil _IsReddish _ReddishColor
 //                             _ReddishIntensity _RimLightOn _RimLight _RimColor
+//                             _Colors _Color _TintColor _SubColor0..3 _Whiteness
 //   Custom/BultIn/Bi_CharEye: _IrisColor _SubTex _Stencil
 //   global                  : _MonoColor (set/kept by CharacterBootstrap.ApplyGlobals)
 
@@ -82,32 +63,70 @@ using UnityEngine;
 /// <summary>
 /// Native-faithful <c>CharacterMaterials</c> (dump.cs 15017). Plain class — the
 /// native component is attached to the character top object by Create
-/// 0x1C1CEC8, but this spike keeps it as a plain object exactly like the
-/// performance-layer substitution already used in the drawer.
+/// 0x1C77B40 -> create_sync 0x1C77B44, but this spike keeps it as a plain
+/// object exactly like the performance-layer substitution already used in the
+/// drawer.
 /// </summary>
 public sealed class CharacterMaterialsNative
 {
     // ---------------------------------------------------------------------
-    // Shader property ids (Shader.PropertyToID init equivalent; names are
-    // bundle-verified inventory entries, never guesses).
+    // Shader property ids — faithful initStatic 0x1C7ABE8 (the static cctor).
+    // Native field offsets are in the comments. Every literal is confirmed
+    // from the shipped IL2CPP metadata-usage string slots (script.json
+    // ScriptString), so this is the native `id_*` static table, not a guess.
     // ---------------------------------------------------------------------
-    public static readonly int id_Outline = Shader.PropertyToID("_Outline");
-    public static readonly int id_OutlineColor = Shader.PropertyToID("_OutlineColor");
-    public static readonly int id_StencilRef = Shader.PropertyToID("_Stencil");
-    public static readonly int id_IsReddish = Shader.PropertyToID("_IsReddish");
-    public static readonly int id_ReddishIntensity = Shader.PropertyToID("_ReddishIntensity");
-    public static readonly int id_ReddishColor = Shader.PropertyToID("_ReddishColor");
-    public static readonly int id_RimLightOn = Shader.PropertyToID("_RimLightOn");
-    public static readonly int id_RimColor = Shader.PropertyToID("_RimColor");
-    public static readonly int id_IrisColor = Shader.PropertyToID("_IrisColor");
+    public static readonly int id_Yoffsets = Shader.PropertyToID("_Yoffsets");                         // +0x00
+    public static readonly int id_Colors = Shader.PropertyToID("_Colors");                             // +0x04
+    public static readonly int id_BlendSrc = Shader.PropertyToID("_BlendSrc");                         // +0x08
+    public static readonly int id_StencilRef = Shader.PropertyToID("_Stencil");                        // +0x0C (field name in dump.cs: id_StencilRef)
+    public static readonly int id_IllumiColor = Shader.PropertyToID("_IllumiColor");                   // +0x10
+    public static readonly int id_GlowColor = Shader.PropertyToID("_GlowColor");                       // +0x14
+    public static readonly int id_Color = Shader.PropertyToID("_Color");                               // +0x18
+    public static readonly int id_TintColor = Shader.PropertyToID("_TintColor");                       // +0x1C
+    public static readonly int id_Irogae = Shader.PropertyToID("_Irogae");                             // +0x20
+    public static readonly int id_Light = Shader.PropertyToID("_Light");                               // +0x24
+    public static readonly int id_RimLight = Shader.PropertyToID("_RimLight");                         // +0x28
+    public static readonly int id_RimLightOn = Shader.PropertyToID("_RimLightOn");                     // +0x2C
+    public static readonly int id_RimColor = Shader.PropertyToID("_RimColor");                         // +0x30
+    /// <summary>+0x38: int[ChrColorNum] built with String.Format("_SubColor{0}", i) — same as native.</summary>
+    public static readonly int[] id_ChrColors = BuildChrColorIds();
+    public static readonly int id_IrisColor = Shader.PropertyToID("_IrisColor");                       // +0x40
+    public static readonly int id_IsReddish = Shader.PropertyToID("_IsReddish");                       // +0x44
+    public static readonly int id_ReddishColor = Shader.PropertyToID("_ReddishColor");                 // +0x48
+    public static readonly int id_ReddishIntensity = Shader.PropertyToID("_ReddishIntensity");         // +0x4C
+    public static readonly int id_DiffuseColor = Shader.PropertyToID("_DiffuseColor");                 // +0x50
+    public static readonly int id_MonoColor = Shader.PropertyToID("_MonoColor");                       // +0x54
+    public static readonly int id_Whiteness = Shader.PropertyToID("_Whiteness");                       // +0x58
+    public static readonly int id_UseReflect = Shader.PropertyToID("_UseReflect");                     // +0x5C
+    public static readonly int id_Reflection = Shader.PropertyToID("_Reflection");                     // +0x60
+    public static readonly int id_Outline = Shader.PropertyToID("_Outline");                           // +0x64
+    public static readonly int id_OutlineZadj = Shader.PropertyToID("_OutlineZadj");                   // +0x68
+    public static readonly int id_TanFov = Shader.PropertyToID("_TanFov");                             // +0x6C
+    public static readonly int id_ZShift1000Min = Shader.PropertyToID("_ZShift1000Min");               // +0x70
+    public static readonly int id_ZShift1000Max = Shader.PropertyToID("_ZShift1000Max");               // +0x74
+    public static readonly int id_ZShift1000MinArray = Shader.PropertyToID("_ZShift1000MinArray");     // +0x78
+    public static readonly int id_ZShift1000MaxArray = Shader.PropertyToID("_ZShift1000MaxArray");     // +0x7C
+    public static readonly int id_OutlineColor = Shader.PropertyToID("_OutlineColor");                 // +0x80
+    public static readonly int id_Luminance = Shader.PropertyToID("_Luminance");                       // +0x84
+    public static readonly int id_ColorBlendRate = Shader.PropertyToID("_ColorBlendRate");             // +0x88
+    public static readonly int id_WhiteMode = Shader.PropertyToID("_WhiteMode");                       // +0x8C
+    public static readonly int id_Whitish = Shader.PropertyToID("_Whitish");                           // +0x90
+    public static readonly int id_Freq = Shader.PropertyToID("_Freq");                                 // +0x94
+    public static readonly int id_ForceNoSkin = Shader.PropertyToID("_ForceNoSkin");                   // +0x98
+
+    private static int[] BuildChrColorIds()
+    {
+        var ids = new int[ChrColorNum];
+        for (var i = 0; i < ids.Length; i++)
+            ids[i] = Shader.PropertyToID(string.Format("_SubColor{0}", i));
+        return ids;
+    }
 
     /// <summary>
-    /// Face toggle keyword read out of SetCheekReddenToMaterial 0x1C1DFF4
-    /// (CustomShaderUtility.SetMaterialToggle keyword argument, CF confirmed in
-    /// FaceCtrl.SetCheekValue 0x379F840 in the B3 pass).
-    /// UNKNOWN(native, literal source): the keyword string's IL2CPP metadata
-    /// literal could not be decoded statically in this snapshot; the value
-    /// "_ISREDDISH_ON" is the one confirmed by the B3 decompilation.
+    /// Face toggle keyword used by SetCheekReddenToMaterial 0x1C78C6C (body not
+    /// in this batch; the keyword value is the one confirmed in the B3 pass from
+    /// FaceCtrl.SetCheekValue 0x379F840, which calls the same
+    /// CustomShaderUtility.SetMaterialToggle helper).
     /// </summary>
     public const string ReddishKeyword = "_ISREDDISH_ON";
 
@@ -178,12 +197,16 @@ public sealed class CharacterMaterialsNative
         public bool value;        // +169
     }
 
-    /// <summary>Native BlendColor record at +0xAC(172): {int blend; float r,g,b,a;}</summary>
+    /// <summary>
+    /// Native PassiveProperty&lt;BlendColor&gt; value record: the property lives at
+    /// +0xAC(172) (changed byte there) and its value is these 5 dwords at
+    /// +0xB0(176). SetSpotlightColor 0x1C78A7C writes it via sub_4DCD004.
+    /// </summary>
     [Serializable]
     public struct BlendColor
     {
-        public int blend;         // +172
-        public Color color;       // +176..188
+        public int blend;         // +176 (0xB0)
+        public Color color;       // +180..192 (0xB4..0xC0)
     }
 
     // ---------------------------------------------------------------------
@@ -194,9 +217,9 @@ public sealed class CharacterMaterialsNative
 
     /// <summary>
     /// One registered material (`MatCol` at native +0x130(304), trimmed). The
-    /// decompile of SetLightDirection 0x1C1DC8C walks this list as
-    /// `for (i = count; i > 0;)` and takes `entry[2]` (offset 16 in MatCol) as
-    /// the Material reference, then skips null/dead materials.
+    /// decompiled SetLightDirection 0x1C78904 / SetRimLightDirection 0x1C787A0 /
+    /// ApplyOutlineColor 0x1C784EC / apply_stencil 0x1C78648 all walk this list
+    /// and take `entry[2]` (offset 16 in MatCol) as the Material reference.
     /// </summary>
     private sealed class MatCol
     {
@@ -211,11 +234,13 @@ public sealed class CharacterMaterialsNative
     private readonly List<MatCol> matcols = new List<MatCol>();  // native +0x130(304)
 
     // ---------------------------------------------------------------------
-    // Identity (native Create 0x1C1CEC8 thunk -> sub_1C1CECC, body not decompiled)
+    // Identity (native Create 0x1C77B40 -> create_sync 0x1C77B44)
     // ---------------------------------------------------------------------
-    public int chara_index;
-    public string chara_id;
-    public GameObject top_go;
+    public int chara_index;                        // +0x48(72)
+    public string chara_id;                        // +0x40(64)
+    public GameObject top_go;                      // +0x28(40)
+    public GameObject head_model_go;               // +0x30(48)
+    public GameObject body_model_go;               // +0x38(56)
 
     // ---------------------------------------------------------------------
     // State caches — native offsets in the comments are authoritative.
@@ -227,56 +252,67 @@ public sealed class CharacterMaterialsNative
     public CheekRedden cheek_redden;                // +0x90(144)/+0xA4(164)
     public CheekReddenEnable cheek_redden_enable;  // +0xA8(168)/+0xA9(169)
 
-    // +0xAC(172) 5-dword record written by sub_4D42904 in SetSpotlightColor
-    // 0x1C1DE04 ({blend int, r,g,b,a}); UNKNOWN(native 0x1C1DE04): the exact
-    // struct name/type of the PassiveProperty target (dump.cs calls it
-    // spotlight_color) — recorded with the same fields the drawer port keeps.
-    public BlendColor spotlight_color;
+    // PassiveProperty<float> outline_width at +0x144(324): changed byte at 324,
+    // value at +0x148(328). Set by SetOutlineWidth 0x1C783BC; the apply pass is
+    // ApplyOutline 0x1C7CC14 (body outside this batch) -> TryApplyAll().
+    private float outline_width = 0.0008f;         // default: Drawer.GetOutlineWidth 0x1C6AC9C fallback literal
+    private bool outline_width_dirty;               // spike-managed (native changed byte at +0x144)
 
-    // +0xC4(196) `{is_changed; pin …}` written by 0x1C1DE04 before it calls the
-    // Color-family helper sub_4D42A8C. UNKNOWN(native 0x1C1DE04): exact record
-    // layout of the pin slots (pin color + pin alpha in the drawer port).
-    public Color pin_spotlight_color;
-    public float pin_spotlight_alpha;
-    private bool pin_spotlight_changed;            // +0xC4(196) flag byte
-
-    // +0x144(324) outline_width — set through sub_4D42C4C in SetOutlineWidth
-    // 0x1C1D744 (PassiveProperty set; helper internals not decompiled).
-    private float outline_width = 0.0008f;         // default: Drawer__GetOutlineWidth 0x1C1019C fallback literal
-    private bool outline_width_dirty;               // spike-managed (native dirty not visible in decomp)
-
-    // +0x14C(332) outline_color — Color-family helper write in SetOutlineColor
-    // 0x1C1D7E8, followed by the confirmed tail call sub_1C1D874 (ApplyOutlineColor).
+    // PassiveProperty<Color> outline_color at +0x14C(332): changed byte at 332,
+    // value at +0x150(336..348). SetOutlineColor 0x1C78460 then tail-calls
+    // ApplyOutlineColor 0x1C784EC (decompiled, applied below).
     private Color outline_color = Color.black;
     private bool outline_color_dirty;
 
-    // +0x160(352) stencil_ref — set in SetStencilRef 0x1C1D96C followed by the
-    // confirmed tail call sub_1C1D9D0 (apply_stencil).
+    // PassiveProperty<int> stencil_ref at +0x160(352): changed byte at 352, value
+    // at +0x164(356). SetStencilRef 0x1C785E4 then tail-calls apply_stencil
+    // 0x1C78648 (decompiled, applied below).
     private int stencil_ref;
 
-    // Soul-only state recorded until an apply site is found:
-    // cheekReddenColor -> face material's _ReddishColor (property exists in the
-    // Chr_Face inventory but NO Materials__Set* in scope writes it).
+    // spotlight_color: PassiveProperty<BlendColor> at +0xAC(172) — changed byte
+    // at +0xAC, value at +0xB0(176: blend int + Color). SetSpotlightColor
+    // 0x1C78A7C marks it changed and writes the record via sub_4DCD004.
+    public BlendColor spotlight_color;
+
+    // pinspotlight_color: PassiveProperty<Color> at +0xC4(196) — changed byte at
+    // +0xC4, Color at +0xC8(200..212) = (pin.r, pin.g, pin.b, pin_alpha). The
+    // same method marks it changed and writes via sub_4DCD18C; Hex-Rays split the
+    // 5th float argument into a double + float, so pin.a is unused (the alpha
+    // ARGUMENT fills the 4th component instead).
+    public Color pin_spotlight_color;
+    public float pin_spotlight_alpha;
+    private bool pin_spotlight_changed;            // +0xC4(196) changed byte
+
+    // CheekRedden record +0x90(144): changed byte at 144, colour at +0x94(148),
+    // intensity at +0xA4(164). create_sync 0x1C77B44 seeds the colour from a
+    // 4-float rodata literal and copies soul.cheekReddenColor (+0x34); no
+    // decompiled Materials Set* writes the face material's _ReddishColor, that
+    // happens in apply_color 0x1C7BDD0 / the FaceCtrl chain (SetCheekReddenToMaterial).
     public Color cheek_redden_color;
     private bool cheek_redden_color_changed;
 
-    // soul.skinColor — no Materials__Set* in the B5 decomp set applies it
-    // (candidate consumer: inherent-color array 0xE0, index 0 — not evidenced).
+    // soul.skinColor: create_sync 0x1C77B44 copies it into lastSkinCol (+0x10C)
+    // and then calls calcSkinBias 0x1C7B58C to fill skinBias (+0x11C). The spike
+    // keeps the raw soul colour; the calcSkinBias body is outside this batch.
+    public Color default_last_skin;                // +0xFC(252)
+    public Color last_skin_col;                    // +0x10C(268)
+    public Color skin_bias;                        // +0x11C(284)
+    public Color glasses_color;                    // +0xE8(232)
+    public float glasses_reflection;               // +0xF8(248)
     public Color skin_color;
     private bool skin_color_changed;
 
-    // inherent colors (+0xE0, Color[ChrColorNum] per the drawer port) — the
-    // setters 0x1C1E7F8/0x1C1E8C0 are only known from Drawer__ wrappers; the
-    // target property is UNKNOWN (the screenshot bundle inventory lists no
-    // _InherentColor on the shipped materials).
+    // inherent_colors at +0xE0(224): Color[ChrColorNum]. SetInherentColor
+    // 0x1C79538 writes the element then fans out through
+    // SetInherentColorToMaterial 0x1C796B0 (body outside this batch; property
+    // inferred as _SubColor{index} from the resolved cctor table).
     public Color[] inherent_colors = new Color[ChrColorNum];
     private bool inherent_color_changed;
 
-    // SetRimLightDirection 0x1C1DB28 / SetLightDirection 0x1C1DC8C write a
-    // vector property (custom-shader statics class slots +40 / +36, cctor
-    // 0x1C1FF70) into every registered material DIRECTLY — write-through is
-    // now decomp-confirmed; the property NAMES remain UNKNOWN (see below),
-    // so the inventory mapping is HasProperty-guarded.
+    // SetRimLightDirection 0x1C787A0 / SetLightDirection 0x1C78904 write
+    // _RimLight (cctor +0x28) / _Light (cctor +0x24) into every registered
+    // material DIRECTLY. Neither body stores the vector on `this`; the two fields
+    // below are port-only bookkeeping for Describe().
     public Vector3 rim_light_direction;
     public Vector3 light_direction;
 
@@ -304,10 +340,10 @@ public sealed class CharacterMaterialsNative
 
     /// <summary>
     /// Renderer-driven constructor (CharacterDrawerNative.Create equivalent). The
-    /// native Create 0x1C1CEC8(chara_index, top_go, chara_id, soul, head_go,
-    /// body_go) receives the two GameObjects and thus a real head/body split;
-    /// this ctor takes the renderers and derives head/body from the transform
-    /// ancestors, then is_face/^is_eye from the material properties.
+    /// native Create 0x1C77B40 -> create_sync 0x1C77B44(chara_index, top_go,
+    /// chara_id, soul, head_go, body_go) receives the two GameObjects and thus a
+    /// real head/body split; this ctor takes the renderers and derives head/body
+    /// from the transform ancestors, then face/eye from the material properties.
     /// </summary>
     public CharacterMaterialsNative(IEnumerable<SkinnedMeshRenderer> renderers)
     {
@@ -338,18 +374,94 @@ public sealed class CharacterMaterialsNative
     }
 
     /// <summary>
-    /// CharacterMaterials.Create 0x1C1CEC8 — kept so CharacterDrawerNative.Create's
-    /// current call shape keeps compiling. UNKNOWN(native 0x1C1CECC): the thunk
-    /// target was never decompiled; the body's only observable effect in the spike's
-    /// subset is the identity fields (the virtuous matcol registry is filled by the
-    /// drawer's RegisterMaterial loop right after Create, per native
-    /// register_renderers 0x1C14F54 → RegisterMaterialOutline 0x1C1D504).
+    /// CharacterMaterials.Create 0x1C77B40 -> create_sync 0x1C77B44 (decompiled).
+    /// Seeds the identity fields and the whole state cache to the native
+    /// create-time values, then runs the native create_sub 0x1C7B6BC loop over
+    /// the head_go and body_go hierarchies. In the spike both hierarchies hang
+    /// under topGo, so the two native GetComponentsInChildren loops
+    /// (sub_4422A84) collapse into one walk over topGo.
     /// </summary>
     public void Create(int charaIndex, GameObject topGo, string charaId)
     {
-        chara_index = charaIndex;
-        top_go = topGo;
-        chara_id = charaId;
+        Create(charaIndex, topGo, charaId, null);
+    }
+
+    /// <summary>
+    /// create_sync 0x1C77B44 with the native CharacterSoul argument. Order of
+    /// writes follows the decompiled body exactly:
+    ///   identity → state seeds → soul copies (skinColor / inherentColor /
+    ///   cheekReddenColor) → create_sub loop over head/body renderers.
+    /// The native tail apply_on_awake 0x1C7BA50 / apply_color(true) 0x1C7BDD0 /
+    /// ApplyOutline 0x1C7CC14 are outside this batch; TryApplyAll() is the
+    /// spike's delivery site.
+    /// </summary>
+    public void Create(int charaIndex, GameObject topGo, string charaId, Imas.CharacterSoul soul)
+    {
+        chara_index = charaIndex;              // +0x48(72)
+        top_go = topGo;                        // +0x28(40)
+        chara_id = charaId;                    // +0x40(64)
+        head_model_go = null;                  // +0x30(48) native head_go argument (folded into topGo)
+        body_model_go = null;                  // +0x38(56) native body_go argument
+
+        // ---- state seeds, in decompile order ------------------------------
+        last_skin_col = default_last_skin;     // +0x10C <- +0xFC (OWORD copy)
+        // UNKNOWN(native 0x1C77B44): sub_7124750(0) is a static Color getter —
+        // white vs clear is not decidable statically; white is the neutral bias.
+        skin_bias = Color.white;               // +0x11C(284..296)
+        // UNKNOWN(native 0x1C77B44): the glasses_color preset is the 4-float
+        // rodata literal xmmword_83FD830 (no StringLiteral slot) — left default.
+        glasses_color = default;               // +0xE8(232)
+        glasses_reflection = -1f;              // +0xF8(248) = 0xBF800000
+
+        for (var i = 0; i < inherent_colors.Length; i++)
+            inherent_colors[i] = Color.white;  // +0xE0 elements = (1,1,1,1)
+
+        rim_light.is_changed = false;          // +124
+        rim_light.is_enable = true;            // +125
+        // UNKNOWN(native 0x1C77B44): sub_7124764(0) Color getter — white reading.
+        rim_light.color = Color.white;         // +128..140
+
+        idol_color.is_changed = false;         // +76
+        idol_color.is_enable = false;          // +77
+        idol_color.color = Color.white;        // +80..92 (same getter as above)
+
+        mono_color.is_changed = false;         // +96
+        mono_color.color = Color.white;        // +100..112
+
+        cheek_redden.is_changed = false;       // +144
+        // UNKNOWN(native 0x1C77B44): the CheekRedden colour preset is the 4-float
+        // rodata literal xmmword_84BEF10 — left default; the value the face
+        // material is driven with arrives from soul.cheekReddenColor below.
+        cheek_redden_color = default;          // +148
+        cheek_redden.intensity = 0f;           // +164
+        cheek_redden_enable.is_changed = false;// +168
+        cheek_redden_enable.value = false;     // +169
+
+        if (soul != null)
+        {
+            if (soul.skinColor.isValid)
+                last_skin_col = soul.skinColor.value;                // soul+0x4C/+0x50
+            // UNKNOWN(native 0x1C7B58C): calcSkinBias body is outside this batch;
+            // skin_bias keeps the neutral seed above.
+            if (soul.inherentColor.isValid)
+                inherent_colors[ChrColorMainIndex] = soul.inherentColor.value; // soul+0x60/+0x64
+            if (soul.cheekReddenColor.isValid)
+                cheek_redden_color = soul.cheekReddenColor.value;    // soul+0x30/+0x34
+        }
+
+        // ---- create_sub 0x1C7B6BC over the head + body hierarchies ----------
+        if (topGo != null)
+        {
+            foreach (var rend in topGo.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (rend == null) continue;
+                var mats = rend.sharedMaterials;
+                if (mats == null) continue;
+                var isHead = IsHeadRenderer(rend);
+                foreach (var mat in mats)
+                    RegisterMaterialInternal(mat, null, false, 1f, hintHead: isHead);
+            }
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -429,24 +541,26 @@ public sealed class CharacterMaterialsNative
     }
 
     // =====================================================================
-    // Outline width (state +0x144(324)) — NO eager material write here:
-    // native 0x1C1D744 only calls sub_4D42C4C (PassiveProperty set); the
-    // apply pass (ApplyOutline 0x1C21F9C per dump.cs member) is not decompiled.
-    // TryApplyAll() is the spike's delivery site.
+    // Outline width (PassiveProperty<float> +0x144/324) — NO eager material
+    // write here: SetOutlineWidth 0x1C783BC only sets the PassiveProperty
+    // (changed byte +0x144, value +0x148/328); the apply pass is
+    // ApplyOutline 0x1C7CC14 (body outside this batch) and is delivered by
+    // TryApplyAll().
     // =====================================================================
 
-    /// <summary>Materials__SetOutlineWidth 0x1C1D744: sub_4D42C4C(this+324, value).</summary>
+    /// <summary>CharacterMaterials.SetOutlineWidth 0x1C783BC: PassiveProperty set
+    /// on this+0x148(328).</summary>
     public void SetOutlineWidth(float width)
     {
-        outline_width = width;
-        outline_width_dirty = true;
+        outline_width = width;                 // +0x148(328)
+        outline_width_dirty = true;            // +0x144(324) changed byte
     }
 
     /// <summary>
-    /// GetOutlineWidth 0x1C1D7A8 — NOT decompiled; the 0.0008f default below is the
-    /// literal CharacterDrawer.GetOutlineWidth 0x1C1019C returns when its material
-    /// target is missing, kept as the neutral value (CONFIRMED as a literal,
-    /// 推断 as this struct-field default).
+    /// CharacterMaterials.GetOutlineWidth 0x1C78420 — body outside this batch;
+    /// the 0.0008f default below is the literal CharacterDrawer.GetOutlineWidth
+    /// 0x1C6AC9C returns when its material target is missing, kept as the neutral
+    /// value (CONFIRMED as a literal, 推断 as this struct-field default).
     /// </summary>
     public float GetOutlineWidth() => outline_width;
 
@@ -464,54 +578,58 @@ public sealed class CharacterMaterialsNative
     private bool outline_disabled;
 
     // =====================================================================
-    // Outline color (state +0x14C(332)) — confirmed tail-apply
+    // Outline color (PassiveProperty<Color> +0x14C/332) — decompiled tail-apply
     // =====================================================================
 
     /// <summary>
-    /// Materials__SetOutlineColor 0x1C1D7E8: Color-family helper write into
-    /// this+332, then tail call sub_1C1D874. Both the state write and the tail
-    /// apply call are CONFIRMED; the per-material write itself is 推断
-    /// (sub_1C1D874 = ApplyOutlineColor per dump.cs, not decompiled in B5; the
-    /// guard + property pair comes from the bundle inventory).
-    /// UNKNOWN(native 0x1C1D874): mirror-material handling and the exact
-    /// per-matcol iteration order.
+    /// CharacterMaterials.SetOutlineColor 0x1C78460: PassiveProperty set on
+    /// outline_color (changed byte +0x14C/332, value +0x150/336..348), then tail
+    /// call ApplyOutlineColor 0x1C784EC (decompiled, applied below).
     /// </summary>
     public void SetOutlineColor(Color color)
     {
-        outline_color = color;                 // +0x14C(332)
-        outline_color_dirty = true;
+        outline_color = color;                 // +0x150(336)
+        outline_color_dirty = true;            // +0x14C(332) changed byte
         PushOutlineColor();
     }
 
+    /// <summary>
+    /// ApplyOutlineColor 0x1C784EC (decompiled): FORWARD walk of the MatCol list
+    /// (+0x130/304) via List.get_Item, and
+    /// `Material.SetVector(mat, statics+0x80 = _OutlineColor, this+336..348)` on
+    /// every entry's material (MatCol+0x10). No HasProperty guard and no mirror
+    /// material in the body.
+    /// </summary>
     private void PushOutlineColor()
     {
-        foreach (var col in matcols)
+        for (var i = 0; i < matcols.Count; i++)
         {
-            var mat = col.material;
-            if (mat == null || !mat.HasProperty(id_OutlineColor)) continue;
+            var mat = matcols[i].material;
+            if (mat == null) continue;
             mat.SetColor(id_OutlineColor, outline_color);
         }
     }
 
     // =====================================================================
-    // Stencil ref (state +0x160(352)) — confirmed tail-apply
+    // Stencil ref (PassiveProperty<int> +0x160/352) — decompiled tail-apply
     // =====================================================================
 
     /// <summary>
-    /// Materials__SetStencilRef 0x1C1D96C: helper write into this+352, then tail
-    /// call sub_1C1D9D0 (apply_stencil per dump.cs). The tail call is CONFIRMED;
-    /// the per-material write is 推断 (same-shape as SetOutlineColor's tail plus
-    /// drawer.SetLayerIdToObject 0x1C0FD80 precedent, which writes
-    /// SetFloat(id_StencilRef, ref) on every Renderer's shared material).
-    /// UNKNOWN(native 0x1C1D9D0): apply body not decompiled.
+    /// CharacterMaterials.SetStencilRef 0x1C785E4: PassiveProperty set on
+    /// stencil_ref (changed byte +0x160/352, value +0x164/356), then tail call
+    /// apply_stencil 0x1C78648 (decompiled, applied below). Called by
+    /// CharacterDrawer.SetLayerId 0x1C6A79C with LayerIdToStencilRef(id).
     /// </summary>
     public void SetStencilRef(int stencilRef)
     {
-        stencil_ref = stencilRef;              // +0x160(352)
-        foreach (var col in matcols)
+        stencil_ref = stencilRef;              // +0x164(356)
+        // apply_stencil 0x1C78648: FORWARD walk of MatCol (+0x130) and
+        // SetFloat(mat, statics+0x0C = _Stencil, (float)this+356) on every
+        // entry's material. No HasProperty guard, no mirror material.
+        for (var i = 0; i < matcols.Count; i++)
         {
-            var mat = col.material;
-            if (mat == null || !mat.HasProperty(id_StencilRef)) continue;
+            var mat = matcols[i].material;
+            if (mat == null) continue;
             mat.SetFloat(id_StencilRef, (float)stencil_ref);
         }
     }
@@ -524,16 +642,18 @@ public sealed class CharacterMaterialsNative
 
     // =====================================================================
     // Idol / mono / rim — pure state writes in the decompiled Materials layer.
-    // All material/target fan-out is UNKNOWN(native: apply 的成员在 dump.cs 里
-    // 是 apply_color 0x1C21158 / UpdateProperties 0x1C2308C，B5 未反编译).
+    // Every decompiled body here only fills the native record; the deferred
+    // fan-out lives in apply_color 0x1C7BDD0 (reached through
+    // UpdateProperties 0x1C7DD04), whose body is outside this batch.
     // =====================================================================
 
     /// <summary>
-    /// Materials__SetIdolColor 0x1C1DAC0 verbatim:
+    /// CharacterMaterials.SetIdolColor 0x1C78738 (decompiled verbatim):
     ///   *(+76)=1; *(+77)=enable; *(+80..92)=color;  (always marks changed)
-    /// 0 writes to materials here. UNKNOWN(native 0x1C1DAC0 ← apply_color):
-    /// 无引入到材质；shipped 材质清单也没有 `_ChrColors` 属性(viewer 看不到
-    /// idol 色差)，所以 TryApplyAll 也不写。
+    /// No material write in the body. The consumer is apply_color 0x1C7BDD0
+    /// (outside this batch); the resolved cctor table offers _Colors(+0x04),
+    /// _Color(+0x18) and _SubColor0..3(+0x38) as candidates, but which one the
+    /// idol colour lands in is not evidenced, so TryApplyAll() does not guess.
     /// </summary>
     public void SetIdolColor(bool is_enable, Color color)
     {
@@ -542,24 +662,25 @@ public sealed class CharacterMaterialsNative
         idol_color.color = color;              // +80..92
     }
 
-    /// <summary>CharacterDrawer.SetIdolColor(Color) 0x1C10298 twin: re-set with the
-    /// stored enable (+77) — Drawer__SetIdolColor_1 reads it back and re-calls
-    /// SetIdolColor; CONFIRMED (wrapper decompiled).</summary>
+    /// <summary>CharacterDrawer.SetIdolColor(Color) 0x1C6AD98 twin: re-set with the
+    /// stored enable (+77) — the wrapper reads it back and re-calls SetIdolColor
+    /// with the same colour (wrapper decompiled, drawer-side).</summary>
     public void SetIdolColorWithStoredEnable(Color color)
     {
         SetIdolColor(idol_color.is_enable, color);
     }
 
-    /// <summary>Drawer__GetIdolColor 0x1C102BC: reads +76..+96 (all 20 bytes) → struct verbatim.</summary>
+    /// <summary>CharacterDrawer.GetIdolColor 0x1C6ADBC: reads +76..+96 (all 20 bytes) → struct verbatim.</summary>
     public IdolColor GetIdolColor() => idol_color;
 
     /// <summary>
-    /// Materials__SetMonoColor 0x1C1DAEC verbatim: *(+96)=1; *(+100..112)=color.
-    /// No material write here. TryApplyAll() delivers the value as the
-    /// `_MonoColor` global (set per the lead instruction, following
-    /// CharacterBootstrap.ApplyGlobals' SetGlobalVector("_MonoColor", …)
-    /// precedent; native evidence: 0x1C1DAEC only writes state, so the global
-    /// push stays an instructed INFERENCE, not a confirmed native write).
+    /// CharacterMaterials.SetMonoColor 0x1C78764 (decompiled verbatim):
+    /// *(+96)=1; *(+100..112)=color. No material write here. TryApplyAll()
+    /// delivers the colour as the `_MonoColor` global, following
+    /// CharacterBootstrap.ApplyGlobals' SetGlobalColor("_MonoColor", …): the
+    /// cctor also has a per-material id_MonoColor (+0x54), so both routes exist;
+    /// the global one matches the existing bootstrap and stays an INFERENCE for
+    /// the deferred apply_color 0x1C7BDD0 body.
     /// </summary>
     public void SetMonoColor(Color color)
     {
@@ -567,9 +688,13 @@ public sealed class CharacterMaterialsNative
         mono_color.color = color;              // +100..112
     }
 
-    /// <summary>Materials__SetMonoColorRatio 0x1C1DB00 verbatim: *(+116)=1; *(+120)=ratio.
-    /// UNKNOWN(native 0x1C1DB00): no property in the shipped inventory matches a
-    /// mono ratio; consumer not decompiled — state only, never applied.</summary>
+    /// <summary>
+    /// CharacterMaterials.SetMonoColorRatio 0x1C78778 (decompiled verbatim):
+    /// *(+116)=1; *(+120)=ratio. State only. The cctor has NO id_MonoColorRatio
+    /// field — +0x58 is PropertyToID("_Whiteness") — and the consumer is
+    /// apply_color 0x1C7BDD0 (outside this batch), so no target property is
+    /// invented here.
+    /// </summary>
     public void SetMonoColorRatio(float ratio)
     {
         mono_color_ratio.is_changed = true;    // +116
@@ -577,14 +702,13 @@ public sealed class CharacterMaterialsNative
     }
 
     /// <summary>
-    /// Materials__SetRimLight 0x1C1DB10 verbatim: *(+124)=1; *(+125)=enable;
-    /// *(+128..140)=color. No material write here — UNKNOWN(native 0x1C1DB10 ←
-    /// apply_color). TryApplyAll() pushes `_RimLightOn` (0/1, float) and
-    /// `_RimColor` (Color) guarded by HasProperty — bundle-verified property
-    /// names, 推断 per-material fan-out.
-    /// UNKNOWN(native): the `_RimLight` property exists in the Chr_Basic/Chr_Face
-    /// inventory but its semantics (range/scale?) are not decompiled — never
-    /// written by this class.
+    /// CharacterMaterials.SetRimLight 0x1C78788 (decompiled verbatim):
+    /// *(+124)=1; *(+125)=enable; *(+128..140)=color. No material write in the
+    /// body; the fan-out is apply_color 0x1C7BDD0. TryApplyAll() pushes
+    /// `_RimLightOn` (0/1 float, cctor +0x2C) and `_RimColor` (Color, cctor
+    /// +0x30) — bundle-confirmed names, INFERENCE for the deferred body's exact
+    /// order/guards. `_RimLight` (vector) is written only by
+    /// SetRimLightDirection 0x1C787A0 below.
     /// </summary>
     public void SetRimLight(bool is_enable, Color color)
     {
@@ -593,145 +717,117 @@ public sealed class CharacterMaterialsNative
         rim_light.color = color;               // +128..140
     }
 
-    /// <summary>Drawer__GetRimLight twin (state struct read).</summary>
+    /// <summary>CharacterDrawer.GetRimLight 0x1C6AEB8 twin (state struct read).</summary>
     public RimLight GetRimLight() => rim_light;
 
     // =====================================================================
-    // Light / rim directions — CONFIRMED (C-pass decompilation) to write EVERY
-    // registered material directly:
-    //   Materials__SetRimLightDirection 0x1C1DB28 and SetLightDirection
-    //   0x1C1DC8C iterate the MatCol list at +0x130(304) back-to-front
-    //   (count-1 .. 0), skip null/dead materials, and call
-    //   sub_7073AFC(mat, propId, 0, x, y, z, 0) with
-    //     propId = *( (custom-shader statics class) + 36 )  ← light direction
-    //     propId = *( (custom-shader statics class) + 40 )  ← rim light direction
-    //   (dec_0x1c1dc8c_SetLightDirection.c / dec_0x1c1db28_SetRimLightDirection.c).
-    //   The statics class is initialized by the property-id cctor 0x1C1FF70
-    //   (dec_0x1c1ff70_ref96fc470.c): slot +36 ← Shader.PropertyToID(UNKNOWN
-    //   literal qword_9807E98), slot +40 ← (qword_9808340). The literal names
-    //   are not statically resolvable (IL2CPP metadata-usage slots are dyld
-    //   chain-rebase encoded), so the mapping below stays the bundle-inventory
-    //   read (_Light / _RimLight on Custom/Chr_Basic, HasProperty-guarded) —
-    //   the write-through itself is now decomp-confirmed.
+    // Light / rim directions — decompiled write-through bodies:
+    //   SetRimLightDirection 0x1C787A0 → SetVector(mat, statics+0x28 = _RimLight,
+    //                                        x, y, z, 0) on every MatCol
+    //   SetLightDirection     0x1C78904 → SetVector(mat, statics+0x24 = _Light,
+    //                                        x, y, z, 0) on every MatCol
+    // Both walk the MatCol list (+0x130/304) BACK-TO-FRONT (count-1 .. 0), skip
+    // Unity-null/dead materials (sub_7149F2C) and do NOT guard with
+    // HasProperty. Neither body stores the direction on `this`; the two
+    // direction fields above are port-only bookkeeping for Describe().
     // =====================================================================
 
-    /// <summary>Materials__SetRimLightDirection 0x1C1DB28 — vector prop static+40
-    /// (cctor 0x1C1FF70 slot qword_9808340; literal name UNKNOWN).</summary>
+    /// <summary>CharacterMaterials.SetRimLightDirection 0x1C787A0 — vector static
+    /// +0x28 (_RimLight) write-through to every registered material.</summary>
     public void SetRimLightDirection(Vector3 direction)
     {
-        rim_light_direction = direction;
-        // Native 0x1C1DB28 walks the MatCol list (a1+304) back-to-front and
-        // SetVector's property table slot +40 in every entry (sub_7073AFC):
-        // the rim DIRECTION vector. Shader inventory (Custom/Chr_Basic):
-        // _RimLightOn Float / _RimLight Vector / _RimColor Color — the
-        // direction slot is taken as `_RimLight` (bundle-verified inventory;
-        // HasProperty-guarded like every write).
-        WriteVectorToAll("_RimLight", direction);
-    }
-
-    /// <summary>Materials__SetLightDirection 0x1C1DC8C — vector prop static+36
-    /// (cctor 0x1C1FF70 slot qword_9807E98; literal name UNKNOWN): `_Light` on
-    /// Custom/Chr_Basic.</summary>
-    public void SetLightDirection(Vector3 direction)
-    {
-        light_direction = direction;
-        WriteVectorToAll("_Light", direction);
-    }
-
-    /// <summary>
-    /// Native 0x1C1DC8C/0x1C1DB28 shared body: iterate the MatCol list
-    /// (a1+304), skip dead entries, SetVector(mat, propId, x, y, z, 0)
-    /// (sub_7073AFC). Port equivalent over the registered materials.
-    /// </summary>
-    private void WriteVectorToAll(string propertyName, Vector3 value)
-    {
-        // Native 0x1C1DC8C/0x1C1DB28 body: walk the MatCol list (a1+304),
-        // skip null/dead materials, SetVector(propId, x, y, z, 0) — sub_7073AFC.
-        var id = Shader.PropertyToID(propertyName);
-        for (var i = 0; i < matcols.Count; i++)
+        rim_light_direction = direction;       // port-only record (native stores nothing)
+        for (var i = matcols.Count - 1; i >= 0; i--)
         {
             var mat = matcols[i].material;
             if (mat == null) continue;
-            if (!mat.HasProperty(id)) continue;
-            mat.SetVector(id, new Vector4(value.x, value.y, value.z, 0f));
+            mat.SetVector(id_RimLight, new Vector4(direction.x, direction.y, direction.z, 0f));
+        }
+    }
+
+    /// <summary>CharacterMaterials.SetLightDirection 0x1C78904 — vector static
+    /// +0x24 (_Light) write-through to every registered material.</summary>
+    public void SetLightDirection(Vector3 direction)
+    {
+        light_direction = direction;           // port-only record (native stores nothing)
+        for (var i = matcols.Count - 1; i >= 0; i--)
+        {
+            var mat = matcols[i].material;
+            if (mat == null) continue;
+            mat.SetVector(id_Light, new Vector4(direction.x, direction.y, direction.z, 0f));
         }
     }
 
     // =====================================================================
-    // Spotlight (+0xAC(172)/+0xC4(196)) — state records; consumer (Live light
-    // pass) out of scope, no `_SpotLight*` property in the shipped materials.
+    // Spotlight (PassiveProperty<BlendColor> +0xAC/172,
+    // PassiveProperty<Color> +0xC4/196) — state records only; the consumer is
+    // the Live-stage light pass, and no `_SpotLight*` property exists in the
+    // shipped materials of the ADV subset.
     // =====================================================================
 
     /// <summary>
-    /// Materials__SetSpotlightColor 0x1C1DE04 verbatim structure: writes the
-    /// 5-dword record (blend int, r,g,b,a) at +172 via sub_4D42904, then
-    /// *(+196)=1 followed by the Color-family sub_4D42A8C helper.
-    /// UNKNOWN(native 0x1C1DE04): exact record semantics (blend mode values,
-    /// pin layout); no material write attempted by this class.
+    /// CharacterMaterials.SetSpotlightColor 0x1C78A7C (decompiled verbatim):
+    ///   1. mark spotlight_color (+0xAC) changed and set {blend, color} at
+    ///      +0xB0 via the PassiveProperty setter sub_4DCD004;
+    ///   2. mark pinspotlight_color (+0xC4) changed and set
+    ///      Color(pin.r, pin.g, pin.b, pin_alpha) at +0xC8 via sub_4DCD18C.
+    /// No material of the character is touched here.
     /// </summary>
     public void SetSpotlightColor(Color color, Color pin, float pin_alpha, int blend)
     {
-        spotlight_color.blend = blend;
-        spotlight_color.color = color;
-        pin_spotlight_color = pin;
+        spotlight_color.blend = blend;         // +0xB0(176)
+        spotlight_color.color = color;         // +0xB4(180..192)
+        pin_spotlight_color = new Color(pin.r, pin.g, pin.b, pin_alpha); // +0xC8(200)
         pin_spotlight_alpha = pin_alpha;
-        pin_spotlight_changed = true;
+        pin_spotlight_changed = true;          // +0xC4(196) changed byte
     }
 
-    /// <summary>Drawer__GetSpotlightColor 0x1C10478 → Materials 0x1C1DEFC (not decompiled —
-    /// 推断 as the stored blend color).</summary>
+    /// <summary>CharacterDrawer.GetSpotlightColor 0x1C6AF78 → CharacterMaterials.GetSpotlightColor
+    /// 0x1C78B74 (body outside this batch; returns the stored blend colour).</summary>
     public Color GetSpotlightColor() => spotlight_color.color;
 
-    /// <summary>Blend mode recorded by SetSpotlightColor 0x1C1DE04 (first dword of +172).</summary>
+    /// <summary>Blend mode recorded by SetSpotlightColor 0x1C78A7C (first dword of +0xB0).</summary>
     public int GetSpotlightBlend() => spotlight_color.blend;
 
-    /// <summary>Pin color + alpha recorded at +0xC4(196) region.</summary>
+    /// <summary>CharacterMaterials.GetPinSpotlightColor 0x1C78BB8 — Color at +0xC8
+    /// (already carries the pin alpha).</summary>
     public Color GetPinSpotlightColor() => pin_spotlight_color;
+    /// <summary>CharacterMaterials.GetPinSpotlightAlpha 0x1C78BFC — the alpha of the
+    /// +0xC8 colour (kept as a separate field to match the drawer wrapper).</summary>
     public float GetPinSpotlightAlpha() => pin_spotlight_alpha;
 
-    // Eye highlight — native chain (both decompiled, batch C pass):
-    //   Materials__SetEyeHighlightColor 0x1C1F390 ← Drawer__SetEyeHighlightColor
-    //   0x1C10434: 0x1C1F390 gets the eye-material list from 0x1C1F474 (built per
-    //   call from the MatCol list +0x130 by *object name* matching with two
-    //   literals at qword_9813C18/C20 — UNKNOWN) and loops
-    //   SetEyeHighlightColorToMaterial over it.
-    //   SetEyeHighlightColorToMaterial 0x1C1F62C: HasProperty(static +64)
-    //   gate, then SetVector(mat, static +64, r, g, b, a) — sub_70700F4, alpha
-    //   is carried through (no zero-w).
-    // The +64 shader property id comes from the Materials cctor 0x1C1FF70
-    // (slot qword_9807E40). Its literal is NOT statically resolvable (IL2CPP
-    // metadata-usage slots are dyld chain-rebase encoded in the shipped
-    // binary), so the port keeps the value recorded and the fan-out structure
-    // implemented behind the same HasProperty dead-end: nothing is written
-    // until the property name is confirmed by a runtime probe.
+    // Eye highlight — native chain (current RVAs):
+    //   SetEyeHighlightColor 0x1C7A008 (body outside this batch) collects the
+    //   eye-material list (0x1C1F390 / 0x1C1F474 outside this batch) and loops
+    //   SetEyeHighlightColorToMaterial 0x1C7A2A4 (decompiled below). The helper
+    //   gates on HasProperty(statics+0x40 = id_IrisColor) and then writes the
+    //   colour with its alpha.
+    // The spike's eye selection (HasProperty(_IrisColor) && HasProperty(_SubTex),
+    // the bundle-verified identity of Custom/BultIn/Bi_CharEye) stands in for the
+    // native name-literal filter, which is not in this batch.
     private Color eye_highlight_color;
 
     public void SetEyeHighlightColor(Color col)
     {
         eye_highlight_color = col;
-        PushEyeHighlightColor();   // 0x1C1F390 fan-out shape; write is a neutral no-op until +64 resolves
+        PushEyeHighlightColor();   // 0x1C7A008 fan-out shape over the eye materials
     }
     public Color GetEyeHighlightColor() => eye_highlight_color;
 
     /// <summary>
-    /// SetEyeHighlightColorToMaterial 0x1C1F62C shape, applied over the
-    /// eye-group materials (0x1C1F390 fan-out; the port classifies eye
-    /// materials by HasProperty(_IrisColor)&&HasProperty(_SubTex), the
-    /// bundle-verified identity of Custom/BultIn/Bi_CharEye, standing in for
-    /// the native name-literal filter — UNKNOWN(native qword_9813C18/C20)).
-    /// Property id static+64 is UNKNOWN(native 0x1C1FF70 slot qword_9807E40);
-    /// with no resolvable name the write is skipped (neutral), the recorded
-    /// value stays for the eventual probe-driven fan-out.
+    /// SetEyeHighlightColorToMaterial 0x1C7A2A4 (decompiled verbatim):
+    ///   if (material == null) throw;                 // native crashes; spike returns
+    ///   if (!HasProperty(id_IrisColor)) return;
+    ///   SetColor(id_IrisColor, r, g, b, a);           // alpha carried through
     /// </summary>
     public static void SetEyeHighlightColorToMaterial(Material material, Color color)
     {
         if (material == null) return;
-        // native: HasProperty(static + 64) gate — property UNKNOWN here.
-        // UNKNOWN(native 0x1C1FF70): +64 literal not statically resolvable;
-        // ADR-0033 neutral: record only, no write.
+        if (!material.HasProperty(id_IrisColor)) return;
+        material.SetColor(id_IrisColor, color);
     }
 
-    /// <summary>0x1C1F390 fan-out shape over the eye-group materials.</summary>
+    /// <summary>0x1C7A008 fan-out shape over the eye-group materials.</summary>
     private void PushEyeHighlightColor()
     {
         foreach (var col in matcols)
@@ -743,19 +839,22 @@ public sealed class CharacterMaterialsNative
 
     // =====================================================================
     // Cheek redden — the chain FaceCtrl drives. Every write in this family is
-    // state-only EXCEPT SetCheekReddenToMaterial (CONFIRMED material write).
+    // state-only EXCEPT SetCheekReddenToMaterial (decompiled material write,
+    // 0x1C78C6C). The state consumers are apply_color 0x1C7BDD0 (outside this
+    // batch); TryApplyAll() delivers the cached intensity to the materials.
     // =====================================================================
 
     /// <summary>
-    /// Materials__SetCheekRedden 0x1C1DFC4 verbatim:
-    ///   v2 = (int)(a2 > 0.0)                 — enable derived from intensity
-    ///   if (*(byte*)(+169) != v2) { *(+168)=1; *(+169)=v2; }
-    ///   *(byte*)(+144) = 1                    — CheekRedden.is_changed
-    ///   *(float*)(+164) = a2                  — CheekRedden.intensity
-    /// No material write here. UNKNOWN(native): the UpdateProperties 0x1C2308C /
-    /// UnsetDirty 0x1C2341C pass that feeds the enabled state into
-    /// SetCheekReddenToMaterial is not decompiled; TryApplyAll() delivers the
-    /// cached intensity to the face-group materials instead.
+    /// CharacterMaterials.SetCheekRedden 0x1C78C3C (body outside this batch,
+    /// entry confirmed; shape preserved from the earlier decompilation):
+    ///   enable = intensity > 0
+    ///   if (+169 != enable) { +168 = 1; +169 = enable; }   // CheekReddenEnable
+    ///   +144 = 1;                                          // CheekRedden.is_changed
+    ///   +164 = intensity;                                  // CheekRedden.intensity
+    /// No material write here. The apply pass that feeds the enabled state into
+    /// SetCheekReddenToMaterial via apply_color 0x1C7BDD0 is outside this batch;
+    /// TryApplyAll() delivers the cached intensity to every material whose
+    /// _ReddishIntensity property exists (helper is HasProperty-guarded).
     /// </summary>
     public void SetCheekRedden(float intensity)
     {
@@ -770,8 +869,9 @@ public sealed class CharacterMaterialsNative
     }
 
     /// <summary>
-    /// Materials__SetCheekReddenEnable 0x1C1E170 verbatim:
-    ///   if (*(byte*)(+169) != enable) { *(+168)=1; *(+169)=enable; }
+    /// CharacterMaterials.SetCheekReddenEnable 0x1C78DE8 (body outside this
+    /// batch; shape preserved from the earlier decompilation):
+    ///   if (+169 != enable) { +168 = 1; +169 = enable; }
     /// Note: it does NOT set +144 (CheekRedden.is_changed) — the enable and
     /// intensity caches are dirtied separately, exactly as the decompile shows.
     /// </summary>
@@ -782,7 +882,7 @@ public sealed class CharacterMaterialsNative
         cheek_redden_enable.value = is_enable;       // +169
     }
 
-    /// <summary>Materials__SetCheekReddenIntensity 0x1C1E18C verbatim: +144=1; +164=val.</summary>
+    /// <summary>CharacterMaterials.SetCheekReddenIntensity 0x1C78E04: +144=1; +164=val.</summary>
     public void SetCheekReddenIntensity(float intensity)
     {
         cheek_redden.is_changed = true;              // +144
@@ -790,18 +890,18 @@ public sealed class CharacterMaterialsNative
     }
 
     /// <summary>
-    /// Materials__SetCheekReddenToMaterial 0x1C1DFF4 — CONFIRMED verbatim.
-    /// Decompiled order and property-id pairing:
-    ///   propId76 = ReddishIntensity-check target, propId68 = IsReddish:
-    ///   1. if (!mat.HasProperty(_ReddishIntensity)) return;   (static +76)
-    ///   2. if (!mat.HasProperty(_IsReddish)) return;          (static +68)
-    ///   3. CustomShaderUtility.SetMaterialToggle(mat, _IsReddish, intensity > 0)
-    ///      (sub_357F278: toggles the `_ISREDDISH_ON` keyword + float 0/1)
-    ///   4. mat.SetFloat(_ReddishIntensity, intensity);        (static +76, sub_70739FC)
-    /// FaceCtrl B3 (FaceCtrlNative) drives this exact method; the face-only
-    /// material selection lives at the caller (UNKNOWN(native): which matcol
-    /// subset the apply pass feeds — the bundle inventory makes the HasProperty
-    /// guard equivalent).
+    /// CharacterMaterials.SetCheekReddenToMaterial 0x1C78C6C (body outside this
+    /// batch; shape preserved from the earlier decompilation of the same
+    /// function family):
+    ///   1. if (!mat.HasProperty(_ReddishIntensity)) return;   (cctor +0x4C)
+    ///   2. if (!mat.HasProperty(_IsReddish)) return;          (cctor +0x44)
+    ///   3. SetMaterialToggle(mat, _IsReddish, intensity > 0)
+    ///      (toggles the `_ISREDDISH_ON` keyword + float 0/1)
+    ///   4. mat.SetFloat(_ReddishIntensity, intensity);
+    /// The caller is apply_color 0x1C7BDD0, outside this batch; the exact
+    /// matcol subset it feeds is therefore not asserted — the HasProperty guard
+    /// makes the port's all-materials loop equivalent for the ADV materials.
+    /// FaceCtrl B3 (FaceCtrlNative) drives this exact method.
     /// </summary>
     public static void SetCheekReddenToMaterial(Material material, float intensity)
     {
@@ -816,25 +916,53 @@ public sealed class CharacterMaterialsNative
     }
 
     // =====================================================================
-    // Inherent colour family (no Materials__Set* file in the B5 snapshot; both
-    // entries are reachable only via Drawer__SetInherentColor 0x1C10504 /
-    // Drawer__SetInherentColorSel 0x1C104E8 → 0x1C1E8C0/0x1C1E7F8, bodies not
-    // decompiled). State only — property UNKNOWN (no _InherentColor in the
-    // shipped-material inventory) and the value is also not applied otherwise.
-    // The drawer port previously pushed `_InherentColor` here; that was
-    // speculative and is dropped in this file.
+    // Inherent colour family — SetInherentColor 0x1C79538 is decompiled: it
+    // writes inherent_colors[index], then fans out through
+    // SetInherentColorToMaterial 0x1C796B0 over every MatCol (forward order).
+    // The helper body is outside this batch; initStatic 0x1C7ABE8 reveals the
+    // property name table id_ChrColors (+0x38, int[4], String.Format(
+    // "_SubColor{0}", i)), which is what an inherent-colour index indexes into.
+    // The drawer port previously pushed a speculative `_InherentColor`; that is
+    // dropped in favour of the cctor-backed _SubColorN family.
     // =====================================================================
 
-    /// <summary>CharacterMaterials.SetInherentColor 0x1C1E8C0 (referenced only). Index outside
-    /// [0, ChrColorNum) is dropped (array bounds, inferred from ChrColorNum).</summary>
+    /// <summary>
+    /// CharacterMaterials.SetInherentColor 0x1C79538 (decompiled):
+    ///   if ((uint)color_index > 3) return;                  // unsigned gate 0..3
+    ///   if (inherent_colors.Length <= color_index) throw;   // native throws
+    ///   inherent_colors[color_index] = color;               // +0xE0 + 16*index
+    ///   then forward loop over MatCol (+0x130/304) →
+    ///   SetInherentColorToMaterial(mat, color, color_index) 0x1C796B0.
+    /// </summary>
     public void SetInherentColor(Color color, int color_index)
     {
-        if (color_index < 0 || color_index >= ChrColorNum) return;
+        if ((uint)color_index > (uint)(ChrColorNum - 1)) return;
         inherent_colors[color_index] = color;
         inherent_color_changed = true;
+        foreach (var col in matcols)
+        {
+            if (col.material == null) continue;
+            SetInherentColorToMaterial(col.material, color, color_index);
+        }
     }
 
-    /// <summary>CharacterMaterials.SetInherentColorSel 0x1C1E7F8 (referenced only): picks
+    /// <summary>
+    /// CharacterMaterials.SetInherentColorToMaterial 0x1C796B0 — body outside
+    /// this batch. The per-material write is a HasProperty-guarded SetColor on
+    /// id_ChrColors[color_index] (`_SubColor{index}` per cctor 0x1C7ABE8 +0x38).
+    /// </summary>
+    public static void SetInherentColorToMaterial(Material material, Color color, int color_index)
+    {
+        if (material == null) return;
+        if (color_index < 0 || color_index >= ChrColorNum) return;
+        var id = id_ChrColors[color_index];
+        // UNKNOWN(native 0x1C796B0): body not decompiled — the HasProperty
+        // guard is assumed; the index→_SubColorN mapping is cctor-confirmed.
+        if (!material.HasProperty(id)) return;
+        material.SetColor(id, color);
+    }
+
+    /// <summary>CharacterMaterials.SetInherentColorSel 0x1C79470: picks
     /// soul.inherentColor / inherentColor2 after the Value.isValid gate.</summary>
     public void SetInherentColorSel(Imas.CharacterSoul soul, int color_sel)
     {
@@ -850,13 +978,16 @@ public sealed class CharacterMaterialsNative
     // =====================================================================
 
     /// <summary>
-    /// Wires the soul into this class using only `isValid` values, per:
-    ///   cheekReddenColor  0x1C36590 (params 3,4,5)  → state only, UNKNOWN(native) apply
-    ///   cheekReddenIntensity 0x1C36A88 (param 6)     → SetCheekReddenIntensity 0x1C1E18C (CONFIRMED entry)
-    ///   skinColor         0x1C36E98 (params 7,8,9)  → state only, UNKNOWN(native) apply site
-    ///   inherentColor(2)  0x1C3728C/0x1C37680        → SetInherentColor (0x1C1E8C0, referenced-only)
+    /// Wires the soul into this class using only `isValid` values. Field map
+    /// (dump.cs CharacterSoul, Value&lt;T&gt;{isValid +0x0, value +0x4}):
+    ///   cheekReddenColor     +0x30/+0x34 → cheek_redden_color state (+0x94);
+    ///                         consumer apply_color 0x1C7BDD0, outside this batch
+    ///   cheekReddenIntensity +0x44/+0x48 → SetCheekReddenIntensity 0x1C78E04
+    ///   skinColor            +0x4C/+0x50 → last_skin_col (+0x10C), then
+    ///                         calcSkinBias 0x1C7B58C (+0x11C) — body outside batch
+    ///   inherentColor(2)     +0x60/+0x74 → SetInherentColor 0x1C79538 (decompiled)
     /// Values are 0..255 ints scaled by `Color(r/255, g/255, b/255, 1)` in the
-    /// soul ctor 0x3799664, so the Color shapes here are soul-normalised.
+    /// soul ctor, so the Color shapes here are soul-normalised.
     /// bodyScale / sway*b are deliberately ignored (JointBodyHead territory).
     /// </summary>
     public void ApplyFromSoul(Imas.CharacterSoul soul)
@@ -867,12 +998,17 @@ public sealed class CharacterMaterialsNative
         if (soul.cheekReddenColor.isValid)
         {
             cheek_redden_color = soul.cheekReddenColor.value;
-            cheek_redden_color_changed = true;      // UNKNOWN(native): where _ReddishColor is applied
+            cheek_redden_color_changed = true;   // consumer: apply_color 0x1C7BDD0 (outside batch)
         }
         if (soul.skinColor.isValid)
         {
+            // create_sync 0x1C77B44 copies defaultLastSkin → lastSkinCol, then a
+            // valid soul skinColor overwrites it and calcSkinBias runs.
+            last_skin_col = soul.skinColor.value; // +0x10C
             skin_color = soul.skinColor.value;
-            skin_color_changed = true;               // UNKNOWN(native): apply site not decompiled
+            skin_color_changed = true;
+            // UNKNOWN(native 0x1C7B58C): calcSkinBias body (skinBias +0x11C) is
+            // outside this batch; the port has no r185/lumi inputs to compute it.
         }
         if (soul.inherentColor.isValid)
             SetInherentColor(soul.inherentColor.value, 0);
@@ -965,12 +1101,12 @@ public sealed class CharacterMaterialsNative
     }
 
     // =====================================================================
-    // TryApplyAll — frame-end one-shot, now shaped after the decompiled
-    // UpdateProperties 0x1C2308C / apply_color 0x1C21158 / UnsetDirty
-    // 0x1C2341C sequence (C-pass evidence, see the doc comment below). The
-    // native per-MatCol per-entry flags stay UNKNOWN; the surfaced families
-    // apply at most once per call and the changed bytes are cleared exactly
-    // where UnsetDirty zeroes them.
+    // TryApplyAll — frame-end one-shot, shaped after the CURRENT shipped
+    // sequence UpdateProperties 0x1C7DD04 → apply_color 0x1C7BDD0 → ApplyOutline
+    // 0x1C7CC14 → UnsetDirty 0x1C7E094 (those bodies are OUTSIDE this batch,
+    // which only covered the 12 setter/helper entries listed in the header).
+    // The surfaced families apply at most once per call and the changed bytes
+    // are cleared where UnsetDirty is documented to zero them.
     // =====================================================================
 
     [Serializable]
@@ -981,24 +1117,26 @@ public sealed class CharacterMaterialsNative
     }
 
     /// <summary>
-    /// Native apply pass — now decompiled (C pass). UpdateProperties 0x1C2308C
-    /// (dec_0x1c2308c_materials.c) per frame:
-    ///   1. big-path gate: (byte)(this+172)&1 != 0 || this[196]==1 → color
-    ///      aggregate (native sub_3791B84 with blend + rgb + pinned rgb from
-    ///      this+176..212);
-    ///   2. blink per-material state block (per-material state float only);
-    ///   3. apply_color 0x1C21158 (dec_0x1c21158_materials.c): per-MatCol, in
-    ///      reverse list order, per-entry flag-gated families —
-    ///      cheek toggle/float (+68/+169/+76/+164), mono/idol color (+80
-    ///      family, HasProperty-gated sub_707054C), light/rim DIRECTIONS
-    ///      (+36/+40 under per-entry flags +65/+66), rate/chr-color family;
-    ///   4. ApplyOutline 0x1C21F9C: SetVector(static+128, this+336..348) per
-    ///      material (the four outline floats);
-    ///   5. blink time accumulator + frame id (statics class +192/+196).
-    ///   UnsetDirty 0x1C2341C (dec_0x1c2341c_materials.c) zeroes the changed
-    ///   flags at byte offsets {352, 324, 124, 76, 96, 172, 196, 168, 144}.
-    /// Port order below follows 3 → 4 → UnsetDirty; the big-path gate of 1 and
-    /// the blink block of 2 are state-only here (UNKNOWN apply targets).
+    /// Native apply pass — the CURRENT chain (bodies outside this batch):
+    /// CharacterMaterials.UpdateProperties 0x1C7DD04 per frame → apply_color
+    /// 0x1C7BDD0 → ApplyOutline 0x1C7CC14 → UnsetDirty 0x1C7E094. The 12 bodies
+    /// this port was rewritten against are the setters/helpers themselves
+    /// (header table), so the deferred fan-out targets below are port
+    /// inference, flagged per family:
+    ///   - cheek: SetCheekReddenToMaterial 0x1C78C6C — bundle-confirmed
+    ///     _ReddishIntensity/_IsReddish pair, HasProperty-guarded helper;
+    ///   - rim: _RimLightOn (cctor +0x2C) / _RimColor (cctor +0x30) — names
+    ///     confirmed, fan-out location INFERENCE (apply_color 0x1C7BDD0);
+    ///   - outline width: _Outline (cctor +0x64) — drawer applies it eagerly
+    ///     too; the one-shot covers late registrations;
+    ///   - mono: Shader.SetGlobalColor("_MonoColor") — follows the existing
+    ///     CharacterBootstrap.ApplyGlobals precedent; the cctor also has a
+    ///     per-material id_MonoColor (+0x54), so this is INFERENCE;
+    ///   - outline colour: ApplyOutlineColor 0x1C784EC is decompiled (forward
+    ///     MatCol walk, SetColor(_OutlineColor), no guard) — re-pushed here.
+    /// UnsetDirty 0x1C7E094 zeroes the changed bytes this port tracks
+    /// ({352, 324, 124, 76, 96, 172, 196, 168, 144} in the earlier
+    /// decompilation of the same class; the current body is outside this batch).
     /// </summary>
     public TryApplyResult TryApplyAll()
     {
@@ -1018,7 +1156,6 @@ public sealed class CharacterMaterialsNative
         var pinUnknown = pin_spotlight_changed;
         var cheekColorUnknown = cheek_redden_color_changed;
         var skinUnknown = skin_color_changed;
-        var inherentUnknown = inherent_color_changed;
 
         // ---- native step 3: per-MatCol families (single forward pass over
         //      the same entries the native loop walks in reverse) ------------
@@ -1049,19 +1186,21 @@ public sealed class CharacterMaterialsNative
             result.applied.Add("mono_color → Shader.SetGlobalColor(\"_MonoColor\")");
         }
 
-        // outline colour: SetOutlineColor 0x1C1D7E8 delivers eagerly via the
-        // CONFIRMED tail call sub_1C1D874 (dec_0x1c1d874_materials.c — walk
-        // +304, SetVector(static+128, this+336..348)); re-push keeps the
-        // one-shot idempotent for late registrations.
+        // outline colour: SetOutlineColor 0x1C78460 delivers eagerly via the
+        // decompiled tail ApplyOutlineColor 0x1C784EC (forward MatCol walk,
+        // SetColor(statics+0x80 = _OutlineColor, this+0x150 colour), no
+        // HasProperty guard, no mirror material); re-push keeps the one-shot
+        // idempotent for late registrations.
         if (outline_color_dirty)
         {
             PushOutlineColor();
             result.applied.Add("outline_color → _OutlineColor");
         }
 
-        // ---- native step 5: UnsetDirty 0x1C2341C --------------------------
-        // byte offsets {352, 324, 124, 76, 96, 172, 196, 168, 144} — the port's
-        // equivalents below (189-port keeps +352/+172 as eager/record values).
+        // ---- native step 5: UnsetDirty 0x1C7E094 (body outside this batch) --
+        // byte offsets {352, 324, 124, 76, 96, 172, 196, 168, 144} from the
+        // earlier decompilation of the same class; 189-port keeps +352/+172 as
+        // eager/record values.
         outline_width_dirty = false;                    // +324
         outline_color_dirty = false;
         rim_light.is_changed = false;                   // +124
@@ -1071,29 +1210,25 @@ public sealed class CharacterMaterialsNative
         cheek_redden_enable.is_changed = false;         // +168
         cheek_redden.is_changed = false;                // +144
 
-        // ---- everything the evidence does not cover ---------------------
+        // ---- everything the decompiled bodies of this batch do not cover ----
         if (idolUnknown)
-            result.unknown.Add("idol_color → UNKNOWN(native: apply_color 0x1C21158 已反编译，+80 族为 HasProperty 门下的 SetVector；属性名候选未定，中性不写)");
+            result.unknown.Add("idol_color → apply target lives in apply_color 0x1C7BDD0 (outside batch); cctor candidates _Colors/_Color/_SubColorN unproven, 中性不写");
         if (monoRatioUnknown)
-            result.unknown.Add("mono_color_ratio → UNKNOWN(native 0x1C1DB00 消费点未反编译)");
+            result.unknown.Add("mono_color_ratio → consumer apply_color 0x1C7BDD0 (outside batch); cctor has NO id_MonoColorRatio (+0x58 is _Whiteness)");
         if (pinUnknown)
-            result.unknown.Add("spotlight/pin → UNKNOWN(native 0x1C1DE04 记录语义未反编译，Live pass 超范围)");
+            result.unknown.Add("spotlight/pin → PassiveProperty record only (0x1C78A7C decompiled); consumer is the Live-stage light pass, out of ADV scope");
         if (cheekColorUnknown)
-            result.unknown.Add("cheek_redden_color → UNKNOWN(native: 无任何 Set* 写 _ReddishColor)");
+            result.unknown.Add("cheek_redden_color → no decompiled Set* writes _ReddishColor; apply site in apply_color 0x1C7BDD0 (outside batch)");
         if (skinUnknown)
-            result.unknown.Add("skin_color → UNKNOWN(native: Materials 层 apply 位置未反编译)");
-        if (inherentUnknown)
-            result.unknown.Add("inherent_color → UNKNOWN(native 0x1C1E8C0 未反编译，材质清单无 _InherentColor)");
-        if (eye_highlight_color != default)
-            result.unknown.Add("eye_highlight_color → UNKNOWN(native 0x1C1F62C 走 HasProperty(静态+64) 门；+64 字面量不可静态解，中性不写)");
+            result.unknown.Add("skin_color → Materials-layer apply site outside batch (calcSkinBias 0x1C7B58C + lastSkinCol consumer)");
         return result;
     }
 
     /// <summary>
-    /// CharacterMaterials.UpdateProperties 0x1C2308C entry point (native name
-    /// kept for the drawer wiring): the scheduled flash-end one-shot. The
-    /// per-frame gate at native step 1/2 (blink aggregate + time) is
-    /// state-only here — see TryApplyAll for the decompiled order.
+    /// CharacterMaterials.UpdateProperties 0x1C7DD04 entry point (native name
+    /// kept for the drawer wiring): the scheduled one-shot. The native per-frame
+    /// gate + blink block live inside that body, which is outside this batch;
+    /// see TryApplyAll for the port's shaped order.
     /// </summary>
     public void UpdateProperties(float deltaTime)
     {
@@ -1136,7 +1271,8 @@ public sealed class CharacterMaterialsNative
           .Append(pin_spotlight_alpha.ToString("F2")).AppendLine();
         sb.Append("  directions: rim=").Append(rim_light_direction).Append(" light=").Append(light_direction).AppendLine();
         sb.Append("  soul-state: skin=").Append(skin_color)
-          .Append(" inherent[0]=").Append(inherent_colors[ChrColorMainIndex]).AppendLine();
+          .Append(" inherent[0]=").Append(inherent_colors[ChrColorMainIndex])
+          .Append(" inherentDirty=").Append(inherent_color_changed).AppendLine();
         return sb.ToString();
     }
 
@@ -1157,24 +1293,21 @@ public sealed class CharacterMaterialsNative
 
     // =====================================================================
     // UNKNOWN ledger — keep in lockstep with the per-method "UNKNOWN(native …)"
-    // comments; /tmp/materials-native-notes.md holds the full table.
+    // comments. Only entries whose body was NOT in this batch's decompilation
+    // set are listed; every RVA below is a CURRENT (shipped-binary) RVA.
     // =====================================================================
     public static readonly string[] NativeUnknowns =
     {
-        "0x1C1CECC Create body (thunk target)",
-        "0x1C21158 apply_color: 体已反编译(dec_0x1c21158)；per-MatCol 门的字面量与各族属性名仍未解(槽位 dyld chain-rebase 不可静态解)",
-        "0x1C1FF70 Materials property-id cctor: 槽位→属性名映射静态不可解(0x…/0x1C2341C/0x1C1D874/0x1C1D9D0/0x1C21F9C 体已在 dec_0x… 导出，映射被下述关闭修整)",
-        "0x1C2308C UpdateProperties 体已反编译；blink 块的 per-material 状态 struct 字段语义(非材质写入)未逐字段落地",
-        "0x1C1D874 apply_outline: 体已反编译(遍历+304 → SetVector(静态+128, this+336..348))；+128 属性名 UNKNOWN",
-        "0x1C1D9D0 apply_stencil: 体已反编译(遍历+304 → SetFloat(静态+12, this+356))；+12 属性名 UNKNOWN",
-        "0x1C21F9C ApplyOutline 体已反编译(dec_0x1c21f9c)",
-        "0x1C1DC8C/SetLightDirection(static+36) 与 0x1C1DB28/SetRimLightDirection(static+40) 的写入已确认；属性名 UNKNOWN(0x1C1FF70 槽 x9807E98/x9808340)",
-        "0x1C1F62C SetEyeHighlightColorToMaterial: 结构已反编译(HasProperty(静态+64) 门 → SetVector(r,g,b,a))；+64 属性名 UNKNOWN(槽 9807E40)，0x1C1F474 眼材质表的两个名称字面量 UNKNOWN",
-        "0x1C1DAC0 idol_color apply 目标（apply_color +80 族, HasProperty 门；名称候选未定，中性不写）",
-        "0x1C1DB00 mono_color_ratio 消费点",
-        "0x1C1DE04 spotlight/pin 记录结构语义（Live pass 超范围）",
-        "0x1C1E8C0 SetInherentColor 目标属性（清单无 _InherentColor）",
-        "cheek_redden_color（_ReddishColor 何时被写）",
-        "skin_color 的 Materials 层 apply 位置",
+        "0x1C7B58C calcSkinBias: body outside batch (skinBias +0x11C consumer)",
+        "0x1C7BDD0 apply_color: deferred fan-out for idol / mono-ratio / cheek colour / skin",
+        "0x1C7DD04 UpdateProperties: per-frame gate + blink block outside batch",
+        "0x1C7E094 UnsetDirty: changed-byte set outside batch ({352,324,124,76,96,172,196,168,144} from earlier decomp)",
+        "0x1C796B0 SetInherentColorToMaterial: index→_SubColorN confirmed by cctor 0x1C7ABE8; HasProperty guard assumed",
+        "0x1C77B44 create_sync: sub_7124750/sub_7124764 colour getters and xmmword_83FD830 glasses const not statically resolvable",
+        "0x1C7A008 SetEyeHighlightColor: out-of-batch fan-out over the eye-material list (0x1C1F390/0x1C1F474 older bodies)",
+        "0x1C78A7C spotlight/pin: PassiveProperty record only; consumer is the Live-stage light pass",
+        "0x1C78C3C SetCheekRedden / 0x1C78DE8 SetCheekReddenEnable / 0x1C78E04 SetCheekReddenIntensity: bodies outside batch (shape preserved)",
+        "0x1C78C6C SetCheekReddenToMaterial: body outside batch; _ReddishIntensity/_IsReddish pairing bundle-confirmed",
+        "0x1C783BC/0x1C78420 outline width setter/getter bodies outside batch",
     };
 }

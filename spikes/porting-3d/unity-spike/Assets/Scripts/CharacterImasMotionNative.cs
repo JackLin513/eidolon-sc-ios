@@ -34,7 +34,8 @@ namespace Imas.CharaImasMotion
 {
     /// <summary>
     /// `Imas.CharaImasMotion.KeyType` (TypeDefIndex 14918). Values are the raw codes
-    /// switched on by `CharacterImasMotionPlayer.SolveCurve` (0x37E80B8).
+    /// switched on by `CharacterImasMotionPlayer.SolveCurve` (0x38A9500,
+    /// old 0x37E80B8).
     /// </summary>
     public enum KeyType
     {
@@ -400,8 +401,8 @@ namespace Imas
 
         /// <summary>
         /// `CharacterImasMotionPlayer.SolveCurve(Curve curve, float time, ref int seeker_position)`
-        /// — 0x37E80B8. Mirrors the native key_type switch exactly; see the per-case
-        /// helpers for the native formula.
+        /// — 0x38A9500 (old 0x37E80B8). Mirrors the native key_type switch exactly;
+        /// see the per-case helpers for the native formula.
         /// </summary>
         public static float SolveCurve(CharaImasMotion.Curve curve, float time, ref int seeker_position)
         {
@@ -508,7 +509,8 @@ namespace Imas
             var outTangent = values[baseIndex + 3];
             var value1 = values[baseIndex + 5];
             var inTangent = values[baseIndex + 6];
-            // Native bails out to `value0` when either tangent is +-inf (0x37E80B8 case 3).
+            // Native bails out to `value0` when either tangent is +-inf
+            // (0x38A9500 case 3, old 0x37E80B8).
             if (float.IsInfinity(outTangent) || float.IsInfinity(inTangent)) return value0;
             var u2 = u * u;
             var u3 = u2 * u;
@@ -548,12 +550,13 @@ namespace Imas
             if (index >= count - 1) return values[count];
             var low = values[index + 1];
             var high = values[index + 2];
-            // UNKNOWN(native 0x37E80B8 case 6): the native fraction is
-            //   (time - index * dt) / dt
-            // i.e. it does NOT subtract values[0] even though the sample index does.
-            // motion.py computes (time - start - index*dt)/dt instead. The shipped
-            // snapshot has no key_type==6 curve, so this is not observable yet; the
-            // port keeps the native expression.
+            // Native 0x38A9500 case 6 (old 0x37E80B8), confirmed from the
+            // current-binary decompile: the sample index uses
+            // (time - values[0]) / dt, but the interpolation fraction is
+            // (time - index * dt) / dt — it does NOT subtract values[0].
+            // motion.py computes (time - start - index*dt)/dt instead. The
+            // shipped snapshot has no key_type==6 curve, so this is not
+            // observable yet; the port keeps the native expression.
             var ratio = (time - (float)index * s_delta_time) / s_delta_time;
             ratio = ratio <= 1f ? ratio : 1f;
             if (ratio < 0f) ratio = 0f;
@@ -751,9 +754,10 @@ namespace Imas
 
         /// <summary>
         /// Port-only data hook for the `status.is_play_idle` branch of `SolveCurves`
-        /// (0x37EE384). Native copies the cached pose of `CharacterCommonSkeleton.GetStatic()`
-        /// (0x37E8E70); that table is a game resource the spike does not have. Set this to a
-        /// captured pose to reproduce idle exactly; null keeps the last solved results.
+        /// (0x38AF7CC, old 0x37EE384). Native copies the cached pose of
+        /// `CharacterCommonSkeleton.GetStatic()` (0x38AA2B8); that table is a game
+        /// resource the spike does not have. Set this to a captured pose to reproduce
+        /// idle exactly; null keeps the last solved results.
         /// </summary>
         public Result[] idle_results;
 
@@ -957,13 +961,19 @@ namespace Imas
         // ----------------------------------------------------------------- solve
 
         /// <summary>
-        /// `SolveCurves(bool dontInterpolateThisFrame = false)` — 0x37EE384.
-        ///   * idle: copy the cached common-skeleton pose (see `idle_results`).
-        ///   * normal: solve the curves at the exact current time.
-        ///   * current motion has a step-key table: temporarily snap `current_time` to
-        ///     `step_keys[i] / 60` for the solve, then restore it.
-        ///   * dontInterpolateThisFrame: temporarily snap `current_time` to the nearest
-        ///     1/60 frame (`Math.Round(t*60, 0, ToEven) / 60`), then restore it.
+        /// `SolveCurves(bool dontInterpolateThisFrame = false)` — 0x38AF7CC
+        /// (old 0x37EE384).
+        ///   * normal: solve the curves at the exact current time; with a step-key
+        ///     table temporarily snap `current_time` to `step_keys[index] / 60`
+        ///     (`Array.FindIndex` on the current frame number), solve, restore.
+        ///   * dontInterpolateThisFrame: temporarily snap `current_time` to a whole
+        ///     1/60 frame, solve, restore. UNKNOWN(native 0x38AF7CC): the native
+        ///     rounding helper `sub_66D7C10(5,0,0,time*60)` has no identified
+        ///     managed method; the port keeps the Math.Round reading (report marks
+        ///     this branch needs-runtime-probe), including the native
+        ///     int.MinValue/60 (-35791396) sentinel for the infinite-frame case.
+        ///   * idle (`status.is_play_idle`): copy the common-skeleton pose (see
+        ///     `idle_results` / CopyIdleResults).
         /// </summary>
         public void SolveCurves(bool dontInterpolateThisFrame = false)
         {
@@ -1095,10 +1105,14 @@ namespace Imas
         }
 
         /// <summary>
-        /// Port-only half of the native idle branch. UNKNOWN(native 0x37EE384 idle branch +
-        /// 0x37E8E70): native copies `CharacterCommonSkeleton.GetStatic()` into `results`;
-        /// the spike has no common-skeleton resource, so this only applies `idle_results`
-        /// when the integrator supplies a captured pose, and otherwise keeps the last pose.
+        /// Native 0x38AF7CC idle branch (old 0x37EE384): when status.is_play_idle
+        /// is set, native takes CharacterCommonSkeleton.GetStatic() (0x38AA2B8)
+        /// and, per binder index, copies the source node's angle (Vector3 at
+        /// source +0x30) and position (Vector3 at source +0x24) into the result
+        /// objects (result angle +0x10, position +0x1C) — exactly this loop.
+        /// Port data gap: the common-skeleton table is a game resource the spike
+        /// does not carry, so `idle_results` is the captured substitute; when it
+        /// is null the last solved pose is kept.
         /// </summary>
         private void CopyIdleResults()
         {

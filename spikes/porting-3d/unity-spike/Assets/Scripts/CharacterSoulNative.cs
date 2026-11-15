@@ -28,6 +28,7 @@
 //   SoulDataCharacter.GetMotif                           0x1C388D4  (param 20)
 //   SoulDataCharacter.ShortNameToCharacterMotif          0x1C352B0  (IndexOf s_CharacterMotif_ShortNames)
 //   SoulDataColor3i.IsValid                              0x1C368BC  (r,g,b all >= 0)
+//   SoulDataColor3i.TryParse                            0x1C93980  (Split(',') + 3x TryParse; stale marker 0x1C352B0)
 //   SoulDataColor3i.s_invalid_value                      0x1C39768  (-1,-1,-1)
 //
 // ADR-0033 §3: only performance-layer substitutions below. No formula, constant or
@@ -77,9 +78,12 @@ namespace Imas
         public override string ToString() => r + "," + g + "," + b;
 
         /// <summary>
-        /// SoulDataColor3i.TryParse 0x1C38D08: split on ',' (0x2C), require >= 3 parts,
-        /// int.TryParse each of the first three. Used by the (dead) comma-joined column
-        /// path get_color3i_value 0x1C38B40; the live getters read one int per column.
+        /// SoulDataColor3i.TryParse (current binary 0x1C93980, port comment previously
+        /// cited the stale 0x1C38D08/0x1C352B0): `str.Split(',')` (0x2C), require
+        /// `Length >= 3`, then three `int.TryParse` on parts 0..2; on success writes
+        /// (r,g,b) and returns true. Verified against the Hex-Rays body
+        /// `sub_1C93980` (2026-11-16): Split(0x2C) -> count check at +0x18 ->
+        /// three TryParse out-params -> `*(a2)=part0, a2[1]=part1, a2[2]=part2`.
         /// </summary>
         public static bool TryParse(string str, out SoulDataColor3i color)
         {

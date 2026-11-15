@@ -249,8 +249,10 @@ public sealed class SwayManagerNative : MonoBehaviour
     }
 
     /// <summary>
-    /// SwayManager.PrepareUpdate 0x1C81A08. Fixed 1/60 trigger (FIXED_DELTA),
-    /// dt clamp [1/60, 0.025], frame resets for bones and colliders.
+    /// SwayManager.PrepareUpdate 0x1CEFA50 (old 0x1C81A08): 60 Hz accumulator on
+    /// Time.realtimeSinceStartup, the native m_delta_time blend/clamp
+    /// [1/60, 0.025], per-bone h/cc/colliderInx reset, then the LiveParams
+    /// skirt-fall classification (inert while LiveSettings.inst is null).
     /// </summary>
     public void PrepareUpdate()
     {
@@ -272,32 +274,62 @@ public sealed class SwayManagerNative : MonoBehaviour
         localDelta -= 0.01666f;
         if (localDelta > 1f) localDelta = 0f;
 
-        // Native runs on a 60 fps player loop, so m_delta_time converges to
-        // FIXED_DELTA (1/60) and the solver integrates with ratio == 1. When the
-        // editor drops below 60 fps, Time.deltaTime grows and the native clamp
-        // pushes m_delta_time up to MAX_DELTA (0.025) -> ratio 1.56 -> ratio^2
-        // 2.44x the per-step force. That is a HARNESS artefact, not native
-        // behaviour: the accumulator below already guarantees one solver step per
-        // 1/60 s, so the step itself must integrate exactly that fixed step.
-        // (ADR-0033: performance/harness substitutions that preserve behaviour.)
-        m_delta_time = SwayConstants.FIXED_DELTA;
+        // Native: m_delta_time = clamp(old + (Time.deltaTime - old) *
+        // Time.deltaTime, FIXED_DELTA, MAX_DELTA). Time.deltaTime is read twice
+        // on purpose (the second read is the multiplier).
+        var dt = Time.deltaTime;
+        var blended = m_delta_time + (dt - m_delta_time) * Time.deltaTime;
+        var clamped = blended <= SwayConstants.MAX_DELTA ? blended : SwayConstants.MAX_DELTA;
+        m_delta_time = blended >= SwayConstants.FIXED_DELTA ? clamped : SwayConstants.FIXED_DELTA;
 
-        if (swayBones == null) return;
+        if (swayBones == null || !on) return;
         for (var i = 0; i < swayBones.Length; i++)
         {
             var bone = swayBones[i];
             if (bone == null) continue;
             // Native PrepareUpdate writes h = Vector3.zero, cc = Vector3.zero,
-            // colliderInx = -1 for every bone (0x1C81A08 inner loop).
+            // colliderInx = -1 for every bone (0x1CEFA50 inner loop).
             bone.h = Vector3.zero;
             bone.cc = Vector3.zero;
             bone.colliderInx = -1;
         }
 
-        // Native also detects SkirtFallFollow from a global system flag and
-        // BaseTr position (0x1C81A08 tail). That global is live-stage state;
-        // this port leaves the serialized SkirtFallFollow value untouched.
-        // UNKNOWN(native 0x1C81A08 tail): SkirtFallFollow auto-classification.
+        // Native tail: when LiveSettings.inst.live != null and its
+        // SkirtFollow100EnableByYpos (0xD8) is set, SkirtFallFollow (0x78) =
+        // BaseTr.position.y >= live.fallLimit (0xE0), flagging
+        // isSkirtFallFollowChanged (0x79) on change. The LiveParams asset is not
+        // shipped with character bundles (research doc §8), so inst is null in
+        // the spike and the serialized SkirtFallFollow stays untouched.
+        var liveSettings = LiveSettingsNative.inst;
+        if (liveSettings != null && liveSettings.live != null
+            && liveSettings.live.SkirtFollow100EnableByYpos && BaseTr != null)
+        {
+            var follow = BaseTr.position.y >= liveSettings.live.fallLimit;
+            if (SkirtFallFollow != follow)
+            {
+                SkirtFallFollow = follow;
+                isSkirtFallFollowChanged = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Stand-ins for `Imas.Live.LiveSettings` / `Imas.Live.LiveParams` (the
+    /// PrepareUpdate tail reads `LiveSettings.inst` static field 0 and
+    /// `live` at 0x20). Character bundles do not carry the Live ScriptableObject
+    /// (research doc §8), so `inst` stays null in the spike; a future Live host
+    /// can assign it to enable the native skirt-fall path.
+    /// </summary>
+    public sealed class LiveParamsNative
+    {
+        public bool SkirtFollow100EnableByYpos;   // 0xD8
+        public float fallLimit;                   // 0xE0
+    }
+
+    public sealed class LiveSettingsNative
+    {
+        public static LiveSettingsNative inst;    // 0x0 static field
+        public LiveParamsNative live;             // 0x20
     }
 
     /// <summary>
@@ -388,11 +420,18 @@ public sealed class SwayManagerNative : MonoBehaviour
     }
 
     /// <summary>
-    /// SwayManager.GetWind 0x1C81F68. Native sums registered ISwayWind GetWind
-    /// calls and multiplies by a quality/timeScale factor. Character bundles
-    /// carry no wind (audit §2.3 out-of-scope), so with no sources registered
-    /// this returns Vector3.zero; the factor is applied for parity.
-    /// UNKNOWN(native 0x1C81F68): ISwayWind interface dispatch/registration.
+    /// SwayManager.GetWind 0x1CEFFB0 (old 0x1C81F68): sums every registered
+    /// ISwayWind whose winds_use[i] is set, then scales the sum by
+    ///   * 1.3f when an unresolved static no-arg bool predicate is true
+    ///     (sub_3695F10(0), class off_97BDA50; the report maps it to a
+    ///     quality/high-end setting), or
+    ///   * (QualityLevel - 1) * 0.3f + 1f otherwise (sub_714EAB4 = quality level).
+    /// Character bundles register no wind sources (research doc §9), so in story
+    /// playback the loop body never runs and this returns Vector3.zero before the
+    /// factor matters; the aggregation/factor are kept for Live parity only.
+    /// UNKNOWN(native 0x1CEFFB0): the exact identity of the off_97BDA50 static
+    /// predicate (sub_3695F10); the spike returns true (GlobalSwayActive) so the
+    /// native 1.3 branch is modelled.
     /// </summary>
     public Vector3 GetWind(Vector3 position)
     {
@@ -403,9 +442,7 @@ public sealed class SwayManagerNative : MonoBehaviour
             if (winds[i] == null || !winds_use[i]) continue;
             sum += winds[i].GetWind(position);
         }
-        // Native 0x1C81F68: global manager ACTIVE -> 1.3; INACTIVE ->
-        // (timeScale - 1) * 0.3 + 1. (Direction per deviation audit B-4.)
-        var factor = GlobalSwayActive() ? 1.3f : (Time.timeScale - 1f) * 0.3f + 1f;
+        var factor = GlobalSwayActive() ? 1.3f : (QualitySettings.GetQualityLevel() - 1f) * 0.3f + 1f;
         return sum * factor;
     }
 

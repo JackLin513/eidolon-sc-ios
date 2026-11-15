@@ -1,32 +1,33 @@
 // Native-faithful port of the game's `Imas.EyeTracking` (ADR-0033 batch B4).
 //
-// Source of truth (all addresses are IDA image-base-0 VAs of the shipped
-// `UnityFramework` / Il2CppDumper `dump.cs` TypeDefIndex 9599):
-//   EyeTracking.Start                       0x379BF7C  (native body is empty/nullsub)
-//   EyeTracking.Init                        0x379BF80
-//   EyeTracking.SetTarget                   0x379C254
-//   EyeTracking.SetExternalEyeAnimationFactor 0x379C2B4
-//   EyeTracking.EyeUpdate                   0x379C2BC
-//   EyeTracking.GetCamTgtPos                0x379D1BC
-//   EyeTracking.SetMaterials                0x379D5A8
-//   EyeTracking.SetMaterial                 0x379D6AC
-//   EyeTracking.SetTeary                    0x379D768
-//   EyeTracking.SetTargetCamera             0x379D778
-//   EyeTracking.ctor                        0x379D948
-//   EyeTracking.EyeTrackParam.ctor          0x379D9FC
-//   EyeTracking.OnDrawGizmos                0x379D944  (empty)
+// Source of truth (CURRENT shipped binary; region delta old→new RVA = +0xDBF20,
+// old RVAs were IDA image-base-0 VAs of the same UnityFramework, Il2CppDumper
+// dump.cs TypeDefIndex 9901):
+//   EyeTracking.Start                         0x3877E9C  (old 0x379BF7C, empty/nullsub)
+//   EyeTracking.Init                          0x3877EA0  (old 0x379BF80)
+//   EyeTracking.SetTarget                     0x3878174  (old 0x379C254)
+//   EyeTracking.SetExternalEyeAnimationFactor 0x38781D4  (old 0x379C2B4)
+//   EyeTracking.EyeUpdate                     0x38781DC  (old 0x379C2BC)
+//   EyeTracking.GetCamTgtPos                  0x38790DC  (old 0x379D1BC)
+//   EyeTracking.SetMaterials                  0x38794C8  (old 0x379D5A8)
+//   EyeTracking.SetMaterial                   0x38795CC  (old 0x379D6AC)
+//   EyeTracking.SetTeary                      0x3879688  (old 0x379D768)
+//   EyeTracking.SetTargetCamera               0x3879698  (old 0x379D778)
+//   EyeTracking.ctor                          0x3879868  (old 0x379D948)
+//   EyeTracking.EyeTrackParam.ctor            0x387991C  (old 0x379D9FC)
+//   EyeTracking.OnDrawGizmos                  0x3879864  (old 0x379D944, empty)
 //
-// Decompiles: /tmp/ida-decomp/379c2bc.c (EyeUpdate), 379bf80.c (Init),
-// 379c254.c, 379c2b4.c, 379d1bc.c, 379d5a8.c, 379d6ac.c, 379d768.c,
-// 379d778.c, 379d948.c.
+// Decompiles (CURRENT build): /tmp/decomp2/EyeTracking_*.c (EyeUpdate.c is 959 lines),
+// plus /tmp/unk2-decomp/EyeTracking__old_379C2BC__new_38781DC.c. The old
+// /tmp/ida-decomp/*.c files cited by earlier revisions are a previous build.
 //
-// Verified literals (global-metadata v31, resolved through the IL2CPP
-// metadata-usage decoder 0x8BE78C, so these are the shipped strings and not
-// guesses):
-//   "_SubTex" (0x98085B0), "_VfxTex" (0x9808898)
-//   "/obj_head_GP/eyes" (0x97DE5B8), "EyeTgT" (0x97ED6A8),
-//   "_sub" (0x9809388), "Idol" (0x97F11F8)
-// Verified fields / constants from the ctor 0x379D948:
+// Verified literals (CURRENT metadata; resolved from /tmp/ild/script.json ScriptString.
+// The old slots 0x98085B0/0x9808898/0x97DE5B8/0x97ED6A8/0x9809388/0x97F11F8 are
+// previous-build addresses and no longer resolve):
+//   "_SubTex" (0x98BF9D0), "_VfxTex" (0x98BFCC0)
+//   "/obj_head_GP/eyes" (0x98957C0), "EyeTgT" (0x98A4920),
+//   "_sub" (0x98C07B0), "Idol" (0x98A84A0), "" (0x98912E8)
+// Verified fields / constants from the ctor 0x3879868:
 //   on = true, scale = 1.0f, external_eye_anime_factor = -1.0f, tgtIdol = 1,
 //   yuragiSpeed = 1, yuragiScale = 1.0f.
 // EyeTrackParam ctor xmmword_842AE10 = {0.004f, 10f, -10f, 30f} + Right = -30f.
@@ -53,21 +54,30 @@
 //     (0x379BF80; literals quoted above). If no such scene object exists the
 //     native code creates one (new GameObject with that name) — ported verbatim.
 //
-// UNKNOWN tags in this file:
-//   UNKNOWN(native 0x9705120) live/stage manager singleton used by the eye
-//     target base and by pin-spot init (class identity not recovered from the
-//     binary without the metadata-registration type table; only its field
-//     offsets are observed).
-//   UNKNOWN(native 0x9704BE0) stage/idol-list manager used for the Front sign
-//     flags and the OtherIdol list.
-//   UNKNOWN(native Imas.AppmasVector 0x36D0140..0x36D02C4) screenRatioV / r are
-//     computed from the screen aspect in a cctor that is not part of batch B4;
-//     exposed as settable statics with the CLR zero/one defaults.
-//   UNKNOWN(native 0x379C2BC type=4) IDA emits `Eye.position.y` twice in the
-//     Fixed-target y term; treated as a decompiler artifact, counted once.
-//   UNKNOWN(native 0x379C2BC type=3) the Mune2-forward term uses
-//     Transform.get_forward * 100 (the decompiler folds the Vector3 into a
-//     float; reconstructed as Vector3 multiplication).
+// UNKNOWN tags in this file — resolution status (CURRENT build):
+//   Every old slot below was resolved from the CURRENT script.json; the old data
+//   addresses (0x9705120/0x9704BE0/0x970CCF8/0x9709770/0x96E1210/...) are
+//   previous-build addresses and do not exist in the current metadata. The current
+//   EyeTracking code reads only these Live identities:
+//     Imas.Live.LiveSettings_TypeInfo  0x97B8E78   (EyeUpdate)
+//     Imas.Live.MainLoop_TypeInfo      0x97B93B8   (EyeUpdate / InitPinSpot sibling)
+//     Imas.Live.CameraCtrl_TypeInfo    0x97AFED8   (GetCamTgtPos / SetTargetCamera)
+//   LiveSettings/MainLoop/CameraCtrl belong to the Live-stage subsystem, which the
+//   ADV-story playback spike does not run ⇒ the port's neutral seams are the
+//   evidence-backed outcome; the eye math itself is NOT rewritten blind.
+//   UNKNOWN(native 0x38781DC) precise questions (EyeUpdate, decomp lost the math):
+//     - type=4 (Fixed): is `Eye.position.y` used twice in the y term, or is the
+//       second read a different field the decompiler folded? Current decomp2 body
+//       is 959 lines; resolver could not recover a unique reading.
+//     - type=3 (LookRFinger): is the Mune2-forward term `forward * 100f`, and is
+//       100 a literal or a scaled constant?
+//     - CameraCtrl.EvCamNo/camSampled state and the front-depth sign
+//       (`frontDepthSign`) depend on the Live camera controller; no ADV equivalent.
+//   UNKNOWN(native 0x38794C8/0x38795CC) SetMaterials: material-property names and
+//   texture ids (_SubTex/_VfxTex) are resolved, but which property receives which
+//   id depends on the Live eye material set ⇒ seams kept.
+//   UNKNOWN(native 0x36D0140..0x36D02C4) Imas.AppmasVector cctor: screenRatioV /
+//   screenRatioR are Live screen-aspect statics; Adv spike keeps settable statics.
 
 using System;
 using UnityEngine;
@@ -177,7 +187,7 @@ public class EyeTracking : MonoBehaviour
     // read from the shipped UnityFramework):
     //   upCamPosDef = (0, 0.05, 1.9)      upCamTgtPosDef = (0, -0.13, 0)
     //   loopCamPosDef = (0, 0.1, 2.6)     loopCamTgtPosDef = (0, -0.3, 0)
-    // UNKNOWN(native 0x970CCF8): the class token used by EyeTracking.GetCamTgtPos /
+    // UNKNOWN(current: Live camera controller absent in the ADV spike; previous-build slot 0x970CCF8, current read Imas.Live.CameraCtrl_TypeInfo 0x97AFED8): the class token used by EyeTracking.GetCamTgtPos /
     // EyeUpdate is inferred to be LiveInfoParams (it is the only class with a
     // static Vector3 at both 0x0 and 0xC). A live stage load overwrites these.
     public static Vector3 upCamPosDef = new Vector3(0f, 0.05f, 1.9f);
@@ -190,16 +200,16 @@ public class EyeTracking : MonoBehaviour
     // calls EyeTracking.RefreshScreenRatio() once (see notes).
     public static Vector2 appmasVectorR = new Vector2(1280f, 720f);
     public static Vector2 screenRatioV = new Vector2(1280f, 720f);
-    // UNKNOWN(native 0x9705120): live/stage manager presence. Native checks the
+    // UNKNOWN(current: Live stage manager absent in the ADV spike; previous-build slot 0x9705120, current read Imas.Live.MainLoop_TypeInfo 0x97B93B8): live/stage manager presence. Native checks the
     // singleton and a stage-idol pointer; when absent the Front path keeps
     // +frontDepth and the eye base stays upCamPosDef.
     public static bool liveStageManagerValid;
-    // UNKNOWN(native 0x379C2BC type 0/7): the native code picks the sign of the
+    // UNKNOWN(native 0x38781DC (old 0x379C2BC) type 0/7): the native code picks the sign of the
     // front-depth term from two stage flags (0x1EFDE64 / 0x1F06E28 on
-    // UNKNOWN(native 0x9704BE0)). Default is the no-manager value: +1.
+    // UNKNOWN(current: Live idol/stage list absent in the ADV spike; previous-build slot 0x9704BE0, current read Imas.Live.MainLoop_TypeInfo 0x97B93B8)). Default is the no-manager value: +1.
     public static int frontDepthSign = 1;
-    // UNKNOWN(native 0x379C2BC type 6): the "other idol" array lives on
-    // UNKNOWN(native 0x9704BE0); native indexes [tgtIdol - 1].model.Atama.
+    // UNKNOWN(native 0x38781DC (old 0x379C2BC) type 6): the "other idol" array lives on
+    // UNKNOWN(current: Live idol/stage list absent in the ADV spike; previous-build slot 0x9704BE0, current read Imas.Live.MainLoop_TypeInfo 0x97B93B8); native indexes [tgtIdol - 1].model.Atama.
     public static EyeTrackingIdolInfo[] idolList;
     // Adapter for the native DanceCameraManager (GetCamTgtPos 0x379D1BC,
     // SetTargetCamera 0x379D778). Native falls back to LiveInfoParams.upCamTgtPosDef
@@ -479,7 +489,7 @@ public class EyeTracking : MonoBehaviour
             case eyedirtype.BustDir:
             {
                 // model.Mune2.position + Mune2.forward * 100
-                // UNKNOWN(0x379C2BC type=3): the decompiler folds
+                // UNKNOWN(native 0x38781DC (old 0x379C2BC) type=3): the decompiler folds
                 // Transform.get_forward(0x70BF5A8) into scalars; reconstructed
                 // as the Vector3 expression the native code performs.
                 if (info.mune2 != null)
@@ -491,7 +501,7 @@ public class EyeTracking : MonoBehaviour
             }
             case eyedirtype.Fixed:
             {
-                // UNKNOWN(0x379C2BC type=4): the disassembly loads
+                // UNKNOWN(native 0x38781DC (old 0x379C2BC) type=4): the disassembly loads
                 // model.Eye.position.y twice; one read is used here (a
                 // double-count would be a decompiler artifact).
                 float eyeY = info.eye != null ? info.eye.transform.position.y : 0f;
@@ -507,7 +517,7 @@ public class EyeTracking : MonoBehaviour
             }
             case eyedirtype.OtherIdol:
             {
-                // UNKNOWN(0x9704BE0): idol array index = tgtIdol - 1,
+                // UNKNOWN(current: Live idol/stage list absent; previous-build slot 0x9704BE0): idol array index = tgtIdol - 1,
                 // target = other.model.Atama.position.
                 if (idolList != null)
                 {
@@ -660,7 +670,7 @@ public class EyeTracking : MonoBehaviour
         Vector2 eyeOff = new Vector2(-eye_rx * eyeTrackParam.EyeDirScale,
                                      -eye_ry * eyeTrackParam.EyeDirScale);
 
-        // UNKNOWN(native 0x379C2BC): the vfx phase accumulator reads
+        // UNKNOWN(native 0x38781DC (old 0x379C2BC)): the vfx phase accumulator reads
         // UnityEngine.Time.get_deltaTime (0x70B9BAC) but the reconstructed
         // expression does not multiply it; the port keeps the literal
         // per-frame expression observed in the decompile.

@@ -5,8 +5,13 @@ using System.Text;
 // replacement allowed by ADR-0033).
 //
 // Field layout follows dump.cs SwayBone one-for-one. Addresses in comments are
-// IDA linear addresses (= Il2CppDumper RVA). The source of truth for every
-// formula is the decompile of:
+// IDA linear addresses (= Il2CppDumper RVA). The list below is the older shipped
+// binary; the 2026-11-16 pass re-checked these bodies against the CURRENT binary
+// (Δ = +0x5AC78, e.g. SetManager 0x1CCBBC8, Init(jbh) 0x1CCBA28, ResetRotForADV
+// 0x1CCC9F8, InitWingLimit 0x1CCD2D8, SetWingLimitL 0x1CCD42C, SetWingLimitR
+// 0x1CCD504, SwayHit 0x1CCDF60, FinishRotate 0x1CCCD58) and cites the current
+// RVA on each rewritten method. The source of truth for every formula is the
+// decompile of:
 //   Awake 0x1C70C20, SetManager 0x1C70F50, Init 0x1C71198/0x1C70DB0,
 //   InitSub 0x1C711A4, RefreshCollidersEnable 0x1C714CC,
 //   CalcSideLinkDistance 0x1C716E8, SetAntiFoldAngle 0x1C718A8,
@@ -139,6 +144,10 @@ public sealed class SwayBoneNative : MonoBehaviour
     public bool sphereHitF;                      // 0x14D
     public Vector3 aimVector;                    // 0x150 bone-local bind tip direction
     public Vector3 lastBasePos;                  // 0x15C world
+    // Native also has `SwayBoneMT mt` at 0x168; the serial port builds the MT
+    // record per pass (FixedParams/WorkingParams) and keeps no persistent object,
+    // so only the jbh back-reference written by Init(JointBodyHead) is stored.
+    public JointBodyHeadNative jbh;              // 0x170
     public Vector3 colliderOffset;               // 0x178
     public float sideSpringForce;                // 0x184
     public float sideSpringTorelance;            // 0x188
@@ -268,13 +277,15 @@ public sealed class SwayBoneNative : MonoBehaviour
     // ---------------- lifecycle ----------------
 
     /// <summary>
-    /// SwayBone.Awake 0x1C70C20 + SwayFileIO.AttachSwayBone 0x1C7726C.
-    /// Sets the transform/tip references and copies SwayBoneParams fields.
-    /// Native Awake stores initialLocalRotation = trs.localRotation; the later
-    /// SwayFileIO.InitSwayBones -> SwayBone.Init(jbh) may overwrite it with the
-    /// JointBodyHead bind rotation — UNKNOWN(native 0x1C70DB0) decompile not in
-    /// this pass; spike binds after the bind pose is applied, so the local
-    /// rotation at Bind() is the same value.
+    /// SwayBone.Awake 0x1CCB898 (old 0x1C70C20) + SwayFileIO.AttachSwayBone
+    /// (old 0x1C7726C). Sets the transform/tip references and copies
+    /// SwayBoneParams fields.
+    /// Native Awake stores initialLocalRotation = trs.localRotation. The later
+    /// SwayFileIO.InitSwayBones calls Init(JointBodyHead) 0x1CCBA28 (overload
+    /// below), which binds the jbh back-reference and re-resolves the collider
+    /// components — it does NOT touch the bind rotation. The bind rotation
+    /// enters through the separate Init(Quaternion rot) 0x1CCBE10 overload,
+    /// modelled by the 0-arg Init() via bindRotationProvider.
     /// </summary>
     public void Attach(SwayBoneNativeParams p, SwayManagerNative manager, Transform bodyScale, int index)
     {
@@ -337,29 +348,63 @@ public sealed class SwayBoneNative : MonoBehaviour
     }
 
     /// <summary>
-    /// SwayBone.SetManager 0x1C70F50: manager + category, then the native tag
-    /// checks (Opai/HairSide -> category 3/4, useBindDir=1 for some names).
-    /// UNKNOWN(native 0x1C70F50): the tag literals are il2cpp string-metadata
-    /// pointers that the static binary does not expose; we fall back to the
-    /// manager category and keep useBindDir from the text. The fallback changes
-    /// nothing when swayFollowRate/swayDamper are neutral (default), but must be
-    /// re-checked on costumes with those arrays driven.
+    /// SwayBone.SetManager 0x1CCBBC8 (old 0x1C70F50): manager + category, then
+    /// three GameObject.CompareTag groups:
+    ///   * OPAI_L0 / OPAI_R0                         -> category Opai (3);
+    ///   * hair_side, or hair_yoko without A/C tags  -> category SideHair (4)
+    ///     (native additionally requires the global VisualManager3d static
+    ///     field[0] to be null; the spike has no VisualManager3d, so that holds);
+    ///   * wing_L0 / wing_R0                         -> isWing (0x3D) = true.
+    /// The tagged literals were resolved from the current binary: OPAI_L0
+    /// 0x98AF150, OPAI_R0 0x98AF158, hair_side 0x98CCFE0, hair_yoko 0x98CCFE8,
+    /// A 0x98995A8, C 0x989C660, wing_L0 0x98E2DB0, wing_R0 0x98E2DB8.
+    /// Native does not write useBindDir here; that text field is only carried.
     /// </summary>
     public void SetManager(SwayManagerNative manager, SwayCategory cat)
     {
         mgr = manager;
         category = cat;
-        // Path-based equivalent of the native tag checks (documented UNKNOWN).
-        var path = data != null ? data.path : name;
-        if (!string.IsNullOrEmpty(path) && path.IndexOf("OPAI", StringComparison.OrdinalIgnoreCase) >= 0)
+        var go = gameObject;
+        if (CompareTagSafe(go, "OPAI_L0") || CompareTagSafe(go, "OPAI_R0"))
+        {
             category = SwayCategory.Opai;
+        }
+        else if (CompareTagSafe(go, "hair_side")
+                 || (CompareTagSafe(go, "hair_yoko")
+                     && !CompareTagSafe(go, "A")
+                     && !CompareTagSafe(go, "C")))
+        {
+            category = SwayCategory.SideHair;
+        }
+        if (CompareTagSafe(go, "wing_L0") || CompareTagSafe(go, "wing_R0"))
+            isWing = true;
     }
 
     /// <summary>
-    /// SwayBone.Init 0x1C71198 / Init(JointBodyHead) 0x1C70DB0 -> InitSub.
-    /// The native Init(jbh) first copies the bind local rotation from
-    /// JointBodyHead.GetInitRot (0x1C627AC); this port uses the current local
-    /// rotation (bind pose applied before sway is attached).
+    /// GameObject.CompareTag with the native semantics but tolerant of absent
+    /// TagManager entries: Unity throws for a tag that is not declared in the
+    /// project, while the shipped project declares every costume tag. The spike
+    /// has no TagManager entries for OPAI_L0/wing_L0/..., so an undeclared tag
+    /// is treated as "not equal" (the native value would also be false there).
+    /// </summary>
+    private static bool CompareTagSafe(GameObject go, string tag)
+    {
+        if (go == null) return false;
+        try
+        {
+            return go.CompareTag(tag);
+        }
+        catch (UnityException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// SwayBone.Init(Quaternion rot) 0x1CCBE10 (old 0x1C71198): stores the bind
+    /// local rotation and runs InitSub. The spike sources `rot` from
+    /// bindRotationProvider (the value JointBodyHead.GetInitRot hands the native
+    /// caller); a null provider falls back to the local rotation at Bind() time.
     /// </summary>
     public void Init()
     {
@@ -368,6 +413,33 @@ public sealed class SwayBoneNative : MonoBehaviour
         initialLocalRotation = bindRotationProvider != null
             ? bindRotationProvider(transform)
             : trs.localRotation;
+        InitSub();
+    }
+
+    /// <summary>
+    /// SwayBone.Init(JointBodyHead jbh0) 0x1CCBA28 (old 0x1C70DB0): stores the
+    /// jbh back-reference (native also writes SwayBoneMT.jbh at 0x168+0x18; the
+    /// serial port has no persistent MT record), then for every collider set
+    /// re-resolves the component from its own GameObject:
+    /// `set.c = set.c.gameObject.GetComponents&lt;SwayCollider&gt;()[set.n]`.
+    /// Finally RefreshCollidersEnable() then InitSub(). SwayFileIO.InitSwayBones
+    /// calls this overload; the 0-arg Init() above models the bind-rotation
+    /// overload (0x1CCBE10).
+    /// </summary>
+    public void Init(JointBodyHeadNative jbh0)
+    {
+        if (jbh0 != null) jbh = jbh0;
+        if (colliders != null)
+        {
+            for (var i = 0; i < colliders.Length; i++)
+            {
+                var set = colliders[i];
+                if (set == null || set.c == null) continue;
+                var components = set.c.gameObject.GetComponents<SwayColliderNative>();
+                if (set.n >= 0 && set.n < components.Length) set.c = components[set.n];
+            }
+        }
+        RefreshCollidersEnable();
         InitSub();
     }
 
@@ -552,15 +624,16 @@ public sealed class SwayBoneNative : MonoBehaviour
     }
 
     /// <summary>
-    /// SwayBone.FinishRotate 0x1C720E0: normalize the tip offset around the
-    /// base to swayLength (0xF0) then run CalcRotate. When |curTip - base|
-    /// &lt;= 1e-5 native falls back to the first static member of
-    /// UnityEngine.Vector3 (off_970CCF8 static_fields +0x00) as the direction;
-    /// Vector3.cctor 0x7095358 writes the 128-byte static block in the order
-    /// zero(+0x00)/(0,0,0), one(+0x0C), up(+0x18), down(+0x24), left(+0x30),
-    /// right(+0x3C), forward(+0x48), back(+0x54) — so the native fallback IS
-    /// Vector3.zero and the port's zero fallback is native-faithful
-    /// (was UNKNOWN(native 0x1C720E0), resolved against the Vector3 cctor).
+    /// SwayBone.FinishRotate 0x1CCCD58 (old 0x1C720E0): normalize the tip offset
+    /// around the base to swayLength (0xF0) then run CalcRotate (0x1CCCE98, the
+    /// native tail call). When |curTip - base| &lt;= 1e-5 native falls back to the
+    /// first static member of UnityEngine.Vector3 (off_970CCF8 static_fields
+    /// +0x00) as the direction; Vector3.cctor 0x7095358 writes the 128-byte
+    /// static block in the order zero(+0x00)/(0,0,0), one(+0x0C), up(+0x18),
+    /// down(+0x24), left(+0x30), right(+0x3C), forward(+0x48), back(+0x54) — so
+    /// the native fallback IS Vector3.zero and the port's zero fallback is
+    /// native-faithful. The current-binary decompile confirms the whole body
+    /// (no formula delta vs the existing port).
     /// </summary>
     public void FinishRotate()
     {
@@ -673,39 +746,124 @@ public sealed class SwayBoneNative : MonoBehaviour
         }
     }
 
-    /// <summary>SwayBone.ResetRotForADV 0x1C71D80 (ADV-only path).</summary>
+    /// <summary>
+    /// SwayBone.ResetRotForADV 0x1CCC9F8 (old 0x1C71D80). Story (ADV) speaker
+    /// switches call this; missing it leaves the previous speaker's tip offset
+    /// and snaps head/hair rotations. Current-binary body:
+    ///   trs.localRotation = initialLocalRotation (0xD8);
+    ///   lastBasePos (0x15C) = trs.position;
+    ///   (native reads trs.parent's rotation here — see UNKNOWN below);
+    ///   curTipPos (0x100) = tipTrs.position + gravity (0x90);
+    ///   dir = normalize(curTipPos - trs.position), |.| &lt;= 1e-5 -> Vector3.zero;
+    ///   curTipPos = trs.position + dir * swayLength (0xF0);
+    ///   prevTipPos (0x10C) = curTipPos;
+    ///   every enabled collider whose set.c.on (0x30) is true clears m_exec_ok
+    ///   (0xA8); tail sets SwayBoneMT.ParallelParamsUpdateState = 5 (serial port
+    ///   has no MT state, so that write is a no-op).
+    /// UNKNOWN(native 0x1CCC9F8): Hex-Rays shows an extra Vector3 term added to
+    /// tipTrs.position + gravity from `sub_712AC70` (in CalcRotate the same
+    /// helper is Quaternion.op_Multiply), with a preceding `trs.parent` rotation
+    /// read whose operand vector Hex-Rays drops; the term is left out until the
+    /// operands can be pinned (it is exact zero only if the operand is a zero
+    /// vector, which the report reads it as).
+    /// </summary>
     public void ResetRotForADV()
     {
-        // UNKNOWN(native 0x1C71D80): not decompiled. ADV mode is outside B2's
-        // character-body scope; ResetRot is the closest documented behaviour.
-        ResetRot();
+        if (trs == null) return;
+        trs.localRotation = initialLocalRotation;
+        lastBasePos = trs.position;
+        curTipPos = (tipTrs != null ? tipTrs.position : trs.position) + gravity;
+        var offset = curTipPos - trs.position;
+        var len = offset.magnitude;
+        var dir = len > 0.00001f ? offset / len : Vector3.zero;
+        curTipPos = trs.position + dir * swayLength;
+        prevTipPos = curTipPos;
+        if (colliders != null && colliders_enable != null)
+        {
+            for (var i = 0; i < colliders.Length && i < colliders_enable.Length; i++)
+            {
+                if (!colliders_enable[i]) continue;
+                var set = colliders[i];
+                if (set == null || set.c == null) continue;
+                if (set.c.on) set.c.m_exec_ok = false;
+            }
+        }
     }
 
     // ---------------- wing limits ----------------
 
+    // Native statics LWingMinZ/LWingMaxZ/RWingMinZ/RWingMaxZ are 11-element
+    // float[] built by SwayBone..cctor 0x1CCE8A8 (old 0x1C73C30) through
+    // RuntimeHelpers.InitializeArray — the literal values live in metadata
+    // field-RVA blobs that the /tmp dump does not carry (no shipped binary is
+    // available in this session). Every entry is therefore UNKNOWN(native
+    // 0x1CCE8A8); the stand-in fills all 11 indices with the documented
+    // WING_DEFAULT_MIN_Z/WING_DEFAULT_MAX_Z window so the tag/index/flag control
+    // flow below stays native-faithful and index-safe. Swap in the real tables
+    // once the field-RVA bytes are readable.
+    private static readonly float[] LWingMinZ = WingDefaultTable(-10f);   // WING_DEFAULT_MIN_Z
+    private static readonly float[] LWingMaxZ = WingDefaultTable(10f);    // WING_DEFAULT_MAX_Z
+    private static readonly float[] RWingMinZ = WingDefaultTable(-10f);
+    private static readonly float[] RWingMaxZ = WingDefaultTable(10f);
+
+    private static float[] WingDefaultTable(float value)
+    {
+        var table = new float[11];
+        for (var i = 0; i < table.Length; i++) table[i] = value;
+        return table;
+    }
+
     /// <summary>
-    /// SwayBone.InitWingLimit 0x1C72660. Native fills LWingMinZ/LWingMaxZ/
-    /// RWingMinZ/RWingMaxZ static tables from the WING_* constants and then
-    /// copies the per-bone target window. The exact table contents were not
-    /// decoded in this pass.
-    /// UNKNOWN(native 0x1C72660 + cctor 0x1C73C30): static wing limit tables.
+    /// SwayBone.InitWingLimit 0x1CCD2D8 (old 0x1C72660): wing_L0 copies
+    /// LWingMinZ[0]/LWingMaxZ[0], wing_R0 copies RWingMinZ[0]/RWingMaxZ[0] into
+    /// minZAngleTgt (0x74) / maxZAngleTgt (0x78). The native tail sets
+    /// isWingLimitAngleChanged (0x7C) = true unconditionally (also for non-wings).
+    /// UNKNOWN(native 0x1CCD2D8): the exact 11-entry table values (cctor blobs,
+    /// see above); index 0 is the only entry this method reads.
     /// </summary>
     public void InitWingLimit()
     {
-        minZAngleTgt = minZAngle;
-        maxZAngleTgt = maxZAngle;
-        isWingLimitAngleChanged = false;
-    }
-
-    /// <summary>SwayBone.SetWingLimitL 0x1C727B4. UNKNOWN(native 0x1C727B4): table indices.</summary>
-    public void SetWingLimitL(int param)
-    {
+        var go = gameObject;
+        if (CompareTagSafe(go, "wing_L0"))
+        {
+            minZAngleTgt = LWingMinZ[0];
+            maxZAngleTgt = LWingMaxZ[0];
+        }
+        if (CompareTagSafe(go, "wing_R0"))
+        {
+            minZAngleTgt = RWingMinZ[0];
+            maxZAngleTgt = RWingMaxZ[0];
+        }
         isWingLimitAngleChanged = true;
     }
 
-    /// <summary>SwayBone.SetWingLimitR 0x1C7288C. UNKNOWN(native 0x1C7288C): table indices.</summary>
+    /// <summary>
+    /// SwayBone.SetWingLimitL 0x1CCD42C (old 0x1C727B4): minZAngleTgt =
+    /// LWingMinZ[param], maxZAngleTgt = LWingMaxZ[param] (each write bounds-checked
+    /// in native; the port guards and skips instead of throwing),
+    /// isWingLimitAngleChanged = true.
+    /// </summary>
+    public void SetWingLimitL(int param)
+    {
+        if (param >= 0 && param < LWingMinZ.Length && param < LWingMaxZ.Length)
+        {
+            minZAngleTgt = LWingMinZ[param];
+            maxZAngleTgt = LWingMaxZ[param];
+        }
+        isWingLimitAngleChanged = true;
+    }
+
+    /// <summary>
+    /// SwayBone.SetWingLimitR 0x1CCD504 (old 0x1C7288C): same as the L variant
+    /// against RWingMinZ/RWingMaxZ.
+    /// </summary>
     public void SetWingLimitR(int param)
     {
+        if (param >= 0 && param < RWingMinZ.Length && param < RWingMaxZ.Length)
+        {
+            minZAngleTgt = RWingMinZ[param];
+            maxZAngleTgt = RWingMaxZ[param];
+        }
         isWingLimitAngleChanged = true;
     }
 
@@ -853,17 +1011,19 @@ public sealed class SwayBoneNative : MonoBehaviour
     }
 
     /// <summary>
-    /// SwayBone.SwayHit 0x1C732E8: clear lineHitF/sphereHitF (one 16-bit store
-    /// at 0x14C), test every enabled collider (colliders_enable 0xD0, set.c.on),
-    /// and when SwayCollider.Check (0x1C73424) reports a contact keep the test
-    /// whose push (`newpos` 0x7C) is farthest from the running curTipPos — the
-    /// distance is re-evaluated against the CURRENT curTipPos every iteration
-    /// (deepest wins) — write it into curTipPos and set sphereHitF (0x14D).
-    /// Native SwayHit contains NO useLinkHit/CheckSideLine pass: 0x1C75380 has
-    /// no static call site in the shipped binary (only the il2cpp metadata
-    /// table reference), so the old port's appended line test is removed.
-    /// Where useLinkHit actually runs remains
-    /// UNKNOWN(native 0x1C732E8 / 0x1C75380 call site).
+    /// SwayBone.SwayHit 0x1CCDF60 (old 0x1C732E8): clear lineHitF/sphereHitF
+    /// (one 16-bit store at 0x14C), test every enabled collider
+    /// (colliders_enable 0xD0, set.c.on), and when SwayCollider.Check 0x1CCE09C
+    /// reports a contact keep the test whose push (`newpos` 0x7C) is farthest
+    /// from the running curTipPos — the distance is re-evaluated against the
+    /// CURRENT curTipPos every iteration (deepest wins) — write it into
+    /// curTipPos and set sphereHitF (0x14D).
+    /// The current body contains NO useLinkHit/CheckSideLine pass: it calls only
+    /// SwayCollider.Check. (Old 0x1C75380 is SwayCollider.CheckSideLine's entry,
+    /// per SwayColliderNative.cs, not a SwayHit call site.) No scalar-path
+    /// consumer of useLinkHit is proven; leaving it unread is
+    /// UNKNOWN(native 0x1CCDF60): where useLinkHit is consumed in the shipped
+    /// binary.
     /// </summary>
     public void SwayHit()
     {

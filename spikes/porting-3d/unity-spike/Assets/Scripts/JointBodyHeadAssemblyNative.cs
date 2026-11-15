@@ -145,31 +145,30 @@ public sealed class JointBodyHeadAssemblyNative
     /// safe to call after a full <see cref="JointBodyHeadNative.Initialize"/> —
     /// every step is guarded by "is the product already there".
     ///
-    /// Native order (evidence: 0x1C633CC drives 0x1C66DB0 to completion, then
-    /// DropShadow.SetShadowMode 0x379A228, then 0x1C63AF8, then
-    /// is_creation_succeeded=1 @+0x138):
-    ///   Post_1 (@0x1C66DB0):
+    /// Native order (evidence: 0x1C633CC drives Initialize_Post_1 0x1CC1A28 to
+    /// completion, then DropShadow.SetShadowMode 0x379A228, then Initialize_Post_2
+    /// 0x1CBE770, then is_creation_succeeded=1 @+0x138):
+    ///   Initialize_Post_1 (0x1CC1A28, old 0x1C66DB0):
     ///     optionDisplayDict.Clear()          (+0x108)
-    ///     swayFollowRate = new float[N]      (+0x128, all zeros; N UNKNOWN,
-    ///                                         a zero array is value-equivalent)
-    ///     bodyMesh = body.transform.Find(..)  (+0xC0)      → SetBodyMeshs 0x1C64C18
-    ///     headMesh = head.transform.Find(..)  (+0xB8)      → SetHeadMeshs 0x1C6516C
-    ///     if (!start_with_hide) Set_updateWhenOffscreen(true) 0x1C640A8
-    ///     headbones fills + head/body bone reparenting (head-side nodes slid under
-    ///       body-side parents; Transform.SetParent, literal names UNKNOWN)
-    ///     BodyScale node create/scale bookkeeping (its scale factor comes from a
-    ///       CharacterManager-owned dictionary entry, NOT CharacterSoul — see
-    ///       <see cref="ApplySoulBodyScale"/>)
-    ///     calcBone = GetComponent&lt;CalcBone&gt;(Model00) (+0xF0)
-    ///     material baseline resets on the body subtree (three zero writes each,
-    ///       component identity UNKNOWN)
-    ///     eye-material cheek offsets from the same dictionary entry (property
-    ///       names UNKNOWN — see /tmp/jbh-assembly-notes.md §UNKNOWN)
-    ///     GetBoneRot(body.transform) 0x1C64A6C → bonesRot (+0xC8)
+    ///     swayFollowRate = new float[Enum.GetValues(typeof(SwayBone.swaycategory)).Length]
+    ///                                         (+0x128, all zeros; 5 in this build)
+    ///     bodyMesh = body.transform.Find("obj_body_GP")   (+0xC0)  → SetBodyMeshs 0x1CBF890
+    ///     headMesh = head.transform.Find("obj_head_GP")   (+0xB8)  → SetHeadMeshs 0x1CBFDE4
+    ///     if (!start_with_hide) Set_updateWhenOffscreen(true) 0x1CBED20
+    ///     headbones fills (children of head "KUBI/ATAMA") + head/body bone reparenting:
+    ///       body-side old bone renamed to name+"___"; head-side bone SetParent(body
+    ///       "MODEL_00/BASE/MUNE1/MUNE2/KUBI/ATAMA", false); head mesh SetParent(body, true)
+    ///     per head mesh: graft bones by name under body "KUBI", replace smr.bones/rootBone
+    ///     destroy renamed body bones + head root; create BODY_SCALE under MODEL_00/BASE and
+    ///     move MODEL_00's children under it; resolve KUBI/ATAMA/MUNE2/finger paths;
+    ///     create Eye_obj under MUNE2 (scale = CharacterSoul bodyScale × Vector3 default one)
+    ///     calcBone = Model00.AddComponent&lt;CalcBone&gt;() (+0xF0) — B-suite hook
+    ///     CharacterSoul blend pass (`_sle`/`_gla` weights from soul bodySize) — B-suite hook
+    ///     GetBoneRot(body.transform) 0x1CBF6E4 → bonesRot (+0xC8)
     ///     EyeTracking + FaceCtrl creation (see <see cref="BindEyeAndFace"/>)
-    ///     dshadow = GetComponent&lt;DropShadow&gt;(body) (+0xF8)
-    ///   Initialize tail (0x1C633CC): SetShadowMode(shadow, ABShadow)
-    ///   Post_2 (0x1C63AF8): AtamaY = Atama.transform.position.y;
+    ///     dshadow = body.AddComponent&lt;DropShadow&gt;() (+0xF8) — B4-owned
+    ///   Initialize tail (0x1CBE044): SetShadowMode(shadow, ABShadow)
+    ///   Initialize_Post_2 (0x1CBE770): AtamaY = Atama.transform.position.y;
     ///                       EyesY = Eye.transform.position.y;
     ///   is_creation_succeeded = 1
     /// </summary>
@@ -182,49 +181,46 @@ public sealed class JointBodyHeadAssemblyNative
         if (jbh == null) return false;
         if (jbh.body == null || jbh.head == null)
         {
-            // Native 0x1C63AF8 throws NRE (sub_84DD18) on an unresolved node.
+            // Native 0x1CBE770 throws NRE (sub_84DD18) on an unresolved node.
             Debug.LogWarning("JointBodyHeadAssemblyNative.RunPostInitialize: " +
-                             "jbh.body/head unresolved (native 0x1C63AF8 would NRE)");
+                             "jbh.body/head unresolved (native Initialize_Post_2 would NRE)");
             return false;
         }
 
-        // ---- Post_1 supplement (0x1C66DB0), only for states that are missing ----
+        // ---- Initialize_Post_1 supplement (0x1CC1A28), only for missing products ----
 
         if (jbh.headMesh == null)
-            jbh.headMesh = JointBodyHeadNative.serchChild(
-                jbh.head.transform, JointBodyHeadNative.NameModel00);
+            jbh.headMesh = jbh.head.transform.Find(JointBodyHeadNative.NameHeadMesh);
         if (jbh.bodyMesh == null)
-            jbh.bodyMesh = JointBodyHeadNative.serchChild(
-                jbh.body.transform, JointBodyHeadNative.NameModel00);
+            jbh.bodyMesh = jbh.body.transform.Find(JointBodyHeadNative.NameBodyMesh);
 
         if (jbh.bodyMesh != null && jbh.bodymeshes.Count == 0)
-            jbh.SetBodyMeshs(jbh.bodyMesh, null);           // 0x1C64C18
+            jbh.SetBodyMeshs(jbh.bodyMesh, null);           // 0x1CBF890
         if (jbh.headMesh != null && jbh.headmeshes.Count == 0)
-            jbh.SetHeadMeshs(jbh.headMesh, null);           // 0x1C6516C
+            jbh.SetHeadMeshs(jbh.headMesh, null);           // 0x1CBFDE4
 
         if (jbh.bonesRot != null && jbh.bonesRot.Count == 0)
         {
-            jbh.GetBoneRot(jbh.body.transform);             // 0x1C64A6C
+            jbh.GetBoneRot(jbh.body.transform);             // 0x1CBF6E4
             filledBonesRotThisRun = true;
         }
 
         if (jbh.Position == null)
         {
-            jbh.AddPositionNode();                          // 0x1C63F34
+            jbh.AddPositionNode();                          // 0x1CBEBAC
             filledPositionThisRun = true;
         }
 
-        // ---- head/body model tops (0x1C646C0 / 0x1C646DC) ----
+        // ---- head/body model tops (0x1CBF338 / 0x1CBF354) ----
         //
-        // Native correction finding: both accessors read the *model node found
-        // under the bundle root* (jbh+0xB8 headMesh / +0xC0 bodyMesh, then
-        // get_gameObject 0x70A753C) and NRE when unset — NOT the bundle root
-        // itself. Keep the same semantics; fall back to the root only when the
-        // model node could not be resolved (supplement above failed).
+        // Native reads the *model node found under the bundle root* (+0xB8 headMesh /
+        // +0xC0 bodyMesh, then get_gameObject) and NREs when unset — NOT the bundle root.
+        // Keep the same semantics; fall back to the root only when the supplement above
+        // could not resolve the model node.
         headTop = TopOr(jbh.headMesh, jbh.head);
         bodyTop = TopOr(jbh.bodyMesh, jbh.body);
 
-        // ---- Post_2 (0x1C63AF8), same AtamaY/EyesY semantics as jbh ----
+        // ---- Initialize_Post_2 (0x1CBE770), same AtamaY/EyesY semantics as jbh ----
         jbh.Initialize_Post_2();
 
         postInitializeDone = true;
@@ -242,10 +238,13 @@ public sealed class JointBodyHeadAssemblyNative
     // =====================================================================
 
     /// <summary>
-    /// JointBodyHead.ApplyModelSwitch 0x1C64F94 (native-equal method on jbh):
-    /// gated on DanceIdolInfo flags, compares the root bone's parent name against
-    /// two literals, then SetOptionDisplay 0x1C64820 → optionDisplayDict(+0x108)
-    /// and renderer.enabled. Flag layout and literals: UNKNOWN (see notes).
+    /// JointBodyHead.ApplyModelSwitch 0x1CBFC0C (old 0x1C64F94) delegate:
+    ///   if render==null return; var tr=render.transform; if info==null return; if tr==null return;
+    ///   var asm = info.assem_info(+0xE8);
+    ///   if (asm != null &amp;&amp; asm.is_release_model_switch(+0xC5)==1) {
+    ///     if (tr.name.EndsWith("_switch"))   SetOptionDisplay(render, asm.enable_model_switch(+0xC4));
+    ///     if (tr.name.EndsWith("_switch_r")) SetOptionDisplay(render, asm.enable_model_switch(+0xC4)==0);
+    ///   }
     /// </summary>
     public void ApplyModelSwitch(UnityEngine.SkinnedMeshRenderer render, object info)
     {
@@ -253,9 +252,10 @@ public sealed class JointBodyHeadAssemblyNative
     }
 
     /// <summary>
-    /// JointBodyHead.ApplyGlassesSwitch 0x1C65524 (native-equal method on jbh):
-    /// renderer name vs two literals + the info-carried index, then
-    /// SetOptionDisplay. Flag layout, literals and suffix grammar: UNKNOWN.
+    /// JointBodyHead.ApplyGlassesSwitch 0x1CC019C (old 0x1C65524) delegate:
+    ///   gates on assem_info(+0xE8) bytes +0xC6|+0xC7, takes glasses_model_ver (+0xCC),
+    ///   compares the renderer transform name against "_gls_base" and the
+    ///   "_gls_v"+two-digit grammar, then SetOptionDisplay 0x1CBF498.
     /// </summary>
     public void ApplyGlassesSwitch(UnityEngine.SkinnedMeshRenderer render, object info)
     {
@@ -275,8 +275,9 @@ public sealed class JointBodyHeadAssemblyNative
         jbh.InitializeDisplay();
     }
 
-    /// <summary>JointBodyHead.SetVisible 0x1C642A0 delegate (renderer loop +
-    /// DropShadow forward through jbh.onDropShadowVisible).</summary>
+    /// <summary>JointBodyHead.SetVisible 0x1CBEF18 delegate: SkinnedMeshRenderer loop
+    /// (sharedMaterials.Length != 0 → enabled = show), DropShadow.LightAndShadowByChara,
+    /// and SetPinLightState through the jbh.dshadow slot (B4 component).</summary>
     public void SetVisible(bool show)
     {
         jbh.SetVisible(show);
@@ -308,9 +309,9 @@ public sealed class JointBodyHeadAssemblyNative
         jbh.SetWingLimit(index);
     }
 
-    /// <summary>JointBodyHead.MeasureSway 0x1C645DC delegate; the combine step of
-    /// the two sums (updateSwayTime + sideLineHitTime) is UNKNOWN in the
-    /// decompile and stays exposed via the out-overload on jbh.</summary>
+    /// <summary>JointBodyHead.MeasureSway 0x1CBF254 (old 0x1C645DC) delegate; the native
+    /// combine of the two sums (updateSwayTime +0x90 / sideLineHitTime +0x94) is lost in
+    /// the decompile, so jbh keeps both exposed via the out-overload.</summary>
     public float MeasureSway()
     {
         return jbh.MeasureSway();
@@ -322,29 +323,28 @@ public sealed class JointBodyHeadAssemblyNative
     }
 
     // =====================================================================
-    // BindEyeAndFace — Post_1 tail ordering (@0x1C66DB0, lines 1202-1274)
+    // BindEyeAndFace — Initialize_Post_1 tail steps (0x1CC1A28, old 0x1C66DB0)
     // =====================================================================
 
     /// <summary>
     /// Stores the eye/face parts in the same slots the native Post_1 tail fills.
     /// This only binds JointBodyHeadNative's fields — the components themselves
     /// are created/initialised by the bootstrap exactly as before (B3/B4 files
-    /// are untouched). The native order to follow at the call site:
+    /// are untouched). The resolved native order at the call site:
     ///
-    ///   1. (eye, only when the info flag @info+184 == 1)
-    ///        info+152 = jbh                     (back-reference field)
-    ///        eye = GetComponent&lt;EyeTracking&gt;(jbh.Eye @0x80)
-    ///        jbh+0xE0 = eye                     (holding slot; B4 maps named EyeTarget)
-    ///        EyeTracking.Init(info)             0x379BF80
+    ///   1. (eye, only when DanceIdolInfo+0xB8 byte == 1)
+    ///        info.model(+0x98) = jbh                 (back-reference)
+    ///        eye = jbh.Eye(+0x80).AddComponent&lt;EyeTracking&gt;()
+    ///        jbh.EyeTarget(+0xE0) = eye
+    ///        EyeTracking.Init(info)                  0x3877EA0
     ///   2. (face, unconditional)
-    ///        face = new FaceCtrl; ctor 0x379DC1C(face, managerArg, info)
-    ///        jbh+0xE8 = face
-    ///        if (info+68 byte == 1) face+76 = info+72 value   ← face-side
-    ///            field identity UNKNOWN (see notes §UNKNOWN)
-    ///        FaceCtrl.Init(arg)                 0x379E5B8
+    ///        face = new FaceCtrl(objName, info);     0x3879B3C
+    ///        jbh.face(+0xE8) = face
+    ///        if (soul+0x44 byte == 1) face+0x4C = soul+0x48 (int)   ← CharacterSoul.cheekReddenIntensity
+    ///        FaceCtrl.Init(CharacterManager.GetFaceBlendParam())    0x387A4D8
     ///   3. (shadow)
-    ///        jbh+0xF8 = GetComponent&lt;DropShadow&gt;(body)     — jbh.dshadow alias;
-    ///        SetShadowMode 0x379A228 runs later in Initialize 0x1C633CC.
+    ///        jbh.dshadow(+0xF8) = body.AddComponent&lt;DropShadow&gt;()
+    ///        DropShadow.SetShadowMode 0x379A228 runs later in Initialize 0x1CBE044.
     ///
     /// The two late JointBodyHeadNative offsets are +0xE0 (eye tracking) and
     /// +0xE8 (face); the spike's field names are <see cref="JointBodyHeadNative.EyeTarget"/>
@@ -365,16 +365,14 @@ public sealed class JointBodyHeadAssemblyNative
     // =====================================================================
 
     /// <summary>
-    /// CharacterSoul.bodyScale → JointBodyHead. NOT APPLIED.
-    /// UNKNOWN: every GetBodyScale 0x1C35B7C call site is outside the decompiled
-    /// evidence set (no xref available offline), so the consumer is not
-    /// established. The only BodyScale-scale write in the evidence (Post_1
-    /// @0x1C66DB0 lines 1040-1059) scales the created BodyScale node from a
-    /// CharacterManager-owned dictionary entry (value at +36, multiplied by the
-    /// three default factors off_970CCF8 +12/+16/+20) — that is costume data,
-    /// not CharacterSoul. Until xref evidence exists the transform stays
-    /// untouched (whether bodyScale feeds camera/placement at all is also
-    /// unestablished — same UNKNOWN).
+    /// CharacterSoul.bodyScale — diagnostics only. The one native write that consumes it
+    /// is in Initialize_Post_1 0x1CC1A28: Eye_obj.localScale =
+    /// soul.bodyScale.value(+0x24) × Vector3 static default (= one) for x/y/z; that write
+    /// is performed by <see cref="JointBodyHeadNative.InitializePost1"/> through
+    /// <see cref="JointBodyHeadNative.eyeScaleProvider"/>, and this method only records the
+    /// observed value for the probe. (Earlier notes claimed the BODY_SCALE node was scaled
+    /// from a CharacterManager dictionary entry; the actual Post_1 code sets BodyScale
+    /// localPosition = zero and scales only Eye_obj — decomp wins.)
     /// </summary>
     public void ApplySoulBodyScale(Imas.CharacterSoul soul)
     {
@@ -383,6 +381,20 @@ public sealed class JointBodyHeadAssemblyNative
         if (soul == null) return;
         lastSoulBodyScale = soul.bodyScale.value;
         lastSoulBodyScaleValid = soul.bodyScale.isValid;
+    }
+
+    /// <summary>
+    /// Binds the CharacterSoul bodyScale value (per idol, per swing) into the native
+    /// Eye_obj scale consumer for this JointBodyHead instance. Call it after the soul is
+    /// resolved and before Initialize/Post_1 runs; `null` restores the neutral 1.0.
+    /// </summary>
+    public void BindSoulBodyScale(float bodyScale, bool valid)
+    {
+        lastSoulBodyScale = bodyScale;
+        lastSoulBodyScaleValid = valid;
+        JointBodyHeadNative.eyeScaleProvider = valid
+            ? (Func<JointBodyHeadNative.IDanceIdolInfoFlags, float>)(_ => bodyScale)
+            : null;
     }
 
     /// <summary>
@@ -475,11 +487,8 @@ public sealed class JointBodyHeadAssemblyNative
               .Append(" face=").Append(jbh.face != null ? "FaceCtrlNative" : "<null>")
               .Append(" dshadow=").Append(jbh.dshadow != null ? "bound" : "<null>")
               .AppendLine();
-            sb.Append("  switch literals: modelA=\"").Append(jbh.modelSwitchNameA)
-              .Append('"').Append(" modelB=\"").Append(jbh.modelSwitchNameB)
-              .Append('"').Append(" glassesA=\"").Append(jbh.glassesNameA)
-              .Append('"').Append(" glassesB=\"").Append(jbh.glassesNameB)
-              .Append('"').AppendLine();
+            sb.Append("  switch grammar: model=\"_switch\"/\"_switch_r\", glasses=\"_gls_base\"/\"_gls_v\"+2 digits")
+              .AppendLine();
         }
 
         sb.Append("  soul: bodyScale=").Append(lastSoulBodyScaleValid
@@ -497,8 +506,8 @@ public sealed class JointBodyHeadAssemblyNative
             sb.Append("    opai[").Append(i).Append("] ").Append(opaiBonePaths[i])
               .AppendLine();
         }
-        sb.Append("  UNKNOWN not applied: bodyScale write, swayBreast mapping,")
-          .Append(" DanceIdolInfo flags/literals, face+76 field")
+        sb.Append("  UNKNOWN not applied: swayBreast mapping (B2 fields), face+0x4C field,")
+          .Append(" CalcBone/blend-shape/EyeTracking/FaceCtrl creation (B3/B4 hooks)")
           .AppendLine();
         return sb.ToString();
     }

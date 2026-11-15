@@ -1,38 +1,39 @@
 // Native-faithful port of the game's `Imas.DropShadow` (ADR-0033 batch B4).
 //
-// Source of truth (IDA image-base-0 VAs of the shipped `UnityFramework`;
-// Il2CppDumper `dump.cs` TypeDefIndex 9596, enum `DropShadow.Shadow` 9594,
-// iterator `DropShadow.<SetShadowModeAsync>d__25` 9595):
-//   DropShadow.Awake                   0x379A1F0
-//   DropShadow.SetHeightOffset         0x379A220
-//   DropShadow.SetShadowMode           0x379A228
-//   DropShadow.SetShadowModeAsync      0x379ADD4  (+ MoveNext 0x379B8DC)
-//   DropShadow.InitShadowMode          0x379A5AC
-//   DropShadow.InitPinSpotLight        0x379AFD0
-//   DropShadow.SetPinLightState        0x379B238
-//   DropShadow.CopyPinSpotParam        0x379B458
-//   DropShadow.LightAndShadowByEvent   0x379B47C
-//   DropShadow.LightAndShadowByChara   0x379B504
-//   DropShadow.setTransforms           0x379AE78
-//   DropShadow.LateUpdate              0x379B58C
-//   DropShadow.ctor                    0x379B89C
+// Source of truth (CURRENT shipped binary; region delta old→new RVA = +0xDBF20,
+// Il2CppDumper `dump.cs` TypeDefIndex 9898, enum `DropShadow.Shadow` 9896,
+// iterator `DropShadow.<SetShadowModeAsync>d__25` 9897):
+//   DropShadow.Awake                   0x3876110  (old 0x379A1F0)
+//   DropShadow.SetHeightOffset         0x3876140  (old 0x379A220)
+//   DropShadow.SetShadowMode           0x3876148  (old 0x379A228)
+//   DropShadow.SetShadowModeAsync      0x3876CF4  (old 0x379ADD4, MoveNext 0x38777FC / old 0x379B8DC)
+//   DropShadow.InitShadowMode          0x38764CC  (old 0x379A5AC)
+//   DropShadow.InitPinSpotLight        0x3876EF0  (old 0x379AFD0)
+//   DropShadow.SetPinLightState        0x3877158  (old 0x379B238)
+//   DropShadow.CopyPinSpotParam        0x3877378  (old 0x379B458)
+//   DropShadow.LightAndShadowByEvent   0x387739C  (old 0x379B47C)
+//   DropShadow.LightAndShadowByChara   0x3877424  (old 0x379B504)
+//   DropShadow.setTransforms           0x3876D98  (old 0x379AE78)
+//   DropShadow.LateUpdate              0x38774AC  (old 0x379B58C)
+//   DropShadow.ctor                    0x38777BC  (old 0x379B89C)
 //
-// Decompiles: /tmp/ida-decomp/379a1f0.c, 379a220.c, 379a228.c, 379a5ac.c,
-// 379add4.c, 379ae78.c, 379afd0.c, 379b238.c, 379b458.c, 379b47c.c,
-// 379b504.c, 379b58c.c, 379b8dc.c.
+// Decompiles (CURRENT build): /tmp/decomp2/DropShadow_*.c. The old
+// /tmp/ida-decomp/*.c files cited by earlier revisions are a previous build.
 //
-// Asset paths are *verified string literals* (global-metadata v31, decoded
-// through the IL2CPP metadata-usage decoder 0x8BE78C):
-//   "Chara/Shadow/lt_pin_spot"  (0x97E7780)
-//   "Chara/Shadow/ltmap_chara"  (0x97E7788)
-//   "Chara/Shadow/sd_chara"     (0x97E7790)
-//   "Chara/Shadow/sd_chara2"    (0x97E7798)
+// Asset paths are *verified string literals* of the CURRENT metadata (resolved
+// from /tmp/ild/script.json ScriptString; the old slots 0x97E7780/88/90/98 are
+// previous-build addresses and no longer resolve):
+//   "Chara/Shadow/lt_pin_spot"  (0x989E9B8)
+//   "Chara/Shadow/ltmap_chara"  (0x989E9C0)
+//   "Chara/Shadow/sd_chara"     (0x989E9C8)
+//   "Chara/Shadow/sd_chara2"    (0x989E9D0)
 // and the transform paths used by setTransforms are the literals
-//   "MODEL_00", "MODEL_00/BODY_SCALE", "MODEL_00/BODY_SCALE/BASE",
-//   "MODEL_00/BODY_SCALE/BASE/KOSHI/MOMO_L/HIZA_L/ASHI_L",
-//   "MODEL_00/BODY_SCALE/BASE/KOSHI/MOMO_R/HIZA_R/ASHI_R"
-// (0x97F5010/30/38/78/C0). The `_Irogae` shader property id literal is
-// "0x9807E48".
+//   "MODEL_00" (0x98AC2D0), "MODEL_00/BODY_SCALE" (0x98AC2F0),
+//   "MODEL_00/BODY_SCALE/BASE" (0x98AC2F8),
+//   "MODEL_00/BODY_SCALE/BASE/KOSHI/MOMO_L/HIZA_L/ASHI_L" (0x98AC338),
+//   "MODEL_00/BODY_SCALE/BASE/KOSHI/MOMO_R/HIZA_R/ASHI_R" (0x98AC380).
+// The `_Irogae` shader property id literal resolves to slot 0x98BF248 (the old
+// note "0x9807E48" was a stale address, not the literal itself).
 //
 // Asset bundle facts (facts report §C, re-checked with UnityPy against
 // `chara_shadow.unity3d`, 82,494 B): pure Mesh/Material/Texture + 4 prefab/fbx
@@ -48,16 +49,27 @@
 //   * Load `chara_shadow.unity3d` into an AssetBundle and call
 //     SetShadowMode(mode, shadowBundle) after the character is built.
 //
-// UNKNOWN tags: the native asset manager (`AssetBundleManager.GetResource`,
-// callee 0x421BDCC) is replaced by Unity's AssetBundle API (performance layer:
-// same asset identity, same load order). The shadow material post-process
-// `sub_357E268` is now landed as a real pass (see `ApplyShadowMaterialsNative`):
-// child-Renderer walk + static-table (name→Material) swap, rebuilt from the
-// decompile; the name-pattern literals remain UNKNOWN and the swap is
-// conservative, exact-key only. The stage/pin-spot
-// manager (`UNKNOWN(native 0x9705120)`), the global shadow-off singleton
-// (`UNKNOWN(native 0x9709770)`, field +432) and the stage camera defaults
-// (`Imas.LiveInfoParams`) are exposed as settable seams.
+// UNKNOWN tags in this file — resolution status (CURRENT build):
+//   The native asset manager (`AssetBundleManager.GetResource`, current
+//   `Method$AssetBundleManager.GetResource<Object>()` 0x981E430, TypeInfo 0x97AEE58)
+//   is replaced by Unity's AssetBundle API (performance layer: same asset identity,
+//   same load order). The shadow material post-process `sub_357E268` is landed as a
+//   real pass (see `ApplyShadowMaterialsNative`): child-Renderer walk + static-table
+//   (name→Material) swap; its name-pattern literals are still exact-key only.
+//   The old stage/pin-spot/global/shadow data addresses (0x9705120, 0x9709770,
+//   0x970CCF8) are previous-build slots and do not resolve in the current metadata;
+//   the current code reads these Live identities instead:
+//     Imas.Live.MainLoop_TypeInfo       0x97B93B8  (InitPinSpotLight)
+//     Imas.CustomShaderUtility_TypeInfo 0x97B1BD8  (InitShadowMode)
+//     Imas.ShadowMapCtrl_TypeInfo       0x97BDAD0  (InitShadowMode)
+//     Vector3_TypeInfo                  0x97C10A0  (defaults)
+//   Live-stage/pin-spot state has no ADV-story equivalent ⇒ the settable seams
+//   (`pinSpotStage`, `hideCharacterShadow`, `shadowScaleVectorOverride`) are the
+//   evidence-backed outcome; the Live-only stage camera defaults stay out of scope.
+//   UNKNOWN(native 0x3877158) precise question: the decompile of SetPinLightState
+//   does not make the `useGlobalColor` -> material color path unique (global vs
+//   per-stage color selection); a runtime probe of the shipped binary is required
+//   before changing CopyPinSpotParam.
 
 using System.Collections;
 using System.Collections.Generic;
@@ -110,15 +122,18 @@ public class DropShadow : MonoBehaviour
     /// walks the object's child Renderers (`sub_43ABD8C(go, true)`), reverses through
     /// each Renderer's shared-material list, and swaps every qualifying material for
     /// the one stored in the CustomShaderUtility static table
-    /// (Dictionary&lt;string, Material&gt; built by cctor sub_357DEE4 /
-    /// sub_357DEE4@357dee4.c from a static resource list — UNKNOWN(native
-    /// qword_97FDD50/9793818) source), then writes it back (sub_706FD2C) while
-    /// re-checking the previous material reference (sub_7070AE0/7070BFC).
+    /// (Dictionary&lt;string, Material&gt; built by cctor; the decompile is from the
+    /// PREVIOUS build, so its qword_97FDD50/9793818 slots are stale and do not
+    /// resolve in the current script.json), then writes it back while re-checking
+    /// the previous material reference.
     /// The four name-pattern literals (qword_97EAF98/97E84E8/97E9818 +
-    /// qword_98043E0/8, and the two alternate keys qword_97E8500/97E84F0) are NOT
-    /// statically resolvable (IL2CPP metadata-usage slots are dyld chain-rebase
-    /// encoded), so the conservative neutral replacement below fires only on an
-    /// exact registry key match (material name, then shader name). A binder can
+    /// qword_98043E0/8, plus keys qword_97E8500/97E84F0) belong to that previous
+    /// build; their current slots were not re-derived for this pass, so the
+    /// conservative replacement below fires only on an exact registry key match
+    /// (material name, then shader name). (The earlier note that IL2CPP
+    /// metadata-usage slots are "not statically resolvable" is false: the CURRENT
+    /// build's slots all resolve via /tmp/ild/script.json ScriptString — e.g.
+    /// "_Irogae" 0x98BF248, shadow asset paths 0x989E9B8..0x989E9D0.) A binder can
     /// still override the whole pass via <see cref="applyShadowMaterials"/>.
     /// </summary>
     public static System.Action<GameObject> applyShadowMaterials;
@@ -134,7 +149,7 @@ public class DropShadow : MonoBehaviour
         new Dictionary<string, Material>(80, System.StringComparer.Ordinal);
 
     /// <summary>
-    /// UNKNOWN(native 0x9705120): stage manager singleton read by
+    /// UNKNOWN(current: Live stage manager absent in the ADV spike; previous-build slot 0x9705120, current read Imas.Live.MainLoop_TypeInfo 0x97B93B8): stage manager singleton read by
     /// InitPinSpotLight (field +0x80 -> object with `kind` at +0x10 and
     /// intensities at +0x20/+0x24). Null means "no stage manager", which is the
     /// native no-op path.
@@ -142,13 +157,13 @@ public class DropShadow : MonoBehaviour
     public static IPinSpotLightStage pinSpotStage;
 
     /// <summary>
-    /// UNKNOWN(native 0x9709770): global singleton whose field +432 == 1 means
+    /// UNKNOWN(current: Live global shadow-off flag absent; previous-build slot 0x9709770, replaced by the hideCharacterShadow seam): global singleton whose field +432 == 1 means
     /// "hide the character shadow" (native disables both kage renderers).
     /// </summary>
     public static bool hideCharacterShadow;
 
     /// <summary>
-    /// UNKNOWN(native 0x970CCF8 + 0xC): InitShadowMode scales a loaded shadow by
+    /// UNKNOWN(current: Live shadow scale default absent; previous-build slot 0x970CCF8+0xC, replaced by the shadowScaleVectorOverride seam): InitShadowMode scales a loaded shadow by
     /// `staticVector * (localScale * 0.6f)` (0x379A5AC). The class token is not
     /// resolvable from the binary here (candidate Imas.LiveInfoParams gives
     /// upCamTgtPosDef = (0, -0.13, 0), which degenerates the kage to zero scale;
@@ -353,7 +368,7 @@ public class DropShadow : MonoBehaviour
                     SetRendererEnabled(pinlightObj, true);
                 }
 
-                // UNKNOWN(native 0x9709770): when the global shadow-off flag is
+                // UNKNOWN(current: Live global shadow-off flag absent; previous-build slot 0x9709770, replaced by the hideCharacterShadow seam): when the global shadow-off flag is
                 // set, the native code disables both kage renderers after the
                 // pin spot has been wired.
                 if (hideCharacterShadow)
@@ -369,7 +384,7 @@ public class DropShadow : MonoBehaviour
 
     /// <summary>
     /// Native `InitPinSpotLight` @ 0x379AFD0. Reads the stage manager's light
-    /// kind (UNKNOWN(native 0x9705120)) to decide `pinlightEnable`, caches the
+    /// kind (UNKNOWN(current: Live stage manager absent in the ADV spike; previous-build slot 0x9705120, current read Imas.Live.MainLoop_TypeInfo 0x97B93B8)) to decide `pinlightEnable`, caches the
     /// two materials and hides the pin object until SetPinLightState opens it.
     /// With no stage manager this is the native no-op path.
     /// </summary>
@@ -596,7 +611,7 @@ public class DropShadow : MonoBehaviour
     /// Registers the loaded shadow bundle into the CustomShaderUtility port
     /// table (idempotent). Called from SetShadowMode/SetShadowModeAsync where
     /// the native path loads the same bundle through
-    /// AssetBundleManager.GetResource (UNKNOWN(native qword_97FDD50) source).
+    /// AssetBundleManager.GetResource (UNKNOWN(current: AssetBundleManager.GetResource<Object> MethodRef 0x981E430; previous-build slot qword_97FDD50) source).
     /// </summary>
     public static void RegisterShadowBundleMaterials(AssetBundle bundle)
     {
@@ -615,7 +630,7 @@ public class DropShadow : MonoBehaviour
     /// SetParent(BODY_SCALE, false), localPosition, localScale =
     /// upCamTgtPosDef * (localScale * 0.6), active, renderer.enabled = true.
     /// The 0.6 factor and upCamTgtPosDef are the native immediates
-    /// (LiveInfoParams static +0xC, UNKNOWN(0x969... cctor) but read through the
+    /// (LiveInfoParams static +0xC, UNKNOWN(current: Imas.LiveInfoParams cctor absent; previous-build slot 0x969...) but read through the
     /// same static seam as EyeTracking).
     /// </summary>
     private static void WireKage(GameObject go, Transform parent, Vector3 localPosition)
@@ -632,7 +647,7 @@ public class DropShadow : MonoBehaviour
     private static void ScaleLikeNative(Transform t)
     {
         // 0x70BF870 get_localScale -> Vector3; native multiplies component-wise
-        // by the static vector at UNKNOWN(native 0x970CCF8 + 0xC) and 0.6f.
+        // by the static vector at UNKNOWN(current: Live shadow scale default absent; previous-build slot 0x970CCF8+0xC, replaced by the shadowScaleVectorOverride seam) and 0.6f.
         Vector3 basePosDef = shadowScaleVectorOverride ?? EyeTracking.upCamTgtPosDef;
         t.localScale = new Vector3(
             basePosDef.x * (t.localScale.x * 0.6f),
@@ -649,7 +664,7 @@ public class DropShadow : MonoBehaviour
 }
 
 /// <summary>
-/// UNKNOWN(native 0x9705120): the stage manager the native DropShadow reads for
+/// UNKNOWN(current: Live stage manager absent in the ADV spike; previous-build slot 0x9705120, current read Imas.Live.MainLoop_TypeInfo 0x97B93B8): the stage manager the native DropShadow reads for
 /// pin-spot light kind/activation. B4 cannot identify the class from the binary
 /// without the metadata-registration type table; the binder supplies it.
 /// </summary>

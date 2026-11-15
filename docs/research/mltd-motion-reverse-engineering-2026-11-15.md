@@ -450,10 +450,11 @@ lineDurationMs = max(line.scriptMs, 200)
 
 ### 8.1 风场（ISwayWind）现状
 
-- `SwayWind.GetWind` 0x33D913C、`SwayWindDirection.GetWind` 0x33D9434、
-  `SwayWindDirection2.GetWind` 0x33D9A44、`SwayWindDirection3.GetWind` 0x33D9E44、
-  `SwayWindRefer.GetWind` 0x376663C、`SwayManager.GetWind` 0x1CF018C、
+- `SwayWind.GetWind` **0x33D8DF8**、`SwayWindDirection.GetWind` **0x33D933C**、
+  `SwayWindDirection2.GetWind` **0x33D9828**、`SwayWindDirection3.GetWind` **0x33D9E2C**、
+  `SwayWindRefer.GetWind` **0x37663DC**、`SwayManager.GetWind` 0x1CEFFB0、
   `SwayManager.SetWind(ISwayWind,int)` 0x1CF025C。
+  （此前误把各 `.ctor` 地址当成 GetWind：0x33D913C/0x33D9434/0x33D9A44/0x33D9E44 是构造函数。）
 - 端上已有 `ISwayWindNative`、`SwayManagerNative.winds/SetWind/GetWind`（含原生 1.3 /
   timeScale 系数），**缺 5 个风源组件本身**；剧情 bundle 不带风源，所以剧情播放不受影响，
   只有 Live/舞台需要。实现前需要把 5 个 GetWind 的数学逐字段还原（IDA 反编译受损，改用
@@ -461,3 +462,45 @@ lineDurationMs = max(line.scriptMs, 200)
 - 剩余 `UNKNOWN(native 0x…)` 注释共 37 个 RVA，集中在 `CharacterMaterials`（镜面 /
   per-renderer 颜色 / blend）、`EyeTracking`、`JointBodyHead`、`DropShadow`；
   这些只影响 Live 级材质与细微微动，剧情播放不受影响，逐条反编译后补实现或改写注释。
+
+### 8.2 风场组件已实现（代码侧，剧情无风源）
+
+`spikes/porting-3d/unity-spike/Assets/Scripts/SwayWindNative.cs`：
+
+| 组件 | 原生 | 行为 |
+|---|---|---|
+| `SwayWindDirectionNative` | `SwayWindDirection.GetWind` 0x33D933C（字段 power 0x20 / decay 0x24 / position 0x28 / direction 0x34 / waveFreq 0x40 / waveAmp 0x44 / m_wave_th 0x48 / m_pow 0x4C） | `mag = m_pow * (decay>0 ? 1/(1+decay*|pos-position|) : 1)`，返回 `direction * mag` |
+| `SwayWindDirection3Native` | `SwayWindDirection3.GetWind` 0x33D9E2C（power 0x20 / fpsCoeff 0x24 / angleCoeff 0x28 / direction 0x2C / resultPower 0x38，clamp 0–3） | `direction * resultPower`（反编译原文就是两个 float 相乘） |
+| `SwayWindPointNative` | `SwayWind.GetWind` 0x33D8DF8 的 `windType.Point` 分支（type 0x28 / power 0x2C / decay 0x30 / position 0x34 / m_pow 0x54） | `local = pos-position`；`|local|<0.001` 返回 0；否则 `normalize(local) * m_pow/(1+|local|*decay)` |
+| `SwayWindProxyNative` | 同函数 `Direction/Direction2` 分支 | 找到目标 GameObject 上的 `ISwayWind` 并转发 |
+| `SwayWindScan.Attach` | `SwayManager.SetWind` 0x1CF025C 的注册点（舞台代码，未随角色包下发） | 把场景里的风源按 `WIND_MAX=4` 注册进 manager |
+
+未实现并标 UNKNOWN：`SwayWindDirection2`（GetWind 0x33D9828 读取 `WIND_PARAM[]` + `Plane` +
+延迟包络，状态由 `Calc` 0x33D95E0 生成，未逐行还原）、`SwayWindRefer`（0x37663DC 按
+`idol`+`setid` 解析 Live 风场集合，spike 无 Live 舞台管理器 → 返回 0）。
+剧情 bundle 不带风源，这两个在剧情播放里不可达。
+
+### 9. 旧 RVA 全量失效（重要：37 个 `UNKNOWN(native 0x…)` 注释是旧包地址）
+
+游戏在 2026-11-15 09:46 换了安装包，`dump.cs`/`script.json` 是 13:42 从新包生成的；
+而 B2–B5 阶段写进 C# 的 `UNKNOWN(native 0x…)` 注释全部是**旧包**的镜像基址 VA。
+直接按这些地址反编译只会拿到无关函数（多为 TMP/UI 协程），这也是之前
+「反编译结果对不上」的原因。
+
+按区域测量的固定偏移（旧 + Δ = 新）：
+
+| 区域 | Δ | 例（旧 → 新） |
+|---|---|---|
+| `CharacterDrawer` | `0x5AB00` | `0x1C0F634` → `0x1C6A134` `SetSkinQuality`；`0x1C0FC9C` → `0x1C6A79C` `SetLayerId` |
+| `CharacterMaterials` | `0x5AC78` | `0x1C1DB00` → `0x1C78778` `SetMonoColorRatio`；`0x1C1DB28` → `0x1C787A0` `SetRimLightDirection` |
+| `JointBodyHead` | `0x5AC78` | `0x1C642A0` → `0x1CBEF18` `SetVisible`；`0x1C66DB0` → `0x1CC1A28` `Initialize_Post_1.MoveNext` |
+| `SwayBone` | `0x5AC78` | `0x1C70DB0` → `0x1CCBA28` `Init`；`0x1C732E8` → `0x1CCDF60` `SwayHit` |
+| `SoulDataColor3i` | `0x5E6D0` | `0x1C352B0` → `0x1C93980` `TryParse` |
+| `SwayManager` | `0x6E048` | `0x1C81A08` → `0x1CEFA50` `PrepareUpdate`；`0x1C81F68` → `0x1CEFFB0` `GetWind` |
+| `EyeTracking` | `0xDBF20` | `0x379C2BC` → `0x38781DC` `EyeUpdate`；`0x379BF7C` → `0x3877E9C` `Start` |
+| `CharacterImasMotion` | `0xC1448` | `0x37E80B8` → `0x38A9500` `SolveCurve`；`0x37EE384` → `0x38AF7CC` `SolveCurves` |
+
+Δ 随地址单调增大 → 是同一个旧包相对新包的代码增长量。少量注释（`0x1CF025C`、
+`0x33D9828`、`0x37663DC`、`0x9705120`、`0x9709770`、`0x970CCF8`）已经是新包地址，
+不需要换算。后续按 Δ 换算后的地址逐条反编译，再决定 `implement` / 改注释 / 判定
+out-of-scope（Live 舞台、gallery、minigame 等不在剧情播放路径上的）。
