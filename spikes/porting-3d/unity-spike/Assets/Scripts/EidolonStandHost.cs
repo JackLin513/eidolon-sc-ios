@@ -191,6 +191,51 @@ public sealed class EidolonStandHost : MonoBehaviour
         motion?.SetIdleClip(value);
     }
 
+    /// <summary>Debug: dump the sway rig so the skirt/leg collider wiring can be
+    /// checked on device without a native debugger.</summary>
+    public void ProbeSway(string value)
+    {
+        var rig = bootstrap != null ? bootstrap.SwayRig : null;
+        if (rig == null)
+        {
+            Debug.Log("[sway] rig none");
+            return;
+        }
+        Debug.Log($"[sway] bones={rig.bones.Count} colliders={rig.colliders.Count} managers={rig.managers.Count}");
+        for (var i = 0; i < rig.managers.Count; i++)
+        {
+            var mgr = rig.managers[i];
+            if (mgr == null) continue;
+            var skirt = 0;
+            var normal = 0;
+            for (var b = 0; b < mgr.swayBones.Length; b++)
+            {
+                var bone = mgr.swayBones[b];
+                if (bone == null) continue;
+                if (bone.isSkirt) skirt++; else normal++;
+            }
+            Debug.Log($"[sway] manager[{i}] cat={mgr.Category} path={(mgr.BaseTr != null ? mgr.BaseTr.name : "-")} bones={mgr.swayBones.Length} skirt={skirt} normal={normal} fallFollow={mgr.SkirtFallFollow}");
+        }
+        var skirtBones = 0;
+        var skirtWithColliders = 0;
+        var firstSkirt = (SwayBoneNative)null;
+        for (var i = 0; i < rig.bones.Count; i++)
+        {
+            var bone = rig.bones[i];
+            if (bone == null) continue;
+            if (!bone.isSkirt) continue;
+            skirtBones++;
+            if (bone.colliders != null && bone.colliders.Length > 0) skirtWithColliders++;
+            if (firstSkirt == null) firstSkirt = bone;
+        }
+        Debug.Log($"[sway] skirtBones={skirtBones} withColliders={skirtWithColliders}");
+        if (firstSkirt != null)
+        {
+            var t = firstSkirt.trs;
+            Debug.Log($"[sway] skirt0 path={(t != null ? t.name : "-")} len={firstSkirt.swayLength:F3} nradius={firstSkirt.n_radius:F3} cat={firstSkirt.category}");
+        }
+    }
+
     public void ResetPose(string value)
     {
         motion?.ResetPose();

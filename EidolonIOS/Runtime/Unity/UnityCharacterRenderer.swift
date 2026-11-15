@@ -293,6 +293,11 @@ final class UnityCharacterRenderer: CharacterRenderer {
     }
 
     /// `actor_character_set_position_preset`: one stand means the character stays put.
+    /// Debug: ask the Unity rig to dump its sway/skirt/collider wiring.
+    func probeSway() {
+        UnityRuntime.shared.send("ProbeSway", "1")
+    }
+
     func setPlacePreset(_ preset: String) {
         guard loaded else { return }
         UnityRuntime.shared.send("SetPlacePreset", preset)

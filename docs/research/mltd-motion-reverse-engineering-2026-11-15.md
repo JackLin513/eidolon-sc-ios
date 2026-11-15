@@ -422,3 +422,42 @@ lineDurationMs = max(line.scriptMs, 200)
   但第一次看会觉得「话说一半」。若想改成不切语音，那才是真正的偏离原生。
 - `yes/no` 在被 `is_pose_changing` 拦住时只记日志丢弃（原生同样是返回 false，不排队，
   只有 `ignore_pose_changing` + `ComeIn` 时才会用 `queued_yes_no` 挂起）。
+
+## 8. 模型侧（sway / 风场）复查：坐姿裙形不是缺代码（2026-11-15 补）
+
+运行期探针（`EidolonStandHost.ProbeSway`，模拟器 `job_story_027say_6000` 第 9 句）：
+
+```
+[sway] bones=44 colliders=23 managers=4
+[sway] manager[1] cat=Skirt path=BASE bones=18 skirt=18 normal=0 fallFollow=False
+[sway] skirtBones=18 withColliders=18
+[sway] skirt0 path=skirt_B0 len=0.230 nradius=0.030 cat=Skirt
+```
+
+反编译结论（`/tmp/skirt-decomp/`、`/tmp/sway-decomp/`）：
+
+- `SwayManager.Init` 里的 `skirtL1` / `skirtL2` **恒为空**：`SetSwayColidersRecursive`
+  只往第一个列表 append。端上保持空数组 = 忠实。
+- `SwayManager.PrepareUpdate` 尾部的 `SkirtFallFollow` 是 **Live 高度开关**：
+  `baseY >= LiveParams.fallLimit`，整段由 `LiveParams.SkirtFollow100EnableByYpos` 门控；
+  `LiveParams` 是 ScriptableObject，**客户端包里没有该资产**，因此剧情里恒为 false。
+- `SwayBone.AdjustSkirt(float)` 是「把裙骨半径抬到 r」的碰撞调参，不是坐姿分支；
+  `ActivateSkirtSway` / `SetSkirtSwayEnabled` 是 Live 性能开关（经接口派发，无直接调用点）。
+
+结论：坐姿裙形完全由裙骨物理 + 腿部 collider 决定，**代码侧没有可补的坐姿分支**；
+端上 18 根裙骨与 collider 都在跑，参数与原生一致。要判断与游戏的差异，只能拿原游戏
+同场景同姿势参考帧对比（`LiveParams` 数值不可得，标 UNKNOWN）。
+
+### 8.1 风场（ISwayWind）现状
+
+- `SwayWind.GetWind` 0x33D913C、`SwayWindDirection.GetWind` 0x33D9434、
+  `SwayWindDirection2.GetWind` 0x33D9A44、`SwayWindDirection3.GetWind` 0x33D9E44、
+  `SwayWindRefer.GetWind` 0x376663C、`SwayManager.GetWind` 0x1CF018C、
+  `SwayManager.SetWind(ISwayWind,int)` 0x1CF025C。
+- 端上已有 `ISwayWindNative`、`SwayManagerNative.winds/SetWind/GetWind`（含原生 1.3 /
+  timeScale 系数），**缺 5 个风源组件本身**；剧情 bundle 不带风源，所以剧情播放不受影响，
+  只有 Live/舞台需要。实现前需要把 5 个 GetWind 的数学逐字段还原（IDA 反编译受损，改用
+  `llvm-objdump` 定点阅读，进行中）。
+- 剩余 `UNKNOWN(native 0x…)` 注释共 37 个 RVA，集中在 `CharacterMaterials`（镜面 /
+  per-renderer 颜色 / blend）、`EyeTracking`、`JointBodyHead`、`DropShadow`；
+  这些只影响 Live 级材质与细微微动，剧情播放不受影响，逐条反编译后补实现或改写注释。

@@ -123,6 +123,7 @@ struct StoryTheaterView: View {
             audioReady = true
             status = ""
             // Pan the shot up so the subtitle card never covers the skirt.
+            (made as? UnityCharacterRenderer)?.probeSway()
             (made as? UnityCharacterRenderer)?.setCameraZoom(1.42)
             (made as? UnityCharacterRenderer)?.setCameraBias(0.16)
             // Script scenes stand in the game's own `p01` idle, not the daily loop.
