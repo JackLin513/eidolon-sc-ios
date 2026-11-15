@@ -278,6 +278,15 @@ def build(args: argparse.Namespace) -> int:
                             if intro_source.exists() and intro_name not in written:
                                 write_flat(motions / f"{intro_name}.tsv", intro_source)
                                 written[intro_name] = f"motions/{intro_name}.tsv"
+                        # `_end` is the pose's authored exit: the animator plays it and
+                        # then falls back to the idle pose, which is what a story pose
+                        # change looks like in the game.
+                        if "end" in actions:
+                            end_source = args.poses / f"com_{clip}_end.motion.json"
+                            end_name = f"{clip}_end"
+                            if end_source.exists() and end_name not in written:
+                                write_flat(motions / f"{end_name}.tsv", end_source)
+                                written[end_name] = f"motions/{end_name}.tsv"
                         for gesture in GESTURE_ACTIONS:
                             if gesture in actions:
                                 gesture_source = args.poses / f"com_{clip}_{gesture}.motion.json"
@@ -287,7 +296,14 @@ def build(args: argparse.Namespace) -> int:
                                         write_flat(motions / f"{name}.tsv", gesture_source)
                                         written[name] = f"motions/{name}.tsv"
                 ms = round(event["start"] * 1000 / STORY_FPS)
-                poses.append({"ms": ms, "clip": clip_file, "pose": event["pose"]})
+                poses.append({
+                    "ms": ms,
+                    "clip": clip_file,
+                    "pose": event["pose"],
+                    # ADV pose type: the game calls SetPose(name, loopDirect: true)
+                    # and skips the `_start` clip for these (ADVPoseLogic.Execute).
+                    "loopDirect": bool(event.get("direct")),
+                })
 
             faces: list[dict[str, object]] = []
             for event in line.get("faces", []):

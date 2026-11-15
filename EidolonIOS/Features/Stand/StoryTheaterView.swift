@@ -108,6 +108,11 @@ struct StoryTheaterView: View {
         made.onReady = { [self] _ in
             audioReady = true
             status = ""
+            // Script scenes stand in the game's own `p01` idle, not the daily loop.
+            let neutral = root.appendingPathComponent("motions/cut_01z_lop.tsv")
+            if FileManager.default.fileExists(atPath: neutral.path) {
+                (made as? UnityCharacterRenderer)?.setIdleClip(atPath: neutral.path)
+            }
             let player = StoryPlayer(story: story, root: root, renderer: made)
             self.player = player
             player.start()
@@ -183,6 +188,8 @@ struct Story: Decodable {
         let ms: Int
         let clip: String
         let pose: String
+        /// ADV pose type: the game skips the `_start` clip and enters the loop directly.
+        let loopDirect: Bool?
     }
 
     struct Face: Decodable {
@@ -420,8 +427,8 @@ final class StoryPlayer: ObservableObject {
         while poseCursor < line.poses.count, line.poses[poseCursor].ms <= elapsedMs {
             let pose = line.poses[poseCursor]
             let path = root.appendingPathComponent("motions/\(pose.clip).tsv").path
-            renderer?.playPose(atPath: path)
-            Self.log.info("pose \(pose.pose, privacy: .public) -> \(pose.clip, privacy: .public) @\(pose.ms)ms")
+            renderer?.playPose(atPath: path, loopDirect: pose.loopDirect ?? false)
+            Self.log.info("pose \(pose.pose, privacy: .public) -> \(pose.clip, privacy: .public) @\(pose.ms)ms direct=\(pose.loopDirect ?? false, privacy: .public)")
             poseCursor += 1
         }
         while faceCursor < line.faces.count, line.faces[faceCursor].ms <= elapsedMs {
@@ -464,15 +471,10 @@ final class StoryPlayer: ObservableObject {
         renderer?.setLipEnvelope(fps: 30, values: [])
         renderer?.setSpeaking(false)
         renderer?.resetExpression()
-        // The story ends on the neutral standing pose from the same motion pack,
-        // not on the daily action loop: that is the "standing still" idle the script
-        // scenes use between lines.
-        let neutral = root.appendingPathComponent("motions/cut_01z_lop.tsv")
-        if FileManager.default.fileExists(atPath: neutral.path) {
-            renderer?.playPose(atPath: neutral.path)
-        } else {
-            renderer?.resetPose()
-        }
+        // Play the pose's authored `_end` clip (that is the animator's own
+        // `_end -> idle` transition, see docs/research/mltd-motion-reverse-engineering-2026-11-15.md)
+        // and settle into the neutral `p01` idle the theatre installed on load.
+        renderer?.resetPose()
         subtitle = "— 完 —\n\(story.situation)"
         speaker = story.character
         Self.log.info("story finished: \(self.story.id, privacy: .public)")

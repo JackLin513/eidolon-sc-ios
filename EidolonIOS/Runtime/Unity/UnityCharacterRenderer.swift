@@ -128,16 +128,28 @@ final class UnityCharacterRenderer: CharacterRenderer {
         }
     }
 
-    /// Switch the body loop to a story pose clip. The path is absolute (story package
-    /// and character bundle can live in different roots); the Unity host cross-fades
-    /// over 0.25 s and keeps the pose until the next one arrives.
-    func playPose(atPath path: String) {
+    /// Switch the body to a story pose clip. The path is absolute (story package and
+    /// character bundle can live in different roots).
+    ///
+    /// The host mirrors the game's own pose state machine (`AnimCtrl_Commu`): the
+    /// previous pose plays its `_end` clip, the new pose plays `_start` then settles
+    /// into `_loop`. `loopDirect` (the ADV pose type flag) skips `_start`.
+    func playPose(atPath path: String, loopDirect: Bool = false) {
         guard loaded else { return }
-        Self.log.info("3D pose: \(path, privacy: .public)")
-        UnityRuntime.shared.send("PlayPose", path)
+        Self.log.info("3D pose: \(path, privacy: .public) loopDirect=\(loopDirect, privacy: .public)")
+        UnityRuntime.shared.send("PlayPose", "\(path)|\(loopDirect ? 1 : 0)")
     }
 
-    /// Return to the character's own idle after the story ends.
+    /// Stand in the game's own neutral `p01` idle clip (`com_cut_01z_lop`) instead of
+    /// the character's daily action loop. Passed in by the story theatre once the
+    /// character is loaded.
+    func setIdleClip(atPath path: String) {
+        guard loaded else { return }
+        Self.log.info("3D idle clip: \(path, privacy: .public)")
+        UnityRuntime.shared.send("SetIdleClip", path)
+    }
+
+    /// Leave the current story pose (plays its `_end` clip) and return to the idle.
     func resetPose() {
         guard loaded else { return }
         UnityRuntime.shared.send("ResetPose", "")

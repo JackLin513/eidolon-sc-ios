@@ -149,10 +149,27 @@ public sealed class EidolonStandHost : MonoBehaviour
     /// </summary>
     public void PlayPose(string value)
     {
-        motion?.PlayPose(value);
+        if (motion == null || string.IsNullOrEmpty(value)) return;
+        // `"<path>|<0|1>"`: the flag is the ADV pose type (loopDirect) we recovered
+        // from `ADVPoseLogic.Execute` (see the motion reverse-engineering note).
+        var path = value;
+        var loopDirect = false;
+        var bar = value.LastIndexOf('|');
+        if (bar >= 0)
+        {
+            path = value.Substring(0, bar);
+            loopDirect = value.Substring(bar + 1).Trim() == "1";
+        }
+        motion.PlayPose(path, loopDirect);
     }
 
     /// <summary>Return to the character's own idle loop once the story ends.</summary>
+    /// `<path>`: stand in this clip as the idle loop (the game's own `p01` pose).
+    public void SetIdleClip(string value)
+    {
+        motion?.SetIdleClip(value);
+    }
+
     public void ResetPose(string value)
     {
         motion?.ResetPose();
