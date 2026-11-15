@@ -88,12 +88,30 @@ def build_model_package(src: Path, dst: Path, motions_dir: Path | None = None) -
         manifest = json.loads((root / "manifest.json").read_text())
         seen: set[str] = set()
         characters = []
+        dropped: list[str] = []
         for character in manifest["characters"]:
             local_id = character["localID"]
             if local_id == "haruka3d" or local_id in seen:
                 continue
             seen.add(local_id)
+            # Some `localID`s are card-only cast: the game ships a single
+            # `cb_pr001_<id>.unity3d` body and no `ch_*` (head/face) bundle, so the
+            # stand has nothing to render and no `chr_anim`/`com_` motion either
+            # (052tmg, confirmed against the 171,033-entry asset manifest and the
+            # PlayCover cache). Drop them from the roster instead of shipping a
+            # character that can never load.
+            outfit_dirs = [root / "models" / local_id / outfit for outfit in character.get("outfits", [])]
+            if not any(outfit.is_dir() and any(outfit.glob("ch_*.unity3d")) for outfit in outfit_dirs):
+                dropped.append(local_id)
+                for outfit in outfit_dirs:
+                    if outfit.is_dir():
+                        shutil.rmtree(outfit)
+                if (root / "models" / local_id).is_dir():
+                    shutil.rmtree(root / "models" / local_id)
+                continue
             characters.append(character)
+        if dropped:
+            print(f"dropped card-only characters: {', '.join(sorted(dropped))}")
         manifest["characters"] = characters
         if motions_dir is not None:
             merge_motions(root, motions_dir, [c["localID"] for c in characters])

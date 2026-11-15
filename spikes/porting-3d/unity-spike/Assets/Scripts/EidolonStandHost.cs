@@ -200,6 +200,23 @@ public sealed class EidolonStandHost : MonoBehaviour
         face.SetCheek(level);
     }
 
+    /// <summary>Story `actor_eye_direction`: `"h,v"` in -100…100.</summary>
+    public void SetGaze(string value)
+    {
+        if (face == null) return;
+        var separator = value.IndexOf(',');
+        if (separator <= 0) return;
+        if (!int.TryParse(value.Substring(0, separator), out var h)) return;
+        if (!int.TryParse(value.Substring(separator + 1), out var v)) return;
+        face.SetGaze(h, v);
+    }
+
+    /// <summary>Story `actor_eye_blink`: close / open / blink (CharacterEyeMode).</summary>
+    public void SetEyeMode(string value)
+    {
+        face?.SetEyeMode(value);
+    }
+
     public void SetFraming(string value)
     {
         framing = value == "full" || value == "waist" ? value : "knees";

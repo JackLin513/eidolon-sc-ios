@@ -995,14 +995,20 @@ public sealed class FaceCtrlNative : MonoBehaviour
                 default: from = null; break;
             }
             float[] to = GetEyeBuff(eyeTrs.cur == (int)EyeState.Open ? EyeState.Open : EyeState.Close);
-            if (from != null && to != null)
+            if (to != null)
             {
                 float ratio = Clamp01(eyeTrs.ratio);
-                int n = Mathf.Min(eyeShapes, Mathf.Min(from.Length, to.Length));
+                int n = from != null ? Mathf.Min(eyeShapes, Mathf.Min(from.Length, to.Length))
+                                     : Mathf.Min(eyeShapes, to.Length);
                 for (int i = 0; i < n; i++)
                 {
-                    from[i] = from[i] + (to[i] - from[i]) * ratio;
-                    render.SetBlendShapeWeight(mouthShapes + i, from[i]); // index W1 = i + 14
+                    // Compute the blend into a temporary. Writing back into eyeOpenBuff /
+                    // eyeCloseBuff would corrupt the expression weights (the buffers are the
+                    // fade endpoints, not a scratch pad); after one blink the "open" buffer
+                    // would hold closed values and the character would sit half-lidded until
+                    // the next actor_facial event rebuilt it.
+                    float blended = from != null ? from[i] + (to[i] - from[i]) * ratio : to[i];
+                    render.SetBlendShapeWeight(mouthShapes + i, blended); // index W1 = i + 14
                 }
             }
         }

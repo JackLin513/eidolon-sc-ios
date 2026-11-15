@@ -328,6 +328,23 @@ def build(args: argparse.Namespace) -> int:
             cheeks: list[dict[str, object]] = []
             for event in line.get("cheeks", []):
                 cheeks.append({"ms": round(event["frame"] * 1000 / STORY_FPS), "level": int(event.get("level", 0))})
+            # The ADV script drives the eyes explicitly (EyeblinkActor ->
+            # CharacterActorBase.SetEyeMode) and the gaze (EyeDirectionActor ->
+            # SetEyeDirectionByRate). Only `close`/`open`/`blink` are valid modes.
+            eyes: list[dict[str, object]] = []
+            for event in line.get("eyes", []):
+                mode = str(event.get("mode") or "")
+                if mode not in ("close", "open", "blink"):
+                    continue
+                eyes.append({"ms": round(event["frame"] * 1000 / STORY_FPS), "mode": mode})
+            gazes: list[dict[str, object]] = []
+            for event in line.get("gazes", []):
+                try:
+                    h = int(event.get("h"))
+                    v = int(event.get("v"))
+                except (TypeError, ValueError):
+                    continue
+                gazes.append({"ms": round(event["frame"] * 1000 / STORY_FPS), "h": h, "v": v})
 
             lines.append(
                 {
@@ -347,6 +364,8 @@ def build(args: argparse.Namespace) -> int:
                     "faces": faces,
                     "gestures": gestures,
                     "cheeks": cheeks,
+                    "eyes": eyes,
+                    "gazes": gazes,
                 }
             )
 

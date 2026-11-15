@@ -222,6 +222,31 @@ public class EyeTracking : MonoBehaviour
 
     // ---- Native fields (names/order from dump.cs; offsets in comments) ----
     public EyeTrackParam eyeTrackParam = new EyeTrackParam(); // 0x20
+
+    /// <summary>The live idol's eye tracker, for the stand's scripted gaze.</summary>
+    public static EyeTracking Active;
+
+    /// <summary>
+    /// Scripted gaze (ADV `actor_eye_direction`). The native actor stores the rate in
+    /// CharacterActorBase (+0x13c/+0x140) and CharacterActorBase.SetEyeDirectionByRate
+    /// (0x3822AF0) maps it onto the eye rotation limits instead of the camera target;
+    /// this replica overrides the same two clamped angles.
+    /// </summary>
+    private bool forcedGaze;
+    private float forcedGazeH;
+    private float forcedGazeV;
+
+    public void SetForcedGaze(float hRate, float vRate)
+    {
+        forcedGaze = true;
+        forcedGazeH = Mathf.Clamp(hRate, -1f, 1f);
+        forcedGazeV = Mathf.Clamp(vRate, -1f, 1f);
+    }
+
+    public void ClearForcedGaze()
+    {
+        forcedGaze = false;
+    }
     public const float frontDepth = 20f;                      // native const
     private Transform eye_base;                               // 0x28
     public Transform eyeTarget;                               // 0x30
@@ -277,6 +302,7 @@ public class EyeTracking : MonoBehaviour
     /// </summary>
     public void Init(EyeTrackingIdolInfo info0)
     {
+        Active = this;
         info = info0;
         // 0x379BF80: eye_base = Component.get_transform(this).
         eye_base = transform;
@@ -575,6 +601,16 @@ public class EyeTracking : MonoBehaviour
         }
         if (eye_ry < eyeTrackParam.EyeDirLimDown) eye_ry = eyeTrackParam.EyeDirLimDown;
         else if (eye_ry > eyeTrackParam.EyeDirLimUp) eye_ry = eyeTrackParam.EyeDirLimUp;
+
+        if (forcedGaze)
+        {
+            // rate -1..1 -> the authored eye limits (EyeDirLimLeft/Right = ±30,
+            // EyeDirLimUp/Down = +10/-10).
+            eye_rx = Mathf.Lerp(eyeTrackParam.EyeDirLimRight, eyeTrackParam.EyeDirLimLeft,
+                                (forcedGazeH + 1f) * 0.5f);
+            eye_ry = Mathf.Lerp(eyeTrackParam.EyeDirLimDown, eyeTrackParam.EyeDirLimUp,
+                                (forcedGazeV + 1f) * 0.5f);
+        }
 
         if (!on)
         {

@@ -32,6 +32,15 @@ public sealed class EidolonStandFace : MonoBehaviour
     private float blinkRemaining = -1f;
     private bool eyeClosed;
 
+    /// <summary>
+    /// The game's CharacterEyeMode (CharacterEyeMode {Blink=0, Open=1, Close=2}).
+    /// The ADV script drives it explicitly through EyeblinkActor -> SetEyeMode;
+    /// `blink` restores the automatic cadence, `close`/`open` hold the state.
+    /// </summary>
+    private enum ScriptEyeMode { Blink, Open, Close }
+
+    private ScriptEyeMode scriptEyeMode = ScriptEyeMode.Blink;
+
     public void Bind(FaceCtrlNative faceCtrl)
     {
         face = faceCtrl;
@@ -68,6 +77,45 @@ public sealed class EidolonStandFace : MonoBehaviour
         var row = Mathf.Clamp(index, 0, 27);
         if (row == 0) face.SetFaceDirect(0, 0);
         else face.SetFace(row);
+    }
+
+    /// <summary>
+    /// Story `actor_eye_blink`: close / open / blink — the script's own eye mode,
+    /// mirroring CharacterActorBase.SetEyeMode(CharacterEyeMode).
+    /// </summary>
+    public void SetEyeMode(string mode)
+    {
+        if (face == null) return;
+        Debug.Log($"[stand] eye mode={mode}");
+        switch (mode)
+        {
+            case "close":
+                scriptEyeMode = ScriptEyeMode.Close;
+                blinkRemaining = -1f;
+                eyeClosed = true;
+                face.SetEyeClose(true);
+                break;
+            case "open":
+                scriptEyeMode = ScriptEyeMode.Open;
+                blinkRemaining = -1f;
+                eyeClosed = false;
+                face.SetEyeClose(false);
+                break;
+            default:
+                scriptEyeMode = ScriptEyeMode.Blink;
+                ScheduleBlink();
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Story `actor_eye_direction`: gaze rate in -100…100, mapped onto the eye limits
+    /// the way CharacterActorBase.SetEyeDirectionByRate does.
+    /// </summary>
+    public void SetGaze(int h, int v)
+    {
+        Debug.Log($"[stand] gaze {h},{v}");
+        EyeTracking.Active?.SetForcedGaze(h / 100f, v / 100f);
     }
 
     /// <summary>Cheek blush only (story `actor_cheek`), without touching the emotion.</summary>
@@ -151,6 +199,9 @@ public sealed class EidolonStandFace : MonoBehaviour
 
     private void TickBlink()
     {
+        // While the script holds the eyes closed/open the automatic cadence is off
+        // (CharacterEyeMode.Close / Open). Only Blink lets it run.
+        if (scriptEyeMode != ScriptEyeMode.Blink) return;
         if (blinkRemaining >= 0f)
         {
             blinkRemaining -= Time.deltaTime;

@@ -187,6 +187,20 @@ final class UnityCharacterRenderer: CharacterRenderer {
         UnityRuntime.shared.send("SetCheek", String(max(0, min(2, level))))
     }
 
+    /// Story `actor_eye_direction`: the script's gaze rate (-100…100 on each axis).
+    func setGaze(h: Int, v: Int) {
+        guard loaded else { return }
+        UnityRuntime.shared.send("SetGaze", "\(max(-100, min(100, h))),\(max(-100, min(100, v)))")
+    }
+
+    /// Story `actor_eye_blink`: the script's own eye mode — `close`, `open` or
+    /// `blink`. Mirrors CharacterActorBase.SetEyeMode(CharacterEyeMode).
+    func setEyeMode(_ mode: String) {
+        guard loaded else { return }
+        guard mode == "close" || mode == "open" || mode == "blink" else { return }
+        UnityRuntime.shared.send("SetEyeMode", mode)
+    }
+
     /// Story line mouth envelope: the game's authored `fhout` samples (0..1 mouth
     /// opening) resampled to 30 fps. An empty list stops envelope playback.
     func setLipEnvelope(fps: Int, values: [Double]) {

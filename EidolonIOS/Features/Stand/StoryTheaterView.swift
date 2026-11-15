@@ -208,6 +208,20 @@ struct Story: Decodable {
         let level: Int
     }
 
+    /// The ADV script's own eye commands (`actor_eye_blink`): `close`, `open` or
+    /// `blink`, mirroring CharacterActorBase.SetEyeMode(CharacterEyeMode).
+    struct Eye: Decodable {
+        let ms: Int
+        let mode: String
+    }
+
+    /// `actor_eye_direction`: horizontal / vertical gaze rate (-100…100).
+    struct Gaze: Decodable {
+        let ms: Int
+        let h: Int
+        let v: Int
+    }
+
     struct Line: Decodable {
         let cut: String
         let speaker: String
@@ -225,6 +239,8 @@ struct Story: Decodable {
         let faces: [Face]
         let gestures: [Gesture]
         let cheeks: [Cheek]
+        let eyes: [Eye]?
+        let gazes: [Gaze]?
     }
 
     let id: String
@@ -255,6 +271,8 @@ final class StoryPlayer: ObservableObject {
     private var faceCursor = 0
     private var gestureCursor = 0
     private var cheekCursor = 0
+    private var eyeCursor = 0
+    private var gazeCursor = 0
     private var lineDurationMs = 0
     private var paused = false
 
@@ -362,6 +380,8 @@ final class StoryPlayer: ObservableObject {
         faceCursor = 0
         gestureCursor = 0
         cheekCursor = 0
+        eyeCursor = 0
+        gazeCursor = 0
         // Only lines with an authored voice move the mouth. The producer / narration
         // lines (`speaker == "p"`) have no recording, and the game keeps the character
         // still while they are on screen — talking along with them is what made the
@@ -450,6 +470,18 @@ final class StoryPlayer: ObservableObject {
             let cheek = line.cheeks[cheekCursor]
             renderer?.setCheek(cheek.level)
             cheekCursor += 1
+        }
+        while eyeCursor < (line.eyes?.count ?? 0), line.eyes![eyeCursor].ms <= elapsedMs {
+            let eye = line.eyes![eyeCursor]
+            renderer?.setEyeMode(eye.mode)
+            Self.log.info("eye \(eye.mode, privacy: .public) @\(eye.ms)ms")
+            eyeCursor += 1
+        }
+        while gazeCursor < (line.gazes?.count ?? 0), line.gazes![gazeCursor].ms <= elapsedMs {
+            let gaze = line.gazes![gazeCursor]
+            renderer?.setGaze(h: gaze.h, v: gaze.v)
+            Self.log.info("gaze \(gaze.h, privacy: .public),\(gaze.v, privacy: .public) @\(gaze.ms)ms")
+            gazeCursor += 1
         }
     }
 
