@@ -277,8 +277,47 @@ switch 播放结束后由 `step_pose_execute` 把 `current_pose` 置为目标并
 端上 `EidolonStandMotion` 已按此实现（2026-11-15）：
 `PoseEntryBlend = 0.1f` 只在 `EnterPose` 时启用（`loopDirect` 传 0），
 `_start → _loop`、`_end → idle` 都走 `BeginBlend(0f)` 直切，`_loop` 用 `Mathf.Repeat`。
-唯一保留的近似是 `yes/no` 手势覆盖层：原生是进入 `_yes` 状态（具体 fade 常量未逐条读出），
-端上用 0.2 s 上升/下降的部分混合叠加，视觉上等价。
+`yes/no` 早先是「0.2 s 升降的覆盖层叠加」，现已改成原生状态机语义（见 §6.3）。
+
+### 6.3 `yes/no` 是状态而不是覆盖层（2026-11-15 补）
+
+反汇编确认（`dump.cs` + `llvm-objdump`）：
+
+- `CharacterActorCommu.PlayYes` @0x38245AC / `PlayNo` @0x382479C 只做三件事：检查
+  `is_pose_changing`（真则返回 false）、检查 `next_poses.count > 0`（真则返回 false）、
+  取 `pose_infos[current_pose]` 并读 `PoseInfo.has_yes_no`（+0x41）。满足时写
+  `step_yes_no.is_yes`、`step = STEP.YesNo(1)` 并返回 true；**不满足时只打错误日志返回 false，
+  不会退回到别的剪辑**。
+- `STEP.YesNo` 在 `execute_entity_sub` 里被消费：找当前姿势对应的 `_loop` 状态名，
+  `IsInTransition` 为假且 `IsName(loop)` 时 `SetAnimationState(loop)`、`step` 复位为 `Pose`。
+- 控制器侧 `dmy_com_<pose>_yes → dmy_com_<pose>_loop`、`_no → _loop` 的 transition 同样是
+  `m_HasExitTime=1 / m_ExitTime=1.0 / m_TransitionDuration=0`。
+- 另有 `queued_yes_no`(+0x1E2) 队列：`ignore_pose_changing` 且处于 `ComeIn` 时把请求挂起，
+  在 `STEP.Pose` 分支里再喂给 `StepYesNo`；`ignore_pose_changing` 为假时直接失败。
+
+即：`_yes/_no` 是**当前状态**，播完零时长回同一姿势的 `_loop`，没有覆盖层也没有 cross-fade。
+端上实现（`EidolonStandMotion.PlayGesture`）：
+
+- 当前有故事姿势 → 用该姿势的 `_yes`/`_noo`；处于 idle（`cut_01z_lop` 等）→ 用同 stem 的
+  `<stem>_yes`/`<stem>_noo`（如 `cut_01z_yes.tsv`）；
+- 找不到对应状态就只记日志返回（不回退角色日常动作），与原生的 false 返回一致；
+- 进入/离开/动作型阶段收到请求直接忽略（原生在 `is_pose_changing` 时返回 false）；
+- 播放时 `BeginBlend(0f)` + `StartClip(clip, false)` + `phase = Phase.YesNo`，
+  在 `Update()` 的 `Phase.YesNo when clock >= Length` 分支里零时长切回 `_lop`（idle 则回 idle 剪辑）。
+- 已删除 `gesture`/`gestureTime`/`ApplyGesture` 覆盖层（原来的 0.2 s 升降叠加）。
+
+### 6.4 台词时长按脚本帧，不用自造兜底（2026-11-15 补）
+
+原实现 `lineDurationMs = max(max(voiceMs, scriptMs), 音频时长) + 350` 是自造规则。
+原游戏推进由剧本帧决定：`actor_text` 的 `arg2`/`arg3` 是 60 fps 的起止帧，台词窗口就是这两帧之间；
+语音比窗口长时会被下一句直接切掉，而不是延长当前句。端上改为：
+
+```swift
+// StoryTheaterView.playLine()
+lineDurationMs = max(line.scriptMs, 200)
+```
+
+（200 ms 只是防空行；不再读音频时长、不再 `+350`。）
 
 ### 6.2 姿势切换必须等当前剪辑播完（2026-11-15 补，修「动作衔接闪现」）
 
@@ -305,3 +344,43 @@ switch 播放结束后由 `step_pose_execute` 把 `current_pose` 置为目标并
 没有一次「请求即切换」。对比录像里原先 81.5 s 处「双手垂下 → 合十」的单帧跳变，
 现在该处为 2–3 帧（≈0.25–0.5 s）连续过渡。证据：
 `~/mltd-work/out/3d-stand/story-exit-time-001har-4000.mp4`、`story-exit-time-contact.png`。
+
+## 7. 仍与原生不一致的地方（2026-11-15 全量清点）
+
+对 933 个剧本的 `CutRecord` 共 126,755 行做过命令统计，按出现次数与「是否已实现」列表如下。
+已实现：`actor_text`(7,501)、`actor_pose`(16,197)、`actor_facial`(22,618)、
+`actor_eye_blink`(43,316)、`actor_eye_direction`(12,941)、`actor_yes_no`(6,541)、
+`actor_cheek`(479)；`create_cut` / `play_cut` / `end_theater` 由剧场时间轴承担。
+
+| 命令 | 次数 | 现状 | 说明 |
+| --- | ---: | --- | --- |
+| `actor_visible_character` | 1,065 | 未实现 | 剧场固定单角色常驻；原生可隐藏/显示角色 |
+| `actor_camera_set_position_preset` | 925 | 未实现 | 取景用固定 `knees` + 0.72 缩放，不读剧本相机预设 |
+| `actor_character_set_position_preset` | 896 | 未实现 | 角色站位不变 |
+| `actor_reset_sway` | 802 | 未实现 | 3D 的 SwayManager 在跑，但不接受脚本重置 |
+| `actor_load_character` | 686 | 未实现 | 单角色单服装；不换人、不换衣 |
+| `actor_2d_bg` | 449 | 未实现 | 剧场背景为纯黑，未加载 `adv_bg2d_*` 背景资源 |
+| `actor_chara_dorotate` | 407 | 未实现 | 角色旋转/朝向变化 |
+| `actor_load_character_v3` | 251 | 未实现 | 同上 |
+| `actor_set_rotation` | 233 | 未实现 | 角色旋转 |
+| `actor_change_costume` | 210 | 未实现 | 换装 |
+| `actor_fade_screen` | 136 | 未实现 | 画面淡入淡出 |
+| `actor_doscale_2dbg` / `actor_domove_2dbg` / `actor_domove_p2dbg` / `actor_visible_2dbg` | 103/94/50/37 | 未实现 | 仅用于 2D 背景演出 |
+| `actor_in_out` | 99 | 未实现 | 进场/退场动画（`in_left/right/front`、`out_*` 状态已在控制器里） |
+| `actor_sit_pose` | 95 | 未实现 | 坐姿（`com_sit_*` 剪辑库里有，但剧情包未导出） |
+| `actor_wait` | 76 | 未实现 | 时间轴本身按帧推进，未显式处理 wait |
+| `actor_set_position` | 63 | 未实现 | 位置 |
+| `actor_lip` | 30 | 未实现 | 手动口型覆盖（fhout 包络已覆盖绝大多数） |
+| `actor_sound` | 9 | 未实现 | 音效 |
+
+这些都是「把整段剧情原样演出来」需要的，但不影响当前**单角色 3D 立绘 + 台词 + 表情/眼睛/口型/
+日常姿势**这条主线的忠实度：它们属于剧本演出层（相机、背景、换装、多人调度），
+端上需要额外的资源与系统支持，不在这一轮范围内。
+
+已知的其它近似：
+
+- 章节背景为纯黑（没有 2D 背景资源），字幕卡、按钮是端上自绘 UI。
+- 台词窗口按剧本帧推进（§6.4），语音比窗口长时会被下一句切掉——这与原生一致，
+  但第一次看会觉得「话说一半」。若想改成不切语音，那才是真正的偏离原生。
+- `yes/no` 在被 `is_pose_changing` 拦住时只记日志丢弃（原生同样是返回 false，不排队，
+  只有 `ignore_pose_changing` + `ComeIn` 时才会用 `queued_yes_no` 挂起）。

@@ -58,6 +58,7 @@ public sealed class EidolonStandMotion : MonoBehaviour
         Looping,
         Leaving,
         Acting,
+        YesNo,
     }
 
     private sealed class Bone
@@ -89,8 +90,6 @@ public sealed class EidolonStandMotion : MonoBehaviour
     private float blendTime;
     private float blendDuration;
 
-    private Clip gesture;
-    private float gestureTime;
     private string contentRoot;
     private string characterId;
     private string idlePath;
@@ -297,7 +296,7 @@ public sealed class EidolonStandMotion : MonoBehaviour
         // cuts a clip mid-motion: a `SetPose` arriving during `_start`/`_loop`/
         // `_action` waits for that clip to finish. Switching immediately is what made
         // the transition snap instead of flowing.
-        if (pose != null && (phase == Phase.Looping || phase == Phase.Entering || phase == Phase.Acting))
+        if (pose != null && (phase == Phase.Looping || phase == Phase.Entering || phase == Phase.Acting || phase == Phase.YesNo))
         {
             pendingPose = set;
             pendingLoopDirect = loopDirect;
@@ -366,7 +365,6 @@ public sealed class EidolonStandMotion : MonoBehaviour
         pose = set;
         pendingPose = null;
         pendingIntro = null;
-        gesture = null;
         if (!loopDirect && intro != null)
         {
             StartClip(intro, false);
@@ -389,7 +387,6 @@ public sealed class EidolonStandMotion : MonoBehaviour
     {
         pose = null;
         pendingPose = null;
-        gesture = null;
         // The controller's `_end -> dmy_com_p01` transition has duration 0.
         BeginBlend(0f);
         StartClip(idle, true);
@@ -449,22 +446,53 @@ public sealed class EidolonStandMotion : MonoBehaviour
         return set.loop != null || set.action != null ? set : null;
     }
 
-    /// Play one `yes`/`no` clip of the current pose once, then settle back into the
-    /// pose loop (the controller's `_yes -> _loop` transition). Falls back to the
-    /// character's own gesture when the pose ships none.
+    /// Play one `yes`/`no` state of the current pose, then settle back into the pose
+    /// loop. Mirrors the game: `PlayYes`/`PlayNo` set `StepYesNo`, the `_yes`/`_no`
+    /// state plays as the current state and the controller's duration-0
+    /// `_yes -> _loop` transition takes over at its end. The game never layers the
+    /// gesture over the loop, and `PlayYes` returns false (no fallback clip) when the
+    /// current pose has no `_yes` state.
     public void PlayGesture(string action)
     {
         if (idle == null) return;
+        var isYes = action == "yes";
         Clip clip = null;
-        if (pose != null) clip = action == "yes" ? pose.yes : action == "noo" || action == "no" ? pose.no : null;
-        if (clip == null) clip = LoadClip(ActionPath(action));
+        if (pose != null) clip = isYes ? pose.yes : pose.no;
+        else clip = LoadSibling(idlePath, isYes ? "yes" : "noo");
         if (clip == null)
         {
-            Debug.Log($"[stand] gesture {action} not available");
+            Debug.Log($"[stand] gesture {action} not available for {(pose != null ? "pose" : "idle")}");
             return;
         }
-        gesture = clip;
-        gestureTime = 0f;
+        if (phase == Phase.YesNo) return;
+        if (phase == Phase.Entering || phase == Phase.Leaving || phase == Phase.Acting)
+        {
+            Debug.Log($"[stand] gesture {action} ignored while {phase}");
+            return;
+        }
+        BeginBlend(0f);
+        StartClip(clip, false);
+        phase = Phase.YesNo;
+        Debug.Log($"[stand] gesture {action} frames={clip.frames} phase=YesNo");
+        ApplyCurrent();
+    }
+
+    /// Load a sibling clip that uses another action suffix, e.g. the idle clip's
+    /// own `_yes`/`_noo` state.
+    private Clip LoadSibling(string path, string action)
+    {
+        var directory = Path.GetDirectoryName(path);
+        var extension = Path.GetExtension(path);
+        var name = Path.GetFileNameWithoutExtension(path);
+        foreach (var candidate in PoseActions)
+        {
+            var suffix = "_" + candidate;
+            if (!name.EndsWith(suffix, System.StringComparison.Ordinal)) continue;
+            name = name.Substring(0, name.Length - suffix.Length);
+            break;
+        }
+        var sibling = Path.Combine(directory ?? "", name + "_" + action + extension);
+        return File.Exists(sibling) ? LoadClip(sibling) : null;
     }
 
     /// Force the idle clock to a fixed time and re-apply it (probe/debug entry).
@@ -533,6 +561,21 @@ public sealed class EidolonStandMotion : MonoBehaviour
                     GoIdle();
                 }
                 break;
+            case Phase.YesNo when clock >= current.Length:
+                // duration-0 `_yes/_no -> _loop` controller transition.
+                Debug.Log("[stand] gesture done -> loop");
+                BeginBlend(0f);
+                if (pose != null && pose.loop != null)
+                {
+                    StartClip(pose.loop, true);
+                    phase = Phase.Looping;
+                }
+                else
+                {
+                    StartClip(idle, true);
+                    phase = Phase.Idle;
+                }
+                break;
             case Phase.Leaving when clock >= current.Length:
             case Phase.Acting when clock >= current.Length:
                 if (pendingPose != null) EnterPose(pendingPose, pendingLoopDirect, pendingIntro);
@@ -540,15 +583,6 @@ public sealed class EidolonStandMotion : MonoBehaviour
                 break;
         }
         ApplyCurrent();
-        if (gesture == null) return;
-        gestureTime += Time.deltaTime;
-        if (gestureTime >= gesture.Length)
-        {
-            gesture = null;
-            ApplyCurrent();
-            return;
-        }
-        ApplyGesture(gestureTime);
     }
 
     private static Quaternion SampleRotation(Clip clip, string path, float time)
@@ -606,17 +640,4 @@ public sealed class EidolonStandMotion : MonoBehaviour
         }
     }
 
-    private void ApplyGesture(float time)
-    {
-        var fade = Mathf.Clamp01(time / 0.2f) * Mathf.Clamp01((gesture.Length - time) / 0.2f);
-        var baseTime = currentLoops && current.Length > 0.01f ? Mathf.Repeat(clock, current.Length) : Mathf.Min(clock, current.Length);
-        foreach (var pair in bones)
-        {
-            var target = pair.Value.transform;
-            var posed = SampleRotation(current, pair.Key, baseTime);
-            if (gesture.rotations.ContainsKey(pair.Key))
-                posed = Quaternion.Slerp(posed, SampleRotation(gesture, pair.Key, time), fade);
-            target.localRotation = posed;
-        }
-    }
 }
