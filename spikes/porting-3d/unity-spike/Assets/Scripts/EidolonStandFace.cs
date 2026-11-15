@@ -102,7 +102,12 @@ public sealed class EidolonStandFace : MonoBehaviour
                 face.SetEyeClose(false);
                 break;
             default:
+                // CharacterEyeMode.Blink (0): native clears the mode flag, resets the
+                // blink timer and then calls SetEyeClose(false) — so `blink` also
+                // *opens* the eyes before the automatic cadence resumes.
                 scriptEyeMode = ScriptEyeMode.Blink;
+                eyeClosed = false;
+                face.SetEyeClose(false);
                 ScheduleBlink();
                 break;
         }
