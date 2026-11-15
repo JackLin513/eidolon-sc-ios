@@ -272,6 +272,21 @@ final class UnityCharacterRenderer: CharacterRenderer {
     }
 
     /// `actor_camera_set_position_preset`: shot distance per ADV camera setup.
+    /// Zoom the shot out so the whole figure fits above the subtitle card. Done inside
+    /// Unity so the authored backdrop is framed consistently with the character.
+    func setCameraZoom(_ value: Double) {
+        guard loaded else { return }
+        UnityRuntime.shared.send("SetCameraZoom", String(format: "%.3f", value))
+    }
+
+    /// Vertical pan of the shot; the theatre lifts the character so the subtitle card
+    /// never covers her skirt. Scaling the Unity view instead would also scale the
+    /// authored backdrop and leave a visible seam.
+    func setCameraBias(_ value: Double) {
+        guard loaded else { return }
+        UnityRuntime.shared.send("SetCameraBias", String(format: "%.3f", value))
+    }
+
     func setCameraPreset(_ preset: String) {
         guard loaded else { return }
         UnityRuntime.shared.send("SetCameraPreset", preset)

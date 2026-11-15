@@ -387,6 +387,11 @@ lineDurationMs = max(line.scriptMs, 200)
   ② 背景 Quad 必须挂到相机的子节点（`localPosition=(0,0,24)`）并按 FOV 算尺寸，挂在世界坐标
   会在取景变化后盖不满屏幕。③ SwiftUI 侧 `scaledToFill` 背景要用 `GeometryReader` 约束 +
   `clipped()`，否则会撑大 `ZStack` 把字幕挤出屏幕。
+- 取景与背景「割裂」修复：第一版把 Unity 视图 `scaleEffect(0.72)` 缩进屏幕上方，同时 SwiftUI 又
+  铺了一层同样的背景图 → 同一个背景出现两种缩放，画面上就是操作者看到的「拼接缝」。
+  现在背景只由 Unity 的相机子节点 Quad 绘制，取景改成在 Unity 相机上 **拉远 1.42 倍 + 上移 0.16
+  屏高**（`SetCameraZoom` / `SetCameraBias`），视图铺满全屏不缩放，缝消失且人物完整落在字幕卡
+  上方。截图 `~/mltd-work/out/3d-stand/bg-001har-4000-v5.png`。
 - 可见性 / 进出场 / 淡入淡出：`job_story_006mak_5000` —— 日志 `[stand] visible False`、
   `[stand] visible True`、`[stand] inout RUN_IN_RIGHT speed=0.8 duration=2.12s`；
   `job_story_006mak_2000` 第 2 句（`black_fadein_ex_ui` 0→0.5s、`black_fadeout_ex_ui` 2.0→2.25s）

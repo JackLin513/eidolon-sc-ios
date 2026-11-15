@@ -50,6 +50,12 @@ public sealed class EidolonStandHost : MonoBehaviour
     private string backgroundPath;
     private Vector3 baseOffset;
     private float cameraDistanceFactor = 1f;
+    /// <summary>0 = character centred; 0.16 lifts her into the top of the frame so the
+    /// subtitle card never covers the skirt. Applied as a vertical pan of the camera.</summary>
+    private float cameraVerticalBias;
+    /// <summary>Story mode shows the shot above the subtitle card; 1.0 is the old
+    /// full-screen fit, larger pulls the camera back so the whole figure fits.</summary>
+    private float cameraZoom = 1f;
     private Coroutine rotationRoutine;
     private Coroutine inOutRoutine;
 
@@ -389,9 +395,10 @@ public sealed class EidolonStandHost : MonoBehaviour
         var top = bounds.center.y + bounds.size.y / 2 * (1 + headroom);
         var centerY = framing == "full" ? bounds.center.y : top - viewHeight / 2;
         var distance = viewHeight / (2 * Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad))
-                       * cameraDistanceFactor;
-        camera.transform.position = new Vector3(bounds.center.x, centerY, bounds.center.z + distance);
-        camera.transform.LookAt(new Vector3(bounds.center.x, centerY, bounds.center.z));
+                       * cameraDistanceFactor * cameraZoom;
+        var aimY = centerY - cameraVerticalBias * viewHeight;
+        camera.transform.position = new Vector3(bounds.center.x, aimY, bounds.center.z + distance);
+        camera.transform.LookAt(new Vector3(bounds.center.x, aimY, bounds.center.z));
         if (backgroundQuad != null && backgroundQuad.activeSelf) PlaceBackground();
     }
 
@@ -426,6 +433,33 @@ public sealed class EidolonStandHost : MonoBehaviour
     /// `live_result`), which are not in the client bundle, so the stand keeps its
     /// measured framing and only shifts the shot distance per preset.
     /// </summary>
+    /// <summary>
+    /// Vertical pan of the shot: the ADV subtitle window owns the bottom third of the
+    /// screen, so the theatre lifts the character instead of scaling the Unity view
+    /// (scaling the view would also scale the backdrop and leave a visible seam).
+    /// </summary>
+    /// <summary>Pull the camera back without scaling the rendered view (scaling the
+    /// view would scale the authored backdrop too and break its alignment).</summary>
+    public void SetCameraZoom(string value)
+    {
+        if (!float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var zoom)) return;
+        zoom = Mathf.Clamp(zoom, 0.5f, 2.5f);
+        if (Mathf.Approximately(zoom, cameraZoom)) return;
+        cameraZoom = zoom;
+        FrameCamera(framing);
+        Debug.Log($"[stand] camera zoom {zoom:0.00}");
+    }
+
+    public void SetCameraBias(string value)
+    {
+        if (!float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var bias)) return;
+        bias = Mathf.Clamp(bias, 0f, 0.3f);
+        if (Mathf.Approximately(bias, cameraVerticalBias)) return;
+        cameraVerticalBias = bias;
+        FrameCamera(framing);
+        Debug.Log($"[stand] camera bias {bias:0.000}");
+    }
+
     public void SetCameraPreset(string value)
     {
         var preset = value ?? "";

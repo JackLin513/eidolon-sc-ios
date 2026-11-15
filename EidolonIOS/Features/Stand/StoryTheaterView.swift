@@ -28,27 +28,23 @@ struct StoryTheaterView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if let player {
-                // `actor_2d_bg`: the authored ADV background sits behind the stand.
-                // Constrain it to the screen: a `scaledToFill` image inside a ZStack
-                // otherwise reports its own aspect-fitted size and shifts the subtitles.
+            // `actor_2d_bg` is drawn by Unity behind the stand. Rendering it here as
+            // well produced two differently scaled copies of the same image and the
+            // seam the operator saw, so the theatre keeps the Unity pass only.
+            if let renderer {
+                // The subtitle card owns the bottom third of the screen. The shot is
+                // panned inside Unity (`SetCameraBias`) rather than scaling this view:
+                // scaling would also scale the authored backdrop and leave a seam.
+                // The explicit frame matters: without it the Unity view keeps its own
+                // full-window size inside the ZStack and the shot renders zoomed in.
                 GeometryReader { geo in
-                    StoryStageBackground(player: player, root: Self.root())
+                    StandHostView(renderer: renderer)
                         .frame(width: geo.size.width, height: geo.size.height)
                         .clipped()
                 }
                 .ignoresSafeArea()
+                .opacity(audioReady ? 1 : 0)
                 .allowsHitTesting(false)
-            }
-            if let renderer {
-                // The subtitle card owns the bottom third of the screen. Scale the
-                // stand into the top two thirds instead of letting the card cover her
-                // skirt and shoes (the Unity view keeps rendering full-screen).
-                StandHostView(renderer: renderer)
-                    .scaleEffect(0.72, anchor: .top)
-                    .ignoresSafeArea()
-                    .opacity(audioReady ? 1 : 0)
-                    .allowsHitTesting(false)
             }
             // `actor_fade_screen`: black/white fade over the whole scene.
             if let player {
@@ -126,6 +122,9 @@ struct StoryTheaterView: View {
         made.onReady = { [self] _ in
             audioReady = true
             status = ""
+            // Pan the shot up so the subtitle card never covers the skirt.
+            (made as? UnityCharacterRenderer)?.setCameraZoom(1.42)
+            (made as? UnityCharacterRenderer)?.setCameraBias(0.16)
             // Script scenes stand in the game's own `p01` idle, not the daily loop.
             let neutral = root.appendingPathComponent("motions/cut_01z_lop.tsv")
             if FileManager.default.fileExists(atPath: neutral.path) {
