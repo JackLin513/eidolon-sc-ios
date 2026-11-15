@@ -180,9 +180,14 @@ class PoseLibrary:
         return self._available.get(clip, set())
 
     def base_clip(self, idol: str) -> str | None:
-        """The per-idol idle used when a story pose has no loop clip in the cache."""
+        """The per-idol "private pose" (`p18*`) clip.
+
+        Most idols ship `18y` with only `_str/_lop/_end/_yes/_noo`; a few also have
+        `_act`. Either loop works, so accept both instead of dropping the event.
+        """
         clip = f"{idol}_18y"
-        return clip if "act" in self.actions(clip) else None
+        actions = self.actions(clip)
+        return clip if ("lop" in actions or "act" in actions) else None
 
 
 def write_flat(dest: Path, packed_path: Path) -> None:
@@ -538,15 +543,30 @@ def build(args: argparse.Namespace) -> int:
             for event in line.get("sits", []):
                 start_ms, end_ms = span(event.get("start"), event.get("end"))
                 pose = str(event.get("pose") or "")
-                if pose not in ("p01", "p02"):
-                    pose = "p01"
                 # `actor_sit_pose` puts the character into the seated variant of that
-                # pose (`sit` in the pose masterdata).  Resolve it as a pose change so
-                # the normal enter/loop machinery runs; the clip ships from `com_sit_*`.
+                # pose (`sit` in the pose masterdata). The seated clips are shared by
+                # every idol and keyed `sit_<number><letter>` (01z, 02a..17c), so pick
+                # the first shipped variation of that pose instead of clamping it.
+                sit_clip = None
+                head = pose.split("_")[0]
+                sit_number = re.sub(r"^[pa]", "", head)
+                # The seated variants are keyed by the idol's own letter in
+                # `set_sit_<idol>`; guessing a letter bends the wrong body type and
+                # the hands end up inside the skirt.
                 sit_idol = str(event.get("idol") or scene.get("character") or "")
-                sit_clip = library.resolve(sit_idol, pose, variant="sit")
+                sit_table = library.letters.get(f"sit_{sit_idol}") or {}
+                preferred = sit_table.get(pose) or sit_table.get(head) or ""
+                order = ([preferred] if preferred else []) + ["a", "b", "c", "d", "z"]
+                if sit_number.isdigit():
+                    for letter in dict.fromkeys(order):
+                        candidate = f"sit_{int(sit_number):02d}{letter}"
+                        if "lop" in library.actions(candidate) or "act" in library.actions(candidate):
+                            sit_clip = candidate
+                            break
+                if sit_clip is None:
+                    sit_clip = library.resolve(sit_idol, "p01", variant="sit")
                 if sit_clip:
-                    sit_loop = ship(sit_clip, "lop")
+                    sit_loop = ship(sit_clip, "lop") or ship(sit_clip, "act")
                     if sit_loop:
                         poses.append(
                             {

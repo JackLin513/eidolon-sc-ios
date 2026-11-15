@@ -499,8 +499,16 @@ final class StoryPlayer: ObservableObject {
 
     func start() {
         configureAudioSession()
-        lineIndex = 0
+        // Debug shortcut so a long story can be checked at a specific beat
+        // (sit poses, lip-mode changes, fades) without sitting through it.
+        let jump = ProcessInfo.processInfo.environment["EIDOLON_STORY_START"].flatMap(Int.init) ?? 0
+        lineIndex = min(max(jump, 0), max(story.lines.count - 1, 0))
         playLine()
+        // Debug: hold on the jumped line so a specific pose can be inspected.
+        if ProcessInfo.processInfo.environment["EIDOLON_STORY_HOLD"] != nil {
+            paused = true
+            isPlaying = false
+        }
     }
 
     func stop() {
