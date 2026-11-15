@@ -229,9 +229,38 @@ if (`id` 以 a89/a90/a94/a95 结尾 || 姿势 number 不匹配) v39 = 0.0f;
 里**一次都没被调用**（capstone 全量扫描），说明这张脸走的是基类 `CharacterFace`，
 `EyesBlink`/`SetFaceBlink`/`nextblinktime`(+0xA8) 都在基类上 —— 与 §3 的眨眼结论一致。
 
-## 6. 仍未确认的点（UNKNOWN）
+## 6. `_start → _loop` 是谁驱动的（已解）
 
-- `_start → _loop` 在代码里到底由 controller 的 `exitTime` 自动触发，还是由 `step_pose_execute` 里的
-  `IsCurrentAnimationEnded` + `PlayAnimation` 驱动：两种路径都只能看到常量 0 的切换，画面效果一致，实现上按「剪辑播完即换」处理。
-- switch 播放结束后由 `step_pose_execute` 把 `current_pose` 置为目标并在下一次 update 播目标 `_lop`
-  （IDA 已复核，见 §5.1）；`check_pose_changing_loop` 本身只做状态对齐，不负责选剪辑。
+拆开两层就能对上：
+
+**状态之间的串接是 controller 自己做的（exitTime，不是代码）。**
+把烘焙后的 `AnimCtrl_Commu` 的 `TransitionConstant` 全量解出来（`m_HasExitTime` 等字段），
+227 条 transition 无一例外：
+
+| 源 → 目标 | 条数 | `m_HasExitTime` | `m_ExitTime` | `m_TransitionDuration` | 条件数 |
+|---|---|---|---|---|---|
+| `*_start → *_loop` | 47 | true | 1.0 | 0.0 | 0 |
+| `*_yes → *_loop` | 43 | true | 1.0 | 0.0 | 0 |
+| `*_no → *_loop` | 43 | true | 1.0 | 0.0 | 0 |
+| `*_switch → *_loop` | 14 | true | 1.0 | 0.0 | 0 |
+| `*_end → dmy_com_p01` | 38 | true | 1.0 | 0.0 | 0 |
+| `*_action → dmy_com_p01` | 19 | true | 1.0 | 0.0 | 0 |
+| `*_end → *_loop` | 9 | true | 1.0 | 0.0 | 0 |
+| `in_*/out_* → dmy_com_p01` | 6 | true | 1.0 | 0.0 | 0 |
+
+即 `<pose>_start` 播到剪辑末尾（exitTime=1.0）时由 Animator 自动跳到 `<pose>_loop`，
+过渡时长 0、无条件、`m_InterruptionSource=0`。代码里没有任何 `IsCurrentAnimationEnded → PlayAnimation(_lop)` 的路径。
+
+**`_loop` 自己的循环反而是代码驱动的。** 305 个 state 的 `m_Loop` 全是 `false`，`_loop` 状态没有出边，
+磁盘上真实剪辑（如 `com_cut_05d_lop`）的 `m_MuscleClip.m_LoopTime` 也是 `false`——Animator 播完会停在末帧。
+真正让它循环的是 `CharacterActorCommu.step_pose_execute` 的 Waiting 分支
+（反编译第 590-600 行附近）：`status == 1` 且 `AnimatorStateInfo(0).IsName(current_state_name)` 为真时调
+`CharacterActorBase.LoopCurrentAnimation()`（@0x3821200）。该函数是
+`CrossFadeInFixedTime(current_state_name, 0f)` + `PlayInFixedTime(current_state_name, 0)` + 清标志位，
+即在剪辑末尾**零时长重播同一状态**（不是交叉淡入）。另外 `check_force_loop` @0x382E67C 是同一个循环
+在 `loopDirect == false` 且队列仅剩 1 个请求时的兜底入口。
+
+实践含义：剪辑是首尾对齐的，零时长重播在画面上无缝。实测 14 个剧情 loop 剪辑的首帧/末帧逐骨最大夹角
+0.14°–0.33°，所以我们用 `Mathf.Repeat` 连续播放与原生「播完重头再来」等价。
+switch 播放结束后由 `step_pose_execute` 把 `current_pose` 置为目标并在下一次 update 播目标 `_lop`
+（IDA 已复核，见 §5.1）；`check_pose_changing_loop` 本身只做状态对齐，不负责选剪辑。
