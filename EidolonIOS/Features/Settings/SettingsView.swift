@@ -46,6 +46,9 @@ struct SettingsView: View {
     @State private var showTraces = false
     @State private var showStandPreview = false
     @State private var showStaticStandPreview = false
+    #if DEBUG
+    @State private var showStoryTheater = false
+    #endif
     @State private var standIndexURL: URL?
     @State private var confirmingPackageCleanup = false
     @State private var packageToDelete: String?
@@ -143,6 +146,11 @@ struct SettingsView: View {
             .navigationDestination(isPresented: $showStaticStandPreview) {
                 StaticStandPreviewView()
             }
+            #if DEBUG
+            .navigationDestination(isPresented: $showStoryTheater) {
+                StoryTheaterView()
+            }
+            #endif
             .onAppear {
                 #if DEBUG
                 if let destinations = app.consumeDebugSettingsDestinations() {
@@ -459,6 +467,16 @@ Section {
                             }
                             .accessibilityIdentifier("settings.staticStandPreview")
                         }
+                        #if DEBUG
+                        if StoryTheaterView.hasBundledStories {
+                            Button {
+                                showStoryTheater = true
+                            } label: {
+                                LabeledContent("剧情剧场（MLTD 3D 立绘）", value: "⇢")
+                            }
+                            .accessibilityIdentifier("settings.storyTheater")
+                        }
+                        #endif
                     } header: {
                         Text("立绘")
                     } footer: {
@@ -622,6 +640,11 @@ Section {
                 .navigationDestination(isPresented: $showStaticStandPreview) {
                     StaticStandPreviewView()
                 }
+                #if DEBUG
+                .navigationDestination(isPresented: $showStoryTheater) {
+                    StoryTheaterView()
+                }
+                #endif
                 .task { await app.loadMemories() }
                 .onAppear {
                     #if DEBUG

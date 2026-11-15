@@ -21,7 +21,9 @@ P0 已经不再是「等交接」的状态：接收方用 `~/mltd-work` 里已�
 
 - 3D 模型包：`build/eidolon-model3d-mltd.eidolonpkg`（约 119 MB，615 个 zip 条目）。
   - 57 个角色，每个角色有 `pr001`（常服）/ `ss003`（演出服）两套 outfit（`cb_*` 身体 + `ch_*` 头）。
-  - manifest `files` 共 614 条，全部 `size` + `crc32` 与包内字节一致（重建后逐个复算校验通过）。
+  - manifest `files` 共 614 条：`model3d` 包用的是 `[{path, sha256, size}]` 列表（对应 Swift 的
+    `Model3DFile`），逐个复算 sha256/size 全部一致。注意内容包（`kind: content`）仍是
+    `{size, crc32}` 映射，两者不能混用（§7 实测踩坑）。
 - 动作文件（本次已更新）：
   - 392 个 `motions/<localID>/<action>.tsv`：56 个角色 × 7 个动作
     （`act/swt/yes/noo/str/lop/end`），60 fps flat TSV。
@@ -42,6 +44,38 @@ P0 已经不再是「等交接」的状态：接收方用 `~/mltd-work` 里已�
   - `spikes/porting-3d/unity-spike/Assets/Scripts/EidolonStandMotion.cs`
   - `docs/research/mltd-3d-pipeline-2026-10-31.md`
   - `spikes/porting-3d/export_daily_motions.py`（两层动作合并成 7 动作的原始脚本）
+
+### 1.1 客户端实测与三个坑（2026-11-15，模拟器 + 真机同代码）
+
+验收用的开关（全部仅 DEBUG，`SIMCTL_CHILD_` 前缀给模拟器）：
+
+```bash
+# 1) 内容包先按 mltd 装、并把 active franchise 切过去
+SIMCTL_CHILD_EIDOLON_IMPORT_BUNDLE=eidolon-content-mltd.eidolonpkg \
+SIMCTL_CHILD_EIDOLON_IMPORT_CONTENT_FRANCHISE=mltd \
+SIMCTL_CHILD_EIDOLON_ACTIVE_FRANCHISE=mltd \
+  xcrun simctl launch --console-pty <device> com.jacklin.eidolon
+# 2) 再装 3D 包（此时 active franchise 是 mltd，manifest 会存到 model3d.bundle.mltd）
+SIMCTL_CHILD_EIDOLON_IMPORT_MODEL3D_BUNDLE=eidolon-model3d-mltd.eidolonpkg \
+SIMCTL_CHILD_EIDOLON_3D_PREVIEW=1 \
+SIMCTL_CHILD_EIDOLON_3D_ACTIONS=act,lop,yes,noo,str,end \
+  xcrun simctl launch --console-pty <device> com.jacklin.eidolon
+```
+
+1. **`model3d` 的 `files` 是列表，不是映射**：写成内容包的 `{size, crc32}` 会在导入时报
+   「内容包不符合约定：manifest.json 无法解析」。`Model3DFile` 解码 `[{path, sha256, size}]`。
+2. **导入的 3D 包要跟 active franchise 对上**：`installedModel3D()` 按
+   `model3d.bundle.<activeContentFranchise>` 查；查不到时客户端会回落到 bundle 内的
+   `Unity3DContent`（仅 `act/yes/noo` 三个动作），表现正是
+   `[stand] gesture str/lop/end not available`。而 `EIDOLON_IMPORT_BUNDLE` 不传
+   `EIDOLON_IMPORT_CONTENT_FRANCHISE` 时走 legacy `core.install`，一律记成 `shiny`——
+   所以要么两个开关一起传，要么重新装一次 3D 包。
+3. **角色必须有 `voice_id`，否则通话页开不了**：`beginCall` 会抛「角色 X 没有音色」。
+   测试壳现在给 57 个角色借了 4 个真实 Fish Audio reference id（`DEMO_VOICES`），
+   正式语音仍属 P2。
+4. 测试壳的 `characters/places.json` 里若残留 SC 角色 id，导入会报
+   「地点 cafe 的 idols 里有不存在的角色：sakura」；构建脚本的 `normalize_places` 已把它重映射到
+   MLTD roster。
 
 ## 2. 交付优先级
 
@@ -223,8 +257,10 @@ episode_voices(episode_id, seq, character_id, audio_file, duration_ms, cue, sour
 
 - [x] `motions/catalog.json` 能解析，动作 ID 唯一，loop/时长字段齐全。
 - [x] 56/57 个角色各有 7 个动作（`052tmg` 无动作包，客户端按 fallback 处理）。
-- [ ] 客户端能依次播放 `act → lop → yes → noo → str → end → act`，肉眼可见不同姿势，结束后回 idle。
-      （数据已就绪，`PlayAction` 协议待实现）
+- [x] 客户端能依次播放 `act → lop → yes → noo → str → end`，肉眼可见不同姿势，结束后回 idle。
+      证据：模拟器 `EIDOLON_3D_ACTIONS=act,lop,yes,noo,str,end` 循环 30 秒，逐帧截图见
+      `~/mltd-work/out/3d-stand/action-contact-sheet.png`（切成 24 格，能看到拱手/垂手/掩口/侧手/
+      双手贴脸/摊手等不同姿势）；Unity 日志 `[stand] action <name>` 无一条 `not available`。
 - [ ] 动作切换无 T-pose、无穿模；根位移已确认不存在（§3.3）。
 - [ ] 至少一个动作可与 `SetSpeaking` 口型同时工作。
 - [ ] 3 个角色（`001har`、`002chi`、`014mir`）抽样确认动作来自各自角色包，不是共用动作。

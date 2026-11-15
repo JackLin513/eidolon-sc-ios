@@ -1,3 +1,4 @@
+using System.Globalization;
 using UnityEngine;
 
 /// <summary>
@@ -22,6 +23,9 @@ public sealed class EidolonStandFace : MonoBehaviour
 
     private FaceCtrlNative face;
     private bool speaking;
+    private float[] lipEnvelope;
+    private int lipEnvelopeFps;
+    private float lipEnvelopeStart;
     private int lipIndex;
     private int lipFrame;
     private float blinkTimer;
@@ -43,8 +47,33 @@ public sealed class EidolonStandFace : MonoBehaviour
     public void ApplyExpression(int facialIndex, int cheekLevel)
     {
         if (face == null) return;
-        face.SetFace(Mathf.Clamp(facialIndex, 0, 27));
-        face.SetCheek(Mathf.Clamp(cheekLevel, 0, 2));
+        // Native SetFace(0)/SetCheek(0) mean "leave it as it is" rather than "row 0",
+        // so resetting to the neutral row has to go through the Direct variants.
+        var index = Mathf.Clamp(facialIndex, 0, 27);
+        if (index == 0) face.SetFaceDirect(0, 0);
+        else face.SetFace(index);
+        var cheek = Mathf.Clamp(cheekLevel, 0, 2);
+        if (cheek == 0) face.SetCheekDirect(0);
+        else face.SetCheek(cheek);
+    }
+
+    /// <summary>
+    /// Story `actor_facial`: the script already names the native 0..27 facialMenu row,
+    /// so it goes in without the seven-mood table in between.
+    /// </summary>
+    public void SetFacialMenu(int index)
+    {
+        if (face == null) return;
+        Debug.Log($"[stand] facial menu={index}");
+        var row = Mathf.Clamp(index, 0, 27);
+        if (row == 0) face.SetFaceDirect(0, 0);
+        else face.SetFace(row);
+    }
+
+    /// <summary>Cheek blush only (story `actor_cheek`), without touching the emotion.</summary>
+    public void SetCheek(int level)
+    {
+        face?.SetCheek(Mathf.Clamp(level, 0, 2));
     }
 
     public void SetSpeaking(bool value)
@@ -53,13 +82,65 @@ public sealed class EidolonStandFace : MonoBehaviour
         if (speaking == value) return;
         speaking = value;
         face.SetSinging(value);
-        if (!value) face.SetLip(54); // native mute lip code: ConvLip(54) = -1
+        if (value) return;
+        face.SetLip(54); // native mute lip code: ConvLip(54) = -1
+        face.ClearMouthOpen();
+        lipEnvelope = null;
+    }
+
+    /// <summary>
+    /// Story lines ship the game's authored `fhout` mouth envelope ("textid" →
+    /// 0..1 opening at 60 fps, resampled to 30 fps by the packer). Play it instead
+    /// of the placeholder vowel cycle, so the mouth follows the recorded voice.
+    /// Passing an empty message stops envelope playback and closes the mouth.
+    /// </summary>
+    public void SetLipEnvelope(string payload)
+    {
+        if (face == null) return;
+        if (string.IsNullOrEmpty(payload))
+        {
+            lipEnvelope = null;
+            face.ClearMouthOpen();
+            if (speaking) face.SetLip(54);
+            return;
+        }
+
+        var separator = payload.IndexOf(':');
+        if (separator <= 0)
+        {
+            Debug.LogWarning($"[stand] lip envelope malformed: {payload.Length} chars");
+            return;
+        }
+        if (!int.TryParse(payload.Substring(0, separator), out var fps) || fps <= 0)
+        {
+            Debug.LogWarning($"[stand] lip envelope fps malformed");
+            return;
+        }
+        var parts = payload.Substring(separator + 1).Split(',');
+        var values = new float[parts.Length];
+        for (var i = 0; i < parts.Length; i++)
+        {
+            values[i] = float.TryParse(parts[i], NumberStyles.Float, CultureInfo.InvariantCulture, out var v)
+                ? Mathf.Clamp01(v)
+                : 0f;
+        }
+        lipEnvelope = values;
+        lipEnvelopeFps = fps;
+        lipEnvelopeStart = Time.time;
+        Debug.Log($"[stand] lip envelope {values.Length} samples @{fps}fps");
     }
 
     private void Update()
     {
         if (face == null) return;
         TickBlink();
+        if (lipEnvelope != null)
+        {
+            var index = Mathf.FloorToInt((Time.time - lipEnvelopeStart) * lipEnvelopeFps);
+            var opening = index >= 0 && index < lipEnvelope.Length ? lipEnvelope[index] : 0f;
+            face.SetMouthOpen(opening);
+            return;
+        }
         if (!speaking) return;
         lipFrame++;
         if (lipFrame < 4) return;

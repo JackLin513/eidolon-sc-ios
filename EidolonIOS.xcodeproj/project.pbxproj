@@ -119,6 +119,7 @@
 		DAA3C813C467A0A802E9C937 /* PlayHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9642E415565176749C5D2D54 /* PlayHubView.swift */; };
 		DB4EF5F6475B173CD7C4EBA8 /* WelcomeBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7108F79B38D47A24BDB065E /* WelcomeBundle.swift */; };
 		DC64850F614BE98D316D7D08 /* ringback.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 68007D7CBD92A33E2B3D28B0 /* ringback.mp3 */; };
+		DD3D29394F4C48C622C8FD5A /* StoryTheaterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51420D1B8F1678A7B3A03229 /* StoryTheaterView.swift */; };
 		DD71BA887B65B9DB3F0EA811 /* IPadLayoutUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58B5AE82D249A57CCA6241E0 /* IPadLayoutUITests.swift */; };
 		DFEDA5AE595B6BB38AC01901 /* UsageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AB00E0F6C271881DC4146E4 /* UsageView.swift */; };
 		E0F9B1FA2BA982860CDD2BC3 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A72BB12039666C937D7C04 /* RootView.swift */; };
@@ -212,6 +213,7 @@
 		4F2E8AAA2A4E9E5ECFAA2EC4 /* AnchoredConfirmation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnchoredConfirmation.swift; sourceTree = "<group>"; };
 		502579B7DFF941BAC28ADE49 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		50E17776AF83ACD8BF3E62A1 /* AdminView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminView.swift; sourceTree = "<group>"; };
+		51420D1B8F1678A7B3A03229 /* StoryTheaterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryTheaterView.swift; sourceTree = "<group>"; };
 		54B11631789B9A8BDAE83193 /* stand-player.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "stand-player.js"; sourceTree = "<group>"; };
 		58B5AE82D249A57CCA6241E0 /* IPadLayoutUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPadLayoutUITests.swift; sourceTree = "<group>"; };
 		5AB00E0F6C271881DC4146E4 /* UsageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageView.swift; sourceTree = "<group>"; };
@@ -629,6 +631,7 @@
 				B1AD0F6ABD451EB0C733277C /* StandWebRenderer.swift */,
 				32C478558150561688D9F5E5 /* StaticStandPickerView.swift */,
 				2B4DF02DD2DE872922E1B01D /* StaticStandPreviewView.swift */,
+				51420D1B8F1678A7B3A03229 /* StoryTheaterView.swift */,
 			);
 			path = Stand;
 			sourceTree = "<group>";
@@ -988,6 +991,7 @@
 				A4CDC8CD5D00D4452C09A605 /* StaticStandPickerView.swift in Sources */,
 				EBC8CB3D63C4FABFAD6E6D0A /* StaticStandPreviewView.swift in Sources */,
 				66655FDACC9EE002B2A43EEC /* StatsView.swift in Sources */,
+				DD3D29394F4C48C622C8FD5A /* StoryTheaterView.swift in Sources */,
 				F6461ECD032B95DDDAF98B4B /* TabBarHides.swift in Sources */,
 				C7D9B29CBBADC895872095A7 /* TexturedAudio.swift in Sources */,
 				791DD675A29C48B88185FACE /* Theme.swift in Sources */,

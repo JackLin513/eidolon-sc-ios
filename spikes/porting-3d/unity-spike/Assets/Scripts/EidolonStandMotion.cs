@@ -42,6 +42,18 @@ public sealed class EidolonStandMotion : MonoBehaviour
     private string contentRoot;
     private string characterId;
 
+    // Story poses are absolute local rotations, so switching poses means
+    // blending out of the previous clip instead of switching hard.
+    private Clip poseFadeFrom;
+    private float poseFadeTime;
+    private const float PoseFadeDuration = 0.45f;
+    // The authored `str` clip is the game's own entry into a pose; when the story pack
+    // ships it, play it once before the loop instead of cross-fading two loops.
+    private const float PoseIntroBlend = 0.18f;
+    private string poseClip;
+    private Clip poseIntro;
+    private float poseIntroTime;
+
     public int BoneCount => bones.Count;
     public int IdleFrames => idle != null ? idle.frames : 0;
     public float IdleTime => idleTime;
@@ -174,11 +186,100 @@ public sealed class EidolonStandMotion : MonoBehaviour
         return clip;
     }
 
-    /// Play one gesture clip once, cross-faded over the idle loop.
+    /// Switch the loop to a story pose clip, cross-fading over 0.25 s.
+    ///
+    /// `clip` is the shared story motion name (``<variant>_<pose>_<action>``)
+    /// under ``stories/motions``; the scene's 60 fps script and the audio line
+    /// decide when this is called, so the pose is not tied to a single action.
+    public void PlayPose(string clip)
+    {
+        if (string.IsNullOrEmpty(clip)) return;
+        var path = StoryClipPath(clip);
+        var clip_ = LoadClip(path);
+        if (clip_ == null)
+        {
+            Debug.Log($"[stand] pose {clip} not available");
+            return;
+        }
+        BeginPoseFade();
+        idle = clip_;
+        idleTime = 0f;
+        poseClip = path;
+        gesture = null;
+        poseIntro = LoadIntro(path);
+        poseIntroTime = 0f;
+        Debug.Log($"[stand] pose {clip} frames={clip_.frames} intro={(poseIntro != null)}");
+    }
+
+    /// Return to the character's own idle loop after a story ends.
+    public void ResetPose()
+    {
+        if (string.IsNullOrEmpty(characterId)) return;
+        var home = LoadClip(ActionPath("act"));
+        if (home == null) return;
+        BeginPoseFade();
+        idle = home;
+        idleTime = 0f;
+        poseClip = null;
+        gesture = null;
+        poseIntro = null;
+        Debug.Log("[stand] pose reset");
+    }
+
+    /// Story clips are addressed by absolute path (the theatre and the character
+    /// bundle can live in different roots); a bare name resolves inside the bundle.
+    private string StoryClipPath(string clip)
+    {
+        if (clip.IndexOf('/') >= 0 || clip.IndexOf('\\') >= 0) return clip;
+        return Path.Combine(contentRoot ?? "", "stories", "motions", clip + ".tsv");
+    }
+
+    /// The loop half of a pose line is `<clip>_lop`/`<clip>_act`; the authored extract
+    /// for a gesture or for entering the pose drops that suffix.
+    private string PoseGesturePath(string action)
+    {
+        var directory = Path.GetDirectoryName(poseClip);
+        var name = Path.GetFileNameWithoutExtension(poseClip);
+        if (string.IsNullOrEmpty(directory) || string.IsNullOrEmpty(name)) return null;
+        foreach (var suffix in new[] { "_lop", "_act", "_swt" })
+            if (name.EndsWith(suffix, System.StringComparison.Ordinal))
+            {
+                name = name.Substring(0, name.Length - suffix.Length);
+                break;
+            }
+        return Path.Combine(directory, name + "_" + action + ".tsv");
+    }
+
+    /// `<clip>_lop.tsv` -> `<clip>_str.tsv`, when the pose was exported with one.
+    private Clip LoadIntro(string loopPath)
+    {
+        var extension = Path.GetExtension(loopPath);
+        var stem = loopPath.Substring(0, loopPath.Length - extension.Length);
+        foreach (var suffix in new[] { "_lop", "_act", "_swt" })
+        {
+            if (!stem.EndsWith(suffix, System.StringComparison.Ordinal)) continue;
+            var introPath = stem.Substring(0, stem.Length - suffix.Length) + "_str" + extension;
+            if (!File.Exists(introPath)) return null;
+            return LoadClip(introPath);
+        }
+        return null;
+    }
+
+    private void BeginPoseFade()
+    {
+        poseFadeFrom = idle;
+        poseFadeTime = 0f;
+    }
+
+    /// Play one gesture clip once, cross-faded over the idle loop. Story poses
+    /// ship their own ``<clip>_yes/_noo``; fall back to the character's own.
     public void PlayGesture(string action)
     {
         if (idle == null) return;
-        var clip = LoadClip(ActionPath(action));
+        Clip clip = null;
+        var poseGesture = PoseGesturePath(action);
+        if (poseGesture != null) clip = LoadClip(poseGesture);
+        if (clip == null) clip = LoadClip(ActionPath(action));
         if (clip == null)
         {
             Debug.Log($"[stand] gesture {action} not available");
@@ -214,6 +315,11 @@ public sealed class EidolonStandMotion : MonoBehaviour
     {
         if (idle == null || bones.Count == 0) return;
         idleTime += Time.deltaTime;
+        if (poseIntro != null)
+        {
+            poseIntroTime += Time.deltaTime;
+            if (poseIntroTime >= poseIntro.Length) poseIntro = null;
+        }
         ApplyIdle(idleTime);
         if (gesture == null) return;
         gestureTime += Time.deltaTime;
@@ -248,12 +354,46 @@ public sealed class EidolonStandMotion : MonoBehaviour
     private void ApplyIdle(float time)
     {
         var looped = idle.Length > 0.01f ? Mathf.Repeat(time, idle.Length) : 0f;
+        if (poseFadeFrom != null)
+        {
+            poseFadeTime += Time.deltaTime;
+            if (poseFadeTime >= PoseFadeDuration) poseFadeFrom = null;
+        }
+        var alpha = poseFadeFrom == null
+            ? 1f
+            : Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(poseFadeTime / PoseFadeDuration));
+        var fromTime = poseFadeFrom != null && poseFadeFrom.Length > 0.01f ? Mathf.Repeat(poseFadeTime, poseFadeFrom.Length) : 0f;
         foreach (var pair in bones)
         {
             var target = pair.Value.transform;
-            target.localRotation = SampleRotation(idle, pair.Key, looped);
-            if (SamplePosition(idle, pair.Key, looped, out var position))
-                target.localPosition = position;
+            var rotation = SampleRotation(idle, pair.Key, looped);
+            var hasPosition = SamplePosition(idle, pair.Key, looped, out var position);
+            if (poseFadeFrom != null)
+            {
+                rotation = Quaternion.Slerp(SampleRotation(poseFadeFrom, pair.Key, fromTime), rotation, alpha);
+                if (SamplePosition(poseFadeFrom, pair.Key, fromTime, out var fromPosition))
+                {
+                    position = hasPosition ? Vector3.Lerp(fromPosition, position, alpha) : fromPosition;
+                    hasPosition = true;
+                }
+            }
+            if (poseIntro != null)
+            {
+                var weight = Mathf.Min(
+                    Mathf.Clamp01(poseIntroTime / PoseIntroBlend),
+                    Mathf.Clamp01((poseIntro.Length - poseIntroTime) / PoseIntroBlend));
+                if (weight > 0f)
+                {
+                    rotation = Quaternion.Slerp(rotation, SampleRotation(poseIntro, pair.Key, poseIntroTime), weight);
+                    if (SamplePosition(poseIntro, pair.Key, poseIntroTime, out var introPosition))
+                    {
+                        position = hasPosition ? Vector3.Lerp(position, introPosition, weight) : introPosition;
+                        hasPosition = true;
+                    }
+                }
+            }
+            target.localRotation = rotation;
+            if (hasPosition) target.localPosition = position;
         }
     }
 

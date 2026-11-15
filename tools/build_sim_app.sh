@@ -54,10 +54,12 @@ cp -R "$SIM_FRAMEWORK" "$FRAMEWORK_TARGET"
 cp -R "$SIM_DATA" "$DATA_TARGET"
 
 /opt/homebrew/bin/xcodegen generate >/dev/null
+# One DerivedData per branch (docs/agent-build-hygiene.md §1.1), no dSYM, one arch.
 xcodebuild -project EidolonIOS.xcodeproj -scheme EidolonIOS -configuration Debug \
   -sdk iphonesimulator -destination "platform=iOS Simulator,id=$SIM_UDID" \
-  -derivedDataPath build/dd-sim CODE_SIGNING_ALLOWED=NO build
+  -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO \
+  ONLY_ACTIVE_ARCH=YES DEBUG_INFORMATION_FORMAT=dwarf ENABLE_DEBUG_DYLIB=NO build
 
-APP=build/dd-sim/Build/Products/Debug-iphonesimulator/Eidolon.app
+APP=build/DerivedData/Build/Products/Debug-iphonesimulator/Eidolon.app
 xcrun simctl install "$SIM_UDID" "$APP"
 echo "installed $APP on $SIM_UDID"

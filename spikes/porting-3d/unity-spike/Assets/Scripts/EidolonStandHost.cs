@@ -38,6 +38,10 @@ public sealed class EidolonStandHost : MonoBehaviour
     private bool paused;
     private bool loading;
     private string framing = "knees";
+    // Measured once from the neutral idle. Framing must not follow the animated pose:
+    // recomputing it per presentation zoomed the camera in whenever the story script
+    // asked for a leaning or crouching cut.
+    private Bounds? framingBounds;
 
     private void Awake()
     {
@@ -96,6 +100,7 @@ public sealed class EidolonStandHost : MonoBehaviour
         var cheek = 0;
         if (parts.Length > 0) int.TryParse(parts[0], out facial);
         if (parts.Length > 1) int.TryParse(parts[1], out cheek);
+        Debug.Log($"[stand] emotion face={facial} cheek={cheek}");
         face.ApplyExpression(facial, cheek);
     }
 
@@ -134,6 +139,48 @@ public sealed class EidolonStandHost : MonoBehaviour
                 Debug.Log($"[stand] unknown action {value}");
                 break;
         }
+    }
+
+    /// <summary>
+    /// Switch the idle loop to a story pose clip (``stories/motions/<clip>.tsv``).
+    /// The story theatre drives this from the script's 60 fps frame numbers, so the
+    /// character performs the pose the scene actually asks for instead of playing
+    /// one looping action.
+    /// </summary>
+    public void PlayPose(string value)
+    {
+        motion?.PlayPose(value);
+    }
+
+    /// <summary>Return to the character's own idle loop once the story ends.</summary>
+    public void ResetPose(string value)
+    {
+        motion?.ResetPose();
+    }
+
+    /// <summary>Story `actor_facial`: native facialMenu row 0..27.</summary>
+    public void SetFacialMenu(string value)
+    {
+        if (face == null) return;
+        if (!int.TryParse(value, out var index)) return;
+        face.SetFacialMenu(index);
+    }
+
+    /// <summary>Story cheek overlay: 0 off, 1 light, 2 strong.</summary>
+    /// <summary>
+    /// Authored story mouth envelope: `"&lt;fps&gt;:v0,v1,…"` resampled by the packer;
+    /// empty stops it. See `EidolonStandFace.SetLipEnvelope`.
+    /// </summary>
+    public void SetLipEnvelope(string value)
+    {
+        face?.SetLipEnvelope(value);
+    }
+
+    public void SetCheek(string value)
+    {
+        if (face == null) return;
+        int.TryParse(value, out var level);
+        face.SetCheek(level);
     }
 
     public void SetFraming(string value)
@@ -212,6 +259,7 @@ public sealed class EidolonStandHost : MonoBehaviour
         bootstrap = null;
         motion = null;
         face = null;
+        framingBounds = null;
     }
 
     /// <summary>
@@ -264,12 +312,15 @@ public sealed class EidolonStandHost : MonoBehaviour
     private void FrameCamera(string framing)
     {
         if (camera == null) return;
-        var renderers = bootstrap != null
-            ? bootstrap.GetComponentsInChildren<Renderer>(true).Where(renderer => renderer.enabled).ToArray()
-            : Array.Empty<Renderer>();
-        if (renderers.Length == 0) return;
-        var bounds = renderers[0].bounds;
-        foreach (var renderer in renderers) bounds.Encapsulate(renderer.bounds);
+        if (framingBounds == null)
+        {
+            // Frame the character's neutral silhouette; a story pose can be much
+            // narrower (leaning in) and must not change the shot.
+            motion?.SampleIdle(0f);
+            if (TryMeasureBounds(out var measured)) framingBounds = measured;
+            else return;
+        }
+        var bounds = framingBounds.Value;
 
         var aspect = Screen.height > 0 ? (float)Screen.width / Screen.height : 1f;
         var share = framing == "waist" ? 0.66f : framing == "knees" ? 0.85f : 1f;
@@ -290,6 +341,20 @@ public sealed class EidolonStandHost : MonoBehaviour
         var distance = viewHeight / (2 * Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad));
         camera.transform.position = new Vector3(bounds.center.x, centerY, bounds.center.z + distance);
         camera.transform.LookAt(new Vector3(bounds.center.x, centerY, bounds.center.z));
+    }
+
+    /// Bounds of the assembled character, restricted to renderers that are actually on.
+    private bool TryMeasureBounds(out Bounds bounds)
+    {
+        bounds = default;
+        if (bootstrap == null) return false;
+        var renderers = bootstrap.GetComponentsInChildren<Renderer>(true)
+            .Where(renderer => renderer.enabled && renderer.gameObject.activeInHierarchy)
+            .ToArray();
+        if (renderers.Length == 0) return false;
+        bounds = renderers[0].bounds;
+        foreach (var renderer in renderers) bounds.Encapsulate(renderer.bounds);
+        return true;
     }
 
     /// Probe entry: sample the idle at a fixed time and return one bone's euler.

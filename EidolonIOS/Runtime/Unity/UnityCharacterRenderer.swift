@@ -33,7 +33,12 @@ final class UnityCharacterRenderer: CharacterRenderer {
     private var paused = false
     private var catalog: MotionCatalog?
     private var lastEmotion: StandEmotion?
+    private var lastFraming: StandFraming?
     private var actionCycle: Timer?
+
+    /// The story theatre drives the body pose from the scene script and must not have
+    /// an emotion change also fire a daily action on top of it.
+    var performsEmotionActions = true
 
     init(assets: RuntimeAssets) {
         self.assets = assets
@@ -121,6 +126,70 @@ final class UnityCharacterRenderer: CharacterRenderer {
                 index += 1
             }
         }
+    }
+
+    /// Switch the body loop to a story pose clip. The path is absolute (story package
+    /// and character bundle can live in different roots); the Unity host cross-fades
+    /// over 0.25 s and keeps the pose until the next one arrives.
+    func playPose(atPath path: String) {
+        guard loaded else { return }
+        Self.log.info("3D pose: \(path, privacy: .public)")
+        UnityRuntime.shared.send("PlayPose", path)
+    }
+
+    /// Return to the character's own idle after the story ends.
+    func resetPose() {
+        guard loaded else { return }
+        UnityRuntime.shared.send("ResetPose", "")
+    }
+
+    /// Story `actor_facial`: the script names the native facialMenu row (0..27), so the
+    /// authored expression goes straight to Unity instead of the seven-mood table.
+    func setFacialMenu(_ index: Int) {
+        guard loaded else { return }
+        UnityRuntime.shared.send("SetFacialMenu", String(max(0, min(27, index))))
+    }
+
+    /// Story theatre speaks without touching the authored facial row, so the
+    /// `actor_facial` expression set for this line is not reset at the line start.
+    func setSpeaking(_ speaking: Bool) {
+        guard loaded else { return }
+        UnityRuntime.shared.send("SetSpeaking", speaking ? "1" : "0")
+    }
+
+    /// Story `actor_yes_no`: the current pose's own nod/shake clip when it ships one.
+    func setNod(yes: Bool) {
+        guard loaded else { return }
+        UnityRuntime.shared.send("SetNod", yes ? "yes" : "noo")
+    }
+
+    /// Back to the neutral facial row (native row 0) after the story ends.
+    func resetExpression() {
+        guard loaded else { return }
+        UnityRuntime.shared.send("SetEmotion", "0,0")
+    }
+
+    /// Story `actor_cheek` overlay: 0 off, 1 light, 2 strong.
+    func setCheek(_ level: Int) {
+        guard loaded else { return }
+        UnityRuntime.shared.send("SetCheek", String(max(0, min(2, level))))
+    }
+
+    /// Story line mouth envelope: the game's authored `fhout` samples (0..1 mouth
+    /// opening) resampled to 30 fps. An empty list stops envelope playback.
+    func setLipEnvelope(fps: Int, values: [Double]) {
+        guard loaded else { return }
+        guard !values.isEmpty else {
+            UnityRuntime.shared.send("SetLipEnvelope", "")
+            return
+        }
+        var message = "\(fps):"
+        message.reserveCapacity(values.count * 5 + 4)
+        for (index, value) in values.enumerated() {
+            if index > 0 { message.append(",") }
+            message.append(String(format: "%.2f", max(0, min(1, value))))
+        }
+        UnityRuntime.shared.send("SetLipEnvelope", message)
     }
 
     func setViewport(_ size: CGSize) {
@@ -238,6 +307,8 @@ final class UnityCharacterRenderer: CharacterRenderer {
         switch type {
         case "loaded":
             loaded = true
+            // A new character reloads the scene camera to its own default framing.
+            lastFraming = nil
             retry?.invalidate()
             Self.log.info("3D stand loaded: \(json, privacy: .public)")
             let bounds = assets.model3D?.bounds ?? Self.defaultBounds
@@ -269,13 +340,20 @@ final class UnityCharacterRenderer: CharacterRenderer {
         UnityRuntime.shared.send("SetSpeaking", frame.speaking ? "1" : "0")
         if let nod = frame.nod {
             UnityRuntime.shared.send("SetNod", nod.kind == .no ? "no" : "yes")
-        } else if frame.emotion != lastEmotion, let action = action(for: frame.emotion) {
+        } else if performsEmotionActions, frame.emotion != lastEmotion, let action = action(for: frame.emotion) {
             // The judge changes her mood once per reply segment; only the change plays
             // an action, so a held emotion does not loop the clip.
             UnityRuntime.shared.send("PlayAction", action)
         }
         lastEmotion = frame.emotion
-        UnityRuntime.shared.send("SetFraming", frame.framing.rawValue)
+        // Re-framing recomputes the camera from the *current* animated bounds, so
+        // sending it on every presentation pulses the camera whenever the pose changes
+        // (the story theatre presents once per script event). The host keeps its
+        // framing until told otherwise, so one message per actual change is enough.
+        if lastFraming != frame.framing {
+            lastFraming = frame.framing
+            UnityRuntime.shared.send("SetFraming", frame.framing.rawValue)
+        }
     }
 
     private func fail(_ failure: RuntimeFailure) {

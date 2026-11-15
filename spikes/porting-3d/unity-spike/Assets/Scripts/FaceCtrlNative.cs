@@ -273,6 +273,12 @@ public sealed class FaceCtrlNative : MonoBehaviour
     public bool autoAction = true;
 
     private bool stateReady;
+    /// <summary>
+    /// Continuous mouth opening (0..1) for story voice, driven by the game's own
+    /// `fhout` envelope. Negative means "use the discrete lip rows as usual".
+    /// </summary>
+    private float mouthOpenOverride = -1f;
+
     private bool warnedNoLipParam;
     private bool warnedNoRenderer;
 
@@ -283,6 +289,24 @@ public sealed class FaceCtrlNative : MonoBehaviour
     private void Awake()
     {
         EnsureNativeState();
+    }
+
+    /// <summary>
+    /// Scale the open mouth shape by <paramref name="rate"/> (0..1) instead of
+    /// switching discrete lip rows.  Native story playback feeds
+    /// `CharacterFace_RC`'s mumble rate from the authored <c>fhout</c> envelope;
+    /// this replica has no float lip entry point, so the envelope scales blend
+    /// shape 0 (the open "A" row) directly after the discrete composition.
+    /// </summary>
+    public void SetMouthOpen(float rate)
+    {
+        EnsureNativeState();
+        mouthOpenOverride = Clamp01(rate);
+    }
+
+    public void ClearMouthOpen()
+    {
+        mouthOpenOverride = -1f;
     }
 
     /// <summary>
@@ -1027,6 +1051,17 @@ public sealed class FaceCtrlNative : MonoBehaviour
                 }
                 render.SetBlendShapeWeight(i, from + (to - from) * ratio);
             }
+        }
+
+        // ---- 4b. continuous story lip -------------------------------------
+        // The theater drives the mouth from the authored `fhout` envelope. Native
+        // story playback feeds CharacterFace_RC's mumble rate; this replica has no
+        // float lip entry point, so the same envelope scales the open "A" row
+        // (blend shape 0) directly after the discrete lip composition.
+        if (mouthOpenOverride >= 0f)
+        {
+            render.SetBlendShapeWeight(0, mouthOpenOverride * 100f);
+            for (int i = 1; i < mouthShapes; i++) render.SetBlendShapeWeight(i, 0f);
         }
 
         // ---- 5. cheek cross-fade (same body as CheekUpdate @0x379F790) ----

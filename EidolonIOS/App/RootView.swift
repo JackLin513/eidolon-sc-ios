@@ -32,7 +32,11 @@ struct RootView: View {
                         // nested content builder left the loading view on screen after the
                         // model became ready.
                         #if DEBUG
-                        if ProcessInfo.processInfo.environment["EIDOLON_3D_PREVIEW"] == "1" {
+                        if ProcessInfo.processInfo.environment["EIDOLON_STORY"] != nil {
+                            NavigationStack {
+                                StoryTheaterView()
+                            }
+                        } else if ProcessInfo.processInfo.environment["EIDOLON_3D_PREVIEW"] == "1" {
                             NavigationStack {
                                 Model3DPreviewView()
                             }

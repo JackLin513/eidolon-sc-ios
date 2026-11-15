@@ -141,3 +141,27 @@ App 已安装到 iPhone Air（`00008150-00183D380C08401C`），但 iOS 拒绝启
 - 每个角色目前只有一件常服 + 一套演出服；衣柜 UI 不在本阶段范围。
 - 对话（文字）页本身不显示 3D 立绘：本阶段把 3D 接在通话页；文字页仍按 SC 的聊天形态。
 - MLTD 角色独立进对话名册（人设/头像/语音）尚未做，当前是「SC 角色框架 + 可选 MLTD 3D 形象」。
+
+## 剧情剧场：原生剧情文本 + 语音 + 剧情动作（2026-11-15）
+
+不再循环「一个日常动作」，而是按 MLTD 原游戏剧本演一话：每句日文字幕 + 原声语音 + 剧本
+自己写的姿势/表情/点头/腮红事件。
+
+- **数据来源**（全部从 PlayCover 里的游戏本体解出，不经服务器）：见
+  [research/mltd-story-extraction-2026-11-15.md](research/mltd-story-extraction-2026-11-15.md)。
+  `_jp.gtx` 文本表是 PBKDF2(`Millicon`/`DAISUL___`, 1000 次) + AES-192-CBC；剧本是
+  `job_story_*.unity3d` 里的 TextAsset（`{"datas":{"CutRecord":[...],"Scenario":[...]}}`）；
+  语音是 `job_story_*.acb.unity3d`，ACB 子流名就是文本 key。
+- **打包**：`tools/build_story_demo.py --stories job_story_001har_3000,job_story_001har_4000,job_story_001har_5000,job_story_001har_9000`
+  产出 `build/Unity3DContent/stories/`（`index.json`、每话 `story.json`、共享
+  `motions/<clip>_<action>.tsv`、`<story>/audio/<key>.m4a`）。
+- **播放**：`EidolonIOS/Features/Stand/StoryTheaterView.swift`（`#if DEBUG`）。Unity 侧按剧本
+  切姿势（游戏自己的 `str` 进入动作 + `lop` 循环 + 0.35s 交叉淡入），表情走剧本原生
+  `facialMenu`（0..27），手势用该姿势的 `yes/noo`（没有就回退角色自己的），腮红按 `actor_cheek`。
+  一句话结束按 `max(语音时长, 剧本帧数)` 推进。
+- **入口**：设置 → 立绘 →「剧情剧场（MLTD 3D 立绘）」；或 `EIDOLON_STORY=<storyId>` 直接启动。
+- **证据**：`~/mltd-work/out/3d-stand/story-first-line-001har-9000.png`、
+  `story-line5-001har-9000.png`。
+- **已知限制**：`p18_p/p18_s/p18_a` 这一组姿势在 `chara_commu_pose_set` 里没有对应字母
+  （18 系是另一套），会回退到上一姿势；一话结束回到角色自己的 `motions/<idol>/act.tsv` 待机；
+  其余 28 个 facialMenu 之外的表情（无）忽略；台词只有日文，中文/`{$P$}` 宏已替换成「制作人」。
