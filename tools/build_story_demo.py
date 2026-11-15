@@ -133,9 +133,9 @@ class PoseLibrary:
                     continue
                 clip = f"{match.group(1)}_{match.group(2)}"
             self._available.setdefault(clip, set()).add(match.group(3))
-        self._cache: dict[tuple[str, str], str | None] = {}
+        self._cache: dict[tuple[str, str, str | None], str | None] = {}
 
-    def _candidates(self, idol: str, pose: str) -> list[str]:
+    def _candidates(self, idol: str, pose: str, variant: str | None = None) -> list[str]:
         base = pose.split("_")[0]
         digits = re.sub(r"\D", "", base)
         if not digits:
@@ -153,15 +153,15 @@ class PoseLibrary:
         for letter in seen:
             ids.append(f"{numbers}{letter}")
         clip_ids: list[str] = []
-        for variant in VARIANTS:
+        for variant in ([variant] if variant else VARIANTS):
             for pose_id in ids:
                 clip = f"{variant}_{pose_id}"
                 if clip in self._available and clip not in clip_ids:
                     clip_ids.append(clip)
         return clip_ids
 
-    def resolve(self, idol: str, pose: str) -> str | None:
-        key = (idol, pose)
+    def resolve(self, idol: str, pose: str, variant: str | None = None) -> str | None:
+        key = (idol, pose, variant)
         if key in self._cache:
             return self._cache[key]
         # `p18_*` is the character's own standing set, not a commu pose: the pose
@@ -171,7 +171,7 @@ class PoseLibrary:
             chosen = self.base_clip(idol)
             self._cache[key] = chosen
             return chosen
-        candidates = self._candidates(idol, pose)
+        candidates = self._candidates(idol, pose, variant)
         chosen = candidates[0] if candidates else None
         self._cache[key] = chosen
         return chosen
@@ -196,6 +196,14 @@ def write_flat(dest: Path, packed_path: Path) -> None:
 LIP_FPS = 30
 
 
+def safe_int(value, default: int = 0) -> int:
+    """Parse a script argument that may be None, "" or a non-numeric label."""
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
 def sample_lip(points: list[dict[str, object]] | None) -> list[float]:
     """Resample the game's 60 fps mouth envelope to 30 fps for the web of TSV-era
     players; `t` is a frame index from the start of the voice clip and `v` is the
@@ -207,6 +215,39 @@ def sample_lip(points: list[dict[str, object]] | None) -> list[float]:
         samples.append(round(float(points[index].get("v") or 0.0), 3))
     return samples
 
+
+
+def copy_backgrounds(args: argparse.Namespace, story_ids: list[str], out: Path) -> int:
+    """Copy every referenced `adv_bg2d_*` JPEG next to the stories, plus the index."""
+    source: Path = args.backgrounds
+    if not source.is_dir():
+        return 0
+    wanted: set[str] = set()
+    for story_id in story_ids:
+        story_path = out / story_id / "story.json"
+        if not story_path.exists():
+            continue
+        story = json.loads(story_path.read_text())
+        for line in story.get("lines", []):
+            for event in line.get("backgrounds", []) or []:
+                identifier = str(event.get("id") or "")
+                if identifier:
+                    wanted.add(identifier)
+    target = out / "backgrounds"
+    target.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    for identifier in sorted(wanted):
+        source_file = source / f"{identifier}.jpg"
+        if not source_file.exists():
+            continue
+        destination = target / source_file.name
+        if not destination.exists() or destination.stat().st_size != source_file.stat().st_size:
+            shutil.copyfile(source_file, destination)
+            copied += 1
+    index = source / "index.json"
+    if index.exists():
+        shutil.copyfile(index, target / "index.json")
+    return copied
 
 def build(args: argparse.Namespace) -> int:
     scenes = json.loads(args.scenes.read_text())
@@ -380,6 +421,168 @@ def build(args: argparse.Namespace) -> int:
                     continue
                 gazes.append({"ms": round(event["frame"] * 1000 / STORY_FPS), "h": h, "v": v})
 
+            def at(frame):
+                return round(safe_int(frame) * 1000 / STORY_FPS)
+
+            def span(start, end):
+                return at(start), at(end)
+
+            # Scene staging commands.  Each list is a small typed event record the
+            # host replays on the same clock as poses/faces (`ms` in story ms).
+            visibility: list[dict[str, object]] = []
+            for event in line.get("visibility", []):
+                state = str(event.get("on") or "").lower()
+                if state not in ("on", "off", "true", "false", "1", "0"):
+                    continue
+                visibility.append(
+                    {
+                        "ms": at(event.get("start")),
+                        "idol": str(event.get("idol") or ""),
+                        "on": state in ("on", "true", "1"),
+                    }
+                )
+            cameras = [
+                {"ms": at(event.get("frame")), "preset": str(event.get("preset") or "")}
+                for event in line.get("cameras", [])
+                if event.get("preset")
+            ]
+            places = [
+                {
+                    "ms": at(event.get("frame")),
+                    "idol": str(event.get("idol") or ""),
+                    "preset": str(event.get("preset") or ""),
+                    "location": safe_int(event.get("location")),
+                }
+                for event in line.get("places", [])
+                if event.get("preset")
+            ]
+            backgrounds: list[dict[str, object]] = []
+            for event in line.get("backgrounds", []):
+                bgid = str(event.get("id") or "")
+                if not bgid:
+                    continue
+                backgrounds.append(
+                    {
+                        "ms": at(event.get("frame")),
+                        "id": bgid,
+                        "fadeIn": str(event.get("fadeIn") or "").lower() in ("on", "1", "true"),
+                        "fadeOut": str(event.get("fadeOut") or "").lower() in ("on", "1", "true"),
+                    }
+                )
+            loads = [
+                {
+                    "ms": at(event.get("start")),
+                    "idol": str(event.get("idol") or ""),
+                    "model": str(event.get("model") or ""),
+                    "costume": str(event.get("costume") or ""),
+                    "setId": safe_int(event.get("setId")),
+                }
+                for event in line.get("loads", [])
+            ]
+            costumes = [
+                {
+                    "ms": at(event.get("start")),
+                    "idol": str(event.get("idol") or ""),
+                    "setId": safe_int(event.get("setId")),
+                }
+                for event in line.get("costumes", [])
+            ]
+            rotations: list[dict[str, object]] = []
+            for event in line.get("rotations", []):
+                start_ms, end_ms = span(event.get("start"), event.get("end"))
+                rotations.append(
+                    {
+                        "ms": start_ms,
+                        "endMs": end_ms,
+                        "idol": str(event.get("idol") or ""),
+                        "x": float(event.get("x") or 0.0),
+                        "y": float(event.get("y") or 0.0),
+                        "z": float(event.get("z") or 0.0),
+                        "ease": str(event.get("ease") or ""),
+                        "mode": str(event.get("mode") or ""),
+                    }
+                )
+            offsets: list[dict[str, object]] = []
+            for event in line.get("offsets", []):
+                start_ms, end_ms = span(event.get("start"), event.get("end"))
+                offsets.append(
+                    {
+                        "ms": start_ms,
+                        "endMs": end_ms,
+                        "idol": str(event.get("idol") or ""),
+                        "x": float(event.get("x") or 0.0),
+                        "y": float(event.get("y") or 0.0),
+                        "z": float(event.get("z") or 0.0),
+                    }
+                )
+            fades: list[dict[str, object]] = []
+            for event in line.get("fades", []):
+                start_ms, end_ms = span(event.get("start"), event.get("end"))
+                kind = str(event.get("type") or "")
+                if not kind:
+                    continue
+                fades.append({"ms": start_ms, "endMs": end_ms, "type": kind})
+            inouts: list[dict[str, object]] = []
+            for event in line.get("inouts", []):
+                start_ms, end_ms = span(event.get("start"), event.get("end"))
+                inouts.append(
+                    {
+                        "ms": start_ms,
+                        "endMs": end_ms,
+                        "idol": str(event.get("idol") or ""),
+                        "name": str(event.get("name") or ""),
+                        "speed": float(event.get("speed") or 0.0),
+                    }
+                )
+            sits: list[dict[str, object]] = []
+            for event in line.get("sits", []):
+                start_ms, end_ms = span(event.get("start"), event.get("end"))
+                pose = str(event.get("pose") or "")
+                if pose not in ("p01", "p02"):
+                    pose = "p01"
+                # `actor_sit_pose` puts the character into the seated variant of that
+                # pose (`sit` in the pose masterdata).  Resolve it as a pose change so
+                # the normal enter/loop machinery runs; the clip ships from `com_sit_*`.
+                sit_idol = str(event.get("idol") or scene.get("character") or "")
+                sit_clip = library.resolve(sit_idol, pose, variant="sit")
+                if sit_clip:
+                    sit_loop = ship(sit_clip, "lop")
+                    if sit_loop:
+                        poses.append(
+                            {
+                                "ms": start_ms,
+                                "clip": sit_loop,
+                                "pose": f"sit:{pose}",
+                                "loopDirect": False,
+                                "enter": "str" if ship(sit_clip, "str") else None,
+                            }
+                        )
+                sits.append(
+                    {
+                        "ms": start_ms,
+                        "endMs": end_ms,
+                        "idol": str(event.get("idol") or ""),
+                        "pose": pose,
+                        "direct": str(event.get("direct") or "0") == "1",
+                    }
+                )
+            lip_events: list[dict[str, object]] = []
+            for event in line.get("lips", []):
+                mode = str(event.get("mode") or "")
+                if mode not in ("Close", "Fomalhout"):
+                    continue
+                lip_events.append({"ms": at(event.get("start")), "mode": mode})
+            sounds = [
+                {
+                    "ms": at(event.get("frame")),
+                    "kind": str(event.get("kind") or ""),
+                    "op": str(event.get("op") or ""),
+                    "sheet": str(event.get("sheet") or ""),
+                    "name": str(event.get("name") or ""),
+                }
+                for event in line.get("sounds", [])
+            ]
+
             lines.append(
                 {
                     "cut": line["cut"],
@@ -400,6 +603,19 @@ def build(args: argparse.Namespace) -> int:
                     "cheeks": cheeks,
                     "eyes": eyes,
                     "gazes": gazes,
+                    "visibility": visibility,
+                    "cameras": cameras,
+                    "places": places,
+                    "backgrounds": backgrounds,
+                    "loads": loads,
+                    "costumes": costumes,
+                    "rotations": rotations,
+                    "offsets": offsets,
+                    "fades": fades,
+                    "inouts": inouts,
+                    "sits": sits,
+                    "lips": lip_events,
+                    "sounds": sounds,
                 }
             )
 
@@ -427,7 +643,10 @@ def build(args: argparse.Namespace) -> int:
 
     (out / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=1))
     total = sum(path.stat().st_size for path in motions.glob("*.tsv"))
+    copied = copy_backgrounds(args, story_ids, out)
     log(f"wrote {out} — {len(written)} motion files ({total / 1e6:.1f} MB), {missing_loops} pose fallbacks")
+    if copied:
+        log(f"copied {copied} adv backgrounds into {out / 'backgrounds'}")
     return 0
 
 
@@ -438,6 +657,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--poses", type=Path, default=WORK / "out" / "poses")
     parser.add_argument("--pose-set", type=Path, default=WORK / "chara_commu_pose_set.json")
     parser.add_argument("--lips", type=Path, default=WORK / "out" / "story-extract" / "lips.json")
+    parser.add_argument(
+        "--backgrounds",
+        type=Path,
+        default=WORK / "out" / "backgrounds",
+        help="exported adv_bg2d_* JPEGs (see ~/mltd-work/export_backgrounds.py)",
+    )
     parser.add_argument("--out", type=Path, default=REPO / "build" / "Unity3DContent" / "stories")
     parser.add_argument("--stories", default="")
     args = parser.parse_args(argv)

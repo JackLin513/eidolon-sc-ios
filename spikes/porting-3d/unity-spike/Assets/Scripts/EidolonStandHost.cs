@@ -1,3 +1,4 @@
+using System.Globalization;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -42,6 +43,15 @@ public sealed class EidolonStandHost : MonoBehaviour
     // recomputing it per presentation zoomed the camera in whenever the story script
     // asked for a leaning or crouching cut.
     private Bounds? framingBounds;
+    private Transform characterRoot;
+    private GameObject backgroundQuad;
+    private Material backgroundMaterial;
+    private Texture2D backgroundTexture;
+    private string backgroundPath;
+    private Vector3 baseOffset;
+    private float cameraDistanceFactor = 1f;
+    private Coroutine rotationRoutine;
+    private Coroutine inOutRoutine;
 
     private void Awake()
     {
@@ -274,6 +284,7 @@ public sealed class EidolonStandHost : MonoBehaviour
             yield break;
         }
 
+        characterRoot = go.transform;
         InsertBodyScale(go.transform);
         ApplyMaterialFixes(go.transform);
         // No colour overrides here on purpose: the shipped materials already carry the
@@ -377,9 +388,11 @@ public sealed class EidolonStandHost : MonoBehaviour
         }
         var top = bounds.center.y + bounds.size.y / 2 * (1 + headroom);
         var centerY = framing == "full" ? bounds.center.y : top - viewHeight / 2;
-        var distance = viewHeight / (2 * Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad));
+        var distance = viewHeight / (2 * Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad))
+                       * cameraDistanceFactor;
         camera.transform.position = new Vector3(bounds.center.x, centerY, bounds.center.z + distance);
         camera.transform.LookAt(new Vector3(bounds.center.x, centerY, bounds.center.z));
+        if (backgroundQuad != null && backgroundQuad.activeSelf) PlaceBackground();
     }
 
     /// Bounds of the assembled character, restricted to renderers that are actually on.
@@ -405,6 +418,273 @@ public sealed class EidolonStandHost : MonoBehaviour
             System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed : 0f;
         motion.SampleIdle(time);
         return parts.Length > 1 ? motion.DebugEuler(parts[1]) : "ok";
+    }
+
+    /// <summary>
+    /// `actor_camera_set_position_preset`: the ADV camera setups. The game reads the
+    /// numbers from its script parameter tables (`solo`/`duo`/`trio`/`solo_sit`/
+    /// `live_result`), which are not in the client bundle, so the stand keeps its
+    /// measured framing and only shifts the shot distance per preset.
+    /// </summary>
+    public void SetCameraPreset(string value)
+    {
+        var preset = value ?? "";
+        var factor = 1f;
+        switch (preset)
+        {
+            case "duo": factor = 1.35f; break;
+            case "trio": factor = 1.65f; break;
+            case "solo_sit": factor = 0.9f; break;
+            case "live_result": factor = 1.2f; break;
+        }
+        if (Mathf.Approximately(factor, cameraDistanceFactor)) return;
+        cameraDistanceFactor = factor;
+        FrameCamera(framing);
+        Debug.Log($"[stand] camera preset {preset} distance x{factor:0.00}");
+    }
+
+    /// <summary>
+    /// `actor_character_set_position_preset`: only one stand is rendered in this
+    /// prototype, so the character stays centred; the preset is logged for the pack
+    /// report (`solo` = the single-character layout we already show).
+    /// </summary>
+    public void SetPlacePreset(string value)
+    {
+        Debug.Log($"[stand] place preset {value}");
+    }
+
+    /// <summary>Show an ADV 2D background behind the character. Empty path hides it.</summary>
+    public void SetBackground(string path)
+    {
+        if (backgroundPath == path) return;
+        backgroundPath = path;
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        {
+            if (backgroundQuad != null) backgroundQuad.SetActive(false);
+            return;
+        }
+        try
+        {
+            if (backgroundTexture == null || backgroundTexture.width < 2)
+            {
+                backgroundTexture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            }
+            if (!backgroundTexture.LoadImage(File.ReadAllBytes(path)))
+            {
+                Debug.Log($"[stand] background decode failed: {path}");
+                return;
+            }
+            backgroundTexture.wrapMode = TextureWrapMode.Clamp;
+            EnsureBackgroundQuad();
+            backgroundMaterial.mainTexture = backgroundTexture;
+            backgroundQuad.SetActive(true);
+            PlaceBackground();
+            Debug.Log($"[stand] background {Path.GetFileName(path)} {backgroundTexture.width}x{backgroundTexture.height}");
+        }
+        catch (Exception error)
+        {
+            Debug.Log($"[stand] background failed: {error.Message}");
+        }
+    }
+
+    private void EnsureBackgroundQuad()
+    {
+        if (backgroundQuad != null) return;
+        backgroundQuad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        backgroundQuad.name = "StoryBackground";
+        var collider = backgroundQuad.GetComponent<Collider>();
+        if (collider != null) Destroy(collider);
+        var shader = Shader.Find("Unlit/Texture");
+        backgroundMaterial = new Material(shader);
+        backgroundQuad.GetComponent<MeshRenderer>().sharedMaterial = backgroundMaterial;
+        backgroundQuad.GetComponent<MeshRenderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        backgroundQuad.GetComponent<MeshRenderer>().receiveShadows = false;
+    }
+
+    /// <summary>Scale the backdrop to fill the whole view at its fixed depth.</summary>
+    private void PlaceBackground()
+    {
+        if (backgroundQuad == null || camera == null) return;
+        var aspect = Screen.height > 0 ? (float)Screen.width / Screen.height : 1f;
+        var depth = 24f;
+        var height = 2f * depth * Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad) * 1.06f;
+        var width = height * aspect;
+        // Square textures are authored 1:1; the game crops them to the screen.
+        var tex = backgroundTexture;
+        if (tex != null && tex.width > 0 && tex.height > 0)
+        {
+            var texAspect = (float)tex.width / tex.height;
+            if (texAspect > aspect) width = height * texAspect;
+            else height = width / texAspect;
+        }
+        // Parent the backdrop to the camera: it must fill the shot no matter where the
+        // framing camera is, and the character can rotate / walk without moving it.
+        backgroundQuad.transform.SetParent(camera.transform, false);
+        backgroundQuad.transform.localPosition = new Vector3(0f, 0f, depth);
+        backgroundQuad.transform.localRotation = Quaternion.identity;
+        backgroundQuad.transform.localScale = new Vector3(width, height, 1f);
+    }
+
+    /// <summary>Show or hide the assembled character (actor_visible_character).</summary>
+    public void SetVisible(string value)
+    {
+        if (characterRoot == null) return;
+        var visible = value == "1" || value == "true" || value == "on";
+        if (characterRoot.gameObject.activeSelf == visible) return;
+        characterRoot.gameObject.SetActive(visible);
+        Debug.Log($"[stand] visible {visible}");
+    }
+
+    /// <summary>Absolute character rotation in degrees, `x,y,z`.</summary>
+    public void SetCharacterRotation(string value)
+    {
+        if (characterRoot == null) return;
+        if (!TryParseVector(value, out var euler)) return;
+        if (rotationRoutine != null) { StopCoroutine(rotationRoutine); rotationRoutine = null; }
+        characterRoot.localEulerAngles = euler;
+    }
+
+    /// <summary>Animate the character rotation, `x,y,z,durationSeconds,ease`.</summary>
+    public void RotateCharacter(string value)
+    {
+        if (characterRoot == null) return;
+        var parts = value.Split(',');
+        if (parts.Length < 4) { SetCharacterRotation(value); return; }
+        if (!float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var x) ||
+            !float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var y) ||
+            !float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var z) ||
+            !float.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out var duration))
+            return;
+        var ease = parts.Length > 4 ? parts[4] : "linear";
+        if (rotationRoutine != null) StopCoroutine(rotationRoutine);
+        rotationRoutine = StartCoroutine(RotateRoutine(new Vector3(x, y, z), duration, ease));
+    }
+
+    private IEnumerator RotateRoutine(Vector3 target, float duration, string ease)
+    {
+        var from = characterRoot.localEulerAngles;
+        from.x = NormalizeAngle(from.x);
+        from.y = NormalizeAngle(from.y);
+        from.z = NormalizeAngle(from.z);
+        if (duration <= 0.001f)
+        {
+            characterRoot.localEulerAngles = target;
+            rotationRoutine = null;
+            yield break;
+        }
+        var elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            var t = Ease(Mathf.Clamp01(elapsed / duration), ease);
+            characterRoot.localEulerAngles = Vector3.LerpUnclamped(from, target, t);
+            yield return null;
+        }
+        characterRoot.localEulerAngles = target;
+        rotationRoutine = null;
+    }
+
+    /// <summary>Absolute character offset in metres, `x,y,z`.</summary>
+    public void SetCharacterOffset(string value)
+    {
+        if (characterRoot == null) return;
+        if (!TryParseVector(value, out var offset)) return;
+        baseOffset = offset;
+        characterRoot.localPosition = offset;
+    }
+
+    /// <summary>`actor_reset_sway`: drop the accumulated sway state (ResetSwayActor).</summary>
+    public void ResetSway(string value)
+    {
+        var rig = bootstrap != null ? bootstrap.SwayRig : null;
+        if (rig == null) return;
+        foreach (var bone in rig.bones)
+        {
+            if (bone == null || bone.tipTrs == null) continue;
+            bone.curTipPos = bone.tipTrs.position;
+            bone.prevTipPos = bone.curTipPos;
+            bone.h = Vector3.zero;
+            bone.cc = Vector3.zero;
+            bone.force = Vector3.zero;
+            if (bone.trs != null) bone.trs.localRotation = bone.initialLocalRotation;
+        }
+        Debug.Log($"[stand] sway reset ({rig.bones.Count} bones)");
+    }
+
+    /// <summary>`actor_lip`: native lip modes are `Close` and `Fomalhout`.</summary>
+    public void SetLipMode(string value)
+    {
+        if (face == null) return;
+        face.SetScriptLipMode(value);
+        Debug.Log($"[stand] lip mode {value}");
+    }
+
+    /// <summary>`actor_in_out`: walk in from / out to the side of the stage.</summary>
+    public void PlayInOut(string value)
+    {
+        if (characterRoot == null) return;
+        var parts = value.Split(',');
+        if (parts.Length < 3) return;
+        var name = parts[0].ToUpperInvariant();
+        if (!float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var speed)) speed = 0f;
+        if (!float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var durationMs)) durationMs = 0f;
+        var duration = Mathf.Max(0.05f, durationMs / 1000f);
+        var from = name.Contains("IN") && !name.Contains("OUT") ? -2.6f : 0f;
+        var to = name.Contains("OUT") ? -2.6f : 0f;
+        if (inOutRoutine != null) StopCoroutine(inOutRoutine);
+        inOutRoutine = StartCoroutine(InOutRoutine(from, to, duration, name.Contains("OUT")));
+        Debug.Log($"[stand] inout {name} speed={speed} duration={duration:0.00}s");
+    }
+
+    private IEnumerator InOutRoutine(float from, float to, float duration, bool leaving)
+    {
+        var start = baseOffset + new Vector3(from, 0f, 0f);
+        var end = baseOffset + new Vector3(to, 0f, 0f);
+        var elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            var t = Ease(Mathf.Clamp01(elapsed / duration), "easeInOutQuad");
+            characterRoot.localPosition = Vector3.LerpUnclamped(start, end, t);
+            yield return null;
+        }
+        characterRoot.localPosition = end;
+        if (leaving) characterRoot.gameObject.SetActive(false);
+        inOutRoutine = null;
+    }
+
+    private static float Ease(float t, string ease)
+    {
+        switch ((ease ?? "").ToLowerInvariant())
+        {
+            case "easeinquad": return t * t;
+            case "easeoutquad": return 1f - (1f - t) * (1f - t);
+            case "easeinoutquad": return t < 0.5f ? 2f * t * t : 1f - Mathf.Pow(-2f * t + 2f, 2f) / 2f;
+            case "easeinsine": return 1f - Mathf.Cos(t * Mathf.PI * 0.5f);
+            case "easeoutsine": return Mathf.Sin(t * Mathf.PI * 0.5f);
+            case "easeinoutsine": return -(Mathf.Cos(Mathf.PI * t) - 1f) / 2f;
+            default: return t;
+        }
+    }
+
+    private static float NormalizeAngle(float angle)
+    {
+        while (angle > 180f) angle -= 360f;
+        while (angle < -180f) angle += 360f;
+        return angle;
+    }
+
+    private static bool TryParseVector(string value, out Vector3 vector)
+    {
+        vector = default;
+        var parts = (value ?? "").Split(',');
+        if (parts.Length < 3) return false;
+        if (!float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var x) ||
+            !float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var y) ||
+            !float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var z))
+            return false;
+        vector = new Vector3(x, y, z);
+        return true;
     }
 
     // ------------------------------------------------------------------

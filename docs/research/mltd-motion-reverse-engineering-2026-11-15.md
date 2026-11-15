@@ -345,37 +345,70 @@ lineDurationMs = max(line.scriptMs, 200)
 现在该处为 2–3 帧（≈0.25–0.5 s）连续过渡。证据：
 `~/mltd-work/out/3d-stand/story-exit-time-001har-4000.mp4`、`story-exit-time-contact.png`。
 
-## 7. 仍与原生不一致的地方（2026-11-15 全量清点）
+## 7. 剧本演出层（ADV actor 命令）实现状态
 
-对 933 个剧本的 `CutRecord` 共 126,755 行做过命令统计，按出现次数与「是否已实现」列表如下。
-已实现：`actor_text`(7,501)、`actor_pose`(16,197)、`actor_facial`(22,618)、
-`actor_eye_blink`(43,316)、`actor_eye_direction`(12,941)、`actor_yes_no`(6,541)、
-`actor_cheek`(479)；`create_cut` / `play_cut` / `end_theater` 由剧场时间轴承担。
+对 933 个剧本的 `CutRecord` 共 126,755 行做过命令统计。表里「已实现」的语义都以反汇编为依据，
+不是猜的；标注 UNKNOWN 的地方写清为什么端上拿不到原值。
 
-| 命令 | 次数 | 现状 | 说明 |
+| 命令 | 次数 | 现状 | 原生语义 / 端上实现 |
 | --- | ---: | --- | --- |
-| `actor_visible_character` | 1,065 | 未实现 | 剧场固定单角色常驻；原生可隐藏/显示角色 |
-| `actor_camera_set_position_preset` | 925 | 未实现 | 取景用固定 `knees` + 0.72 缩放，不读剧本相机预设 |
-| `actor_character_set_position_preset` | 896 | 未实现 | 角色站位不变 |
-| `actor_reset_sway` | 802 | 未实现 | 3D 的 SwayManager 在跑，但不接受脚本重置 |
-| `actor_load_character` | 686 | 未实现 | 单角色单服装；不换人、不换衣 |
-| `actor_2d_bg` | 449 | 未实现 | 剧场背景为纯黑，未加载 `adv_bg2d_*` 背景资源 |
-| `actor_chara_dorotate` | 407 | 未实现 | 角色旋转/朝向变化 |
-| `actor_load_character_v3` | 251 | 未实现 | 同上 |
-| `actor_set_rotation` | 233 | 未实现 | 角色旋转 |
-| `actor_change_costume` | 210 | 未实现 | 换装 |
-| `actor_fade_screen` | 136 | 未实现 | 画面淡入淡出 |
-| `actor_doscale_2dbg` / `actor_domove_2dbg` / `actor_domove_p2dbg` / `actor_visible_2dbg` | 103/94/50/37 | 未实现 | 仅用于 2D 背景演出 |
-| `actor_in_out` | 99 | 未实现 | 进场/退场动画（`in_left/right/front`、`out_*` 状态已在控制器里） |
-| `actor_sit_pose` | 95 | 未实现 | 坐姿（`com_sit_*` 剪辑库里有，但剧情包未导出） |
-| `actor_wait` | 76 | 未实现 | 时间轴本身按帧推进，未显式处理 wait |
-| `actor_set_position` | 63 | 未实现 | 位置 |
-| `actor_lip` | 30 | 未实现 | 手动口型覆盖（fhout 包络已覆盖绝大多数） |
-| `actor_sound` | 9 | 未实现 | 音效 |
+| `actor_text` | 7,501 | 已实现 | `actor_text` 帧窗口驱动字幕与语音（§6.4） |
+| `actor_pose` | 16,197 | 已实现 | `SetPose(loopDirect)` → `_str/_swt/_act` 进入 + `_lop` 循环（§3、§6） |
+| `actor_facial` | 22,618 | 已实现 | `SetExpression(facialMenu)` 透传 0..27 |
+| `actor_eye_blink` | 43,316 | 已实现 | `SetEyeMode(Close/Open/Blink, isInterpolate:1)`（`EyeBlinkActor.onEnter`） |
+| `actor_eye_direction` | 12,941 | 已实现 | `SetEyeDirectionByRate(h,v)`；99% 的跨度就是 1 帧 |
+| `actor_yes_no` | 6,541 | 已实现 | `_yes/_noo` 作为状态播完回 `_loop`（§6.3） |
+| `actor_cheek` | 479 | 已实现 | `SetCheek(level)` |
+| `actor_2d_bg` | 449 | 已实现 | `adv_bg2d_*` 贴图导出为 JPEG（本机缓存 88/187 张），Unity 内贴在相机子节点的 Quad 上，随取景自动铺满 |
+| `actor_visible_character` | 1,065 | 已实现 | `SetActive` 开关角色（`VisibleCharacterActor.onEnter`） |
+| `actor_chara_dorotate` | 407 | 已实现 | `SetPosition/SetAngle` 逐帧插值（`SetRotationActor`/`CharaDoRotateActor`），端上用度数 + 缓动 |
+| `actor_set_rotation` | 233 | 已实现 | 同上，瞬时版 |
+| `actor_set_position` | 63 | 已实现 | `SetPosition`，端上按米制偏移 |
+| `actor_reset_sway` | 802 | 已实现 | `ResetSway` 清 SwayManager 的累积状态与力（`ResetSwayActor.onEnter` → `chr.ResetSway`） |
+| `actor_sit_pose` | 95 | 已实现 | 坐姿是姿势主数据的 `sit` 变体：端上把 `actor_sit_pose` 解析成 `com_sit_*` 的 pose 事件（`_str → _lop`） |
+| `actor_fade_screen` | 136 | 已实现 | `black_fadein_ex_ui` / `black_fadeout_ex_ui` 等 → 端上全屏遮罩按脚本帧淡入淡出 |
+| `actor_lip` | 30 | 已实现 | 原生四种：`Mumble` / `Open` / `Close` / `Fomalhout`（`LipActor.onEnter` + `setFomalHautSuspend` + `SetLipMode`）；端上 `Close` 闭嘴、其余走正式口型循环 |
+| `actor_wait` | 76 | 已实现 | 纯时间轴等待，剧本帧已经在推进 |
+| `actor_in_out` | 99 | **近似** | 原生用控制器的 `in_left/in_right/in_front`、`run_in_*`、`out_*` 状态；这些状态在本机缓存里只有占位剪辑（`dmy_com_in_left` 等），真实剪辑不随包下发。端上按名字做 ±2.6 m 的侧向进出插值 |
+| `actor_camera_set_position_preset` | 925 | **近似** | 原生 `CameraSetTransformPresetActor.onEnter` 查 5 个预设名：`solo` / `duo` / `trio` / `solo_sit` / `live_result`（`script.json` 字面量 0x98DD4C8/0x98C6EE8/0x98E1298/0x98DD4E0/0x98D3198），数值从静态参数表读，不在客户端包里 → 端上只按预设改机位距离（solo ×1.0、duo ×1.35、trio ×1.65、solo_sit ×0.9、live_result ×1.2） |
+| `actor_character_set_position_preset` | 896 | **近似** | 原生 `CharacterSetPositionPresetActor.onEnter` 按预设名 + `locationId`(1..3) 给每个角色设置位置/朝向；同样依赖不随包下发的参数表。端上单角色常驻中心，只记日志 |
+| `actor_load_character` (+`_v3`) | 686+251 | **单角色近似** | 原生会加载/替换 cut 里的角色；端上只有一个 stand，忽略换人请求（同角色时保持） |
+| `actor_change_costume` | 210 | **单角色近似** | 原生换装；端上只记日志（model3d 包每个角色只有 `pr001`/`ss003`，剧情里 setId 与包内 outfit 不是同一套编号） |
+| `actor_sound` | 9 | UNKNOWN | 原生从 ADX2 cue sheet 播音（`bgm_commu`/`city_night`）；本机 `ADX2/General/bgm_commu.acb` 里只有 `salmon_comu` 一条流，`city_night`/`tv_show` 未缓存 → 端上只记 cue 名 |
+| `actor_doscale_2dbg` / `actor_domove_2dbg` / `actor_domove_p2dbg` / `actor_visible_2dbg` | 103/94/50/37 | UNKNOWN | 2D 背景层的前景/局部演出（`Set2dBGActor` 里对 sprite 尺寸 1022×720 / 720×258 与缩放）；端上只有整张背景，未实现前景 2D 图层 |
 
-这些都是「把整段剧情原样演出来」需要的，但不影响当前**单角色 3D 立绘 + 台词 + 表情/眼睛/口型/
-日常姿势**这条主线的忠实度：它们属于剧本演出层（相机、背景、换装、多人调度），
-端上需要额外的资源与系统支持，不在这一轮范围内。
+### 7.2 验证记录（2026-11-15 模拟器）
+
+- 背景：`job_story_001har_4000`（`bg2d_g0149`）—— 日志 `[stand] background bg2d_g0149.jpg 1024x1024`，
+  截图 `~/mltd-work/out/3d-stand/bg-001har-4000-v2.png`（背景铺满、随取景自适应，字幕卡正常）。
+  踩坑：① `Unlit/Texture` 被 Player 剥离 → `Shader.Find` 返回 null → `new Material(null)` 抛
+  `Value cannot be null`；已在 `iOSExport.EnsureAlwaysIncludedShaders()` 把
+  `Unlit/Texture`、`Sprites/Default` 写进 `GraphicsSettings.m_AlwaysIncludedShaders`。
+  ② 背景 Quad 必须挂到相机的子节点（`localPosition=(0,0,24)`）并按 FOV 算尺寸，挂在世界坐标
+  会在取景变化后盖不满屏幕。③ SwiftUI 侧 `scaledToFill` 背景要用 `GeometryReader` 约束 +
+  `clipped()`，否则会撑大 `ZStack` 把字幕挤出屏幕。
+- 可见性 / 进出场 / 淡入淡出：`job_story_006mak_5000` —— 日志 `[stand] visible False`、
+  `[stand] visible True`、`[stand] inout RUN_IN_RIGHT speed=0.8 duration=2.12s`；
+  `job_story_006mak_2000` 第 2 句（`black_fadein_ex_ui` 0→0.5s、`black_fadeout_ex_ui` 2.0→2.25s）
+  录像 `~/mltd-work/out/3d-stand/story-fade-006mak-contact.png` 可见「正常画面 → 全黑 → 恢复」，
+  与剧本帧一致；同一话里也验证了按故事加载不同角色（006mak 真壁瑞希，绿色外套）。
+- 尚未有素材可验证的项：`sits`（这 6 话没有坐姿事件）、`lips`（`actor_lip` 只在 26 处出现）、
+  `sounds`（cue 音频不在本机缓存）、多角色（模型包每个角色只有一套 stand）。
+
+### 7.1 这轮新拿到的反汇编事实（2026-11-15 补）
+
+- 相机预设名（`script.json` 解 slot）：`0x98DD4C8='solo'`、`0x98C6EE8='duo'`、`0x98E1298='trio'`、
+  `0x98DD4E0='solo_sit'`、`0x98D3198='live_result'`。
+- `CameraSetTransformPresetActor.onEnter`（0x37672F4）对预设名做 5 路字符串比较，选出 6 个 float
+  （相机位置 xyz + 欧拉 xyz），调 `set_position` / `LookAt` / `UpdateFov`。
+- `CharacterSetPositionPresetActor.onEnter`（0x3769278）遍历 cut 角色，按预设名分支 + `locationId`
+  （`*(a1+64)` 的 1/2/3）调 `SetPosition`(0x38046B0) / `SetAngle`(0x3804738)。
+- `LipActor.onEnter`（0x3768190）：`Mumble`/`Open`/`Close` → `setFomalHautSuspend(1)`，
+  `Fomalhout` → `setFomalHautSuspend(0)`，然后 `SetLipMode`（0x381B438）。
+- `Set2dBGActor.onEnter`（0x376B31C）：把两张 sprite 尺寸分别设为 1022×720 与 720×258，
+  再按静态参数表缩放/位移（属于 2D 演出层）。
+- 背景贴图：`export_backgrounds.py` 把 `adv_bg2d_*` 的 Texture2D 解成 JPEG(q82)，88 张 14 MB；
+  其余 99 个 id 只在 CDN，未缓存。
 
 已知的其它近似：
 

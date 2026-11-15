@@ -25,6 +25,7 @@ public static class iOSExport
     public static void BuildSimulator()
     {
         EnsureStandScene();
+        EnsureAlwaysIncludedShaders();
         ConfigurePlayer();
         PlayerSettings.iOS.sdkVersion = iOSSdkVersion.SimulatorSDK;
         // Unity 默认给模拟器出 x86_64，但 Apple Silicon 上的 simulator 要 arm64；
@@ -39,6 +40,44 @@ public static class iOSExport
         ConfigurePlayer();
         PlayerSettings.iOS.sdkVersion = iOSSdkVersion.DeviceSDK;
         BuildInternal(OutputDir, "DEVICE");
+    }
+
+    /// <summary>
+    /// The ADV background quad is created at runtime from `Unlit/Texture`. Unity strips
+    /// shaders that no scene references, so the shader has to be listed as always
+    /// included or `Shader.Find` returns null inside the player and the backdrop throws.
+    /// </summary>
+    private static void EnsureAlwaysIncludedShaders()
+    {
+        var assets = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/GraphicsSettings.asset");
+        if (assets == null || assets.Length == 0)
+        {
+            Debug.LogWarning("GRAPHICS SETTINGS: asset not found");
+            return;
+        }
+        var serialized = new SerializedObject(assets[0]);
+        var shaders = serialized.FindProperty("m_AlwaysIncludedShaders");
+        if (shaders == null)
+        {
+            Debug.LogWarning("GRAPHICS SETTINGS: m_AlwaysIncludedShaders missing");
+            return;
+        }
+        foreach (var name in new[] { "Unlit/Texture", "Sprites/Default" })
+        {
+            var shader = Shader.Find(name);
+            if (shader == null) continue;
+            var found = false;
+            for (var i = 0; i < shaders.arraySize; i++)
+            {
+                if (shaders.GetArrayElementAtIndex(i).objectReferenceValue == shader) { found = true; break; }
+            }
+            if (found) continue;
+            shaders.InsertArrayElementAtIndex(shaders.arraySize);
+            shaders.GetArrayElementAtIndex(shaders.arraySize - 1).objectReferenceValue = shader;
+            Debug.Log($"GRAPHICS SETTINGS: always include {name}");
+        }
+        serialized.ApplyModifiedProperties();
+        AssetDatabase.SaveAssets();
     }
 
     private static void BuildInternal(string outputDir, string tag)

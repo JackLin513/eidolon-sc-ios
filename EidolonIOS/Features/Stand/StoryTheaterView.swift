@@ -28,6 +28,18 @@ struct StoryTheaterView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
+            if let player {
+                // `actor_2d_bg`: the authored ADV background sits behind the stand.
+                // Constrain it to the screen: a `scaledToFill` image inside a ZStack
+                // otherwise reports its own aspect-fitted size and shifts the subtitles.
+                GeometryReader { geo in
+                    StoryStageBackground(player: player, root: Self.root())
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                }
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+            }
             if let renderer {
                 // The subtitle card owns the bottom third of the screen. Scale the
                 // stand into the top two thirds instead of letting the card cover her
@@ -36,6 +48,12 @@ struct StoryTheaterView: View {
                     .scaleEffect(0.72, anchor: .top)
                     .ignoresSafeArea()
                     .opacity(audioReady ? 1 : 0)
+                    .allowsHitTesting(false)
+            }
+            // `actor_fade_screen`: black/white fade over the whole scene.
+            if let player {
+                StoryStageFade(player: player)
+                    .ignoresSafeArea()
                     .allowsHitTesting(false)
             }
             VStack(spacing: 12) {
@@ -124,6 +142,51 @@ struct StoryTheaterView: View {
         made.setViewport(UIScreen.main.bounds.size)
         renderer = made
         made.prepare(assets)
+    }
+}
+
+/// Observes the player for the background id: the theatre view owns the player as
+/// `@State`, so it has to hand it to a child that declares the dependency.
+private struct StoryStageBackground: View {
+    @ObservedObject var player: StoryPlayer
+    let root: URL?
+
+    var body: some View {
+        if let name = player.backgroundID {
+            StoryBackgroundImage(name: name, root: root)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+        }
+    }
+}
+
+/// `actor_fade_screen` overlay.
+private struct StoryStageFade: View {
+    @ObservedObject var player: StoryPlayer
+
+    var body: some View {
+        (player.fadeIsBlack ? Color.black : Color.white)
+            .opacity(player.fadeAlpha)
+            .allowsHitTesting(false)
+    }
+}
+
+/// One ADV background from the story pack.
+private struct StoryBackgroundImage: View {
+    let name: String
+    let root: URL?
+
+    var body: some View {
+        if let root,
+           let image = UIImage(contentsOfFile: root.appendingPathComponent("backgrounds/\(name).jpg").path) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .clipped()
+                .transition(.opacity)
+        } else {
+            Color.black
+        }
     }
 }
 
@@ -230,6 +293,97 @@ struct Story: Decodable {
         let v: Int
     }
 
+    /// `actor_visible_character`: hide/show a staged character.
+    struct Visibility: Decodable {
+        let ms: Int
+        let idol: String?
+        let on: Bool
+    }
+
+    /// `actor_camera_set_position_preset`: named camera setup (`solo`, …).
+    struct CameraPreset: Decodable {
+        let ms: Int
+        let preset: String
+    }
+
+    /// `actor_character_set_position_preset`: named floor position for one character.
+    struct PlacePreset: Decodable {
+        let ms: Int
+        let idol: String?
+        let preset: String
+        let location: Int?
+    }
+
+    /// `actor_2d_bg`: the authored ADV background, optionally faded in.
+    struct Background: Decodable {
+        let ms: Int
+        let id: String
+        let fadeIn: Bool?
+        let fadeOut: Bool?
+    }
+
+    /// `actor_load_character` / `actor_change_costume`.
+    struct LoadCharacter: Decodable {
+        let ms: Int
+        let idol: String?
+        let model: String?
+        let costume: String?
+        let setId: Int?
+    }
+
+    /// `actor_chara_dorotate` / `actor_set_rotation`: rotation in degrees.
+    struct Rotation: Decodable {
+        let ms: Int
+        let endMs: Int?
+        let idol: String?
+        let x: Double
+        let y: Double
+        let z: Double
+        let ease: String?
+        let mode: String?
+    }
+
+    /// `actor_set_position`: explicit stage offset in metres.
+    struct Offset: Decodable {
+        let ms: Int
+        let endMs: Int?
+        let idol: String?
+        let x: Double
+        let y: Double
+        let z: Double
+    }
+
+    /// `actor_fade_screen`: `black_fadein_ex_ui` / `black_fadeout_ex_ui` etc.
+    struct Fade: Decodable {
+        let ms: Int
+        let endMs: Int?
+        let type: String
+    }
+
+    /// `actor_in_out`: walk in from / out to the side of the stage.
+    struct InOut: Decodable {
+        let ms: Int
+        let endMs: Int?
+        let idol: String?
+        let name: String
+        let speed: Double?
+    }
+
+    /// `actor_lip`: `Close` or `Fomalhout`.
+    struct LipMode: Decodable {
+        let ms: Int
+        let mode: String
+    }
+
+    /// `actor_sound`: BGM / ambience cue from the game's ADX2 cue sheets.
+    struct SoundCue: Decodable {
+        let ms: Int
+        let kind: String
+        let op: String
+        let sheet: String
+        let name: String
+    }
+
     struct Line: Decodable {
         let cut: String
         let speaker: String
@@ -249,6 +403,29 @@ struct Story: Decodable {
         let cheeks: [Cheek]
         let eyes: [Eye]?
         let gazes: [Gaze]?
+        let visibility: [Visibility]?
+        let cameras: [CameraPreset]?
+        let places: [PlacePreset]?
+        let backgrounds: [Background]?
+        let loads: [LoadCharacter]?
+        let costumes: [LoadCharacter]?
+        let rotations: [Rotation]?
+        let offsets: [Offset]?
+        let fades: [Fade]?
+        let inouts: [InOut]?
+        let sits: [Sit]?
+        let lips: [LipMode]?
+        let sounds: [SoundCue]?
+    }
+
+    /// `actor_sit_pose`: sits are resolved into pose events by the pack builder; the raw
+    /// command is kept so the log can show why the pose changed.
+    struct Sit: Decodable {
+        let ms: Int
+        let endMs: Int?
+        let idol: String?
+        let pose: String
+        let direct: Bool?
     }
 
     let id: String
@@ -280,6 +457,8 @@ final class StoryPlayer: ObservableObject {
     private var gestureCursor = 0
     private var cheekCursor = 0
     private var eyeCursor = 0
+    private var stagingCursor = [String: Int]()
+    private var activeFade: (from: Double, to: Double, start: Int, end: Int)?
     private var gazeCursor = 0
     private var lineDurationMs = 0
     private var paused = false
@@ -297,6 +476,12 @@ final class StoryPlayer: ObservableObject {
     }
     @Published private(set) var progress = ""
     @Published private(set) var isPlaying = false
+
+    /// Scene staging output consumed by the view: the ADV background and screen fade.
+    @Published private(set) var backgroundID: String?
+    @Published private(set) var fadeAlpha: Double = 0
+    @Published private(set) var fadeIsBlack = true
+
     #if DEBUG
     @Published private(set) var debugPose = "-"
     @Published private(set) var debugGesture = "-"
@@ -399,6 +584,7 @@ final class StoryPlayer: ObservableObject {
         cheekCursor = 0
         eyeCursor = 0
         gazeCursor = 0
+        stagingCursor = [:]
         // Only lines with an authored voice move the mouth. The producer / narration
         // lines (`speaker == "p"`) have no recording, and the game keeps the character
         // still while they are on screen — talking along with them is what made the
@@ -510,6 +696,157 @@ final class StoryPlayer: ObservableObject {
             renderer?.setGaze(h: gaze.h, v: gaze.v)
             Self.log.info("gaze \(gaze.h, privacy: .public),\(gaze.v, privacy: .public) @\(gaze.ms)ms")
             gazeCursor += 1
+        }
+        dispatchStaging(elapsedMs: elapsedMs, line: line)
+    }
+
+    /// The remaining ADV actor commands: background, visibility, rotation, offset,
+    /// screen fade, lip mode, in/out and sound cues.
+    private func dispatchStaging(elapsedMs: Int, line: Story.Line) {
+        var cursor = stagingCursor["background", default: 0]
+        let backgrounds = line.backgrounds ?? []
+        while cursor < backgrounds.count, backgrounds[cursor].ms <= elapsedMs {
+            let event = backgrounds[cursor]
+            let url = root.appendingPathComponent("backgrounds/\(event.id).jpg")
+            backgroundID = FileManager.default.fileExists(atPath: url.path) ? event.id : nil
+            renderer?.setBackground(fileURL: backgroundID == nil ? nil : url)
+            Self.log.info("background \(event.id, privacy: .public) @\(event.ms)ms")
+            cursor += 1
+        }
+        stagingCursor["background"] = cursor
+
+        cursor = stagingCursor["camera", default: 0]
+        let cameras = line.cameras ?? []
+        while cursor < cameras.count, cameras[cursor].ms <= elapsedMs {
+            let event = cameras[cursor]
+            renderer?.setCameraPreset(event.preset)
+            Self.log.info("camera preset \(event.preset, privacy: .public) @\(event.ms)ms")
+            cursor += 1
+        }
+        stagingCursor["camera"] = cursor
+
+        cursor = stagingCursor["place", default: 0]
+        let places = line.places ?? []
+        while cursor < places.count, places[cursor].ms <= elapsedMs {
+            let event = places[cursor]
+            renderer?.setPlacePreset(event.preset)
+            Self.log.info("place preset \(event.preset, privacy: .public) location=\(event.location ?? 0) @\(event.ms)ms")
+            cursor += 1
+        }
+        stagingCursor["place"] = cursor
+
+        cursor = stagingCursor["load", default: 0]
+        let loads = line.loads ?? []
+        while cursor < loads.count, loads[cursor].ms <= elapsedMs {
+            let event = loads[cursor]
+            Self.log.info("load character \(event.idol ?? "-", privacy: .public) model=\(event.model ?? "-", privacy: .public) costume=\(event.costume ?? "-", privacy: .public)")
+            cursor += 1
+        }
+        stagingCursor["load"] = cursor
+
+        cursor = stagingCursor["costume", default: 0]
+        let costumes = line.costumes ?? []
+        while cursor < costumes.count, costumes[cursor].ms <= elapsedMs {
+            let event = costumes[cursor]
+            Self.log.info("costume \(event.idol ?? "-", privacy: .public) set=\(event.setId ?? 0) @\(event.ms)ms")
+            cursor += 1
+        }
+        stagingCursor["costume"] = cursor
+
+        cursor = stagingCursor["visibility", default: 0]
+        let visibility = line.visibility ?? []
+        while cursor < visibility.count, visibility[cursor].ms <= elapsedMs {
+            let event = visibility[cursor]
+            renderer?.setVisible(event.on)
+            Self.log.info("visible \(event.on, privacy: .public) @\(event.ms)ms")
+            cursor += 1
+        }
+        stagingCursor["visibility"] = cursor
+
+        cursor = stagingCursor["rotation", default: 0]
+        let rotations = line.rotations ?? []
+        while cursor < rotations.count, rotations[cursor].ms <= elapsedMs {
+            let event = rotations[cursor]
+            if let endMs = event.endMs, endMs > event.ms {
+                renderer?.rotateCharacter(
+                    x: event.x, y: event.y, z: event.z,
+                    durationMs: endMs - event.ms, ease: event.ease ?? "linear"
+                )
+            } else {
+                renderer?.setCharacterRotation(x: event.x, y: event.y, z: event.z)
+            }
+            Self.log.info("rotate \(event.x, privacy: .public),\(event.y, privacy: .public),\(event.z, privacy: .public) @\(event.ms)ms")
+            cursor += 1
+        }
+        stagingCursor["rotation"] = cursor
+
+        cursor = stagingCursor["offset", default: 0]
+        let offsets = line.offsets ?? []
+        while cursor < offsets.count, offsets[cursor].ms <= elapsedMs {
+            let event = offsets[cursor]
+            renderer?.setCharacterOffset(x: event.x, y: event.y, z: event.z)
+            cursor += 1
+        }
+        stagingCursor["offset"] = cursor
+
+        cursor = stagingCursor["fade", default: 0]
+        let fades = line.fades ?? []
+        while cursor < fades.count, fades[cursor].ms <= elapsedMs {
+            let event = fades[cursor]
+            let fadingOut = event.type.contains("fadeout")
+            fadeIsBlack = !event.type.lowercased().contains("white")
+            activeFade = (
+                from: fadingOut ? 0 : 1,
+                to: fadingOut ? 1 : 0,
+                start: event.ms,
+                end: max(event.endMs ?? event.ms, event.ms + 1)
+            )
+            Self.log.info("fade \(event.type, privacy: .public) @\(event.ms)ms")
+            cursor += 1
+        }
+        stagingCursor["fade"] = cursor
+
+        cursor = stagingCursor["lip", default: 0]
+        let lips = line.lips ?? []
+        while cursor < lips.count, lips[cursor].ms <= elapsedMs {
+            let event = lips[cursor]
+            renderer?.setLipMode(event.mode)
+            Self.log.info("lip mode \(event.mode, privacy: .public) @\(event.ms)ms")
+            cursor += 1
+        }
+        stagingCursor["lip"] = cursor
+
+        cursor = stagingCursor["inout", default: 0]
+        let inouts = line.inouts ?? []
+        while cursor < inouts.count, inouts[cursor].ms <= elapsedMs {
+            let event = inouts[cursor]
+            renderer?.playInOut(
+                name: event.name,
+                speed: event.speed ?? 0,
+                durationMs: max((event.endMs ?? event.ms) - event.ms, 1)
+            )
+            Self.log.info("inout \(event.name, privacy: .public) @\(event.ms)ms")
+            cursor += 1
+        }
+        stagingCursor["inout"] = cursor
+
+        cursor = stagingCursor["sound", default: 0]
+        let sounds = line.sounds ?? []
+        while cursor < sounds.count, sounds[cursor].ms <= elapsedMs {
+            let event = sounds[cursor]
+            // The game streams BGM from its own ADX2 cue sheets; the pack only carries
+            // the cue name, so log it until the cue audio is extracted.
+            Self.log.info("sound \(event.kind, privacy: .public)/\(event.op, privacy: .public) \(event.sheet, privacy: .public):\(event.name, privacy: .public) @\(event.ms)ms")
+            cursor += 1
+        }
+        stagingCursor["sound"] = cursor
+
+        if let fade = activeFade {
+            let span = Double(max(fade.end - fade.start, 1))
+            let t = min(max(Double(elapsedMs - fade.start) / span, 0), 1)
+            let eased = t * t * (3 - 2 * t)
+            fadeAlpha = fade.from + (fade.to - fade.from) * eased
+            if t >= 1 { activeFade = nil }
         }
     }
 

@@ -188,6 +188,33 @@ public sealed class EidolonStandFace : MonoBehaviour
         Debug.Log($"[stand] lip envelope {values.Length} samples @{fps}fps");
     }
 
+    /// <summary>
+    /// `actor_lip`: the script explicitly sets the lip mode. `Close` closes the mouth
+    /// (LipActor -> SetLipMode(Close)); `Fomalhout` is the formal mouth that runs the
+    /// authored fhout envelope (or the fallback cycle when the line has no envelope).
+    /// </summary>
+    public void SetScriptLipMode(string mode)
+    {
+        if (face == null) return;
+        switch ((mode ?? "").ToLowerInvariant())
+        {
+            case "close":
+                speaking = false;
+                lipEnvelope = null;
+                face.ClearMouthOpen();
+                face.SetLip(54);
+                break;
+            case "fomalhout":
+                lipEnvelope = null;
+                face.ClearMouthOpen();
+                speaking = true;
+                break;
+            default:
+                Debug.LogWarning($"[stand] unknown lip mode {mode}");
+                break;
+        }
+    }
+
     private void Update()
     {
         if (face == null) return;

@@ -221,6 +221,74 @@ final class UnityCharacterRenderer: CharacterRenderer {
         UnityRuntime.shared.send("SetLipEnvelope", message)
     }
 
+    // MARK: - Scene staging (ADV actor commands)
+
+    /// `actor_visible_character`: hide or show the loaded character.
+    func setVisible(_ visible: Bool) {
+        guard loaded else { return }
+        Self.log.debug("3D visible: \(visible, privacy: .public)")
+        UnityRuntime.shared.send("SetVisible", visible ? "1" : "0")
+    }
+
+    /// `actor_2d_bg`: the scene's ADV background image (nil hides it).
+    func setBackground(fileURL: URL?) {
+        guard loaded else { return }
+        Self.log.debug("3D background: \(fileURL?.lastPathComponent ?? "-", privacy: .public)")
+        UnityRuntime.shared.send("SetBackground", fileURL?.path ?? "")
+    }
+
+    /// `actor_set_rotation` / `actor_chara_dorotate` without animation.
+    func setCharacterRotation(x: Double, y: Double, z: Double) {
+        guard loaded else { return }
+        UnityRuntime.shared.send("SetCharacterRotation", String(format: "%.3f,%.3f,%.3f", x, y, z))
+    }
+
+    /// `actor_chara_dorotate`: animate the character rotation over the cut frames.
+    func rotateCharacter(x: Double, y: Double, z: Double, durationMs: Int, ease: String) {
+        guard loaded else { return }
+        Self.log.debug("3D rotate: \(y, privacy: .public)deg over \(durationMs, privacy: .public)ms")
+        UnityRuntime.shared.send(
+            "RotateCharacter",
+            String(format: "%.3f,%.3f,%.3f,%.3f,%@", x, y, z, Double(durationMs) / 1000, ease)
+        )
+    }
+
+    /// `actor_set_position`: explicit stage offset in metres.
+    func setCharacterOffset(x: Double, y: Double, z: Double) {
+        guard loaded else { return }
+        UnityRuntime.shared.send("SetCharacterOffset", String(format: "%.3f,%.3f,%.3f", x, y, z))
+    }
+
+    /// `actor_reset_sway`: drop the accumulated sway state.
+    func resetSway() {
+        guard loaded else { return }
+        UnityRuntime.shared.send("ResetSway", "1")
+    }
+
+    /// `actor_lip`: `Close` (mute) or `Fomalhout` (formal mouth).
+    func setLipMode(_ mode: String) {
+        guard loaded else { return }
+        UnityRuntime.shared.send("SetLipMode", mode)
+    }
+
+    /// `actor_camera_set_position_preset`: shot distance per ADV camera setup.
+    func setCameraPreset(_ preset: String) {
+        guard loaded else { return }
+        UnityRuntime.shared.send("SetCameraPreset", preset)
+    }
+
+    /// `actor_character_set_position_preset`: one stand means the character stays put.
+    func setPlacePreset(_ preset: String) {
+        guard loaded else { return }
+        UnityRuntime.shared.send("SetPlacePreset", preset)
+    }
+
+    /// `actor_in_out`: walk in or out of the stage.
+    func playInOut(name: String, speed: Double, durationMs: Int) {
+        guard loaded else { return }
+        UnityRuntime.shared.send("PlayInOut", String(format: "%@,%.3f,%d", name, speed, durationMs))
+    }
+
     func setViewport(_ size: CGSize) {
         container.frame = CGRect(origin: .zero, size: size)
         unityView?.frame = container.bounds
