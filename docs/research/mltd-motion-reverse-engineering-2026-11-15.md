@@ -555,9 +555,18 @@ out-of-scope（Live 舞台、gallery、minigame 等不在剧情播放路径上�
    注册表里存在参考骨解析失败的条目，`referTransform` 为空。现在 `ExplictUpdate` 跳过
    `myTransform`/`referTransform`（以及 TITE 类型 4/6/7 的 `referTransform2`）为空的条目并只报一次：
    `[calc] skipping calc-bone entries with missing transforms: my=KUBI_RT__twist_x0 refer=KUBI`。
-   **仍未解的忠实度问题**：`KUBI` 这条参考骨在端上 rig 里查不到（其余条目都正常），
-   意味着颈部/头部 twist 的那几条 calc 目前被跳过；下次要查 `JointBodyHead` 的 head 层绑定
-   （native `GetComponentsInChildren<Transform>(true)` 是否覆盖到 `obj_head` 之外的节点）。
+   根因（已查清）：`CalcBone.Awake` 在 `JointBodyHead` 装配**之前**跑。原生的顺序是先
+   `JointBodyHeadAssembly` 把 head 侧骨骼 graft 进 body 的 `KUBI/ATAMA`（旧 body 骨改名
+   `KUBI___`、旧 head 侧对象销毁），再让 `CalcBone.Awake` 用 `GetComponentsInChildren<Transform>(true)`
+   建名字表，所以它的 `KUBI` 一定能解析；端上先建表时抓到的是即将被销毁的旧对象，
+   装配完成后这些引用变成 Unity 的「fake null」，于是 `KUBI_RT__twist_x0` 这类 entry
+   的 `referTransform` 为空，颈部/头部 twist 的 calc 被静默跳过。
+   修法：`CalcBoneNative.RebindReferences()` 只按名字**重新解析引用**（保留 `initMyRot`/
+   `initMyPosition`/`initRefRot` 等 bind-pose 采样，不重跑 `Awake`），在使用到空引用时按 1 秒
+   冷却重试一次；修复后日志：`[calc] re-resolved 2 stale calc-bone reference(s) after the
+   joint-body-head assembly`（正是 `KUBI_RT__twist_x0` / `KUBI_RT__twist_z0` 这两条）。
+   效果：同一话同一句截图对比（左右为修复前后），头部朝向/发束落点不同 —— 颈部 twist
+   现在真的被算进去了。
 2. `Tag hair_side/hair_yoko/wing_L0/OPAI_L0/A/C is not defined` 每帧警告。
    原生用 `GameObject.CompareTag` 读这些服装/部件标记，但 spike 工程的 TagManager 里没有这些 tag，
    Unity 每次调用都会警告且结果恒为 false。改为按节点名匹配（`name == token` 或前缀），

@@ -149,6 +149,7 @@ public sealed class CalcBoneNative : MonoBehaviour
         // Native builds a name -> Transform map: vtable set_Item with
         // (name, transform), get_Item for lookups. Duplicate names therefore
         // resolve to the last transform in GetComponentsInChildren order.
+        bindRoot = root;
         var byName = new Dictionary<string, Transform>();
         var all = root.GetComponentsInChildren<Transform>(true);
         foreach (var tr in all) byName[tr.name] = tr;
@@ -388,7 +389,10 @@ public sealed class CalcBoneNative : MonoBehaviour
     /// the ALGO_TYPE case writes the bone's localRotation (types 0/1/2/4/6/7),
     /// world rotation (type 3), or localPosition (type 5).
     /// </summary>
-    private bool reportedMissingTransform;
+    private Transform bindRoot;
+    private readonly HashSet<string> reportedUnresolved = new HashSet<string>();
+    private float nextRebindTime;
+    private bool reportedRebind;
 
     public void ExplictUpdate()
     {
@@ -396,26 +400,26 @@ public sealed class CalcBoneNative : MonoBehaviour
         {
             var info = m_infoList[i];
 
-            // Defensive: a registration whose reference Transform was torn down
-            // mid-session (or a path that resolved in one rig but not the other)
-            // used to throw once per frame here. Native has no such case because
-            // CalcBone never outlives its skeleton; the port can, so skip and
-            // report once instead of spamming the console.
-            if (info.myTransform == null || info.referTransform == null)
+            // "Fake null": Unity reports a destroyed/replaced Transform as null.
+            // The native Awake binds after the joint-body-head assembly has grafted
+            // the head bones, so its names always resolve; a port that binds first
+            // (or that lives through a rebuild) can hold stale references. Re-resolve
+            // by name once, then only skip what is genuinely absent.
+            if (!HasResolvedTransforms(info))
             {
-                if (!reportedMissingTransform)
+                // Cheap cooldown: the assembly happens once per character, so a
+                // one-second retry cadence settles immediately without rebuilding
+                // the name map on every frame.
+                if (Time.unscaledTime >= nextRebindTime)
                 {
-                    reportedMissingTransform = true;
-                    Debug.LogWarning("[calc] skipping calc-bone entries with missing transforms: my="
-                        + (info.myPath ?? "<null>") + " refer=" + (info.referPath ?? "<null>"));
+                    nextRebindTime = Time.unscaledTime + 1f;
+                    RebindReferences();
                 }
-                continue;
-            }
-            // TITE types (4/6/7) read a second reference bone.
-            if (info.type == AlgoType.TITE_FRONT_ROT || info.type == AlgoType.TITE_BACK_ROT_YZ
-                || info.type == AlgoType.TITE_BACK_ROT_X)
-            {
-                if (info.referTransform2 == null) continue;
+                if (!HasResolvedTransforms(info))
+                {
+                    ReportUnresolved(info);
+                    continue;
+                }
             }
 
             var curRefRot = info.referTransform.localRotation;
@@ -1116,6 +1120,86 @@ public sealed class CalcBoneNative : MonoBehaviour
     /// Only reachable on malformed rigs; the shipped models always contain the
     /// named bones.
     /// </summary>
+    private static bool HasResolvedTransforms(CalcBoneInfo info)
+    {
+        if (info.myTransform == null || info.referTransform == null) return false;
+        if (info.type == AlgoType.TITE_FRONT_ROT || info.type == AlgoType.TITE_BACK_ROT_YZ
+            || info.type == AlgoType.TITE_BACK_ROT_X)
+        {
+            return info.referTransform2 != null;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Re-resolves every registered entry against the current hierarchy (names
+    /// only — the bind-pose captures such as initMyRot stay untouched, so this is
+    /// NOT a re-bind). Mirrors what the native Awake would see if it ran after the
+    /// joint-body-head graft instead of before it.
+    /// </summary>
+    public void RebindReferences()
+    {
+        var root = bindRoot != null ? bindRoot : transform;
+        if (root == null) return;
+        var byName = new Dictionary<string, Transform>(StringComparer.Ordinal);
+        var all = root.GetComponentsInChildren<Transform>(true);
+        foreach (var tr in all) byName[tr.name] = tr;
+
+        var recovered = 0;
+        for (var i = 0; i < m_infoList.Count; i++)
+        {
+            var info = m_infoList[i];
+            if (info.myTransform == null && byName.TryGetValue(info.myPath ?? string.Empty, out var mine))
+            {
+                info.myTransform = mine;
+                recovered++;
+            }
+            if (info.referTransform == null && byName.TryGetValue(info.referPath ?? string.Empty, out var refer))
+            {
+                info.referTransform = refer;
+                recovered++;
+            }
+            if (info.referTransform2 == null && !string.IsNullOrEmpty(info.referPath2)
+                && byName.TryGetValue(info.referPath2, out var refer2))
+            {
+                info.referTransform2 = refer2;
+                recovered++;
+            }
+        }
+        if (recovered > 0 && !reportedRebind)
+        {
+            reportedRebind = true;
+            Debug.Log("[calc] re-resolved " + recovered
+                + " stale calc-bone reference(s) after the joint-body-head assembly");
+        }
+    }
+
+    private void ReportUnresolved(CalcBoneInfo info)
+    {
+        var key = (info.myPath ?? "<null>") + "|" + (info.referPath ?? "<null>");
+        if (!reportedUnresolved.Add(key)) return;
+        if (reportedUnresolved.Count > 8) return;
+        var hunt = new System.Text.StringBuilder();
+        var root = bindRoot != null ? bindRoot : transform;
+        if (root != null)
+        {
+            var all = root.GetComponentsInChildren<Transform>(true);
+            foreach (var tr in all)
+            {
+                if (tr.name.IndexOf("KUBI", StringComparison.Ordinal) < 0
+                    && tr.name.IndexOf("ATAMA", StringComparison.Ordinal) < 0) continue;
+                hunt.Append(' ').Append(tr.name).Append("<-")
+                    .Append(tr.parent != null ? tr.parent.name : "<root>");
+                if (hunt.Length > 400) break;
+            }
+        }
+        Debug.LogWarning("[calc] unresolved calc-bone entry: my=" + (info.myPath ?? "<null>")
+            + " refer=" + (info.referPath ?? "<null>") + " type=" + info.type
+            + " myParent=" + (info.myTransform != null && info.myTransform.parent != null
+                ? info.myTransform.parent.name : "<none>")
+            + " hierarchy:" + hunt);
+    }
+
     private static Transform Require(Dictionary<string, Transform> byName, string path)
     {
         if (path != null && byName.TryGetValue(path, out var tr) && tr != null) return tr;
