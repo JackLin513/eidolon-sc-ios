@@ -8,7 +8,8 @@ using UnityEngine;
 //
 //   Imas.SwayWind            GetWind 0x33D8DF8   (point / proxy)
 //   Imas.SwayWindDirection   GetWind 0x33D933C
-//   Imas.SwayWindDirection2  GetWind 0x33D9828   (param table; not ported)
+//   Imas.SwayWindDirection2  GetWind 0x33D9828   (Init/Update/Calc bodies decoded 2026-11-16:
+//                            /tmp/wind2-decomp; Live-stage only, kept as documented stub)
 //   Imas.SwayWindDirection3  GetWind 0x33D9E2C
 //   Imas.SwayWindRefer       GetWind 0x37663DC   (Live set reference; not ported)
 //
@@ -46,12 +47,18 @@ public sealed class SwayWindDirectionNative : ISwayWindNative
     public float mWaveTh;
     public float mPow;
 
-    /// <summary>Native Update 0x33D9290 advances the wave phase and m_pow.</summary>
-    public void Calc(float deltaTime)
+    /// <summary>
+    /// Native Update 0x33D9298 (verified 2026-11-16 against the current binary):
+    /// `m_pow(+0x4C) = power(+0x20)`; `phase(+0x48) = frac(phase + waveFreq(+0x40) * dt)`;
+    /// if `waveAmp(+0x44) &gt; 0` then `m_pow = (1 - waveAmp * cos(2*PI*phase)) * power`.
+    /// Start 0x33D9290 zeroes both phase and m_pow first.
+    /// </summary>
+    public void Tick(float deltaTime)
     {
-        mWaveTh += deltaTime * waveFreq;
-        SimonWave(out var wave);
-        mPow = power + wave * waveAmp;
+        mWaveTh = Mathf.Repeat(mWaveTh + deltaTime * waveFreq, 1f);
+        mPow = waveAmp > 0f
+            ? (1f - waveAmp * Mathf.Cos(Mathf.PI * 2f * mWaveTh)) * power
+            : power;
     }
 
     public Vector3 GetWind(Vector3 pos)
@@ -65,11 +72,6 @@ public sealed class SwayWindDirectionNative : ISwayWindNative
         return direction * mag;
     }
 
-    /// <summary>Native wave shape is sin/cos of m_wave_th; documented as sine.</summary>
-    private void SimonWave(out float wave)
-    {
-        wave = Mathf.Sin(mWaveTh * Mathf.PI * 2f);
-    }
 }
 
 /// <summary>
@@ -88,10 +90,27 @@ public sealed class SwayWindDirection3Native : ISwayWindNative
     public Vector3 direction = Vector3.forward;
     public float resultPower = 1f;
 
-    /// <summary>Clamp bounds from dump.cs (clampMin 0 / clampMax 3).</summary>
+    /// <summary>Clamp bounds from the native Update (0..3).</summary>
     public void SetResultPower(float value)
     {
         resultPower = Mathf.Clamp(value, 0f, 3f);
+    }
+
+    /// <summary>
+    /// Native Update 0x33D9E48 (verified 2026-11-16): fps = Application.targetFrameRate
+    /// (0 -&gt; 60); frame = clamp(1 / pow(fps/60, fpsCoeff&gt;0?fpsCoeff:1), 0, 10);
+    /// angle = clamp(1 / pow(acos(direction.y)/(PI/2), angleCoeff&gt;0?angleCoeff:1), 0, 10);
+    /// resultPower(+0x38) = clamp(power(+0x20) * frame * angle, 0, 3).
+    /// </summary>
+    public void Tick(float deltaTime)
+    {
+        var fps = Application.targetFrameRate > 0 ? (float)Application.targetFrameRate : 60f;
+        var frameCoeff = fpsCoeff > 0f ? fpsCoeff : 1f;
+        var frame = Mathf.Clamp(1f / Mathf.Pow(fps / 60f, frameCoeff), 0f, 10f);
+        var vertical = Mathf.Acos(Mathf.Clamp(direction.y, -1f, 1f)) / (Mathf.PI * 0.5f);
+        var angleCoeffSafe = angleCoeff > 0f ? angleCoeff : 1f;
+        var angle = vertical <= 0f ? 10f : Mathf.Clamp(1f / Mathf.Pow(vertical, angleCoeffSafe), 0f, 10f);
+        resultPower = Mathf.Clamp(power * frame * angle, 0f, 3f);
     }
 
     public Vector3 GetWind(Vector3 pos)
@@ -116,6 +135,10 @@ public sealed class SwayWindPointNative : ISwayWindNative
     public Vector3 position;
     public float mPow;
 
+    public void Tick(float deltaTime)
+    {
+    }
+
     public Vector3 GetWind(Vector3 pos)
     {
         var local = pos - position;
@@ -136,6 +159,11 @@ public sealed class SwayWindPointNative : ISwayWindNative
 public sealed class SwayWindProxyNative : ISwayWindNative
 {
     public ISwayWindNative target;
+
+    public void Tick(float deltaTime)
+    {
+        if (target != null) target.Tick(deltaTime);
+    }
 
     public Vector3 GetWind(Vector3 position)
     {

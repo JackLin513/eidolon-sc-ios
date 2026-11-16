@@ -388,11 +388,36 @@ public sealed class CalcBoneNative : MonoBehaviour
     /// the ALGO_TYPE case writes the bone's localRotation (types 0/1/2/4/6/7),
     /// world rotation (type 3), or localPosition (type 5).
     /// </summary>
+    private bool reportedMissingTransform;
+
     public void ExplictUpdate()
     {
         for (var i = 0; i < m_infoList.Count; i++)
         {
             var info = m_infoList[i];
+
+            // Defensive: a registration whose reference Transform was torn down
+            // mid-session (or a path that resolved in one rig but not the other)
+            // used to throw once per frame here. Native has no such case because
+            // CalcBone never outlives its skeleton; the port can, so skip and
+            // report once instead of spamming the console.
+            if (info.myTransform == null || info.referTransform == null)
+            {
+                if (!reportedMissingTransform)
+                {
+                    reportedMissingTransform = true;
+                    Debug.LogWarning("[calc] skipping calc-bone entries with missing transforms: my="
+                        + (info.myPath ?? "<null>") + " refer=" + (info.referPath ?? "<null>"));
+                }
+                continue;
+            }
+            // TITE types (4/6/7) read a second reference bone.
+            if (info.type == AlgoType.TITE_FRONT_ROT || info.type == AlgoType.TITE_BACK_ROT_YZ
+                || info.type == AlgoType.TITE_BACK_ROT_X)
+            {
+                if (info.referTransform2 == null) continue;
+            }
+
             var curRefRot = info.referTransform.localRotation;
 
             switch (info.type)

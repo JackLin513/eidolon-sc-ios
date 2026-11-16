@@ -504,3 +504,64 @@ lineDurationMs = max(line.scriptMs, 200)
 `0x33D9828`、`0x37663DC`、`0x9705120`、`0x9709770`、`0x970CCF8`）已经是新包地址，
 不需要换算。后续按 Δ 换算后的地址逐条反编译，再决定 `implement` / 改注释 / 判定
 out-of-scope（Live 舞台、gallery、minigame 等不在剧情播放路径上的）。
+
+### 10. UNKNOWN 标记对「新包」的逐条重编译（2026-11-16）
+
+§9 的 Δ 换算是「旧地址 + 区域偏移」，为了排除偏移误判，这一轮改用 **`dump.cs` 里直接给出的
+当前包 RVA** 重新反编译：先从 `/tmp/ild/dump.cs` 解析 259,016 条 `// RVA:` 记录，按方法名
+取出 41 个目标（36 个 `UNKNOWN` 标记对应的方法 + 5 个 `Sway*GetWind`），再用 IDA/Hex-Rays
+对**当前包地址**反编译（`/tmp/newpkg-decomp/*.c`，文件名带 `<Class>.<Method>__0x<RVA>.c`）。
+
+核对结果：
+
+- 41 个目标全部落在函数入口（`get_func(ea).start_ea == ea`），无 `nofunc`。
+- 与上一轮「Δ 换算地址」反编译（`/tmp/unk2-decomp/`）重叠 36 个：**32 个逐字相同**，
+  4 个仅类型拼写/变量编号差异（`EyeTracking.EyeUpdate`、`SwayBone.SwayHit`、
+  `CharacterImasMotion.SolveCurve`、`CharacterMaterials.SetSpotlightColor`），语义一致。
+  → Δ 换算被证实等价于 dump.cs 的当前 RVA，36 条 UNKNOWN 的反编译确实来自新包。
+- 37 个标记里另有 4 个是**静态数据槽**（`0x9704BE0`/`0x9705120`/`0x9709770`/`0x970CCF8`，
+  il2cpp 字段 RVA，不是函数），不能「编译」；它们指向的当前 TypeInfo 已在端口注释里换成
+  新包 token（如 `Imas.Live.MainLoop_TypeInfo 0x97B93B8`、`Imas.Live.CameraCtrl_TypeInfo 0x97AFED8`），
+  对应 Live 子系统在本 spike 不存在，属 out-of-scope。
+
+据此，37 个标记的最终处置（对应提交 `73699501`）：
+
+| 处置 | 数量 | 代表 |
+|---|---|---|
+| 按新包反编译后**已实现** | 27 | `CharacterMaterials.create_sync / initStatic / SetMonoColorRatio / SetRimLightDirection`、`CharacterDrawer.SetSkinQuality`、`JointBodyHead.SetVisible / SetBodyMeshs / ApplyGlassesSwitch`、`SwayBone.Init / SetManager / ResetRotForADV / SwayHit`、`SwayManager.PrepareUpdate`、`SoulDataColor3i.TryParse` |
+| 保持行为、仅把注释改引新 RVA（含 out-of-scope 说明） | 5 | `CharacterDrawer.GetZShiftCloth / ReloadDefaultLayers`、`CharacterMaterials.SetSpotlightColor`（Live 聚光）、`SwayBone.FinishRotate`、`SwayManager.GetWind` |
+| 精确 UNKNOWN（Hex-Rays 丢操作数，需运行时探针） | 4 | `JointBodyHead.MeasureSway` 的 float 合并、`EyeTracking.EyeUpdate` 的部分数学、`CharacterImasMotion.SolveCurve / SolveCurves` 的取整细节 |
+| 静态数据槽（不可编译，已换新 token 并标 Live out-of-scope） | 4 | `0x9704BE0 / 0x9705120 / 0x9709770 / 0x970CCF8` |
+
+风场 5 个 `GetWind` 也按**当前包真实入口**重编译（此前误用 `.ctor` 地址）：
+
+| 类 | 当前 RVA | 反编译确认的行为 | 端口状态 |
+|---|---|---|---|
+| `SwayWind` | `0x33D8DF8` | `type`(+0x28)==1 → 查 GameObject 上的 `ISwayWind` 代理转发；==2(Point) → `local=pos-position(+0x34..3C)`，`|local|<0.001` 返回零，`mag = m_pow(+0x54) * (decay(+0x30)>0 ? 1/(1+|local|*decay) : 1)`，返回 `normalize(local)*mag`；其他值 → 同样走代理 | `SwayWindPointNative` / `SwayWindProxyNative` 与之一致 |
+| `SwayWindDirection` | `0x33D933C` | `mag = m_pow(+0x4C) * (decay(+0x24)>0 ? 1/(1+decay*dist) : 1)`，返回 `direction(+0x34) * mag`（位置 +0x28..0x30） | `SwayWindDirectionNative` 一致 |
+| `SwayWindDirection3` | `0x33D9E2C` | `return *(float*)(a1+44) * *(float*)(a1+56)` = `direction(+0x2C) * resultPower(+0x38)` | `SwayWindDirection3Native` 一致 |
+| `SwayWindDirection2` | `0x33D9828` | 逐 `WIND_PARAM` 的包络状态（`Init/Update/Calc` 驱动）与 `CalcWindVelocity` 平面投影；此处只有 GetWind 的读取端 | 仍为 stub + 精确 UNKNOWN（Live 舞台专用） |
+| `SwayWindRefer` | `0x37663DC` | 从 Live 舞台管理器按 `idol`+`setid` 找角色再转发 | 仍为 stub（无 Live 舞台管理器） |
+
+配套的 `Start/Update/Init/Calc/Awake/UpdateParameters/SetWind`（14 个）也已对当前包反编译，
+用于核对 / 补齐 wind 的每帧状态更新（wave 相位、m_pow、Direction2 包络）。
+
+### 10.1 验证时发现的两处控制台噪声（已修）
+
+跑 `job_story_027say_6000` 第 9 句时，Development Console 被两类每帧刷屏的日志占满，
+两者都不是本轮引入，但会遮住画面，顺手修掉：
+
+1. `NullReferenceException at CalcBoneNative.ExplictUpdate -> Transform.get_localRotation`（约 20 次/秒）。
+   注册表里存在参考骨解析失败的条目，`referTransform` 为空。现在 `ExplictUpdate` 跳过
+   `myTransform`/`referTransform`（以及 TITE 类型 4/6/7 的 `referTransform2`）为空的条目并只报一次：
+   `[calc] skipping calc-bone entries with missing transforms: my=KUBI_RT__twist_x0 refer=KUBI`。
+   **仍未解的忠实度问题**：`KUBI` 这条参考骨在端上 rig 里查不到（其余条目都正常），
+   意味着颈部/头部 twist 的那几条 calc 目前被跳过；下次要查 `JointBodyHead` 的 head 层绑定
+   （native `GetComponentsInChildren<Transform>(true)` 是否覆盖到 `obj_head` 之外的节点）。
+2. `Tag hair_side/hair_yoko/wing_L0/OPAI_L0/A/C is not defined` 每帧警告。
+   原生用 `GameObject.CompareTag` 读这些服装/部件标记，但 spike 工程的 TagManager 里没有这些 tag，
+   Unity 每次调用都会警告且结果恒为 false。改为按节点名匹配（`name == token` 或前缀），
+   语义等价（bundle 里同一 token 就在节点名上），警告消失。
+
+验证：同一场景重跑，`NullReferenceException` 0 次、`is not defined` 0 次；
+截图 `~/mltd-work/out/3d-stand/story-sit-027say-6000-v3.png`（裙摆贴腿、配色正常、底部只剩字幕与按钮）。

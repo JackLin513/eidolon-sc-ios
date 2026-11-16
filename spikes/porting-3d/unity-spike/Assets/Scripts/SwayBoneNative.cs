@@ -381,23 +381,18 @@ public sealed class SwayBoneNative : MonoBehaviour
     }
 
     /// <summary>
-    /// GameObject.CompareTag with the native semantics but tolerant of absent
-    /// TagManager entries: Unity throws for a tag that is not declared in the
-    /// project, while the shipped project declares every costume tag. The spike
-    /// has no TagManager entries for OPAI_L0/wing_L0/..., so an undeclared tag
-    /// is treated as "not equal" (the native value would also be false there).
+    /// Native reads these markers through GameObject.CompareTag (OPAI_L0/R0,
+    /// hair_side, hair_yoko, wing_L0/R0, A, C). Unity logs a warning for every
+    /// tag that is missing from TagManager, and the spike project has no costume
+    /// tags at all, so CompareTag was both noisy and always false. The same
+    /// tokens live on the bone node names in the shipped bundles, so match the
+    /// name instead (exact, or the token as a prefix of the node name).
     /// </summary>
     private static bool CompareTagSafe(GameObject go, string tag)
     {
         if (go == null) return false;
-        try
-        {
-            return go.CompareTag(tag);
-        }
-        catch (UnityException)
-        {
-            return false;
-        }
+        var name = go.name;
+        return name == tag || name.StartsWith(tag, System.StringComparison.Ordinal);
     }
 
     /// <summary>

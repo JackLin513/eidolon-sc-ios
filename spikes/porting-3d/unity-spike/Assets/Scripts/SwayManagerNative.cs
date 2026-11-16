@@ -389,6 +389,11 @@ public sealed class SwayManagerNative : MonoBehaviour
         PrepareUpdate();
         if (!on) return;
 
+        // Native: every ISwayWind is a MonoBehaviour and advances its own state
+        // in Update(); the manager only sums GetWind(). The port has no
+        // components for the stage wind sources, so tick the registered ones
+        // here, right before the bones integrate the resulting force.
+        TickWinds(m_delta_time);
         ExecuteUpdate(m_delta_time);
         PostUpdate();
 
@@ -433,6 +438,17 @@ public sealed class SwayManagerNative : MonoBehaviour
     /// predicate (sub_3695F10); the spike returns true (GlobalSwayActive) so the
     /// native 1.3 branch is modelled.
     /// </summary>
+    /// <summary>Advances every registered source (native per-source Update).</summary>
+    public void TickWinds(float deltaTime)
+    {
+        if (winds == null) return;
+        for (var i = 0; i < winds.Count && i < SwayConstants.WIND_MAX; i++)
+        {
+            if (winds[i] == null || !winds_use[i]) continue;
+            winds[i].Tick(deltaTime);
+        }
+    }
+
     public Vector3 GetWind(Vector3 position)
     {
         if (winds == null || winds.Count == 0) return Vector3.zero;
@@ -605,10 +621,18 @@ public sealed class SwayCtrlMTNative
     }
 }
 
-/// <summary>Native ISwayWind, character-bundle wind is stage-driven (out of scope).</summary>
+/// <summary>
+/// Native ISwayWind (Imas.SwayWind and friends). Character bundles do not carry
+/// wind sources — the stage spawns them — so in ADV playback the list is empty
+/// and GetWind returns zero. Each source advances its own state in its native
+/// MonoBehaviour.Update; the port ticks them from the manager (TickWinds).
+/// </summary>
 public interface ISwayWindNative
 {
     Vector3 GetWind(Vector3 position);
+
+    /// <summary>Native MonoBehaviour.Update equivalent.</summary>
+    void Tick(float deltaTime);
 }
 
 /// <summary>
