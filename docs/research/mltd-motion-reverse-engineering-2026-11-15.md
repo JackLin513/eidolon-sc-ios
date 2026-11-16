@@ -567,16 +567,53 @@ out-of-scope（Live 舞台、gallery、minigame 等不在剧情播放路径上�
    joint-body-head assembly`（正是 `KUBI_RT__twist_x0` / `KUBI_RT__twist_z0` 这两条）。
    效果：同一话同一句截图对比（左右为修复前后），头部朝向/发束落点不同 —— 颈部 twist
    现在真的被算进去了。
-3. **颈部 twist helper 的 A/B 结论（2026-11-16 补）**：`KUBI_RT__twist_x0` 修好绑定后确实
-   开始被驱动，但同一话同一句的截图里**脖子右侧靠领口处出现一块缺口**（颈部蒙皮被拉裂），
-   而把 `__twist` 条目整体跳过时画面平滑。`KUBI_RT__twist_*` 是没有子节点、只承载蒙皮权重
-   的辅助骨，`CalcBone.Twist` 原生实现（`sub_1C60D00`，里面还读 `off_970CCF8+23` 的静态
-   Vector3 配置）目前只还原到近似式，对四肢 helper 表现正常、对颈部 helper 会过度旋转。
-   处理：先用 `EIDOLON_CALC_SKIP_TWIST` 做过 A/B 取证，落地时只让 `KUBI_RT__twist*`
-   保持刚性（`[calc] leaving KUBI_RT__twist* rigid`），其余 twist 条目照旧计算；
-   精确的 `Twist` 公式仍列为 UNKNOWN（需要重跑 Il2CppDumper 拿到 `sub_7095F7C` 等
-   数学 helper 的方法名后再逐条核对）。证据：`story-sit-027say-6000-v4.png`（有缺口）与
-   `story-sit-027say-6000-v3.png`（无缺口）。
+3. **颈部缺口 = 绑定采样过期，不是 `Twist` 公式近似（2026-11-16 已解）**
+
+   现象：`KUBI_RT__twist_x0` 的引用修好（`RebindReferences`）后颈部 twist 真的开始计算，
+   但同一话同一句截图里**脖子右侧靠领口处裂开一块**；用 `EIDOLON_CALC_SKIP_TWIST=1`
+   跳过全部 `__twist` 时画面平滑（A/B：`story-sit-027say-6000-neck-twist-ab.png`）。
+
+   先把 `CalcBone.Twist` 的数学按当前包重新解出来（旧 `sub_1C60D00` 是本轮之前那版包的地址，
+   当前包在 `CodeRegistration : 8f13e60` 下）：
+
+   - 函数：`CalcBone.Twist @0x1CBB978`，签名
+     `private static Quaternion Twist(Quaternion curRefRot, Quaternion initRefRot, Vector3 initRefVec, float t)`。
+     同族：`SlerpEx @0x1CBB754`、`ROT @0x1CBBBEC`、`Awake @0x1CBA29C`、`ExplictUpdate @0x1CBB3C0`。
+   - helper（按 `dump.cs` 方法名）：`Quaternion.op_Multiply(Quaternion,Vector3) @0x712AC70`、
+     `Quaternion.FromToRotation @0x712A0DC`、`Quaternion.Inverse @0x712A1B4`、
+     `Quaternion.Slerp @0x712A278`；`CalcBone.MathUtil.Slerp @0x1CBCE64`、`RotationArc @0x1CBCE5C`。
+   - 反编译正文（用 `ida_typeinf.apply_tinfo` 给 helper 与 `Twist` 打上 `q4`/`v3` 原型后
+     Hex-Rays 输出可读代码，见 `~/mltd-work/ida/twist-typed/Twist.c`）等价于：
+
+     ```csharp
+     d      = FromToRotation(initRefVec, curRefRot * Vector3.right);
+     a      = d * initRefRot;                       // 注意：a = d ⊗ initRefRot
+     inv    = Inverse(curRefRot);                   // 在符号修正之前算
+     if (Dot(curRefRot, a) < 0) curRefRot = -curRefRot;
+     result = inv * Slerp(a, curRefRot, t);         // t = CALC_BONE_INFO.tx（+0x68）
+     ```
+
+   - **`Vector3.right` 不是猜的**：`Twist` 里读的静态配置是
+     `*(Vector3_TypeInfo → Il2CppClass + 0xB8 (static_fields) + 0x3C)`，而 `UnityEngine.Vector3`
+     的静态字段顺序是 `zero(0x00) one(0x0C) up(0x18) down(0x24) left(0x30) right(0x3C)`，
+     所以这个常量就是 `Vector3.right`；`Awake` 里的 `initRefVec = initRefRot * right` 同理。
+   - `ExplictUpdate` 的调用点（`bl 0x1CBB978` 前）确认实参：`s0..s3 = curRefRot`、
+     `s4..s7 = [info+0x48..0x58] = referInitRot`、栈上 `= [info+0x58..0x64] = referInitVec`
+     与 `[info+0x68] = tx`，与端口现行 `Twist(curRefRot, referInitRot, referInitVec, info.tx)`
+     完全一致 —— **公式本身早就对了**。
+
+   因此缺口不是公式问题，而是**绑定采样过期**：端口在 `JointBodyHead` 装配前就
+   `Awake` 建表，`KUBI_RT__twist_x0` 的 `referTransform` 抓的是即将被销毁的旧 body `KUBI`，
+   `referInitRot = referTransform.localRotation` / `referInitVec = referInitRot * right` 也是
+   从那个旧骨采的。`RebindReferences` 只换引用、没有重采 bind pose，于是 `Slerp` 的起点
+   对不上新 `KUBI` 的绑定朝向，t>0 时把颈部蒙皮拧出缺口；四肢的参考骨没被 graft 替换过，
+   所以看不出问题（这正是「公式对、但只有脖子裂」的原因）。
+
+   修法：`RebindReferences` 在重新解析到引用时**同时重采 bind pose** ——
+   `initMyRot = myTransform.localRotation`、`initMyPosition = myTransform.localPosition`、
+   `referInitRot = referTransform.localRotation`、`referInitVec = referInitRot * Vector3.right`
+   （`referTransform2` 同理），并删除 `51ecc928` 里 `KUBI_RT__twist*` 保持刚性的特判。
+   重采发生在装配刚完成、还没有播放动作时，等价于原生「先装配再 `Awake`」的顺序。
 
 2. `Tag hair_side/hair_yoko/wing_L0/OPAI_L0/A/C is not defined` 每帧警告。
    原生用 `GameObject.CompareTag` 读这些服装/部件标记，但 spike 工程的 TagManager 里没有这些 tag，

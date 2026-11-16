@@ -394,7 +394,6 @@ public sealed class CalcBoneNative : MonoBehaviour
     private float nextRebindTime;
     private bool skipTwist;
     private bool skipTwistLogged;
-    private bool skippedNeckTwist;
     private bool reportedRebind;
 
     public void ExplictUpdate()
@@ -443,22 +442,6 @@ public sealed class CalcBoneNative : MonoBehaviour
                     break;
 
                 case AlgoType.TWIST:
-                    // The neck helper only carries skinned vertices (it has no children), and
-                    // our Twist() is an approximation that is known-good for the limb helpers
-                    // but shears the neck when applied to KUBI: the A/B screenshots show the
-                    // neck skin tearing away from the collar with it on. Keep the neck helper
-                    // rigidly attached until the native Twist math is recovered exactly.
-                    if (info.myPath != null
-                        && info.myPath.IndexOf("KUBI_RT__twist", StringComparison.Ordinal) >= 0)
-                    {
-                        if (!skippedNeckTwist)
-                        {
-                            skippedNeckTwist = true;
-                            Debug.Log("[calc] leaving KUBI_RT__twist* rigid (native Twist math not"
-                                + " verified for the neck helper)");
-                        }
-                        break;
-                    }
                     info.myTransform.localRotation = Twist(
                         curRefRot, info.referInitRot, info.referInitVec, info.tx);
                     break;
@@ -1193,17 +1176,26 @@ public sealed class CalcBoneNative : MonoBehaviour
             if (info.myTransform == null && byName.TryGetValue(info.myPath ?? string.Empty, out var mine))
             {
                 info.myTransform = mine;
+                // Native registers after the joint-body-head assembly, so the bind pose is the
+                // pose of the grafted hierarchy. Sampling again here is the equivalent.
+                info.initMyRot = mine.localRotation;
+                info.initMyPosition = mine.localPosition;
                 recovered++;
             }
-            if (info.referTransform == null && byName.TryGetValue(info.referPath ?? string.Empty, out var refer))
+            if (info.referTransform == null
+                && byName.TryGetValue(info.referPath ?? string.Empty, out var refer))
             {
                 info.referTransform = refer;
+                info.referInitRot = refer.localRotation;
+                info.referInitVec = info.referInitRot * Vector3.right;
                 recovered++;
             }
             if (info.referTransform2 == null && !string.IsNullOrEmpty(info.referPath2)
                 && byName.TryGetValue(info.referPath2, out var refer2))
             {
                 info.referTransform2 = refer2;
+                info.referInitRot2 = refer2.localRotation;
+                info.referInitVec2 = info.referInitRot2 * Vector3.right;
                 recovered++;
             }
         }
