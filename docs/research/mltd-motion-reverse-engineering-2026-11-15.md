@@ -567,6 +567,17 @@ out-of-scope（Live 舞台、gallery、minigame 等不在剧情播放路径上�
    joint-body-head assembly`（正是 `KUBI_RT__twist_x0` / `KUBI_RT__twist_z0` 这两条）。
    效果：同一话同一句截图对比（左右为修复前后），头部朝向/发束落点不同 —— 颈部 twist
    现在真的被算进去了。
+3. **颈部 twist helper 的 A/B 结论（2026-11-16 补）**：`KUBI_RT__twist_x0` 修好绑定后确实
+   开始被驱动，但同一话同一句的截图里**脖子右侧靠领口处出现一块缺口**（颈部蒙皮被拉裂），
+   而把 `__twist` 条目整体跳过时画面平滑。`KUBI_RT__twist_*` 是没有子节点、只承载蒙皮权重
+   的辅助骨，`CalcBone.Twist` 原生实现（`sub_1C60D00`，里面还读 `off_970CCF8+23` 的静态
+   Vector3 配置）目前只还原到近似式，对四肢 helper 表现正常、对颈部 helper 会过度旋转。
+   处理：先用 `EIDOLON_CALC_SKIP_TWIST` 做过 A/B 取证，落地时只让 `KUBI_RT__twist*`
+   保持刚性（`[calc] leaving KUBI_RT__twist* rigid`），其余 twist 条目照旧计算；
+   精确的 `Twist` 公式仍列为 UNKNOWN（需要重跑 Il2CppDumper 拿到 `sub_7095F7C` 等
+   数学 helper 的方法名后再逐条核对）。证据：`story-sit-027say-6000-v4.png`（有缺口）与
+   `story-sit-027say-6000-v3.png`（无缺口）。
+
 2. `Tag hair_side/hair_yoko/wing_L0/OPAI_L0/A/C is not defined` 每帧警告。
    原生用 `GameObject.CompareTag` 读这些服装/部件标记，但 spike 工程的 TagManager 里没有这些 tag，
    Unity 每次调用都会警告且结果恒为 false。改为按节点名匹配（`name == token` 或前缀），

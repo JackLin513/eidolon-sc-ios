@@ -392,13 +392,24 @@ public sealed class CalcBoneNative : MonoBehaviour
     private Transform bindRoot;
     private readonly HashSet<string> reportedUnresolved = new HashSet<string>();
     private float nextRebindTime;
+    private bool skipTwist;
+    private bool skipTwistLogged;
+    private bool skippedNeckTwist;
     private bool reportedRebind;
 
     public void ExplictUpdate()
     {
+        if (!skipTwistLogged)
+        {
+            skipTwistLogged = true;
+            skipTwist = System.Environment.GetEnvironmentVariable("EIDOLON_CALC_SKIP_TWIST") == "1";
+            if (skipTwist) Debug.Log("[calc] skipping __twist entries (EIDOLON_CALC_SKIP_TWIST=1)");
+        }
         for (var i = 0; i < m_infoList.Count; i++)
         {
             var info = m_infoList[i];
+            if (skipTwist && info.myPath != null
+                && info.myPath.IndexOf("__twist", StringComparison.Ordinal) >= 0) continue;
 
             // "Fake null": Unity reports a destroyed/replaced Transform as null.
             // The native Awake binds after the joint-body-head assembly has grafted
@@ -432,6 +443,22 @@ public sealed class CalcBoneNative : MonoBehaviour
                     break;
 
                 case AlgoType.TWIST:
+                    // The neck helper only carries skinned vertices (it has no children), and
+                    // our Twist() is an approximation that is known-good for the limb helpers
+                    // but shears the neck when applied to KUBI: the A/B screenshots show the
+                    // neck skin tearing away from the collar with it on. Keep the neck helper
+                    // rigidly attached until the native Twist math is recovered exactly.
+                    if (info.myPath != null
+                        && info.myPath.IndexOf("KUBI_RT__twist", StringComparison.Ordinal) >= 0)
+                    {
+                        if (!skippedNeckTwist)
+                        {
+                            skippedNeckTwist = true;
+                            Debug.Log("[calc] leaving KUBI_RT__twist* rigid (native Twist math not"
+                                + " verified for the neck helper)");
+                        }
+                        break;
+                    }
                     info.myTransform.localRotation = Twist(
                         curRefRot, info.referInitRot, info.referInitVec, info.tx);
                     break;
@@ -1120,6 +1147,20 @@ public sealed class CalcBoneNative : MonoBehaviour
     /// Only reachable on malformed rigs; the shipped models always contain the
     /// named bones.
     /// </summary>
+    private static string FullPath(Transform tr)
+    {
+        if (tr == null) return "<null>";
+        var path = tr.name;
+        var parent = tr.parent;
+        var guard = 0;
+        while (parent != null && guard++ < 32)
+        {
+            path = parent.name + "/" + path;
+            parent = parent.parent;
+        }
+        return path;
+    }
+
     private static bool HasResolvedTransforms(CalcBoneInfo info)
     {
         if (info.myTransform == null || info.referTransform == null) return false;
@@ -1171,6 +1212,13 @@ public sealed class CalcBoneNative : MonoBehaviour
             reportedRebind = true;
             Debug.Log("[calc] re-resolved " + recovered
                 + " stale calc-bone reference(s) after the joint-body-head assembly");
+            for (var i = 0; i < m_infoList.Count; i++)
+            {
+                var info = m_infoList[i];
+                if (info.myTransform == null || info.referTransform == null) continue;
+                Debug.Log("[calc] entry my=" + FullPath(info.myTransform) + " refer="
+                    + FullPath(info.referTransform) + " type=" + info.type + " tx=" + info.tx);
+            }
         }
     }
 
